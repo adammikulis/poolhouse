@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import functools
+
 OPTIONS = (
     ("--slow", "also run the tests marked slow (a browser, a subprocess, a wheel build, a network timeout)"),
     ("--gate", "also run the tests marked gate (whole-tree scans that `scripts/test gate` runs)"),
@@ -20,3 +22,17 @@ def parse_arguments(arguments: list[str]):
     import pytest
 
     return pytest.Config.fromdictargs({}, ["--noconftest", "-p", "testoptions", *arguments])
+
+
+@functools.cache
+def _positional(arguments: tuple[str, ...]) -> tuple[str, ...]:
+    config = parse_arguments(list(arguments))
+    try:
+        return tuple(config.args)
+    finally:
+        config._ensure_unconfigure()
+
+
+def positional(arguments: list[str]) -> list[str]:
+    """The test paths and node ids among the pytest arguments; the same arguments are parsed once per process."""
+    return list(_positional(tuple(arguments)))

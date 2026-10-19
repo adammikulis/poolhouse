@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import contextlib
 import json
+import math
 import os
+import re
 import subprocess
 import tempfile
 import time
@@ -18,7 +20,11 @@ ALPHA = 0.3
 OUTLIER_FACTOR = 3.0
 WALL_SHARE = 0.25
 DEFAULT_FILE_S = 30.0
+"""What a file with no record costs when nothing is recorded to measure its tests by, and the most any such file costs."""
 DEFAULT_NODE_S = 5.0
+TYPICAL_KEEP = 0.99
+"""The share of recorded tests, fastest first, whose mean is the cost of a test with no record."""
+TEST_DEFINITION = re.compile(r"^[ \t]*(?:async[ \t]+)?def[ \t]+test", re.MULTILINE)
 THRESHOLD_S = 180.0
 MIN_RECORDED = 50
 
@@ -120,15 +126,34 @@ def _matches(node: str, selector: str) -> bool:
     return node == selector or (node.startswith(selector) and node[len(selector)] in "[:")
 
 
+def typical_seconds(tests: dict[str, dict]) -> float | None:
+    """The mean seconds of a recorded test, the slowest one percent left out; None when nothing is recorded."""
+    values = sorted(seconds(entry) for entry in tests.values())
+    kept = values[:math.ceil(len(values) * TYPICAL_KEEP)]
+    return sum(kept) / len(kept) if kept else None
+
+
+def unrecorded_file_seconds(root: Path, file: str, typical: float | None) -> float:
+    """What a test file with no record is expected to take: its test functions at the typical test's seconds, at most ``DEFAULT_FILE_S``."""
+    if typical is None:
+        return DEFAULT_FILE_S
+    try:
+        count = len(TEST_DEFINITION.findall((root / file).read_text(encoding="utf-8", errors="replace")))
+    except OSError:
+        return DEFAULT_FILE_S
+    return min(DEFAULT_FILE_S, max(1, count) * typical)
+
+
 def estimate(tests: dict[str, dict], root: Path, selectors: list[str], reused: frozenset = frozenset()) -> Estimate:
     """Seconds the selected tests are expected to take, summed per file from the history without collecting; ``reused`` files cost nothing."""
     by_file: dict[str, list[tuple[str, float]]] = {}
     for node, entry in tests.items():
         by_file.setdefault(node.split("::", 1)[0], []).append((node, seconds(entry)))
     total, recorded, unknown = 0.0, 0, 0
+    typical = typical_seconds(tests)
     for file in _files(root, selectors, reused):
         rows = by_file.get(file, [])
-        total += sum(s for _, s in rows) if rows else DEFAULT_FILE_S
+        total += sum(s for _, s in rows) if rows else unrecorded_file_seconds(root, file, typical)
         recorded += len(rows)
         unknown += not rows
     for selector in (s for s in selectors if "::" in s):

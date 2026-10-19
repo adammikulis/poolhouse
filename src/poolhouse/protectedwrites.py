@@ -615,9 +615,13 @@ def other_agent(command: str, own: str) -> str:
 
 
 def _names_another(word: str, after: list[str], own: str) -> str:
-    name, _, value = word.partition("=")
-    if name in ("--agent", "POOLHOUSE_WORKSPACE_AGENT") and (value or after) and (value or after[0]) != own:
+    name, equals, value = word.partition("=")
+    if name == "--agent" and (value or after) and (value or after[0]) != own:
         return f"you are {own}: run as yourself, not as {value or after[0]}."
+    if name == "POOLHOUSE_WORKSPACE_AGENT" and equals and value != own:
+        return f"you are {own}: run as yourself, not as {value}."
+    if name == "POOLHOUSE_SUBAGENT" and equals:
+        return f"you are {own}: the harness names you in every command, and no command names another."
     if name in ("--token-file", "POOLHOUSE_WORKSPACE_TOKEN"):
         return f"you are {own}: another session's token is not yours to use."
     return ""
