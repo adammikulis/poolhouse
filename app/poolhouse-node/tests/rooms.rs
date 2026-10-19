@@ -83,17 +83,19 @@ fn a_private_room_is_joined_only_through_its_makers_add_and_is_not_listed_to_oth
 }
 
 #[test]
-fn a_subagent_does_not_make_join_or_subscribe_and_the_limits_hold() {
+fn a_subagent_does_not_make_join_or_subscribe_and_a_session_makes_rooms_up_to_what_a_board_holds() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (_, lead) = session(&mut n, "demo", "lead");
     let (_, child) = kid(&mut n, &lead, "kid");
     assert_eq!(code(&room(&mut n, &child, "create", "#kids", json!({}))), "denied");
     assert_eq!(code(&req(&mut n, "subscribe", "demo", &child, json!({"stype": "mentions"}))), "denied");
-    for i in 0..5 {
+    for i in 0..200 {
         ok(room(&mut n, &lead, "create", &format!("#r{i}"), json!({})));
     }
-    assert_eq!(code(&room(&mut n, &lead, "create", "#r5", json!({}))), "quota", "five rooms a session makes");
+    let refused = room(&mut n, &lead, "create", "#r200", json!({}));
+    assert_eq!(code(&refused), "quota", "{refused}");
+    assert!(refused["error"]["message"].as_str().unwrap().contains("200 rooms"), "{refused}");
 }
 
 #[test]
@@ -205,7 +207,8 @@ fn subscribing_to_threads_senders_and_kinds_checks_the_target_and_counts_the_cos
     ok(req(&mut n, "subscribe", "demo", &ct, json!({"stype": "mentions", "mode": "digest"})));
     ok(req(&mut n, "subscribe", "demo", &ct, json!({"stype": "board", "target": "#general", "mode": "digest"})));
     ok(req(&mut n, "subscribe", "demo", &ct, json!({"stype": "board", "target": "#announcements", "mode": "silent"})));
-    assert_eq!(code(&req(&mut n, "subscribe", "demo", &ct, json!({"stype": "thread", "target": root, "mode": "digest"}))), "quota", "twelve subscriptions a session");
+    ok(req(&mut n, "subscribe", "demo", &ct, json!({"stype": "thread", "target": root, "mode": "digest"})));
+    assert_eq!(ok(req(&mut n, "subs", "demo", &ct, json!({})))["subs"].as_array().unwrap().len(), 13, "a session keeps more than twelve subscriptions");
 }
 
 #[test]

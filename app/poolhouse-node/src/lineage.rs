@@ -9,7 +9,7 @@
 //! yet: there nothing is recorded and nothing is refused (`ENFORCED`).
 //!
 //! Every token is bound to the lineage that registered it, and a grant is spent only by a request from a process that shares
-//! it (`Asking`). A lineage is also what the limits of `limits::Rates` are kept under.
+//! it (`Asking`).
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -42,11 +42,6 @@ impl Anchor {
     pub fn body(&self) -> Value {
         serde_json::json!({"pid": self.pid, "start": self.start})
     }
-}
-
-/// The key a lineage's limits are kept under: its top process, the shell of its terminal or the app that started it.
-pub fn limit_key(lineage: &[Anchor]) -> String {
-    lineage.last().map_or_else(|| "unknown".to_string(), |a| format!("{}-{}", a.pid, a.start))
 }
 
 /// Who is asking, as the grant checks of the request being answered need it: the token it presented, as the node keeps it,

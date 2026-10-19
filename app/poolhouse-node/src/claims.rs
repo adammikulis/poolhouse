@@ -12,8 +12,6 @@ use crate::lease::types::{Lease, Resource, State, CLAIM_KINDS};
 use crate::node::Node;
 
 pub const METHODS: [&str; 4] = ["claim", "reserve", "release", "claims"];
-/// Most resources one reserve takes.
-pub const MOST_RESERVED: usize = 128;
 
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
@@ -67,20 +65,15 @@ fn show(node: &Node, l: &Lease, kind: &str, name: &str, board: &str) -> Value {
 }
 
 /// Take the claim ``kind`` ``key`` for ``holder`` without waiting, or renew the one it already holds: whether it was newly taken, and its lease.
-/// A claim the holder keeps past its lifetime is given up and taken again, with a lifetime that starts now.
 fn take(node: &mut Node, board: &str, token: &str, holder: &str, (kind, key): (&str, &str), p: &Map<String, Value>) -> Result<(bool, Lease)> {
     let name = held_as(kind, board, key);
     if let Some(l) = node.leases.table.leases.iter().find(|l| l.holder == holder && l.state == State::Held && mine(l, kind, &name)).cloned() {
-        if l.lifetime_end_ms().is_some_and(|end| end <= node.leases.now()) {
-            give_back(node, board, holder, &[l.id])?;
-        } else {
-            let ttl = p.get("ttl_s").and_then(Value::as_u64).unwrap_or(l.ttl_s);
-            let mut renew = Map::new();
-            renew.insert("id".into(), json!(l.id));
-            renew.insert("ttl_s".into(), json!(ttl));
-            rpc::call(node, "lease_renew", board, token, &renew)?;
-            return Ok((false, node.leases.table.find(&l.id).cloned().unwrap_or(l)));
-        }
+        let ttl = p.get("ttl_s").and_then(Value::as_u64).unwrap_or(l.ttl_s);
+        let mut renew = Map::new();
+        renew.insert("id".into(), json!(l.id));
+        renew.insert("ttl_s".into(), json!(ttl));
+        rpc::call(node, "lease_renew", board, token, &renew)?;
+        return Ok((false, node.leases.table.find(&l.id).cloned().unwrap_or(l)));
     }
     let mut ask = Map::new();
     ask.insert("resources".into(), json!([{"type": "claim", "kind": kind, "name": name}]));
@@ -103,18 +96,16 @@ fn claim(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> R
     let (kind, key) = (kind_of(p, true)?, text(p, "key")?);
     let access = node.access(token, board, true)?;
     let holder = format!("{board}/{}", access.holder.name);
-    crate::writes::check_send(node, &access.holder, "claims")?;
     rpc::tick(node, &[board])?;
     let (changed, l) = take(node, board, token, &holder, (kind, key), p)?;
-    crate::writes::sent(node, &access.holder);
     Ok(json!({"changed": changed, "claim": show(node, &l, kind, &held_as(kind, board, key), board)}))
 }
 
-/// The ``kind`` and ``key`` of each resource a reserve names: one to `MOST_RESERVED`, each a valid claim, each once.
+/// The ``kind`` and ``key`` of each resource a reserve names: at least one, each a valid claim, each once.
 fn wanted(p: &Map<String, Value>) -> Result<Vec<(String, String)>> {
     let list = p.get("resources").and_then(Value::as_array).ok_or_else(|| Error::Invalid("resources is a list of kind and key".into()))?;
-    if list.is_empty() || list.len() > MOST_RESERVED {
-        return Err(Error::Invalid(format!("a reserve names one to {MOST_RESERVED} resources")));
+    if list.is_empty() {
+        return Err(Error::Invalid("a reserve names at least one resource".into()));
     }
     let mut out: Vec<(String, String)> = Vec::new();
     for item in list {

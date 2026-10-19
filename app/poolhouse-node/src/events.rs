@@ -1,5 +1,5 @@
 //! What a session tells its board it did that only the session can name: an audit entry for one of a fixed list of events, written
-//! under the session's own name and counted as one of its sends.
+//! under the session's own name.
 
 use serde_json::{json, Map, Value};
 
@@ -37,9 +37,7 @@ pub fn call(node: &mut Node, _method: &str, board: &str, token: &str, p: &Map<St
     if !EVENTS.contains(&event) {
         return Err(Error::Invalid(format!("an event is one of {}", EVENTS.join(", "))));
     }
-    crate::writes::check_send(node, &access.holder, "events")?;
     let body = json!({"event": event, "subject": clip(text(p, "subject")?), "detail": clip(text(p, "detail")?)});
     node.host(board)?.board.append(Kind::Audit, &access.actor, body, "")?;
-    crate::writes::sent(node, &access.holder);
     Ok(json!({"recorded": true}))
 }

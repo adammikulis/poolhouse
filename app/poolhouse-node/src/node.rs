@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, Weak};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use ed25519_dalek::SigningKey;
 use serde_json::{json, Map, Value};
@@ -23,7 +23,7 @@ use crate::fsutil::private_dir;
 use crate::identity::{self, Holder, Ident, ModelState, Registry, Tokens, Who};
 use crate::lease::Leases;
 use crate::limits::Rates;
-use crate::lineage::{limit_key, Anchor, Asking, Peer};
+use crate::lineage::{Anchor, Asking, Peer};
 use crate::landtrust::LandTrust;
 use crate::links::Links;
 use crate::quarantine::Quarantine;
@@ -34,13 +34,11 @@ use crate::tally::Tally;
 
 pub const READ_DEFAULT: usize = 200;
 pub const READ_MAX: usize = 1000;
-/// How many boards a node hosts at most, and how many boards a lineage creates in an hour.
+/// How many boards a node hosts at most.
 pub const MAX_BOARDS: usize = 256;
 /// What a request with a token the node does not hold is told.
 const UNKNOWN_TOKEN: &str =
     "the token is not known: its session was retired (an idle session is retired after a day, and so is one its parent ends) or never registered; start a new session";
-const MOST_NEW_BOARDS_PER_HOUR: usize = 16;
-const HOUR: Duration = Duration::from_secs(3600);
 
 /// One board this node holds and the names registered on it.
 pub struct Hosted {
@@ -254,8 +252,7 @@ impl Node {
 
     /// Register a session on ``board`` (creating the board on first use) from the process ``peer``; a token given makes
     /// the new session a subagent of the token's owner. A main session that is already registered gets a token only from
-    /// the lineage it was registered from. A lineage creates a few boards an hour, and a node hosts a bounded number of
-    /// boards. Returns name, token, whether new.
+    /// the lineage it was registered from. A node hosts a bounded number of boards. Returns name, token, whether new.
     pub fn register(&mut self, board: &str, parent_token: Option<&str>, native: Native, peer: &Peer) -> Result<Value> {
         let Native { model, harness, session } = native;
         let (model, harness) = (identity::clean(model)?, identity::clean(harness)?);
@@ -266,10 +263,8 @@ impl Node {
             return Err(Error::Denied("a session name needs the native harness and session id".into()));
         }
         let lineage = peer.lineage();
-        let boards = format!("board {}", limit_key(&lineage));
-        let new_board = !self.boards.contains_key(board);
-        if new_board && (self.boards.len() >= MAX_BOARDS || !self.rates.permits(&boards, MOST_NEW_BOARDS_PER_HOUR, HOUR)) {
-            return Err(Error::Quota("this process tree creates boards as fast as it may, or this node hosts as many as it will".into()));
+        if !self.boards.contains_key(board) && self.boards.len() >= MAX_BOARDS {
+            return Err(Error::Quota(format!("this node hosts {MAX_BOARDS} boards, as many as it will")));
         }
         let (parent, proven, bound) = self.parent_of(board, parent_token, (&harness, session), &lineage)?;
         if parent.is_empty() {
@@ -287,9 +282,6 @@ impl Node {
         }
         let origin = self.host(board)?.board.origin().to_string();
         let token = self.tokens.issue(board, &name, &bound)?;
-        if new_board {
-            self.rates.record(&boards, HOUR);
-        }
         Ok(json!({"name": name, "token": token, "created": created, "parent": parent, "board": board, "origin": origin}))
     }
 
@@ -342,14 +334,10 @@ impl Node {
         body.insert(if kind == Kind::Note { "author" } else { "from" }.into(), Value::String(access.actor.clone()));
         let body = Value::Object(body);
         check_local(kind, &access.actor, &body, "")?;
-        let admitted = crate::writes::check_post(self, board, &access.holder, &access.actor, kind, fields)?;
+        crate::writes::check_post(self, board, &access.actor, kind, fields)?;
         let hosted = self.hosted(board)?;
         let row = hosted.board.append(kind, &access.actor, body, idem)?;
-        let mut reply = json!({"id": row.id(), "seq": row.seq, "sender": access.actor, "status": hosted.board.status(row.seq, &[])});
-        if crate::writes::wrote(self, board, &access.holder, &access.actor, admitted)? {
-            reply["over_quota"] = json!(true);
-        }
-        Ok(reply)
+        Ok(json!({"id": row.id(), "seq": row.seq, "sender": access.actor, "status": hosted.board.status(row.seq, &[])}))
     }
 
     /// Write the current state of the session ``name`` to its board as an identity entry.

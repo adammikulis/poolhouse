@@ -154,16 +154,16 @@ fn a_gpu_lease_folds_no_board_and_a_pool_wide_claim_still_does() {
 }
 
 #[test]
-fn a_quiet_lease_lasts_minutes_between_renewals_however_long_it_asks() {
+fn a_quiet_lease_lasts_as_long_as_it_asks_up_to_what_the_configuration_allows() {
     let dir = tempfile::tempdir().unwrap();
     let mut n = Node::open(dir.path()).unwrap();
     let t = session(&mut n, "demo", "broker").1;
     let lease = ok(req(&mut n, "lease_acquire", "demo", &t, json!({"resources": [gpu()], "tag": "q", "quiet": true, "ttl_s": 86400})));
-    assert_eq!(lease["ttl_s"], 600);
-    let renewed = ok(req(&mut n, "lease_renew", "demo", &t, json!({"id": lease["id"], "ttl_s": 86400})));
-    assert_eq!(renewed["ttl_s"], 600);
+    assert_eq!(lease["ttl_s"], 86400);
+    let renewed = ok(req(&mut n, "lease_renew", "demo", &t, json!({"id": lease["id"], "ttl_s": 7200})));
+    assert_eq!(renewed["ttl_s"], 7200);
     let loud = ok(req(&mut n, "lease_acquire", "demo", &t, json!({"resources": [{"type": "claim", "kind": "port", "name": "9001"}], "ttl_s": 7200})));
-    assert_eq!(loud["ttl_s"], 7200, "only a quiet lease is held to minutes");
+    assert_eq!(loud["ttl_s"], 7200, "a lease that is not quiet asks the same");
 }
 
 #[test]

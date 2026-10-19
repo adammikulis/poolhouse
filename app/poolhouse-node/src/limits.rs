@@ -1,6 +1,5 @@
-//! How often something may be done: a count per key within a window, kept in memory. A key is a lineage and a kind of use
-//! (`lineage::limit_key`), so a flood of throwaway sessions from one terminal shares one limit and another terminal has its own.
-//! Only a use that was made is counted: `permits` asks, `record` counts.
+//! How often something may be done: a count per key within a window, kept in memory. A key names what is counted (a source
+//! address, a phone, a pool). Only a use that was made is counted: `permits` asks, `record` counts.
 
 use std::collections::{BTreeMap, VecDeque};
 use std::time::{Duration, Instant};

@@ -201,41 +201,7 @@ def test_a_runner_entry_is_verified_for_its_own_project_only(tmp_path):
     assert reuse.find("../x", "scope-a", base) is None
 
 
-@pytest.fixture
-def notice_clock(monkeypatch):
-    clock = [100.0]
-    monkeypatch.setattr(testboard, 'time', SimpleNamespace(monotonic=lambda: clock[0]), raising=False)
-    return clock
-
-
-def test_optional_claim_notices_back_off_after_typed_quota_and_recover(notice_clock, capsys):
-    calls = []
-    refused = [True]
-
-    def post(*args, **kwargs):
-        calls.append((args, kwargs))
-        if refused[0]:
-            raise Quota('quota', 'private-token-must-not-be-printed')
-        return {'seq': len(calls)}
-
-    session = SimpleNamespace(name='fixture-agent', post=post)
-    events = testboard.BoardEvents(session)
-    for index in range(151):
-        assert events.claimed(FILE, str(index)) == 0
-    assert len(calls) == 1 and len(events.threads) == 151
-    warning = capsys.readouterr().err
-    assert warning.count('test: board notice (claim)') == 1
-    assert 'private-token' not in warning and '60' in warning
-    notice_clock[0] += 59
-    assert events.claimed(FILE, 'before-expiry') == 0 and len(calls) == 1
-    refused[0] = False
-    notice_clock[0] += 1
-    assert events.claimed(FILE, 'recovered') == 2
-    assert events.claimed(FILE, 'next') == 3
-    assert events.threads['recovered'] == 2 and capsys.readouterr().err == ''
-
-
-def test_claim_cooldown_is_local_and_does_not_suppress_results_or_lifecycle(notice_clock, capsys):
+def test_a_refused_claim_notice_does_not_suppress_results_or_lifecycle(capsys):
     calls = []
 
     def post(*args, **kwargs):
@@ -257,7 +223,7 @@ def test_claim_cooldown_is_local_and_does_not_suppress_results_or_lifecycle(noti
         assert f'board notice ({operation})' in warning
 
 
-def test_nonquota_claim_faults_are_reported_each_time_without_cooldown(notice_clock, capsys):
+def test_claim_faults_are_reported_each_time(capsys):
     calls = []
 
     def post(*args, **kwargs):

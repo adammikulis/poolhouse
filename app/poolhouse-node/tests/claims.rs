@@ -148,7 +148,7 @@ fn a_reserve_takes_every_resource_or_none_and_keeps_what_the_caller_already_held
 }
 
 #[test]
-fn a_reserve_is_bad_when_empty_or_over_the_most_or_names_a_bad_key() {
+fn a_reserve_is_bad_when_empty_or_names_a_bad_key_and_takes_as_many_resources_as_it_names() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (name, at) = session(&mut n, "demo", "a");
@@ -157,5 +157,6 @@ fn a_reserve_is_bad_when_empty_or_over_the_most_or_names_a_bad_key() {
     assert!(keys(&mut n, &at, &name).is_empty(), "a set with a bad key takes none of it");
     let many: Vec<(String, String)> = (0..129).map(|i| ("port".to_string(), (9000 + i).to_string())).collect();
     let wanted: Vec<(&str, &str)> = many.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
-    assert_eq!(code(&reserve(&mut n, &at, &wanted)), "invalid");
+    ok(reserve(&mut n, &at, &wanted));
+    assert_eq!(keys(&mut n, &at, &name).len(), 129, "a reserve of more than a hundred and twenty-eight resources takes them all");
 }

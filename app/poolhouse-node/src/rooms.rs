@@ -16,10 +16,7 @@ use crate::node::Node;
 use crate::row::Kind;
 
 pub const METHODS: [&str; 2] = ["rooms", "room"];
-const MADE_PER_SESSION: usize = 5;
 const ROOMS_TOTAL: usize = 200;
-const JOINED_PER_SESSION: usize = 32;
-const MEMBERS_PER_ROOM: usize = 64;
 
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
@@ -131,21 +128,6 @@ fn text<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
     }
 }
 
-fn admit(rooms: &BTreeMap<String, Room>, name: &str, member: &str) -> Result<()> {
-    let r = &rooms[name];
-    if r.members.contains(member) {
-        return Ok(());
-    }
-    if r.members.len() >= MEMBERS_PER_ROOM {
-        return Err(Error::Quota(format!("{name} has {MEMBERS_PER_ROOM} members already")));
-    }
-    let joined = rooms.values().filter(|r| r.members.contains(member)).count();
-    if joined >= JOINED_PER_SESSION {
-        return Err(Error::Quota(format!("{member} belongs to {joined} rooms already")));
-    }
-    Ok(())
-}
-
 fn op(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let access = node.access(token, board, true)?;
     let actor = access.actor.clone();
@@ -163,9 +145,8 @@ fn op(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Resu
             if rooms.contains_key(name) {
                 return Err(Error::Invalid(format!("{name} exists already")));
             }
-            let made = rooms.values().filter(|r| r.by == actor).count();
-            if made >= MADE_PER_SESSION || rooms.len() >= ROOMS_TOTAL {
-                return Err(Error::Quota(format!("{actor} made {made} rooms already; the limit is {MADE_PER_SESSION} ({ROOMS_TOTAL} in all)")));
+            if rooms.len() >= ROOMS_TOTAL {
+                return Err(Error::Quota(format!("this board has {ROOMS_TOTAL} rooms, as many as it will")));
             }
             body["title"] = json!(title);
             body["open"] = json!(!p.get("private").and_then(Value::as_bool).unwrap_or(false));
@@ -175,7 +156,6 @@ fn op(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Resu
             if r.is_none() {
                 return Err(Error::Denied(format!("{name} is not a room {actor} can join; ask its maker to add you")));
             }
-            admit(&rooms, name, &actor)?;
         }
         "leave" => {
             if rooms.get(name).is_none_or(|r| !r.members.contains(&actor)) {
@@ -189,7 +169,6 @@ fn op(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Resu
             if who.contains('@') || !node.can_receive(board, who)? {
                 return Err(Error::Invalid(format!("no session called {who}")));
             }
-            admit(&rooms, name, who)?;
             body["who"] = json!(who);
         }
         _ => return Err(Error::Invalid("op is create, join, leave or add".into())),

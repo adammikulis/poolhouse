@@ -14,10 +14,6 @@ pub const PATH_CLAIMS: [&str; 3] = ["worktree", "install", "area"];
 pub const MAX_RESOURCES: usize = 8;
 /// The longest tag a request names itself with.
 pub const MAX_TAG: usize = 64;
-/// The longest a quiet lease lasts between renewals: a request takes one for the time it runs.
-pub const QUIET_MAX_TTL_S: u64 = 600;
-/// How long after it was granted a claim may be kept by renewals.
-pub const MAX_CLAIM_LIFETIME_S: u64 = 8 * 3600;
 
 fn local() -> String {
     LOCAL.into()
@@ -232,17 +228,6 @@ impl Lease {
     /// Who is asking in the eyes of the conflict rules: the holder and the tag of the request.
     pub fn party(&self) -> (&str, &str) {
         (&self.holder, &self.tag)
-    }
-
-    /// When a claim ends at the latest however it is renewed; `None` for a lease that holds no claim of the user's.
-    pub fn lifetime_end_ms(&self) -> Option<u64> {
-        let claims = self.resources.iter().any(|r| matches!(r, Resource::Claim { kind, .. } if kind != "task"));
-        claims.then(|| self.granted_ms + MAX_CLAIM_LIFETIME_S * 1000)
-    }
-
-    /// Whether a renewal now would reach past the lifetime of a held claim and is held back to it.
-    pub fn capped(&self, now: u64) -> bool {
-        self.state == State::Held && self.lifetime_end_ms().is_some_and(|end| now + self.ttl_s * 1000 > end)
     }
 }
 

@@ -22,7 +22,6 @@ pub const METHODS: [&str; 3] = ["subscribe", "unsubscribe", "subs"];
 const TYPES: [&str; 5] = ["board", "thread", "agent", "kind", "mentions"];
 const MODES: [&str; 3] = ["inbox", "digest", "silent"];
 const MESSAGE_TYPES: [&str; 9] = ["task", "status", "handoff", "question", "answer", "claim", "release", "note", "file"];
-const PER_SESSION: usize = 12;
 const LOUD_FREE: usize = 3;
 
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
@@ -184,9 +183,6 @@ fn subscribe(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) 
     let hosted = node.host(board)?;
     let mine = hosted.subs.of(&actor);
     let existing = mine.iter().find(|s| s.stype == stype && s.target == target).cloned();
-    if existing.is_none() && mine.len() >= PER_SESSION {
-        return Err(Error::Quota(format!("{actor} has {} subscriptions; the limit is {PER_SESSION}", mine.len())));
-    }
     let loud = mine.iter().filter(|s| s.mode == "inbox" && s.stype != "mentions").count();
     let mut cost = "";
     if mode == "inbox" && stype != "mentions" && existing.as_ref().is_none_or(|s| s.mode != "inbox") {

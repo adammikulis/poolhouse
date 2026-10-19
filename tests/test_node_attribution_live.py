@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 from node_attribution import NodeWatch
-from node_kit import BOARD, STRIPPED, WRITE_LIMITS, WorkspaceNode
+from node_kit import BOARD, STRIPPED, WorkspaceNode
 from state_attribution import Watch
 
 from poolhouse import node_binary as node_binary_module, node_supervise
@@ -43,7 +43,6 @@ def outside_node(node_binary, monkeypatch):
     root = Path(tempfile.mkdtemp(prefix="ml", dir="/tmp"))
     state = root / "node"
     state.mkdir(mode=0o700)
-    (state / "write-limits.json").write_text(json.dumps(WRITE_LIMITS))
     monkeypatch.setenv("POOLHOUSE_HOME", str(root))
     monkeypatch.setenv("POOLHOUSE_BOARD", BOARD)
     for name in STRIPPED:

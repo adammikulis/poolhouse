@@ -254,19 +254,17 @@ fn foreign_entries_are_built_from_allow_lists_and_checked() {
 }
 
 #[test]
-fn a_session_makes_a_few_links_a_minute_and_each_one_writes_to_both_boards_only_once() {
+fn each_link_a_session_makes_writes_to_both_boards_only_once() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let ((aname, at), (_, bt)) = (session(&mut n, "alpha", "a"), session(&mut n, "beta", "b"));
     let (_, other) = session(&mut n, "alpha", "second");
     allow(&mut n, "alpha", &at, &aname, &["link_read"]);
-    for _ in 0..6 {
+    for _ in 0..7 {
         ok(req(&mut n, "link", "alpha", &at, json!({"to": "beta", "channels": ["#general"], "mode": "ro"})));
     }
-    let seventh = req(&mut n, "link", "alpha", &at, json!({"to": "beta", "channels": ["#general"], "mode": "ro"}));
-    assert_eq!(code(&seventh), "quota", "{seventh}");
     let audit = ok(req(&mut n, "read", "beta", &bt, json!({"kind": "audit"})));
-    assert_eq!(audit["entries"].as_array().unwrap().len(), 6, "beta's board holds one audit entry for each link made, and none for the refusal");
+    assert_eq!(audit["entries"].as_array().unwrap().len(), 7, "beta's board holds one audit entry for each link made");
     assert_eq!(code(&req(&mut n, "link", "alpha", &other, json!({"to": "beta", "channels": [], "mode": "ro"}))), "denied", "the grant is the first session's alone");
 }
 

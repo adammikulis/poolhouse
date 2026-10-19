@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use super::live;
 use super::policy::{capped, default_estimate, sort_key};
-use super::types::{Config, Lease, Request, Resource, State, MAX_RESOURCES, MAX_TAG, QUIET_MAX_TTL_S};
+use super::types::{Config, Lease, Request, Resource, State, MAX_RESOURCES, MAX_TAG};
 use crate::error::{Error, Result};
 
 /// Pool-wide claims other devices hold, from the board: (board, resource key) to holder.
@@ -59,10 +59,9 @@ fn capacity(cfg: &Config, r: &Resource) -> Option<u64> {
     }
 }
 
-/// The most seconds one renewal may keep a lease: what the configuration allows, and for a quiet lease no more than `QUIET_MAX_TTL_S`.
-fn longest(cfg: &Config, quiet: bool) -> u64 {
-    let allowed = cfg.max_ttl_s.max(1);
-    if quiet { allowed.min(QUIET_MAX_TTL_S) } else { allowed }
+/// The most seconds one renewal may keep a lease: what the configuration allows.
+fn longest(cfg: &Config) -> u64 {
+    cfg.max_ttl_s.max(1)
 }
 
 fn same_resources(a: &[Resource], b: &[Resource]) -> bool {
@@ -137,7 +136,7 @@ impl Table {
             return Err(Error::Invalid("only the GPU and the request line of a server are taken quietly".into()));
         }
         let holder = format!("{}/{}", req.board, req.name);
-        let ttl_s = req.ttl_s.unwrap_or(cfg.default_ttl_s).clamp(1, longest(cfg, req.quiet));
+        let ttl_s = req.ttl_s.unwrap_or(cfg.default_ttl_s).clamp(1, longest(cfg));
         if let Some(mine) = self.leases.iter_mut().find(|l| l.holder == holder && l.tag == req.tag && same_resources(&l.resources, &req.resources)) {
             mine.expires_ms = now + if mine.state == State::Held { ttl_s } else { cfg.queue_patience_s } * 1000;
             return Ok(mine.id.clone());
@@ -219,16 +218,11 @@ impl Table {
         if l.holder != holder {
             return Err(Error::Denied("that lease is held by another identity".into()));
         }
-        let end = l.lifetime_end_ms().filter(|_| l.state == State::Held);
-        if end.is_some_and(|end| end <= now) {
-            return Err(Error::Denied("the claim's lifetime is over; release it and take it again".into()));
-        }
         if l.state == State::Held {
             if ttl_s != 0 {
-                l.ttl_s = ttl_s.clamp(1, longest(cfg, l.quiet));
+                l.ttl_s = ttl_s.clamp(1, longest(cfg));
             }
-            let wanted = now + l.ttl_s * 1000;
-            l.expires_ms = end.map_or(wanted, |end| l.expires_ms.max(wanted.min(end)));
+            l.expires_ms = now + l.ttl_s * 1000;
         } else {
             l.expires_ms = now + cfg.queue_patience_s * 1000;
         }
