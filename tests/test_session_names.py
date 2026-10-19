@@ -10,10 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 from poolhouse.board import session as board_session
-from poolhouse.errors import Denied
 from poolhouse.net import git
 from poolhouse.workspace import agent_display, board_cli
 
@@ -33,11 +30,12 @@ def test_two_sessions_of_one_family_get_different_stable_names(workspace_node):
     assert node.member('session-three', model='gpt-6', harness='codex').name.startswith('chatgpt-')
 
 
-def test_a_shared_harness_name_is_refused_with_the_new_id():
-    with pytest.raises(Denied, match=r'yours is claude-6e1a2f'):
-        board_cli.check_agent('claude', {board_session.AGENT_ENV: 'claude-6e1a2f'})
-    board_cli.check_agent('claude-6e1a2f', {board_session.AGENT_ENV: 'claude-6e1a2f'})
-    board_cli.check_agent('claude', {})
+def test_a_shared_harness_name_gives_way_to_the_sessions_own(capsys):
+    assert board_cli.check_agent('claude', {board_session.AGENT_ENV: 'claude-6e1a2f'}) == ''
+    assert 'running as claude-6e1a2f' in capsys.readouterr().err
+    assert board_cli.check_agent('claude-6e1a2f', {board_session.AGENT_ENV: 'claude-6e1a2f'}) == 'claude-6e1a2f'
+    assert board_cli.check_agent('claude', {}) == 'claude'
+    assert not capsys.readouterr().err
 
 
 def run_hook(name, event, env):
@@ -89,12 +87,12 @@ def test_two_real_hook_sessions_show_different_names_in_agents_announcements_and
     assert names[0] in agents.stdout and names[1] in agents.stdout
 
 
-def test_old_brief_naming_the_shared_id_fails_clearly_in_the_cli(tmp_path):
+def test_old_brief_naming_the_shared_id_runs_as_the_sessions_own_name_in_the_cli(tmp_path):
     environment = {**os.environ, 'POOLHOUSE_HOME': str(tmp_path / 'home'), 'PYTHONPATH': str(ROOT / 'src'),
                    'POOLHOUSE_WORKSPACE_AGENT': 'claude-6e1a2f'}
     done = subprocess.run([sys.executable, '-m', 'poolhouse.workspace.cli', 'inbox', '--agent', 'claude'], env=environment,
                           capture_output=True, text=True, timeout=60, check=False)
-    assert done.returncode == 3 and 'yours is claude-6e1a2f' in done.stderr
+    assert '--agent claude is not an identity: running as claude-6e1a2f' in done.stderr
 
 
 def test_a_name_looking_prefix_in_a_body_never_replaces_the_stamped_sender(workspace_node):

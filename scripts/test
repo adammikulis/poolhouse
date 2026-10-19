@@ -65,6 +65,7 @@ import testprelude
 import testreuse_key
 import testreuse_run
 import testreuse_store
+import testscope
 import testselectors
 import testslots
 import testslots_runner
@@ -547,6 +548,10 @@ def run_job(jobs: testjobs.Jobs, job: str, args: argparse.Namespace) -> int:
     """Run a recorded job in this detached process and record how it ended."""
     spec = jobs.read(job, "spec.json")
     me = {"pid": os.getpid(), "started": testreuse_store.process_start(os.getpid())}
+    if refusal := testscope.tier_refusal(spec["argv"][0], spec["argv"][1:], ROOT):
+        print(f"test: {refusal}", file=sys.stderr)
+        jobs.write(job, "status.json", {"state": "failed", "exit": 4, "finished": time.time(), "detail": refusal, **me})
+        return 4
     thread = REUSE["events"].job_started(job, spec)
     jobs.write(job, "status.json", {"state": "running", "at": time.time(), "thread": thread, **me})
     signal.signal(signal.SIGTERM, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
