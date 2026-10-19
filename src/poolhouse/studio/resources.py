@@ -164,6 +164,8 @@ def materialize_checkpoint(checkpoint: Path, training: Path, output: Path) -> Pa
     sources += [(training / 'adapter' / name, target / 'adapter' / name)
                 for name in ADAPTER_FILES if (training / 'adapter' / name).exists()]
     for source, destination in sources:
+        if any(path.is_symlink() for path in destination.parents if path.is_relative_to(output)):
+            raise ValueError('Checkpoint output directory cannot contain links')
         linked = any(path.is_symlink() for path in source.parents if path.is_relative_to(training))
         if linked or source.is_symlink() or not source.is_file() or source.stat().st_nlink != 1:
             raise ValueError('Checkpoint files must be regular owned training artifacts')

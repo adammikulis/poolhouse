@@ -87,3 +87,20 @@ def test_fixed_server_model_resolver_is_not_selected_by_workflow_data(tmp_path, 
     context['bindings']['model'] = {**binding, 'path': '/private/model'}
     with pytest.raises(ValueError, match='Unbound staged model'):
         fixed.immediate({'type': 'model'}, {}, context)
+
+
+def test_materialization_refuses_preexisting_output_adapter_link(tmp_path):
+    training, private = tmp_path / 'training', tmp_path / 'private'
+    checkpoint = training / 'step20'
+    checkpoint.mkdir(parents=True)
+    (checkpoint / 'state.json').write_text('{}')
+    (checkpoint / 'model.safetensors').write_bytes(b'weights')
+    (training / 'adapter').mkdir()
+    (training / 'adapter/adapters.safetensors').write_bytes(b'adapter')
+    output = tmp_path / 'output'
+    (output / checkpoint.name).mkdir(parents=True)
+    private.mkdir()
+    (output / checkpoint.name / 'adapter').symlink_to(private, target_is_directory=True)
+    with pytest.raises(ValueError, match='output directory cannot contain links'):
+        resources.materialize_checkpoint(checkpoint, training, output)
+    assert list(private.iterdir()) == []
