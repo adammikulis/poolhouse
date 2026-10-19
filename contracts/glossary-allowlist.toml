@@ -209,7 +209,7 @@ reason = "a 3D mesh (three.js Mesh, MeshStandardMaterial) in the drone simulator
 # -- "peer" in the node's wire protocol ------------------------------------------------------------------
 
 [[allow]]
-path = ["app/poolhouse-node/*", "docs/node.md", "docs/sentinel-open-join.md"]
+path = ["app/poolhouse-node/*", "docs/node.md", "docs/sentinel-open-join.md", "docs/design-node-contract.md"]
 words = ["peer"]
 reason = "the node's wire protocol is the peer protocol: the other end of a connection, which may not yet be a member"
 

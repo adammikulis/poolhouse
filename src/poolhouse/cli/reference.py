@@ -59,14 +59,12 @@ HELP: dict[str, str] = {
     "setup": "The machine facts serving depends on, and what to do about each.",
     "speech": "Speech recognition, synthesis and voice activity on this machine.",
     "store": "What a graph store holds, read by key and by scan, and whether they agree.",
-    "surface": "Every command's help and every safe command's output, captured and compared.",
     "test-devices": "The pool devices that take tests, their platform, free slots and last result.",
     "suite": "A measurement run over several seeds, written down whole.",
     "train-decider": "A pointer-head decision model fine-tuned from labelled cases.",
     "train-run": "Train one recipe from a config file, to an adapter or a served GGUF.",
     "train-tools": "A project's tools into training data, a fine-tuned caller and a GGUF.",
     "traind": "A training daemon: one GPU box, one job at a time, reachable over the LAN.",
-    "walk": "Click through a page's screens, screenshot each and read what came back.",
     "workspace": "Agents coordinate: messages, shared notes, scratch folders and who owns what.",
     "world": "Invent an organised group as a graph with people who could talk.",
 }
@@ -180,21 +178,6 @@ TABLE: tuple[Row, ...] = (
         "the pool this machine belongs to and who else is in it: `setup` joins one with the passphrase every machine shares (`init` mints a random key instead), `key` and `token` print the key and the bearer token it derives, `ls` lists the daemons answering on this LAN, `open` (a person at a terminal) opens this machine's page in your browser signed in, or with `--print` prints its one-use address, `pause` stops taking work now and `resume` starts again, and `when` and `busy WHEN` set the hours this machine keeps to itself -- `busy 'mon-fri 09:00-17:00'`, repeatable, and queued work waits for the window to close rather than failing. `--pool-key` picks a key file other than `~/.poolhouse/pool.key`"),
     Row("poolhouse-traind [--root ROOT] [--gym-python PYTHON]",
         "the daemon behind a member: one box, one job at a time, reachable over the LAN. `--root` selects the persistent workspace; reuse it to keep completed setup. `--gym-python` selects an existing simulator interpreter and saves it under that root, so later launches reuse its installed libraries; `POOLHOUSE_GYM_PYTHON` overrides the saved selection, otherwise the saved interpreter precedes the managed environment. It announces this machine (`--no-announce` keeps it invisible), serves the API and the web interface (`--no-web` only the API), runs `--slots` jobs at once, declares `--label` roles work can require, and reports the card through `--report MODULE:CALLABLE`. `--busy WHEN` and `--free WHEN` are the hours it keeps to itself and the exceptions carved out of them, `--on-paused` says whether work already running is stopped or left to finish, `--track BRANCH` follows a branch rather than releases and restarts itself when nothing is running, and `--persist` installs it to start at logon instead of serving now"),
-    Row("poolhouse-surface capture --out DIR",
-        "every `poolhouse-<command>` and every subcommand it declares, found by asking each "
-        "command's own parser rather than from a list kept by hand: `--help` for all of "
-        "them, and the output of the ones that are safe to run -- the invocations named in "
-        "`surface.ops.SAFE`, which read this machine and change nothing, plus every "
-        "command whose parser refuses a bare argv, where running it can only print usage. "
-        "Anything else is recorded as help only, never skipped in silence. `list` prints "
-        "the same walk and takes nothing; `--src DIR` asks another checkout's `src/`, "
-        "`--only serve,bench` narrows it. `diff BEFORE AFTER` prints what changed between "
-        "two captures and exits 1 when anything did, with what legitimately varies between "
-        "runs -- times, sizes, pids, ports, hosts, this machine's paths -- standing as "
-        "`<took>`, `<pid>` and the like in the invocations, and paths alone settled in the "
-        "help, so a moved flag still shows"),
-    Row("poolhouse-walk fleet\\|graph [SCREEN...]",
-        "the interface driven the way a person drives it, so a claim that a screen works has something behind it: `fleet` opens the daemon's page and presses through it -- the first-run steps (name, pools, job, start; `--setup` presses on through the ones that save this machine's preferences), then the Pool, Chat, Models, Settings and Fit tabs, signing in with `--passphrase` where a pool asks, and `--say TEXT` sends a chat message and waits for the whole reply -- and `graph` opens a rendered graph page and works its panes: the graph once it has settled, the legend, the filter box (`--find`), an entry's detail, the map, 3D, the history, the question box (`--ask` sends one and waits until the streamed answer has ended, up to `--wait` seconds) and the review queue. Each screen is screenshotted into `--out` **and its text printed**, so the walk reads in a terminal; every `pageerror` and console error is collected and named against the screen that raised it, and the walk exits non-zero rather than reporting success over a red console. A screen the daemon's state does not have -- the app behind an unfinished wizard, a passphrase nobody gave -- is skipped with the reason. Headless by default; `--no-headless` opens a window where `POOLHOUSE_WINDOW_POSITION` says and gives the screen back"),
     Row("poolhouse-help [<command>...]",
         "every command with the first line of its help, or one command's own help -- also `poolhouse help bench sweep`"),
 )
