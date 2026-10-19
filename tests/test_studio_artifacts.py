@@ -119,3 +119,13 @@ def test_report_and_gym_policy_are_owned_fixed_files(exported):
     (folder / 'policy-manifest.json').write_text('{}')
     run['nodes']['export']['outputs'] = {'model': {'kind': 'model', 'path': str(folder / 'policy.zip')}}
     assert {f['name'] for f in artifact_files(run, root, lambda node, outputs: True)} == {'policy.zip', 'policy-manifest.json'}
+
+
+@pytest.mark.parametrize('kind', ['train.classify-text', 'train.text-lm', 'train.tool-calls', 'train.decision', 'gym.train'])
+def test_typed_model_ports_keep_download_candidates(exported, kind):
+    root, run, folder = exported
+    run['graph']['nodes'][0]['type'] = kind
+    run['nodes']['export']['outputs'] = {'model': {'kind': 'model', 'path': str(folder)}}
+    files = artifact_files(run, root, lambda node, outputs: True)
+    assert {file['name'] for file in files} == {'export.json', 'model.safetensors', 'state.json'}
+    assert all(file['port'] == 'model' for file in files)

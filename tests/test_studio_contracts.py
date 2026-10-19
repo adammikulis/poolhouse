@@ -228,3 +228,29 @@ def test_tool_training_requires_bound_model_and_rejects_base_parameter():
     assert "base" not in specs["train.tool-calls"]["parameters"]["properties"]
     for kind in ("generate", "generate.structured"):
         assert specs[kind]["parameters"]["properties"]["max_tokens"]["default"] == 512
+
+
+@pytest.mark.parametrize(("source", "target", "compatible"), [
+    ("train.classify-text", "generate", False),
+    ("train.classify-text", "generate.structured", False),
+    ("train.classify-text", "evaluate", True),
+    ("train.decision", "generate", False),
+    ("train.decision", "evaluate", False),
+    ("train.decision", "evaluate.decision", True),
+    ("gym.train", "evaluate", False),
+    ("gym.train", "gym.evaluate", True),
+    ("train.tool-calls", "generate", True),
+    ("train.text-lm", "generate.structured", True),
+    ("train.decision", "export", False),
+    ("gym.train", "export", False),
+])
+def test_typed_models_reject_incompatible_connections_before_compute(source, target, compatible):
+    value = graph()
+    value["nodes"][1]["type"] = source
+    value["nodes"].append({"id": "consumer", "type": target})
+    value["edges"].append({"source": {"node": "train", "port": "model"}, "target": {"node": "consumer", "port": "model"}})
+    errors = validate_graph(value)["errors"]
+    connections = [error for error in errors if error["code"] == "connection"]
+    assert bool(connections) is not compatible
+    if connections:
+        assert all("types do not match" in error["message"] for error in connections)

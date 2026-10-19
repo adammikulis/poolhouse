@@ -184,7 +184,7 @@ def _validate_expanded(graph: dict, capabilities: set[str] | None, authorize: Ca
             if key in incoming:
                 raise ValueError("An input has more than one connection")
             incoming[key] = source
-            if output["type"] != port["type"]:
+            if output["type"] not in port.get("accepted_types", [port["type"]]):
                 raise ValueError("Connected port types do not match")
             if nodes[source["node"]].get("parameters", {}).get("mode") == "smoke" and source["port"] in ("model", "checkpoint"):
                 raise ValueError("Smoke training does not produce a checkpoint or model")

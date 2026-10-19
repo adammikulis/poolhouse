@@ -6,6 +6,13 @@ from typing import Any
 
 from poolhouse.contracts import recipes
 
+MODEL_TYPES = frozenset({"model", "language-model", "classifier-model", "decision-model", "gym-policy"})
+
+
+def is_model_type(kind: str) -> bool:
+    """Return whether a declared port carries a supported model resource."""
+    return kind in MODEL_TYPES
+
 
 def _schema(properties: dict[str, Any]) -> dict[str, Any]:
     return {"type": "object", "properties": properties, "additionalProperties": False}
@@ -97,7 +104,23 @@ def node_catalog() -> list[dict[str, Any]]:
             spec["parameters"] = _schema({"episodes": {"type": "integer", "default": 5, "minimum": 1}})
         if spec["type"].startswith("train.") and spec["type"] != "train.decision":
             spec["inputs"].append({"name": "model", "type": "model", "required": spec["type"] == "train.tool-calls"})
+    _model_ports(catalog)
     return deepcopy(catalog)
+
+
+def _model_ports(catalog: list[dict]) -> None:
+    outputs = {"train.classify-text": "classifier-model", "train.text-lm": "language-model",
+               "train.tool-calls": "language-model", "train.decision": "decision-model", "gym.train": "gym-policy"}
+    accepted = {"evaluate": ["model", "language-model", "classifier-model"],
+                "evaluate.decision": ["model", "decision-model"], "gym.evaluate": ["model", "gym-policy"],
+                "export": ["model", "language-model", "classifier-model"]}
+    for spec in catalog:
+        for port in spec["outputs"]:
+            if port["name"] == "model":
+                port["type"] = outputs.get(spec["type"], "model")
+        for port in spec["inputs"]:
+            if port["name"] == "model":
+                port["accepted_types"] = accepted.get(spec["type"], ["model", "language-model"])
 
 
 def node_spec(kind: str, version: int = 1) -> dict[str, Any]:

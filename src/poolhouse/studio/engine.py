@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from .catalog import node_spec
+from .catalog import is_model_type, node_spec
 from .contracts import validate_graph
 from .store import StudioStore, digest
 
@@ -41,7 +41,7 @@ def artifact_fingerprints(value: Any) -> dict[str, str]:
 def _artifacts(node: dict, values: dict, direction: str) -> dict:
     result = {}
     for port in node_spec(node["type"], node.get("version", 1))[direction]:
-        if port["type"] in {"dataset", "model", "artifact"}:
+        if port["type"] in {"dataset", "artifact"} or is_model_type(port["type"]):
             result.update(artifact_fingerprints(values.get(port["name"])))
     return result
 

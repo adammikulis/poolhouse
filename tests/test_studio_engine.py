@@ -213,3 +213,16 @@ def test_missing_declared_output_fails_node_while_independent_branch_completes(s
     run = engine.advance(engine.submit(PRINCIPAL, workflow, [], "branches"))
     assert run["nodes"]["prompt"]["state"] == "failed"
     assert run["nodes"]["independent"]["state"] == "done"
+
+
+@pytest.mark.parametrize('kind', ['train.classify-text', 'train.text-lm', 'train.tool-calls', 'train.decision', 'gym.train'])
+def test_typed_model_output_fingerprint_changes_invalidate_reuse(tmp_path, kind):
+    from poolhouse.studio.engine import _artifacts
+    model = tmp_path / 'model.safetensors'
+    model.write_bytes(b'first weights')
+    node = {'type': kind, 'version': 1}
+    outputs = {'model': {'kind': 'model', 'path': str(model)}}
+    first = _artifacts(node, outputs, 'outputs')
+    assert first
+    model.write_bytes(b'changed weights')
+    assert first != _artifacts(node, outputs, 'outputs')

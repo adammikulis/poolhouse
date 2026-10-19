@@ -11,7 +11,7 @@ import stat
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
-from poolhouse.studio.catalog import node_spec
+from poolhouse.studio.catalog import is_model_type, node_spec
 
 WEIGHTS = frozenset({"model.safetensors", "optimizer.safetensors", "state.json",
                      "adapter_config.json", "adapter_model.safetensors", "adapters.safetensors",
@@ -100,7 +100,7 @@ def _candidates(run: dict, files_root: Path, authorize):
         if not authorize(node, state["outputs"]):
             raise PermissionError("This artifact is no longer authorized.")
         for port in node_spec(node["type"], node.get("version", 1))["outputs"]:
-            if port["type"] not in {"artifact", "model"}:
+            if port["type"] != "artifact" and not is_model_type(port["type"]):
                 continue
             output = state["outputs"].get(port["name"])
             if not isinstance(output, dict) or output.get("kind") not in {"artifact", "model"} or not isinstance(output.get("path"), str):
