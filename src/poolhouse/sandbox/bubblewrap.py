@@ -76,6 +76,7 @@ class Bubblewrap:
     """Runs a command inside bubblewrap namespaces."""
 
     name = "bubblewrap"
+    keeps_refusal_log = False
 
     def available(self) -> Availability:
         if not sys.platform.startswith("linux"):
@@ -103,5 +104,11 @@ class Bubblewrap:
         program = checked_path(program_of(argv, policy.env.get("PATH", "")), what="command", link=True)
         return Wrapped([found, *arguments(policy, program), "--", *argv])
 
-    def denials(self, tag: str, since: float) -> list[dict[str, str]]:
-        return []
+    def watch(self, tag: str) -> None:
+        return None
+
+    def finish(self, tag: str) -> None:
+        return None
+
+    def denials(self, tag: str, since: float) -> list[dict[str, str]] | None:
+        return None

@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Map, Value};
 
 use super::merge;
-use super::table::{Event, Foreign, Table};
+use super::table::{Event, Foreign, Table, Why};
 use super::types::{Class, Lease, Request, Resource, State, LOCAL};
 use super::Leases;
 use crate::error::{Error, Result};
@@ -84,6 +84,13 @@ pub fn mirror(node: &mut Node, events: &[Event]) -> Result<()> {
             }
         };
         node.host(&l.board)?.board.append(kind, &l.name, body, "")?;
+        if let Event::Ended(_, Why::Expired) = event {
+            for (kind, key) in crate::claims::held_by(l) {
+                let said = format!("Your claim {kind} {key} expired: its time ran out before it was renewed. Take it again with: \
+                                    poolhouse-workspace claim {kind} {key} (renew what you hold with: poolhouse-workspace heartbeat)");
+                crate::notice::tell(node, &l.board, &l.name, "claim expired", &said)?;
+            }
+        }
     }
     Ok(())
 }

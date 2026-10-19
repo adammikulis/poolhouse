@@ -11,13 +11,12 @@ import os
 import re
 import secrets
 import shutil
-import subprocess
 import sys
 import threading
-import time
 from collections.abc import Sequence
 from pathlib import Path
 
+from poolhouse.sandbox import denial_log
 from poolhouse.sandbox.backend import Availability, Wrapped, program_of
 from poolhouse.sandbox.path_language import expressions
 from poolhouse.sandbox.policy import NetMode, Policy, PolicyError, checked_path
@@ -197,20 +196,14 @@ def _gpu() -> list[str]:
     return out
 
 
-NOISE = re.compile(
-    r"\.CFUserTextEncoding$|/\.?GlobalPreferences[^/]*\.plist$|^com\.apple\.SystemConfiguration\.configd$"
-    r"|^/Users/[^/]+$|^com\.apple\.analyticsd$|^com\.apple\.system\.opendirectoryd\.membership$"
-    r"|^net\.routetable\.|^/private/etc/localtime$|^/Library/Preferences/com\.apple\.networkd\.plist$")
-"""Targets every confined process probes at start-up and survives being refused."""
-
 _WARNED = threading.Event()
-DENIAL = re.compile(r"Sandbox: (?P<proc>[^(]+)\((?P<pid>\d+)\) deny\(\d+\) (?P<op>[\w*-]+)\s*(?P<target>.*)$")
 
 
 class Seatbelt:
     """Runs a command under a generated Seatbelt profile."""
 
     name = "seatbelt"
+    keeps_refusal_log = True
 
     def available(self) -> Availability:
         if sys.platform != "darwin":
@@ -238,26 +231,17 @@ class Seatbelt:
             return Wrapped([BINARY, "-f", str(profile_path), "--", *argv], tag=tag)
         return Wrapped([BINARY, "-p", text, "--", *argv], tag=tag)
 
-    def denials(self, tag: str, since: float) -> list[dict[str, str]]:
-        """What the sandbox refused a run tagged ``tag`` since ``since``, from the system log."""
-        started = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(since - 1))
-        try:
-            done = subprocess.run(
-                ["/usr/bin/log", "show", "--start", started, "--style", "compact",
-                 "--predicate", f'sender == "Sandbox" AND eventMessage CONTAINS "{tag}"'],
-                capture_output=True, text=True, timeout=20, check=False)
-        except (OSError, subprocess.TimeoutExpired):
-            return []
-        found: list[dict[str, str]] = []
-        for line in done.stdout.splitlines():
-            m = DENIAL.search(line)
-            if m:
-                target = m["target"].replace(f"poolhouse-sandbox:{tag}", "").strip()
-                if NOISE.search(target):
-                    continue
-                found.append({"process": m["proc"].strip(), "operation": m["op"],
-                              "target": target})
-        return found
+    def watch(self, tag: str) -> None:
+        """Start the system log stream that refusals are read from and register the run tagged ``tag`` on it; call it before the command starts."""
+        denial_log.shared().watch(tag)
+
+    def denials(self, tag: str, since: float) -> list[dict[str, str]] | None:
+        """What the sandbox refused the run tagged ``tag``, as the stream `watch` registered it on carried it; None when that cannot be known."""
+        return denial_log.shared().denials(tag)
+
+    def finish(self, tag: str) -> None:
+        """The run tagged ``tag`` has ended."""
+        denial_log.shared().finish(tag)
 
 
 def deprecation_status() -> str:

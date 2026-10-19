@@ -8,15 +8,60 @@ import shutil
 import socket
 import sys
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
 
 from poolhouse import sandbox
 from poolhouse.sandbox import AllowUnsandboxed, Limits, Net, Policy
+from poolhouse.sandbox.backend import Availability, Wrapped
 from poolhouse.sandbox.policies import SYSTEM_EXEC
 from poolhouse.sandbox.seatbelt import Seatbelt
+
+
+class UnreadableBackend:
+    """A backend that confines nothing and cannot say what was refused."""
+
+    name = "unreadable"
+    keeps_refusal_log = True
+
+    def available(self):
+        return Availability(True)
+
+    def wrap(self, argv, policy):
+        return Wrapped(list(argv), tag="unreadable")
+
+    def watch(self, *_tag):
+        return None
+
+    def denials(self, tag, since):
+        return None
+
+    def finish(self, *_tag):
+        return None
+
+
+class UnloggedBackend(UnreadableBackend):
+    """A backend that confines nothing and keeps no refusal log by construction."""
+
+    name = "unlogged"
+    keeps_refusal_log = False
+
+
+class RecordingBackend(UnreadableBackend):
+    """A backend that remembers which runs it was asked to watch and which it was told had ended."""
+
+    name = "recording"
+
+    def __init__(self):
+        self.watched, self.finished = [], []
+
+    def watch(self, tag):
+        self.watched.append(tag)
+
+    def finish(self, tag):
+        self.finished.append(tag)
 
 
 @pytest.fixture
@@ -27,6 +72,12 @@ def seatbelt() -> Seatbelt:
     if not state.ok:
         pytest.skip(state.reason)
     return backend
+
+
+@pytest.fixture
+def held() -> Callable[..., Policy]:
+    """The kit's `policy`, for a test that takes it as a fixture."""
+    return policy
 
 
 def no_sandbox_here() -> AllowUnsandboxed | None:

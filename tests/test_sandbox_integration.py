@@ -15,6 +15,7 @@ from poolhouse.agent.sources import FunctionTools
 from poolhouse.sandbox.tools import SandboxedBash
 from poolhouse.sentinel.adapters import sandbox_listener
 from poolhouse.taint.sinks import Capability, poolhouse_tools
+from tests.sandbox_kit import UnreadableBackend
 
 pytest_plugins = ["tests.sandbox_kit"]
 
@@ -94,6 +95,19 @@ def test_denials_become_sentinel_events(tmp_path, seatbelt, monkeypatch):
     assert len(denied) == 1 and denied[0].severity == sentinel.Severity.WARNING
     assert denied[0].source == "sandbox" and denied[0].subject == "policy:bash"
     assert denied[0].evidence["first"]["target"] == str(outside)
+
+
+def test_a_run_whose_refusals_cannot_be_read_is_a_sentinel_event(tmp_path, monkeypatch):
+    monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "state"))
+    node = sentinel.Sentinel(tmp_path / "sentinel")
+    seen: list[sentinel.Event] = []
+    node.bus.subscribe(seen.append)
+    (tmp_path / "project").mkdir()
+    result = sandbox.run(["/bin/sh", "-c", "exit 1"], sandbox.policies.bash(str(tmp_path / "project"), str(tmp_path)),
+                         via=UnreadableBackend(), on_event=sandbox_listener(node))
+    unread = [e for e in seen if e.kind == "sandbox.denials-unavailable"]
+    assert len(unread) == 1 and unread[0].severity == sentinel.Severity.WARNING and unread[0].subject == "policy:bash"
+    assert result.denials_unavailable and not result.denials
 
 
 def test_a_tainted_run_keeps_the_shell_without_a_network(tmp_path, seatbelt):

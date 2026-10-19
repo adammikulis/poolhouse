@@ -6,10 +6,12 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+import threading
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from poolhouse import sandbox
 from poolhouse.sandbox import policies
@@ -34,10 +36,20 @@ class Confined:
     began: float
     cwd: str
 
+    def outlive(self, process: Any) -> None:
+        """End the run on the backend when ``process`` exits."""
+        def wait() -> None:
+            process.wait()
+            self.backend.finish(self.tag)
+        threading.Thread(target=wait, daemon=True, name="confined-run").start()
+
     def refusals(self) -> str:
-        """The sandbox's refusals since the start, one line each."""
-        seen = dict.fromkeys(f"  {d['operation']} {d['target']}"
-                             for d in self.backend.denials(self.tag, self.began))
+        """The sandbox's refusals since the start, one line each; a line saying so when they cannot be read."""
+        found = self.backend.denials(self.tag, self.began)
+        self.backend.finish(self.tag)
+        if found is None:
+            return "what the sandbox refused could not be read"
+        seen = dict.fromkeys(f"  {d['operation']} {d['target']}" for d in found)
         return "\n".join(["the sandbox refused:", *seen]) if seen else ""
 
 

@@ -13,10 +13,12 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse.interventions import Call
+from poolhouse.sandbox.backend import NO_REFUSAL_LOG
 from poolhouse.sentinel.core import Sentinel
 from poolhouse.sentinel.events import Event, Severity
 from poolhouse.sentinel.human import agent_may
 from poolhouse.sentinel.policy import Mode
+from poolhouse.sentinel.score import NO_REFUSAL_LOG_WEIGHT
 from poolhouse.sentinel.store import Record
 
 __all__ = ["GuardLogHandler", "RailAnswer", "agent_gate", "broker_listener", "note_refusal",
@@ -137,8 +139,9 @@ def sandbox_listener(sentinel: Sentinel) -> Callable[[str, dict[str, object]], N
         sentinel.bus.emit(Event(event, level, "sandbox", f"policy:{fields.get('policy', '')}",
                                 {k: v for k, v in fields.items() if k != "severity"},
                                 sentinel.clock()))
+        weight = NO_REFUSAL_LOG_WEIGHT if fields.get("detail") == NO_REFUSAL_LOG else None
         for session in sentinel.in_flight():
-            sentinel.note("session", session, event)
+            sentinel.note("session", session, event, weight)
     return on
 
 

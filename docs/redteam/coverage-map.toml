@@ -1379,6 +1379,15 @@ note = "planted files cannot escape the import root; invalid native JSON, XML en
 
 # -- parsers and readers of files, pages and messages --------------------------------------
 [[group]]
+match = ["parser:sandbox/denial_log.py"]
+status = "covered"
+count = 1
+tests = ["tests/test_sandbox_denial_log.py::test_a_target_holding_a_newline_cannot_name_the_tag_of_another_run",
+         "tests/test_sandbox_denial_log.py::test_a_line_that_is_not_a_refusal_with_a_tag_is_not_read",
+         "tests/test_sandbox_redteam.py::test_a_path_naming_the_tag_of_another_run_is_reported_under_its_own_run_only"]
+note = "the stream carries file names a confined process chose; the tag is read from the last line of a message, so a name holding a newline and another run's tag is reported under its own run only"
+
+[[group]]
 match = ["parser:private_counters.py"]
 status = "covered"
 count = 1

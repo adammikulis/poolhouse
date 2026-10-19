@@ -802,6 +802,8 @@ class LlamaServerBackend(ServerBackend):
             refused = confined.refusals() if confined else ""
             raise ServerFailed(f"{failure}\n{refused}" if refused else str(failure)) from failure
 
+        if confined:
+            confined.outlive(process)
         serverkeys.bind(spec.port, process.pid)
         warmup_s = None
         if starting.get("warmup_request", True):

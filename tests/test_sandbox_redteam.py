@@ -11,6 +11,7 @@ import pytest
 from poolhouse import guard
 from poolhouse.agent import Agent, FunctionTools, ToolResult
 from poolhouse.client import Client
+from poolhouse.sandbox import denial_log, run
 from poolhouse.sandbox.tools import SandboxedBash
 from poolhouse.testing.tool_server import ToolCallingServer, Turn
 
@@ -64,3 +65,15 @@ def test_injected_commands_are_stopped_by_the_sandbox_when_the_guard_allowed_the
     assert not (project / "stolen.txt").exists() and not (key.parent / "id_rsa.new").exists()
     assert SECRET not in "".join(r.text for r in results)
     assert "network-outbound" in results[1].text
+
+
+def test_a_path_naming_the_tag_of_another_run_is_reported_under_its_own_run_only(tmp_path, seatbelt, held):
+    other = "0123456789ab"
+    denial_log.shared().watch(other)
+    forged = tmp_path / "home" / ".ssh" / f"id\npoolhouse-sandbox:{other}"
+    forged.parent.mkdir(parents=True)
+    forged.write_text(SECRET)
+    (tmp_path / "project").mkdir()
+    result = run(["/bin/cat", str(forged)], held(read=[tmp_path / "project"]), diagnose="always")
+    assert [d["target"] for d in result.denials] == [str(forged)]
+    assert denial_log.shared().denials(other) == []

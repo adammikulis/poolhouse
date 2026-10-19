@@ -174,7 +174,8 @@ def _answers_as(state: Path, sha: str, not_pid: int) -> dict | None:
     return said if said and run.get("sha256") == sha and said.get("pid") == run.get("pid") != not_pid else None
 
 
-def swap(state: Path | None = None, *, wait_s: float = SWAP_WAIT_S, allow_unmerged_commit: str | runtime_unmerged.Approval = "") -> dict:
+def swap(state: Path | None = None, *, wait_s: float = SWAP_WAIT_S, allow_unmerged_commit: str | runtime_unmerged.Approval = "",
+         boundary_wait_s: float = 0.0) -> dict:
     """Make the node run the selected runtime's binary; on a new node that does not answer put the previous binary back.
 
     The supervisor follows the runtime selection by itself, so this checks and finishes the move: it starts a supervisor
@@ -201,8 +202,7 @@ def swap(state: Path | None = None, *, wait_s: float = SWAP_WAIT_S, allow_unmerg
     if not isinstance(source, str) or not source:
         return {"action": "deferred", "detail": "node replacement needs its recorded source checkout"}
     try:
-        boundary = runtime_git.boundary(Path(source))
-        with only_one(boundary, wait=False, note="node runtime swap"):
+        with runtime_git.crossing(Path(source), wait_s=boundary_wait_s, note="node runtime swap"):
             if runtime.selection_prefix() != prefix:
                 return {"action": "deferred", "detail": "node runtime selection changed"}
             if allow_unmerged_commit:
@@ -229,7 +229,7 @@ def swap(state: Path | None = None, *, wait_s: float = SWAP_WAIT_S, allow_unmerg
     if came is not None:
         return {"action": "swapped", "detail": f"node {came['pid']} runs {new_sha[:12]}"}
     try:
-        with only_one(boundary, wait=False, note="node rollback"):
+        with runtime_git.crossing(Path(source), wait_s=boundary_wait_s, note="node rollback"):
             if current := _answers_as(state, new_sha, int(run.get("pid", -1))):
                 return {"action": "swapped", "detail": f"node {current['pid']} runs {new_sha[:12]}"}
             rollback = _rollback_pointer(state, pin, new_sha)

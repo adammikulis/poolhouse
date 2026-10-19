@@ -430,8 +430,8 @@ impl Net {
             }
             let f = n.facts.peer(&fp);
             match result {
-                Ok(_) => {
-                    (f.last_sync_ms, f.last_seen_ms, f.last_error, f.fails, f.retry_at_ms) = (wall_ms(), wall_ms(), String::new(), 0, 0);
+                Ok(reports) => {
+                    (f.last_sync_ms, f.last_seen_ms, f.last_error, f.fails, f.retry_at_ms) = (wall_ms(), wall_ms(), crate::netsync::refused_note(&reports), 0, 0);
                     reached += 1;
                     drop(n);
                     if let Ok(a) = addr.parse::<SocketAddr>() {

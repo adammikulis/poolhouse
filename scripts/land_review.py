@@ -34,8 +34,8 @@ SRC_SENSITIVE = frozenset({
     "node_join_check.py", "node_key.py", "node_launch.py", "node_permission.py", "node_pool.py", "node_signing.py",
     "node_supervise.py", "paths.py", "person.py", "pi.py", "platform.py", "private_counters.py", "private_path.py",
     "protectedwrites.py", "real_machine.py", "redact", "redteam", "reputation", "requests", "roles.py", "rules.py",
-    "runtime.py", "runtime_board.py", "runtime_bridges.py", "runtime_cli.py", "runtime_coalesce.py", "runtime_deploy.py",
-    "runtime_git.py", "runtime_host.py", "runtime_launchers.py", "runtime_source.py", "runtime_stale.py", "runtime_store.py",
+    "runtime.py", "runtime_await.py", "runtime_board.py", "runtime_bridges.py", "runtime_cli.py", "runtime_coalesce.py",
+    "runtime_deploy.py", "runtime_git.py", "runtime_host.py", "runtime_launchers.py", "runtime_source.py", "runtime_stale.py", "runtime_store.py",
     "runtime_trust.py", "runtime_unmerged.py", "safenames.py", "safetext.py", "sandbox", "scrape", "sealing.py",
     "secretpaths.py", "sentinel", "serve", "serverkeys.py", "setup.py", "taint", "tar_libraries.py", "testfarm", "trees.py",
     "web.py", "win32.py", "windows_private.py", "workspace", "worktreerules.py"})

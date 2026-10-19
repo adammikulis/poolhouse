@@ -5,10 +5,17 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
+import psutil
+
+from poolhouse.lock import Busy, held_by, only_one
+
 COMMIT = re.compile(r"[0-9a-f]{40}")
+BOUNDARY_WAIT_S = 120.0
+BOUNDARY_WAIT_MAX_S = 900.0
 
 
 class DeployError(RuntimeError):
@@ -51,3 +58,36 @@ def primary(checkout: Path) -> Path:
 def boundary(checkout: Path) -> Path:
     """Return the primary repository's shared landing and runtime cutover lock."""
     return primary(checkout) / ".git" / "land" / "runner.lock"
+
+
+def _printable(text: str, limit: int) -> str:
+    """`text` cut to `limit` characters with every character outside printable ASCII replaced by `?`."""
+    return re.sub(r"[^\x20-\x7e]", "?", text)[:limit]
+
+
+def holder(path: Path) -> str:
+    """Who holds the lock file `path`: its recorded text and the command line of that process, printable characters only, or "nobody"."""
+    text = _printable(held_by(path), 200)
+    found = re.match(r"pid (\d+)", text)
+    command = ""
+    if found:
+        try:
+            command = _printable(" ".join(psutil.Process(int(found.group(1))).cmdline()), 120)
+        except psutil.Error:
+            command = ""
+    return (text + (f" ({command})" if command else "")) if text else "nobody"
+
+
+@contextmanager
+def crossing(checkout: Path, *, wait_s: float = 0.0, note: str = "") -> Iterator[Path]:
+    """Hold the primary repository's landing and cutover boundary for the block, waiting up to `wait_s` seconds (at most
+    `BOUNDARY_WAIT_MAX_S`); `Busy` names the holder."""
+    path = boundary(checkout)
+    wait_s = min(BOUNDARY_WAIT_MAX_S, max(0.0, wait_s))
+    with ExitStack() as stack:
+        try:
+            stack.enter_context(only_one(path, wait=wait_s > 0, timeout=wait_s, note=note))
+        except Busy:
+            raise Busy(f"{path} is held by {holder(path)}"
+                       + (f"; still held after waiting {wait_s:.0f}s" if wait_s > 0 else "")) from None
+        yield path

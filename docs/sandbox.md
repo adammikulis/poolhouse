@@ -88,7 +88,7 @@ macOS (Seatbelt), checked by `tests/test_sandbox_seatbelt.py` against the real `
 - the environment is exactly the policy's;
 - the wall-clock limit kills the command's process group and no other process; CPU, file-size
   and output limits stop the command;
-- a refusal is found in the system log (each run's profile carries a unique tag), becomes an
+- a refusal is read from the system log (each run's profile carries a unique tag), becomes an
   `Result.denials` entry, a `sandbox.denied` event and a `SandboxViolation` naming the operation
   and path.
 
@@ -99,8 +99,18 @@ Known limits:
 - A process that calls `setsid` leaves the group the runner kills. It stays inside the sandbox.
 - macOS does not enforce `RLIMIT_AS` or a useful `RLIMIT_NPROC` (the process limit is per user), so
   there is no memory or process-count ceiling.
-- Detecting a refusal reads the system log (about 1.2 s) and only happens after a failed run or
-  with `diagnose="always"`.
+- Refusals are read from one `log stream` (`denial_log.py`) that the first confined command of a
+  process starts and that runs until the process ends; the kernel does not keep its reports for
+  `log show`. Reading them waits for a refusal of the reader's own to come back through the stream
+  (a few milliseconds) and only happens after a failed run or with `diagnose="always"`. A process
+  that is itself confined cannot run `log`.
+- When the stream cannot say what a run was refused (it did not start, did not answer, or ended or
+  restarted after the run began), `Result.denials_unavailable` is set, `Result.check()` raises
+  `SandboxViolation`, and a `sandbox.denials-unavailable` event (warning) goes to the sentinel. Only
+  events sent by the kernel's Sandbox extension count as refusals, and only for a run the process
+  watched. Bubblewrap and the container backend keep no refusal log at all: a failed run on them
+  reports `sandbox.denials-unavailable` with the detail "this backend keeps no refusal log" (sentinel
+  weight 0.2, against 1.0 for a log that was lost) and `Result.check()` raises.
 - Refusals that every confined process provokes at start-up (preference files, a few Mach
   services, `net.routetable`) are filtered out of `Result.denials`.
 
@@ -137,7 +147,7 @@ Not routed: `llama-server` and the Broker daemon by default (opt-in only), `chec
 builds. Each is a candidate for review as it takes input from an agent.
 
 Sandbox events go to the sentinel bus through `sentinel.adapters.sandbox_listener`:
-`sandbox.denied` (warning), `sandbox.unavailable` (warning), `sandbox.unsandboxed` (warning),
+`sandbox.denied` (warning), `sandbox.denials-unavailable` (warning), `sandbox.unavailable` (warning), `sandbox.unsandboxed` (warning),
 `sandbox.timeout` (notice).
 
 ## Replacement path: container backend

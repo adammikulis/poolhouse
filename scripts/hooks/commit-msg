@@ -2,7 +2,8 @@
 # A commit message is source too. Refuse one that names a real person.
 #
 # Configured by the same environment variables as no-real-names: NAMES_GRAPH, NAMES_SCRAPE,
-# NAMES_FIXTURES, PYTHON. With no database configured, only ~/.config/pii-deny.txt is refused.
+# NAMES_FIXTURES, PYTHON. With no database configured, only ~/.config/pii-deny.txt is refused; with no
+# names at all the hook prints that the check is inactive.
 #
 # Install:  scripts/install-hooks.sh
 # Override: SKIP_NAME_CHECK=1 git commit ...   only after reading what it flagged.
@@ -17,27 +18,35 @@ GRAPH = os.environ.get("NAMES_GRAPH", "")
 SCRAPE = os.environ.get("NAMES_SCRAPE", "")
 FIXTURES = os.environ.get("NAMES_FIXTURES", "tests/known-fixtures.txt")
 names = set()
-try:
-    graph = json.load(open(GRAPH, encoding="utf-8"))
-    names |= {n["label"] for n in graph.get("nodes", []) if n.get("kind") == "person"}
-    names |= {m["sender"] for m in (graph.get("messages") or {}).values() if m.get("sender")}
-except (OSError, ValueError):
-    pass
-try:
-    for line in open(SCRAPE, encoding="utf-8"):
-        try:
-            row = json.loads(line)
-        except ValueError:
-            continue
-        if isinstance(row, dict) and row.get("sender"):
-            names.add(row["sender"])
-except OSError:
-    pass
+unread = []
+if GRAPH:
+    try:
+        graph = json.load(open(GRAPH, encoding="utf-8"))
+        names |= {n["label"] for n in graph.get("nodes", []) if n.get("kind") == "person"}
+        names |= {m["sender"] for m in (graph.get("messages") or {}).values() if m.get("sender")}
+    except (OSError, ValueError):
+        unread.append(f"NAMES_GRAPH={GRAPH}")
+if SCRAPE:
+    try:
+        for line in open(SCRAPE, encoding="utf-8"):
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict) and row.get("sender"):
+                names.add(row["sender"])
+    except OSError:
+        unread.append(f"NAMES_SCRAPE={SCRAPE}")
 for path in (f"{HOME}/.config/pii-deny.txt",):
     try:
         names |= {ln.strip() for ln in open(path, encoding="utf-8") if ln.strip()}
     except OSError:
         pass
+for source in unread:
+    print(f"commit-msg: {source} could not be read, so its names are not refused", file=sys.stderr)
+if not names:
+    print("commit-msg: name check inactive: no names to refuse, so a real name in this message is not caught; "
+          "set NAMES_GRAPH or NAMES_SCRAPE, or list names in ~/.config/pii-deny.txt", file=sys.stderr)
 # the same allow-lists the pre-commit hook reads: what is invented, or deliberately permitted
 allowed = set()
 root = os.popen("git rev-parse --show-toplevel").read().strip()
