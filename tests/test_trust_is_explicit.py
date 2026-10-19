@@ -22,6 +22,7 @@ PASSES_ON = {"src/poolhouse/api/models.py", "src/poolhouse/hub/listing.py", "src
 PULLS = {f"poolhouse.{where}.{name}" for where in ("hub", "hub.transfer", "hub.listing", "models", "api.models")
          for name in ("pull", "fetch", "snapshot", "base_folder")}
 DOWNLOADS = {"poolhouse.net.get", "poolhouse.net.download", "poolhouse.net.download.download"}
+POLICIES = {"poolhouse.net.Policy", "poolhouse.net.policy.Policy"}
 BUILDS = {f"poolhouse.{where}.Trust" for where in ("hub", "hub.admission", "models", "api.models")}
 ALLOWING = {"poolhouse.hub.LIBRARY", "poolhouse.hub.admission.LIBRARY", "poolhouse.models.LIBRARY",
             "poolhouse.api.models.LIBRARY", "poolhouse.net.library", "poolhouse.net.pipeline.library",
@@ -127,6 +128,10 @@ def scan(source: str, path: str) -> list[str]:
         target = names.of(node.func)
         if target in BUILDS and not trust_door:
             flag(node, "builds a Trust")
+        if target in POLICIES and not net_door and any(
+                isinstance(c, ast.Constant) and c.value == "*" for a in (*node.args, *(k.value for k in node.keywords))
+                for c in ast.walk(a)):
+            flag(node, "builds a Policy that lists every host")
         if target == "dataclasses.replace" and node.args and ast.unparse(node.args[0]).endswith("PERSON"):
             flag(node, "loosens PERSON")
         if target in PULLS:
@@ -236,6 +241,15 @@ def test_the_allowing_pipeline_is_flagged_by_name_by_import_by_attribute_and_by_
                  "from poolhouse.net import *\n",
                  "from poolhouse import net\nx = getattr(net, 'library')\n"):
         assert flagged(code), code
+
+
+def test_a_policy_that_lists_every_host_is_flagged_however_it_is_spelled():
+    for code in ("from poolhouse import net\nnet.Policy(allowed=('*',))",
+                 "from poolhouse.net import Policy\nPolicy(['api.acme.example', '*'])",
+                 "import poolhouse as ph\nph.net.Policy(allowed=('*',))",
+                 "from poolhouse.net.policy import Policy as P\nP(allowed=['*'])"):
+        assert any("lists every host" in one for one in flagged(code)), code
+    assert flagged("from poolhouse import net\nnet.Policy(allowed=('*.acme.example',))") == []
 
 
 def test_a_download_without_a_pipeline_is_flagged_whatever_the_owner_is_called():

@@ -141,6 +141,10 @@ class Policy:
         """Whether ``host`` is on the built-in or environment allow-list."""
         return any(fnmatch.fnmatchcase(host, p) for p in (*self.allowed, *self._extra()))
 
+    def lists_every_host(self) -> bool:
+        """Whether the allow-list names no host in particular (it holds a bare ``*``)."""
+        return "*" in self.allowed
+
     def approved(self, host: str) -> bool:
         """Whether a person approved ``host`` and the approval has not lapsed."""
         now = self.clock()
