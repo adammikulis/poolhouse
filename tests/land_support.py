@@ -10,6 +10,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import land_git
+
 from poolhouse import lock as filelock
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,11 +52,23 @@ for arg in sys.argv[2:]:
     if 'MUTATE' in text:
         with open(here / 'docs' / 'a.md', 'a') as f:
             f.write('changed while testing\n')
+    if 'INTERRUPTME' in text:
+        print(f'test: interrupted during {arg}::test_y')
+        sys.exit(130)
     if 'FAILME' in text:
         print(f'FAILED {arg}::test_x - boom')
         bad = 1
 sys.exit(bad)
 '''
+
+
+def lander_files() -> set[str]:
+    """The lander's scripts/ files in this checkout."""
+    def read(name: str) -> bytes | None:
+        path = ROOT / name
+        return path.read_bytes() if path.is_file() else None
+
+    return land_git.lander_set({f"scripts/{p.name}" for p in (ROOT / "scripts").iterdir() if p.is_file()}, read)
 
 
 def entry(tree: Path) -> Path:
@@ -82,9 +96,8 @@ class Project:
         git(self.root, "config", "commit.gpgsign", "false")
         self.write(self.root, "scripts/test", FAKE_TEST.replace("__BASE__", repr(str(base))))
         self.write(self.root, "scripts/budgets", "import sys\nsys.exit(0)\n")
-        for name in sorted([*(ROOT / "scripts").glob("land*"), *(ROOT / "scripts").glob("affected*")]):
-            if name.is_file():
-                shutil.copy2(name, self.root / "scripts" / name.name)
+        for name in sorted(lander_files()):
+            shutil.copy2(ROOT / name, self.root / name)
         self.write(self.root, "src/poolhouse/mod.py", "VALUE = 1\n")
         self.write(self.root, "tests/test_mod.py", "import poolhouse.mod\n")
         self.write(self.root, "docs/a.md", "a\n")

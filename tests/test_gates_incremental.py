@@ -26,7 +26,7 @@ sys.path.insert(0, str(REPO / "scripts"))
 import gates  # noqa: E402
 from gates import _floors, _mutation, _perfile, _ruff, _util, pyright_errors  # noqa: E402
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(900)]
 
 PROBE = '''
 

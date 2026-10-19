@@ -49,27 +49,12 @@ def base_budget(cores: int | None = None) -> int:
     return max(1, (cores or _cores()) - max(0, int(os.environ.get("DEV_TEST_RESERVED_CORES", "1"))))
 
 
-def cap_for(load1: float | None, cores: int | None = None, low: float | None = None, high: float | None = None) -> int:
-    """The worker cap for a given 1-minute load average (pure, so it can be tested)."""
-    cores = cores or _cores()
-    high = high if high is not None else float(os.environ.get("DEV_TEST_LOAD_HIGH", "2.0"))
-    base = base_budget(cores)
-    if load1 is None:
-        return base
-    if load1 > high * cores:
-        return max(1, base // 2)
-    return base
-
-
 def budget() -> int:
+    """The worker budget: ``DEV_TEST_BUDGET`` when set, else the logical CPU count less the reserved cores."""
     raw = os.environ.get("DEV_TEST_BUDGET")
     if raw and raw.isdigit() and int(raw) > 0:
         return int(raw)
-    try:
-        load1 = os.getloadavg()[0]
-    except (OSError, AttributeError):
-        load1 = None
-    return cap_for(load1)
+    return base_budget()
 
 
 @dataclass

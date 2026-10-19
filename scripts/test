@@ -62,6 +62,7 @@ import testjobs
 import testnode
 import testphases
 import testprelude
+import testreuse_key
 import testreuse_run
 import testreuse_store
 import testselectors
@@ -115,6 +116,8 @@ def reused_files(command: list[str]) -> set[str]:
     if not (REUSE["on"] and files):
         return set()
     session = testreuse_run.Session(ROOT, command, files, reuse_store())
+    if session.narrow:
+        return set()
     try:
         looks = {file: session.lookup(file) for file in files}
         return {file for file, look in looks.items()
@@ -197,7 +200,7 @@ def execute_run(command, environment, tier, record: OutputRecord):
     index = shown.index("-n")
     want = int(shown[index + 1])
     shown[index + 1] = "{workers}"
-    shown.extend(["-p", "testslots_pytest", "-p", "testdurations", "-p", "testagentenv_pytest", "-p", "testphases"])
+    shown.extend(["-p", "testslots_pytest", "-p", "testdurations", "-p", "testagentenv_pytest", "-p", "testphases", "-p", "testinterrupt"])
     phases_fd, phases_name = tempfile.mkstemp(suffix=".phases.json")
     os.close(phases_fd)
     phases_file = Path(phases_name)
@@ -588,7 +591,7 @@ def build_node(files: list[str] | None = None) -> int:
 
     A selection of named files that cannot start a node builds nothing and asks cargo nothing.
     """
-    if files and not testnode.needed(ROOT, files):
+    if files and not testnode.needed(ROOT, files, testreuse_key.import_facts(reuse_store().folder)):
         return 0
     try:
         os.environ[testnode.ENV] = str(testnode.ensure(ROOT, admit=lambda: testslots.lease(2, 1, label="node build"),

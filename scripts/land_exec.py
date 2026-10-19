@@ -16,11 +16,11 @@ from pathlib import Path
 import affected
 import land_git as lg
 
-FULL_FILES = 120
-FULL_LINES = 4000
-INFRA = re.compile(r"^(tests/conftest\.py|scripts/test[^/]*|scripts/testslots[^/]*|pyproject\.toml|packaging/.*)$")
+GITHUB_FULL = "the full suite runs on GitHub for this commit"
 DOC = re.compile(r"^([^/]+\.md|docs/.*)$")
 FAILED = re.compile(r"^(?:FAILED|ERROR) (\S+)", re.M)
+INTERRUPTED = re.compile(r"^test: interrupted during (\S+)", re.M)
+CANCELLED = re.compile(r"^test: (cancelled by .+)", re.M)
 KEEP = ("PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TMPDIR", "POOLHOUSE_HOME", "POOLHOUSE_BOARD",
         "POOLHOUSE_WORKSPACE_AGENT", "POOLHOUSE_DEV_BRANCH", "DEV_TEST_SLOTS_DIR")
 CACHES = re.compile(
@@ -51,32 +51,17 @@ class Check:
 
 @dataclass
 class Plan:
-    """The checks a diff needs, the kind of diff and why the whole suite runs, if it does."""
+    """The checks a diff needs, the kind of diff and the sentence saying where the whole suite runs (empty when it runs nowhere)."""
 
     kind: str
     checks: list[Check]
-    full: str = ""
+    ci: str = ""
     changed: list[str] = field(default_factory=list)
 
 
 def printable(text: str) -> str:
     """``text`` without control characters, so output from a check cannot drive the caller's terminal."""
     return CONTROL.sub("", text)
-
-
-def needs_full(root: Path, base: str, sha: str, changed: list[str], unmapped: list[str]) -> str:
-    """Why the whole suite runs for this diff, or an empty string."""
-    infra = [p for p in changed if INFRA.match(p)]
-    if infra:
-        return f"shared infrastructure touched: {infra[0]}"
-    if unmapped:
-        return f"no selector maps {unmapped[0]}"
-    numstat = lg.sealed(root, "diff-tree", "-r", "--numstat", "--no-renames", "--ignore-submodules=none", "-z", base, sha).stdout
-    rows = (r.split("\t") for r in numstat.split("\0") if r)
-    lines = sum(int(a) + int(b) for a, b, *_ in rows if a.isdigit() and b.isdigit())
-    if len(changed) > FULL_FILES or lines > FULL_LINES:
-        return f"{len(changed)} files, {lines} lines exceed the diff threshold"
-    return ""
 
 
 def plan(wt: Path, base: str, sha: str) -> Plan:
@@ -96,10 +81,7 @@ def plan(wt: Path, base: str, sha: str) -> Plan:
         checks = [Check("gate", [py, "scripts/test", "gate"])]
     if files:
         checks.append(Check("affected", [py, "scripts/test", "all", *files], files))
-    full = needs_full(wt, base, sha, changed, pick.unmapped)
-    if full:
-        checks.append(Check("full", [py, "scripts/test", "full"]))
-    return Plan("docs" if docs else "code", checks, full, changed)
+    return Plan("docs" if docs else "code", checks, "" if docs else GITHUB_FULL, changed)
 
 
 def check_env(wt: Path) -> dict[str, str]:
@@ -176,6 +158,24 @@ def failed_tests(lines: list[str]) -> list[str]:
     return sorted(dict.fromkeys(FAILED.findall("\n".join(lines))))
 
 
+def signal_of(status: int) -> int:
+    """The signal that ended a check with ``status`` (a negative status, or 128 plus the signal), or 0 when none did."""
+    if status < 0:
+        return -status
+    return status - 128 if status in (128 + signal.SIGINT, 128 + signal.SIGKILL, 128 + signal.SIGTERM) else 0
+
+
+def interruption(status: int, lines: list[str]) -> str:
+    """The sentence for a check that a signal ended, naming the last test it started; empty when the check was not interrupted."""
+    number = signal_of(status)
+    if not number:
+        return ""
+    text = "\n".join(lines)
+    last, who = INTERRUPTED.findall(text), CANCELLED.findall(text)
+    return (f"the test run was interrupted by signal {number}" + (f" during {last[-1]}" if last else "")
+            + (f" ({who[-1]})" if who else ""))
+
+
 def run_plan(wt: Path, checks: list[Check], tree: str) -> list[str]:
     """Run each check and return the last lines of the output; stop at the first red or if the tree changed under it."""
     tail: list[str] = []
@@ -186,7 +186,9 @@ def run_plan(wt: Path, checks: list[Check], tree: str) -> list[str]:
         tail = lines[-TAIL:]
         verify_tree(wt, tree)
         if status:
+            if said := interruption(status, lines):
+                raise Stop(said, tail)
             named = failed_tests(lines)
-            label = "tests" if check.name in ("affected", "full") else check.name
+            label = "tests" if check.name == "affected" else check.name
             raise Stop(f"{label} failed" + (f": {', '.join(named[:10])}" if named else f" (exit {status})"), tail)
     return tail
