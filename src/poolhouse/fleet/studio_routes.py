@@ -12,7 +12,7 @@ from poolhouse.studio.adapters import Adapters
 from poolhouse.studio.catalog import node_catalog
 from poolhouse.studio.contracts import validate_graph
 from poolhouse.studio.engine import WorkflowEngine
-from poolhouse.studio.library import LocalLibrary, PoolLibrary
+from poolhouse.studio.library import LocalLibrary
 from poolhouse.studio.packages import export_package, import_package
 from poolhouse.studio.store import Conflict, StudioStore, digest
 from poolhouse.studio.templates import templates
@@ -190,8 +190,13 @@ class StudioRoutes:
             self.send(404, {"error": "No such Studio route."})
             return True
         provider = self.asked("provider", "local")
-        library = (PoolLibrary(engine.store.graph, principal["scope"], lock=engine.store.lock)
-                   if provider == "pool" else LocalLibrary(engine.store.graph, scope=principal["scope"], lock=engine.store.lock))
+        if provider == "pool":
+            factory = getattr(self.ui, "studio_pool_library", None)
+            if factory is None:
+                raise ValueError("The pool library is unavailable on this device.")
+            library = factory(principal)
+        else:
+            library = LocalLibrary(engine.store.graph, scope=principal["scope"], lock=engine.store.lock)
         if self.path == "/ui/studio/packages" and self.method == "GET":
             self.send(200, {"packages": library.search(self.asked("q"))})
         elif self.path == "/ui/studio/packages/export" and self.method == "POST":

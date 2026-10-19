@@ -471,12 +471,22 @@ class DaemonRuntime:
                 _stop_advertisers(self.advertisers)
                 if self.advertiser is not None:
                     self.advertiser.stop()
-                self.runner.shutdown()
+                self._shutdown_jobs()
             finally:
                 try:
                     self.httpd.server_close()
                 finally:
                     self.control.close()
+
+    def _shutdown_jobs(self):
+        studio = getattr(self.interface, "studio", None)
+        if studio is not None:
+            studio.close()
+        try:
+            self.runner.shutdown()
+        finally:
+            if studio is not None:
+                studio.store.close()
 
     def update_admission(self):
         return only_one(self.root / "runtime-install.lock", wait=False)

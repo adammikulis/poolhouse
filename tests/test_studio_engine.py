@@ -126,3 +126,47 @@ def test_job_submission_identity_attaches_without_requeue(tmp_path):
             runner.submit("example", ["unused"], str(tmp_path), job_id="../escape")
     finally:
         runner.shutdown()
+
+
+def test_queued_studio_child_waits_for_current_authorization_after_restart(tmp_path):
+    runner = JobRunner(tmp_path, gate=lambda: (False, "test"))
+    runner.submit("example", ["unused"], str(tmp_path), job_id="studio-restart")
+    runner.checkpoint_restart()
+    runner.shutdown()
+    restored = JobRunner(tmp_path, gate=lambda: (False, "test"))
+    try:
+        assert restored.jobs["studio-restart"].state == "interrupted"
+        assert restored.status()["queued"] == 0
+        restored.reauthorize_studio("studio-restart")
+        assert restored.status()["queued"] == 1
+        with pytest.raises(DaemonError, match="uncertain"):
+            restored.reauthorize_studio("studio-restart")
+    finally:
+        restored.shutdown()
+
+
+def test_untyped_structured_response_paths_are_never_opened(tmp_path):
+    assert artifact_fingerprints({"response": {"path": str(tmp_path / "missing")}}) == {}
+    assert artifact_fingerprints({"path": str(tmp_path / "missing")}) == {}
+
+
+def test_cache_is_principal_and_implementation_bound(setup):
+    store, engine, _ = setup
+    workflow = store.save_workflow(PRINCIPAL["scope"], "Example", graph())
+    engine.advance(engine.submit(PRINCIPAL, workflow, [], "first"))
+    other = {**PRINCIPAL, "id": "other-session"}
+    second = engine.advance(engine.submit(other, workflow, [], "second"))
+    assert "reused_from" not in second["nodes"]["prompt"]
+    engine.implementation = "different-worker-source"
+    third = engine.advance(engine.submit(PRINCIPAL, workflow, [], "third"))
+    assert "reused_from" not in third["nodes"]["prompt"]
+
+
+def test_artifact_filename_and_content_have_distinct_fingerprints(tmp_path):
+    folder = tmp_path / "artifacts"
+    folder.mkdir()
+    (folder / "a").write_text("bc")
+    first = artifact_fingerprints({"kind": "artifact", "path": str(folder)})
+    (folder / "a").unlink()
+    (folder / "ab").write_text("c")
+    assert first != artifact_fingerprints({"kind": "artifact", "path": str(folder)})

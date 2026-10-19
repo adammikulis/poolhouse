@@ -310,6 +310,19 @@ class JobRunner:
         self.record(job)
         return job
 
+    def reauthorize_studio(self, job_id: str) -> Job:
+        """Requeue a Studio child whose durable record proves it never launched."""
+        with self._lock:
+            job = self.jobs[job_id]
+            if (not job.id.startswith("studio-") or job.state != "interrupted" or job.pid is not None
+                    or job.recovery_note != "Studio execution requires renewed authorization after restart."):
+                raise DaemonError("The prior child outcome is uncertain; it cannot be replayed.")
+            job.state, job.recovery_note, job.finished_at = "queued", "", None
+            self.record(job)
+            self._queue.append(job.id)
+        self._wake.set()
+        return job
+
     # -- the loop --------------------------------------------------------
     def _run_loop(self, index: int = 0) -> None:
         while not self._stop.is_set():

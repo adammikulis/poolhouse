@@ -203,7 +203,12 @@ class WorkflowEngine:
         if supports(node):
             state.update(state="running", job_id=None, dispatch_digest=digest({"node": node, "inputs": inputs}))
             self.store.put("run", run)
-            state.update(state="done", outputs=self.adapters.execute_authorized(node, inputs, context))
+            try:
+                outputs = self.adapters.execute_authorized(node, inputs, context)
+            except (ValueError, OSError, RuntimeError) as exc:
+                state.update(state="interrupted", error=str(exc))
+                return
+            state.update(state="done", outputs=outputs)
             self._completed(run, node, state, inputs)
             return
         command = self.adapters.prepare(node, inputs, context)
@@ -253,8 +258,20 @@ class WorkflowEngine:
                 raise PermissionError("This run belongs to another session.")
             if not self.authorize(principal, None, {}):
                 raise PermissionError("Sign in again before resuming this run.")
-            if any(n["state"] == "interrupted" for n in run["nodes"].values()):
-                raise ValueError("Reconcile the interrupted child job before resuming; its side effects will not be repeated.")
+            for node in run["graph"]["nodes"]:
+                state = run["nodes"][node["id"]]
+                if state["state"] == "interrupted":
+                    child = self.runner.jobs.get(state.get("job_id"))
+                    if not child or child.pid is not None or child.recovery_note != "Studio execution requires renewed authorization after restart.":
+                        raise ValueError("Reconcile the interrupted child job before resuming; its side effects will not be repeated.")
+                    if not self.authorize(principal, node, {}):
+                        raise PermissionError("A resource in this run is no longer authorized.")
+            run["principal"] = principal
+            self.store.put("run", run)
+            for state in run["nodes"].values():
+                if state["state"] == "interrupted":
+                    self.runner.reauthorize_studio(state["job_id"])
+                    state["state"] = "running"
             for state in run["nodes"].values():
                 if state["state"] == "blocked":
                     state.update(state="pending", error="")
