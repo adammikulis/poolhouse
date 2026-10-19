@@ -1296,7 +1296,10 @@ def test_the_3d_labels_are_left_alone_on_a_frame_that_changed_nothing(open_page)
         settling = page.evaluate(FRAMES, 1500)
         if settling["frames"] >= 3 and settling["passes"] == 0:
             break
-    still = page.evaluate(FRAMES, 2000)
+    for _ in range(10):
+        still = page.evaluate(FRAMES, 2000)
+        if still["frames"] >= 3:
+            break
     assert still["frames"] >= 3, still
     assert still["passes"] == 0, still
 

@@ -125,7 +125,7 @@ def test_studio_surfaces_follow_theme_and_keep_text_contrast(tmp_path, monkeypat
     try:
         with browser(Window(profile=tmp_path / 'browser', headless=True)) as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/#data')
-            expect(page.locator('data-view .data-file')).to_have_count(1)
+            expect(page.locator('data-view .data-file:not(.folder)')).to_have_count(1)
             page.evaluate('''theme => {
                 const root = document.documentElement;
                 root.dataset.theme = theme === 'custom' ? 'dark' : theme;
@@ -136,7 +136,7 @@ def test_studio_surfaces_follow_theme_and_keep_text_contrast(tmp_path, monkeypat
                     for (const [key, value] of Object.entries(values)) root.style.setProperty(key, value);
                 }
             }''', theme)
-            page.locator('data-view .data-file').click()
+            page.locator('data-view .data-file:not(.folder)').click()
             expect(page.locator('data-view #preview-title')).to_have_text('examples.jsonl')
             page.get_by_role('button', name='+ Add dataset').click()
             metrics = page.evaluate('''() => {
