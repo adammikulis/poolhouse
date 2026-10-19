@@ -80,3 +80,22 @@ def test_forged_model_handle_cannot_retarget_a_known_id(cached_model, tmp_path):
         resources.model_files({**handle, 'path': str(tmp_path)})
     with pytest.raises(ValueError, match='model library'):
         resources.model_files({**handle, 'id': 'https://injected.invalid/model'})
+
+
+def test_original_snapshot_directory_link_cannot_disappear_during_resolution(cached_model, tmp_path, monkeypatch):
+    handle, snapshot, _ = cached_model
+    alias = tmp_path / 'aliased-cache'
+    alias.symlink_to(snapshot.parent, target_is_directory=True)
+    entry = ModelInfo(handle['id'], 'model', alias / snapshot.name, 'mlx', 7, 'huggingface', repo='sample/model')
+    monkeypatch.setattr(resources.hub, 'discover', lambda: [entry])
+    with pytest.raises(ValueError, match='directory cannot be a symbolic link'):
+        resources.model_resource({'kind': 'model', 'id': entry.id})
+
+
+def test_original_repository_directory_link_cannot_authorize_blob_targets(cached_model, tmp_path, monkeypatch):
+    handle, _, blobs = cached_model
+    alias = tmp_path / 'aliased-repository'
+    alias.symlink_to(blobs.parent, target_is_directory=True)
+    monkeypatch.setattr(resources.hfstore, 'repo_root', lambda repo: alias)
+    with pytest.raises(ValueError, match='cache directory cannot be a symbolic link'):
+        resources.model_files(handle)

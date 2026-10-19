@@ -21,7 +21,7 @@ def model_resource(binding: dict, installed: list | None = None) -> dict:
     entry = next((entry for entry in entries if entry.id == ident), None)
     if entry is None or not entry.is_complete or not entry.verified:
         raise ValueError('Select a complete, verified model from the local model library')
-    if entry.path.is_symlink():
+    if any(path.is_symlink() for path in (entry.path, *entry.path.parents)):
         raise ValueError('The installed model directory cannot be a symbolic link')
     path = entry.path.resolve(strict=True)
     return {'kind': 'model', 'id': entry.id, 'path': str(path), 'format': entry.format,
@@ -59,7 +59,10 @@ def model_files(handle: dict) -> list[dict]:
         raise ValueError('The installed model identity or directory changed')
     approved = None
     if current.get('repo'):
-        approved = hfstore.repo_root(current['repo']).resolve(strict=True)
+        repository = hfstore.repo_root(current['repo'])
+        if any(path.is_symlink() for path in (repository, *repository.parents)):
+            raise ValueError('The native model cache directory cannot be a symbolic link')
+        approved = repository.resolve(strict=True)
     members = []
     paths = sorted(root.rglob('*')) if root.is_dir() else [root]
     for path in paths:
