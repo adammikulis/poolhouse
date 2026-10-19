@@ -109,3 +109,38 @@ def test_preflight_error_marks_affected_node_without_dispatch(device_page):
     expect(page.locator('.studio-inspector')).to_contain_text('The selected device needs its managed runtime.')
     assert not submitted
     assert not errors
+
+
+def test_actual_device_discovery_persists_authenticated_selection(tmp_path, request):
+    open_page = request.getfixturevalue('studio_browser')
+    served = Serving(tmp_path)
+    served.ui.settings.setup_done = True
+    served.ui.root = tmp_path / 'traind'
+    try:
+        with open_page() as page:
+            errors = []
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            with page.expect_response(lambda response: response.url.endswith('/ui/studio/devices')) as discovered:
+                page.goto(f'http://127.0.0.1:{served.port}/ui/')
+            assert discovered.value.status == 200
+            devices = discovered.value.json()['devices']
+            local = next(device for device in devices if device['is_self'])
+            page.locator('.studio-library').get_by_role('button', name='Inference Ready to configure', exact=True).click()
+            page.locator('.studio-node[aria-label="Generate"]').focus()
+            page.keyboard.press('Enter')
+            select = page.get_by_label('Execution device', exact=True)
+            expect(select).to_have_value(local['id'])
+            select.select_option(local['id'])
+            page.get_by_role('button', name='Save', exact=True).click()
+            expect(page.locator('.studio-status')).to_contain_text('Saved')
+            page.reload()
+            page.locator('.studio-node[aria-label="Generate"]').focus()
+            page.keyboard.press('Enter')
+            expect(page.get_by_label('Execution device', exact=True)).to_have_value(local['id'])
+            assert page.locator('studio-view').evaluate(
+                "editor => editor.graph.nodes.find(node => node.id === 'generate').execution") == {'machine': local['id']}
+            assert not errors
+    finally:
+        if hasattr(served.ui, 'studio'):
+            served.ui.studio.close()
+        served.close()
