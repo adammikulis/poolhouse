@@ -111,6 +111,7 @@
         this.undoStack = [];
         this.redoStack = [];
         this.revision = 0;
+        this.editSerial = 0;
         try {
           const value = JSON.parse(
             sessionStorage.getItem("poolhouse-studio-submission") || "null",
@@ -211,106 +212,6 @@
           this.loading = false;
         }
       }
-      workflowList() {
-        const select = this.querySelector("#studio-workflows");
-        select.replaceChildren(
-          E("option", { value: "" }, "New workflow"),
-          ...(this.workflows || []).map((w) =>
-            E("option", { value: w.id }, w.title),
-          ),
-        );
-        select.value = this.workflowId || "";
-      }
-      async open(workflow) {
-        if (this.dirty) await this.save();
-        this.context = [];
-        this.packageId = null;
-        this.packageVersion = null;
-        this.graph = S.clone(workflow?.graph || S.empty());
-        this.normalize();
-        this.workflowId = workflow?.id;
-        this.revision = workflow?.revision || 0;
-        this.querySelector("#studio-title").value =
-          workflow?.title || "Untitled experiment";
-        this.selected.clear();
-        this.undoStack = [];
-        this.redoStack = [];
-        this.dirty = false;
-        this.workflowList();
-        this.render();
-      }
-      normalize() {
-        this.graph.nodes ||= [];
-        this.graph.edges ||= [];
-        this.graph.groups ||= {};
-        this.graph.layout ||= {};
-        this.graph.layout.nodes ||= {};
-        this.graph.layout.viewport ||= { x: 0, y: 0, zoom: 1 };
-      }
-      checkpoint() {
-        this.undoStack.push(this.snapshot());
-        this.redoStack = [];
-      }
-      changed(paint = true) {
-        this.dirty = true;
-        this.message("Unsaved changes");
-        if (paint) this.render();
-        clearTimeout(this.autosave);
-        this.autosave = setTimeout(() => this.perform(() => this.save()), 700);
-      }
-      async save() {
-        clearTimeout(this.autosave);
-        if (this.saving) {
-          await this.saving;
-          if (this.dirty) return this.save();
-          return;
-        }
-        if (!this.dirty && this.workflowId) return;
-        this.flushGroup();
-        const graph = S.clone(this.rootGraph()),
-          title =
-            this.querySelector("#studio-title").value || "Untitled experiment";
-        this.dirty = false;
-        const body = {
-          title,
-          graph,
-          ...(this.workflowId ? { revision: this.revision } : {}),
-        };
-        this.saving = S.api(
-          this.workflowId
-            ? "/workflows/" + encodeURIComponent(this.workflowId)
-            : "/workflows",
-          body,
-          this.workflowId ? "PUT" : "POST",
-        );
-        try {
-          const r = await this.saving,
-            w = r.workflow;
-          this.workflowId = w.id;
-          this.revision = w.revision;
-          this.workflows = [
-            w,
-            ...(this.workflows || []).filter((item) => item.id !== w.id),
-          ];
-          this.workflowList();
-          this.message("Saved · revision " + w.revision);
-        } catch (error) {
-          this.dirty = true;
-          if (error.response?.conflict_copy) {
-            const copy = error.response.conflict_copy;
-            this.workflowId = copy.id;
-            this.revision = copy.revision;
-            this.message(
-              "Another edit was saved. Your changes are preserved as " +
-                copy.title +
-                ".",
-            );
-            this.dirty = false;
-          } else throw error;
-        } finally {
-          this.saving = null;
-        }
-      }
       add(spec, position) {
         this.checkpoint();
         const node = {
@@ -322,8 +223,8 @@
         };
         this.graph.nodes.push(node);
         this.graph.layout.nodes[node.id] = position || {
-          x: 40 + ((this.graph.nodes.length-1)%3)*300,
-          y: 60 + Math.floor((this.graph.nodes.length-1)/3)*260,
+          x: 40 + ((this.graph.nodes.length - 1) % 3) * 300,
+          y: 60 + Math.floor((this.graph.nodes.length - 1) / 3) * 260,
         };
         this.selected = new Set([node.id]);
         this.changed();
@@ -458,6 +359,7 @@
         }
       }
     }
+    S.installPersistence(StudioView.prototype);
     S.installEditor(StudioView.prototype);
     S.installGroups(StudioView.prototype);
     S.installRuns(StudioView.prototype);

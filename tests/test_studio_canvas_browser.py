@@ -243,3 +243,55 @@ def test_actual_catalogue_template_run_and_package_round_trip(tmp_path):
         if hasattr(served.ui, 'studio'):
             served.ui.studio.close()
         served.close()
+
+
+def test_actual_conflict_keeps_copy_and_edits_made_during_save(tmp_path):
+    pytest.importorskip('playwright.sync_api')
+    served = Serving(tmp_path)
+    served.ui.settings.setup_done = True
+    served.ui.root = tmp_path / 'traind'
+    try:
+        with browser(Window(profile=tmp_path / 'conflict-browser', headless=True)) as page:
+            page.goto(f'http://127.0.0.1:{served.port}/ui/')
+            add(page, 'Prompt template')
+            page.get_by_role('button', name='Save', exact=True).click()
+            expect(page.locator('.studio-status')).to_contain_text('Saved')
+            other = page.context.new_page()
+            other.goto(page.url)
+            other.locator('.studio-node').focus()
+            other.keyboard.press('Enter')
+            page.locator('.studio-inspector').get_by_label('template', exact=True).fill('Remote latest')
+            page.locator('.studio-inspector').get_by_label('template', exact=True).press('Tab')
+            page.get_by_role('button', name='Save', exact=True).click()
+            expect(page.locator('.studio-status')).to_contain_text('Saved')
+            pending = []
+            def hold(request):
+                if pending:
+                    request.continue_()
+                    return
+                pending.append(request)
+                other.evaluate("() => { window.studioSaveHeld = true; }")
+            other.route('**/ui/studio/workflows/*', hold)
+            other.locator('.studio-inspector').get_by_label('template', exact=True).fill('Local first')
+            other.locator('.studio-inspector').get_by_label('template', exact=True).press('Tab')
+            with other.expect_request('**/ui/studio/workflows/*'):
+                other.get_by_role('button', name='Save', exact=True).click()
+            other.wait_for_function("() => window.studioSaveHeld === true")
+            assert pending
+            other.locator('.studio-inspector').get_by_label('template', exact=True).fill('Local newer')
+            other.locator('.studio-inspector').get_by_label('template', exact=True).press('Tab')
+            pending[0].fulfill(response=pending[0].fetch())
+            expect(other.locator('.studio-status')).to_contain_text('Saved')
+            other.unroute('**/ui/studio/workflows/*', hold)
+            expect(other.locator('#studio-workflows option')).to_have_count(3)
+            selected = other.get_by_label('Saved workflows').input_value()
+            other.reload()
+            other.get_by_label('Saved workflows').select_option(selected)
+            other.locator('.studio-node').focus()
+            other.keyboard.press('Enter')
+            expect(other.locator('.studio-inspector').get_by_label('template', exact=True)).to_have_value('Local newer')
+            other.close()
+    finally:
+        if hasattr(served.ui, 'studio'):
+            served.ui.studio.close()
+        served.close()

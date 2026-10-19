@@ -1,0 +1,134 @@
+<script>
+  (function () {
+    const S = window.studioModel,
+      E = window.fleetModel.el;
+    S.installPersistence = (proto) =>
+      Object.assign(proto, {
+        workflowList() {
+          const select = this.querySelector("#studio-workflows");
+          select.replaceChildren(
+            E("option", { value: "" }, "New workflow"),
+            ...(this.workflows || []).map((w) =>
+              E("option", { value: w.id }, w.title),
+            ),
+          );
+          select.value = this.workflowId || "";
+        },
+        async open(workflow) {
+          if (this.dirty) await this.save();
+          this.context = [];
+          this.packageId = null;
+          this.packageVersion = null;
+          this.graph = S.clone(workflow?.graph || S.empty());
+          this.normalize();
+          this.workflowId = workflow?.id;
+          this.revision = workflow?.revision || 0;
+          this.querySelector("#studio-title").value =
+            workflow?.title || "Untitled experiment";
+          this.selected.clear();
+          this.undoStack = [];
+          this.redoStack = [];
+          this.dirty = false;
+          this.workflowList();
+          this.render();
+        },
+        normalize() {
+          this.graph.nodes ||= [];
+          this.graph.edges ||= [];
+          this.graph.groups ||= {};
+          this.graph.layout ||= {};
+          this.graph.layout.nodes ||= {};
+          this.graph.layout.viewport ||= { x: 0, y: 0, zoom: 1 };
+        },
+        checkpoint() {
+          this.undoStack.push(this.snapshot());
+          this.redoStack = [];
+        },
+        changed(paint = true) {
+          this.dirty = true;
+          this.editSerial++;
+          this.message("Unsaved changes");
+          if (paint) this.render();
+          clearTimeout(this.autosave);
+          this.autosave = setTimeout(
+            () => this.perform(() => this.save()),
+            700,
+          );
+        },
+        async save() {
+          clearTimeout(this.autosave);
+          if (this.saving) {
+            try {
+              await this.saving;
+            } catch {
+              return;
+            }
+            if (this.dirty) return this.save();
+            return;
+          }
+          if (!this.dirty && this.workflowId) return;
+          this.flushGroup();
+          const serial = this.editSerial;
+          let handled = false;
+          const graph = S.clone(this.rootGraph()),
+            title =
+              this.querySelector("#studio-title").value ||
+              "Untitled experiment";
+          this.dirty = false;
+          const body = {
+            title,
+            graph,
+            ...(this.workflowId ? { revision: this.revision } : {}),
+          };
+          this.saving = S.api(
+            this.workflowId
+              ? "/workflows/" + encodeURIComponent(this.workflowId)
+              : "/workflows",
+            body,
+            this.workflowId ? "PUT" : "POST",
+          );
+          try {
+            const r = await this.saving,
+              w = r.workflow;
+            this.workflowId = w.id;
+            this.revision = w.revision;
+            this.workflows = [
+              w,
+              ...(this.workflows || []).filter((item) => item.id !== w.id),
+            ];
+            this.workflowList();
+            this.message("Saved · revision " + w.revision);
+            handled = true;
+          } catch (error) {
+            this.dirty = true;
+            if (error.response?.conflict_copy) {
+              const copy = error.response.conflict_copy;
+              this.workflowId = copy.id;
+              this.revision = copy.revision;
+              this.workflows = [
+                copy,
+                ...(this.workflows || []).filter((w) => w.id !== copy.id),
+              ];
+              if (this.editSerial === serial)
+                this.querySelector("#studio-title").value = copy.title;
+              this.workflowList();
+              handled = true;
+              this.message(
+                "Another edit was saved. Your changes are preserved as " +
+                  copy.title +
+                  ".",
+              );
+              this.dirty = this.editSerial !== serial;
+            } else throw error;
+          } finally {
+            this.saving = null;
+            if (handled && this.dirty)
+              this.autosave = setTimeout(
+                () => this.perform(() => this.save()),
+                0,
+              );
+          }
+        },
+      });
+  })();
+</script>
