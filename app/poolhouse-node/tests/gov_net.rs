@@ -395,7 +395,8 @@ fn one_address_and_the_whole_pool_may_only_ask_so_often_to_join_an_open_pool_wit
     let outcomes: Vec<bool> = guests.iter().map(|g| ask(g).is_ok()).collect();
     assert!(outcomes[..5].iter().all(|ok| *ok), "{outcomes:?}");
     let refused = ask(&guests[10]).unwrap_err().to_string();
-    assert!(refused.contains("open joins as fast as it may") && refused.contains("OPEN_JOINS_PER_POOL in peer.rs"), "{refused}");
+    assert!(refused.contains("open joins as fast as it may"), "{refused}");
+    assert!(!refused.contains("OPEN_JOINS") && !refused.chars().any(|c| c.is_ascii_digit()), "a floor states no budget: {refused}");
     assert!(outcomes[5..].iter().all(|ok| !ok), "{outcomes:?}");
 }
 
