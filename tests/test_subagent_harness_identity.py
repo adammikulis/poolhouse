@@ -70,6 +70,13 @@ class Scene:
         done = self.hook("claude-subagent-stop", self.event(agent, kind))
         assert done.returncode == 0 and not done.stdout.strip(), (done.stdout, done.stderr)
 
+    def hand_back(self, agent: str, kind: str = "general-purpose") -> None:
+        """Stop a subagent whose tree holds unlanded work: two refusals, then the stop goes through with its identity kept."""
+        for _ in range(2):
+            refused = self.hook("claude-subagent-stop", self.event(agent, kind))
+            assert refused.returncode == 0 and json.loads(refused.stdout)["decision"] == "block", (refused.stdout, refused.stderr)
+        self.stop(agent, kind)
+
     def name(self, agent: str) -> str:
         return board_session.find("claude-code", agent, client=self.node.client)
 
@@ -127,7 +134,7 @@ def test_a_resumed_worker_keeps_its_identity_and_claims_and_lands_with_no_flag(s
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_DENYLIST", str(private))
     scene.start("w1", "branch-worker")
     child = scene.name("w1")
-    scene.stop("w1", "branch-worker")
+    scene.hand_back("w1", "branch-worker")
     assert scene.name("w1") == child and scene.node.cli("whoami", who=scene.node.adopt(child)).returncode == 0
     context = scene.start("w1", "branch-worker")
     assert scene.name("w1") == child and child in context
