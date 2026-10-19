@@ -53,7 +53,7 @@ Refusal shapes: `X is for a person; this process was started by an agent (CLAUDE
 | `ph.pool.listen()` | `api/pool.py:148` | refused unless `agreed=True`; self-declared |
 | `poolhouse-requests list`, `show`, `watch` | `inbox/cli.py:29-33` | read-only; `approval list` and `status` show an agent's own requests |
 | `poolhouse-serve up --iq` through MCP | `mcp.py:219` | a model-quality choice; the CLI has no check |
-| autostart `install`, `rollback` | `fleet/autostart_apply.py:198,250` | AGENTS.md section 1 keeps these a person's (login persistence); `prepare` is open |
+| autostart `install`, `rollback` | `fleet/autostart_apply.py:198,250` | AGENTS.md section 1 keeps these a person's (login persistence); `prepare` is open. Designed, not built: a lead agent passes them for `pool-daemon` and `runtime-ensure` under gate `autostart.install` ([agent-login-unit-install.md](agent-login-unit-install.md)) |
 
 ## Refused by environment, not by design
 
