@@ -31,11 +31,14 @@ def _log_age(jobs: testjobs.Jobs, job: str, now: float) -> float:
 
 
 def hung(jobs: testjobs.Jobs, job: str, now: float) -> str:
-    """Why ``job`` is hung (empty when it is not): its log is quiet, or it has run too long."""
+    """Why ``job`` is hung (empty when it is not): it has no owner, its log is quiet, or it has run too long."""
     status = jobs.read(job)
     if status.get("state") not in ("queued", "running"):
         return ""
     spec = jobs.read(job, "spec.json")
+    owner = spec.get("owner") if isinstance(spec, dict) else None
+    if not (isinstance(owner, dict) and isinstance(owner.get("id"), str) and owner["id"]):
+        return "it has no owner"
     created = spec.get("created", status.get("at", now)) if isinstance(spec, dict) else now
     quiet = _log_age(jobs, job, now)
     if now - float(created) > MAX_AGE_S and quiet > OLD_QUIET_S:
