@@ -124,15 +124,19 @@ def acting(plan: Plan) -> session.Session | None:
         return None
 
 
+def _needs_session(who: session.Session | None) -> None:
+    if who is None and person.marked():
+        raise DeployError("runtime deployment needs an authenticated workspace agent for its install claims")
+
+
 @contextmanager
 def owning(paths: list[Path], *, wait_s: float, who: session.Session | None) -> Iterator[frozenset[Path]]:
     """Hold an `install` claim as ``who`` on each path of this device, waiting for a live other owner up to ``wait_s`` for each.
 
     With no session there is no claim; the deploy lock alone serialises builds.
     """
+    _needs_session(who)
     if who is None:
-        if person.marked():
-            raise DeployError("runtime deployment needs an authenticated workspace agent for its install claims")
         yield frozenset()
         return
     wanted = list(dict.fromkeys(paths))
@@ -287,11 +291,12 @@ def _restore(directory: Path | None, original: dict[Path, tuple[bytes, int]]) ->
 
 
 def build_and_switch(plan: Plan, builder: Builder = build, who: session.Session | None = None) -> runtime.Runtime:
-    """Build, smoke and select the plan's commit under install claims; a failure before the selection keeps the previous runtime."""
+    """Build, smoke and select the plan's commit; the install claims are taken for the cutover only, so a build that fails,
+    or a cutover that finds the boundary held, writes no row. A failure before the selection keeps the previous runtime."""
     who = who or acting(plan)
+    _needs_session(who)
     prefix = runtime.directory() / plan.commit / uuid.uuid4().hex
-    with owning([prefix, *_switch_paths(plan)], wait_s=plan.wait_s, who=who) as claimed, \
-            tempfile.TemporaryDirectory(prefix="poolhouse-runtime-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="poolhouse-runtime-") as temporary:
         stage = Path(temporary).resolve()
         built, published, deferred = builder(plan, stage, prefix), False, False
         try:
@@ -304,7 +309,9 @@ def build_and_switch(plan: Plan, builder: Builder = build, who: session.Session 
                 raise DeployError(f"built epoch {epoch} is below the floor {plan.floor}")
             runtime_store.mark_verified(built, epoch, node_build.mark(built.prefix))
             try:
-                switch(built, plan, claimed=claimed)
+                runtime_git.until_free(plan.checkout, 0.0)
+                with owning(_switch_paths(plan), wait_s=plan.wait_s, who=who) as claimed:
+                    switch(built, plan, claimed=claimed)
             except Busy:
                 deferred = True
                 raise

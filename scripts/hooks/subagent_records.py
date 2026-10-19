@@ -1,4 +1,4 @@
-"""What the hooks keep about each subagent of the user: the board name and board the start hook registered it under."""
+"""What the hooks keep about each subagent of the user: the board name, board and model the start hook registered it under."""
 
 from __future__ import annotations
 
