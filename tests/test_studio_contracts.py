@@ -207,3 +207,24 @@ def test_pool_invalid_records_and_unrelated_collisions_are_isolated():
         library.get("collision", "1")
     another = export_package(graph(), package_id="another", version="1", name="Another")
     assert library.publish(another) == another
+
+
+def test_builtin_templates_match_server_node_contracts():
+    from poolhouse.studio.templates import templates
+    for template in templates():
+        result = validate_graph(template)
+        assert all(error["code"] in {"binding", "dependency"} for error in result["errors"]), (
+            template["id"], result["errors"])
+
+
+def test_tool_training_requires_bound_model_and_rejects_base_parameter():
+    value = graph()
+    value["nodes"][1]["type"] = "train.tool-calls"
+    errors = validate_graph(value)["errors"]
+    assert any(error["code"] == "input" and "model" in error["message"] for error in errors)
+    value["nodes"][1]["parameters"] = {"base": "unbound-model"}
+    assert any(error["code"] == "node" and "base" in error["message"] for error in validate_graph(value)["errors"])
+    specs = {spec["type"]: spec for spec in node_catalog()}
+    assert "base" not in specs["train.tool-calls"]["parameters"]["properties"]
+    for kind in ("generate", "generate.structured"):
+        assert specs[kind]["parameters"]["properties"]["max_tokens"]["default"] == 512

@@ -34,7 +34,10 @@ def node_catalog() -> list[dict[str, Any]]:
         _node("generate", "Generate", "Inference", {"model": "model", "prompt": "text"}, {"text": "text", "response": "json"},
               properties={"temperature": {"type": "number", "default": 0.7, "minimum": 0, "maximum": 2}}, capabilities=["inference"]),
         _node("evaluate", "Evaluate model", "Evaluation", {"model": "model", "dataset": "dataset"}, {"metrics": "metrics", "report": "report"},
-              properties={"suite": {"type": "string", "default": "holdout"}}, capabilities=["evaluation"]),
+              properties={"suite": {"type": "string", "enum": ["holdout", "tool-calls"], "default": "holdout"},
+                          "recipe": {"type": "string", "enum": ["classify-text", "text-lm", "tool-calls"], "default": "tool-calls"},
+                          "framework": {"type": "string", "enum": ["", "mlx", "torch"], "default": ""},
+                          "temperature": {"type": "number", "default": 0, "minimum": 0, "maximum": 2}}, capabilities=["evaluation"]),
         _node("compare", "Compare metrics", "Results", {"base": "metrics", "trained": "metrics"}, {"metrics": "metrics", "report": "report"}),
         _node("chart", "Metrics chart", "Results", {"metrics": "metrics"}, {"report": "report"}),
         _node("export", "Export model", "Results", {"model": "model"}, {"artifact": "artifact"},
@@ -63,6 +66,8 @@ def node_catalog() -> list[dict[str, Any]]:
     for recipe in recipes():
         fields: dict[str, Any] = {}
         for field in recipe.get("fields", []):
+            if field["name"] == "base":
+                continue
             item = {"type": {"int": "integer", "float": "number", "bool": "boolean", "text": "string"}[field["type"]],
                     "title": field.get("label", field["name"]), "default": field.get("default")}
             for before, after in (("min", "minimum"), ("max", "maximum")):
@@ -76,6 +81,8 @@ def node_catalog() -> list[dict[str, Any]]:
                              {"model": "model", "metrics": "metrics", "checkpoint": "artifact"}, properties=fields,
                              capabilities=["training"], side_effects=True, recipe=recipe["id"]))
     for spec in catalog:
+        if spec["type"] in ("generate", "generate.structured"):
+            spec["parameters"]["properties"]["max_tokens"] = {"type": "integer", "default": 512, "minimum": 1, "maximum": 32768}
         if spec["type"] in ("dataset", "model", "data.harvest", "gym.recordings"):
             resource = {"data.harvest": "traces", "gym.recordings": "recordings"}.get(spec["type"], spec["type"])
             spec["bindings"] = {resource: {"kind": resource, "required": True}}
@@ -89,7 +96,7 @@ def node_catalog() -> list[dict[str, Any]]:
         if spec["type"] == "gym.evaluate":
             spec["parameters"] = _schema({"episodes": {"type": "integer", "default": 5, "minimum": 1}})
         if spec["type"].startswith("train.") and spec["type"] != "train.decision":
-            spec["inputs"].append({"name": "model", "type": "model", "required": False})
+            spec["inputs"].append({"name": "model", "type": "model", "required": spec["type"] == "train.tool-calls"})
     return deepcopy(catalog)
 
 
