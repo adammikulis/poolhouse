@@ -17,10 +17,10 @@ RECORD = Path(os.environ.get("DEV_TEST_REUSE_RECORD", ""))
 REAL_STATE = tuple(Path.home() / part for part in (".poolhouse", "Library/Keychains", ".ssh", ".gnupg",
                                                      ".cache/huggingface", ".config"))
 IGNORED = (".git", ".pytest_cache", ".testmondata", "__pycache__", ".ruff_cache", ".mypy_cache")
-SHARED = (Path("/tmp"), Path("/var/tmp"))  # noqa: S108 - where tests put short socket roots; writable like the system temp
+TEMP_ROOTS = (Path("/tmp"), Path("/var/tmp"))  # noqa: S108 - where tests put short socket roots; writable like the system temp
 CARGO_CACHE = Path(os.environ.get("DEV_TEST_CARGO_DIR") or Path.home() / ".cache" / "test-cargo")
 """The shared Rust build folder (`scripts/testnode.py`): a build cache rewritten only to what the sources say."""
-SHARED_TEMP = tuple({*SHARED, *(p.resolve() for p in SHARED)})
+SHARED_TEMP = tuple({*TEMP_ROOTS, *(p.resolve() for p in TEMP_ROOTS)})
 WRITABLE = tuple({Path(tempfile.gettempdir()), Path(tempfile.gettempdir()).resolve(), Path("/dev"), CARGO_CACHE, CARGO_CACHE.resolve(),
                   *SHARED_TEMP})
 MADE: set[Path] = set()
