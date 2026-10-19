@@ -238,14 +238,16 @@ def test_an_origin_that_keeps_moving_through_the_checks_stops_the_landing_after_
     assert "tests/test_mover.py" not in git(world.proj.root, "ls-tree", "-r", "--name-only", world.proj.origin_head())
 
 
-def test_a_change_to_the_lander_on_origin_during_the_checks_stops_the_landing(world):
+@pytest.mark.parametrize("name", ["scripts/land_extra.py", "scripts/queue_doctor.py"])
+def test_a_change_to_the_lander_on_origin_during_the_checks_stops_the_landing(world, name):
     tree, _ = world.start("lander-moves", {"tests/test_slow.py": SLOW_TEST})
     running = world.start_land(tree)
     wait_for(world.proj.base / "started")
-    moved = world.proj.advance("scripts/land_extra.py", "VALUE = 1\n")
+    path = world.proj.root / name
+    moved = world.proj.advance(name, (path.read_text() if path.exists() else "") + "VALUE = 1\n")
     release_checks(world)
     code, out = Output(running).finish()
-    assert code == 5 and "the lander changed on origin while this run was going" in out, out
+    assert code == 5 and f"the lander changed on origin while this run was going ({name})" in out, out
     assert world.proj.origin_head() == moved and tree.exists()
 
 

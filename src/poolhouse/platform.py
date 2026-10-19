@@ -10,7 +10,7 @@ import signal
 import subprocess
 import sys
 import threading
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +24,7 @@ __all__ = [
     "private_file",
     "process_group_kwargs",
     "quit_signals",
+    "quitting",
     "start_process",
     "stop_gently",
     "stop_pid",
@@ -178,6 +179,19 @@ def on_quit(callback: Callable[[int, Any], None]) -> list[int]:
             signal.signal(signum, callback)
             hooked.append(signum)
     return hooked
+
+
+@contextlib.contextmanager
+def quitting(callback: Callable[[int, Any], None]) -> Iterator[list[int]]:
+    """Hold ``callback`` on every quit signal for the block, then put the earlier handlers back."""
+    earlier = {signum: signal.getsignal(signum) for signum in quit_signals()}
+    hooked = on_quit(callback)
+    try:
+        yield hooked
+    finally:
+        for signum in hooked:
+            if earlier[signum] is not None:
+                signal.signal(signum, earlier[signum])
 
 
 # -- a file for this user only ----------------------------------------------------------

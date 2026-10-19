@@ -115,6 +115,8 @@ def reused_files(command: list[str]) -> set[str]:
     if not (REUSE["on"] and files):
         return set()
     session = testreuse_run.Session(ROOT, command, files, reuse_store())
+    if session.narrow:
+        return set()
     try:
         looks = {file: session.lookup(file) for file in files}
         return {file for file, look in looks.items()
@@ -197,7 +199,7 @@ def execute_run(command, environment, tier, record: OutputRecord):
     index = shown.index("-n")
     want = int(shown[index + 1])
     shown[index + 1] = "{workers}"
-    shown.extend(["-p", "testslots_pytest", "-p", "testdurations", "-p", "testagentenv_pytest", "-p", "testphases"])
+    shown.extend(["-p", "testslots_pytest", "-p", "testdurations", "-p", "testagentenv_pytest", "-p", "testphases", "-p", "testinterrupt"])
     phases_fd, phases_name = tempfile.mkstemp(suffix=".phases.json")
     os.close(phases_fd)
     phases_file = Path(phases_name)

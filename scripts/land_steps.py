@@ -19,6 +19,7 @@ import land_exec as ex
 import land_git as lg
 import land_review
 import land_stale
+import queue_doctor
 
 from poolhouse import lock
 from poolhouse.board import session
@@ -290,7 +291,7 @@ def check_lander(L: Landing) -> None:
 
 def lander_unchanged(L: Landing) -> None:
     """Stop when origin changed a lander file after this run began: the code in memory is the older lander."""
-    name = next((p for p in lg.changed(L.wt, L.lander_base, L.remote) if lg.LANDER.fullmatch(p)), "")
+    name = lg.lander_moved(L.wt, L.lander_base, L.remote)
     if name:
         raise ex.Stop(f"the lander changed on origin while this run was going ({name}); run land again")
 
@@ -398,6 +399,7 @@ def prove(L: Landing, checks: ex.Plan, tree: str, earlier: land_stale.Green | No
             return land_stale.carried(earlier, L.sha, L.remote), list(earlier.tail)
         say(f"checks again: {why}")
     note(L, "running checks")
+    queue_doctor.mend(L.wt, say=say)
     tail = ex.run_plan(L.wt, checks.checks, tree)
     return land_stale.green_of(L.sha, L.remote, checks, tail), tail
 

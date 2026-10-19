@@ -186,6 +186,8 @@ class Jobs:
             return f"job {job} already {status['state']}"
         with_pid = int(status.get("pid", 0))
         if storage.alive(with_pid, float(status.get("started", 0))):
+            with (self.path(job) / "log").open("a", encoding="utf-8") as log:
+                log.write(f"test: cancelled by {who or 'a caller with the job secret'} running in {Path.cwd()}\n")
             os.kill(with_pid, signal.SIGTERM)
         self.write(job, "status.json", {**status, "state": "cancelled", "exit": 130, "finished": time.time()})
         return f"job {job} cancelled"
