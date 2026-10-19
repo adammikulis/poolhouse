@@ -278,3 +278,12 @@ def test_the_push_hook_starts_a_sync_for_a_push_of_the_development_branch(rig, m
     assert started == []
     assert hook.main(DEV, [f"refs/heads/{DEV} {sha} refs/heads/{DEV} {zero}"]) == 0
     assert started == [(sha, DEV, rig.pusher)]
+
+
+def test_sweep_ends_by_following_origin(rig):
+    sha = rig.push()
+    done = subprocess.run([sys.executable, str(ROOT / "scripts" / "worktrees"), "sweep"], cwd=rig.primary, capture_output=True,
+                          text=True, check=False, timeout=120)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "primary-sync: the primary checkout moved from" in done.stdout
+    assert rig.head() == sha

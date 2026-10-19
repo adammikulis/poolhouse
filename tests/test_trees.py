@@ -378,7 +378,8 @@ def test_the_script_closes_and_sweeps(main):
     commit(work, "f1")
     assert run(main, "close", str(work), "--landed").returncode == 2 and work.exists()
     assert run(main, "close", str(work), "--abandon", "test").returncode == 0 and not work.exists()
-    assert run(main, "sweep").stdout == "" and done.exists()
+    first = run(main, "sweep").stdout
+    assert "swept" not in first and first.startswith("primary-sync:") and done.exists()
     out = run(main, "sweep", "--min-age", "0")
     assert out.returncode == 0 and "swept" in out.stdout and not done.exists()
 

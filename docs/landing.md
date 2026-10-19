@@ -95,6 +95,23 @@ trees of the review check (`required`, `merged_parents`), the merge of a reviewe
 the checks, `git diff-tree --check`, and the file lists and files that the push check parses and that `no-data-files --range`
 reads all come from it; file names are NUL separated, and a path that is not UTF-8 stops the check.
 
+## The primary checkout follows origin
+
+Agents push the development branch directly, so nothing else moves the primary checkout. `scripts/hooks/pushed` starts
+`scripts/primary_sync.py --dev BRANCH --sha SHA` detached after an agent's push, on the person's machine only, and
+`scripts/worktrees sweep` runs it last. The script waits up to 60 seconds for `git ls-remote origin BRANCH` to show the pushed
+commit, fetches, and runs `git merge --ff-only origin/BRANCH` in the primary checkout, only when:
+
+- the primary checkout is on the development branch (`$POOLHOUSE_DEV_BRANCH`, else its own branch; never `main` or `master`);
+- `git status --porcelain --untracked-files=all` is empty and no merge, rebase, cherry-pick, revert or bisect is under way;
+- the primary is behind `origin/BRANCH` in a straight line.
+
+Otherwise it prints one line saying why and changes nothing: it never stashes, checks out, resets or touches a changed tree.
+It is idempotent. It holds `<git-common-dir>/primary-sync.lock` without waiting; a run that finds the lock held leaves
+`primary-sync.again` and the holder goes round again (at most five rounds). Output of the detached run is
+`<git-common-dir>/primary-sync.log`. It is the only code that moves the primary checkout for an agent, and the one thing
+it runs is that fast-forward.
+
 ## The CI run
 
 The whole suite runs on GitHub, in the `ci` workflow, for each push of the development branch that changes more than

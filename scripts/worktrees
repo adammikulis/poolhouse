@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import land_git as lg
+import primary_sync
 
 from poolhouse import trees
 from poolhouse.serve.process import working_directories
@@ -94,6 +95,7 @@ def command(argv: list[str]) -> int:
         print(f"swept {done['path']} ({done['branch']})")
     for path, why in stayed:
         print(f"worktrees: kept {path}: {why}", file=sys.stderr)
+    print(primary_sync.follow_origin(root))
     return 0
 
 
