@@ -10,6 +10,8 @@ from copy import deepcopy
 import pytest
 from test_fleet_ui import Serving
 
+from poolhouse.fleet.jobs import Job
+
 
 @pytest.fixture
 def studio(tmp_path):
@@ -169,3 +171,22 @@ def test_cached_artifacts_resolve_exact_authorized_original_without_copying(stud
     third["nodes"]["report"]["fingerprint"] = "substituted-implementation"
     studio.ui.studio.store.put("run", third)
     assert studio.call(f"/ui/studio/runs/{third['id']}/artifacts", cookie=cookie)[0] == 400
+
+
+def test_run_logs_use_owned_child_identity_and_current_resource_authorization(studio):
+    cookie, _ = _cookie(studio)
+    run = _report_run(studio, cookie)
+    job = Job("owned-child", "Report", ["fixed-worker"], str(studio.files), state="done")
+    studio.runner.jobs[job.id] = job
+    folder = studio.runner.job_dir(job.id)
+    folder.mkdir(parents=True)
+    studio.runner.log_path(job.id).write_text("Measured one result\n")
+    run["nodes"]["report"]["job_id"] = job.id
+    studio.ui.studio.store.put("run", run)
+    route = f"/ui/studio/runs/{run['id']}/logs?node=report"
+    status, body, _ = studio.call(route, cookie=cookie)
+    assert status == 200 and body["log"] == "Measured one result\n"
+    assert body["job"]["id"] == job.id
+    assert studio.call(route.replace("node=report", "node=..%2Fprivate"), cookie=cookie)[0] == 404
+    studio.ui.studio_authorize = lambda principal, node, values: node is None
+    assert studio.call(route, cookie=cookie)[0] == 403
