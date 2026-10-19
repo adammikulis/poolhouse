@@ -196,3 +196,32 @@ def test_the_pass_spares_an_old_node_whose_run_is_alive(monkeypatch, tmp_path):
         assert live.poll() is None
     finally:
         live.kill()
+
+
+class Unreadable:
+    """A process whose attributes macOS will not release, as psutil reports one (a system error rather than a psutil error)."""
+
+    pid = 2**22 + 1
+
+    def as_dict(self, attrs=None, ad_value=None):
+        raise SystemError("error return without exception set")
+
+
+def test_an_unreadable_process_does_not_stop_the_pass_that_ends_old_nodes(monkeypatch, tmp_path):
+    program = node_program(tmp_path)
+    process = subprocess.Popen([str(program), "run", "--state", str(tmp_path / "state")], start_new_session=True)
+    try:
+        time.sleep(0.5)
+
+        def process_iter(attrs=None, ad_value=None):
+            if attrs:
+                raise PermissionError("sysctl KERN_PROCARGS2")
+            yield Unreadable()
+            yield psutil.Process(process.pid)
+
+        monkeypatch.setattr(queue_doctor.psutil, "process_iter", process_iter)
+        old = time.time() + queue_doctor.NODE_MAX_AGE_S + 60
+        assert queue_doctor.reap_nodes(now=old, say=lambda text: None, only=frozenset({process.pid})) == [process.pid]
+        assert process.wait(timeout=10) is not None
+    finally:
+        process.kill()

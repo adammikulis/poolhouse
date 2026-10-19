@@ -119,3 +119,44 @@ def test_wrong_owned_process_birth_never_signals(tmp_path, monkeypatch):
     finally:
         owner.kill()
         owner.join(timeout=3)
+
+
+class _Process:
+    """A process as `psutil` hands one over: its attributes read on demand, or an error for each."""
+
+    def __init__(self, pid, attributes=None, error=None):
+        self.pid, self.attributes, self.error = pid, attributes, error
+
+    def as_dict(self, attrs=None, ad_value=None):
+        if self.error:
+            raise self.error
+        return {name: self.attributes.get(name, ad_value) for name in attrs}
+
+
+def _unreadable_among_readable(monkeypatch):
+    import psutil
+
+    from poolhouse.serve import process
+
+    rows = [_Process(5, error=PermissionError("sysctl KERN_PROCARGS2")), _Process(6, error=SystemError("proc_cmdline set an exception")),
+            _Process(7, error=psutil.NoSuchProcess(7)),
+            _Process(8, {"pid": 8, "create_time": 12.5, "cmdline": ["python", "-m", "poolhouse.x"], "exe": "/opt/x/bin/python", "cwd": "/opt/x/run"}),
+            _Process(9, {"pid": 9, "create_time": 13.5, "cmdline": [], "exe": None, "cwd": None})]
+
+    def process_iter(attrs=None, ad_value=None):
+        if attrs:
+            raise PermissionError("sysctl KERN_PROCARGS2")
+        yield from rows
+
+    monkeypatch.setattr(process.psutil, "process_iter", process_iter)
+    return process
+
+
+def test_a_process_that_cannot_be_read_is_left_out_of_the_command_lines(monkeypatch):
+    process = _unreadable_among_readable(monkeypatch)
+    assert process.command_lines() == [(8, 12.5, ("python", "-m", "poolhouse.x"))]
+
+
+def test_a_process_that_cannot_be_read_is_not_among_those_running_within_a_folder(monkeypatch):
+    process = _unreadable_among_readable(monkeypatch)
+    assert process.running_within(Path("/opt/x")) == [8] and process.running_within(Path("/opt/y")) == []

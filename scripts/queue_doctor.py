@@ -183,14 +183,16 @@ def orphaned(proc: psutil.Process) -> bool:
 
 def reap_nodes(now: float | None = None, say: Callable[[str], None] = print, only: frozenset[int] | None = None) -> list[int]:
     """End old test nodes (and their supervisors) whose pytest run is gone; the pids in ``only`` are ended without that check. Returns the pids ended."""
+    from poolhouse.serve.process import readable
+
     now = time.time() if now is None else now
     ended = []
-    for proc in psutil.process_iter(["pid", "cmdline", "create_time"]):
+    for proc, info in readable(["pid", "cmdline", "create_time"]):
         try:
-            if only is not None and proc.info["pid"] not in only:
+            if only is not None and info["pid"] not in only:
                 continue
-            line = " ".join(proc.info["cmdline"] or [])
-            if not TEST_NODE.search(line) or now - proc.info["create_time"] < NODE_MAX_AGE_S:
+            line = " ".join(info["cmdline"] or [])
+            if not TEST_NODE.search(line) or now - (info["create_time"] or now) < NODE_MAX_AGE_S:
                 continue
             if only is None and not orphaned(proc):
                 continue
