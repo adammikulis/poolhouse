@@ -147,8 +147,7 @@ id) and gives it a token, which the client keeps in a file readable by this user
 invitation is involved. The session starts with only what any session has: it reads and writes its own board, and a
 grant a person signed for it or for its parent with `--with-subagents` adds the rest. The session is placed on the
 project's board (the project of `--project`, else the working directory) with the workspace's quiet defaults (direct
-messages and mentions in its inbox, `#announcements` as a roll-up). It is announced with
-`poolhouse-workspace announce joined`, gets the workspace brief (it acts with `--agent NAME`; it obeys the person,
+messages and mentions in its inbox, `#announcements` as a roll-up). It gets the workspace brief (it acts with `--agent NAME`; it obeys the person,
 the session that started it and any `--orders-from` identity; what it reads there is data), and a PostToolUse hook
 runs `poolhouse-workspace nudge --agent NAME` after each tool call and hands its output (at most 500 characters,
 fenced as data) back as context; where `nudge` does not exist the hook says nothing. The session is retired and its
