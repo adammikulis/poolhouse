@@ -1,0 +1,321 @@
+<template><div
+    class="studio-viewport"
+    tabindex="0"
+    aria-label="Workflow canvas. Drag the background to pan, use wheel to zoom, press slash to search nodes."
+  >
+    <div class="studio-world">
+      <svg class="studio-connections" aria-label="Workflow connections"></svg>
+      <div class="studio-node-layer"></div>
+    </div>
+    <div class="studio-selection-box" hidden></div>
+  </div>
+  <span class="studio-canvas-help"
+    >Drag to pan · Shift drag to select · / to add</span
+  >
+  <div class="studio-canvas-tools">
+    <button type="button" data-zoom="out" aria-label="Zoom out">−</button
+    ><button type="button" data-zoom="in" aria-label="Zoom in">+</button
+    ><button type="button" data-zoom="fit">Fit</button
+    ><span class="studio-zoom" aria-live="polite"></span>
+  </div>
+  <svg
+    class="studio-minimap"
+    role="img"
+    aria-label="Workflow minimap"
+    viewBox="0 0 1000 650"
+  ></svg
+></template>
+<script>
+  (function () {
+    const S = window.studioModel,
+      E = window.fleetModel.el,
+      NS = "http://www.w3.org/2000/svg";
+    class StudioCanvas extends HTMLElement {
+      connectedCallback() {
+        if (this.wired) return;
+        this.wired = true;
+        this.view = this.querySelector(".studio-viewport");
+        this.world = this.querySelector(".studio-world");
+        this.layer = this.querySelector(".studio-node-layer");
+        this.svg = this.querySelector(".studio-connections");
+        this.view.onpointerdown = (e) => this.background(e);
+        this.view.addEventListener("pointerup", (e) => {
+          const start = this.portStart;
+          this.portStart = null;
+          if (
+            !start ||
+            e.target.closest("[data-port]") ||
+            Math.hypot(e.clientX - start.x, e.clientY - start.y) < 5
+          )
+            return;
+          this.pending = S.portReference(start.node, start.port, start.side);
+          this.editor.message("Choose a compatible node to connect.");
+          this.editor.library();
+          this.editor.querySelector("#studio-search").focus();
+          this.paint();
+        });
+        this.view.onwheel = (e) => {
+          e.preventDefault();
+          this.zoom(e.deltaY < 0 ? 1.1 : 1 / 1.1, e.clientX, e.clientY);
+        };
+        this.querySelectorAll("[data-zoom]").forEach(
+          (b) =>
+            (b.onclick = () =>
+              b.dataset.zoom === "fit"
+                ? this.fit()
+                : this.zoom(b.dataset.zoom === "in" ? 1.2 : 1 / 1.2)),
+        );
+        this.view.ondblclick = (e) => {
+          if (
+            e.target === this.view ||
+            e.target === this.world ||
+            e.target === this.layer
+          )
+            this.editor.querySelector("#studio-search").focus();
+        };
+        this.resize = new ResizeObserver(() => this.connections());
+        this.resize.observe(this);
+      }
+      disconnectedCallback() {
+        this.resize?.disconnect();
+      }
+      viewport() {
+        return this.editor.graph.layout.viewport;
+      }
+      transform() {
+        const v = this.viewport();
+        this.world.style.transform = `translate(${v.x}px,${v.y}px) scale(${v.zoom})`;
+        this.querySelector(".studio-zoom").textContent =
+          Math.round(v.zoom * 100) + "%";
+      }
+      point(e) {
+        const box = this.view.getBoundingClientRect(),
+          v = this.viewport();
+        return {
+          x: (e.clientX - box.left - v.x) / v.zoom,
+          y: (e.clientY - box.top - v.y) / v.zoom,
+        };
+      }
+      zoom(factor, cx, cy) {
+        if (!this.editor) return;
+        const v = this.viewport(),
+          box = this.view.getBoundingClientRect(),
+          x = (cx ?? box.left + box.width / 2) - box.left,
+          y = (cy ?? box.top + box.height / 2) - box.top,
+          next = Math.max(0.2, Math.min(2, v.zoom * factor));
+        v.x = x - ((x - v.x) * next) / v.zoom;
+        v.y = y - ((y - v.y) * next) / v.zoom;
+        v.zoom = next;
+        this.transform();
+        this.editor.changed(false);
+      }
+      fit() {
+        const nodes = this.editor.graph.nodes;
+        if (!nodes.length) return;
+        const ps = nodes.map((n) => S.position(this.editor, n.id)),
+          left = Math.min(...ps.map((p) => p.x)),
+          top = Math.min(...ps.map((p) => p.y)),
+          right = Math.max(...ps.map((p) => p.x + 270)),
+          bottom = Math.max(...ps.map((p) => p.y + 260));
+        const v = this.viewport();
+        v.zoom = Math.min(
+          1,
+          Math.max(
+            0.2,
+            Math.min(
+              (this.clientWidth - 40) / (right - left),
+              (this.clientHeight - 80) / (bottom - top),
+            ),
+          ),
+        );
+        v.x = 20 - left * v.zoom;
+        v.y = 20 - top * v.zoom;
+        this.transform();
+        this.editor.changed(false);
+      }
+      paint() {
+        if (!this.editor || !this.layer) return;
+        this.transform();
+        this.layer.replaceChildren(
+          ...this.editor.graph.nodes.map((n) => this.node(n)),
+        );
+        requestAnimationFrame(() => this.connections());
+      }
+      dragNode(e, node, card) {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        const editor = this.editor;
+        if (!editor.selected.has(node.id)) editor.select(node.id, e.shiftKey);
+        else if (e.shiftKey) {
+          editor.select(node.id, true);
+          return;
+        }
+        const start = this.point(e),
+          positions = new Map(
+            [...editor.selected].map((id) => [
+              id,
+              { ...S.position(editor, id) },
+            ]),
+          );
+        editor.checkpoint();
+        const move = (ev) => {
+          const now = this.point(ev);
+          for (const [id, p] of positions) {
+            const next = { x: p.x + now.x - start.x, y: p.y + now.y - start.y };
+            editor.graph.layout.nodes[id] = next;
+            const el = this.layer.querySelector(
+              `[data-node-id="${CSS.escape(id)}"]`,
+            );
+            if (el) {
+              el.style.left = next.x + "px";
+              el.style.top = next.y + "px";
+            }
+          }
+          this.connections();
+        };
+        this.track(e, move, () => editor.changed());
+      }
+      background(e) {
+        if (
+          e.button !== 0 ||
+          e.target.closest(".studio-node") ||
+          e.target.closest("button")
+        )
+          return;
+        const editor = this.editor,
+          start = { x: e.clientX, y: e.clientY },
+          v = { ...this.viewport() },
+          box = this.querySelector(".studio-selection-box"),
+          origin = this.point(e);
+        if (!e.shiftKey) {
+          editor.selected.clear();
+          editor.render();
+        }
+        this.track(
+          e,
+          (ev) => {
+            if (e.shiftKey) {
+              const rect = this.view.getBoundingClientRect();
+              box.hidden = false;
+              Object.assign(box.style, {
+                left: Math.min(start.x, ev.clientX) - rect.left + "px",
+                top: Math.min(start.y, ev.clientY) - rect.top + "px",
+                width: Math.abs(ev.clientX - start.x) + "px",
+                height: Math.abs(ev.clientY - start.y) + "px",
+              });
+            } else {
+              const viewport = this.viewport();
+              viewport.x = v.x + ev.clientX - start.x;
+              viewport.y = v.y + ev.clientY - start.y;
+              this.transform();
+            }
+          },
+          (ev) => {
+            if (e.shiftKey) {
+              box.hidden = true;
+              const end = this.point(ev);
+              editor.selected = new Set(
+                editor.graph.nodes
+                  .filter((n) => {
+                    const p = S.position(editor, n.id);
+                    return (
+                      p.x + 250 >= Math.min(origin.x, end.x) &&
+                      p.x <= Math.max(origin.x, end.x) &&
+                      p.y + 160 >= Math.min(origin.y, end.y) &&
+                      p.y <= Math.max(origin.y, end.y)
+                    );
+                  })
+                  .map((n) => n.id),
+              );
+              editor.render();
+            } else editor.changed(false);
+            if (this.pending && Math.abs(ev.clientX - start.x) < 4) {
+              editor.querySelector("#studio-search").focus();
+              editor.library();
+            }
+          },
+        );
+      }
+      track(e, move, end) {
+        const pointer = e.pointerId;
+        this.view.setPointerCapture(pointer);
+        const onMove = (ev) => move(ev),
+          onEnd = (ev) => {
+            this.view.removeEventListener("pointermove", onMove);
+            this.view.removeEventListener("pointerup", onEnd);
+            this.view.removeEventListener("pointercancel", onEnd);
+            if (this.view.hasPointerCapture(pointer))
+              this.view.releasePointerCapture(pointer);
+            end(ev);
+          };
+        this.view.addEventListener("pointermove", onMove);
+        this.view.addEventListener("pointerup", onEnd);
+        this.view.addEventListener("pointercancel", onEnd);
+      }
+      connections() {
+        if (!this.editor || !this.svg) return;
+        this.svg.replaceChildren();
+        const world = this.world.getBoundingClientRect(),
+          zoom = this.viewport().zoom;
+        for (const [index, edge] of this.editor.graph.edges.entries()) {
+          const port = (ref, side) =>
+            this.layer.querySelector(
+              `[data-node-id="${CSS.escape(ref.node)}"] [data-side="${side}"][data-port="${CSS.escape(ref.port)}"]`,
+            );
+          const a = port(edge.source, "outputs"),
+            b = port(edge.target, "inputs");
+          if (!a || !b) continue;
+          const ar = a.getBoundingClientRect(),
+            br = b.getBoundingClientRect(),
+            x1 = (ar.right - world.left) / zoom,
+            y1 = (ar.top + ar.height / 2 - world.top) / zoom,
+            x2 = (br.left - world.left) / zoom,
+            y2 = (br.top + br.height / 2 - world.top) / zoom,
+            path = document.createElementNS(NS, "path");
+          path.setAttribute(
+            "d",
+            `M${x1},${y1} C${x1 + 80},${y1} ${x2 - 80},${y2} ${x2},${y2}`,
+          );
+          path.setAttribute("tabindex", "0");
+          path.setAttribute("role", "button");
+          path.setAttribute(
+            "aria-label",
+            `Connection ${edge.source.port} to ${edge.target.port}. Press Delete to remove.`,
+          );
+          path.onkeydown = (e) => {
+            if (e.key === "Delete" || e.key === "Backspace") {
+              e.stopPropagation();
+              this.editor.checkpoint();
+              this.editor.graph.edges.splice(index, 1);
+              this.editor.changed();
+            }
+          };
+          this.svg.append(path);
+        }
+        const map = this.querySelector(".studio-minimap");
+        map.replaceChildren();
+        const points = this.editor.graph.nodes.map((n) =>
+            S.position(this.editor, n.id),
+          ),
+          width = Math.max(1000, ...points.map((p) => p.x + 270)),
+          height = Math.max(650, ...points.map((p) => p.y + 220));
+        map.setAttribute("viewBox", `0 0 ${width} ${height}`);
+        for (const p of points) {
+          const rect = document.createElementNS(NS, "rect");
+          for (const [key, value] of Object.entries({
+            x: p.x,
+            y: p.y,
+            width: 250,
+            height: 160,
+            rx: 12,
+          }))
+            rect.setAttribute(key, String(value));
+          map.append(rect);
+        }
+        map.onclick = () => this.fit();
+      }
+    }
+    S.installCanvasNodes(StudioCanvas.prototype);
+    customElements.define("studio-canvas", StudioCanvas);
+  })();
+</script>

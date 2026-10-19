@@ -1,0 +1,342 @@
+<script>
+  (function () {
+    const S = window.studioModel,
+      E = window.fleetModel.el;
+    S.installRuns = (proto) =>
+      Object.assign(proto, {
+        rememberSubmission(value) {
+          this.submission = value;
+          try {
+            if (value)
+              sessionStorage.setItem(
+                "poolhouse-studio-submission",
+                JSON.stringify(value),
+              );
+            else sessionStorage.removeItem("poolhouse-studio-submission");
+          } catch {}
+        },
+        async run(selected = false) {
+          if (this.submitting) return;
+          this.submitting = true;
+          this.message("Validating workflow…");
+          this.querySelector("#studio-run").disabled = true;
+          this.querySelector("#studio-run-selected").disabled = true;
+          try {
+            await this.save();
+            const validation = await S.api("/validate", {
+              graph: this.rootGraph(),
+            });
+            if (!validation.valid) {
+              this.message(
+                (validation.errors || [])
+                  .map((e) =>
+                    typeof e === "string" ? e : e.message || JSON.stringify(e),
+                  )
+                  .join(" · "),
+              );
+              return;
+            }
+            const prefix = this.context.map((c) => c.node.id).join("/");
+            const outputs = selected
+                ? [...this.selected].map((id) =>
+                    prefix ? prefix + "/" + id : id,
+                  )
+                : [],
+              signature = JSON.stringify([
+                this.workflowId,
+                this.revision,
+                outputs,
+              ]);
+            if (this.submission?.signature !== signature)
+              this.rememberSubmission({ signature, key: S.id() });
+            const r = await S.api("/runs", {
+              workflow_id: this.workflowId,
+              revision: this.revision,
+              output_nodes: outputs,
+              idempotency_key: this.submission.key,
+            });
+            this.activeRun = r.run;
+            if (this.submission)
+              this.rememberSubmission({ ...this.submission, runId: r.run.id });
+            if (
+              ["done", "completed", "failed", "cancelled"].includes(r.run.state)
+            )
+              this.rememberSubmission(null);
+            this.message("Run submitted. Edits apply to your next run.");
+            await this.refreshRuns();
+          } finally {
+            this.submitting = false;
+            this.querySelector("#studio-run").disabled = false;
+            this.querySelector("#studio-run-selected").disabled =
+              !this.selected.size;
+          }
+        },
+        async refreshRuns() {
+          clearTimeout(this.poll);
+          if (this.host.hidden) return;
+          const result = await S.api("/runs");
+          const runs = result.runs || [],
+            box = this.querySelector("#studio-runs");
+          box.replaceChildren(
+            ...runs.map((run) =>
+              E(
+                "div",
+                { class: "studio-run-row" },
+                E(
+                  "button",
+                  {
+                    type: "button",
+                    onclick: () =>
+                      this.perform(async () => {
+                        this.activeRun = (
+                          await S.api("/runs/" + encodeURIComponent(run.id))
+                        ).run;
+                        this.runDetail();
+                        this.render();
+                      }),
+                  },
+                  run.title || run.id.slice(0, 8),
+                ),
+                E("span", {}, run.state),
+                E("span", {}, "Revision " + run.revision),
+              ),
+            ),
+          );
+          if (!runs.length)
+            box.append(
+              E(
+                "p",
+                {},
+                "Run a workflow to see logs, metrics and artifacts here.",
+              ),
+            );
+          if (this.activeRun) {
+            const latest = await S.api(
+              "/runs/" + encodeURIComponent(this.activeRun.id),
+            );
+            this.activeRun = latest.run;
+            if (
+              this.submission?.runId === latest.run.id &&
+              ["done", "completed", "failed", "cancelled"].includes(
+                latest.run.state,
+              )
+            )
+              this.rememberSubmission(null);
+            this.runDetail();
+            this.canvas.paint();
+          }
+          if (
+            runs.some((r) => ["running", "queued", "pending"].includes(r.state))
+          )
+            this.poll = setTimeout(
+              () => this.perform(() => this.refreshRuns()),
+              2000,
+            );
+        },
+        metricChart(value) {
+          const entries = Object.entries(value || {}).filter(
+            ([, v]) => typeof v === "number" && Number.isFinite(v),
+          );
+          if (!entries.length) return null;
+          const ns = "http://www.w3.org/2000/svg",
+            svg = document.createElementNS(ns, "svg");
+          const width = 480,
+            height = entries.length * 34 + 20,
+            max = Math.max(1, ...entries.map(([, v]) => Math.abs(v)));
+          svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+          svg.setAttribute("role", "img");
+          svg.setAttribute(
+            "aria-label",
+            entries.map(([k, v]) => k + ": " + v).join(", "),
+          );
+          svg.style.maxWidth = "680px";
+          svg.style.width = "100%";
+          entries.forEach(([name, value], i) => {
+            const text = document.createElementNS(ns, "text");
+            text.setAttribute("x", "0");
+            text.setAttribute("y", String(i * 34 + 22));
+            text.setAttribute("fill", "var(--text)");
+            text.setAttribute("font-size", "12");
+            text.textContent = name + " · " + value;
+            const rect = document.createElementNS(ns, "rect");
+            rect.setAttribute("x", "190");
+            rect.setAttribute("y", String(i * 34 + 6));
+            rect.setAttribute("width", String((Math.abs(value) / max) * 280));
+            rect.setAttribute("height", "22");
+            rect.setAttribute("rx", "5");
+            rect.setAttribute("fill", "var(--poolhouse-orange)");
+            svg.append(rect, text);
+          });
+          return svg;
+        },
+        async artifactFiles(run, panel) {
+          const result = await S.api(
+            "/runs/" + encodeURIComponent(run.id) + "/artifacts",
+          );
+          panel.replaceChildren(
+            ...(result.files || []).map((file) =>
+              E(
+                "button",
+                {
+                  type: "button",
+                  onclick: () =>
+                    this.perform(async () => {
+                      const url = new URL(file.href, location.origin);
+                      if (
+                        url.origin !== location.origin ||
+                        !/^\/ui\/studio\/runs\/[a-f0-9]{32}\/artifacts\/file$/.test(
+                          url.pathname,
+                        )
+                      )
+                        throw Error("This artifact link is unavailable.");
+                      const response = await window.fleetModel.api(
+                        url.pathname + url.search,
+                        { responseType: "blob" },
+                      );
+                      if (!response.ok) {
+                        window.fleetModel.refused(response);
+                        throw Error(
+                          response.error || "Artifact download unavailable.",
+                        );
+                      }
+                      S.downloadBlob(file.name, response.blob);
+                    }),
+                },
+                "Download " + file.name,
+              ),
+            ),
+          );
+          if (!(result.files || []).length)
+            panel.append(E("p", {}, "No downloadable files in this run."));
+          panel.append(
+            E(
+              "button",
+              {
+                type: "button",
+                onclick: () =>
+                  S.download(
+                    "run-" + run.id + "-artifacts.json",
+                    result.artifacts,
+                  ),
+              },
+              "Export artifact manifest",
+            ),
+          );
+        },
+        async nodeLogs(run, id, panel) {
+          const result = await S.api(
+            "/runs/" +
+              encodeURIComponent(run.id) +
+              "/logs?node=" +
+              encodeURIComponent(id),
+          );
+          panel.hidden = false;
+          panel.textContent = result.log || "No worker log for this node.";
+          if (result.metrics?.length)
+            panel.textContent +=
+              "\n\nMetrics\n" + JSON.stringify(result.metrics, null, 2);
+        },
+        runDetail() {
+          const box = this.querySelector("#studio-run-detail"),
+            run = this.activeRun;
+          if (!run) {
+            box.replaceChildren();
+            return;
+          }
+          box.replaceChildren(
+            E("h3", {}, "Run " + run.id.slice(0, 8) + " · " + run.state),
+          );
+          if (["running", "queued", "pending"].includes(run.state))
+            box.append(
+              E(
+                "button",
+                {
+                  type: "button",
+                  onclick: () =>
+                    this.perform(async () => {
+                      await S.api(
+                        "/runs/" + encodeURIComponent(run.id) + "/cancel",
+                        {},
+                      );
+                      await this.refreshRuns();
+                    }),
+                },
+                "Cancel run",
+              ),
+            );
+          if (["interrupted", "failed", "cancelled"].includes(run.state))
+            box.append(
+              E(
+                "button",
+                {
+                  type: "button",
+                  onclick: () =>
+                    this.perform(async () => {
+                      await S.api(
+                        "/runs/" + encodeURIComponent(run.id) + "/resume",
+                        {},
+                      );
+                      await this.refreshRuns();
+                    }),
+                },
+                "Resume run",
+              ),
+            );
+          for (const [id, node] of Object.entries(run.nodes || {})) {
+            const graphNode = this.rootGraph().nodes.find((n) => n.id === id),
+              title = graphNode ? S.spec(this, graphNode).title : id;
+            box.append(E("h4", {}, title + " · " + node.state));
+            const logs = E("pre", { hidden: true });
+            box.append(
+              E(
+                "button",
+                {
+                  type: "button",
+                  onclick: () =>
+                    this.perform(() => this.nodeLogs(run, id, logs)),
+                },
+                "View logs · " + title,
+              ),
+              logs,
+            );
+
+            if (node.error) box.append(E("p", {}, node.error));
+            if (node.logs)
+              box.append(
+                E(
+                  "pre",
+                  {},
+                  typeof node.logs === "string"
+                    ? node.logs
+                    : node.logs.join("\n"),
+                ),
+              );
+            if (node.outputs) {
+              const chart = this.metricChart(node.outputs.metrics);
+              if (chart) box.append(chart);
+              box.append(E("pre", {}, JSON.stringify(node.outputs, null, 2)));
+            }
+          }
+          if (
+            Object.values(run.nodes || {}).some((n) =>
+              ["done", "completed"].includes(n.state),
+            )
+          ) {
+            const panel = E("div", { "aria-label": "Artifact files" });
+            box.append(
+              E(
+                "button",
+                {
+                  type: "button",
+                  onclick: () =>
+                    this.perform(() => this.artifactFiles(run, panel)),
+                },
+                "Show artifact files",
+              ),
+              panel,
+            );
+          }
+        },
+      });
+  })();
+</script>

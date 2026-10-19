@@ -525,7 +525,7 @@ def _missing_from(out: str | Path, graph: Mapping[str, Any]) -> tuple[int, int]:
 
 def fold(out: str | Path, *, source: str = "", rebuild: bool = False, dry_run: bool = False,
          say: Callable[[str], None] = say) -> int:
-    """``poolhouse-ingest fold --out STORE``: every source that has reads, upserted into the store.
+    """``python -m poolhouse.ingest fold --out STORE``: every source that has reads, upserted into the store.
 
     A source part-read is written as far as it has been read, so a run that will take days
     is answerable today. ``--dry-run`` says what each fold would add and writes nothing;
@@ -548,7 +548,7 @@ def fold(out: str | Path, *, source: str = "", rebuild: bool = False, dry_run: b
             f"{found['edges']} edge(s), {found['docs']} document(s), {found['rows']} reads "
             f"row(s) and {found['progress']} progress entry(s). A fold would write "
             f"`source:` beside them and the store would hold each source twice. Run "
-            f"poolhouse-ingest migrate --out {out} first")
+            f"python -m poolhouse.ingest migrate --out {out} first")
         return 1
     view = Sources(out)
     wanted = [s for s in view.sources() if s.units and (not source or s.slug == source)]

@@ -7,19 +7,19 @@ The unit that survives being read alone is a **section**: the book itself decide
 idea, it names itself, and it carries its own figures.
 
 ```sh
-poolhouse-ingest textbook.pdf --out ./sources.ladybug --model Qwen3.8-Flash-Next --chapter 2
-poolhouse-ingest ~/texts/*.pdf --out ./sources.ladybug --model Qwen3.8-Flash-Next --resume --detach
-poolhouse-ingest status  --out ./sources.ladybug     # how far, what failed, how long is left
-poolhouse-ingest show    --out ./sources.ladybug     # what each source was read as
-poolhouse-ingest sources --out ./sources.ladybug     # what every source holds together
-poolhouse-ingest fold    --out ./sources.ladybug     # every source so far into the store
-poolhouse-ingest import ./extraction --out ./sources.ladybug --dry-run   # nodes and edges somebody else extracted
-poolhouse-ingest ask     --out ./sources.ladybug "how is heart rate controlled"   # ask the store
-poolhouse-ingest ask     --out ./sources.ladybug --gold ./questions.json  # score the answers, not the reading
-poolhouse-ingest retry   --out ./sources.ladybug   # read again the units that gave up
-poolhouse-ingest tidy    --out ./sources.ladybug   # the hygiene pass; --apply to write it
-poolhouse-ingest migrate --out ./sources.ladybug   # a store from the books era becomes a sources store
-poolhouse-ingest stop                              # end the run, after it folds what it read
+python -m poolhouse.ingest textbook.pdf --out ./sources.ladybug --model Qwen3.8-Flash-Next --chapter 2
+python -m poolhouse.ingest ~/texts/*.pdf --out ./sources.ladybug --model Qwen3.8-Flash-Next --resume --detach
+python -m poolhouse.ingest status  --out ./sources.ladybug     # how far, what failed, how long is left
+python -m poolhouse.ingest show    --out ./sources.ladybug     # what each source was read as
+python -m poolhouse.ingest sources --out ./sources.ladybug     # what every source holds together
+python -m poolhouse.ingest fold    --out ./sources.ladybug     # every source so far into the store
+python -m poolhouse.ingest import ./extraction --out ./sources.ladybug --dry-run   # nodes and edges somebody else extracted
+python -m poolhouse.ingest ask     --out ./sources.ladybug "how is heart rate controlled"   # ask the store
+python -m poolhouse.ingest ask     --out ./sources.ladybug --gold ./questions.json  # score the answers, not the reading
+python -m poolhouse.ingest retry   --out ./sources.ladybug   # read again the units that gave up
+python -m poolhouse.ingest tidy    --out ./sources.ladybug   # the hygiene pass; --apply to write it
+python -m poolhouse.ingest migrate --out ./sources.ladybug   # a store from the books era becomes a sources store
+python -m poolhouse.ingest stop                              # end the run, after it folds what it read
 ```
 
 `poolhouse.sources.pdf` does the reading (pdfminer.six, MIT, in a bounded child process, with figures and datasheet pages drawn by PDFium in another; `POOLHOUSE_PDF_ENGINE=pymupdf` with the AGPL `pdf-agpl` extra reads with MuPDF instead). `read(path)` gives a `Document` of `Chapter`s of
@@ -37,7 +37,7 @@ bold. `units()` is the last cut, splitting a section over ~2,500 tokens on parag
 boundaries and never inside one. `is_openstax()` reads the licence page, because a file
 renamed by whoever downloaded it says nothing.
 
-`poolhouse-ingest` is the other half. Each unit goes through `Client.extract` against
+`python -m poolhouse.ingest` is the other half. Each unit goes through `Client.extract` against
 `contracts/extraction-document.schema.json` -- concepts with a kind and a one-line definition
 *in the book's words or empty*, relations whose verb phrase is one of nineteen glossed core
 ones or, where none of those says what the page says, one the model names itself in the same
@@ -47,7 +47,7 @@ snake_case shape, what each figure shows and which concepts it illustrates, and 
 source uses more. The core verbs and kinds are what every source shares; a verb from
 outside them is marked `extension` on its edge and a kind `extension_kind` on its node --
 the same mark an imported predicate carries -- so a source's own vocabulary can be read
-back. `poolhouse-ingest sources` prints it, and `--core-only` reads a source with the core
+back. `python -m poolhouse.ingest sources` prints it, and `--core-only` reads a source with the core
 lists and nothing else.
 
 The vocabulary grows as the store is read into. What earlier sections named for themselves
@@ -77,7 +77,7 @@ what rate, what is in the store, and how long the rest will take.
 
 ## A graph somebody else already extracted
 
-`poolhouse-ingest import DIR --out STORE` takes a `nodes.csv` and `edges.csv` another
+`python -m poolhouse.ingest import DIR --out STORE` takes a `nodes.csv` and `edges.csv` another
 extractor wrote and puts it in the store as one source. That data becomes this library's own
 reads -- one per section, in the document schema's shape -- and goes in through the same
 fold a read source does, so it has the same node and edge shape, the same `source:<slug>`
@@ -125,7 +125,7 @@ would add and writes nothing.
 The fold is `entities.fold` comparing every concept name against every other, so its cost
 grows with the square of the vocabulary.
 
-`poolhouse-ingest fold --out STORE [--source SLUG]` does the same from the reads on demand,
+`python -m poolhouse.ingest fold --out STORE [--source SLUG]` does the same from the reads on demand,
 and is idempotent. `show` prints what each source was read as -- concepts with their kind
 and definition, relations with their verb and the page behind them, the spellings and
 plurals the fold joined, how many figures -- and says which sources are partial. `sources`
@@ -167,7 +167,7 @@ so a kill in the middle of one leaves the file that was there.
 ## Whether it does a good job
 
 ```sh
-poolhouse-ingest --gold tests/fixtures/extraction-gold.json --model Qwen3.8-Flash-Next --fail-under 0.7
+python -m poolhouse.ingest --gold tests/fixtures/extraction-gold.json --model Qwen3.8-Flash-Next --fail-under 0.7
 ```
 
 `--gold FILE` is the measurement, not an opinion. The file holds passages with the triples

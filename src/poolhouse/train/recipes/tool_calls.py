@@ -96,11 +96,11 @@ def frozen_dtype(device: Any) -> Any:
 
 def build_tool_caller(spec: dict[str, Any], config: dict[str, Any], data: Path | None,
                       framework: str) -> Built:
+    if framework == "mlx":
+        return build_mlx(spec, config, data)
     if data is None:
         raise ValueError("tool-calls is built from its conversations; it has no build without "
                          "data, and its trained model is read with save_pretrained")
-    if framework == "mlx":
-        return build_mlx(spec, config, data)
     train, holdout, manifest = read_conversations(data)
     if not train:
         raise ValueError(

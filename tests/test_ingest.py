@@ -480,7 +480,7 @@ def a_reading(tmp_path, server, script=lambda prompt: LATTICE):
 
 
 def run(argv):
-    """`poolhouse-ingest` with these arguments, reaching no embedder."""
+    """`python -m poolhouse.ingest` with these arguments, reaching no embedder."""
     return ingest.main([*argv, "--no-embed"])
 
 

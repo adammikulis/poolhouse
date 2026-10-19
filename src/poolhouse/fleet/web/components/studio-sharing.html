@@ -1,0 +1,341 @@
+<script>
+  (function () {
+    const S = window.studioModel,
+      E = window.fleetModel.el;
+    S.installSharing = (proto) =>
+      Object.assign(proto, {
+        setupSharing() {
+          const dialog = this.querySelector("#studio-share-dialog");
+          this.querySelector("#studio-share").onclick = () => {
+            this.flushGroup();
+            this.querySelector("#studio-package-title").value =
+              this.querySelector("#studio-title").value;
+            const scope = this.querySelector("#studio-package-scope");
+            scope.replaceChildren(
+              E("option", { value: "workflow" }, "Complete workflow"),
+            );
+            if (this.selected.size)
+              scope.append(
+                E(
+                  "option",
+                  { value: "selection" },
+                  "Selected nodes and groups",
+                ),
+              );
+            scope.onchange = () => this.sharingFields();
+            this.sharingFields();
+            dialog.showModal();
+          };
+          this.querySelector("#studio-package-library").onclick = () =>
+            this.perform(() => this.packageLibrary());
+          this.querySelector("#studio-share-close").onclick = () =>
+            dialog.close();
+          this.querySelector("#studio-export").onclick = () =>
+            this.perform(() => this.exportPackage(false));
+          this.querySelector("#studio-publish").onclick = () =>
+            this.perform(() => this.exportPackage(true));
+          const file = this.querySelector("#studio-import-file");
+          this.querySelector("#studio-import").onclick = () => file.click();
+          file.onchange = () =>
+            this.perform(async () => {
+              const chosen = file.files?.[0];
+              if (!chosen) return;
+              if (chosen.size > 2000000)
+                throw Error("Choose a package smaller than 2 MB.");
+              const value = JSON.parse(await chosen.text());
+              await this.previewImport(value);
+              file.value = "";
+            });
+        },
+        sharingGraph() {
+          const selected =
+            this.querySelector("#studio-package-scope").value === "selection";
+          const graph = selected ? this.graph : this.rootGraph(),
+            nodes = selected
+              ? graph.nodes.filter((n) => this.selected.has(n.id))
+              : graph.nodes;
+          const ids = new Set(nodes.map((n) => n.id)),
+            groups = {};
+          const collect = (id) => {
+            if (groups[id]) return;
+            const definition = graph.groups[id];
+            if (!definition) return;
+            groups[id] = S.clone(definition);
+            for (const n of definition.nodes)
+              if (n.type === "group") collect(n.group);
+          };
+          for (const n of nodes) if (n.type === "group") collect(n.group);
+          return {
+            nodes: S.clone(nodes),
+            edges: S.clone(
+              graph.edges.filter(
+                (e) => ids.has(e.source.node) && ids.has(e.target.node),
+              ),
+            ),
+            groups,
+          };
+        },
+        sharingFields() {
+          let content = this.querySelector("#studio-portable");
+          if (!content) {
+            content = E(
+              "fieldset",
+              { id: "studio-portable" },
+              E("legend", {}, "Include text parameters"),
+            );
+            this.querySelector("#studio-share-dialog").insertBefore(
+              content,
+              this.querySelector("#studio-share-dialog").querySelector(
+                ".studio-toolbar",
+              ),
+            );
+          }
+          content.replaceChildren(
+            E("legend", {}, "Include text parameters"),
+            E(
+              "p",
+              {},
+              "Choose text to share. Resource bindings, files and run history are excluded.",
+            ),
+          );
+          const visit = (graph, prefix = "") => {
+            for (const n of graph.nodes) {
+              const spec = S.spec(this, n);
+              if (n.type === "group") continue;
+              for (const [name, field] of Object.entries(
+                spec.parameters?.properties || {},
+              )) {
+                if (field.type !== "string" || field.enum) continue;
+                const input = E("input", {
+                  type: "checkbox",
+                  "data-node": prefix + n.id,
+                  "data-parameter": name,
+                });
+                content.append(
+                  E(
+                    "label",
+                    {},
+                    input,
+                    (spec.title || n.type) +
+                      " · " +
+                      name +
+                      ": " +
+                      String(n.parameters[name] ?? field.default ?? ""),
+                  ),
+                );
+              }
+            }
+            for (const [id, g] of Object.entries(graph.groups || {}))
+              visit(g, prefix + id + "/");
+          };
+          visit(this.sharingGraph());
+        },
+        portableParameters() {
+          const selected = {};
+          for (const input of this.querySelectorAll(
+            "#studio-portable input:checked",
+          ))
+            (selected[input.dataset.node] ||= []).push(input.dataset.parameter);
+          return selected;
+        },
+        async exportPackage(publish) {
+          await this.save();
+          const result = await S.api("/packages/export", {
+            graph: this.sharingGraph(),
+            kind:
+              this.querySelector("#studio-package-scope").value === "selection"
+                ? this.selected.size === 1 &&
+                  this.graph.nodes.find((n) => this.selected.has(n.id)).type !==
+                    "group"
+                  ? "node"
+                  : "group"
+                : "workflow",
+            revision: this.revision,
+            package_id: this.packageId || "workflow-" + S.id(),
+            version: String((this.packageVersion || 0) + 1),
+            name:
+              this.querySelector("#studio-package-title").value || "Workflow",
+            description: this.querySelector("#studio-package-docs").value,
+            licence: this.querySelector("#studio-package-license").value,
+            portable_parameters: this.portableParameters(),
+            tags: this.querySelector("#studio-package-tags")
+              .value.split(",")
+              .map((s) => s.trim())
+              .filter(Boolean),
+          });
+          const pack = result.package;
+          this.packageId = pack.id;
+          this.packageVersion = Number(pack.version) || 1;
+          if (publish) {
+            await S.api("/packages/publish?provider=pool", { package: pack });
+            this.message("Package saved to the pool library.");
+          } else {
+            S.download(pack.id + ".json", pack);
+            this.message("Package exported.");
+          }
+          this.querySelector("#studio-share-dialog").close();
+        },
+        async packageLibrary() {
+          let dialog = this.querySelector("#studio-library-dialog");
+          if (!dialog) {
+            dialog = E("dialog", {
+              class: "studio-dialog",
+              id: "studio-library-dialog",
+            });
+            this.host.append(dialog);
+          }
+          const search = E("input", {
+              type: "search",
+              "aria-label": "Search pool library",
+              placeholder: "Search titles and tags",
+            }),
+            provider = E(
+              "select",
+              { "aria-label": "Library provider" },
+              E("option", { value: "pool" }, "Pool library"),
+              E("option", { value: "local" }, "Local library"),
+            ),
+            items = E("div", {});
+          const refresh = async () => {
+            const result = await S.api(
+              "/packages?q=" +
+                encodeURIComponent(search.value) +
+                "&provider=" +
+                provider.value,
+            );
+            items.replaceChildren(
+              ...(result.packages || []).map((pack) =>
+                E(
+                  "section",
+                  {},
+                  E("h3", {}, pack.name),
+                  E("p", {}, pack.description || ""),
+                  E(
+                    "small",
+                    {},
+                    "Version " +
+                      pack.version +
+                      " · " +
+                      (pack.tags || []).join(", "),
+                  ),
+                  E(
+                    "button",
+                    {
+                      type: "button",
+                      onclick: () =>
+                        this.perform(() => this.previewImport(pack)),
+                    },
+                    "Preview and duplicate",
+                  ),
+                  E(
+                    "button",
+                    {
+                      type: "button",
+                      onclick: () => {
+                        this.packageId = pack.id;
+                        this.packageVersion = Number(pack.version) || 0;
+                        dialog.close();
+                        this.querySelector("#studio-share").click();
+                        this.message(
+                          "Save a new immutable version of " + pack.name + ".",
+                        );
+                      },
+                    },
+                    "Update package",
+                  ),
+                ),
+              ),
+            );
+            if (!items.childNodes.length)
+              items.append(E("p", {}, "No packages found."));
+          };
+          search.oninput = () => this.perform(refresh);
+          provider.onchange = () => this.perform(refresh);
+          dialog.replaceChildren(
+            E("h2", {}, "Workflow library"),
+            search,
+            provider,
+            items,
+            E(
+              "button",
+              { type: "button", onclick: () => dialog.close() },
+              "Close",
+            ),
+          );
+          dialog.showModal();
+          await refresh();
+        },
+        async previewImport(value) {
+          const result = await S.api("/packages/preview", { package: value });
+          const pack = result.package || value;
+          let dialog = this.querySelector("#studio-import-preview");
+          if (!dialog) {
+            dialog = E("dialog", {
+              class: "studio-dialog",
+              id: "studio-import-preview",
+            });
+            this.host.append(dialog);
+          }
+          dialog.replaceChildren(
+            E("h2", {}, pack.name || "Workflow package"),
+            E("p", {}, pack.description || ""),
+            E("p", {}, "Package " + pack.id + " · digest " + pack.digest),
+            E("pre", {}, JSON.stringify(pack.provenance || {}, null, 2)),
+            E(
+              "p",
+              {},
+              "Version " +
+                pack.version +
+                " · " +
+                (pack.licence || "No licence supplied"),
+            ),
+            E(
+              "p",
+              {},
+              "Import adds configuration only. Choose resources before running.",
+            ),
+            E(
+              "pre",
+              {},
+              JSON.stringify(
+                result.requirements || result.missing || pack.dependencies,
+                null,
+                2,
+              ),
+            ),
+            E(
+              "button",
+              {
+                type: "button",
+                onclick: () =>
+                  this.perform(async () => {
+                    const imported = await S.api("/packages/import", {
+                      package: pack,
+                    });
+                    await this.open(imported.workflow || null);
+                    if (!imported.workflow) {
+                      this.graph = S.clone(imported.graph || pack.graph);
+                      this.normalize();
+                      this.querySelector("#studio-title").value = pack.name;
+                      this.changed();
+                      this.arrange();
+                    }
+                    dialog.close();
+                    this.message(
+                      "Package imported. Configure resource bindings in the inspector.",
+                    );
+                  }),
+              },
+              "Import configuration",
+            ),
+            E(
+              "button",
+              { type: "button", onclick: () => dialog.close() },
+              "Cancel",
+            ),
+          );
+          dialog.showModal();
+        },
+      });
+  })();
+</script>

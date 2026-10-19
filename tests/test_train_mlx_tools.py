@@ -19,7 +19,7 @@ def cpu():
 
 
 @pytest.fixture
-def base(tmp_path, cpu):
+def base(tmp_path, cpu, request):
     from mlx.utils import tree_flatten
     from mlx_lm.models.llama import Model, ModelArgs
     from tokenizers import Tokenizer, models, pre_tokenizers
@@ -35,8 +35,9 @@ def base(tmp_path, cpu):
                                   unk_token='<unk>', eos_token='<eos>')
     fast.chat_template = "{% for m in messages %}{{ m['role'] + ': ' + m['content'] + ' ' }}{% endfor %}{% if add_generation_prompt %}assistant: {% endif %}"
     fast.save_pretrained(path)
-    config = {'model_type': 'llama', 'hidden_size': 32, 'num_hidden_layers': 1,
-              'intermediate_size': 64, 'num_attention_heads': 2, 'num_key_value_heads': 2,
+    width = getattr(request, 'param', 32)
+    config = {'model_type': 'llama', 'hidden_size': width, 'num_hidden_layers': 1,
+              'intermediate_size': width * 2, 'num_attention_heads': 2, 'num_key_value_heads': 2,
               'rms_norm_eps': 1e-5, 'vocab_size': len(vocab)}
     model = Model(ModelArgs.from_dict(config))
     cpu.eval(model.parameters())
@@ -210,3 +211,39 @@ def test_training_capability_does_not_redefine_existing_mlx_installation():
     assert training.packages == ('poolhouse[train-mlx]',)
     assert training.platforms == ('darwin',) and training.vendors == ('apple',)
     assert training.default is False
+
+
+def test_checkpoint_loads_for_generation_without_training_data(base, data, cpu, tmp_path):
+    from poolhouse.train.recipes import load
+    from poolhouse.train.run import run
+
+    out = tmp_path / 'trained'
+    result = run('tool-calls', settings(base), data, out, say=lambda line: None)
+    assert result['checkpoint']
+    restored = load(out)
+    assert restored.config['base'] == str(base)
+    assert restored.batches is None
+    assert restored.eval_batches is None
+    assert restored.config['framework'] == 'mlx'
+
+
+@pytest.mark.parametrize('base', [128], indirect=True)
+def test_studio_generates_from_checkpoint_with_quantized_cache(base, data, cpu, tmp_path, monkeypatch):
+    from contextlib import nullcontext
+
+    import mlx_lm
+
+    from poolhouse.serve import gpu
+    from poolhouse.studio.worker import execute
+    from poolhouse.train.run import run
+
+    out = tmp_path / 'trained'
+    run('tool-calls', settings(base), data, out, say=lambda line: None)
+    generate = mlx_lm.generate
+    monkeypatch.setattr(gpu, 'hold', lambda purpose: nullcontext())
+    monkeypatch.setattr(mlx_lm, 'generate', lambda *args, **kwargs:
+                        generate(*args, stream=cpu.new_stream(cpu.cpu), **kwargs))
+    result = execute({'type': 'generate', 'parameters': {'temperature': 0, 'max_tokens': 2}},
+                     {'model': {'path': str(out), 'recipe': 'tool-calls'}, 'prompt': 'paint red'}, tmp_path)
+    assert isinstance(result['text'], str)
+    assert result['response']['text'] == result['text']

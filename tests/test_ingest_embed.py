@@ -169,7 +169,7 @@ def test_the_read_run_prints_the_denominator_and_warns_short(server, tmp_path, c
     out, err = capsys.readouterr()
     assert f"embedded {BATCH} of {n} node(s)" in out
     assert f"{n - BATCH} node(s) short of a vector" in err
-    assert "poolhouse-ingest embed --out" in err
+    assert "python -m poolhouse.ingest embed --out" in err
 
 
 def test_embed_raises_on_a_dimension_mismatch(server):
@@ -228,7 +228,7 @@ class TestAReadRunEmbedsWhatItRead:
         run._embedded(self.args(tmp_path / "s.ladybug"))
         said = capsys.readouterr().err
         assert "read, not embedded" in said
-        assert "poolhouse-ingest embed --out" in said
+        assert "python -m poolhouse.ingest embed --out" in said
 
     def test_the_url_and_the_model_asked_for_win(self, tmp_path, monkeypatch):
         from poolhouse.ingest import run
@@ -254,7 +254,7 @@ class TestAReadRunEmbedsWhatItRead:
         out, err = capsys.readouterr()
         assert "embedded 3 of 5 node(s)" in out
         assert "2 node(s) short of a vector" in err
-        assert ("poolhouse-ingest embed --out" in err
+        assert ("python -m poolhouse.ingest embed --out" in err
                and "--embed-url http://127.0.0.1:9" in err
                and "--embed-model a-embedder" in err)
 

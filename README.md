@@ -22,8 +22,8 @@ Poolhouse is pre-1.0, and the phone-to-node founding journey is still being buil
   Authenticated sessions have their own identities, and claims coordinate changes to shared files and resources.
   [The workspace](docs/workspace.md) explains the library and command-line interfaces.
 - **Build and search knowledge graphs.** Keep concepts and their relationships, search them, follow connections
-  and render a page you can explore. Document ingestion keeps source references alongside extracted claims.
-  See [graphs](docs/graph.md) and [document ingestion](docs/ingest.md).
+  and render a page you can explore. See [graphs](docs/graph.md). A source checkout also reads documents into a graph
+  with the page behind every claim: [document ingestion](docs/ingest.md).
 - **Ask decision models.** Decision models return probabilities for options you supply; chat models generate text.
   See [decision models](docs/decision-models.md). A source checkout also trains and measures models:
   [training](docs/training.md) and [benchmarks](docs/bench.md).

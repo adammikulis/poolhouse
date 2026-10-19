@@ -14,6 +14,7 @@ from pathlib import Path
 
 from poolhouse import runtime, runtime_git, worktreerules
 from poolhouse.files import write_json, writing
+from poolhouse.fleet import compute_artifact
 from poolhouse.fleet.wheel_provenance import ORIGIN, stamp, wheel_commit
 from poolhouse.installed import extras
 from poolhouse.lock import only_one
@@ -37,6 +38,7 @@ def cache_wheel(wheel: Path, commit: str, *, prefix: Path | None = None) -> Path
     if wheel_commit(wheel) != commit:
         raise ValueError("runtime wheel commit does not match its cache key")
     target = Path(prefix or sys.prefix) / "poolhouse-wheels" / commit / wheel.name
+    compute_artifact.cache(wheel, target, commit)
     with writing(target) as temporary:
         shutil.copyfile(wheel, temporary)
     return target
@@ -86,6 +88,7 @@ def build(checkout: Path, commit: str, stage: Path, *, timeout: float, target: T
     found = list(wheels.glob("poolhouse-*.whl"))
     if len(found) != 1:
         raise ValueError("source revision must build exactly one poolhouse wheel")
+    compute_artifact.build(source, found[0], commit)
     stamp(found[0], commit, checkout)
     return prepare(found[0], commit, timeout=timeout, target=target)
 

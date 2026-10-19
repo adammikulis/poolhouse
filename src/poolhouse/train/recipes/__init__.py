@@ -132,8 +132,8 @@ def _built(recipe_id: str, config: dict[str, Any], data: Path | str | None,
     return builder(spec(recipe_id), config, None if data is None else Path(data), framework)
 
 
-def load(directory: Path | str, *, which: str = "latest") -> Built:
-    """The recipe a run trained, rebuilt without data and holding ``which`` checkpoint's weights."""
+def load(directory: Path | str, *, which: str = "latest", data: Path | str | None = None) -> Built:
+    """Rebuild a trained recipe with saved weights and optional evaluation data."""
     root = Path(directory).expanduser()
     where = find_latest(root) if which == "latest" else root / which
     if where is None or not is_valid(where):
@@ -144,7 +144,7 @@ def load(directory: Path | str, *, which: str = "latest") -> Built:
         raise ValueError(f"{where} does not record the recipe and framework it was trained with")
     accepted = set(UNIVERSAL) | {f["name"] for f in spec(recipe_id).get("fields", [])}
     settings = validate(recipe_id, {k: v for k, v in recorded.items() if k in accepted})
-    built = _built(recipe_id, {**recorded, **settings, "framework": framework}, None, framework)
+    built = _built(recipe_id, {**recorded, **settings, "framework": framework}, data, framework)
     step = built.step or step_for(built.model, built.optimizer, built.loss)
     step.restore(load_tensors(where, read_tensors=tensor_reader(framework)), None)
     return built
