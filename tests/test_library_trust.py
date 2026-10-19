@@ -7,6 +7,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import inspect
+import urllib.parse
 
 import keyring
 import pytest
@@ -340,6 +341,19 @@ def test_the_question_at_serve_time_is_asked_once_and_not_again(stand, tmp_path,
     monkeypatch.setattr(guarded.approvals, "approved", never)
     monkeypatch.setattr(guarded.approvals, "ask", never)
     assert load(got, tmp_path) == "" and load(got, tmp_path) == ""
+
+
+def test_an_approval_at_serve_time_answers_a_later_person_pull_of_the_same_repository_and_commit(stand, tmp_path):
+    server = stand(repos())
+    got = ph.models.pull("maker/thing-GGUF", FILE, trust=LIBRARY)
+    with pytest.raises(guarded.SentinelRefused):
+        load(got, tmp_path)
+    assert approve("model_publisher") == 1
+    load(got, tmp_path)
+    (approval,) = requests.list_requests(state="approved", kind="model_publisher")
+    assert approval.extra["host"] == urllib.parse.urlsplit(server.url).netloc
+    assert ph.models.pull("maker/thing-GGUF", FILE) == got
+    assert requests.list_requests(state="pending") == []
 
 
 def test_a_model_from_a_shipped_publisher_pulled_under_library_is_served_without_a_question(stand, tmp_path):

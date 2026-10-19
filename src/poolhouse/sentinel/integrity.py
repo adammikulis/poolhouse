@@ -47,6 +47,8 @@ class Pin:
     unvetted: str = ""
     """What a person would have been asked about a pulled Hub file that the pull did not ask (words, as the
     question puts them); empty once nobody had to be asked or a person answered."""
+    host: str = ""
+    """The host and port of the Hub a pulled file came from; empty for any other pin."""
 
     def to_json(self) -> dict[str, Any]:
         return {f: getattr(self, f) for f in self.__slots__}

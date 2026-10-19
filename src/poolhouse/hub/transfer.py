@@ -199,7 +199,7 @@ def _by_object_id(one: RemoteFile) -> Callable[[Path, dict[str, str]], str] | No
 
 
 def _notes(parsed: remote.Ref, one: RemoteFile, unvetted: str = "") -> dict[str, str]:
-    return {"publisher": publishers.namespace(parsed.repo), "commit": parsed.commit,
+    return {"publisher": publishers.namespace(parsed.repo), "commit": parsed.commit, "host": remote.endpoint_host(),
             "source_ref": f"{parsed.repo}/{one.path}", **({"unvetted": unvetted} if unvetted else {})}
 
 

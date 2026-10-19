@@ -184,7 +184,7 @@ def _vetted(node: Sentinel, pin: Pin) -> None:
     approved the repository at that commit, then the pin no longer waits on an answer."""
     repo = "/".join(pin.source_ref.split("/")[:2])
     subject, sentence = admission.question(repo, pin.commit, pin.unvetted)
-    fields = {"publisher": pin.publisher, "repo": repo, "commit": pin.commit}
+    fields = {"publisher": pin.publisher, "repo": repo, "commit": pin.commit, **({"host": pin.host} if pin.host else {})}
     if not approvals.approved("model_publisher", subject, sentence, **fields):
         raise SentinelRefused(approvals.ask("model_publisher", subject, sentence, **fields))
     node.manifest.vet(pin)
