@@ -139,8 +139,8 @@ Before executing, the runner claims each missing key with an exclusive create of
 `inflight/<key>.json` holding pid, process start time and agent. A second request for a key whose
 owner is alive (pid and start time match, zombies excluded) runs its other files first, then waits
 for the claim to clear, polling, up to fifteen minutes, and uses the entry if one passes. If the
-owner died or finished red, the waiter executes the file and the board thread says so. A claim from
-a dead owner is removed by whoever finds it.
+owner died or finished red, the waiter executes the file. A claim from a dead owner is removed by
+whoever finds it.
 
 ## Reporting and the canary
 
@@ -170,18 +170,17 @@ the broker. A job without a workspace agent can be cancelled only by the process
   it as `agent`; the board's testslots view shows `agent/label (lease label)` and `registered`,
   which says whether the workspace has that identity.
 - Entries, in-flight claims and jobs sit under a per-project directory. `task-checkpoint`/`task-submit`
-  verification and board threads are project-scoped by the board's own membership.
+  verification is project-scoped by the board's own membership.
 - Notices go out under the submitting agent's own authenticated identity (the identity the harness assigned
   this process through its environment; the runner takes no `--agent` or `--label`). Running tests creates no identity, token file or credential; without a workspace
-  agent the runner posts nothing. A run that takes a key opens a thread on the board and
-  replies when it ends; a job opens a thread when it starts and replies when it ends. A finishing job
-  also sends one direct message to each watcher of the task it was attached to (`--task`) that is not
-  already on the thread. A message never reaches its sender's inbox, so the submitter learns through
-  `scripts/test wait|result|status`, which read the job's status file; `wait` returns when the job
-  ends. Waiters follow the owner's thread and are told when the run failed.
-- Following uses the board's subscriptions: `scripts/test subscribe JOB`, `subscribe --key PREFIX`
-  (a reuse key prefix from the report) subscribe to the thread; `subscribe --task ID` is the task
-  board's `task-subscribe`.
+  agent the runner posts nothing. A run writes two kinds of board row and no others: a canary mismatch
+  (one `blocked` announcement) and, when a job was submitted with `--task`, one message naming each watcher
+  of that task other than the submitter. A file's claim, its result, a job's start and a job's end
+  with no watcher stay in the runner's own directory: the submitter learns through
+  `scripts/test wait|result|status`, which read the job's status file, and a waiter polls the claim
+  of the run it waits on.
+- `scripts/test subscribe --task ID` is the task board's `task-subscribe`; the watchers of a task hear
+  how a job attached to it ends.
 - `task-checkpoint` takes `test_entry` and `task-submit` takes `test_entries`: runner entry ids. The
   board verifies each in the store of the project of the task's assigned checkout (not the caller's
   working directory, and never a store chosen by the service's environment), requires `outcome == pass`
@@ -190,8 +189,7 @@ the broker. A job without a workspace agent can be cancelled only by the process
   checkpoint or provenance must name a commit; the entry must have run on that commit with no uncommitted
   changes (`clean`), and its tree must equal the commit's tree in the task's checkout. The record says
   what the entry covers: its one test file.
-- Board text is data. The thread number in a claim record is used only to subscribe, which the board
-  checks against membership; nothing read from the board enters a key, a hit or a verification.
+- Board text is data: nothing read from the board enters a key, a hit or a verification.
   Notice failures are printed and never fail a run.
 
 ## Failure modes

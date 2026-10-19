@@ -20,42 +20,13 @@ import testreuse_store as storage
 from testreuse_narrow import narrowed
 
 from poolhouse.log import warn
+from poolhouse.workspace.testboard import Events
 
 CANARY_RATE = 0.05
 WAIT_S = 900.0
 POLL_S = 0.5
 TIERS = ("fast", "full", "slow", "all", "gate")
 Launch = Callable[[list[str]], int]
-
-
-class Events:
-    """The notifications a run raises, and the agent that raises them; the default does nothing."""
-
-    def __init__(self) -> None:
-        self.agent: dict = {"id": "", "source": "none"}
-
-    def waiting(self, file: str, owner: dict) -> None:
-        """A request found its key in flight under ``owner``."""
-
-    def wait_failed(self, file: str, owner: dict) -> None:
-        """The run a request waited on did not leave a passing result."""
-
-    def canary_mismatch(self, file: str, detail: str) -> None:
-        """A re-executed hit failed."""
-
-    def claimed(self, file: str, key: str) -> int:
-        """This run took the key for ``file``; returns the board thread it opened, or 0."""
-        return 0
-
-    def job_started(self, job: str, spec: dict) -> int:
-        """A background job began; returns the board thread it opened, or 0."""
-        return 0
-
-    def job_done(self, job: str, spec: dict, status: dict, thread: int = 0) -> None:
-        """A background job ended."""
-
-    def finished(self, file: str, key: str, outcome: str, entry: str) -> None:
-        """This run finished the key for ``file``."""
 
 
 @dataclass
@@ -320,9 +291,7 @@ class Session:
         owner = self.store.claim(look.key, {"agent": self.events.agent, "files": [file]})
         if owner is None:
             self.claims[file] = look.key
-            seq = self.events.claimed(file, look.key)
-            if seq:
-                self.store.note_thread(look.key, seq)
+            self.events.claimed(file, look.key)
             plan.claimed.append(file)
             plan.run.append(file)
         elif hit:
