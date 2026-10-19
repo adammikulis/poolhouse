@@ -327,6 +327,10 @@ class TransferStore:
                 raise ValueError("Remote outputs must belong to this dispatch.")
             resource = manifest(path, value["kind"], gym=value.get("gym", False))
             safe[name] = resource_handle(value, resource)
+            if "base" in value:
+                base = self._result_base(source, dispatch, value["base"])
+                resources[base["id"]] = base
+                safe[name]["base_resource"] = base["id"]
             if resource["id"] in resources:
                 continue
             self.begin(source, dispatch, resource)
@@ -343,6 +347,19 @@ class TransferStore:
             self.finish(source, dispatch, resource["id"])
             resources[resource["id"]] = resource
         return {"outputs": safe, "resources": list(resources.values())}
+
+    def _result_base(self, source: str, dispatch: str, value: dict) -> dict:
+        root = self.root.joinpath(*self._prefix(source, dispatch), "resources")
+        path = Path(value["path"])
+        if ".." in path.parts or not path.is_relative_to(root):
+            raise ValueError("Output bases require this dispatch's explicitly staged resources.")
+        parts = path.relative_to(root).parts
+        if len(parts) != 2 or parts[1] != "files":
+            raise ValueError("Output bases require a complete staged model directory.")
+        resource = self.finish(source, dispatch, parts[0])
+        if resource["kind"] != "model" or resource["shape"] != "directory":
+            raise ValueError("Output bases require a complete staged model directory.")
+        return resource
 
     def discard(self, source: str, dispatch: str) -> dict:
         prefix = self._prefix(source, dispatch)

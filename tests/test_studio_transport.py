@@ -260,3 +260,24 @@ def test_checkpoint_base_is_separate_finalized_same_dispatch_resource(device, tm
     safe["base_resource"] = "e" * 64
     with pytest.raises((FileNotFoundError, ValueError)):
         store.inputs(SOURCE, DISPATCH, staged["inputs"])
+
+
+def test_model_result_carries_only_its_own_staged_base_dependency(device, tmp_path):
+    client, store, _, _ = device
+    base = tmp_path / 'base'
+    base.mkdir()
+    (base / 'weights.safetensors').write_bytes(b'base bytes')
+    staged = client.stage(DISPATCH, {'model': {'kind': 'model', 'path': str(base)}}, node_spec('generate'))
+    hydrated = store.inputs(SOURCE, DISPATCH, staged['inputs'])['model']
+    own = store.directory(SOURCE, DISPATCH)
+    model = own / 'model'
+    model.mkdir()
+    (model / 'model.safetensors').write_bytes(b'adapter')
+    value = {'kind': 'model', 'path': str(model), 'base': hydrated, 'base_digest': 'c' * 64}
+    result = store.result(SOURCE, DISPATCH, {'model': value}, node_spec('train.tool-calls'))
+    result['dispatch_id'] = DISPATCH
+    outputs = client.collect(result, tmp_path / 'received', node_spec('train.tool-calls'), dispatch_id=DISPATCH)
+    assert (Path(outputs['model']['base']['path']) / 'weights.safetensors').read_bytes() == b'base bytes'
+    value['base'] = {'path': str(base)}
+    with pytest.raises(ValueError, match="dispatch's explicitly staged"):
+        store.result(SOURCE, DISPATCH, {'model': value}, node_spec('train.tool-calls'))

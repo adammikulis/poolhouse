@@ -12,6 +12,7 @@ from pathlib import Path
 from poolhouse.studio.adapters import Adapters
 from poolhouse.studio.catalog import is_model_type, node_spec
 from poolhouse.studio.contracts import _finite, _parameters
+from poolhouse.studio.model_lineage import bind_model_base
 from poolhouse.studio.store import Conflict, StudioStore, digest
 
 from .managed_compute import process_environment
@@ -174,6 +175,8 @@ class DeviceExecutions:
             if self.status(source, request)["state"] != "done":
                 raise ValueError("The device execution has not completed.")
             outputs = self.adapters.collect(row["node"], self.ui.runner.jobs[row["job_id"]], self._context(source, row["id"]))
+            inputs = self.transfer.inputs(source, row["id"], row["inputs"])
+            bind_model_base(row["node"], outputs, inputs, self._context(source, row["id"])["output_dir"])
             result = self.transfer.result(source, row["id"], outputs, node_spec(row["node"]["type"], row["node"]["version"]))
             return {**self._public(row), **result, "node": {k: v for k, v in row["node"].items() if k != "bindings"}}
 
