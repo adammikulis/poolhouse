@@ -467,8 +467,13 @@ def _run_command(argv: list[str], elastic: bool = False) -> int:
     if not cmd:
         ap.error("give a command after --")
     if elastic:
+        import testscope
         import testslots_runner
-        return testslots_runner.run_pytest(cmd, a.want, a.label, {**os.environ, "DEV_TEST_CLASS": a.run_class}, container=a.container)
+        try:
+            return testslots_runner.run_pytest(cmd, a.want, a.label, {**os.environ, "DEV_TEST_CLASS": a.run_class}, container=a.container)
+        except testscope.Refused as refusal:
+            print(f"testslots: {refusal}", file=sys.stderr)
+            return 4
     with lease(a.want, a.minimum, label=a.label, run_class=a.run_class) as got:
         print(f"testslots: running with {got.workers} worker(s) (waited {got.waited:.0f}s)", file=sys.stderr, flush=True)
         return subprocess.run(cmd, env={**os.environ, "DEV_TEST_WORKERS": str(got.workers)}).returncode
