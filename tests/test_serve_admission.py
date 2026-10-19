@@ -294,10 +294,15 @@ def test_two_processes_that_do_not_fit_together_do_not_both_start(tmp_path, mach
         mine.stop_all()
 
 
-def test_the_budget_is_the_red_share_of_what_the_machine_allows(machine):
+def test_the_budget_is_the_red_share_of_what_the_machine_allows(machine, monkeypatch):
+    from poolhouse import hub
+
     assert admission.budget_mb() == int(10 * 1024 * THRESHOLDS.red_at)
     limits.changed(memory_bytes=0)
-    assert admission.budget_mb() > 0, "no limit given: the machine's own memory"
+    monkeypatch.setattr(hub, "machine_room", lambda: 12 * GIB)
+    assert admission.budget_mb() == int(12 * 1024 * THRESHOLDS.red_at), "no limit given: what the machine says it allows"
+    monkeypatch.setattr(hub, "machine_room", lambda: 0)
+    assert admission.budget_mb() == 0, "a machine that will not say and no limit given: unknown"
 
 
 def test_the_estimator_and_the_bars_share_one_pair_of_thresholds():
