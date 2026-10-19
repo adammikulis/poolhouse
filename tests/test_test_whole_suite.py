@@ -66,7 +66,7 @@ def queued(tmp_path: Path) -> list[Path]:
 @pytest.mark.parametrize(("marker", "arguments"), [
     ("CLAUDECODE", ("full",)), ("CLAUDECODE", ("slow",)), ("CLAUDECODE", ("fast",)), ("CLAUDECODE", ("all",)),
     ("CLAUDECODE", ("submit", "all")), ("POOLHOUSE_AGENT", ("full",)), ("POOLHOUSE_NONINTERACTIVE", ("all",)),
-    ("CODEX_THREAD_ID", ("full",))])
+    ("CODEX_THREAD_ID", ("full",)), ("CLAUDECODE", ("full", "--on", "all"))])
 def test_an_agent_whole_tier_run_is_refused_before_it_queues(tmp_path, scratch, marker, arguments):
     result = scripts_test(tmp_path, scratch, marker, *arguments)
     assert result.returncode == 4
