@@ -3,9 +3,9 @@
 import json
 
 import pytest
+from web_assets import serve_page_asset
 
-from poolhouse.fleet.page import WEB, render
-from poolhouse.ui import assets_dir
+from poolhouse.fleet.page import render
 
 pytestmark = pytest.mark.slow
 
@@ -15,11 +15,8 @@ def mock_route(action, posted, models):
         path = request.request.url.split("http://setup.test", 1)[-1]
         if path == "/":
             return request.fulfill(body=render(), content_type="text/html")
-        if path.startswith("/ui/ml-ui/"):
-            asset = assets_dir() / path.rsplit("/", 1)[-1]
-            return request.fulfill(path=str(asset))
-        if path == "/ui/static/style.css":
-            return request.fulfill(path=str(WEB / "style.css"))
+        if serve_page_asset(request, path):
+            return
         body = {"ok": True}
         code = 200
         if request.request.method == "POST":

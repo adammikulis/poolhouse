@@ -36,7 +36,7 @@ with m.lease(want, 1, label=label, say=lambda s: None, run_class=klass) as g:
 def _env(tmp_path, budget, **extra):
     inherited = {k: v for k, v in os.environ.items() if k not in {"DEV_TEST_REMOTE_LEASE", "DEV_TEST_LEASE", "DEV_TEST_CLASS", "DEV_TEST_ESTIMATE_S", "DEV_TEST_HISTORY"}}
     return {**inherited, "DEV_TEST_SLOTS_DIR": str(tmp_path / "slots"), "DEV_TEST_BUDGET": str(budget),
-            "DEV_TEST_WAIT_S": "60", "DEV_TEST_NORMAL_HOURS": "off", **extra}
+            "DEV_TEST_WAIT_S": "60", **extra}
 
 
 def _spawn(tmp_path, budget, want, label, klass, **extra):
@@ -90,18 +90,13 @@ def test_an_interactive_request_is_granted_before_an_older_queued_background_req
     assert _record(tmp_path, "fg")["start"] < _record(tmp_path, "bg")["start"]
 
 
-def test_background_runs_hold_at_most_half_the_budget_while_an_interactive_run_is_active(tmp_path):
+def test_a_background_run_takes_every_free_worker_while_an_interactive_run_is_active(tmp_path):
     gate, bg_gate = tmp_path / "gate", tmp_path / "bg-gate"
     interactive = _spawn(tmp_path, 6, 1, "fg", "interactive", release=gate)
     _wait_for(tmp_path, interactive, "fg", 1)
     first = _spawn(tmp_path, 6, 6, "bg1", "background", release=bg_gate)
-    assert _wait_for(tmp_path, first, "bg1", 3).granted == 3            # ceil(6 / 2), not the 5 left free
-    second = _spawn(tmp_path, 6, 1, "bg2", "background", hold=0.1)
-    _wait_for(tmp_path, second, "bg2", 0)
-    time.sleep(0.5)
-    assert _slot(tmp_path, "bg2").granted == 0                        # two workers are free but the class has its half
-    gate.write_text("go")                                             # the interactive run ends: the cap lifts
-    assert second.wait(timeout=60) == 0
+    assert _wait_for(tmp_path, first, "bg1", 5).granted == 5            # everything free, not half the budget
+    gate.write_text("go")
     bg_gate.write_text("go")
     assert first.wait(timeout=60) == 0 and interactive.wait(timeout=60) == 0
 
@@ -112,26 +107,6 @@ def test_background_alone_may_use_the_whole_budget(tmp_path):
     assert _wait_for(tmp_path, only, "bg", 6).granted == 6
     gate.write_text("go")
     assert only.wait(timeout=60) == 0
-
-
-def test_a_background_request_is_granted_after_the_bounded_wait_despite_the_cap(tmp_path):
-    gate, bg_gate = tmp_path / "gate", tmp_path / "bg-gate"
-    extra = {"DEV_TEST_BACKGROUND_WAIT_S": "2"}
-    interactive = _spawn(tmp_path, 4, 1, "fg", "interactive", release=gate, **extra)
-    _wait_for(tmp_path, interactive, "fg", 1)
-    first = _spawn(tmp_path, 4, 2, "bg1", "background", release=bg_gate, **extra)
-    _wait_for(tmp_path, first, "bg1", 2)
-    started = time.monotonic()
-    starved = _spawn(tmp_path, 4, 1, "bg2", "background", hold=0.1, **extra)
-    _wait_for(tmp_path, starved, "bg2", 0)
-    time.sleep(1.0)
-    assert _slot(tmp_path, "bg2").granted == 0                        # inside the bound the cap still holds
-    assert starved.wait(timeout=60) == 0                              # past it, granted with the interactive run still live
-    assert time.monotonic() - started >= 2
-    assert interactive.poll() is None and first.poll() is None
-    gate.write_text("go")
-    bg_gate.write_text("go")
-    assert interactive.wait(timeout=60) == 0 and first.wait(timeout=60) == 0
 
 
 def test_status_prints_each_leases_class(tmp_path):
@@ -199,18 +174,6 @@ def test_aging_grants_a_long_request_ahead_of_a_newer_short_one(tmp_path):
     assert _record(tmp_path, "long")["start"] < _record(tmp_path, "short")["start"]
 
 
-def test_the_cap_is_lifted_outside_normal_hours(tmp_path):
-    gate, bg_gate = tmp_path / "gate", tmp_path / "bg-gate"
-    extra = {"DEV_TEST_NORMAL_HOURS": "00:00-00:01"}
-    interactive = _spawn(tmp_path, 6, 1, "fg", "interactive", release=gate, **extra)
-    _wait_for(tmp_path, interactive, "fg", 1)
-    wide = _spawn(tmp_path, 6, 6, "bg", "background", release=bg_gate, **extra)
-    assert _wait_for(tmp_path, wide, "bg", 5).granted == 5            # everything free, not half the budget
-    gate.write_text("go")
-    bg_gate.write_text("go")
-    assert interactive.wait(timeout=60) == 0 and wide.wait(timeout=60) == 0
-
-
 def test_status_prints_position_and_estimated_start_per_queued_run(tmp_path):
     directory = tmp_path / "slots"
     directory.mkdir()
@@ -228,7 +191,7 @@ def test_status_prints_position_and_estimated_start_per_queued_run(tmp_path):
                for line in out.splitlines()), out
 
 
-def test_a_live_lease_from_older_code_keeps_arrival_order_and_lifts_the_cap(tmp_path):
+def test_a_live_lease_from_older_code_keeps_arrival_order(tmp_path):
     module = _module()
     import testslots_policy
     now = time.time()

@@ -1,4 +1,4 @@
-"""Keeps the test queue moving: ends background test jobs that have gone quiet or run far too long."""
+"""Keeps the test queue moving: ends a background test job whose runner is gone or that has no owner, and tells the owner of one that is quiet, old or long."""
 
 from __future__ import annotations
 
@@ -14,14 +14,13 @@ import queue_notice
 import testjobs
 import testreuse_store as storage
 
-QUIET_S = 900.0
-ESTIMATE_MAX_S = 1200.0
-OVERRUN_S = 1200.0
+QUIET_ALERT_S = 900.0
+ESTIMATE_ALERT_S = 1200.0
+OVERRUN_ALERT_S = 1200.0
 ADMIT_NOTICE_S = 600.0
 PASS_EVERY_S = 10.0
-MAX_AGE_S = 5400.0
+AGE_ALERT_S = 5400.0
 GRACE_S = 5.0
-OLD_QUIET_S = 300.0
 NODE_MAX_AGE_S = 3600.0
 TEST_NODE = re.compile(r"/pytest-of-[^/]+/.*/poolhouse-node run --state ")
 INIT_NAMES = frozenset({"launchd", "systemd", "init"})
@@ -59,18 +58,37 @@ def estimate_cause(spec: dict, status: dict) -> str:
 
 
 def over_estimate(spec: dict, status: dict, now: float) -> str:
-    """Why an agent's job is over its estimate (empty when it is not): estimated over 20 minutes, or running 20 minutes past its estimate."""
+    """Why an agent's job is over its estimate (empty when it is not): estimated over `ESTIMATE_ALERT_S`, or running `OVERRUN_ALERT_S` past its estimate."""
     estimate = status.get("estimate_s")
     if not isinstance(estimate, (int, float)):
         return ""
-    if estimate > ESTIMATE_MAX_S:
-        return estimate_cause(spec, status)
+    if estimate > ESTIMATE_ALERT_S:
+        return f"{estimate_cause(spec, status)} (a notice only; ESTIMATE_ALERT_S = {ESTIMATE_ALERT_S:.0f} s in scripts/queue_doctor.py)"
     ran = now - float(status.get("at", now))
-    return f"ran {duration(ran)}, {duration(ran - estimate)} past its estimate of {duration(estimate)}" if ran > estimate + OVERRUN_S else ""
+    if ran > estimate + OVERRUN_ALERT_S:
+        return (f"ran {duration(ran)}, {duration(ran - estimate)} past its estimate of {duration(estimate)} "
+                f"(a notice only; OVERRUN_ALERT_S = {OVERRUN_ALERT_S:.0f} s in scripts/queue_doctor.py)")
+    return ""
+
+
+def alerts(jobs: testjobs.Jobs, job: str, now: float) -> list[tuple[str, str]]:
+    """The notices an agent's running job calls for, as (kind, text): quiet, old or past its estimate. Nothing is ended for them."""
+    status, spec = jobs.read(job), jobs.read(job, "spec.json")
+    if status.get("state") != "running" or not isinstance(spec, dict) or person(spec):
+        return []
+    found = []
+    if (quiet := _log_age(jobs, job, now)) > QUIET_ALERT_S:
+        found.append(("quiet", f"has printed nothing for {duration(quiet)} (a notice only; QUIET_ALERT_S = {QUIET_ALERT_S:.0f} s in scripts/queue_doctor.py)"))
+    created = spec.get("created", status.get("at", now))
+    if now - float(created) > AGE_ALERT_S:
+        found.append(("old", f"has run for {duration(now - float(created))} (a notice only; AGE_ALERT_S = {AGE_ALERT_S:.0f} s in scripts/queue_doctor.py)"))
+    if why := over_estimate(spec, status, now):
+        found.append(("estimate", why))
+    return found
 
 
 def hung(jobs: testjobs.Jobs, job: str, now: float) -> str:
-    """Why ``job`` is hung (empty when it is not): it has no owner, its log is quiet, or it has run too long."""
+    """Why ``job`` is hung (empty when it is not): it has no owner, or its runner process is gone."""
     status = jobs.read(job)
     if status.get("state") not in ("queued", "running"):
         return ""
@@ -78,15 +96,10 @@ def hung(jobs: testjobs.Jobs, job: str, now: float) -> str:
     owner = spec.get("owner") if isinstance(spec, dict) else None
     if not (isinstance(owner, dict) and isinstance(owner.get("id"), str) and owner["id"]):
         return "it has no owner"
-    if person(spec):
-        return ""
-    if why := over_estimate(spec, status, now):
-        return why
-    created = spec.get("created", status.get("at", now)) if isinstance(spec, dict) else now
-    quiet = _log_age(jobs, job, now)
-    if now - float(created) > MAX_AGE_S and quiet > OLD_QUIET_S:
-        return f"older than {MAX_AGE_S / 60:.0f} minutes and quiet for {quiet / 60:.0f}"
-    return f"no output for {quiet / 60:.0f} minutes" if quiet > QUIET_S else ""
+    pid = int(status.get("pid", 0))
+    if pid and not storage.alive(pid, float(status.get("started", 0))):
+        return "its runner process is gone"
+    return ""
 
 
 def end(pid: int, started: float, sleep: Callable[[float], None] = time.sleep) -> bool:
@@ -107,13 +120,15 @@ def end(pid: int, started: float, sleep: Callable[[float], None] = time.sleep) -
 
 def sweep(jobs: testjobs.Jobs, now: float | None = None, say: Callable[[str], None] = print,
           sleep: Callable[[float], None] = time.sleep, tell: Callable[..., bool] = queue_notice.post) -> list[str]:
-    """End every hung job, record it as failed with the reason and tell its owner and the board; returns the ids ended."""
+    """End every hung job, record it as failed with the reason and tell its owner and the board; tell the owner of a quiet, old or long job once. Returns the ids ended."""
     now = time.time() if now is None else now
     ended = []
     for job in jobs.ids():
         try:
             why = hung(jobs, job, now)
             if not why:
+                for kind, text in alerts(jobs, job, now):
+                    tell(jobs, job, kind, text, say)
                 continue
             status = jobs.read(job)
             gone = end(int(status.get("pid", 0)), float(status.get("started", 0)), sleep)
@@ -129,20 +144,12 @@ def sweep(jobs: testjobs.Jobs, now: float | None = None, say: Callable[[str], No
     return ended
 
 
-def admitted(jobs: testjobs.Jobs, job: str, estimate_s: float, workers: int, say: Callable[[str], None] = print) -> str:
-    """Record the running job's estimate, tell the board about an admission over 10 minutes and return why the doctor ends the job (empty to run it)."""
-    now = time.time()
+def admitted(jobs: testjobs.Jobs, job: str, estimate_s: float, workers: int, say: Callable[[str], None] = print) -> None:
+    """Record the running job's estimate and tell the board about an admission over `ADMIT_NOTICE_S`; nothing is ended."""
     status = {**jobs.read(job), "estimate_s": estimate_s, "workers": workers}
     jobs.write(job, "status.json", status)
-    spec = jobs.read(job, "spec.json")
-    if person(spec):
-        return ""
-    if estimate_s > ADMIT_NOTICE_S:
+    if not person(jobs.read(job, "spec.json")) and estimate_s > ADMIT_NOTICE_S:
         queue_notice.post(jobs, job, "admitted", f"admitted: {estimate_text(status)}", say)
-    why = over_estimate(spec, status, now)
-    if why:
-        queue_notice.post(jobs, job, "ended", f"ended by the queue doctor: {why}", say)
-    return why
 
 
 def check(root: Path, say: Callable[[str], None] = print, now: float | None = None) -> list[str]:

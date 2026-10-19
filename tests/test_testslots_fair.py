@@ -1,10 +1,10 @@
-"""The broker admits by fair share: one run never takes more than half the workers while another waits."""
+"""The broker admits in queue order: the first run takes every worker it can use, and the runs behind it wait their turn."""
 from __future__ import annotations
 
 from test_testslots import _records, _spawn, _wait_for_slot
 
 
-def test_a_big_run_and_a_small_run_queued_together_are_admitted_together(tmp_path):
+def test_a_big_run_takes_every_worker_and_the_small_run_queued_behind_it_waits_its_turn(tmp_path):
     release = tmp_path / "release"
     holder = _spawn(tmp_path, 8, 8, release, "holder")
     processes = [holder]
@@ -24,8 +24,8 @@ def test_a_big_run_and_a_small_run_queued_together_are_admitted_together(tmp_pat
                 process.kill()
             process.wait(timeout=5)
     runs = {record["label"]: record for record in _records(tmp_path)}
-    assert runs["big"]["workers"] <= 4
-    assert runs["small"]["start"] < runs["big"]["end"] - 1.0
+    assert runs["big"]["workers"] == 8
+    assert runs["small"]["start"] >= runs["big"]["end"] - 0.05
 
 
 def test_a_lone_run_still_takes_every_worker(tmp_path):

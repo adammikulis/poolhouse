@@ -1,4 +1,4 @@
-"""An agent never runs the whole suite locally: GitHub runs it for every pushed commit."""
+"""An agent never runs the whole suite locally, however it selects it; any list of files short of the whole suite is allowed."""
 
 from __future__ import annotations
 
@@ -16,8 +16,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import testjobs  # noqa: E402
 
-LINE = ("the full suite runs on GitHub for every pushed commit; run only the files you changed "
-        "(scripts/test all <files>, at most 30)")
+LINE = "the whole suite runs on a schedule and on pull requests; name the files you changed"
 MARKERS = ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE")
 RUNNER = "import time\ntime.sleep(60)\n"
 GIT = ["git", "-c", "user.name=probe", "-c", "user.email=probe@example.invalid"]
@@ -74,8 +73,8 @@ def test_an_agent_whole_tier_run_is_refused_before_it_queues(tmp_path, scratch, 
     assert queued(tmp_path) == []
 
 
-def test_an_agent_run_of_thirty_one_files_is_refused_before_it_queues(tmp_path, scratch):
-    result = scripts_test(tmp_path, scratch, "CLAUDECODE", "all", *named(31))
+def test_an_agent_run_naming_every_test_file_is_refused_before_it_queues(tmp_path, scratch):
+    result = scripts_test(tmp_path, scratch, "CLAUDECODE", "all", *named(40))
     assert result.returncode == 4
     assert LINE in result.stderr
     assert queued(tmp_path) == []
@@ -87,9 +86,9 @@ def test_a_directory_counts_as_the_files_in_it(tmp_path, scratch):
     assert LINE in result.stderr
 
 
-def test_an_agent_run_of_thirty_files_passes_the_size_check_and_a_person_run_of_any_size_starts(tmp_path, scratch):
-    agent = scripts_test(tmp_path, scratch, "CLAUDECODE", "all", *named(30), "-n", "1")
-    person = scripts_test(tmp_path, scratch, "", "all", *named(31), "-n", "1")
+def test_an_agent_run_of_thirty_nine_files_passes_the_size_check_and_a_person_run_of_any_size_starts(tmp_path, scratch):
+    agent = scripts_test(tmp_path, scratch, "CLAUDECODE", "all", *named(39), "-n", "1")
+    person = scripts_test(tmp_path, scratch, "", "all", *named(40), "-n", "1")
     assert LINE not in agent.stderr + agent.stdout + person.stderr + person.stdout
     assert agent.returncode == 4 and "no workspace identity, so it is not queued" in agent.stderr, agent.stdout + agent.stderr
     assert person.returncode == 0, person.stdout + person.stderr
@@ -111,20 +110,21 @@ def submit(table, argv):
     return job
 
 
-def test_the_job_table_takes_thirty_files_from_an_agent(table, monkeypatch):
+def test_the_job_table_takes_any_list_of_files_short_of_the_suite_from_an_agent(table, monkeypatch):
     monkeypatch.setenv("CLAUDECODE", "1")
-    assert submit(table, ["all", *named(30)])
+    assert submit(table, ["all", *named(31)])
+    assert submit(table, ["all", *named(39)])
 
 
-@pytest.mark.parametrize("argv", [["all", *named(31)], ["full"], ["all"], ["slow", "tests"], ["fast"]])
+@pytest.mark.parametrize("argv", [["all", *named(40)], ["full"], ["all"], ["slow", "tests"], ["fast"]])
 def test_the_job_table_never_admits_an_agent_whole_run(table, monkeypatch, argv):
     monkeypatch.setenv("POOLHOUSE_NONINTERACTIVE", "1")
-    with pytest.raises(testjobs.Refused, match="runs on GitHub"):
+    with pytest.raises(testjobs.Refused, match="whole suite runs on a schedule"):
         submit(table, argv)
     assert table[0].ids() == []
 
 
-@pytest.mark.parametrize("argv", [["all", *named(31)], ["full"], ["gate"], ["quick"]])
+@pytest.mark.parametrize("argv", [["all", *named(40)], ["full"], ["gate"], ["quick"]])
 def test_a_person_run_is_never_refused(table, argv):
     assert submit(table, argv)
 
@@ -137,16 +137,17 @@ def test_quick_and_gate_stay_allowed_for_an_agent(table, monkeypatch, tier):
 
 def broker_pytest(tmp_path, repo, marker, *files):
     return subprocess.run([sys.executable, str(repo / "scripts" / "testslots.py"), "pytest", "--", sys.executable, "-m", "pytest", "-q", *files],
-                          cwd=repo, env=environment(tmp_path, marker), capture_output=True, text=True, timeout=300)
+                          cwd=repo, env={**environment(tmp_path, marker), "PYTHONPATH": str(repo / "scripts")},
+                          capture_output=True, text=True, timeout=300)
 
 
-def test_the_broker_never_admits_more_than_thirty_files_from_an_agent(tmp_path, scratch):
-    result = broker_pytest(tmp_path, scratch, "CLAUDECODE", *named(31))
+def test_the_broker_never_admits_every_test_file_from_an_agent(tmp_path, scratch):
+    result = broker_pytest(tmp_path, scratch, "CLAUDECODE", *named(40))
     assert result.returncode == 4
     assert LINE in result.stderr
     assert queued(tmp_path) == []
 
 
-def test_the_broker_admits_thirty_files_from_an_agent_and_any_number_from_a_person(tmp_path, scratch):
-    assert broker_pytest(tmp_path, scratch, "CLAUDECODE", *named(30)).returncode == 0
-    assert broker_pytest(tmp_path, scratch, "", *named(31)).returncode == 0
+def test_the_broker_admits_thirty_nine_files_from_an_agent_and_every_file_from_a_person(tmp_path, scratch):
+    assert broker_pytest(tmp_path, scratch, "CLAUDECODE", *named(39)).returncode == 0
+    assert broker_pytest(tmp_path, scratch, "", *named(40)).returncode == 0

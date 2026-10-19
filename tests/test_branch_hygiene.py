@@ -1,4 +1,4 @@
-"""scripts/worktrees flags a branch over the hygiene limits; weakened-assertions flags a weaker guard test."""
+"""scripts/worktrees notes a long or stale branch and refuses nothing; weakened-assertions flags a weaker guard test."""
 
 from __future__ import annotations
 
@@ -32,7 +32,7 @@ HOOK = REPO / "scripts" / "hooks" / "weakened-assertions"
 @pytest.mark.parametrize("ahead,behind,age,expect", [
     (10, 0, 0.0, 0), (11, 0, 0.0, 1), (31, 0, 0.0, 1), (0, 20, 0.0, 0), (0, 21, 0.0, 1),
     (0, 1, 1.5, 1), (0, 0, 9.0, 0), (5, 1, 0.5, 0)])
-def test_flags_follow_the_limits(ahead, behind, age, expect) -> None:
+def test_notes_follow_the_marks(ahead, behind, age, expect) -> None:
     assert len(worktrees.flags_for(ahead, behind, age)) == expect
 
 
@@ -52,7 +52,7 @@ def commit(cwd: Path, name: str, msg: str = "c") -> None:
     assert sh(cwd, "git", "commit", "-qm", msg, "--no-verify").returncode == 0
 
 
-def test_worktrees_reports_a_branch_over_ten_commits_and_exits_one(tmp_path) -> None:
+def test_worktrees_notes_a_branch_over_ten_commits_and_exits_zero(tmp_path) -> None:
     main = tmp_path / "main"
     main.mkdir()
     sh(main, "git", "init", "-q", "-b", "0.2dev")
@@ -64,9 +64,9 @@ def test_worktrees_reports_a_branch_over_ten_commits_and_exits_one(tmp_path) -> 
     for i in range(11):
         commit(side, f"f{i}")
     out = sh(side, sys.executable, str(REPO / "scripts" / "worktrees"))
-    assert out.returncode == 1
-    assert "FLAG topic  +11 -0" in out.stdout
-    assert "commits>10" in out.stdout
+    assert out.returncode == 0, out.stdout
+    assert "NOTE topic  +11 -0" in out.stdout
+    assert "commits>10" in out.stdout and "NOTE_COMMITS" in out.stdout
 
 
 BEFORE = "def test_denied():\n    assert deny()\n    assert other()\n"

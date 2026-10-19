@@ -1,4 +1,4 @@
-"""Admission policy for the test broker: shortest estimated work first with aging, and a half-budget cap on long runs."""
+"""Admission policy for the test broker: shortest estimated work first, with aging so no request waits forever."""
 from __future__ import annotations
 
 import os
@@ -17,7 +17,7 @@ NICE_EXEC = ("import os, sys\n"
 
 
 def max_wait() -> float:
-    """Seconds a request waits before it is granted ahead of every ordering and cap (DEV_TEST_BACKGROUND_WAIT_S)."""
+    """Seconds a request waits before it is granted ahead of the ordering (DEV_TEST_BACKGROUND_WAIT_S)."""
     raw = os.environ.get("DEV_TEST_BACKGROUND_WAIT_S", "")
     return float(raw) if raw.replace(".", "", 1).isdigit() else BACKGROUND_MAX_WAIT_S
 
@@ -59,16 +59,6 @@ def sort_key(data: dict, now: float) -> tuple:
 def order(waiting: list, now: float) -> list:
     """Waiting slots in grant order."""
     return sorted(waiting, key=lambda slot: (sort_key(slot.data, now), slot.path))
-
-
-def background_room(me, slots: list, cap: int, now: float, capped: bool = True) -> int | None:
-    """Workers a long run may still take while a short run is queued or active, else None (no limit)."""
-    if not capped or run_class(me.data) != BACKGROUND or aged(me.data, now):
-        return None
-    if not any(run_class(slot.data) == INTERACTIVE for slot in slots):
-        return None
-    held = sum(slot.granted for slot in slots if run_class(slot.data) == BACKGROUND)
-    return max(0, max(1, -(-cap // 2)) - held)
 
 
 def lower_priority(command: list[str], klass: str) -> list[str]:

@@ -20,10 +20,11 @@ def test_dataset_upload_preview_and_specialist_help(tmp_path, monkeypatch, playw
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto(f'http://127.0.0.1:{served.port}/ui')
         reach(page, 'data')
+        page.get_by_role('button', name='+ Add dataset').click()
         page.get_by_label('Destination relative to files root').fill('datasets/demo.jsonl')
         page.get_by_label('Or paste dataset content').fill('{"label":"stop"}\n')
         page.get_by_role('button', name='Upload', exact=True).click()
-        page.get_by_role('button', name='demo.jsonl', exact=True).click()
+        page.get_by_role('button', name='demo.jsonl').click()
         pw.expect(page.locator('data-view #preview')).to_contain_text('"label":"stop"')
         page.get_by_role('button', name='Use for training', exact=True).click()
         assert page.get_by_label('Dataset path (relative to files root)').input_value() == 'datasets/demo.jsonl'
@@ -68,12 +69,15 @@ def check_training_controls(page, pw):
     from poolhouse.train.run import _parser
 
     reach(page, 'training')
+    page.locator('training-view [data-step="1"]').click()
     page.get_by_label('Recipe', exact=True).select_option('tool-calls')
     assert page.get_by_label('Base model ID or local directory').count() == 1
     page.get_by_label('Base model ID or local directory').fill('models/demo-base')
+    page.locator('training-view [data-step="2"]').click()
     pw.expect(page.get_by_role('button', name='Queue 20-step training smoke', exact=True)).to_be_visible()
     page.get_by_role('button', name='Review command', exact=True).click()
     pw.expect(page.locator('training-view #config .status')).to_contain_text('trains for 20 steps')
+    page.locator('training-view [data-step="1"]').click()
     page.get_by_label('Fine-tuning strategy').select_option('adapter')
     specification = page.evaluate("document.querySelector('training-view').spec()")
     parsed = _parser().parse_args(specification['args'])
@@ -98,6 +102,25 @@ def test_short_views_start_below_context_navigation(tmp_path, playwright):
             workspace = page.locator('#workspace').bounding_box()
             assert header and workspace
             assert abs(workspace['y'] - header['y'] - header['height']) < 2
+        browser.close()
+    finally:
+        served.close()
+
+
+def test_screen_asked_for_while_the_page_boots_is_the_one_opened(tmp_path, playwright):
+    served = Serving(tmp_path)
+    served.ui.settings.setup_done = True
+    held = []
+    try:
+        browser = playwright.chromium.launch(headless=True)
+        page = browser.new_page()
+        page.route('**/ui/setup', lambda route: route.continue_() if held else held.append(route))
+        page.goto(f'http://127.0.0.1:{served.port}/ui')
+        page.wait_for_function("() => window.fleetModel.requestedRoute === 'chat'")
+        page.evaluate("() => { location.hash = 'knowledge'; }")
+        page.wait_for_function("() => window.fleetModel.requestedRoute === 'knowledge'")
+        held[0].continue_()
+        page.wait_for_function("() => window.fleetModel.route === 'knowledge'")
         browser.close()
     finally:
         served.close()

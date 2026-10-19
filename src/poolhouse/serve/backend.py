@@ -16,7 +16,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, sentinel, serverkeys
+from poolhouse import errors, home, sentinel, serverkeys
 from poolhouse.client import families, wait_for_health
 from poolhouse.platform import process_group_kwargs
 from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache
@@ -61,7 +61,7 @@ def default_slot_save_path() -> Path:
     return home.cache("slots")
 
 
-class ServerFailed(RuntimeError):
+class ServerFailed(RuntimeError, errors.Error):
     """The server never became healthy. Carries whatever it managed to say."""
 
 

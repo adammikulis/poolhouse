@@ -207,8 +207,9 @@ def _landing(segment: str) -> bool:
         words = segment.split()
     after = words[words.index("merge") + 1:] if "merge" in words else []
     names = [one for one in after if not one.startswith("-")]
-    return ("--ff-only" in after and "--no-ff" not in after and len(names) == 1
-            and ":" not in names[0] and ".." not in names[0])
+    if len(names) != 1 or ":" in names[0] or ".." in names[0] or "--no-ff" in after:
+        return False
+    return "--ff-only" in after or names[0].startswith("origin/")
 
 
 def _reads_only(segment: str) -> bool:

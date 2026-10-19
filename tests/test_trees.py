@@ -59,13 +59,18 @@ LATER = 3600.0
 OLD = 2 * 86400.0
 
 
+def visible() -> list[str | None]:
+    """The working directories of this user's processes that can be read: the same on every host, whatever else runs on it."""
+    return [d for d in working_directories() if d is not None]
+
+
 def standing(main: Path) -> dict[str, dict]:
     return {Path(r["path"]).name: r for r in trees.rows(main, time.time())}
 
 
 def sweep(main: Path, later: float = LATER) -> list[str]:
     """The trees a sweep closes ``later`` seconds from now."""
-    closed, stayed = trees.sweep(main, time.time() + later, working_directories)
+    closed, stayed = trees.sweep(main, time.time() + later, visible)
     assert not stayed
     return [Path(done["path"]).name for done in closed]
 
@@ -202,7 +207,7 @@ def test_sweep_reports_a_landed_tree_it_could_not_remove(main, monkeypatch):
         return original(root, *args)
 
     monkeypatch.setattr(trees, "git", failing)
-    closed, stayed = trees.sweep(main, time.time() + LATER, working_directories)
+    closed, stayed = trees.sweep(main, time.time() + LATER, visible)
     assert closed == [] and stayed == [(str(path.resolve()), "git worktree remove failed (exit 128): busy")]
     assert path.exists()
 
@@ -306,6 +311,29 @@ def test_close_refuses_a_path_that_is_not_a_worktree(main, tmp_path):
         trees.close(main, tmp_path, ("landed", ""))
 
 
+def dead_pid() -> int:
+    done = subprocess.Popen([sys.executable, "-c", "pass"])
+    done.wait()
+    return done.pid
+
+
+def test_a_lock_naming_a_dead_process_does_not_hold_the_tree(main):
+    path = tree(main, "stale")
+    git(main, "worktree", "lock", "--reason", f"claude agent x (pid {dead_pid()} start Mon)", str(path))
+    assert not next(t for t in trees.listing(main) if t.path == path.resolve()).locked
+    assert trees.close(main, path, ("landed", ""))["branch"] == "stale"
+    assert not path.exists()
+
+
+def test_a_lock_naming_a_live_process_holds_the_tree(main):
+    path = tree(main, "live")
+    git(main, "worktree", "lock", "--reason", f"claude agent x (pid {os.getpid()} start Mon)", str(path))
+    assert next(t for t in trees.listing(main) if t.path == path.resolve()).locked
+    with pytest.raises(RuntimeError):
+        trees.close(main, path, ("landed", ""))
+    assert path.exists()
+
+
 def test_close_preserves_a_locked_tree(main):
     path = tree(main, "locked")
     git(main, "worktree", "lock", "--reason", "foreign operation", str(path))
@@ -349,8 +377,17 @@ def test_rebuildable_caches_allow_a_normal_landed_close(main, monkeypatch):
     assert ("branch", "-d", "cached") in calls and not path.exists()
 
 
+SCRIPT = ("import runpy, sys\n"
+          "namespace = runpy.run_path(sys.argv[1], run_name='worktrees_under_test')\n"
+          "script = namespace['main'].__globals__\n"
+          "listing = script['working_directories']\n"
+          "script['working_directories'] = lambda: [d for d in listing() if d is not None]\n"
+          "raise SystemExit(script['main'](sys.argv[2:]))\n")
+
+
 def run(main: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, str(REPO / "scripts" / "worktrees"), *args], cwd=main, env=ENV, text=True,
+    """scripts/worktrees as a command, with the processes whose directory cannot be read left out of its listing."""
+    return subprocess.run([sys.executable, "-c", SCRIPT, str(REPO / "scripts" / "worktrees"), *args], cwd=main, env=ENV, text=True,
                           capture_output=True, check=False)
 
 
@@ -477,11 +514,11 @@ def test_sweep_leaves_every_tree_while_a_process_of_this_user_hides_its_director
 
 def test_sweep_removes_a_young_tree_and_keeps_its_branch(main):
     path = tree(main, "fresh")
-    closed, stayed = trees.sweep(main, time.time() + LATER, working_directories)
+    closed, stayed = trees.sweep(main, time.time() + LATER, visible)
     assert not stayed and not path.exists()
     assert "day" in closed[0]["branch_kept"] and git(main, "branch", "--list", "fresh")
     again = tree(main, "older")
-    closed, _ = trees.sweep(main, time.time() + OLD, working_directories)
+    closed, _ = trees.sweep(main, time.time() + OLD, visible)
     assert "branch_kept" not in closed[0] and not git(main, "branch", "--list", "older") and not again.exists()
 
 

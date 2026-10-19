@@ -217,7 +217,7 @@ def test_saying_something_in_the_fleet_chat_waits_for_the_whole_reply(slow_model
         join_pool_by_passphrase(WORDS, group="home", path=served.keyfile)
         served.call("/ui/setup/join", method="POST",
                     body={"passphrase": WORDS, "group": "home"})
-        served.call("/ui/setup/done", method="POST")
+        served.ui.setup_finished()
         served.ui.conversations = Conversations(tmp_path / "chats")
         models = Models(tmp_path / "serving.json")
         models.register(slow_model.port, ["quince-2b.gguf"])

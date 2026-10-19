@@ -44,12 +44,12 @@ def test_the_settings_wire_the_tool_guard_to_every_tool_the_other_guards_do_not_
 
 
 HARD = (
-    "sed -i s/a/b/ scripts/hooks/pre-push",
-    "echo x > .claude/settings.local.json",
+    "sed -i s/a/b/ .git/hooks/pre-push",
+    "echo x > .git/config",
     "git -c core.hooksPath=/dev/null push origin dev",
     "gh pr merge 12",
     "cat ~/.poolhouse/person/statements.log",
-    "python3 - <<'EOF'\nopen('scripts/hooks/pre-push', 'w')\nEOF",
+    "python3 - <<'EOF'\nopen('.git/hooks/pre-push', 'w')\nEOF",
 )
 
 
@@ -65,7 +65,7 @@ def test_an_ordinary_command_passes_with_the_guard_on_or_off():
 
 
 def test_the_edit_guard_keeps_the_hard_paths_when_the_guard_is_off():
-    for path in (".claude/agents/worker.md", ".git/hooks/pre-push", "scripts/hooks/claude-tool-guard"):
+    for path in (".git/config", ".git/hooks/pre-push", "scripts/hooks/person-consume"):
         event = {"tool_name": "Write", "cwd": str(ROOT), "tool_input": {"file_path": str(ROOT / path), "content": "x\n"}}
         assert hook(EDIT, event, POOLHOUSE_GUARD="off").returncode == 2, path
     event = {"tool_name": "Write", "cwd": str(ROOT), "tool_input": {"file_path": str(ROOT / "docs" / "x.md"), "content": "x\n"}}
@@ -88,8 +88,8 @@ AS_ITSELF = ("poolhouse-workspace inbox --agent claude-aaaaaa", "poolhouse runti
 
 def test_a_subagent_acts_only_as_itself(monkeypatch, capsys):
     guard = load_bash_guard()
-    import workspace_hook
-    monkeypatch.setattr(workspace_hook, "agent_name", lambda *_args, **_kwargs: "claude-aaaaaa")
+    import subagent_records
+    monkeypatch.setattr(subagent_records, "load", lambda *_args, **_kwargs: {"name": "claude-aaaaaa"})
     for command in (*AS_ANOTHER, *AS_ITSELF):
         event = {"tool_name": "Bash", "cwd": str(ROOT), "agent_id": "a1", "tool_input": {"command": command}}
         monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(event)))
@@ -103,8 +103,8 @@ def test_the_release_question_names_the_guards_the_release_changes(tmp_path):
     state = tmp_path / "state"
     assert "Guards changed: none" in proposal(repo, state)[0]
     (repo / "scripts" / "hooks").mkdir(parents=True)
-    commit(repo, "scripts/hooks/pre-push")
+    commit(repo, "scripts/hooks/person-consume")
     commit(repo, "AGENTS.md")
     question = proposal(repo, state)[0]
-    assert "Guards changed: AGENTS.md, scripts/hooks/pre-push" in question
+    assert "Guards changed: AGENTS.md, scripts/hooks/person-consume" in question
     assert "Commits ahead of origin/main: 3" in question

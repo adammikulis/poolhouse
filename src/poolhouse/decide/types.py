@@ -6,12 +6,14 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 
+from poolhouse import errors
+
 MAX_OPTIONS = 255
 MAX_NAME = 200
 MAX_TEXT = 200_000
 
 
-class DecideError(RuntimeError):
+class DecideError(RuntimeError, errors.Error):
     """A decider could not produce a decision."""
 
 

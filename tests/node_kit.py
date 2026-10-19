@@ -252,7 +252,7 @@ that checks the limits sets ``NODE_WRITE_LIMITS`` to its own (``{}`` is the node
 @pytest.fixture
 def workspace_node(node_binary, monkeypatch, request):
     """A running node on a short temporary root; in-process clients and child commands find it by the environment."""
-    root = Path(tempfile.mkdtemp(prefix="ml", dir="/tmp"))
+    root = Path(tempfile.mkdtemp(prefix="ml")).resolve()
     state = root / "node"
     state.mkdir(mode=0o700)
     (state / "write-limits.json").write_text(json.dumps(getattr(request.module, "NODE_WRITE_LIMITS", WRITE_LIMITS)))

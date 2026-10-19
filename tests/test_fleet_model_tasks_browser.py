@@ -27,7 +27,11 @@ def test_task_review_draft_survives_refresh_and_duplicate_submit(journey_page):
     task = {"id": "demo-task", "title": "Build an evaluator", "description": "Score held-out cases",
             "state": "review", "acceptance": ["Results include probabilities"], "reviews": [],
             "checkpoints": [], "proposal": {"artifacts": {}}}
-    page.route("**/ui/tasks", lambda route: route.fulfill(json={"ok": True, "tasks": [task], "metrics": {}}))
+    project_id = "b" * 32
+    overview = {"as_of": 100, "total": 1, "remaining": 1, "queued": 0, "running": 0, "blocked": 0, "review": 1,
+                "awaiting_integration": 0, "done": 0, "failed": 0, "workers": [], "eta_seconds": None, "eta_reason": ""}
+    page.route("**/ui/projects", lambda route: route.fulfill(json={"workspaces": [{"id": project_id, "name": "Demo workspace", "is_self": True}]}))
+    page.route(f"**/ui/projects/{project_id}/tasks", lambda route: route.fulfill(json={"tasks": [task], "overview": overview, "metrics": {}}))
     page.goto(f"http://127.0.0.1:{served.port}/ui/#tasks")
     page.get_by_role("button", name="Build an evaluator").click()
     page.get_by_text("Independently review this proposal", exact=True).click()
@@ -37,12 +41,12 @@ def test_task_review_draft_survives_refresh_and_duplicate_submit(journey_page):
     task["checkpoints"] = [{"message": "Report submitted"}]
     page.evaluate("document.querySelector('tasks-view').load()")
     expect(reason).to_have_value("Verified the held-out report.")
-    page.evaluate("""() => {
+    page.evaluate("""(taskPath) => {
       const original = window.fleetModel.api;
       window.taskPosts = 0;
-      window.fleetModel.api = (path, opts) => path === '/ui/tasks' && opts?.method === 'POST'
+      window.fleetModel.api = (path, opts) => path === taskPath && opts?.method === 'POST'
         ? (window.taskPosts++, new Promise(resolve => window.finishTask = resolve)) : original(path, opts);
-    }""")
+    }""", f"/ui/projects/{project_id}/tasks")
     page.get_by_role("button", name="Record independent review", exact=True).click()
     expect(page.get_by_role("button", name="Record independent review", exact=True)).to_be_disabled()
     page.evaluate("document.querySelector('tasks-view .task-detail form').dispatchEvent(new Event('submit',{cancelable:true}))")
@@ -74,10 +78,11 @@ def test_decider_fetch_validation_and_pending_action(journey_page):
     page.evaluate("window.finishTool({ok:false,status:503,error:'Downloads are unavailable'})")
     expect(page.locator("tools-view #decision .status")).to_contain_text("Downloads are unavailable")
     expect(page.get_by_role("button", name="Run operation", exact=True)).to_be_enabled()
+    page.get_by_role("tab", name="Command library", exact=True).click()
     page.get_by_text("Advanced options: command arguments", exact=True).click()
     page.get_by_label("Arguments as JSON array", exact=True).fill('{"bad":"shape"}')
     page.get_by_role("button", name="Review", exact=True).click()
-    expect(page.locator("tools-view #decision .status")).to_contain_text("JSON array of strings")
+    expect(page.locator("tools-view #runner-status")).to_contain_text("JSON array of strings")
     assert len(page.evaluate("window.toolPosts")) == 1
     assert not errors
 

@@ -35,6 +35,7 @@ jobs:
   # so a break on the next Python shows early.
   shards:
     name: shard ${{ matrix.shard }} on Python ${{ matrix.python }}
+    if: github.event_name != 'push' || github.ref == 'refs/heads/main'
     strategy:
       fail-fast: false
       matrix:
@@ -125,7 +126,7 @@ jobs:
   test:
     name: test (ubuntu-latest, 3.13, --slow)
     needs: shards
-    if: always()
+    if: always() && (github.event_name != 'push' || github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -192,6 +193,7 @@ jobs:
   # scripts on its own PATH, no network and no model, mirroring what
   # tests/test_packaging_install_runs.py does for install.sh on Linux and macOS.
   windows:
+    if: github.event_name != 'push' || github.ref == 'refs/heads/main'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:

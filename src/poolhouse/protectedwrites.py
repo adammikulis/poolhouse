@@ -17,9 +17,7 @@ __all__ = ["guarded", "holds_secret", "other_agent", "refusal", "secret", "tool_
 
 GUARD_PATHS = (
     r"src/poolhouse/workspace/person_\w+\.py",
-    r"scripts/hooks/(claude-user-prompt|person-consume|claude-bash-guard|claude-edit-guard|claude-tool-guard|pre-push"
-    r"|rules_loader\.py)",
-    r"\.claude/(settings(\.local)?\.json|(agents|commands|skills|hooks)(/.*)?)",
+    r"scripts/hooks/(claude-user-prompt|person-consume)",
     r"\.git/(hooks(/.*)?|config(\.worktree)?|worktrees/[^/]+/config\.worktree)",
     r"\.gitconfig", r"\.config/git/(config|hooks(/.*)?)", r"\.poolhouse/(authority\.json|authority-audit\.jsonl)")
 REVIEWED = (*GUARD_PATHS, r"scripts/hooks/(pre-commit|commit-msg|pushed|primary-only|no-real-names|no-data-files|budgets"
@@ -33,13 +31,11 @@ GUARDS = re.compile(r"(^|/)(" + "|".join(GUARD_PATHS) + ")$", re.I)
 REVIEW = re.compile(r"(^|/)(" + "|".join(REVIEWED) + ")$", re.I)
 SECRETS = re.compile(r"(^|/)\.poolhouse/(person|node/client|node/person)(/|$)", re.I)
 HELD = tuple(tuple(path.split("/")) for path in (
-    "src/poolhouse/workspace/person_store.py", "scripts/hooks/pre-push", "scripts/hooks/claude-bash-guard",
-    "scripts/hooks/claude-edit-guard", "scripts/hooks/person-consume", "scripts/hooks/claude-user-prompt",
-    "scripts/hooks/rules_loader.py", ".claude/settings.json", ".claude/settings.local.json", ".git/hooks/pre-push",
-    ".git/config", ".config/git/config", ".gitconfig"))
+    "src/poolhouse/workspace/person_store.py", "scripts/hooks/person-consume", "scripts/hooks/claude-user-prompt",
+    ".git/hooks/pre-push", ".git/config", ".config/git/config", ".gitconfig"))
 MENTION = re.compile(
-    r"claude-(bash|edit)-guard|claude-user-prompt|person-consume|rules_loader\.py|scripts/hooks/pre-push|\.git/(hooks|config)"
-    r"|workspace/person_\w+|\.claude/(settings|agents|commands|skills|hooks)|core\.hooksPath|\.gitconfig"
+    r"claude-user-prompt|person-consume|\.git/(hooks|config)"
+    r"|workspace/person_\w+|core\.hooksPath|\.gitconfig"
     r"|\.poolhouse/(person|node/client|node/person|authority)", re.I)
 
 WRAPPERS = frozenset({"sudo", "doas", "command", "exec", "nohup", "time", "nice", "ionice", "env", "setsid", "caffeinate",
@@ -84,7 +80,7 @@ GH_BLOCKED: dict[str, frozenset[str] | None] = {
 READERS = re.compile(r"read|get|list|search|view|find|stat|head|tail|cat|show|describe|query|fetch")
 DEPTH = 3
 SCRIPT_BYTES = 65536
-PERSON = "the guards, the hook settings, git's hooks and the person record are changed by a person at a terminal"
+PERSON = "git's hooks and config, the person record and the authority registry are changed by a person at a terminal"
 
 
 def _roots(environ: Mapping[str, str]) -> list[str]:

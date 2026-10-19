@@ -64,11 +64,11 @@ def tool(name: str, given: dict, **more) -> str:
     ("mcp__claude-in-chrome__navigate", {"url": "https://example.org"}),
     ("mcp__claude-in-chrome__computer", {"action": "screenshot"}),
     ("mcp__ide__executeCode", {"code": "print(1)"}),
-    ("mcp__files__write_file", {"path": "/work/scripts/hooks/pre-push", "content": "exit 0"}),
-    ("mcp__files__write_file", {"path": "/work/.claude/settings.local.json", "content": "{}"}),
+    ("mcp__files__write_file", {"path": "/work/.git/hooks/pre-push", "content": "exit 0"}),
+    ("mcp__files__write_file", {"path": "/work/.git/config", "content": "{}"}),
     ("mcp__files__read_file", {"path": "/home/p/.poolhouse/person/statements.log"}),
     ("mcp__files__move", {"source": "/tmp/x", "destination": "/work/.git/hooks/pre-push"}),
-    ("mcp__files__batch", {"edits": [{"path": "/work/src/ok.py"}, {"path": "/work/scripts/hooks/claude-bash-guard"}]}),
+    ("mcp__files__batch", {"edits": [{"path": "/work/src/ok.py"}, {"path": "/work/.git/config"}]}),
 ])
 def test_a_tool_that_reaches_the_person_record_a_guard_or_the_owners_browser_is_refused(name, given):
     assert tool(name, given), (name, given)
@@ -83,6 +83,9 @@ def test_a_tool_that_reaches_the_person_record_a_guard_or_the_owners_browser_is_
     ("Glob", {"pattern": "src/**", "path": "/work"}),
     ("mcp__files__read_file", {"path": "/work/scripts/hooks/pre-push"}),
     ("mcp__files__write_file", {"path": "/work/src/ok.py", "content": "x"}),
+    ("mcp__files__write_file", {"path": "/work/scripts/hooks/pre-push", "content": "exit 0"}),
+    ("mcp__files__write_file", {"path": "/work/.claude/settings.local.json", "content": "{}"}),
+    ("mcp__files__batch", {"edits": [{"path": "/work/src/ok.py"}, {"path": "/work/scripts/hooks/claude-bash-guard"}]}),
     ("mcp__github__list_issues", {"owner": "o", "repo": "r"}),
     ("TaskStop", {"task_id": "t1"}),
     ("Agent", {"prompt": "edit scripts/hooks/pre-push", "description": "x"}),
@@ -112,20 +115,20 @@ def test_a_search_rooted_above_the_person_record_is_refused(tmp_path):
 
 def test_the_worktree_rules_expose_the_hard_forms_whatever_the_guard_switch_says(monkeypatch, tmp_path):
     monkeypatch.setenv("POOLHOUSE_GUARD", "off")
-    assert not worktreerules.bash_refusal("sed -i s/a/b/ scripts/hooks/pre-push", str(tmp_path))
-    assert worktreerules.hard_bash_refusal("sed -i s/a/b/ scripts/hooks/pre-push", str(tmp_path))
+    assert not worktreerules.bash_refusal("sed -i s/a/b/ .git/hooks/pre-push", str(tmp_path))
+    assert worktreerules.hard_bash_refusal("sed -i s/a/b/ .git/hooks/pre-push", str(tmp_path))
     assert worktreerules.hard_bash_refusal("git -c core.hooksPath=/dev/null push origin dev", str(tmp_path))
     assert not worktreerules.hard_bash_refusal("git status", str(tmp_path))
-    assert not worktreerules.edit_refusal([".claude/agents/x.md"], str(tmp_path))
-    assert worktreerules.hard_edit_refusal([".claude/agents/x.md"], str(tmp_path))
+    assert not worktreerules.edit_refusal([".git/hooks/pre-push"], str(tmp_path))
+    assert worktreerules.hard_edit_refusal([".git/hooks/pre-push"], str(tmp_path))
     assert worktreerules.hard_edit_refusal(["/home/p/.poolhouse/authority.json"], str(tmp_path))
     assert not worktreerules.hard_edit_refusal(["src/poolhouse/x.py", "AGENTS.md"], str(tmp_path))
 
 
 def test_heredoc_bodies_are_data_for_cat_and_code_for_an_interpreter(tmp_path):
-    written = "cat > notes.md <<'EOF'\nsed -i s/a/b/ scripts/hooks/pre-push\nEOF"
+    written = "cat > notes.md <<'EOF'\nsed -i s/a/b/ .git/hooks/pre-push\nEOF"
     assert not worktreerules.bash_refusal(written, str(tmp_path)) and not worktreerules.hard_bash_refusal(written, str(tmp_path))
-    run_it = "python3 - <<'EOF'\nopen('scripts/hooks/pre-push','w')\nEOF"
+    run_it = "python3 - <<'EOF'\nopen('.git/hooks/pre-push','w')\nEOF"
     assert worktreerules.bash_refusal(run_it, str(tmp_path)) and worktreerules.hard_bash_refusal(run_it, str(tmp_path))
 
 

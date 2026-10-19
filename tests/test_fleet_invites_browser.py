@@ -16,7 +16,7 @@ pytestmark = pytest.mark.slow
 
 def test_owner_creates_copies_revokes_and_expires_scoped_invitation(joined, open_page):
     page, errors = open_page(joined, cookie=joined.cookie)
-    page.get_by_text("Manage pool connections", exact=True).click()
+    page.get_by_text("Pool connections & joining", exact=True).click()
     panel = page.locator("#pool fleet-invites")
     expect(panel.get_by_role("button", name="Create invite", exact=True)).to_be_visible()
     calls = []
@@ -73,7 +73,7 @@ def test_owner_creates_copies_revokes_and_expires_scoped_invitation(joined, open
 
 def test_invite_join_refuses_expired_then_clears_success_without_leaking_to_storage(joined, open_page):
     page, errors = open_page(joined, cookie=joined.cookie)
-    page.get_by_text("Manage pool connections", exact=True).click()
+    page.get_by_text("Pool connections & joining", exact=True).click()
     panel = page.locator("#pool fleet-invites")
     button = panel.get_by_role("button", name="Join with invite", exact=True)
     expect(button).to_be_disabled()

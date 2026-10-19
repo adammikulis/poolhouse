@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import contextlib
 import contextvars
-import datetime
 import json
 import math
 import os
@@ -17,7 +16,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import testhours
 import testqueue
 import testslots_policy as policy
 
@@ -32,6 +30,7 @@ HEAVY_MODULES = frozenset({
 })
 
 MIN_RETRY_S, MAX_RETRY_S, RETRY_PER_AHEAD_S = 0.01, 0.5, 0.005
+WAIT_S = 3600.0
 NOTIFY = "notify"
 EXPORT_LEASE = contextvars.ContextVar("export_test_lease", default=True)
 CHECK_CANCELLED = contextvars.ContextVar("check_test_cancelled", default=lambda: None)
@@ -46,8 +45,24 @@ def _cores() -> int:
     return os.cpu_count() or 4
 
 
+def wait_limit(environment: dict[str, str] | None = None) -> float:
+    """Seconds a run waits for workers or for its collection before it gives up: ``DEV_TEST_WAIT_S``, default `WAIT_S`."""
+    return float((os.environ if environment is None else environment).get("DEV_TEST_WAIT_S", WAIT_S))
+
+
+def reserved_cores() -> int:
+    """Logical cores the budget leaves to the machine: ``DEV_TEST_RESERVED_CORES``, default 1."""
+    return max(0, int(os.environ.get("DEV_TEST_RESERVED_CORES", "1")))
+
+
 def base_budget(cores: int | None = None) -> int:
-    return max(1, (cores or _cores()) - max(0, int(os.environ.get("DEV_TEST_RESERVED_CORES", "1"))))
+    return max(1, (cores or _cores()) - reserved_cores())
+
+
+def budget_words() -> str:
+    """Where the worker budget comes from: its value, the cores it is derived from and the variables that change it."""
+    return (f"the worker budget is {budget()} (DEV_TEST_BUDGET when set, otherwise the {_cores()} logical cores less "
+            f"{reserved_cores()} reserved: DEV_TEST_RESERVED_CORES)")
 
 
 def budget() -> int:
@@ -220,24 +235,20 @@ def _lease_environment(path: Path, token: str) -> Iterator[None]:
             os.environ["DEV_TEST_LEASE"] = previous
 
 
-def _grant(me: Slot, waiting: list[Slot], capacity: tuple[int, int, int], room: int | None = None) -> int:
+def _grant(me: Slot, waiting: list[Slot], capacity: tuple[int, int]) -> int:
+    """The workers the first waiting request takes (all that are free, or its ``want``); a later one takes the free workers the first cannot use, at most twice per first request."""
     path, want, minimum = me.path, me.data["want"], me.data["minimum"]
-    cap, used, running = capacity
-    free = cap - used if room is None else min(cap - used, room)
+    cap, used = capacity
+    free = cap - used
     if not waiting or free < minimum:
         return 0
     first = waiting[0]
     if first.path != path:
-        if room is not None and policy.run_class(first.data) == policy.INTERACTIVE:
-            return 0
-        if cap - used >= first.data["minimum"] or first.data.get("backfills", 0) >= 2:
+        if free >= first.data["minimum"] or first.data.get("backfills", 0) >= 2:
             return 0
         first.data["backfills"] = first.data.get("backfills", 0) + 1
         first.path.write_text(json.dumps(first.data))
-    share = max(minimum, cap // 2) if any(other.path != path for other in waiting) else cap
-    if not want:
-        return min(free, share, max(minimum, cap // max(1, len(waiting) + running)))
-    return min(want, free, share)
+    return free if not want else min(want, free)
 
 
 def _restore_inode(path: Path, record: dict, fd: int) -> int:
@@ -292,7 +303,7 @@ def _request(want: int, minimum: int | None, label: str, run_class: str) -> tupl
     minimum = max(1, int(minimum if minimum is not None else 1)) if auto \
         else max(1, min(int(minimum if minimum is not None else 1), want))
     if minimum > (int(os.environ["DEV_TEST_BUDGET"]) if os.environ.get("DEV_TEST_BUDGET", "").isdigit() else base_budget()):
-        raise ValueError("testslots: minimum exceeds the configured CPU budget")
+        raise ValueError(f"testslots: this run needs at least {minimum} workers and {budget_words()}; set DEV_TEST_BUDGET to raise it")
     record = {"label": label, "pid": os.getpid(), "want": want, "minimum": minimum, "granted": 0, "since": time.time(),
               "version": policy.VERSION, "class": run_class, "estimate": _env_estimate(), "token": secrets.token_hex(24),
               "agent": _agent_from_env()}
@@ -302,17 +313,10 @@ def _request(want: int, minimum: int | None, label: str, run_class: str) -> tupl
 def _decide(me: dict, path: Path, slots: list[Slot], cap: int) -> tuple[int, int, list]:
     """The workers granted to the record at ``path`` now, the workers in use and the labels queued ahead of it."""
     now = time.time()
-    legacy = policy.has_legacy(slots)
     queue = [s for s in slots if s.granted == 0]
-    capped = testhours.capped_now(os.environ, datetime.datetime.fromtimestamp(now)) and not legacy
-    if not legacy:
-        queue = [slot for slot in queue if (room := policy.background_room(slot, slots, cap, now, capped))
-                 is None or room >= slot.data["minimum"]]
-    waiting = sorted(queue, key=lambda s: s.path) if legacy else policy.order(queue, now)
+    waiting = sorted(queue, key=lambda s: s.path) if policy.has_legacy(slots) else policy.order(queue, now)
     used = sum(s.granted for s in slots)
-    granted = _grant(Slot(path, me), waiting, (cap, used, sum(slot.granted > 0 for slot in slots)),
-                     policy.background_room(Slot(path, me), slots, cap, now,
-                                            capped))
+    granted = _grant(Slot(path, me), waiting, (cap, used))
     place = next((i for i, s in enumerate(waiting) if s.path == path), 0)
     return granted, used, [s.data.get("label") for s in waiting[:place]]
 
@@ -365,7 +369,7 @@ def lease(want: int, minimum: int | None = None, label: str = "tests", say=lambd
     d = slots_dir()
     path = d / f"{time.time_ns()}-{os.getpid()}-{secrets.token_hex(8)}.slot"
     t0 = time.monotonic()
-    deadline = t0 + float(os.environ.get("DEV_TEST_WAIT_S", "3600"))
+    deadline = t0 + wait_limit()
     with _mutex(d):
         fd = _publish(path, me)
     last_note = t0
@@ -389,8 +393,8 @@ def lease(want: int, minimum: int | None = None, label: str = "tests", say=lambd
                     break
             now = time.monotonic()
             if now > deadline:
-                raise TimeoutError(f"testslots: waited {now - t0:.0f}s for {minimum} of {cap} workers "
-                                   f"({used} in use); see `python scripts/testslots.py status`")
+                raise TimeoutError(f"testslots: waited {now - t0:.0f}s for {minimum} of {cap} workers ({used} in use); the wait limit is "
+                                   f"{wait_limit():.0f} s (DEV_TEST_WAIT_S, default {WAIT_S:.0f}); see `python scripts/testslots.py status`")
             state = (minimum, want, cap, used, tuple(ahead))
             if now - last_note >= 20 or (state != last_state and now - last_note >= 1):
                 last_note, last_state = now, state
@@ -457,7 +461,7 @@ def _run_command(argv: list[str], elastic: bool = False) -> int:
     import argparse
     import subprocess
     ap = argparse.ArgumentParser(prog="testslots run")
-    ap.add_argument("--want", type=lambda value: 0 if value == "auto" else int(value), default=0, help="workers wanted as a ceiling (0 = auto: what the machine can spare, a fair share)")
+    ap.add_argument("--want", type=lambda value: 0 if value == "auto" else int(value), default=0, help="workers wanted as a ceiling (0 = auto: every worker the machine can spare)")
     ap.add_argument("--min", dest="minimum", type=int, default=None)
     ap.add_argument("--label", default="command")
     ap.add_argument("--container", action="store_true")

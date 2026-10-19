@@ -47,6 +47,7 @@ def _runnable(checker) -> None:
 @pytest.mark.gate
 @pytest.mark.parametrize("checker", gates.checkers(), ids=lambda c: c.NAME)
 def test_metric_is_within_its_budget(checker) -> None:
+    """The findings equal the recorded number: over it fails, and under it fails until --update locks the gain in."""
     _runnable(checker)
     name = checker.NAME
     budget = ALLOWED[name]
@@ -58,15 +59,6 @@ def test_metric_is_within_its_budget(checker) -> None:
         f"owned by {owner}\n{_sites(name)}\n"
         f"    scripts/budgets --show {name}"
     )
-
-
-@pytest.mark.gate
-@pytest.mark.parametrize("checker", gates.checkers(), ids=lambda c: c.NAME)
-def test_budget_matches_the_tree(checker) -> None:
-    _runnable(checker)
-    name = checker.NAME
-    budget = ALLOWED[name]
-    actual = len(found(name))
     assert actual >= budget, (
         f"{name}: {actual} sites but {budget} allowed -- the budget is stale. "
         f"Run scripts/budgets --update so the number can only fall from here."

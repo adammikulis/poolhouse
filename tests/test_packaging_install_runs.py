@@ -76,8 +76,13 @@ def wheel() -> Path:
 def run_installer(root: Path, *args: str, **extra: str) -> subprocess.CompletedProcess[str]:
     home = root / "home"
     home.mkdir(parents=True, exist_ok=True)
+    python_bin = root / "python-bin"
+    python_bin.mkdir(exist_ok=True)
+    interpreter = python_bin / "python3.13"
+    if not interpreter.exists():
+        interpreter.symlink_to(Path(sys.executable).resolve(strict=True))
     env = {
-        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "PATH": str(python_bin) + os.pathsep + os.environ.get("PATH", os.defpath),
         "HOME": str(home),
         "POOLHOUSE_PREFIX": str(root / "prefix"),
         "POOLHOUSE_DEST": str(root / "bin"),
@@ -91,6 +96,24 @@ def run_installer(root: Path, *args: str, **extra: str) -> subprocess.CompletedP
     return subprocess.run(["sh", str(SH), *args], stdout=subprocess.PIPE,
                           stderr=subprocess.STDOUT, text=True,
                           timeout=900, stdin=subprocess.DEVNULL, env=env, cwd=root)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="install.sh uses POSIX executable discovery")
+def test_installer_fixture_uses_the_test_interpreter_with_an_unusable_host_shim(tmp_path, monkeypatch):
+    inherited = tmp_path / "inherited-bin"
+    inherited.mkdir()
+    shim = inherited / "python3.13"
+    shim.write_text("#!/bin/sh\nprintf 'unusable host shim\\n'\nexit 19\n")
+    shim.chmod(0o755)
+    probe = tmp_path / "interpreter-probe.sh"
+    probe.write_text("#!/bin/sh\nexec python3.13 -I -S -c 'import pathlib,sys; print(pathlib.Path(sys.executable).resolve())'\n")
+    monkeypatch.setenv("PATH", str(inherited) + os.pathsep + os.defpath)
+    monkeypatch.setattr(sys.modules[__name__], "SH", probe)
+    monkeypatch.setattr(sys.modules[__name__], "wheel", lambda: tmp_path / "unused.whl")
+    done = run_installer(tmp_path / "install", "--headless")
+    assert done.returncode == 0, done.stdout
+    assert Path(done.stdout.strip()) == Path(sys.executable).resolve()
+    assert "unusable host shim" not in done.stdout
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="install.ps1 is the Windows installer")

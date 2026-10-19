@@ -1,7 +1,6 @@
-"""scripts/testhistory.py, testclass.py, testhours.py, testqueue.py: duration history, classification and queue forecast."""
+"""scripts/testhistory.py, testclass.py, testqueue.py: duration history, classification and queue forecast."""
 from __future__ import annotations
 
-import datetime as dt
 import json
 import os
 import subprocess
@@ -16,7 +15,6 @@ sys.path.insert(0, str(SCRIPTS))
 
 import testclass  # noqa: E402
 import testhistory  # noqa: E402
-import testhours  # noqa: E402
 import testqueue  # noqa: E402
 
 
@@ -180,30 +178,6 @@ def test_without_enough_history_the_command_shape_decides(tmp_path):
 def test_scripts_test_takes_background():
     assert '"--background"' in (SCRIPTS / "test").read_text()
     assert "--now" not in (SCRIPTS / "test").read_text()
-
-
-def _at(day, hour, minute=0):
-    return dt.datetime(2026, 10, day, hour, minute)          # 2026-10-05 is a Monday
-
-
-@pytest.mark.parametrize(("when", "capped"), [
-    (_at(5, 7, 59), False), (_at(5, 8, 0), True), (_at(5, 20, 59), True), (_at(5, 21, 0), False),
-    (_at(10, 12), False), (_at(11, 12), False), (_at(9, 12), True),
-])
-def test_the_cap_applies_only_inside_weekday_normal_hours(when, capped):
-    assert testhours.cap_applies(when, testhours.parse_window(None)) is capped
-
-
-def test_the_hours_setting_parses_and_off_keeps_the_cap_on():
-    assert testhours.parse_window("09:30-17:00") == (dt.time(9, 30), dt.time(17, 0))
-    assert testhours.cap_applies(_at(5, 9, 29), testhours.parse_window("09:30-17:00")) is False
-    assert testhours.parse_window("off") is None
-    assert testhours.cap_applies(_at(10, 3), None) is True
-    assert testhours.capped_now({"DEV_TEST_NORMAL_HOURS": "10:00-11:00"}, _at(5, 12)) is False
-    assert testhours.capped_now({"DEV_TEST_NORMAL_HOURS": "nonsense"}, _at(10, 3)) is True
-    for bad in ("9-17", "17:00-09:00", "25:00-26:00"):
-        with pytest.raises(ValueError):
-            testhours.parse_window(bad)
 
 
 def _run(pid, state, klass, estimate, enqueued, **fields):

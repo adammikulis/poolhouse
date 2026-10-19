@@ -16,13 +16,14 @@ seconds workers waited for CPU permits (`queued for CPU`); the queue wait is the
 that the warning measures.
 Every checkout shares the same admission broker.
 
-Agents run affected tests for their own changes: explicit file selectors, at most 30. The main agent
+Agents run affected tests for their own changes: explicit file selectors, any number of them. The main agent
 coordinates shared structural and security gates once per consolidated integration batch before publication.
 The full suite is GitHub's job: the `ci` workflow runs it on every pushed commit, and an agent never runs one.
 For an agent (`CLAUDECODE`, `POOLHOUSE_AGENT`, `POOLHOUSE_NONINTERACTIVE` or a Codex session set) `scripts/test`
-refuses, before anything is queued, the `fast`, `full`, `slow` and `all` tiers that name no test file or more than 30
-(directories count as the test files under them), and the broker (`scripts/testslots_runner.py`) admits no agent
-pytest run naming more than 30 test files; `quick` and `gate` stay allowed. A person's terminal sets none of the
+refuses, before anything is queued, the `fast`, `full`, `slow` and `all` tiers that name no test file, and any run that names
+every test file (directories count as the test files under them); the broker (`scripts/testslots_runner.py`) admits no agent
+pytest run that names every test file; `quick` and `gate` stay allowed. The refusal reads `the whole suite runs on a schedule
+and on pull requests; name the files you changed`. A person's terminal sets none of the
 markers and is never refused. The main agent owns `quick`; workers use explicit affected selectors.
 
 `scripts/test <tier>` runs as a background job that the command follows: `submit` prints the job id
@@ -171,14 +172,11 @@ lease's class.
 The estimate travels with the lease (`DEV_TEST_ESTIMATE_S`). Queued requests are granted shortest
 estimated work first: the order key is the estimate minus the seconds waited, so a longer run arriving
 at about the same time as a shorter one goes behind it and a long wait outweighs a large estimate. A
-request that has waited `DEV_TEST_BACKGROUND_WAIT_S` (default 600) is granted ahead of the ordering and
-of the cap. While an interactive run is queued or active, background runs together hold at most half
-the budget (rounded up, at least 1). The cap applies to new grants; running workers are never
-preempted, but each test takes a fresh one-worker lease, so a background run shrinks to the cap at its
-next test. The cap holds inside normal hours, weekdays 08:00-21:00 machine-local, and is lifted outside
-them. `DEV_TEST_NORMAL_HOURS="HH:MM-HH:MM"` changes the window; `off` keeps the cap on at all hours.
-Nothing is held or delayed to a time of day. While a lease written by older code (`version` below 2)
-is live, every lease keeps arrival order and no cap applies.
+request that has waited `DEV_TEST_BACKGROUND_WAIT_S` (default 600) is granted ahead of the ordering.
+A run takes every worker that is free (or its `--want`, when given): no class and no queued run holds
+another to a share of the budget, and the queue order prevents starvation. Nothing is held or delayed to
+a time of day. While a lease written by older code (`version` below 2) is live, every lease keeps
+arrival order.
 
 Each `scripts/test` run keeps a run record in the slots directory (`*.run`: class, estimate, workers
 wanted and granted, enqueue and start time). `testqueue.forecast(runs, budget, now)` (module

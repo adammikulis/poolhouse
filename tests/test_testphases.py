@@ -70,6 +70,16 @@ def test_the_recorder_averages_the_permit_wait_the_workers_report(tmp_path):
     assert testphases.read(tmp_path / "phases.json").queued == 6.0
 
 
+def test_tests_are_the_busiest_workers_calls_so_one_long_test_is_not_fixed_overhead(tmp_path):
+    recorder = testphases.Recorder(str(tmp_path / "phases.json"))
+    for worker, seconds in (("gw0", 20.0), ("gw1", 1.0), ("gw2", 1.0)):
+        recorder.pytest_runtest_logreport(report("setup", worker, 0.0))
+        recorder.pytest_runtest_logreport(report("call", worker, duration=seconds))
+        recorder.pytest_runtest_logreport(report("teardown", worker))
+    recorder.pytest_sessionfinish(None)
+    assert testphases.read(tmp_path / "phases.json").tests == 20.0
+
+
 def test_a_test_carries_the_seconds_it_waited_for_admission(monkeypatch):
     import contextlib
 

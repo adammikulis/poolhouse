@@ -3,9 +3,9 @@
 import json
 
 import pytest
+from web_assets import serve_page_asset
 
-from poolhouse.fleet.page import WEB, render
-from poolhouse.ui import assets_dir
+from poolhouse.fleet.page import render
 
 pytestmark = pytest.mark.slow
 
@@ -20,10 +20,8 @@ def test_pool_setup_sends_only_the_selected_action(action):
         path = request.request.url.split("http://pool.test", 1)[-1]
         if path == "/":
             return request.fulfill(body=render(), content_type="text/html")
-        if path.startswith("/ui/ml-ui/"):
-            return request.fulfill(path=str(assets_dir() / path.rsplit("/", 1)[-1]))
-        if path == "/ui/static/style.css":
-            return request.fulfill(path=str(WEB / "style.css"))
+        if serve_page_asset(request, path):
+            return
         body, status = {"ok": True}, 200
         if path == "/ui/setup":
             body = {"needs_setup": True, "name": "test-machine", "pool_mode": "prod"}
@@ -44,7 +42,7 @@ def test_pool_setup_sends_only_the_selected_action(action):
         page.route("http://pool.test/**", route)
         page.goto("http://pool.test/")
         screen = page.locator("#first-run")
-        screen.get_by_label("Mode", exact=True).select_option("prod")
+        screen.get_by_label("Connection policy", exact=True).select_option("prod")
         screen.get_by_role("button", name="Continue", exact=True).click()
         name = screen.get_by_label("Pool name (required)", exact=True)
         assert name.input_value() == ("lab" if action == "current-group" else "default")

@@ -12,6 +12,7 @@ from poolhouse.workspace import testboard
 
 ANNOUNCEMENTS = "#announcements"
 LINE_LIMIT = 200
+NOTE_ONLY = ("quiet", "old", "estimate")
 
 
 def claim(jobs: testjobs.Jobs, job: str, kind: str) -> bool:
@@ -24,7 +25,7 @@ def claim(jobs: testjobs.Jobs, job: str, kind: str) -> bool:
 
 
 def post(jobs: testjobs.Jobs, job: str, kind: str, what: str, say: Callable[[str], None] = print) -> bool:
-    """Tell the owner of ``job`` and the announcements what happened (``what``, naming the cause), each once per job and kind; False when one was not delivered.
+    """Tell the owner of ``job`` and, unless ``kind`` is in `NOTE_ONLY`, the announcements what happened (``what``, naming the cause), each once per job and kind; False when one was not delivered.
 
     A process with no board identity sends nothing and leaves the notice for a later pass, saying so.
     """
@@ -39,7 +40,7 @@ def post(jobs: testjobs.Jobs, job: str, kind: str, what: str, say: Callable[[str
     line = f"test job {job} (owner {owner}) {what}"
     delivered = True
     for part, to, type_, body in (("note", owner, "note", line), ("announce", ANNOUNCEMENTS, "blocked", line[:LINE_LIMIT])):
-        if (part == "note" and to == session.name) or not claim(jobs, job, f"{kind}-{part}"):
+        if (part == "announce" and kind in NOTE_ONLY) or (part == "note" and to == session.name) or not claim(jobs, job, f"{kind}-{part}"):
             continue
         if testboard.guarded(f"{kind} {part}", lambda to=to, type_=type_, body=body: session.post(to, type_, body)) is None:
             with contextlib.suppress(OSError):

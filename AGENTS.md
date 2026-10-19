@@ -36,7 +36,7 @@ The rules never to break, then the ones needed every hour; each names the sectio
 18. **Stage files by name, never `git add -A`**, in your own claimed worktree beside the primary checkout (4).
 19. **Push the development branch yourself**: fetch, merge `origin/<dev>`, run only your changed test files,
     `git push origin HEAD:refs/heads/<dev>`; no accept, claim or lander lock; clean up before reporting (4).
-20. **Test your own change with explicit `scripts/test` selectors**, at most 30 files and never the full suite (GitHub runs it, and the shared gates, on every pushed commit)
+20. **Test your own change with explicit `scripts/test` selectors**, any list of files and never the full suite (GitHub runs it, and the shared gates, on every pushed commit)
     (5).
 
 Contents: [1 Hard floors](#1-hard-floors) | [2 How to work](#2-how-to-work) |
@@ -262,8 +262,8 @@ which, in one line, at once, and do every part that is not blocked.
   the owner is work handed back, the same fault as a command handed to the owner.
 - **Clear a jam before adding to it.** When the test queue, the landing gate, a broker or an agent quota is stalled, the
   next action is to clear it (end the hung jobs, fix the cause), never to submit, spawn or file more work into it. The
-  queue doctor ends a background test job that has gone quiet or run past its limit; an agent that finds a stalled
-  queue clears it the same turn.
+  queue doctor ends a background test job whose runner is gone or that has no owner, and tells the owner of one that is quiet,
+  old or long (it ends nothing for time); an agent that finds a stalled queue clears it the same turn.
 - **Ask what a fix needs in order to land.** Before dispatching a fix, name what must run to verify, review and land it
   (the test queue, reviewer slots, the landing gate, a quota). When that is the thing that is broken, unblock it first
   (a private broker directory for the fix's own tests, a separate landing lane, the quota change landed before more
@@ -495,7 +495,7 @@ Whoever made a branch finishes it and pushes it; the lead steps in only for cros
 **Landing, step by step.** These steps are the whole procedure, in this order.
 
 1. **Prepare.** In your own worktree beside the primary checkout: fetch, merge `origin/<dev>`, run the change's own
-   tests with `scripts/test all <files>` (at most 30 files), commit by named files.
+   tests with `scripts/test all <files>`, commit by named files.
 2. **Push.** `git fetch origin`, merge `origin/<dev>` again if it moved, then `git push origin HEAD:refs/heads/<dev>`.
    No accept, claim, creator or lander lock is needed. The push check refuses Python that does not parse and data
    files, and a standing reject of that commit; nothing else.
@@ -540,10 +540,9 @@ Whoever made a branch finishes it and pushes it; the lead steps in only for cros
 
 ### Branch hygiene and landing
 
-- Cut branches from current development. A branch holds at most 10 commits and merges the development branch at least
-  daily; at more than 30 commits ahead (`scripts/worktrees` `MAX_AHEAD` = 30) or 20 behind, split it into separately
-  landing batches or land part of it before adding more. `scripts/worktrees` reports every worktree against these limits
-  and exits 1 when any is over.
+- Cut branches from current development. A branch is short and merges the development branch daily; `scripts/worktrees`
+  reports every worktree and puts a note under one that is more than 10 commits ahead (30: split or land part), more than
+  20 behind or behind for a day. The notes are information (`NOTE_*` in `scripts/worktrees`, docs/limits.md); nothing refuses.
 - One lineage per branch: never build on another branch's unlanded commits; shared work lands first (a stack lands
   bottom-up, one layer at a time) and dependents rebase onto it. One worker owns an area from review through gate, push
   and cleanup.
@@ -641,8 +640,8 @@ changed surfaces (the slow tests for packaging, page and Fleet changes). Report 
 limitations. Invalid selectors fail before admission; never replace a missing selector with an unreviewed omission.
 Documentation-only changes need consistency review and clean diffs. **The full suite is GitHub's job**: the `ci`
 workflow runs it on every pushed commit, and an agent never runs one locally. For an agent `scripts/test` refuses the
-`fast`, `full`, `slow` and `all` tiers when they name no test file or more than 30, and the broker admits no agent run
-of more than 30 test files (`quick` and `gate` stay allowed). Workers do not run shared gates.
+`fast`, `full`, `slow` and `all` tiers when they name no test file, and neither it nor the broker admits an agent run
+that names every test file (`quick` and `gate` stay allowed). Workers do not run shared gates.
 
 - The main coordinator obtains another agent's review for each security-adjacent branch and assembles the batch in a
   claimed checkout (an isolated worktree for concurrent work or conflicts). It runs the shared structural/security

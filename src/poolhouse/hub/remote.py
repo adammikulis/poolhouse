@@ -11,7 +11,7 @@ import re
 import urllib.parse
 from dataclasses import dataclass, replace
 
-from poolhouse import credentials, http, net
+from poolhouse import credentials, errors, http, net
 from poolhouse.httpguard import Refused
 from poolhouse.hub.naming import _SHARD, QUANT, aside
 from poolhouse.hub.publishers import namespace
@@ -24,7 +24,7 @@ TOKEN_VARIABLES = ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN")
 _QUANT_TAG = re.compile(r"^[A-Za-z0-9_]+$")
 
 
-class RemoteError(RuntimeError):
+class RemoteError(RuntimeError, errors.Error):
     """The endpoint refused or could not answer."""
 
 

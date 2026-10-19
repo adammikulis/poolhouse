@@ -22,7 +22,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse import home, http, hub, lock, net
+from poolhouse import errors, home, http, hub, lock, net
 from poolhouse.hub import admission, hfstore, members as peering, publishers, remote
 from poolhouse.hub.remote import GatedRepo, NotFound, RemoteFile
 from poolhouse.net.download import staged_part
@@ -54,11 +54,11 @@ class Cancelled(Exception):
     """The caller's token was set. The partial file is kept for the next pull."""
 
 
-class NotEnoughSpace(OSError):
+class NotEnoughSpace(OSError, errors.Error):
     """The destination disk cannot hold the download."""
 
 
-class ChecksumMismatch(OSError):
+class ChecksumMismatch(OSError, errors.Error):
     """A finished file's sha256 is not the one the endpoint lists."""
 
 

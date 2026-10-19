@@ -128,7 +128,6 @@ def main(dev: str, lines: list[str]) -> int:
                           check=False).returncode != 0:
             refused = 1
     if not refused:
-        subprocess.run([sys.executable, str(HERE / "runtime-refresh"), "pushed"], check=False)
         watch_ci(dev, tips)
         follow(dev, tips)
     if refused:

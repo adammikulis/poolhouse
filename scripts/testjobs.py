@@ -153,7 +153,7 @@ class Jobs:
 
         A whole-tier job (``extra['exclusive']``, true unless given) is refused while another whole-tier job is live; the check and the
         record are made under one lock. A foreground run is not exclusive and queues in the broker.
-        An agent's whole-suite run, one naming more than 30 test files, and a run with no owner are refused before anything is recorded.
+        An agent's whole-suite run, one naming every test file, and a run with no owner are refused before anything is recorded.
         """
         if refusal := testscope.tier_refusal(argv[0], argv[1:], root) if argv else "":
             raise Refused(refusal)

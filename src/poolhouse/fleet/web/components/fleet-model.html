@@ -288,11 +288,11 @@ pool-view, chat-view, models-view, settings-view, fit-view, data-view, training-
         && (!setup.in_pool || setup.pool_mode === "dev");
       if (!launched && M.launchOnly) { releaseBoot(); return M.go("launch-needed"); }
       if (setup.needs_setup && document.querySelector("first-run")) { releaseBoot(); return M.go("first-run"); }
-      if (!setup.needs_password) { await M.loadPreferences(); releaseBoot(); return M.go(opened); }
+      if (!setup.needs_password) { await M.loadPreferences(); releaseBoot(); return M.go(M.requestedRoute); }
       const s = await request("/ui/session");
       if (s.signed_in) await M.loadPreferences();
       releaseBoot();
-      return s.signed_in ? M.go(opened) : M.signIn();
+      return s.signed_in ? M.go(M.requestedRoute) : M.signIn();
     } finally {
       releaseBoot();
     }

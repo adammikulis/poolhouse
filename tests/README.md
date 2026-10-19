@@ -40,8 +40,7 @@ background job: `scripts/test submit all tests/<file>.py` prints a job id for `s
 Every run records how long each passing test takes (`scripts/testdurations.py`). `scripts/test`
 estimates the run from that history before admission, prints the estimate, and classes it `background`
 at 180 s or more (`DEV_TEST_BACKGROUND_S`), `interactive` below. The broker grants the shortest
-estimated work first, caps long runs to half the budget on weekdays 08:00-21:00
-(`DEV_TEST_NORMAL_HOURS`) and runs them at lower CPU priority (`docs/test-execution.md`, *Scheduling*).
+estimated work first and runs long runs at lower CPU priority (`docs/test-execution.md`, *Scheduling*).
 `--background` forces the class. The `slow` and `heavy` labels never enter the estimate or the class;
 only measured durations do.
 

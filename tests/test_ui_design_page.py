@@ -4,9 +4,9 @@ import json
 from urllib.parse import urlsplit
 
 import pytest
+from web_assets import serve_page_asset
 
-from poolhouse.fleet.page import WEB, render
-from poolhouse.ui import assets_dir
+from poolhouse.fleet.page import render
 
 pytestmark = pytest.mark.slow
 
@@ -16,10 +16,8 @@ def route(request, state):
     state["requests"].append(path)
     if path == "/":
         return request.fulfill(body=render(), content_type="text/html")
-    if path.startswith("/ui/ml-ui/"):
-        return request.fulfill(path=str(assets_dir() / path.rsplit("/", 1)[-1]))
-    if path == "/ui/static/style.css":
-        return request.fulfill(path=str(WEB / "style.css"))
+    if serve_page_asset(request, path):
+        return
     method = request.request.method
     if method in {"POST", "DELETE"}:
         state["posts"].append((path, request.request.post_data_json))
@@ -48,6 +46,8 @@ def route(request, state):
         body = {"models": state["hub_models"] or [{"name": "Hub Qwen", "file": "hub.gguf", "ref": "hf:test/hub",
                              "family": "Qwen", "gb": 5, "what": "A small chat model"}],
                 "families": ["Qwen"], "page": 0, "pages": 2}
+    elif path == "/ui/models/addons":
+        body = {"components": state["addons"]}
     elif path == "/ui/fleet":
         body = {"group": "default", "models": ["quill-27B.gguf", "marrow-9B.gguf"],
                 "members": [{"name": "local-test", "is_self": True, "models": ["quill-27B.gguf"], "device": {}},
@@ -81,38 +81,47 @@ def app():
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         state = {"requests": [], "posts": [], "running": [], "done": 10, "delay_serve": False,
-                 "serve_error": "", "pending": None, "hub_models": None, "chat_available": False}
+                 "serve_error": "", "pending": None, "hub_models": None, "chat_available": False,
+                 "addons": []}
 
         page.route("http://design.test/**", lambda request: route(request, state))
-        page.goto("http://design.test/")
+        page.goto("http://design.test/#pool")
         page.locator("#pool:not([hidden])").wait_for()
         yield page, state, errors
         browser.close()
 
 
 def models(page):
+    page.get_by_role("link", name="Studio", exact=True).click()
     page.get_by_role("link", name="Models", exact=True).click()
+    page.locator("#models:not([hidden])").wait_for()
+
+
+def discover(page):
+    models(page)
+    page.get_by_role("button", name="+ Add a model", exact=True).click()
     page.locator("[data-model='quill-27B.gguf']").wait_for()
 
 
 def test_network_filter_uses_authenticated_inventory_without_hub_calls(app):
     page, state, errors = app
-    models(page)
-    assert page.get_by_role("button", name="On network", exact=True).get_attribute("aria-pressed") == "true"
+    discover(page)
+    assert page.get_by_role("button", name="In your Pool", exact=True).get_attribute("aria-pressed") == "true"
     assert page.locator("#browser-results").get_by_text("marrow-9B.gguf", exact=True).is_visible()
     assert "draft.gguf" not in page.locator("#browser-results").inner_text()
     page.get_by_role("searchbox", name="Search models", exact=True).fill("marrow")
     assert page.locator("#browser-results .model-row").count() == 1
     assert "/ui/models/popular" not in state["requests"]
     page.get_by_role("button", name="Copy here", exact=True).click()
+    page.get_by_role("button", name="Start download", exact=True).click()
     page.wait_for_function("() => document.querySelector('models-view').loading === false")
-    assert ("/ui/models", {"name": "marrow-9B.gguf", "source": "", "draft": ""}) in state["posts"]
+    assert ("/ui/models", {"name": "marrow-9B.gguf", "source": "", "mtp": False, "vision": False}) in state["posts"]
     assert not errors
 
 
 def test_inventory_poll_preserves_hub_query_focus_filters_and_results(app):
     page, state, errors = app
-    models(page)
+    discover(page)
     page.get_by_role("button", name="Hugging Face", exact=True).click()
     page.get_by_text("Hub Qwen", exact=True).wait_for()
     hunt = page.get_by_role("searchbox", name="Search models", exact=True)
@@ -135,7 +144,7 @@ def test_inventory_poll_preserves_hub_query_focus_filters_and_results(app):
 @pytest.mark.parametrize("failed", [False, True])
 def test_run_shows_loading_and_blocks_duplicate_posts_across_poll(app, failed):
     page, state, errors = app
-    models(page)
+    discover(page)
     state["delay_serve"] = True
     row = page.locator("[data-model='quill-27B.gguf']")
     row.get_by_role("button", name="Run", exact=True).click()
@@ -153,7 +162,9 @@ def test_run_shows_loading_and_blocks_duplicate_posts_across_poll(app, failed):
     else:
         state["running"] = [{"models": ["quill-27B.gguf"], "port": 9999}]
         pending.fulfill(body=json.dumps({"ok": True}), content_type="application/json")
-        page.get_by_text("quill-27B.gguf is ready. Open Chat to use it.", exact=True).wait_for()
+        ready = page.locator("#models-note .ok")
+        ready.get_by_text("quill-27B.gguf is ready.", exact=False).wait_for()
+        ready.get_by_role("button", name="Open chat", exact=True).wait_for()
         row.get_by_role("button", name="Stop", exact=True).wait_for()
     assert not errors
 
@@ -164,25 +175,26 @@ def test_capacity_lives_in_models_and_uses_q8_geometry(app):
     assert page.get_by_role("link", name="Fit", exact=True).count() == 0
     assert page.locator("fit-view").count() == 1
     assert "/ui/fit.json" not in state["requests"]
-    page.locator("#model-capacity > summary").click()
+    page.get_by_role("link", name="Explore capacity & performance →", exact=True).click()
     page.locator("#fit-controls select").first.wait_for()
     assert "/ui/fit.json" in state["requests"]
-    assert page.evaluate("window.fleetModel.ctxRam(8192)") == "289 MB"
+    assert page.evaluate("window.fleetModel.contextPicker(8192, () => {}).querySelector('ml-slider').valueText") == "8,192 tokens"
     assert not errors
 
 
 def test_benchmark_has_labelled_selection_and_preserves_form_across_poll(app):
     page, state, errors = app
-    page.locator("#pool-sweep > summary").click()
-    page.get_by_label("quill-27B.gguf", exact=False).check()
-    page.get_by_label("Questions", exact=True).select_option("limit")
-    page.get_by_label("Question limit", exact=True).fill("12")
-    page.get_by_label("Run name", exact=False).fill("evening comparison")
+    sweep = page.locator("#pool-sweep")
+    sweep.locator("summary").first.click()
+    sweep.get_by_label("quill-27B.gguf", exact=False).check()
+    sweep.get_by_label("Questions", exact=True).select_option("limit")
+    sweep.get_by_label("Question limit", exact=True).fill("12")
+    sweep.get_by_label("Run name", exact=False).fill("evening comparison")
     page.evaluate("window.savedRunName = document.getElementById('label'); document.querySelector('pool-view').draw()")
     page.wait_for_function("() => document.getElementById('label') === window.savedRunName")
-    assert page.get_by_label("Run name", exact=False).input_value() == "evening comparison"
+    assert sweep.get_by_label("Run name", exact=False).input_value() == "evening comparison"
     assert "poolhouse-bench" not in page.locator("#pool-sweep").inner_text()
-    page.get_by_role("button", name="Start benchmark", exact=True).click()
+    sweep.get_by_role("button", name="Start benchmark", exact=True).click()
     page.get_by_text("Benchmark started. You can leave this screen while it runs.", exact=True).wait_for()
     assert ("/ui/bench/sweep", {"models": ["quill-27B.gguf"], "members": ["local-test", "remote-test"],
                                 "sample": 12, "label": "evening comparison"}) in state["posts"]
@@ -191,12 +203,13 @@ def test_benchmark_has_labelled_selection_and_preserves_form_across_poll(app):
 
 def test_settings_schedule_and_chat_remain_reachable(app):
     page, _, errors = app
-    page.get_by_role("link", name="Chat", exact=True).click()
+    page.get_by_role("link", name="Conversations", exact=True).click()
     page.locator("#chat-none:not([hidden])").wait_for()
     page.get_by_role("link", name="Settings", exact=True).click()
     page.locator("#settings-sub:not(:empty)").wait_for()
-    assert page.get_by_role("button", name="Save", exact=True).is_visible()
-    assert page.get_by_text("When you need the machine", exact=True).is_visible()
+    assert page.get_by_role("button", name="Save preferences", exact=True).is_visible()
+    page.get_by_role("tab", name="Compute & device", exact=True).click()
+    assert page.get_by_text("When you need this device", exact=True).is_visible()
     assert not errors
 
 
@@ -212,7 +225,9 @@ def test_quant_choice_updates_size_and_download_payload_without_extra_search(app
         {"name": "Qwen quill 27B", "file": "Qwen-quill-27B-GSQ-RCO-IQ3_S.gguf", "family": "Qwen",
          "ref": "hf:test/Qwen-quill-27B-GSQ-RCO-IQ3_S.gguf", "bits_per_weight": 3.5},
     ]
-    models(page)
+    state["addons"] = [{"kind": "mtp", "status": "available", "download_bytes": 1_400_000_000,
+                        "packaging": "separate"}]
+    discover(page)
     page.get_by_role("button", name="Hugging Face", exact=True).click()
     selector = page.get_by_role("combobox", name="Quantization for Qwen quill 27B", exact=True)
     selector.wait_for()
@@ -225,8 +240,13 @@ def test_quant_choice_updates_size_and_download_payload_without_extra_search(app
     page.evaluate("document.querySelector('models-view').draw()")
     assert selector.input_value().endswith("IQ4_XS.gguf")
     page.get_by_role("button", name="Download", exact=True).click()
+    page.get_by_role("checkbox", name="Multi-token prediction", exact=False).wait_for()
+    page.get_by_role("button", name="Start download", exact=True).click()
+    page.wait_for_function("() => document.querySelector('models-view').loading === false")
     assert ("/ui/models", {"name": "Qwen-quill-27B-UD-IQ4_XS.gguf",
-                         "source": "hf:test/Qwen-quill-27B-UD-IQ4_XS.gguf", "draft": "hf:test/mtp.gguf"}) in state["posts"]
+                         "source": "hf:test/Qwen-quill-27B-UD-IQ4_XS.gguf",
+                         "mtp": True, "vision": False}) in state["posts"]
+    page.get_by_text("Advanced model filters", exact=True).click()
     page.get_by_role("combobox", name="Quantization bits", exact=True).select_option("3")
     assert selector.locator("option").count() == 1
     assert "size unknown" in selector.inner_text()
@@ -249,7 +269,7 @@ def streaming_chat(page, state):
         }}), {headers: {'Content-Type': 'text/event-stream'}}));
       };
     }""")
-    page.get_by_role("link", name="Chat", exact=True).click()
+    page.get_by_role("link", name="Conversations", exact=True).click()
     page.locator("#chat-askrow:not([hidden])").wait_for()
 
 
@@ -271,11 +291,12 @@ def test_chat_enter_shift_enter_ime_and_pending_prevent_duplicate_send(app):
     assert page.evaluate("window.chatRequests.length") == 0
     message.press("Enter")
     page.locator(".reply-activity").get_by_text("Waiting for model…", exact=True).wait_for()
-    assert page.get_by_role("button", name="Send", exact=True).get_attribute("title") == "Enter to send · Shift+Enter for a new line"
+    assert page.locator(".composer-hint").inner_text() == "Enter to send · Shift + Enter for a new line"
     message.fill("Another")
     message.press("Enter")
     assert page.evaluate("window.chatRequests.length") == 1
-    assert page.evaluate("window.chatRequests[0].stream") is True
+    assert page.evaluate("window.chatRequests[0].conversation") == "chat-test"
+    assert page.evaluate("window.chatRequests[0].messages.at(-1)") == {"role": "user", "content": "First\nSecond"}
     event(page, {"choices": [{"delta": {"content": "Reply"}}]})
     page.evaluate("window.streamController.close()")
     page.wait_for_function("() => !document.getElementById('chat-send').disabled")
@@ -299,8 +320,9 @@ def test_streamed_reasoning_is_collapsed_separate_and_keeps_user_expansion(app):
     event(page, {"choices": [{"delta": {"reasoning_content": " More thought."}}]})
     assert details.evaluate("e => e.open")
     event(page, {"choices": [{"delta": {"content": "The answer."}}]})
-    page.locator(".answer-text").get_by_text("The answer.", exact=True).wait_for()
-    assert "thought" not in page.locator(".answer-text").inner_text()
+    answer = page.locator(".msg.assistant .message-body")
+    answer.get_by_text("The answer.", exact=True).wait_for()
+    assert "thought" not in answer.inner_text()
     page.evaluate("window.streamController.close()")
     page.wait_for_function("() => !document.getElementById('chat-send').disabled")
     assert details.evaluate("e => e.open")
@@ -315,8 +337,8 @@ def test_stream_cancel_error_and_empty_response_restore_send(app, end):
     page.get_by_role("button", name="Send", exact=True).click()
     page.wait_for_function("() => window.streamController !== undefined")
     if end == "cancel":
-        page.get_by_role("button", name="Stop generating", exact=True).click()
-        text = "Generation cancelled."
+        page.get_by_role("button", name="Stop", exact=True).click()
+        text = "Generation stopped."
     elif end == "error":
         event(page, {"error": {"message": "Model load failed"}})
         text = "Model load failed"
@@ -325,5 +347,5 @@ def test_stream_cancel_error_and_empty_response_restore_send(app, end):
         text = "The model returned no answer. Try again or choose another model."
     page.locator("#chat-note").get_by_text(text, exact=True).wait_for()
     assert page.get_by_role("button", name="Send", exact=True).is_enabled()
-    assert page.get_by_role("button", name="Stop generating", exact=True).is_hidden()
+    assert page.get_by_role("button", name="Stop", exact=True).is_hidden()
     assert not errors

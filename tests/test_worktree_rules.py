@@ -104,7 +104,7 @@ def test_a_tree_changing_git_command_in_the_primary_checkout_is_refused(repo, co
 @pytest.mark.parametrize("command", [
     "git add a.py", "git commit -m x", "FOO=1 git commit -m x", "echo hi && git add a.py",
     "git -c core.editor=true commit", "(git commit -m x)",
-    "git merge --ff-only work", "git merge --ff-only work && git push origin dev",
+    "git merge --ff-only work", "git merge --ff-only work && git push origin dev", "git merge origin/dev",
     "git worktree remove ../work", "git worktree add -b x ../x dev", "git worktree prune",
     "git worktree list", "git branch -d work", "git fetch origin", "git status", "git log --oneline",
     "git diff HEAD", "echo 'git commit'", "grep -rn 'git add' docs/", "git branch --show-current",

@@ -1,7 +1,8 @@
-"""The errors of the public API (docs/api.md): one base class, so a caller catches `poolhouse.Error` and nothing else.
+"""The errors of the public API (docs/api.md): the shared base for named operational failures.
 
-The internal failures (`NodeError`, `ShardError`, `Refusal`, `NodeUnavailable`) derive from these, so a caller of
-`import poolhouse as ph` never needs to import an internal module to handle one.
+Node, request, serving, model-transfer and decision failures derive from these. Specific failures retain their
+original catch types and details. Argument validation and raw filesystem or optional-dependency errors keep
+their standard Python exception types; callers may need to handle those too.
 """
 
 from __future__ import annotations
