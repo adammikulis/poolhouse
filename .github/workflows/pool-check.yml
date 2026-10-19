@@ -50,7 +50,7 @@ jobs:
           python-version: "3.13"
       - uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
       - name: install the package and pytest
-        run: python -m pip install pytest -e .
+        run: python -m pip install pytest pytest-timeout -e .
       # the rig's person types its yes at a ConPTY pseudo-console on Windows (tests/pool_check/terminal.py): the node reads the console itself
       - name: the pseudo-console the rig's person types at (Windows only)
         if: runner.os == 'Windows'
@@ -105,7 +105,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          python -m pip install pytest pywinpty==2.0.15 -e .
+          python -m pip install pytest pytest-timeout pywinpty==2.0.15 -e .
           cargo build --manifest-path app/Cargo.toml -p poolhouse-node
           if ($LASTEXITCODE -ne 0) { throw "building the node on Windows failed" }
       # The Windows device listens on every interface here (a runner is not anyone's own machine) so the WSL device, which reaches it at the
