@@ -13,7 +13,9 @@ from poolhouse.client import Client, Request
 from poolhouse.decide.cases import case_from
 from poolhouse.decide.pointer import PointerDecider
 from poolhouse.files import write_json
+from poolhouse.kvtype import DEFAULT_KV_BITS
 from poolhouse.serve import broker_wire, gpu
+from poolhouse.studio.adapters import response_schema
 
 
 def rows_of(value: dict) -> list[dict]:
@@ -105,7 +107,31 @@ def _checkpoint_evaluate(inputs: dict, parameters: dict) -> dict:
     return {'metrics': metrics, 'report': metrics}
 
 
+def _native_generate(inputs: dict, parameters: dict, structured: bool) -> dict:
+    schema = response_schema(parameters.get('json_schema')) if structured else None
+    with gpu.hold('Studio trained model generation'):
+        built = optional.module('poolhouse.train.recipes').load(inputs['model']['path'])
+        if built.config.get('framework') != 'mlx' or built.config.get('recipe') != 'tool-calls':
+            raise ValueError('Trained generation requires an MLX conversation model')
+        tokenizer = optional.module('transformers').AutoTokenizer.from_pretrained(
+            built.config['base'], local_files_only=True, trust_remote_code=False)
+        prompt = tokenizer.apply_chat_template([{'role': 'user', 'content': inputs['prompt']}],
+                                               tokenize=False, add_generation_prompt=True)
+        sampler = optional.module('mlx_lm.sample_utils').make_sampler(temp=parameters.get('temperature', .7))
+        text = optional.module('mlx_lm').generate(built.model, tokenizer, prompt=prompt,
+                        max_tokens=parameters.get('max_tokens', 512), sampler=sampler,
+                        kv_bits=DEFAULT_KV_BITS, quantized_kv_start=0)
+    if structured:
+        response = json.loads(text)
+        errors = optional.module('poolhouse.agent.schema').validate(response, schema)
+        if errors:
+            raise ValueError('Structured response did not match its schema: ' + '; '.join(errors))
+        return {'text': text, 'response': response}
+    return {'text': text, 'response': {'text': text, 'tool_calls': []}}
+
+
 def _generate(inputs: dict, parameters: dict, evaluate: bool = False, structured: bool = False) -> dict:
+    schema = response_schema(parameters.get('json_schema')) if structured else None
     grant = broker_wire.lease('studio', [inputs['model']['path']], reason='Studio inference')
     try:
         client = Client(grant.base_url, model=grant.model, request=Request(temperature=parameters.get('temperature', 0))) if evaluate else Client(grant.base_url, model=grant.model)
@@ -115,16 +141,14 @@ def _generate(inputs: dict, parameters: dict, evaluate: bool = False, structured
             return {'metrics': metrics, 'report': metrics}
         extra = {}
         if structured:
-            schema = parameters.get('json_schema') or {'type': 'object'}
-            if isinstance(schema, str):
-                schema = json.loads(schema)
-            if not isinstance(schema, dict) or '$ref' in json.dumps(schema):
-                raise ValueError('Use an inline JSON response schema')
             extra['response_format'] = {'type': 'json_schema', 'json_schema': {'name': 'response', 'strict': True, 'schema': schema}}
         reply = client.chat([{'role': 'user', 'content': inputs['prompt']}],
-                            temperature=parameters.get('temperature', 0.7), **extra)
+                            temperature=parameters.get('temperature', 0.7), max_tokens=parameters.get('max_tokens', 512), **extra)
         if structured:
             response = json.loads(reply.content or '')
+            errors = optional.module('poolhouse.agent.schema').validate(response, schema)
+            if errors:
+                raise ValueError('Structured response did not match its schema: ' + '; '.join(errors))
             return {'text': reply.content, 'response': response}
         return {'text': reply.content, 'response': {'text': reply.content, 'tool_calls': reply.tool_calls}}
     finally:
@@ -243,6 +267,8 @@ def execute(node: dict, inputs: dict, out: Path) -> dict[str, Any]:
         return {'train': dataset(out, 'train', rows[:cut]), 'test': dataset(out, 'test', rows[cut:])}
     if kind == 'evaluate' and (inputs['model'].get('recipe') or parameters.get('suite', 'holdout') == 'holdout'):
         return _checkpoint_evaluate(inputs, parameters)
+    if kind in ('generate', 'generate.structured') and inputs['model'].get('recipe'):
+        return _native_generate(inputs, parameters, structured=kind == 'generate.structured')
     if kind in ('generate', 'generate.structured', 'evaluate'):
         return _generate(inputs, parameters, evaluate=kind == 'evaluate', structured=kind == 'generate.structured')
     if kind == 'compare':

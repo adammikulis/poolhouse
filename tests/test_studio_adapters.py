@@ -106,6 +106,10 @@ def test_training_checkpoint_evaluation_and_export(tmp_path, monkeypatch):
     evaluated = execute({'type': 'evaluate'}, {'model': result['model'],
                         'dataset': {'path': str(source)}}, tmp_path)
     assert evaluated['metrics']['loss'] >= 0
+    subset = tmp_path / 'subset.jsonl'
+    subset.write_text(''.join(json.dumps({'text': f'single class {i}', 'label': 'even'}) + '\n' for i in range(6)))
+    subset_score = execute({'type': 'evaluate'}, {'model': result['model'], 'dataset': {'path': str(subset)}}, tmp_path)
+    assert 0 <= subset_score['metrics']['accuracy'] <= 1
     exported = execute({'type': 'export', 'parameters': {'format': 'checkpoint'}},
                        {'model': result['model']}, tmp_path)
     files = {path.name for path in Path(exported['artifact']['path']).iterdir()}
@@ -268,3 +272,48 @@ def test_base_and_trained_holdout_share_native_loss_contract(tmp_path, monkeypat
     assert calls[1][0] == 'load'
     compared = execute({'type': 'compare'}, {'base': base['metrics'], 'trained': trained['metrics']}, tmp_path)
     assert compared['metrics']['loss'] == 0
+
+
+def test_trained_mlx_generation_holds_compute_and_quantizes_cache(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+
+    from poolhouse.studio import worker
+
+    held = []
+    generated = []
+
+    @contextmanager
+    def hold(purpose):
+        held.append(True)
+        yield
+        held.pop()
+
+    tokenizer = SimpleNamespace(apply_chat_template=lambda messages, **kwargs: 'rendered')
+    built = SimpleNamespace(model='weights', config={'framework': 'mlx', 'recipe': 'tool-calls', 'base': 'owned-base'})
+
+    def generate(model, tokenizer, **kwargs):
+        assert held and model == 'weights'
+        generated.append(kwargs)
+        return 'answer'
+
+    modules = {'poolhouse.train.recipes': SimpleNamespace(load=lambda path: built),
+               'transformers': SimpleNamespace(AutoTokenizer=SimpleNamespace(from_pretrained=lambda *args, **kwargs: tokenizer)),
+               'mlx_lm.sample_utils': SimpleNamespace(make_sampler=lambda **kwargs: 'sampler'),
+               'mlx_lm': SimpleNamespace(generate=generate)}
+    monkeypatch.setattr(worker.gpu, 'hold', hold)
+    monkeypatch.setattr(worker.optional, 'module', modules.__getitem__)
+    result = execute({'type': 'generate', 'parameters': {'max_tokens': 8}},
+                     {'model': {'path': str(tmp_path), 'recipe': 'tool-calls'}, 'prompt': 'question'}, tmp_path)
+    assert result['text'] == 'answer'
+    assert generated[0]['kv_bits'] == 8
+    assert generated[0]['quantized_kv_start'] == 0
+    assert generated[0]['max_tokens'] == 8
+    assert held == []
+
+
+@pytest.mark.parametrize('schema', ['{"$ref":"https://invalid.example/schema"}', '{"type":"program"}', '{"anyOf":[]}'])
+def test_response_schemas_refuse_external_or_unsupported_rules(schema):
+    from poolhouse.studio.adapters import response_schema
+
+    with pytest.raises(ValueError):
+        response_schema(schema)

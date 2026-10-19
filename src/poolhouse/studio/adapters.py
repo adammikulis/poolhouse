@@ -18,6 +18,26 @@ def confined(root: Path, relative: str) -> Path:
     return path
 
 
+def response_schema(value: Any) -> dict:
+    schema = json.loads(value) if isinstance(value, str) and value else value or {'type': 'object'}
+    allowed = {'type', 'properties', 'required', 'additionalProperties', 'items', 'enum',
+               'minimum', 'maximum', 'minItems', 'maxItems', 'title', 'description'}
+
+    def check(spec: Any) -> None:
+        if not isinstance(spec, dict) or set(spec) - allowed:
+            raise ValueError('Use an inline response schema with supported type and property rules')
+        kinds = spec.get('type', [])
+        kinds = [kinds] if isinstance(kinds, str) else kinds
+        if not isinstance(kinds, list) or set(kinds) - {'object', 'array', 'string', 'number', 'integer', 'boolean', 'null'}:
+            raise ValueError('Response schema has an unsupported value type')
+        for child in spec.get('properties', {}).values():
+            check(child)
+        if 'items' in spec:
+            check(spec['items'])
+    check(schema)
+    return schema
+
+
 LOCAL_TOOLS = frozenset({'serve_status', 'jobs_status', 'models_on_disk'})
 
 
@@ -50,18 +70,25 @@ class Adapters:
         self.tool_call = tool_call
 
     def validate(self, nodes: list[dict]) -> list[dict]:
+        schema_errors = []
+        for node in nodes:
+            if node['type'] == 'generate.structured':
+                try:
+                    response_schema(node.get('parameters', {}).get('json_schema'))
+                except (ValueError, TypeError, AttributeError) as error:
+                    schema_errors.append({'node': node['id'], 'code': 'parameter', 'message': str(error)})
         workers = [node for node in nodes if node['type'] not in ('dataset', 'model', 'prompt', 'tools.call')]
         if not workers:
-            return []
+            return schema_errors
         environment = self.runner.environment
         if environment is None or not environment.exists:
-            return [{'node': node['id'], 'code': 'dependency', 'message': 'Install the managed compute runtime to run this node'} for node in workers]
+            return schema_errors + [{'node': node['id'], 'code': 'dependency', 'message': 'Install the managed compute runtime to run this node'} for node in workers]
         try:
             environment.require_current_runtime()
             packages = environment.installed()
         except (OSError, RuntimeError, ValueError) as error:
             return [{'node': node['id'], 'code': 'dependency', 'message': str(error)} for node in workers]
-        errors = []
+        errors = schema_errors
         for node in workers:
             kind, parameters = node['type'], node.get('parameters', {})
             required = set()
