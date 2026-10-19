@@ -44,7 +44,6 @@ HELP: dict[str, str] = {
     "pool": "Make this machine a member in one command, and see the devices in the pool.",
     "features": "Experimental features: list them with their stage and risk, turn one on or off.",
     "migrate": "Move the state, cache, keychain key and project files of the old name, once.",
-    "gym": "Live specialist simulations, CPU PPO training, evaluation and reviewed decision datasets.",
     "graph": "A rendered graph page, served with a model behind it.",
     "help": "every command with the first line of its help, or one command's own help",
     "ingest": "Read documents into a knowledge graph, section by section.",
@@ -72,8 +71,6 @@ HELP: dict[str, str] = {
 
 
 TABLE: tuple[Row, ...] = (
-    Row("poolhouse-gym catalogue\\|run\\|train\\|evaluate\\|replay\\|export",
-        "`catalogue` reports native dependencies for MetaDrive driving, RWARE warehouse robots, SUMO-RL traffic and integrated traffic-driving. `run ENV --controller CONTROLLER --config JSON` records native observations, actions and rewards with manual, random or decision-model control; `train ENV --timesteps N` trains a CPU PPO policy in the cache, and `evaluate ENV CHECKPOINT --episodes N` measures it on separate seeds. `replay TRAJECTORY` reads recorded transitions; `export TRAJECTORY REVIEWS OUTPUT` exports reviewed action labels as decision-model Case JSONL. Install the matching `gym-driving`, `gym-warehouse`, `gym-traffic` or `gym-rl` extra and the documented pinned MetaDrive source for driving; the app's Gym view provides live controls, native camera and sensor scenes, and episode review."),
     Row("poolhouse-models find <words>",
         "search the Hub for a model, unsloth first; `files <repo>` lists the quantisations and prints the `hf:` reference to serve each; `card <repo>` reads the sampler settings its publisher recommends; `layout <model>` prints the attention layout off a GGUF header -- which layers hold a full cache, slide, recur or share it, plus experts, indexers and lookup tables"),
     Row("poolhouse-models migrate plan\\|run",

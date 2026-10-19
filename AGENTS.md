@@ -36,7 +36,7 @@ The rules never to break, then the ones needed every hour; each names the sectio
 18. **Stage files by name, never `git add -A`**, in your own claimed worktree beside the primary checkout (4).
 19. **Push the development branch yourself**: fetch, merge `origin/<dev>`, run only your changed test files,
     `git push origin HEAD:refs/heads/<dev>`; no accept, claim or lander lock; clean up before reporting (4).
-20. **Test your own change with explicit `scripts/test` selectors**, any list of files and never the full suite (GitHub runs it, and the shared gates, on every pushed commit)
+20. **Test your own change with explicit `scripts/test` selectors**, any list of files and never the full suite (GitHub runs it on pull requests, on `main` and nightly; a development push runs only the `gates` job)
     (5).
 
 Contents: [1 Hard floors](#1-hard-floors) | [2 How to work](#2-how-to-work) |
@@ -499,8 +499,9 @@ Whoever made a branch finishes it and pushes it; the lead steps in only for cros
 2. **Push.** `git fetch origin`, merge `origin/<dev>` again if it moved, then `git push origin HEAD:refs/heads/<dev>`.
    No accept, claim, creator or lander lock is needed. The push check refuses Python that does not parse and data
    files, and a standing reject of that commit; nothing else.
-3. **Watch GitHub.** GitHub runs the full suite on the pushed commit. The CI watcher posts a red run to the session that
-   pushed it, naming the failing job and tests, and the pusher fixes it in the same turn. GitHub CI is a signal, never a
+3. **Watch GitHub.** GitHub runs the `gates` job on the pushed commit (the full suite runs on pull requests, on `main` and
+   nightly, never on a development push). The CI watcher posts a red run to the session that pushed it, naming the failing
+   job and tests, and the pusher fixes it in the same turn. GitHub CI is a signal, never a
    gate: while githubstatus.com lists an open Actions incident, a stuck run is information, not a blocker.
 4. **Clean up.** Remove the worktree and branch once the commit is on `origin/<dev>` (`scripts/worktrees sweep`).
 
@@ -639,7 +640,8 @@ Agents test their own changed behavior with reviewed explicit affected selectors
 changed surfaces (the slow tests for packaging, page and Fleet changes). Report the exact tree, commands, results and
 limitations. Invalid selectors fail before admission; never replace a missing selector with an unreviewed omission.
 Documentation-only changes need consistency review and clean diffs. **The full suite is GitHub's job**: the `ci`
-workflow runs it on every pushed commit, and an agent never runs one locally. For an agent `scripts/test` refuses the
+workflow runs it on pull requests, on `main` and nightly (a development push runs only the `gates` job), and an agent
+never runs one locally. For an agent `scripts/test` refuses the
 `fast`, `full`, `slow` and `all` tiers when they name no test file, and neither it nor the broker admits an agent run
 that names every test file (`quick` and `gate` stay allowed). Workers do not run shared gates.
 
@@ -649,7 +651,7 @@ that names every test file (`quick` and `gate` stay allowed). Workers do not run
   `scripts/budgets`, `scripts/redteam_coverage.py --check`, clean generated references, layer and wiring checks,
   serving-bypass checks and the human-only floor. It repeats incremental affected checks when remote reconciliation or a
   later change touches their surface and owns `scripts/test quick`. The full suite is the GitHub
-  run of the pushed commit; its result, not a local run, is the end-to-end verification. Shared checks are
+  run of a pull request, a promotion or the nightly schedule; its result, not a local run, is the end-to-end verification. Shared checks are
   not repeated for every leaf branch or intermediate commit. Do not raise budgets to clear a check.
 - Gate cost is per batch, scaled to the diff: combine all ready leaves into one run; documentation-only diffs need a
   clean diff and `scripts/budgets`, code diffs `scripts/test gate` and the affected selectors of the combined diff

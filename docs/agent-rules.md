@@ -182,7 +182,7 @@ not proof that it is disposable.
   in flight. Scale it to the diff: documentation-only or handoff-only batches need a clean diff and `scripts/budgets`.
   A failure of the GitHub run blocks only landings touching the failing surface and gets one named owner at once.
   `scripts/land` applies this: documentation-only diffs get `scripts/budgets` and a clean diff; code diffs get
-  `scripts/test gate` and the affected selectors of the diff; the whole suite runs on GitHub for the pushed commit
+  `scripts/test gate` and the affected selectors of the diff; the whole suite runs on GitHub for pull requests, `main` and nightly
   (docs/landing.md, "The CI run"). A tree that already passed a check is not checked again (`reused from <id>`), and a
   failure that also fails on the clean target is `baseline`.
 - Known failures remain named tasks with evidence and ownership. A scoped pass is not a full-suite pass. Fix a known

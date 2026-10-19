@@ -157,7 +157,6 @@ Issues = "https://github.com/adammikulis/poolhouse/issues"
 Changelog = "https://github.com/adammikulis/poolhouse/blob/main/CHANGELOG.md"
 
 [project.scripts]
-poolhouse-gym = "poolhouse.gym.cli:main"
 # Every command this package installs starts with `poolhouse`, so `compgen -c poolhouse` (or a
 # tab) lists the whole toolkit. That is not tidiness for its own sake: an agent that cannot
 # enumerate these writes the command again by hand, which is how searching the Hub, timing a
@@ -246,7 +245,14 @@ exclude = [".claude", "CLAUDE.md", "HANDOFF.md"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/poolhouse"]
-exclude = ["src/poolhouse/redteam", "src/poolhouse/surface", "src/poolhouse/walk"]
+exclude = [
+    "src/poolhouse/gym",
+    "src/poolhouse/fleet/gym_*.py",
+    "src/poolhouse/fleet/web/components/gym-*.html",
+    "src/poolhouse/redteam",
+    "src/poolhouse/surface",
+    "src/poolhouse/walk",
+]
 
 # The contracts are ONE file on disk (repo-root `contracts/`), pulled into the wheel at
 # build time. No copy is kept in the source tree, so there is nothing to drift.

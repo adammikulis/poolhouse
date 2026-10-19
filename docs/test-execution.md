@@ -18,7 +18,7 @@ Every checkout shares the same admission broker.
 
 Agents run affected tests for their own changes: explicit file selectors, any number of them. The main agent
 coordinates shared structural and security gates once per consolidated integration batch before publication.
-The full suite is GitHub's job: the `ci` workflow runs it on every pushed commit, and an agent never runs one.
+The full suite is GitHub's job: the `ci` workflow runs it on pull requests, on `main` and nightly (a development push runs only the `gates` job), and an agent never runs one.
 For an agent (`CLAUDECODE`, `POOLHOUSE_AGENT`, `POOLHOUSE_NONINTERACTIVE` or a Codex session set) `scripts/test`
 refuses, before anything is queued, the `fast`, `full`, `slow` and `all` tiers that name no test file, and any run that names
 every test file (directories count as the test files under them); the broker (`scripts/testslots_runner.py`) admits no agent
@@ -277,7 +277,7 @@ Every test and gate runs through `scripts/test`, so the broker admits them like 
   sibling `<repo>-land-<stamp>` worktree on `land/<stamp>`, keeping both sides of `HANDOFF.md`.
   A documentation-only diff runs `scripts/budgets` and `git diff --check`. A code diff runs
   `scripts/test gate` and `scripts/test all` on the selectors `scripts/affected.py` computes from the
-  combined diff. The whole suite runs on GitHub for the pushed commit.
+  combined diff. The whole suite runs on GitHub for pull requests, `main` and nightly.
 - A pass is recorded with `record_run` under the tree hash; the same tree and check later print
   `reused from <id>`. A failing check is first run on a clean worktree of the base: failing there
   too is reported as `baseline`. Otherwise the merge commits are bisected with only the failing
