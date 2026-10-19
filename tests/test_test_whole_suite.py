@@ -137,7 +137,8 @@ def test_quick_and_gate_stay_allowed_for_an_agent(table, monkeypatch, tier):
 
 def broker_pytest(tmp_path, repo, marker, *files):
     return subprocess.run([sys.executable, str(repo / "scripts" / "testslots.py"), "pytest", "--", sys.executable, "-m", "pytest", "-q", *files],
-                          cwd=repo, env=environment(tmp_path, marker), capture_output=True, text=True, timeout=300)
+                          cwd=repo, env={**environment(tmp_path, marker), "PYTHONPATH": str(repo / "scripts")},
+                          capture_output=True, text=True, timeout=300)
 
 
 def test_the_broker_never_admits_more_than_thirty_files_from_an_agent(tmp_path, scratch):
