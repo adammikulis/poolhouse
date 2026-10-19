@@ -228,9 +228,20 @@ with `backend`, `vision` and their console scripts, by the layer mechanism of se
 measurement of the cut edges (the 17 `fleet` imports of `graph`, `memory`, `reputation`, the three `backend` imports) with
 the same `ast` walk as section 1, written into this section before any file moves; then the cut in `fleet` (the daemon's
 knowledge view), the layer entries, the wheel excludes, the `KNOWN` and `STANDALONE` edits.
-The `graph` tests that name the leaving modules stay in the CI shards; torch leaves the
-release test install in this slice. Sizes are not yet measured (about 3,500 lines and most of the 122 debt sites by the
-estimate in D1); `scripts/budgets` counts stay as they are under isolation.
+The `graph` tests that name the leaving modules stay in the CI shards.
+
+Measured at tree `118d6f3e8` with the `ast` walk, function-local imports included. Release code reached the leaving files
+through these edges: `graph/serve.py` to `conversation` (the ask routes), `graph/store_cli.py` to `judging`, `tidy` and
+`vectors.smooth` (the `tidy` and `embed` subcommands), `fleet/accelerator.py` to `backend` (the device report), `doctor.py`
+to `conversation` (a string probe of the editable install) and `vision/payloads.py` (a pip hint). The 17 `fleet`, `memory` and
+`reputation` imports of `graph` reach `store`, `columns`, `search`, `guard` and `serve.ReplyHandler`, all retained. The
+leaving set is the named files plus `conversation` (it needs `answers` and `looking`), `relations` (it needs `dag`) and
+`smoothing`, which holds `smooth` split off `vectors` so that `vectors` (store coverage, `remember`) stays. 4,124 lines of
+`graph`, 830 of `backend` and 527 of `vision` leave the wheel. `backend/device.py` is the hardware profile the device report
+reads, so it moved to `fleet/hardware.py`. `grammar`, `prompts`, `replies`, `route`, `hygiene`, `merging`, `names` and
+`verdicts` (about 1,770 lines) have no release caller left and stay in the build until the owner names them. Torch stays in the
+test install: `decide/pointer.py`, `speech/asr.py`, `speech/vad.py` and `fleet/accelerator.py` import it and their tests
+run in CI. `scripts/budgets` lost 1 broad except and 4 local imports and no gate count rose.
 
 ## 6 Security and red-team
 

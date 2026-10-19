@@ -11,8 +11,8 @@
 | `poolhouse.serve` | Start, adopt and tear down a model server |
 | `poolhouse.gguf` | Converter/quantiser discovery, export, tokenizer-metadata repair |
 | `poolhouse.speech` | ASR / TTS / VAD behind three protocols and one resolver |
-| `poolhouse.vision` | Image payloads, and a gate that verifies a model can see |
-| `poolhouse.graph` | A graph: stored, searched, asked about, drawn — and as tensors: a converter, message passing, spatial topology, DAG sweeps |
+| `poolhouse.vision` | Image payloads, and a gate that verifies a model can see (experimental) |
+| `poolhouse.graph` | A graph: stored, searched, drawn. Asking it, its invented community, tidying it and its tensor form (a converter, message passing, DAG sweeps) are the `graph_extras` files the wheel leaves out |
 | `poolhouse.bench` | Timing and scoring a model's answers, and comparing what served them |
 | `poolhouse.entities` | Resolving names, planning edits, spelling, paths through a graph |
 | `poolhouse.scrape` | Reading a site you are signed in to, with presets to start from |
@@ -22,15 +22,17 @@
 | `poolhouse.web` | Search, read and screenshot the web as tools, refused against private addresses |
 | `poolhouse.redact` | Reading a file for a real person's details — the hook's reader and `poolhouse-audit` |
 | `poolhouse.train` | Atomic checkpoints, schedules, guards, metrics, leak-safe splits, tokenizer fertility |
-| `poolhouse.backend` | One array API over MLX and PyTorch, so math is written once |
+| `poolhouse.backend` | One array API over MLX and PyTorch, so math is written once (experimental; the device profile is `poolhouse.fleet.hardware`) |
 | `poolhouse.testing` | Cross-backend numerical parity harness, behind `python -m poolhouse.train run parity`, and the fakes the suite shares |
 
 `poolhouse.serve` and `poolhouse.client` can be used alone from another application:
 [embedding.md](embedding.md).
 
-Everything above ships in one package, except the experimental layer (`bench`, `datasheet`, `draft`, `gguf`, `gym`,
-`ingest`, `redteam`, `scrape`, `sources`, `surface`, `testing`, `train`, `walk`, `web`, `world`), which the wheel
-leaves out and a source checkout runs as `python -m poolhouse.<name>`. Its dependencies are `packaging` and `psutil`; the
+Everything above ships in one package, except the experimental layer (`backend`, `bench`, `datasheet`, `draft`, `gguf`,
+`gym`, `ingest`, `redteam`, `scrape`, `sources`, `surface`, `testing`, `train`, `vision`, `walk`, `web`, `world`, and the
+graph files `absorbing`, `answers`, `community`, `conversation`, `dag`, `data`, `judging`, `looking`, `message`,
+`relations`, `smoothing`, `tensors`, `tidy` and `tree`), which the wheel leaves out and a source checkout runs as
+`python -m poolhouse.<name>`. Its dependencies are `packaging` and `psutil`; the
 extras carry what a module needs beyond them: `[claude] [train] [train-lora] [gguf] [graph] [store]
 [scrape] [web] [hub] [vision] [pdf] [viz] [plot] [testing] [telemetry] [mcp] [standard]
 [privacy] [arrays] [test]`, plus `[torch]` and `[mlx]`, and `[all]`. `[all]` includes

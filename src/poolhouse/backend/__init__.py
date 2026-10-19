@@ -3,12 +3,6 @@
 from __future__ import annotations
 
 from poolhouse.backend.determinism import SeedReport, set_seeds
-from poolhouse.backend.device import (
-    DeviceProfile,
-    Vendor,
-    detect_device,
-    resolve_torch_device,
-)
 from poolhouse.backend.ops import ArrayBackend, ArrayOps, bind_device
 from poolhouse.backend.registry import (
     BACKENDS,
@@ -22,6 +16,7 @@ from poolhouse.backend.registry import (
     register,
     torch_backend,
 )
+from poolhouse.backend.torch_ops import resolve_torch_device
 
 __all__ = [
     "BACKENDS",
@@ -29,14 +24,11 @@ __all__ = [
     "ArrayBackend",
     "ArrayOps",
     "BackendUnavailable",
-    "DeviceProfile",
     "SeedReport",
-    "Vendor",
     "available",
     "backends",
     "bind_device",
     "detect_backend",
-    "detect_device",
     "get_backend",
     "mlx_backend",
     "register",

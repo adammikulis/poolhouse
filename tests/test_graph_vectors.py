@@ -210,14 +210,14 @@ class TestSmoothing:
     @needs_a_backend
     def test_a_node_with_no_vector_ends_where_its_neighbours_mean(self):
         """Cyd wrote nothing; one hop leaves them pointing at the mean of Ada and Bea."""
-        from poolhouse.graph.vectors import smooth
+        from poolhouse.graph.smoothing import smooth
 
         spread = smooth(SMOOTHED, {"person:ada": [1.0, 0.0], "person:bea": [0.0, 1.0]}, hops=1)
         assert _cosine(spread["person:cyd"], [0.5, 0.5]) == pytest.approx(1.0, abs=1e-6)
 
     @needs_a_backend
     def test_a_node_nothing_reaches_and_nothing_wrote_is_left_out(self):
-        from poolhouse.graph.vectors import smooth
+        from poolhouse.graph.smoothing import smooth
 
         spread = smooth(SMOOTHED, {"person:ada": [1.0, 0.0], "person:bea": [0.0, 1.0]}, hops=2)
         assert "topic:robotics" not in spread
@@ -225,7 +225,7 @@ class TestSmoothing:
 
     @needs_a_backend
     def test_every_vector_comes_back_the_width_it_went_in_and_unit_long(self):
-        from poolhouse.graph.vectors import smooth
+        from poolhouse.graph.smoothing import smooth
 
         spread = smooth(SMOOTHED, {"person:ada": [1.0, 0.0], "person:bea": [0.0, 1.0]}, hops=2)
         for vector in spread.values():
@@ -233,7 +233,7 @@ class TestSmoothing:
             assert sum(v * v for v in vector) ** 0.5 == pytest.approx(1.0, abs=1e-6)
 
     def test_no_vectors_at_all_is_nothing_to_spread(self):
-        from poolhouse.graph.vectors import smooth
+        from poolhouse.graph.smoothing import smooth
 
         assert smooth(SMOOTHED, {}) == {}
         assert smooth({"nodes": [], "edges": []}, {"person:ada": [1.0, 0.0]}) == {}
