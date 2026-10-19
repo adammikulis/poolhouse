@@ -68,7 +68,7 @@ def prepared(cutover, tmp_path):
     return runtime.Runtime(tmp_path / "runtime", cutover.plan.commit, "0", runtime.identity())
 
 
-@pytest.mark.parametrize("wait_s", [0.0, 30.0])
+@pytest.mark.parametrize("wait_s", [0.0, 3.0])
 def test_a_cutover_refuses_a_held_boundary_at_once_and_names_the_holder(cutover, tmp_path, wait_s):
     began = time.monotonic()
     with pytest.raises(Busy) as refused:

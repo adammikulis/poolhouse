@@ -153,7 +153,7 @@ def _ensure(args: argparse.Namespace) -> int:
 
 
 def _planned(args: argparse.Namespace) -> runtime_deploy.Plan | None:
-    """The plan for the checkout's tip; none when the tip is not on the remote yet and a waiter for its push builds it or waits already."""
+    """The plan for the checkout's tip; none when the tip is not on the remote yet and a waiter for its push builds it."""
     try:
         return plan_from(args)
     except runtime_source.Unpublished as exc:
@@ -162,21 +162,17 @@ def _planned(args: argparse.Namespace) -> runtime_deploy.Plan | None:
             return None
         if not args.await_published:
             raise
-        if not _arrived(args, exc):
-            return None
-    return plan_from(args)
+    return _awaited(args)
 
 
-def _arrived(args: argparse.Namespace, unpublished: runtime_source.Unpublished) -> bool:
-    """Wait for the refused commit to reach the remote; false when another process already waits, `DeployError` when it never does."""
+def _awaited(args: argparse.Namespace) -> runtime_deploy.Plan:
+    """The plan for the tip once origin holds it, following the branch while it moves; the authority is checked again after the wait."""
     try:
-        if runtime_await.until_published(unpublished.checkout, unpublished.commit, args.await_published):
-            return True
+        plan = runtime_await.following(lambda: plan_from(args), args.await_published)
     except Busy:
-        say("runtime build already waiting for a push")
-        return False
-    raise runtime_deploy.DeployError(f"{unpublished.commit[:7]} did not reach origin within "
-                                     f"{min(runtime_await.AWAIT_S, args.await_published):.0f}s; no runtime was built")
+        raise runtime_deploy.DeployError("not built: another runtime build is already waiting for a push") from None
+    args.via = runtime_trust.authorize("ensure")
+    return plan
 
 
 def _awaiting(args: argparse.Namespace, why: Exception) -> None:
