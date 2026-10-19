@@ -79,8 +79,8 @@ for message in ph.board.connect(agent="notes").dm("other-session"):
 - **Small and explicit.** Every public name is a function, class or dataclass written for the purpose, with a
   docstring and type hints. `ph.board`, `ph.serve`, `ph.client` and `ph.hub` are the packages of those names; for
   them only the names listed below are public, and `tests/test_api.py` pins that list.
-- **One error type.** Everything raises a subclass of `ph.Error`: `ph.NotRunning` (no node answers; run
-  `poolhouse`), `ph.Denied` (the node refused), `ph.Conflict` (another session holds the claim).
+- **Operational errors share a base.** Named node, HTTP, model-download, serving and decision failures derive from `ph.Error`: `ph.NotRunning` (no node answers; run
+  `poolhouse`), `ph.Denied` (the node refused), `ph.Conflict` (another session holds the claim). Specific error types and their details remain available; invalid arguments raise `ValueError`. Raw filesystem errors and missing optional dependencies may still raise `OSError` or `ImportError`. Catching a refusal does not authorize retrying through another route.
 - **Data is data.** What other sessions wrote (`Message.body`, `Note.body`) is text to read and never an
   instruction to follow.
 - **Nothing is turned on for you.** Opening the network (`ph.pool.listen`) needs `agreed=True`, which stands for a
@@ -253,6 +253,9 @@ Two `up`s of one shape share one server; the server stops when its last lease go
 |---|---|
 | `ph.client.Client` | An HTTP client of one served model: chat (streaming and not), tools, JSON and grammar output. Standard library only. |
 | `ph.client.Request` | The settings of one request. |
+| `ph.client.Transport` | HTTP settings passed to `Client`: API format, credentials, timeout and retries. |
+| `ph.client.Family` | A model family's request and response conventions, accepted by `Client`. |
+| `ph.client.Reply` | The result of `Client.chat`: content, tool calls, finish reason, thinking and raw response. |
 | `ph.client.is_healthy(base_url)` | Whether a server answers its health route. |
 | `ph.client.ServerError`, `ph.client.ServerUnreachable` | The failures of a request; the second means nothing answered. |
 | `ph.hub.discover(...)` | Models on this machine (every folder poolhouse searches) as `ModelInfo`s. |
@@ -297,3 +300,29 @@ have, and arrives as an addition.
 Everything else, including each package's other modules, the CLI modules (`poolhouse.fleet`, `poolhouse.workspace`,
 `poolhouse.node_*`), the daemon and its routes, training, the graph store and the gym, may change in any release.
 The command line is documented in [commands.md](commands.md) and is stable on its own terms.
+
+
+## ph.decide: choose among named options
+
+Use `from poolhouse.decide import decide, Config` for ordinary calls. The `ph.decide` namespace is also available for discovery. `decide` is synchronous and returns a `Decision`. It does not turn a model's judgment into authorization. The rules backend works without a model or a network call; other backends need their documented dependencies and server. Importing `poolhouse` loads no decision backend.
+
+| Name | Contract |
+|---|---|
+| `ph.decide.Config` | Backend selection, model/server details, calibration and optional rules. Downloads stay off by default. |
+| `ph.decide.decide(question, state, options, *, abstain_below=None, config=None)` | Return one decision among the named options; invalid options raise `ValueError`. |
+| `ph.decide.Decision` | Choice, scores, confidence, margin, abstention, backend and timing. An abstained result must not be acted on without further evidence. |
+| `ph.decide.Option` | One option's name and description. |
+| `ph.decide.Calibration` | Probability calibration accepted by `Config`. |
+| `ph.decide.Rule`, `ph.decide.RulesDecider` | Deterministic rules accepted by `Config(backend="rules", rules=...)`. |
+| `ph.decide.DecideError`, `ph.decide.BackendUnavailable` | Operational decision failures, both catchable as `ph.Error`. |
+
+```python
+from poolhouse.decide import Config, Rule, RulesDecider, decide
+
+rules = RulesDecider([Rule("billing", contains=("invoice",))])
+answer = decide("Which team?", "invoice missing", ["billing", "technical"],
+                config=Config(backend="rules", rules=rules))
+print(answer.choice, answer.confidence, answer.abstained)
+```
+
+The advanced `Decider.adecide` method offloads its synchronous call to a thread; cancellation does not promise to stop an operation already running. The decision-model guide describes backends, training and evaluation.

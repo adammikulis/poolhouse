@@ -8,7 +8,7 @@ import platform
 import shutil
 from pathlib import Path
 
-from poolhouse import credentials, home
+from poolhouse import credentials, errors, home
 from poolhouse.credentials import child_environment
 from poolhouse.serve import llamacpp_trust
 
@@ -46,7 +46,7 @@ _LOGIN_SHELL_DIRS = (
 )
 
 
-class BinaryNotFound(RuntimeError):
+class BinaryNotFound(RuntimeError, errors.Error):
     """No ``llama-server`` could be located, and none could be fetched."""
 
 

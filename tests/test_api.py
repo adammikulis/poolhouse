@@ -72,16 +72,33 @@ def test_every_public_callable_has_a_docstring_and_type_hints() -> None:
                     assert inspect.getdoc(fn), f"{space}.{name}.{member} has no docstring"
 
 
+def signature_text(obj: object) -> str:
+    """Keep callable defaults identified by name rather than process-local addresses."""
+    try:
+        signature = inspect.signature(obj)
+    except ValueError:
+        if (inspect.isclass(obj) and issubclass(obj, BaseException)
+                and inspect.ismethoddescriptor(obj.__init__) and inspect.isbuiltin(obj.__new__)):
+            return f"__new__{inspect.signature(obj.__new__)}; __init__{inspect.signature(obj.__init__)}"
+        raise
+    text = str(signature)
+    for parameter in signature.parameters.values():
+        default = parameter.default
+        if inspect.isfunction(default):
+            text = text.replace(repr(default), f"<function {default.__module__}.{default.__qualname__}>")
+    return text
+
+
 def signatures() -> dict[str, str]:
     out = {}
     for space, name, obj in surface():
         if inspect.isclass(obj):
-            out[f"{space}.{name}"] = str(inspect.signature(obj))
+            out[f"{space}.{name}"] = signature_text(obj)
             for member, fn in inspect.getmembers(obj, inspect.isfunction):
                 if space not in ("client", "hub") and not member.startswith("_") and fn.__qualname__.startswith(obj.__name__):
-                    out[f"{space}.{name}.{member}"] = str(inspect.signature(fn))
+                    out[f"{space}.{name}.{member}"] = signature_text(fn)
         elif callable(obj):
-            out[f"{space}.{name}"] = str(inspect.signature(obj))
+            out[f"{space}.{name}"] = signature_text(obj)
     return out
 
 
@@ -166,3 +183,55 @@ def test_the_public_docs_use_the_new_name(old: str) -> None:
         if page == "api-migration.md":
             text = text.replace("ml_stack", "").replace("ml-stack", "")
         assert old not in text, f"docs/{page} mentions {old}"
+
+
+def test_client_input_and_reply_types_are_declared_public():
+    for name in ('Transport', 'Family', 'Reply'):
+        assert name in api.SURFACE['client']
+        assert getattr(ph.client, name) is not None
+    transport = ph.client.Transport(timeout=4)
+    family = ph.client.Family(name='fixture')
+    client = ph.client.Client(transport=transport, family=family)
+    assert client.transport is transport and client.family is family
+    assert ph.client.Reply(content='ready').content == 'ready'
+
+
+def test_decision_entrypoint_is_discoverable_and_runs_without_a_model():
+    assert 'decide' in dir(ph) and 'decide' in api.NAMESPACES
+    rules = ph.decide.RulesDecider([ph.decide.Rule('billing', contains=('invoice',))])
+    options = [ph.decide.Option('billing', 'invoices'), ph.decide.Option('technical', 'outages')]
+    calibration = ph.decide.Calibration()
+    assert calibration.apply([0.8, 0.2]) == pytest.approx([0.8, 0.2])
+    result = ph.decide.decide('Which team?', 'invoice missing', options,
+                             config=ph.decide.Config(backend='rules', rules=rules))
+    assert isinstance(result, ph.decide.Decision)
+    assert result.choice == 'billing' and not result.abstained
+
+
+def test_decision_namespace_is_loaded_only_when_requested():
+    code = ("import sys,poolhouse as ph;assert 'poolhouse.decide' not in sys.modules;"
+            "assert 'decide' in dir(ph);namespace=ph.decide;"
+            "assert namespace.Config and namespace.decide;print('lazy decision interface')")
+    done = subprocess.run([sys.executable, '-c', code], cwd=REPO,
+                          env={**os.environ, 'PYTHONPATH': str(REPO / 'src')},
+                          capture_output=True, text=True, timeout=30)
+    assert done.returncode == 0 and done.stdout.strip() == 'lazy decision interface', done.stderr
+
+
+def test_public_signatures_are_identical_in_fresh_processes():
+    code = "import json;from tests.test_api import signatures;print(json.dumps(signatures(),sort_keys=True))"
+    results = [subprocess.run([sys.executable, '-c', code], cwd=REPO,
+                              env={**os.environ, 'PYTHONPATH': str(REPO / 'src')},
+                              capture_output=True, text=True, timeout=30, check=True).stdout
+               for _ in range(2)]
+    assert results[0] == results[1]
+    assert 'poolhouse.client.families.openai_tool_calls' in results[0]
+
+
+def test_exception_snapshot_preserves_explicit_constructor_details():
+    class DetailedError(ph.Error):
+        def __init__(self, message: str, *, code: int = 7) -> None:
+            super().__init__(message)
+
+    assert signature_text(DetailedError) == "(message: 'str', *, code: 'int' = 7) -> 'None'"
+    assert '__new__' in signature_text(ph.decide.DecideError)

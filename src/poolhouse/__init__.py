@@ -4,10 +4,10 @@
     ph.pool     the devices you pooled: status, members, join, add_device, remove, policy, sync, capacity
     ph.board    a project's board, shared by every device: send, inbox, dm, thread, wait, notes, claims, links
     ph.leases   this device's lease table: take and give back CPU slots, memory, the GPU, model slots
-    ph.test     run a project's tests on other devices of the pool
+    ph.test     run tests on pool devices; ph.decide: choose among named options
     ph.models   model files in the Hugging Face hub cache: pull, path;  ph.serve: up, down, status
     ph.client   talk to a served model: Client, Request, is_healthy;  ph.hub: discover, fetch
-    ph.Error    what all of these raise (NotRunning, Denied, Conflict); ph.__version__
+    ph.Error    the common operational failure base (NotRunning, Denied, Conflict); ph.__version__
 Stable within a minor version (docs/api.md); everything else is internal. Importing loads nothing else, and
 no code inside poolhouse imports through ``ph``: this is the one facade.
 """
@@ -22,14 +22,14 @@ from poolhouse.api import NAMESPACES as _NAMESPACES
 from poolhouse.errors import Conflict, Denied, Error, NotRunning
 
 if TYPE_CHECKING:  # what a type checker sees; the namespaces load on first use (`__getattr__`)
-    from poolhouse import board, client, hub, serve
+    from poolhouse import board, client, decide, hub, serve
     from poolhouse.api import leases, models, pool, remote_tests as test
 
     __version__: str
 
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
-__all__ = ["Conflict", "Denied", "Error", "NotRunning", "__version__", "board", "client", "hub", "leases", "models",
+__all__ = ["Conflict", "Denied", "Error", "NotRunning", "__version__", "board", "client", "decide", "hub", "leases", "models",
            "pool", "serve", "test"]
 
 
