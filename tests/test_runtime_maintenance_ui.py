@@ -36,7 +36,7 @@ def test_healthy_chat_and_advanced_maintenance_repair_use_saved_preferences(tmp_
             reach(page, 'settings')
             settings = page.locator("settings-view")
             settings.get_by_role("tab", name="Maintenance", exact=True).click()
-            advanced = settings.locator("[data-pane=maintenance] details[data-advanced]")
+            advanced = settings.locator("[data-pane=maintenance] details[data-advanced]").filter(has_text="Runtime tools")
             expect(advanced).not_to_have_attribute("open", "")
             repair = settings.get_by_role("button", name="Repair agent runtime", exact=True)
             expect(repair).to_be_hidden()
