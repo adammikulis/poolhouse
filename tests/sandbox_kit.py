@@ -9,6 +9,7 @@ import os
 import shutil
 import socket
 import stat
+import subprocess
 import sys
 import threading
 import time
@@ -18,7 +19,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse import sandbox
-from poolhouse.sandbox import AllowUnsandboxed, Limits, Net, Policy, process_tree
+from poolhouse.sandbox import AllowUnsandboxed, Limits, Net, Policy, denial_log, process_tree, run
 from poolhouse.sandbox.backend import (
     CUT_REFUSAL_LOG,
     CUT_UNTRACED_LOG,
@@ -170,7 +171,7 @@ def _open_lock(path: str) -> int:
     except OSError as exc:
         why = "is a symbolic link" if exc.errno == errno.ELOOP else f"cannot be opened ({exc})"
         pytest.fail(f"the machine-wide Seatbelt log lock file {path} {why}", pytrace=False)
-    info = os.fstat(fd)
+    info = Path(f"/dev/fd/{fd}").stat()
     if not stat.S_ISREG(info.st_mode) or info.st_uid != _uid():
         os.close(fd)
         why = "is not a regular file" if not stat.S_ISREG(info.st_mode) else "is owned by another user"
@@ -341,3 +342,96 @@ try:
 except OSError as e:
     print("refused", e.errno)
 """
+
+
+WHOLE = 900
+"""A path the kernel's report carries whole, tag line included."""
+
+
+def long_file(root: Path, size: int, wide: int = 0) -> Path:
+    """A file outside every policy whose path is about ``size`` bytes long; its first ``wide`` directories are named with 80 euro signs."""
+    path = root / "outside"
+    for _ in range(wide):
+        path = path / ("\u20ac" * 80)
+    while (room := size - len(str(path).encode()) - 1) > 0:
+        path = path / ("z" * min(200, room))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("the-secret-contents")
+    return path
+
+
+def accented_file(root: Path, odd: bool) -> Path:
+    """A file outside every policy whose path is a run of ``z`` up to byte 900 (901 when ``odd``) and then 50 two-byte
+    characters, so the kernel's cut of a report, which falls near byte 965, lands inside one of them in one of the two cases."""
+    path = root / "outside"
+    start = 900 + odd
+    while (gap := start - 1 - len(str(path).encode())) > 201:
+        path = path / ("z" * 100)
+    path = path / ("z" * (gap - 1)) / ("\u00e9" * 50)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("the-secret-contents")
+    return path
+
+
+def refused_run(tmp_path: Path, target: Path, *listeners):
+    """``(result, events)`` of a ``cat`` of ``target`` under a policy that reads only the project; each of ``listeners`` hears the events too."""
+    project = tmp_path / "project"
+    project.mkdir(exist_ok=True)
+    events: list[tuple[str, dict]] = []
+
+    def hear(name: str, fields: dict) -> None:
+        events.append((name, fields))
+        for listener in listeners:
+            listener(name, fields)
+
+    return run(["/bin/cat", str(target)], policy(read=[project]), on_event=hear), events
+
+
+def cut_report(pid: int = 4242) -> str:
+    """The message the kernel logs for a refusal of a path too long to report whole: the tag line is gone."""
+    return f"Sandbox: cat({pid}) deny(1) file-read-data /private/tmp/{'z' * 900}{denial_log.CUT_MARK}"
+
+
+@pytest.fixture
+def processes():
+    """Starts a process that lives until the test ends; the test gets its ``Popen``."""
+    started: list[subprocess.Popen] = []
+
+    def start() -> subprocess.Popen:
+        started.append(subprocess.Popen(["/bin/sleep", "60"]))
+        return started[-1]
+
+    yield start
+    for proc in started:
+        proc.kill()
+        proc.wait()
+
+
+def gone_pid() -> int:
+    """The pid of a process that has ended and been reaped."""
+    proc = subprocess.Popen(["/usr/bin/true"])
+    proc.wait()
+    return proc.pid
+
+
+def forge_cut_report(message: str) -> None:
+    """What any local process can do: have the kernel log a report whose message is ``message``."""
+    profile = f'(version 1)(deny default (with message "{message}"))'
+    subprocess.run([denial_log.SANDBOX_EXEC, "-p", profile, "--", denial_log.PROBE_PROGRAM],
+                   stdin=subprocess.DEVNULL, capture_output=True, check=False)
+
+
+def beside(tmp_path: Path, hostile, *, script: str = "sleep 2; exit 1", via=None):
+    """``(hostile's value, the result of a run that was going meanwhile)``: ``hostile`` runs half a second into it."""
+    project = tmp_path / "project"
+    project.mkdir(exist_ok=True)
+    found = []
+    thread = threading.Thread(target=lambda: found.append(
+        run(["/bin/sh", "-c", script], policy(read=[project]), diagnose="always", via=via)))
+    thread.start()
+    try:
+        time.sleep(0.5)
+        value = hostile()
+    finally:
+        thread.join()
+    return value, found[0]

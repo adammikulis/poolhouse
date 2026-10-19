@@ -14,6 +14,8 @@ import select
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 
+from poolhouse.sandbox.backend import SandboxUnavailable
+
 __all__ = ["Hold"]
 
 HOLD_S = 10.0
@@ -32,7 +34,7 @@ class Hold:
 
     def __init__(self, follow: Callable[[int], None]) -> None:
         self._follow = follow
-        self._pid, self._release = os.pipe(), os.pipe()
+        self._pid, self._release = self._pipes()
         self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sandbox-hold")
         submitted = False
         try:
@@ -42,6 +44,19 @@ class Hold:
             if not submitted:
                 self._pool.shutdown(wait=False)
                 self._close(*self._pid, *self._release)
+
+    @staticmethod
+    def _pipes() -> tuple[tuple[int, int], tuple[int, int]]:
+        """The two pipes of a hold; `SandboxUnavailable` with none left open when the system cannot make both."""
+        made: list[tuple[int, int]] = []
+        try:
+            for _ in range(2):
+                made.append(os.pipe())
+        except OSError as exc:
+            for ends in made:
+                Hold._close(*ends)
+            raise SandboxUnavailable(f"the process cannot be held until the host has followed it: {exc}") from exc
+        return made[0], made[1]
 
     @property
     def error(self) -> BaseException | None:

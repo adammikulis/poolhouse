@@ -5,6 +5,7 @@ from __future__ import annotations
 import fcntl
 import os
 import re
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -16,6 +17,9 @@ from tests.sandbox_kit import kernel_log
 
 FAILED = pytest.fail.Exception
 TESTS = Path(__file__).parent
+sys.path.insert(0, str(TESTS.parent / "scripts"))
+
+import testreuse_key  # noqa: E402
 
 
 @pytest.fixture
@@ -133,3 +137,9 @@ def test_no_module_but_the_kit_defines_a_seatbelt_fixture_of_its_own():
     own = [path.name for path in TESTS.glob("*.py")
            if path.name not in {"sandbox_kit.py", Path(__file__).name} and re.search(r"def seatbelt(_alone)?\(", path.read_text())]
     assert own == []
+
+
+def test_the_sandbox_tests_use_no_call_the_test_runner_cannot_observe():
+    files = [*TESTS.glob("test_sandbox_*.py"), TESTS / "sandbox_kit.py", TESTS / "test_sentinel_sandbox_owner.py"]
+    unseen = {path.name: found[0] for path in files if (found := testreuse_key.UNSEEN.findall(path.read_text()))}
+    assert unseen == {}

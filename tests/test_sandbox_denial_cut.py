@@ -28,56 +28,22 @@ from poolhouse.sandbox.seatbelt import Seatbelt
 from poolhouse.sentinel.adapters import sandbox_listener
 from poolhouse.sentinel.score import UNATTRIBUTED_WEIGHT, WATCH_AT, WEIGHTS
 from tests.sandbox_kit import (
+    WHOLE,
     QuietBackend,
     RecordingBackend,
     UnreadFollower,
     UntrackableBackend,
+    accented_file,
+    beside,
+    cut_report,
+    forge_cut_report,
+    gone_pid,
+    long_file,
     policy,
+    refused_run,
 )
 
 pytest_plugins = ["tests.sandbox_kit"]
-
-WHOLE = 900
-"""A path the kernel's report carries whole, tag line included."""
-
-
-def long_file(root: Path, size: int, wide: int = 0) -> Path:
-    """A file outside every policy whose path is about ``size`` bytes long; its first ``wide`` directories are named with 80 euro signs."""
-    path = root / "outside"
-    for _ in range(wide):
-        path = path / ("\u20ac" * 80)
-    while (room := size - len(str(path).encode()) - 1) > 0:
-        path = path / ("z" * min(200, room))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("the-secret-contents")
-    return path
-
-
-def accented_file(root: Path, odd: bool) -> Path:
-    """A file outside every policy whose path is a run of ``z`` up to byte 900 (901 when ``odd``) and then 50 two-byte
-    characters, so the kernel's cut of a report, which falls near byte 965, lands inside one of them in one of the two cases."""
-    path = root / "outside"
-    start = 900 + odd
-    while (gap := start - 1 - len(str(path).encode())) > 201:
-        path = path / ("z" * 100)
-    path = path / ("z" * (gap - 1)) / ("\u00e9" * 50)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("the-secret-contents")
-    return path
-
-
-def refused_run(tmp_path: Path, target: Path, *listeners):
-    """``(result, events)`` of a ``cat`` of ``target`` under a policy that reads only the project; each of ``listeners`` hears the events too."""
-    project = tmp_path / "project"
-    project.mkdir(exist_ok=True)
-    events: list[tuple[str, dict]] = []
-
-    def hear(name: str, fields: dict) -> None:
-        events.append((name, fields))
-        for listener in listeners:
-            listener(name, fields)
-
-    return run(["/bin/cat", str(target)], policy(read=[project]), on_event=hear), events
 
 
 @pytest.mark.parametrize("size", [945, 960, 1000, 1020])
@@ -102,33 +68,6 @@ def test_a_refused_read_of_a_long_path_the_kernel_keeps_whole_is_still_reported(
     result, events = refused_run(tmp_path, target)
     assert [d["target"] for d in result.denials] == [str(target)] and not result.denials_unavailable
     assert [name for name, _ in events] == ["sandbox.denied"]
-
-
-def cut_report(pid: int = 4242) -> str:
-    """The message the kernel logs for a refusal of a path too long to report whole: the tag line is gone."""
-    return f"Sandbox: cat({pid}) deny(1) file-read-data /private/tmp/{'z' * 900}{denial_log.CUT_MARK}"
-
-
-@pytest.fixture
-def processes():
-    """Starts a process that lives until the test ends; the test gets its ``Popen``."""
-    started: list[subprocess.Popen] = []
-
-    def start() -> subprocess.Popen:
-        started.append(subprocess.Popen(["/bin/sleep", "60"]))
-        return started[-1]
-
-    yield start
-    for proc in started:
-        proc.kill()
-        proc.wait()
-
-
-def gone_pid() -> int:
-    """The pid of a process that has ended and been reaped."""
-    proc = subprocess.Popen(["/usr/bin/true"])
-    proc.wait()
-    return proc.pid
 
 
 def test_a_refused_read_of_a_path_the_log_cannot_carry_is_unreadable_and_not_clean(tmp_path, seatbelt_alone):
@@ -340,28 +279,6 @@ def test_the_run_tells_its_backend_which_process_it_started_as():
     assert all(isinstance(pid, int) and pid > 1 for pid in backend.started_as.values())
 
 
-def forge_cut_report(message: str) -> None:
-    """What any local process can do: have the kernel log a report whose message is ``message``."""
-    profile = f'(version 1)(deny default (with message "{message}"))'
-    subprocess.run([denial_log.SANDBOX_EXEC, "-p", profile, "--", denial_log.PROBE_PROGRAM],
-                   stdin=subprocess.DEVNULL, capture_output=True, check=False)
-
-
-def beside(tmp_path: Path, hostile, *, script: str = "sleep 2; exit 1"):
-    """``(hostile's value, the result of a run that was going meanwhile)``: ``hostile`` runs half a second into it."""
-    project = tmp_path / "project"
-    project.mkdir(exist_ok=True)
-    found = []
-    thread = threading.Thread(target=lambda: found.append(run(["/bin/sh", "-c", script], policy(read=[project]), diagnose="always")))
-    thread.start()
-    try:
-        time.sleep(0.5)
-        value = hostile()
-    finally:
-        thread.join()
-    return value, found[0]
-
-
 @pytest.mark.parametrize("message", ["A" * 1000, "B" * 205 + denial_log.CUT_MARK], ids=["long", "short-with-the-cut-mark"])
 def test_a_cut_report_that_an_unrelated_process_caused_leaves_a_run_that_started_nothing_readable(tmp_path, seatbelt_alone, message):
     _, bystander = beside(tmp_path, lambda: forge_cut_report(message), script="exec /bin/sleep 2")
@@ -550,9 +467,9 @@ def test_a_report_that_names_no_process_names_no_pid(message):
     assert denial_log.reported_pids(message) == ()
 
 
-def test_a_path_that_looks_like_the_head_of_a_report_adds_to_the_pids_and_never_hides_the_real_one():
+def test_a_path_that_looks_like_the_head_of_a_report_names_no_pid():
     message = "Sandbox: cat(4321) deny(1) file-read-data /tmp/a(9) deny(1) b"
-    assert denial_log.reported_pids(message) == (4321, 9)
+    assert denial_log.reported_pids(message) == (4321,)
 
 
 def test_a_cut_report_whose_process_name_names_the_pid_of_another_run_is_still_charged_to_the_run_that_made_it(seatbelt, processes):

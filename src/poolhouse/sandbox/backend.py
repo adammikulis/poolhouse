@@ -11,7 +11,7 @@ from typing import Protocol
 from poolhouse.sandbox.policy import Policy, PolicyError
 
 __all__ = ["CUT_REFUSAL_LOG", "CUT_UNTRACED_LOG", "LOST_REFUSAL_LOG", "NO_REFUSAL_LOG", "SILENT_REFUSAL_LOG",
-           "UNPARSED_REFUSAL_LOG", "Availability", "Backend", "SandboxUnavailable", "Wrapped", "program_of"]
+           "UNPARSED_REFUSAL_LOG", "UNREPORTED_FAILURE_LOG", "Availability", "Backend", "SandboxUnavailable", "Wrapped", "program_of"]
 
 NO_REFUSAL_LOG = "this backend keeps no refusal log"
 LOST_REFUSAL_LOG = "the refusal log could not be read"
@@ -19,6 +19,7 @@ CUT_REFUSAL_LOG = "a refusal report of a process of this run was cut off by the 
 CUT_UNTRACED_LOG = "a refusal report was cut off by the kernel and could not be traced to a process of another run"
 SILENT_REFUSAL_LOG = "the command failed with \"Operation not permitted\" and no refusal report of it reached the log"
 UNPARSED_REFUSAL_LOG = "a refusal report of this run could not be read"
+UNREPORTED_FAILURE_LOG = "the command failed and the refusal log carried no report of it"
 
 
 class SandboxUnavailable(RuntimeError):

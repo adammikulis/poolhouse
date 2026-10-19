@@ -23,7 +23,12 @@ else:
     resource = None
 
 from poolhouse.platform import start_process
-from poolhouse.sandbox.backend import SILENT_REFUSAL_LOG, Backend, SandboxUnavailable
+from poolhouse.sandbox.backend import (
+    SILENT_REFUSAL_LOG,
+    UNREPORTED_FAILURE_LOG,
+    Backend,
+    SandboxUnavailable,
+)
 from poolhouse.sandbox.bubblewrap import Bubblewrap
 from poolhouse.sandbox.hold import Hold
 from poolhouse.sandbox.policy import AllowUnsandboxed, Limits, Policy
@@ -63,6 +68,8 @@ class Result:
     """The sandbox could not say what it refused, so an empty ``denials`` does not mean the run was clean."""
     denials_detail: str = ""
     """Why the refusals could not be known; empty when they could."""
+    failure_unreported: bool = False
+    """The run exited non-zero and the refusal log was read and carried no report of it; that does not make ``denials_unavailable``."""
 
     @property
     def ok(self) -> bool:
@@ -259,6 +266,9 @@ def run(argv: Sequence[str], policy: Policy, *,  # noqa: PLR0913 - one keyword p
     if result.denials_unavailable:
         emit("sandbox.denials-unavailable", severity="warning", command=str(argv[0]), policy=policy.name,
              backend=name, detail=result.denials_detail)
+    if result.failure_unreported:
+        emit("sandbox.failure-unreported", severity="notice", command=str(argv[0]), policy=policy.name,
+             backend=name, detail=UNREPORTED_FAILURE_LOG)
     if result.denials:
         emit("sandbox.denied", severity="warning", command=str(argv[0]), policy=policy.name,
              count=len(result.denials), first=result.denials[0], backend=name)
@@ -278,6 +288,8 @@ def _read_denials(chosen: Backend, tag: str, began: float, diagnose: str, result
             result.denials_detail = chosen.unreadable(tag)
         elif not found and _says_refused(result):
             result.denials_detail = SILENT_REFUSAL_LOG
+        elif not found and result.returncode != 0 and not result.timed_out:
+            result.failure_unreported = True
         result.denials_unavailable = found is None or bool(result.denials_detail)
 
 

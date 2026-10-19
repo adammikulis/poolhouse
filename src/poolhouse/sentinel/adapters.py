@@ -19,12 +19,13 @@ from poolhouse.sandbox.backend import (
     NO_REFUSAL_LOG,
     SILENT_REFUSAL_LOG,
     UNPARSED_REFUSAL_LOG,
+    UNREPORTED_FAILURE_LOG,
 )
 from poolhouse.sentinel.core import Sentinel
 from poolhouse.sentinel.events import Event, Severity
 from poolhouse.sentinel.human import agent_may
 from poolhouse.sentinel.policy import Mode
-from poolhouse.sentinel.score import UNATTRIBUTED_WEIGHT, WEIGHTS
+from poolhouse.sentinel.score import UNATTRIBUTED_WEIGHT, UNREPORTED_FAILURE_WEIGHT, WEIGHTS
 from poolhouse.sentinel.store import Record
 
 __all__ = ["GuardLogHandler", "RailAnswer", "agent_gate", "broker_listener", "note_refusal",
@@ -155,7 +156,8 @@ def sandbox_listener(sentinel: Sentinel) -> Callable[[str, dict[str, object]], N
                                 {k: v for k, v in fields.items() if k != "severity"},
                                 sentinel.clock()))
         detail = fields.get("detail")
-        weight = UNATTRIBUTED_WEIGHT if detail in UNATTRIBUTED else WEIGHTS["sandbox.denied"] if detail in REFUSED else None
+        weight = (UNATTRIBUTED_WEIGHT if detail in UNATTRIBUTED else WEIGHTS["sandbox.denied"] if detail in REFUSED
+                  else UNREPORTED_FAILURE_WEIGHT if detail == UNREPORTED_FAILURE_LOG else None)
         if owner := sentinel.running_session():
             sentinel.note("session", owner, event, weight)
         elif flying := sentinel.in_flight():

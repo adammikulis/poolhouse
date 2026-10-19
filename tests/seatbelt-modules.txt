@@ -6,11 +6,13 @@
 # tests/test_test_write_deny.py fails when a module that names the Seatbelt backend is missing.
 test_agent.py
 test_sandbox_denial_cut.py
+test_sandbox_denial_forged.py
 test_sandbox_denial_log.py
 test_sandbox_gpu.py
 test_sandbox_integration.py
 test_sandbox_kit_lock.py
 test_sandbox_policy.py
+test_sandbox_process_tree.py
 test_sandbox_redteam.py
 test_sandbox_seatbelt.py
 test_sentinel_sandbox_owner.py

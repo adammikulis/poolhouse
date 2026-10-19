@@ -3,8 +3,8 @@
 The kernel's refusal reports carry the tag of the profile that refused and are not kept for a
 later ``log show``, so the stream runs from the first confined command to the end of the process.
 The kernel cuts a report longer than about a thousand bytes at its end, which removes the tag; the
-stream also carries every kernel report that long. A cut report names the process that was refused, so
-it makes unreadable the run that process belongs to (`process_tree`). A cut report of a process that no
+stream also carries every kernel report that long. A cut report names the process that was refused in
+its first bytes, so it makes unreadable the run that process belongs to (`process_tree`). A cut report of a process that no
 run follows makes unreadable every run that started a process of its own (it may be one that ended
 before it was followed) and every run whose processes were not followed from its start. ``denials`` is
 None whenever the stream cannot say what a run was refused: it never started, did not answer, ended or
@@ -25,6 +25,7 @@ import subprocess
 import threading
 import time
 from collections import OrderedDict, deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from poolhouse.platform import start_grouped
@@ -42,6 +43,7 @@ PREFIX = "poolhouse-sandbox:"
 PROBE = "probe~"
 CUT_CHARS = 200  # the stream's character floor for a kernel report; a report of multi-byte characters has fewer characters than bytes
 CUT_BYTES = 900  # a kernel report this long may have been cut: the kernel's limit is about 1010 bytes
+NAME_BYTES = 32  # the kernel reports a process by at most 32 bytes of its name
 CUT_MARK = "<\u2026>"  # what the kernel puts at the end of a report it cut
 LONG_PAD = "x" * 300
 PREDICATE = (f'eventMessage CONTAINS "{PREFIX}" OR '
@@ -123,11 +125,21 @@ def repeated(message: str) -> dict[str, str] | None:
 
 def reported_pids(message: str) -> tuple[int, ...]:
     """The pids a kernel Sandbox message may name as the process that was refused, in order: the
-    ``(pid) deny(`` of each place that reads so. A process name or a path can hold the same text, so the
-    pid of the process that was refused is one of several then, and never missing."""
-    if REPORT_START.match(message) is None:
+    ``(pid) deny(`` of each place in the first `NAME_BYTES` bytes after the report's start, where a process
+    name of at most that length ends. A process name can hold the same text, so the pid of the process
+    that was refused is one of several then, and never missing; a path or a profile's message comes after
+    the name and names nothing."""
+    start = REPORT_START.match(message)
+    if start is None:
         return ()
-    return tuple(int(pid) for pid in PID_BEFORE_DENY.findall(message))
+    body = message[start.end():]
+    pids = []
+    for found in PID_BEFORE_DENY.finditer(body):
+        if found.start() > NAME_BYTES:
+            break
+        if len(body[:found.start()].encode("utf-8", "surrogatepass")) <= NAME_BYTES:
+            pids.append(int(found[1]))
+    return tuple(pids)
 
 
 def may_be_cut(message: str) -> bool:
@@ -146,7 +158,7 @@ class _Run:
     entries: list[dict[str, str]] = field(default_factory=list)
     tree: process_tree.Tree | None = None
     cut_own: bool = False
-    cut_pids: set[int] = field(default_factory=set)
+    cut_pids: dict[int, float] = field(default_factory=dict)
     cut_flood: bool = False
     cut_blind: bool = False
     cut_reason: str = ""
@@ -168,6 +180,7 @@ class DenialLog:
         self._generation = 0
         self._failed_at: float | None = None
         self._exit_hook = False
+        self._wall: Callable[[], float] = time.time
 
     def running(self) -> bool:
         """Whether this process started the stream and it is alive."""
@@ -262,13 +275,13 @@ class DenialLog:
             return CUT_UNTRACED_LOG
         if tree is not None and tree.sealed:
             return ""
-        if run.cut_flood or any(not self._followed(pid) for pid in run.cut_pids):
+        if run.cut_flood or any(not self._followed(pid, heard) for pid, heard in run.cut_pids.items()):
             return CUT_UNTRACED_LOG
         return ""
 
-    def _followed(self, pid: int) -> bool:
-        """Whether ``pid`` is a process of a run still going that this stream watches."""
-        return any(not run.ended and run.tree is not None and pid in run.tree for run in self._runs.values())
+    def _followed(self, pid: int, heard: float) -> bool:
+        """Whether ``pid`` is a process of a run still going that this stream watches, and began no later than the report naming it was heard."""
+        return any(not run.ended and run.tree is not None and run.tree.holds_as_of(pid, heard) for run in self._runs.values())
 
     def close(self) -> None:
         """Stop the stream this process started."""
@@ -344,7 +357,7 @@ class DenialLog:
             elif run is not None:
                 self._take(run, message, entry)
             elif may_be_cut(message):
-                self._cut(reported_pids(message))
+                self._cut(reported_pids(message), self._wall())
             self._changed.notify_all()
 
     def _answered(self, message: str, entry: dict[str, str] | None) -> list[str]:
@@ -366,8 +379,8 @@ class DenialLog:
         elif not NOISE.search(entry["target"]) and len(run.entries) < KEEP_PER_TAG:
             run.entries.append(entry)
 
-    def _cut(self, pids: tuple[int, ...]) -> None:
-        """Remember that a report naming the processes ``pids`` was cut off, for every run still going."""
+    def _cut(self, pids: tuple[int, ...], heard: float) -> None:
+        """Remember that a report naming the processes ``pids`` was cut off and heard at ``heard``, for every run still going."""
         for run in self._runs.values():
             if run.ended:
                 continue
@@ -376,14 +389,15 @@ class DenialLog:
             elif run.tree is not None and any(pid in run.tree for pid in pids):
                 run.cut_own = True
             elif len(run.cut_pids) + len(pids) <= KEEP_PER_TAG:
-                run.cut_pids.update(pids)
+                for pid in pids:
+                    run.cut_pids.setdefault(pid, heard)
             else:
                 run.cut_flood = True
 
     def _explain(self, tree: process_tree.Tree) -> None:
         """A run has ended: the cut reports of its processes are not the other runs' to answer for. Call it holding the lock."""
         for run in self._runs.values():
-            run.cut_pids = {pid for pid in run.cut_pids if pid not in tree}
+            run.cut_pids = {pid: heard for pid, heard in run.cut_pids.items() if not tree.holds_as_of(pid, heard)}
 
     def _trim(self) -> None:
         """Drop the oldest ended runs while there are more than ``KEEP_TAGS``; a run still going is never dropped."""

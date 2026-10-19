@@ -5,7 +5,8 @@ each notification is answered by listing the children of that process (``proc_li
 and following them in turn. A child that has ended by the time its parent's notification is read is
 not listed, so a tree counts the forks it was told of: a tree in which nothing forked holds the one
 process it started and nothing else (`Tree.sealed`). Where there is no kqueue or libproc, and for a
-process that had already ended when it was first looked at, the tree is not complete.
+process that had already ended when it was first looked at, the tree is not complete. A tree also notes
+when each of its processes began, so that a pid a later process took is told from the one a report named.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import select
 import threading
 import time
 from collections.abc import Iterable
+from typing import ClassVar
 
 __all__ = ["Tree", "flush", "follow", "release"]
 
@@ -35,6 +37,16 @@ RUSAGE_V2 = 2
 RUSAGE_WORDS = 64
 CHILD_WORDS = range(12, 18)
 """The words of ``rusage_info_v2`` that count the children a process has waited for (``ri_child_*``)."""
+PIDTBSDINFO = 3
+PID_WORD = 3
+"""The word of ``proc_bsdinfo`` that holds the pid it describes (``pbi_pid``)."""
+
+
+class _BsdInfo(ctypes.Structure):
+    """``struct proc_bsdinfo`` of libproc: the ids, the name and the start time of a process."""
+
+    _fields_: ClassVar = [("ids", ctypes.c_uint32 * 12), ("names", ctypes.c_char * 48), ("counts", ctypes.c_uint32 * 6),
+                ("start_s", ctypes.c_uint64), ("start_us", ctypes.c_uint64)]
 
 
 class Tree:
@@ -48,6 +60,7 @@ class Tree:
         self.forks = 0
         self._lock = threading.Lock()
         self._seen: dict[int, float | None] = {root: None}
+        self._began: dict[int, float] = {}
 
     @property
     def sealed(self) -> bool:
@@ -63,6 +76,25 @@ class Tree:
         now = time.monotonic()
         with self._lock:
             return any(self._held(pid, now) for pid in pids)
+
+    def began(self, pid: int) -> float | None:
+        """The time (seconds since the epoch) the process that last had ``pid`` in the tree began, or None when that is not known."""
+        with self._lock:
+            return self._began.get(pid)
+
+    def begin(self, pid: int, when: float | None) -> None:
+        """Note that the process now holding ``pid`` began at ``when``; None when that could not be read."""
+        with self._lock:
+            if when is None:
+                self._began.pop(pid, None)
+            else:
+                self._began[pid] = when
+
+    def holds_as_of(self, pid: int, when: float) -> bool:
+        """Whether ``pid`` is in the tree as a process that began no later than ``when``."""
+        with self._lock:
+            began = self._began.get(pid)
+            return self._held(pid, time.monotonic()) and began is not None and began <= when
 
     def add(self, pid: int) -> bool:
         """Put ``pid`` in the tree, again when an earlier process had it; False when the tree is full."""
@@ -95,6 +127,7 @@ class Tree:
     def _expire(self, now: float) -> None:
         for pid in [pid for pid, ended in self._seen.items() if ended is not None and now - ended > GRACE_S]:
             del self._seen[pid]
+            self._began.pop(pid, None)
 
 
 class _Follower:
@@ -161,6 +194,8 @@ class _Follower:
                 libproc.proc_listpids.restype = ctypes.c_int
                 libproc.proc_pid_rusage.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_void_p]
                 libproc.proc_pid_rusage.restype = ctypes.c_int
+                libproc.proc_pidinfo.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_int]
+                libproc.proc_pidinfo.restype = ctypes.c_int
                 self._queue = select.kqueue()
             except (OSError, AttributeError) as exc:
                 logger.warning("the processes of a sandboxed run cannot be followed: %s", exc)
@@ -174,6 +209,7 @@ class _Follower:
         """Ask to be told when ``pid`` forks or exits; False when it has already ended."""
         with self._lock:
             self._owners[pid] = tree
+        tree.begin(pid, self._began(pid))
         event = select.kevent(pid, select.KQ_FILTER_PROC, select.KQ_EV_ADD | select.KQ_EV_CLEAR, WATCHED)
         try:
             self._queue.control([event], 0, 0)
@@ -184,6 +220,13 @@ class _Follower:
             tree.ended(pid)
             return False
         return True
+
+    def _began(self, pid: int) -> float | None:
+        """When the process ``pid`` began; None when it has ended or cannot be read."""
+        info = _BsdInfo()
+        if self._libproc.proc_pidinfo(pid, PIDTBSDINFO, 0, ctypes.byref(info), ctypes.sizeof(info)) != ctypes.sizeof(info):
+            return None
+        return info.start_s + info.start_us / 1e6 if info.ids[PID_WORD] == pid else None
 
     def _reaped_children(self, pid: int) -> bool:
         """Whether ``pid`` has waited for a child already, or that cannot be told."""
