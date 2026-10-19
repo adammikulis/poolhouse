@@ -3,9 +3,10 @@
 
 mod kit;
 
+use kit::procs::*;
 use kit::*;
 use poolhouse_node::lineage::Peer;
-use poolhouse_node::node::{Node, MAX_BOARDS};
+use poolhouse_node::node::{Node, MAX_BOARDS, MOST_BOARDS_PER_LINEAGE};
 use serde_json::{json, Value};
 use std::path::Path;
 use tempfile::tempdir;
@@ -64,18 +65,45 @@ fn a_lineage_makes_links_as_fast_as_it_likes() {
 }
 
 #[test]
-fn a_lineage_creates_boards_up_to_what_a_node_hosts_and_registers_as_many_sessions_as_it_needs() {
+fn the_live_sessions_of_one_process_tree_hold_a_bounded_number_of_boards_and_as_many_sessions_as_they_need() {
     let state = tempdir().unwrap();
     let mut n = node(state.path());
-    for i in 0..MAX_BOARDS {
+    let outside = procs::process(true);
+    for i in 0..MOST_BOARDS_PER_LINEAGE {
         let reply = register(&mut n, &me(), &format!("b{i}"), "s");
         assert_eq!(reply["ok"], true, "board {i}: {reply}");
     }
     let refused = register(&mut n, &me(), "one-more", "s");
     assert_eq!(code(&refused), "quota", "{refused}");
-    assert!(refused["error"]["message"].as_str().unwrap().contains(&format!("the limit is {MAX_BOARDS}, set by MAX_BOARDS in node.rs")), "{refused}");
+    assert!(refused["error"]["message"].as_str().unwrap().contains(&format!("the limit is {MOST_BOARDS_PER_LINEAGE}, set by MOST_BOARDS_PER_LINEAGE in node.rs")), "{refused}");
     for i in 0..200 {
         let reply = register(&mut n, &me(), "b0", &format!("s{i}"));
-        assert_eq!(reply["ok"], true, "session {i}: {reply}");
+        assert_eq!(reply["ok"], true, "a session of a board the tree holds already: {i}: {reply}");
     }
+    let elsewhere = register(&mut n, &peer(&outside), "one-more", "s");
+    assert_eq!(elsewhere["ok"], true, "another process tree is not held back by the first one's boards: {elsewhere}");
+    let ended = register(&mut n, &me(), "b1", "s");
+    let token = ended["result"]["token"].as_str().unwrap().to_string();
+    ok(req_from(&mut n, &me(), "retire", "b1", &token, json!({})));
+    let room_again = register(&mut n, &me(), "made-room", "s");
+    assert_eq!(room_again["ok"], true, "ending the only session of a board frees one of the tree's boards: {room_again}");
+    assert_eq!(code(&register(&mut n, &me(), "and-no-more", "s")), "quota", "and the tree is back at its bound");
+    done(vec![outside]);
+}
+
+#[test]
+fn a_node_hosts_no_more_boards_than_it_may_whichever_process_trees_ask() {
+    let state = tempdir().unwrap();
+    let mut n = node(state.path());
+    let trees: Vec<_> = (0..MAX_BOARDS / MOST_BOARDS_PER_LINEAGE + 1).map(|_| procs::process(true)).collect();
+    for (t, tree) in trees.iter().take(MAX_BOARDS / MOST_BOARDS_PER_LINEAGE).enumerate() {
+        for i in 0..MOST_BOARDS_PER_LINEAGE {
+            let reply = register(&mut n, &peer(tree), &format!("b{t}-{i}"), "s");
+            assert_eq!(reply["ok"], true, "board {t}-{i}: {reply}");
+        }
+    }
+    let refused = register(&mut n, &peer(trees.last().unwrap()), "one-more", "s");
+    assert_eq!(code(&refused), "quota", "{refused}");
+    assert!(refused["error"]["message"].as_str().unwrap().contains(&format!("the limit is {MAX_BOARDS}, set by MAX_BOARDS in node.rs")), "{refused}");
+    done(trees);
 }

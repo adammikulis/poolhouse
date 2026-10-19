@@ -36,6 +36,8 @@ pub const READ_DEFAULT: usize = 200;
 pub const READ_MAX: usize = 1000;
 /// How many boards a node hosts at most.
 pub const MAX_BOARDS: usize = 256;
+/// How many boards the live sessions of one process tree hold at most.
+pub const MOST_BOARDS_PER_LINEAGE: usize = 32;
 /// What a request with a token the node does not hold is told.
 const UNKNOWN_TOKEN: &str =
     "the token is not known: its session was retired (an idle session is retired after a day, and so is one its parent ends) or never registered; start a new session";
@@ -252,9 +254,15 @@ impl Node {
         self.tokens.revoke_where(&|h| idle.iter().any(|(b, n)| *b == h.board && *n == h.name)).map(|_| ())
     }
 
+    /// How many boards have a live session registered from the process tree ``lineage``.
+    fn boards_held_by(&self, lineage: &[Anchor]) -> usize {
+        self.boards.values().filter(|h| h.names.all().values().any(|i| !i.retired && crate::lineage::shares(&i.lineage, lineage))).count()
+    }
+
     /// Register a session on ``board`` (creating the board on first use) from the process ``peer``; a token given makes
     /// the new session a subagent of the token's owner. A main session that is already registered gets a token only from
-    /// the lineage it was registered from. A node hosts a bounded number of boards. Returns name, token, whether new.
+    /// the lineage it was registered from. A node hosts a bounded number of boards, and the live sessions of one process tree hold a bounded number
+    /// of them. Returns name, token, whether new.
     pub fn register(&mut self, board: &str, parent_token: Option<&str>, native: Native, peer: &Peer) -> Result<Value> {
         let Native { model, harness, session } = native;
         let (model, harness) = (identity::clean(model)?, identity::clean(harness)?);
@@ -265,8 +273,13 @@ impl Node {
             return Err(Error::Denied("a session name needs the native harness and session id".into()));
         }
         let lineage = peer.lineage();
-        if !self.boards.contains_key(board) && self.boards.len() >= MAX_BOARDS {
-            return Err(crate::limits::refuse("this node hosts as many boards as it may", MAX_BOARDS, "MAX_BOARDS", "node.rs"));
+        if !self.boards.contains_key(board) {
+            if self.boards.len() >= MAX_BOARDS {
+                return Err(crate::limits::refuse("this node hosts as many boards as it may", MAX_BOARDS, "MAX_BOARDS", "node.rs"));
+            }
+            if self.boards_held_by(&lineage) >= MOST_BOARDS_PER_LINEAGE {
+                return Err(crate::limits::refuse("the sessions of this process tree hold as many boards as they may: end the sessions of one first", MOST_BOARDS_PER_LINEAGE, "MOST_BOARDS_PER_LINEAGE", "node.rs"));
+            }
         }
         let (parent, proven, bound) = self.parent_of(board, parent_token, (&harness, session), &lineage)?;
         if parent.is_empty() {

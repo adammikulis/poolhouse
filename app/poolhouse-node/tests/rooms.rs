@@ -1,7 +1,10 @@
 mod kit;
 
 use kit::*;
+#[cfg(unix)]
+use kit::procs;
 use poolhouse_node::node::Node;
+use poolhouse_node::rooms::{MEMBERS_PER_ROOM, MOST_ROOMS_PER_LINEAGE};
 use poolhouse_node::subs::mentions;
 use poolhouse_node::sync::exchange_nodes;
 use serde_json::{json, Value};
@@ -83,19 +86,80 @@ fn a_private_room_is_joined_only_through_its_makers_add_and_is_not_listed_to_oth
 }
 
 #[test]
-fn a_subagent_does_not_make_join_or_subscribe_and_a_session_makes_rooms_up_to_what_a_board_holds() {
+fn a_subagent_does_not_make_join_or_subscribe() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (_, lead) = session(&mut n, "demo", "lead");
     let (_, child) = kid(&mut n, &lead, "kid");
     assert_eq!(code(&room(&mut n, &child, "create", "#kids", json!({}))), "denied");
     assert_eq!(code(&req(&mut n, "subscribe", "demo", &child, json!({"stype": "mentions"}))), "denied");
-    for i in 0..200 {
+}
+
+#[test]
+fn the_sessions_of_one_process_tree_keep_a_bounded_number_of_rooms_between_them() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (_, lead) = session(&mut n, "demo", "lead");
+    let (_, second) = session(&mut n, "demo", "second");
+    for i in 0..MOST_ROOMS_PER_LINEAGE {
         ok(room(&mut n, &lead, "create", &format!("#r{i}"), json!({})));
     }
-    let refused = room(&mut n, &lead, "create", "#r200", json!({}));
+    for token in [&lead, &second] {
+        let refused = room(&mut n, token, "create", "#one-more", json!({}));
+        assert_eq!(code(&refused), "quota", "{refused}");
+        let said = refused["error"]["message"].as_str().unwrap();
+        assert!(said.contains(&format!("the limit is {MOST_ROOMS_PER_LINEAGE}, set by MOST_ROOMS_PER_LINEAGE in rooms.rs")), "a fresh session of the tree has no room of its own to make: {said}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn another_process_tree_makes_rooms_and_a_board_holds_no_more_than_it_may() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (_, lead) = session(&mut n, "demo", "lead");
+    for i in 0..MOST_ROOMS_PER_LINEAGE {
+        ok(room(&mut n, &lead, "create", &format!("#r{i}"), json!({})));
+    }
+    let trees: Vec<_> = (0..14).map(|_| procs::process(true)).collect();
+    let mut made = MOST_ROOMS_PER_LINEAGE;
+    let mut said = String::new();
+    'fill: for (t, tree) in trees.iter().enumerate() {
+        let registered = ok(req_from(&mut n, &procs::peer(tree), "register", "demo", "", json!({"model": "claude-sonnet-5-5", "harness": "claude-code", "session": format!("tree{t}")})));
+        let token = registered["token"].as_str().unwrap().to_string();
+        for i in 0..MOST_ROOMS_PER_LINEAGE {
+            let reply = room(&mut n, &token, "create", &format!("#t{t}-{i}"), json!({}));
+            if reply["ok"] == false {
+                assert_eq!(code(&reply), "quota", "{reply}");
+                said = reply["error"]["message"].as_str().unwrap().to_string();
+                break 'fill;
+            }
+            made += 1;
+        }
+    }
+    assert_eq!(made, 200, "a board holds 200 rooms between all its trees");
+    assert!(said.contains("the limit is 200, set by ROOMS_TOTAL in rooms.rs"), "{said}");
+    procs::done(trees);
+}
+
+#[test]
+fn a_room_holds_no_more_members_than_it_may() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (_, lead) = session(&mut n, "demo", "lead");
+    ok(room(&mut n, &lead, "create", "#crowd", json!({})));
+    let mut refused = Value::Null;
+    for i in 1..MEMBERS_PER_ROOM + 2 {
+        let (_, token) = session(&mut n, "demo", &format!("m{i}"));
+        let reply = room(&mut n, &token, "join", "#crowd", json!({}));
+        if reply["ok"] == false {
+            refused = reply;
+            assert_eq!(i, MEMBERS_PER_ROOM, "the maker is the first member");
+            break;
+        }
+    }
     assert_eq!(code(&refused), "quota", "{refused}");
-    assert!(refused["error"]["message"].as_str().unwrap().contains("the limit is 200, set by ROOMS_TOTAL in rooms.rs"), "{refused}");
+    assert!(refused["error"]["message"].as_str().unwrap().contains(&format!("the limit is {MEMBERS_PER_ROOM}, set by MEMBERS_PER_ROOM in rooms.rs")), "{refused}");
 }
 
 #[test]
