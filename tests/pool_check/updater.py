@@ -52,26 +52,18 @@ def make_repos(root: Path) -> tuple[Path, str, str]:
     return checkout, old, git("rev-parse", "HEAD", cwd=other)
 
 
-def wait_for_restart(state: Path, old_pid: int, seconds: float = 60.0, ask: Callable[..., dict] = node_health.call) -> dict:
-    """Wait until a node other than ``old_pid`` answers on ``state`` and knows a member on a newer build; its `pool_status`.
-
-    The node's supervisor restarts the node whenever the runtime selection (`selected.json`) changes, and the selection is written here to
-    make the device a checkout one commit behind: a question put to the node in that moment meets the old node closing or no node at all,
-    and the new node knows the builds of its members only after it has synced with them once.
-    """
+def wait_for_pool_builds(state: Path, seconds: float = 60.0, ask: Callable[..., dict] = node_health.call) -> dict:
+    """Wait until the node on ``state`` knows a member on a newer build; its `pool_status`."""
     end, seen = time.monotonic() + seconds, "no node answered"
     while time.monotonic() < end:
         try:
-            if int(ask(state, "hello")["pid"]) == old_pid:
-                seen = f"the node is still {old_pid}"
-            elif build_update.newest(pool := ask(state, "pool_status")) is None:
-                seen = "the new node knows of no member on a newer build yet"
-            else:
+            if build_update.newest(pool := ask(state, "pool_status")) is not None:
                 return pool
+            seen = "the node knows of no member on a newer build yet"
         except (OSError, ValueError) as exc:
             seen = f"{type(exc).__name__}: {exc}"
         time.sleep(0.2)
-    raise RuntimeError(f"the supervisor did not bring the node back with the pool's builds known after the selection changed: {seen}")
+    raise RuntimeError(f"the node knows of no member on a newer build: {seen}")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -88,9 +80,8 @@ def main(argv: list[str] | None = None) -> int:
     runtime_store.write_state({"checkout": str(checkout)})
     runtime.directory().mkdir(parents=True, exist_ok=True)
     selected = runtime.directory() / "selected.json"
-    before = int(node_health.call(state, "hello")["pid"])
     selected.write_text(json.dumps({"commit": old}))
-    wait_for_restart(state, before)
+    wait_for_pool_builds(state)
 
     def ensure(_checkout: Path) -> tuple[int, str]:
         selected.write_text(json.dumps({"commit": new}))
