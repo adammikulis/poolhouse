@@ -25,7 +25,7 @@ from .studio_transfer import (
     resource_ports,
 )
 
-ACTIONS = frozenset({"validate", "submit", "status", "cancel", "result", "authorize"})
+ACTIONS = frozenset({"validate", "submit", "status", "cancel", "result", "authorize", "resume"})
 MAX_REPLY = MANIFEST_BYTES * 2
 _ID = re.compile(r"[a-f0-9]{32}(?:[a-f0-9]{32})?")
 

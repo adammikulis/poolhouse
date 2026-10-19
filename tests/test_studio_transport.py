@@ -77,6 +77,8 @@ def test_fixed_sealed_request_no_fallback_actions(device):
     with pytest.raises(ValueError, match='fixed'):
         client.request('execute-arbitrary-command', {'argv': ['bad']})
     assert len(calls) == 1
+    assert client.request("resume", {"dispatch_id": DISPATCH}) == {"accepted": True}
+    assert calls[-1] == ("POST", "/studio/v1/executions/resume")
 
 
 def test_explicit_multichunk_stage_collect_and_duplicate_submission(device, tmp_path):
