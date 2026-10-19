@@ -5,12 +5,14 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import stat
 from contextlib import contextmanager
 from pathlib import Path
 
-from poolhouse import hub
+from poolhouse import hub, optional
 from poolhouse.contracts import recipes
+from poolhouse.files import writing
 from poolhouse.hub import hfstore
 
 
@@ -145,3 +147,39 @@ def _fingerprint(members: list[dict]) -> str:
                 checksum.update(chunk)
         rows.append([member['relative'], member['size'], checksum.hexdigest()])
     return hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+ADAPTER_FILES = frozenset({'adapter_config.json', 'adapter_model.safetensors', 'adapters.safetensors', 'config.json'})
+
+
+def materialize_checkpoint(checkpoint: Path, training: Path, output: Path) -> Path:
+    """Declare a complete, regular checkpoint without native recovery links or logs."""
+    if checkpoint.is_symlink() or not checkpoint.resolve(strict=True).is_relative_to(training.resolve(strict=True)):
+        raise ValueError('Checkpoint must belong to this training node')
+    target = output / checkpoint.name
+    if any(path.is_symlink() for path in (target, *target.parents) if path.is_relative_to(output)):
+        raise ValueError('Checkpoint output directory cannot contain links')
+    target.mkdir(parents=True, exist_ok=True)
+    sources = [(checkpoint / name, target / name) for name in ('state.json', 'model.safetensors')]
+    sources += [(training / 'adapter' / name, target / 'adapter' / name)
+                for name in ADAPTER_FILES if (training / 'adapter' / name).exists()]
+    for source, destination in sources:
+        linked = any(path.is_symlink() for path in source.parents if path.is_relative_to(training))
+        if linked or source.is_symlink() or not source.is_file() or source.stat().st_nlink != 1:
+            raise ValueError('Checkpoint files must be regular owned training artifacts')
+        with writing(destination) as temporary:
+            shutil.copyfile(source, temporary)
+    return target
+
+
+def checkpoint_base(model: dict, *, framework: str | None = None) -> Path | None:
+    """Verify a server-supplied producer base; serialized checkpoint paths grant nothing."""
+    if model.get('recipe') != 'tool-calls':
+        return None
+    base, expected = model.get('base'), model.get('base_digest')
+    if not isinstance(base, dict) or base.get('kind') != 'model' or not isinstance(expected, str) or not re.fullmatch('[0-9a-f]{64}', expected):
+        raise ValueError('The checkpoint needs its authorized producer base model')
+    actual = model_fingerprint(base) if base.get('id') else base_fingerprint(base)
+    if actual != expected:
+        raise ValueError('The checkpoint producer base content changed')
+    return optional.module('poolhouse.train.recipes').validate_base(model['path'], base['path'], framework=framework)

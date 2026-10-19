@@ -234,6 +234,7 @@ def test_studio_generates_from_checkpoint_with_quantized_cache(base, data, cpu, 
     import mlx_lm
 
     from poolhouse.serve import gpu
+    from poolhouse.studio.resources import base_fingerprint
     from poolhouse.studio.worker import execute
     from poolhouse.train.run import run
 
@@ -244,6 +245,43 @@ def test_studio_generates_from_checkpoint_with_quantized_cache(base, data, cpu, 
     monkeypatch.setattr(mlx_lm, 'generate', lambda *args, **kwargs:
                         generate(*args, stream=cpu.new_stream(cpu.cpu), **kwargs))
     result = execute({'type': 'generate', 'parameters': {'temperature': 0, 'max_tokens': 2}},
-                     {'model': {'path': str(out), 'recipe': 'tool-calls'}, 'prompt': 'paint red'}, tmp_path)
+                     {'model': {'path': str(out), 'recipe': 'tool-calls',
+                                'base': {'kind': 'model', 'path': str(base)},
+                                'base_digest': base_fingerprint({'path': str(base)})}, 'prompt': 'paint red'}, tmp_path)
     assert isinstance(result['text'], str)
     assert result['response']['text'] == result['text']
+
+
+def test_checkpoint_relocates_only_with_identical_explicit_base(base, data, cpu, tmp_path, monkeypatch):
+    import shutil
+    from pathlib import Path
+
+    from poolhouse.studio.resources import materialize_checkpoint
+    from poolhouse.train import recipes
+    from poolhouse.train.checkpoint import CheckpointError
+    from poolhouse.train.run import run
+
+    out = tmp_path / 'trained'
+    result = run('tool-calls', settings(base), data, out, say=lambda line: None)
+    checkpoint = materialize_checkpoint(Path(result['checkpoint']), out, tmp_path / 'model')
+    assert not any(path.is_symlink() for path in checkpoint.rglob('*'))
+    relocated = tmp_path / 'accepted-base'
+    shutil.copytree(base, relocated)
+    shutil.rmtree(base)
+    state = checkpoint / 'state.json'
+    payload = json.loads(state.read_text())
+    assert set(payload['config']['mlx_base_identity']) == {'files'}
+    payload['config'].update(base='https://injected.invalid/model', base_id='/private/model',
+                             base_config={'tokenizer_file': '/private/tokenizer.json'})
+    state.write_text(json.dumps(payload))
+    restored = recipes.load(checkpoint, base_override=relocated)
+    assert restored.config['base'] == str(relocated)
+    assert restored.config['base_config']['model_type'] == 'llama'
+    tensors = cpu.load(str(relocated / 'model.safetensors'))
+    key = next(iter(tensors))
+    tensors[key] = tensors[key] + .25
+    cpu.eval(tensors)
+    cpu.save_safetensors(str(relocated / 'model.safetensors'), tensors)
+    monkeypatch.setattr(recipes, '_built', lambda *args, **kwargs: pytest.fail('wrong base must fail before model construction'))
+    with pytest.raises(CheckpointError, match='different frozen base'):
+        recipes.load(checkpoint, base_override=relocated)

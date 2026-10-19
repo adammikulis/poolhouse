@@ -16,7 +16,12 @@ from poolhouse.files import write_json
 from poolhouse.kvtype import DEFAULT_KV_BITS
 from poolhouse.serve import broker_wire, gpu
 from poolhouse.studio.adapters import response_schema
-from poolhouse.studio.resources import training_base
+from poolhouse.studio.resources import (
+    ADAPTER_FILES,
+    checkpoint_base,
+    materialize_checkpoint,
+    training_base,
+)
 
 
 def rows_of(value: dict) -> list[dict]:
@@ -74,15 +79,18 @@ def _train(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
     outputs = {'metrics': result}
     if not smoke and result.get('checkpoint'):
         outputs['checkpoint'] = {'kind': 'artifact', 'path': result['checkpoint']}
-        outputs['model'] = {'kind': 'model', 'path': str(out / 'training'), 'recipe': recipe}
+        model = materialize_checkpoint(Path(result['checkpoint']), out / 'training', out / 'model')
+        outputs['model'] = {'kind': 'model', 'path': str(model), 'recipe': recipe}
     return outputs
 
 
 def _checkpoint_evaluate(inputs: dict, parameters: dict) -> dict:
     recipes = optional.module('poolhouse.train.recipes')
+    base = checkpoint_base(inputs['model']) if inputs['model'].get('recipe') else None
     with gpu.hold('Studio checkpoint evaluation'):
         if inputs['model'].get('recipe'):
-            built = recipes.load(inputs['model']['path'], data=Path(inputs['dataset']['path']))
+            settings = {'base_override': base} if base is not None else {}
+            built = recipes.load(inputs['model']['path'], data=Path(inputs['dataset']['path']), **settings)
         else:
             path = Path(inputs['model']['path'])
             if not path.is_dir():
@@ -110,8 +118,11 @@ def _checkpoint_evaluate(inputs: dict, parameters: dict) -> dict:
 
 def _native_generate(inputs: dict, parameters: dict, structured: bool) -> dict:
     schema = response_schema(parameters.get('json_schema')) if structured else None
+    if inputs['model'].get('recipe') != 'tool-calls':
+        raise ValueError('Trained generation requires an MLX conversation model')
+    base = checkpoint_base(inputs['model'], framework='mlx')
     with gpu.hold('Studio trained model generation'):
-        built = optional.module('poolhouse.train.recipes').load(inputs['model']['path'])
+        built = optional.module('poolhouse.train.recipes').load(inputs['model']['path'], base_override=base)
         if built.config.get('framework') != 'mlx' or built.config.get('recipe') != 'tool-calls':
             raise ValueError('Trained generation requires an MLX conversation model')
         tokenizer = optional.module('transformers').AutoTokenizer.from_pretrained(
@@ -220,9 +231,10 @@ def _export(model: dict, format: str, out: Path) -> dict:
         raise ValueError('Export requires a checkpoint-producing training result')
     if format == 'adapter':
         source = source / 'adapter'
-        allowed = {'adapter_config.json', 'adapter_model.safetensors', 'adapters.safetensors', 'config.json'}
+        allowed = ADAPTER_FILES
     elif format == 'checkpoint':
-        checkpoint = optional.module('poolhouse.train.checkpoint').find_latest(source)
+        checkpoints = optional.module('poolhouse.train.checkpoint')
+        checkpoint = source if checkpoints.is_valid(source) else checkpoints.find_latest(source)
         if checkpoint is None:
             raise ValueError('The training result has no completed checkpoint')
         source = Path(checkpoint)

@@ -260,11 +260,13 @@ def test_base_and_trained_holdout_share_native_loss_contract(tmp_path, monkeypat
         calls.append(('build', recipe, config, data))
         return built
 
-    def load(path, data):
+    def load(path, data, *, base_override):
+        assert base_override == tmp_path
         calls.append(('load', path, data))
         return built
 
     monkeypatch.setattr(worker.gpu, 'hold', lambda purpose: nullcontext())
+    monkeypatch.setattr(worker, 'checkpoint_base', lambda model, **kwargs: tmp_path)
     monkeypatch.setattr(worker.optional, 'module', lambda name: SimpleNamespace(build=build, load=load))
     dataset = {'path': str(tmp_path / 'dataset')}
     base = execute({'type': 'evaluate', 'parameters': {'suite': 'holdout', 'framework': 'mlx'}},
@@ -300,11 +302,12 @@ def test_trained_mlx_generation_holds_compute_and_quantizes_cache(tmp_path, monk
         generated.append(kwargs)
         return 'answer'
 
-    modules = {'poolhouse.train.recipes': SimpleNamespace(load=lambda path: built),
+    modules = {'poolhouse.train.recipes': SimpleNamespace(load=lambda path, **kwargs: built),
                'transformers': SimpleNamespace(AutoTokenizer=SimpleNamespace(from_pretrained=lambda *args, **kwargs: tokenizer)),
                'mlx_lm.sample_utils': SimpleNamespace(make_sampler=lambda **kwargs: 'sampler'),
                'mlx_lm': SimpleNamespace(generate=generate)}
     monkeypatch.setattr(worker.gpu, 'hold', hold)
+    monkeypatch.setattr(worker, 'checkpoint_base', lambda model, **kwargs: tmp_path)
     monkeypatch.setattr(worker.optional, 'module', modules.__getitem__)
     result = execute({'type': 'generate', 'parameters': {'max_tokens': 8}},
                      {'model': {'path': str(tmp_path), 'recipe': 'tool-calls'}, 'prompt': 'question'}, tmp_path)

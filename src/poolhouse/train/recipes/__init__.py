@@ -8,6 +8,7 @@ from typing import Any
 
 from poolhouse.contracts import ContractError, recipes
 from poolhouse.train.checkpoint import (
+    CheckpointError,
     find_latest,
     is_valid,
     load_state,
@@ -18,10 +19,11 @@ from poolhouse.train.recipes.built import Built, Hook, Phase
 from poolhouse.train.recipes.classify_text import build_classifier
 from poolhouse.train.recipes.text_lm import build_text_lm
 from poolhouse.train.recipes.tool_calls import build_tool_caller
+from poolhouse.train.recipes.tool_calls_mlx import base_identity
 from poolhouse.train.step import step_for
 
 __all__ = ["Builder", "Built", "Hook", "Phase", "build", "known", "load", "register", "spec",
-           "specs", "validate"]
+           "specs", "validate", "validate_base"]
 
 Builder = Callable[[dict[str, Any], dict[str, Any], "Path | None", str], Built]
 """``(spec, config, data or None, framework) -> Built``."""
@@ -132,19 +134,44 @@ def _built(recipe_id: str, config: dict[str, Any], data: Path | str | None,
     return builder(spec(recipe_id), config, None if data is None else Path(data), framework)
 
 
-def load(directory: Path | str, *, which: str = "latest", data: Path | str | None = None) -> Built:
-    """Rebuild a trained recipe with saved weights and optional evaluation data."""
+def _checkpoint(directory: Path | str, which: str = "latest") -> tuple[Path, dict]:
     root = Path(directory).expanduser()
-    where = find_latest(root) if which == "latest" else root / which
+    where = root if is_valid(root) else find_latest(root) if which == "latest" else root / which
     if where is None or not is_valid(where):
         raise FileNotFoundError(f"no checkpoint {which!r} under {root}")
-    recorded = dict(load_state(where).config)
+    return where, dict(load_state(where).config)
+
+
+def validate_base(directory: Path | str, base_override: Path | str, *, which: str = "latest",
+                  framework: str | None = None) -> Path:
+    """Validate an explicit frozen base before constructing a checkpoint's model."""
+    _where, recorded = _checkpoint(directory, which)
+    base = Path(base_override)
+    if (recorded.get('recipe') != 'tool-calls' or not base.is_dir()
+            or recorded.get('framework') not in ('mlx', 'torch')
+            or (framework is not None and recorded.get('framework') != framework)):
+        raise ValueError('A conversation checkpoint requires its explicit local base model')
+    if recorded.get('framework') == 'mlx' and recorded.get('mlx_base_identity') != base_identity(base):
+        raise CheckpointError('Checkpoint belongs to a different frozen base or tokenizer')
+    return base
+
+
+def load(directory: Path | str, *, which: str = "latest", data: Path | str | None = None,
+         base_override: Path | str | None = None) -> Built:
+    """Rebuild a checkpoint; an explicit base replaces all recorded path authority."""
+    where, recorded = _checkpoint(directory, which)
     recipe_id, framework = recorded.get("recipe"), recorded.get("framework")
     if not recipe_id or framework not in ("torch", "mlx"):
         raise ValueError(f"{where} does not record the recipe and framework it was trained with")
+    if base_override is not None:
+        recorded['base'] = str(validate_base(directory, base_override, which=which))
     accepted = set(UNIVERSAL) | {f["name"] for f in spec(recipe_id).get("fields", [])}
     settings = validate(recipe_id, {k: v for k, v in recorded.items() if k in accepted})
-    built = _built(recipe_id, {**recorded, **settings, "framework": framework}, data, framework)
+    config = settings if base_override is not None else {**recorded, **settings}
+    built = _built(recipe_id, {**config, "framework": framework}, data, framework)
     step = built.step or step_for(built.model, built.optimizer, built.loss)
+    validator = getattr(step, 'validate_checkpoint', None)
+    if validator is not None:
+        validator(recorded)
     step.restore(load_tensors(where, read_tensors=tensor_reader(framework)), None)
     return built

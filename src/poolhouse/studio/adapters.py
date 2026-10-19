@@ -73,10 +73,11 @@ def governed_tool(name: str, arguments: dict, context: dict) -> Any:
 class Adapters:
     """Prepare fixed workers and collect their declared structured outputs."""
 
-    def __init__(self, runner: Any, *, process_environment: Any = child_environment, tool_call: Any = governed_tool) -> None:
+    def __init__(self, runner: Any, *, process_environment: Any = child_environment, tool_call: Any = governed_tool, model_resolver: Any = None) -> None:
         self.runner = runner
         self.process_environment = process_environment
         self.tool_call = tool_call
+        self.model_resolver = model_resolver or (lambda binding, context: model_resource(binding))
 
     def dependency_fingerprint(self, node: dict) -> str:
         if not needs_compute(node):
@@ -170,7 +171,7 @@ class Adapters:
             if binding.get('kind') != kind or not binding.get('id'):
                 raise ValueError(f"Select a {kind} resource")
             if kind == 'model':
-                return {'model': model_resource(binding)}
+                return {'model': self.model_resolver(binding, context)}
             else:
                 path = confined(Path(context['files_root']), binding['id'])
             resource = {'kind': kind, 'path': str(path), 'id': binding['id']}
@@ -196,7 +197,7 @@ class Adapters:
             environment.require_compute()
         inputs = dict(inputs)
         if node['type'] == 'train.tool-calls' and inputs.get('model'):
-            current = model_resource(inputs['model'])
+            current = self.model_resolver(inputs['model'], context)
             if current['path'] != inputs['model']['path']:
                 raise ValueError('The selected base model changed; validate the workflow again')
             training_base(current, node.get('parameters', {}))
