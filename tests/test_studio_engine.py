@@ -185,3 +185,31 @@ def test_queued_child_rechecks_authorization_at_actual_dispatch(tmp_path):
         assert row["pid"] is None
     finally:
         runner.shutdown()
+
+
+def test_missing_dependency_prevents_any_durable_run_or_upstream_dispatch(setup):
+    store, engine, _ = setup
+    workflow = store.save_workflow(PRINCIPAL["scope"], "Example", graph())
+    engine.adapters.validate = lambda nodes: [{"node": "prompt", "code": "dependency", "message": "Missing optional library"}]
+    with pytest.raises(ValueError, match="Missing optional library"):
+        engine.submit(PRINCIPAL, workflow, [], "missing")
+    assert store.records("run", PRINCIPAL["scope"]) == []
+
+
+def test_unknown_selected_output_is_rejected(setup):
+    store, engine, _ = setup
+    workflow = store.save_workflow(PRINCIPAL["scope"], "Example", graph())
+    with pytest.raises(ValueError, match="belong"):
+        engine.submit(PRINCIPAL, workflow, ["missing"], "missing")
+
+
+def test_missing_declared_output_fails_node_while_independent_branch_completes(setup):
+    store, engine, _ = setup
+    workflow_graph = graph()
+    workflow_graph["nodes"].append({"id": "independent", "type": "prompt", "version": 1,
+                                    "parameters": {"template": "other"}, "bindings": {}})
+    workflow = store.save_workflow(PRINCIPAL["scope"], "Branches", workflow_graph)
+    engine.adapters.immediate = lambda node, inputs, context: {} if node["id"] == "prompt" else {"prompt": "other"}
+    run = engine.advance(engine.submit(PRINCIPAL, workflow, [], "branches"))
+    assert run["nodes"]["prompt"]["state"] == "failed"
+    assert run["nodes"]["independent"]["state"] == "done"

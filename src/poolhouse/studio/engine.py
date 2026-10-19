@@ -94,6 +94,9 @@ class WorkflowEngine:
             raise ValueError(checked["errors"])
         graph = checked["graph"]
         graph = self._selected(graph, output_nodes)
+        requirements = getattr(self.adapters, "validate", lambda nodes: [])(graph["nodes"])
+        if requirements:
+            raise ValueError(requirements)
         for node in graph["nodes"]:
             if not self.authorize(principal, node, {}):
                 raise PermissionError("A workflow resource is no longer authorized.")
@@ -107,6 +110,8 @@ class WorkflowEngine:
         if not outputs:
             return graph
         outputs = [expanded for ident in outputs for expanded in graph.get("variants", {}).get(ident, [ident])]
+        if any(ident not in nodes and not any(n.startswith(ident + "/") for n in nodes) for ident in outputs):
+            raise ValueError("Choose outputs that belong to this workflow.")
         outputs = [expanded for ident in outputs for expanded in
                    ([n for n in nodes if n.startswith(ident + "/")] if ident not in nodes else [ident])]
         if not set(outputs) <= nodes:
