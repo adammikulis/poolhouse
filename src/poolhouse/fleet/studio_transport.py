@@ -1,6 +1,7 @@
 """Sealed Studio execution requests and explicit resource exchange with one enrolled device."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -11,12 +12,14 @@ from urllib.parse import quote, urlencode, urlsplit
 
 from poolhouse import http, macauth, sealing
 from poolhouse.http import ONCE, Options, Sealed, ServerError, open_stream
+from poolhouse.studio.resources import model_files, open_model_file
 
 from . import tls
 from .studio_transfer import (
     CHUNK_BYTES,
     MANIFEST_BYTES,
     TransferStore,
+    _digest,
     _name,
     _open,
     checked_manifest,
@@ -28,6 +31,25 @@ from .studio_transfer import (
 ACTIONS = frozenset({"validate", "submit", "status", "cancel", "result", "authorize", "resume"})
 MAX_REPLY = MANIFEST_BYTES * 2
 _ID = re.compile(r"[a-f0-9]{32}(?:[a-f0-9]{32})?")
+
+
+def _input_manifest(value: dict) -> tuple[dict, dict]:
+    """Resolve installed library files before allowing their native cache links."""
+    if value.get("kind") != "model" or not value.get("id"):
+        return manifest(Path(value["path"]).absolute(), value["kind"], gym=value.get("gym", False)), {}
+    members = {entry["relative"]: entry for entry in model_files(value)}
+    files = []
+    for name, member in sorted(members.items()):
+        checksum = hashlib.sha256()
+        with open_model_file(member) as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                checksum.update(chunk)
+        files.append({"name": name, "size": member["size"], "sha256": checksum.hexdigest()})
+    folder = Path(value["path"]).is_dir()
+    content = {"kind": "model", "shape": "directory" if folder else "file",
+               "entrypoint": "" if folder else Path(value["path"]).name,
+               "bytes": sum(entry["size"] for entry in files), "files": files}
+    return {"id": _digest(content), **content}, members
 
 
 class MemberUncertain(OSError):
@@ -121,7 +143,7 @@ class MemberExecution:
             if not isinstance(value, dict) or not isinstance(value.get("path"), str):
                 raise ValueError("Choose an authorized local input resource.")
             path = Path(value["path"]).absolute()
-            resource = manifest(path, value["kind"], gym=value.get("gym", False))
+            resource, approved = _input_manifest(value)
             checked_manifest(resource, resource["bytes"])
             safe[name] = resource_handle(value, resource)
             if resource["id"] in resources:
@@ -129,7 +151,8 @@ class MemberExecution:
             self._json("POST", self._resource(dispatch, resource["id"], "begin"), resource)
             root = path if resource["shape"] == "directory" else path.parent
             for file in resource["files"]:
-                self._upload(dispatch, resource["id"], root, file)
+                selected = {**file, "approved": approved[file["name"]]} if approved else file
+                self._upload(dispatch, resource["id"], root, selected)
             acknowledged = self._json("POST", self._resource(dispatch, resource["id"], "finish"), {})
             if acknowledged != resource:
                 raise ValueError("The selected device acknowledged different resource content.")
@@ -137,8 +160,9 @@ class MemberExecution:
         return {"inputs": safe, "resources": list(resources.values())}
 
     def _upload(self, dispatch: str, resource: str, root: Path, file: dict) -> None:
-        descriptor = _open(root, _name(file["name"]), os.O_RDONLY)
-        with os.fdopen(descriptor, "rb") as stream:
+        stream = (open_model_file(file["approved"]) if "approved" in file
+                  else os.fdopen(_open(root, _name(file["name"]), os.O_RDONLY), "rb"))
+        with stream as stream:
             offset = 0
             while True:
                 data = stream.read(CHUNK_BYTES)
