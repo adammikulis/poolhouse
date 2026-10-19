@@ -162,7 +162,8 @@ def test_the_check_the_repository_requires_is_the_job_that_waits_for_every_shard
     required = re.findall(r'"(test \([^"]*\))"', named)
     job = workflows.CI["jobs"]["test"]
     assert required == [job["name"]]
-    assert job["needs"] == "shards" and job["if"] == "always()"
+    assert job["needs"] == "shards"
+    assert job["if"] == "always() && (github.event_name != 'push' || github.ref == 'refs/heads/main')"
     assert 'needs.shards.result }}" = "success"' in job["steps"][0]["run"]
 
 
