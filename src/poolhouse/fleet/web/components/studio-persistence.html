@@ -15,7 +15,7 @@
           select.value = this.workflowId || "";
         },
         async open(workflow) {
-          if (this.dirty) await this.save();
+          if (this.dirty || this.saving) await this.save();
           this.context = [];
           this.packageId = null;
           this.packageVersion = null;
@@ -58,18 +58,26 @@
         async save() {
           clearTimeout(this.autosave);
           if (this.saving) {
-            try {
-              await this.saving;
-            } catch {
-              return;
-            }
+            await this.saving;
             if (this.dirty) return this.save();
             return;
           }
           if (!this.dirty && this.workflowId) return;
+          this.saving = this.persistPending();
+          try {
+            await this.saving;
+          } finally {
+            this.saving = null;
+          }
+        },
+        async persistPending() {
+          do {
+            await this.persistOnce();
+          } while (this.dirty);
+        },
+        async persistOnce() {
           this.flushGroup();
           const serial = this.editSerial;
-          let handled = false;
           const graph = S.clone(this.rootGraph()),
             title =
               this.querySelector("#studio-title").value ||
@@ -80,7 +88,7 @@
             graph,
             ...(this.workflowId ? { revision: this.revision } : {}),
           };
-          this.saving = S.api(
+          const request = S.api(
             this.workflowId
               ? "/workflows/" + encodeURIComponent(this.workflowId)
               : "/workflows",
@@ -88,7 +96,7 @@
             this.workflowId ? "PUT" : "POST",
           );
           try {
-            const r = await this.saving,
+            const r = await request,
               w = r.workflow;
             this.workflowId = w.id;
             this.revision = w.revision;
@@ -98,7 +106,6 @@
             ];
             this.workflowList();
             this.message("Saved · revision " + w.revision);
-            handled = true;
           } catch (error) {
             this.dirty = true;
             if (error.response?.conflict_copy) {
@@ -112,7 +119,6 @@
               if (this.editSerial === serial)
                 this.querySelector("#studio-title").value = copy.title;
               this.workflowList();
-              handled = true;
               this.message(
                 "Another edit was saved. Your changes are preserved as " +
                   copy.title +
@@ -120,13 +126,6 @@
               );
               this.dirty = this.editSerial !== serial;
             } else throw error;
-          } finally {
-            this.saving = null;
-            if (handled && this.dirty)
-              this.autosave = setTimeout(
-                () => this.perform(() => this.save()),
-                0,
-              );
           }
         },
       });

@@ -21,6 +21,7 @@ SPECS = [
 ]
 
 
+
 @pytest.fixture
 def studio_page(tmp_path):
     pytest.importorskip('playwright.sync_api')
@@ -41,6 +42,9 @@ def studio_page(tmp_path):
             elif path == '/workflows' and data is None:
                 result = {'workflows': state['workflows']}
             elif path.startswith('/workflows'):
+                if state.get('save_error'):
+                    request.fulfill(status=503, json={'error': state['save_error']})
+                    return
                 workflow = {'id': 'workflow-1', 'revision': len(state['saved']) + 1, **data}
                 workflow['revision'] = len(state['saved']) + 1
                 state['saved'].append(workflow)
@@ -130,8 +134,8 @@ def test_node_labels_and_prompt_text_remain_inert(studio_page):
     page, _state, errors = studio_page
     add(page, 'Prompt template')
     value = '<img src=x onerror="window.studioInjected=true">'
-    page.locator('.studio-inspector').get_by_label('Prompt text').fill(value)
-    page.locator('.studio-inspector').get_by_label('Prompt text').press('Tab')
+    page.locator('.studio-inspector').get_by_label('Prompt text', exact=True).fill(value)
+    page.locator('.studio-inspector').get_by_label('Prompt text', exact=True).press('Tab')
     page.get_by_role('button', name='Share', exact=True).click()
     expect(page.locator('#studio-portable')).to_contain_text(value)
     assert page.locator('#studio-portable img').count() == 0
@@ -162,15 +166,15 @@ def test_nested_group_copies_and_exposed_parameter_undo(studio_page):
     page.locator('.studio-node').focus()
     page.keyboard.press('Enter')
     expect(page.get_by_label('Expose parameter template')).to_have_value('shared_prompt')
-    page.locator('.studio-inspector').get_by_label('Prompt text').fill('Changed original')
-    page.locator('.studio-inspector').get_by_label('Prompt text').press('Tab')
+    page.locator('.studio-inspector').get_by_label('Prompt text', exact=True).fill('Changed original')
+    page.locator('.studio-inspector').get_by_label('Prompt text', exact=True).press('Tab')
     page.get_by_role('button', name='← Back to parent').click()
     page.get_by_role('button', name='← Back to parent').click()
     page.locator('.studio-node').nth(1).get_by_role('button', name='Open group').click()
     page.locator('.studio-node').get_by_role('button', name='Open group').click()
     page.locator('.studio-node').focus()
     page.keyboard.press('Enter')
-    expect(page.locator('.studio-inspector').get_by_label('Prompt text')).to_have_value('Hello')
+    expect(page.locator('.studio-inspector').get_by_label('Prompt text', exact=True)).to_have_value('Hello')
     assert not errors
 
 
@@ -181,7 +185,7 @@ def test_narrow_screen_uses_outline_without_canvas(studio_page):
     expect(page.locator('.studio-outline')).to_be_visible()
     expect(page.locator('studio-canvas')).not_to_be_visible()
     page.locator('.studio-outline').get_by_role('button', name='Prompt template').click()
-    expect(page.locator('.studio-inspector').get_by_label('Prompt text')).to_have_value('Hello')
+    expect(page.locator('.studio-inspector').get_by_label('Prompt text', exact=True)).to_have_value('Hello')
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     assert not errors
 
@@ -245,6 +249,18 @@ def test_actual_catalogue_template_run_and_package_round_trip(tmp_path):
         served.close()
 
 
+def hold_next_save(page):
+    pending = []
+    def hold(request):
+        if pending:
+            request.continue_()
+            return
+        pending.append(request)
+        page.evaluate("() => { window.studioSaveHeld = true; }")
+    page.route('**/ui/studio/workflows/*', hold)
+    return pending, hold
+
+
 def test_actual_conflict_keeps_copy_and_edits_made_during_save(tmp_path):
     pytest.importorskip('playwright.sync_api')
     served = Serving(tmp_path)
@@ -264,14 +280,7 @@ def test_actual_conflict_keeps_copy_and_edits_made_during_save(tmp_path):
             page.locator('.studio-inspector').get_by_label('template', exact=True).press('Tab')
             page.get_by_role('button', name='Save', exact=True).click()
             expect(page.locator('.studio-status')).to_contain_text('Saved')
-            pending = []
-            def hold(request):
-                if pending:
-                    request.continue_()
-                    return
-                pending.append(request)
-                other.evaluate("() => { window.studioSaveHeld = true; }")
-            other.route('**/ui/studio/workflows/*', hold)
+            pending, hold = hold_next_save(other)
             other.locator('.studio-inspector').get_by_label('template', exact=True).fill('Local first')
             other.locator('.studio-inspector').get_by_label('template', exact=True).press('Tab')
             with other.expect_request('**/ui/studio/workflows/*'):
@@ -295,3 +304,58 @@ def test_actual_conflict_keeps_copy_and_edits_made_during_save(tmp_path):
         if hasattr(served.ui, 'studio'):
             served.ui.studio.close()
         served.close()
+
+
+def test_actual_new_waits_for_pending_workflow_save(tmp_path):
+    pytest.importorskip('playwright.sync_api')
+    served = Serving(tmp_path)
+    served.ui.settings.setup_done = True
+    served.ui.root = tmp_path / 'traind'
+    try:
+        with browser(Window(profile=tmp_path / 'navigation-browser', headless=True)) as page:
+            page.goto(f'http://127.0.0.1:{served.port}/ui/')
+            add(page, 'Prompt template')
+            page.get_by_role('button', name='Save', exact=True).click()
+            expect(page.locator('.studio-status')).to_contain_text('Saved')
+            original = page.get_by_label('Saved workflows').input_value()
+            pending, hold = hold_next_save(page)
+            page.locator('.studio-inspector').get_by_label('template', exact=True).fill('Original pending edit')
+            page.locator('.studio-inspector').get_by_label('template', exact=True).press('Tab')
+            page.get_by_role('button', name='Save', exact=True).click()
+            page.wait_for_function("() => window.studioSaveHeld === true")
+            page.get_by_role('button', name='New', exact=True).click()
+            expect(page.locator('.studio-node')).to_have_count(1)
+            pending[0].fulfill(response=pending[0].fetch())
+            expect(page.locator('.studio-node')).to_have_count(0)
+            page.unroute('**/ui/studio/workflows/*', hold)
+            add(page, 'Prompt template')
+            page.locator('.studio-inspector').get_by_label('template', exact=True).fill('New workflow text')
+            page.locator('.studio-inspector').get_by_label('template', exact=True).press('Tab')
+            page.get_by_role('button', name='Save', exact=True).click()
+            expect(page.locator('.studio-status')).to_contain_text('Saved')
+            assert page.get_by_label('Saved workflows').input_value() != original
+            page.get_by_label('Saved workflows').select_option(original)
+            page.locator('.studio-node').focus()
+            page.keyboard.press('Enter')
+            expect(page.locator('.studio-inspector').get_by_label('template', exact=True)).to_have_value('Original pending edit')
+    finally:
+        if hasattr(served.ui, 'studio'):
+            served.ui.studio.close()
+        served.close()
+
+
+def test_failed_save_blocks_run_and_new_workflow(studio_page):
+    page, state, errors = studio_page
+    add(page, 'Prompt template')
+    state['save_error'] = 'Save unavailable'
+    page.get_by_role('button', name='Save', exact=True).click()
+    page.get_by_role('button', name='Run workflow', exact=True).click()
+    expect(page.locator('.studio-status')).to_have_text('Save unavailable')
+    assert not state['submissions']
+    page.get_by_role('button', name='New', exact=True).click()
+    expect(page.locator('.studio-node')).to_have_count(1)
+    del state['save_error']
+    page.get_by_role('button', name='Run workflow', exact=True).click()
+    expect(page.locator('#studio-runs')).to_contain_text('done')
+    assert len(state['submissions']) == 1
+    assert not errors
