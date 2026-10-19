@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::error::Result;
+use crate::node::Node;
 use crate::fsutil::write_atomic;
 use table::{Event, Foreign, Table};
 use serde_json::json;
@@ -38,6 +39,8 @@ pub struct Leases {
     /// The leases the file holds, serialised: a change that leaves them as they are writes nothing.
     saved: Vec<u8>,
     pub clock: Box<dyn Fn() -> u64 + Send>,
+    /// While set, `save` writes nothing: a call that changes the table many times writes it once at its end (`Leases::batch`).
+    deferred: bool,
 }
 
 impl Leases {
@@ -57,7 +60,7 @@ impl Leases {
         };
         table.next_seq = table.next_seq.max(table.leases.iter().map(|l| l.seq).max().map_or(0, |s| s + 1));
         let saved = serde_json::to_vec(&table.leases)?;
-        Ok(Leases { cfg, table, path: dir.join(TABLE_FILE), config_path: dir.join(CONFIG_FILE), config_raw, saved, clock: Box::new(wall_ms) })
+        Ok(Leases { cfg, table, path: dir.join(TABLE_FILE), config_path: dir.join(CONFIG_FILE), config_raw, saved, clock: Box::new(wall_ms), deferred: false })
     }
 
     /// Take the settings from the configuration file again when its bytes are not the ones they came from: a file that is gone
@@ -88,6 +91,9 @@ impl Leases {
     /// Write the table when its leases changed. A quiet lease is a request in flight, which ends with its process, so it is kept in
     /// memory and a table that changed only by one is not written.
     pub fn save(&mut self) -> Result<()> {
+        if self.deferred {
+            return Ok(());
+        }
         let kept: Vec<&Lease> = self.table.leases.iter().filter(|l| !l.quiet).collect();
         let content = serde_json::to_vec(&kept)?;
         if content == self.saved {
@@ -97,6 +103,16 @@ impl Leases {
         write_atomic(&self.path, &file)?;
         self.saved = content;
         Ok(())
+    }
+
+    /// Run ``change``, which changes the table many times, and write the table once when it ends, whether or not it failed.
+    pub fn batch<T>(node: &mut Node, change: impl FnOnce(&mut Node) -> Result<T>) -> Result<T> {
+        node.leases.deferred = true;
+        let done = change(node);
+        node.leases.deferred = false;
+        let saved = node.leases.save();
+        let value = done?;
+        saved.map(|()| value)
     }
 
     /// Drop the dead and the expired, grant what the freed resources allow, and save when

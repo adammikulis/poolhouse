@@ -249,6 +249,10 @@ pub struct Config {
     pub queue_patience_s: u64,
     pub default_ttl_s: u64,
     pub max_ttl_s: u64,
+    /// Leases, held or queued, one holder keeps.
+    pub max_leases_per_holder: usize,
+    /// Leases, held or queued, the table keeps.
+    pub max_leases: usize,
 }
 
 impl Default for Config {
@@ -256,7 +260,7 @@ impl Default for Config {
         let cores = std::thread::available_parallelism().map_or(1, |n| n.get() as u32);
         Config {
             cpu_slots: cores, memory_mb: 0, max_wait_s: 600, background_share_percent: 50, unknown_background_s: 180,
-            queue_patience_s: 60, default_ttl_s: 300, max_ttl_s: 86_400,
+            queue_patience_s: 60, default_ttl_s: 300, max_ttl_s: 86_400, max_leases_per_holder: 512, max_leases: 4096,
         }
     }
 }
@@ -267,7 +271,7 @@ impl Config {
     pub fn parse(bytes: &[u8]) -> Option<Config> {
         let doc: serde_json::Value = serde_json::from_slice(bytes).ok()?;
         let cfg: Config = doc.is_object().then(|| serde_json::from_value(doc).ok()).flatten()?;
-        (cfg.max_ttl_s >= 1 && cfg.background_share_percent <= 100).then_some(cfg)
+        (cfg.max_ttl_s >= 1 && cfg.background_share_percent <= 100 && cfg.max_leases_per_holder >= 1 && cfg.max_leases >= 1).then_some(cfg)
     }
 }
 

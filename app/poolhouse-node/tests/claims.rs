@@ -160,3 +160,76 @@ fn a_reserve_is_bad_when_empty_or_names_a_bad_key_and_takes_as_many_resources_as
     ok(reserve(&mut n, &at, &wanted));
     assert_eq!(keys(&mut n, &at, &name).len(), 129, "a reserve of more than a hundred and twenty-eight resources takes them all");
 }
+
+#[test]
+fn the_defaults_bound_the_leases_of_one_holder_and_of_the_table() {
+    let defaults = poolhouse_node::lease::types::Config::default();
+    assert_eq!((defaults.max_leases_per_holder, defaults.max_leases), (512, 4096));
+}
+
+#[test]
+fn a_reserve_above_what_a_session_may_hold_is_refused_whole_and_names_the_limit() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    n.leases.cfg.max_leases_per_holder = 8;
+    let (name, at) = session(&mut n, "demo", "a");
+    let ports: Vec<(String, String)> = (0..9).map(|i| ("port".to_string(), (9500 + i).to_string())).collect();
+    let nine: Vec<(&str, &str)> = ports.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    let refused = reserve(&mut n, &at, &nine);
+    assert_eq!(code(&refused), "quota", "{refused}");
+    let said = refused["error"]["message"].as_str().unwrap();
+    assert!(said.contains("max_leases_per_holder") && said.contains("lease-config.json") && said.contains("the limit is 8"), "{said}");
+    assert!(keys(&mut n, &at, &name).is_empty(), "a reserve above the bound takes none of it");
+    ok(reserve(&mut n, &at, &nine[..8]));
+    let ninth = claim(&mut n, &at, "port", "9600", json!({}));
+    assert_eq!(code(&ninth), "quota", "{ninth}");
+    assert_eq!(keys(&mut n, &at, &name).len(), 8);
+    ok(req(&mut n, "release", "demo", &at, json!({"kind": "port", "key": "9500"})));
+    ok(claim(&mut n, &at, "port", "9600", json!({})));
+    assert_eq!(code(&claim(&mut n, &at, "port", "9601", json!({}))), "quota", "a released claim made room for one");
+}
+
+#[test]
+fn a_reserve_of_tens_of_thousands_of_resources_is_refused_before_any_is_looked_at() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (name, at) = session(&mut n, "demo", "a");
+    let resources: Vec<Value> = (0..30_000).map(|i| json!({"kind": "server", "key": format!("s{i}")})).collect();
+    let started = std::time::Instant::now();
+    let refused = req(&mut n, "reserve", "demo", &at, json!({"resources": resources}));
+    assert_eq!(code(&refused), "quota", "{refused}");
+    assert!(refused["error"]["message"].as_str().unwrap().contains("the limit is 512"), "{refused}");
+    assert!(started.elapsed() < std::time::Duration::from_secs(2), "{:?}", started.elapsed());
+    assert!(keys(&mut n, &at, &name).is_empty());
+}
+
+#[test]
+fn the_table_keeps_no_more_leases_than_max_leases_and_names_the_limit() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    n.leases.cfg.max_leases = 4;
+    let ((_, at), (_, bt)) = (session(&mut n, "demo", "a"), session(&mut n, "demo", "b"));
+    for port in ["9701", "9702", "9703"] {
+        ok(claim(&mut n, &at, "port", port, json!({})));
+    }
+    ok(claim(&mut n, &bt, "port", "9704", json!({})));
+    let full = claim(&mut n, &bt, "port", "9705", json!({}));
+    assert_eq!(code(&full), "quota", "{full}");
+    let said = full["error"]["message"].as_str().unwrap();
+    assert!(said.contains("max_leases") && said.contains("the limit is 4"), "{said}");
+    ok(req(&mut n, "release", "demo", &at, json!({"kind": "port", "key": "9701"})));
+    ok(claim(&mut n, &bt, "port", "9705", json!({})));
+}
+
+#[test]
+fn a_reserve_of_as_many_resources_as_a_session_may_hold_takes_them_all() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (name, at) = session(&mut n, "demo", "a");
+    let most = n.leases.cfg.max_leases_per_holder;
+    let ports: Vec<(String, String)> = (0..most).map(|i| ("port".to_string(), (10_000 + i).to_string())).collect();
+    let all: Vec<(&str, &str)> = ports.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect();
+    ok(reserve(&mut n, &at, &all));
+    assert_eq!(keys(&mut n, &at, &name).len(), most);
+    assert_eq!(code(&claim(&mut n, &at, "server", "one-more", json!({}))), "quota");
+}

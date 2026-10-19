@@ -101,11 +101,14 @@ fn claim(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> R
     Ok(json!({"changed": changed, "claim": show(node, &l, kind, &held_as(kind, board, key), board)}))
 }
 
-/// The ``kind`` and ``key`` of each resource a reserve names: at least one, each a valid claim, each once.
-fn wanted(p: &Map<String, Value>) -> Result<Vec<(String, String)>> {
+/// The ``kind`` and ``key`` of each resource a reserve names: at least one and no more than ``most``, each a valid claim, each once.
+fn wanted(p: &Map<String, Value>, most: usize) -> Result<Vec<(String, String)>> {
     let list = p.get("resources").and_then(Value::as_array).ok_or_else(|| Error::Invalid("resources is a list of kind and key".into()))?;
     if list.is_empty() {
         return Err(Error::Invalid("a reserve names at least one resource".into()));
+    }
+    if list.len() > most {
+        return Err(crate::limits::refuse("a reserve names more resources than a session may hold", most, "max_leases_per_holder", "lease-config.json"));
     }
     let mut out: Vec<(String, String)> = Vec::new();
     for item in list {
@@ -117,6 +120,11 @@ fn wanted(p: &Map<String, Value>) -> Result<Vec<(String, String)>> {
         }
     }
     Ok(out)
+}
+
+/// Whether ``holder`` holds the claim ``kind`` ``name`` now.
+fn held(node: &Node, holder: &str, kind: &str, name: &str) -> bool {
+    node.leases.table.leases.iter().any(|l| l.holder == holder && l.state == State::Held && mine(l, kind, name))
 }
 
 /// The session that holds something ``kind`` ``key`` is in the way of, other than ``holder``, if any does.
@@ -141,16 +149,23 @@ fn give_back(node: &mut Node, board: &str, holder: &str, taken: &[String]) -> Re
 /// Take every resource named or none: the whole set is checked against what others hold before the first is taken, in one call of
 /// the node, so no other session sees or races a part of it; a resource the caller already holds is renewed and kept if the rest is refused.
 fn reserve(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
-    let list = wanted(p)?;
+    let list = wanted(p, node.leases.cfg.max_leases_per_holder)?;
     let access = node.access(token, board, true)?;
     let holder = format!("{board}/{}", access.holder.name);
     rpc::tick(node, &[board])?;
+    let new = list.iter().filter(|(k, n)| !held(node, &holder, k, &held_as(k, board, n))).count();
+    node.leases.table.room_for(&node.leases.cfg, &holder, new)?;
     if let Some((kind, key, who)) = list.iter().find_map(|(k, n)| in_the_way(node, board, &holder, k, n).map(|who| (k, n, who))) {
         return Err(Error::Denied(format!("{kind} {key} is held by {who}")));
     }
+    crate::lease::Leases::batch(node, |node| take_all(node, board, token, &holder, &list, p))
+}
+
+/// Take each of ``list`` for ``holder``, or none of them.
+fn take_all(node: &mut Node, board: &str, token: &str, holder: &str, list: &[(String, String)], p: &Map<String, Value>) -> Result<Value> {
     let (mut taken, mut out) = (Vec::new(), Vec::new());
-    for (kind, key) in &list {
-        match take(node, board, token, &holder, (kind, key), p) {
+    for (kind, key) in list {
+        match take(node, board, token, holder, (kind, key), p) {
             Ok((changed, l)) => {
                 if changed {
                     taken.push(l.id.clone());
@@ -158,7 +173,7 @@ fn reserve(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) ->
                 out.push(json!({"changed": changed, "claim": show(node, &l, kind, &held_as(kind, board, key), board)}));
             }
             Err(e) => {
-                give_back(node, board, &holder, &taken)?;
+                give_back(node, board, holder, &taken)?;
                 return Err(e);
             }
         }

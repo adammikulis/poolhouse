@@ -59,9 +59,11 @@ fn capacity(cfg: &Config, r: &Resource) -> Option<u64> {
     }
 }
 
-/// The most seconds one renewal may keep a lease: what the configuration allows.
-fn longest(cfg: &Config) -> u64 {
-    cfg.max_ttl_s.max(1)
+/// The most seconds one renewal may keep a lease: what the configuration allows, and for a quiet lease that no process stands behind
+/// (nothing ends it when its holder is gone) no more than the default time.
+fn longest(cfg: &Config, quiet_unbound: bool) -> u64 {
+    let allowed = cfg.max_ttl_s.max(1);
+    if quiet_unbound { allowed.min(cfg.default_ttl_s.max(1)) } else { allowed }
 }
 
 fn over_capacity(r: &Resource, cap: u64) -> Error {
@@ -144,11 +146,12 @@ impl Table {
             return Err(Error::Invalid("only the GPU and the request line of a server are taken quietly".into()));
         }
         let holder = format!("{}/{}", req.board, req.name);
-        let ttl_s = req.ttl_s.unwrap_or(cfg.default_ttl_s).clamp(1, longest(cfg));
+        let ttl_s = req.ttl_s.unwrap_or(cfg.default_ttl_s).clamp(1, longest(cfg, req.quiet && req.pid == 0));
         if let Some(mine) = self.leases.iter_mut().find(|l| l.holder == holder && l.tag == req.tag && same_resources(&l.resources, &req.resources)) {
             mine.expires_ms = now + if mine.state == State::Held { ttl_s } else { cfg.queue_patience_s } * 1000;
             return Ok(mine.id.clone());
         }
+        self.room_for(cfg, &holder, 1)?;
         let estimate_s = req.estimate_s.unwrap_or_else(|| default_estimate(req.class, cfg));
         self.next_seq += 1;
         self.leases.push(Lease {
@@ -158,6 +161,17 @@ impl Table {
             remote: req.remote, local: req.local, ttl_s, tag: req.tag.clone(), quiet: req.quiet,
         });
         Ok(id)
+    }
+
+    /// Refuse ``more`` leases for ``holder`` when the table or the holder would keep more than the configuration allows.
+    pub fn room_for(&self, cfg: &Config, holder: &str, more: usize) -> Result<()> {
+        if self.leases.iter().filter(|l| l.holder == holder).count() + more > cfg.max_leases_per_holder {
+            return Err(crate::limits::refuse("a session holds as many leases as it may: release one first", cfg.max_leases_per_holder, "max_leases_per_holder", "lease-config.json"));
+        }
+        if self.leases.len() + more > cfg.max_leases {
+            return Err(crate::limits::refuse("this device's lease table is full: try again shortly", cfg.max_leases, "max_leases", "lease-config.json"));
+        }
+        Ok(())
     }
 
     fn free_for(&self, l: &Lease, ahead: &[Lease], cfg: &Config, now: u64, foreign: &Foreign) -> bool {
@@ -228,7 +242,7 @@ impl Table {
         }
         if l.state == State::Held {
             if ttl_s != 0 {
-                l.ttl_s = ttl_s.clamp(1, longest(cfg));
+                l.ttl_s = ttl_s.clamp(1, longest(cfg, l.quiet && l.pid == 0));
             }
             l.expires_ms = now + l.ttl_s * 1000;
         } else {
