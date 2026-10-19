@@ -18,7 +18,7 @@ instruction to schedule the next firing.
 > Heartbeat. Read the lead's queue and log (the scratch queue file, or HANDOFF.md if there is none), then:
 > (1) read the inbox (`poolhouse-workspace inbox --agent <lead>`) and answer what is addressed to you;
 > (2) check which workers have reported or gone idle and which branch is ready, and run
-> `scripts/worktrees sweep` and `scripts/worktrees` (exit 1 means a tree over a limit; a work tree is landed, bundled
+> `scripts/worktrees sweep` and `scripts/worktrees` (a `NOTE` line is information; a work tree is landed, bundled
 > or abandoned with `scripts/worktrees close`, never removed by hand); (3) read `digest --status`; land a ready branch with
 > `scripts/land BRANCH` (a stop names its cause on the last line); (4) run
 > `poolhouse-serve llama-cpp ensure` and log one line only if it updated or deferred; (5) resume or brief

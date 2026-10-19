@@ -149,8 +149,8 @@ gate.
 - **Keep landing short.** Throughput is limited by unlanded work, not typing speed. Branches are cut from
   current development, stay under ten commits, and land the moment they are ready and verified: rebase, verify,
   fast-forward and push straight away, with no other work in between. A ready branch never waits for a day, an hour
-  or another task. Land a stack bottom-up, one layer at a time. Past the branch limits (more than 30 commits ahead or 20
-  behind development; `scripts/worktrees` `MAX_AHEAD` = 30; AGENTS.md, "Branch hygiene and landing"), split a branch into
+  or another task. Land a stack bottom-up, one layer at a time. Past the branch notes (more than 30 commits ahead or 20
+  behind development; `scripts/worktrees` `NOTE_AHEAD` = 30; AGENTS.md, "Branch hygiene and landing"), split a branch into
   separately landing batches instead of carrying it. Run `git cherry <dev> <branch>` before porting and
   drop equivalent patches. Record the tree hash a gate ran on; a tree already gated is not gated again. Finish before
   starting: no new branch while your own ready branches await landing; about ten open worktrees at most per lead.

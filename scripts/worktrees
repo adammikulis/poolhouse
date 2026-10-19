@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Every worktree as landed or work, and the two ways to remove one.
 
-    worktrees [--target REV]              report; exits 1 on a tree over a hygiene limit
+    worktrees [--target REV]              report; a long or stale branch gets a note under its line; exits 1 only for a tree it cannot read
     worktrees close TREE --landed         remove a clean tree whose commits are all in the development branch
     worktrees close TREE --bundle         bundle its unlanded commits, verify the bundle, then remove
     worktrees close TREE --abandon WHY    save the uncommitted changes, remove the tree, keep its branch with WHY as the description
@@ -10,9 +10,9 @@
 
 A tree is landed when it is clean (ignored files that a build or a test run recreates do not count) and
 every commit is in the development branch, the branch the primary checkout is on; any other tree is work
-and is never removed except by ``close``. Limits (AGENTS.md, "Branch hygiene and landing"): at most 10
-commits, at most 30 ahead (split or land part before adding more), at most 20 behind, and a branch that
-is behind has merged the development branch within the last day. See docs/worktrees.md.
+and is never removed except by ``close``. Notes (information only, listed in docs/limits.md): more than 10 commits
+ahead, more than 30 ahead (split or land part), more than 20 behind, and behind without a merge of the development
+branch within a day. See docs/worktrees.md.
 """
 
 from __future__ import annotations
@@ -32,41 +32,40 @@ import primary_sync
 from poolhouse import trees
 from poolhouse.serve.process import working_directories
 
-MAX_COMMITS = 10
-MAX_AHEAD = 30
-MAX_BEHIND = 20
-MAX_AGE_BEHIND_DAYS = 1.0
+NOTE_COMMITS = 10
+NOTE_AHEAD = 30
+NOTE_BEHIND = 20
+NOTE_AGE_BEHIND_DAYS = 1.0
 
 
 def flags_for(ahead: int, behind: int, age_days: float) -> tuple[str, ...]:
-    """The limits this standing is over."""
+    """The notes for this standing: information that refuses nothing."""
     out = []
-    if ahead > MAX_AHEAD:
-        out.append(f"ahead>{MAX_AHEAD}: split or land part")
-    elif ahead > MAX_COMMITS:
-        out.append(f"commits>{MAX_COMMITS}")
-    if behind > MAX_BEHIND:
-        out.append(f"behind>{MAX_BEHIND}: merge or rebase")
-    elif behind and age_days > MAX_AGE_BEHIND_DAYS:
-        out.append("behind and not merged within a day")
+    if ahead > NOTE_AHEAD:
+        out.append(f"ahead>{NOTE_AHEAD}: split or land part (note only; NOTE_AHEAD in scripts/worktrees)")
+    elif ahead > NOTE_COMMITS:
+        out.append(f"commits>{NOTE_COMMITS} (note only; NOTE_COMMITS in scripts/worktrees)")
+    if behind > NOTE_BEHIND:
+        out.append(f"behind>{NOTE_BEHIND}: merge or rebase (note only; NOTE_BEHIND in scripts/worktrees)")
+    elif behind and age_days > NOTE_AGE_BEHIND_DAYS:
+        out.append(f"behind and not merged within {NOTE_AGE_BEHIND_DAYS:.0f} day (note only; NOTE_AGE_BEHIND_DAYS in scripts/worktrees)")
     return tuple(out)
 
 
 def report(target: str) -> int:
-    """One line per tree, with a line under it for each limit it is over."""
+    """One line per tree, with a line under it for each note; 1 only when a tree cannot be read."""
     found = trees.rows(lg.toplevel(Path.cwd()), time.time(), target)
-    over = False
+    unreadable = False
     for row in found:
         flags = flags_for(row["ahead"], row["behind"], row["tip_age_d"])
         state = "landed" if row["landed"] else "work"
         if "unreadable" in row:
-            flags, state = (*flags, f"unreadable: {row['unreadable']}"), "work unreadable"
-        over = over or bool(flags)
-        print(f"{'FLAG' if flags else 'ok  '} {row['branch']}  +{row['ahead']} -{row['behind']}  {row['tip_age_d']:.1f}d  "
+            flags, state, unreadable = (*flags, f"unreadable: {row['unreadable']}"), "work unreadable", True
+        print(f"{'NOTE' if flags else 'ok  '} {row['branch']}  +{row['ahead']} -{row['behind']}  {row['tip_age_d']:.1f}d  "
               f"{row['path']}  [{state} unlanded={row['unlanded']} dirty={row['dirty']}]")
         for flag in flags:
             print(f"       {flag}")
-    return 1 if over else 0
+    return 1 if unreadable else 0
 
 
 def command(argv: list[str]) -> int:

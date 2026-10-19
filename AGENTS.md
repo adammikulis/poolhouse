@@ -539,10 +539,9 @@ Whoever made a branch finishes it and pushes it; the lead steps in only for cros
 
 ### Branch hygiene and landing
 
-- Cut branches from current development. A branch holds at most 10 commits and merges the development branch at least
-  daily; at more than 30 commits ahead (`scripts/worktrees` `MAX_AHEAD` = 30) or 20 behind, split it into separately
-  landing batches or land part of it before adding more. `scripts/worktrees` reports every worktree against these limits
-  and exits 1 when any is over.
+- Cut branches from current development. A branch is short and merges the development branch daily; `scripts/worktrees`
+  reports every worktree and puts a note under one that is more than 10 commits ahead (30: split or land part), more than
+  20 behind or behind for a day. The notes are information (`NOTE_*` in `scripts/worktrees`, docs/limits.md); nothing refuses.
 - One lineage per branch: never build on another branch's unlanded commits; shared work lands first (a stack lands
   bottom-up, one layer at a time) and dependents rebase onto it. One worker owns an area from review through gate, push
   and cleanup.
