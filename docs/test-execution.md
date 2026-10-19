@@ -16,11 +16,14 @@ seconds workers waited for CPU permits (`queued for CPU`); the queue wait is the
 that the warning measures.
 Every checkout shares the same admission broker.
 
-Agents run affected tests for their own changes. The main agent coordinates shared structural
-and security gates once per consolidated integration batch before publication, handles full
-end-to-end checks, and schedules background full suites. Workers do not repeat those checks.
-The main agent owns `quick`, whose cold-map recording and fallback can start full runs; workers
-use explicit affected selectors.
+Agents run affected tests for their own changes: explicit file selectors, at most 30. The main agent
+coordinates shared structural and security gates once per consolidated integration batch before publication.
+The full suite is GitHub's job: the `ci` workflow runs it on every pushed commit, and an agent never runs one.
+For an agent (`CLAUDECODE`, `POOLHOUSE_AGENT`, `POOLHOUSE_NONINTERACTIVE` or a Codex session set) `scripts/test`
+refuses, before anything is queued, the `fast`, `full`, `slow` and `all` tiers that name no test file or more than 30
+(directories count as the test files under them), and the broker (`scripts/testslots_runner.py`) admits no agent
+pytest run naming more than 30 test files; `quick` and `gate` stay allowed. A person's terminal sets none of the
+markers and is never refused. The main agent owns `quick`; workers use explicit affected selectors.
 
 `scripts/test <tier>` runs as a background job that the command follows: `submit` prints the job id
 and returns, `status`, `wait`, `result` and `cancel` act on it, and Ctrl-C on a followed run
@@ -210,8 +213,7 @@ Every test and gate runs through `scripts/test`, so the broker admits them like 
   sibling `<repo>-land-<stamp>` worktree on `land/<stamp>`, keeping both sides of `HANDOFF.md`.
   A documentation-only diff runs `scripts/budgets` and `git diff --check`. A code diff runs
   `scripts/test gate` and `scripts/test all` on the selectors `scripts/affected.py` computes from the
-  combined diff. The whole suite runs on GitHub for the pushed commit; `scripts/test full` and
-  `scripts/test all` stay available by hand.
+  combined diff. The whole suite runs on GitHub for the pushed commit.
 - A pass is recorded with `record_run` under the tree hash; the same tree and check later print
   `reused from <id>`. A failing check is first run on a clean worktree of the base: failing there
   too is reported as `baseline`. Otherwise the merge commits are bisected with only the failing
@@ -222,7 +224,7 @@ Every test and gate runs through `scripts/test`, so the broker admits them like 
   primary checkout is clean and on the target, otherwise prints the command for the lead. It never
   pushes. Then it removes each landed source branch's worktree and branch (never forced), keeping
   dirty trees, trees holding the current directory and branches with unique patches, and the
-  integration tree while its background full run is alive.
+  integration tree while its landing run is alive.
 
 The last line of every command is a JSON summary.
 

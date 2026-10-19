@@ -36,7 +36,7 @@ The rules never to break, then the ones needed every hour; each names the sectio
 18. **Stage files by name, never `git add -A`**, in your own claimed worktree beside the primary checkout (4).
 19. **Land by "Landing, step by step"**: `scripts/land BRANCH`, the lead's hand landing only when the change fixes the
     lander; a worker never pushes by hand; clean up before reporting (4).
-20. **Test your own change with explicit `scripts/test` selectors**; the main agent runs shared gates once per batch
+20. **Test your own change with explicit `scripts/test` selectors**, at most 30 files and never the full suite (GitHub runs it); the main agent runs shared gates once per batch
     (5).
 
 Contents: [1 Hard floors](#1-hard-floors) | [2 How to work](#2-how-to-work) |
@@ -548,7 +548,7 @@ Whoever made a branch finishes it; the lead steps in only for cross-branch confl
   Every agent starting a task, finishing one or returning from a wait fetches and fast-forwards development first; a
   local-only commit on it is not left past the end of its task. Do not accumulate ready branches, wait for every worker,
   impose broad development holds, or defer publication or activation behind unrelated development or work, another
-  feature, refactoring, cleanup or background full suites; keep authorization, independent review and required checks
+  feature, refactoring, cleanup or the GitHub run; keep authorization, independent review and required checks
   intact. Serialize development mutations with a short-lived checked branch claim, released promptly after sync.
 - **Keep landing short.** A ready branch lands the moment it is verified and never waits for a day, an hour or
   another task. Run `git cherry <dev> <branch>` before porting and drop equivalent patches; a tree already gated is not
@@ -662,18 +662,19 @@ Agents test their own changed behavior with reviewed explicit affected selectors
 (`scripts/test all tests/<affected-file>...`), including the relevant browser, subprocess and packaging tests for
 changed surfaces (the slow tests for packaging, page and Fleet changes). Report the exact tree, commands, results and
 limitations. Invalid selectors fail before admission; never replace a missing selector with an unreviewed omission.
-Documentation-only changes need consistency review and clean diffs. Workers do not run shared gates or full suites, and
-nobody runs a full suite after every intermediate commit or a second full suite before every merge.
+Documentation-only changes need consistency review and clean diffs. **The full suite is GitHub's job**: the `ci`
+workflow runs it on every pushed commit, and an agent never runs one locally. For an agent `scripts/test` refuses the
+`fast`, `full`, `slow` and `all` tiers when they name no test file or more than 30, and the broker admits no agent run
+of more than 30 test files (`quick` and `gate` stay allowed). Workers do not run shared gates.
 
 - The main coordinator obtains another agent's review for each security-adjacent branch and assembles the batch in a
   claimed checkout (an isolated worktree for concurrent work or conflicts). It runs the shared structural/security
   checks once on the combined tree before the primary fast-forward and publication: `scripts/test gate`,
   `scripts/budgets`, `scripts/redteam_coverage.py --check`, clean generated references, layer and wiring checks,
   serving-bypass checks and the human-only floor. It repeats incremental affected checks when remote reconciliation or a
-  later change touches their surface, handles full end-to-end verification, owns `scripts/test quick` (its cold-map
-  recording and fallback can start full runs), and schedules full and full red-team suites in the background, one
-  background full suite at a time. Shared checks are not repeated for every leaf branch or intermediate commit. Do not
-  raise budgets to clear a check.
+  later change touches their surface and owns `scripts/test quick`. The full suite is the GitHub
+  run of the pushed commit; its result, not a local run, is the end-to-end verification. Shared checks are
+  not repeated for every leaf branch or intermediate commit. Do not raise budgets to clear a check.
 - Gate cost is per batch, scaled to the diff: combine all ready leaves into one run; documentation-only diffs need a
   clean diff and `scripts/budgets`, code diffs `scripts/test gate` and the affected selectors of the combined diff
   (`scripts/land`). A tree that already passed a check is not checked again (`reused from <id>`); a failure that

@@ -98,8 +98,8 @@ reads all come from it; file names are NUL separated, and a path that is not UTF
 ## The CI run
 
 The whole suite runs on GitHub, in the `ci` workflow, for each push of the development branch that changes more than
-documentation (`paths-ignore` skips `**.md` and `docs/**`). `scripts/land` and a hand push never wait for it. `scripts/test full`
-and `scripts/test all` stay available by hand.
+documentation (`paths-ignore` skips `**.md` and `docs/**`). `scripts/land` and a hand push never wait for it. An agent never
+runs the whole suite locally; a person's terminal may.
 
 `scripts/hooks/pushed` starts `scripts/ci_watch.py SHA` detached after an agent's push of the development branch, on the
 person's machine only (`lan.on_the_persons_machine`), when `gh` is installed. The watcher asks `gh run list --commit SHA
