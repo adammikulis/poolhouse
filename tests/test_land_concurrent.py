@@ -14,7 +14,8 @@ from pathlib import Path
 import land_exec
 import land_steps
 import pytest
-from land_support import AGENT_PUSH, DEV, RunnerLock, World, git
+from land_support import AGENT_PUSH, DEV, World, git
+from runner_lock import RunnerLock
 
 from poolhouse import lock as filelock, worktreerules
 from poolhouse.workspace import landing
