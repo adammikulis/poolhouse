@@ -1,4 +1,4 @@
-"""What the bench spent, day by day, read out of its logs: ``poolhouse-bench history``.
+"""What the bench spent, day by day, read out of its logs: ``python -m poolhouse.bench history``.
 
 `measuring.json` knows the run that is going now and nothing remembers the day: which
 commands ran, when, for how long, on which commit, how each ended, and the estimate beside
@@ -14,7 +14,7 @@ when it carries a traceback, with the exception line; *done* when it asked quest
 kept a run and none of that happened; *unknown* when it says nothing at all. The runs a log
 kept are the ones in the store whose ``at`` falls between its start and its end.
 
-    poolhouse-bench history [--home PATH] [--kept PATH] [--since WHEN] [--json]
+    python -m poolhouse.bench history [--home PATH] [--kept PATH] [--since WHEN] [--json]
 
 `add_arguments` is what the bench's parser hosts the subcommand with, and `run` is what it
 dispatches to.
@@ -261,7 +261,7 @@ def add_arguments(ap: argparse.ArgumentParser) -> argparse.ArgumentParser:
 
 
 def run(args: argparse.Namespace) -> int:
-    """What `poolhouse-bench history` dispatches to."""
+    """What `python -m poolhouse.bench history` dispatches to."""
     if args.home is None:
         from poolhouse.bench import home_dir
         home = home_dir()

@@ -1,4 +1,4 @@
-"""What ``poolhouse-world`` does, as functions that take values and return them.
+"""What ``python -m poolhouse.world`` does, as functions that take values and return them.
 
 `invent` writes a world, `ask` draws questions off its truth, `export` writes what was
 said the way a product exports it, and `read_messages` reads a simulation's messages back.

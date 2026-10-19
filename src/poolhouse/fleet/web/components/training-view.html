@@ -335,7 +335,7 @@ training-view .training-review-actions{display:flex;gap:12px;flex-wrap:wrap;marg
           const config = JSON.parse(this.inputs.config.value);
           if (!config || Array.isArray(config) || typeof config !== 'object') throw Error('Environment configuration must be a JSON object.');
         } catch (error) { this.revealField(this.inputs.config); throw error; }
-        command = 'poolhouse-gym'; args = ['train', this.recipe.value, '--timesteps', this.inputs.timesteps.value,
+        command = 'poolhouse.gym'; args = ['train', this.recipe.value, '--timesteps', this.inputs.timesteps.value,
           '--seed', this.inputs.seed.value, '--config', this.inputs.config.value];
         if (this.inputs.checkpoint.value) args.push('--checkpoint', this.inputs.checkpoint.value);
       } else { command = 'poolhouse-train-run'; args = ['--recipe', this.recipe.value, '--data', this.data.value, '--out', this.out.value]; }

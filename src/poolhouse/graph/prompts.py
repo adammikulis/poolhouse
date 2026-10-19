@@ -183,7 +183,7 @@ TOOLS = [
 # tool does not need telling to, and being told anyway spends its attention on instructions
 # instead of on the question.
 #
-# So both exist and the caller chooses. `poolhouse-bench --terse` measures which a given
+# So both exist and the caller chooses. `python -m poolhouse.bench --terse` measures which a given
 # model wants, because there is no answering that from first principles.
 TERSE = [
     {"type": "function", "function": {
@@ -351,7 +351,7 @@ BATCH_EXAMPLES = {
 # written.
 #
 # Which of the two a model wants is not a matter of taste and is not one answer for every
-# model. It is a number in a store: `poolhouse-bench --also single` measures it against
+# model. It is a number in a store: `python -m poolhouse.bench --also single` measures it against
 # `--also batch` on one load, and the profile keeps whichever won.
 #
 # Said on copies, for the same reason as RICH, TIGHT and BATCH: with the flag off the

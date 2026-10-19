@@ -690,7 +690,7 @@ def run(argv: list[str] | None = None) -> int:
         "--bench-home",
         default=None,
         metavar="DIR",
-        help="where this machine's poolhouse-bench keeps its measuring lock "
+        help="where this machine's python -m poolhouse.bench keeps its measuring lock "
         "(default: the 'bench' beside --root). "
         "While that lock is held, queued training waits.",
     )

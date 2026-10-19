@@ -62,4 +62,4 @@ def test_the_daemon_serves_the_gym_routes_when_the_build_holds_them() -> None:
     from poolhouse.fleet import routes
 
     assert {"GymRoutes", "GymRecordingRoutes"} <= {c.__name__ for c in routes.Router.__mro__}
-    assert "poolhouse-gym" in object.__new__(routes.Router).job_commands()
+    assert "poolhouse.gym" in object.__new__(routes.Router).job_commands()

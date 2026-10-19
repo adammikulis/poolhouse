@@ -4,7 +4,7 @@
 (fused, the store's vector order, and a served model reranker) and `table` prints recall, MRR
 and nDCG for each; questions expecting nobody are counted apart. It ranks by characters alone
 without a store, and touches the network only for a URL it is given:
-``poolhouse-bench retrieval --store S --embed-url U --rerank-url R``.
+``python -m poolhouse.bench retrieval --store S --embed-url U --rerank-url R``.
 """
 
 from __future__ import annotations
@@ -100,7 +100,7 @@ def embedder(url: str, model: str) -> Callable[[str], list[float] | None]:
 
 
 def report(args: Any) -> str:
-    """The comparison table for the options ``poolhouse-bench retrieval`` was given."""
+    """The comparison table for the options ``python -m poolhouse.bench retrieval`` was given."""
     graph = invented()
     url = str(args.rerank_url or "")
     reranker = model_reranker(graph, url, str(args.rerank_model)) if url else None

@@ -1,4 +1,4 @@
-"""``poolhouse-bench speed``: how fast a served model reads and writes, by prompt size and
+"""``python -m poolhouse.bench speed``: how fast a served model reads and writes, by prompt size and
 by how many ask at once.
 
 One cell per (prompt size, streams): that many requests of that length sent together,
@@ -495,7 +495,7 @@ def speed_table(kept: Sequence[Mapping[str, Any]]) -> None:
     """One table per speed run: a line per cell."""
     runs = only(kept)
     if not runs:
-        say("no speed run kept yet: poolhouse-bench speed --on NAME=URL, or --serve MODEL")
+        say("no speed run kept yet: python -m poolhouse.bench speed --on NAME=URL, or --serve MODEL")
         return
     for one in runs:
         server = one.get("server") or {}

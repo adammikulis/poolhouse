@@ -68,7 +68,7 @@ class Spent:
     steps: list[str] = field(default_factory=list, repr=False)  # unused by the page; free
     # Every call, kept rather than only summed. Off by default: the page shows a footer and
     # the answer is written into a conversation store, where a transcript per turn is
-    # megabytes. `poolhouse-bench` turns it on, and so does anything printing a trace.
+    # megabytes. `python -m poolhouse.bench` turns it on, and so does anything printing a trace.
     keep_calls: bool = False
     calls_detail: list[Call] = field(default_factory=list, repr=False)
 

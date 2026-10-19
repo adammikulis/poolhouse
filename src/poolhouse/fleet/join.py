@@ -593,7 +593,7 @@ def leave_machine(request: LeaveRequest = DEFAULT_LEAVE, *, say: Callable[[str],
 # -- a sweep over the fleet ----------------------------------------------------------
 def sweep_argv(models: Sequence[str], *, members: Sequence[str] = (), sample: int = 0,
                label: str = "", extra: Sequence[str] = ()) -> list[str]:
-    """The ``poolhouse-bench`` line that spreads ``models`` over the fleet, one job each.
+    """The ``python -m poolhouse.bench`` line that spreads ``models`` over the fleet, one job each.
 
     Built here rather than in the page, so the command the page shows is the command the
     daemon runs and the one a person could paste. ``--detach`` is not on it: the caller

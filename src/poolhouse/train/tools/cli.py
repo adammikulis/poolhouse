@@ -68,7 +68,7 @@ FROM_BENCH = ("Training data from what a model actually did: every traced questi
               "run kept that scored well enough, as one example per model turn -- the "
               "conversation up to that turn as the input, the call the model made as the "
               "target. Runs are traced by default at 20 questions or fewer "
-              "(poolhouse-bench); an untraced run yields nothing, and this says what it "
+              "(python -m poolhouse.bench); an untraced run yields nothing, and this says what it "
               "would have yielded.")
 
 
@@ -119,7 +119,7 @@ def _from_bench(argv: list[str]) -> int:
     a = _sub_parser("from-bench", FROM_BENCH, _from_bench_arguments).parse_args(argv)
     store = Path(a.kept).expanduser() if a.kept else bench.home_dir() / "runs.ladybug"
     if not store.exists():
-        raise FileNotFoundError(f"no bench store at {store}; run poolhouse-bench first")
+        raise FileNotFoundError(f"no bench store at {store}; run python -m poolhouse.bench first")
     kept = [r for r in bench.runs(store) if not a.label or a.label in str(r.get("label") or "")]
     rows = from_bench(kept, model=a.model, min_f1=a.min_f1, system=a.system)
     could = would_yield(kept, model=a.model, min_f1=a.min_f1)

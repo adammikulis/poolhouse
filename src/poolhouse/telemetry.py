@@ -15,7 +15,7 @@ builds one and folds it in -- and with ``keep_calls`` it keeps them, so an answe
 read call by call and not only as a total.
 
 The bench's trace entries are the same record in a dict: `Call.from_trace` reads one back,
-so ``poolhouse-bench show --trace`` and a page's ``/metrics`` can print the same rows. The
+so ``python -m poolhouse.bench show --trace`` and a page's ``/metrics`` can print the same rows. The
 two-line change that would make the bench *write* `Call` rather than a hand-built dict is
 in `from_trace`'s docstring; measure.py is not edited here.
 

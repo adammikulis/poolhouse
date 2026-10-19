@@ -78,7 +78,7 @@ BEHAVIOURS = (
         name="sampling",
         does="greedy, whatever the model's card recommends. A card is general advice from "
              "a publisher who does not know the task",
-        setting="poolhouse-bench --card to test the card's own settings against yours",
+        setting="the bench in a source checkout (python -m poolhouse.bench --card) tests the card's own settings against yours",
         why="gemma-4 asks for temperature 1.0; on tool-calling that measured 15 points "
             "worse, and made every run unrepeatable"),
     Behaviour(
@@ -515,7 +515,7 @@ def main(argv: list[str] | None = None) -> int:
                          f"{os.pathsep!r}")
     ap.add_argument("--bench-home", metavar="PATH",
                     help="the bench's home to check with --checkouts (default: where "
-                         "poolhouse-bench keeps its store)")
+                         "python -m poolhouse.bench keeps its store)")
     ap.add_argument("--yes", action="store_true",
                     help="run every offered fix without asking. A fix that needs root will "
                          "still prompt for the password itself")

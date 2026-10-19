@@ -634,7 +634,7 @@ class TestThePage:
                  "label": "tuesday", "dry_run": True}
         status, body, _ = s.call("/ui/bench/sweep", method="POST", body=asked, cookie=cookie)
         assert status == 200
-        assert body["command"] == ("poolhouse-bench sweep --fleet --serve quince-2b.gguf "
+        assert body["command"] == ("python -m poolhouse.bench sweep --fleet --serve quince-2b.gguf "
                                    "--members larch --sample 4 --label tuesday")
 
         detached: list[list[str]] = []

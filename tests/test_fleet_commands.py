@@ -59,6 +59,8 @@ def box(tmp_path):
     ["python3", "-m", "http.server"],
     ["python3", "-m", "poolhouse.serve"],
     ["/usr/local/bin/poolhouse-bench", "--help"],
+    ["poolhouse-bench", "--help"],
+    ["python3", "-m", "poolhouse.bench.run"],
     ["poolhouse-claude", "hello"],
     [],
 ])
@@ -72,7 +74,7 @@ def test_a_program_that_is_not_on_the_list_is_refused_and_no_job_exists(box, arg
 @pytest.mark.parametrize("extra", [{"env": {"LD_PRELOAD": "/tmp/x.so"}}, {"cwd": "/"}, {"cwd": "/tmp", "env": {"A": "b"}}])
 def test_an_environment_or_folder_from_the_wire_is_refused(box, extra):
     with pytest.raises(MemberError, match="cwd and env are not accepted"):
-        box.member._json("POST", "/jobs", {"argv": ["poolhouse-bench", "--help"], **extra})
+        box.member._json("POST", "/jobs", {"argv": ["python3", "-m", "poolhouse.bench", "--help"], **extra})
     assert box.member.jobs() == []
 
 
@@ -84,9 +86,9 @@ def test_an_allowed_command_runs_in_the_daemons_folder_with_its_own_interpreter(
     assert json.loads(box.member.log(job["id"], tail=5).strip().splitlines()[-1])["score"] > 0
 
 
-def test_a_console_script_on_the_list_is_resolved_and_run(box):
-    job = box.member.submit(["poolhouse-bench", "--help"])
-    assert job["argv"][0].endswith("poolhouse-bench") and job["argv"][1:] == ["--help"]
+def test_the_bench_module_on_the_list_is_resolved_and_run(box):
+    job = box.member.submit(["python3", "-m", "poolhouse.bench", "--help"])
+    assert job["argv"][0] == sys.executable and job["argv"][1:] == ["-m", "poolhouse.bench", "--help"]
     done = box.member.wait(job["id"], poll_s=0.1, timeout_s=60)
     assert done["state"] == "done", box.member.log(job["id"])
     assert "usage" in box.member.log(job["id"]).lower()
@@ -107,6 +109,6 @@ def test_a_fleet_sweep_runs_end_to_end_on_two_daemons(tmp_path):
 
 def test_the_list_resolves_a_name_and_refuses_a_path():
     assert commands.allowed(["python", "-m", "poolhouse.fleet.calibration"])[0] == sys.executable
-    assert commands.allowed(["poolhouse-bench", "sweep"])[1:] == ["sweep"]
+    assert commands.allowed(["python3", "-m", "poolhouse.bench", "sweep"])[1:] == ["-m", "poolhouse.bench", "sweep"]
     with pytest.raises(ValueError, match="not a command a member may be asked to run"):
-        commands.allowed(["./poolhouse-bench"])
+        commands.allowed(["./python3", "-m", "poolhouse.bench"])

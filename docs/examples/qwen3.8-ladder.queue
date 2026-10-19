@@ -3,7 +3,7 @@
 # ratio between the levels is the point), then speed and memory by prompt size out to 120k tokens.
 # Same build, same questions and one context for every model (the CTX line below; 262144 is the
 # native limit, and a smaller value is a one-line change; `--context fit` picks the largest that fits). One piece of work on the
-# device's compute at a time; each step is its own `poolhouse-bench` process under the broker's lease.
+# device's compute at a time; each step is its own `python -m poolhouse.bench` process under the broker's lease.
 #
 # DO NOT RUN until the system snapshot (feat/bench-system-snapshot) and the generated-token ratio
 # (feat/bench-token-ratio) are landed and installed, and llama.cpp is on the newest build
@@ -13,8 +13,8 @@
 # A step takes `--context fit` (the most one user holds for that model, 10 percent short of it)
 # and `--thinking-levels off,low,medium,high,unlimited`: docs/bench.md, "Context and thinking levels".
 #
-# Read it first:  poolhouse-bench queue docs/examples/qwen3.8-ladder.queue --dry-run
-# Run it with:    poolhouse-bench queue docs/examples/qwen3.8-ladder.queue --yes --detach
+# Read it first:  python -m poolhouse.bench queue docs/examples/qwen3.8-ladder.queue --dry-run
+# Run it with:    python -m poolhouse.bench queue docs/examples/qwen3.8-ladder.queue --yes --detach
 # After the restart (wired memory raised, nothing else resident) the same line with --resume skips
 # every step already kept and measures the models that did not fit before.
 #

@@ -124,7 +124,7 @@ def test_fresh_rl_workflow_requires_no_dataset(joined, open_page):
     assert page.get_by_label('Dataset path (relative to files root)').input_value() == ''
     assert not page.get_by_label('Dataset path (relative to files root)').is_visible()
     spec = page.evaluate("document.querySelector('training-view').spec()")
-    assert spec['command'] == 'poolhouse-gym' and '--data' not in spec['args']
+    assert spec['command'] == 'poolhouse.gym' and '--data' not in spec['args']
     assert not errors
 
 

@@ -79,7 +79,7 @@ def argv(budget_s: float = BUDGET_S) -> list[str]:
 
 def main(argv_: list[str] | None = None) -> int:
     import argparse
-    ap = argparse.ArgumentParser(prog="poolhouse-bench")
+    ap = argparse.ArgumentParser(prog="python -m poolhouse.fleet.calibration")
     ap.add_argument("--budget", type=float, default=BUDGET_S,
                     help="seconds to spend measuring (default 1.5)")
     a = ap.parse_args(argv_)
@@ -112,7 +112,7 @@ def calibrate(members: Sequence[Member], rates: Rates, *,
             continue
         emit("bench", member=name)
         try:
-            job = member.submit(argv(budget_s), name="poolhouse-bench")
+            job = member.submit(argv(budget_s), name="calibration")
             final = member.wait(job["id"], poll_s=1.0, timeout_s=timeout_s)
             if final.get("state") != "done":
                 emit("skip", member=name, why=f"bench {final.get('state')}")

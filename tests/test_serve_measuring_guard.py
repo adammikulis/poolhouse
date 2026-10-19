@@ -72,10 +72,10 @@ def test_a_lease_is_refused_while_somebody_else_measures(tmp_path, stranger):
         manager.lease(_spec(), roam=False, timeout=1.0)
 
     said = str(why.value)
-    assert "the card is being measured by poolhouse-bench ask --model m.gguf" in said
+    assert "the card is being measured by python -m poolhouse.bench ask --model m.gguf" in said
     assert f"(pid {stranger})" in said
     assert "started 2026-01-02T03:04:05" in said
-    assert "Wait for it to finish, stop it with 'poolhouse-bench stop', or pass --anyway" \
+    assert "Wait for it to finish, stop it with 'python -m poolhouse.bench stop', or pass --anyway" \
         in said
     assert backend.started == [], "nothing was loaded onto the card"
 

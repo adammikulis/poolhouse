@@ -72,5 +72,5 @@ command and store.
 ## What to check when a new build appears
 
 `poolhouse-models files <repo>` for the quant types per build, `poolhouse-serve fit --tensors`
-for the table's size in that build, `poolhouse-bench drafts` for the head, and whether
+for the table's size in that build, `python -m poolhouse.bench drafts` for the head, and whether
 mainline has merged the MTP graph (`gh pr view 27836 -R ggml-org/llama.cpp`).

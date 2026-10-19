@@ -430,7 +430,7 @@ class UI:
                 "reached": sum(1 for a in answers if a.ok), "total": len(answers)}
 
     def bench_state(self) -> dict[str, Any]:
-        """What ``poolhouse-bench status`` says, for the page. The bench's home is
+        """What ``python -m poolhouse.bench status`` says, for the page. The bench's home is
         `poolhouse.bench.home_dir`, the one the command reads."""
         try:
             status = module("poolhouse.bench.progress").status
@@ -485,7 +485,7 @@ class UI:
 
     def rates(self) -> dict[str, Any]:
         """Every kept bench run as a point: what it scored, what it cost, and where the
-        frontier runs -- ``poolhouse-bench show --rates`` as data rather than as a table.
+        frontier runs -- ``python -m poolhouse.bench show --rates`` as data rather than as a table.
 
         Nothing here measures anything. `keep._kept` reads the store the command reads,
         `score.derived` turns one run into the rates it already prints, `score.composed`
@@ -552,7 +552,7 @@ class UI:
                          "Point this at a page that does: its address and /metrics.")}
 
     def start_sweep(self, argv: list[str]) -> dict[str, Any]:
-        """Start ``poolhouse-bench argv`` detached and hand back its log and pid."""
+        """Start ``python -m poolhouse.bench argv`` detached and hand back its log and pid."""
         import shlex
 
         underway = module("poolhouse.bench.underway")
@@ -562,7 +562,7 @@ class UI:
         except (OSError, ValueError):
             held = {}
         return {"log": str(log), "pid": held.get("pid"), "argv": list(argv),
-                "command": "poolhouse-bench " + shlex.join(argv)}
+                "command": "python -m poolhouse.bench " + shlex.join(argv)}
 
     def stop_sweep(self, pid: int) -> str:
         """Stop the detached measurement, but only the one the page was shown."""

@@ -66,11 +66,11 @@ REFUSE = [
     (r"until\s*!\s*pgrep|while\s+pgrep|until\s+pgrep",
      "Do not hand-write a waiter. `pgrep -f` matches the waiting shell's own command line, "
      "so the loop never exits -- two of them spun for an afternoon and the work queued "
-     "behind them never ran. `poolhouse-bench run|sweep|drafts` now takes a lock and waits "
+     "behind them never ran. `python -m poolhouse.bench run|sweep|drafts` now takes a lock and waits "
      "for whoever is measuring (`poolhouse.lock.only_one`); just start it."),
     (RUN + r"nohup\b",
      "Do not `nohup ... &`. Use the Bash tool's run_in_background, which reports the exit "
-     "code and keeps the output, or `poolhouse-bench sweep --serve`, which puts one model up "
+     "code and keeps the output, or `python -m poolhouse.bench sweep --serve`, which puts one model up "
      "at a time on purpose. Backgrounded jobs have died silently here before."),
     (RUN + r"(sudo\s+|env\s+|time\s+|nice\s+|nohup\s+)*(\S*/)?llama-server(\s|$)",
      "Do not start llama-server by hand. `poolhouse-serve up MODEL --context 256k` asks the "
@@ -96,7 +96,7 @@ REFUSE = [
      "into the same cache, and `poolhouse-models files <repo>` says what is already here."),
     (r"\bcurl\b[^|;]*(127\.0\.0\.1|localhost)[^|;]*(/v1/|/props|/slots|/completion)",
      "Do not probe the model with curl. `poolhouse.client.Client` carries the sampling and "
-     "the budgets, and `poolhouse-bench` records what it measured. Ad-hoc curl probes have "
+     "the budgets, and `python -m poolhouse.bench` records what it measured. Ad-hoc curl probes have "
      "produced numbers that went nowhere and an 80-token budget that returned empty text."),
     (r"\bpkill\b[^|;]*llama|\bkillall\b[^|;]*llama",
      "Do not pkill llama-server. `poolhouse-serve down --port N` releases the lease too; "

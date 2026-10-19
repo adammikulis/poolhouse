@@ -3,7 +3,7 @@ head was worth, how much memory it wants, and what to serve.
 
 `Doc` builds a document once and renders it as Markdown or as plain text; `report` fills
 it -- answering per model, across models, extraction, ingest, draft heads, memory, and
-what to serve -- and `main` is ``poolhouse-bench report``. Nothing here measures or serves
+what to serve -- and `main` is ``python -m poolhouse.bench report``. Nothing here measures or serves
 anything: it reads the kept runs and the fit records and arranges them, and a part that
 was never measured says "not measured".
 """
@@ -150,8 +150,8 @@ def report(kept: Sequence[Mapping[str, Any]], *, fits: Sequence[Any] = (),
     doc = Doc(md)
     doc.head(1, "What has been measured")
     if not kept and not extracted:
-        doc.para("Nothing kept yet. `poolhouse-bench run LABEL` measures one asking; "
-                 "`poolhouse-bench sweep` measures every model every way.")
+        doc.para("Nothing kept yet. `python -m poolhouse.bench run LABEL` measures one asking; "
+                 "`python -m poolhouse.bench sweep` measures every model every way.")
         if ingested:
             _ingest(doc, ingested)
         _memory(doc, fits, elsewhere, at=at, room=room)
@@ -166,7 +166,7 @@ def report(kept: Sequence[Mapping[str, Any]], *, fits: Sequence[Any] = (),
              + (f", {spans[0]} to {spans[-1]}" if spans else "")
              + (f", on {', '.join(machines)}" if machines else "")
              + ". A conclusion drawn from kept runs, not a measurement: re-run "
-               "`poolhouse-bench sweep` after any model release.")
+               "`python -m poolhouse.bench sweep` after any model release.")
 
     tables = answering(kept, min_n=min_n)
     _answering(doc, tables, min_n=min_n)
@@ -218,7 +218,7 @@ def _across(doc: Doc, kept: Sequence[Mapping[str, Any]], *, full_n: int) -> None
     if not ranked:
         doc.para("No model has a run to rank.")
         return
-    doc.para("Each model at its longest run, best F1 first -- what `poolhouse-bench show "
+    doc.para("Each model at its longest run, best F1 first -- what `python -m poolhouse.bench show "
              "--rank` writes. `F1/1k tok` is accuracy over the tokens actually paid for "
              "(read plus written), so a model that is right more often for fewer tokens "
              "reads higher whatever its wall clock."
@@ -248,7 +248,7 @@ def _extraction(doc: Doc, extracted: Sequence[Mapping[str, Any]], *, min_msgs: i
 
     rows, short = extractions(extracted, min_msgs=min_msgs)
     doc.head(2, "Extraction")
-    doc.para("One row per `poolhouse-bench extract` run -- reading a graph *out of* "
+    doc.para("One row per `python -m poolhouse.bench extract` run -- reading a graph *out of* "
              "messages rather than answering questions about one -- newest first, so a "
              "row reads against the row under it. Coverage and precision stay separate "
              "columns because they are fixed by opposite changes to the asking: a model "
@@ -441,7 +441,7 @@ def _drafts(doc: Doc, kept: Sequence[Mapping[str, Any]], *, noise: float) -> Non
                   if any(of(one).head for one in mine)}
     doc.head(2, "Draft heads, per model")
     if not with_heads:
-        doc.para("No draft head measured. `poolhouse-bench drafts MODEL --draft HEAD` "
+        doc.para("No draft head measured. `python -m poolhouse.bench drafts MODEL --draft HEAD` "
                  "measures one, and `--draft \"\"` measures the baseline it is read "
                  "against.")
         return
@@ -549,7 +549,7 @@ def fits_named(fits: Iterable[Any], wanted: Sequence[str]) -> list[Any]:
 
 
 def run(args: Any) -> int:
-    """``poolhouse-bench report``. Reads the store and the fit records; serves nothing."""
+    """``python -m poolhouse.bench report``. Reads the store and the fit records; serves nothing."""
     from poolhouse.bench import extract as bench_extract
     from poolhouse.bench.ops import newest
     from poolhouse.serve import fit as fit_mod

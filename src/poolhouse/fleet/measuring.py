@@ -1,8 +1,8 @@
 """One machine measuring: the code it runs, the job a dispatcher asks it for, and the
-detached ``poolhouse-bench`` it starts and watches.
+detached ``python -m poolhouse.bench`` it starts and watches.
 
 `installed_commit` is the poolhouse this process runs and `same_commit` compares two of
-them. `Job` is one ``poolhouse-bench`` invocation on the wire, `jobs_from` builds one per
+them. `Job` is one ``python -m poolhouse.bench`` invocation on the wire, `jobs_from` builds one per
 member out of a plan, and `Refused` is what a member answers when it will not take one.
 `BenchHost` is the bench side of a daemon; `Local` is this machine answering as a member
 would, for a dispatcher with no daemon of its own.
@@ -57,17 +57,17 @@ __all__ = [
 ]
 
 LOCK = "measuring.lock"
-"""What ``poolhouse-bench`` holds while it measures, under `bench_home`. A member whose lock
+"""What ``python -m poolhouse.bench`` holds while it measures, under `bench_home`. A member whose lock
 is held is measuring already, whoever started it, and gets no second job."""
 
 STORE = "runs.ladybug"
-"""Where a member's ``poolhouse-bench`` keeps its runs, under `bench_home`: the store its
+"""Where a member's ``python -m poolhouse.bench`` keeps its runs, under `bench_home`: the store its
 ``--kept`` defaults to, which is why a `Job` may not name one."""
 
 FAILED_MARKS = ("error:", "Traceback (most recent call last)", "[killed]", "selfcheck: FAILED")
 """What the end of a detached bench's log says when it did not finish. A detached child is
 nobody's to ``wait()`` on -- it was reparented the moment it started -- so its exit code is
-gone, and the log is the record: `poolhouse-bench` prints ``error:`` on every failing path,
+gone, and the log is the record: `python -m poolhouse.bench` prints ``error:`` on every failing path,
 ``[killed]`` when `stop` reached it, and a traceback when something else did."""
 
 TAIL = 5
@@ -78,7 +78,7 @@ UNDER_WAY = ("preparing", "running")
 
 
 def bench_home(traind_root: Path | str | None = None) -> Path:
-    """Where ``poolhouse-bench`` keeps its lock, store, logs and ``measuring.json``: the
+    """Where ``python -m poolhouse.bench`` keeps its lock, store, logs and ``measuring.json``: the
     ``bench`` directory beside a daemon's root, or the state root's ``bench`` without one."""
     if traind_root is not None:
         return home.expand(traind_root).parent / "bench"
@@ -158,9 +158,9 @@ class Refused(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class Job:
-    """One ``poolhouse-bench`` invocation for one member.
+    """One ``python -m poolhouse.bench`` invocation for one member.
 
-    ``argv`` is the line after ``poolhouse-bench`` with this member's ``--serve`` flags;
+    ``argv`` is the line after ``python -m poolhouse.bench`` with this member's ``--serve`` flags;
     ``models`` names those models and ``needs`` estimates each in bytes (0 is unknown).
     ``commit`` is the dispatcher's `installed_commit`, which the member must match;
     ``kept_label`` names the sweep in the member's job list. ``files`` holds the text of each
@@ -261,7 +261,7 @@ ON_THE_SCREEN = ('install "Measuring" under Settings, "What this machine can tra
 
 
 def bench_python(environment: Environment | None) -> Path:
-    """The interpreter that runs ``poolhouse-bench`` here: this one, or in the frozen app,
+    """The interpreter that runs ``python -m poolhouse.bench`` here: this one, or in the frozen app,
     which holds no bench, ``environment``'s, with `MEASURING` installed when it is not."""
     if not getattr(sys, "frozen", False):
         return Path(sys.executable)
@@ -305,17 +305,17 @@ def detach_bench(line: Sequence[str], home: Path, python: Path) -> tuple[int, Pa
                           env={**os.environ, "POOLHOUSE_BENCH_HOME": str(home)})
     said = (done.stdout or "") + (done.stderr or "")
     if done.returncode != 0:
-        raise RuntimeError(f"poolhouse-bench --detach exited {done.returncode}: {said.strip()}")
+        raise RuntimeError(f"python -m poolhouse.bench --detach exited {done.returncode}: {said.strip()}")
     found = re.search(r"log: (.+)", said)
     try:
         held = json.loads((home / "measuring.json").read_text(encoding="utf-8"))
         pid = int(held.get("pid") or 0)
         log = Path(str(held.get("log") or (found.group(1).strip() if found else "")))
     except (OSError, ValueError) as exc:
-        raise RuntimeError(f"poolhouse-bench detached but {home / 'measuring.json'} did not "
+        raise RuntimeError(f"python -m poolhouse.bench detached but {home / 'measuring.json'} did not "
                            f"say what: {exc}") from None
     if not pid:
-        raise RuntimeError(f"poolhouse-bench detached but recorded no pid; it said: {said.strip()}")
+        raise RuntimeError(f"python -m poolhouse.bench detached but recorded no pid; it said: {said.strip()}")
     return pid, log
 
 
@@ -353,7 +353,7 @@ class BenchHost:
     ``runner`` is the daemon's `JobRunner`: an accepted job is adopted into it, so it is
     listed under ``/jobs``, polled at ``/jobs/<id>``, read at ``/jobs/<id>/log`` and
     stopped at ``/jobs/<id>/stop`` exactly as a training job is. ``home`` is where this
-    machine's ``poolhouse-bench`` keeps its lock, store and logs -- always given, never
+    machine's ``python -m poolhouse.bench`` keeps its lock, store and logs -- always given, never
     defaulted, because the caller knows its root and this does not (`bench_home`);
     ``commit`` is what this machine runs (`installed_commit`); ``room`` and
     ``launch`` are `hub.room` and `detach_bench` unless a test hands in fakes.
@@ -436,9 +436,9 @@ class BenchHost:
         job_id = f"{int(time.time())}-{secrets.token_hex(3)}"
         prepared = self.home / "logs" / f"prepare-{job_id}.log"
         prepared.parent.mkdir(parents=True, exist_ok=True)
-        prepared.write_text("preparing: finding the interpreter to run poolhouse-bench with\n",
+        prepared.write_text("preparing: finding the interpreter to run python -m poolhouse.bench with\n",
                             encoding="utf-8")
-        mine = DaemonJob(id=job_id, name=job.name, argv=["poolhouse-bench", *job.argv],
+        mine = DaemonJob(id=job_id, name=job.name, argv=["python", "-m", "poolhouse.bench", *job.argv],
                          cwd=str(self.home), submitted_at=time.time(), log=str(prepared))
         self.runner.hold(mine)
         with self._lock:
@@ -462,11 +462,11 @@ class BenchHost:
         except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
             shutil.rmtree(self._given(mine.id), ignore_errors=True)
             with Path(mine.log).open("a", encoding="utf-8") as said:
-                said.write(f"error: {self.name} could not start poolhouse-bench: {exc}\n")
+                said.write(f"error: {self.name} could not start python -m poolhouse.bench: {exc}\n")
             mine.state, mine.returncode, mine.finished_at = "failed", 1, time.time()
             self.runner.record(mine)
             return
-        mine.argv, mine.pid, mine.log = ["poolhouse-bench", *line], pid, str(log)
+        mine.argv, mine.pid, mine.log = ["python", "-m", "poolhouse.bench", *line], pid, str(log)
         self.runner.adopt(mine)
         self._watch(mine)
 
@@ -501,7 +501,7 @@ class BenchHost:
     def export(self, *, since: str = "", job: str = "", full: bool = False,
                anyway: bool = False) -> dict[str, Any]:
         """The runs kept here since ``since`` (``%FT%T``, this machine's clock) or since
-        the job ``job`` started -- what ``poolhouse-bench show --export`` writes, flattened
+        the job ``job`` started -- what ``python -m poolhouse.bench show --export`` writes, flattened
         and gated to the invented community, or the whole records with ``full``. The
         gate is `show --export`'s own (`_over_invented`): ``anyway`` lifts it, as
         ``--anyway-export`` does, and not into a repository."""

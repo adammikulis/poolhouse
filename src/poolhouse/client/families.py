@@ -78,7 +78,7 @@ class Sampling:
     becomes a wrong argument rather than a livelier sentence.
 
     So this is where a benchmark *starts*, never what a client silently sends. Read it with
-    `poolhouse-models card <repo>`, try it with `poolhouse-bench --card`, and ship whatever the
+    `poolhouse-models card <repo>`, try it with `python -m poolhouse.bench --card`, and ship whatever the
     measurement actually favoured.
 
     Not a house style and not a guess: only what the publisher wrote down. A field left None

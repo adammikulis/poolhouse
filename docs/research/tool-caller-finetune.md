@@ -50,7 +50,7 @@ inference — the fine-tune has no shortlist to run and no extra context to read
    this machine serves with), quantises, and runs `poolhouse.serve.preflight` over the file
    — architecture, shards, fit, flags — before anybody waits on a load. Then
    `poolhouse-serve up`.
-5. **Measure.** `poolhouse-bench run` the fine-tuned caller against its own base, same
+5. **Measure.** `python -m poolhouse.bench run` the fine-tuned caller against its own base, same
    questions, same graph, same finder, same sampling. Nothing below is believed until this
    says so.
 
@@ -129,18 +129,18 @@ Same bench, same graph, same questions, one variable:
 
 ```
 # smoke the whole path first: two questions, serve to score to store, a minute
-poolhouse-bench sweep --smoke \
+python -m poolhouse.bench sweep --smoke \
     --serve hf:unsloth/gemma-4-E4B-it-qat-GGUF/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf \
     --serve ~/models/gemma-4-E4B-it-tools-Q8_0.gguf --shortlist 8
 
 # the deciding run: one variable, the weights
-poolhouse-bench sweep \
+python -m poolhouse.bench sweep \
     --serve hf:unsloth/gemma-4-E4B-it-qat-GGUF/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf \
     --serve ~/models/gemma-4-E4B-it-tools-Q8_0.gguf \
     --sample 100 --shortlist 8 --trace \
     --kept ~/.poolhouse/bench/runs.ladybug
-poolhouse-bench show --rates          # accuracy per second, per 1k tokens, per GB
-poolhouse-bench show --trace <label>  # and what it actually called, when it was wrong
+python -m poolhouse.bench show --rates          # accuracy per second, per 1k tokens, per GB
+python -m poolhouse.bench show --trace <label>  # and what it actually called, when it was wrong
 ```
 
 Two models, one sweep, so both are served by the same binary against the same store, the
@@ -247,19 +247,19 @@ fewer than one epoch.
 | | estimate | how to actually know |
 | --- | --- | --- |
 | data | 3–5k turns from 2–3 traced hundred-question runs | `from-bench --dry-run` after the runs |
-| GPU to gather | ~3 runs × 100 questions × 3–25 s ≈ 0.5–2 h | `poolhouse-bench estimate` before each |
+| GPU to gather | ~3 runs × 100 questions × 3–25 s ≈ 0.5–2 h | `python -m poolhouse.bench estimate` before each |
 | LoRA, E4B, one epoch | 1000 steps at batch 4, ctx 2048, 8192 tokens a step | printed by the command above, from the contract's own numbers |
 | s/step | ~65 s (500 tokens/s per billion active parameters, `lora.TOKENS_PER_S_PER_B`) | `poolhouse-train-run --dry-run` trains 20 real steps, writes nothing, and prints `measured: N s/step` |
 | wall clock to train | ~18 h for the epoch; ~5 h 30 for 300 steps; 22 min for the 20 a dry run does | the measured s/step × steps, which the dry run restates |
 | export + serve | minutes | — |
-| the deciding bench | 2 × 100 questions ≈ 20 min | `poolhouse-bench estimate`, and the ceiling refuses over it |
+| the deciding bench | 2 × 100 questions ≈ 20 min | `python -m poolhouse.bench estimate`, and the ceiling refuses over it |
 
 The throughput constant is *derived*, not measured: about 4 FLOPs per active parameter per
 token for a LoRA'd forward and backward, against ~2 TFLOP/s of bf16 matmul through torch's
 MPS backend. It is the first thing a dry run should replace, and 20 steps costs 22 minutes
 to find out whether 18 hours was right.
 
-The GPU is busy with sweeps; a training run and a bench must not share it. `poolhouse-bench`
+The GPU is busy with sweeps; a training run and a bench must not share it. `python -m poolhouse.bench`
 already takes the measuring lock — a training run must take it too, or be scheduled after.
 That is still true and still not done: the ceiling makes the length of a run explicit, it
 does not stop two runs from colliding.
@@ -273,7 +273,7 @@ does not stop two runs from colliding.
   only sharpen what it already does; 183 questions is not much to sharpen with.
 - **Whether it survives a graph it has not seen.** Every trace so far is over the invented
   community. A caller that has memorised its ids is worthless. The world generator
-  (`poolhouse-world`) can build a second community to test exactly this, and should.
+  (`python -m poolhouse.world`) can build a second community to test exactly this, and should.
 - **Whether the fine-tune breaks the prose.** Loss on assistant tokens teaches the answer
   turn as well as the call turns. `answer_chars` and a read of a few answers, not just F1.
 - **Cost per step on this hardware.** MPS with `transformers` is not fast, and nobody here
