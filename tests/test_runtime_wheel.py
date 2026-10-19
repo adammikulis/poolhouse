@@ -23,7 +23,7 @@ from packaging.version import Version
 from wheel_support import fresh_wheel
 
 from poolhouse import runtime
-from poolhouse.fleet import runtime_wheel
+from poolhouse.fleet import compute_artifact, runtime_wheel
 from poolhouse.net import packages
 
 COMMIT = "1234567890abcdef1234567890abcdef12345678"
@@ -133,6 +133,12 @@ def test_built_wheel_imports_from_an_immutable_install(tmp_path):
     built = fresh_wheel(root)
     wheel = tmp_path / built.name
     shutil.copy2(built, wheel)
+    from poolhouse.safenames import unpack
+    snapshot, source = tmp_path / 'source.zip', tmp_path / 'source'
+    subprocess.run(['git', 'archive', '--format=zip', '--output', str(snapshot), 'HEAD'],
+                   cwd=root, check=True, capture_output=True)
+    unpack(snapshot, source)
+    companion = compute_artifact.build(source, wheel, COMMIT)
     runtime_wheel.stamp(wheel, COMMIT, root)
     target = tmp_path / "installed"
     subprocess.run([sys.executable, "-m", "pip", "install", "--no-deps", "--no-index",
@@ -141,28 +147,32 @@ def test_built_wheel_imports_from_an_immutable_install(tmp_path):
     cached = prefix / "poolhouse-wheels" / COMMIT / wheel.name
     cached.parent.mkdir(parents=True)
     shutil.copy2(wheel, cached)
+    shutil.copy2(companion, cached.parent / companion.name)
     newer = tmp_path / "newer" / wheel.name
     newer.parent.mkdir()
     shutil.copy2(wheel, newer)
+    new_companion = compute_artifact.build(source, newer, "f" * 40)
     runtime_wheel.stamp(newer, "f" * 40, root)
     next_cache = prefix / "poolhouse-wheels" / ("f" * 40) / newer.name
     next_cache.parent.mkdir(parents=True)
     shutil.copy2(newer, next_cache)
+    shutil.copy2(new_companion, next_cache.parent / new_companion.name)
     env = {**os.environ, "PYTHONPATH": str(target), "PIP_NO_INDEX": "1",
            "PIP_FIND_LINKS": str(_dependency_wheels(wheel, tmp_path / "dependency-wheels"))}
-    script = ("import json, os, subprocess, sys; from pathlib import Path; from importlib.metadata import version; "
-              "from poolhouse.fleet import runtime_wheel as r; from poolhouse.fleet.environment import Environment; "
+    script = ("import json, os, subprocess, sys, zipfile; from pathlib import Path; from importlib.metadata import version; "
+              "from poolhouse.fleet import compute_artifact, runtime_wheel as r; from poolhouse.fleet.environment import Environment; "
               f"sys.prefix = {str(prefix)!r}; managed = Environment(Path({str(tmp_path)!r}) / 'managed', python_version=f'{sys.version_info.major}.{sys.version_info.minor}'); "
               "result = managed.install(['core']); assert result['core']['ok'], result; "
               "clean = dict(os.environ); clean.pop('PYTHONPATH', None); "
               "loaded = subprocess.run([str(managed.python), '-c', "
-              "'from poolhouse.fleet import runtime_wheel as r; print(r.current_wheel()); print(r.wheel_commit(r.current_wheel()))'], "
+              "'from poolhouse.fleet import compute_artifact, runtime_wheel as r; print(r.current_wheel()); print(r.wheel_commit(r.current_wheel()))'], "
               "env=clean, capture_output=True, text=True, check=True); "
               "before = Path(r.__file__).with_name('built-from').read_text().strip(); old_wheels = str(managed.wheels()); "
               "Path(r.__file__).with_name('built-from').write_text('f' * 40); "
+              f"Path(r.__file__).with_name('compute-artifact.json').write_bytes(zipfile.ZipFile({str(next_cache)!r}).read('poolhouse/fleet/compute-artifact.json')); "
               "updated = managed.install(['core']); assert updated['core']['ok'], updated; "
               "reloaded = subprocess.run([str(managed.python), '-c', "
-              "'from poolhouse.fleet import runtime_wheel as r; print(r.wheel_commit(r.current_wheel()))'], "
+              "'from poolhouse.fleet import compute_artifact, runtime_wheel as r; print(r.wheel_commit(r.current_wheel()))'], "
               "env=clean, capture_output=True, text=True, check=True); "
               "print(json.dumps([r.__file__, r.source_checkout().as_posix(), "
               "before, version('poolhouse'), old_wheels, loaded.stdout.splitlines(), reloaded.stdout.strip()]))")

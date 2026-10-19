@@ -100,3 +100,11 @@ def test_managed_isolated_probe_checks_installed_bytes(bundle, tmp_path, monkeyp
     installed.write_text('changed')
     with pytest.raises(OSError, match='verified compute'):
         artifact.probe(python, environment=dict(os.environ))
+
+
+def test_companion_build_is_reproducible(bundle):
+    source, base, companion, manifest = bundle
+    first = companion.read_bytes()
+    artifact.build(source, base, REVISION)
+    assert companion.read_bytes() == first
+    assert artifact.from_wheel(base)['sha256'] == manifest['sha256']
