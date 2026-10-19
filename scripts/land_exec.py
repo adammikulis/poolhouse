@@ -29,6 +29,7 @@ CACHES = re.compile(
     r"|^tests/_generated_[^/]*|(^|/)\.testmondata[^/]*$|\.py[cod]$|\.egg-info(/|$)|^\.full-tier-last\.json$")
 CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 TAIL = 40
+STOP_GRACE_S = 90.0
 
 
 class Stop(Exception):
@@ -112,10 +113,20 @@ def verify_tree(wt: Path, tree: str) -> None:
 
 
 def kill_group(proc: subprocess.Popen) -> None:
-    """End every process of the group ``proc`` leads."""
-    with contextlib.suppress(ProcessLookupError, PermissionError):
-        os.killpg(proc.pid, signal.SIGKILL)
-    proc.wait()
+    """End every process of the group ``proc`` leads.
+
+    A leader that is still running gets SIGTERM and ``STOP_GRACE_S`` to cancel the test jobs it started; the group is then killed.
+    """
+    try:
+        if proc.poll() is None:
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.killpg(proc.pid, signal.SIGTERM)
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.wait(timeout=STOP_GRACE_S)
+    finally:
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait()
 
 
 def emit(raw: bytes, seen: list[str]) -> None:
