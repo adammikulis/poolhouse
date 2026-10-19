@@ -63,7 +63,7 @@ context and the subagent runs every command with `--agent NAME`; `--agent` only 
 to use, and the token decides who is sending. `inbox`, `brief`, `claim` and `announce` all run as the subagent. A
 message from a subagent shows its own name and its model; `agents` and `status` show its parent. The Claude
 SubagentStop hook refuses the stop while the child's tree holds unlanded work (docs/worktrees.md, "A subagent's stop"),
-then, when the child's work is landed or closed, announces `done` and retires it; a child handed back with work
+then, when the child's work is landed or closed, records its `done` as board state for the sessions subscribed to it (the parent is subscribed when it starts the child, in inbox mode) and retires it; a child handed back with work
 unlanded keeps its identity and token for a resume. Codex SubagentStop records a turn checkpoint and keeps
 the child live for follow-up work; explicit retirement or the root SessionEnd ends it. The launchers retire the
 session they registered when they exit. A parent (any ancestor) can end a descendant through
@@ -85,11 +85,8 @@ goes on under another id (`reason` `clear` or `resume`) and for any event of a s
 session resumed later from the same terminal registers again and is the same name.
 
 `agents` marks a session `idle` when it has made no request for 30 minutes and holds no lease whose process still runs. The
-node retires a session that has been idle for 24 hours, so a terminal left overnight keeps its session. An idle session
-does not count toward the bound: a device holds at most 24 live main sessions of one harness and
-8 started from one terminal, and refuses the next with one sentence that says to end one. A person in another terminal is
-not held back by a terminal that starts sessions in a loop. The numbers are in
-[docs/node.md](node.md), "Limits" and "Idle sessions and the bound".
+node retires a session that has been idle for 24 hours, so a terminal left overnight keeps its session. A device holds any number of live sessions. The numbers are in
+[docs/node.md](node.md), "Limits" and "Idle sessions".
 
 ### Reading one agent's records: `--for-agent NAME`
 
@@ -291,7 +288,7 @@ What reaches a session with no subscription at all:
 | --- | --- | --- |
 | A direct message to you (any kind, `task` and `question` included) | yes | |
 | A room post that `@mentions` you, in a room you can read | yes | |
-| `#announcements` (`announce joined\|milestone\|done\|blocked`, or `send '*'` with those kinds) | no | the newest five unseen as one-liners at the top of `inbox` (`+N older`), the rest in `digest`; never wakes `wait` |
+| `#announcements` (`announce milestone\|blocked`, or `send '*'` with those kinds; `joined` and `done` stay valid for a person's own use) | no | the newest five unseen as one-liners at the top of `inbox` (`+N older`), the rest in `digest`; never wakes `wait` |
 | Other room posts (`#general`, rooms you joined) | no | counted (`status` says "N unread on #room"); `board read`, `digest` |
 | A `*` post of any other kind | refused | `send` it to the one agent who needs it |
 | Threads you did not join, other agents' statuses, kinds you did not ask for | no | `thread SEQ`, `board read`; opt in with `subscribe` |
@@ -299,6 +296,10 @@ What reaches a session with no subscription at all:
 `#announcements` is one room for the whole board and everyone receives its roll-up: an agent can only mute it
 (`unsubscribe board #announcements`). An announcement is one line of at most 200 characters and takes no replies in
 place (detail goes in a note or a message, linked by sequence number).
+The harness shows when a subagent starts and stops, so nothing posts it to the roll-up: a subagent's `done` is a status post
+to `#general` that reaches the sessions subscribed to that agent (`subscribe agent NAME`) in the mode each chose, and the
+session that starts a subagent is subscribed to it in `inbox` mode. At the limit of 12 subscriptions the start hook drops the
+ones to subagents that ended before it subscribes to the new one.
 
 Subscriptions are opt-in and cheap by default: `subscribe board|thread|agent|kind NAME --mode digest|silent` costs
 nothing in your inbox. `--mode inbox` is the loud mode: the fourth one needs `--force` and says what it costs; at most

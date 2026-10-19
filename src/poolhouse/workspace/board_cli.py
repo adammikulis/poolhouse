@@ -225,6 +225,8 @@ def delivered(s: Session, to: str, kind: str, body: str, **said: str) -> dict[st
     if kind == "file":
         raise Refused("a file message is made by `attach`")
     screened("the message", subject, body)
+    if subject == "done":
+        worktree_lifecycle.require_clean(limits.root(), s.name)
     sent = s.post(to, kind, body, subject=subject, reply_id=said.get("reply_to", ""))
     return {"seq": sent["id"].rsplit(":", 1)[-1], "type": kind, "to": to, "from": sent["sender"]}
 
@@ -405,6 +407,6 @@ TABLE: tuple[tuple[str, str, list[Any], Handler], ...] = (
         flag("--status", action="store_true", help="your active subagents, their claims and what is unanswered for you")],
      digest),
     ("brief", "print the short brief for the spawned subagent you run as (--agent NAME), to paste into its prompt",
-     [flag("--registered", action="store_true", help="hooks registered the subagent and record its joined and done")],
+     [flag("--registered", action="store_true", help="hooks registered the subagent and record its done for its subscribers")],
      brief),
 )

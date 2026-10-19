@@ -71,8 +71,7 @@ def test_session_event_forwards_exact_model_as_a_claim(commands, model):
     records = json.loads(calls.read_text())
     assert records[0]['session'] == 'native-main-1' and records[0]['harness'] == 'claude-code'
     assert {r['agent'] for r in records} == {records[0]['agent']} and re.fullmatch(r'[a-z]+-[0-9a-f]{6}', records[0]['agent'])
-    assert [r['argv'][0] for r in records[1:]] == ['announce', 'inbox']
-    assert records[1]['argv'][1] == 'joined'
+    assert [r['argv'][0] for r in records[1:]] == ['inbox']
     context = json.loads(done.stdout)['hookSpecificOutput']
     assert context['hookEventName'] == 'SessionStart' and 'Authenticated parent brief' in context['additionalContext']
     assert records[0]['argv'] == ['whoami', '--model',
@@ -131,10 +130,12 @@ def test_subagent_event_includes_brief_and_actual_primary_branch_rules(commands,
     records = json.loads(commands[1].read_text())
     assert [record['argv'] for record in records] == [
         ['spawn', '--session', 'abcdef12345', '--harness', 'claude-code', '--json'],
-        ['announce', 'joined', 'Explore'],
+        ['subs', '--json'],
+        ['subscribe', 'agent', 'claude-aaaaaa', '--mode', 'inbox', '--force'],
         ['brief', '--registered']]
     assert records[0]['session'] == 'native-parent' and records[0]['harness'] == 'claude-code'
-    assert [record['agent'] for record in records[1:]] == [child, child]
+    assert records[0]['agent'] == records[1]['agent'] == records[2]['agent'] != child
+    assert records[3]['agent'] == child
 
 
 @pytest.mark.parametrize('stage', ['SessionStart', 'SubagentStart'])
@@ -202,7 +203,7 @@ def test_actual_hooks_record_claimed_metadata_and_authenticated_subagent_brief(t
     assert re.fullmatch(r'claude-[0-9a-f]{6}', child) and child != me
     assert f'You are the subagent {child}' in context and 'runs every workspace command you type as you' in context
     assert f'spawned by {me}' in context and '--label' not in context
-    assert 'Your registration, model and the joined and done announcements are recorded for you' in context
+    assert 'Your registration and model are recorded for you' in context
     assert 'Keep the main session ' + me + ' as central coordinator' in context
     assert 'A name grants no rights' in context
     agents = {a.name: a for a in workspace_node.session(workspace_node.adopt(me)).agents()}
@@ -226,7 +227,7 @@ def test_session_exports_preserve_native_context_without_global_configuration(co
     assert 'EXISTING_NATIVE_CONTEXT=preserved' in text
     assert 'export POOLHOUSE_SESSION_ID=native-main-1' in text
     assert 'export POOLHOUSE_SESSION_HARNESS=claude-code' in text
-    assert [item['argv'][0] for item in json.loads(commands[1].read_text())] == ['whoami', 'announce', 'inbox']
+    assert [item['argv'][0] for item in json.loads(commands[1].read_text())] == ['whoami', 'inbox']
     shell = subprocess.run(['/bin/sh', '-c', '. "$1"; poolhouse-workspace whoami',
                             'hook-test', str(target)], capture_output=True, text=True, check=False)
     assert shell.returncode == 0
@@ -271,7 +272,7 @@ def test_invalid_native_session_does_not_export_or_register(commands, tmp_path, 
     assert not target.exists() and not commands[1].exists()
 
 
-def test_subagent_stop_records_transcript_model_and_announces_done(commands, tmp_path, workspace_node):
+def test_subagent_stop_records_transcript_model_and_posts_done_to_general_not_announcements(commands, tmp_path, workspace_node):
     workspace_node.member('abcdef12345', model='claude-haiku-4-5')
     transcript = tmp_path / 'agent.jsonl'
     transcript.write_text('{"message": {"role": "user"}}\n{"message": {"model": "claude-haiku-4-5"}}\n')
@@ -282,5 +283,5 @@ def test_subagent_stop_records_transcript_model_and_announces_done(commands, tmp
     records = json.loads(commands[1].read_text())
     assert [record['argv'] for record in records] == [
         ['whoami', '--model', 'claude-haiku-4-5', '--harness', 'claude-code'],
-        ['announce', 'done', 'finished'],
+        ['board', 'post', '#general', 'done: finished', '--type', 'status', '--subject', 'done'],
         ['retire']]
