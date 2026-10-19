@@ -1,6 +1,7 @@
 """Conversation adapters train, cancel and save without copying frozen MLX bases."""
 
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -220,7 +221,9 @@ def test_checkpoint_loads_for_generation_without_training_data(base, data, cpu, 
     out = tmp_path / 'trained'
     result = run('tool-calls', settings(base), data, out, say=lambda line: None)
     assert result['checkpoint']
-    restored = load(out)
+    with pytest.raises(ValueError, match='explicit base model override'):
+        load(out)
+    restored = load(out, base_override=base)
     assert restored.config['base'] == str(base)
     assert restored.batches is None
     assert restored.eval_batches is None
@@ -234,18 +237,19 @@ def test_studio_generates_from_checkpoint_with_quantized_cache(base, data, cpu, 
     import mlx_lm
 
     from poolhouse.serve import gpu
-    from poolhouse.studio.resources import base_fingerprint
+    from poolhouse.studio.resources import base_fingerprint, materialize_checkpoint
     from poolhouse.studio.worker import execute
     from poolhouse.train.run import run
 
     out = tmp_path / 'trained'
-    run('tool-calls', settings(base), data, out, say=lambda line: None)
+    result = run('tool-calls', settings(base), data, out, say=lambda line: None)
+    checkpoint = materialize_checkpoint(Path(result['checkpoint']), out, tmp_path / 'model')
     generate = mlx_lm.generate
     monkeypatch.setattr(gpu, 'hold', lambda purpose: nullcontext())
     monkeypatch.setattr(mlx_lm, 'generate', lambda *args, **kwargs:
                         generate(*args, stream=cpu.new_stream(cpu.cpu), **kwargs))
     result = execute({'type': 'generate', 'parameters': {'temperature': 0, 'max_tokens': 2}},
-                     {'model': {'path': str(out), 'recipe': 'tool-calls',
+                     {'model': {'path': str(checkpoint), 'recipe': 'tool-calls',
                                 'base': {'kind': 'model', 'path': str(base)},
                                 'base_digest': base_fingerprint({'path': str(base)})}, 'prompt': 'paint red'}, tmp_path)
     assert isinstance(result['text'], str)

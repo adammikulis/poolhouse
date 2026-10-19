@@ -163,6 +163,8 @@ def load(directory: Path | str, *, which: str = "latest", data: Path | str | Non
     recipe_id, framework = recorded.get("recipe"), recorded.get("framework")
     if not recipe_id or framework not in ("torch", "mlx"):
         raise ValueError(f"{where} does not record the recipe and framework it was trained with")
+    if recipe_id == 'tool-calls' and base_override is None:
+        raise ValueError('Conversation checkpoints require an explicit base model override')
     if base_override is not None:
         recorded['base'] = str(validate_base(directory, base_override, which=which))
     accepted = set(UNIVERSAL) | {f["name"] for f in spec(recipe_id).get("fields", [])}

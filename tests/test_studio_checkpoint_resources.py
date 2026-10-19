@@ -41,6 +41,7 @@ def test_materialization_refuses_adapter_directory_link(tmp_path):
 
 
 def test_checkpoint_missing_lineage_base_fails_before_gpu_hold(tmp_path, monkeypatch):
+    (tmp_path / 'state.json').write_text('{"config":{"recipe":"tool-calls","framework":"mlx"}}')
     monkeypatch.setattr(worker.gpu, 'hold', lambda purpose: pytest.fail('invalid lineage must fail before compute'))
     with pytest.raises(ValueError, match='authorized producer base'):
         worker.execute({'type': 'generate'}, {'model': {'path': str(tmp_path), 'recipe': 'tool-calls'},
@@ -53,7 +54,10 @@ def test_explicit_staged_base_digest_is_verified_before_recipe_load(tmp_path, mo
     (base / 'config.json').write_text('{"model_type":"sample"}')
     handle = {'kind': 'model', 'path': str(base)}
     digest = resources.base_fingerprint(handle)
-    model = {'recipe': 'tool-calls', 'path': str(tmp_path / 'checkpoint'), 'base': handle, 'base_digest': digest}
+    checkpoint = tmp_path / 'checkpoint'
+    checkpoint.mkdir()
+    (checkpoint / 'state.json').write_text('{"config":{"recipe":"tool-calls","framework":"mlx"}}')
+    model = {'recipe': 'tool-calls', 'path': str(checkpoint), 'base': handle, 'base_digest': digest}
     calls = []
     monkeypatch.setattr(resources.optional, 'module', lambda name: SimpleNamespace(
         validate_base=lambda path, override, **kwargs: calls.append((path, override)) or Path(override)))
@@ -104,3 +108,13 @@ def test_materialization_refuses_preexisting_output_adapter_link(tmp_path):
     with pytest.raises(ValueError, match='output directory cannot contain links'):
         resources.materialize_checkpoint(checkpoint, training, output)
     assert list(private.iterdir()) == []
+
+
+@pytest.mark.parametrize('claimed', ['text-lm', 'classify-text', ''])
+def test_recorded_conversation_checkpoint_cannot_hide_base_requirement(tmp_path, monkeypatch, claimed):
+    (tmp_path / 'state.json').write_text('{"config":{"recipe":"tool-calls","framework":"mlx","base":"/private/model"}}')
+    monkeypatch.setattr(worker.gpu, 'hold', lambda purpose: pytest.fail('forged recipe must fail before compute'))
+    model = {'path': str(tmp_path), 'recipe': claimed}
+    with pytest.raises(ValueError, match='recipe metadata'):
+        worker.execute({'type': 'evaluate', 'parameters': {'suite': 'holdout'}},
+                       {'model': model, 'dataset': {'path': str(tmp_path)}}, tmp_path)

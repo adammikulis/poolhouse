@@ -86,9 +86,10 @@ def _train(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
 
 def _checkpoint_evaluate(inputs: dict, parameters: dict) -> dict:
     recipes = optional.module('poolhouse.train.recipes')
-    base = checkpoint_base(inputs['model']) if inputs['model'].get('recipe') else None
+    trained = bool(inputs['model'].get('recipe')) or (Path(inputs['model']['path']) / 'state.json').is_file()
+    base = checkpoint_base(inputs['model']) if trained else None
     with gpu.hold('Studio checkpoint evaluation'):
-        if inputs['model'].get('recipe'):
+        if trained:
             settings = {'base_override': base} if base is not None else {}
             built = recipes.load(inputs['model']['path'], data=Path(inputs['dataset']['path']), **settings)
         else:
@@ -280,7 +281,7 @@ def execute(node: dict, inputs: dict, out: Path) -> dict[str, Any]:
         return {'train': dataset(out, 'train', rows[:cut]), 'test': dataset(out, 'test', rows[cut:])}
     if kind == 'evaluate' and (inputs['model'].get('recipe') or parameters.get('suite', 'holdout') == 'holdout'):
         return _checkpoint_evaluate(inputs, parameters)
-    if kind in ('generate', 'generate.structured') and inputs['model'].get('recipe'):
+    if kind in ('generate', 'generate.structured') and (inputs['model'].get('recipe') or (Path(inputs['model']['path']) / 'state.json').is_file()):
         return _native_generate(inputs, parameters, structured=kind == 'generate.structured')
     if kind in ('generate', 'generate.structured', 'evaluate'):
         return _generate(inputs, parameters, evaluate=kind == 'evaluate', structured=kind == 'generate.structured')

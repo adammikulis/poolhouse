@@ -176,7 +176,14 @@ def materialize_checkpoint(checkpoint: Path, training: Path, output: Path) -> Pa
 
 def checkpoint_base(model: dict, *, framework: str | None = None) -> Path | None:
     """Verify a server-supplied producer base; serialized checkpoint paths grant nothing."""
-    if model.get('recipe') != 'tool-calls':
+    state = Path(model['path']) / 'state.json'
+    if state.is_symlink() or not state.is_file():
+        raise ValueError('Use a complete materialized checkpoint for trained model reuse')
+    recorded = json.loads(state.read_text()).get('config', {})
+    recipe = recorded.get('recipe') if isinstance(recorded, dict) else None
+    if recipe not in {'tool-calls', 'classify-text', 'text-lm'} or recipe != model.get('recipe'):
+        raise ValueError('Checkpoint recipe metadata does not match its recorded state')
+    if recipe != 'tool-calls':
         return None
     base, expected = model.get('base'), model.get('base_digest')
     if not isinstance(base, dict) or base.get('kind') != 'model' or not isinstance(expected, str) or not re.fullmatch('[0-9a-f]{64}', expected):
