@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 
 import pytest
-from land_support import RunnerLock
+from runner_lock import RunnerLock
 from test_runtime_trust import commit, git
 
 from poolhouse import (
