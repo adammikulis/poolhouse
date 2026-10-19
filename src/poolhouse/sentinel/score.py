@@ -16,7 +16,7 @@ from poolhouse.sentinel.events import Severity
 from poolhouse.sentinel.findings import HEURISTIC, HIGH, Finding, finding
 from poolhouse.sentinel.rates import Windows
 
-__all__ = ["QUARANTINE_AT", "WATCH_AT", "WEIGHTS", "WINDOW_S", "Score"]
+__all__ = ["NO_REFUSAL_LOG_WEIGHT", "QUARANTINE_AT", "WATCH_AT", "WEIGHTS", "WINDOW_S", "Score"]
 
 WATCH_AT = 3.0
 """Score at which a subject is watched."""
@@ -39,6 +39,9 @@ WEIGHTS: dict[str, float] = {
     "server.unmanaged": 0.5,
 }
 """What one signal of each kind adds."""
+
+NO_REFUSAL_LOG_WEIGHT = 0.2
+"""What a failed run on a backend that keeps no refusal log adds, against 1.0 for a log that was lost."""
 
 
 @dataclass(slots=True)

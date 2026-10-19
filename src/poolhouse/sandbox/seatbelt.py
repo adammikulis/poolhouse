@@ -203,6 +203,7 @@ class Seatbelt:
     """Runs a command under a generated Seatbelt profile."""
 
     name = "seatbelt"
+    keeps_refusal_log = True
 
     def available(self) -> Availability:
         if sys.platform != "darwin":

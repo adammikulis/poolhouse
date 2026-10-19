@@ -108,7 +108,9 @@ Known limits:
   restarted after the run began), `Result.denials_unavailable` is set, `Result.check()` raises
   `SandboxViolation`, and a `sandbox.denials-unavailable` event (warning) goes to the sentinel. Only
   events sent by the kernel's Sandbox extension count as refusals, and only for a run the process
-  watched.
+  watched. Bubblewrap and the container backend keep no refusal log at all: a failed run on them
+  reports `sandbox.denials-unavailable` with the detail "this backend keeps no refusal log" (sentinel
+  weight 0.2, against 1.0 for a log that was lost) and `Result.check()` raises.
 - Refusals that every confined process provokes at start-up (preference files, a few Mach
   services, `net.routetable`) are filtered out of `Result.denials`.
 

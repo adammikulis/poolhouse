@@ -22,7 +22,7 @@ else:
     resource = None
 
 from poolhouse.platform import start_process
-from poolhouse.sandbox.backend import Backend, SandboxUnavailable
+from poolhouse.sandbox.backend import LOST_REFUSAL_LOG, NO_REFUSAL_LOG, Backend, SandboxUnavailable
 from poolhouse.sandbox.bubblewrap import Bubblewrap
 from poolhouse.sandbox.policy import AllowUnsandboxed, Limits, Policy
 from poolhouse.sandbox.seatbelt import Seatbelt
@@ -59,6 +59,8 @@ class Result:
     denials: list[dict[str, str]] = field(default_factory=list)
     denials_unavailable: bool = False
     """The sandbox could not say what it refused, so an empty ``denials`` does not mean the run was clean."""
+    denials_detail: str = ""
+    """Why the refusals could not be known; empty when they could."""
 
     @property
     def ok(self) -> bool:
@@ -68,7 +70,7 @@ class Result:
         """This result, or `SandboxViolation` saying what was refused or that the refusals could not be read."""
         if self.denials_unavailable:
             raise SandboxViolation(
-                f"what the sandbox refused running {Path(self.argv[0]).name} could not be read")
+                f"what the sandbox refused running {Path(self.argv[0]).name} could not be read ({self.denials_detail})")
         if self.denials:
             first = min(self.denials, key=lambda d: next(
                 (i for i, prefix in enumerate(WEIGHT) if d["operation"].startswith(prefix)),
@@ -148,30 +150,10 @@ def _wait(proc: subprocess.Popen[bytes], deadline: float | None, *captures: _Cap
     return False
 
 
-def run(argv: Sequence[str], policy: Policy, *,  # noqa: PLR0913 - one keyword per choice
-        unsandboxed: AllowUnsandboxed | None = None,
-        cwd: str | os.PathLike[str] | None = None, stdin: bytes | None = None,
-        on_event: Events | None = None, via: Backend | None = None,
-        diagnose: str = "failure") -> Result:
-    """Run ``argv`` under ``policy``. The environment is exactly ``policy.env``. The process
-    starts in a group of its own; the wall-clock limit or an output over the cap kills that
-    group and nothing else. A run that fails with the sandbox having refused something carries
-    the refusals in ``Result.denials`` and reports them to ``on_event``; when the backend cannot say
-    what it refused, ``Result.denials_unavailable`` is set and ``sandbox.denials-unavailable`` is reported."""
-    emit = _emitter(on_event)
-    try:
-        full, tag, chosen = wrapped(argv, policy, via=via, unsandboxed=unsandboxed)
-    except SandboxUnavailable as exc:
-        emit("sandbox.unavailable", severity="warning", command=str(argv[0]),
-             policy=policy.name, reason=str(exc))
-        raise
-    name = chosen.name if chosen else "none"
-    if chosen is None:
-        emit("sandbox.unsandboxed", severity="warning", command=str(argv[0]),
-             policy=policy.name, reason=unsandboxed.reason if unsandboxed else "")
+def _execute(full: Sequence[str], argv: Sequence[str], policy: Policy, cwd: str | os.PathLike[str],
+             stdin: bytes | None) -> Result:
+    """Start ``full``, hold it to the policy's limits until it ends, and return how it ended."""
     limits = policy.limits
-    if cwd is None:
-        cwd = (policy.write or policy.read or ("/",))[0]
     began = time.time()
     try:
         proc = start_process(
@@ -196,31 +178,63 @@ def run(argv: Sequence[str], policy: Policy, *,  # noqa: PLR0913 - one keyword p
     _kill_group(proc.pid)
     out.join(2)
     err.join(2)
-    result = Result(list(argv), proc.returncode, bytes(out.data).decode("utf-8", "replace"),
-                    bytes(err.data).decode("utf-8", "replace"), timed_out, capped,
-                    name != "none", name, round(time.time() - began, 3))
-    if chosen is not None:
-        _read_denials(chosen, tag, began, diagnose, result)
+    return Result(list(argv), proc.returncode, bytes(out.data).decode("utf-8", "replace"),
+                  bytes(err.data).decode("utf-8", "replace"), timed_out, capped,
+                  seconds=round(time.time() - began, 3))
+
+
+def run(argv: Sequence[str], policy: Policy, *,  # noqa: PLR0913 - one keyword per choice
+        unsandboxed: AllowUnsandboxed | None = None,
+        cwd: str | os.PathLike[str] | None = None, stdin: bytes | None = None,
+        on_event: Events | None = None, via: Backend | None = None,
+        diagnose: str = "failure") -> Result:
+    """Run ``argv`` under ``policy``. The environment is exactly ``policy.env``. The process
+    starts in a group of its own; the wall-clock limit or an output over the cap kills that
+    group and nothing else. A run that fails with the sandbox having refused something carries
+    the refusals in ``Result.denials`` and reports them to ``on_event``; when the backend cannot say
+    what it refused, ``Result.denials_unavailable`` is set and ``sandbox.denials-unavailable`` is reported."""
+    emit = _emitter(on_event)
+    try:
+        full, tag, chosen = wrapped(argv, policy, via=via, unsandboxed=unsandboxed)
+    except SandboxUnavailable as exc:
+        emit("sandbox.unavailable", severity="warning", command=str(argv[0]),
+             policy=policy.name, reason=str(exc))
+        raise
+    name = chosen.name if chosen else "none"
+    if chosen is None:
+        emit("sandbox.unsandboxed", severity="warning", command=str(argv[0]),
+             policy=policy.name, reason=unsandboxed.reason if unsandboxed else "")
+    if cwd is None:
+        cwd = (policy.write or policy.read or ("/",))[0]
+    began = time.time()
+    try:
+        result = _execute(full, argv, policy, cwd, stdin)
+        result.sandboxed, result.backend = chosen is not None, name
+        if chosen is not None:
+            _read_denials(chosen, tag, began, diagnose, result)
+    finally:
+        if chosen is not None:
+            chosen.finish(tag)
     if result.denials_unavailable:
-        emit("sandbox.denials-unavailable", severity="warning", command=str(argv[0]), policy=policy.name, backend=name)
+        emit("sandbox.denials-unavailable", severity="warning", command=str(argv[0]), policy=policy.name,
+             backend=name, detail=result.denials_detail)
     if result.denials:
         emit("sandbox.denied", severity="warning", command=str(argv[0]), policy=policy.name,
              count=len(result.denials), first=result.denials[0], backend=name)
-    if timed_out:
+    if result.timed_out:
         emit("sandbox.timeout", severity="notice", command=str(argv[0]), policy=policy.name,
-             seconds=limits.wall_seconds)
+             seconds=policy.limits.wall_seconds)
     return result
 
 
 def _read_denials(chosen: Backend, tag: str, began: float, diagnose: str, result: Result) -> None:
-    """Put what the sandbox refused the run in ``result`` and end the run on the backend."""
-    try:
-        if _diagnose(diagnose, result):
-            found = chosen.denials(tag, began)
-            result.denials_unavailable = found is None
-            result.denials = found or []
-    finally:
-        chosen.finish(tag)
+    """Put what the sandbox refused the run in ``result``."""
+    if _diagnose(diagnose, result):
+        found = chosen.denials(tag, began)
+        result.denials_unavailable = found is None
+        result.denials_detail = "" if found is not None else (
+            LOST_REFUSAL_LOG if chosen.keeps_refusal_log else NO_REFUSAL_LOG)
+        result.denials = found or []
 
 
 def _diagnose(when: str, result: Result) -> bool:

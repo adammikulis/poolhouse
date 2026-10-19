@@ -10,7 +10,10 @@ from typing import Protocol
 
 from poolhouse.sandbox.policy import Policy, PolicyError
 
-__all__ = ["Availability", "Backend", "SandboxUnavailable", "Wrapped", "program_of"]
+__all__ = ["LOST_REFUSAL_LOG", "NO_REFUSAL_LOG", "Availability", "Backend", "SandboxUnavailable", "Wrapped", "program_of"]
+
+NO_REFUSAL_LOG = "this backend keeps no refusal log"
+LOST_REFUSAL_LOG = "the refusal log could not be read"
 
 
 class SandboxUnavailable(RuntimeError):
@@ -38,9 +41,11 @@ class Backend(Protocol):
     """One way of confining a process: ``wrap`` turns a command and a policy into the command
     that runs it confined, ``watch`` readies the backend to report refusals before the command
     starts, ``denials`` reads back what the sandbox refused (None when it cannot be known) and
-    ``finish`` says the run has ended."""
+    ``finish`` says the run has ended. ``keeps_refusal_log`` is False for a backend that has no
+    log of refusals to read."""
 
     name: str
+    keeps_refusal_log: bool
 
     def available(self) -> Availability: ...
 

@@ -76,6 +76,7 @@ class Bubblewrap:
     """Runs a command inside bubblewrap namespaces."""
 
     name = "bubblewrap"
+    keeps_refusal_log = False
 
     def available(self) -> Availability:
         if not sys.platform.startswith("linux"):
@@ -110,4 +111,4 @@ class Bubblewrap:
         return None
 
     def denials(self, tag: str, since: float) -> list[dict[str, str]] | None:
-        return []
+        return None

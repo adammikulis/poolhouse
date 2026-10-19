@@ -14,6 +14,7 @@ class Container:
     """A Linux container or lightweight VM that would replace Seatbelt for CPU-only work."""
 
     name = "container"
+    keeps_refusal_log = False
 
     def available(self) -> Availability:
         return Availability(False, "the container backend is planned, not written "
@@ -30,4 +31,4 @@ class Container:
         return None
 
     def denials(self, tag: str, since: float) -> list[dict[str, str]] | None:
-        return []
+        return None
