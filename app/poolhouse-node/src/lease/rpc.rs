@@ -2,6 +2,7 @@
 //! `lease_list` and `lease_wait`. Who holds a lease is the name behind the token, never a
 //! request field; a lease can be renewed or released only by its holder.
 
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Map, Value};
@@ -17,6 +18,8 @@ use crate::row::Kind;
 
 pub const METHODS: [&str; 5] = ["lease_acquire", "lease_renew", "lease_release", "lease_list", "lease_wait"];
 pub const MAX_WAIT_MS: u64 = 600_000;
+/// `lease_wait` requests a device answers at once.
+pub const MOST_WAITERS: usize = 64;
 const POLL: Duration = Duration::from_millis(25);
 
 /// The params each lease method takes.
@@ -213,11 +216,40 @@ pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
     }
 }
 
+static WAITING: AtomicUsize = AtomicUsize::new(0);
+
+/// A place among the `lease_wait` requests being answered; given back when dropped.
+struct Waiting;
+
+impl Waiting {
+    fn take() -> Option<Waiting> {
+        if WAITING.fetch_add(1, Ordering::SeqCst) < MOST_WAITERS {
+            return Some(Waiting);
+        }
+        WAITING.fetch_sub(1, Ordering::SeqCst);
+        None
+    }
+}
+
+impl Drop for Waiting {
+    fn drop(&mut self) {
+        WAITING.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
 /// Answer a request, letting `lease_wait` block up to its `timeout_ms` for a grant without
-/// holding the node's lock while it sleeps.
+/// holding the node's lock while it sleeps. A device waits for `MOST_WAITERS` requests at once.
 pub fn serve(run: &dyn Fn(&Value) -> Result<Value>, request: &Value) -> Result<Value> {
     let waits = request.get("method").and_then(Value::as_str) == Some("lease_wait");
     let timeout = request.pointer("/params/timeout_ms").and_then(Value::as_u64).unwrap_or(0).min(MAX_WAIT_MS);
+    let _place = if waits && timeout > 0 {
+        match Waiting::take() {
+            Some(place) => Some(place),
+            None => return Ok(crate::api::respond(request, Err(crate::limits::refuse("this device is waiting for as many lease requests as it may: ask again shortly", MOST_WAITERS, "MOST_WAITERS", "lease/rpc.rs")))),
+        }
+    } else {
+        None
+    };
     let (start, mut reply) = (Instant::now(), run(request)?);
     while waits && reply["ok"] == true && reply["result"]["state"] == "queued" && start.elapsed() < Duration::from_millis(timeout) {
         std::thread::sleep(POLL);
