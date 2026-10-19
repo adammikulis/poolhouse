@@ -146,15 +146,18 @@
       );
     S.position = (editor, id) =>
       editor.graph.layout.nodes[id] || { x: 40, y: 40 };
-    S.download = (name, value) => {
-      const url = URL.createObjectURL(
+    S.downloadBlob = (name, blob) => {
+      const url = URL.createObjectURL(blob),
+        a = E("a", { href: url, download: name });
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+    S.download = (name, value) =>
+      S.downloadBlob(
+        name,
         new Blob([JSON.stringify(value, null, 2)], {
           type: "application/json",
         }),
       );
-      const a = E("a", { href: url, download: name });
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    };
   })();
 </script>

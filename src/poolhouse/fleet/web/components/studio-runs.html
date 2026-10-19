@@ -169,6 +169,73 @@
           });
           return svg;
         },
+        async artifactFiles(run, panel) {
+          const result = await S.api(
+            "/runs/" + encodeURIComponent(run.id) + "/artifacts",
+          );
+          panel.replaceChildren(
+            ...(result.files || []).map((file) =>
+              E(
+                "button",
+                {
+                  type: "button",
+                  onclick: () =>
+                    this.perform(async () => {
+                      const url = new URL(file.href, location.origin);
+                      if (
+                        url.origin !== location.origin ||
+                        !/^\/ui\/studio\/runs\/[a-f0-9]{32}\/artifacts\/file$/.test(
+                          url.pathname,
+                        )
+                      )
+                        throw Error("This artifact link is unavailable.");
+                      const response = await window.fleetModel.api(
+                        url.pathname + url.search,
+                        { responseType: "blob" },
+                      );
+                      if (!response.ok) {
+                        window.fleetModel.refused(response);
+                        throw Error(
+                          response.error || "Artifact download unavailable.",
+                        );
+                      }
+                      S.downloadBlob(file.name, response.blob);
+                    }),
+                },
+                "Download " + file.name,
+              ),
+            ),
+          );
+          if (!(result.files || []).length)
+            panel.append(E("p", {}, "No downloadable files in this run."));
+          panel.append(
+            E(
+              "button",
+              {
+                type: "button",
+                onclick: () =>
+                  S.download(
+                    "run-" + run.id + "-artifacts.json",
+                    result.artifacts,
+                  ),
+              },
+              "Export artifact manifest",
+            ),
+          );
+        },
+        async nodeLogs(run, id, panel) {
+          const result = await S.api(
+            "/runs/" +
+              encodeURIComponent(run.id) +
+              "/logs?node=" +
+              encodeURIComponent(id),
+          );
+          panel.hidden = false;
+          panel.textContent = result.log || "No worker log for this node.";
+          if (result.metrics?.length)
+            panel.textContent +=
+              "\n\nMetrics\n" + JSON.stringify(result.metrics, null, 2);
+        },
         runDetail() {
           const box = this.querySelector("#studio-run-detail"),
             run = this.activeRun;
@@ -219,6 +286,20 @@
             const graphNode = this.rootGraph().nodes.find((n) => n.id === id),
               title = graphNode ? S.spec(this, graphNode).title : id;
             box.append(E("h4", {}, title + " · " + node.state));
+            const logs = E("pre", { hidden: true });
+            box.append(
+              E(
+                "button",
+                {
+                  type: "button",
+                  onclick: () =>
+                    this.perform(() => this.nodeLogs(run, id, logs)),
+                },
+                "View logs · " + title,
+              ),
+              logs,
+            );
+
             if (node.error) box.append(E("p", {}, node.error));
             if (node.logs)
               box.append(
@@ -240,26 +321,21 @@
             Object.values(run.nodes || {}).some((n) =>
               ["done", "completed"].includes(n.state),
             )
-          )
+          ) {
+            const panel = E("div", { "aria-label": "Artifact files" });
             box.append(
               E(
                 "button",
                 {
                   type: "button",
                   onclick: () =>
-                    this.perform(async () => {
-                      const result = await S.api(
-                        "/runs/" + encodeURIComponent(run.id) + "/artifacts",
-                      );
-                      S.download(
-                        "run-" + run.id + "-artifacts.json",
-                        result.artifacts,
-                      );
-                    }),
+                    this.perform(() => this.artifactFiles(run, panel)),
                 },
-                "Export run artifacts",
+                "Show artifact files",
               ),
+              panel,
             );
+          }
         },
       });
   })();

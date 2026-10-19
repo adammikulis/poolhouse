@@ -1,7 +1,10 @@
 """Studio graph editing and durable run controls through the application."""
 from __future__ import annotations
 
+import hashlib
+import json
 import re
+import uuid
 
 import pytest
 from browser_expect import expect
@@ -407,6 +410,49 @@ def test_actual_sweep_controls_save_typed_choices(tmp_path):
             page.keyboard.press('Enter')
             page.locator('.studio-inspector').get_by_text('Sweep parameters', exact=True).click()
             expect(page.get_by_label('Sweep temperature', exact=True)).to_have_value('0.1\n0.8')
+    finally:
+        if hasattr(served.ui, 'studio'):
+            served.ui.studio.close()
+        served.close()
+
+
+def seed_report_artifact(served):
+    engine = served.ui.studio
+    source = engine._all_runs()[0]
+    ident = uuid.uuid4().hex
+    node = {'id': 'report', 'type': 'report', 'version': 1, 'parameters': {}, 'bindings': {}}
+    folder = served.files / 'studio' / ident / hashlib.sha256(b'report').hexdigest()[:24]
+    folder.mkdir(parents=True)
+    (folder / 'report.json').write_text('{"score":1.0}')
+    engine.store.put('run', {
+        'id': ident, 'title': 'Report artifact', 'scope': source['scope'], 'principal': source['principal'],
+        'workflow_id': source['workflow_id'], 'revision': source['revision'], 'state': 'done',
+        'graph': {'nodes': [node], 'edges': [], 'groups': {}}, 'created_at': source['created_at'] + 1,
+        'nodes': {'report': {'state': 'done', 'outputs': {
+            'artifact': {'kind': 'artifact', 'path': str(folder / 'report.json')}}}},
+    })
+
+
+def test_actual_run_logs_and_declared_artifact_download(tmp_path):
+    pytest.importorskip('playwright.sync_api')
+    served = Serving(tmp_path)
+    served.ui.settings.setup_done = True
+    served.ui.root = tmp_path / 'traind'
+    try:
+        with browser(Window(profile=tmp_path / 'artifacts-browser', headless=True)) as page:
+            page.goto(f'http://127.0.0.1:{served.port}/ui/')
+            add(page, 'Prompt template')
+            page.get_by_role('button', name='Run workflow', exact=True).click()
+            expect(page.locator('#studio-runs')).to_contain_text('done')
+            seed_report_artifact(served)
+            page.get_by_role('button', name='Refresh', exact=True).click()
+            page.get_by_role('button', name='Report artifact', exact=True).click()
+            page.get_by_role('button', name='View logs · report', exact=True).click()
+            expect(page.locator('#studio-run-detail')).to_contain_text('No worker log for this node.')
+            page.get_by_role('button', name='Show artifact files', exact=True).click()
+            with page.expect_download() as download:
+                page.get_by_role('button', name='Download report.json', exact=True).click()
+            assert json.loads(download.value.path().read_text()) == {'score': 1.0}
     finally:
         if hasattr(served.ui, 'studio'):
             served.ui.studio.close()

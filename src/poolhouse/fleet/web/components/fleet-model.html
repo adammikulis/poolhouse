@@ -25,7 +25,9 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
 
   /** One call to the daemon: `{ok, status, ...body}`. */
   async function request(path, opts = {}) {
-    const r = await fetch(path, { ...opts, headers: { ...H, ...(opts.headers || {}) } });
+    const {responseType,...requestOptions}=opts;
+    const r = await fetch(path, { ...requestOptions, headers: { ...H, ...(opts.headers || {}) } });
+    if(responseType==="blob"&&r.ok)return {ok:true,status:r.status,blob:await r.blob()};
     let body = {};
     try { body = await r.json(); } catch { /* an empty body is fine */ }
     return { ok: r.ok, status: r.status, ...body };
