@@ -236,3 +236,35 @@ def test_fine_tuning_requires_authorized_model_binding(tmp_path):
     with pytest.raises(ValueError, match='authorized base model'):
         execute({'type': 'train.tool-calls', 'parameters': {'base': '/unbound/private'}},
                 {'dataset': {'path': str(tmp_path)}}, tmp_path)
+
+
+def test_base_and_trained_holdout_share_native_loss_contract(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+
+    from poolhouse.studio import worker
+
+    calls = []
+    built = SimpleNamespace(config={'batch_size': 2, 'holdout_rows': 4, 'recipe': 'tool-calls'},
+                            eval_batches=lambda index: index, batches=None,
+                            step=SimpleNamespace(eval_loss=lambda batch: .5), predict=None)
+
+    def build(recipe, config, data):
+        calls.append(('build', recipe, config, data))
+        return built
+
+    def load(path, data):
+        calls.append(('load', path, data))
+        return built
+
+    monkeypatch.setattr(worker.gpu, 'hold', lambda purpose: nullcontext())
+    monkeypatch.setattr(worker.optional, 'module', lambda name: SimpleNamespace(build=build, load=load))
+    dataset = {'path': str(tmp_path / 'dataset')}
+    base = execute({'type': 'evaluate', 'parameters': {'suite': 'holdout', 'framework': 'mlx'}},
+                   {'model': {'path': str(tmp_path)}, 'dataset': dataset}, tmp_path)
+    trained = execute({'type': 'evaluate'}, {'model': {'path': str(tmp_path), 'recipe': 'tool-calls'},
+                      'dataset': dataset}, tmp_path)
+    assert base['metrics']['loss'] == trained['metrics']['loss'] == .5
+    assert calls[0][0] == 'build' and calls[0][2]['lora']
+    assert calls[1][0] == 'load'
+    compared = execute({'type': 'compare'}, {'base': base['metrics'], 'trained': trained['metrics']}, tmp_path)
+    assert compared['metrics']['loss'] == 0

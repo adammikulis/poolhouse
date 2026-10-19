@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import optional
-from poolhouse.client import Client
+from poolhouse.client import Client, Request
 from poolhouse.decide.cases import case_from
 from poolhouse.decide.pointer import PointerDecider
 from poolhouse.files import write_json
@@ -75,10 +75,21 @@ def _train(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
     return outputs
 
 
-def _checkpoint_evaluate(inputs: dict) -> dict:
+def _checkpoint_evaluate(inputs: dict, parameters: dict) -> dict:
     recipes = optional.module('poolhouse.train.recipes')
     with gpu.hold('Studio checkpoint evaluation'):
-        built = recipes.load(inputs['model']['path'], data=Path(inputs['dataset']['path']))
+        if inputs['model'].get('recipe'):
+            built = recipes.load(inputs['model']['path'], data=Path(inputs['dataset']['path']))
+        else:
+            path = Path(inputs['model']['path'])
+            if not path.is_dir():
+                raise ValueError('Supervised holdout evaluation requires a local model checkpoint directory')
+            recipe = parameters.get('recipe', 'tool-calls')
+            framework = parameters.get('framework') or inputs['model'].get('framework') or 'torch'
+            config = {'framework': framework}
+            if recipe == 'tool-calls':
+                config.update(base=str(path), lora=framework == 'mlx')
+            built = recipes.build(recipe, config, Path(inputs['dataset']['path']))
         batches = built.eval_batches or built.batches
         if batches is None:
             raise ValueError('Evaluation dataset produced no batches')
@@ -97,7 +108,7 @@ def _checkpoint_evaluate(inputs: dict) -> dict:
 def _generate(inputs: dict, parameters: dict, evaluate: bool = False, structured: bool = False) -> dict:
     grant = broker_wire.lease('studio', [inputs['model']['path']], reason='Studio inference')
     try:
-        client = Client(grant.base_url, model=grant.model)
+        client = Client(grant.base_url, model=grant.model, request=Request(temperature=parameters.get('temperature', 0))) if evaluate else Client(grant.base_url, model=grant.model)
         if evaluate:
             rows = rows_of(inputs['dataset'])
             metrics = optional.module('poolhouse.train.tools.evaluate').evaluate(client, rows)
@@ -230,8 +241,8 @@ def execute(node: dict, inputs: dict, out: Path) -> dict[str, Any]:
         if not 0 < cut < len(rows):
             raise ValueError('Split needs examples in both partitions')
         return {'train': dataset(out, 'train', rows[:cut]), 'test': dataset(out, 'test', rows[cut:])}
-    if kind == 'evaluate' and inputs['model'].get('recipe'):
-        return _checkpoint_evaluate(inputs)
+    if kind == 'evaluate' and (inputs['model'].get('recipe') or parameters.get('suite', 'holdout') == 'holdout'):
+        return _checkpoint_evaluate(inputs, parameters)
     if kind in ('generate', 'generate.structured', 'evaluate'):
         return _generate(inputs, parameters, evaluate=kind == 'evaluate', structured=kind == 'generate.structured')
     if kind == 'compare':

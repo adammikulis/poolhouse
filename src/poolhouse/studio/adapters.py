@@ -99,7 +99,12 @@ class Adapters:
                 path = Path(found).resolve(strict=True)
             else:
                 path = confined(Path(context['files_root']), binding['id'])
-            return {kind: {'kind': kind, 'path': str(path), 'id': binding['id']}}
+            resource = {'kind': kind, 'path': str(path), 'id': binding['id']}
+            if kind == 'model' and path.is_dir() and (path / 'config.json').is_file():
+                configuration = json.loads((path / 'config.json').read_text())
+                if configuration.get('quantization'):
+                    resource['framework'] = 'mlx'
+            return {kind: resource}
         if kind == 'prompt':
             return {'prompt': node.get('parameters', {}).get('template', '')}
         return None
