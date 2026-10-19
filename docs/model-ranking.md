@@ -36,7 +36,7 @@ not taken. A head cannot change an answer, so look at what else these changed:
 
 ## Extraction, on the shipped gold set
 
-`poolhouse-ingest --gold tests/fixtures/extraction-gold.json --model MODEL --fail-under 0.7`:
+`python -m poolhouse.ingest --gold tests/fixtures/extraction-gold.json --model MODEL --fail-under 0.7`:
 twenty invented passages with every triple written down, so the number is precision as well
 as recall. Measured 2026-09-05, each model in its profile's shape.
 

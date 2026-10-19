@@ -1,10 +1,10 @@
 {
- "surfaces": 821,
+ "surfaces": 820,
  "by_status": {
   "covered": 508,
   "partial": 193,
   "uncovered": 52,
-  "n/a": 68,
+  "n/a": 67,
   "unmapped": 0
  },
  "by_kind": {
@@ -19,7 +19,7 @@
    "covered": 7,
    "partial": 5,
    "uncovered": 0,
-   "n/a": 21,
+   "n/a": 20,
    "unmapped": 0
   },
   "context": {
@@ -635,16 +635,6 @@
    "id": "cli:poolhouse-help",
    "kind": "cli",
    "source": "poolhouse.cli:help_main",
-   "trust": "the person at a terminal; arguments may carry text from outside",
-   "attacker": "hostile argument text or path reaches the command",
-   "status": "n/a",
-   "tests": [],
-   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
-  },
-  {
-   "id": "cli:poolhouse-ingest",
-   "kind": "cli",
-   "source": "poolhouse.ingest:main",
    "trust": "the person at a terminal; arguments may carry text from outside",
    "attacker": "hostile argument text or path reaches the command",
    "status": "n/a",

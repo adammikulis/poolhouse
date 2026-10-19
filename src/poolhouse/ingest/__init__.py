@@ -14,7 +14,7 @@ Three things here are not obvious and all three were paid for elsewhere in this 
 records every unit that finished; `--resume` skips those, `--detach` re-runs the command in
 its own session with a log under ``~/.poolhouse/ingest/logs`` (a child of a shell dies with
 the shell, and a ranking sweep was killed that way thirty minutes in), and
-``poolhouse-ingest status`` says how many sections of how many sources are done and at what
+``python -m poolhouse.ingest status`` says how many sections of how many sources are done and at what
 rate.
 
 *What it cost is on record, per section.* Each extraction keeps a `poolhouse.telemetry.Call`
@@ -38,18 +38,18 @@ questions today. `Sources` is how an application reads one::
     with view.store() as store:                    # read-only, beside the running writer
         store.nodes(kind="concept")
 
-*A graph somebody else already extracted is free.* ``poolhouse-ingest import DIR --out
+*A graph somebody else already extracted is free.* ``python -m poolhouse.ingest import DIR --out
 STORE`` takes a nodes/edges CSV pair another extractor wrote, maps its predicates onto the
 verbs this library sets and writes the rest as they stand, marked ``extension``, and folds
 the result in as one source -- so it sits beside the read ones and every command works over
 it. ``--dry-run`` says what it would write, predicate by predicate.
 
-``poolhouse-ingest fold --out STORE`` does the same fold from the reads into the store on
+``python -m poolhouse.ingest fold --out STORE`` does the same fold from the reads into the store on
 demand, ``show`` prints what one source holds, ``sources`` prints what they hold together
 -- the concepts more than one of them names and the relations joining their vocabularies,
 see `Sources.shared` -- and ``stop`` ends a detached run after folding what it has read.
 
-*A store is asked questions the way any graph is.* ``poolhouse-ingest ask --out STORE
+*A store is asked questions the way any graph is.* ``python -m poolhouse.ingest ask --out STORE
 "question"`` puts the store's graph through `poolhouse.graph.conversation.converse` with the model
 served in the settings it scored best with, and ``ask --gold FILE`` scores a set of questions against the
 entries each answer should have selected, using the bench's own scorer.

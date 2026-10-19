@@ -50,7 +50,7 @@ def pending(out: str | Path) -> dict[str, int]:
 
 
 def migrate(out: str | Path, *, say: Callable[[str], None] = say) -> int:
-    """``poolhouse-ingest migrate --out STORE``: ``book:`` node ids into ``source:``.
+    """``python -m poolhouse.ingest migrate --out STORE``: ``book:`` node ids into ``source:``.
 
     The nodes, the ``read_from`` edges that name them, every unit document's provenance,
     the progress file and the reads files beside the store; a store file named ``shelf``

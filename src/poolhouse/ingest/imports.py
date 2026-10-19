@@ -603,7 +603,7 @@ def _core() -> frozenset[str]:
 def bring(out: str | Path, paths: Sequence[str], *, slug: str = "", confidence: str = "medium",
           provisional: bool = True, core_only: bool = False, keep_vague: bool = False,
           dry_run: bool = False, say: Callable[[str], None] = say) -> int:
-    """``poolhouse-ingest import NODES.csv EDGES.csv --out STORE``: a pair another extractor
+    """``python -m poolhouse.ingest import NODES.csv EDGES.csv --out STORE``: a pair another extractor
     wrote, into this store as one source.
 
     A directory holding ``nodes.csv`` and ``edges.csv`` may be named instead of the two

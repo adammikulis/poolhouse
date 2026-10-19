@@ -1,4 +1,4 @@
-"""``poolhouse-ingest forget``: the reads files beside a store deleted, the store left alone."""
+"""``python -m poolhouse.ingest forget``: the reads files beside a store deleted, the store left alone."""
 
 from __future__ import annotations
 

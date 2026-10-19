@@ -420,7 +420,7 @@ def test_the_sources_command_prints_the_sources_the_shared_concepts_and_the_judg
     assert "concepts in more than one source (1)" in said_out
     assert "vault" in said_out and f"{FIELD_GUIDE}, {OPEN_TEXTS}" in said_out
     assert (f"between sources (0): no log of the names the sources share; "
-            f"poolhouse-ingest fold --out {store} re-folds each source from its reads and "
+            f"python -m poolhouse.ingest fold --out {store} re-folds each source from its reads and "
             f"writes one") in said_out
     # each source's own name reaching into the one they both have
     assert "relations between sources (3)" in said_out
@@ -451,7 +451,7 @@ def test_the_sources_command_asks_for_a_tidy_once_a_merge_is_logged_within_one_s
     assert ingest.main(["sources", "--out", str(store)]) == 0
 
     assert (f"between sources (0): no concept merged across sources yet; "
-            f"poolhouse-ingest tidy --out {store}") in capsys.readouterr().out
+            f"python -m poolhouse.ingest tidy --out {store}") in capsys.readouterr().out
 
 
 def test_the_sources_command_takes_a_sample_size(tmp_path, capsys):

@@ -28,9 +28,9 @@
 `poolhouse.serve` and `poolhouse.client` can be used alone from another application:
 [embedding.md](embedding.md).
 
-Everything above ships in one package, except the experimental layer (`bench`, `draft`, `gguf`, `gym`,
-`redteam`, `surface`, `testing`, `train`, `walk`, `world`), which the wheel leaves out and a source checkout
-runs as `python -m poolhouse.<name>`. Its dependencies are `packaging` and `psutil`; the
+Everything above ships in one package, except the experimental layer (`bench`, `datasheet`, `draft`, `gguf`, `gym`,
+`ingest`, `redteam`, `scrape`, `sources`, `surface`, `testing`, `train`, `walk`, `web`, `world`), which the wheel
+leaves out and a source checkout runs as `python -m poolhouse.<name>`. Its dependencies are `packaging` and `psutil`; the
 extras carry what a module needs beyond them: `[claude] [train] [train-lora] [gguf] [graph] [store]
 [scrape] [web] [hub] [vision] [pdf] [viz] [plot] [testing] [telemetry] [mcp] [standard]
 [privacy] [arrays] [test]`, plus `[torch]` and `[mlx]`, and `[all]`. `[all]` includes
