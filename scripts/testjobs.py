@@ -155,10 +155,11 @@ class Jobs:
         record are made under one lock. A foreground run is not exclusive and queues in the broker.
         An agent's whole-suite run, one naming more than 30 test files, and a run with no owner are refused before anything is recorded.
         """
-        if not (isinstance(owner, dict) and isinstance(owner.get("id"), str) and owner["id"]):
-            raise Refused("this run has no workspace identity, and a run with no owner is not queued: run it as the session the harness gave you")
         if refusal := testscope.tier_refusal(argv[0], argv[1:], root) if argv else "":
             raise Refused(refusal)
+        if not (isinstance(owner, dict) and isinstance(owner.get("id"), str) and owner["id"]):
+            raise Refused("this run has no workspace identity, so it is not queued: run it as the session the harness gave you "
+                          "(`poolhouse-workspace whoami` names it)")
         self.prune()
         job = f"{time.strftime('%Y%m%d-%H%M%S')}-{secrets.token_hex(2)}"
         with self.locked():
