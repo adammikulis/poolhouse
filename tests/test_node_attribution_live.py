@@ -70,9 +70,10 @@ def other_agent(node: WorkspaceNode, folder: Path) -> Path:
 
 def written(path: Path) -> dict:
     for _ in range(600):
-        if path.exists():
+        try:
             return json.loads(path.read_text())
-        time.sleep(0.05)
+        except (FileNotFoundError, json.JSONDecodeError):
+            time.sleep(0.05)
     raise AssertionError(f"{path} was not written")
 
 
