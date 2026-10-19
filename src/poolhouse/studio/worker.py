@@ -16,6 +16,7 @@ from poolhouse.files import write_json
 from poolhouse.kvtype import DEFAULT_KV_BITS
 from poolhouse.serve import broker_wire, gpu
 from poolhouse.studio.adapters import response_schema
+from poolhouse.studio.resources import training_base
 
 
 def rows_of(value: dict) -> list[dict]:
@@ -63,7 +64,7 @@ def _train(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
     if recipe == 'tool-calls':
         if not inputs.get('model'):
             raise ValueError('Select an authorized base model for fine-tuning')
-        config['base'] = inputs['model']['path']
+        config['base'] = str(training_base(inputs['model'], parameters))
     recipes = optional.module('poolhouse.train.recipes')
     config = recipes.validate(recipe, config)
     smoke = parameters.get('mode') == 'smoke'

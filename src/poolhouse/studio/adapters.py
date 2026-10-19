@@ -9,6 +9,8 @@ from poolhouse import hub, optional
 from poolhouse.credentials import child_environment
 from poolhouse.files import write_json
 
+from .resources import model_resource, training_base
+
 
 def needs_compute(node: dict) -> bool:
     kind = node["type"]
@@ -91,6 +93,28 @@ class Adapters:
         return {node['type']: [issue['message'] for issue in issues if issue['node'] == node['id']]
                 for node in nodes}
 
+    def validate_resources(self, graph: dict) -> list[dict]:
+        errors, resources = [], {}
+        installed = hub.discover() if any(node['type'] == 'model' for node in graph['nodes']) else []
+        for node in graph['nodes']:
+            if node['type'] == 'model':
+                try:
+                    resources[node['id']] = model_resource(node.get('bindings', {}).get('model', {}), installed)
+                except (ValueError, OSError) as error:
+                    errors.append({'node': node['id'], 'code': 'resource', 'message': str(error)})
+        for node in graph['nodes']:
+            if node['type'] != 'train.tool-calls':
+                continue
+            source = next((edge['source']['node'] for edge in graph['edges']
+                           if edge['target'] == {'node': node['id'], 'port': 'model'}), None)
+            try:
+                if source not in resources:
+                    raise ValueError('Select an installed library base model for fine-tuning')
+                training_base(resources[source], node.get('parameters', {}))
+            except (ValueError, OSError) as error:
+                errors.append({'node': node['id'], 'code': 'resource', 'message': str(error)})
+        return errors
+
     def validate(self, nodes: list[dict]) -> list[dict]:
         schema_errors = []
         for node in nodes:
@@ -146,21 +170,10 @@ class Adapters:
             if binding.get('kind') != kind or not binding.get('id'):
                 raise ValueError(f"Select a {kind} resource")
             if kind == 'model':
-                if Path(binding['id']).is_absolute() or '..' in Path(binding['id']).parts or binding['id'].startswith(('~', 'hf:', 'http:','https:')):
-                    raise ValueError('Select a model from the local model library')
-                if '/' in binding['id'] and len(binding['id'].split('/')) != 2:
-                    raise ValueError('Select an installed model identifier')
-                found = hub.held_snapshot(binding['id']) if '/' in binding['id'] else hub.located(binding['id'])
-                if not found:
-                    raise ValueError('The selected model is not installed')
-                path = Path(found).resolve(strict=True)
+                return {'model': model_resource(binding)}
             else:
                 path = confined(Path(context['files_root']), binding['id'])
             resource = {'kind': kind, 'path': str(path), 'id': binding['id']}
-            if kind == 'model' and path.is_dir() and (path / 'config.json').is_file():
-                configuration = json.loads((path / 'config.json').read_text())
-                if configuration.get('quantization'):
-                    resource['framework'] = 'mlx'
             return {kind: resource}
         if kind == 'prompt':
             return {'prompt': node.get('parameters', {}).get('template', '')}
@@ -182,6 +195,12 @@ class Adapters:
         if needs_compute(node) or inputs.get("model", {}).get("recipe"):
             environment.require_compute()
         inputs = dict(inputs)
+        if node['type'] == 'train.tool-calls' and inputs.get('model'):
+            current = model_resource(inputs['model'])
+            if current['path'] != inputs['model']['path']:
+                raise ValueError('The selected base model changed; validate the workflow again')
+            training_base(current, node.get('parameters', {}))
+            inputs['model'] = current
         for port, binding in context.get('bindings', {}).items():
             if port not in inputs and binding.get('kind') == 'dataset':
                 path = confined(Path(context['files_root']), binding['id'])
