@@ -176,7 +176,7 @@ impl Board {
         let origin = self.origin.clone();
         let (last, seen, now) = (self.rows(&origin).last().cloned(), self.state.t.seen, self.now_ms());
         if self.rows(&origin).len() >= MAX_LOG_ROWS {
-            return Err(Error::Quota("this log is past the rows a device keeps".into()));
+            return Err(crate::limits::refuse("this log has as many rows as a device keeps", MAX_LOG_ROWS, "MAX_LOG_ROWS", "board.rs"));
         }
         let (wall, counter) = tick(last.as_ref().map_or((0, 0), |r| (r.hlc.0, r.hlc.1)), now, seen);
         let mut row = Row {
@@ -187,7 +187,7 @@ impl Board {
         };
         row.hash = row.digest();
         if row.size() > MAX_ROW_BYTES {
-            return Err(Error::Quota("the row is larger than a row may be".into()));
+            return Err(crate::limits::refuse("the row is larger than a row may be", MAX_ROW_BYTES, "MAX_ROW_BYTES", "row.rs"));
         }
         self.log_mut(&origin)?.append(row.clone())?;
         Ok(row)
@@ -218,7 +218,7 @@ impl Board {
             return Err(Error::Damaged(format!("log {origin} was refused: {why}")));
         }
         if !self.logs.contains_key(origin) && self.logs.len() >= MAX_ORIGINS {
-            return Err(Error::Quota("this device holds as many logs as it will".into()));
+            return Err(crate::limits::refuse("this device holds as many logs as it may", MAX_ORIGINS, "MAX_ORIGINS", "board.rs"));
         }
         match self.store(origin, incoming, authoritative) {
             Err(Error::Damaged(why)) if authoritative => {
@@ -270,7 +270,7 @@ impl Board {
             }
         }
         if self.rows(origin).len() + took.rows.len() > MAX_LOG_ROWS {
-            return Err(Error::Quota("this log is past the rows a device keeps".into()));
+            return Err(crate::limits::refuse("this log would have more rows than a device keeps", MAX_LOG_ROWS, "MAX_LOG_ROWS", "board.rs"));
         }
         if took.rows.is_empty() {
             return if blocked { Err(Error::Invalid("the device that wrote that log was removed from the pool".into())) } else { Ok(0) };

@@ -55,7 +55,7 @@ impl Links {
     /// Whether the board ``from`` can have another link: it has fewer than `MOST_ACTIVE` open.
     pub fn room_for(&self, from: &str) -> Result<()> {
         if self.all.iter().filter(|l| l.active && l.from == from).count() >= MOST_ACTIVE {
-            return Err(Error::Quota(format!("a board has at most {MOST_ACTIVE} links open: end one first")));
+            return Err(crate::limits::refuse("a board has as many links open as it may: end one first", MOST_ACTIVE, "MOST_ACTIVE", "links.rs"));
         }
         Ok(())
     }

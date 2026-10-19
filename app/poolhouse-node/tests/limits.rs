@@ -73,7 +73,7 @@ fn a_lineage_creates_boards_up_to_what_a_node_hosts_and_registers_as_many_sessio
     }
     let refused = register(&mut n, &me(), "one-more", "s");
     assert_eq!(code(&refused), "quota", "{refused}");
-    assert!(refused["error"]["message"].as_str().unwrap().contains(&MAX_BOARDS.to_string()), "{refused}");
+    assert!(refused["error"]["message"].as_str().unwrap().contains(&format!("the limit is {MAX_BOARDS}, set by MAX_BOARDS in node.rs")), "{refused}");
     for i in 0..200 {
         let reply = register(&mut n, &me(), "b0", &format!("s{i}"));
         assert_eq!(reply["ok"], true, "session {i}: {reply}");

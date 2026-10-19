@@ -200,7 +200,7 @@ impl Shards {
         let mut jobs = lock(&self.jobs)?;
         if offset == 0 && !jobs.contains_key(id) {
             if jobs.values().filter(|j| j.phase.open()).count() >= MOST_OPEN || jobs.values().filter(|j| j.owner == fp && j.phase == Phase::Uploading).count() >= 2 {
-                return Err(Error::Quota("this device is taking as many shards as it can; try again shortly".into()));
+                return Err(crate::limits::refuse("this device is taking as many shards as it can; try again shortly", format!("{MOST_OPEN} open and 2 uploading from one device"), "MOST_OPEN", "shard/host.rs"));
             }
             let dir = self.root.join(id);
             std::fs::create_dir(&dir)?;
@@ -246,7 +246,7 @@ impl Shards {
         let dir = {
             let mut jobs = lock(&self.jobs)?;
             if jobs.values().filter(|j| j.phase == Phase::Running).count() >= MOST_RUNNING {
-                return Err(Error::Quota(format!("{MOST_RUNNING} shards are already running here")));
+                return Err(crate::limits::refuse("as many shards as may run are already running here", MOST_RUNNING, "MOST_RUNNING", "shard/host.rs"));
             }
             let job = jobs.get_mut(&spec.id).filter(|j| j.owner == fp).ok_or_else(unknown)?;
             if job.phase != Phase::Uploading || job.got != spec.size {
@@ -292,7 +292,7 @@ impl Shards {
         if !held {
             let _ = node.leases.table.release(&id, &format!("{POOL_BOARD}/{name}"));
             node.leases.save()?;
-            return Err(Error::Quota("this device's CPU slots are in use; try again shortly".into()));
+            return Err(crate::limits::refuse("this device's CPU slots are in use; try again shortly", node.leases.cfg.cpu_slots, "cpu_slots", "lease-config.json"));
         }
         node.leases.save()?;
         Ok(id)

@@ -187,7 +187,7 @@ fn subscribe(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) 
     let mut cost = "";
     if mode == "inbox" && stype != "mentions" && existing.as_ref().is_none_or(|s| s.mode != "inbox") {
         if loud >= LOUD_FREE && !force {
-            return Err(Error::Quota(format!("{actor} already has {loud} inbox subscriptions; every message on {stype} {target} would reach your inbox and your context, and wake `wait`. Use mode digest (a roll-up you read when you choose) or force to accept the cost")));
+            return Err(crate::limits::refuse(&format!("{actor} already has {loud} inbox subscriptions; every message on {stype} {target} would reach your inbox and your context, and wake `wait`. Use mode digest (a roll-up you read when you choose) or force to accept the cost"), LOUD_FREE, "LOUD_FREE", "subs.rs"));
         }
         if loud >= LOUD_FREE {
             cost = "forced: each new message here now enters your inbox and context";

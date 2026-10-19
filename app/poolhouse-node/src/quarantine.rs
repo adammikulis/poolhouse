@@ -68,7 +68,7 @@ impl Quarantine {
     fn hold(&mut self, entry: &str, flags: Vec<String>, now: u64) -> Result<&Item> {
         if !self.items.contains_key(entry) {
             if self.items.len() >= MAX_ITEMS {
-                return Err(Error::Quota("this device already holds as many flagged entries as it keeps".into()));
+                return Err(crate::limits::refuse("this device already holds as many flagged entries as it keeps", MAX_ITEMS, "MAX_ITEMS", "quarantine.rs"));
             }
             let qid = format!("q{}", self.items.len() + 1);
             self.items.insert(entry.into(), Item { qid, entry: entry.into(), flags, held_ms: now, released_ms: 0, released_by: String::new() });

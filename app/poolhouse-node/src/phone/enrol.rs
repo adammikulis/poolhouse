@@ -97,7 +97,7 @@ fn spend_offer(node: &mut Node, ip: IpAddr, secret: &str, now_ms: u64) -> Result
     let first = node.persons.is_empty();
     let tries = format!("phone code {ip}");
     if !node.rates.permits(&tries, WRONG_CODES, WRONG_WINDOW) {
-        return Err(Error::Quota("Too many wrong codes came from this address; wait ten minutes.".into()));
+        return Err(crate::limits::refuse("Too many wrong codes came from this address; wait ten minutes.", format!("{WRONG_CODES} in ten minutes"), "WRONG_CODES", "phone/enrol.rs"));
     }
     if first {
         if !node.firsts.offered(Purpose::Phone, now_ms) {
@@ -134,10 +134,10 @@ fn brakes(node: &mut Node, by: &str, now: u64) -> Result<()> {
     }
     let adds: Vec<&Approval> = node.approvals.all().iter().filter(|a| a.kind == PHONE_ADD).collect();
     if adds.iter().any(|a| a.live()) {
-        return Err(Error::Quota("Another phone is already waiting for one of your phones to approve it: answer that first.".into()));
+        return Err(crate::limits::refuse("Another phone is already waiting for one of your phones to approve it: answer that first.", "one phone waiting at a time", "PHONE_ADD", "phone/enrol.rs"));
     }
     if adds.iter().any(|a| now.saturating_sub(a.created_ms) < HOUR_MS && matches!(a.state.as_str(), DENIED | EXPIRED | CANCELLED | FAILED)) {
-        return Err(Error::Quota("A phone asked to be added less than an hour ago and was not approved; wait before another is added.".into()));
+        return Err(crate::limits::refuse("A phone asked to be added less than an hour ago and was not approved; wait before another is added.", "one hour after a phone is not approved", "HOUR_MS", "phone/enrol.rs"));
     }
     Ok(())
 }
@@ -180,8 +180,8 @@ pub fn enrol(node: &mut Node, ip: IpAddr, p: &Map<String, Value>) -> Result<Valu
     if node.persons.was_removed(&fingerprint) {
         return Err(Error::Denied("That phone's key was removed from this device and is not added again: reinstall the app to make a new key.".into()));
     }
-    if node.persons.all().len() >= 8 {
-        return Err(Error::Quota("This device holds as many person keys as it will; remove one first.".into()));
+    if node.persons.all().len() >= crate::grants::person::MOST_KEYS {
+        return Err(crate::limits::refuse("This device holds as many person keys as it may; remove one first.", crate::grants::person::MOST_KEYS, "MOST_KEYS", "grants/person.rs"));
     }
     let (id, token) = (format!("ph-{}", random_hex(6)?), random_hex(32)?);
     let first = node.persons.is_empty();

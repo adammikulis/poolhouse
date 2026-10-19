@@ -146,7 +146,7 @@ fn op(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Resu
                 return Err(Error::Invalid(format!("{name} exists already")));
             }
             if rooms.len() >= ROOMS_TOTAL {
-                return Err(Error::Quota(format!("this board has {ROOMS_TOTAL} rooms, as many as it will")));
+                return Err(crate::limits::refuse("this board has as many rooms as it may", ROOMS_TOTAL, "ROOMS_TOTAL", "rooms.rs"));
             }
             body["title"] = json!(title);
             body["open"] = json!(!p.get("private").and_then(Value::as_bool).unwrap_or(false));

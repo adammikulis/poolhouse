@@ -61,16 +61,16 @@ pub fn check_post(node: &mut Node, board: &str, actor: &str, kind: Kind, fields:
     let limits = node.writes.clone();
     if kind == Kind::Note {
         if node.tally(board)?.notes_by(actor) >= limits.notes_per_author {
-            return Err(Error::Quota(format!("{actor} already wrote {} notes", limits.notes_per_author)));
+            return Err(crate::limits::refuse(&format!("{actor} already wrote as many notes as an author keeps"), limits.notes_per_author, "notes_per_author", "write-limits.json"));
         }
     }
     if kind == Kind::Message && !to.is_empty() && !to.starts_with('#') {
         if let Some((all, mine)) = waiting(node, board, to, actor)? {
             if all >= limits.inbox_pending {
-                return Err(Error::Quota(format!("{to} has {} unread messages; wait for it to read", limits.inbox_pending)));
+                return Err(crate::limits::refuse(&format!("{to} has as many unread messages as an inbox holds; wait for it to read"), limits.inbox_pending, "inbox_pending", "write-limits.json"));
             }
             if mine >= limits.unread_per_sender {
-                return Err(Error::Quota(format!("{actor} already has {} unread messages waiting for {to}", limits.unread_per_sender)));
+                return Err(crate::limits::refuse(&format!("{actor} already has as many unread messages waiting for {to} as one sender may"), limits.unread_per_sender, "unread_per_sender", "write-limits.json"));
             }
         }
     }

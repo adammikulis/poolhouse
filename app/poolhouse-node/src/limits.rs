@@ -2,9 +2,18 @@
 //! address, a phone, a pool). Only a use that was made is counted: `permits` asks, `record` counts.
 
 use std::collections::{BTreeMap, VecDeque};
+use std::fmt::Display;
 use std::time::{Duration, Instant};
 
+use crate::error::Error;
+
 const MOST_KEYS: usize = 1024;
+
+/// The refusal for a limit: ``what`` was refused, ``value`` is the limit in force, and ``key`` in ``file`` is where it is changed
+/// (a constant in a source file under `src`, or a key of a settings file in the state directory).
+pub fn refuse(what: &str, value: impl Display, key: &str, file: &str) -> Error {
+    Error::Quota(format!("{} (the limit is {value}, set by {key} in {file}).", what.trim_end_matches('.')))
+}
 
 #[derive(Default)]
 pub struct Rates {
@@ -53,6 +62,12 @@ impl Rates {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refusal_names_what_was_refused_the_limit_and_where_it_is_changed() {
+        let Error::Quota(said) = refuse("a board has as many links open as it may: end one first.", 64, "MOST_ACTIVE", "links.rs") else { panic!("not a quota") };
+        assert_eq!(said, "a board has as many links open as it may: end one first (the limit is 64, set by MOST_ACTIVE in links.rs).");
+    }
 
     #[test]
     fn a_key_is_allowed_so_many_times_in_a_window_and_each_key_has_its_own() {

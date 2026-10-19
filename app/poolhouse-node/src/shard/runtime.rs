@@ -79,7 +79,7 @@ pub fn read_result(dir: &Path) -> Result<Option<Value>> {
     let path = dir.join("result.json");
     let Ok(meta) = std::fs::metadata(&path) else { return Ok(None) };
     if meta.len() > MOST_RESULT {
-        return Err(Error::Quota(format!("the result is {} bytes; a reply carries at most {MOST_RESULT}", meta.len())));
+        return Err(crate::limits::refuse(&format!("the result is {} bytes; a reply carries less", meta.len()), format!("{MOST_RESULT} bytes"), "MOST_RESULT", "shard/host.rs"));
     }
     Ok(serde_json::from_slice(&std::fs::read(path)?).ok())
 }

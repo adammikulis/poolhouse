@@ -95,7 +95,7 @@ fn a_subagent_does_not_make_join_or_subscribe_and_a_session_makes_rooms_up_to_wh
     }
     let refused = room(&mut n, &lead, "create", "#r200", json!({}));
     assert_eq!(code(&refused), "quota", "{refused}");
-    assert!(refused["error"]["message"].as_str().unwrap().contains("200 rooms"), "{refused}");
+    assert!(refused["error"]["message"].as_str().unwrap().contains("the limit is 200, set by ROOMS_TOTAL in rooms.rs"), "{refused}");
 }
 
 #[test]

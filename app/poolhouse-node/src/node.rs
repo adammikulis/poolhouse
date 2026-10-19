@@ -264,7 +264,7 @@ impl Node {
         }
         let lineage = peer.lineage();
         if !self.boards.contains_key(board) && self.boards.len() >= MAX_BOARDS {
-            return Err(Error::Quota(format!("this node hosts {MAX_BOARDS} boards, as many as it will")));
+            return Err(crate::limits::refuse("this node hosts as many boards as it may", MAX_BOARDS, "MAX_BOARDS", "node.rs"));
         }
         let (parent, proven, bound) = self.parent_of(board, parent_token, (&harness, session), &lineage)?;
         if parent.is_empty() {

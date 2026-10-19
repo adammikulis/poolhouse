@@ -26,6 +26,8 @@ const MOST_BODY: usize = 64 * 1024;
 const MOST_CONNECTIONS: usize = 48;
 /// The most connections one address holds, and the last connections kept for addresses a phone answered from (`gate`).
 const MOST_PER_ADDRESS: usize = 6;
+const MOST_CODES_PER_PHONE: usize = 3;
+const MOST_TRIES_PER_ADDRESS: usize = 60;
 const RESERVED: usize = 8;
 /// How long the handshake and the request may take together, and the answer to be written.
 const HEAR_FOR: Duration = Duration::from_secs(10);
@@ -102,8 +104,8 @@ fn offer(node: &mut Node, id: &str) -> Result<Value> {
         return Err(Error::Denied("A code for a phone is already waiting to be scanned; use it or wait for it to run out.".into()));
     }
     let key = format!("phone offer {id}");
-    if !node.rates.permits(&key, 3, Duration::from_secs(3600)) {
-        return Err(Error::Quota("3 codes an hour is the most one phone asks for; try again later.".into()));
+    if !node.rates.permits(&key, MOST_CODES_PER_PHONE, Duration::from_secs(3600)) {
+        return Err(crate::limits::refuse("This phone has asked for as many codes as it may; try again later.", format!("{MOST_CODES_PER_PHONE} an hour"), "MOST_CODES_PER_PHONE", "phone/http.rs"));
     }
     node.rates.record(&key, Duration::from_secs(3600));
     let by = format!("the phone {}", node.phones.get(id).map(|f| f.name.clone()).unwrap_or_default());
@@ -165,8 +167,8 @@ pub fn handle(node: &Mutex<Node>, ip: IpAddr, http: &str, path: &str, token: &st
         }
         ("POST", "add" | "decide") => {
             let key = format!("phone {op} {ip}");
-            if !n.rates.permits(&key, 60, Duration::from_secs(60)) {
-                return reply(Err(Error::Quota("Too many tries from this address; wait a minute.".into())));
+            if !n.rates.permits(&key, MOST_TRIES_PER_ADDRESS, Duration::from_secs(60)) {
+                return reply(Err(crate::limits::refuse("Too many tries from this address; wait a minute.", format!("{MOST_TRIES_PER_ADDRESS} a minute"), "MOST_TRIES_PER_ADDRESS", "phone/http.rs")));
             }
             n.rates.record(&key, Duration::from_secs(60));
             return reply(if op == "add" { enrol(&mut n, ip, &params) } else {

@@ -64,6 +64,14 @@ fn longest(cfg: &Config) -> u64 {
     cfg.max_ttl_s.max(1)
 }
 
+fn over_capacity(r: &Resource, cap: u64) -> Error {
+    let what = format!("{} asks for {} and this device allows less", r.word(), r.amount());
+    match r {
+        Resource::CpuSlots { .. } => crate::limits::refuse(&what, cap, "cpu_slots", "lease-config.json"),
+        _ => crate::limits::refuse(&what, cap, "memory_mb", "lease-config.json"),
+    }
+}
+
 fn same_resources(a: &[Resource], b: &[Resource]) -> bool {
     a.len() == b.len() && a.iter().all(|r| b.contains(r))
 }
@@ -122,7 +130,7 @@ impl Table {
         for r in &req.resources {
             r.check()?;
             if let Some(cap) = capacity(cfg, r).filter(|cap| r.amount() > *cap) {
-                return Err(Error::Quota(format!("{} asks for {} and this device allows {cap}", r.word(), r.amount())));
+                return Err(over_capacity(r, cap));
             }
         }
         let keys: Vec<String> = req.resources.iter().map(Resource::key).collect();

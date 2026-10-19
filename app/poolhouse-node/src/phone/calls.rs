@@ -87,7 +87,7 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
             }
             let key = format!("phone offer {}/{}", holder.board, holder.name);
             if !node.rates.permits(&key, MOST_OFFERS_PER_HOUR, Duration::from_secs(3600)) {
-                return Err(Error::Quota(format!("{MOST_OFFERS_PER_HOUR} codes an hour is the most one session asks for; try again later.")));
+                return Err(crate::limits::refuse("One session has asked for as many codes as it may; try again later.", format!("{MOST_OFFERS_PER_HOUR} an hour"), "MOST_OFFERS_PER_HOUR", "phone/calls.rs"));
             }
             node.rates.record(&key, Duration::from_secs(3600));
             let secret = make_offer_for(node, now, &format!("the session {} on board {}", holder.name, holder.board), &asker)?;
@@ -97,7 +97,7 @@ pub fn call(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) 
             let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("A registered session asks to remove a phone.".into()))?;
             let key = format!("phone remove {}/{}", holder.board, holder.name);
             if !node.rates.permits(&key, MOST_REMOVALS_PER_HOUR, Duration::from_secs(3600)) {
-                return Err(Error::Quota(format!("{MOST_REMOVALS_PER_HOUR} requests an hour is the most one session makes to remove phones; try again later.")));
+                return Err(crate::limits::refuse("One session has asked to remove as many phones as it may; try again later.", format!("{MOST_REMOVALS_PER_HOUR} an hour"), "MOST_REMOVALS_PER_HOUR", "phone/calls.rs"));
             }
             let by = format!("The session {} on board {}", holder.name, holder.board);
             let id = ask_to_remove(node, &by, &format!("{}/{}", holder.board, holder.name), text(p, "phone")?)?;

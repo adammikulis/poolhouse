@@ -103,7 +103,7 @@ fn put(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Res
         return Err(Error::Invalid("an upload is named by 8 to 64 lower-case letters and digits".into()));
     }
     if total == 0 || total > MAX_BLOB || data.is_empty() || data.len() > CHUNK || offset + data.len() > total {
-        return Err(Error::Quota(format!("a file is up to {MAX_BLOB} bytes, sent in chunks of up to {CHUNK}")));
+        return Err(crate::limits::refuse(&format!("a file is sent in chunks of up to {CHUNK} bytes"), format!("{MAX_BLOB} bytes"), "MAX_BLOB", "files.rs"));
     }
     let base = dir(node, board);
     let staging = base.join("staging");
@@ -116,7 +116,7 @@ fn put(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Res
         return Err(Error::Invalid(format!("the upload holds {have} bytes; the next chunk starts there")));
     }
     if offset == 0 && std::fs::read_dir(&staging)?.count() >= MAX_STAGED {
-        return Err(Error::Quota("too many uploads are waiting; finish or wait for them".into()));
+        return Err(crate::limits::refuse("too many uploads are waiting; finish or wait for them", MAX_STAGED, "MAX_STAGED", "files.rs"));
     }
     let mut bytes = std::fs::read(&part).unwrap_or_default();
     bytes.extend_from_slice(&data);

@@ -84,7 +84,7 @@ fn an_author_keeps_so_many_notes_and_another_author_is_not_held_back() {
     }
     let refused = note(&mut n, &at, "a fourth");
     assert_eq!(code(&refused), "quota");
-    assert!(refused["error"]["message"].as_str().unwrap().contains("3 notes"), "{refused}");
+    assert!(refused["error"]["message"].as_str().unwrap().contains("the limit is 3, set by notes_per_author in write-limits.json"), "{refused}");
     ok(note(&mut n, &bt, "b writes its first"));
     ok(say(&mut n, &at, "#general", "a message is not a note"));
 }
