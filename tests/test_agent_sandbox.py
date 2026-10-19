@@ -310,7 +310,6 @@ def test_the_node_binary_is_built_in_the_folder_the_cargo_variable_names(monkeyp
     assert testnode.node_folder(tmp_path / "given") == tmp_path / "given" / testnode.FOLDER
 
 
-
 def test_no_write_root_reaches_above_the_cache_folders_it_names(layout):
     cache = layout.home / ".cache"
     above = [root for root in profile.write_roots(layout) if Path(root) in (cache, layout.home, layout.home.parent)]
