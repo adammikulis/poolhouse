@@ -111,6 +111,12 @@ def once(root: Path, dev: str) -> str:
     return f"primary-sync: the primary checkout moved from {head[:12]} to {target[:12]}"
 
 
+def refresh_runtime() -> None:
+    """Start the runtime build for the commit the primary checkout is on."""
+    subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "hooks" / "runtime-refresh"), "primary-sync"],
+                   check=False, stdin=subprocess.DEVNULL)
+
+
 def development(root: Path) -> str:
     """$POOLHOUSE_DEV_BRANCH, else the branch the primary checkout is on (empty when it is on none)."""
     return os.environ.get("POOLHOUSE_DEV_BRANCH") or lg.primary(root).branch
@@ -176,6 +182,8 @@ def main(argv: list[str]) -> int:
             print(f"primary-sync: left alone: {args.sha[:12]} did not reach {REMOTE}/{dev} in {args.wait_s:.0f} s")
             return 0
         print(sync(root, dev), flush=True)
+        if args.sha:
+            refresh_runtime()
     except (RuntimeError, OSError) as why:
         print(f"primary-sync: left alone: {why}")
     return 0
