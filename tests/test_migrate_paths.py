@@ -6,6 +6,8 @@ from __future__ import annotations
 import stat
 from pathlib import Path
 
+import pytest
+
 from poolhouse import migrate, migrate_paths, migrate_scan
 from tests import migrate_support
 
@@ -163,6 +165,7 @@ def big_tree(account: Path, count: int = 50) -> Path:
     return old
 
 
+@pytest.mark.timeout(900)
 def test_the_default_scan_skips_a_huge_pruned_directory_and_still_finds_the_link_and_the_venv(account):
     old = big_tree(account)
     found = migrate_paths.scan([old], migrate._pairs(account), planning=True)

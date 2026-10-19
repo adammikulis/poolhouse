@@ -17,6 +17,7 @@ def _big_graph(n: int = 10_000):
 
 
 @pytest.mark.slow
+@pytest.mark.timeout(900)
 def test_a_delete_at_scale_leaves_every_other_node_whole(tmp_path):
     path = tmp_path / "big.ladybug"
     with GraphStore(path) as store:

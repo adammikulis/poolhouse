@@ -26,6 +26,10 @@ with open(base / 'calls.log', 'a') as f:
     f.write(' '.join(sys.argv[1:]) + '\n')
     for name in ('PYTEST_ADDOPTS', 'POOLHOUSE_LIVE_API', 'LAND_HOSTILE'):
         f.write(f'ENV {name}={os.environ.get(name, "")}\n')
+import subprocess
+head = subprocess.run(['git', 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
+with open(base / 'tested.log', 'a') as f:
+    f.write(f'{sys.argv[1]} {head}\n')
 flag = base / 'fail_once'
 if flag.exists():
     flag.unlink()
@@ -39,8 +43,20 @@ for arg in sys.argv[2:]:
     if not (arg.startswith('tests/') and path.exists()):
         continue
     text = path.read_text()
+    if 'poolhouse.mod' in text and 'BROKEN' in (here / 'src' / 'poolhouse' / 'mod.py').read_text():
+        print(f'FAILED {arg}::test_x - mod is broken')
+        bad = 1
+    if 'MOVER' in text:
+        mover = base / 'mover'
+        for step in (['pull', '-q', '--ff-only', 'origin', __DEV__], ['add', 'src/poolhouse/mod.py'], ['commit', '-q', '-m', 'chore: mover'],
+                     ['push', '-q', 'origin', __DEV__]):
+            if step[0] == 'add':
+                (mover / 'src' / 'poolhouse' / 'mod.py').write_text(f'VALUE = {time.time_ns()}\n')
+            subprocess.run(['git', '-C', str(mover), *step], check=True, capture_output=True)
     if 'SLOW' in text:
         (base / 'started').write_text('1')
+        with open(base / 'slow.log', 'a') as f:
+            f.write(arg + '\n')
         for _ in range(600):
             if (base / 'proceed').exists():
                 break
@@ -94,7 +110,7 @@ class Project:
         git(self.root, "config", "user.name", "Test Agent")
         git(self.root, "config", "user.email", "agent@example.invalid")
         git(self.root, "config", "commit.gpgsign", "false")
-        self.write(self.root, "scripts/test", FAKE_TEST.replace("__BASE__", repr(str(base))))
+        self.write(self.root, "scripts/test", FAKE_TEST.replace("__BASE__", repr(str(base))).replace("__DEV__", repr(DEV)))
         self.write(self.root, "scripts/budgets", "import sys\nsys.exit(0)\n")
         for name in sorted(lander_files()):
             shutil.copy2(ROOT / name, self.root / name)
@@ -143,6 +159,12 @@ class Project:
         log = self.base / "calls.log"
         return log.read_text().splitlines() if log.exists() else []
 
+    def tested(self, kind: str = "all") -> list[str]:
+        """The commits the fake test runner ran ``kind`` on, in order."""
+        log = self.base / "tested.log"
+        rows = [x.split() for x in log.read_text().splitlines()] if log.exists() else []
+        return [sha for what, sha in rows if what == kind]
+
     def origin_head(self) -> str:
         """The development branch as the bare origin holds it."""
         return git(self.origin, "rev-parse", DEV)
@@ -183,9 +205,9 @@ class World:
                               capture_output=True, text=True, check=False, timeout=300)
         return done.returncode, done.stdout + done.stderr
 
-    def start_land(self, tree: Path, *args: str, who=None) -> subprocess.Popen:
+    def start_land(self, tree: Path, *args: str, who=None, hostile: dict[str, str] | None = None) -> subprocess.Popen:
         """Start ``scripts/land`` from ``tree`` and return the running process."""
-        return subprocess.Popen([sys.executable, str(entry(tree)), *args], cwd=tree, env=self.env(who or self.lander),
+        return subprocess.Popen([sys.executable, str(entry(tree)), *args], cwd=tree, env=self.env(who or self.lander, hostile),
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
 
     def accept(self, branch: str, sha: str, verdict: str = "accept", who=None) -> None:
@@ -193,6 +215,21 @@ class World:
         from poolhouse.workspace import landing
 
         landing.review(self.node.session(who or self.reviewer), branch, sha, verdict)
+
+    def hold_pushes(self) -> None:
+        """A post-receive hook on origin that marks each push as ``pushed`` and holds it until ``release`` exists."""
+        base = shlex.quote(str(self.proj.base))
+        hook = self.proj.origin / "hooks" / "post-receive"
+        hook.write_text(f"#!/bin/sh\ntouch {base}/pushed\nwhile [ ! -f {base}/release ]; do sleep 0.1; done\n", encoding="utf-8")
+        hook.chmod(0o755)
+
+    def mover(self) -> None:
+        """A clone of origin that a test file marked MOVER pushes a change to ``src/poolhouse/mod.py`` from, each time it runs."""
+        clone = self.proj.base / "mover"
+        git(self.proj.base, "clone", "-q", "-b", DEV, str(self.proj.origin), str(clone))
+        git(clone, "config", "user.name", "Mover")
+        git(clone, "config", "user.email", "mover@example.invalid")
+        git(clone, "config", "commit.gpgsign", "false")
 
     def install_hook(self) -> None:
         """Install the repository's pre-push hook; it checks a push made with the ``AGENT_PUSH`` environment."""

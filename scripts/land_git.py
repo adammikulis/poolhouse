@@ -270,12 +270,15 @@ def lander_set(names: set[str], read: Callable[[str], bytes | None]) -> set[str]
     return {name for name in names if LANDER.fullmatch(name)} | lander_modules(read)
 
 
+def commit_reader(root: Path | str, commit: str) -> tuple[set[str], Callable[[str], bytes | None]]:
+    """The scripts/ files of ``commit`` and a reader of their bytes that returns None for a file the commit lacks."""
+    listed = {name for name in sealed(root, "ls-tree", "--name-only", "-z", commit, "scripts/").stdout.split("\0") if name}
+    return listed, lambda name: blob(root, commit, name) if name in listed else None
+
+
 def lander_problem(top: Path | str, commit: str) -> str:
     """The first lander file (scripts/land*, scripts/affected*, every scripts/ module they import) whose bytes in the checkout ``top`` differ from those in ``commit``, or an empty string."""
-    listed = {name for name in sealed(top, "ls-tree", "--name-only", "-z", commit, "scripts/").stdout.split("\0") if name}
-
-    def from_commit(name: str) -> bytes | None:
-        return blob(top, commit, name) if name in listed else None
+    listed, from_commit = commit_reader(top, commit)
 
     def from_checkout(name: str) -> bytes | None:
         path = Path(top) / name
@@ -289,6 +292,13 @@ def lander_problem(top: Path | str, commit: str) -> str:
         if want is None or name not in present or from_checkout(name) != want:
             return name
     return ""
+
+
+def lander_moved(root: Path | str, old: str, new: str) -> str:
+    """The first lander file whose bytes differ between the commits ``old`` and ``new`` (one that only one of them has counts), or an empty string."""
+    names_old, read_old = commit_reader(root, old)
+    names_new, read_new = commit_reader(root, new)
+    return next((n for n in sorted(lander_set(names_old, read_old) | lander_set(names_new, read_new)) if read_old(n) != read_new(n)), "")
 
 
 def refuse_protected(*names: str) -> None:

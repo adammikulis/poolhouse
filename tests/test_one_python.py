@@ -66,15 +66,16 @@ def test_neither_installer_offers_to_run_on_something_older(script):
     assert "version_info" not in body, "an installer that probes a version accepts a range"
 
 
-def test_the_ci_test_matrix_requires_the_one_python_and_tries_the_next_as_an_experiment():
+def test_the_ci_test_shards_require_the_one_python_and_try_the_next_as_an_experiment():
     ci = workflow("ci.yml")
-    entries = ci["jobs"]["test"]["strategy"]["matrix"]["include"]
-    assert {e["python"] for e in entries if not e.get("experimental")} == {PYTHON}
-    experimental = {e["python"] for e in entries if e.get("experimental")}
-    assert experimental == {f"3.{int(PYTHON.split('.')[1]) + 1}"}
-    assert ci["jobs"]["test"]["continue-on-error"] == "${{ matrix.experimental || false }}"
+    shards = ci["jobs"]["shards"]
+    chosen = shards["strategy"]["matrix"]["python"]
+    nightly = f"3.{int(PYTHON.split('.')[1]) + 1}"
+    assert chosen == ("${{ fromJSON(github.event_name == 'schedule' && "
+                      f"'[\"{PYTHON}\", \"{nightly}\"]' || '[\"{PYTHON}\"]') }}}}"), "the next Python runs nightly only"
+    assert shards["continue-on-error"] == f"${{{{ matrix.python == '{nightly}' }}}}"
     pinned = [str(step.get("with", {}).get("python-version", ""))
-              for name, job in ci["jobs"].items() if name != "test" for step in job["steps"]]
+              for name, job in ci["jobs"].items() if name != "shards" for step in job["steps"]]
     assert {v for v in pinned if v and not v.startswith("${{")} == {PYTHON}
 
 

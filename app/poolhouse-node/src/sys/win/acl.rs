@@ -9,7 +9,8 @@ use windows_sys::Win32::Security::Authorization::{
 };
 use windows_sys::Win32::Security::{
     GetAce, GetAclInformation, GetSecurityDescriptorControl, GetSecurityDescriptorDacl, GetTokenInformation, AclSizeInformation, ACCESS_ALLOWED_ACE, ACL, ACL_SIZE_INFORMATION,
-    DACL_SECURITY_INFORMATION, PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES, SE_DACL_PROTECTED, TokenUser, TOKEN_QUERY, TOKEN_USER,
+    DACL_SECURITY_INFORMATION, INHERITED_ACE, PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES, SE_DACL_PROTECTED, TokenUser, TOKEN_QUERY,
+    TOKEN_USER,
 };
 use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION};
 
@@ -132,7 +133,8 @@ pub fn private_dir(path: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Whether ``path`` has a DACL that does not inherit and allows exactly the current user.
+/// Whether ``path`` has a DACL of one entry that allows exactly the current user: its own protected DACL, or the entry a file or
+/// directory inherits from a parent that is itself owner-only (what a file made under `private_dir` carries).
 pub fn owner_only(path: &Path) -> bool {
     owner_only_check(path).unwrap_or(false)
 }
@@ -148,7 +150,7 @@ fn owner_only_check(path: &Path) -> Result<bool> {
     let held = Descriptor(descriptor);
     let (mut control, mut revision) = (0u16, 0u32);
     // SAFETY: the descriptor is valid; the out-pointers are valid for the call.
-    if unsafe { GetSecurityDescriptorControl(held.0, &mut control, &mut revision) } == 0 || control & SE_DACL_PROTECTED == 0 {
+    if unsafe { GetSecurityDescriptorControl(held.0, &mut control, &mut revision) } == 0 {
         return Ok(false);
     }
     // SAFETY: an all-zero ACL_SIZE_INFORMATION is valid; the call fills it.
@@ -162,6 +164,14 @@ fn owner_only_check(path: &Path) -> Result<bool> {
     if unsafe { GetAce(dacl, 0, &mut ace) } == 0 {
         return Ok(false);
     }
-    let sid = unsafe { std::ptr::addr_of_mut!((*ace.cast::<ACCESS_ALLOWED_ACE>()).SidStart) };
-    Ok(sid_text(sid.cast())? == current_principal()?.0)
+    let ace = ace.cast::<ACCESS_ALLOWED_ACE>();
+    // SAFETY: `ace` points at the DACL's only entry, an access-allowed entry for the current user when the SID below matches.
+    let (inherited, sid) = unsafe { ((*ace).Header.AceFlags as u32 & INHERITED_ACE != 0, std::ptr::addr_of_mut!((*ace).SidStart)) };
+    if sid_text(sid.cast())? != current_principal()?.0 {
+        return Ok(false);
+    }
+    if control & SE_DACL_PROTECTED != 0 {
+        return Ok(true);
+    }
+    Ok(inherited && path.parent().is_some_and(owner_only))
 }
