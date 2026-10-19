@@ -99,15 +99,36 @@ def test_the_pytest_plugin_records_passing_tests_only(tmp_path):
     assert set(testhistory.load(store)) == {"test_p.py::test_pass"}
 
 
-def test_unknown_files_count_thirty_seconds_each_and_selectors_sum_per_file(tmp_path):
+def test_selectors_sum_per_file_from_the_recorded_seconds(tmp_path):
     root = _tree(tmp_path, ["test_a.py", "test_b.py", "test_new.py"])
     tests = _history({"test_a.py": 10.0, "test_b.py": 20.0})
     assert testhistory.estimate(tests, root, ["tests/test_a.py"]).seconds == 10.0
-    assert testhistory.estimate(tests, root, ["tests/test_new.py"]).seconds == testhistory.DEFAULT_FILE_S
     everything = testhistory.estimate(tests, root, [])
-    assert everything.seconds == 10.0 + 20.0 + testhistory.DEFAULT_FILE_S and everything.unknown == 1
+    assert everything.seconds == 10.0 + 20.0 + testhistory.unrecorded_file_seconds(
+        root, "tests/test_new.py", testhistory.typical_seconds(tests)) and everything.unknown == 1
     assert testhistory.estimate(tests, root, ["tests/test_a.py::test_0"]).seconds == 10.0
     assert everything.wall(3) == everything.seconds / 3
+
+
+def test_an_unrecorded_file_costs_its_test_functions_at_the_typical_recorded_test(tmp_path):
+    root = _tree(tmp_path, ["test_a.py", "test_b.py"])
+    (root / "tests" / "test_four.py").write_text("".join(f"def test_{n}():\n    pass\n\n" for n in range(4)))
+    (root / "tests" / "test_none.py").write_text("def helper():\n    pass\n")
+    (root / "tests" / "test_huge.py").write_text("".join(f"def test_{n}():\n    pass\n\n" for n in range(500)))
+    tests = _history({"test_a.py": 10.0, "test_b.py": 20.0}, tests_each=10)
+    assert testhistory.typical_seconds(tests) == 1.5
+    assert testhistory.estimate(tests, root, ["tests/test_four.py"]).seconds == 4 * 1.5
+    assert testhistory.estimate(tests, root, ["tests/test_none.py"]).seconds == 1.5
+    assert testhistory.estimate(tests, root, ["tests/test_huge.py"]).seconds == testhistory.DEFAULT_FILE_S
+
+
+def test_a_typical_test_leaves_out_the_slowest_one_percent_and_nothing_recorded_costs_the_flat_default(tmp_path):
+    tests = {f"tests/test_a.py::test_{n}": {"cpu": 1.0, "wall": 0.0, "n": 3} for n in range(99)}
+    tests["tests/test_a.py::test_slow"] = {"cpu": 1000.0, "wall": 0.0, "n": 3}
+    assert testhistory.typical_seconds(tests) == 1.0
+    assert testhistory.typical_seconds({}) is None
+    root = _tree(tmp_path, ["test_new.py"])
+    assert testhistory.estimate({}, root, ["tests/test_new.py"]).seconds == testhistory.DEFAULT_FILE_S
 
 
 def _verdict(root, tests, tier="all", rest=(), workers=1, **flags):

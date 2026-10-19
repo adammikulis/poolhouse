@@ -29,11 +29,7 @@ class Basis:
 
 def selectors(arguments: list[str]) -> list[str]:
     """The test paths and node ids among the pytest arguments."""
-    config = testoptions.parse_arguments(arguments)
-    try:
-        return list(config.args)
-    finally:
-        config._ensure_unconfigure()
+    return testoptions.positional(arguments)
 
 
 def explicit(chosen: list[str], root: Path) -> bool:
