@@ -177,3 +177,33 @@ def test_unused_group_interfaces_reference_real_ports_and_parameters():
     assert not validate_graph(value)["valid"]
     value["groups"]["unused"]["parameters"]["missing"]["parameter"] = "template"
     assert validate_graph(value)["valid"]
+
+
+def test_pool_invalid_records_and_unrelated_collisions_are_isolated():
+    import json
+    from types import SimpleNamespace
+
+    from poolhouse.studio.library import PoolLibrary
+    entries = []
+    class Session:
+        board = "project"
+        def read_all(self, **_):
+            return entries
+        def note_add(self, kind, title, body):
+            entries.append(SimpleNamespace(fields={"nkind": kind, "title": title, "body": body}))
+    session = Session()
+    library = PoolLibrary(session)
+    good = export_package(graph(), package_id="good", version="1", name="Good")
+    library.publish(good)
+    session.note_add("studio-package", "broken", "not JSON")
+    session.note_add("studio-package", "broken", "{}")
+    for name in ("First", "Second"):
+        package = export_package(graph(), package_id="collision", version="1", name=name)
+        session.note_add("studio-package", "collision", json.dumps(package))
+    assert library.get("good", "1") == good
+    assert library.search() == [good]
+    assert len(library.unavailable) == 3
+    with pytest.raises(ValueError, match="Conflicting"):
+        library.get("collision", "1")
+    another = export_package(graph(), package_id="another", version="1", name="Another")
+    assert library.publish(another) == another

@@ -66,16 +66,24 @@ class PoolLibrary:
 
     def _packages(self) -> list[dict]:
         versions = {}
+        self.conflicts = set()
+        self.unavailable = []
         for entry in self.session.read_all(kind="note"):
             if entry.fields.get("nkind") != "studio-package":
                 continue
-            package = import_package(json.loads(entry.fields.get("body", "")))
+            try:
+                package = import_package(json.loads(entry.fields.get("body", "")))
+            except (ValueError, TypeError, KeyError, RecursionError):
+                self.unavailable.append({"reason": "Invalid package record"})
+                continue
             key = (package["id"], package["version"])
             previous = versions.get(key)
             if previous and previous["digest"] != package["digest"]:
-                raise ValueError("Conflicting immutable package versions exist on this board")
+                self.conflicts.add(key)
             versions[key] = package
-        return list(versions.values())
+        self.unavailable.extend({"id": key[0], "version": key[1], "reason": "Conflicting immutable package version"}
+                                for key in sorted(self.conflicts))
+        return [package for key, package in versions.items() if key not in self.conflicts]
 
     def publish(self, package: dict) -> dict:
         checked = import_package(package)
@@ -90,7 +98,10 @@ class PoolLibrary:
 
     def get(self, package_id: str, version: str) -> dict | None:
         with self.lock:
-            return next((package for package in self._packages()
+            packages = self._packages()
+            if (package_id, version) in self.conflicts:
+                raise ValueError("Conflicting immutable package version exists on this board")
+            return next((package for package in packages
                          if package["id"] == package_id and package["version"] == version), None)
 
     def search(self, query: str = "", tags: list[str] | None = None) -> list[dict]:
