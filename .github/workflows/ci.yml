@@ -187,7 +187,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          python -m pip install pytest pytest-xdist numpy psutil keyring cryptography pyyaml
+          python -m pip install pytest pytest-xdist numpy psutil keyring cryptography pyyaml pywin32
           $env:PYTHONPATH = "src"
           python -m pytest tests/test_node_windows.py -q -n 0 -p no:cacheprovider
           if ($LASTEXITCODE -ne 0) { throw "the Windows node tests failed" }

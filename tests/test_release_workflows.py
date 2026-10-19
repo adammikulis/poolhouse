@@ -287,6 +287,31 @@ def test_the_bundle_is_set_up_and_opened_in_a_browser():
     assert any("packaging/smoke.py" in run for run in bundle_runs())
 
 
+def windows_node_installs() -> list[tuple[str, str]]:
+    """Each ``pip install`` line that comes before the Windows node tests, with its workflow."""
+    found = []
+    for name, workflow in (("ci.yml", CI), ("release-build.yml", BUILD)):
+        for job in workflow["jobs"].values():
+            for step in job.get("steps", []):
+                run = str(step.get("run", ""))
+                if "tests/test_node_windows.py" not in run:
+                    continue
+                found += [(name, line) for line in run.splitlines() if "pip install" in line
+                          and "pytest" in line]
+    return found
+
+
+def test_the_windows_node_tests_have_a_pip_install_to_check():
+    assert {name for name, _ in windows_node_installs()} == {"ci.yml", "release-build.yml"}
+
+
+@pytest.mark.parametrize("name,line", windows_node_installs())
+def test_the_windows_node_tests_install_the_windows_api_package(name, line):
+    """The node's Windows code imports win32api and win32security; PYTHONPATH=src installs no
+    dependency of the package."""
+    assert "pywin32" in line.split(), f"{name} runs the Windows node tests without pywin32"
+
+
 def test_no_curl_is_piped_into_a_reader_that_stops_early():
     """`grep -q` closes the pipe on its first match; under pipefail curl then fails 23."""
     for run in bundle_runs():
