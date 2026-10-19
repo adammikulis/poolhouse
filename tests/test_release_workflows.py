@@ -388,6 +388,10 @@ def test_the_dry_run_path_filter_covers_what_ships_the_app():
         assert expected in paths
 
 
+def test_a_development_push_builds_the_bundles_only_for_what_ships_the_app():
+    assert DRY_RUN["on"]["push"]["paths"] == DRY_RUN["on"]["pull_request"]["paths"]
+
+
 def test_the_dry_run_calls_release_without_publishing():
     jobs = list(DRY_RUN["jobs"].values())
     assert len(jobs) == 1

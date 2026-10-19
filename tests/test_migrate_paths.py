@@ -7,6 +7,8 @@ import stat
 import time
 from pathlib import Path
 
+import pytest
+
 from poolhouse import migrate, migrate_paths, migrate_scan
 from tests import migrate_support
 
@@ -161,6 +163,7 @@ def big_tree(account: Path, count: int = 200_000) -> Path:
     return old
 
 
+@pytest.mark.timeout(900)
 def test_the_default_scan_skips_a_huge_pruned_directory_and_still_finds_the_link_and_the_venv(account):
     old = big_tree(account)
     started = time.monotonic()

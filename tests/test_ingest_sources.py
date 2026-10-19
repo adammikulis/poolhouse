@@ -595,6 +595,7 @@ def a_wide_source(tmp_path, units, *, slug=OPEN_TEXTS, store=None):
 
 
 @pytest.mark.slow
+@pytest.mark.timeout(900)
 def test_what_a_fold_costs_as_a_source_grows_is_what_the_interval_is_chosen_from(tmp_path,
                                                                               capsys):
     """The measurement `FOLD_SECONDS` and `_fold_interval` are set from.

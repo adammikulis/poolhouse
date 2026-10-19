@@ -181,6 +181,20 @@ wanted and granted, enqueue and start time). `testqueue.forecast(runs, budget, n
 the count and estimated work ahead, and an estimated start time from the remaining estimate of the
 running runs plus the work ahead; `testslots.py status` prints these per queued run.
 
+## CI shards
+
+The CI `shards` job runs the test files as eight jobs. `scripts/ci_shards.py list --shards 8 --index N`
+prints the files of job N: every file under `tests/` goes to the job with the least recorded time so far,
+longest first, from the seconds per file in `tests/ci-durations.json` (a file with no record takes the
+median). Each job runs its files with `--slow --timeout=120 --junitxml=junit.xml` and uploads the junit file
+whether the tests passed or not; a test that needs longer carries `@pytest.mark.timeout(N)`. The check the
+repository requires, `test (ubuntu-latest, 3.13, --slow)`, is the job that waits for every shard. The next
+Python runs the same shards on the nightly schedule only.
+
+`scripts/ci_shards.py record --junit junit-*.xml` rewrites the durations file from the junit files of a
+CI run (the mean over the files that ran it), and `record --history` from the per-test history above.
+`scripts/ci_shards.py summary --shards 8` prints each job's total and the longest file.
+
 ## Landing a batch
 
 `scripts/land` (modules `scripts/land_*.py`) lands several ready branches with one verification.

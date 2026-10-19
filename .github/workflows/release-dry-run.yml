@@ -6,6 +6,12 @@ name: release dry run
 on:
   push:
     branches: ["*dev"]
+    paths:
+      - "app/**"
+      - "packaging/**"
+      - "src/poolhouse/fleet/**"
+      - "src/poolhouse/ui/**"
+      - ".github/workflows/release*.yml"
   pull_request:
     paths:
       - "app/**"

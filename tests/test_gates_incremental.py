@@ -203,6 +203,7 @@ class Session:
         return path.relative_to(self.root).as_posix()
 
 
+@pytest.mark.timeout(900)
 def test_every_checker_agrees_with_a_whole_run_through_edits(tmp_path, monkeypatch):
     if pyright_errors.skip():
         pytest.skip(pyright_errors.skip())
@@ -275,6 +276,7 @@ def test_edited_ruff_findings_agree_with_a_fresh_tool_process(tmp_path, monkeypa
     assert incremental["ruff-bugbear"] != first["ruff-bugbear"]
 
 
+@pytest.mark.timeout(900)
 def test_the_repository_itself_agrees_with_a_whole_run(tmp_path, monkeypatch):
     if pyright_errors.skip():
         pytest.skip(pyright_errors.skip())

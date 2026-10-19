@@ -29,23 +29,22 @@ concurrency:
 jobs:
   # The `mcp` extra (mcp 2.3 or later, MCP revision 2026-07-28) is installed on every OS below;
   # the agent and poolhouse-mcp tests start real MCP servers with it.
-  test:
+  #
+  # Eight shards of the test files, balanced by tests/ci-durations.json (scripts/ci_shards.py). The
+  # next Python runs on the nightly schedule only; a red there is reported and does not fail the run,
+  # so a break on the next Python shows early.
+  shards:
+    name: shard ${{ matrix.shard }} on Python ${{ matrix.python }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            python: "3.13"
-            pytest: --slow
-          # not required: a red here is reported and does not fail the run, so a break on the
-          # next Python shows early
-          - os: ubuntu-latest
-            python: "3.14"
-            pytest: --slow
-            experimental: true
-    runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.experimental || false }}
-    timeout-minutes: 90
+        python: ${{ fromJSON(github.event_name == 'schedule' && '["3.13", "3.14"]' || '["3.13"]') }}
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.python == '3.14' }}
+    timeout-minutes: 45
+    env:
+      SHARDS: "8"
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -53,18 +52,18 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ matrix.python }}
-          allow-prereleases: ${{ matrix.experimental || false }}
+          allow-prereleases: ${{ matrix.python == '3.14' }}
 
       # A pre-release Python is ahead of the wheels some dependencies publish (ladybug had
-      # none for 3.15). The experimental job then says so and stops; every other job must install.
+      # none for 3.15). The next-Python run then says so and stops; every other job must install.
       - name: every dependency has a build for this Python
         id: ready
         run: |
           if python -m pip install --upgrade pip && python -m pip install --dry-run -e ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,pdf,fleet-update]" > "$RUNNER_TEMP/dry.txt" 2>&1; then
             echo "ok=true" >> "$GITHUB_OUTPUT"
-          elif [ "${{ matrix.experimental }}" = "true" ]; then
+          elif [ "${{ matrix.python }}" = "3.14" ]; then
             tail -5 "$RUNNER_TEMP/dry.txt"
-            echo "::notice::poolhouse cannot be installed on Python ${{ matrix.python }} yet; the experimental run stops here"
+            echo "::notice::poolhouse cannot be installed on Python ${{ matrix.python }} yet; the run on it stops here"
             echo "ok=false" >> "$GITHUB_OUTPUT"
           else
             cat "$RUNNER_TEMP/dry.txt"
@@ -77,7 +76,7 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y bubblewrap rustc cargo
           python -m pip install --upgrade pip build
-          python -m pip install pytest pytest-xdist pyyaml numpy psutil pillow networkx gguf safetensors
+          python -m pip install pytest pytest-xdist pytest-timeout pyyaml numpy psutil pillow networkx gguf safetensors
           # the store, the Hub client and the page reader: 150 tests build a real store,
           # and a title read without trafilatura is a different title
           python -m pip install -e ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,pdf,fleet-update]"
@@ -99,15 +98,41 @@ jobs:
           binary=$(python scripts/testnode.py build)
           echo "DEV_TEST_NODE_BINARY=$binary" >> "$GITHUB_ENV"
 
+      # This shard's files; a test that outlasts 120 s fails alone and the run goes on. junit.xml
+      # holds every test's time, which scripts/ci_shards.py record --junit turns into the durations file.
       - name: tests
         if: steps.ready.outputs.ok == 'true'
-        run: python -m pytest tests/ -q -rfE --tb=short --durations=25 ${{ matrix.pytest }}
+        run: |
+          mapfile -t files < <(python scripts/ci_shards.py list --shards "$SHARDS" --index ${{ matrix.shard }})
+          python -m pytest "${files[@]}" -q -rfE --tb=short --durations=25 --slow --timeout=120 --junitxml=junit.xml
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: junit-${{ matrix.python }}-${{ matrix.shard }}
+          path: junit.xml
+          if-no-files-found: ignore
+          retention-days: 14
 
       # docs/FEATURES.md points at this as the proof each feature holds, and nothing else
       # runs it. --offline leaves out the three checks that reach a host off this machine.
       - name: every claim in FEATURES.md
-        if: matrix.pytest == '--slow' && steps.ready.outputs.ok == 'true'
+        if: matrix.python == '3.13' && matrix.shard == 1 && steps.ready.outputs.ok == 'true'
         run: python docs/verify_release.py --offline
+
+  # The one check the repository's rules name for the test files: it passes when every shard of
+  # the required Python passed.
+  test:
+    name: test (ubuntu-latest, 3.13, --slow)
+    needs: shards
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: every shard passed
+        run: |
+          echo "shards: ${{ needs.shards.result }}"
+          [ "${{ needs.shards.result }}" = "success" ]
 
   # Nightly, on demand, and on the release branch that ships the macOS app. A run takes
   # about three quarters of an hour, longer than the gap between two pushes.
@@ -128,7 +153,7 @@ jobs:
       - name: install test dependencies
         run: |
           python -m pip install --upgrade pip build
-          python -m pip install pytest pytest-xdist pyyaml numpy psutil pillow networkx gguf safetensors
+          python -m pip install pytest pytest-xdist pytest-timeout pyyaml numpy psutil pillow networkx gguf safetensors
           python -m pip install -e ".[test,store,hub,web,plot,privacy,guardrails,mcp,memory,fleet-onboard,pdf,fleet-update]"
           python -m spacy download en_core_web_sm
           # The CPU index carries no macOS arm64 wheel; the default one is CPU-only here.
@@ -145,9 +170,17 @@ jobs:
       - name: tests
         run: |
           read -ra args <<< "$MACOS_PYTEST"
-          python -m pytest "${args[@]}" --durations=40
+          python -m pytest "${args[@]}" --durations=40 --timeout=120 --junitxml=junit.xml
         env:
           MACOS_PYTEST: ${{ inputs.macos-pytest || 'tests/ -q --slow' }}
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: junit-macos
+          path: junit.xml
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: what was still running
         if: always()
