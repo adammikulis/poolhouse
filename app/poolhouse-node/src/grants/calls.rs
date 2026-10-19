@@ -80,7 +80,7 @@ fn write(node: &mut Node, board: &str, actor: &str, mut body: Map<String, Value>
     body.insert("sig".into(), json!(sig));
     let body = Value::Object(body);
     crate::fold::check_local(Kind::Grant, actor, &body, "")?;
-    node.host(board)?.board.append(Kind::Grant, actor, body, "")
+    node.host(board)?.board.append_person(Kind::Grant, actor, body)
 }
 
 fn issue(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
@@ -112,8 +112,11 @@ fn revoke(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
     if !node.persons.signed(&named.person, &signing_bytes(&body), sig) {
         return Err(Error::Denied("a revocation counts only when a person key enrolled on this node signed it".into()));
     }
-    if !standing(node, board)?.grants.iter().any(|g| g.issue.gid == named.gid) {
-        return Err(Error::Invalid("no grant of that id is on the board".into()));
+    let found = standing(node, board)?.grants.iter().find(|g| g.issue.gid == named.gid).map(|g| g.status == "revoked");
+    match found {
+        None => return Err(Error::Invalid("no grant of that id is on the board".into())),
+        Some(true) => return Ok(json!({"gid": named.gid, "revoked": true, "entry": ""})),
+        Some(false) => {}
     }
     let row = write(node, board, &actor, body, sig)?;
     Ok(json!({"gid": named.gid, "revoked": true, "entry": row.id()}))

@@ -154,7 +154,8 @@ fn reserve(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) ->
     let holder = format!("{board}/{}", access.holder.name);
     rpc::tick(node, &[board])?;
     let new = list.iter().filter(|(k, n)| !held(node, &holder, k, &held_as(k, board, n))).count();
-    node.leases.table.room_for(&node.leases.cfg, &holder, new)?;
+    let tree = node.tree_leases(board, &access.holder.name);
+    node.leases.table.room_for(&node.leases.cfg, &holder, new, tree)?;
     if let Some((kind, key, who)) = list.iter().find_map(|(k, n)| in_the_way(node, board, &holder, k, n).map(|who| (k, n, who))) {
         return Err(Error::Denied(format!("{kind} {key} is held by {who}")));
     }

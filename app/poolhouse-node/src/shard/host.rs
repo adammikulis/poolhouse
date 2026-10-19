@@ -286,7 +286,8 @@ impl Shards {
             class: Class::Background, estimate_s: Some(spec.timeout_s), ttl_s: Some(spec.timeout_s + GRACE_S + 300), pid: 0, remote: true, local: false, wait: false, tag: String::new(), quiet: false };
         rpc::tick(node, &[POOL_BOARD])?;
         let (now, id) = (node.leases.now(), format!("l{}", random_hex(8)?));
-        let id = node.leases.table.enqueue(&node.leases.cfg, now, &request, id)?;
+        let tree = node.tree_leases(POOL_BOARD, &name);
+        let id = node.leases.table.enqueue(&node.leases.cfg, now, &request, (id, tree))?;
         rpc::tick(node, &[POOL_BOARD])?;
         let held = node.leases.table.find(&id).is_some_and(|l| l.state == State::Held);
         if !held {

@@ -11,7 +11,7 @@ use crate::device::{fingerprint, public_hex};
 use crate::error::{Error, Result};
 use crate::fsutil::{hex, private_dir, random_hex, sha256_hex, unhex, write_atomic};
 use crate::log::Log;
-use crate::logbounds::{Bounds, Class, Held};
+use crate::logbounds::{Bounds, Class, Held, Shares};
 use crate::row::{check_body, valid_actor, valid_name, valid_origin, is_line, Kind, Row, GENESIS, MAX_ROW_BYTES, VERSION};
 use crate::rules::{self, head_message, held_back, tick};
 use crate::state::{Cut, Pin, State};
@@ -43,6 +43,29 @@ pub struct Board {
     bounds: Bounds,
     /// The rows and bytes each author has in this device's log (heads are no author's).
     authors: BTreeMap<String, Held>,
+    /// The rows and bytes the authors of each group have in this device's log: the group an author was put in (`group`), or the author alone.
+    lineages: BTreeMap<String, Held>,
+    /// The group each author was put in.
+    groups: BTreeMap<String, String>,
+}
+
+/// Rows built to follow the log but not written yet, and what they come to for the log, their authors and their groups.
+#[derive(Default)]
+struct Staged {
+    rows: Vec<Row>,
+    held: Held,
+    authors: BTreeMap<String, Held>,
+    groups: BTreeMap<String, Held>,
+}
+
+impl Staged {
+    fn push(&mut self, row: Row, group: String) {
+        let bytes = row.size() as u64 + 1;
+        self.held.add(bytes);
+        self.authors.entry(row.actor.clone()).or_default().add(bytes);
+        self.groups.entry(group).or_default().add(bytes);
+        self.rows.push(row);
+    }
 }
 
 fn wall_ms() -> u64 {
@@ -79,11 +102,12 @@ impl Board {
                 logs.insert(origin.clone(), Log::open(&path, id, &origin)?);
             }
         }
-        let mut board = Board { id: id.into(), dir: dir.into(), pool: pool.into(), key, origin: origin.clone(), logs, state, clock, removed: BTreeSet::new(), bounds, authors: BTreeMap::new() };
+        let mut board = Board { id: id.into(), dir: dir.into(), pool: pool.into(), key, origin: origin.clone(), logs, state, clock, removed: BTreeSet::new(), bounds, authors: BTreeMap::new(), lineages: BTreeMap::new(), groups: BTreeMap::new() };
         let mut authors: BTreeMap<String, Held> = BTreeMap::new();
         for row in board.log_mut(&origin)?.rows().iter().filter(|r| r.kind != Kind::Head) {
             authors.entry(row.actor.clone()).or_default().add(row.size() as u64 + 1);
         }
+        board.lineages = authors.clone();
         board.authors = authors;
         Ok(board)
     }
@@ -158,15 +182,33 @@ impl Board {
     }
 
     /// Add a row a session's own action asks for to this device's log; a repeated ``idem`` of the same actor returns the row
-    /// already written. It is held to the whole log less the reserve and to the author's share.
+    /// already written. It is held to the whole log less the reserve, to the author's share and to its group's.
     pub fn append(&mut self, kind: Kind, actor: &str, body: Value, idem: &str) -> Result<Row> {
         self.write(Class::Author, kind, actor, body, idem)
     }
 
-    /// Add a row the node writes for itself (an identity, the audit of a session ending, a notice); it is held to the whole log
-    /// and not to an author's share.
-    pub fn append_node(&mut self, kind: Kind, actor: &str, body: Value) -> Result<Row> {
-        self.write(Class::Node, kind, actor, body, "")
+    /// Add a row the node writes because a session registered or ended (an identity, the audit of an ending); it is held to the whole
+    /// log less the last stretch, and not to an author's share. A repeated ``idem`` of the same kind returns the row already written.
+    pub fn append_node(&mut self, kind: Kind, actor: &str, body: Value, idem: &str) -> Result<Row> {
+        self.write(Class::Node, kind, actor, body, idem)
+    }
+
+    /// Add a row a person's decision makes (a grant they signed or approved, a session they moved); it is held only to the whole log.
+    pub fn append_person(&mut self, kind: Kind, actor: &str, body: Value) -> Result<Row> {
+        self.write(Class::Last, kind, actor, body, "")
+    }
+
+    /// Put ``actor`` in the group ``key``: what its rows count toward in the share of the group, the process tree its session belongs to.
+    pub fn group(&mut self, actor: &str, key: &str) {
+        let from = self.groups.insert(actor.into(), key.into()).unwrap_or_else(|| actor.into());
+        let held = self.authors.get(actor).copied().unwrap_or_default();
+        if from == key || held.rows == 0 {
+            return;
+        }
+        let left = self.lineages.entry(from).or_default();
+        (left.rows, left.bytes) = (left.rows.saturating_sub(held.rows), left.bytes.saturating_sub(held.bytes));
+        let joined = self.lineages.entry(key.into()).or_default();
+        (joined.rows, joined.bytes) = (joined.rows + held.rows, joined.bytes + held.bytes);
     }
 
     fn write(&mut self, class: Class, kind: Kind, actor: &str, body: Value, idem: &str) -> Result<Row> {
@@ -175,7 +217,8 @@ impl Board {
         }
         check_body(&body)?;
         let origin = self.origin.clone();
-        if let Some(found) = self.rows(&origin).iter().find(|r| !idem.is_empty() && r.actor == actor && r.idem == idem) {
+        let same = |r: &&Row| r.idem == idem && if class == Class::Author { r.actor == actor } else { r.kind == kind };
+        if let Some(found) = self.rows(&origin).iter().find(|r| !idem.is_empty() && same(r)) {
             return Ok(found.clone());
         }
         let row = self.add(class, kind, actor, idem, body)?;
@@ -201,8 +244,59 @@ impl Board {
     }
 
     fn add(&mut self, class: Class, kind: Kind, actor: &str, idem: &str, body: Value) -> Result<Row> {
+        let row = self.stage(class, (kind, actor, idem), body, &Staged::default())?;
         let origin = self.origin.clone();
-        let (last, seen, now) = (self.rows(&origin).last().cloned(), self.state.t.seen, self.now_ms());
+        self.log_mut(&origin)?.append(row.clone())?;
+        self.count(&row);
+        Ok(row)
+    }
+
+    /// Add the rows ``drafts`` name (kind, actor and body), each as `append` would, in one write and one fsync; a row the bounds refuse
+    /// is left out. How many were added.
+    pub fn append_many(&mut self, drafts: Vec<(Kind, String, Value)>) -> Result<usize> {
+        let mut staged = Staged::default();
+        for (kind, actor, body) in drafts {
+            if kind == Kind::Head || !valid_actor(&actor) {
+                return Err(Error::Invalid("a row needs a real kind and a usable actor".into()));
+            }
+            check_body(&body)?;
+            match self.stage(Class::Author, (kind, &actor, ""), body, &staged) {
+                Ok(row) => staged.push(row, self.group_of(&actor)),
+                Err(Error::Quota(_)) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        if staged.rows.is_empty() {
+            return Ok(0);
+        }
+        let origin = self.origin.clone();
+        self.log_mut(&origin)?.extend(staged.rows.clone())?;
+        staged.rows.iter().for_each(|r| self.count(r));
+        match self.seal_when_due() {
+            Ok(()) | Err(Error::Quota(_)) => Ok(staged.rows.len()),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// The group ``actor`` counts in: the one it was put in, or itself.
+    fn group_of(&self, actor: &str) -> String {
+        self.groups.get(actor).map_or(actor, String::as_str).to_string()
+    }
+
+    /// Count a row written to the log toward its author and its group.
+    fn count(&mut self, row: &Row) {
+        if row.kind != Kind::Head {
+            let bytes = row.size() as u64 + 1;
+            self.authors.entry(row.actor.clone()).or_default().add(bytes);
+            self.lineages.entry(self.group_of(&row.actor)).or_default().add(bytes);
+        }
+    }
+
+    /// The row that follows the rows the log holds and the ``staged`` ones after them, when the bounds admit it.
+    fn stage(&mut self, class: Class, (kind, actor, idem): (Kind, &str, &str), body: Value, staged: &Staged) -> Result<Row> {
+        let origin = self.origin.clone();
+        let (seen, now) = (self.state.t.seen, self.now_ms());
+        let last = staged.rows.last().or_else(|| self.rows(&origin).last()).cloned();
         let (wall, counter) = tick(last.as_ref().map_or((0, 0), |r| (r.hlc.0, r.hlc.1)), now, seen);
         let mut row = Row {
             v: VERSION, board: self.id.clone(), origin: origin.clone(),
@@ -216,13 +310,13 @@ impl Board {
             return Err(crate::limits::refuse("the row is larger than a row may be", MAX_ROW_BYTES, "MAX_ROW_BYTES", "row.rs"));
         }
         let log = self.log_mut(&origin)?;
-        let held = Held { rows: log.rows().len(), bytes: log.bytes() };
-        let author = self.authors.get(actor).copied().unwrap_or_default();
-        self.bounds.admit(class, actor, bytes + 1, held, author)?;
-        self.log_mut(&origin)?.append(row.clone())?;
-        if kind != Kind::Head {
-            self.authors.entry(actor.into()).or_default().add(bytes + 1);
-        }
+        let held = Held { rows: log.rows().len(), bytes: log.bytes() }.plus(staged.held);
+        let group = self.group_of(actor);
+        let shares = Shares {
+            author: self.authors.get(actor).copied().unwrap_or_default().plus(staged.authors.get(actor).copied().unwrap_or_default()),
+            lineage: self.lineages.get(&group).copied().unwrap_or_default().plus(staged.groups.get(&group).copied().unwrap_or_default()),
+        };
+        self.bounds.admit(class, actor, bytes + 1, held, shares)?;
         Ok(row)
     }
 
@@ -234,7 +328,7 @@ impl Board {
         }
         let signature = self.key.sign(&head_message(&self.pool, &self.id, &self.origin, tip.seq, &tip.hash));
         let body = json!({"head": tip.seq, "hash": tip.hash, "public": public_hex(&self.key), "sig": hex(&signature.to_bytes())});
-        self.add(Class::Node, Kind::Head, "", "", body).map(Some)
+        self.add(Class::Last, Kind::Head, "", "", body).map(Some)
     }
 
     /// Store the rows of another device's log that verify; returns how many. A forged or

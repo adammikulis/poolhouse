@@ -1,4 +1,4 @@
-//! What one lineage may make the node do: projects, links and sessions as fast as it likes, and boards up to the number a node hosts.
+//! What one lineage may make the node do: projects, links and sessions as fast as it likes, and boards up to the number it may make and a node hosts.
 #![cfg(unix)]
 
 mod kit;
@@ -65,7 +65,7 @@ fn a_lineage_makes_links_as_fast_as_it_likes() {
 }
 
 #[test]
-fn the_live_sessions_of_one_process_tree_hold_a_bounded_number_of_boards_and_as_many_sessions_as_they_need() {
+fn one_process_tree_makes_a_bounded_number_of_boards_and_has_as_many_sessions_as_it_needs() {
     let state = tempdir().unwrap();
     let mut n = node(state.path());
     let outside = procs::process(true);
@@ -78,15 +78,18 @@ fn the_live_sessions_of_one_process_tree_hold_a_bounded_number_of_boards_and_as_
     assert!(refused["error"]["message"].as_str().unwrap().contains(&format!("the limit is {MOST_BOARDS_PER_LINEAGE}, set by MOST_BOARDS_PER_LINEAGE in node.rs")), "{refused}");
     for i in 0..200 {
         let reply = register(&mut n, &me(), "b0", &format!("s{i}"));
-        assert_eq!(reply["ok"], true, "a session of a board the tree holds already: {i}: {reply}");
+        assert_eq!(reply["ok"], true, "a session of a board the tree made already: {i}: {reply}");
     }
     let elsewhere = register(&mut n, &peer(&outside), "one-more", "s");
     assert_eq!(elsewhere["ok"], true, "another process tree is not held back by the first one's boards: {elsewhere}");
     let ended = register(&mut n, &me(), "b1", "s");
     let token = ended["result"]["token"].as_str().unwrap().to_string();
     ok(req_from(&mut n, &me(), "retire", "b1", &token, json!({})));
+    assert_eq!(code(&register(&mut n, &me(), "made-room", "s")), "quota", "a board whose session ended is the tree's still, until it has been quiet for the grace");
+    n.board_grace_ms = 0;
     let room_again = register(&mut n, &me(), "made-room", "s");
-    assert_eq!(room_again["ok"], true, "ending the only session of a board frees one of the tree's boards: {room_again}");
+    assert_eq!(room_again["ok"], true, "the board that held only the end of its session made room for one: {room_again}");
+    assert!(!n.boards.contains_key("b1"));
     assert_eq!(code(&register(&mut n, &me(), "and-no-more", "s")), "quota", "and the tree is back at its bound");
     done(vec![outside]);
 }

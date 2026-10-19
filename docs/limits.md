@@ -8,37 +8,61 @@ abuse by one session is not kept (the owner never asked for one). The security f
 
 ## At a bound
 
-- **A log** (`MAX_LOG_ROWS`, `MAX_LOG_BYTES`, `AUTHOR_SHARE_PERCENT`, `RESERVED_ROWS`, `RESERVED_BYTES`). One author (a session) writes at
-  most a quarter of the rows and of the bytes of a device's log; past it that author is refused with the share named and every other
-  session still writes. The log as a whole refuses author rows `RESERVED_ROWS` rows (and `RESERVED_BYTES` bytes) before its end; the
-  rest is for the node's own rows: a head (so the log is still signed and synced), an identity and the audit of a session ending (so a
-  session can still be ended). A lease entry or a notice a full log refuses is skipped: the lease table is the record of a lease. A
-  copy of another device's log that would pass the rows or the bytes is refused whole. A log that reaches the end of the reserve takes
-  nothing more and does not recover: it has no rotation or compaction, which `HANDOFF.md` lists as its own item.
-- **Leases** (`max_leases_per_holder`, `max_leases`). A request past either is refused with the limit; a reserve naming more resources
-  than a session may hold is refused whole before any is looked at. A quiet lease with no process behind it is kept `default_ttl_s`
-  between renewals however long it asks.
+- **A log** (`MAX_LOG_ROWS`, `MAX_LOG_BYTES`, `AUTHOR_SHARE_PERCENT`, `LINEAGE_SHARE_PERCENT`, `RESERVED_ROWS`, `RESERVED_BYTES`, `LAST_ROWS`,
+  `LAST_BYTES`). A session writes at most a tenth of the rows and of the bytes of a device's log, and the sessions of one process tree
+  (a lead, its subagents and the main sessions started from one terminal) a quarter between them; past either that session or tree is
+  refused with the share named and every session of another tree still writes. A session's registration, and the return of a main
+  session that ended, write an identity entry to its own share; a registration the log refuses leaves the registry as it was. Three
+  stretches of the log are kept for what an agent cannot make at will: author rows stop `RESERVED_ROWS` rows (and `RESERVED_BYTES`
+  bytes) before the end, which leaves room for the node's rows about a session's end (its identity entry, and one audit for each session
+  however often it ends, skipped when there is no room: the registry is the record of an ending); the last `LAST_ROWS` rows (and
+  `LAST_BYTES` bytes) are for a head, so the log is still signed and synced, and for the rows a person's decision makes (a grant they
+  signed or approved on the phone, a session they moved). A lease entry or a notice a full log refuses is skipped: the lease table is the
+  record of a lease. A copy of another device's log that would pass the rows or the bytes is refused whole. A log that reaches the end
+  of the last stretch takes nothing more and does not recover: it has no rotation or compaction, which `HANDOFF.md` lists as its own
+  item.
+- **Leases** (`max_leases_per_holder`, `max_leases_per_lineage`, `max_leases`). A request past any of the three is refused with the
+  limit; a reserve naming more resources than a session may hold is refused whole before any is looked at, and a reserve writes its
+  lease entries to the board in one write, so it holds the node for a fraction of a second whatever its size. The leases of one
+  process tree are counted together over every board. A quiet lease with no process behind it is kept `default_ttl_s` between renewals
+  however long it asks.
 - **`write-limits.json`** names only the keys of the rows above. A file that still holds a removed key (`sends`, `child_sends`,
   `subagent_sends`, `window_s`, `announces`, `announce_window_s`) stops the node starting and names the key: delete the key.
-- **Boards, rooms and subscriptions** (`MOST_BOARDS_PER_LINEAGE`, `MOST_ROOMS_PER_LINEAGE`, `MEMBERS_PER_ROOM`, `MOST_SUBS`). They count
-  what is held, not how fast it was made: a board is held while a session registered from the process tree is live, a room while it
-  exists, a subscription until it is removed. A new subscription at the bound first drops those to subagents that ended. A board is
-  never removed (it is a replicated log): `HANDOFF.md` lists reaping the boards nobody holds as its own item.
+- **Boards, rooms, subscriptions and waiting** (`MOST_BOARDS_PER_LINEAGE`, `BOARD_GRACE_MS`, `MOST_ROOMS_PER_LINEAGE`, `MEMBERS_PER_ROOM`,
+  `MOST_SUBS`, `MOST_WAITERS_PER_LINEAGE`). They count what is held, not how fast it was made: a board is held by the process tree that
+  made it by registering a session on it, for as long as it exists; a room while it exists; a subscription until it is removed or its
+  session ends. A new board past `MAX_BOARDS`, or past the share of its tree, first removes the boards that hold nothing but the starts and
+  ends of their sessions, left alone for `BOARD_GRACE_MS`. A board is removed only when no other device ever synced it (a board another
+  device holds a copy of would be refused by that device when it is made again), it holds no message, note, room, grant, task or any other
+  entry, no session of it is live or ended for cause, and no link or lease names it; a removed board is made again, empty, by the next
+  registration. A board with entries, or one another device synced, is never removed: `HANDOFF.md` lists the rest. A new subscription at
+  the bound first drops those to subagents that ended. A `lease_wait` holds a server thread for as long as it waits: a device answers
+  `MOST_WAITERS` at once and the processes of one process tree `MOST_WAITERS_PER_LINEAGE` of them.
+- **Accepted: a process tree is the unit of the per-tree bounds.** The bounds above that say "process tree" (boards, rooms, leases,
+  waiters, the share of a log) read the tree from the operating system by the process id of the socket. A process that forks twice and
+  is left to the system's first process is its own tree each time, so each one starts with a fresh share; and where the operating system
+  does not report the process (Windows) a main session and its subagents are the unit instead. The bounds that hold whatever the tree
+  (`MAX_BOARDS`, `MAX_LOG_ROWS`, `MAX_LOG_BYTES`, `max_leases`, `MOST_WAITERS`, `MAX_IDENTITIES`) are what stop a node, not a tree, from
+  being filled that way. The owner accepts this or asks for a stricter unit.
 
 | Name | Value | File and line | What it protects | Who changes it |
 |---|---|---|---|---|
 | `MAX_BOARDS` | 256 | `app/poolhouse-node/src/node.rs:38` | boards a node hosts: memory and open files | the owner, in source |
-| `MOST_BOARDS_PER_LINEAGE` | 32 | `app/poolhouse-node/src/node.rs:40` | boards that have a live session registered from one process tree: memory and open files | the owner, in source |
+| `MOST_BOARDS_PER_LINEAGE` | 32 | `app/poolhouse-node/src/node.rs:40` | boards one process tree made by registering a session on them, that still exist: memory and open files | the owner, in source |
+| `BOARD_GRACE_MS` | 3_600_000 | `app/poolhouse-node/src/node.rs:42` | how long a board that holds nothing but the starts and ends of its sessions is left alone before a new board may remove it | the owner, in source |
 | `MAX_IDENTITIES` | 10_000 | `app/poolhouse-node/src/identity.rs:16` | sessions a board holds: memory | the owner, in source |
 | `SHORT` | 6 | `app/poolhouse-node/src/identity.rs:15` | characters of the shortest name a session is given: when every length is taken no name is left | the owner, in source |
 | `MAX_TOKENS_PER_NAME` | 8 | `app/poolhouse-node/src/identity.rs:17` | tokens one session holds: the ninth ends the oldest | the owner, in source |
 | `MOST_TOKENS` | 2048 | `app/poolhouse-node/src/identity.rs:19` | tokens a node holds: memory; when full the tokens of sessions idle for `IDLE_MS` end | the owner, in source |
 | `IDLE_MS` | 30 * 24 * 3600 * 1000 | `app/poolhouse-node/src/identity.rs:20` | how long a session may be silent before its token can be dropped to make room | the owner, in source |
-| `MAX_LOG_ROWS` | 200_000 | `app/poolhouse-node/src/logbounds.rs:7` | rows one device's log keeps: memory and disk of a board | the owner, in source |
-| `MAX_LOG_BYTES` | 128 * 1024 * 1024 | `app/poolhouse-node/src/logbounds.rs:9` | bytes of rows one device's log keeps: memory and disk of a board | the owner, in source |
-| `RESERVED_ROWS` | 2_000 | `app/poolhouse-node/src/logbounds.rs:11` | rows at the end of the log only the node's own rows use: a head, an identity, the audit of a session ending | the owner, in source |
-| `RESERVED_BYTES` | 8 * 1024 * 1024 | `app/poolhouse-node/src/logbounds.rs:13` | bytes at the end of the log only the node's own rows use | the owner, in source |
-| `AUTHOR_SHARE_PERCENT` | 25 | `app/poolhouse-node/src/logbounds.rs:15` | the share of the rows and of the bytes one author writes: one session cannot fill the log for the others | the owner, in source |
+| `MAX_LOG_ROWS` | 200_000 | `app/poolhouse-node/src/logbounds.rs:8` | rows one device's log keeps: memory and disk of a board | the owner, in source |
+| `MAX_LOG_BYTES` | 128 * 1024 * 1024 | `app/poolhouse-node/src/logbounds.rs:10` | bytes of rows one device's log keeps: memory and disk of a board | the owner, in source |
+| `RESERVED_ROWS` | 2_000 | `app/poolhouse-node/src/logbounds.rs:12` | rows at the end of the log only the node's own rows use: the identity entry and the audit of a session ending, and the last `LAST_ROWS` of them for a head and a person's decisions | the owner, in source |
+| `RESERVED_BYTES` | 8 * 1024 * 1024 | `app/poolhouse-node/src/logbounds.rs:14` | bytes at the end of the log only the node's own rows use | the owner, in source |
+| `LAST_ROWS` | 500 | `app/poolhouse-node/src/logbounds.rs:16` | rows at the very end of the log only a head and a person's decisions use | the owner, in source |
+| `LAST_BYTES` | 2 * 1024 * 1024 | `app/poolhouse-node/src/logbounds.rs:18` | bytes at the very end of the log only a head and a person's decisions use | the owner, in source |
+| `AUTHOR_SHARE_PERCENT` | 10 | `app/poolhouse-node/src/logbounds.rs:20` | the share of the rows and of the bytes one session writes: one session cannot fill the log for the others | the owner, in source |
+| `LINEAGE_SHARE_PERCENT` | 25 | `app/poolhouse-node/src/logbounds.rs:22` | the share of the rows and of the bytes the sessions of one process tree write together: a lead with its subagents cannot fill the log for other trees | the owner, in source |
 | `MAX_ORIGINS` | 64 | `app/poolhouse-node/src/board.rs:19` | logs a device holds for one board: memory | the owner, in source |
 | `MAX_REJECTED` | 200 | `app/poolhouse-node/src/board.rs:20` | refused foreign rows kept for `status`: memory | the owner, in source |
 | `MAX_ROW_BYTES` | 128 * 1024 | `app/poolhouse-node/src/row.rs:14` | the size of one signed row | the owner, in source |
@@ -72,13 +96,15 @@ abuse by one session is not kept (the owner never asked for one). The security f
 | `HEARTBEAT_S` | 120 | `app/poolhouse-node/src/tasks/mod.rs:24` | seconds a task claim lives without a heartbeat: a dead worker's task is freed | the owner, in source |
 | `MAX_RESOURCES` | 8 | `app/poolhouse-node/src/lease/types.rs:14` | resources one lease request names | the owner, in source |
 | `max_leases_per_holder` | 512 | `app/poolhouse-node/src/lease/types.rs:253` | leases, held or queued, one session keeps: the table is swept whole on every lease call | the owner, `<state>/lease-config.json` |
+| `max_leases_per_lineage` | 1024 | `app/poolhouse-node/src/lease/types.rs:257` | leases, held or queued, the sessions of one process tree keep together, over every board: one tree cannot fill the table | the owner, `<state>/lease-config.json` |
 | `max_leases` | 4096 | `app/poolhouse-node/src/lease/types.rs:255` | leases, held or queued, the table keeps | the owner, `<state>/lease-config.json` |
 | `cpu_slots` | the device's cores | `app/poolhouse-node/src/lease/types.rs:239` | CPU slots the table grants and the most one request asks for | the owner, `<state>/lease-config.json` |
 | `memory_mb` | 0 (no budget) | `app/poolhouse-node/src/lease/types.rs:241` | megabytes the table grants and the most one request asks for | the owner, `<state>/lease-config.json` |
 | `MAX_TAG` | 64 | `app/poolhouse-node/src/lease/types.rs:16` | length of a lease tag | the owner, in source |
 | `max_ttl_s` | 86 400 | `app/poolhouse-node/src/lease/types.rs:251` | seconds one renewal keeps a lease; a quiet lease with no pid is kept `default_ttl_s` instead: a dead holder without a pid frees its resource | the owner, `<state>/lease-config.json` |
-| `MOST_WAITERS` | 64 | `app/poolhouse-node/src/lease/rpc.rs:22` | `lease_wait` requests a node holds a thread for at once | the owner, in source |
-| `MAX_WAIT_MS` | 600_000 | `app/poolhouse-node/src/lease/rpc.rs:20` | milliseconds a `lease_wait` holds a server thread and keeps its queued request alive: a client that left would otherwise hold both for ever | the owner, in source |
+| `MOST_WAITERS` | 64 | `app/poolhouse-node/src/lease/rpc.rs:25` | `lease_wait` requests a node holds a thread for at once | the owner, in source |
+| `MOST_WAITERS_PER_LINEAGE` | 16 | `app/poolhouse-node/src/lease/rpc.rs:27` | `lease_wait` requests the processes of one process tree hold a thread for at once: one tree cannot take every place | the owner, in source |
+| `MAX_WAIT_MS` | 600_000 | `app/poolhouse-node/src/lease/rpc.rs:23` | milliseconds a `lease_wait` holds a server thread and keeps its queued request alive: a client that left would otherwise hold both for ever | the owner, in source |
 | `MOST_ANCHORS` | 32 | `app/poolhouse-node/src/lineage.rs:23` | processes read above a requester when its lineage is found | the owner, in source |
 | `MAX_FRAME` | 1024 * 1024 | `app/poolhouse-node/src/wire.rs:10` | bytes of one frame on the local socket | the owner, in source |
 | `MAX_PEER_FRAME` | 4 * 1024 * 1024 | `app/poolhouse-node/src/wire.rs:13` | bytes of one frame between devices | the owner, in source |

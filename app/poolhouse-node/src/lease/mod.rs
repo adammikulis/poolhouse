@@ -39,8 +39,11 @@ pub struct Leases {
     /// The leases the file holds, serialised: a change that leaves them as they are writes nothing.
     saved: Vec<u8>,
     pub clock: Box<dyn Fn() -> u64 + Send>,
-    /// While set, `save` writes nothing: a call that changes the table many times writes it once at its end (`Leases::batch`).
+    /// While set, `save` writes nothing and the events for the boards are kept: a call that changes the table many times writes it and
+    /// tells the boards once at its end (`Leases::batch`).
     deferred: bool,
+    /// The events kept while `deferred`.
+    pending: Vec<Event>,
 }
 
 impl Leases {
@@ -60,7 +63,7 @@ impl Leases {
         };
         table.next_seq = table.next_seq.max(table.leases.iter().map(|l| l.seq).max().map_or(0, |s| s + 1));
         let saved = serde_json::to_vec(&table.leases)?;
-        Ok(Leases { cfg, table, path: dir.join(TABLE_FILE), config_path: dir.join(CONFIG_FILE), config_raw, saved, clock: Box::new(wall_ms), deferred: false })
+        Ok(Leases { cfg, table, path: dir.join(TABLE_FILE), config_path: dir.join(CONFIG_FILE), config_raw, saved, clock: Box::new(wall_ms), deferred: false, pending: Vec::new() })
     }
 
     /// Take the settings from the configuration file again when its bytes are not the ones they came from: a file that is gone
@@ -105,14 +108,25 @@ impl Leases {
         Ok(())
     }
 
-    /// Run ``change``, which changes the table many times, and write the table once when it ends, whether or not it failed.
+    /// Keep ``events`` for the boards until the batch ends; false, with nothing kept, when no batch is running.
+    pub fn hold(&mut self, events: &[Event]) -> bool {
+        if self.deferred {
+            self.pending.extend_from_slice(events);
+        }
+        self.deferred
+    }
+
+    /// Run ``change``, which changes the table many times, and write the table and tell the boards once when it ends, whether or not it
+    /// failed.
     pub fn batch<T>(node: &mut Node, change: impl FnOnce(&mut Node) -> Result<T>) -> Result<T> {
         node.leases.deferred = true;
         let done = change(node);
         node.leases.deferred = false;
         let saved = node.leases.save();
+        let events = std::mem::take(&mut node.leases.pending);
+        let told = rpc::mirror(node, &events);
         let value = done?;
-        saved.map(|()| value)
+        saved.and(told).map(|()| value)
     }
 
     /// Drop the dead and the expired, grant what the freed resources allow, and save when

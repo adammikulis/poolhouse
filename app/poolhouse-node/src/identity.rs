@@ -123,6 +123,26 @@ impl Registry {
         &self.names
     }
 
+    /// What the share of a log is kept under for ``name``: the process tree its main session was registered from, or that main session
+    /// alone when no tree is known.
+    pub fn tree(&self, name: &str) -> String {
+        let root = self.root(name);
+        match self.names.get(&root).and_then(|i| crate::lineage::tree_of(&i.lineage)) {
+            Some(top) => format!("tree:{}:{}", top.pid, top.start),
+            None => format!("session:{root}"),
+        }
+    }
+
+    /// Put ``name`` back as it was before a registration that was refused: ``before`` is what the registry held for it, nothing when it
+    /// was new.
+    pub fn restore(&mut self, name: &str, before: Option<Ident>) -> Result<()> {
+        match before {
+            Some(ident) => self.names.insert(name.into(), ident),
+            None => self.names.remove(name),
+        };
+        self.save()
+    }
+
     fn save(&self) -> Result<()> {
         write_atomic(&self.path, &serde_json::to_vec(&self.names)?)
     }

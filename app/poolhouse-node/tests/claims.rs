@@ -162,9 +162,9 @@ fn a_reserve_is_bad_when_empty_or_names_a_bad_key_and_takes_as_many_resources_as
 }
 
 #[test]
-fn the_defaults_bound_the_leases_of_one_holder_and_of_the_table() {
+fn the_defaults_bound_the_leases_of_one_holder_of_one_process_tree_and_of_the_table() {
     let defaults = poolhouse_node::lease::types::Config::default();
-    assert_eq!((defaults.max_leases_per_holder, defaults.max_leases), (512, 4096));
+    assert_eq!((defaults.max_leases_per_holder, defaults.max_leases_per_lineage, defaults.max_leases), (512, 1024, 4096));
 }
 
 #[test]

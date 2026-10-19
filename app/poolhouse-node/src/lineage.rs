@@ -98,6 +98,12 @@ pub fn of(pid: u32) -> Vec<Anchor> {
     out
 }
 
+/// The process that stands for the whole process tree of ``lineage``: the top of it, which every lineage that shares a process with it
+/// has too; None when the lineage is not known.
+pub fn tree_of(lineage: &[Anchor]) -> Option<Anchor> {
+    lineage.last().copied()
+}
+
 /// Whether the two lineages have a process in common.
 pub fn shares(a: &[Anchor], b: &[Anchor]) -> bool {
     a.iter().any(|x| b.contains(x))

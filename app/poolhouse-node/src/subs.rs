@@ -68,6 +68,14 @@ impl Subs {
     pub fn of(&self, name: &str) -> Vec<Sub> {
         self.by_name.get(name).cloned().unwrap_or_default()
     }
+
+    /// Forget every subscription of ``name``.
+    pub fn drop_for(&mut self, name: &str) -> Result<()> {
+        if self.by_name.remove(name).is_some() {
+            self.save()?;
+        }
+        Ok(())
+    }
 }
 
 /// Whether ``body`` names ``me`` as `@name`: not inside a word, a path or another `@`, and not as the start of a longer name.

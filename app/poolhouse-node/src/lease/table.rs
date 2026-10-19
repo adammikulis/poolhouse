@@ -125,7 +125,7 @@ impl Table {
 
     /// Add a request to the queue (or hand back the one this holder already has for the same
     /// resources). Refuses what could never be granted.
-    pub fn enqueue(&mut self, cfg: &Config, now: u64, req: &Request, id: String) -> Result<String> {
+    pub fn enqueue(&mut self, cfg: &Config, now: u64, req: &Request, (id, tree): (String, usize)) -> Result<String> {
         if req.resources.is_empty() || req.resources.len() > MAX_RESOURCES {
             return Err(Error::Invalid(format!("a lease asks for one to {MAX_RESOURCES} resources")));
         }
@@ -151,7 +151,7 @@ impl Table {
             mine.expires_ms = now + if mine.state == State::Held { ttl_s } else { cfg.queue_patience_s } * 1000;
             return Ok(mine.id.clone());
         }
-        self.room_for(cfg, &holder, 1)?;
+        self.room_for(cfg, &holder, 1, tree)?;
         let estimate_s = req.estimate_s.unwrap_or_else(|| default_estimate(req.class, cfg));
         self.next_seq += 1;
         self.leases.push(Lease {
@@ -163,10 +163,14 @@ impl Table {
         Ok(id)
     }
 
-    /// Refuse ``more`` leases for ``holder`` when the table or the holder would keep more than the configuration allows.
-    pub fn room_for(&self, cfg: &Config, holder: &str, more: usize) -> Result<()> {
+    /// Refuse ``more`` leases for ``holder`` when the table, the holder or the process tree of the holder (which keeps ``tree`` already)
+    /// would keep more than the configuration allows.
+    pub fn room_for(&self, cfg: &Config, holder: &str, more: usize, tree: usize) -> Result<()> {
         if self.leases.iter().filter(|l| l.holder == holder).count() + more > cfg.max_leases_per_holder {
             return Err(crate::limits::refuse("a session holds as many leases as it may: release one first", cfg.max_leases_per_holder, "max_leases_per_holder", "lease-config.json"));
+        }
+        if tree + more > cfg.max_leases_per_lineage {
+            return Err(crate::limits::refuse("the sessions of this process tree hold as many leases as they may: release one first", cfg.max_leases_per_lineage, "max_leases_per_lineage", "lease-config.json"));
         }
         if self.leases.len() + more > cfg.max_leases {
             return Err(crate::limits::refuse("this device's lease table is full: try again shortly", cfg.max_leases, "max_leases", "lease-config.json"));
