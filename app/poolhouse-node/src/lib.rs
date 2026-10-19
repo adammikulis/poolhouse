@@ -28,6 +28,7 @@ pub mod limits;
 pub mod lineage;
 pub mod links;
 pub mod log;
+pub mod logbounds;
 pub mod mail;
 pub mod membership;
 pub mod net;

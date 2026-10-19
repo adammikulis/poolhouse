@@ -92,6 +92,8 @@ pub struct Node {
     pub rates: Rates,
     /// What one session may write (`writes`).
     pub writes: crate::writes::WriteLimits,
+    /// The bounds a board opened from now on holds its own log to (`logbounds`).
+    pub log_bounds: crate::logbounds::Bounds,
     /// Who is asking, while a request is answered (`lineage::Asking`).
     pub asking: Asking,
     pub stop: Arc<AtomicBool>,
@@ -157,7 +159,7 @@ impl Node {
             evidence: Box::new(crate::approvals::context::Unrecorded), phones: crate::phone::Phones::open(&dir.join("phones.json"))?,
             phone_cert: crate::phone::cert::load_or_create(dir)?, phone_port: 0, local_server: Weak::new(), firsts: crate::presence::Firsts::new(crate::presence::default_presence()), offer: None, pusher: Box::new(crate::phone::push::NoPusher), land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, custody, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
-            projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), writes: crate::writes::WriteLimits::open(dir)?, asking: Asking::default(),
+            projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), writes: crate::writes::WriteLimits::open(dir)?, log_bounds: crate::logbounds::Bounds::default(), asking: Asking::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(), folds: 0,
             build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, key_binding: KeyBinding::File, declined: BTreeMap::new(),
         };
@@ -186,7 +188,7 @@ impl Node {
             }
             let dir = self.dir.join("boards").join(id);
             private_dir(&dir)?;
-            let mut board = Board::open(&dir.join("log"), id, &self.pool, self.key.clone())?;
+            let mut board = Board::open_bounded(&dir.join("log"), id, &self.pool, self.key.clone(), self.log_bounds)?;
             let names = Registry::open(&dir.join("names.json"))?;
             let quarantine = Quarantine::open(&dir.join("quarantine.json"))?;
             let subs = Subs::open(&dir.join("subs.json"))?;
@@ -340,8 +342,17 @@ impl Node {
         Ok(json!({"id": row.id(), "seq": row.seq, "sender": access.actor, "status": hosted.board.status(row.seq, &[])}))
     }
 
-    /// Write the current state of the session ``name`` to its board as an identity entry.
+    /// Write the current state of the session ``name`` to its board as an identity entry the node writes for itself (a session
+    /// registered or ended).
     pub fn write_identity(&mut self, board: &str, name: &str) -> Result<()> {
+        let hosted = self.hosted(board)?;
+        let ident = hosted.names.get(name).cloned().ok_or_else(|| Error::Denied("no such session".into()))?;
+        hosted.board.append_node(Kind::Identity, name, identity_body(name, &ident)?)?;
+        Ok(())
+    }
+
+    /// Write the current state of the session ``name`` after the session changed its own model: held to the session's share of the log.
+    pub fn write_model(&mut self, board: &str, name: &str) -> Result<()> {
         let hosted = self.hosted(board)?;
         let ident = hosted.names.get(name).cloned().ok_or_else(|| Error::Denied("no such session".into()))?;
         hosted.board.append(Kind::Identity, name, identity_body(name, &ident)?, "")?;

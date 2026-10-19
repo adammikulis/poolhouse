@@ -11,12 +11,12 @@ use crate::device::{fingerprint, public_hex};
 use crate::error::{Error, Result};
 use crate::fsutil::{hex, private_dir, random_hex, sha256_hex, unhex, write_atomic};
 use crate::log::Log;
+use crate::logbounds::{Bounds, Class, Held};
 use crate::row::{check_body, valid_actor, valid_name, valid_origin, is_line, Kind, Row, GENESIS, MAX_ROW_BYTES, VERSION};
 use crate::rules::{self, head_message, held_back, tick};
 use crate::state::{Cut, Pin, State};
 
 pub const MAX_ORIGINS: usize = 64;
-pub const MAX_LOG_ROWS: usize = 200_000;
 const MAX_REJECTED: usize = 200;
 /// A head is written after this many rows, or this many bytes of rows, without one.
 pub const HEAD_EVERY_ROWS: usize = 64;
@@ -40,6 +40,9 @@ pub struct Board {
     clock: Box<dyn Fn() -> u64 + Send>,
     /// The board fingerprints of the devices removed from the pool: nothing they sign is taken past what a removal names.
     removed: BTreeSet<String>,
+    bounds: Bounds,
+    /// The rows and bytes each author has in this device's log (heads are no author's).
+    authors: BTreeMap<String, Held>,
 }
 
 fn wall_ms() -> u64 {
@@ -52,7 +55,16 @@ impl Board {
         Board::open_with_clock(dir, id, pool, key, Box::new(wall_ms))
     }
 
+    /// `open` with the bounds ``bounds`` on the log.
+    pub fn open_bounded(dir: &Path, id: &str, pool: &str, key: SigningKey, bounds: Bounds) -> Result<Board> {
+        Board::open_with(dir, (id, pool, key), Box::new(wall_ms), bounds)
+    }
+
     pub fn open_with_clock(dir: &Path, id: &str, pool: &str, key: SigningKey, clock: Box<dyn Fn() -> u64 + Send>) -> Result<Board> {
+        Board::open_with(dir, (id, pool, key), clock, Bounds::default())
+    }
+
+    fn open_with(dir: &Path, (id, pool, key): (&str, &str, SigningKey), clock: Box<dyn Fn() -> u64 + Send>, bounds: Bounds) -> Result<Board> {
         if !valid_name(id) {
             return Err(Error::Invalid("a board id is a short lower-case word".into()));
         }
@@ -67,8 +79,12 @@ impl Board {
                 logs.insert(origin.clone(), Log::open(&path, id, &origin)?);
             }
         }
-        let mut board = Board { id: id.into(), dir: dir.into(), pool: pool.into(), key, origin: origin.clone(), logs, state, clock, removed: BTreeSet::new() };
-        board.log_mut(&origin)?;
+        let mut board = Board { id: id.into(), dir: dir.into(), pool: pool.into(), key, origin: origin.clone(), logs, state, clock, removed: BTreeSet::new(), bounds, authors: BTreeMap::new() };
+        let mut authors: BTreeMap<String, Held> = BTreeMap::new();
+        for row in board.log_mut(&origin)?.rows().iter().filter(|r| r.kind != Kind::Head) {
+            authors.entry(row.actor.clone()).or_default().add(row.size() as u64 + 1);
+        }
+        board.authors = authors;
         Ok(board)
     }
 
@@ -141,9 +157,19 @@ impl Board {
         &self.state.t.damaged
     }
 
-    /// Add a row to this device's log; a repeated ``idem`` of the same actor returns the row
-    /// already written.
+    /// Add a row a session's own action asks for to this device's log; a repeated ``idem`` of the same actor returns the row
+    /// already written. It is held to the whole log less the reserve and to the author's share.
     pub fn append(&mut self, kind: Kind, actor: &str, body: Value, idem: &str) -> Result<Row> {
+        self.write(Class::Author, kind, actor, body, idem)
+    }
+
+    /// Add a row the node writes for itself (an identity, the audit of a session ending, a notice); it is held to the whole log
+    /// and not to an author's share.
+    pub fn append_node(&mut self, kind: Kind, actor: &str, body: Value) -> Result<Row> {
+        self.write(Class::Node, kind, actor, body, "")
+    }
+
+    fn write(&mut self, class: Class, kind: Kind, actor: &str, body: Value, idem: &str) -> Result<Row> {
         if kind == Kind::Head || !(actor.is_empty() || valid_actor(actor)) || idem.len() > 128 || !is_line(idem) {
             return Err(Error::Invalid("a row needs a real kind, a usable actor and a clean key".into()));
         }
@@ -152,9 +178,11 @@ impl Board {
         if let Some(found) = self.rows(&origin).iter().find(|r| !idem.is_empty() && r.actor == actor && r.idem == idem) {
             return Ok(found.clone());
         }
-        let row = self.add(kind, actor, idem, body)?;
-        self.seal_when_due()?;
-        Ok(row)
+        let row = self.add(class, kind, actor, idem, body)?;
+        match self.seal_when_due() {
+            Ok(()) | Err(Error::Quota(_)) => Ok(row),
+            Err(e) => Err(e),
+        }
     }
 
     /// Sign the tip once enough rows have gone unsigned that a batch of a peer's request could
@@ -172,12 +200,9 @@ impl Board {
         Ok(())
     }
 
-    fn add(&mut self, kind: Kind, actor: &str, idem: &str, body: Value) -> Result<Row> {
+    fn add(&mut self, class: Class, kind: Kind, actor: &str, idem: &str, body: Value) -> Result<Row> {
         let origin = self.origin.clone();
         let (last, seen, now) = (self.rows(&origin).last().cloned(), self.state.t.seen, self.now_ms());
-        if self.rows(&origin).len() >= MAX_LOG_ROWS {
-            return Err(crate::limits::refuse("this log has as many rows as a device keeps", MAX_LOG_ROWS, "MAX_LOG_ROWS", "board.rs"));
-        }
         let (wall, counter) = tick(last.as_ref().map_or((0, 0), |r| (r.hlc.0, r.hlc.1)), now, seen);
         let mut row = Row {
             v: VERSION, board: self.id.clone(), origin: origin.clone(),
@@ -186,10 +211,18 @@ impl Board {
             hlc: (wall, counter, origin.clone()), kind, actor: actor.into(), idem: idem.into(), body, hash: String::new(),
         };
         row.hash = row.digest();
-        if row.size() > MAX_ROW_BYTES {
+        let bytes = row.size() as u64;
+        if bytes as usize > MAX_ROW_BYTES {
             return Err(crate::limits::refuse("the row is larger than a row may be", MAX_ROW_BYTES, "MAX_ROW_BYTES", "row.rs"));
         }
+        let log = self.log_mut(&origin)?;
+        let held = Held { rows: log.rows().len(), bytes: log.bytes() };
+        let author = self.authors.get(actor).copied().unwrap_or_default();
+        self.bounds.admit(class, actor, bytes + 1, held, author)?;
         self.log_mut(&origin)?.append(row.clone())?;
+        if kind != Kind::Head {
+            self.authors.entry(actor.into()).or_default().add(bytes + 1);
+        }
         Ok(row)
     }
 
@@ -201,7 +234,7 @@ impl Board {
         }
         let signature = self.key.sign(&head_message(&self.pool, &self.id, &self.origin, tip.seq, &tip.hash));
         let body = json!({"head": tip.seq, "hash": tip.hash, "public": public_hex(&self.key), "sig": hex(&signature.to_bytes())});
-        self.add(Kind::Head, "", "", body).map(Some)
+        self.add(Class::Node, Kind::Head, "", "", body).map(Some)
     }
 
     /// Store the rows of another device's log that verify; returns how many. A forged or
@@ -269,9 +302,9 @@ impl Board {
                 return Err(Error::Invalid("that log does not pass through the point the removal of its device named".into()));
             }
         }
-        if self.rows(origin).len() + took.rows.len() > MAX_LOG_ROWS {
-            return Err(crate::limits::refuse("this log would have more rows than a device keeps", MAX_LOG_ROWS, "MAX_LOG_ROWS", "board.rs"));
-        }
+        let held = self.logs.get(origin).map_or_else(Held::default, |l| Held { rows: l.rows().len(), bytes: l.bytes() });
+        let incoming = Held { rows: took.rows.len(), bytes: took.rows.iter().map(|r| r.size() as u64 + 1).sum() };
+        self.bounds.admit_copy(held, incoming)?;
         if took.rows.is_empty() {
             return if blocked { Err(Error::Invalid("the device that wrote that log was removed from the pool".into())) } else { Ok(0) };
         }

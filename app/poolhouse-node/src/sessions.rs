@@ -95,7 +95,7 @@ fn rebind(node: &mut Node, board: &str, p: &Map<String, Value>, peer: &Peer) -> 
     node.host(board)?.names.rebind(&name, &lineage)?;
     let ended = node.tokens.revoke_name(board, &name)?;
     let detail = format!("moved by the person key {}: {ended} tokens ended", by.chars().take(16).collect::<String>());
-    node.host(board)?.board.append(Kind::Audit, "node", json!({"event": "rebind", "subject": name, "detail": detail}), "")?;
+    node.host(board)?.board.append_node(Kind::Audit, "node", json!({"event": "rebind", "subject": name, "detail": detail}))?;
     Ok(json!({"name": name, "moved": true, "tokens_ended": ended}))
 }
 
@@ -107,7 +107,7 @@ fn whoami(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
             return Err(Error::Denied("a model is claimed on the session's own board".into()));
         }
         if node.host(board)?.names.claim_model(&access.actor, model, harness)? {
-            node.write_identity(board, &access.actor)?;
+            node.write_model(board, &access.actor)?;
         }
     }
     let mut out = json!({"name": access.actor, "board": access.holder.board, "target": board});
@@ -172,7 +172,7 @@ pub fn end(node: &mut Node, board: &str, target: &str, by: &str, reason: &str) -
     node.host(board)?.names.retire(target, reason)?;
     node.write_identity(board, target)?;
     let detail = format!("retired by {by} ({reason}): {revoked} tokens revoked, {freed} leases released");
-    node.host(board)?.board.append(Kind::Audit, by, json!({"event": "retire", "subject": target, "detail": detail}), "")?;
+    node.host(board)?.board.append_node(Kind::Audit, by, json!({"event": "retire", "subject": target, "detail": detail}))?;
     if reason == "idle" && !parent.is_empty() {
         let said = format!("{target} was retired for idleness: it held no lease and the node heard nothing from it for {} hours. \
                             Its token no longer works; if its work is not finished, start it again.", node.writes.idle_retire_s / 3600);

@@ -71,7 +71,8 @@ fn quiet(event: &Event) -> bool {
     }
 }
 
-/// Write what happened to the boards of the holders it concerns.
+/// Write what happened to the boards of the holders it concerns. The table is the record of a lease: a board that refuses the entry
+/// for a limit (the log is full, or the holder wrote its share) is skipped.
 pub fn mirror(node: &mut Node, events: &[Event]) -> Result<()> {
     for event in events.iter().filter(|e| !quiet(e)) {
         let (l, kind, body) = match event {
@@ -83,7 +84,10 @@ pub fn mirror(node: &mut Node, events: &[Event]) -> Result<()> {
                 (&**to, Kind::Audit, json!({"event": "lease_takeover", "subject": to.id, "detail": detail}))
             }
         };
-        node.host(&l.board)?.board.append(kind, &l.name, body, "")?;
+        match node.host(&l.board)?.board.append(kind, &l.name, body, "") {
+            Ok(_) | Err(Error::Quota(_)) => {}
+            Err(e) => return Err(e),
+        }
         if let Event::Ended(_, Why::Expired) = event {
             for (kind, key) in crate::claims::held_by(l) {
                 let said = format!("Your claim {kind} {key} expired: its time ran out before it was renewed. Take it again with: \
