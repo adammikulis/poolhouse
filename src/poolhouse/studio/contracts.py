@@ -56,6 +56,35 @@ def _endpoint(value: Any) -> dict:
     return dict(value)
 
 
+def _group_interface(definition: dict, inner: dict, definitions: dict) -> dict:
+    nodes = {node["id"]: node for node in inner["nodes"]}
+    interfaces = {}
+    for direction in ("inputs", "outputs"):
+        exposed = definition.get(direction, {})
+        if not isinstance(exposed, dict):
+            raise ValueError("Group ports must be an object")
+        interfaces[direction] = {}
+        for name, raw in exposed.items():
+            if not isinstance(name, str) or not IDENTIFIER.fullmatch(name):
+                raise ValueError("Group port names must be simple names")
+            endpoint = inner["resolve"](_endpoint(raw), direction)
+            node = nodes[endpoint["node"]]
+            ports = node_spec(node["type"], node.get("version", 1))[direction]
+            if not any(port["name"] == endpoint["port"] for port in ports):
+                raise ValueError("Group interface references an unknown port")
+            interfaces[direction][name] = endpoint
+    original = {node["id"]: node for node in definition["nodes"]}
+    for name, target in definition.get("parameters", {}).items():
+        if not isinstance(name, str) or not IDENTIFIER.fullmatch(name) or not isinstance(target, dict) or set(target) != {"node", "parameter"}:
+            raise ValueError("Invalid exposed group parameter")
+        node = original[target["node"]]
+        fields = (definitions[node["group"]].get("parameters", {}) if node["type"] == "group"
+                  else node_spec(node["type"], node.get("version", 1))["parameters"]["properties"])
+        if target["parameter"] not in fields:
+            raise ValueError("Group interface references an unknown parameter")
+    return interfaces
+
+
 def _expand(graph: dict, definitions: dict, stack: tuple = (), prefix: str = "") -> dict:
     if len(stack) > MAX_DEPTH:
         raise ValueError("Group nesting is too deep")
@@ -94,9 +123,7 @@ def _expand(graph: dict, definitions: dict, stack: tuple = (), prefix: str = "")
         inner = _expand(definition, definitions, (*stack, key), child_prefix)
         nodes.extend(inner["nodes"])
         edges.extend(inner["edges"])
-        instances[identifier] = {direction: {name: inner["resolve"](_endpoint(endpoint), direction)
-                                            for name, endpoint in definition.get(direction, {}).items()}
-                                 for direction in ("inputs", "outputs")}
+        instances[identifier] = _group_interface(definition, inner, definitions)
         if len(nodes) > MAX_NODES:
             raise ValueError("Expanded workflow has too many nodes")
 

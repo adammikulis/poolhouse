@@ -165,3 +165,15 @@ def test_pool_library_uses_shared_authenticated_board_log():
     changed = export_package(graph(), package_id="shared", version="1", name="Different")
     with pytest.raises(ValueError, match="immutable"):
         second.publish(changed)
+
+
+def test_unused_group_interfaces_reference_real_ports_and_parameters():
+    value = graph()
+    value["groups"] = {"unused": {"nodes": [{"id": "prompt", "type": "prompt"}], "edges": [],
+                                  "outputs": {"text": {"node": "prompt", "port": "missing"}}}}
+    assert not validate_graph(value)["valid"]
+    value["groups"]["unused"]["outputs"]["text"]["port"] = "prompt"
+    value["groups"]["unused"]["parameters"] = {"missing": {"node": "prompt", "parameter": "missing"}}
+    assert not validate_graph(value)["valid"]
+    value["groups"]["unused"]["parameters"]["missing"]["parameter"] = "template"
+    assert validate_graph(value)["valid"]
