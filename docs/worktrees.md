@@ -52,3 +52,20 @@ and the landing runner's `land/` trees, which the runner removes itself.
 
 A tree removed some other way (`git worktree remove`, `rm -rf` then `git worktree prune`) leaves nothing to
 reconcile.
+
+## A subagent's stop
+
+The Claude `SubagentStop` hook (`scripts/hooks/claude-subagent-stop`, `scripts/hooks/stop_landed.py`) refuses to let a
+subagent stop while a tree of its own is work: the worktree the harness made for it (`agent-ID`, ID being the agent id)
+and the trees named by the worktree and branch claims it holds. A tree it only stopped in, and the primary checkout, are
+not its own. The test is the one in the table above, against `origin/<development>` (the local development branch when
+origin has none): a commit that branch lacks, a changed or untracked file, an unfinished merge or rebase, or a tree git
+cannot read. A subagent whose directory is already gone, or that stopped outside any checkout, is let through.
+
+The refusal is one sentence that names the tree and says to land it with `scripts/land`, or, when the work is
+superseded or cannot land, to run `scripts/worktrees close TREE --bundle` (`--abandon 'reason'` for uncommitted files).
+The second refusal of the same subagent also posts `announce blocked`; the third stop goes through, posts a milestone
+naming the branch and tree, and the tree stays as work for `scripts/worktrees` and its cleanup. That stop announces no
+`done` and does not retire the subagent: its identity and token stay, so the lead can resume it to claim and land after a
+review accept. A stop that finds everything landed (or the tree closed or gone) forgets the count, announces `done`
+and retires the subagent. The count lives in the hooks' state directory (`POOLHOUSE_HOOK_STATE`).

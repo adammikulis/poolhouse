@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""A SubagentStop hook: records the subagent's model from its transcript, cancels the test jobs it left queued or running, announces that it finished as itself (never its last chat line) and retires its identity."""
+"""A SubagentStop hook: refuses a stop while the subagent's tree holds unlanded work; records the subagent's model from its transcript and cancels the test jobs it left queued or running; keeps the identity of a subagent handed back with work unlanded; otherwise announces that it finished as itself (never its last chat line) and retires its identity."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-import subagent_records
 import stop_jobs
+import stop_landed
+import subagent_records
 import tree_watch
 import workspace_hook
 
@@ -16,7 +17,7 @@ def transcript_model(path: str) -> str:
     """The model id on the last assistant line of a transcript, or an empty string."""
     found = ""
     try:
-        with open(path) as lines:
+        with Path(path).open() as lines:
             for line in lines:
                 try:
                     model = json.loads(line).get("message", {}).get("model", "")
@@ -46,6 +47,10 @@ def main() -> int:
     if event is None:
         return 0
     environment = workspace_hook.own_environment(event, "SubagentStop")
+    verdict = stop_landed.check(event, environment)
+    if verdict.reason:
+        print(json.dumps({"decision": "block", "reason": verdict.reason}))
+        return 0
     if environment is None:
         return 0
     path = event.get("agent_transcript_path") or ""
@@ -53,9 +58,11 @@ def main() -> int:
     if model:
         workspace_hook.run(["poolhouse-workspace", "whoami", "--model", model, "--harness", "claude-code"],
                            "SubagentStop", environment=environment)
+    stop_jobs.cancel("SubagentStop", str(event.get("cwd") or ""), environment.get("POOLHOUSE_WORKSPACE_AGENT", ""), environment)
+    if verdict.unfinished:
+        return 0
     place = checkout_note(event)
     tree_watch.stopped("SubagentStop", str(event.get("cwd") or ""), environment)
-    stop_jobs.cancel("SubagentStop", str(event.get("cwd") or ""), environment.get("POOLHOUSE_WORKSPACE_AGENT", ""), environment)
     said = workspace_hook.run(["poolhouse-workspace", "announce", "done", f"finished{place}"[:200]],
                               "SubagentStop", environment=environment)
     agent = str(event.get("agent_id") or "")

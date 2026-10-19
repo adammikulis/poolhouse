@@ -117,6 +117,13 @@ def test_the_redteam_runs_on_a_push_and_a_pull_request_that_touch_what_it_attack
         assert set(REDTEAM_PATHS) <= set(triggers[event]["paths"]), event
 
 
+def test_the_redteam_installs_the_extras_its_tests_import():
+    """The red-team tests import the keystore and the web and store layers (collection fails without them)."""
+    install = next(s["run"] for s in read("redteam.yml")["jobs"]["redteam"]["steps"] if "pip install" in str(s.get("run", "")))
+    extras = install.split('".[')[1].split("]")[0].split(",")
+    assert {"test", "redteam", "memory", "store", "hub", "web", "privacy", "guardrails", "mcp", "fleet-onboard"} <= set(extras)
+
+
 def test_a_redteam_run_cancels_only_a_superseded_pull_request_run():
     concurrency = read("redteam.yml")["concurrency"]
     assert concurrency["group"] == "redteam-${{ github.ref }}"
