@@ -95,7 +95,7 @@ def _exists(root: Path, relative: Path) -> bool:
 def _candidates(run: dict, files_root: Path, authorize):
     for node in run["graph"]["nodes"]:
         state = run["nodes"][node["id"]]
-        if state["state"] != "done":
+        if state["state"] != "done" or state.get("reused_from"):
             continue
         if not authorize(node, state["outputs"]):
             raise PermissionError("This artifact is no longer authorized.")

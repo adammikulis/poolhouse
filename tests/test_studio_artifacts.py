@@ -90,6 +90,13 @@ def test_arbitrary_structured_json_and_dataset_paths_are_not_artifacts(exported)
     assert artifact_files(run, root, lambda node, outputs: True) == []
 
 
+def test_cached_outputs_do_not_enumerate_other_runs_paths(exported):
+    root, run, _ = exported
+    run['nodes']['export']['reused_from'] = 'b' * 32
+    run['nodes']['export']['outputs']['artifact']['path'] = str(root / 'other-run')
+    assert artifact_files(run, root, lambda node, outputs: True) == []
+
+
 def test_node_output_directory_symlink_is_refused(exported):
     root, run, folder = exported
     moved = root / 'moved'
