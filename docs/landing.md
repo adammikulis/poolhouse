@@ -80,6 +80,22 @@ The whole suite runs on GitHub, in the `ci` workflow, for each push of the devel
 documentation (`paths-ignore` skips `**.md` and `docs/**`). `scripts/land` and a hand push never wait for it. `scripts/test full`
 and `scripts/test all` stay available by hand.
 
+`scripts/hooks/pushed` starts `scripts/ci_watch.py SHA` detached after an agent's push of the development branch, on the
+person's machine only (`lan.on_the_persons_machine`), when `gh` is installed. The watcher asks `gh run list --commit SHA
+--workflow ci` for the push's run (up to three minutes), waits for it with `gh run watch` (at most 100 minutes, longer than the
+longest job timeout in `ci.yml`) and reads the result:
+
+- Green posts nothing.
+- Red posts one `task` message to the session that pushed (`$POOLHOUSE_WORKSPACE_AGENT` of the pushing process) naming the
+  commit, the failing job and the first three failing test names from the end of `gh run view --log-failed`. The failure is work
+  for that session or the lead in the same turn. A red run that follows two other red pushes of the branch is also announced as
+  `blocked`, once; a green run ends the streak and a cancelled or skipped run counts for nothing.
+- A missing `gh`, no login, Actions off, a push that starts no run (documentation only) or a run still going after the limit
+  is one plain line in `<git-common-dir>/ci-watch/SHA.log` and exit 0; the push is never refused. A missing `gh` is also said
+  once at the push. If the board does not take a red message the watcher exits 1 and the next call for that commit posts it.
+- A second call for the same commit waits for the first, then prints its recorded result (`<git-common-dir>/ci-watch/SHA.json`)
+  and posts nothing.
+
 ## Exit status
 
 0 landed or already landed; 5 stopped, the last line says why; 6 landed and the local development branch could not follow.
