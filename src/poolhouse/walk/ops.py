@@ -303,8 +303,18 @@ def _sign_in(walker: Walker) -> str:
     return ""
 
 
+RAIL_GROUPS = {"chat": "conversations", "models": "studio", "pool": "pool", "fit": "pool"}
+
+
 def _tab(page: Any, view: str) -> None:
-    page.click(f"#nav-tabs a:text-is('{view.capitalize()}')")
+    """Open a screen from the rail: its group's tab, then its page link when the group shows one."""
+    if view == "settings":
+        page.click("#nav-settings")
+    else:
+        page.click(f"#nav-tabs a[data-workspace='{RAIL_GROUPS[view]}']")
+        link = page.locator(f"#nav-context a[href='#{view}']")
+        if link.is_visible() and not page.locator(f"#{view}").is_visible():
+            link.click()
     page.wait_for_selector(f"#{view}:not([hidden])")
 
 

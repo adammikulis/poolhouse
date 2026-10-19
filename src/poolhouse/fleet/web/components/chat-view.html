@@ -215,7 +215,7 @@
         this.options.hidden = false;
         await this.modelPicker.catalogue();
         this.workspace.models(available);
-        this.outputTokens.value = this.savedSettings.max_output_tokens ?? "";
+        if (document.activeElement !== this.outputTokens) this.outputTokens.value = this.savedSettings.max_output_tokens ?? "";
         await this.coding.restore(this.savedSettings, this.picker.value);
         this.updateReadiness();
         await this.paintList();
@@ -406,6 +406,7 @@
           accepted = this.coding.accepted;
           return;
         }
+        reply.closest(".msg").querySelector(".reply-activity").textContent = "Waiting for model…";
         const messages = [...this.messages, { role: "user", content: text }];
         const r = await fetch("/ui/chat", { method: "POST", headers: M.headers, signal: this.request.signal,
           body: JSON.stringify({ conversation: this.open, model: this.picker.value, messages,
