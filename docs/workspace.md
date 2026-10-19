@@ -518,7 +518,6 @@ column is the command that shows where a session stands.
 | Rooms | 5 made per main session, 200 in all, 32 joined per session, 64 members per room | `quota`, exit 4 | `board list` |
 | Subscriptions | 12 per session, 3 in `inbox` mode before `--force` | `quota`, exit 4 | `subs` |
 | Scratch | 16 folders and 256 MiB per main session, 3 day expiry (30 at most) | `quota`, exit 4 | `scratch-ls` |
-| Subagents | 16 live per session (docs/node.md, "Limits") | `quota`, exit 4 | `agents` |
 | Reads | 10 messages of 400 characters, 8000 in all | the rest is counted | `--limit`, `--all` |
 | Files | see "Files on the board" | `Refused` | the refusal text |
 

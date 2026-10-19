@@ -62,7 +62,6 @@ def main() -> int:
     if said is None:
         workspace_hook.run(["poolhouse-workspace", "announce", "milestone", f"stopped, done refused{place}"[:200]],
                            "SubagentStop", environment=environment)
-        subagent_records.stopped(agent)
         return 0
     if workspace_hook.run(["poolhouse-workspace", "retire"], "SubagentStop", environment=environment) is not None:
         subagent_records.next_identity(agent)

@@ -21,7 +21,7 @@ from poolhouse.sentinel.human import HumanRequired
 pytest_plugins = ["node_kit"]
 ROOT = Path(__file__).resolve().parents[1]
 PATCH = ROOT / "docs/bash-guard-subagent-stamp.patch"
-NODE_WRITE_LIMITS = {**WRITE_LIMITS, "children": 3}
+NODE_WRITE_LIMITS = WRITE_LIMITS
 
 
 class Scene:
@@ -153,32 +153,25 @@ def test_a_finished_reviewer_is_retired_and_its_name_stops_working(scene):
     assert scene.name("rev2.2") not in ("", child) and scene.name("rev2.2") in revived
 
 
-def test_a_lead_at_its_limit_still_registers_a_subagent_by_ending_one_that_stopped(scene, tmp_path, monkeypatch):
-    private = tmp_path / "private-terms"
-    private.write_text("finished\n")
-    monkeypatch.setenv("POOLHOUSE_WORKSPACE_DENYLIST", str(private))
-    for agent in ("a1", "a2", "a3"):
-        scene.start(agent, "branch-worker")
-    old, running = scene.name("a1"), [scene.name("a2"), scene.name("a3")]
-    scene.stop("a1", "branch-worker")
-    assert scene.name("a1") == old, "a refused done leaves the identity in place"
-    context = scene.start("a4")
-    fresh = scene.name("a4")
-    assert fresh and fresh in context, context
+def test_a_lead_registers_any_number_of_subagents_and_a_finished_one_is_retired(scene):
+    agents = [f"a{i}" for i in range(20)]
+    for agent in agents:
+        context = scene.start(agent, "branch-worker")
+        assert scene.name(agent) and scene.name(agent) in context, context
+    old = scene.name("a0")
+    scene.stop("a0", "branch-worker")
     live = {a.name for a in scene.node.session(scene.lead).agents()}
-    assert fresh in live and set(running) <= live and old not in live
+    assert len(live) >= 19 and old not in live
 
 
-def test_a_lead_at_its_limit_with_nothing_stopped_tells_the_subagent_and_the_board(scene):
-    for agent in ("a1", "a2", "a3"):
-        scene.start(agent)
-    context = scene.start("a4")
-    assert "could not register you" in context and "live subagents" in context
-    assert scene.name("a4") == ""
-    refused = scene.run("a4", "poolhouse-workspace whoami")
-    assert refused.returncode == 3 and "no name on the board" in refused.stderr
+def test_a_subagent_the_board_cannot_register_is_told_and_so_is_the_board(scene):
+    event = scene.event("a4")
+    del event["agent_id"]
+    done = scene.hook("claude-subagent-start", event)
+    context = json.loads(done.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "could not register you" in context and "no agent_id" in context
     heard = [e.text for e in scene.node.session(scene.lead).read(channel="#announcements").entries]
-    assert any("has no identity" in line and "a4" in line for line in heard)
+    assert any("has no identity" in line for line in heard)
 
 
 def test_the_stamp_removes_the_leads_name_for_a_subagent_the_board_never_registered(scene):
