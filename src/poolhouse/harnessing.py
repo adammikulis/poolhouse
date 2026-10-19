@@ -321,7 +321,6 @@ def opened(args: argparse.Namespace, harness: str, served: tuple[str, str, int],
             say(f"the model of {session.name} ({alias}, {harness}) is not recorded: the serving endpoint and session identity must verify")
         pre = hook_command("pre", role=args.role, agent=session.name, root=cwd, protect=protected_paths(files))
         post = hook_command("post", role=args.role, agent=session.name, root=cwd, protect=[])
-        harnessid.announce(session, f"{harness} on {alias} ({args.role}), project {cwd.name}", say)
         starter = getattr(session, "parent", None)
         owner = starter.name if starter else args.parent
         brief = harnessid.brief(session.name, alias, harness, owner, args.orders_from)

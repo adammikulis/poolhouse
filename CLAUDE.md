@@ -49,8 +49,8 @@ line it gives. The commit message rules in AGENTS.md apply to the subject and bo
 ## Subagents and the Agent tool
 
 The Agent tool's worktree isolation provides the worktree half of a subagent brief; the brief still names the branch. The SubagentStart
-hook registers the subagent as its own identity under a board-assigned name and delivers it in the brief; SubagentStop announces done
-as the subagent and retires it. A subagent prompt carries the workspace line from AGENTS.md and needs no invite or token. The
+hook registers the subagent as its own identity under a board-assigned name and delivers it in the brief; SubagentStop records its done on the board
+for the sessions subscribed to it (its parent is, by default) and retires it. A subagent prompt carries the workspace line from AGENTS.md and needs no invite or token. The
 `.claude/agents/branch-worker.md` agent is the one-branch worker: it reads AGENTS.md and this file, announces, works in its worktree,
 commits named files and reports. The harness confines it to that fresh tree, so `.claude/agents/branch-finisher.md` (no isolation) is
 the one for a branch that already has a claimed sibling worktree.

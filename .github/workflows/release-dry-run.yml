@@ -4,14 +4,8 @@ name: release dry run
 # carries. release-please.yml calls release.yml the same way for the release branch;
 # this covers a development push and a pull request touching the same surface.
 on:
-  push:
-    branches: ["*dev"]
-    paths:
-      - "app/**"
-      - "packaging/**"
-      - "src/poolhouse/fleet/**"
-      - "src/poolhouse/ui/**"
-      - ".github/workflows/release*.yml"
+  schedule:
+    - cron: "10 5 * * *"
   pull_request:
     paths:
       - "app/**"

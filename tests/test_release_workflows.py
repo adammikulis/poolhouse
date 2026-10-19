@@ -119,12 +119,11 @@ def test_the_other_ci_jobs_keep_their_time_limits(job, limit):
 REDTEAM_PATHS = ["src/poolhouse/**", "tests/redteam*/**", "tests/test_redteam_*.py", "docs/redteam/**", "scripts/redteam*"]
 
 
-def test_the_redteam_runs_on_a_push_and_a_pull_request_that_touch_what_it_attacks():
-    """The workflow file is not on the default branch, so a schedule alone never starts it."""
+def test_the_redteam_runs_on_a_pull_request_that_touches_what_it_attacks_and_never_on_a_push():
     triggers = read("redteam.yml")["on"]
-    assert triggers["push"]["branches"] == ["0.3dev"]
-    for event in ("push", "pull_request"):
-        assert set(REDTEAM_PATHS) <= set(triggers[event]["paths"]), event
+    assert "push" not in triggers
+    assert set(REDTEAM_PATHS) <= set(triggers["pull_request"]["paths"])
+    assert "schedule" in triggers and "workflow_dispatch" in triggers
 
 
 def test_the_redteam_installs_the_extras_its_tests_import():
@@ -414,8 +413,8 @@ def test_the_dry_run_can_be_dispatched_on_the_release_branch():
     assert "tag" not in (DRY_RUN["jobs"]["build"].get("with") or {})
 
 
-def test_the_dry_run_watches_the_development_branches():
-    assert DRY_RUN["on"]["push"]["branches"] == ["*dev"]
+def test_the_dry_run_does_not_run_on_a_development_push():
+    assert "push" not in DRY_RUN["on"] and "schedule" in DRY_RUN["on"]
 
 
 def test_the_dry_run_path_filter_covers_what_ships_the_app():
@@ -430,8 +429,12 @@ def test_the_dry_run_path_filter_covers_what_ships_the_app():
         assert expected in paths
 
 
-def test_a_development_push_builds_the_bundles_only_for_what_ships_the_app():
-    assert DRY_RUN["on"]["push"]["paths"] == DRY_RUN["on"]["pull_request"]["paths"]
+def test_no_workflow_but_ci_and_codeql_starts_on_a_push_and_those_only_for_main_or_cheaply():
+    """A push to a development branch starts the cheap gates job and the code scan; every other workflow runs on a
+    pull request, the schedule or a dispatch."""
+    for name in ("redteam.yml", "pool-check.yml", "release-dry-run.yml"):
+        assert "push" not in read(name)["on"], name
+    assert read("codeql.yml")["on"]["push"]["branches"] == ["main"]
 
 
 def test_the_dry_run_calls_release_without_publishing():
@@ -449,3 +452,12 @@ def test_the_smoke_screenshots_are_not_published():
     uploads = [i for i, step in enumerate(publish) if "gh release" in step.get("run", "")
                or "release" in str(step.get("uses", ""))]
     assert uploads and all(cleared < i for i in uploads)
+
+
+def test_a_development_push_does_not_run_the_full_suite():
+    """The shards, the required test check and the Windows job run on a pull request, the nightly schedule, a
+    dispatch and a push to main; a push to a development branch runs only the jobs without such a condition."""
+    for job in ("shards", "test", "windows"):
+        condition = CI["jobs"][job]["if"]
+        assert "github.event_name != 'push'" in condition and "refs/heads/main" in condition, (job, condition)
+    assert "if" not in CI["jobs"]["gates"] or "push" not in CI["jobs"]["gates"]["if"]

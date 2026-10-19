@@ -98,4 +98,50 @@ def test_a_worker_is_retired_when_it_stops_with_its_branch_landed_and_not_before
     git(scene.tree, "push", "origin", f"agent-{AGENT}:{DEV}")
     assert not scene.refused()
     assert not scene.token_works()
-    assert scene.announcements().count(("done", scene.child.name)) == 1
+    assert [kind for kind, _ in scene.announcements()] == ["blocked", "milestone"]
+
+
+def said(scene, who, *argv):
+    done = scene.node.cli(*argv, "--json", who=who)
+    assert done.returncode == 0, (argv, done.stderr, done.stdout)
+    return json.loads(done.stdout)
+
+
+def land_and_stop(scene):
+    git(scene.tree, "push", "origin", f"agent-{AGENT}:{DEV}")
+    assert not scene.refused()
+
+
+def test_the_parent_is_subscribed_to_its_subagent_and_the_roll_up_hears_no_join(scene):
+    assert {"type": "agent", "target": scene.child.name, "mode": "inbox"} in said(scene, scene.lead, "subs")
+    assert scene.announcements() == []
+
+
+def test_a_finished_subagent_is_a_done_its_subscribers_learn_in_their_own_mode(scene):
+    watcher, stranger = scene.node.member("sess2"), scene.node.member("sess3")
+    said(scene, watcher, "subscribe", "agent", scene.child.name, "--mode", "digest")
+    land_and_stop(scene)
+    heard = [m for m in said(scene, scene.lead, "inbox") if scene.child.name in json.dumps(m)]
+    assert len(heard) == 1 and "subject: done" in heard[0]["text"] and f"agent-{AGENT}" in heard[0]["text"]
+    assert said(scene, stranger, "inbox") == []
+    assert said(scene, watcher, "inbox") == []
+    assert scene.child.name in scene.node.cli("digest", who=watcher).stdout
+    assert scene.announcements() == []
+
+
+def test_a_subagent_handed_back_with_work_unlanded_says_no_done(scene):
+    for _ in range(3):
+        scene.refused()
+    assert [m for m in said(scene, scene.lead, "inbox") if "subject: done" in m["text"]] == []
+
+
+def test_a_parent_at_its_subscription_limit_drops_the_ones_to_ended_subagents_for_a_new_child(scene):
+    ended = [scene.node.member(f"old{n}") for n in range(11)]
+    for old in ended:
+        said(scene, scene.lead, "subscribe", "agent", old.name, "--mode", "digest")
+        assert scene.node.cli("retire", who=old).returncode == 0
+    scene.event = {**scene.event, "agent_id": "fedcba98765"}
+    scene.start()
+    held = {(row["type"], row["target"]) for row in said(scene, scene.lead, "subs")}
+    assert ("agent", scene.child.name) in held and not any(("agent", old.name) in held for old in ended)
+    assert len(held) == 2

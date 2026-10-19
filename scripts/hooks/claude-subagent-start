@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import child_watch
 import rules_loader
 import subagent_records
 import tree_watch
@@ -72,7 +73,7 @@ def unregistered(event: dict, parent: dict, why: str) -> str:
 
 
 def workspace_brief(event: dict) -> str:
-    """Register the subagent as its own identity, announce it as itself and return its brief."""
+    """Register the subagent as its own identity, subscribe its parent to it and return its brief."""
     parent = workspace_hook.parent_environment(event, "SubagentStart")
     if parent is None:
         return ""
@@ -86,7 +87,7 @@ def workspace_brief(event: dict) -> str:
     purpose = " ".join(str(event.get("description") or event.get("agent_type") or "subagent").split())[:190]
     tree_watch.started("SubagentStart", str(event.get("cwd") or ""),
                        environment.get("POOLHOUSE_WORKSPACE_AGENT", ""), purpose)
-    workspace_hook.run(["poolhouse-workspace", "announce", "joined", purpose], "SubagentStart", environment=environment)
+    child_watch.follow(event, parent, made["id"])
     done = workspace_hook.run(["poolhouse-workspace", "brief", "--registered"],
                               "SubagentStart", environment=environment)
     return done.stdout.strip() if done else ""

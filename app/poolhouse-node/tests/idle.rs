@@ -1,5 +1,5 @@
-//! A device holds a bounded number of live main sessions per harness and per terminal, idle sessions are marked and retired by the
-//! node, and a session that ends retires itself and its subagents and nobody else.
+//! A terminal registers as many main sessions as it needs, idle sessions are marked and retired by the node, and a session that ends
+//! retires itself and its subagents and nobody else.
 #![cfg(unix)]
 
 mod kit;
@@ -14,9 +14,7 @@ use tempfile::tempdir;
 const DAY_MS: u64 = 86_400_000;
 
 fn open(dir: &std::path::Path) -> Node {
-    let mut n = node(dir);
-    (n.writes.sessions_per_harness, n.writes.sessions_per_lineage) = (24, 8);
-    n
+    node(dir)
 }
 
 fn start(n: &mut Node, from: &Peer, harness: &str, session: &str) -> Value {
@@ -87,48 +85,22 @@ fn a_session_that_ended_registers_again_from_its_own_lineage_and_a_subagent_that
 }
 
 #[test]
-fn a_terminal_that_starts_sessions_without_end_is_stopped_at_its_bound_and_another_terminal_is_not_held_back() {
+fn a_terminal_starts_as_many_live_sessions_as_it_needs_and_so_does_a_harness_across_terminals() {
     let dir = tempdir().unwrap();
     let mut n = open(dir.path());
-    let (hostile, normal) = (process(true), process(true));
-    for i in 0..8 {
-        ok(start(&mut n, &peer(&hostile), "claude-code", &format!("runaway-{i}")));
+    let terminals = (process(true), process(true));
+    let tokens: Vec<String> = (0..80)
+        .map(|i| ok(start(&mut n, &peer(&terminals.0), "claude-code", &format!("runaway-{i}")))["token"].as_str().unwrap().to_string())
+        .collect();
+    for i in 0..30 {
+        assert_eq!(ok(start(&mut n, &peer(&terminals.1), "claude-code", &format!("other-{i}")))["created"], true);
     }
-    let refused = start(&mut n, &peer(&hostile), "claude-code", "runaway-8");
-    assert_eq!(code(&refused), "quota");
-    assert!(refused["error"]["message"].as_str().unwrap().contains("this terminal already has 8 live claude-code sessions"), "{refused}");
-    for _ in 0..30 {
-        assert_eq!(code(&start(&mut n, &peer(&hostile), "claude-code", "runaway-9")), "quota");
-    }
-    let known = ok(start(&mut n, &peer(&hostile), "claude-code", "runaway-3"));
-    assert_eq!(known["created"], false, "a session that is already live gets its token again at the bound");
-    let holder = ok(start(&mut n, &peer(&normal), "claude-code", "person"));
-    assert_eq!(holder["created"], true, "a person in another terminal starts a session as before");
-    assert_eq!(names(&mut n, holder["token"].as_str().unwrap(), false).len(), 9, "the refusals registered nothing");
-    ok(start(&mut n, &peer(&hostile), "other-harness", "runaway-0"));
-    ok(req(&mut n, "retire", "demo", known["token"].as_str().unwrap(), json!({})));
-    ok(start(&mut n, &peer(&hostile), "claude-code", "runaway-8"));
-    done(vec![hostile, normal]);
+    assert_eq!(names(&mut n, &tokens[0], false).len(), 110, "every one of them is live");
+    done(vec![terminals.0, terminals.1]);
 }
 
 #[test]
-fn a_harness_holds_a_bounded_number_of_live_sessions_whatever_terminal_they_come_from() {
-    let dir = tempdir().unwrap();
-    let mut n = open(dir.path());
-    n.writes.sessions_per_harness = 3;
-    let terminals: Vec<_> = (0..4).map(|_| process(true)).collect();
-    let tokens: Vec<String> = (0..3).map(|i| ok(start(&mut n, &peer(&terminals[i]), "claude-code", &format!("s{i}")))["token"].as_str().unwrap().to_string()).collect();
-    let refused = start(&mut n, &peer(&terminals[3]), "claude-code", "s3");
-    assert_eq!(code(&refused), "quota");
-    assert!(refused["error"]["message"].as_str().unwrap().contains("this device already has 3 live claude-code sessions"), "{refused}");
-    ok(start(&mut n, &peer(&terminals[3]), "land-runner", "runner"));
-    ok(req(&mut n, "retire", "demo", &tokens[1], json!({})));
-    ok(start(&mut n, &peer(&terminals[3]), "claude-code", "s3"));
-    done(terminals);
-}
-
-#[test]
-fn idle_sessions_are_marked_do_not_count_toward_the_bound_and_are_retired_after_a_day() {
+fn idle_sessions_are_marked_and_are_retired_after_a_day() {
     let dir = tempdir().unwrap();
     let (stale, quiet, busy, busy_token);
     {
@@ -141,7 +113,6 @@ fn idle_sessions_are_marked_do_not_count_toward_the_bound_and_are_retired_after_
     age(dir.path(), &stale, DAY_MS + 60_000);
     age(dir.path(), &quiet, 2 * 3600 * 1000);
     let mut n = open(dir.path());
-    n.writes.sessions_per_harness = 2;
     let listed = names(&mut n, &busy_token, true);
     let find = |who: &str| listed.iter().find(|a| a["name"] == who).unwrap().clone();
     assert_eq!(find(&busy)["idle"], false);
@@ -149,7 +120,6 @@ fn idle_sessions_are_marked_do_not_count_toward_the_bound_and_are_retired_after_
     assert_eq!((find(&stale)["retired"].clone(), find(&stale)["retired_reason"].clone()), (json!(true), json!("idle")), "idle for a day: retired by the node");
     let me = me();
     ok(start(&mut n, &me, "claude-code", "newcomer"));
-    assert_eq!(code(&start(&mut n, &me, "claude-code", "one-too-many")), "quota", "the idle one made room and the new ones are live");
     let audit = ok(req(&mut n, "read", "demo", &busy_token, json!({"kind": "audit"})));
     assert!(audit["entries"].as_array().unwrap().iter().any(|e| e["fields"]["event"] == "retire" && e["fields"]["subject"] == stale.as_str()), "the node says it retired it");
 }

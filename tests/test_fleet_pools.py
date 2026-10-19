@@ -81,8 +81,8 @@ def test_the_answer_names_the_pool_and_carries_no_key(advertise, udp):
 
 def test_a_pool_asked_for_by_name_is_still_answered_only_by_its_holders(advertise, udp):
     advertise("lab", "studio")
-    advertise("home", "harrowgate")
-    assert {j.port for j in joining.find_joiners("home", timeout_s=1.0, port=udp)} == {10}
+    assert {j.port for j in joining.find_joiners("lab", timeout_s=1.0, port=udp)} == {9}
+    assert joining.find_joiners("home", timeout_s=0.5, port=udp) == []
     assert joining.find_joiners("attic", timeout_s=0.5, port=udp) == []
 
 

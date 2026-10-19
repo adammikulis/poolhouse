@@ -80,7 +80,7 @@ Facts from code. "Blocks" means what a stale entry stops another agent doing.
   "live" for up to 8 h and keep their tokens. `child_renewal.renew` extends only on a live
   top-level parent's call (`child_renewal.py:10-25`).
 - SubagentStop refuses a stop while the subagent's tree holds unlanded work, then (unless it was handed back
-  with work unlanded) announces `done` and records the model (`scripts/hooks/claude-subagent-stop`, `stop_landed.py`); it revokes nothing. A killed
+  with work unlanded) posts its `done` for its subscribers and records the model (`scripts/hooks/claude-subagent-stop`, `stop_landed.py`); it revokes nothing. A killed
   terminal never runs it.
 
 ### (d) Background jobs

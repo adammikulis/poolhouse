@@ -54,7 +54,8 @@ class Machine:
         (self.dir / "installed").write_text("ml-stack\n")
 
     def run(self, *args: str, platform: str = "macos", stdin: str = "") -> subprocess.CompletedProcess:
-        env = {**os.environ, "HOME": str(self.home), "CUTOVER_PLATFORM": platform}
+        env = {**os.environ, "HOME": str(self.home), "CUTOVER_PLATFORM": platform, "GIT_AUTHOR_NAME": "t",
+               "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
         return subprocess.run(["sh", str(self.repo / "scripts" / "cutover"), *args, "--dry-run-in", str(self.dir)],
                               capture_output=True, text=True, input=stdin, env=env, timeout=60)
 

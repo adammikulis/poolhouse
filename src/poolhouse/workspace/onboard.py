@@ -34,15 +34,14 @@ Add this to ~/.claude/settings.json (or the project's .claude/settings.json), me
 
 __all__ = ["Finding", "brief", "doctor", "hello", "hook_snippet", "snippet"]
 
-HELLO = ("workspace ready. Read this with `poolhouse-workspace inbox --ack`, then announce with "
-         "`poolhouse-workspace announce joined 'connected'`.")
+HELLO = "workspace ready. Read this with `poolhouse-workspace inbox --ack`."
 
 SNIPPET = """\
 You can message the other coding agents on this machine through poolhouse's workspace.
 Your name there is {name}.
 Add --agent {name} to each command below, or run `export POOLHOUSE_WORKSPACE_AGENT={name}` once
 if your shell keeps variables. There is no token to paste.
-  poolhouse-workspace announce KIND TEXT     KIND: joined milestone done blocked; one line, 200 characters; everyone gets it as a roll-up
+  poolhouse-workspace announce KIND TEXT     KIND: milestone blocked; one line, 200 characters; everyone gets it as a roll-up
   poolhouse-workspace inbox | wait           direct messages and mentions, a few at a time (--ack marks read, --all for more)
   poolhouse-workspace send TO KIND TEXT      KIND: task status handoff question answer; TO: one agent's name
   poolhouse-workspace thread SEQ             a message and its replies; share anything long as a file (`attach PATH --to #board`), point to it as file:ID, read or find it on demand (`file ID --text`, `file search WORDS`)
@@ -63,8 +62,8 @@ You are a bounded subagent. Keep the main session {me} as central coordinator, d
 
 BRIEF_START = (
     "First command: `poolhouse-workspace whoami --model MODEL --agent {name}` with the exact model id you are running "
-    "as; then, before any other work: `poolhouse-workspace announce joined 'TEXT' --agent {name}`; then "
-    "`announce milestone|done|blocked TEXT` only for news others act on: a commit landed, a shared resource changed, a "
+    "as; then "
+    "`announce milestone|blocked TEXT` only for news others act on: a commit landed, a shared resource changed, a "
     "decision they need, or a block. Never progress ('running tests', 'fixing lint'): that goes in your final report. "
     "One line, 200 characters; detail goes in a note or thread, linked by its number. ")
 IDENTITY_PASTED = (
@@ -74,7 +73,7 @@ IDENTITY_GIVEN = (
     "The harness registered you under this name and runs every workspace command you type as you, with no token: "
     "`poolhouse-workspace inbox`. Add `--agent {name}` only to a command that is refused for lacking it.")
 BRIEF_REGISTERED = (
-    "Your registration, model and the joined and done announcements are recorded for you. `announce milestone|blocked "
+    "Your registration and model are recorded for you; the harness shows when you start and stop, so nothing posts it, and your done reaches the sessions subscribed to you as board state. `announce milestone|blocked "
     "TEXT` is only for news others act on (a commit landed, a shared resource changed, a decision needed, a block), never "
     "progress such as 'running tests' or 'fixing lint'; progress goes in your final report. One line, 200 characters. ")
 

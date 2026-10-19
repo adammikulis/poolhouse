@@ -30,7 +30,7 @@ specified in a note, not built.
 | 4 | Subagent prompt carries the workspace line | `onboard.BRIEF` text | c | generated from registry |
 | 5 | Main session coordinates; subagents never elect themselves | prose; design (`session-liveness` 4-5) | a | coordinator lease code |
 | 6 | Lowest model tier never coordinates; unknown model ineligible | design | a (table: d) | `model_tiers` loader hard; table content is the project's |
-| 7 | announce joined/done, 200-char lines, 6 per 10 min | code (`limits`, hooks announce) | a | code |
+| 7 | announce lines, 200-char lines, 6 per 10 min | code (`limits`) | a | code |
 | 8 | Read the inbox first | `claude-session-start` | b | `poolhouse-policy hook session-start` |
 | 9 | Claims before mutating; no stealing a live claim | code (`claims`, harness reserve) | a | code; hard |
 | 10 | Named-file staging, no `git add -A`/`commit -a` | `claude-bash-guard` | b | packaged bash guard |

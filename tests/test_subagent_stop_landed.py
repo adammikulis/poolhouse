@@ -56,6 +56,10 @@ class World:
     def announced(self, kind: str) -> list[str]:
         return [argv[2] for argv in self.recorded() if argv[:2] == ["announce", kind]]
 
+    def done(self) -> list[str]:
+        """The texts of the done posts the stop hook made to #general."""
+        return [argv[3] for argv in self.recorded() if argv[:3] == ["board", "post", "#general"] and argv[-2:] == ["--subject", "done"]]
+
     def land(self) -> None:
         git(self.tree, "push", "origin", "worker/topic:0.3dev")
 
@@ -115,7 +119,7 @@ def test_unlanded_commits_block_the_stop_and_name_the_ways_out(world):
     assert "1 commit" in reason and "origin/0.3dev" in reason and "worker/topic" in reason
     assert "scripts/land" in reason and f"scripts/worktrees close {world.tree.resolve()} --bundle" in reason
     assert "--abandon" in reason
-    assert world.announced("done") == [] and ["retire"] not in world.recorded()
+    assert world.done() == [] and ["retire"] not in world.recorded()
 
 
 def test_uncommitted_files_count_as_unlanded(world):
@@ -134,7 +138,7 @@ def test_a_tree_is_held_only_while_it_holds_unlanded_work(world):
     refusal(world.stop())
     world.land()
     passed(world.stop())
-    assert world.announced("done") and ["retire"] in world.recorded()
+    assert world.done() and ["retire"] in world.recorded()
 
 
 def test_a_commit_only_in_the_local_development_branch_is_not_landed(world):
@@ -172,10 +176,10 @@ def test_the_second_refusal_says_blocked_and_the_third_stop_goes_through_with_a_
     milestones = world.announced("milestone")
     assert len(milestones) == 1 and "unlanded" in milestones[0] and "worker/topic" in milestones[0]
     assert len(world.announced("blocked")) == 1 and all(len(text) <= 200 for text in world.announced("blocked") + milestones)
-    assert world.announced("done") == [] and ["retire"] not in world.recorded()
+    assert world.done() == [] and ["retire"] not in world.recorded()
     world.land()
     passed(world.stop())
-    assert len(world.announced("done")) == 1 and ["retire"] in world.recorded()
+    assert len(world.done()) == 1 and ["retire"] in world.recorded()
 
 
 def test_landing_between_stops_starts_the_count_again(world):

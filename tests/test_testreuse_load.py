@@ -3,6 +3,8 @@
 # ruff: noqa: F811
 from __future__ import annotations
 
+import sys
+
 import pytest
 import testreuse_plugin as plugin
 import testreuse_store as storage
@@ -84,7 +86,8 @@ def test_a_source_file_edited_during_the_run_still_moves_the_tree(project, tmp_p
     assert report.status == 4 and "pass" not in kinds(store)
 
 
-@pytest.mark.parametrize("path", ["/tmp/mlabc/node", "/private/tmp/mlabc/node", "/var/tmp/x"])
+@pytest.mark.parametrize("path", ["/tmp/mlabc/node", pytest.param("/private/tmp/mlabc/node", marks=pytest.mark.skipif(
+    sys.platform != "darwin", reason="/private/tmp is where macOS keeps /tmp")), "/var/tmp/x"])
 def test_the_shared_temporary_directories_are_writable(path):
     assert plugin._write_ok(path)
 

@@ -53,40 +53,36 @@ fn a_session_sends_so_many_messages_notes_and_claims_in_a_window_and_a_refusal_c
 }
 
 #[test]
-fn a_subagent_sends_fewer_and_what_it_sends_counts_against_its_parents_subagent_allowance_not_its_own() {
+fn a_subagent_sends_as_many_as_its_parent_and_a_sibling_has_a_window_of_its_own() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (_, parent) = session(&mut n, "demo", "a");
     let ((_, one), (_, two)) = (child_of(&mut n, &parent, "c1"), child_of(&mut n, &parent, "c2"));
-    for i in 0..10 {
+    for i in 0..30 {
         ok(say(&mut n, &one, "#general", &format!("child {i}")));
     }
-    assert_eq!(code(&say(&mut n, &one, "#general", "an eleventh")), "quota", "a subagent sends ten in a window");
+    assert_eq!(code(&say(&mut n, &one, "#general", "a thirty-first")), "quota", "a subagent sends what its parent sends in a window");
     for i in 0..30 {
         ok(say(&mut n, &parent, "#general", &format!("parent {i}")));
     }
     assert_eq!(code(&say(&mut n, &parent, "#general", "a thirty-first")), "quota", "the parent sends thirty of its own, whatever its subagent sent");
-    for i in 0..10 {
+    for i in 0..30 {
         ok(say(&mut n, &two, "#general", &format!("sibling {i}")));
     }
-    assert_eq!(code(&say(&mut n, &two, "#general", "an eleventh")), "quota", "a sibling has a window of its own");
 }
 
 #[test]
-fn the_subagents_of_one_session_share_a_larger_allowance_of_their_own_and_the_parent_is_not_held_back_by_it() {
+fn the_send_counts_of_subagents_are_never_below_the_send_count_of_a_session_whatever_the_file_says() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (_, parent) = session(&mut n, "demo", "a");
     let ((_, one), (_, two)) = (child_of(&mut n, &parent, "c1"), child_of(&mut n, &parent, "c2"));
-    n.writes.subagent_sends = 15;
-    for i in 0..10 {
+    (n.writes.child_sends, n.writes.subagent_sends) = (10, 15);
+    for i in 0..30 {
         ok(say(&mut n, &one, "#general", &format!("child {i}")));
     }
-    for i in 0..5 {
-        ok(say(&mut n, &two, "#general", &format!("sibling {i}")));
-    }
-    let held_back = say(&mut n, &two, "#general", "a sixth, past what its parent's subagents may send together");
-    assert_eq!(code(&held_back), "quota");
+    assert_eq!(code(&say(&mut n, &one, "#general", "a thirty-first")), "quota");
+    assert_eq!(code(&say(&mut n, &two, "#general", "past what the subagents of one session send together")), "quota");
     for i in 0..30 {
         ok(say(&mut n, &parent, "#general", &format!("parent {i}")));
     }

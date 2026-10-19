@@ -17,17 +17,27 @@ SRC = str(Path(__file__).resolve().parents[1] / "src")
 
 
 @pytest.fixture
-def team(workspace_node, tmp_path):
+def team(workspace_node, tmp_path, monkeypatch):
+    import keyring
+    from onboard_support import FileKeyring
+
+    from poolhouse import keystore
+
     node = workspace_node
     node.keys = {"PYTHON_KEYRING_BACKEND": "onboard_support.FileKeyring", "POOLHOUSE_TEST_KEYRING": str(tmp_path / "keyring.json"),
                  "PYTHONPATH": f"{SRC}:{HERE}"}
     node.lead, node.bob, node.carol = node.member("main-1"), node.member("bob"), node.member("carol")
+    monkeypatch.setenv("POOLHOUSE_TEST_KEYRING", node.keys["POOLHOUSE_TEST_KEYRING"])
+    before = keyring.get_keyring()
+    keyring.set_keyring(FileKeyring())
+    keystore.default().provision()  # a command with no terminal and no desktop opens the files key only on a provisioned keystore
     node.keep_person_key(node.lead)
     node.work = tmp_path / "work"
     node.work.mkdir()
     node.cli("board", "create", "#ops", who=node.lead)
     node.cli("join-board", "#ops", who=node.bob)
-    return node
+    yield node
+    keyring.set_keyring(before)
 
 
 def run(team, who, *argv, stdin=None):

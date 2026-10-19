@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -20,7 +19,6 @@ from poolhouse.sentinel.human import HumanRequired
 
 pytest_plugins = ["node_kit"]
 ROOT = Path(__file__).resolve().parents[1]
-PATCH = ROOT / "docs/bash-guard-subagent-stamp.patch"
 NODE_WRITE_LIMITS = WRITE_LIMITS
 
 
@@ -30,11 +28,7 @@ class Scene:
     def __init__(self, tmp_path: Path, node, monkeypatch) -> None:
         self.node, self.world = node, World(tmp_path, node)
         self.lead = node.member("sess1")
-        tree = tmp_path / "hooktree"
-        shutil.copytree(ROOT / "scripts/hooks", tree / "scripts/hooks")
-        (tree / "src").symlink_to(ROOT / "src")
-        subprocess.run(["git", "apply", "-p1", str(PATCH)], cwd=tree, check=True)
-        self.hooks = tree / "scripts/hooks"
+        self.hooks = ROOT / "scripts/hooks"
         binary = tmp_path / "bin"
         binary.mkdir()
         wrapper = binary / "poolhouse-workspace"
@@ -208,8 +202,3 @@ def test_a_subagent_never_passes_a_delegated_gate_even_with_the_leads_name_in_it
     assert authority.require("sentinel.policy", "mode", (False, False), lead) == authority.DELEGATED
     with pytest.raises(HumanRequired, match="not a helper"):
         authority.require("sentinel.policy", "mode", (False, False), {**lead, "POOLHOUSE_SUBAGENT": "rev1"})
-
-
-def test_the_stamp_patch_removes_the_rule_that_demanded_an_agent_flag():
-    text = PATCH.read_text()
-    assert "-def subagent_without_its_name" in text and "+def subagent_stamped" in text

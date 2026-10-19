@@ -14,7 +14,6 @@ from poolhouse import claude, harnessid
 def _no_workspace(monkeypatch, tmp_path):
     monkeypatch.setattr(harnessid, "invite", lambda name, project, parent, say, *, claim: harnessid.HarnessSession(
         name, base=tmp_path / "workspace"))
-    monkeypatch.setattr(harnessid, "announce", lambda *a, **k: True)
 
 
 def test_the_environment_points_every_model_call_at_the_server_and_nothing_elsewhere():

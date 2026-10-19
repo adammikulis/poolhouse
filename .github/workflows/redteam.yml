@@ -12,15 +12,6 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "17 5 * * 1"
-  push:
-    branches: [0.3dev]
-    paths:
-      - "src/poolhouse/**"
-      - "tests/redteam*/**"
-      - "tests/test_redteam_*.py"
-      - "docs/redteam/**"
-      - "scripts/redteam*"
-      - ".github/workflows/redteam.yml"
   pull_request:
     paths:
       - "src/poolhouse/**"
