@@ -236,3 +236,27 @@ def test_native_library_cache_links_stage_only_verified_repository_blobs(device,
     (snapshot / "model.safetensors").symlink_to(outside)
     with pytest.raises(ValueError, match="repository blob"):
         client.stage(DISPATCH, {"model": handle}, node_spec("generate"))
+
+
+def test_checkpoint_base_is_separate_finalized_same_dispatch_resource(device, tmp_path):
+    client, store, _, _ = device
+    model, base = tmp_path / "checkpoint", tmp_path / "base"
+    model.mkdir()
+    base.mkdir()
+    (model / "model.safetensors").write_bytes(b"adapter")
+    (base / "model.safetensors").write_bytes(b"frozen weights")
+    handle = {"kind": "model", "path": str(model), "base_digest": "c" * 64,
+              "base": {"kind": "model", "path": str(base)}}
+    staged = client.stage(DISPATCH, {"model": handle}, node_spec("generate"))
+    assert len(staged["resources"]) == 2
+    safe = staged["inputs"]["model"]
+    assert "path" not in safe and "base" not in safe
+    assert safe["base_resource"] != safe["resource"]
+    hydrated = store.inputs(SOURCE, DISPATCH, staged["inputs"])["model"]
+    assert hydrated["base"]["digest"] == "c" * 64
+    assert (Path(hydrated["base"]["path"]) / "model.safetensors").read_bytes() == b"frozen weights"
+    with pytest.raises((FileNotFoundError, ValueError)):
+        store.inputs(SOURCE, "d" * 64, staged["inputs"])
+    safe["base_resource"] = "e" * 64
+    with pytest.raises((FileNotFoundError, ValueError)):
+        store.inputs(SOURCE, DISPATCH, staged["inputs"])

@@ -20,7 +20,8 @@ MANIFEST_BYTES = 1024 * 1024
 _DIGEST = re.compile(r"[a-f0-9]{64}")
 _DISPATCH = re.compile(r"[a-f0-9]{32}(?:[a-f0-9]{32})?")
 _METADATA = {"recipe": str, "framework": str, "quantization": str, "decision": bool,
-             "gym": bool, "rows": int, "count": int, "format": str}
+             "gym": bool, "rows": int, "count": int, "format": str, "model_kind": str,
+             "base_resource": str, "base_digest": str}
 
 
 def _digest(value: dict) -> str:
@@ -301,6 +302,14 @@ class TransferStore:
             path = self.root.joinpath(*self._parts(source, dispatch, resource["id"]), "files")
             checked.pop("resource")
             checked["path"] = str(path / resource["entrypoint"] if resource["shape"] == "file" else path)
+            if "base_resource" in checked or "base_digest" in checked:
+                if not _DIGEST.fullmatch(checked.get("base_resource", "")) or not _DIGEST.fullmatch(checked.get("base_digest", "")):
+                    raise ValueError("Checkpoint base resource and digest must be explicit.")
+                base = self.finish(source, dispatch, checked["base_resource"])
+                if base["kind"] != "model" or base["shape"] != "directory":
+                    raise ValueError("Checkpoint bases require an explicitly staged model directory.")
+                base_path = self.root.joinpath(*self._parts(source, dispatch, base["id"]), "files")
+                checked["base"] = {"kind": "model", "path": str(base_path), "digest": checked["base_digest"], "files": base["files"]}
             hydrated[name] = checked
         return hydrated
 
