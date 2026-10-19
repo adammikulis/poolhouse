@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import functools
 import hashlib
 import json
 import os
@@ -306,9 +307,15 @@ def plugin_pins() -> list[str]:
                    if any(point.group == "pytest11" for point in d.entry_points)})
 
 
+@functools.cache
+def installed_owners() -> dict[str, list[str]]:
+    """Top-level module name to the installed distributions that provide it, read once per process."""
+    return dict(metadata.packages_distributions())
+
+
 def pins_for(names: set[str]) -> list[str]:
     """``name==version`` of the installed distributions that provide the top-level ``names``."""
-    owners = metadata.packages_distributions()
+    owners = installed_owners()
     return sorted({f"{owner}=={metadata.version(owner)}" for name in names for owner in owners.get(name, ())})
 
 
