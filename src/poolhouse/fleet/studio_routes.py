@@ -23,6 +23,7 @@ from .managed_compute import process_environment
 from .request_fields import field, object_body
 from .session import parse_cookie
 from .studio_artifacts import artifact_files, open_artifact, stream_artifact
+from .studio_dispatch import DeviceDispatch
 from .studio_library import provider as pool_library
 
 _INITIALIZE = threading.Lock()
@@ -49,7 +50,7 @@ class StudioRoutes:
         except KeyError as exc:
             self.send(404, {"error": str(exc)})
         except (ValueError, OSError, RuntimeError) as exc:
-            self.send(400, {"error": str(exc)})
+            self.send(400, {"error": str(exc), "errors": exc.args[0] if exc.args and isinstance(exc.args[0], list) else []})
         return True
 
     def _service(self):
@@ -78,7 +79,8 @@ class StudioRoutes:
                     additional = getattr(ui, "studio_authorize", None)
                     return bool(additional(principal, node, inputs)) if additional else True
 
-                ui.studio = WorkflowEngine(store, ui.runner, Adapters(ui.runner, process_environment=process_environment), authorize)
+                dispatcher = DeviceDispatch(ui, store, authorize)
+                ui.studio = WorkflowEngine(store, ui.runner, Adapters(ui.runner, process_environment=process_environment), authorize, dispatcher)
         sid = parse_cookie(self.cookie)
         session = ui.sessions.get(sid)
         if sid and session is None:
@@ -94,22 +96,38 @@ class StudioRoutes:
 
     def _studio(self) -> bool:
         if self.path == "/ui/studio/nodes" and self.method == "GET":
-            self.send(200, {"nodes": node_catalog()})
+            nodes = node_catalog()
+            if self.ui.runner is not None and self.ui.root:
+                engine, _ = self._service()
+                availability = getattr(engine.adapters, "availability", lambda nodes: {})(nodes)
+                nodes = [{**node, "requirements": availability.get(node["type"], [])} for node in nodes]
+            self.send(200, {"nodes": nodes})
             return True
         if self.path == "/ui/studio/templates" and self.method == "GET":
             self.send(200, {"templates": templates()})
             return True
         if self.path == "/ui/studio/validate" and self.method == "POST":
-            self.send(200, validate_graph(field(object_body(self), "graph", dict, {})))
+            checked = validate_graph(field(object_body(self), "graph", dict, {}))
+            if checked["valid"]:
+                engine, principal = self._service()
+                remote = [node for node in checked["graph"]["nodes"] if engine._remote(node)]
+                local = [node for node in checked["graph"]["nodes"] if node not in remote]
+                checked["errors"].extend(engine.adapters.validate(local))
+                checked["errors"].extend(engine.dispatcher.validate(remote, principal))
+                checked["valid"] = not checked["errors"]
+            self.send(200, checked)
             return True
         engine, principal = self._service()
         store, scope = engine.store, principal["scope"]
         if not engine.authorize(principal, None, {}):
             raise PermissionError("Sign in again to use Studio.")
+        if self.path == "/ui/studio/devices" and self.method == "GET":
+            self.send(200, {"devices": engine.dispatcher.devices()})
+            return True
         if self.path == "/ui/studio/resources" and self.method == "GET":
             root = self.ui.runner.files_root
             datasets = [{"id": path.name, "title": path.name} for path in sorted(root.iterdir())
-                        if path.name not in {"jobs", "studio"} and not path.name.startswith(".")
+                        if path.name not in {"jobs", "studio", "studio-device-resources"} and not path.name.startswith(".")
                         and path.resolve().is_relative_to(root.resolve())] if root.exists() else []
             self.send(200, {"datasets": datasets, "models": [{"id": entry.id, "title": entry.id} for entry in hub.discover()]})
             return True

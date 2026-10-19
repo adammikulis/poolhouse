@@ -109,6 +109,8 @@ class WorkflowEngine:
         for node in graph["nodes"]:
             if not self.authorize(principal, node, {}):
                 raise PermissionError("A workflow resource is no longer authorized.")
+            if node in remote:
+                node["execution"] = self.dispatcher.identity(node)
         run, _ = self.store.submit(principal, workflow, graph, output_nodes, key)
         self._wake.set()
         return run
@@ -355,7 +357,8 @@ class WorkflowEngine:
             implementation = getattr(self.dispatcher, "fingerprint", lambda node: "")(node)
             dispatch_id = digest({"run": run["id"], "node": node["id"]})
             state.update(state="running", job_id="studio-device-" + dispatch_id[:32],
-                         execution={"machine": node["execution"]["machine"], "id": dispatch_id,
+                         execution={**node["execution"], "id": dispatch_id,
+                                    "implementation": implementation,
                                     "digest": digest({"node": node, "inputs": inputs, "artifacts": artifacts,
                                                       "implementation": [self.implementation, implementation]})})
             state["input_artifacts"] = artifacts
