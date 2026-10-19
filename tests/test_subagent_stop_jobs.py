@@ -36,6 +36,9 @@ class Scene:
         (binary / "poolhouse-workspace").write_text(f"""#!{sys.executable}
 import json, os, sys
 from pathlib import Path
+if sys.argv[1:3] == ['claims', '--json']:
+    print('[]')
+    raise SystemExit(0)
 path = Path(os.environ['HOOK_CALLS'])
 calls = json.loads(path.read_text()) if path.exists() else []
 calls.append(sys.argv[1:])
