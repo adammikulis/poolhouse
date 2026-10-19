@@ -106,6 +106,23 @@ def test_only_a_superseded_pull_request_run_is_cancelled(name):
     assert concurrency["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
 
 
+REDTEAM_PATHS = ["src/poolhouse/**", "tests/redteam*/**", "tests/test_redteam_*.py", "docs/redteam/**", "scripts/redteam*"]
+
+
+def test_the_redteam_runs_on_a_push_and_a_pull_request_that_touch_what_it_attacks():
+    """The workflow file is not on the default branch, so a schedule alone never starts it."""
+    triggers = read("redteam.yml")["on"]
+    assert triggers["push"]["branches"] == ["0.3dev"]
+    for event in ("push", "pull_request"):
+        assert set(REDTEAM_PATHS) <= set(triggers[event]["paths"]), event
+
+
+def test_a_redteam_run_cancels_only_a_superseded_pull_request_run():
+    concurrency = read("redteam.yml")["concurrency"]
+    assert concurrency["group"] == "redteam-${{ github.ref }}"
+    assert concurrency["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
+
+
 def test_release_please_tests_the_branch_it_opened():
     job = PLEASE["jobs"]["release-pr"]
     assert job["if"] == "needs.propose.outputs.pr_branch != ''", "no pull request, no run"
