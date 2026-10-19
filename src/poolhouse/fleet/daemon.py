@@ -24,7 +24,7 @@ from poolhouse.hub import default_roots
 from poolhouse.limits import read as limits_read
 from poolhouse.lock import only_one
 from poolhouse.log import say, warn
-from poolhouse.platform import on_quit, private_file
+from poolhouse.platform import private_file, quitting
 from poolhouse.serve import canaries, guarded
 from poolhouse.serve.leases import lease_file
 from poolhouse.serve.reclaim import watching
@@ -423,7 +423,10 @@ class DaemonRuntime:
         say("  EVERY MACHINE IN THIS POOL CAN RUN COMMANDS HERE. Trusted LAN only.", flush=True)
 
     def run(self) -> None:
-        on_quit(self._quit)
+        with quitting(self._quit):
+            self.loop()
+
+    def loop(self) -> None:
         self.scanner = guarded.start(sentinel.armed(), canaries.lease_file_targets(lease_file()))
         self.idle_s = limits_read().idle_s
         self.reclaiming = contextlib.ExitStack()

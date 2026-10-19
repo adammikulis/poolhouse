@@ -20,10 +20,11 @@ on:
 permissions:
   contents: read
 
-# A newer push makes an older run pointless.
+# A newer push cancels the older run of a pull request; a run on any other ref finishes, and
+# the newest push waits behind it.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # The `mcp` extra (mcp 2.3 or later, MCP revision 2026-07-28) is installed on every OS below;
@@ -186,7 +187,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = "Stop"
-          python -m pip install pytest pytest-xdist numpy psutil keyring cryptography pyyaml
+          python -m pip install pytest pytest-xdist numpy psutil keyring cryptography pyyaml pywin32
           $env:PYTHONPATH = "src"
           python -m pytest tests/test_node_windows.py -q -n 0 -p no:cacheprovider
           if ($LASTEXITCODE -ne 0) { throw "the Windows node tests failed" }

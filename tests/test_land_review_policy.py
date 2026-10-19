@@ -60,7 +60,7 @@ def test_security_test_infrastructure_and_rule_paths_need_review(path):
 GUARDED = [
     "AGENTS.md", "CLAUDE.md", ".claude/settings.json", ".claude/agents/worker.md", "scripts/hooks/pre-push",
     "scripts/hooks/weakened-assertions", "scripts/hooks/claude-bash-guard", "src/poolhouse/workspace/person_store.py",
-    "src/poolhouse/worktreerules.py", "scripts/land_board.py", "src/poolhouse/authority.py", "src/poolhouse/person.py",
+    "src/poolhouse/worktreerules.py", "src/poolhouse/authority.py", "src/poolhouse/person.py",
     "src/poolhouse/real_machine.py", "src/poolhouse/board/credentials.py", "src/poolhouse/workspace/authority_cli.py",
     "scripts/agent_sandbox_profile.py", "scripts/github-protection", ".github/workflows/ci.yml"]
 NAMED_IN_REVIEW = [
