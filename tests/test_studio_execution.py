@@ -173,3 +173,15 @@ def test_sharded_model_references_only_declared_staged_files(tmp_path, filename)
     with pytest.raises(ValueError, match="staged base"):
         validate_models({"model": {"kind": "model", "resource": "a" * 64}}, manifests,
                         {"model": {"path": str(model)}})
+
+
+@pytest.mark.parametrize("kind", ["artifact", "dataset"])
+def test_model_port_cannot_bypass_reference_validation_with_another_resource_kind(target, kind):
+    service, runner, _ = target
+    payload = request(service)
+    payload["node"] = {"id": "generation", "type": "generate", "version": 1, "parameters": {}}
+    payload["implementation"] = service.validate([payload["node"]])["implementations"]["generation"]
+    payload["inputs"] = {"model": {"kind": kind, "resource": "a" * 64}, "prompt": "example"}
+    with pytest.raises(ValueError, match="kind must match"):
+        service.submit("source", payload)
+    assert runner.jobs == {}

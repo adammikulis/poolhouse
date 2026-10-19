@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 
 from poolhouse.studio.adapters import Adapters
-from poolhouse.studio.catalog import node_spec
+from poolhouse.studio.catalog import is_model_type, node_spec
 from poolhouse.studio.contracts import _finite, _parameters
 from poolhouse.studio.store import Conflict, StudioStore, digest
 
@@ -32,6 +32,19 @@ def checked_node(value: dict) -> dict:
     if ":" in str(node["parameters"].get("environment", "")):
         raise ValueError("Choose an installed registered Gym environment.")
     return node
+
+
+def checked_inputs(spec: dict, inputs: dict) -> None:
+    for port in spec["inputs"]:
+        if port["name"] not in inputs:
+            continue
+        value = inputs[port["name"]]
+        kind = "model" if is_model_type(port["type"]) else port["type"]
+        if kind in {"model", "dataset", "artifact"}:
+            if not isinstance(value, dict) or value.get("kind") != kind or not isinstance(value.get("resource"), str):
+                raise ValueError("The staged resource kind must match its declared input port.")
+        elif isinstance(value, dict) and ("resource" in value or ("path" in value and value.get("kind") in {"model", "dataset", "artifact"})):
+            raise ValueError("Non-resource input ports cannot receive staged resource handles.")
 
 
 class DeviceExecutions:
@@ -109,6 +122,7 @@ class DeviceExecutions:
         required = {p["name"] for p in spec["inputs"] if p.get("required", True)}
         if not isinstance(request["inputs"], dict) or not required <= request["inputs"].keys() or not set(request["inputs"]) <= ports:
             raise ValueError("The node inputs do not match its declared interface.")
+        checked_inputs(spec, request["inputs"])
         manifests = request["resources"]
         if not isinstance(manifests, list):
             raise ValueError("Resources require completed content manifests.")
