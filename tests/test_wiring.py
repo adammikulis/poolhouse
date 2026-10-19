@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from poolhouse import cli
+
 REPO = Path(__file__).resolve().parent.parent
 SRC = REPO / "src" / "poolhouse"
 
@@ -77,13 +79,26 @@ def _callers() -> dict[str, set[str]]:
     return found
 
 
-def _commands() -> set[str]:
+def _console_targets() -> set[str]:
     data = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
+    return set(data.get("project", {}).get("scripts", {}).values())
+
+
+def _commands() -> set[str]:
     out = set()
-    for target in data.get("project", {}).get("scripts", {}).values():
+    for target in _console_targets():
         parts = target.split(":")[0].split(".")
         if parts[:1] == ["poolhouse"] and len(parts) > 1:
             out.add(parts[1])
+    return out
+
+
+def _lazy_commands() -> dict[str, set[str]]:
+    out: dict[str, set[str]] = {}
+    for target in set(cli.commands().values()) - _console_targets():
+        parts = target.partition(":")[0].split(".")
+        if parts[:1] == ["poolhouse"] and len(parts) > 1:
+            out.setdefault(parts[1], set()).add(target)
     return out
 
 
@@ -95,6 +110,11 @@ COMMANDS = _commands()
 def test_piece_is_wired_in(name: str) -> None:
     if name in CALLERS or name in COMMANDS or name in STANDALONE:
         return
+    targets = _lazy_commands().get(name, set())
+    if targets:
+        for target in targets:
+            assert callable(cli.load(target)), f"{target} is not callable"
+        return
     pytest.fail(
         f"poolhouse.{name} is imported by nothing in src/poolhouse, backs no console script, "
         f"and is not in STANDALONE. Wire it in, give it a command, or name it in STANDALONE "
@@ -105,3 +125,24 @@ def test_piece_is_wired_in(name: str) -> None:
 def test_standalone_names_only_real_pieces() -> None:
     stale = sorted(set(STANDALONE) - set(_pieces()))
     assert not stale, f"STANDALONE names what is not there: {', '.join(stale)}"
+
+
+@pytest.mark.parametrize("target", ("poolhouse.runtime_cli:missing_handler", "poolhouse.runtime_cli:SETTLE"))
+def test_a_lazy_registry_target_must_resolve_to_a_callable(monkeypatch, target):
+    monkeypatch.setattr(cli, "commands", lambda: {"runtime": target})
+    with pytest.raises((AttributeError, AssertionError)):
+        test_piece_is_wired_in("runtime_cli")
+
+
+def test_an_undeclared_command_does_not_supply_wiring(monkeypatch):
+    monkeypatch.setattr(cli, "commands", lambda: {})
+    with pytest.raises(pytest.fail.Exception, match="runtime_cli"):
+        test_piece_is_wired_in("runtime_cli")
+
+
+def test_an_unrelated_target_string_is_not_a_caller(tmp_path, monkeypatch):
+    source = tmp_path / "unused.py"
+    source.write_text('TARGET = "poolhouse.runtime_cli:main"\n')
+    monkeypatch.setitem(globals(), "SRC", tmp_path)
+    assert _imported_by(source) == set()
+    assert _callers() == {}

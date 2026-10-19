@@ -136,7 +136,12 @@ class Group:
 
     def parser(self) -> argparse.ArgumentParser:
         """The parser these commands build."""
-        ap = argparse.ArgumentParser(prog=self.prog, description=self.description,
+        prog = self.prog
+        if prog.startswith("poolhouse-"):
+            prog = "poolhouse " + prog[len("poolhouse-"):].replace("-", " ")
+        elif prog == "poolhouse.device_setup":
+            prog = "poolhouse device setup"
+        ap = argparse.ArgumentParser(prog=prog, description=self.description,
                                      **self.kwargs)
         for one in self.options:
             one.add_to(ap)

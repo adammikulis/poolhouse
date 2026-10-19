@@ -7,39 +7,24 @@ starts the app the way ``poolhouse.fleet.launch`` does.
 from __future__ import annotations
 
 import argparse
-import contextlib
 import difflib
 import importlib
-import io
 import sys
-import tomllib
 from collections.abc import Callable
-from importlib.metadata import entry_points
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-from poolhouse import runtime_cli
-from poolhouse.cli.daemon import main as daemon_main
-from poolhouse.cli.reference import HELP
+from poolhouse.cli.registry import PREFIX, Command, registry
 from poolhouse.log import say, warn
 
 __all__ = ["PREFIX", "commands", "load", "main"]
 
-PREFIX = "poolhouse-"
 PYPROJECT = Path(__file__).resolve().parents[3] / "pyproject.toml"
 
 
 def commands() -> dict[str, str]:
-    """``word -> module:attr`` for every ``poolhouse-<word>``: a checkout's ``pyproject.toml``
-    when there is one, else what an install recorded."""
-    if PYPROJECT.exists():
-        table = tomllib.loads(PYPROJECT.read_text()).get("project", {}).get("scripts", {})
-        return {name[len(PREFIX):]: target for name, target in table.items()
-                if name.startswith(PREFIX)}
-    found: dict[str, str] = {}
-    for point in entry_points(group="console_scripts"):
-        if point.name.startswith(PREFIX):
-            found[point.name[len(PREFIX):]] = point.value
-    return found
+    """The declared command names and lazy targets, including runtime."""
+    return {word: command.target for word, command in registry(PYPROJECT).items()}
 
 
 def load(target: str) -> Callable[..., int | None]:
@@ -48,40 +33,27 @@ def load(target: str) -> Callable[..., int | None]:
     return getattr(importlib.import_module(module), attr or "main")
 
 
-def _first_help_line(target: str) -> str:
-    """The first line of a command's own ``--help``, for one no registry entry names."""
-    out = io.StringIO()
-    try:
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
-            load(target)(["--help"])
-    except SystemExit:
-        pass
-    except Exception as failed:  # noqa: BLE001  (a missing extra is reported, not raised)
-        return f"({type(failed).__name__}: {failed})"
-    usage, _, body = out.getvalue().partition("\n\n")
-    for paragraph in body.split("\n\n"):
-        line = paragraph.strip().splitlines()[0] if paragraph.strip() else ""
-        if line and not paragraph.startswith(" ") and not line.endswith(":"):
-            return line
-    return usage.strip().removeprefix("usage: ").splitlines()[0] if usage.strip() else ""
-
-
-def _parser(table: dict[str, str]) -> argparse.ArgumentParser:
-    words = sorted(table)
+def _parser(table: dict[str, Command]) -> argparse.ArgumentParser:
+    words = sorted(word for word, command in table.items() if command.public)
     listed = "\n".join(f"  {w.replace('-', ' ')}" for w in words)
     ap = argparse.ArgumentParser(
         prog="poolhouse",
         usage="poolhouse [--list] [<command> [args...]]",
-        description="Run a poolhouse-<command>, or with none, start the app.",
-        epilog=f"commands (each is also poolhouse-<command>):\n{listed}\n\n"
+        description="Open Poolhouse, or run a command.",
+        epilog=f"commands:\n{listed}\n\n"
                "poolhouse help <command> is that command's help; poolhouse help lists them.",
         formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--list", action="store_true",
-                    help="every command with the first line of its help")
+    ap.add_argument("--list", action="store_true", help="list commands with descriptions")
+    ap.add_argument("--all", action="store_true", help="include internal commands with --list")
+    try:
+        installed_version = version("poolhouse")
+    except PackageNotFoundError:
+        installed_version = "0+unknown"
+    ap.add_argument("--version", action="version", version=f"Poolhouse {installed_version}")
     return ap
 
 
-def _unknown(words: list[str], table: dict[str, str]) -> int:
+def _unknown(words: list[str], table: dict[str, Command]) -> int:
     asked = " ".join(words)
     spoken = {w.replace("-", " "): w for w in table}
     near = difflib.get_close_matches(asked, spoken, n=5, cutoff=0.4)
@@ -91,49 +63,42 @@ def _unknown(words: list[str], table: dict[str, str]) -> int:
     return 2
 
 
-def listing(table: dict[str, str] | None = None) -> str:
-    """Every command, one line each: the word as `poolhouse` takes it and what it does.
-
-    The line comes from `poolhouse.cli.reference`; a command another package installed is
-    imported and asked, because nothing here knows about it.
-    """
-    table = commands() if table is None else table
-    width = max((len(w) for w in table), default=0)
-    return "\n".join(
-        f"{word.replace('-', ' '):<{width}}  "
-        + (HELP[word] if word in HELP else _first_help_line(table[word]))
-        for word in sorted(table))
+def listing(table: dict[str, Command] | None = None, *, internal: bool = False) -> str:
+    """Declared command names and descriptions without loading their handlers."""
+    table = registry(PYPROJECT) if table is None else table
+    width = max((len(word) for word in table), default=0)
+    return "\n".join(f"{word.replace('-', ' '):<{width}}  {command.summary}"
+                     for word, command in sorted(table.items()) if internal or command.public)
 
 
-def _help_parser(table: dict[str, str]) -> argparse.ArgumentParser:
+def _help_parser(table: dict[str, Command]) -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
-        prog="poolhouse-help",
-        usage="poolhouse help [<command>...]   (also poolhouse-help)",
-        description="Every command with the first line of its help; with a command named, "
-                    "that command's own help (poolhouse help bench sweep is poolhouse-bench "
-                    "sweep --help).",
+        prog="poolhouse help",
+        usage="poolhouse help [--all] [<command>...]",
+        description="List commands, or show help for a command.",
         epilog=listing(table), formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--all", action="store_true", help="include internal commands")
     ap.add_argument("words", nargs="*", metavar="command")
     return ap
 
 
 def help_main(argv: list[str] | None = None) -> int:
-    """``poolhouse help`` and ``poolhouse-help``: with no words, every command with the first
-    line of its help; with words, that command's own ``--help``. Adam, 2026-09-03: "is
-    there poolhouse-help".
-    """
+    """List commands or show one command's help."""
     argv = list(sys.argv[1:] if argv is None else argv)
-    table = commands()
+    table = registry(PYPROJECT)
     ap = _help_parser(table)
-    words = list(ap.parse_args(argv).words)
+    args = ap.parse_args(argv)
+    words = list(args.words)
     if not words:
+        if args.all:
+            ap.epilog = listing(table, internal=True)
         say(ap.format_help())
         return 0
     for k in range(len(words), 0, -1):
         word = "-".join(words[:k])
         if word in table and word != "help":
             try:
-                result = load(table[word])([*words[k:], "--help"])
+                result = load(table[word].target)([*words[k:], "--help"])
             except SystemExit as left:
                 return int(left.code or 0)
             return 0 if result is None else int(result)
@@ -142,20 +107,21 @@ def help_main(argv: list[str] | None = None) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv[:1] == ["runtime"]:
-        return runtime_cli.main(argv[1:])
-    table = commands()
+    table = registry(PYPROJECT)
     if argv and not argv[0].startswith("-"):
         for k in range(len(argv), 0, -1):
             word = "-".join(argv[:k])
             if word in table:
-                result = load(table[word])(argv[k:])
+                result = load(table[word].target)(argv[k:])
                 return 0 if result is None else int(result)
         return _unknown(argv, table)
 
-    known, rest = _parser(table).parse_known_args(argv)
+    parser = _parser(table)
+    known, rest = parser.parse_known_args(argv)
+    if known.all and not known.list:
+        parser.error("--all requires --list")
     if known.list:
-        say(listing(table))
+        say(listing(table, internal=known.all))
         return 0
-    from poolhouse.fleet.launch import main as app
-    return app(rest, daemon_main=daemon_main)
+    daemon_main = load("poolhouse.cli.daemon:main")
+    return load("poolhouse.fleet.launch:main")(rest, daemon_main=daemon_main)
