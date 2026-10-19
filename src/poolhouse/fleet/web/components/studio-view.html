@@ -1,0 +1,436 @@
+
+<template>
+  <section
+    class="studio-workspace"
+    hidden
+    aria-label="Studio experiment workspace"
+  >
+    <header class="studio-heading">
+      <h1>Studio</h1>
+      <input
+        id="studio-title"
+        aria-label="Workflow title"
+        value="Untitled experiment"
+      /><select id="studio-workflows" aria-label="Saved workflows">
+        <option value="">New workflow</option></select
+      ><button id="studio-save" type="button">Save</button
+      ><button id="studio-run" type="button" class="studio-primary">
+        Run workflow
+      </button>
+    </header>
+    <div class="studio-toolbar" role="toolbar" aria-label="Workflow editing">
+      <button id="studio-new" type="button">New</button
+      ><button id="studio-undo" type="button">Undo</button
+      ><button id="studio-redo" type="button">Redo</button
+      ><button id="studio-copy" type="button">Copy</button
+      ><button id="studio-paste" type="button">Paste</button
+      ><button id="studio-delete" type="button">Delete</button
+      ><button id="studio-layout" type="button">Arrange</button
+      ><button id="studio-group" type="button">Group selection</button
+      ><button id="studio-outline-toggle" type="button" aria-pressed="false">
+        Outline</button
+      ><button id="studio-share" type="button">Share</button
+      ><button id="studio-import" type="button">Import</button
+      ><button id="studio-package-library" type="button">Pool library</button
+      ><input
+        id="studio-import-file"
+        type="file"
+        accept="application/json,.json"
+        hidden
+      />
+    </div>
+    <div class="studio-group-path" id="studio-group-path"></div>
+    <p class="studio-status" role="status" aria-live="polite"></p>
+    <div class="studio-shell">
+      <aside class="studio-library" aria-label="Node library">
+        <input
+          id="studio-search"
+          type="search"
+          aria-label="Search nodes, templates and groups"
+          placeholder="Search nodes…"
+        />
+        <div id="studio-library-items"></div>
+      </aside>
+      <studio-canvas></studio-canvas>
+      <div class="studio-outline" aria-label="Workflow outline"></div>
+      <aside class="studio-inspector" aria-label="Node inspector">
+        <h2>Inspector</h2>
+        <p>Select a node to configure it.</p>
+      </aside>
+    </div>
+    <section class="studio-dock" aria-label="Runs and results">
+      <header>
+        <h2>Runs and results</h2>
+        <button id="studio-run-selected" type="button">
+          Run selected outputs</button
+        ><button id="studio-refresh-runs" type="button">Refresh</button>
+      </header>
+      <div id="studio-runs"></div>
+      <div id="studio-run-detail"></div>
+    </section>
+    <dialog class="studio-dialog" id="studio-share-dialog">
+      <h2>Share a workflow</h2>
+      <p>
+        Packages contain declared workflow configuration. Recipients choose
+        their own resources.
+      </p>
+      <label>Package title<input id="studio-package-title" /></label
+      ><label>Documentation<textarea id="studio-package-docs"></textarea></label
+      ><label>Licence<input id="studio-package-license" value="MIT" /></label>
+      <div class="studio-toolbar">
+        <button id="studio-export" type="button">Export file</button
+        ><button id="studio-publish" type="button">Save to pool library</button
+        ><button id="studio-share-close" type="button">Close</button>
+      </div>
+    </dialog>
+  </section>
+</template>
+<script>
+  (function () {
+    const M = window.fleetModel,
+      S = window.studioModel,
+      E = M.el;
+    class StudioView extends HTMLElement {
+      connectedCallback() {
+        if (this.wired) return;
+        this.wired = true;
+        this.host = this.querySelector("section");
+        this.note = this.querySelector(".studio-status");
+        this.graph = S.empty();
+        this.specs = [];
+        this.templates = [];
+        this.selected = new Set();
+        this.undoStack = [];
+        this.redoStack = [];
+        this.revision = 0;
+        this.context = [];
+        this.canvas = this.querySelector("studio-canvas");
+        this.canvas.editor = this;
+        const bind = (id, fn) =>
+          (this.querySelector("#studio-" + id).onclick = () =>
+            this.perform(fn));
+        bind("new", () => this.open(null));
+        bind("save", () => this.save());
+        bind("undo", () => this.undo());
+        bind("redo", () => this.undo(true));
+        bind("copy", () => this.copy());
+        bind("paste", () => this.paste());
+        bind("delete", () => this.remove());
+        bind("layout", () => this.arrange());
+        bind("group", () => this.makeGroup());
+        bind("run", () => this.run());
+        bind("run-selected", () => this.run(true));
+        bind("refresh-runs", () => this.refreshRuns());
+        bind("outline-toggle", () => {
+          this.outline = !this.outline;
+          this.querySelector(".studio-outline").style.display = this.outline
+            ? "block"
+            : "";
+          this.canvas.style.display = this.outline ? "none" : "";
+          this.querySelector("#studio-outline-toggle").setAttribute(
+            "aria-pressed",
+            String(!!this.outline),
+          );
+        });
+        this.querySelector("#studio-search").oninput = () => this.library();
+        this.querySelector("#studio-title").onchange = () =>
+          this.changed(false);
+        this.querySelector("#studio-workflows").onchange = (e) =>
+          this.perform(() =>
+            this.open(this.workflows.find((w) => w.id === e.target.value)),
+          );
+        this.addEventListener("keydown", (e) => this.key(e));
+        this.setupSharing();
+        M.onRoute((route) => {
+          this.host.hidden = route !== "studio";
+          if (route === "studio") this.perform(() => this.load());
+          else clearTimeout(this.poll);
+        });
+      }
+      async perform(fn) {
+        try {
+          await fn();
+        } catch (error) {
+          this.message(error.message);
+        }
+      }
+      message(text) {
+        this.note.textContent = text;
+      }
+      async load() {
+        if (this.loading) return;
+        this.loading = true;
+        try {
+          const [nodes, templates, workflows] = await Promise.all([
+            S.api("/nodes"),
+            S.api("/templates"),
+            S.api("/workflows"),
+          ]);
+          this.specs = nodes.nodes || [];
+          this.templates = templates.templates || [];
+          this.resources = await S.api("/resources");
+          this.workflows = workflows.workflows || [];
+          this.workflowList();
+          if (!this.loaded) {
+            this.loaded = true;
+            this.open(this.workflows[0] || null);
+          }
+          this.library();
+          this.render();
+          await this.refreshRuns();
+        } finally {
+          this.loading = false;
+        }
+      }
+      workflowList() {
+        const select = this.querySelector("#studio-workflows");
+        select.replaceChildren(
+          E("option", { value: "" }, "New workflow"),
+          ...(this.workflows || []).map((w) =>
+            E("option", { value: w.id }, w.title),
+          ),
+        );
+        select.value = this.workflowId || "";
+      }
+      async open(workflow) {
+        if (this.dirty) await this.save();
+        this.context = [];
+        this.graph = S.clone(workflow?.graph || S.empty());
+        this.normalize();
+        this.workflowId = workflow?.id;
+        this.revision = workflow?.revision || 0;
+        this.querySelector("#studio-title").value =
+          workflow?.title || "Untitled experiment";
+        this.selected.clear();
+        this.undoStack = [];
+        this.redoStack = [];
+        this.dirty = false;
+        this.workflowList();
+        this.render();
+      }
+      normalize() {
+        this.graph.nodes ||= [];
+        this.graph.edges ||= [];
+        this.graph.groups ||= {};
+        this.graph.layout ||= {};
+        this.graph.layout.nodes ||= {};
+        this.graph.layout.viewport ||= { x: 0, y: 0, zoom: 1 };
+      }
+      checkpoint() {
+        this.undoStack.push(S.clone(this.graph));
+        this.redoStack = [];
+      }
+      changed(paint = true) {
+        this.dirty = true;
+        this.message("Unsaved changes");
+        if (paint) this.render();
+        clearTimeout(this.autosave);
+        this.autosave = setTimeout(() => this.perform(() => this.save()), 700);
+      }
+      async save() {
+        clearTimeout(this.autosave);
+        if (this.saving) {
+          await this.saving;
+          if (this.dirty) return this.save();
+          return;
+        }
+        if (!this.dirty && this.workflowId) return;
+        this.flushGroup();
+        const graph = S.clone(this.rootGraph()),
+          title =
+            this.querySelector("#studio-title").value || "Untitled experiment";
+        this.dirty = false;
+        const body = {
+          title,
+          graph,
+          ...(this.workflowId ? { revision: this.revision } : {}),
+        };
+        this.saving = S.api(
+          this.workflowId
+            ? "/workflows/" + encodeURIComponent(this.workflowId)
+            : "/workflows",
+          body,
+          this.workflowId ? "PUT" : "POST",
+        );
+        try {
+          const r = await this.saving,
+            w = r.workflow;
+          this.workflowId = w.id;
+          this.revision = w.revision;
+          this.workflows = [
+            w,
+            ...(this.workflows || []).filter((item) => item.id !== w.id),
+          ];
+          this.workflowList();
+          this.message("Saved · revision " + w.revision);
+        } catch (error) {
+          this.dirty = true;
+          if (error.response?.conflict_copy) {
+            const copy = error.response.conflict_copy;
+            this.workflowId = copy.id;
+            this.revision = copy.revision;
+            this.message(
+              "Another edit was saved. Your changes are preserved as " +
+                copy.title +
+                ".",
+            );
+            this.dirty = false;
+          } else throw error;
+        } finally {
+          this.saving = null;
+        }
+      }
+      add(spec, position) {
+        this.checkpoint();
+        const node = {
+          id: S.id(),
+          type: spec.type,
+          version: spec.version,
+          parameters: S.defaults(spec),
+          bindings: {},
+        };
+        this.graph.nodes.push(node);
+        this.graph.layout.nodes[node.id] = position || {
+          x: 60 + this.graph.nodes.length * 25,
+          y: 60 + this.graph.nodes.length * 25,
+        };
+        this.selected = new Set([node.id]);
+        this.changed();
+        return node;
+      }
+      select(id, multiple = false) {
+        if (!multiple) this.selected.clear();
+        if (multiple && this.selected.has(id)) this.selected.delete(id);
+        else this.selected.add(id);
+        this.render();
+      }
+      render() {
+        this.canvas.paint?.();
+        this.inspector();
+        this.outlineView();
+        this.library();
+        this.querySelector("#studio-undo").disabled = !this.undoStack.length;
+        this.querySelector("#studio-redo").disabled = !this.redoStack.length;
+        this.querySelector("#studio-run-selected").disabled =
+          !this.selected.size;
+        this.groupPath();
+      }
+      undo(redo = false) {
+        const from = redo ? this.redoStack : this.undoStack,
+          to = redo ? this.undoStack : this.redoStack;
+        if (!from.length) return;
+        to.push(S.clone(this.graph));
+        this.graph = from.pop();
+        this.selected.clear();
+        this.changed();
+      }
+      copy() {
+        const ids = this.selected;
+        this.clipboard = {
+          nodes: S.clone(this.graph.nodes.filter((n) => ids.has(n.id))),
+          edges: S.clone(
+            this.graph.edges.filter(
+              (e) => ids.has(e.source.node) && ids.has(e.target.node),
+            ),
+          ),
+          groups: S.clone(this.graph.groups),
+          layout: S.clone(this.graph.layout),
+        };
+        this.message("Selection copied");
+      }
+      paste() {
+        if (!this.clipboard) return;
+        this.checkpoint();
+        const map = new Map(this.clipboard.nodes.map((n) => [n.id, S.id()]));
+        for (const n of S.clone(this.clipboard.nodes)) {
+          const old = n.id;
+          n.id = map.get(old);
+          this.graph.nodes.push(n);
+          const p = this.clipboard.layout.nodes[old] || { x: 0, y: 0 };
+          this.graph.layout.nodes[n.id] = { x: p.x + 40, y: p.y + 40 };
+        }
+        for (const edge of S.clone(this.clipboard.edges)) {
+          edge.source.node = map.get(edge.source.node);
+          edge.target.node = map.get(edge.target.node);
+          this.graph.edges.push(edge);
+        }
+        Object.assign(this.graph.groups, this.clipboard.groups);
+        this.selected = new Set(map.values());
+        this.changed();
+      }
+      remove() {
+        if (!this.selected.size) return;
+        this.checkpoint();
+        this.graph.nodes = this.graph.nodes.filter(
+          (n) => !this.selected.has(n.id),
+        );
+        this.graph.edges = this.graph.edges.filter(
+          (e) =>
+            !this.selected.has(e.source.node) &&
+            !this.selected.has(e.target.node),
+        );
+        for (const id of this.selected) delete this.graph.layout.nodes[id];
+        this.selected.clear();
+        this.changed();
+      }
+      arrange() {
+        this.checkpoint();
+        const depths = {};
+        for (let i = 0; i < this.graph.nodes.length; i++)
+          for (const n of this.graph.nodes) {
+            const previous = this.graph.edges
+              .filter((e) => e.target.node === n.id)
+              .map((e) => depths[e.source.node] || 0);
+            depths[n.id] = previous.length ? Math.max(...previous) + 1 : 0;
+          }
+        const rows = {};
+        for (const n of this.graph.nodes) {
+          const d = Math.min(depths[n.id], this.graph.nodes.length);
+          this.graph.layout.nodes[n.id] = {
+            x: 40 + d * 300,
+            y: 40 + (rows[d] || 0) * 240,
+          };
+          rows[d] = (rows[d] || 0) + 1;
+        }
+        this.changed();
+        this.canvas.fit();
+      }
+      key(e) {
+        if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return;
+        const mod = e.metaKey || e.ctrlKey;
+        if (mod && ["z", "c", "v", "a"].includes(e.key.toLowerCase())) {
+          e.preventDefault();
+          if (e.key.toLowerCase() === "z") this.undo(e.shiftKey);
+          if (e.key.toLowerCase() === "c") this.copy();
+          if (e.key.toLowerCase() === "v") this.paste();
+          if (e.key.toLowerCase() === "a") {
+            this.selected = new Set(this.graph.nodes.map((n) => n.id));
+            this.render();
+          }
+        }
+        if (e.key === "Delete" || e.key === "Backspace") {
+          e.preventDefault();
+          this.remove();
+        }
+        if (e.key === "/") {
+          e.preventDefault();
+          this.querySelector("#studio-search").focus();
+        }
+        if (e.key === "Escape") {
+          if (this.context.length) this.leaveGroup();
+          else {
+            this.canvas.pending = null;
+            this.selected.clear();
+            this.render();
+          }
+        }
+      }
+    }
+    S.installEditor(StudioView.prototype);
+    S.installGroups(StudioView.prototype);
+    S.installRuns(StudioView.prototype);
+    S.installSharing(StudioView.prototype);
+    window.StudioView = StudioView;
+    customElements.define("studio-view", StudioView);
+  })();
+</script>

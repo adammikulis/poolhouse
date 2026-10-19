@@ -1,0 +1,136 @@
+<script>
+  (function () {
+    const S = (window.studioModel = {}),
+      E = window.fleetModel.el;
+    S.clone = (value) => structuredClone(value);
+    S.empty = () => ({
+      nodes: [],
+      edges: [],
+      groups: {},
+      layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
+    });
+    S.id = () => crypto.randomUUID();
+    S.api = async (path, body, method) => {
+      const r = await window.fleetModel.api(
+        "/ui/studio" + path,
+        body === undefined
+          ? {}
+          : { method: method || "POST", body: JSON.stringify(body) },
+      );
+      if (!r.ok)
+        throw Object.assign(Error(r.error || "Studio request unavailable"), {
+          response: r,
+        });
+      return r;
+    };
+    S.spec = (editor, node, seen = []) => {
+      if (node.type !== "group")
+        return (
+          editor.specs.find(
+            (s) => s.type === node.type && s.version === node.version,
+          ) || {
+            title: node.type,
+            inputs: [],
+            outputs: [],
+            parameters: { properties: {} },
+          }
+        );
+      if (seen.includes(node.group) || seen.length > 16)
+        return {
+          title: "Invalid recursive group",
+          inputs: [],
+          outputs: [],
+          parameters: { properties: {} },
+        };
+      const group = editor.graph.groups[node.group] || {},
+        inner = {
+          ...editor,
+          graph: { ...editor.graph, groups: editor.graph.groups },
+        };
+      const ports = (side) =>
+        Object.entries(group[side] || {}).map(([name, ref]) => {
+          const n = (group.nodes || []).find((n) => n.id === ref.node);
+          const p = n
+            ? S.spec(inner, n, [...seen, node.group])[side]?.find(
+                (p) => p.name === ref.port,
+              )
+            : null;
+          return { name, type: p?.type || "unknown" };
+        });
+      const properties = Object.fromEntries(
+        Object.entries(group.parameters || {}).map(([name, ref]) => {
+          const n = (group.nodes || []).find((n) => n.id === ref.node);
+          return [
+            name,
+            n
+              ? S.spec(inner, n, [...seen, node.group]).parameters
+                  ?.properties?.[ref.parameter] || {}
+              : {},
+          ];
+        }),
+      );
+      return {
+        title: group.name || "Group",
+        family: "Saved groups",
+        inputs: ports("inputs"),
+        outputs: ports("outputs"),
+        parameters: { properties },
+      };
+    };
+    S.field = (host, name, schema, value, change) => {
+      const id = "studio-" + S.id(),
+        label = E("label", { for: id }, schema.title || name);
+      let input;
+      if (schema.enum) {
+        input = E(
+          "select",
+          { id },
+          ...schema.enum.map((v) =>
+            E("option", { value: String(v) }, String(v)),
+          ),
+        );
+        input.value = String(value ?? schema.default ?? schema.enum[0]);
+      } else if (schema.type === "boolean") {
+        input = E("input", { id, type: "checkbox" });
+        input.checked = value ?? schema.default ?? false;
+      } else {
+        input = E("input", {
+          id,
+          type: ["number", "integer"].includes(schema.type) ? "number" : "text",
+          min: schema.minimum,
+          max: schema.maximum,
+          step: schema.type === "integer" ? 1 : "any",
+        });
+        input.value = value ?? schema.default ?? "";
+      }
+      input.onchange = () =>
+        change(
+          schema.type === "boolean"
+            ? input.checked
+            : ["number", "integer"].includes(schema.type)
+              ? Number(input.value)
+              : input.value,
+        );
+      host.append(label, input);
+      return input;
+    };
+    S.defaults = (spec) =>
+      Object.fromEntries(
+        Object.entries(spec.parameters?.properties || {})
+          .filter(([, v]) => v.default !== undefined)
+          .map(([k, v]) => [k, S.clone(v.default)]),
+      );
+    S.position = (editor, id) =>
+      editor.graph.layout.nodes[id] || { x: 40, y: 40 };
+    S.download = (name, value) => {
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(value, null, 2)], {
+          type: "application/json",
+        }),
+      );
+      const a = E("a", { href: url, download: name });
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    };
+  })();
+</script>

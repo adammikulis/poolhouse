@@ -1,0 +1,400 @@
+<style>
+
+  studio-view {
+    display: contents;
+  }
+  .studio-workspace {
+    padding: 18px;
+    max-width: none;
+    min-width: 0;
+  }
+  .studio-heading,
+  .studio-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .studio-heading h1 {
+    font-size: 24px;
+    margin: 0 auto 0 0;
+  }
+  .studio-heading input {
+    max-width: 240px;
+  }
+  .studio-toolbar {
+    margin: 12px 0;
+  }
+  .studio-workspace button {
+    padding: 7px 10px;
+    min-height: 34px;
+  }
+  .studio-primary {
+    background: var(--poolhouse-orange);
+    color: var(--poolhouse-orange-ink);
+    border-color: transparent;
+  }
+  .studio-shell {
+    display: grid;
+    grid-template-columns: 210px minmax(0, 1fr) 250px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    overflow: hidden;
+    background: var(--bg-raised);
+    min-height: 540px;
+  }
+  .studio-library,
+  .studio-inspector {
+    padding: 14px;
+    min-width: 0;
+    overflow: auto;
+    max-height: 650px;
+  }
+  .studio-library {
+    border-right: 1px solid var(--line);
+  }
+  .studio-inspector {
+    border-left: 1px solid var(--line);
+  }
+  .studio-library h2,
+  .studio-inspector h2 {
+    font-size: 15px;
+    margin: 12px 0;
+  }
+  .studio-library input,
+  .studio-inspector input,
+  .studio-inspector select {
+    width: 100%;
+    min-width: 0;
+  }
+  .studio-library button {
+    width: 100%;
+    text-align: left;
+    margin: 4px 0;
+  }
+  .studio-library small {
+    display: block;
+    color: var(--muted);
+  }
+  .studio-status {
+    min-height: 24px;
+    margin: 8px 0;
+    color: var(--muted);
+  }
+  .studio-inspector label {
+    display: block;
+    margin: 12px 0 4px;
+    font-size: 12px;
+  }
+  .studio-inspector .studio-links {
+    margin-top: 16px;
+    display: grid;
+    gap: 6px;
+  }
+  .studio-outline {
+    display: none;
+  }
+  .studio-outline button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    margin: 4px 0;
+  }
+  .studio-dock {
+    margin-top: 12px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px;
+    background: var(--bg-raised);
+  }
+  .studio-dock header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .studio-dock h2 {
+    margin: 0 auto 0 0;
+    font-size: 16px;
+  }
+  .studio-dock pre {
+    max-height: 180px;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .studio-run-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    border-top: 1px solid var(--line);
+    padding: 8px 0;
+  }
+  .studio-run-row span {
+    color: var(--muted);
+  }
+  .studio-dialog {
+    max-width: min(700px, 90vw);
+    background: var(--bg-raised);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 24px;
+  }
+  .studio-dialog textarea {
+    width: 100%;
+    min-height: 200px;
+  }
+  .studio-dialog label {
+    display: block;
+    margin: 12px 0;
+  }
+  .studio-group-path {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .studio-selected {
+    outline: 2px solid var(--accent-ink);
+  }
+  @media (max-width: 1100px) {
+    .studio-shell {
+      grid-template-columns: 170px minmax(0, 1fr);
+    }
+    .studio-inspector {
+      grid-column: 1 / -1;
+      border-left: 0;
+      border-top: 1px solid var(--line);
+      max-height: 300px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .studio-inspector h2 {
+      width: 100%;
+    }
+    .studio-inspector label {
+      margin: 4px;
+    }
+    .studio-inspector input,
+    .studio-inspector select {
+      width: auto;
+      max-width: 240px;
+    }
+  }
+  @media (max-width: 700px) {
+    .studio-workspace {
+      padding: 12px;
+    }
+    .studio-shell {
+      grid-template-columns: 1fr;
+      min-height: 0;
+    }
+    .studio-library {
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      max-height: 240px;
+    }
+    .studio-library #studio-library-items {
+      display: flex;
+      gap: 8px;
+      overflow: auto;
+    }
+    .studio-library button {
+      min-width: 150px;
+    }
+    .studio-canvas {
+      display: none !important;
+    }
+    .studio-outline {
+      display: block;
+      padding: 14px;
+    }
+    .studio-inspector {
+      display: block;
+    }
+    .studio-inspector input,
+    .studio-inspector select {
+      width: 100%;
+      max-width: none;
+    }
+    .studio-heading input {
+      max-width: 100%;
+      width: 100%;
+    }
+    .studio-toolbar {
+      gap: 6px;
+    }
+  }
+
+  studio-canvas {
+    display: block;
+    position: relative;
+    min-width: 0;
+    min-height: 540px;
+    background: radial-gradient(var(--line-bright) 1px, transparent 1px) 0 0 /
+      20px 20px;
+    overflow: hidden;
+    touch-action: none;
+  }
+  .studio-viewport {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    outline-offset: -4px;
+  }
+  .studio-world {
+    position: absolute;
+    transform-origin: 0 0;
+    inset: 0;
+  }
+  .studio-connections {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 10000px;
+    height: 10000px;
+    overflow: visible;
+    pointer-events: none;
+  }
+  .studio-connections path {
+    fill: none;
+    stroke: var(--poolhouse-orange);
+    stroke-width: 3;
+    pointer-events: stroke;
+  }
+  .studio-connections path:focus {
+    stroke: var(--text);
+    outline: none;
+  }
+  .studio-node {
+    position: absolute;
+    width: 250px;
+    border: 1px solid var(--line-bright);
+    border-radius: 13px;
+    background: var(--bg-raised);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    touch-action: none;
+  }
+  .studio-node[aria-selected="true"] {
+    border: 2px solid var(--accent-ink);
+  }
+  .studio-node header {
+    padding: 10px 12px;
+    background: var(--accent-dim);
+    cursor: grab;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .studio-node header strong {
+    font-size: 13px;
+  }
+  .studio-node .studio-state {
+    font-size: 10px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .studio-node-controls {
+    padding: 4px 12px 10px;
+  }
+  .studio-node-controls label {
+    font-size: 11px;
+    display: block;
+    margin-top: 6px;
+  }
+  .studio-node-controls input,
+  .studio-node-controls select {
+    width: 100%;
+    min-width: 0;
+    font-size: 12px;
+    padding: 4px;
+  }
+  .studio-node-ports {
+    padding: 6px 8px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .studio-node-ports > div {
+    min-width: 0;
+  }
+  .studio-node-ports button {
+    display: block;
+    width: 100%;
+    font-size: 10px;
+    text-align: left;
+    padding: 4px !important;
+    min-height: 26px !important;
+    background: var(--bg-sunken);
+    color: var(--text);
+    border: 1px solid var(--line);
+    overflow-wrap: anywhere;
+    margin: 4px 0;
+  }
+  .studio-node-ports .studio-output button {
+    text-align: right;
+  }
+  .studio-node-ports button[aria-pressed="true"] {
+    outline: 2px solid var(--accent-ink);
+  }
+  .studio-port-type {
+    display: block;
+    color: var(--muted);
+    font-size: 9px;
+  }
+  .studio-canvas-tools {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    display: flex;
+    gap: 5px;
+    padding: 5px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--bg-raised);
+  }
+  .studio-canvas-tools button {
+    min-width: 32px;
+  }
+  .studio-minimap {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    width: 130px;
+    height: 85px;
+    background: var(--bg-raised);
+    border: 1px solid var(--line-bright);
+    border-radius: 8px;
+  }
+  .studio-minimap rect {
+    fill: var(--accent);
+    stroke: var(--text);
+    stroke-width: 1;
+  }
+  .studio-selection-box {
+    position: absolute;
+    border: 1px solid var(--accent-ink);
+    background: var(--accent-dim);
+    opacity: 0.6;
+    pointer-events: none;
+  }
+  .studio-canvas-help {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    font-size: 11px;
+    color: var(--muted);
+    pointer-events: none;
+  }
+  .studio-node-missing {
+    padding: 6px 12px;
+    color: var(--bad);
+    font-size: 11px;
+  }
+
+</style>
+<script>
+void 0;
+</script>
