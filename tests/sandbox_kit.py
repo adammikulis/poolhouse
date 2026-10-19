@@ -17,7 +17,13 @@ import pytest
 
 from poolhouse import sandbox
 from poolhouse.sandbox import AllowUnsandboxed, Limits, Net, Policy
-from poolhouse.sandbox.backend import LOST_REFUSAL_LOG, NO_REFUSAL_LOG, Availability, Wrapped
+from poolhouse.sandbox.backend import (
+    CUT_REFUSAL_LOG,
+    LOST_REFUSAL_LOG,
+    NO_REFUSAL_LOG,
+    Availability,
+    Wrapped,
+)
 from poolhouse.sandbox.policies import SYSTEM_EXEC
 from poolhouse.sandbox.seatbelt import Seatbelt
 
@@ -53,6 +59,15 @@ class UnloggedBackend(UnreadableBackend):
 
     def unreadable(self, tag):
         return NO_REFUSAL_LOG
+
+
+class CutBackend(UnreadableBackend):
+    """A backend that confines nothing and lost a refusal report to the kernel's length limit."""
+
+    name = "cut"
+
+    def unreadable(self, tag):
+        return CUT_REFUSAL_LOG
 
 
 class RecordingBackend(UnreadableBackend):
