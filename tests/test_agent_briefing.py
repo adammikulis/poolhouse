@@ -44,7 +44,6 @@ def test_managed_worker_keeps_task_only_restrictions_and_parent_activation_owner
     monkeypatch.setattr(harnessing, 'session_files', lambda cwd: files)
     monkeypatch.setattr(harnessing, 'protected_paths', lambda files: [])
     monkeypatch.setattr(harnessing, 'hook_command', lambda *args, **kwargs: 'hook')
-    monkeypatch.setattr(harnessid, 'announce', lambda *args: None)
     with harnessing.opened(args, 'codex', ('http://localhost:9000', 'qwen', 32000), lambda text: None) as session:
         _required(session.brief)
         assert session.brief.startswith(REQUIRED_BRIEFING.format(owner='codex'))

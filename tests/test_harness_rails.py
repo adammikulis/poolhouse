@@ -287,7 +287,6 @@ class TestLaunch:
     @pytest.fixture(autouse=True)
     def _quiet(self, monkeypatch, tmp_path):
         monkeypatch.setattr(harnessid, "invite", lambda name, project, parent, say, **kwargs: harnessid.HarnessSession(name, board="demo", base=tmp_path / "workspace"))
-        monkeypatch.setattr(harnessid, "announce", lambda *a, **k: True)
         monkeypatch.setattr(claude, "alias_of", lambda url, model: "qwen-27b")
         monkeypatch.setattr(codex, "alias_of", lambda url, model: "qwen-27b")
         (tmp_path / "tree").mkdir()
@@ -345,32 +344,8 @@ class TestLaunch:
 
 
 class TestWorkspaceCommands:
-    def _fake_workspace(self, tmp_path, monkeypatch):
-        exe = tmp_path / "bin" / "poolhouse-workspace"
-        exe.parent.mkdir()
-        script = ('import sys\nfrom pathlib import Path\n'
-                  'Path(sys.argv[0] + ".argv").write_text("\\n".join(sys.argv[1:]))\n'
-                  'print("nudge text")\n')
-        if sys.platform == "win32":
-            from distlib.scripts import ScriptMaker
-
-            maker = ScriptMaker(None, str(exe.parent))
-            maker.variants = {""}
-            maker.executable = sys.executable
-            maker.script_template = script
-            exe = Path(maker.make("poolhouse-workspace = unused:main")[0])
-        else:
-            exe.write_text(f"#!{sys.executable}\n{script}")
-            exe.chmod(0o755)
-        monkeypatch.setenv("PATH", f"{exe.parent}{os.pathsep}{os.environ['PATH']}")
-        return exe
-
     def test_a_hostile_label_is_one_argument_and_never_a_shell_line(self, tmp_path, monkeypatch):
-        exe = self._fake_workspace(tmp_path, monkeypatch)
         hostile = "x; touch /tmp/pwned $(id) `id`"
-        assert harnessid.announce(harnessid.HarnessSession(hostile), "t", lambda _: None)
-        argv = Path(f"{exe}.argv").read_text().splitlines()
-        assert argv == ["announce", "joined", "t", "--agent", hostile]
         seen = []
         def run(command, **kwargs):
             seen.append((command, kwargs))
@@ -382,12 +357,6 @@ class TestWorkspaceCommands:
                            hostile, str(Path.cwd())]
         assert options.get('shell', False) is False
         assert options['timeout'] == harnesshook.NUDGE_S
-
-    def test_a_failed_announcement_identifies_the_workspace_trust_check(self, monkeypatch):
-        said = []
-        monkeypatch.setenv("PATH", "/nonexistent")
-        assert harnessid.announce(harnessid.HarnessSession("l"), "t", said.append) is False
-        assert "selected authority and device trust" in said[0]
 
 
 class TestHarnessSession:
@@ -443,7 +412,6 @@ class TestHarnessSession:
     def test_the_default_parent_of_a_launch_is_the_session_of_its_environment(self, kit, monkeypatch):
         monkeypatch.setenv(board_session.AGENT_ENV, kit.lead.name)
         args = harnessing.parser("codex", "codex", 8080, 1).parse_args(["qwen", "--project", str(kit.project)])
-        monkeypatch.setattr(harnessid, "announce", lambda *a, **k: True)
         with harnessing.opened(args, "codex", ("http://127.0.0.1:9", "qwen", 0), lambda _: None) as run:
             assert self.agents(kit)[run.session.name].parent == kit.lead.name
             assert f"activation owner: {kit.lead.name}" in run.brief and f"the lead ({kit.lead.name})" in run.brief
@@ -474,7 +442,6 @@ class TestHarnessSession:
         seen = {}
         monkeypatch.setattr(harnessing, "serving", _fake_serving(seen))
         monkeypatch.setattr(codex, "alias_of", lambda url, model: "qwen")
-        monkeypatch.setattr(harnessid, "announce", lambda *a, **k: True)
         binary = tmp_path / "codex"
         binary.write_text("#!/bin/sh\n")
 
@@ -539,7 +506,6 @@ class TestCodingAgent:
         seen = {}
         monkeypatch.setattr(harnessing, "serving", _fake_serving(seen))
         monkeypatch.setattr(codex, "alias_of", lambda url, model: "qwen-27b")
-        monkeypatch.setattr(harnessid, "announce", lambda *a, **k: True)
         monkeypatch.setattr(harnessid, "invite", lambda name, project, parent, say, *, claim: seen.update(
             name=name, project=project, claim=claim) or harnessid.HarnessSession(name, base=tmp_path / "workspace"))
         binary = tmp_path / "codex"
