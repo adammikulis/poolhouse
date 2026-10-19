@@ -13,11 +13,13 @@ pytestmark = pytest.mark.redteam
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_container_spawn_keeps_arguments_literal_and_mounts_read_only():
+def test_container_spawn_keeps_arguments_literal_and_mounts_read_only(monkeypatch):
     from test_container_launch import ContainerRun
 
+    for name in ("POOLHOUSE_HOME", "POOLHOUSE_CACHE"):  # the suite's state root lives under the temporary directory the plan stores in
+        monkeypatch.delenv(name, raising=False)
     for hostile in ("$(touch /tmp/injected)", "tests/test_layers.py; --privileged", "--mount=type=bind,src=/,dst=/host"):
-        with pytest.raises(RuntimeError, match="fixture admission"):
+        with pytest.raises(RuntimeError, match="fixture plan: unsupported invocation selection"):
             ContainerRun([sys.executable, "-m", "pytest", hostile], {})
 
 
