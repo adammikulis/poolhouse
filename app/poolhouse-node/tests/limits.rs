@@ -1,5 +1,5 @@
 //! What one lineage may make the node do: only what succeeded is counted, a lineage has limits of its own, a flood of fresh
-//! sessions fills no table another lineage needs, and a lineage registers and creates boards a bounded number of times.
+//! sessions fills no table another lineage needs, and a lineage creates boards a bounded number of times.
 #![cfg(unix)]
 
 mod kit;
@@ -107,7 +107,7 @@ fn a_lineage_makes_six_links_a_minute_and_a_refused_one_is_not_counted() {
 }
 
 #[test]
-fn a_lineage_registers_a_bounded_number_of_sessions_and_creates_a_bounded_number_of_boards() {
+fn a_lineage_creates_a_bounded_number_of_boards_and_registers_as_many_sessions_as_it_needs() {
     let state = tempdir().unwrap();
     let mut n = node(state.path());
     let outside = process(true);
@@ -124,7 +124,7 @@ fn a_lineage_registers_a_bounded_number_of_sessions_and_creates_a_bounded_number
             sessions += 1;
         }
     }
-    assert!(sessions <= 60, "one lineage registered {sessions} sessions in a few seconds");
+    assert_eq!(sessions, 200, "one lineage registered {sessions} of 200 sessions in a few seconds");
     let theirs = register(&mut n, &peer(&outside), "elsewhere", "s");
     assert_eq!(theirs["ok"], true, "another lineage is not held back by the first one's: {theirs}");
     done(vec![outside]);
