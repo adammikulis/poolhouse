@@ -9,14 +9,15 @@ settings.
 Contents: [1 What the inventory found](#1-what-the-inventory-found) | [2 Inventory](#2-inventory) |
 [3 Classification and mechanism](#3-classification-and-mechanism) | [4 What each slice removes](#4-what-each-slice-removes) |
 [5 Slices](#5-slices-safest-first) | [6 Security and red-team](#6-security-and-red-team) |
-[7 Rules that change](#7-rules-that-change) | [8 Open decisions](#8-open-decisions)
+[7 Rules that change](#7-rules-that-change) | [8 Decisions](#8-decisions) | [9 Review](#9-review)
 
 ## 1 What the inventory found
 
-1. **The Box enforcer, decoys, two-box layering and lab mode have no code in the tree.** `docs/strands-box.md` (named by
-   `HANDOFF.md` and `docs/release-readiness.md`) does not exist; no source, script, test or app file implements them. The
+1. **The Box enforcer, decoys, two-box layering and lab mode have no code in the tree.** `HANDOFF.md` and
+   `docs/release-readiness.md` cite `docs/strands-box.md` "on branch `docs/strands-box-design`"; no such file or branch is in
+   the repository (no ref and no commit in any history carries it), and no source, script, test or app file implements them. The
    only "decoy" is the sentinel's decoy endpoint (`src/poolhouse/serve/decoy.py`), a different thing that is a security
-   control. There is nothing to isolate for that line of the release cut; the dangling pointer is the only fix (slice 1).
+   control. There is nothing to isolate for that line of the release cut; the dangling pointers are the only fix (slice 1).
 2. **The import graph cannot tell what is release code.** Walking imports from every console script, the app, the facade
    and the frozen launcher reaches 1017 of 1120 modules (every console script is a root). Walking from the release commands, the facade and the app alone reaches 992. The release
    daemon, `doctor`, `mcp`, `workspace` and `decide_cli` import the non-release packages, so reachability says nothing.
@@ -157,7 +158,8 @@ deletion form, used only after D7.
 
 **Slice 1: dead code and the dangling pointer.**
 `git rm src/poolhouse/workspace/project_history.py`. Edit `HANDOFF.md` ("Not in the first release" drops the path
-`docs/strands-box.md` and says the code is absent) and `docs/release-readiness.md` section 6 the same way. Changes: no
+`docs/strands-box.md` and says the code is absent) and `docs/release-readiness.md` (the three places that cite the
+file: 4.2, 4.4 and section 6) the same way; `docs/notes/release-backlog-2026-10-15.md` is a dated note and keeps its words. Changes: no
 test, no budget. Check: `scripts/test all tests/test_wiring.py tests/test_layers.py tests/test_documents_name_current_files.py`.
 
 **Slice 2: tools that never ship (redteam, walk, surface).** No cut edges; nothing imports them.
@@ -214,9 +216,20 @@ entry), `workspace/github_release.py` (`eligible`), `runtime_unmerged.py`, `prot
 `land_review.py` names: `scripts/rename_to_poolhouse.py`, `commit_types_chart.py`, `compare-harnesses`,
 `prepare_medmcqa.py` with their tests (`test_rename_to_poolhouse.py`, `test_commit_types_chart.py`, `test_compare_harnesses.py`, `test_prepare_medmcqa.py`). The commit carries `Owner-order:`.
 
-**Slice 8: speech (after D2).** Cut: `fleet/api.py` (3), `fleet/daemon.py`, `fleet/remote.py` (2), `mcp.py` (3), `setup.py`
+**Slice 8: speech (dropped; D2 keeps it).** Cut: `fleet/api.py` (3), `fleet/daemon.py`, `fleet/remote.py` (2), `mcp.py` (3), `setup.py`
 (1). Leaves: `src/poolhouse/speech/` (8), `poolhouse-speech`, speech routes, `tests/test_speech.py`,
 `test_speech_ffmpeg_flags.py`; edit `test_mcp.py`, `test_redteam_mcp.py`, `test_setup.py`, `test_fleet_daemon.py`.
+Not built: speech stays in the release.
+
+**Slice 9: the graph split (D1, after slices 1 to 6).** `graph` keeps the store, search and the UI the daemon and `memory`
+use. `answers`, `community`, `judging`, `tidy`, `looking`, `tree`, `absorbing` and the tensor modules leave the shipped build
+with `backend`, `vision` and their console scripts, by the layer mechanism of section 3. First step in its own commit: a
+measurement of the cut edges (the 17 `fleet` imports of `graph`, `memory`, `reputation`, the three `backend` imports) with
+the same `ast` walk as section 1, written into this section before any file moves; then the cut in `fleet` (the daemon's
+knowledge view), the layer entries, the wheel excludes, the `KNOWN` and `STANDALONE` edits and the experimental test list.
+The `graph` tests that name the leaving modules move to `tests/experimental-modules.txt` and keep running; torch leaves the
+release test install in this slice. Sizes are not yet measured (about 3,500 lines and most of the 122 debt sites by the
+estimate in D1); `scripts/budgets` counts stay as they are under isolation.
 
 ## 6 Security and red-team
 
@@ -249,44 +262,31 @@ stops a push).
   and benchmarks as the library's headline uses): rewritten to the release scope in the slice that removes the command.
 - `budgets.json`: lowered with `scripts/budgets --update` in each slice that deletes; under isolation unchanged.
 
-## 8 Open decisions
+## 8 Decisions
 
-**D1. The graph.** Keep `graph` (11,661 lines, 122 debt sites, 1,107 of 7,798 test seconds) whole, or split it: the store,
-search and UI the daemon and `memory` use stay, and `answers`, `community`, `judging`, `tidy`, `looking`, `tree`, `absorbing`
-and the tensor modules (with `backend` and `vision`) go with the experimental layer.
-1. Split it (the saving is the largest left: about 3,500 lines, most of its debt and most of its test seconds, and torch
-   leaves the CI install; it costs one more slice with the daemon's knowledge view as the cut).
-2. Keep it whole (no cost; the CI install keeps torch).
+Answered by the owner:
 
-**D2. Speech** (voice in the UI and MCP tools; 1,323 lines, 25 debt sites, 7 red-team rows of which 3 uncovered).
-1. Isolate it (slice 8; removes the voice controls from the desktop page).
-2. Keep it (no cost; keeps 3 uncovered and 4 partial red-team rows in the release build).
+- **D1. Split the graph.** The store, search and UI stay; `answers`, `community`, `judging`, `tidy`, `looking`, `tree`,
+  `absorbing` and the tensor modules (with `backend` and `vision`) leave the shipped build. Added as slice 9, after the
+  packages in section 5.
+- **D2. Keep speech.** Slice 8 is not built; the voice controls and MCP tools stay.
+- **D3. Keep the local-model chat agent** (`chat`, `agent`, `do`, `memory`, `pi`, `coding`) for the release.
+- **D6. Keep `testfarm` and `ph.test`.** `fleet/shard_exec`, `app/poolhouse-node/src/shard` and `scripts/test_on.py` stay;
+  `testing` still leaves the wheel only (slice 5), and `testfarm` does not move.
 
-**D3. The local-model chat agent** (`chat`, `agent`, `do`, `memory`, `pi`, `coding`: 7,400 lines; `workspace` imports `chat`
-and `memory` at top level, so isolating it means rewriting the local loop and the task-credit path).
-1. Keep it for the release and decide after the first drive of the harness journey.
-2. Isolate it in a slice after slice 6 (cost: two workspace files rewritten; removes `poolhouse-chat`, `-memory`, `-agent`).
+Decided by the lead:
 
-**D4. `spec`** (tree speculative decoding for MLX; 2,814 lines; `serve.mlx_tree*` imports it at top level).
-1. Keep it (it is a serving feature on Apple silicon the owner's setup uses).
-2. Isolate it with `serve/mlx_tree*.py` (cost: removes MLX tree decoding from the release; bench already goes).
+- **D4. Keep `spec`.** The MLX tree decoding stays, with `serve/mlx_tree*.py`.
+- **D5. Keep the hostile-PDF engine in `net`**, with `tests/test_pdf_engine.py` and `test_pdf_render.py`.
+- **D7. Isolate only.** Nothing is deleted after isolation; deleting would need the "Code nothing calls is a gap to close"
+  sentence in `AGENTS.md` "The gates" amended first. Debt sites and CI-shard cost stay as in section 4 until then; the
+  only `git rm` is slice 1.
+- **D8. Isolation is a layer inside `src/poolhouse`** (section 3, option 1), not a top-level directory: all 19 gate scripts
+  and 65 tests scan only `src/poolhouse`, so a second root would first need a slice that teaches them both.
 
-**D5. The hostile-PDF engine in `net`** after slice 6 removes its callers (980 lines, red-team covered).
-1. Keep it in `net` (security code with tests; a library user can still read a PDF through `ph`'s tools).
-2. Isolate it with `sources` (removes the callers' attack surface from the release and its tests from the release shards).
+## 9 Review
 
-**D6. `testfarm` and the `remote-tests` feature** (`ph.test` is in the public facade; `testfarm` 430 lines,
-`fleet/shard_exec`, `app/poolhouse-node/src/shard` 812 lines, `scripts/test_on.py`).
-1. Keep it (it is public API and the Linux device check uses it).
-2. Move it behind the experimental layer and drop `ph.test` from the facade (cost: `tests/api-signatures.json`,
-   `docs/api.md`, `docs/test-farm.md`).
-
-**D7. Isolate or delete.** After a slice has been experimental for the owner's chosen time:
-1. Isolate only (nothing is lost; the gates, debt and CI-shard cost stay as in section 4).
-2. Delete after isolation (debt falls by 442 sites; `AGENTS.md` "The gates" is amended in the same commit under the
-   owner's order).
-
-**D8. How far to isolate.** (1) A layer inside `src/poolhouse` as in section 3. (2) A top-level `experimental/` directory
-with its own distribution, preceded by a slice that makes every gate and the 65 walking tests read both roots. Option 2
-isolates harder and costs one prerequisite slice and a rename of every moved import path; option 1 keeps every gate on
-the code and shrinks only the shipped build.
+Security part (section 6): the review found no guard and no red-team test deleted or weakened by any slice proposed here.
+Isolation keeps every red-team test, harness and gate running; the red-team files leave the wheel only (slice 2). The only
+deletion left is slice 1 (`project_history.py`, no caller, no test), and D7 rules out the deletions section 6 listed for
+slices 3 to 8. Slice 7 is the one change that removes a gate (the old landing machinery) and keeps its attack-first pass.
