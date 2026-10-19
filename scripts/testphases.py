@@ -6,7 +6,7 @@ named by ``PHASES_ENV`` and ``scripts/test`` prints them after the run.
 
 * collection: from the plugin loading to the first test starting (worker start and collection).
 * setup: the longest first-test setup on any worker, which is where session fixtures run.
-* tests: the test calls, averaged over the workers.
+* tests: the test calls of the busiest worker, which is the run's critical path.
 * teardown: the longest last-test teardown on any worker, where session fixtures finish.
 * queued: the seconds a worker waited for CPU permits before its tests (worker start and each test), averaged
   over the workers; it is the machine's queue, so it is not part of the fixed overhead.
@@ -77,7 +77,7 @@ class Recorder:
         self.path = path
         self.began = time.time()
         self.first_start = 0.0
-        self.calls = 0.0
+        self.calls: dict[str, float] = {}
         self.queued = 0.0
         self.first_setup: dict[str, float] = {}
         self.last_teardown: dict[str, float] = {}
@@ -93,7 +93,7 @@ class Recorder:
             self.queued += sum(float(value) for key, value in getattr(report, "user_properties", ())
                                if key == WAIT_PROPERTY)
         elif report.when == "call":
-            self.calls += report.duration
+            self.calls[worker] = self.calls.get(worker, 0.0) + report.duration
         elif report.when == "teardown":
             self.last_teardown[worker] = report.duration
 
@@ -102,7 +102,7 @@ class Recorder:
         workers = max(1, len(self.first_setup))
         collection = max(0.0, (self.first_start or time.time()) - self.began)
         phases = Phases(time.time() - self.began, collection, max(self.first_setup.values(), default=0.0),
-                        self.calls / workers, max(self.last_teardown.values(), default=0.0), self.queued / workers)
+                        max(self.calls.values(), default=0.0), max(self.last_teardown.values(), default=0.0), self.queued / workers)
         Path(self.path).write_text(json.dumps(asdict(phases)), encoding="utf-8")
 
 
