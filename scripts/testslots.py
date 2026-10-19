@@ -32,6 +32,7 @@ HEAVY_MODULES = frozenset({
 })
 
 MIN_RETRY_S, MAX_RETRY_S, RETRY_PER_AHEAD_S = 0.01, 0.5, 0.005
+NOTIFY = "notify"
 EXPORT_LEASE = contextvars.ContextVar("export_test_lease", default=True)
 CHECK_CANCELLED = contextvars.ContextVar("check_test_cancelled", default=lambda: None)
 
@@ -157,6 +158,7 @@ def _read(d: Path, mine: Path | None = None) -> list[Slot]:
         if p != mine and not _alive(p):
             with contextlib.suppress(OSError):
                 p.unlink()
+            _notify(d)
             continue
         try:
             data = json.loads(p.read_text())
@@ -320,6 +322,39 @@ def retry_after(ahead: int) -> float:
     return min(MAX_RETRY_S, max(MIN_RETRY_S, RETRY_PER_AHEAD_S * ahead))
 
 
+def _stamp(d: Path) -> int:
+    """The modification time of the notify file, which moves when a lease is released or a share is granted."""
+    try:
+        return (d / NOTIFY).stat().st_mtime_ns
+    except OSError:
+        return 0
+
+
+def _notify(d: Path) -> None:
+    """Wake the waiters: they decide again when the notify file's time moves."""
+    with contextlib.suppress(OSError):
+        (d / NOTIFY).touch()
+
+
+def _record_grant(d: Path, me: dict, path: Path, slots: list[Slot], granted: int) -> None:
+    """Write the grant into the record; waiters that share the budget by arrival decide again."""
+    me["granted"] = granted
+    path.write_text(json.dumps(me))
+    if any(not slot.data.get("want") for slot in slots if slot.granted == 0 and slot.path != path):
+        _notify(d)
+
+
+def _wait_for_change(d: Path, stamp: int, cap: int, pause: float) -> None:
+    """Sleep until a lease is released or a share is granted, the load moves the cap, or MAX_RETRY_S passes; a
+    waiter decides again only then, so a long queue does not read every record at every poll."""
+    end = time.monotonic() + MAX_RETRY_S
+    while time.monotonic() < end:
+        time.sleep(pause)
+        CHECK_CANCELLED.get()()
+        if _stamp(d) != stamp or budget() != cap:
+            return
+
+
 @contextlib.contextmanager
 def lease(want: int, minimum: int | None = None, label: str = "tests", say=lambda m: print(m, file=sys.stderr, flush=True),
           run_class: str = policy.INTERACTIVE) -> Iterator[Lease]:
@@ -338,6 +373,7 @@ def lease(want: int, minimum: int | None = None, label: str = "tests", say=lambd
         while True:
             CHECK_CANCELLED.get()()
             cap = budget()
+            stamp = _stamp(d)
             with _mutex(d):
                 fd = _restore_inode(path, me, fd)
                 slots = _own_records(d, path, me)
@@ -348,8 +384,7 @@ def lease(want: int, minimum: int | None = None, label: str = "tests", say=lambd
                     continue
                 granted, used, ahead = _decide(me, path, slots, cap)
                 if granted:
-                    me["granted"] = granted
-                    path.write_text(json.dumps(me))
+                    _record_grant(d, me, path, slots, granted)
                     break
             now = time.monotonic()
             if now > deadline:
@@ -360,7 +395,7 @@ def lease(want: int, minimum: int | None = None, label: str = "tests", say=lambd
                 last_note, last_state = now, state
                 say(f"testslots: waiting for {minimum}-{want or 'auto'} workers ({used}/{cap} in use, "
                     f"{len(ahead)} run(s) ahead: {', '.join(map(str, ahead)) or 'none'})")
-            time.sleep(retry_after(len(ahead)))
+            _wait_for_change(d, stamp, cap, retry_after(len(ahead)))
         with _lease_environment(path, me["token"]):
             yield Lease(granted, time.monotonic() - t0)
     finally:
@@ -369,6 +404,7 @@ def lease(want: int, minimum: int | None = None, label: str = "tests", say=lambd
                 os.close(fd)
             with contextlib.suppress(OSError):
                 path.unlink()
+            _notify(d)
             if sys.platform != "win32":
                 os.close(fd)
 

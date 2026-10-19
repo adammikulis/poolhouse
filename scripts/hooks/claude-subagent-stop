@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import subagent_records
 import tree_watch
 import workspace_hook
 
@@ -55,11 +56,14 @@ def main() -> int:
     tree_watch.stopped("SubagentStop", str(event.get("cwd") or ""), environment)
     said = workspace_hook.run(["poolhouse-workspace", "announce", "done", f"finished{place}"[:200]],
                               "SubagentStop", environment=environment)
+    agent = str(event.get("agent_id") or "")
     if said is None:
         workspace_hook.run(["poolhouse-workspace", "announce", "milestone", f"stopped, done refused{place}"[:200]],
                            "SubagentStop", environment=environment)
+        subagent_records.stopped(agent)
         return 0
-    workspace_hook.run(["poolhouse-workspace", "retire"], "SubagentStop", environment=environment)
+    if workspace_hook.run(["poolhouse-workspace", "retire"], "SubagentStop", environment=environment) is not None:
+        subagent_records.next_identity(agent)
     return 0
 
 

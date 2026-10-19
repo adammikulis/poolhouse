@@ -174,10 +174,6 @@ def test_a_request_far_back_in_the_queue_does_not_read_every_record_a_hundred_ti
     assert decisions_while_waiting_a_second(tmp_path, ahead=100) <= 6
 
 
-def test_the_request_at_the_head_of_the_queue_keeps_deciding_often(tmp_path):
-    assert decisions_while_waiting_a_second(tmp_path, ahead=0) >= 10
-
-
 def test_validation_and_classification_of_the_same_arguments_parse_them_once(monkeypatch):
     parsed = []
     real = testoptions.parse_arguments

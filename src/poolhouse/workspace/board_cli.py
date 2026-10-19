@@ -56,20 +56,21 @@ GENERIC = frozenset({"claude", "chatgpt", "qwen", "claude-code", "codex"})
 """The names `--agent` once carried for every session; each is refused in favour of the session's own."""
 
 
-def check_agent(given: str, environ: dict[str, str] | None = None) -> None:
-    """Refuse a shared harness name where the session has its own; the message names the new id."""
+def check_agent(given: str, environ: dict[str, str] | None = None) -> str:
+    """``given``, or an empty string (with one line saying so) when it is a shared harness name and the session has its own."""
     own = (environ if environ is not None else os.environ).get(session.AGENT_ENV, "")
     if own and given and given in GENERIC and given != own:
-        raise Denied(f"`--agent {given}` is no longer an identity: every session has its own name, and "
-                     f"yours is {own}. Run workspace commands as yourself: the environment names you, "
-                     f"so drop --agent")
+        warn(f"--agent {given} is not an identity: running as {own}")
+        return ""
+    return given
 
 
 def guarded(run: Callable[[argparse.Namespace], int | None]) -> Callable[[argparse.Namespace], int]:
     """``run`` with its refusals turned into one warning (or one JSON object) and an exit status."""
     def wrapped(args: argparse.Namespace) -> int:
         try:
-            check_agent(getattr(args, "agent", ""))
+            if hasattr(args, "agent"):
+                args.agent = check_agent(args.agent)
             return int(run(args) or 0)
         except FAILURES as err:
             code = exit_code(err)
@@ -181,7 +182,7 @@ def agents(args: argparse.Namespace, s: Session) -> Any:
 def spawn(args: argparse.Namespace, s: Session) -> Any:
     """Register a subagent's native session as a child of the caller."""
     made = s.register(Native(clean_model(args.model) if args.model else "", clean_harness(args.harness), args.session))
-    return {"id": made.name, "parent": made.parent}
+    return {"id": made.name, "parent": made.parent, "board": made.board}
 
 
 def retire(args: argparse.Namespace, s: Session) -> Any:
