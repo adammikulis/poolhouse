@@ -856,10 +856,10 @@ def fetched(ref: str | Path, what: str) -> str | Path:
     parts = ServerSpec.hf_parts(ref)
     if not parts:
         return ref
-    from poolhouse.hub import fetch, pull
+    from poolhouse.hub import PERSON, fetch, pull
 
     try:
-        return str(fetch(str(ref)) if parts[1] else pull(str(ref)))
+        return str(fetch(str(ref), trust=PERSON) if parts[1] else pull(str(ref), trust=PERSON))
     except (ValueError, OSError, RuntimeError) as exc:
         raise ServerFailed(f"could not fetch the {what} {ref}: {exc}") from exc
 

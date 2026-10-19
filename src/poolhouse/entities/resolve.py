@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
-from typing import Any, Collection, Iterable, Mapping
+from collections.abc import Collection, Iterable, Mapping
+from typing import Any
 
 STOPWORDS = frozenset({"the", "a", "an", "of", "and", "&", "for", "in", "on"})
 

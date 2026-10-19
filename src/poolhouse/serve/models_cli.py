@@ -9,6 +9,7 @@ from collections.abc import Callable
 
 from poolhouse import hub
 from poolhouse.hub import cli as hub_cli, hf_cache, origins
+from poolhouse.hub.admission import PERSON
 from poolhouse.log import say, warn
 from poolhouse.serve import estimate as est, models_adopt, models_migrate, suggest as pick
 from poolhouse.units import human_bytes
@@ -200,7 +201,7 @@ def _pull(args: argparse.Namespace) -> int:
             warn(f"\r{p.phase:11} {p.fraction:6.1%}  {human_bytes(p.bytes_per_second)}/s  "
                  f"{p.file}", end="", flush=True)
 
-    got = hub.pull(args.ref, args.dest, show, members=False if args.no_members else None)
+    got = hub.pull(args.ref, args.dest, show, members=False if args.no_members else None, trust=PERSON)
     warn("")
     return _emit(args, {"path": str(got)}, lambda: say(str(got)))
 

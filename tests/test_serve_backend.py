@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from poolhouse.hub.admission import PERSON
 from poolhouse.serve import backend
 from poolhouse.serve.backend import (
     LlamaServerBackend,
@@ -564,7 +565,7 @@ def test_a_draft_named_by_file_is_fetched_and_served_by_path(monkeypatch, tmp_pa
     head = tmp_path / "mtp-head-BF16.gguf"
     head.write_bytes(b"GGUF")
     asked = []
-    monkeypatch.setattr("poolhouse.hub.fetch", lambda ref: asked.append(ref) or head)
+    monkeypatch.setattr("poolhouse.hub.fetch", lambda ref, trust=None: asked.append(ref) or head)
     spec = be.ServerSpec(model=tmp_path / "m.gguf", draft="hf:owner/repo-GGUF/MTP/mtp-head-BF16.gguf")
     resolved = be.LlamaServerBackend.resolved_draft(spec)
     assert asked == ["hf:owner/repo-GGUF/MTP/mtp-head-BF16.gguf"]
@@ -587,19 +588,19 @@ def test_a_model_named_by_file_is_fetched_and_served_by_path(monkeypatch, tmp_pa
 
     weights = tmp_path / "thing-Q4_K_M.gguf"
     weights.write_bytes(b"GGUF")
-    asked = []
-    monkeypatch.setattr("poolhouse.hub.fetch", lambda ref: asked.append(ref) or weights)
+    asked, trusts = [], []
+    monkeypatch.setattr("poolhouse.hub.fetch", lambda ref, trust=None: trusts.append(trust) or asked.append(ref) or weights)
     spec = be.ServerSpec(model="hf:owner/thing-GGUF/thing-Q4_K_M.gguf")
     resolved = be.LlamaServerBackend.resolved_model(spec)
-    assert asked == ["hf:owner/thing-GGUF/thing-Q4_K_M.gguf"]
+    assert asked == ["hf:owner/thing-GGUF/thing-Q4_K_M.gguf"] and trusts == [PERSON]
     argv = be.LlamaServerBackend(binary=binary).command(resolved)
     assert argv[argv.index("-m") + 1] == str(weights)
     assert "--hf-repo" not in argv
     pulled = []
-    monkeypatch.setattr("poolhouse.hub.pull", lambda ref: pulled.append(ref) or weights)
+    monkeypatch.setattr("poolhouse.hub.pull", lambda ref, trust=None: pulled.append((ref, trust)) or weights)
     repo_only = be.ServerSpec(model="hf:owner/thing-GGUF")
     served = be.LlamaServerBackend.resolved_model(repo_only)
-    assert pulled == ["hf:owner/thing-GGUF"] and served.model == str(weights)
+    assert pulled == [("hf:owner/thing-GGUF", PERSON)] and served.model == str(weights)
     assert asked == ["hf:owner/thing-GGUF/thing-Q4_K_M.gguf"]
     argv = be.LlamaServerBackend(binary=binary).command(served)
     assert "--hf-repo" not in argv and "-hf" not in argv
@@ -612,7 +613,7 @@ def test_start_fetches_the_model_before_preflight(monkeypatch, tmp_path):
 
     weights = tmp_path / "thing-Q4_K_M.gguf"
     weights.write_bytes(b"GGUF")
-    monkeypatch.setattr("poolhouse.hub.fetch", lambda ref: weights)
+    monkeypatch.setattr("poolhouse.hub.fetch", lambda ref, trust=None: weights)
     monkeypatch.setattr(be, "claim_port", lambda spec, lease: None)
     seen = []
 
@@ -708,7 +709,7 @@ def test_start_fetches_the_projector_and_the_server_gets_a_path(monkeypatch, tmp
     projector.write_bytes(b"GGUF")
     fetched = []
     monkeypatch.setattr("poolhouse.hub.fetch",
-                        lambda ref: fetched.append(ref) or (projector if "mmproj" in ref else weights))
+                        lambda ref, trust=None: fetched.append(ref) or (projector if "mmproj" in ref else weights))
     monkeypatch.setattr(be, "claim_port", lambda spec, lease: None)
     seen = []
 

@@ -46,7 +46,7 @@ def weights(name: str | Path) -> Path:
     where = home.expand(name)
     if where.exists():
         return where
-    return hub.snapshot(str(name))
+    return hub.snapshot(str(name), trust=hub.PERSON)
 
 
 def external_ple(path: Path) -> Path:

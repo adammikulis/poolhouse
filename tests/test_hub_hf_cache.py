@@ -37,7 +37,7 @@ def snapshot(tmp_path, monkeypatch):
         calls.append(url)
         return data
 
-    def download(url, target, want):
+    def download(url, target, want, pipeline=None):
         assert want.token == "" and want.admit
         payload = b"card" if target.name == "README.md" else b"data"
         target.write_bytes(payload)

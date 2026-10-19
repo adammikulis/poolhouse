@@ -1,7 +1,10 @@
-"""Whether the files of a Hub repository may be fetched: a known publisher, a name that does not say the
-model was altered, and bytes that match what was pulled before. Anything else waits for a person."""
+"""Whether the files of a Hub repository may be fetched, under the `Trust` the caller passes: a known publisher,
+a name that does not say the model was altered, and bytes that match what was pulled before. What a `Trust`
+does not allow waits for a person (`PERSON`, the default) or is refused naming the argument."""
 
 from __future__ import annotations
+
+from dataclasses import dataclass
 
 from poolhouse import sentinel
 from poolhouse.hub import publishers, remote
@@ -11,17 +14,62 @@ from poolhouse.requests.model import shown
 from poolhouse.sentinel.events import Severity
 from poolhouse.sentinel.findings import HIGH, finding
 
-__all__ = ["DigestChanged", "NotApproved", "admit", "approved", "ask"]
+__all__ = ["LIBRARY", "PERSON", "DigestChanged", "NotApproved", "Trust", "admit", "approved", "ask", "checked"]
 
 CLOSING = "Models can hide behaviour that tests do not show. Use it anyway?"
+ARGUMENT = "From a program, `ph.models.pull(repo, file, trust=...)` (`poolhouse.hub.Trust`) decides this itself."
 
 
 class NotApproved(RemoteError):
-    """A person has not approved this repository at this commit."""
+    """The trust passed does not allow this repository at this commit."""
 
 
 class DigestChanged(RemoteError):
     """The Hub lists other bytes for a file at a commit than it did when the file was pulled."""
+
+
+@dataclass(frozen=True, slots=True)
+class Trust:
+    """What a pull may fetch without an answer. ``publishers`` are the owners fetched from freely (None and not
+    ``shipped``: any owner; ``shipped`` adds the publishers Poolhouse ships with); ``official_only`` counts a Hub
+    other than the official one as unknown; ``markers`` and ``moved`` check for a name that says the model was
+    altered and for bytes unlike an earlier pull of another commit; ``ask`` puts what is not allowed to a person
+    in the requests inbox, else the pull is refused and the message names this argument."""
+
+    publishers: frozenset[str] | None = None
+    shipped: bool = False
+    official_only: bool = False
+    markers: bool = False
+    moved: bool = False
+    ask: bool = False
+
+    def __post_init__(self) -> None:
+        if isinstance(self.publishers, str):
+            raise TypeError("publishers is a collection of owner names, not one string")
+        if self.publishers is not None:
+            object.__setattr__(self, "publishers", frozenset(self.publishers))
+
+    def restricts(self) -> bool:
+        """Whether some owners are not allowed without an answer."""
+        return self.publishers is not None or self.shipped
+
+    def allows(self, owner: str) -> bool:
+        """Whether ``owner`` is fetched from without an answer."""
+        return not self.restricts() or owner in (self.publishers or ()) or (self.shipped and owner in publishers.TRUSTED)
+
+
+LIBRARY = Trust()
+"""Any owner, any Hub, any name; the digest check stays, and the pin of what is kept is recorded."""
+
+PERSON = Trust(shipped=True, official_only=True, markers=True, moved=True, ask=True)
+"""The shipped publishers on the official Hub, and a person answers the rest; the default of every pull."""
+
+
+def checked(trust: object) -> Trust:
+    """``trust`` itself when it is a `Trust`; `TypeError` for anything else, such as a word."""
+    if not isinstance(trust, Trust):
+        raise TypeError(f"trust is a poolhouse.hub.Trust (PERSON, or Trust(...) to allow more), not {trust!r}")
+    return trust
 
 
 def _changed(ref: Ref, files: list[RemoteFile]) -> list[str]:
@@ -55,31 +103,50 @@ def _held(path: str, ref: Ref) -> str:
             f"by sentinel; a person releases it with `poolhouse-security release`")
 
 
-def admit(ref: Ref, files: list[RemoteFile]) -> None:
-    """Return when ``files`` of ``ref`` (resolved to a commit) may be fetched. `NotApproved` after
-    asking a person when the publisher is not known, a name says the model was altered, or a file
-    differs from the one pulled before; `DigestChanged` when the Hub contradicts itself."""
-    if len(ref.commit) != 40:
-        raise ValueError(f"{ref.text} must be resolved to a commit before it is fetched")
+def _reasons(ref: Ref, files: list[RemoteFile], trust: Trust) -> list[tuple[str, str]]:
+    """Why ``trust`` does not allow ``files`` of ``ref``: each reason as the sentence a person is asked and
+    as the phrase a program reads. `DigestChanged` whatever the trust."""
     publisher = publishers.namespace(ref.repo)
     host = remote.endpoint_host()
     official = publishers.official(host)
-    why = []
-    if not official:
-        why.append(f"This model is from {publisher} on {host}, a Hub Poolhouse does not know.")
-    elif publisher not in publishers.TRUSTED:
-        why.append(f"This model is from {publisher}, who Poolhouse does not know.")
-    elif not remote.on_branch(ref.repo, ref.commit):
-        why.append(f"This file is not from {publisher}'s own branch.")
-    if publishers.marker(ref.repo, *(f.path for f in files)):
-        why.append("Its name says it was changed to answer what the original would refuse.")
-    if moved := _changed(ref, files):
-        why.append(f"{shown(moved[0], 'label')} is not the file Poolhouse pulled from {ref.repo} before.")
+    why: list[tuple[str, str]] = []
+    if trust.official_only and not official:
+        why.append((f"This model is from {publisher} on {host}, a Hub Poolhouse does not know.",
+                    f"{host} is not the official Hub"))
+    elif not trust.allows(publisher):
+        why.append((f"This model is from {publisher}, who Poolhouse does not know.",
+                    f"{publisher} is not among the trusted publishers"))
+    elif trust.restricts() and official and not remote.on_branch(ref.repo, ref.commit):
+        why.append((f"This file is not from {publisher}'s own branch.", f"it is not from {publisher}'s own branch"))
+    if trust.markers and publishers.marker(ref.repo, *(f.path for f in files)):
+        why.append(("Its name says it was changed to answer what the original would refuse.",
+                    "its name says it was changed to answer what the original would refuse"))
+    moved = _changed(ref, files)
+    if moved and trust.moved:
+        why.append((f"{shown(moved[0], 'label')} is not the file Poolhouse pulled from {ref.repo} before.",
+                    f"{moved[0]} differs from the file pulled before"))
+    return why
+
+
+def admit(ref: Ref, files: list[RemoteFile], trust: Trust = PERSON) -> None:
+    """Return when ``files`` of ``ref`` (resolved to a commit) may be fetched under ``trust``. `NotApproved`
+    for what ``trust`` does not allow, after asking a person when it asks; `DigestChanged` when the Hub
+    contradicts itself."""
+    trust = checked(trust)
+    if len(ref.commit) != 40:
+        raise ValueError(f"{ref.text} must be resolved to a commit before it is fetched")
+    why = _reasons(ref, files, trust)
     if not why:
         return
-    fields = {"publisher": publisher, "repo": ref.repo, "commit": ref.commit, "host": host}
+    it = f"It is {ref.repo} at {ref.commit[:12]}."
+    if not trust.ask:
+        raise NotApproved(f"Not fetched: {'; '.join(code for _, code in why)}. {it} Pass another `trust=` "
+                          f"(`Trust(publishers=...)` names the owners to fetch from).")
+    fields = {"publisher": publishers.namespace(ref.repo), "repo": ref.repo, "commit": ref.commit,
+              "host": remote.endpoint_host()}
     subject = f"{ref.repo}@{ref.commit[:12]}"
-    sentence = " ".join((*why, f"It is {ref.repo} at {ref.commit[:12]}.", CLOSING))
+    sentence = " ".join((*(person for person, _ in why), it, CLOSING))
     if approved("model_publisher", subject, sentence, **fields):
         return
-    raise NotApproved(ask("model_publisher", subject, sentence, **fields))
+    told = ask("model_publisher", subject, sentence, **fields)
+    raise NotApproved(told.replace(sentence, f"{sentence} {ARGUMENT}", 1))

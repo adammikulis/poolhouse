@@ -204,7 +204,14 @@ that very file (name, size and digest), orders them by how fast they answered, a
 file chunk by chunk, resumably, from several at once. `on_progress`, `CancelToken` and the
 sentinel events work as for a Hub pull.
 
-**Publisher trust.** A pull is refused until a person approves it when the owner of the repository is not one of the
+**Publisher trust.** A pull takes a `trust` argument (`poolhouse.hub.Trust`; `ph.models.pull`, `ph.hub.fetch`, `hub.pull`) and the
+default is `poolhouse.hub.admission.PERSON`, which is the rule in this paragraph. `Trust(publishers=...)` names the owners a program
+fetches from and refuses the rest with a message that names the argument; `Trust()` (`LIBRARY`) fetches from any publisher on any
+Hub under any name without asking anyone; `markers`, `moved`, `official_only` and `ask` add the checks below. The digest check stays
+whatever the `Trust`: the Hub listing other bytes for a commit already pulled is refused and quarantined, and every file kept is
+pinned. The commands and the agents (`poolhouse-models`, serving an `hf:` reference, the pool's model download, training and
+bench bases) pass `PERSON` themselves, and nothing in a reference, an environment variable, a model recipe, a server spec or a
+tool schema can change it. Under `PERSON`, a pull is refused until a person approves it when the owner of the repository is not one of the
 known publishers (`Qwen`, `unsloth`, `ggml-org`, `google`, `bartowski`, `lmstudio-community`; matched exactly, so `qwen`,
 `Qwen.` and a lookalike are unknown), when the file is not from the publisher's own branch (a pull request's commit),
 when the Hub is not the official one (`HF_ENDPOINT` names a mirror), when the repository or a file name says the model was

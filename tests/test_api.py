@@ -170,6 +170,16 @@ def test_the_internal_errors_are_public_errors() -> None:
     assert ph.board.Board is not None
 
 
+def test_a_pull_and_a_fetch_take_a_trust_and_the_default_asks_a_person_about_unknown_publishers() -> None:
+    from poolhouse.hub.admission import LIBRARY, PERSON
+
+    assert ph.models.Trust() == LIBRARY != PERSON and ph.models.Trust.__dataclass_params__.frozen
+    for fn in (ph.models.pull, ph.hub.fetch):
+        assert inspect.signature(fn).parameters["trust"].default is PERSON
+        assert inspect.signature(fn).parameters["trust"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert not hasattr(ph.models, "LIBRARY")
+
+
 def test_help_leads_with_pooling_devices() -> None:
     first = inspect.getdoc(ph).splitlines()[0]
     assert first.startswith("Poolhouse: pool every device's compute")

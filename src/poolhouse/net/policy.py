@@ -16,8 +16,8 @@ from poolhouse import home
 from poolhouse.httpguard import Refused
 from poolhouse.sentinel import observers
 
-__all__ = ["ALLOWED", "ENV", "Approval", "Distrusted", "NeedsApproval", "Policy", "approvals_path", "default",
-           "host_of", "mirror_netloc"]
+__all__ = ["ALLOWED", "ANYWHERE", "ENV", "Approval", "Distrusted", "NeedsApproval", "Policy", "approvals_path",
+           "default", "host_of", "mirror_netloc"]
 
 ALLOWED: tuple[str, ...] = (
     "huggingface.co", "*.huggingface.co", "hf.co", "*.hf.co",
@@ -28,6 +28,9 @@ ALLOWED: tuple[str, ...] = (
 """Hosts that need no approval: the model hub, GitHub's release hosts and the geocoder. The
 host of ``$HF_ENDPOINT`` and those in ``$POOLHOUSE_NET_ALLOW_HOSTS`` count as listed too."""
 
+ANYWHERE: tuple[str, ...] = ("*",)
+"""An allow-list that lists every host; only `pipeline.library` builds a policy from it."""
+
 ENV = "POOLHOUSE_NET_ALLOW_HOSTS"
 
 
@@ -35,8 +38,9 @@ class NeedsApproval(Refused):
     """A host that is neither allow-listed nor approved; ``host`` is what to approve."""
 
     def __init__(self, host: str, purpose: str) -> None:
-        super().__init__(f"{host} is not on the allow-list for {purpose}; a person approves it "
-                         f"with `poolhouse-security approve-host {host}`")
+        super().__init__(f"{host} is not on the allow-list for {purpose}. A program lists it in the `allowed` "
+                         f"argument (`net.Policy(allowed=(..., {host!r}))` in a `net.Pipeline`); a person approves "
+                         f"it with `poolhouse-security approve-host {host}`")
         self.host, self.purpose = host, purpose
 
 

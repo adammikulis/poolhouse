@@ -92,7 +92,7 @@ def prefetch(references: Sequence[str], log: Callable[[str], None] = say) -> lis
     out: list[tuple[str, int]] = []
     for ref in references:
         try:
-            where = hub.fetch(ref)
+            where = hub.fetch(ref, trust=hub.PERSON)
         except (OSError, ValueError) as exc:
             warn(f"could not fetch {ref}: {exc}")
             continue

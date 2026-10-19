@@ -168,7 +168,7 @@ def download(url: str, dest_dir: str | Path, wanted: Wanted | None = None,
                              "Accept": ", ".join(accept) + ", */*;q=0.1"})
     with polite.turn(url):
         try:
-            made = net.download(url, target, want)
+            made = net.download(url, target, want, pipeline=net.default())
         except TooLarge as exc:
             raise DownloadError(f"{url}: over the {max_bytes} byte limit ({exc})") from exc
         except net.Blocked as exc:

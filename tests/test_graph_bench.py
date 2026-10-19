@@ -1825,7 +1825,7 @@ def test_every_hf_reference_is_fetched_before_the_lock_and_no_prefetch_skips_it(
     seen = _serving(monkeypatch, tmp_path)
     fetched = []
 
-    def fake_fetch(reference):
+    def fake_fetch(reference, *, trust=None):
         # the measuring lock must not be held while the Hub is being waited on
         with only_one(tmp_path / "home" / "measuring.lock", wait=False):
             pass
@@ -1870,7 +1870,7 @@ def test_a_fetch_that_fails_is_said_and_the_rest_still_come_down(capsys):
     import poolhouse.bench as bench
     import poolhouse.hub
 
-    def flaky(reference):
+    def flaky(reference, *, trust=None):
         if "gone" in reference:
             raise OSError("no such repository")
         return pathlib.Path("/dev/null")
