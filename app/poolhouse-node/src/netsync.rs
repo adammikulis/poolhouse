@@ -118,6 +118,17 @@ fn push_once(node: &Mutex<Node>, c: &mut PeerClient, id: &str, origin: &str, rep
     Ok(stored)
 }
 
+/// One line naming the rows of other devices that a sync refused, as board/origin: code; empty when none were.
+pub fn refused_note(reports: &BTreeMap<String, Report>) -> String {
+    let all: Vec<String> = reports.iter()
+        .flat_map(|(board, r)| r.refused.iter().map(move |(origin, code)| format!("{board}/{origin}: {code}"))).collect();
+    if all.is_empty() {
+        return String::new();
+    }
+    let more = if all.len() > 3 { format!(" and {} more", all.len() - 3) } else { String::new() };
+    format!("synced, but these logs were refused (damaged, a gap or past a limit): {}{more}", all[..all.len().min(3)].join(", "))
+}
+
 /// Swap builds, then sync every board both devices hold; origin to refusal code per board.
 pub fn sync_all(node: &Mutex<Node>, c: &mut PeerClient) -> Result<BTreeMap<String, Report>> {
     sync_members(node, c)?;

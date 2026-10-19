@@ -52,15 +52,27 @@ def staged_names() -> list[str]:
     return [name for name in out.split("\0") if name]
 
 
+class Unreadable(Exception):
+    """budgets.json cannot be compared: it is absent, not JSON, or its revision is not in the repository.
+
+    ``fatal`` is set for the staged copy, which a commit must not carry unreadable.
+    """
+
+    def __init__(self, reason: str, fatal: bool = False) -> None:
+        super().__init__(reason)
+        self.fatal = fatal
+
+
 def numbers(revision: str) -> dict[str, int]:
-    """budgets.json at a revision, empty when it is not there or does not parse."""
+    """budgets.json at a revision (``""`` is the staged copy); Unreadable when it cannot be read as JSON."""
+    where = f"staged {NAME}" if not revision else f"{NAME} at {revision}"
     code, out = _git("show", f"{revision}:{NAME}")
     if code != 0:
-        return {}
+        raise Unreadable(f"{where} cannot be read: no {NAME} there, or the revision is not fetched", not revision)
     try:
         held = json.loads(out)
     except ValueError:
-        return {}
+        raise Unreadable(f"{where} is not valid JSON", not revision) from None
     return {k: v for k, v in held.items() if isinstance(v, int)}
 
 
@@ -88,6 +100,30 @@ def on_disk() -> dict[str, int]:
     return {k: v for k, v in held.items() if isinstance(v, int)}
 
 
+def unchecked(reason: Unreadable, ci: bool) -> int:
+    """Say the ratchet did not run; a comparison against a revision (CI) or a staged file that is unreadable fails."""
+    print(f"{NAME}: ratchet not checked: {reason}", file=sys.stderr)
+    return 1 if ci or reason.fatal else 0
+
+
+def compared(against: str | None) -> tuple[dict[str, int] | None, dict[str, int]]:
+    """The numbers to compare and the numbers now; before is None when there is nothing to compare."""
+    if against:
+        return numbers(against), on_disk()
+    if NAME not in staged_names() or _git("rev-parse", "--verify", "HEAD")[0] != 0:
+        return None, {}
+    after = numbers("")
+    before = numbers("HEAD")
+    if _git("rev-parse", "-q", "--verify", "MERGE_HEAD")[1].strip():
+        # a merge may carry the other parent's numbers: its commits were judged against their own base
+        try:
+            theirs = numbers("MERGE_HEAD")
+        except Unreadable:
+            theirs = {}
+        before = {k: max(v, theirs.get(k, v)) for k, v in before.items()}
+    return before, after
+
+
 def main(argv: list[str] | None = None) -> int:
     """Compare budgets.json against an earlier one and refuse any number that rose."""
     parser = argparse.ArgumentParser(prog="budgets-only-fall", description=__doc__)
@@ -95,24 +131,16 @@ def main(argv: list[str] | None = None) -> int:
                         help="compare the file on disk against this revision")
     args, _ = parser.parse_known_args(argv)
 
-    if args.against:
-        before, after = numbers(args.against), on_disk()
-        if not before:
-            return 0
-    else:
-        if NAME not in staged_names():
-            return 0
-        code, _ = _git("rev-parse", "--verify", "HEAD")
-        if code != 0:
-            return 0
-        before, after = numbers("HEAD"), numbers("")
-        if _git("rev-parse", "-q", "--verify", "MERGE_HEAD")[1].strip():
-            # a merge may carry the other parent's numbers: its commits were judged against their own base
-            theirs = numbers("MERGE_HEAD")
-            before = {k: max(v, theirs.get(k, v)) for k, v in before.items()}
+    try:
+        before, after = compared(args.against)
+    except Unreadable as reason:
+        return unchecked(reason, ci=bool(args.against))
+    if before is None:
+        return 0
     try:
         strict = gates.hard()
-    except Exception:
+    except Exception as error:
+        print(f"{NAME}: the hard-gate list could not be read ({error}); a dropped hard gate is refused.", file=sys.stderr)
         strict = set()
     went_up = rises(before, after, strict)
     if not went_up:

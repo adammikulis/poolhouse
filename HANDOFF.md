@@ -114,4 +114,10 @@ The owner requested a usage-conscious wrap: land useful reviewed work, tidy chec
 - Temporary wrap helper scripts are bound to the prior authenticated session. A fresh session establishes its own native identity and credentials; never copy the old actor environment or select its token. No person credentials were exported.
 
 
+## Silent failures left (audit of 2026-10-16)
+- `scripts/test` prints the "fixed overhead" warning (`scripts/testphases.py`) and records it nowhere; a test run that starts a node pays about 20 s of bring-up each time, so the warning is on most runs. A fix needs the node kit to start faster or the warning to feed a ratchet metric.
+- A person-record hook failure is one stderr line (`person` in `scripts/hooks/workspace_hook.py`); `person-consume` then says only that no record exists, without the stage that failed.
+- A board log has no compaction path: `app/poolhouse-node/src/board.rs` refuses every write past `MAX_LOG_ROWS` (200,000) with "this log is past the rows a device keeps", and nothing warns before.
+- A job whose `status.json` cannot be parsed reads as absent (`Jobs.read` in `scripts/testjobs.py`), so `live_full` does not count it as a running full run.
+
 Earlier unresolved items and historical evidence are preserved in [the release backlog](docs/notes/release-backlog-2026-10-15.md). Reconcile them against current code before acting.

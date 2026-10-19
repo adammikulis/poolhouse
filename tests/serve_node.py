@@ -12,6 +12,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
+import node_orphans
 import pytest
 
 from poolhouse import leasetable, node_binary as node_binary_module, node_launch, node_supervise
@@ -25,6 +26,7 @@ def lease_node(node_binary):
     root = Path(tempfile.mkdtemp(prefix="ml")).resolve()
     state = root / "node"
     state.mkdir(mode=0o700)
+    node_orphans.claim(root)
     node_supervise.point(state, node_binary, node_binary_module.sha256(node_binary))
     node_launch.ensure_node(state)
     yield state

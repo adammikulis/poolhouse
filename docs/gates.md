@@ -20,6 +20,9 @@ equal a full run; `POOLHOUSE_GATES_FULL=1` ignores the cache.
 whatever wrote it, and a metric dropped from the file counts as a rise, because the next `--update` puts it back
 at whatever the tree holds. An agent is refused outright; `POOLHOUSE_BUDGET_RISE=yes` is for the owner's own
 commit. The pre-commit chain is opt-in, so `ci.yml` runs the same check with `--against` the pull request's base.
+When `budgets.json` cannot be read at the base (absent, not JSON, or the base commit not fetched) the hook prints
+`ratchet not checked` with the reason; against a revision it exits 1, and a commit whose staged copy is unreadable
+is refused, while a commit over an unreadable `HEAD` copy goes on after the notice.
 
 ## What the gates do not read
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -289,3 +290,17 @@ def test_digest_lists_new_announcements_and_ack_marks_them_seen(team):
     assert "landed one" in team.cli("digest", who=team.lead).stdout
     assert "landed one" in team.cli("digest", "--ack", who=team.lead).stdout
     assert "nothing new" in team.cli("digest", who=team.lead).stdout
+
+
+def test_releasing_a_claim_that_is_not_held_exits_five_and_names_the_command_to_take_it_again(team):
+    me = team.lead
+    never = team.cli("release", "port", "9477", "--json", who=me)
+    assert never.returncode == 5
+    said = json.loads(never.stdout)["error"]
+    assert "not held" in said and "poolhouse-workspace claim port 9477" in said
+    assert team.cli("claim", "port", "9478", "--ttl", "1", who=me).returncode == 0
+    time.sleep(2.5)
+    expired = team.cli("release", "port", "9478", who=me)
+    assert expired.returncode == 5 and "expired" in expired.stderr
+    assert team.cli("claim", "port", "9479", who=me).returncode == 0
+    assert team.cli("release", "port", "9479", who=me).returncode == 0

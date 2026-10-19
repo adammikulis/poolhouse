@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from typing import Any
 
+from poolhouse.board.client import Conflict
 from poolhouse.board.session import Claim, Session
 from poolhouse.command import flag
 from poolhouse.workspace import limits, worktree_lifecycle
@@ -36,7 +37,10 @@ def claim(args: argparse.Namespace, s: Session) -> Any:
 def release(args: argparse.Namespace, s: Session) -> Any:
     """Give a claim up; --held-by frees one of the caller's own subagents."""
     key = normal(args.kind, args.key)
-    return {"kind": args.kind, "key": key, "released": s.release(args.kind, key, args.held_by)}
+    if not s.release(args.kind, key, args.held_by):
+        raise Conflict("denied", f"{args.kind} {key} is not held: it expired or was never taken; "
+                                   f"take it again with: poolhouse-workspace claim {args.kind} {key}")
+    return {"kind": args.kind, "key": key, "released": True}
 
 
 def listing(args: argparse.Namespace, s: Session) -> Any:

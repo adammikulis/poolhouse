@@ -36,6 +36,9 @@ pub const READ_DEFAULT: usize = 200;
 pub const READ_MAX: usize = 1000;
 /// How many boards a node hosts at most, and how many boards a lineage creates in an hour.
 pub const MAX_BOARDS: usize = 256;
+/// What a request with a token the node does not hold is told.
+const UNKNOWN_TOKEN: &str =
+    "the token is not known: its session was retired (an idle session is retired after a day, and so is one its parent ends) or never registered; start a new session";
 const MOST_NEW_BOARDS_PER_HOUR: usize = 16;
 const HOUR: Duration = Duration::from_secs(3600);
 
@@ -203,7 +206,7 @@ impl Node {
 
     /// Decide what ``token`` may do on ``board``: its own board fully, another only through a link.
     pub fn access(&self, token: &str, board: &str, write: bool) -> Result<Access> {
-        let holder = self.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("the token is not known".into()))?;
+        let holder = self.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied(UNKNOWN_TOKEN.into()))?;
         if !self.boards.contains_key(board) {
             return Err(Error::Denied("this node does not host that board".into()));
         }
@@ -342,8 +345,10 @@ impl Node {
         let admitted = crate::writes::check_post(self, board, &access.holder, &access.actor, kind, fields)?;
         let hosted = self.hosted(board)?;
         let row = hosted.board.append(kind, &access.actor, body, idem)?;
-        let reply = json!({"id": row.id(), "seq": row.seq, "sender": access.actor, "status": hosted.board.status(row.seq, &[])});
-        crate::writes::wrote(self, board, &access.holder, &access.actor, admitted)?;
+        let mut reply = json!({"id": row.id(), "seq": row.seq, "sender": access.actor, "status": hosted.board.status(row.seq, &[])});
+        if crate::writes::wrote(self, board, &access.holder, &access.actor, admitted)? {
+            reply["over_quota"] = json!(true);
+        }
         Ok(reply)
     }
 

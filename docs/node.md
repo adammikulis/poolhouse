@@ -603,7 +603,7 @@ others'. A use is counted when it was made: a refused or failed attempt counts f
 | used signature nonces remembered | 256, each for ten minutes, across restarts | `denied` |
 | a frame | 1 MiB | the connection closes |
 | messages, notes and claims one session writes | 30 a minute; a subagent as many (`child_sends`, never below `sends`), and what its subagents write together is held to 120 a minute of their own (`subagent_sends`, never below `sends`), which is none of the parent's 30 | `quota` |
-| announcements one session writes | 6 in ten minutes; past that, or past the minute's sends, the post is written and the board gets an `announce_over_quota` audit entry | none |
+| announcements one session writes | 6 in ten minutes; past that, or past the minute's sends, the post is written, the board gets an `announce_over_quota` audit entry and the reply carries `over_quota` (the `announce` command prints it as a `warning`) | none |
 | direct messages unread in a session's inbox | 500, and 100 from one sender | `quota` |
 | notes an author keeps on a board | 500 | `quota` |
 | idle time before the node retires a session | 24 hours (no lease held, not heard from) | none |
@@ -615,6 +615,10 @@ is unread until its recipient reads its inbox with a `since` cursor past it: the
 on an inbox read (`inbox_read` in `names.json`), and a recipient on another device is not counted. A claim sent through `claim`
 counts as a send, and the `reserve` of a harness hook does not. The unread messages of each recipient and the notes of each author are counted by `tally.rs` as rows arrive (counted again from
 the log when the node starts), so a post is checked without folding the board.
+
+The node writes a few direct messages of its own, as `node` (a name no session can hold): to the holder of a claim whose time ran
+out, naming the `claim` command that takes it again, and to the parent of a subagent it retired for idleness. A request with a token
+the node does not hold is told the session was retired or never registered.
 
 ## Leases
 
