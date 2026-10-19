@@ -7,15 +7,14 @@ import json
 import pytest
 from browser_expect import expect
 from test_fleet_ui import Serving
-
-from poolhouse.scrape.browser import Window, browser
+from test_studio_canvas_browser import studio_browser  # noqa: F401
 
 pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
-def device_page(tmp_path):
-    pytest.importorskip('playwright.sync_api')
+def device_page(tmp_path, request):
+    open_page = request.getfixturevalue('studio_browser')
     served = Serving(tmp_path)
     served.ui.settings.setup_done = True
     served.ui.root = tmp_path / 'traind'
@@ -28,7 +27,7 @@ def device_page(tmp_path):
          'available': False, 'capabilities': []},
     ]
     try:
-        with browser(Window(profile=tmp_path / 'device-browser', headless=True)) as page:
+        with open_page() as page:
             page.set_viewport_size({'width': 1440, 'height': 1000})
             errors = []
             page.on('pageerror', lambda error: errors.append(str(error)))
