@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import os
 import re
 import subprocess
 import sys
@@ -29,6 +30,7 @@ ASSERT = re.compile(r"^\s*(assert\b|self\.assert\w*\(|with pytest\.raises\b|pyte
 DEF = re.compile(r"^\s*(?:async\s+)?def (test\w*)\(")
 SKIP = re.compile(r"pytest\.(mark\.(skip|skipif|xfail)\b|skip\(|xfail\(|importorskip\()")
 MARK = re.compile(r"mark\.redteam\b|^pytestmark\b.*redteam", re.M)
+SAME_FILE_PREFIX = 16
 
 
 def guarded(path: str, text: str) -> bool:
@@ -68,8 +70,11 @@ def moved(diff: str) -> dict[str, str]:
 
 
 def swapped(diff: str) -> dict[str, set[str]]:
-    """Per renamed file, the test names a hunk replaced by as many other test names and nothing else
-    that is a test: the function was renamed with its body untouched, not removed."""
+    """Per file, the test names a hunk replaced by as many other test names and nothing else that is a
+    test: the function was renamed, not removed. In a file that moved any new name pairs with an old
+    one; in a file that did not move each pair shares a name prefix of at least ``SAME_FILE_PREFIX``
+    characters. The count of assertions is checked on its own, so an edited body that keeps its
+    assertions passes."""
     renamed = set(moved(diff))
     out: dict[str, set[str]] = {}
     path = ""
@@ -78,7 +83,8 @@ def swapped(diff: str) -> dict[str, set[str]]:
     hunk = False
 
     def settle() -> None:
-        if path in renamed and gone and len(gone) == len(came):
+        if gone and len(gone) == len(came) and (path in renamed or all(
+                len(os.path.commonprefix([a, b])) >= SAME_FILE_PREFIX for a, b in zip(gone, came))):
             out.setdefault(path, set()).update(gone)
         gone.clear()
         came.clear()
