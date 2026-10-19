@@ -205,7 +205,7 @@ renamed staged file, because it lists only `--diff-filter=ACMR`):
   `scripts/contract --write` cannot turn it green;
 - it compares a rate as value over `per_ms`, refuses a change to `direction` or `unit`, and refuses a raised `max`, a lowered
   `min`, a dropped set member or a deleted row, whatever wrote it;
-- `POOLHOUSE_FLOOR_WEAKEN=yes` is the owner's terminal bypass and is refused when any agent marker is set (`CLAUDECODE`,
+- the floor-weakening bypass variable (named when the hook is built, as `budgets-only-fall` names its own) is the owner's terminal bypass and is refused when any agent marker is set (`CLAUDECODE`,
   `POOLHOUSE_AGENT`, any `CODEX_*`) or there is no terminal; the bash guard blocks the `-n` form for Claude Code only, so the
   hook checks for itself.
 
