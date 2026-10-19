@@ -21,7 +21,8 @@ LABEL = "poolhouse.pool-check"
 IMAGE = "poolhouse-pool-check"
 PORT = 7447
 KEEP = ("pyproject.toml", "README.md", "LICENSE", "NOTICE", "THIRD_PARTY_NOTICES.md", "contracts/", "patches/", "src/", "scripts/",
-        "app/Cargo.toml", "app/Cargo.lock", "app/poolhouse-node/", "app/src-tauri/Cargo.toml", "app/src-tauri/build.rs",
+        "app/Cargo.toml", "app/Cargo.lock", "app/poolhouse-node/", "app/phone-governance-jni/", "app/poolhouse-authority/",
+        "app/src-tauri/Cargo.toml", "app/src-tauri/build.rs",
         "app/src-tauri/src/", "app/src-tauri/tauri.conf.json", "app/src-tauri/capabilities/", "app/src-tauri/icons/")
 
 
