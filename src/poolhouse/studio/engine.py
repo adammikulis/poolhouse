@@ -10,6 +10,7 @@ from typing import Any
 
 from .catalog import is_model_type, node_spec
 from .contracts import validate_graph
+from .resources import model_fingerprint
 from .store import StudioStore, digest
 
 TERMINAL = frozenset({"done", "failed", "cancelled", "blocked", "interrupted"})
@@ -19,6 +20,8 @@ def artifact_fingerprints(value: Any) -> dict[str, str]:
     """Hash declared artifact bytes and refuse directory symlink escapes."""
     found = {}
     if isinstance(value, dict) and value.get("kind") in {"dataset", "model", "artifact"} and isinstance(value.get("path"), str):
+        if value.get("kind") == "model" and value.get("id"):
+            return {value["path"]: model_fingerprint(value)}
         path = Path(value["path"]).resolve(strict=True)
         files = sorted(path.rglob("*")) if path.is_dir() else [path]
         root = path if path.is_dir() else path.parent
@@ -100,6 +103,7 @@ class WorkflowEngine:
         requirements = getattr(self.adapters, "validate", lambda nodes: [])(local)
         if remote:
             requirements.extend(self.dispatcher.validate(remote, principal))
+        requirements.extend(getattr(self.adapters, "validate_resources", lambda selected: [])(graph))
         if requirements:
             raise ValueError(requirements)
         for node in graph["nodes"]:

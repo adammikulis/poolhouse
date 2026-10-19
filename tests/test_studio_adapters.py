@@ -171,13 +171,16 @@ def test_model_binding_resolves_installed_snapshot_without_fetch(tmp_path, monke
 
     snapshot = tmp_path / 'snapshot'
     snapshot.mkdir()
-    monkeypatch.setattr(adapters.hub, 'held_snapshot', lambda repo: snapshot if repo == 'sample/model' else None)
-    context = {'bindings': {'model': {'kind': 'model', 'id': 'sample/model'}}, 'files_root': tmp_path}
+    entry = SimpleNamespace(id='hf:sample/model', path=snapshot, format='mlx', kind='chat',
+                            is_complete=True, verified=True)
+    monkeypatch.setattr(adapters.hub, 'discover', lambda: [entry])
+    context = {'bindings': {'model': {'kind': 'model', 'id': entry.id}}, 'files_root': tmp_path}
     result = Adapters(None).immediate({'type': 'model'}, {}, context)
     assert result['model']['path'] == str(snapshot)
-    context['bindings']['model']['id'] = '../private'
-    with pytest.raises(ValueError, match='local model library'):
-        Adapters(None).immediate({'type': 'model'}, {}, context)
+    for ident in ('sample/model', '../private', str(snapshot), 'https://injected.invalid/model', 'hf:missing/model'):
+        context['bindings']['model']['id'] = ident
+        with pytest.raises(ValueError, match='local model library'):
+            Adapters(None).immediate({'type': 'model'}, {}, context)
 
 
 def test_default_tools_are_fixed_read_operations_and_checked(monkeypatch):
@@ -318,3 +321,66 @@ def test_response_schemas_refuse_external_or_unsupported_rules(schema):
 
     with pytest.raises(ValueError):
         response_schema(schema)
+
+
+def test_library_model_id_preflight_and_worker_use_same_native_base(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+
+    from poolhouse.hub import ModelInfo
+    from poolhouse.studio import adapters, worker
+
+    model = tmp_path / 'model'
+    model.mkdir()
+    (model / 'config.json').write_text('{"model_type":"qwen3","quantization":{"bits":4}}')
+    (model / 'model.safetensors').write_bytes(b'weights')
+    entry = ModelInfo('hf:sample/model', 'model', model, 'mlx', 7, 'huggingface')
+    monkeypatch.setattr(adapters.hub, 'discover', lambda: [entry])
+    monkeypatch.setattr(adapters.hub, 'fetch', lambda *args, **kwargs: pytest.fail('model selection must not fetch'))
+    graph = {'nodes': [{'id': 'base', 'type': 'model', 'bindings': {'model': {'kind': 'model', 'id': entry.id}}},
+                       {'id': 'train', 'type': 'train.tool-calls', 'parameters': {'framework': 'mlx', 'lora': True, 'mode': 'smoke'}}],
+             'edges': [{'source': {'node': 'base', 'port': 'model'}, 'target': {'node': 'train', 'port': 'model'}}]}
+    adapter = Adapters(None)
+    assert adapter.validate_resources(graph) == []
+    resource = adapter.immediate(graph['nodes'][0], {}, {'bindings': graph['nodes'][0]['bindings']})['model']
+    held = []
+
+    @contextmanager
+    def hold(purpose):
+        held.append(purpose)
+        yield
+
+    def train(recipe, config, dataset, output, dry):
+        assert held and recipe == 'tool-calls' and dry
+        assert config['base'] == str(model)
+        return {'dry_run': True}
+
+    monkeypatch.setattr(worker.gpu, 'hold', hold)
+    recipes = SimpleNamespace(validate=lambda recipe, config: config)
+    monkeypatch.setattr(worker.optional, 'module', lambda name: recipes if name.endswith('recipes') else SimpleNamespace(run=train))
+    assert execute(graph['nodes'][1], {'model': resource, 'dataset': {'path': str(tmp_path)}}, tmp_path) == {'metrics': {'dry_run': True}}
+    (model / 'config.json').write_text('{}')
+    assert adapter.validate_resources(graph)[0]['node'] == 'train'
+    held.clear()
+    with pytest.raises(ValueError, match='model configuration'):
+        execute(graph['nodes'][1], {'model': resource, 'dataset': {'path': str(tmp_path)}}, tmp_path)
+    assert not held, 'invalid bases must be refused before a broker compute hold'
+
+
+@pytest.mark.parametrize('case', [
+    ('gguf', 'chat', 'mlx', True, True), ('safetensors', 'embedding', 'torch', True, True),
+    ('mlx', 'chat', 'torch', True, True), ('safetensors', 'chat', 'mlx', True, True),
+    ('mlx', 'chat', 'mlx', False, True), ('mlx', 'chat', 'mlx', True, False)])
+def test_training_preflight_refuses_incompatible_installed_models(tmp_path, monkeypatch, case):
+    format, kind, framework, complete, verified = case
+    from poolhouse.hub import ModelInfo
+    from poolhouse.studio import adapters
+
+    (tmp_path / 'config.json').write_text('{"model_type":"sample"}')
+    (tmp_path / 'model.safetensors').write_bytes(b'weights')
+    entry = ModelInfo('hf:sample/model', 'model', tmp_path, format, 7, 'huggingface',
+                      kind=kind, is_complete=complete, verified=verified)
+    monkeypatch.setattr(adapters.hub, 'discover', lambda: [entry])
+    graph = {'nodes': [{'id': 'base', 'type': 'model', 'bindings': {'model': {'kind': 'model', 'id': entry.id}}},
+                       {'id': 'train', 'type': 'train.tool-calls', 'parameters': {'framework': framework, 'lora': True}}],
+             'edges': [{'source': {'node': 'base', 'port': 'model'}, 'target': {'node': 'train', 'port': 'model'}}]}
+    assert Adapters(None).validate_resources(graph)

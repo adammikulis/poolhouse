@@ -12,11 +12,21 @@ import pytest
 
 from poolhouse import sandbox, sentinel
 from poolhouse.sandbox import denial_log, policies, run
+from poolhouse.sandbox.backend import NO_REFUSAL_LOG
 from poolhouse.sandbox.bubblewrap import Bubblewrap
 from poolhouse.sandbox.container import Container
 from poolhouse.sandbox.denial_log import DenialLog, parse
 from poolhouse.sentinel.adapters import sandbox_listener
-from tests.sandbox_kit import RecordingBackend, UnloggedBackend, UnreadableBackend
+from poolhouse.sentinel.score import UNATTRIBUTED_WEIGHT, WEIGHTS
+from tests.sandbox_kit import (
+    CutBackend,
+    RecordingBackend,
+    SilentBackend,
+    UnloggedBackend,
+    UnparsedBackend,
+    UnreadableBackend,
+    UntracedBackend,
+)
 
 pytest_plugins = ["tests.sandbox_kit"]
 
@@ -205,7 +215,7 @@ def test_a_run_that_was_not_diagnosed_does_not_claim_its_refusals_were_unreadabl
 
 def test_a_backend_that_keeps_no_refusal_log_says_so_instead_of_reporting_a_clean_run():
     assert Bubblewrap().denials("tag", 0.0) is None and Container().denials("tag", 0.0) is None
-    assert not Bubblewrap.keeps_refusal_log and not Container.keeps_refusal_log
+    assert Bubblewrap().unreadable("tag") == Container().unreadable("tag") == NO_REFUSAL_LOG
 
 
 def test_a_failed_run_on_a_backend_without_a_refusal_log_cannot_pass_check(tmp_path):
@@ -234,11 +244,53 @@ def test_a_run_that_cannot_start_ends_the_run_it_began_watching(tmp_path):
     assert backend.watched == ["unreadable"] == backend.finished
 
 
-@pytest.mark.parametrize(("backend", "weight"), [(UnloggedBackend(), 0.2), (UnreadableBackend(), 1.0)],
-                         ids=["no-log-by-construction", "log-lost"])
+@pytest.mark.parametrize(("backend", "weight"), [
+    (UnloggedBackend(), 0.2), (UnreadableBackend(), 1.0), (UntracedBackend(), 0.2),
+    (CutBackend(), WEIGHTS["sandbox.denied"]), (SilentBackend(), UNATTRIBUTED_WEIGHT),
+    (UnparsedBackend(), WEIGHTS["sandbox.denied"]),
+], ids=["no-log-by-construction", "log-lost", "cut-report-of-nobody-in-particular", "cut-report-of-the-run",
+        "failed-and-no-report", "report-the-run-made-unreadable"])
 def test_a_failed_run_whose_refusals_cannot_be_known_adds_to_the_score_by_the_reason(backend, weight, tmp_path):
     node = sentinel.Sentinel(tmp_path / "sentinel")
     with node.running("s-blind"):
         run(["/bin/sh", "-c", "exit 1"], policies.bash(str(tmp_path), str(tmp_path)), via=backend,
             on_event=sandbox_listener(node))
     assert node.score.value("session", "s-blind") == pytest.approx(weight)
+
+
+PROBE_PROCESS_AND_TARGET = f"sandbox-exec(4242) deny(1) process-exec* {denial_log.PROBE_PROGRAM}"
+
+
+def asked(kind: str = "settle") -> tuple[DenialLog, str]:
+    """``(stream, token)`` of a stream with a probe of ``kind`` in flight, which no message has answered."""
+    stream, token = DenialLog(), f"{denial_log.PROBE}{kind}-0123456789abcdef"
+    stream._probes[token] = False
+    return stream, token
+
+
+@pytest.mark.parametrize(("kind", "last_line"), [
+    ("ready", "{prefix}{token}"), ("settle", "{prefix}{token}"), ("cut", "{token}{pad}"),
+])
+def test_a_probe_is_answered_by_the_report_it_provokes(kind, last_line):
+    stream, token = asked(kind)
+    stream._hear(f"Sandbox: {PROBE_PROCESS_AND_TARGET}\n" + last_line.format(prefix=denial_log.PREFIX, token=token, pad=denial_log.LONG_PAD))
+    assert stream._probes[token]
+
+
+@pytest.mark.parametrize("message", [
+    "{token}",
+    "hello {token}",
+    "Sandbox: {probe}\n{prefix}probe~settle-ffffffffffffffff {token}",
+    "Sandbox: sandbox-exec(4242) deny(1) process-exec* /usr/bin/true {token}\n{prefix}other",
+    "Sandbox: {probe}\n{prefix}{token}x",
+    "Sandbox: sandbox-exec(4242) deny process-exec* /usr/bin/true\n{prefix}{token}",
+    "Sandbox: sandbox-exec(4242) deny(1) process-exec* /etc/passwd\n{prefix}{token}",
+    "Sandbox: cat(4242) deny(1) process-exec* /usr/bin/true\n{prefix}{token}",
+    "Sandbox: {probe}\n{token}",
+    "Sandbox: {probe}\n{prefix}{token}\nelse",
+], ids=["token-alone", "token-in-prose", "token-in-the-target", "token-in-the-target-of-another-tag", "token-with-more", "head-that-does-not-parse",
+        "other-target", "other-process", "no-prefix-without-the-padding", "token-not-on-the-last-line"])
+def test_a_message_that_only_holds_the_token_of_a_probe_does_not_answer_it(message):
+    stream, token = asked()
+    stream._hear(message.format(token=token, probe=PROBE_PROCESS_AND_TARGET, prefix=denial_log.PREFIX))
+    assert not stream._probes[token]

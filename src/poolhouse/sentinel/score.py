@@ -16,7 +16,7 @@ from poolhouse.sentinel.events import Severity
 from poolhouse.sentinel.findings import HEURISTIC, HIGH, Finding, finding
 from poolhouse.sentinel.rates import Windows
 
-__all__ = ["NO_REFUSAL_LOG_WEIGHT", "QUARANTINE_AT", "WATCH_AT", "WEIGHTS", "WINDOW_S", "Score"]
+__all__ = ["QUARANTINE_AT", "UNATTRIBUTED_WEIGHT", "UNREPORTED_FAILURE_WEIGHT", "WATCH_AT", "WEIGHTS", "WINDOW_S", "Score"]
 
 WATCH_AT = 3.0
 """Score at which a subject is watched."""
@@ -40,8 +40,14 @@ WEIGHTS: dict[str, float] = {
 }
 """What one signal of each kind adds."""
 
-NO_REFUSAL_LOG_WEIGHT = 0.2
-"""What a failed run on a backend that keeps no refusal log adds, against 1.0 for a log that was lost."""
+UNATTRIBUTED_WEIGHT = 0.2
+"""What a failed run adds when its refusals cannot be known and the failure may not be its own: a backend
+that keeps no refusal log, a refusal report cut off that may belong to another run, or "Operation not
+permitted" with no refusal report of it (a locked file says the same). A refusal report of the run's own
+process that was cut off or could not be read adds the weight of a refusal; a log that was lost adds 1.0."""
+
+UNREPORTED_FAILURE_WEIGHT = 0.05
+"""What a run adds that exited non-zero while the refusal log carried no report of it."""
 
 
 @dataclass(slots=True)
