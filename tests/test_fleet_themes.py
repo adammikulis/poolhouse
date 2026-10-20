@@ -76,3 +76,50 @@ def test_custom_theme_count_is_bounded():
     appearance["saved_themes"] *= 17
     with pytest.raises(ValueError, match="16"):
         validate_appearance(appearance)
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_setup_system_theme_initializes_once_and_manual_choice_wins(theme, tmp_path):
+    ui = UI(name="theme-device")
+    ui.settings, ui.settings_path = Settings(), tmp_path / "settings.json"
+    assert ui.state()["needs_setup_theme"] is True
+    assert "error" not in ui.apply_prefs({"system_theme":theme})
+    assert Settings.load(ui.settings_path).appearance["active_theme"] == theme
+    assert ui.state()["needs_setup_theme"] is False
+    other = "light" if theme == "dark" else "dark"
+    assert "error" not in ui.apply_prefs({"system_theme":other})
+    assert ui.settings.appearance["active_theme"] == theme
+    assert "error" not in ui.apply_prefs({"appearance":custom()})
+    assert "error" not in ui.apply_prefs({"system_theme":other, "appearance_initialized":False})
+    assert ui.settings.appearance == validate_appearance(custom())
+    assert Settings.load(ui.settings_path).appearance_initialized is True
+
+
+@pytest.mark.parametrize("value", [None, True, 1, [], {}, "system", "LIGHT", ""])
+def test_invalid_system_theme_never_mutates_other_preferences(value, tmp_path):
+    ui = UI(name="theme-device")
+    ui.settings, ui.settings_path = Settings(), tmp_path / "settings.json"
+    before = ui.settings.public()
+    assert ui.apply_prefs({"system_theme":value, "context":16384})["error"]
+    assert ui.settings.public() == before
+    assert not ui.settings_path.exists()
+
+
+def test_finished_setup_and_invalid_initialization_flag_cannot_change_theme(tmp_path):
+    ui = UI(name="theme-device")
+    ui.settings, ui.settings_path = Settings(setup_done=True), tmp_path / "settings.json"
+    assert "error" not in ui.apply_prefs({"system_theme":"light"})
+    assert ui.settings.appearance == default_appearance()
+    ui.settings.appearance_initialized = "no"
+    before = ui.settings.public()
+    assert ui.apply_prefs({"system_theme":"light", "context":16384})["error"]
+    assert ui.settings.public() == before
+
+
+def test_unavailable_appearance_validation_is_plain_and_atomic(tmp_path):
+    ui = UI(name="theme-device")
+    ui.settings, ui.settings_path = Settings(appearance={}), tmp_path / "settings.json"
+    before = ui.settings.public()
+    assert ui.apply_prefs({"system_theme":"light", "context":16384})["error"]
+    assert ui.settings.public() == before
+    assert not ui.settings_path.exists()

@@ -5,7 +5,9 @@ from . import lan_pools, setup_project_routes
 from .discovery import DiscoveryError, in_pool, require_name
 from .onboard.joining import JoinOptions
 from .onboard.pools import known_pools
+from .request_fields import object_body
 from .session import parse_cookie
+from .settings import apply_preferences
 
 
 class SetupRoutes:
@@ -109,6 +111,20 @@ class SetupRoutes:
                 self.send(403, {"error": why})
                 return True
         if self.path == "/ui/setup/done":
+            try:
+                request = object_body(self)
+                if set(request) - {"system_theme"}:
+                    raise ValueError("Unknown setup completion field")
+            except ValueError:
+                self.send(400, {"error":"Setup completion needs an optional light or dark system theme."})
+                return True
+            if "system_theme" in request:
+                if ui.settings is None:
+                    self.send(503, {"error":"Preferences are unavailable on this device."})
+                    return True
+                if error := apply_preferences(ui.settings, {"system_theme":request["system_theme"]}):
+                    self.send(400, {"error":error})
+                    return True
             self.send(200, ui.setup_finished())
             return True
         self.send(200, ui.apply_prefs(self.body()))

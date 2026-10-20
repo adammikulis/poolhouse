@@ -183,7 +183,8 @@ class UI:
                 "group": pool_group(self.pool_key_path) if joined else None,
                 "needs_password": joined, "pool_mode": mode,
                 "selection": getattr(selected[0], "selection", "automatic") if selected else "automatic",
-                "needs_setup": not done}
+                "needs_setup": not done,
+                "needs_setup_theme": bool(self.settings and not done and self.settings.appearance_initialized is False)}
 
     def setup_finished(self) -> dict[str, Any]:
         """Remember that the wizard was finished, so it is not shown again."""

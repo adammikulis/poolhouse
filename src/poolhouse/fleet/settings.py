@@ -17,7 +17,7 @@ __all__ = ["Settings", "Suggestion", "apply_preferences", "suggest"]
 
 @dataclass
 class Settings:
-    """Per-machine preferences. Every field is something a person chose."""
+    """Per-device preferences and first-run state."""
 
     name: str = ""
     """What this machine calls itself to the others. Empty means the hostname."""
@@ -52,6 +52,7 @@ class Settings:
     studio_undo_steps: int = 32
     """The nearest editing states retained independently for Studio undo and redo (1-128)."""
     appearance: dict[str, Any] = field(default_factory=default_appearance)
+    appearance_initialized: bool = False
     context: int = 8192
     """How much of a conversation a model is given to read. Costs memory per token."""
     features: dict[str, bool] = field(default_factory=dict)
@@ -79,6 +80,8 @@ def _build(raw: dict[str, Any]) -> Settings:
     if "studio_undo_steps" in values and (type(values["studio_undo_steps"]) is not int
                                           or not 1 <= values["studio_undo_steps"] <= 128):
         raise ValueError("Studio undo steps must be an integer from 1 to 128.")
+    if "appearance_initialized" in values and type(values["appearance_initialized"]) is not bool:
+        raise ValueError("Appearance initialization must be a boolean.")
     if "appearance" in values:
         values["appearance"] = validate_appearance(values["appearance"])
     if "features" in values:
@@ -152,6 +155,11 @@ def suggest() -> dict[str, Suggestion]:
 
 def apply_preferences(settings: Settings, request: dict[str, Any]) -> str:
     """Validate and apply interface and conversation defaults."""
+    if type(settings.appearance_initialized) is not bool:
+        return "Appearance initialization must be a boolean."
+    if "system_theme" in request and (type(request["system_theme"]) is not str
+                                       or request["system_theme"] not in ("light", "dark")):
+        return "Choose a light or dark system theme."
     if "always_show_advanced" in request and not isinstance(request["always_show_advanced"], bool):
         return "Always show advanced options must be a boolean."
     if "studio_undo_steps" in request and (type(request["studio_undo_steps"]) is not int
@@ -174,6 +182,14 @@ def apply_preferences(settings: Settings, request: dict[str, Any]) -> str:
             values["appearance"] = validate_appearance(request["appearance"])
         except ValueError as exc:
             return str(exc)
+    if ("system_theme" in request and "appearance" not in values
+            and not settings.setup_done and not settings.appearance_initialized):
+        try:
+            values["appearance"] = validate_appearance({**settings.appearance, "active_theme":request["system_theme"]})
+        except ValueError as exc:
+            return str(exc)
     for key, value in values.items():
         setattr(settings, key, value)
+    if "appearance" in values:
+        settings.appearance_initialized = True
     return ""
