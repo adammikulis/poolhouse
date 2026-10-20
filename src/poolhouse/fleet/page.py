@@ -15,7 +15,7 @@ COMPONENTS_DIR = WEB / "components"
 COMPONENTS = ("fleet-model", "vocabulary-model", "fleet-nav", "sign-in", "launch-needed", "startup-models", "pool-actions", "first-run", "fleet-benchmark", "pool-view",
               "chat-stream", "chat-markdown", "chat-view", "board-view", "projects-view", "wired-memory", "feature-flags", "models-library", "model-browser", "models-view", "theme-editor", "vocabulary-settings", "settings-view", "fit-model", "fit-view",
               "fit-charts", "rates-view", "telemetry-view",
-              "workspace-jobs", "history-view", "tasks-view", "data-discover", "data-view", "knowledge-view",
+              "workspace-jobs", "history-view", "tasks-view", "data-import", "data-discover", "data-view", "knowledge-view",
               "studio-styles", "studio-model", "studio-persistence", "studio-bindings", "studio-editor", "studio-sweeps", "studio-targets", "studio-setup", "studio-managed", "studio-live", "studio-delivery", "studio-webhook", "studio-producer", "studio-records", "studio-branches", "studio-groups", "studio-runs", "studio-sharing", "studio-nodes", "studio-insertion", "studio-placement", "studio-canvas", "studio-view", "training-view", "tools-view", "benchmarks-view", "gym-scene-controls",
               "gym-drone-camera", "gym-scene", "gym-recordings",
               "gym-world-options", "gym-model-options", "gym-view", "close-sheet")

@@ -1,0 +1,157 @@
+<style>
+data-import .dataset-import {margin-top:20px;padding:20px;border:1px solid var(--line);border-radius:16px;background:var(--bg-raised)}
+data-import .dataset-import-fields {display:flex;gap:12px;flex-wrap:wrap;align-items:end}
+data-import fieldset {min-width:0}data-import input {min-width:0;max-width:100%}data-import .dataset-import-column span {overflow-wrap:anywhere}
+data-import label {display:grid;gap:6px;margin:8px 0}data-import .dataset-import-columns {max-height:260px;overflow:auto}
+data-import .dataset-import-column {display:grid;grid-template-columns:auto minmax(80px,1fr) minmax(100px,1fr);align-items:center;gap:10px}
+data-import .dataset-import-column label {display:contents}data-import .dataset-import-column input[type=checkbox] {width:auto}
+data-import .dataset-import-rows {display:flex;flex-wrap:wrap;gap:14px}data-import .dataset-import-rows label {display:flex;align-items:center}
+data-import .dataset-import-rows input {width:auto}data-import .dataset-import-actions {display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+data-import .dataset-import-progress {overflow-wrap:anywhere}
+</style>
+<template>
+ <section class="dataset-import" aria-label="Import observed dataset rows" hidden>
+  <div class="dataset-import-selection"></div>
+  <div class="dataset-import-progress" role="status" aria-live="polite"></div>
+  <div class="dataset-import-actions"></div>
+ </section>
+</template>
+<script>
+(function(){
+ const M=window.fleetModel,E=M.el;
+ const terminal=new Set(['done','failed','blocked','interrupted','cancelled']);
+ class DatasetImport extends HTMLElement{
+  connectedCallback(){
+   if(this.wired)return;this.wired=true;this.host=this.querySelector('section');this.form=this.querySelector('.dataset-import-selection');
+   this.note=this.querySelector('.dataset-import-progress');this.actions=this.querySelector('.dataset-import-actions');
+   M.onRoute(route=>{clearTimeout(this.poll);if(['sign-in','launch-needed','first-run'].includes(route))this.invalidate();else if(route==='data'&&this.active)this.refresh();});
+  }
+  enter(){this.active=true;this.refresh();}
+  leave(){this.active=false;clearTimeout(this.poll);}
+  invalidate(){clearTimeout(this.poll);this.operation=null;this.selection=null;this.form.replaceChildren();this.note.replaceChildren();this.actions.replaceChildren();this.host.hidden=true;}
+  session(){return M.sessionContext();}
+  expire(op){if(this.operation===op&&this.session()!==op.epoch){this.invalidate();return true;}return false;}
+  owns(op){return this.isConnected&&this.operation===op&&op.epoch!==null&&this.session()===op.epoch;}
+  visible(op){return this.owns(op)&&this.active&&M.route==='data'&&location.hash==='#data'&&!this.closest('[hidden]');}
+  select(params,preview,current){
+   this.selection=null;this.form.replaceChildren();this.host.hidden=!this.operation;
+   if(!preview?.preview_digest||!preview.rows.length)return;
+   const selected=this.selection={params:{...params},preview,current};this.host.hidden=false;
+   const name=E('input',{'aria-label':'Imported dataset name',maxlength:'256',value:params.repo.split('/').pop()+' sample'});
+   const rows=E('div',{class:'dataset-import-rows'}),columns=E('div',{class:'dataset-import-columns'});
+   const rowFields=preview.rows.map((_row,index)=>{const input=E('input',{type:'checkbox',checked:true,'aria-label':'Import sample row '+(index+1)});rows.append(E('label',{},input,'Row '+(index+1)));return input;});
+   const columnFields=preview.columns.map(column=>{
+    const enabled=E('input',{type:'checkbox',checked:true,'aria-label':'Import field '+column.name});
+    const output=E('input',{'aria-label':'Output field for '+column.name,value:column.name,maxlength:'256'});
+    columns.append(E('div',{class:'dataset-import-column'},enabled,E('span',{},column.name),output));return {name:column.name,enabled,output};
+   });
+   const submit=E('button',{type:'button',class:'data-primary'},'Import selected preview rows');
+   submit.onclick=()=>this.submit(selected,{name,rowFields,columnFields},submit);
+   this.form.append(E('h3',{},'Import sample rows'),E('p',{class:'intro'},'This imports only the selected observed preview rows, not the complete split or the pinned Parquet export. Imported fields keep the names shown below; choose a workflow or recipe to check its required fields.'),E('label',{},'Dataset name',name),E('fieldset',{},E('legend',{},'Observed rows'),rows),E('fieldset',{},E('legend',{},'Fields and output names'),columns),submit);
+   this.submitButton=submit;this.draw();
+  }
+  async submit(selected,fields,button){
+   if(selected!==this.selection||button!==this.submitButton||!button.isConnected||!this.contains(button))return;
+   if(this.operation)this.expire(this.operation);
+   if(this.operation&&!terminal.has(this.operation.run?.state)&&this.operation.state!=='refused')return;
+   if(!selected||selected.current()!==true)return;
+   const body={...selected.params,expected_preview_digest:selected.preview.preview_digest,
+    row_indexes:fields.rowFields.flatMap((input,index)=>input.checked?[index]:[]),
+    columns:Object.fromEntries(fields.columnFields.filter(field=>field.enabled.checked).map(field=>[field.name,field.output.value])),
+    name:fields.name.value.trim(),idempotency_key:crypto.randomUUID()};
+   const op={epoch:this.session(),body,run:null,dataset:null,state:'submitting'};if(op.epoch===null)return;
+   this.operation=op;await this.send(op);
+  }
+  async send(op){
+   if(this.expire(op)||!this.visible(op)||op.sending||!['submitting','notfound'].includes(op.state))return;
+   op.sending=true;op.state='submitting';op.error=null;this.draw();
+   try{
+    const result=await M.api('/ui/workspace/datasets/preview-imports',{method:'POST',body:JSON.stringify(op.body)});
+    if(this.expire(op)||!this.owns(op))return;
+    if(!result.ok){M.refused(result);op.state=[400,401,403,409,422].includes(result.status)?'refused':'unknown';op.error=op.state==='refused'?(result.error||'The dataset import was refused.'):'The submission outcome is unknown. Check this same import before starting another.';this.draw();return;}
+    if(!result.run?.id)throw Error('The import returned no run identity.');
+    op.run=result.run;op.state='known';this.draw();await this.refresh();
+   }catch(error){if(!this.expire(op)&&this.owns(op)){op.state='unknown';op.error='The submission outcome is unknown. No new import was submitted.';this.draw();}}
+   finally{op.sending=false;if(this.owns(op))this.draw();}
+  }
+  async lookup(op){
+   if(this.expire(op)||!this.visible(op)||op.run||op.querying||op.state!=='unknown')return;
+   op.querying=true;this.draw();
+   try{
+    const result=await M.api('/ui/workspace/datasets/imports?'+new URLSearchParams({key:op.body.idempotency_key}));
+    if(this.expire(op)||!this.visible(op))return;
+    if(!result.ok){
+     M.refused(result);
+     if(result.status===404){op.state='notfound';op.error='No submitted import was found. You can submit this same selection.';}
+     else op.error=result.error||'The original import could not be checked.';
+     return;
+    }
+    if(!result.run?.id)throw Error('The original import has no run identity.');
+    op.run=result.run;op.state='known';op.error=null;op.dataset=result.run.state==='done'?result.dataset:null;
+   }catch(error){if(!this.expire(op)&&this.visible(op))op.error=error.message;}
+   finally{op.querying=false;if(this.visible(op)){this.draw();if(op.run)this.refresh();}}
+  }
+  async refresh(){
+   const op=this.operation;if(!op)return;
+   if(!this.owns(op)){this.invalidate();return;}
+   if(this.expire(op)||!this.visible(op)||!op.run||op.reading)return;
+   clearTimeout(this.poll);op.reading=true;
+   try{
+    const result=await M.api('/ui/workspace/datasets/imports/'+encodeURIComponent(op.run.id));
+    if(this.expire(op)||!this.visible(op))return;
+    if(!result.ok){M.refused(result);op.dataset=null;op.error=result.error||'The dataset import is unavailable.';return;}
+    if(result.run?.id!==op.run.id)throw Error('The import status identity changed.');
+    op.run=result.run;op.error=null;op.dataset=result.run.state==='done'?result.dataset:null;
+   }catch(error){if(!this.expire(op)&&this.visible(op)){op.dataset=null;op.error=error.message;}}
+   finally{
+    op.reading=false;if(this.visible(op)){this.draw();if(op.run&&!terminal.has(op.run.state)&&!op.error)this.poll=setTimeout(()=>this.refresh(),750);}
+   }
+  }
+  async cancel(op){
+   if(this.expire(op)||!this.visible(op)||!op.run||terminal.has(op.run.state)||op.cancelling)return;
+   op.cancelling=true;this.draw();
+   try{
+    const result=await M.api('/ui/workspace/datasets/imports/'+encodeURIComponent(op.run.id)+'/cancel',{method:'POST',body:'{}'});
+    if(this.expire(op)||!this.visible(op))return;
+    if(!result.ok){M.refused(result);throw Error(result.error||'The import could not be cancelled.');}
+    if(result.run?.id!==op.run.id)throw Error('The import cancellation identity changed.');
+    op.run=result.run;op.dataset=null;op.error=null;
+   }catch(error){if(!this.expire(op)&&this.visible(op))op.error=error.message;}
+   finally{op.cancelling=false;if(this.visible(op)){this.draw();this.refresh();}}
+  }
+  async preview(op){
+   if(this.expire(op)||!this.visible(op)||!op.dataset)return;
+   const dataset=op.dataset;
+   try{
+   const result=await M.api('/ui/studio/resources');
+   if(this.expire(op)||!this.visible(op)||op.dataset!==dataset)return;
+   if(!result.ok){M.refused(result);op.error=result.error||'This dataset is unavailable.';op.dataset=null;this.draw();return;}
+   if(!result.datasets?.some(row=>row.id===dataset.id)){op.error='This dataset is no longer available.';op.dataset=null;this.draw();return;}
+   const data=this.closest('data-view');if(!data)return;
+   data.setMode('local');await data.open({path:dataset.id,name:dataset.title,bytes:0,directory:false,managed:true});
+   }catch(error){if(!this.expire(op)&&this.visible(op)&&op.dataset===dataset){op.error=error.message;this.draw();}}
+  }
+  draw(){
+   const op=this.operation;if(this.submitButton)this.submitButton.disabled=!!op&&!terminal.has(op.run?.state)&&op.state!=='refused';
+   this.note.replaceChildren();this.actions.replaceChildren();if(!op)return;
+   this.host.hidden=false;
+   if(!this.owns(op)){this.invalidate();return;}
+   const state=op.run?.state||op.state;
+   this.note.append(E('h3',{},op.body.name),E('p',{},'Preview-row import · '+state));
+   if(op.run)for(const node of Object.values(op.run.nodes||{}))this.note.append(E('p',{},'Dataset step: '+node.state));
+   if(op.error||op.run?.error)this.note.append(E('p',{},op.error||op.run.error));
+   if(op.state==='unknown'&&!op.run){const check=E('button',{type:'button',disabled:!!op.querying},op.querying?'Checking import…':'Check this import');check.onclick=()=>this.lookup(op);this.actions.append(check);}
+   if(op.state==='notfound'){const retry=E('button',{type:'button'},'Submit this same selection');retry.onclick=()=>this.send(op);this.actions.append(retry);}
+   if(op.run&&!terminal.has(op.run.state)){
+    const cancel=E('button',{type:'button',disabled:!!op.cancelling},op.cancelling?'Cancelling…':'Cancel import');cancel.onclick=()=>this.cancel(op);this.actions.append(cancel);
+   }
+   if(op.run){const refresh=E('button',{type:'button'},'Refresh import status');refresh.onclick=()=>this.refresh();this.actions.append(refresh);}
+   if(op.dataset&&op.run?.state==='done'){
+    this.note.append(E('p',{},op.dataset.rows+' imported rows · '+op.dataset.columns.length+' fields · observed preview data'));
+    const preview=E('button',{type:'button',class:'data-primary'},'Preview imported dataset');preview.onclick=()=>this.preview(op);this.actions.append(preview);
+   }
+  }
+ }
+ customElements.define('data-import',DatasetImport);
+})();
+</script>
