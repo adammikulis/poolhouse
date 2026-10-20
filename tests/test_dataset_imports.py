@@ -1,6 +1,7 @@
 """Real owner HTTP, durable Studio runs and registered selected-preview datasets."""
 import copy
 import hashlib
+import http.client
 import json
 import threading
 import time
@@ -312,3 +313,58 @@ def test_unregistered_precompletion_managed_bytes_are_not_raw_resources(served):
     assert app.call('/ui/workspace/file?path=' + path, cookie=app.cookie)[0] == 400
     assert app.call('/ui/workspace/files?path=' + str(Path(path).parent), cookie=app.cookie)[0] == 400
     assert app.call(ROOT + 'local-preview?path=' + path, cookie=app.cookie)[0] == 400
+
+
+
+def test_lost_post_ack_readonly_key_lookup_attaches_without_resubmitting(served, monkeypatch):
+    app, body, _, calls, _ = served
+    assert app.call(ROOT + 'preview?repo=example/data&config=default&split=train', cookie=app.cookie)[0] == 200
+    calls.clear()
+    service = app.ui.studio_datasets
+    accepted, release = threading.Event(), threading.Event()
+    original = service.submit_preview
+    runs = []
+    def held_ack(principal, selection):
+        run = original(principal, selection)
+        runs.append(run['id'])
+        accepted.set()
+        assert release.wait(3)
+        return run
+    monkeypatch.setattr(service, 'submit_preview', held_ack)
+    connection = http.client.HTTPConnection('127.0.0.1', app.port, timeout=3)
+    try:
+        connection.request('POST', ROOT + 'preview-imports', json.dumps(body),
+                           {'Cookie': app.cookie, 'X-Poolhouse-UI': '1', 'Content-Type': 'application/json'})
+        assert accepted.wait(3)
+        connection.close()  # The committed submission's response is deliberately never received.
+    finally:
+        release.set()
+        connection.close()
+    status, result, _ = app.call(ROOT + 'imports?key=' + body['idempotency_key'], cookie=app.cookie)
+    assert status == 200 and result['run']['id'] == runs[0]
+    assert completed(app, runs[0])['dataset']['rows'] == 1
+    assert app.call(ROOT + 'imports?key=' + body['idempotency_key'], cookie=app.cookie)[1]['run']['id'] == runs[0]
+    assert len(calls) == 1
+    assert app.call(ROOT + 'imports?key=absent', cookie=app.cookie)[0] == 404
+    other = app.ui.sessions.open('other-import-owner', 'passphrase')
+    assert app.call(ROOT + 'imports?key=' + body['idempotency_key'], cookie='poolhouse_ui=' + other.sid)[0] == 404
+    for query in ('', 'key=', 'key=x&key=y', 'key=x&run=selected', 'key=' + 'x' * 257):
+        assert app.call(ROOT + 'imports?' + query, cookie=app.cookie)[0] == 400
+    authority = service.authority
+    studio_epoch.invalidate(authority.root, [authority._context()['pool']], 'security-reset')
+    assert app.call(ROOT + 'imports?key=' + body['idempotency_key'], cookie=app.cookie)[0] == 403
+    assert len(calls) == 1
+
+
+
+def test_lookup_rechecks_epoch_after_status_read(served, monkeypatch):
+    app, body, _, _, _ = served
+    submit(app, body)
+    service = app.ui.studio_datasets
+    original = service.status
+    def revoked_status(principal, ident):
+        result = original(principal, ident)
+        studio_epoch.invalidate(service.authority.root, [service.authority._context()['pool']], 'security-reset')
+        return result
+    monkeypatch.setattr(service, 'status', revoked_status)
+    assert app.call(ROOT + 'imports?key=' + body['idempotency_key'], cookie=app.cookie)[0] == 403
