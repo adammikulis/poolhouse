@@ -10,8 +10,10 @@ import subprocess
 import sys
 import tempfile
 import time
-from contextlib import ExitStack
+from contextlib import ExitStack, suppress
+from dataclasses import dataclass
 from pathlib import Path
+from typing import BinaryIO
 
 from poolhouse import home
 
@@ -24,6 +26,35 @@ INDEX_LIMIT = 32 * 1024 * 1024
 FILE_LIMIT = 16 * 1024 * 1024
 TOTAL_LIMIT = 256 * 1024 * 1024
 GIT_ROOTS = (Path("/opt/homebrew"), Path("/usr/local"))
+
+
+def _identity(info: os.stat_result) -> tuple[int, ...]:
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns,
+            info.st_uid, info.st_mode, info.st_nlink)
+
+
+def _optional_identity(path: Path) -> tuple[int, ...] | None:
+    try:
+        return _identity(path.lstat())
+    except FileNotFoundError:
+        return None
+
+
+@dataclass(frozen=True)
+class CaptureEntry:
+    path: bytes
+    mode: bytes
+    sha256: bytes
+    size: int
+
+
+@dataclass(frozen=True)
+class Capture:
+    directory: Path
+    entries: tuple[CaptureEntry, ...]
+    missing: tuple[bytes, ...]
+    excluded: tuple[bytes, ...]
+    tree_hash: str
 
 
 def validate_storage(base: Path, protected: tuple[Path, ...]) -> Path:
@@ -171,7 +202,7 @@ def metadata_directory(root: Path) -> Path:
         return marker
     if not stat.S_ISREG(info.st_mode) or info.st_size > 4096 or info.st_nlink != 1:
         raise RuntimeError("source snapshot: invalid worktree pointer")
-    fd = os.open(marker, os.O_RDONLY | os.O_NOFOLLOW)
+    fd = os.open(marker, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(fd, "rb") as stream:
         pinned = os.fstat(stream.fileno())
         if (pinned.st_dev, pinned.st_ino, pinned.st_size, pinned.st_mtime_ns) != (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns):
@@ -210,8 +241,10 @@ class SourceSnapshot:
         (self.directory / "HEAD").write_text("ref: refs/heads/source\n")
         (self.directory / "config").write_text("[core]\n repositoryformatversion = 0\n bare = false\n")
         index = metadata_directory(self.root) / "index"
-        if index.exists():
-            fd = os.open(index, os.O_RDONLY | os.O_NOFOLLOW)
+        self.index = index
+        self.index_identity = _optional_identity(index)
+        if self.index_identity is not None:
+            fd = os.open(index, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
             with os.fdopen(fd, "rb") as stream:
                 info = os.fstat(stream.fileno())
                 if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
@@ -238,7 +271,8 @@ class SourceSnapshot:
             self.path(name)
             self.entries[name] = mode, bytes.fromhex(digest.decode())
         self.tracked = tuple(self.entries)
-        for name in self.command(["ls-files", "--others", "--exclude-standard", "-z"]).split(b"\0"):
+        self.untracked = self.command(["ls-files", "--others", "--exclude-standard", "-z"])
+        for name in self.untracked.split(b"\0"):
             if name:
                 self.path(name)
                 self.entries.setdefault(name, (b"100644", b""))
@@ -260,15 +294,16 @@ class SourceSnapshot:
         validate_storage(parent, ())
         return path
 
-    def blob(self, path: Path, info) -> bytes:
+    def blob(self, path: Path, info, target: BinaryIO | None = None) -> tuple[bytes, bytes]:
         if info.st_size > FILE_LIMIT or self.total + info.st_size > TOTAL_LIMIT:
             raise RuntimeError("source snapshot: source bytes exceed bounds")
         self.total += info.st_size
         digest = hashlib.sha1(f"blob {info.st_size}\0".encode(), usedforsecurity=False)
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        content = hashlib.sha256()
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         with os.fdopen(fd, "rb") as stream:
             initial = os.fstat(stream.fileno())
-            if (initial.st_dev, initial.st_ino, initial.st_size) != (info.st_dev, info.st_ino, info.st_size):
+            if _identity(initial) != _identity(info):
                 raise RuntimeError("source snapshot: source changed before read")
             read = 0
             for block in iter(lambda: stream.read(65536), b""):
@@ -278,12 +313,14 @@ class SourceSnapshot:
                 if time.monotonic() >= self.deadline:
                     raise TimeoutError("source snapshot: source read deadline exceeded")
                 digest.update(block)
+                content.update(block)
+                if target is not None:
+                    target.write(block)
             final = os.fstat(stream.fileno())
-            if (read != info.st_size or (final.st_size, final.st_mtime_ns, final.st_mode, final.st_nlink)
-                    != (initial.st_size, initial.st_mtime_ns, initial.st_mode, initial.st_nlink)
-                    or (path.lstat().st_dev, path.lstat().st_ino) != (initial.st_dev, initial.st_ino)):
+            if (read != info.st_size or _identity(final) != _identity(initial)
+                    or _identity(path.lstat()) != _identity(initial)):
                 raise RuntimeError("source snapshot: source changed during read")
-        return digest.digest()
+        return digest.digest(), content.digest()
 
     def tree_hash(self) -> str:
         tree = {}
@@ -304,7 +341,7 @@ class SourceSnapshot:
             elif stat.S_ISREG(info.st_mode):
                 if info.st_mode & 0o022:
                     raise RuntimeError("source snapshot: writable source file")
-                digest = self.blob(path, info)
+                digest, _ = self.blob(path, info)
                 mode = b"100755" if info.st_mode & 0o111 else b"100644"
             elif mode != b"160000" or not stat.S_ISDIR(info.st_mode):
                 raise RuntimeError("source snapshot: unsupported source node")
@@ -314,6 +351,156 @@ class SourceSnapshot:
                 cursor = cursor.setdefault(part, {})
             cursor[parts[-1]] = mode, digest
         return tree_digest(tree).hex()
+
+    def capture(self, target: Path, *, excluded: tuple[bytes, ...] = ()) -> Capture:
+        """Copy regular source files into a new private directory and freeze their manifest."""
+        excluded = tuple(sorted(set(excluded)))
+        parent = validate_storage(target.parent, protected_roots(dict(os.environ)))
+        if parent != target.parent or target.name in ("", ".", ".."):
+            raise RuntimeError("source snapshot: capture target must be canonical")
+        for root in (self.root, self.directory):
+            if target.is_relative_to(root) or root.is_relative_to(target):
+                raise RuntimeError("source snapshot: capture overlaps source or metadata")
+        for name in excluded:
+            self.path(name)
+        target.mkdir(mode=0o700)
+        created = target.lstat()
+
+        def remove() -> None:
+            if target.exists() and (target.lstat().st_dev, target.lstat().st_ino) == (created.st_dev, created.st_ino):
+                shutil.rmtree(target)
+
+        with ExitStack() as cleanup:
+            cleanup.callback(remove)
+            root_state = _identity(self.root.lstat())
+            inventory = tuple(self.entries.items())
+            tracked = self.tracked
+            self.total = 0
+            with ExitStack() as stack:
+                descriptor = os.open(target, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+                stack.callback(os.close, descriptor)
+                if _identity(os.fstat(descriptor)) != _identity(created):
+                    raise RuntimeError("source snapshot: capture target changed")
+                result = self._capture_files(descriptor, excluded)
+                self._verify_capture(root_state, inventory, tracked, result[3])
+                self._verify_output(descriptor, result[0])
+                if _identity(target.lstat()) != _identity(os.fstat(descriptor)):
+                    raise RuntimeError("source snapshot: capture target changed")
+            captured = Capture(target, tuple(result[0]), tuple(result[1]), excluded, tree_digest(result[2]).hex())
+            cleanup.pop_all()
+            return captured
+
+    def _capture_files(self, descriptor: int, excluded: tuple[bytes, ...]) -> tuple:
+        entries, missing, tree, states = [], [], {}, {}
+        for name, (mode, _) in sorted(self.entries.items()):
+            if time.monotonic() >= self.deadline:
+                raise TimeoutError("source snapshot: capture deadline exceeded")
+            if any(part.lower() == b".git" for part in name.split(b"/")):
+                raise RuntimeError("source snapshot: Git metadata is not source content")
+            if any(name == prefix or name.startswith(prefix + b"/") for prefix in excluded):
+                continue
+            path = self.path(name)
+            try:
+                info = path.lstat()
+            except FileNotFoundError:
+                if name not in self.tracked:
+                    raise RuntimeError("source snapshot: untracked source disappeared") from None
+                missing.append(name)
+                states[name] = None
+                continue
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                    or info.st_nlink != 1 or info.st_mode & 0o022 or mode == b"160000"):
+                raise RuntimeError("source snapshot: capture requires owned protected regular files")
+            states[name] = _identity(info)
+            mode = b"100755" if info.st_mode & 0o111 else b"100644"
+            with self._capture_file(descriptor, name, mode) as stream:
+                digest, content = self.blob(path, info, stream)
+                stream.flush()
+                output = os.fstat(stream.fileno())
+                if (not stat.S_ISREG(output.st_mode) or output.st_nlink != 1
+                        or output.st_uid != os.getuid() or output.st_mode & 0o077
+                        or output.st_size != info.st_size):
+                    raise RuntimeError("source snapshot: unsafe capture output")
+            entries.append(CaptureEntry(name, mode, content, info.st_size))
+            cursor = tree
+            parts = name.split(b"/")
+            for part in parts[:-1]:
+                cursor = cursor.setdefault(part, {})
+            cursor[parts[-1]] = mode, digest
+        return entries, missing, tree, states
+
+    def _capture_file(self, descriptor: int, name: bytes, mode: bytes) -> BinaryIO:
+        with ExitStack() as stack:
+            parent = descriptor
+            parts = name.split(b"/")
+            for part in parts[:-1]:
+                with suppress(FileExistsError):
+                    os.mkdir(part, 0o700, dir_fd=parent)
+                parent = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+                stack.callback(os.close, parent)
+                info = os.fstat(parent)
+                if info.st_uid != os.getuid() or info.st_mode & 0o077:
+                    raise RuntimeError("source snapshot: unsafe capture directory")
+            fd = os.open(parts[-1], os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                         0o700 if mode == b"100755" else 0o600, dir_fd=parent)
+            return os.fdopen(fd, "wb")
+
+    def _verify_capture(self, root_state: tuple, inventory: tuple, tracked: tuple, states: dict) -> None:
+        if (tuple(self.entries.items()) != inventory or self.tracked != tracked
+                or _identity(self.root.lstat()) != root_state):
+            raise RuntimeError("source snapshot: capture inventory changed")
+        current_index = _optional_identity(self.index)
+        if current_index != self.index_identity:
+            raise RuntimeError("source snapshot: source index changed")
+        if self.command(["ls-files", "--others", "--exclude-standard", "-z"]) != self.untracked:
+            raise RuntimeError("source snapshot: source inventory changed")
+        for name, before in states.items():
+            path = self.path(name)
+            after = _optional_identity(path)
+            if before != after:
+                raise RuntimeError("source snapshot: source changed after capture")
+
+    def _verify_output(self, descriptor: int, entries: list[CaptureEntry]) -> None:
+        def fail(error: OSError) -> None:
+            raise RuntimeError("source snapshot: capture traversal failed") from error
+
+        expected = {entry.path: entry for entry in entries}
+        directories = {os.fsencode(parent) for entry in entries for parent in Path(os.fsdecode(entry.path)).parents
+                       if str(parent) != "."}
+        seen = set()
+        root = os.fstat(descriptor)
+        if root.st_uid != os.getuid() or root.st_mode & 0o077:
+            raise RuntimeError("source snapshot: unsafe capture root")
+        for relative, dirs, files, parent in os.fwalk(".", dir_fd=descriptor, follow_symlinks=False, onerror=fail):
+            for name in dirs:
+                info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                if (not stat.S_ISDIR(info.st_mode) or info.st_uid != os.getuid()
+                        or info.st_mode & 0o077 or os.fsencode(str(Path(relative) / name)) not in directories):
+                    raise RuntimeError("source snapshot: unsafe capture directory")
+            for name in files:
+                path = os.fsencode(str(Path(relative) / name))
+                entry = expected.get(path)
+                if entry is None:
+                    raise RuntimeError("source snapshot: unexpected capture output")
+                fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
+                with os.fdopen(fd, "rb") as stream:
+                    before = os.fstat(stream.fileno())
+                    if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+                            or before.st_uid != os.getuid() or before.st_mode & 0o077
+                            or before.st_size != entry.size):
+                        raise RuntimeError("source snapshot: unsafe capture output")
+                    digest, size = hashlib.sha256(), 0
+                    for block in iter(lambda: stream.read(65536), b""):
+                        size += len(block)
+                        if size > entry.size or time.monotonic() >= self.deadline:
+                            raise RuntimeError("source snapshot: capture output changed or deadline exceeded")
+                        digest.update(block)
+                    if (_identity(before) != _identity(os.fstat(stream.fileno()))
+                            or digest.digest() != entry.sha256 or size != entry.size):
+                        raise RuntimeError("source snapshot: capture output changed")
+                seen.add(path)
+        if seen != set(expected):
+            raise RuntimeError("source snapshot: capture output disappeared")
 
     def close(self) -> None:
         shutil.rmtree(self.directory)
