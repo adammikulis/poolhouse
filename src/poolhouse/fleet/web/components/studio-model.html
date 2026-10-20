@@ -122,7 +122,40 @@
         parameters: { properties },
       };
     };
+    S.parameterChange = ({editor, node, name, host}) => {
+      const graph = editor.graph, root = editor.rootGraph(), load = editor.loadContext, workflow = editor.workflowId, selection = editor.workflowContext;
+      let expected = node.parameters[name];
+      const current = () => host.isConnected && editor.isConnected && editor.graph === graph
+        && editor.rootGraph() === root && editor.loadContext === load && editor.workflowContext === selection && (!workflow || editor.workflowId === workflow)
+        && graph.nodes.includes(node) && node.parameters[name] === expected;
+      const change = (value, paint = true) => {
+        if (!current()) return false;
+        editor.checkpoint();
+        node.parameters[name] = value;
+        expected = value;
+        editor.changed(paint);
+        if (!paint) editor.canvas.paint?.();
+        return true;
+      };
+      change.current = current;
+      return change;
+    };
     S.field = (host, name, schema, value, change) => {
+      if (schema.type === 'object' && ['record-map', 'record-condition'].includes(schema.format)) {
+        if (host.classList.contains('studio-node-controls')) {
+          const button = E('button', {type: 'button', onclick: () => {
+            if (!button.isConnected || !change.current()) return;
+            const editor = host.closest('studio-view'), id = host.closest('[data-node-id]')?.dataset.nodeId;
+            if (!editor?.graph.nodes.some(node => node.id === id)) return;
+            editor.select(id);
+            editor.querySelector('.studio-inspector input, .studio-inspector select')?.focus();
+          }}, schema.format === 'record-map' ? 'Configure field mapping' : 'Configure condition');
+          host.append(button);
+          return button;
+        }
+        return window.studioRecordFields.render(host, {format: schema.format, value: value ?? schema.default,
+          change, current: change.current});
+      }
       const id = "studio-" + S.id(),
         label = E("label", { for: id }, schema.title || name);
       let input;
@@ -157,14 +190,11 @@
         });
         input.value = value ?? schema.default ?? "";
       }
-      input.onchange = () =>
-        change(
-          schema.type === "boolean"
-            ? input.checked
-            : ["number", "integer"].includes(schema.type)
-              ? Number(input.value)
-              : input.value,
-        );
+      input.onchange = () => {
+        if (!input.isConnected) return;
+        change(schema.type === "boolean" ? input.checked
+          : ["number", "integer"].includes(schema.type) ? Number(input.value) : input.value);
+      };
       host.append(label, input);
       return input;
     };

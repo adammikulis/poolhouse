@@ -1,0 +1,151 @@
+<script>
+  (() => {
+    const E = window.fleetModel.el;
+    const types = [['text', 'Text'], ['number', 'Number'], ['boolean', 'Boolean'], ['null', 'Null'], ['json', 'JSON object or list']];
+    const select = (label, choices, value) => {
+      const input = E('select', {'aria-label': label}, ...choices.map(([key, title]) => E('option', {value: key}, title)));
+      input.value = value;
+      return input;
+    };
+    const field = (host, label, input) => {
+      const id = 'record-field-' + crypto.randomUUID();
+      input.id = id;
+      host.append(E('label', {for: id}, label), input);
+      return input;
+    };
+    const finite = (value, depth = 0) => depth <= 16 && (typeof value === 'number' ? Number.isFinite(value)
+      : Array.isArray(value) ? value.every(item => finite(item, depth + 1))
+      : value && typeof value === 'object' ? Object.values(value).every(item => finite(item, depth + 1)) : true);
+    const literalType = source => source.invalid_literal?.type || (source.value === null ? 'null'
+      : typeof source.value === 'object' ? 'json' : typeof source.value === 'string' ? 'text' : typeof source.value);
+    const focusNext = (host, key, current) => requestAnimationFrame(() => {
+      if (!current()) return;
+      [...host.querySelectorAll('[data-record-edit]')].find(input => input.dataset.recordEdit === key)?.focus();
+    });
+    function render(host, options) {
+      const {format, value, change, current} = options;
+      let state = structuredClone(value);
+      const box = E('fieldset', {class: 'studio-record-fields', 'data-record-format': format});
+      box.append(E('legend', {}, format === 'record-map' ? 'Record field mapping' : 'Record condition'));
+      host.append(box);
+      const commit = (element, update, focus, paint = !!focus) => {
+        if (!element.isConnected || !current()) return;
+        update();
+        if (change(structuredClone(state), paint) !== false && focus) focusNext(host, focus, current);
+      };
+      const bind = (input, update, focus) => {
+        input.onchange = () => commit(input, update, focus);
+        return input;
+      };
+      function literal(parent, source, label, key, ordered = false) {
+        const kind = literalType(source), draft = source.invalid_literal;
+        const picker = field(parent, label + ' type', select(label + ' type', ordered ? [['number', 'Number']] : types, kind));
+        bind(picker, () => {
+          delete source.invalid_literal;
+          source.value = {text: '', number: 0, boolean: false, null: null, json: {}}[picker.value];
+        }, key);
+        if (kind === 'null') return;
+        const input = field(parent, label, E(kind === 'json' ? 'textarea' : 'input', {
+          type: kind === 'boolean' ? 'checkbox' : kind === 'number' ? 'number' : 'text',
+          step: kind === 'number' ? 'any' : null, rows: kind === 'json' ? 4 : null, 'data-record-edit': key,
+        }));
+        if (kind === 'boolean') input.checked = source.value;
+        else input.value = draft?.text ?? (kind === 'json' ? JSON.stringify(source.value) : source.value ?? '');
+        const error = E('p', {class: 'error', role: 'status', hidden: !draft}, 'Complete the literal value before saving or running.');
+        parent.append(error);
+        bind(input, () => {
+          let parsed;
+          try {
+            if (kind === 'boolean') parsed = input.checked;
+            else if (kind === 'number') {
+              if (!input.value.trim() || !Number.isFinite(Number(input.value))) throw Error('Enter a finite number.');
+              parsed = Number(input.value);
+            } else if (kind === 'json') {
+              parsed = JSON.parse(input.value);
+              if (!parsed || typeof parsed !== 'object' || !finite(parsed)
+                  || new TextEncoder().encode(input.value).length > 200000) throw Error('Enter a bounded JSON object or list.');
+            } else parsed = input.value;
+            source.value = parsed;
+            delete source.invalid_literal;
+            error.hidden = true;
+          } catch {
+            source.value = null;
+            source.invalid_literal = {type: kind, text: input.value};
+            error.hidden = false;
+          }
+        });
+      }
+      if (!state || typeof state !== 'object' || Array.isArray(state)) {
+        box.append(E('p', {class: 'error'}, 'These record controls need configuration.'));
+        return box;
+      }
+      if (format === 'record-map') {
+        const keep = field(box, 'Keep other record fields', E('input', {type: 'checkbox'}));
+        keep.checked = state.keep_other === true;
+        bind(keep, () => { state.keep_other = keep.checked; });
+        box.append(E('p', {}, 'Uncheck to output only the fields listed below. Field names are literal; dots do not select nested data.'));
+        if (!Array.isArray(state.assignments)) {
+          box.append(E('p', {class: 'error'}, 'Mapping assignments must be a list.'));
+          return box;
+        }
+        state.assignments.forEach((row, index) => {
+          if (!row || typeof row !== 'object' || !row.source || typeof row.source !== 'object') {
+            box.append(E('p', {class: 'error'}, 'This mapping needs configuration.'));
+            return;
+          }
+          const group = E('fieldset', {'data-record-row': index}, E('legend', {}, 'Field ' + (index + 1)));
+          box.append(group);
+          const target = field(group, 'Output field ' + (index + 1), E('input', {type: 'text', 'data-record-edit': 'target-' + index}));
+          target.value = row.target ?? '';
+          bind(target, () => { row.target = target.value; });
+          const from = Object.hasOwn(row.source, 'field') ? 'field' : 'value';
+          const mode = field(group, 'Value source ' + (index + 1), select('Value source ' + (index + 1), [['field', 'Original record field'], ['value', 'Literal value']], from));
+          bind(mode, () => { row.source = mode.value === 'field' ? {field: ''} : {value: ''}; }, 'source-' + index);
+          if (from === 'field') {
+            const input = field(group, 'Original field ' + (index + 1), E('input', {type: 'text', 'data-record-edit': 'source-' + index}));
+            input.value = row.source.field;
+            bind(input, () => { row.source.field = input.value; });
+          } else literal(group, row.source, 'Literal value ' + (index + 1), 'source-' + index);
+          group.append(E('button', {type: 'button', onclick: event => commit(event.currentTarget, () => {
+            state.assignments.splice(index, 1);
+          }, null, true)}, 'Remove field ' + (index + 1)));
+        });
+        box.append(E('button', {type: 'button', onclick: event => commit(event.currentTarget, () => {
+          state.assignments.push({target: '', source: {field: ''}});
+        }, 'target-' + state.assignments.length)}, 'Add field mapping'));
+      } else if (format === 'record-condition') {
+        const name = field(box, 'Record field', E('input', {type: 'text'}));
+        name.value = state.field ?? '';
+        bind(name, () => { state.field = name.value; });
+        const compare = field(box, 'Comparison', select('Comparison', [
+          ['exists', 'Field exists'], ['equals', 'Equals'], ['not_equals', 'Does not equal'],
+          ['lt', 'Less than'], ['lte', 'Less than or equal'], ['gt', 'Greater than'], ['gte', 'Greater than or equal'],
+        ], state.operator));
+        bind(compare, () => {
+          state.operator = compare.value;
+          delete state.value;
+          delete state.invalid_literal;
+          if (state.operator !== 'exists') {
+            const numeric = ['lt', 'lte', 'gt', 'gte'].includes(state.operator);
+            state.value = null;
+            state.invalid_literal = {type: numeric ? 'number' : 'text', text: ''};
+          }
+        }, 'comparison-value');
+        if (state.operator !== 'exists') literal(box, state, 'Comparison value', 'comparison-value', ['lt', 'lte', 'gt', 'gte'].includes(state.operator));
+        box.append(E('p', {}, 'Comparisons preserve JSON types. Exactly one of the True and False branches runs.'));
+      }
+      return box;
+    }
+    function validate(root) {
+      const graphs = [root, ...Object.values(root.groups || {})];
+      for (const graph of graphs) for (const node of graph.nodes || []) {
+        const controls = node.parameters?.controls;
+        const invalid = node.type === 'record.if' ? controls?.invalid_literal
+          : node.type === 'record.map' && Array.isArray(controls?.assignments)
+            ? controls.assignments.some(row => row?.source?.invalid_literal) : false;
+        if (invalid) throw Error('Complete the record literal value before saving or running.');
+      }
+    }
+    window.studioRecordFields = {render, validate};
+  })();
+</script>

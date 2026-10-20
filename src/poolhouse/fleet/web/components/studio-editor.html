@@ -102,11 +102,7 @@
             spec.parameters?.properties || {},
           ))
             if (!(record && name === "sample"))
-              S.field(box, name, schema, node.parameters[name], (value) => {
-                this.checkpoint();
-                node.parameters[name] = value;
-                this.changed();
-              });
+              S.field(box, name, schema, node.parameters[name], S.parameterChange({editor: this, node, name, host: box}));
           for (const [name, resource] of Object.entries(spec.bindings || {})) {
             if (!resource.kind) continue;
             const kind = resource.kind;
