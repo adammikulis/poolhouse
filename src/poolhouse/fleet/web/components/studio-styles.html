@@ -15,12 +15,12 @@
     overflow: hidden;
   }
   .studio-workspace[hidden], .studio-workspace [role="tabpanel"][hidden] { display: none; }
-  .studio-workspace > .studio-toolbar { flex-wrap: nowrap; overflow-x: auto; flex-shrink: 0; margin: 0; }
-  .studio-workspace > .studio-toolbar button { flex-shrink: 0; }
+  .studio-workspace .studio-command-bar { flex-wrap: nowrap; overflow-x: auto; flex-shrink: 0; margin: 0; }
+  .studio-workspace .studio-command-bar button { flex-shrink: 0; }
   .studio-workspace-tabs { display: flex; gap: 8px; flex-shrink: 0; }
   .studio-workspace-tabs [aria-selected="true"] { border-color: var(--accent-ink); font-weight: 750; }
   .studio-results-panel { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
-  .studio-workspace .studio-status { margin: 0; flex-shrink: 0; }
+  .studio-workspace .studio-status { margin: 0; min-height: 0; font-size: 11px; }
   .studio-workspace .studio-group-path { flex-shrink: 0; overflow-x: auto; }
 
   .studio-heading,
@@ -44,17 +44,26 @@
     font-size: 24px;
     margin: 0 auto 0 0;
   }
-  .studio-heading input {
-    flex: 1;
-    min-width: 140px;
-    max-width: none;
-  }
+  .studio-identity { flex: 1; min-width: 180px; }
+  .studio-heading input { width: 100%; min-width: 0; max-width: none; }
+  .studio-heading > button { flex-shrink: 0; }
+  .studio-location-row { display: flex; align-items: center; gap: 16px; min-width: 0; flex-shrink: 0; }
+  .studio-group-path { min-width: 0; flex: 1; white-space: nowrap; }
+  .studio-group-path > * { flex-shrink: 0; }
+  .studio-group-path button { white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+  .studio-group-path [aria-current] { overflow: hidden; text-overflow: ellipsis; font-weight: 650; }
+  .studio-group-settings { margin-top: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .studio-group-settings summary { cursor: pointer; font-weight: 650; }
+  .studio-group-interface { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin: 8px 0; }
+  .studio-group-interface span { flex-basis: 100%; overflow-wrap: anywhere; }
   .studio-toolbar {
     margin: 12px 0;
   }
   .studio-workspace button {
-    padding: 7px 10px;
-    min-height: 34px;
+    padding: var(--control-padding, 7px 10px);
+    font-size: var(--control-font-size, 13px);
+    border-radius: var(--control-radius, 8px);
+    min-height: var(--control-height, 34px);
     background: var(--bg-raised);
     color: var(--text);
     border: 1px solid var(--line-bright);
@@ -262,7 +271,12 @@
       max-width: 100%;
       width: 100%;
     }
-    .studio-command-bar { flex-wrap: wrap !important; }
+    .studio-heading .studio-identity { flex-basis: 100%; }
+    .studio-heading .studio-command-bar { order: 2; width: 100%; flex-wrap: wrap !important; }
+    .studio-command summary { padding-inline: 6px; font-size: 12px; }
+    .studio-location-row { flex-wrap: wrap; gap: 6px; }
+    .studio-group-path { flex-basis: 100%; }
+    .studio-workspace { gap: 6px; }
     .studio-toolbar {
       gap: 6px;
     }

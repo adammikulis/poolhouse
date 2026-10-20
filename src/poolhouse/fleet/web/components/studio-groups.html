@@ -248,94 +248,79 @@
           this.historyAnchor();
           this.render();
         },
-        leaveGroup() {
+        leaveGroup(depth = this.context.length - 1) {
           if (!this.context.length) return;
-          this.flushGroup();
-          const left = this.context.pop();
-          this.graph = left.parent;
+          let left;
+          while (this.context.length > depth) {
+            this.flushGroup();
+            left = this.context.pop();
+            this.graph = left.parent;
+          }
           this.selected = new Set([left.node.id]);
           this.historyAnchor();
-          this.changed();
+          this.render();
+          this.querySelector("#studio-group-path [aria-current]")?.focus();
         },
         groupPath() {
-          const box = this.querySelector("#studio-group-path");
+          const box = this.querySelector("#studio-group-path"),
+            title = this.querySelector("#studio-title").value || "Untitled experiment";
+          box.setAttribute("role", "navigation");
+          box.setAttribute("aria-label", "Canvas location");
           box.replaceChildren();
-          if (!this.context.length) return;
-          box.append(
-            E(
-              "button",
-              { type: "button", onclick: () => this.leaveGroup() },
-              "← Back to parent",
-            ),
-            E(
-              "span",
-              {},
-              this.context.map((c) => c.definition.name).join(" / "),
-            ),
-          );
-          const current = this.context.at(-1);
+          this.querySelector(".studio-group-settings")?.remove();
+          const crumb = (name, depth) => E("button", {
+            type: "button", title: name,
+            "aria-label": depth === 0 ? "Workflow: " + name : "Group: " + name,
+            onclick: () => this.leaveGroup(depth),
+          }, name);
+          if (this.context.length) {
+            const parent = this.context.at(-2)?.definition.name || title;
+            box.append(E("button", {
+              type: "button", class: "studio-group-back",
+              "aria-label": "Back to " + parent, title: "Back to " + parent + " (Escape)",
+              onclick: () => this.leaveGroup(),
+            }, "← Back"), crumb(title, 0));
+            for (const [index, current] of this.context.entries()) {
+              box.append(E("span", {"aria-hidden": "true"}, "›"));
+              box.append(index < this.context.length - 1
+                ? crumb(current.definition.name, index + 1)
+                : E("span", {"aria-current": "location", tabindex: -1}, current.definition.name));
+            }
+            const inspector = this.querySelector(".studio-inspector");
+            if (!this.selected.size) inspector.replaceChildren(this.groupSettings());
+            else inspector.append(this.groupSettings());
+          } else box.append(E("span", {"aria-current": "location", tabindex: -1}, title));
+          this.querySelector("#studio-run").title = this.context.length
+            ? "Run the entire workflow, including nodes outside this group" : "Run the entire workflow";
+        },
+        groupSettings() {
+          const current = this.context.at(-1),
+            box = E("details", {class: "studio-group-settings"}, E("summary", {}, "Group settings"));
+          box.open = !this.selected.size;
+          const name = E("input", {"aria-label": "Group name", value: current.definition.name});
+          name.onchange = () => {
+            this.checkpoint();
+            current.definition.name = name.value || "Reusable group";
+            this.changed(false);
+            this.groupPath();
+          };
+          box.append(E("label", {}, "Group name", name));
           for (const side of ["inputs", "outputs", "parameters"])
-            for (const [name, ref] of Object.entries(
-              current.definition[side] || {},
-            )) {
-              const row = E("span", {}, side + " · " + name);
-              row.append(
-                E(
-                  "button",
-                  {
-                    type: "button",
-                    "aria-label": "Move " + side + " " + name + " earlier",
-                    onclick: () => this.reorderInterface(side, name, -1),
-                  },
-                  "↑",
-                ),
-                E(
-                  "button",
-                  {
-                    type: "button",
-                    "aria-label": "Move " + side + " " + name + " later",
-                    onclick: () => this.reorderInterface(side, name, 1),
-                  },
-                  "↓",
-                ),
-                E(
-                  "button",
-                  {
-                    type: "button",
-                    "aria-label": "Hide " + side + " " + name,
-                    onclick: () => this.expose(side, "", ref, name),
-                  },
-                  "Hide",
-                ),
-              );
+            for (const [name, ref] of Object.entries(current.definition[side] || {})) {
+              const row = E("div", {class: "studio-group-interface"}, E("span", {}, side + " · " + name));
+              for (const [label, direction] of [["earlier", -1], ["later", 1]])
+                row.append(E("button", {
+                  type: "button", "aria-label": "Move " + side + " " + name + " " + label,
+                  onclick: () => this.reorderInterface(side, name, direction),
+                }, direction < 0 ? "↑" : "↓"));
+              row.append(E("button", {
+                type: "button", "aria-label": "Hide " + side + " " + name,
+                onclick: () => this.expose(side, "", ref, name),
+              }, "Hide"));
               box.append(row);
             }
-
-          const name = E("input", {
-            "aria-label": "Group name",
-            value: current.definition.name,
-          });
-          name.onchange = () => {
-            current.definition.name = name.value;
-            this.changed(false);
-          };
-          box.append(
-            name,
-            E(
-              "button",
-              {
-                type: "button",
-                onclick: () => {
-                  this.flushGroup();
-                  this.changed();
-                  this.message(
-                    "Group changes saved. Existing independent copies are unchanged.",
-                  );
-                },
-              },
-              "Update saved group",
-            ),
-          );
+          box.append(E("p", {}, "Edits are saved with this workflow. Other copies of this group stay independent."));
+          return box;
         },
         unpackGroup(node) {
           const group = this.graph.groups[node.group];

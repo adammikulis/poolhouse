@@ -211,8 +211,8 @@ def test_nested_group_copies_and_exposed_parameter_undo(studio_page):
     expect(page.get_by_label('Expose parameter template')).to_have_value('shared_prompt')
     page.locator('.studio-inspector').get_by_label('Prompt text', exact=True).fill('Changed original')
     page.locator('.studio-inspector').get_by_label('Prompt text', exact=True).press('Tab')
-    page.get_by_role('button', name='← Back to parent').click()
-    page.get_by_role('button', name='← Back to parent').click()
+    page.locator('.studio-group-back').click()
+    page.locator('.studio-group-back').click()
     page.locator('.studio-node').nth(1).get_by_role('button', name='Open group').click()
     page.locator('.studio-node').get_by_role('button', name='Open group').click()
     page.locator('.studio-node').focus()
@@ -243,7 +243,7 @@ def make_prompt_group(page):
     page.keyboard.press('Enter')
     page.get_by_label('Expose outputs prompt').fill('prompt')
     page.get_by_label('Expose outputs prompt').press('Tab')
-    page.get_by_role('button', name='← Back to parent').click()
+    page.locator('.studio-group-back').click()
 
 
 def test_actual_catalogue_template_run_and_package_round_trip(tmp_path, studio_browser):

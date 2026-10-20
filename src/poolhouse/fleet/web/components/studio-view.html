@@ -6,11 +6,10 @@
   >
     <h1 class="studio-page-title">Studio</h1>
     <header class="studio-heading" aria-label="Workflow identity and primary actions">
-      <input id="studio-title" aria-label="Workflow title" value="Untitled experiment" />
-      <button id="studio-new" type="button">New</button>
-      <button id="studio-save" type="button">Save</button>
-      <button id="studio-run" type="button" class="studio-primary">Run workflow</button>
-    </header>
+      <div class="studio-identity">
+        <input id="studio-title" aria-label="Workflow title" value="Untitled experiment" />
+        <p class="studio-status" role="status" aria-live="polite"></p>
+      </div>
     <div class="studio-toolbar studio-command-bar" role="toolbar" aria-label="Workflow editing">
       <details class="studio-command"><summary>Open workflow</summary><div>
         <label>Saved workflows<select id="studio-workflows" aria-label="Saved workflows"><option value="">New workflow</option></select></label>
@@ -31,11 +30,16 @@
       </div></details>
       <input id="studio-import-file" type="file" accept="application/json,.json" hidden />
     </div>
-    <div class="studio-group-path" id="studio-group-path"></div>
-    <p class="studio-status" role="status" aria-live="polite"></p>
-    <div class="studio-workspace-tabs" role="tablist" aria-label="Studio workspace">
-      <button id="studio-tab-canvas" role="tab" aria-selected="true" aria-controls="studio-panel-canvas">Canvas</button>
-      <button id="studio-tab-results" role="tab" aria-selected="false" aria-controls="studio-panel-results" tabindex="-1">Runs and Results</button>
+      <button id="studio-new" type="button">New</button>
+      <button id="studio-save" type="button">Save</button>
+      <button id="studio-run" type="button" class="studio-primary">Run workflow</button>
+    </header>
+    <div class="studio-location-row">
+      <div class="studio-workspace-tabs" role="tablist" aria-label="Studio workspace">
+        <button id="studio-tab-canvas" role="tab" aria-selected="true" aria-controls="studio-panel-canvas">Canvas</button>
+        <button id="studio-tab-results" role="tab" aria-selected="false" aria-controls="studio-panel-results" tabindex="-1">Runs and Results</button>
+      </div>
+      <nav class="studio-group-path" id="studio-group-path" aria-label="Canvas location"></nav>
     </div>
     <div class="studio-shell" id="studio-panel-canvas" role="tabpanel" aria-labelledby="studio-tab-canvas">
       <aside class="studio-library" aria-label="Node library">
