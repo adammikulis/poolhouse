@@ -355,6 +355,36 @@ def test_a_turn_is_a_quiet_lease_of_the_nodes_table_that_belongs_to_its_process(
         held.process.wait(timeout=10)
 
 
+def test_turn_yields_only_its_new_actual_ticket_and_reentrant_keeps_owner(servers):
+    (one,) = servers(1, hold_s=0.01)
+    with gate.turn(one.url) as ticket:
+        assert isinstance(ticket, str) and ticket
+        rows = gate.snapshot()['gpu']
+        assert [(row['ticket'], row['pid'], row['running']) for row in rows] == [
+            (ticket, os.getpid(), True)]
+        with gate.turn(one.url) as inner:
+            assert inner is None
+        assert gate.snapshot()['gpu'][0]['ticket'] == ticket
+    assert gate.snapshot().get('gpu', []) == []
+
+
+def test_turn_bypasses_never_claim_new_ticket(servers):
+    (one,) = servers(1, hold_s=0.01)
+    with gate.turn('http://127.0.0.1:1/v1/chat/completions') as unknown:
+        assert unknown is None
+    with gate.parallel('isolated explicit test'), gate.turn(one.url) as parallel:
+        assert parallel is None
+    assert gate.snapshot().get('gpu', []) == []
+
+
+def test_turn_ticket_exception_releases_only_actual_turn(servers):
+    (one,) = servers(1, hold_s=0.01)
+    with pytest.raises(ValueError, match='fixed test failure'), gate.turn(one.url) as ticket:
+        assert any(row['ticket'] == ticket for row in gate.snapshot()['gpu'])
+        raise ValueError('fixed test failure')
+    assert gate.snapshot().get('gpu', []) == []
+
+
 def test_a_request_that_is_cancelled_while_it_waits_leaves_the_line(servers):
     (one,) = servers(1, hold_s=0.01)
     held = holder(one.url)

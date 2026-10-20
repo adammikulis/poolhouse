@@ -165,12 +165,15 @@ def _await(table: leasetable.Table, device: str, tag: str, wait_s: float | None,
 
 
 @contextmanager
-def turn(url: str, *, wait_s: float | None = None, cancelled=None) -> Iterator[None]:
+def turn(url: str, *, wait_s: float | None = None, cancelled=None) -> Iterator[str | None]:
     """Hold the front of the line for the device ``url`` is in while the block runs.
 
     A URL that is not queued, a thread that already holds the device, and a caller inside
     `parallel` run at once. Raises `QueueTimeout` after ``wait_s`` (else ``POOLHOUSE_REQUEST_WAIT_S``,
     else ten minutes) naming the request that held the front.
+
+    Only a newly acquired turn yields its actual ticket. Bypasses yield None; the
+    ticket is trusted local ownership evidence, never a public authorization grant.
     """
     device = device_of(url)
     if not device:
@@ -195,7 +198,7 @@ def turn(url: str, *, wait_s: float | None = None, cancelled=None) -> Iterator[N
     done = threading.Event()
     threading.Thread(target=_kept, args=(table, lease, done), daemon=True).start()
     try:
-        yield
+        yield lease
     finally:
         done.set()
         mine.discard(device)
