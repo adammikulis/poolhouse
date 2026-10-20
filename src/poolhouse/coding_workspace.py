@@ -14,6 +14,8 @@ from poolhouse import files, secretpaths
 from poolhouse.activity import source_snapshot
 from poolhouse.activity.source_snapshot import Capture, SourceSnapshot
 
+CONTROL_PREFIXES = (".claude", ".codex", ".pi", ".mcp.json", ".poolhouse-project.json")
+
 
 @dataclass(frozen=True)
 class Stage:
@@ -70,7 +72,7 @@ class Workspace:
     def _excluded(self, snapshot: SourceSnapshot) -> tuple[bytes, ...]:
         credentials = (name for name in snapshot.entries
                        if secretpaths.path_hit(os.fsdecode(snapshot.root / os.fsdecode(name))))
-        return tuple(sorted({*self.excluded, *credentials}))
+        return tuple(sorted({*self.excluded, *credentials, *(os.fsencode(path) for path in CONTROL_PREFIXES)}))
 
     def _capture(self, root: Path, label: str) -> Capture:
         snapshot = SourceSnapshot(root, self.directory)
@@ -107,6 +109,9 @@ class Workspace:
         """Publish verified bytes into the parent master under the current policy guard."""
         if not writable:
             return ()
+        for prefix in CONTROL_PREFIXES:
+            if os.path.lexists(stage.physical / prefix):
+                raise ValueError("The tool created a trusted control path")
         captured = self._capture(stage.physical, "result")
         if captured.excluded != stage.before.excluded:
             raise ValueError("The tool created a protected or credential path")

@@ -229,3 +229,41 @@ def test_guard_invalidation_cannot_be_undone_by_stale_stage_replay(workspace):
     with pytest.raises(ValueError, match="session changed"):
         workspace.finish(stage, permitted, writable=True)
     assert workspace.revision == 1 and workspace.last is None
+
+
+def test_known_harness_configuration_is_omitted_from_stock_tool_inputs(tmp_path, binding):
+    root = tmp_path / "repo"
+    root.mkdir()
+    git_output(["init", "--quiet", str(root)], cwd=tmp_path)
+    (root / ".mcp.json").write_text('{"credential":"private-marker"}')
+    (root / ".pi").mkdir()
+    (root / ".pi/settings.json").write_text('{"key":"private-marker"}')
+    (root / "code.txt").write_text("safe")
+    made = Workspace(root)
+    try:
+        for path in (".mcp.json", ".pi/settings.json"):
+            answer = call(made, binding, "read", {"path": path}, writable=False)
+            assert answer.get("isError") and "private-marker" not in json.dumps(answer)
+        assert not (made.master / ".pi").exists() and not (made.master / ".mcp.json").exists()
+        assert b".pi" in made.initial.excluded and b".mcp.json" in made.initial.excluded
+        assert "private-marker" in (root / ".mcp.json").read_text()
+    finally:
+        shutil.rmtree(made.directory)
+
+
+def test_whole_control_prefix_is_denied_in_actual_worker(workspace, binding):
+    answer = call(workspace, binding, "write", {"path": ".claude/arbitrary.json", "content": "unsafe"})
+    assert answer.get("isError")
+    assert not (workspace.master / ".claude").exists()
+
+
+def test_parent_rejects_even_ignored_new_control_prefix_before_capture(workspace):
+    def bypassed_worker(stage):
+        (stage.physical / ".gitignore").write_text(".claude/\n")
+        (stage.physical / ".claude").mkdir()
+        (stage.physical / ".claude/arbitrary.json").write_text("unsafe")
+        return {"content": []}
+    with pytest.raises(ValueError, match="trusted control path"):
+        workspace.run(bypassed_worker, permitted, writable=True)
+    assert workspace.revision == 0 and workspace.last is None
+    assert not (workspace.master / ".claude").exists()

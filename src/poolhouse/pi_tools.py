@@ -9,12 +9,12 @@ import sys
 from pathlib import Path
 
 from poolhouse import executable_libraries, sandbox
+from poolhouse.coding_workspace import CONTROL_PREFIXES
 from poolhouse.sandbox import policies
 
 MAX_FRAME = 4 * 1024 * 1024
 TOOLS = ("read", "bash", "edit", "write", "grep", "find", "ls")
-CONTROL_PATHS = (".git/config", ".git/config.worktree", ".git/hooks", ".claude/settings.json",
-                 ".claude/settings.local.json", ".codex/config.toml", ".pi/settings.json", ".mcp.json")
+CONTROL_PATHS = (".git/config", ".git/config.worktree", ".git/hooks", *CONTROL_PREFIXES)
 
 
 def _inspect(command: list[str]) -> tuple[int, str]:
