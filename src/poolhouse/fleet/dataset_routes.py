@@ -5,7 +5,7 @@ from urllib.parse import parse_qsl, urlsplit
 
 from poolhouse.studio.store import digest
 
-from . import dataset_catalogue
+from . import dataset_catalogue, dataset_preview
 
 PREFIX = '/ui/workspace/datasets/'
 FIELDS = {
@@ -13,6 +13,7 @@ FIELDS = {
     'details': {'repo'},
     'preview': {'repo', 'config', 'split'},
     'selection': {'repo', 'config', 'split'},
+    'local-preview': {'path'},
 }
 
 
@@ -48,7 +49,9 @@ def _read(handler, action):
         raise ValueError('Choose only the supported dataset search fields once.')
     failure = None
     try:
-        if action == 'search':
+        if action == 'local-preview':
+            result = dataset_preview.preview(query.get('path', ''), handler.ui.runner.files_root)
+        elif action == 'search':
             result = dataset_catalogue.search(**query)
         elif action == 'details':
             result = dataset_catalogue.details(query.get('repo', ''))
@@ -60,7 +63,7 @@ def _read(handler, action):
         failure = exc
     _current(engine, principal)
     if failure is not None:
-        raise ValueError('Hugging Face dataset information is unavailable. Check the selection and try again.') from None
+        raise ValueError('Dataset information is unavailable. Check the selection and try again.') from None
     if action == 'preview':
         result = {**result, 'preview_digest': digest({
             'repo': query.get('repo', ''), 'config': query.get('config', ''), 'split': query.get('split', ''),
