@@ -21,6 +21,11 @@ from poolhouse.studio.adapters import response_schema
 from poolhouse.studio.catalog import node_spec
 from poolhouse.studio.decision_models import source as decision_source
 from poolhouse.studio.decisions import assess, canonical_record, parse_record, route
+from poolhouse.studio.record_context import (
+    generation_context,
+    generation_outputs,
+    generation_parameters,
+)
 from poolhouse.studio.resources import (
     ADAPTER_FILES,
     checkpoint_base,
@@ -130,8 +135,9 @@ def _checkpoint_evaluate(inputs: dict, parameters: dict) -> dict:
     return {'metrics': metrics, 'report': metrics}
 
 
-def _native_generate(inputs: dict, parameters: dict, structured: bool) -> dict:
+def _native_generate(inputs: dict, parameters: dict, structured: bool, record: bool = False) -> dict:
     schema = response_schema(parameters.get('json_schema')) if structured else None
+    messages, identity = generation_context(parameters, inputs['record']) if record else ([{'role': 'user', 'content': inputs['prompt']}], None)
     base = checkpoint_base(inputs['model'], framework='mlx')
     if inputs['model'].get('recipe') != 'tool-calls':
         raise ValueError('Trained generation requires an MLX conversation model')
@@ -141,7 +147,7 @@ def _native_generate(inputs: dict, parameters: dict, structured: bool) -> dict:
             raise ValueError('Trained generation requires an MLX conversation model')
         tokenizer = optional.module('transformers').AutoTokenizer.from_pretrained(
             built.config['base'], local_files_only=True, trust_remote_code=False)
-        prompt = tokenizer.apply_chat_template([{'role': 'user', 'content': inputs['prompt']}],
+        prompt = tokenizer.apply_chat_template(messages,
                                                tokenize=False, add_generation_prompt=True)
         sampler = optional.module('mlx_lm.sample_utils').make_sampler(temp=parameters.get('temperature', .7))
         text = optional.module('mlx_lm').generate(built.model, tokenizer, prompt=prompt,
@@ -153,11 +159,13 @@ def _native_generate(inputs: dict, parameters: dict, structured: bool) -> dict:
         if errors:
             raise ValueError('Structured response did not match its schema: ' + '; '.join(errors))
         return {'text': text, 'response': response}
-    return {'text': text, 'response': {'text': text, 'tool_calls': []}}
+    return generation_outputs({'text': text, 'response': {'text': text, 'tool_calls': []}}, identity)
 
 
-def _generate(inputs: dict, parameters: dict, evaluate: bool = False, structured: bool = False) -> dict:
+def _generate(inputs: dict, parameters: dict, evaluate: bool = False, structured: bool = False, record: bool = False) -> dict:
     schema = response_schema(parameters.get('json_schema')) if structured else None
+    messages, identity = (None, None) if evaluate else (generation_context(parameters, inputs['record']) if record
+                            else ([{'role': 'user', 'content': inputs['prompt']}], None))
     grant = broker_wire.lease('studio', [inputs['model']['path']], reason='Studio inference')
     try:
         client = Client(grant.base_url, model=grant.model, request=Request(temperature=parameters.get('temperature', 0))) if evaluate else Client(grant.base_url, model=grant.model)
@@ -168,7 +176,7 @@ def _generate(inputs: dict, parameters: dict, evaluate: bool = False, structured
         extra = {}
         if structured:
             extra['response_format'] = {'type': 'json_schema', 'json_schema': {'name': 'response', 'strict': True, 'schema': schema}}
-        reply = client.chat([{'role': 'user', 'content': inputs['prompt']}],
+        reply = client.chat(messages,
                             temperature=parameters.get('temperature', 0.7), max_tokens=parameters.get('max_tokens', 512), **extra)
         if structured:
             response = json.loads(reply.content or '')
@@ -176,7 +184,7 @@ def _generate(inputs: dict, parameters: dict, evaluate: bool = False, structured
             if errors:
                 raise ValueError('Structured response did not match its schema: ' + '; '.join(errors))
             return {'text': reply.content, 'response': response}
-        return {'text': reply.content, 'response': {'text': reply.content, 'tool_calls': reply.tool_calls}}
+        return generation_outputs({'text': reply.content, 'response': {'text': reply.content, 'tool_calls': reply.tool_calls}}, identity)
     finally:
         broker_wire.release(grant.lease)
 
@@ -275,6 +283,8 @@ def _export(model: dict, format: str, out: Path) -> dict:
 def execute(node: dict, inputs: dict, out: Path) -> dict[str, Any]:
     kind = node['type']
     parameters = node.get('parameters', {})
+    if kind == 'generate.record':
+        parameters = generation_parameters(parameters)
     if kind == 'decision.route':
         return route(parameters, inputs['decision'])
     if kind == 'stream.record':
@@ -300,10 +310,10 @@ def execute(node: dict, inputs: dict, out: Path) -> dict[str, Any]:
     if kind == 'evaluate' and (inputs['model'].get('recipe') or (Path(inputs['model']['path']) / 'state.json').is_file()
                                or parameters.get('suite', 'holdout') == 'holdout'):
         return _checkpoint_evaluate(inputs, parameters)
-    if kind in ('generate', 'generate.structured') and (inputs['model'].get('recipe') or (Path(inputs['model']['path']) / 'state.json').is_file()):
-        return _native_generate(inputs, parameters, structured=kind == 'generate.structured')
-    if kind in ('generate', 'generate.structured', 'evaluate'):
-        return _generate(inputs, parameters, evaluate=kind == 'evaluate', structured=kind == 'generate.structured')
+    if kind in ('generate', 'generate.structured', 'generate.record') and (inputs['model'].get('recipe') or (Path(inputs['model']['path']) / 'state.json').is_file()):
+        return _native_generate(inputs, parameters, structured=kind == 'generate.structured', record=kind == 'generate.record')
+    if kind in ('generate', 'generate.structured', 'generate.record', 'evaluate'):
+        return _generate(inputs, parameters, evaluate=kind == 'evaluate', structured=kind == 'generate.structured', record=kind == 'generate.record')
     if kind == 'compare':
         base, trained = inputs['base'], inputs['trained']
         delta = {k: trained[k] - v for k, v in base.items()

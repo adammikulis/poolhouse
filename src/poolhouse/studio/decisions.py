@@ -8,7 +8,7 @@ from typing import Any
 
 from poolhouse import optional
 
-MAX_TEXT = 200_000
+from .record_context import MAX_TEXT, literal_fields, role_view
 
 
 def _invalid_constant(_):
@@ -56,6 +56,7 @@ def parameters(kind: str, values: dict) -> dict:
         task = found.get('trusted_task', '')
         if not isinstance(task, str) or len(task) > MAX_TEXT:
             raise ValueError('The configured task exceeds the supported text size')
+        found['input_fields'] = literal_fields(found.get('input_fields', '[]'))
         controls.update(allow_threshold=(0.5, 1, 0.8), block_threshold=(0.5, 1, 0.8))
     for name, (low, high, default) in controls.items():
         value = found.get(name, default)
@@ -120,9 +121,10 @@ def canonical_record(node: dict, inputs: dict) -> dict:
             raise ValueError('Configure the trusted task before indirect assessment')
         judge = optional.module('poolhouse.guard.judge')
         question, options = judge.QUESTION, {option.name: option.description for option in judge.OPTIONS}
+        selected, _identity = role_view(record, controls['input_fields'], controls.get('mode', 'indirect'))
         state = json.dumps({'configured_task': controls.get('trusted_task', ''),
                             'content_role': controls.get('mode', 'indirect'),
-                            'untrusted_record': record}, ensure_ascii=False, sort_keys=True, allow_nan=False)
+                            'untrusted_record': selected}, ensure_ascii=False, sort_keys=True, allow_nan=False)
     return {'question': question, 'state': state, 'options': options, 'abstain_below': None}
 
 
@@ -146,12 +148,17 @@ def assess(kind: str, values: dict, record: dict, predict: Any, *, identity: dic
         answer.update(input_digest=digest, model_digest=model_digest, calibration_digest=calibration_digest)
         return {'decision': answer, 'record': record, 'report': answer}
     reasons, answer, outcome = [], None, 'review'
+    view_identity = {'view_digest': None, 'input_fields': controls['input_fields'],
+                     'coverage_scope': 'selected_fields' if controls['input_fields'] else 'whole_record'}
+    view_text = ''
     if len(text) > MAX_TEXT:
         reasons.append('input_too_large')
     elif controls.get('mode', 'indirect') == 'indirect' and not controls.get('trusted_task', '').strip():
         reasons.append('missing_configured_task')
     else:
         try:
+            selected, view_identity = role_view(record, controls['input_fields'], controls.get('mode', 'indirect'))
+            view_text = json.dumps(selected, ensure_ascii=False, sort_keys=True, allow_nan=False)
             request = canonical_record({'type': kind, 'parameters': values}, {'record': record})
             options = request['options']
             result = predict(request['question'], request['state'], options)
@@ -165,13 +172,14 @@ def assess(kind: str, values: dict, record: dict, predict: Any, *, identity: dic
                 reasons.append('uncertain_assessment')
         except (ValueError, TypeError, RuntimeError, OSError, ArithmeticError, LookupError, AttributeError, ImportError):
             reasons.append('assessment_unavailable')
-        markers = optional.module('poolhouse.guard.untrusted').injection_markers(text)
+        markers = optional.module('poolhouse.guard.untrusted').injection_markers(view_text)
         if markers:
             reasons.append('instruction_markers')
             if outcome == 'allow':
                 outcome = 'review'
     signal = {'outcome': outcome, 'decision': answer, 'reason_codes': reasons,
               'coverage': 'incomplete' if any(reason in reasons for reason in ('input_too_large', 'assessment_unavailable', 'missing_configured_task')) else 'complete',
-              'input_digest': digest, 'model_digest': model_digest, 'calibration_digest': calibration_digest, 'score_semantics': 'uncalibrated'}
+              'input_digest': digest, **view_identity, 'mode': controls.get('mode', 'indirect'), 'trusted_task_digest': hashlib.sha256(controls.get('trusted_task', '').encode()).hexdigest(),
+              'model_digest': model_digest, 'calibration_digest': calibration_digest, 'score_semantics': 'uncalibrated'}
     return {'signal': signal, 'record': record, 'report': signal,
             **{route: {'allow': outcome == route, 'reason': outcome} for route in ('allow', 'review', 'block')}}

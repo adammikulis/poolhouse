@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 from copy import deepcopy
 
+from .rag_template import IDENTIFIER as RAG_ID, SAMPLE as RAG_SAMPLE, source_metadata
+
 _EXAMPLES = [
     ('fraud-screening', 'Fraud screening', 'Advisory screening; uncertain transactions go to review.',
      {'transaction_id': 'demo-001', 'amount': 1450, 'currency': 'USD', 'new_device': True, 'country_changed': True},
@@ -33,13 +35,15 @@ def sample_sets() -> list[dict]:
     return [{'id': key, 'template_id': key, 'kind': 'examples', 'label': title,
              'formats': ['json'], 'available': True, 'requirements': [],
              'default_sample_id': 'sample', 'samples': [{'id': 'sample', 'label': 'Synthetic example', 'record': deepcopy(record)}]}
-            for key, title, _, record, _, _, _ in _EXAMPLES]
+            for key, title, _, record, _, _, _ in _EXAMPLES] + [source_metadata()]
 
 
 def example_record(source_id: str, sample_id: str) -> dict:
     """Select only registered sample records, never arbitrary event payloads."""
     if sample_id != 'sample':
         raise KeyError('Unknown synthetic sample')
+    if source_id == RAG_ID:
+        return deepcopy(RAG_SAMPLE)
     return deepcopy(next(row[3] for row in _EXAMPLES if row[0] == source_id))
 
 

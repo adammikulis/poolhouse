@@ -8,7 +8,7 @@ from poolhouse.studio.templates import templates as all_templates
 
 def test_original_templates_remain_and_examples_have_explicit_models():
     graphs = all_templates()
-    assert len(graphs) == 11
+    assert len(graphs) == 12
     for graph in templates():
         assert len([node for node in graph['nodes'] if node['type'] == 'model']) == 1
         record = next(node for node in graph['nodes'] if node['type'] == 'stream.record')
