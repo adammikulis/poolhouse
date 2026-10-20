@@ -140,6 +140,18 @@ class LocalSender:
             raise PermissionError('The pending webhook needs reconciliation.')
         return {'idempotency_key': intent['request_key'], 'sample_id': intent['sample']}
 
+    def _request_key(self, principal, sub, body):
+        key = 'studio.webhook-test:' + digest({'subscription': sub['id'], 'principal': principal['id'], 'key': body['idempotency_key']})
+        pending_key = 'studio.webhook-pending:' + sub['id']
+        pointer = self.service.store.graph.get_doc(pending_key)
+        if pointer and pointer != {'key': key}:
+            pending = self.service.store.graph.get_doc(pointer['key'])
+            if (not pending or pending.get('request_key') != body['idempotency_key']
+                    or pending.get('scope') != sub['scope'] or pending.get('subscription') != sub['id']):
+                raise Conflict(UNKNOWN)
+            key = pointer['key']
+        return key, pending_key
+
     def send(self, principal, sub, body):
         if set(body) != {'sample_id', 'idempotency_key'} or not isinstance(body['idempotency_key'], str) or not body['idempotency_key']:
             raise ValueError('Select a registered sample and request identity.')
@@ -149,13 +161,9 @@ class LocalSender:
         raw = json.dumps(example_record(group, sample), sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
         with self.service.store.lock, self.service.store.graph.transaction():
             sub, source = self.active(principal, sub)
-            key = 'studio.webhook-test:' + digest({'subscription': sub['id'], 'principal': principal['id'], 'key': body['idempotency_key']})
+            key, pending_key = self._request_key(principal, sub, body)
             binding = {'scope': sub['scope'], 'subscription': sub['id'], 'source': source['id'],
                        'generation': source['generation'], 'sample': body['sample_id'], 'wire_digest': hashlib.sha256(raw).hexdigest()}
-            pending_key = 'studio.webhook-pending:' + sub['id']
-            pointer = self.service.store.graph.get_doc(pending_key)
-            if pointer and pointer != {'key': key}:
-                raise Conflict(UNKNOWN)
             prior = self.service.store.graph.get_doc(key)
             if prior:
                 if any(prior.get(name) != value for name, value in binding.items()):

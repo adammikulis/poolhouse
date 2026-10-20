@@ -199,3 +199,27 @@ def test_concurrent_duplicate_test_posts_only_once(configured, monkeypatch):
             release.set()
         assert future.result()[0] == 202
     assert calls == [True]
+
+
+def test_new_current_owner_reconciles_existing_intent_without_adopting_old_session(configured, monkeypatch):
+    app, cookie, session = configured
+    source, sub = create(app, cookie)
+    setup = app.ui.studio_webhook_setup
+    original = setup._send
+    calls = []
+    def wrong_receipt(*args):
+        calls.append(True)
+        original(*args)
+        return 200, {'id': '0' * 64, 'status': 'queued'}
+    monkeypatch.setattr(setup, '_send', wrong_receipt)
+    assert send(app, cookie, source, sub)[0] == 409
+    app.ui.sessions.close(session.sid)
+    owner = app.ui.sessions.open('new-owner-session', 'launch-ticket')
+    renewed_cookie = 'poolhouse_ui=' + owner.sid
+    weak = app.ui.sessions.open('weak-session', 'token')
+    assert send(app, 'poolhouse_ui=' + weak.sid, source, sub)[0] == 403
+    assert send(app, renewed_cookie, source, sub, key='different')[0] == 409
+    assert send(app, renewed_cookie, source, sub, sample=source['samples'][1]['id'])[0] == 409
+    status, body, _ = send(app, renewed_cookie, source, sub)
+    assert status == 202, body
+    assert calls == [True]
