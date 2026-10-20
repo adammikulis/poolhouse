@@ -56,7 +56,8 @@ def test_training_smoke_does_not_declare_model_or_checkpoint(tmp_path, monkeypat
     held = []
 
     @contextmanager
-    def hold(purpose):
+    def hold(purpose, *, wait_s):
+        assert wait_s is None
         held.append(purpose)
         yield
 
@@ -94,7 +95,7 @@ def test_training_checkpoint_evaluation_and_export(tmp_path, monkeypatch):
 
     from poolhouse.serve import gpu
 
-    monkeypatch.setattr(gpu, 'hold', lambda purpose: nullcontext())
+    monkeypatch.setattr(gpu, 'hold', lambda purpose, **kwargs: nullcontext())
     monkeypatch.setenv('POOLHOUSE_DEVICE', 'cpu')
     source = tmp_path / 'labelled.jsonl'
     source.write_text(''.join(json.dumps({'text': f'example {i}', 'label': 'even' if i % 2 else 'odd'}) + '\n'
@@ -265,7 +266,7 @@ def test_base_and_trained_holdout_share_native_loss_contract(tmp_path, monkeypat
         calls.append(('load', path, data))
         return built
 
-    monkeypatch.setattr(worker.gpu, 'hold', lambda purpose: nullcontext())
+    monkeypatch.setattr(worker.gpu, 'hold', lambda purpose, **kwargs: nullcontext())
     monkeypatch.setattr(worker, 'checkpoint_base', lambda model, **kwargs: tmp_path)
     monkeypatch.setattr(worker.optional, 'module', lambda name: SimpleNamespace(build=build, load=load))
     dataset = {'path': str(tmp_path / 'dataset')}
@@ -289,7 +290,8 @@ def test_trained_mlx_generation_holds_compute_and_quantizes_cache(tmp_path, monk
     generated = []
 
     @contextmanager
-    def hold(purpose):
+    def hold(purpose, *, wait_s):
+        assert wait_s is None
         held.append(True)
         yield
         held.pop()
@@ -348,7 +350,8 @@ def test_library_model_id_preflight_and_worker_use_same_native_base(tmp_path, mo
     held = []
 
     @contextmanager
-    def hold(purpose):
+    def hold(purpose, *, wait_s):
+        assert wait_s is None
         held.append(purpose)
         yield
 
