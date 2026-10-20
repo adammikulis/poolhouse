@@ -34,8 +34,9 @@
       this.liveBox = box;
       this.querySelector('#studio-live').onclick = () => this.livePerform(async () => {
         box.hidden = !box.hidden;
+        this.querySelector('#studio-live').setAttribute('aria-expanded', String(!box.hidden));
         if (box.hidden) this.stopLive();
-        else { await this.loadLive(); box.scrollIntoView({block: 'nearest'}); }
+        else { await this.loadLive(); box.scrollIntoView({block: 'nearest'}); this.liveSource.focus(); }
       });
     },
     stopLive() { clearTimeout(this.livePoll); this.liveGeneration = (this.liveGeneration || 0) + 1; },
@@ -57,6 +58,7 @@
         this.liveSource.replaceChildren(); this.liveSubscriptions.replaceChildren();
         this.liveResults.replaceChildren(); this.livePreview.hidden = true;
         this.liveManaged.replaceChildren(); this.livePending?.clear(); this.livePickKeys?.clear();
+        this.liveRenderActions();
       }
     },
     async loadLive() {
@@ -143,30 +145,42 @@
       await this.loadLive(); this.liveSource.value = r.source.id; this.liveSourceDetails();
     },
     async pickLiveSource(mode) {
+      this.liveSource.value = ''; this.liveSourceDetails();
       this.livePickKeys ||= new Map();
       if (!this.livePickKeys.has(mode)) this.livePickKeys.set(mode, S.id().replaceAll('-', ''));
       const r = await S.api('/sources/pick', {mode, request_key: this.livePickKeys.get(mode)});
       this.livePickKeys.delete(mode);
       const selected = await window.__TAURI__.core.invoke('choose_studio_watch_source', {requestId: r.request_id, nonce: r.nonce});
+      if (selected?.status !== 'complete') {
+        this.liveNote.textContent = selected?.status === 'cancelled' ? 'No original source selected. Choose a source to continue.' : 'File selection is open in the installed app.';
+        return;
+      }
       await this.loadLive();
-      if (selected?.id) { this.liveSource.value = selected.id; this.liveSourceDetails(); }
+      const source = this.liveSources.find((source) => source.id === selected.source?.id && source.origin === 'native');
+      if (!source) throw Error('The selected original source is unavailable. Choose it again.');
+      this.liveSource.value = source.id; this.liveSourceDetails();
+      this.liveNote.textContent = 'Selected original source: ' + source.label;
     },
     selectLive(id) {
       this.stopLive(); this.liveSub = this.liveList?.find((s) => s.id === id) || null;
       this.liveSubscriptions.value = this.liveSub?.id || '';
       this.liveRows = []; this.liveCursor = null; this.livePreview.hidden = true;
       this.liveResults.replaceChildren(); this.liveRenderActions();
-      if (this.liveSub) this.pollLive(true);
+      if (this.liveSub && this.liveSub.state !== 'cancelled') this.pollLive(true);
     },
     liveRenderActions() {
       if (!this.liveActions) return;
+      const focused = document.activeElement;
+      const focusKey = this.liveActions.contains(focused) ? focused.dataset.liveAction : null;
+      const previousSample = this.liveActions.querySelector('select');
+      const sampleValue = previousSample?.value, sampleFocused = focused === previousSample;
       this.liveActions.replaceChildren();
       const sub = this.liveSub;
       if (!sub) return;
       const source = this.liveSources?.find((s) => s.id === sub.source_id);
       this.liveActions.append(E('p', {}, 'Saved revision ' + sub.workflow_revision + ' · editor revision ' + this.revision + ' · ' + sub.state + (sub.reason ? ' · ' + sub.reason : '') + ' · source: ' + (source?.label || 'Unavailable source')));
       this.liveActions.append(E('p', {}, 'Start continues in the daemon after you close this tab. Pause stops new intake and dispatch; admitted runs finish. Edits apply to future streams.'));
-      const action = (label, fn, disabled = false) => this.liveActions.append(E('button', {type: 'button', disabled: this.liveBusy || disabled, onclick: () => this.livePerform(fn)}, label));
+      const action = (label, fn, disabled = false) => this.liveActions.append(E('button', {type: 'button', disabled: this.liveBusy || disabled, 'data-live-action': label, onclick: () => this.livePerform(fn)}, label));
       if (sub.state === 'active') action('Pause stream', () => this.liveAction('pause'));
       else if (sub.state !== 'cancelled') {
         action(sub.can_resume ? 'Resume stream' : 'Start stream', () => this.liveAction(sub.can_resume ? 'resume' : 'start'), !source || source.available === false);
@@ -174,7 +188,9 @@
       if (sub.state !== 'cancelled') action('Cancel stream', () => this.liveAction('cancel'));
       if (source?.kind === 'examples') {
         const sample = E('select', {'aria-label': 'Registered synthetic sample'}, ...(source.samples || []).map((s) => E('option', {value: s.id}, s.label)));
+        if ([...sample.options].some((option) => option.value === sampleValue)) sample.value = sampleValue;
         this.liveActions.append(sample);
+        if (sampleFocused) sample.focus({preventScroll: true});
         action('Preview synthetic sample', async () => {
           const generation = this.liveGeneration;
           const result = await S.api('/subscriptions/' + encodeURIComponent(sub.id) + '/preview?sample_id=' + encodeURIComponent(sample.value));
@@ -187,14 +203,27 @@
         }, sub.state !== 'active');
       }
       const counts = sub.counts || {};
+      if (focusKey) [...this.liveActions.querySelectorAll('[data-live-action]')].find((button) => button.dataset.liveAction === focusKey)?.focus({preventScroll: true});
       this.liveActions.append(E('p', {}, ['queued', 'running', 'done', 'failed', 'interrupted'].map((key) => key + ': ' + (counts[key] || 0)).join(' · ')));
     },
     async liveAction(action) {
+      this.stopLive();
       const sub = this.liveSub, generation = this.liveGeneration;
-      const result = await this.liveMutation('/subscriptions/' + encodeURIComponent(sub.id) + '/' + action, {revision: sub.revision});
+      let result;
+      try {
+        result = await this.liveMutation('/subscriptions/' + encodeURIComponent(sub.id) + '/' + action, {revision: sub.revision});
+      } catch (error) {
+        if (generation === this.liveGeneration && this.liveSub?.id === sub.id) this.pollLive();
+        throw error;
+      }
       if (this.liveSub?.id !== sub.id || generation !== this.liveGeneration) return;
       this.liveSub = result.subscription;
       this.liveNote.textContent = action === 'cancel' ? 'Stream cancelled. Uncertain outcomes remain interrupted; they are not repeated.' : 'Stream ' + this.liveSub.state + '.';
+      if (action === 'cancel') {
+        this.stopLive(); this.liveRows = []; this.liveResults.replaceChildren(); this.livePreview.hidden = true;
+        this.liveRenderActions();
+        return;
+      }
       await this.pollLive();
     },
     liveEvent(row) {
@@ -219,15 +248,25 @@
       if (!sub || this.host.hidden || this.liveBox.hidden) return;
       const path = '/subscriptions/' + encodeURIComponent(sub.id);
       try {
-        const [status, page] = await Promise.all([S.api(path), S.api(path + '/events?' + (tail || this.liveCursor === null ? 'tail=1' : 'after=' + encodeURIComponent(this.liveCursor)) + '&limit=50')]);
+        const unfinished = (this.liveRows || []).find((r) => !['done', 'failed', 'cancelled', 'interrupted', 'quarantined'].includes(r.state));
+        const [status, page, updates] = await Promise.all([
+          S.api(path), S.api(path + '/events?tail=1&limit=50'),
+          !tail && unfinished ? S.api(path + '/events?after=' + encodeURIComponent(unfinished.sequence - 1) + '&limit=50') : null,
+        ]);
         if (generation !== this.liveGeneration || request !== this.liveRequest || this.liveSub?.id !== sub.id) return;
         this.liveSub = status.subscription;
         const rows = new Map((this.liveRows || []).map((r) => [r.id, r]));
-        for (const row of page.events || []) rows.set(row.id, row);
+        for (const row of [...(page.events || []), ...(updates?.events || [])]) rows.set(row.id, row);
         this.liveRows = [...rows.values()].sort((a, b) => a.sequence - b.sequence).slice(-100);
-        const unfinished = this.liveRows.find((r) => !['done', 'failed', 'cancelled', 'interrupted', 'quarantined'].includes(r.state));
-        this.liveCursor = unfinished ? unfinished.sequence - 1 : page.next_cursor;
+        this.liveCursor = page.next_cursor;
+        const gaps = [];
+        let previous = 0;
+        for (const row of this.liveRows) {
+          if (row.sequence > previous + 1) gaps.push((previous + 1) + '–' + (row.sequence - 1));
+          previous = row.sequence;
+        }
         this.liveResults.replaceChildren(E('p', {}, 'Showing the latest ' + this.liveRows.length + ' events. Reads do not advance the source.'),
+          ...(gaps.length ? [E('p', {}, 'Events ' + gaps.join(', ') + ' are outside this live window.')] : []),
           ...this.liveRows.map((row) => this.liveEvent(row)));
         this.liveRenderActions();
       } catch (error) {
