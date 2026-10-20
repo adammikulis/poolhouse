@@ -76,7 +76,7 @@ def validate_record(record: dict) -> None:
     options = record.get("options")
     if (not isinstance(options, dict) or not 2 <= len(options) <= MAX_OPTIONS
             or any(not isinstance(k, str) or not k.strip() or len(k) > MAX_NAME or not isinstance(v, str)
-                   or len(v) > 4096 for k, v in options.items())):
+                   or len(v) > MAX_TEXT for k, v in options.items())):
         raise ValueError("Decision options must be bounded named descriptions.")
     threshold = record.get("abstain_below")
     if threshold is not None and (type(threshold) not in (int, float) or not 0 <= threshold <= 1):
@@ -118,7 +118,7 @@ class DecisionResidents:
         return self._ledger
 
     def request(self, record: dict, request_id: str, owner: DecisionOwner,
-                resolve: Callable[[], DecisionModel], connected: Callable[[], bool]) -> dict:
+                resolve: Callable[[str], DecisionModel], connected: Callable[[], bool]) -> dict:
         validate_record(record)
         if (not isinstance(owner, DecisionOwner) or not isinstance(owner.scope, str) or not owner.scope
                 or len(owner.scope) > 1024 or type(owner.pid) is not int or owner.pid <= 0
@@ -127,10 +127,10 @@ class DecisionResidents:
         if not isinstance(request_id, str) or not request_id or len(request_id) > 256:
             raise ValueError("A bounded decision request identity is required.")
 
-        def current():
+        def current(stage="queue"):
             if not connected() or not pid_exists(owner.pid) or started_at(owner.pid) != owner.started:
                 raise InterruptedError("The decision requester ended or its process identity changed.")
-            model = resolve()
+            model = resolve(stage)
             if not isinstance(model, DecisionModel) or not model.identity or model.memory_bytes <= 0:
                 raise PermissionError("Current decision model authorization is unavailable.")
             return replace(model, identity=fingerprint({"model": model.identity, "source": model.source,
@@ -146,7 +146,7 @@ class DecisionResidents:
                     raise ValueError("The decision request identity already names different work.")
                 if previous["instance"] != self.instance or previous["state"] != "done":
                     raise InterruptedError("The prior decision outcome is uncertain; it was not repeated.")
-                if current().identity != model.identity:
+                if current("result").identity != model.identity:
                     raise PermissionError("Decision authorization changed before returning the saved result.")
                 return previous["result"]
             outcome = {"digest": content, "instance": self.instance, "state": "interrupted"}
@@ -155,11 +155,11 @@ class DecisionResidents:
             completed = False
             try:
                 resident = self._resident(model, current)
-                if current().identity != model.identity:
+                if current("compute").identity != model.identity:
                     raise PermissionError("The authorized decision model changed.")
-                result = self._compute(resident, {"op": "decide", "record": record}, current, model)
+                result = self._compute(resident, {"op": "decide", "record": record}, lambda: current("compute"), model)
                 validate_result(result["result"], record)
-                if current().identity != model.identity:
+                if current("result").identity != model.identity:
                     raise PermissionError("Decision authorization changed before the result was returned.")
                 outcome.update(state="done", result=result["result"])
                 self.ledger.put_doc(key, outcome)
@@ -204,7 +204,7 @@ class DecisionResidents:
             self.residents[model.identity] = resident
             getattr(process, "start", lambda: None)()
             self.broker.table.renew(got["id"], pid=process.pid, ttl_s=admission.KEEP_S)
-            self._compute(resident, {"op": "load", "source": model.source, "calibration": model.calibration}, current, model)
+            self._compute(resident, {"op": "load", "source": model.source, "calibration": model.calibration}, lambda: current("load"), model)
             ready = True
             return resident
         finally:

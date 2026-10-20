@@ -11,6 +11,7 @@ import ssl
 import stat
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 from poolhouse import home
@@ -19,9 +20,11 @@ from poolhouse.fleet.discovery import Beacon, derive_token, memberships
 from poolhouse.fleet.membership import Roster
 from poolhouse.fleet.remote import Member
 from poolhouse.fleet.studio_transport import MemberExecution
-from poolhouse.serve.decision_launch import Bootstrap
 from poolhouse.serve.decision_residents import DecisionModel, fingerprint
 from poolhouse.serve.process import started_at
+
+if TYPE_CHECKING:
+    from poolhouse.serve.decision_launch import Bootstrap
 
 
 def _plain(path: Path) -> None:

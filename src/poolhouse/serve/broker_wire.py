@@ -11,6 +11,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import json
+import math
 import os
 import secrets
 import select
@@ -21,7 +22,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, jobs
+from poolhouse import home, jobs, optional
 from poolhouse.files import read_json, write_json
 from poolhouse.lock import Busy, only_one
 from poolhouse.log import say as say_out
@@ -30,6 +31,8 @@ from poolhouse.serve import broker_runtime, guarded, provenance
 from poolhouse.serve.backend import LlamaServerBackend, ServerFailed, ServerInfo, ServerSpec
 from poolhouse.serve.broker import IDLE_S, Ask, Broker, BrokerError, Grant, who
 from poolhouse.serve.broker_lifecycle import retire
+from poolhouse.serve.decision_process import MAX_FRAME
+from poolhouse.serve.decision_residents import DecisionOwner, validate_record, validate_result
 from poolhouse.serve.events import Caller, Growth
 from poolhouse.serve.leases import lease_file
 from poolhouse.serve.ports import DEFAULT_HOST
@@ -61,14 +64,33 @@ class _Handler(socketserver.StreamRequestHandler):
     server: _Server
 
     def handle(self) -> None:
+        body = {}
         try:
-            body = json.loads(self.rfile.readline())
+            raw = self.rfile.readline(MAX_FRAME + 1)
+            if len(raw) > MAX_FRAME:
+                raise ValueError("The broker request exceeds its fixed size limit.")
+            body = json.loads(raw)
+            if not isinstance(body, dict):
+                raise ValueError("A broker request must be an object.")
             reply = self.server.answer(body, connected=lambda: _connected(self.connection, int(body.get("pid") or 0)))
         except (BrokerError, ServerFailed, ValueError, TypeError, KeyError, OSError,
                 RuntimeError) as exc:
             reply = {"ok": False, "error": str(exc), "kind": type(exc).__name__}
         with contextlib.suppress(BrokenPipeError, ConnectionResetError):
+            decision = isinstance(body, dict) and body.get("op") == "decision" and self.server.owned is not None
+            if decision:
+                reply.update(request_id=body.get("request_id"), broker_instance=self.server.owned.instance)
             self.wfile.write((json.dumps(reply) + "\n").encode("utf-8"))
+            self.wfile.flush()
+            if decision:
+                # Keep the accepted descriptor owned until the client verifies the
+                # result's process and instance. Losing this ACK never repeats work.
+                self.connection.settimeout(5)
+                with contextlib.suppress(OSError, ValueError):
+                    acknowledgement = self.rfile.readline(257)
+                    if len(acknowledgement) > 256 or json.loads(acknowledgement) != {
+                            "ack": body.get("request_id"), "broker_instance": self.server.owned.instance}:
+                        return
 
 
 def _connected(connection: socket.socket, pid: int) -> bool:
@@ -123,6 +145,25 @@ class _Server(socketserver.ThreadingTCPServer):
             return {"ok": True, "retiring": True}
         if self.closing.is_set() and op != "status":
             raise RuntimeError("The broker is retiring; reconnect to its replacement.")
+        if op == "decision":
+            if (self.owned is None or connected is None or not connected()
+                    or type(body.get("pid")) is not int or pid <= 0):
+                raise PermissionError("Resident decisions require an owned broker and a connected worker.")
+            if set(body) != {"op", "token", "pid", "permit_id", "request_id", "model_digest", "record", "broker_instance"}:
+                raise ValueError("A resident request contains only its permit and bounded record.")
+            if body["broker_instance"] != self.owned.instance:
+                raise PermissionError("The resident request names another broker generation.")
+            validate_record(body["record"])
+            started = started_at(pid)
+            if started is None:
+                raise PermissionError("The decision worker cannot prove its current process generation.")
+            request = {key: body[key] for key in ("permit_id", "request_id", "model_digest", "record")}
+            authorization = optional.module("poolhouse.serve.decision_authority").DecisionAuthorization(
+                self.owned, request, {"pid": pid, "started": started})
+            owner = DecisionOwner("permit:" + body["permit_id"], pid, started)
+            result = self.broker.decision_once(body["record"], body["request_id"], owner, authorization,
+                                             lambda: not self.closing.is_set() and connected())
+            return {"ok": True, "result": result}
         if op == "lease":
             ask = Ask.from_json(body)
             return {"ok": True, **self.broker.lease(ask, timeout=float(body["wait_s"])).as_dict()}
@@ -331,8 +372,12 @@ def _record() -> dict[str, Any]:
     return held if isinstance(held, dict) else {}
 
 
+def _connect(port: int):
+    return socket.create_connection((DEFAULT_HOST, port), timeout=5.0)
+
+
 def _send(record: dict[str, Any], body: dict[str, Any], *, timeout: float | None) -> dict[str, Any]:
-    with socket.create_connection((DEFAULT_HOST, int(record["port"])), timeout=5.0) as sock:
+    with _connect(int(record["port"])) as sock:
         sock.settimeout(timeout)
         sock.sendall((json.dumps({**body, "token": record.get("token")}) + "\n").encode("utf-8"))
         with sock.makefile("rb") as reply:
@@ -410,6 +455,67 @@ def call(op: str, *, timeout: float | None = 30.0, start: bool = True,
         raise _error(str(reply.get("kind") or ""))(
             str(reply.get("error") or f"the broker refused {op}"))
     return reply
+
+
+def _decision_target(expected: dict) -> dict:
+    if (not isinstance(expected, dict) or set(expected) != {"pid", "started", "instance", "port"}
+            or type(expected["pid"]) is not int or expected["pid"] <= 0
+            or type(expected["started"]) not in {int, float} or not math.isfinite(expected["started"])
+            or expected["started"] <= 0 or type(expected["port"]) is not int or not 0 < expected["port"] < 65536
+            or not isinstance(expected["instance"], str) or len(expected["instance"]) != 64
+            or any(char not in "0123456789abcdef" for char in expected["instance"])):
+        raise PermissionError("A decision worker requires its daemon-bound broker generation.")
+    record = _record()
+    if (record.get("pid") != expected["pid"] or record.get("pid_started") != expected["started"]
+            or record.get("port") != expected["port"] or not isinstance(record.get("token"), str)):
+        raise PermissionError("The broker locator does not match the daemon's owned launch.")
+    return record
+
+
+def _decision_socket(sock, expected: dict, *, wait: bool) -> None:
+    until = time.monotonic() + 5
+    while True:
+        if not pid_exists(expected["pid"]) or started_at(expected["pid"]) != expected["started"]:
+            raise PermissionError("The decision broker process generation changed.")
+        if owns_connection(expected["pid"], sock.getpeername(), sock.getsockname()):
+            return
+        if not wait or time.monotonic() >= until:
+            raise PermissionError("The decision connection is not owned by its registered broker.")
+        time.sleep(0.01)
+
+
+def decision(request: dict, expected_broker: dict) -> dict:
+    """One record through the exact broker from the private worker launch context."""
+    if not isinstance(request, dict) or set(request) != {"permit_id", "request_id", "model_digest", "record"}:
+        raise ValueError("A decision request contains only its permit and bounded record.")
+    validate_record(request["record"])
+    record = _decision_target(expected_broker)
+    body = {"op": "decision", "pid": os.getpid(), "token": record["token"],
+            "broker_instance": expected_broker["instance"], **request}
+    raw = json.dumps(body, allow_nan=False).encode() + b"\n"
+    if len(raw) > MAX_FRAME:
+        raise ValueError("The decision request exceeds the fixed protocol size limit.")
+    with _connect(expected_broker["port"]) as sock:
+        sock.settimeout(None)
+        _decision_socket(sock, expected_broker, wait=True)
+        sock.sendall(raw)
+        with sock.makefile("rb") as response:
+            data = response.readline(MAX_FRAME + 1)
+        if not data or len(data) > MAX_FRAME:
+            raise InterruptedError("The decision broker did not return a bounded confirmed outcome.")
+        _decision_socket(sock, expected_broker, wait=False)
+        reply = json.loads(data)
+        if (not isinstance(reply, dict) or reply.get("request_id") != request["request_id"]
+                or reply.get("broker_instance") != expected_broker["instance"]):
+            raise PermissionError("The decision outcome belongs to a different broker or request.")
+        if reply.get("ok") is True:
+            if set(reply) != {"ok", "result", "request_id", "broker_instance"}:
+                raise ValueError("The broker returned an invalid decision outcome.")
+            validate_result(reply["result"], request["record"])
+        sock.sendall((json.dumps({"ack": request["request_id"], "broker_instance": expected_broker["instance"]}) + "\n").encode())
+        if reply.get("ok") is not True:
+            raise BrokerError(str(reply.get("error") or "The decision broker refused this record."))
+        return reply["result"]
 
 
 def _error(kind: str) -> type[Exception]:
