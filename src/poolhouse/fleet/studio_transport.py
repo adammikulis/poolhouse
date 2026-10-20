@@ -29,7 +29,7 @@ from .studio_transfer import (
     resource_ports,
 )
 
-ACTIONS = frozenset({"validate", "submit", "status", "cancel", "result", "authorize", "resume"})
+ACTIONS = frozenset({"validate", "submit", "status", "cancel", "result", "authorize", "resume", "decision-authorize"})
 MAX_REPLY = MANIFEST_BYTES * 2
 _ID = re.compile(r"[a-f0-9]{32}(?:[a-f0-9]{32})?")
 
@@ -59,7 +59,7 @@ class MemberUncertain(OSError):
 
 class MemberExecution:
     """Exchange fixed Studio actions with the currently selected enrolled member."""
-    def __init__(self, member, authorize):
+    def __init__(self, member, authorize, *, identity: tls.Identity | None = None):
         parts = urlsplit(member.base_url)
         beacon = member.beacon
         if (parts.scheme != "https" or parts.username or parts.password or parts.path not in ("", "/")
@@ -71,7 +71,16 @@ class MemberExecution:
         self.member, self.authorize = member, authorize
         self.base_url, self.machine, self.certificate = member.base_url, beacon.machine, beacon.cert
         self._allowed()
-        http.pin(parts.netloc, tls.pinned_context(beacon.cert))
+        if identity is not None:
+            if not isinstance(identity, tls.Identity):
+                raise TypeError("A resident issuer requires its existing local TLS identity.")
+            context = tls.pinned_context(beacon.cert, who=identity)
+            # Unlike general discovery, this client must present its existing key.
+            # Do not inherit pinned_context's optional-client failure suppression.
+            context.load_cert_chain(str(identity.certfile), str(identity.keyfile))
+        else:
+            context = tls.pinned_context(beacon.cert)
+        http.pin(parts.netloc, context)
 
     def _allowed(self):
         if (self.member.base_url != self.base_url or self.member.beacon.machine != self.machine

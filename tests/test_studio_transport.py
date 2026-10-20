@@ -80,6 +80,31 @@ def test_fixed_sealed_request_no_fallback_actions(device):
     assert len(calls) == 1
     assert client.request("resume", {"dispatch_id": DISPATCH}) == {"accepted": True}
     assert calls[-1] == ("POST", "/studio/v1/executions/resume")
+    assert client.request("decision-authorize", {"permit_id": "permit"}) == {"accepted": True}
+    assert calls[-1] == ("POST", "/studio/v1/executions/decision-authorize")
+
+
+def test_explicit_existing_identity_keeps_device_pin_and_requires_client_key(device, tmp_path, monkeypatch):
+    client, _, _, _ = device
+    identity = transport.tls.Identity(tmp_path / "cert.pem", tmp_path / "key.pem", b"certificate", 123.0)
+    calls = []
+    context = SimpleNamespace(load_cert_chain=lambda cert, key: calls.append((cert, key)))
+    def pinned(cert, *, who):
+        assert cert == client.member.beacon.cert and who is identity
+        return context
+    monkeypatch.setattr(transport.tls, "pinned_context", pinned)
+    monkeypatch.setattr(transport.http, "pin", lambda endpoint, value: calls.append((endpoint, value)))
+    transport.MemberExecution(client.member, lambda: True, identity=identity)
+    assert calls == [(str(identity.certfile), str(identity.keyfile)), ("127.0.0.1:12345", context)]
+    def missing(*_args):
+        raise OSError("existing client identity unavailable")
+    context.load_cert_chain = missing
+    calls.clear()
+    with pytest.raises(OSError, match="unavailable"):
+        transport.MemberExecution(client.member, lambda: True, identity=identity)
+    assert calls == []  # Failure cannot publish a context without its client proof.
+    with pytest.raises(TypeError):
+        transport.MemberExecution(client.member, lambda: True, identity={"certfile": "chosen"})
 
 
 def test_explicit_multichunk_stage_collect_and_duplicate_submission(device, tmp_path):
