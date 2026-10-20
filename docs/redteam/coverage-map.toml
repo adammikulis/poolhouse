@@ -15,11 +15,18 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["egress:fleet/studio_webhook_setup.py:LocalSender._send"]
+status = "covered"
+count = 1
+tests = ["tests/test_studio_webhook_setup.py::test_actual_tls_sender_receipt_duplicate_and_changed_sample", "tests/test_studio_webhook_setup.py::test_unknown_never_retransmits_or_accepts_new_key_after_reload", "tests/test_studio_webhook_setup.py::test_lost_ack_reconciles_only_exact_actual_inbox", "tests/test_studio_webhook_setup.py::test_current_epoch_and_tls_identity_control_availability", "tests/test_studio_webhook_setup.py::test_tls_redirect_is_never_followed_even_back_to_same_url", "tests/test_studio_webhook_setup.py::test_sender_never_consults_ambient_authorization", "tests/test_studio_webhook_setup.py::test_ca_signed_different_leaf_is_refused_before_http_bytes"]
+note = "The fixed synthetic sender uses only the existing local app listener and client identity through maintained HTTPS. A private request context pins the exact leaf before HTTP bytes despite global pin changes. Current authority, bounded replies, no ambient authorization, no redirects and one attempt are exercised; lost acknowledgements reconcile exact inbox evidence without retransmission. No external connector account is claimed."
+
+[[group]]
 match = ["spawn:fleet/dependency_proof.py:_layout"]
 status = "covered"
 count = 1
-tests = ["tests/test_dependency_proof.py::test_actual_layout_ignores_hostile_pythonpath", "tests/test_dependency_proof.py::test_malformed_layout_is_a_controlled_proof_failure", "tests/test_dependency_proof.py::test_actual_cold_checks_are_coalesced_and_warm_calls_launch_no_subprocesses", "tests/test_dependency_proof.py::test_python_startup_selectors_cannot_bless_cached_inspection"]
-note = "Fixed isolated managed-interpreter layout discovery accepts no caller code or model selection. Hostile startup paths cannot alter the isolated layout, malformed replies are refused, and unsupported startup environments retain uncached verification. Cached proofs require fresh matching package and file evidence."
+tests = ["tests/test_dependency_proof.py::test_actual_layout_ignores_hostile_pythonpath", "tests/test_dependency_proof.py::test_malformed_layout_is_a_controlled_proof_failure", "tests/test_dependency_proof.py::test_actual_cold_checks_are_coalesced_and_warm_calls_launch_no_subprocesses", "tests/test_dependency_proof.py::test_site_hooks_and_customization_are_not_metadata_discovery", "tests/test_dependency_proof.py::test_layout_roots_must_be_confined_without_aliases", "tests/test_dependency_proof.py::test_actual_setuptools_distutils_hook_does_not_repeat_cold_verification"]
+note = "Fixed isolated startup-free layout discovery verifies the exact managed executable, prefix and unique confined sites. Hostile startup paths and hooks cannot select metadata. Versions come from bounded descriptor-verified singleton project and version fields; cached proofs require fresh matching package and file evidence plus strict cold artifact verification."
 
 [[group]]
 match = ["egress:fleet/studio_destinations.py:_configuration"]
