@@ -8011,9 +8011,11 @@
     "tests/test_studio_webhooks.py::test_payload_injection_is_data_not_source_or_execution_authority",
     "tests/test_studio_webhooks.py::test_revoke_copy_rotation_and_missing_wiring_fail_closed",
     "tests/test_studio_webhooks.py::test_revocation_after_verification_is_rechecked_at_atomic_admission",
-    "tests/test_studio_webhooks.py::test_plain_http_cannot_use_a_valid_source_signature"
+    "tests/test_studio_webhooks.py::test_plain_http_cannot_use_a_valid_source_signature",
+    "tests/test_studio_webhooks.py::test_producer_attempt_is_mandatory_and_mac_bound_over_real_tls",
+    "tests/test_studio_webhooks.py::test_generic_webhook_cannot_select_producer_attempt_protocol"
    ],
-   "note": "Actual TLS ingress verifies a current source-scoped HMAC over the exact path, generation, timestamp, event identity and raw body. Forged, replayed with changed content, copied, revoked or plaintext requests cannot admit work; untrusted records cannot choose execution or grants."
+   "note": "Actual TLS ingress verifies a current source-scoped HMAC over the exact path, generation, timestamp, event identity and raw body. The server selects the source protocol: producer attempts additionally bind the mandatory attempt digest; missing, mutated or duplicate attempts fail, and generic webhooks cannot select that protocol. Forged, changed-content, copied, revoked or plaintext requests cannot admit work. Full producer admission and factory composition are separate checks."
   },
   {
    "id": "route:fleet/api.py:/ui*",
@@ -9898,9 +9900,11 @@
     "tests/test_studio_webhooks.py::test_payload_injection_is_data_not_source_or_execution_authority",
     "tests/test_studio_webhooks.py::test_revoke_copy_rotation_and_missing_wiring_fail_closed",
     "tests/test_studio_webhooks.py::test_revocation_after_verification_is_rechecked_at_atomic_admission",
-    "tests/test_studio_webhooks.py::test_plain_http_cannot_use_a_valid_source_signature"
+    "tests/test_studio_webhooks.py::test_plain_http_cannot_use_a_valid_source_signature",
+    "tests/test_studio_webhooks.py::test_producer_attempt_is_mandatory_and_mac_bound_over_real_tls",
+    "tests/test_studio_webhooks.py::test_generic_webhook_cannot_select_producer_attempt_protocol"
    ],
-   "note": "Actual TLS ingress verifies a current source-scoped HMAC over the exact path, generation, timestamp, event identity and raw body. Forged, replayed with changed content, copied, revoked or plaintext requests cannot admit work; untrusted records cannot choose execution or grants."
+   "note": "Actual TLS ingress verifies a current source-scoped HMAC over the exact path, generation, timestamp, event identity and raw body. The server selects the source protocol: producer attempts additionally bind the mandatory attempt digest; missing, mutated or duplicate attempts fail, and generic webhooks cannot select that protocol. Forged, changed-content, copied, revoked or plaintext requests cannot admit work. Full producer admission and factory composition are separate checks."
   },
   {
    "id": "route:fleet/workspace_routes.py:/ui/workspace/*",

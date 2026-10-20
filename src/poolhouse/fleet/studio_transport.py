@@ -17,6 +17,8 @@ from poolhouse.studio.catalog import is_model_type
 from poolhouse.studio.resources import model_files, open_model_file
 
 from . import tls
+from .producer_control import BRIDGE_BYTES
+from .producer_member import ACTIONS as PRODUCER_ACTIONS
 from .studio_transfer import (
     CHUNK_BYTES,
     MANIFEST_BYTES,
@@ -30,7 +32,7 @@ from .studio_transfer import (
     resource_ports,
 )
 
-ACTIONS = frozenset({"validate", "submit", "status", "cancel", "result", "authorize", "resume", "decision-authorize"})
+ACTIONS = frozenset({"validate", "submit", "status", "cancel", "result", "authorize", "resume", "decision-authorize"}) | PRODUCER_ACTIONS
 MAX_REPLY = MANIFEST_BYTES * 2
 _ID = re.compile(r"[a-f0-9]{32}(?:[a-f0-9]{32})?")
 
@@ -128,9 +130,9 @@ class MemberExecution:
         self._allowed()
         return data
 
-    def _json(self, method: str, path: str, value: dict | None = None) -> dict:
+    def _json(self, method: str, path: str, value: dict | None = None, request_limit: int = MAX_REPLY) -> dict:
         raw = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode() if value is not None else None
-        if raw is not None and len(raw) > MAX_REPLY:
+        if raw is not None and len(raw) > request_limit:
             raise ValueError("The Studio device request exceeds its size limit.")
         value = json.loads(self._wire(method, path, raw, MAX_REPLY))
         if not isinstance(value, dict):
@@ -140,7 +142,8 @@ class MemberExecution:
     def request(self, action: str, payload: dict) -> dict:
         if action not in ACTIONS or not isinstance(payload, dict):
             raise ValueError("Choose a fixed Studio execution action.")
-        return self._json("POST", "/studio/v1/executions/" + action, payload)
+        limit = BRIDGE_BYTES if action == 'producer-publish' else MAX_REPLY
+        return self._json("POST", "/studio/v1/executions/" + action, payload, limit)
 
     @staticmethod
     def _resource(dispatch: str, resource: str, action: str, **query) -> str:
