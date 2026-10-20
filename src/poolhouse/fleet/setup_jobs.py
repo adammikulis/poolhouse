@@ -1,6 +1,8 @@
 """Bounded, durable background installation jobs for the local UI."""
+import json
 import logging
 import os
+import re
 import threading
 import time
 import uuid
@@ -17,6 +19,36 @@ from .session import parse_cookie
 ACTIVE = {"queued", "installing"}
 PENDING = ACTIVE | {"waiting"}
 LIMIT = 32
+PREPARATION = "first-run-prepare"
+STAGES = frozenset({"runtime", "transfer", "verify", "serve", "probe", "ready"})
+
+
+class PreparationStopped(RuntimeError):
+    """The current preparation may not cross another side-effect boundary."""
+
+
+class Reporter:
+    """Durable stage intents; trusted operations check between indivisible effects."""
+
+    def __init__(self, jobs, row, current):
+        self.jobs, self.row, self.current = jobs, row, current
+
+    def check(self):
+        row = self.jobs.get(self.row["id"])
+        if row["cancel_requested"] or self.current() is not True:
+            raise PreparationStopped("Preparation stopped before the next stage.")
+        return True
+
+    def __call__(self, note):
+        self.check()
+        self.jobs._update(self.row, note=str(note)[:1000])
+
+    def stage(self, stage, *, done=0, total=0):
+        if stage not in STAGES or any(type(n) is not int or n < 0 for n in (done, total)) or (total and done > total):
+            raise ValueError("Invalid preparation progress.")
+        self.check()
+        self.jobs._update(self.row, stage=stage, progress={"done": done, "total": total})
+        self.check()
 
 
 class Jobs:
@@ -36,7 +68,9 @@ class Jobs:
             for node in graph.nodes("setup-job"):
                 row = node["attrs"]
                 if row["state"] in ACTIVE and (not pid_exists(row["pid"]) or started_at(row["pid"]) != row["born"]):
-                    row.update(state="failed", error="Installation interrupted; retry to continue.", note="Installation interrupted")
+                    row.update(state="interrupted" if row["kind"] == PREPARATION else "failed",
+                               error="Preparation interrupted; check its current state before continuing." if row["kind"] == PREPARATION else "Installation interrupted; retry to continue.",
+                               note="Preparation interrupted" if row["kind"] == PREPARATION else "Installation interrupted")
                     self._save(graph, row)
 
     @staticmethod
@@ -46,6 +80,42 @@ class Jobs:
     def all(self):
         with self._mutex, only_one(self.root / "setup-jobs.lock"), self._store() as graph:
             return sorted((node["attrs"] for node in graph.nodes("setup-job")), key=lambda row: row["created"])
+
+    def get(self, ident):
+        return next((row for row in self.all() if row["id"] == ident), None)
+
+    def prepare(self, request, operation, *, current, provenance=None):
+        """Trusted preparation only; terminal commands remain immutable dedup tombstones."""
+        if (not isinstance(request, dict) or set(request) != {"idempotency_key", "binding", "selection"}
+                or not isinstance(request["idempotency_key"], str)
+                or re.fullmatch(r"[a-f0-9]{32}", request["idempotency_key"]) is None
+                or not isinstance(request["binding"], dict) or not request["binding"]
+                or not isinstance(request["selection"], dict) or not callable(operation) or not callable(current)):
+            raise ValueError("Invalid preparation request.")
+        encoded = json.dumps(request, allow_nan=False, sort_keys=True, separators=(",", ":"))
+        if len(encoded.encode()) > 65536:
+            raise ValueError("Preparation request is too large.")
+        if current() is not True:
+            raise PermissionError("Current setup access is required.")
+        try:
+            with self._mutex, only_one(self.root / "runtime-install.lock", wait=False):
+                return self._enqueue(PREPARATION, json.loads(encoded), operation, provenance=provenance, current=current)
+        except Busy:
+            raise ValueError("A runtime update is in progress; retry preparation shortly.") from None
+
+    def cancel_preparation(self, ident, *, binding, current):
+        if current() is not True:
+            raise PermissionError("Current setup access is required.")
+        with self._mutex, only_one(self.root / "setup-jobs.lock"), self._store() as graph, graph.transaction():
+            row = next((node["attrs"] for node in graph.nodes("setup-job") if node["id"] == ident), None)
+            if row is None or row["kind"] != PREPARATION or row["request"]["binding"] != binding:
+                raise KeyError(ident)
+            if row["state"] in ACTIVE:
+                row.update(cancel_requested=True)
+                self._save(graph, row)
+            if current() is not True:
+                raise PermissionError("Current setup access is required.")
+            return row
 
     def active(self):
         return any(row["state"] in ACTIVE for row in self.all())
@@ -57,22 +127,38 @@ class Jobs:
         except Busy:
             raise ValueError("A runtime update is in progress; retry the installation shortly.") from None
 
-    def _enqueue(self, kind, request, operation, *, provenance=None):
-        with self._mutex, only_one(self.root / "setup-jobs.lock"), self._store() as graph:
+    def _enqueue(self, kind, request, operation, *, provenance=None, current=None):
+        with self._mutex, only_one(self.root / "setup-jobs.lock"), self._store() as graph, graph.transaction():
+            if current is not None and current() is not True:
+                raise PermissionError("Current setup access is required.")
             rows = [node["attrs"] for node in graph.nodes("setup-job")]
+            if kind == PREPARATION:
+                prior = next((row for row in rows if row["kind"] == kind
+                              and row["request"]["binding"] == request["binding"]
+                              and row["request"]["idempotency_key"] == request["idempotency_key"]), None)
+                if prior is not None:
+                    if prior["request"] != request:
+                        raise ValueError("This preparation key already identifies a different selection.")
+                    if current() is not True:
+                        raise PermissionError("Current setup access is required.")
+                    return prior
             existing = next((row for row in rows if row["kind"] == kind and row["request"] == request and row["state"] in PENDING), None)
             if existing:
                 return existing
             active = [row for row in rows if row["state"] in PENDING]
             if len(active) >= LIMIT:
                 raise ValueError("The setup installation queue is full; wait for a job to finish.")
-            finished = sorted((row for row in rows if row["state"] not in PENDING), key=lambda row: row["created"])
+            finished = sorted((row for row in rows if row["state"] not in PENDING and row["kind"] != PREPARATION), key=lambda row: row["created"])
             for row in finished[:max(0, len(rows) - LIMIT + 1)]:
                 graph.query("MATCH (n:Node {id:$id}) DETACH DELETE n", {"id": row["id"]})
             row = {"id": uuid.uuid4().hex, "kind": kind, "request": request, "provenance": provenance or {}, "state": "queued" if operation else "waiting", "note": "Waiting to install", "error": "", "result": {}, "created": time.time(), "pid": os.getpid(), "born": started_at(os.getpid())}
+            if kind == PREPARATION:
+                row.update(stage="", progress={"done": 0, "total": 0}, cancel_requested=False)
             self._save(graph, row)
+            if current is not None and current() is not True:
+                raise PermissionError("Current setup access is required.")
             if operation:
-                self._pending.append((row, operation))
+                self._pending.append((row, operation, current))
                 if self._worker is None or not self._worker.is_alive():
                     self._worker = threading.Thread(target=self._run, daemon=True, name="setup-installations")
                     self._worker.start()
@@ -86,6 +172,17 @@ class Jobs:
             row.update(changes)
             self._save(graph, row)
 
+    def _finish_preparation(self, row, result, current):
+        with self._mutex, only_one(self.root / "setup-jobs.lock"), self._store() as graph, graph.transaction():
+            latest = next(node["attrs"] for node in graph.nodes("setup-job") if node["id"] == row["id"])
+            if latest["cancel_requested"] or current() is not True:
+                raise PreparationStopped("Preparation stopped before completion.")
+            latest.update(state="done", note="Preparation complete", result=result)
+            self._save(graph, latest)
+            if current() is not True:
+                raise PreparationStopped("Preparation stopped before completion.")
+            row.update(latest)
+
     def _run(self):
         with ThreadPoolExecutor(max_workers=1, thread_name_prefix="setup-operation") as executor:
             while True:
@@ -93,19 +190,30 @@ class Jobs:
                     if not self._pending:
                         self._worker = None
                         return
-                    row, operation = self._pending.pop(0)
-                outcome = executor.submit(self._install, row, operation)
+                    row, operation, current = self._pending.pop(0)
+                outcome = executor.submit(self._install, row, operation, current)
                 failure = outcome.exception()
                 if failure is None:
                     continue
                 if not isinstance(failure, Exception):
                     raise failure
+                if row["kind"] == PREPARATION:
+                    self._update(row, state="cancelled" if self.get(row["id"])["cancel_requested"] else "interrupted",
+                                 error="Preparation stopped; check its current state before continuing.", note="Preparation stopped")
+                    continue
                 logging.getLogger(__name__).error("Setup installation failed", exc_info=(type(failure), failure, failure.__traceback__))
                 self._update(row, state="failed", error=str(failure)[:2000], note="Installation failed")
 
-    def _install(self, row, operation):
+    def _install(self, row, operation, current=None):
         with only_one(self.root / "setup-install.lock"):
             self._update(row, state="installing", note="Preparing installation")
+            if row["kind"] == PREPARATION:
+                progress = Reporter(self, row, current)
+                progress.check()
+                result = operation(progress)
+                progress.check()
+                self._finish_preparation(row, result, current)
+                return
             result = operation(lambda note, current=row: self._update(current, note=str(note)[:1000]))
             errors = [str(value.get("error") or "Installation failed") for value in result.get("changed", {}).values() if not value.get("ok")]
             if errors:
