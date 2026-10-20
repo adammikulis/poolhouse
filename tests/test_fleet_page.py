@@ -335,7 +335,8 @@ class TestSigningIn:
 
         page.fill("#p", WORDS)
         page.click("#signin-go")
-        page.wait_for_selector("#chat:not([hidden])")
+        # Completed onboarding returns to the default Studio workspace.
+        page.wait_for_selector(".studio-workspace:not([hidden])")
         page.click(RAIL["Pool"])
         page.wait_for_selector("#pool:not([hidden])")
         assert page.locator("#pool h1").inner_text() == "Devices"
