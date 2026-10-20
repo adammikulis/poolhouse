@@ -3,10 +3,9 @@
   <div class="centre" id="launch-needed" hidden>
     <div class="card">
       <div class="hint">POOLHOUSE</div>
-      <h1>Open Poolhouse from its own window</h1>
-      <p class="sub">This page is not signed in: it was opened by hand, or its session ended. Open the Poolhouse app, or run this in a terminal on this computer:</p>
-      <p><code id="launch-needed-command">poolhouse members open</code></p>
-      <p id="launch-needed-app" hidden><button id="launch-needed-go">Reopen this window</button></p>
+      <h1>Reconnect to Poolhouse</h1>
+      <p class="sub">The local connection ended. Open the Poolhouse app to reconnect.</p>
+      <p id="launch-needed-app" hidden><button id="launch-needed-go">Reconnect this window</button></p>
       <div id="launch-needed-note" role="alert" aria-live="polite"></div>
     </div>
   </div>
@@ -21,15 +20,24 @@
       this.wired = true;
       this.box = this.querySelector("#launch-needed");
       const invoke = window.__TAURI__ && window.__TAURI__.core && window.__TAURI__.core.invoke;
+      const reconnect = async (explicit = false) => {
+        if (M.route !== "launch-needed") return;
+        const button = this.querySelector("#launch-needed-go"), note = this.querySelector("#launch-needed-note");
+        button.disabled = true;
+        note.textContent = "Reconnecting to Poolhouse…";
+        const connected = await M.renewNativeSession(explicit);
+        button.disabled = false;
+        if (M.route === "launch-needed") note.textContent = connected ? "" : "The local connection is unavailable. Reconnect when Poolhouse is ready.";
+      };
       if (invoke) {
         this.querySelector("#launch-needed-app").hidden = false;
-        this.querySelector("#launch-needed-go").onclick = async () => {
-          let reopened = false;
-          try { reopened = await invoke("reopen_page"); } catch (_) { /* reported below */ }
-          if (!reopened) this.querySelector("#launch-needed-note").textContent = "The window could not be reopened. Quit Poolhouse and open it again.";
-        };
+        this.querySelector("#launch-needed-go").onclick = () => reconnect(true);
+        window.addEventListener("poolhouse-native-reopen", () => M.reopenNative().catch(() => {}));
       }
-      M.onRoute((route) => { this.box.hidden = route !== "launch-needed"; });
+      M.onRoute((route) => {
+        this.box.hidden = route !== "launch-needed";
+        if (route === "launch-needed" && invoke) reconnect();
+      });
     }
   }
   customElements.define("launch-needed", LaunchNeeded);
