@@ -140,3 +140,28 @@ fn archives_beyond_the_bytes_a_log_keeps_are_removed_oldest_first() {
     let left: Vec<String> = std::fs::read_dir(archive(&dir)).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect();
     assert_eq!(left, vec![format!("{origin}.3-4.jsonl")], "the newest fits in the 16 MiB a log keeps and the older does not");
 }
+
+#[test]
+fn a_restart_over_two_batches_that_leaves_out_a_held_revocation_is_refused_when_the_segment_is_whole() {
+    let m = (tempdir().unwrap(), tempdir().unwrap());
+    let (mut a, mut b) = (rotating(&m.0, 1), rotating(&m.1, 2));
+    let origin = a.origin().to_string();
+    revoke(&mut a);
+    for i in 0..10 {
+        say(&mut a, "writer", &format!("early {i}"));
+    }
+    exchange(&mut a, &mut b).unwrap();
+    let held = view(&b, &origin);
+    let tip = held.last().unwrap();
+    let note = |after: &Row, title: &str| forged(&origin, after.seq + 1, &after.hash, (Kind::Note, "writer"), json!({"nkind": "fact", "title": title, "body": "x", "author": "writer"}));
+    let phantom = forged(&origin, tip.seq + 5, &"a".repeat(64), (Kind::Message, ""), json!({}));
+    let base = forged(&origin, phantom.seq + 1, &phantom.hash, (Kind::Base, ""), json!({"carried": 2, "left": 0}));
+    let first = note(&base, "one");
+    let head1 = signed_head(&key(1), &first);
+    let second = note(&head1, "two");
+    let head2 = signed_head(&key(1), &second);
+    assert!(b.ingest(&origin, &[base, first, head1], true).unwrap() > 0);
+    assert_eq!(view(&b, &origin), held, "half a segment changes no row of the view");
+    is_damaged(b.ingest(&origin, &[second, head2], true), "grant revocation");
+    assert_eq!(view(&b, &origin), held, "and the whole one that leaves out the revocation does not replace it");
+}
