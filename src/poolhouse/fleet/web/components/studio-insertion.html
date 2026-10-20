@@ -47,7 +47,7 @@
     suggestedPorts(node, spec) {
       const pending = this.pending, graph = this.editor.graph;
       if (!pending) return [];
-      const peer = graph.nodes.find(n => n.id === pending.node), actual = peer && S.spec(this.editor, peer)[pending.side]?.find(p => p.name === pending.port);
+      const connectedNode = graph.nodes.find(n => n.id === pending.node), actual = connectedNode && S.spec(this.editor, connectedNode)[pending.side]?.find(p => p.name === pending.port);
       if (!actual || actual.type !== pending.type || JSON.stringify(actual.accepted_types) !== JSON.stringify(pending.accepted_types)) {
         this.pending = null; this.pendingPosition = null; this.editor.library();
         this.editor.message('The selected port changed. Choose the port again.'); return null;
