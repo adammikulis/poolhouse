@@ -270,6 +270,7 @@ class Broker(BrokerHolds):
         self.managers: dict[str, ServerManager] = {}
         self.queue: list[Waiting] = []
         self.claims: dict[str, dict[str, Any]] = {}
+        self.claim_waiters: dict[str, dict[str, Any]] = {}
         #: lease -> (pid, cores, since) for the test runners sharing this machine's cores
         self.cores: dict[str, tuple[int, int, float]] = {}
         self.cpus = os.cpu_count() or 1
@@ -317,7 +318,7 @@ class Broker(BrokerHolds):
         deadline = time.monotonic() + (600 if timeout is None else timeout)
         reservation = MODEL_START + uuid.uuid4().hex
         with self._cond:
-            while (held := self.claims.get("gpu-training")) and self.alive(held["pid"]):
+            while (held := self.claims.get("gpu-training")) and self._claim_alive(held):
                 left = deadline - time.monotonic()
                 if left <= 0:
                     raise BrokerError(f"GPU held by pid {held['pid']}: model start timed out")
@@ -670,7 +671,8 @@ class Broker(BrokerHolds):
                         self._end(held, lease)
                     del self.servers[held.port]
             self.queue = [w for w in self.queue if self.alive(w.ask.pid)]
-            self.claims = {k: v for k, v in self.claims.items() if self.alive(v["pid"])}
+            self.claims = {k: v for k, v in self.claims.items()
+                           if (self.alive(v["pid"]) if k.startswith(MODEL_START) else self._claim_alive(v))}
             self.cores = {k: v for k, v in self.cores.items() if self.alive(v[0])}
             idle = [h for h in self.servers.values() if h.ours and not h.holders
                     and not h.loading and now - h.idle_since > self.idle_s]
@@ -783,7 +785,7 @@ class Broker(BrokerHolds):
         """Whether anything is the broker's to look after: a server of ours, a held or loading
         one, a waiting ask, a claim or a core grant."""
         with self._cond:
-            return bool(self.queue or self.claims or self.cores
+            return bool(self.queue or self.claims or self.claim_waiters or self.cores
                         or any(h.ours or h.holders or h.loading for h in self.servers.values()))
 
     def snapshot(self) -> dict[str, Any]:
@@ -800,6 +802,7 @@ class Broker(BrokerHolds):
                            "waited_s": round(now - w.since, 1), "blocked_by": w.blocked_by}
                           for w in self.queue],
                 "claims": {k: dict(v) for k, v in self.claims.items()},
+                "claim_waiters": [dict(value) for value in self.claim_waiters.values()],
                 "requests": gate.snapshot(),
                 "cores": {"cpus": self.cpus,
                           "grants": [{"lease": lease, "pid": pid, "cores": cores}

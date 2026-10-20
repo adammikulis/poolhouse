@@ -1269,10 +1269,11 @@ match = ["listener:serve/broker_wire.py:*"]
 status = "partial"
 tests = [
   "tests/test_guard_native.py",
+  "tests/test_serve_claim_queue.py",
   "tests/test_redteam_iq_override.py::test_the_broker_wire_cannot_lower_a_strict_broker_on_a_start",
   "tests/test_redteam_iq_override.py::test_a_lease_ask_through_the_broker_is_refused_whatever_the_options_say",
 ]
-note = "the lease broker on loopback: its wire is exercised by the guard tests and by hostile start and lease frames that try to lower the IQ mode; other hostile frames are not sent"
+note = "Loopback broker rejects IQ downgrades and forged claim ownership; queued claims test FIFO, PID generation, duplicate leases, disconnect and shutdown cancellation, and post-acquire rollback. Other operations and malformed or oversized wire frames remain untested."
 
 [[group]]
 match = ["listener:serve/socket_relay.py:supervise"]

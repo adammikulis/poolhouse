@@ -51,11 +51,11 @@ def _decision(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
     cases = [case_from(row) for row in rows_of(inputs['dataset'])]
     if kind == 'train.decision':
         trainer = optional.module('poolhouse.train.decider')
-        settings = trainer.Settings(base=Path(inputs['model']['path']), **parameters)
+        settings = trainer.Settings(base=Path(inputs['model']['path']), **{**parameters, 'wait_s': None})
         result = trainer.train(cases, out / 'decision', settings)
         return {'model': {'kind': 'model', 'path': str(result.out), 'decision': True},
                 'metrics': result.metrics, 'checkpoint': {'kind': 'artifact', 'path': str(result.out)}}
-    with gpu.hold('Studio decision evaluation'):
+    with gpu.hold('Studio decision evaluation', wait_s=None):
         model = PointerDecider(Path(inputs['model']['path']))
         decisions = model.decide_many([case.request() for case in cases])
     accuracy = sum(answer.choice == case.label for answer, case in zip(decisions, cases, strict=True)) / len(cases)
@@ -73,7 +73,7 @@ def _train(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
     recipes = optional.module('poolhouse.train.recipes')
     config = recipes.validate(recipe, config)
     smoke = parameters.get('mode') == 'smoke'
-    with gpu.hold('Studio ' + recipe):
+    with gpu.hold('Studio ' + recipe, wait_s=None):
         result = optional.module('poolhouse.train.run').run(
             recipe, config, Path(inputs['dataset']['path']), out / 'training', dry=smoke)
     outputs = {'metrics': result}
@@ -88,7 +88,7 @@ def _checkpoint_evaluate(inputs: dict, parameters: dict) -> dict:
     recipes = optional.module('poolhouse.train.recipes')
     trained = bool(inputs['model'].get('recipe')) or (Path(inputs['model']['path']) / 'state.json').is_file()
     base = checkpoint_base(inputs['model']) if trained else None
-    with gpu.hold('Studio checkpoint evaluation'):
+    with gpu.hold('Studio checkpoint evaluation', wait_s=None):
         if trained:
             settings = {'base_override': base} if base is not None else {}
             built = recipes.load(inputs['model']['path'], data=Path(inputs['dataset']['path']), **settings)
@@ -122,7 +122,7 @@ def _native_generate(inputs: dict, parameters: dict, structured: bool) -> dict:
     base = checkpoint_base(inputs['model'], framework='mlx')
     if inputs['model'].get('recipe') != 'tool-calls':
         raise ValueError('Trained generation requires an MLX conversation model')
-    with gpu.hold('Studio trained model generation'):
+    with gpu.hold('Studio trained model generation', wait_s=None):
         built = optional.module('poolhouse.train.recipes').load(inputs['model']['path'], base_override=base)
         if built.config.get('framework') != 'mlx' or built.config.get('recipe') != 'tool-calls':
             raise ValueError('Trained generation requires an MLX conversation model')
