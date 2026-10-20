@@ -88,3 +88,33 @@ def test_navigation_labels_and_short_window_keyboard_reachability(tmp_path, stud
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         finally:
             served.close()
+
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+@pytest.mark.parametrize('size', [(1440, 900), (390, 844), (1024, 420)])
+def test_operational_action_controls_share_geometry_and_keyboard_focus(tmp_path, studio_browser, theme, size):  # noqa: F811
+    served = Serving(tmp_path)
+    served.ui.settings.setup_done = True
+    with studio_browser() as page:
+        try:
+            page.set_viewport_size({'width': size[0], 'height': size[1]})
+            page.goto(f'http://127.0.0.1:{served.port}/ui/#tools')
+            page.wait_for_function('() => !!fleetModel.preferences.resolved_theme')
+            page.evaluate('theme => fleetModel.setPreferences({...fleetModel.preferences,resolved_theme:theme})', PRESETS[theme])
+            for route, selector in [('tools', '#decision .workspace-actions button'),
+                                    ('projects', '#project-share'), ('history', '#history-refresh'),
+                                    ('tasks', '.task-refresh'), ('pool', '#pool-device-settings')]:
+                page.evaluate('route => fleetModel.go(route)', route)
+                control = page.locator(f'{route}-view {selector}').first
+                expect(control).to_be_visible()
+                appearance = control.evaluate('''node => { const s=getComputedStyle(node); return {
+                    font:s.fontSize, line:s.lineHeight, radius:s.borderRadius,
+                    height:node.getBoundingClientRect().height}; }''')
+                assert appearance == {'font': '13px', 'line': '20px', 'radius': '8px', 'height': 36}, route
+                if control.is_enabled():
+                    control.focus()
+                    expect(control).to_be_focused()
+                    assert control.evaluate('node => getComputedStyle(node).outlineStyle') == 'solid'
+                assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+            page.screenshot(path=f'/private/tmp/poolhouse-shared-actions-{theme}-{size[0]}-{size[1]}.png')
+        finally:
+            served.close()
