@@ -105,6 +105,8 @@ def test_models_primary_start_uses_visible_optional_context(inline_models, monke
     slider.press('ArrowRight')
     button.click()
     expect(page.locator('#models-note')).to_contain_text('is ready')
+    page.locator('models-view').evaluate('async node => await node.draw()')
+    expect(library.locator('.model-start-options')).not_to_be_visible()
     assert contexts == [2]
     assert starts == [str(model)]
     assert not errors
