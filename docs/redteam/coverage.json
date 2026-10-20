@@ -2526,9 +2526,9 @@
    "note": ""
   },
   {
-   "id": "egress:serve/broker_wire.py:_send",
+   "id": "egress:serve/broker_wire.py:_connect",
    "kind": "egress",
-   "source": "serve/broker_wire.py:_send",
+   "source": "serve/broker_wire.py:_connect",
    "trust": "addresses and redirects named by pages, repositories and members",
    "attacker": "a redirect or address sends the request somewhere the person did not choose",
    "status": "partial",
