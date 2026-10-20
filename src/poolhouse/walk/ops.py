@@ -29,7 +29,7 @@ class WalkFailed(RuntimeError):
 FLEET_STEPS: tuple[tuple[str, str, str], ...] = (
     ("name", "", "Set up this machine"),
     ("pools", "Continue", "Pools"),
-    ("job", "Continue", "What should this machine do?"),
+    ("job", "Continue", "When can this device help?"),
     ("start", "Continue", "When should it start?"),
     ("run", "Continue", "What should it be able to do?"),
     ("away", "Not now", "When you are not using it"),

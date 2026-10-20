@@ -295,7 +295,7 @@ class SetupRoutes:
                         ("gpu", "vendor", "cpus", "ram_gb", "accelerator",
                          "vram_total_gb", "temp_c")},
             "suggest": {k: {"value": s.value, "why": s.why}
-                        for k, s in suggest(report).items()},
+                        for k, s in suggest().items()},
             "current": ui.settings.public() if ui.settings else {},
         })
         return True

@@ -61,7 +61,7 @@ def test_first_run_model_choice_requires_opt_in(action):
         page.set_default_timeout(5000)
         page.route("http://setup.test/**", route)
         page.goto("http://setup.test/")
-        for heading in ("Set up this machine", "Pools", "What should this machine do?", "When should it start?"):
+        for heading in ("Set up this machine", "Pools", "When can this device help?", "When should it start?"):
             page.get_by_role("heading", name=heading, exact=True).wait_for()
             page.get_by_role("button", name="Continue", exact=True).click()
         page.get_by_role("heading", name="Where should downloads come from?").wait_for()

@@ -195,22 +195,30 @@ class TestFirstRun:
         assert page.locator("#first-run button:has-text('Join existing pool')").is_enabled()
         assert not errors
 
-    def test_the_reason_sits_beside_the_job_the_machine_was_given(self, daemon,
-                                                                  open_page):
-        """The daemon reports no accelerator, so 'Prepare data' is picked -- and the
-        reason for picking it belongs to that option, not to the one above it."""
+    @pytest.mark.parametrize("accelerator", [False, True])
+    def test_setup_uses_actual_capabilities_without_a_train_prepare_choice(self, daemon, open_page, accelerator):
+        report = daemon.ui.report
+        daemon.ui.report = lambda: {**report(), "accelerator": accelerator}
         page, errors = open_page(daemon)
         page.wait_for_selector("#first-run:not([hidden])")
         page.fill("#n", "quillhaven")
         page.click("#first-run button:has-text('Continue')")
         page.wait_for_selector("#first-run h1:has-text('Pools')")
         page.click("#first-run button:has-text('Continue')")
-        page.wait_for_selector("#labels-prep")
-
-        assert page.locator("#labels-prep").is_checked()
-        assert "no GPU found" in page.locator("label[for=labels-prep] .why").inner_text()
-        assert "no GPU found" not in page.locator(
-            "label[for=labels-train] .why").inner_text()
+        page.get_by_role("heading", name="When can this device help?", exact=True).wait_for()
+        assert page.locator('#first-run input[name="labels"]').count() == 0
+        assert "Train models" not in page.locator("#first-run").inner_text()
+        assert "Prepare data" not in page.locator("#first-run").inner_text()
+        page.check("#work_hours")
+        page.click("#first-run button:has-text('Continue')")
+        page.check("#autostart-manual")
+        page.route("**/ui/setup/prefs", lambda route: route.fulfill(json={"ok": True, "applied": []}))
+        with page.expect_request(lambda request: request.method == "POST" and request.url.endswith("/ui/setup/prefs")) as sent:
+            page.click("#first-run button:has-text('Continue')")
+        body = sent.value.post_data_json
+        assert "labels" not in body
+        assert body["work_hours"] is True and body["on_paused"] == "stop"
+        assert body["autostart"] == "manual"
         assert not errors
 
     def test_dev_can_join_manually_and_return_to_automatic(self, daemon, open_page, monkeypatch):
@@ -293,7 +301,7 @@ class TestFirstRun:
             page.click("#first-run button:has-text('Continue')")
             page.wait_for_selector("#first-run h1:has-text('Pools')")
             page.click("#first-run button:has-text('Continue')")
-            page.wait_for_selector("#labels-prep")
+            page.get_by_role("heading", name="When can this device help?", exact=True).wait_for()
             page.click("#first-run button:has-text('Continue')")
             page.wait_for_selector("#autostart-manual")
             page.check("#autostart-manual")
@@ -463,19 +471,16 @@ class TestTheSettingsView:
         assert "studio" in page.locator("#settings-sub").inner_text()
         assert not errors
 
-    def test_choosing_a_job_and_saving_says_it_saved(self, joined, open_page):
+    def test_saving_download_preferences_preserves_explicit_device_tags(self, joined, open_page):
         page, errors = open_page(joined, cookie=joined.cookie)
         page.click(RAIL["Settings"])
-        page.get_by_role("tab", name="Compute & device").click()
-        page.wait_for_selector("#settings-left .group")
-        page.locator("#settings-left").get_by_label("Both", exact=True).check()
         page.get_by_role("tab", name="Models & providers").click()
         page.check("#download_sources-both")
         page.click("#settings-save")
         page.wait_for_selector("#settings-note .ok")
         assert page.locator("#settings-note .ok").inner_text() == "Preferences saved."
         _, got, _ = joined.call("/ui/settings", cookie=joined.cookie)
-        assert sorted(got["settings"]["labels"]) == ["prep", "train"]
+        assert got["settings"]["labels"] == []
         assert not errors
 
     def test_no_screen_shows_the_word_null(self, joined, open_page):

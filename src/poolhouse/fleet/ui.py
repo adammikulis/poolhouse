@@ -317,10 +317,6 @@ class UI:
             called = str(req["name"]).strip()[:64]
             self.set_name(called)
             out["applied"].append(f"this machine is called {settings.name}")
-        if "labels" in req:
-            settings.labels = [str(s) for s in req["labels"] if str(s).strip()]
-            out["applied"].append("this machine is for " + (
-                " and ".join(settings.labels) or "anything"))
         if "on_paused" in req and req["on_paused"] in ("stop", "finish"):
             settings.on_paused = req["on_paused"]
         if "on_close" in req and req["on_close"] in ("", "background", "quit"):
