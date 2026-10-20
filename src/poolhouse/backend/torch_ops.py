@@ -18,6 +18,19 @@ def require_torch() -> tuple[Any, Any]:
     return torch, nn
 
 
+def resolve_torch_device(prefer: str | None = None):
+    """A ``torch.device`` for this machine."""
+    torch, _ = require_torch()
+
+    if prefer and prefer != "auto":
+        return torch.device(prefer)
+    if torch.cuda.is_available():
+        return torch.device("cuda")
+    if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+        return torch.device("mps")
+    return torch.device("cpu")
+
+
 class TorchArrayOps:
     """``ArrayOps`` over ``torch.Tensor``."""
 

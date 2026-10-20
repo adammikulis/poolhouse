@@ -15,7 +15,7 @@ use crate::fsutil::{sha256_hex, unhex, write_atomic};
 
 use super::spec::SKEW_MS;
 
-const MOST_KEYS: usize = 8;
+pub const MOST_KEYS: usize = 8;
 /// How many used nonces are remembered at once; past it nothing more is accepted until the oldest age out.
 const MOST_NONCES: usize = 256;
 /// The file beside `persons.json` that holds when each key that was removed was removed: a removed key is never enrolled again.
@@ -185,7 +185,7 @@ impl Persons {
         }
         if !self.keys.contains_key(&fingerprint) {
             if self.keys.len() >= MOST_KEYS {
-                return Err(Error::Quota("this node holds as many person keys as it will".into()));
+                return Err(crate::limits::refuse("this node holds as many person keys as it may", MOST_KEYS, "MOST_KEYS", "grants/person.rs"));
             }
             self.keys.insert(fingerprint.clone(), Key { public: public.to_ascii_lowercase(), label: label.into(), at_ms, alg: alg.into(), phone });
             write_atomic(&self.path, &serde_json::to_vec(&self.keys)?)?;

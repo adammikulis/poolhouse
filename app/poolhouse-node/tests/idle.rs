@@ -1,5 +1,5 @@
-//! A terminal registers as many main sessions as it needs, idle sessions are marked and retired by the node, and a session that ends
-//! retires itself and its subagents and nobody else.
+//! Terminals register main sessions up to the number a board holds live, idle sessions are marked and retired by the node, and a session
+//! that ends retires itself and its subagents and nobody else.
 #![cfg(unix)]
 
 mod kit;
@@ -7,7 +7,7 @@ mod kit;
 use kit::procs::*;
 use kit::*;
 use poolhouse_node::lineage::Peer;
-use poolhouse_node::node::Node;
+use poolhouse_node::node::{Node};
 use serde_json::{json, Value};
 use tempfile::tempdir;
 
@@ -85,17 +85,24 @@ fn a_session_that_ended_registers_again_from_its_own_lineage_and_a_subagent_that
 }
 
 #[test]
-fn a_terminal_starts_as_many_live_sessions_as_it_needs_and_so_does_a_harness_across_terminals() {
+fn terminals_start_live_main_sessions_up_to_the_number_a_board_holds_and_an_ending_makes_room() {
     let dir = tempdir().unwrap();
     let mut n = open(dir.path());
+    let most = n.writes.live_main_sessions;
     let terminals = (process(true), process(true));
-    let tokens: Vec<String> = (0..80)
+    let tokens: Vec<String> = (0..most - 3)
         .map(|i| ok(start(&mut n, &peer(&terminals.0), "claude-code", &format!("runaway-{i}")))["token"].as_str().unwrap().to_string())
         .collect();
-    for i in 0..30 {
+    for i in 0..3 {
         assert_eq!(ok(start(&mut n, &peer(&terminals.1), "claude-code", &format!("other-{i}")))["created"], true);
     }
-    assert_eq!(names(&mut n, &tokens[0], false).len(), 110, "every one of them is live");
+    assert_eq!(names(&mut n, &tokens[0], false).len(), most, "every one of them is live");
+    for (terminal, id) in [(&terminals.0, "runaway-more"), (&terminals.1, "other-more")] {
+        let refused = start(&mut n, &peer(terminal), "claude-code", id);
+        assert_eq!(code(&refused), "quota", "a board holds no more live main sessions than it may, from whichever terminal they come: {refused}");
+    }
+    ok(req(&mut n, "retire", "demo", &tokens[1], json!({})));
+    assert_eq!(ok(start(&mut n, &peer(&terminals.1), "claude-code", "other-more"))["created"], true, "an ending makes room");
     done(vec![terminals.0, terminals.1]);
 }
 

@@ -2,6 +2,9 @@
 //! `lease_list` and `lease_wait`. Who holds a lease is the name behind the token, never a
 //! request field; a lease can be renewed or released only by its holder.
 
+use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Map, Value};
@@ -12,11 +15,16 @@ use super::types::{Class, Lease, Request, Resource, State, LOCAL};
 use super::Leases;
 use crate::error::{Error, Result};
 use crate::fsutil::random_hex;
+use crate::lineage::{Anchor, Peer};
 use crate::node::Node;
 use crate::row::Kind;
 
 pub const METHODS: [&str; 5] = ["lease_acquire", "lease_renew", "lease_release", "lease_list", "lease_wait"];
 pub const MAX_WAIT_MS: u64 = 600_000;
+/// `lease_wait` requests a device answers at once.
+pub const MOST_WAITERS: usize = 64;
+/// `lease_wait` requests the processes of one process tree have waiting at once.
+pub const MOST_WAITERS_PER_LINEAGE: usize = 16;
 const POLL: Duration = Duration::from_millis(25);
 
 /// The params each lease method takes.
@@ -71,8 +79,13 @@ fn quiet(event: &Event) -> bool {
     }
 }
 
-/// Write what happened to the boards of the holders it concerns.
+/// Write what happened to the boards of the holders it concerns. The table is the record of a lease: a board that refuses the entry
+/// for a limit (the log is full, or the holder wrote its share) is skipped.
 pub fn mirror(node: &mut Node, events: &[Event]) -> Result<()> {
+    if node.leases.hold(events) {
+        return Ok(());
+    }
+    let mut drafts: BTreeMap<String, Vec<(Kind, String, Value)>> = BTreeMap::new();
     for event in events.iter().filter(|e| !quiet(e)) {
         let (l, kind, body) = match event {
             Event::Granted(l) => (l, Kind::Lease, json!({"lease": l.id, "action": "acquire", "resources": lines(l)})),
@@ -83,8 +96,13 @@ pub fn mirror(node: &mut Node, events: &[Event]) -> Result<()> {
                 (&**to, Kind::Audit, json!({"event": "lease_takeover", "subject": to.id, "detail": detail}))
             }
         };
-        node.host(&l.board)?.board.append(kind, &l.name, body, "")?;
-        if let Event::Ended(_, Why::Expired) = event {
+        drafts.entry(l.board.clone()).or_default().push((kind, l.name.clone(), body));
+    }
+    for (board, rows) in drafts {
+        node.host(&board)?.board.append_many(rows)?;
+    }
+    for event in events.iter().filter(|e| !quiet(e)) {
+        if let Event::Ended(l, Why::Expired) = event {
             for (kind, key) in crate::claims::held_by(l) {
                 let said = format!("Your claim {kind} {key} expired: its time ran out before it was renewed. Take it again with: \
                                     poolhouse-workspace claim {kind} {key} (renew what you hold with: poolhouse-workspace heartbeat)");
@@ -108,7 +126,7 @@ fn show(t: &Table, node: &Node, l: &Lease, viewer: &str) -> Value {
     json!({"id": l.id, "state": l.state, "holder": if own { l.holder.as_str() } else { "other-board" },
            "resources": if own || l.state == State::Held { json!(l.resources) } else { json!([]) },
            "class": l.class, "estimate_s": l.estimate_s, "since_ms": l.since_ms, "granted_ms": l.granted_ms,
-           "expires_ms": l.expires_ms, "ttl_s": l.ttl_s, "capped": l.capped(node.leases.now()), "pid": if own { l.pid } else { 0 }, "remote": l.remote,
+           "expires_ms": l.expires_ms, "ttl_s": l.ttl_s, "pid": if own { l.pid } else { 0 }, "remote": l.remote,
            "tag": if own { l.tag.as_str() } else { "" }, "quiet": l.quiet, "position": position, "wait_estimate_s": wait_estimate_s})
 }
 
@@ -144,7 +162,8 @@ fn acquire(node: &mut Node, board: &str, who: &str, p: &Map<String, Value>) -> R
     let also: &[&str] = if req.resources.iter().any(Resource::pool_wide) { &[board] } else { &[] };
     tick(node, also)?;
     let (now, id) = (node.leases.now(), format!("l{}", random_hex(8)?));
-    let id = node.leases.table.enqueue(&node.leases.cfg, now, &req, id)?;
+    let tree = node.tree_leases(board, who);
+    let id = node.leases.table.enqueue(&node.leases.cfg, now, &req, (id, tree))?;
     tick(node, also)?;
     node.leases.save()?;
     let table = &node.leases.table;
@@ -209,11 +228,63 @@ pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
     }
 }
 
+static WAITING: AtomicUsize = AtomicUsize::new(0);
+static TREES: Mutex<BTreeMap<(u32, u64), usize>> = Mutex::new(BTreeMap::new());
+
+/// A place among the `lease_wait` requests being answered; given back when dropped.
+struct Waiting {
+    tree: Option<Anchor>,
+}
+
+impl Waiting {
+    /// A place for a request of the process tree ``tree`` (None when it is not known, which holds only to the places of the device).
+    fn take(tree: Option<Anchor>) -> std::result::Result<Waiting, Error> {
+        if WAITING.fetch_add(1, Ordering::SeqCst) >= MOST_WAITERS {
+            WAITING.fetch_sub(1, Ordering::SeqCst);
+            return Err(crate::limits::refuse("this device is waiting for as many lease requests as it may: ask again shortly", MOST_WAITERS, "MOST_WAITERS", "lease/rpc.rs"));
+        }
+        if let Some(top) = tree {
+            let mut trees = TREES.lock().unwrap_or_else(PoisonError::into_inner);
+            let held = trees.entry((top.pid, top.start)).or_default();
+            if *held >= MOST_WAITERS_PER_LINEAGE {
+                WAITING.fetch_sub(1, Ordering::SeqCst);
+                return Err(crate::limits::refuse("the processes of this process tree are waiting for as many lease requests as they may: ask again shortly", MOST_WAITERS_PER_LINEAGE, "MOST_WAITERS_PER_LINEAGE", "lease/rpc.rs"));
+            }
+            *held += 1;
+        }
+        Ok(Waiting { tree })
+    }
+}
+
+impl Drop for Waiting {
+    fn drop(&mut self) {
+        WAITING.fetch_sub(1, Ordering::SeqCst);
+        if let Some(top) = self.tree {
+            let mut trees = TREES.lock().unwrap_or_else(PoisonError::into_inner);
+            if let Some(held) = trees.get_mut(&(top.pid, top.start)) {
+                *held -= 1;
+                if *held == 0 {
+                    trees.remove(&(top.pid, top.start));
+                }
+            }
+        }
+    }
+}
+
 /// Answer a request, letting `lease_wait` block up to its `timeout_ms` for a grant without
-/// holding the node's lock while it sleeps.
-pub fn serve(run: &dyn Fn(&Value) -> Result<Value>, request: &Value) -> Result<Value> {
+/// holding the node's lock while it sleeps. A device waits for `MOST_WAITERS` requests at once, and the processes of one process tree
+/// for `MOST_WAITERS_PER_LINEAGE` of them.
+pub fn serve(run: &dyn Fn(&Value) -> Result<Value>, request: &Value, peer: &Peer) -> Result<Value> {
     let waits = request.get("method").and_then(Value::as_str) == Some("lease_wait");
     let timeout = request.pointer("/params/timeout_ms").and_then(Value::as_u64).unwrap_or(0).min(MAX_WAIT_MS);
+    let _place = if waits && timeout > 0 {
+        match Waiting::take(crate::lineage::tree_of(&peer.lineage())) {
+            Ok(place) => Some(place),
+            Err(refused) => return Ok(crate::api::respond(request, Err(refused))),
+        }
+    } else {
+        None
+    };
     let (start, mut reply) = (Instant::now(), run(request)?);
     while waits && reply["ok"] == true && reply["result"]["state"] == "queued" && start.elapsed() < Duration::from_millis(timeout) {
         std::thread::sleep(POLL);

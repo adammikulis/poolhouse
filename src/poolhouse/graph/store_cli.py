@@ -9,6 +9,9 @@
     poolhouse-store tidy --gold --base-url URL --fail-under 0.8   # score the judge
     poolhouse-store embed PATH --smooth 2   # every vector spread over its neighbourhood
 
+``tidy`` is offered when the build holds ``poolhouse.graph.tidy`` and ``embed`` when it holds
+``poolhouse.graph.smoothing`` (``poolhouse.optional``).
+
 Measured 2026-09-01: twelve bench runs read back empty through a full scan of ``Doc.value``
 while a lookup by key returned them whole, and nothing in the store said so. ``check``
 is the question to ask before believing a document is gone; it exits 1 on any finding.
@@ -20,12 +23,10 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from poolhouse import home, optional
-from poolhouse.graph.hygiene import written_from
-from poolhouse.graph.judging import ModelJudge
 from poolhouse.graph.store import GraphStore, StoreMismatch, StoreNeedsUpgrade
-from poolhouse.graph.tidy import tidy
 from poolhouse.graph.vectors import coverage
 from poolhouse.log import say, warn
 
@@ -99,7 +100,7 @@ def _doc(path: Path, key: str, drop: bool) -> int:
 
 
 def _embed(path: Path, hops: int, model: str) -> int:
-    from poolhouse.graph.vectors import smooth
+    smooth = optional.module("poolhouse.graph.smoothing").smooth
 
     with GraphStore(path, read_only=False) as store:
         held = store.embeddings(model=model)
@@ -114,15 +115,15 @@ def _embed(path: Path, hops: int, model: str) -> int:
 
 
 def _gold(gold: str, base_url: str, fail_under: float) -> int:
-    from poolhouse.graph.judging import judge_gold, load_gold
+    judging = optional.module("poolhouse.graph.judging")
 
     if not base_url:
         warn("--gold needs --base-url: a model already serving to answer the pairs")
         return 2
     from poolhouse.client import Client, Request
 
-    scored = judge_gold(Client(base_url, request=Request(n_predict=1024)), load_gold(gold or None),
-                        log=print)
+    scored = judging.judge_gold(Client(base_url, request=Request(n_predict=1024)),
+                                judging.load_gold(gold or None), log=print)
     if fail_under and scored.accuracy < fail_under:
         warn(f"below the bar: {scored.accuracy:.0%} of {scored.total} against "
              f"{fail_under:.0%}")
@@ -130,22 +131,7 @@ def _gold(gold: str, base_url: str, fail_under: float) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        prog="poolhouse-store",
-        description="What a graph store holds, read by key and by scan, and whether they agree.")
-    sub = parser.add_subparsers(dest="command", required=True)
-    check = sub.add_parser(
-        "check", help="read every doc, node and edge two ways and print each disagreement")
-    check.add_argument("path", type=Path, help="the store directory")
-    check.add_argument("--fix", action="store_true",
-                       help="rewrite a doc a scan reads empty while a lookup by key reads it whole")
-    docs = sub.add_parser("docs", help="list the documents with their sizes")
-    docs.add_argument("path", type=Path, help="the store directory")
-    doc = sub.add_parser("doc", help="print one document as JSON")
-    doc.add_argument("path", type=Path, help="the store directory")
-    doc.add_argument("key", help="the document's key, as `docs` lists it")
-    doc.add_argument("--drop", action="store_true", help="and take it out of the store")
+def _add_embed(sub: Any) -> None:
     embed = sub.add_parser(
         "embed", help="spread the vectors the store already holds over the graph, so a node "
                       "with no text of its own is found by what its neighbours mean")
@@ -154,6 +140,9 @@ def main(argv: list[str] | None = None) -> int:
                        help="rounds of neighbourhood smoothing (default 2)")
     embed.add_argument("--model", default="", metavar="NAME",
                        help="only the vectors filed under this model, and where they go back")
+
+
+def _add_tidy(sub: Any) -> None:
     hygiene = sub.add_parser(
         "tidy", help="the hygiene pass: merge duplicate nodes and edges, fold inverse pairs, "
                      "flag doubtful labels, report conflicts and orphans -- dry unless --apply")
@@ -176,6 +165,40 @@ def main(argv: list[str] | None = None) -> int:
                               "needed the source passages (the shipped set when no file is named)")
     hygiene.add_argument("--fail-under", type=float, default=0.0, metavar="F",
                          help="with --gold: exit 1 when accuracy is under F (0-1)")
+
+
+def _tidy(args: argparse.Namespace, path: Path) -> int:
+    hygiene, judging, tidying = (optional.module(f"poolhouse.graph.{name}") for name in ("hygiene", "judging", "tidy"))
+    judge = None
+    if args.base_url:
+        from poolhouse.client import Client, Request
+
+        judge = judging.ModelJudge(Client(args.base_url, request=Request(n_predict=1024)))
+    report = tidying.tidy(path, dry_run=not args.apply, written=hygiene.written_from(args.written),
+                          judge=judge, log=print, rejudge=args.rejudge)
+    return 0 if report.sound else 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="poolhouse-store",
+        description="What a graph store holds, read by key and by scan, and whether they agree.")
+    sub = parser.add_subparsers(dest="command", required=True)
+    check = sub.add_parser(
+        "check", help="read every doc, node and edge two ways and print each disagreement")
+    check.add_argument("path", type=Path, help="the store directory")
+    check.add_argument("--fix", action="store_true",
+                       help="rewrite a doc a scan reads empty while a lookup by key reads it whole")
+    docs = sub.add_parser("docs", help="list the documents with their sizes")
+    docs.add_argument("path", type=Path, help="the store directory")
+    doc = sub.add_parser("doc", help="print one document as JSON")
+    doc.add_argument("path", type=Path, help="the store directory")
+    doc.add_argument("key", help="the document's key, as `docs` lists it")
+    doc.add_argument("--drop", action="store_true", help="and take it out of the store")
+    if optional.held("poolhouse.graph.smoothing"):
+        _add_embed(sub)
+    if optional.held("poolhouse.graph.tidy"):
+        _add_tidy(sub)
     args = parser.parse_args(argv)
 
     if args.command == "tidy" and args.gold is not None:
@@ -194,14 +217,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "embed":
             return _embed(path, args.smooth, args.model)
         if args.command == "tidy":
-            judge = None
-            if args.base_url:
-                from poolhouse.client import Client, Request
-
-                judge = ModelJudge(Client(args.base_url, request=Request(n_predict=1024)))
-            report = tidy(path, dry_run=not args.apply, written=written_from(args.written),
-                          judge=judge, log=print, rejudge=args.rejudge)
-            return 0 if report.sound else 1
+            return _tidy(args, path)
         return _docs(path)
     except StoreNeedsUpgrade as why:
         warn(str(why))

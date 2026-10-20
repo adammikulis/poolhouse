@@ -16,10 +16,11 @@ use crate::node::Node;
 use crate::row::Kind;
 
 pub const METHODS: [&str; 2] = ["rooms", "room"];
-const MADE_PER_SESSION: usize = 5;
 const ROOMS_TOTAL: usize = 200;
-const JOINED_PER_SESSION: usize = 32;
-const MEMBERS_PER_ROOM: usize = 64;
+/// Rooms the sessions of one process tree make and keep.
+pub const MOST_ROOMS_PER_LINEAGE: usize = 16;
+/// Members one room holds.
+pub const MEMBERS_PER_ROOM: usize = 128;
 
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
@@ -131,19 +132,19 @@ fn text<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
     }
 }
 
-fn admit(rooms: &BTreeMap<String, Room>, name: &str, member: &str) -> Result<()> {
-    let r = &rooms[name];
-    if r.members.contains(member) {
-        return Ok(());
-    }
-    if r.members.len() >= MEMBERS_PER_ROOM {
-        return Err(Error::Quota(format!("{name} has {MEMBERS_PER_ROOM} members already")));
-    }
-    let joined = rooms.values().filter(|r| r.members.contains(member)).count();
-    if joined >= JOINED_PER_SESSION {
-        return Err(Error::Quota(format!("{member} belongs to {joined} rooms already")));
+/// Refuse ``member`` a place in ``room`` when it is not a member and the room holds as many as it may.
+fn has_room_for(room: &Room, member: &str) -> Result<()> {
+    if !room.members.contains(member) && room.members.len() >= MEMBERS_PER_ROOM {
+        return Err(crate::limits::refuse("this room has as many members as it may", MEMBERS_PER_ROOM, "MEMBERS_PER_ROOM", "rooms.rs"));
     }
     Ok(())
+}
+
+/// How many of ``rooms`` were made by a session registered from the process tree ``actor`` was registered from.
+fn made_by_tree(node: &mut Node, board: &str, rooms: &BTreeMap<String, Room>, actor: &str) -> Result<usize> {
+    let names = &node.host(board)?.names;
+    let tree = names.get(actor).map(|i| i.lineage.clone()).unwrap_or_default();
+    Ok(rooms.values().filter(|r| names.get(&r.by).is_some_and(|i| crate::lineage::shares(&i.lineage, &tree))).count())
 }
 
 fn op(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
@@ -163,19 +164,20 @@ fn op(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Resu
             if rooms.contains_key(name) {
                 return Err(Error::Invalid(format!("{name} exists already")));
             }
-            let made = rooms.values().filter(|r| r.by == actor).count();
-            if made >= MADE_PER_SESSION || rooms.len() >= ROOMS_TOTAL {
-                return Err(Error::Quota(format!("{actor} made {made} rooms already; the limit is {MADE_PER_SESSION} ({ROOMS_TOTAL} in all)")));
+            if rooms.len() >= ROOMS_TOTAL {
+                return Err(crate::limits::refuse("this board has as many rooms as it may", ROOMS_TOTAL, "ROOMS_TOTAL", "rooms.rs"));
+            }
+            if made_by_tree(node, board, &rooms, &actor)? >= MOST_ROOMS_PER_LINEAGE {
+                return Err(crate::limits::refuse("the sessions of this process tree have made as many rooms as they may", MOST_ROOMS_PER_LINEAGE, "MOST_ROOMS_PER_LINEAGE", "rooms.rs"));
             }
             body["title"] = json!(title);
             body["open"] = json!(!p.get("private").and_then(Value::as_bool).unwrap_or(false));
         }
         "join" => {
-            let r = rooms.get(name).filter(|r| r.open || r.members.contains(&actor));
-            if r.is_none() {
+            let Some(r) = rooms.get(name).filter(|r| r.open || r.members.contains(&actor)) else {
                 return Err(Error::Denied(format!("{name} is not a room {actor} can join; ask its maker to add you")));
-            }
-            admit(&rooms, name, &actor)?;
+            };
+            has_room_for(r, &actor)?;
         }
         "leave" => {
             if rooms.get(name).is_none_or(|r| !r.members.contains(&actor)) {
@@ -183,13 +185,13 @@ fn op(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Resu
             }
         }
         "add" => {
-            if rooms.get(name).is_none_or(|r| r.by != actor) {
+            let Some(r) = rooms.get(name).filter(|r| r.by == actor) else {
                 return Err(Error::Denied(format!("{actor} cannot add members to {name}; only its maker does")));
-            }
+            };
             if who.contains('@') || !node.can_receive(board, who)? {
                 return Err(Error::Invalid(format!("no session called {who}")));
             }
-            admit(&rooms, name, who)?;
+            has_room_for(r, who)?;
             body["who"] = json!(who);
         }
         _ => return Err(Error::Invalid("op is create, join, leave or add".into())),

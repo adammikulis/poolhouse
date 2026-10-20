@@ -123,6 +123,26 @@ impl Registry {
         &self.names
     }
 
+    /// What the share of a log is kept under for ``name``: the process tree its main session was registered from, or that main session
+    /// alone when no tree is known.
+    pub fn tree(&self, name: &str) -> String {
+        let root = self.root(name);
+        match self.names.get(&root).and_then(|i| crate::lineage::tree_of(&i.lineage)) {
+            Some(top) => format!("tree:{}:{}", top.pid, top.start),
+            None => format!("session:{root}"),
+        }
+    }
+
+    /// Put ``name`` back as it was before a registration that was refused: ``before`` is what the registry held for it, nothing when it
+    /// was new.
+    pub fn restore(&mut self, name: &str, before: Option<Ident>) -> Result<()> {
+        match before {
+            Some(ident) => self.names.insert(name.into(), ident),
+            None => self.names.remove(name),
+        };
+        self.save()
+    }
+
     fn save(&self) -> Result<()> {
         write_atomic(&self.path, &serde_json::to_vec(&self.names)?)
     }
@@ -235,10 +255,10 @@ impl Registry {
             return Ok((name, false));
         }
         if self.names.len() >= MAX_IDENTITIES {
-            return Err(Error::Quota("this board holds as many sessions as it will".into()));
+            return Err(crate::limits::refuse("this board holds as many sessions as it may", MAX_IDENTITIES, "MAX_IDENTITIES", "identity.rs"));
         }
         let name = (SHORT..=full.len()).step_by(2).map(|w| format!("{word}-{}", &full[..w])).find(|n| !self.names.contains_key(n))
-            .ok_or_else(|| Error::Quota("no free name".into()))?;
+            .ok_or_else(|| crate::limits::refuse("no free name is left for this session", format!("names of {SHORT} to {} characters", full.len()), "SHORT", "identity.rs"))?;
         let state = if model.is_empty() { ModelState::Unknown } else { state };
         self.names.insert(name.clone(), Ident {
             digest: full, family: word.into(), parent: parent.into(), model, model_state: state, harness: clean(harness)?,
@@ -358,7 +378,7 @@ impl Tokens {
         same.sort();
         let dropped = (same.len() + 1).saturating_sub(MAX_TOKENS_PER_NAME).min(same.len().saturating_sub(1));
         if self.held.len() + 1 > self.most + dropped {
-            return Err(Error::Quota("this node holds as many tokens as it will".into()));
+            return Err(crate::limits::refuse("this node holds as many tokens as it may", self.most, "MOST_TOKENS", "identity.rs"));
         }
         for (_, old) in same.iter().skip(1).take(dropped) {
             self.held.remove(old);

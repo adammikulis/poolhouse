@@ -49,10 +49,10 @@ def listing(args: argparse.Namespace, s: Session) -> Any:
 
 
 def heartbeat(args: argparse.Namespace, s: Session) -> Any:
-    """Renew every claim the caller holds, naming the ones its eight-hour lifetime held back."""
+    """Renew every claim the caller holds."""
     ttl = int(args.ttl or limits.load(limits.root()).claim_ttl_s)
     renewed = s.renew_claims(ttl)
-    return {"renewed": len(renewed), "capped": [f"{c.kind}:{c.key}" for c in renewed if c.capped]}
+    return {"renewed": len(renewed)}
 
 
 def who(args: argparse.Namespace, s: Session) -> Any:

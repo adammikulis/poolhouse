@@ -1,4 +1,4 @@
-"""What one session may write to the node: sends in a minute, announcements, subagents."""
+"""What one session may write to the node: messages, notes, claims and announcements as fast as it sends them, and any number of subagents."""
 
 from __future__ import annotations
 
@@ -6,11 +6,7 @@ import json
 
 import pytest
 
-from poolhouse.board.client import Quota
-
 pytest_plugins = ["node_kit"]
-
-NODE_WRITE_LIMITS: dict[str, int] = {}
 
 
 @pytest.fixture
@@ -19,34 +15,23 @@ def team(workspace_node):
     return workspace_node
 
 
-def test_messages_notes_and_claims_share_thirty_sends_a_minute_and_the_commands_say_it_is_a_quota(team):
+def test_messages_notes_and_claims_are_written_as_fast_as_a_session_sends_them(team):
     a = team.session(team.lead)
-    for n in range(10):
+    for n in range(40):
         a.post("#general", "status", f"message {n}")
         a.note_add("fact", f"note {n}", "a note")
         a.claim("port", str(9600 + n))
-    with pytest.raises(Quota, match="as fast as it may"):
-        a.post("#general", "status", "one more")
-    with pytest.raises(Quota, match="as fast as it may"):
-        a.note_add("fact", "one more", "a note")
-    with pytest.raises(Quota, match="as fast as it may"):
-        a.claim("port", "9700")
-    sent = team.cli("send", "#general", "status", "a command over the same limit", who=team.lead)
-    assert sent.returncode == 4, (sent.stdout, sent.stderr)
-    other = team.session(team.member("other"))
-    other.post("#general", "status", "another session has its own count")
+    sent = team.cli("send", "#general", "status", "a command after forty of each", who=team.lead)
+    assert sent.returncode == 0, (sent.stdout, sent.stderr)
 
 
-def test_an_announcement_over_what_a_session_announces_is_written_and_the_board_is_told(team):
-    told = []
-    for n in range(8):
+def test_announcements_are_posted_without_a_warning_however_many_a_session_makes(team):
+    for n in range(12):
         done = team.cli("announce", "milestone", f"announcement {n}", "--json", who=team.lead)
         assert done.returncode == 0, (n, done.stderr, done.stdout)
-        told.append(json.loads(done.stdout).get("warning", ""))
-    assert told[:6] == [""] * 6
-    assert all("announce quota" in text and "6 in 10 minutes" in text for text in told[6:])
+        assert "warning" not in json.loads(done.stdout)
     audit = team.session(team.lead).read_all(kind="audit")
-    assert [e.fields["subject"] for e in audit if e.fields["event"] == "announce_over_quota"] == [team.lead.name] * 2
+    assert [e for e in audit if e.fields["event"] == "announce_over_quota"] == []
 
 
 def test_a_session_may_have_any_number_of_live_subagents(team):

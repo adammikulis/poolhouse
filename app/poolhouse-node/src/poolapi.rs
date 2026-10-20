@@ -15,7 +15,6 @@ use crate::membership::Policy;
 use crate::node::Node;
 
 /// The methods that act on the network and so run without the node lock held.
-const MOST_SUBMITS_PER_MINUTE: usize = 120;
 pub const NETWORK: [&str; 4] = ["add_device", "join_pool", "sync_now", "shard_call"];
 
 /// The params each pool method accepts; None for any other method.
@@ -132,10 +131,6 @@ pub fn dispatch(node: &mut Node, method: &str, token: &str, p: &Map<String, Valu
             node.pool_cosign(text(p, "act")?)
         }
         "pool_submit" => {
-            if !node.rates.permits("pool_submit", MOST_SUBMITS_PER_MINUTE, std::time::Duration::from_secs(60)) {
-                return Err(Error::Quota("acts are submitted as fast as they may be: try again in a minute".into()));
-            }
-            node.rates.record("pool_submit", std::time::Duration::from_secs(60));
             node.pool_submit(p.get("act").unwrap_or(&Value::Null))
         }
         "shard_consent" => crate::shard::consent_call(node, token, p),

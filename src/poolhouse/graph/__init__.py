@@ -60,7 +60,7 @@ _EXPORTS = {
     "rrf": ("poolhouse.graph.search", "rrf"),
     "scatter_mean": ("poolhouse.graph.message", "scatter_mean"),
     "scatter_sum": ("poolhouse.graph.message", "scatter_sum"),
-    "smooth": ("poolhouse.graph.vectors", "smooth"),
+    "smooth": ("poolhouse.graph.smoothing", "smooth"),
     "superseded": ("poolhouse.graph.drift", "superseded"),
     "tensors": ("poolhouse.graph.tensors", "tensors"),
     "tools_for": ("poolhouse.graph.propose", "tools_for"),

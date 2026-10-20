@@ -746,7 +746,7 @@ that agree on a wrong answer pass redundancy), both named in section 16.
 | Path | What a compromised device can do today | Defence |
 |---|---|---|
 | `shard_call` and files | Run its tree on any device that allows it (F3), as that user, unsandboxed; supplies no argv, environment or working directory, but the tree is code | C1: host-side sandbox (`poolhouse.sandbox`: read the tree and the interpreter, write scratch, `Net.deny()`, minimal env, limits), allow list derived from the signed roster, a test that a shard cannot read `node/`, the keystore or the home and cannot reach the network |
-| Leases | Another device's resource is `denied`; its own claims are board entries | none needed; a flood is the rate limits |
+| Leases | Another device's resource is `denied`; its own claims are board entries | none needed; every lease expires and the log is bounded |
 | Landing | Entries from a device count only if it is on this device's `land_trust.json` (a file) and an independent review and a gate follow | C1 makes the list derived from the roster; the lander's gate runs the branch's code in a sandbox with no credentials (C6) |
 | Serving (designed) | A served call gives the serving device every prompt, and a caller a reply it must treat as data | `docs/pools-and-serving.md` 7.3 to 7.7; C14 for residue, C12 for the answers |
 | The build path | F1, F2 | C2 to C5 |

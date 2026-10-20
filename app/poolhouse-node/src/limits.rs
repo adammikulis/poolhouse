@@ -1,11 +1,30 @@
-//! How often something may be done: a count per key within a window, kept in memory. A key is a lineage and a kind of use
-//! (`lineage::limit_key`), so a flood of throwaway sessions from one terminal shares one limit and another terminal has its own.
-//! Only a use that was made is counted: `permits` asks, `record` counts.
+//! How often something may be done: a count per key within a window, kept in memory. A key names what is counted (a source
+//! address, a phone, a pool). Only a use that was made is counted: `permits` asks, `record` counts.
 
 use std::collections::{BTreeMap, VecDeque};
+use std::fmt::Display;
 use std::time::{Duration, Instant};
 
+use crate::error::Error;
+
 const MOST_KEYS: usize = 1024;
+
+/// The refusal for a limit: ``what`` was refused, ``value`` is the limit in force, and ``key`` in ``file`` is where it is changed
+/// (a constant in a source file under `src`, or a key of a settings file in the state directory).
+pub fn refuse(what: &str, value: impl Display, key: &str, file: &str) -> Error {
+    Error::Quota(format!("{} (the limit is {value}, set by {key} in {file}).", what.trim_end_matches('.')))
+}
+
+/// The refusal at a security floor: ``what`` was refused and what to do next, never how many tries the floor allows, so a caller
+/// learns nothing about the budget it is spending.
+pub fn floor(what: &str) -> Error {
+    Error::Quota(format!("{}.", what.trim_end_matches('.')))
+}
+
+/// A refusal another node made, as it said it.
+pub fn relayed(message: String) -> Error {
+    Error::Quota(message)
+}
 
 #[derive(Default)]
 pub struct Rates {
@@ -54,6 +73,12 @@ impl Rates {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refusal_names_what_was_refused_the_limit_and_where_it_is_changed() {
+        let Error::Quota(said) = refuse("a board has as many links open as it may: end one first.", 64, "MOST_ACTIVE", "links.rs") else { panic!("not a quota") };
+        assert_eq!(said, "a board has as many links open as it may: end one first (the limit is 64, set by MOST_ACTIVE in links.rs).");
+    }
 
     #[test]
     fn a_key_is_allowed_so_many_times_in_a_window_and_each_key_has_its_own() {
