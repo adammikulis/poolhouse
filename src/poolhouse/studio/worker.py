@@ -2,22 +2,24 @@
 from __future__ import annotations
 
 import json
+import os
 import random
 import shutil
 import sys
 from pathlib import Path
 from typing import Any
 
-from poolhouse import optional
+from poolhouse import optional, studio_launch
 from poolhouse.client import Client, Request
 from poolhouse.decide.cases import case_from
 from poolhouse.decide.pointer import PointerDecider
 from poolhouse.files import write_json
 from poolhouse.kvtype import DEFAULT_KV_BITS
 from poolhouse.serve import broker_wire, gpu
+from poolhouse.serve.decision_residents import fingerprint
 from poolhouse.studio.adapters import response_schema
 from poolhouse.studio.decision_models import source as decision_source
-from poolhouse.studio.decisions import assess, parse_record, route
+from poolhouse.studio.decisions import assess, canonical_record, parse_record, route
 from poolhouse.studio.resources import (
     ADAPTER_FILES,
     checkpoint_base,
@@ -319,10 +321,30 @@ def execute(node: dict, inputs: dict, out: Path) -> dict[str, Any]:
     raise ValueError(f'Node {kind} requires an installed execution integration')
 
 
+def _resident_record(request: dict) -> dict:
+    if request.get('execution') != {'kind': 'resident_decision'} or studio_launch.FD_ENV not in os.environ:
+        raise studio_launch.LaunchInterrupted('Studio resident launch proof is required')
+    context = studio_launch.worker_context()
+    content = {key: request[key] for key in ('node', 'inputs', 'output_dir')}
+    if fingerprint(content) != context['request_digest'] or request['node'].get('id') != context['node_id']:
+        raise studio_launch.LaunchInterrupted('Studio resident request changed after admission')
+    node, inputs = request['node'], request['inputs']
+    result = broker_wire.decision({
+        'permit_id': context['permit_id'], 'request_id': context['request_id'],
+        'model_digest': context['model_digest'], 'record': canonical_record(node, inputs),
+    }, context['broker'])
+    return assess(node['type'], node.get('parameters', {}), inputs['record'],
+                  lambda question, state, options: result,
+                  identity={key: context[key] for key in ('model_digest', 'calibration_digest')})
+
+
 def run() -> int:
     request = json.loads(Path(sys.argv[1]).read_text())
     out = Path(request['output_dir'])
-    outputs = execute(request['node'], request['inputs'], out)
+    if 'execution' in request or studio_launch.FD_ENV in os.environ:
+        outputs = _resident_record(request)
+    else:
+        outputs = execute(request['node'], request['inputs'], out)
     write_json(out / 'result.json', {'outputs': outputs})
     return 0
 
