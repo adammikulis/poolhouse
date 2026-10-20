@@ -85,8 +85,8 @@ class BridgeCapability:
         self.revoked = False
 
     def _allowed(self, process):
-        if (self.owned(copy.deepcopy(process)) is not True
-                or self.current(copy.deepcopy(self.binding)) is not True):
+        if (self.revoked or self.owned(copy.deepcopy(process)) is not True or self.revoked
+                or self.current(copy.deepcopy(self.binding)) is not True or self.revoked):
             raise PermissionError('The owned producer source is no longer authorized.')
 
     def activate(self, process, acknowledgement):
