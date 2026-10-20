@@ -15,6 +15,27 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["listener:fleet/producer_control.py:_Location.bind", "listener:fleet/producer_control.py:ControlServer.__init__"]
+status = "covered"
+count = 2
+tests = ["tests/test_producer_control.py::test_real_bootstrap_then_exact_tls_control", "tests/test_producer_control.py::test_partial_tls_and_frames_expire_and_close_unblocks_owned_threads", "tests/test_producer_control.py::test_connection_admission_is_bounded_before_threads", "tests/test_producer_control.py::test_replaced_listener_is_refused_and_never_unlinked_on_close", "tests/test_producer_control.py::test_repeated_close_never_uses_recycled_directory_descriptor", "tests/test_producer_control.py::test_concurrent_close_hands_off_each_descriptor_once", "tests/test_producer_control.py::test_bind_failure_removes_only_captured_listener_inode", "tests/test_producer_control.py::test_bind_failure_never_unlinks_substituted_inode", "tests/test_producer_control.py::test_partial_location_constructor_removes_captured_directory", "tests/test_producer_control.py::test_successful_chmod_cannot_transfer_listener_ownership"]
+note = "The factory creates two private Unix listeners in an owned directory: nonce-only bootstrap and TLS control. Kernel process generation, private directory and original socket identities are checked throughout. Connection slots and deadlines bound owned threads; repeated or concurrent cleanup invalidates raw descriptor ownership once and never adopts replacement socket inodes, including partial binding failures. These are local transport surfaces, not source grants."
+
+[[group]]
+match = ["handler:fleet/producer_control.py:ControlServer._answer"]
+status = "covered"
+count = 1
+tests = ["tests/test_producer_control.py::test_ordinary_sdk_cannot_choose_operations_or_private_bridge", "tests/test_producer_control.py::test_admitted_bridge_large_frame_and_revocation_before_reply", "tests/test_producer_control.py::test_one_connection_never_dispatches_a_second_frame", "tests/test_producer_control.py::test_current_change_after_dispatch_has_unknown_reply_without_repeat", "tests/test_producer_control.py::test_bridge_revocation_during_dispatch_suppresses_reply", "tests/test_producer_control.py::test_current_change_during_tls_handshake_prevents_dispatch", "tests/test_producer_control.py::test_control_envelope_is_exact_before_fixed_dispatch", "tests/test_producer_control.py::test_retention_error_never_appends_second_response"]
+note = "Each connection dispatches one fixed operation after current daemon and actual process checks. Ordinary clients cannot choose private bridge operations; current bridge admission is independently rechecked. Post-dispatch revocation suppresses a reply without repeating the callback. Response retention preserves endpoint verification within the original deadline and cannot append a second response. The fixed factory must separately authorize source capabilities and bound its callbacks; complete producer admission is not claimed by this primitive."
+
+[[group]]
+match = ["parser:fleet/producer_control.py"]
+status = "covered"
+count = 1
+tests = ["tests/test_producer_control.py::test_bootstrap_rejects_ambiguous_or_extra_json", "tests/test_producer_control.py::test_oversize_sdk_frame_and_response_are_bounded", "tests/test_producer_control.py::test_plain_control_and_nonfinite_callback_never_return_success", "tests/test_producer_control.py::test_partial_body_and_unread_large_reply_obey_deadline", "tests/test_producer_control.py::test_control_envelope_is_exact_before_fixed_dispatch"]
+note = "Length-prefixed metadata and admitted bridge frames have separate bounds. Duplicate keys, nonfinite values, wrong operation fields, plaintext control, partial frames and oversized or unread responses fail within the original connection deadline. The codec exports no credentials and cannot select code, roots or authority."
+
+[[group]]
 match = ["parser:studio/producer_log.py"]
 status = "covered"
 count = 1
