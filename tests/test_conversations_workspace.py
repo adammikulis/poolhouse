@@ -363,6 +363,15 @@ def test_channel_history_scrolls_with_composer_visible_at_all_viewport_sizes(cha
         assert 0 < geometry['visible'] < geometry['history']
         assert geometry['height'] <= height
         assert page.evaluate('document.documentElement.scrollHeight <= innerHeight'), page.evaluate('''() => ({width:innerWidth,height:innerHeight,scroll:document.documentElement.scrollHeight,rail:document.querySelector('.workspace-rail').getBoundingClientRect().bottom,workspace:document.querySelector('#workspace').getBoundingClientRect().bottom,chat:document.querySelector('#chat').getBoundingClientRect().bottom,team:document.querySelector('#conversation-team').getBoundingClientRect().bottom})''')
+        if height == 420:
+            links = page.get_by_role('navigation', name='Main navigation').get_by_role('link')
+            links.first.focus()
+            for _ in range(links.count() + page.locator('.rail-tools button').count()):
+                page.keyboard.press('Tab')
+            settings = page.get_by_role('link', name='Settings', exact=True)
+            expect(settings).to_be_focused()
+            expect(settings).to_be_in_viewport()
+            assert page.evaluate('document.documentElement.scrollHeight <= innerHeight')
         board.evaluate('node => { node.feed.scrollTop = node.feed.scrollHeight; }')
         expect(board.locator('.msg pre').last).to_be_in_viewport()
         expect(composer).to_be_in_viewport()
