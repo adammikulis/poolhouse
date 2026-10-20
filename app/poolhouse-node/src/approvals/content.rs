@@ -207,7 +207,7 @@ pub fn grants_text(d: &Draft) -> (String, String, &'static str) {
     out.push(format!("RISK: {}. {worst}", risk.to_uppercase()));
     out.push(d.ctx.said_line());
     let kind = if d.who.parent.is_empty() { "a main session".to_string() } else { format!("a subagent of {}", d.who.parent) };
-    let claim = if d.who.verified { format!("verified as {} in {}", d.who.model, d.who.harness) } else { format!("which says it is {} in {} (unverified)", d.who.model, d.who.harness) };
+    let claim = if d.who.verified { format!("verified as {} in {}", d.who.model, d.who.harness) } else if d.who.model.is_empty() { format!("which names no model in {} (unverified)", d.who.harness) } else { format!("which says it is {} in {} (unverified)", d.who.model, d.who.harness) };
     out.push(format!("WHO: {}, {claim}, {kind}, on device {}, board {}.", d.who.name, d.who.device, d.who.board));
     out.push(d.ctx.verdict_line());
     out.push(d.ctx.taint_line());
