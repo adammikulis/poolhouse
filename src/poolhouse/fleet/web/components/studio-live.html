@@ -40,7 +40,10 @@
     async livePerform(fn) {
       if (this.liveBusy) return;
       this.liveBusy = true;
-      try { await fn(); }
+      try {
+        for (const button of [...this.liveActions.querySelectorAll('button'), ...this.deliveryDetails.querySelectorAll('button')]) button.disabled = true;
+        await fn();
+      }
       catch (error) { this.liveError(error); }
       finally { this.liveBusy = false; this.liveRenderActions(); this.renderDelivery(); }
     },

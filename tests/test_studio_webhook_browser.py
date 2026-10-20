@@ -248,3 +248,53 @@ def test_inventory_denial_only_clears_its_current_configuration(webhook_page, mo
         if change == 'new-draft':
             expect(page.get_by_label('Webhook source name', exact=True)).to_have_value('Current source draft')
     assert not errors
+
+
+def test_create_ack_keeps_old_start_disabled_until_current_stream_is_rendered(webhook_page):
+    page, app, errors, posts = webhook_page
+    add_webhook(page)
+    page.get_by_role('button', name='Create paused stream', exact=True).click()
+    expect(page.get_by_role('button', name='Start stream', exact=True)).to_be_enabled()
+    old = page.locator('studio-view').evaluate('editor => editor.liveSub.id')
+    created, held = [], []
+    def create_ack(route):
+        if route.request.method != 'POST':
+            route.continue_()
+            return
+        response = route.fetch()
+        created.append(response.json()['subscription']['id'])
+        route.fulfill(response=response)
+    def delay_inventory(route):
+        if route.request.method != 'GET' or not created:
+            route.continue_()
+            return
+        response = route.fetch()
+        held.append((route, response))
+        page.evaluate('window.createRefreshHeld = true')
+    page.route('**/ui/studio/subscriptions', create_ack)
+    page.route('**/ui/studio/sources', delay_inventory)
+    page.get_by_role('button', name='Create paused stream', exact=True).click()
+    page.wait_for_function('() => window.createRefreshHeld === true')
+    try:
+        assert created[0] != old
+        expect(page.get_by_role('button', name='Start stream', exact=True)).to_be_disabled()
+        assert not any(url.endswith('/start') for url, _ in posts)
+    finally:
+        page.unroute('**/ui/studio/sources', delay_inventory)
+        for route, response in held:
+            route.fulfill(response=response)
+    page.wait_for_function('() => !document.querySelector("studio-view").liveBusy')
+    assert page.locator('studio-view').evaluate('editor => editor.liveSub.id') == created[0]
+    expect(page.get_by_role('button', name='Start stream', exact=True)).to_be_enabled()
+    page.get_by_role('button', name='Start stream', exact=True).click()
+    expect(page.get_by_role('button', name='Pause stream', exact=True)).to_be_enabled()
+    starts = [url for url, _ in posts if url.endswith('/start')]
+    assert len(starts) == 1 and '/subscriptions/' + created[0] + '/start' in starts[0]
+    service = app.ui.studio_streams
+    scope = app.ui.studio_authority._context()['scope']
+    assert service.store.get('subscription', old, scope)['state'] == 'paused'
+    current = service.store.get('subscription', created[0], scope)
+    assert current['state'] == 'active' and service.store.page(current)['events'] == []
+    page.get_by_role('button', name='Pause stream', exact=True).click()
+    expect(page.get_by_role('button', name='Resume stream', exact=True)).to_be_enabled()
+    assert not errors
