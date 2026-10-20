@@ -3,19 +3,33 @@ for running this interpreter, and a loopback listener."""
 
 from __future__ import annotations
 
+import contextlib
+import errno
 import os
 import shutil
 import socket
+import stat
+import subprocess
 import sys
 import threading
+import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
 
 from poolhouse import sandbox
-from poolhouse.sandbox import AllowUnsandboxed, Limits, Net, Policy
-from poolhouse.sandbox.backend import Availability, Wrapped
+from poolhouse.sandbox import AllowUnsandboxed, Limits, Net, Policy, denial_log, process_tree, run
+from poolhouse.sandbox.backend import (
+    CUT_REFUSAL_LOG,
+    CUT_UNTRACED_LOG,
+    LOST_REFUSAL_LOG,
+    NO_REFUSAL_LOG,
+    SILENT_REFUSAL_LOG,
+    UNPARSED_REFUSAL_LOG,
+    Availability,
+    Wrapped,
+)
 from poolhouse.sandbox.policies import SYSTEM_EXEC
 from poolhouse.sandbox.seatbelt import Seatbelt
 
@@ -24,7 +38,6 @@ class UnreadableBackend:
     """A backend that confines nothing and cannot say what was refused."""
 
     name = "unreadable"
-    keeps_refusal_log = True
 
     def available(self):
         return Availability(True)
@@ -35,8 +48,14 @@ class UnreadableBackend:
     def watch(self, *_tag):
         return None
 
+    def started(self, tag, pid):
+        return None
+
     def denials(self, tag, since):
         return None
+
+    def unreadable(self, tag):
+        return LOST_REFUSAL_LOG
 
     def finish(self, *_tag):
         return None
@@ -46,32 +65,183 @@ class UnloggedBackend(UnreadableBackend):
     """A backend that confines nothing and keeps no refusal log by construction."""
 
     name = "unlogged"
-    keeps_refusal_log = False
+
+    def unreadable(self, tag):
+        return NO_REFUSAL_LOG
+
+
+class CutBackend(UnreadableBackend):
+    """A backend that confines nothing and lost a refusal report of the run's own to the kernel's length limit."""
+
+    name = "cut"
+
+    def unreadable(self, tag):
+        return CUT_REFUSAL_LOG
+
+
+class UntracedBackend(UnreadableBackend):
+    """A backend that confines nothing and lost a refusal report that may or may not be the run's."""
+
+    name = "untraced"
+
+    def unreadable(self, tag):
+        return CUT_UNTRACED_LOG
+
+
+class SilentBackend(UnreadableBackend):
+    """A backend that confines nothing and whose log never carried a report of what refused the run."""
+
+    name = "silent"
+
+    def unreadable(self, tag):
+        return SILENT_REFUSAL_LOG
+
+
+class UnparsedBackend(UnreadableBackend):
+    """A backend that confines nothing and could not read a refusal report of the run's own."""
+
+    name = "unparsed"
+
+    def unreadable(self, tag):
+        return UNPARSED_REFUSAL_LOG
+
+
+class QuietBackend(UnreadableBackend):
+    """A backend that confines nothing and whose log carries no refusal at all for the run."""
+
+    name = "quiet"
+
+    def denials(self, tag, since):
+        return []
 
 
 class RecordingBackend(UnreadableBackend):
-    """A backend that remembers which runs it was asked to watch and which it was told had ended."""
+    """A backend that remembers which runs it was asked to watch, which process each one started as and which it was told had ended."""
 
     name = "recording"
 
     def __init__(self):
-        self.watched, self.finished = [], []
+        self.watched, self.finished, self.started_as = [], [], {}
 
     def watch(self, tag):
         self.watched.append(tag)
+
+    def started(self, tag, pid):
+        self.started_as[tag] = pid
 
     def finish(self, tag):
         self.finished.append(tag)
 
 
-@pytest.fixture
-def seatbelt() -> Seatbelt:
-    """The real Seatbelt backend, or a skip where ``sandbox-exec`` does not exist."""
+class UnreadFollower(process_tree._Follower):
+    """A follower whose reader thread never runs: only `flush` takes in what the kernel reported."""
+
+    def _read(self, queue):
+        return
+
+
+class UntrackableBackend(RecordingBackend):
+    """A backend that confines nothing and cannot follow the process a run started as."""
+
+    name = "untrackable"
+
+    def started(self, tag, pid):
+        self.pid = pid
+        raise RuntimeError("the processes of the run cannot be followed")
+
+
+LOCK_BASE = "/private/tmp/poolhouse-seatbelt-log"
+"""One path for every test run on the machine, whatever ``TMPDIR`` each one was given."""
+LOCK_TIMEOUT_S = 600.0
+"""Seconds a test waits for the lock before it fails; a holder that exits lets go of it."""
+LOCK_POLL_S = 0.02
+_HELD: list[bool] = []
+
+
+def _uid() -> int:
+    return os.getuid()
+
+
+def _open_lock(path: str) -> int:
+    """The descriptor of the lock file ``path``, made for its owner when it is missing; fails the test when
+    the path is a symbolic link, is not a regular file or belongs to another user, since the directory is
+    one that every user can write to."""
+    try:
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    except OSError as exc:
+        why = "is a symbolic link" if exc.errno == errno.ELOOP else f"cannot be opened ({exc})"
+        pytest.fail(f"the machine-wide Seatbelt log lock file {path} {why}", pytrace=False)
+    info = Path(f"/dev/fd/{fd}").stat()
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != _uid():
+        os.close(fd)
+        why = "is not a regular file" if not stat.S_ISREG(info.st_mode) else "is owned by another user"
+        pytest.fail(f"the machine-wide Seatbelt log lock file {path} {why}", pytrace=False)
+    return fd
+
+
+def _lock(fd: int, mode: int, name: str) -> None:
+    """Take the lock ``mode`` on ``fd``, failing the test when another test run holds it for `LOCK_TIMEOUT_S`."""
+    import fcntl
+
+    deadline = time.monotonic() + LOCK_TIMEOUT_S
+    while True:
+        try:
+            fcntl.flock(fd, mode | fcntl.LOCK_NB)
+            return
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                pytest.fail(f"waited {LOCK_TIMEOUT_S:g} s for the machine-wide Seatbelt log {name} lock, "
+                            f"which another test run holds", pytrace=False)
+            time.sleep(LOCK_POLL_S)
+
+
+@contextlib.contextmanager
+def kernel_log(alone: bool = False) -> Iterator[None]:
+    """Hold the machine-wide lock around a test that reads Seatbelt refusals (shared) or makes the kernel
+    cut one off (alone): a cut report reaches every refusal stream on the machine. A test waiting to be
+    alone holds back the ones that follow. A test takes the lock once: asking again fails the test."""
+    import fcntl
+
+    if _HELD:
+        pytest.fail(f"this test already holds the Seatbelt log lock ({'alone' if _HELD[0] else 'shared'}) and asked for it "
+                    f"again ({'alone' if alone else 'shared'}): a test takes `seatbelt` or `seatbelt_alone`, once", pytrace=False)
+    held = []
+    try:
+        for name in ("gate", "lock"):
+            held.append(_open_lock(f"{LOCK_BASE}.{name}"))
+            _lock(held[-1], fcntl.LOCK_EX if alone else fcntl.LOCK_SH, name)
+            if name == "gate" and not alone:
+                fcntl.flock(held[-1], fcntl.LOCK_UN)
+        _HELD.append(alone)
+        try:
+            yield
+        finally:
+            _HELD.pop()
+    finally:
+        for fd in held:
+            os.close(fd)
+
+
+def _held_backend(alone: bool) -> Iterator[Seatbelt]:
     backend = Seatbelt()
     state = backend.available()
     if not state.ok:
         pytest.skip(state.reason)
-    return backend
+    with kernel_log(alone):
+        yield backend
+
+
+@pytest.fixture
+def seatbelt() -> Iterator[Seatbelt]:
+    """The real Seatbelt backend, or a skip where ``sandbox-exec`` does not exist; no test that makes the
+    kernel cut a refusal report off runs meanwhile."""
+    yield from _held_backend(False)
+
+
+@pytest.fixture
+def seatbelt_alone() -> Iterator[Seatbelt]:
+    """The real Seatbelt backend, with no other test that reads refusals running meanwhile."""
+    yield from _held_backend(True)
 
 
 @pytest.fixture
@@ -172,3 +342,96 @@ try:
 except OSError as e:
     print("refused", e.errno)
 """
+
+
+WHOLE = 900
+"""A path the kernel's report carries whole, tag line included."""
+
+
+def long_file(root: Path, size: int, wide: int = 0) -> Path:
+    """A file outside every policy whose path is about ``size`` bytes long; its first ``wide`` directories are named with 80 euro signs."""
+    path = root / "outside"
+    for _ in range(wide):
+        path = path / ("\u20ac" * 80)
+    while (room := size - len(str(path).encode()) - 1) > 0:
+        path = path / ("z" * min(200, room))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("the-secret-contents")
+    return path
+
+
+def accented_file(root: Path, odd: bool) -> Path:
+    """A file outside every policy whose path is a run of ``z`` up to byte 900 (901 when ``odd``) and then 50 two-byte
+    characters, so the kernel's cut of a report, which falls near byte 965, lands inside one of them in one of the two cases."""
+    path = root / "outside"
+    start = 900 + odd
+    while (gap := start - 1 - len(str(path).encode())) > 201:
+        path = path / ("z" * 100)
+    path = path / ("z" * (gap - 1)) / ("\u00e9" * 50)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("the-secret-contents")
+    return path
+
+
+def refused_run(tmp_path: Path, target: Path, *listeners):
+    """``(result, events)`` of a ``cat`` of ``target`` under a policy that reads only the project; each of ``listeners`` hears the events too."""
+    project = tmp_path / "project"
+    project.mkdir(exist_ok=True)
+    events: list[tuple[str, dict]] = []
+
+    def hear(name: str, fields: dict) -> None:
+        events.append((name, fields))
+        for listener in listeners:
+            listener(name, fields)
+
+    return run(["/bin/cat", str(target)], policy(read=[project]), on_event=hear), events
+
+
+def cut_report(pid: int = 4242) -> str:
+    """The message the kernel logs for a refusal of a path too long to report whole: the tag line is gone."""
+    return f"Sandbox: cat({pid}) deny(1) file-read-data /private/tmp/{'z' * 900}{denial_log.CUT_MARK}"
+
+
+@pytest.fixture
+def processes():
+    """Starts a process that lives until the test ends; the test gets its ``Popen``."""
+    started: list[subprocess.Popen] = []
+
+    def start() -> subprocess.Popen:
+        started.append(subprocess.Popen(["/bin/sleep", "60"]))
+        return started[-1]
+
+    yield start
+    for proc in started:
+        proc.kill()
+        proc.wait()
+
+
+def gone_pid() -> int:
+    """The pid of a process that has ended and been reaped."""
+    proc = subprocess.Popen(["/usr/bin/true"])
+    proc.wait()
+    return proc.pid
+
+
+def forge_cut_report(message: str) -> None:
+    """What any local process can do: have the kernel log a report whose message is ``message``."""
+    profile = f'(version 1)(deny default (with message "{message}"))'
+    subprocess.run([denial_log.SANDBOX_EXEC, "-p", profile, "--", denial_log.PROBE_PROGRAM],
+                   stdin=subprocess.DEVNULL, capture_output=True, check=False)
+
+
+def beside(tmp_path: Path, hostile, *, script: str = "sleep 2; exit 1", via=None):
+    """``(hostile's value, the result of a run that was going meanwhile)``: ``hostile`` runs half a second into it."""
+    project = tmp_path / "project"
+    project.mkdir(exist_ok=True)
+    found = []
+    thread = threading.Thread(target=lambda: found.append(
+        run(["/bin/sh", "-c", script], policy(read=[project]), diagnose="always", via=via)))
+    thread.start()
+    try:
+        time.sleep(0.5)
+        value = hostile()
+    finally:
+        thread.join()
+    return value, found[0]

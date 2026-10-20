@@ -226,3 +226,27 @@ def test_typed_model_output_fingerprint_changes_invalidate_reuse(tmp_path, kind)
     assert first
     model.write_bytes(b'changed weights')
     assert first != _artifacts(node, outputs, 'outputs')
+
+
+def test_resource_preflight_rejects_before_creating_run_or_job(setup):
+    store, engine, runner = setup
+    errors = [{"node": "prompt", "code": "resource", "message": "Select a verified model."}]
+    engine.adapters.validate_resources = lambda selected: errors
+    workflow = store.save_workflow(PRINCIPAL["scope"], "Example", graph())
+    for _ in range(2):
+        with pytest.raises(ValueError) as raised:
+            engine.submit(PRINCIPAL, workflow, [], "invalid-resource")
+        assert raised.value.args[0] == errors
+    assert engine._all_runs() == []
+    assert runner.jobs == {}
+
+
+def test_installed_model_fingerprint_uses_exact_library_resolver(monkeypatch, tmp_path):
+    handle = {"kind": "model", "id": "hf:example/model", "path": str(tmp_path)}
+    called = []
+    def fingerprint(value):
+        called.append(value)
+        return "verified-content"
+    monkeypatch.setattr("poolhouse.studio.engine.model_fingerprint", fingerprint)
+    assert artifact_fingerprints(handle) == {str(tmp_path): "verified-content"}
+    assert called == [handle]

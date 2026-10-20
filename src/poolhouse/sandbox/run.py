@@ -13,6 +13,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -22,8 +23,14 @@ else:
     resource = None
 
 from poolhouse.platform import start_process
-from poolhouse.sandbox.backend import LOST_REFUSAL_LOG, NO_REFUSAL_LOG, Backend, SandboxUnavailable
+from poolhouse.sandbox.backend import (
+    SILENT_REFUSAL_LOG,
+    UNREPORTED_FAILURE_LOG,
+    Backend,
+    SandboxUnavailable,
+)
 from poolhouse.sandbox.bubblewrap import Bubblewrap
+from poolhouse.sandbox.hold import Hold
 from poolhouse.sandbox.policy import AllowUnsandboxed, Limits, Policy
 from poolhouse.sandbox.seatbelt import Seatbelt
 
@@ -61,6 +68,8 @@ class Result:
     """The sandbox could not say what it refused, so an empty ``denials`` does not mean the run was clean."""
     denials_detail: str = ""
     """Why the refusals could not be known; empty when they could."""
+    failure_unreported: bool = False
+    """The run exited non-zero and the refusal log was read and carried no report of it; that does not make ``denials_unavailable``."""
 
     @property
     def ok(self) -> bool:
@@ -150,18 +159,53 @@ def _wait(proc: subprocess.Popen[bytes], deadline: float | None, *captures: _Cap
     return False
 
 
-def _execute(full: Sequence[str], argv: Sequence[str], policy: Policy, cwd: str | os.PathLike[str],
-             stdin: bytes | None) -> Result:
-    """Start ``full``, hold it to the policy's limits until it ends, and return how it ended."""
-    limits = policy.limits
-    began = time.time()
+class _NotFollowed(SandboxUnavailable):
+    """The backend could not follow the process a run started as; the command was not run."""
+
+
+def _reap(proc: subprocess.Popen[bytes]) -> None:
+    """End ``proc`` and its group, wait for it and close its pipes."""
+    _kill_group(proc.pid)
+    with contextlib.suppress(ProcessLookupError, PermissionError):
+        proc.kill()
+    proc.wait()
+    for pipe in (proc.stdin, proc.stdout, proc.stderr):
+        if pipe is not None:
+            with contextlib.suppress(OSError):
+                pipe.close()
+
+
+def _start(full: Sequence[str], argv: Sequence[str], policy: Policy, cwd: str | os.PathLike[str],  # noqa: PLR0913 - one argument per part of the start
+           piped: bool, follow: Callable[[int], None] | None = None) -> subprocess.Popen[bytes]:
+    """Start ``full`` in a process group of its own, with a pipe for its input when ``piped``. With ``follow``,
+    the process runs nothing until ``follow(pid)`` has returned; when that raises, the process is ended
+    before it runs anything and `_NotFollowed` is raised."""
+    limits = _limits(policy.limits)
+    hold = None if follow is None else Hold(follow)
+    proc, failure = None, None
     try:
         proc = start_process(
-            full, stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
+            full, stdin=subprocess.PIPE if piped else subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=HOOKS.environment(policy.env), cwd=cwd,
-            preexec_fn=_limits(limits))
-    except OSError as exc:
-        raise SandboxUnavailable(f"{policy.name}: could not start {argv[0]}: {exc}") from exc
+            preexec_fn=limits if hold is None else lambda: (limits(), hold.wait()))
+    except (OSError, subprocess.SubprocessError) as exc:
+        failure = exc
+    finally:
+        if hold is not None:
+            hold.finish()
+    if hold is not None and hold.error is not None:
+        if proc is not None:
+            _reap(proc)
+        raise _NotFollowed(f"{policy.name}: the processes of {argv[0]} could not be followed: {hold.error}") from hold.error
+    if proc is None:
+        raise SandboxUnavailable(f"{policy.name}: could not start {argv[0]}: {failure}") from failure
+    return proc
+
+
+def _complete(proc: subprocess.Popen[bytes], argv: Sequence[str], policy: Policy, stdin: bytes | None,
+              began: float) -> Result:
+    """Feed ``proc`` its input, hold it to the policy's limits until it ends, and return how it ended."""
+    limits = policy.limits
     out, err = _Capture(proc.stdout, limits.output_bytes), _Capture(proc.stderr, limits.output_bytes)
     out.start()
     err.start()
@@ -208,16 +252,23 @@ def run(argv: Sequence[str], policy: Policy, *,  # noqa: PLR0913 - one keyword p
         cwd = (policy.write or policy.read or ("/",))[0]
     began = time.time()
     try:
-        result = _execute(full, argv, policy, cwd, stdin)
+        proc = _start(full, argv, policy, cwd, stdin is not None, None if chosen is None else partial(chosen.started, tag))
+        result = _complete(proc, argv, policy, stdin, began)
         result.sandboxed, result.backend = chosen is not None, name
         if chosen is not None:
             _read_denials(chosen, tag, began, diagnose, result)
+    except _NotFollowed as exc:
+        emit("sandbox.unavailable", severity="warning", command=str(argv[0]), policy=policy.name, reason=str(exc))
+        raise
     finally:
         if chosen is not None:
             chosen.finish(tag)
     if result.denials_unavailable:
         emit("sandbox.denials-unavailable", severity="warning", command=str(argv[0]), policy=policy.name,
              backend=name, detail=result.denials_detail)
+    if result.failure_unreported:
+        emit("sandbox.failure-unreported", severity="notice", command=str(argv[0]), policy=policy.name,
+             backend=name, detail=UNREPORTED_FAILURE_LOG)
     if result.denials:
         emit("sandbox.denied", severity="warning", command=str(argv[0]), policy=policy.name,
              count=len(result.denials), first=result.denials[0], backend=name)
@@ -231,10 +282,20 @@ def _read_denials(chosen: Backend, tag: str, began: float, diagnose: str, result
     """Put what the sandbox refused the run in ``result``."""
     if _diagnose(diagnose, result):
         found = chosen.denials(tag, began)
-        result.denials_unavailable = found is None
-        result.denials_detail = "" if found is not None else (
-            LOST_REFUSAL_LOG if chosen.keeps_refusal_log else NO_REFUSAL_LOG)
         result.denials = found or []
+        result.denials_detail = ""
+        if found is None:
+            result.denials_detail = chosen.unreadable(tag)
+        elif not found and _says_refused(result):
+            result.denials_detail = SILENT_REFUSAL_LOG
+        elif not found and result.returncode != 0 and not result.timed_out:
+            result.failure_unreported = True
+        result.denials_unavailable = found is None or bool(result.denials_detail)
+
+
+def _says_refused(result: Result) -> bool:
+    """Whether the run failed and its own output says the system did not permit something; the sandbox is not the only thing that says so."""
+    return result.returncode != 0 and "operation not permitted" in result.stderr.lower()
 
 
 def _diagnose(when: str, result: Result) -> bool:

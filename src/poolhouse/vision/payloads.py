@@ -47,7 +47,7 @@ def _pillow():
     except ImportError as exc:
         raise ImageError(
             "Pillow is needed to convert or resize images -- "
-            "install it with 'pip install poolhouse-vision[resize]'"
+            "install it with 'pip install poolhouse[vision]'"
         ) from exc
     return Image
 
@@ -111,7 +111,7 @@ def to_supported_format(data: bytes) -> tuple[bytes, bool]:
     try:
         image = Image.open(io.BytesIO(data))
     except OSError as exc:
-        hint = ("; HEIC needs 'pip install poolhouse-vision[heic]'"
+        hint = ("; HEIC needs 'pip install pillow-heif'"
                 if detected == "heic" else "")
         raise ImageError(f"cannot convert {detected}: {exc}{hint}") from exc
     with image:
