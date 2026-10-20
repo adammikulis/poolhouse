@@ -15,7 +15,7 @@
       this.livePreview = E('pre', {'aria-label': 'Synthetic sample preview', hidden: true});
       box.append(E('h2', {}, 'Live sources and decisions'),
         E('p', {}, 'Each record runs the saved workflow. Live output is local unless you explicitly configure a registered destination.'),
-        E('label', {}, 'Source', this.liveSource), this.liveSourceInfo,
+        E('label', {}, 'Source', this.liveSource), this.liveSourceInfo, this.setupProducerStatus(),
         E('label', {}, 'Record input', this.liveInput), this.setupDeliveries(),
         button('Create paused stream', () => this.createLive()), this.setupWebhook(),
         E('details', {}, E('summary', {}, 'Watch a file or folder'),
@@ -41,7 +41,7 @@
       if (this.liveBusy) return;
       this.liveBusy = true;
       try {
-        for (const button of [...this.liveActions.querySelectorAll('button'), ...this.deliveryDetails.querySelectorAll('button')]) button.disabled = true;
+        for (const button of [...this.liveActions.querySelectorAll('button'), ...this.deliveryDetails.querySelectorAll('button'), ...this.producerStatus.querySelectorAll('button')]) button.disabled = true;
         await fn();
       }
       catch (error) { this.liveError(error); }
@@ -83,8 +83,10 @@
       this.liveSource.replaceChildren(E('option', {value: ''}, 'Choose a source…'),
         ...this.liveSources.map((source) => E('option', {value: source.id},
           source.label + (source.origin === 'native' ? ' · original' : source.origin === 'managed' ? ' · uploaded copy' : source.kind === 'examples' ? ' · synthetic examples' : ' · ' + source.kind))));
-      if (this.liveSources.some((s) => s.id === sourceId)) this.liveSource.value = sourceId;
-      else {
+      if (sourceId) {
+        if (!this.liveSources.some((source) => source.id === sourceId)) this.liveSource.append(E('option', {value: sourceId, disabled: true}, 'Previously selected source is unavailable.'));
+        this.liveSource.value = sourceId;
+      } else {
         const title = this.querySelector('#studio-title').value;
         const template = this.templates.find((t) => t.title === title);
         this.liveSource.value = this.liveSources.find((s) => template && s.template_id === template.id)?.id || '';
@@ -110,10 +112,10 @@
     },
     liveSourceDetails() {
       const source = this.liveSources?.find((s) => s.id === this.liveSource.value);
-      this.liveSourceInfo.replaceChildren();
+      this.liveSourceInfo.replaceChildren(); this.renderProducerStatus();
       if (!source) return;
       this.liveSourceInfo.append(E('p', {}, source.available === false ? 'Unavailable: ' + (source.requirements || []).join('; ') :
-        source.origin === 'native' ? 'Watches the original selected file or folder.' : source.origin === 'managed' ? 'Watches the uploaded managed copy.' : source.kind === 'examples' ? 'Registered synthetic records; send one explicitly after starting.' : source.provider === 'local-synthetic' ? 'Built-in test sender · local synthetic. No external account is connected.' : 'Source provider: ' + source.kind));
+        source.origin === 'native' ? 'Watches the original selected file or folder.' : source.origin === 'managed' ? 'Watches the uploaded managed copy.' : source.kind === 'examples' ? 'Registered synthetic records; send one explicitly after starting.' : source.provider === 'local-synthetic' ? 'Built-in test sender · local synthetic. No external account is connected.' : source.provider === 'software-producer' ? 'Live records from connected software. No synthetic sample sender is used.' : 'Source provider: ' + source.kind));
       if (source.requirements?.length && source.available !== false) this.liveSourceInfo.append(E('p', {}, source.requirements.join('; ')));
     },
     async liveMutation(path, body, method = 'POST', current = () => true) {
@@ -199,6 +201,7 @@
     },
     liveRenderActions() {
       if (!this.liveActions) return;
+      this.renderProducerStatus();
       const focused = document.activeElement;
       const focusKey = this.liveActions.contains(focused) ? focused.dataset.liveAction : null;
       const previousSample = this.liveActions.querySelector('select');
