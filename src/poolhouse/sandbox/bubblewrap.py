@@ -25,6 +25,8 @@ def arguments(policy: Policy, program: str) -> list[str]:
     """The bwrap options for ``policy``: a new namespace for everything, network included
     unless the policy keeps loopback, the allow-listed trees bound read-only or read-write,
     and a fresh /proc, /dev and /tmp."""
+    if policy.deny_read or policy.deny_write:
+        raise PolicyError("bubblewrap cannot enforce protected path exclusions; command was not run")
     out = ["--unshare-all", "--die-with-parent", "--new-session", "--clearenv"]
     if policy.net.mode != NetMode.DENY:
         out.append("--share-net")

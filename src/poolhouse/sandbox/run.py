@@ -31,7 +31,7 @@ from poolhouse.sandbox.backend import (
 )
 from poolhouse.sandbox.bubblewrap import Bubblewrap
 from poolhouse.sandbox.hold import Hold
-from poolhouse.sandbox.policy import AllowUnsandboxed, Limits, Policy
+from poolhouse.sandbox.policy import AllowUnsandboxed, Limits, Policy, PolicyError
 from poolhouse.sandbox.seatbelt import Seatbelt
 
 __all__ = ["Events", "Result", "SandboxViolation", "backend", "run", "wrapped"]
@@ -100,6 +100,8 @@ def wrapped(argv: Sequence[str], policy: Policy, *, via: Backend | None = None,
     """``(argv, tag, backend)`` -- the backend is None when running without one -- that runs ``argv`` under ``policy``. When no backend can
     hold it, `SandboxUnavailable` unless ``unsandboxed`` names the reason to run without one."""
     policy = policy.validated()
+    if unsandboxed is not None and (policy.deny_read or policy.deny_write):
+        raise PolicyError("protected path exclusions cannot run without a sandbox")
     chosen = via or backend()
     state = chosen.available()
     if state.ok:
