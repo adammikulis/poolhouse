@@ -66,3 +66,174 @@ def test_models_count_chat_capability_and_show_known_storage(feedback_page, them
     expect(page.locator('#models-running')).to_have_text('Unavailable')
     expect(page.locator('#models-free')).to_have_text('Unavailable')
     assert not errors
+
+
+def open_preferences(served, page):
+    page.goto(f'http://127.0.0.1:{served.port}/ui/#settings')
+    expect(page.locator('#settings-save')).to_be_enabled()
+    expect(page.get_by_label('Studio undo steps', exact=True)).to_have_value('32')
+
+
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+@pytest.mark.parametrize('width', [1440, 390])
+def test_settings_responsive_tabs_and_drafts_survive_navigation(feedback_page, theme, width):
+    served, page, errors = feedback_page
+    page.route('**/ui/libraries', lambda route: route.fulfill(json={'ready': False, 'libraries': [
+        {'name': 'fixture-library', 'title': 'Fixture library', 'installed': False}]}))
+    page.set_viewport_size({'width': width, 'height': 1000})
+    open_preferences(served, page)
+    page.evaluate('theme => fleetModel.setPreferences({...fleetModel.preferences,resolved_theme:theme})', PRESETS[theme])
+    tabs = page.get_by_role('tablist', name='Settings sections')
+    expect(tabs).to_have_attribute('aria-orientation', 'horizontal' if width == 390 else 'vertical')
+    appearance = tabs.get_by_role('tab', name='Appearance & advanced', exact=True)
+    appearance.focus()
+    appearance.press('ArrowRight' if width == 390 else 'ArrowDown')
+    expect(tabs.get_by_role('tab', name='Models & providers', exact=True)).to_be_focused()
+    page.keyboard.press('Home')
+    expect(appearance).to_be_focused()
+    undo = page.get_by_label('Studio undo steps', exact=True)
+    undo.fill('44')
+    expect(page.locator('#settings-dirty')).to_have_text('Unsaved preferences')
+    libraries = tabs.get_by_role('tab', name='Libraries & simulators', exact=True)
+    libraries.click()
+    page.locator('#lib-fixture-library').check()
+    expect(page.locator('#settings-save')).to_be_visible()
+    expect(page.locator('.settings-footer')).to_contain_text('controls save separately')
+    page.get_by_role('navigation', name='Main navigation').get_by_role('link', name='Studio', exact=True).click()
+    page.get_by_role('link', name='Settings', exact=True).click()
+    expect(page.locator('#lib-fixture-library')).to_be_checked()
+    expect(page.locator('#settings-dirty')).to_have_text('Unsaved preferences')
+    page.get_by_role('button', name='Discard preferences', exact=True).click()
+    expect(libraries).to_be_focused()
+    expect(page.locator('#settings-dirty')).to_have_text('No unsaved preferences')
+    expect(page.locator('#lib-fixture-library')).to_be_checked()
+    appearance.click()
+    expect(undo).to_have_value('32')
+    page.set_viewport_size({'width': 1440 if width == 390 else 390, 'height': 1000})
+    expect(tabs).to_have_attribute('aria-orientation', 'vertical' if width == 390 else 'horizontal')
+    appearance.focus()
+    appearance.press('ArrowDown' if width == 390 else 'ArrowRight')
+    expect(tabs.get_by_role('tab', name='Models & providers', exact=True)).to_be_focused()
+    page.keyboard.press('Tab')
+    expect(page.locator('#settings-chatting output-token-slider input')).to_be_focused()
+    page.keyboard.press('Tab')
+    expect(page.locator('#download_sources-both')).to_be_focused()
+    page.keyboard.press('Tab')
+    last = page.locator('#settings-chatting #ctx').get_by_role('slider')
+    expect(last).to_be_focused()
+    page.evaluate('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+    field, footer = last.bounding_box(), page.locator('.settings-footer').bounding_box()
+    assert field['y'] >= 0 and field['y'] + field['height'] <= footer['y']
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    assert not errors
+
+
+def test_settings_pending_save_keeps_newer_edits_and_uses_submitted_snapshot(feedback_page):
+    served, page, errors = feedback_page
+    open_preferences(served, page)
+    held = []
+
+    def delayed(route):
+        if route.request.method != 'POST':
+            route.continue_()
+            return
+        response = route.fetch()
+        held.append((route, response, route.request.post_data_json))
+
+    page.route('**/ui/settings', delayed)
+    undo = page.get_by_label('Studio undo steps', exact=True)
+    undo.fill('44')
+    page.get_by_role('button', name='Save preferences', exact=True).click()
+    expect(page.get_by_role('button', name='Saving…', exact=True)).to_be_disabled()
+    undo.fill('64')
+    page.get_by_role('tab', name='Libraries & simulators', exact=True).click()
+    assert held[0][2]['studio_undo_steps'] == 44
+    held[0][0].fulfill(response=held[0][1])
+    expect(page.locator('#settings-note')).to_contain_text('Newer edits remain unsaved')
+    expect(page.locator('#settings-dirty')).to_have_text('Unsaved preferences')
+    assert page.evaluate('fleetModel.preferences.studio_undo_steps') == 44
+    assert served.ui.settings.studio_undo_steps == 44
+    page.get_by_role('tab', name='Appearance & advanced', exact=True).click()
+    expect(undo).to_have_value('64')
+    page.unroute('**/ui/settings', delayed)
+    page.get_by_role('tab', name='Libraries & simulators', exact=True).click()
+    page.get_by_role('button', name='Save preferences', exact=True).click()
+    expect(page.locator('#settings-dirty')).to_have_text('No unsaved preferences')
+    assert served.ui.settings.studio_undo_steps == 64
+    assert not errors
+
+
+def test_settings_failed_save_preserves_dirty_draft_for_explicit_retry(feedback_page):
+    served, page, errors = feedback_page
+    open_preferences(served, page)
+    page.route('**/ui/settings', lambda route: route.fulfill(status=400, json={'error': 'Preferences are read-only'})
+               if route.request.method == 'POST' else route.continue_())
+    page.get_by_label('Studio undo steps', exact=True).fill('72')
+    page.get_by_role('button', name='Save preferences', exact=True).click()
+    expect(page.locator('#settings-note .err')).to_have_text('Preferences are read-only')
+    expect(page.locator('#settings-dirty')).to_have_text('Unsaved preferences')
+    page.get_by_role('navigation', name='Main navigation').get_by_role('link', name='Studio', exact=True).click()
+    page.get_by_role('link', name='Settings', exact=True).click()
+    expect(page.get_by_label('Studio undo steps', exact=True)).to_have_value('72')
+    page.unroute('**/ui/settings')
+    page.get_by_role('button', name='Save preferences', exact=True).click()
+    expect(page.locator('#settings-dirty')).to_have_text('No unsaved preferences')
+    assert served.ui.settings.studio_undo_steps == 72
+    assert not errors
+
+
+def test_settings_discard_restores_radios_context_and_uncapped_output(feedback_page):
+    served, page, errors = feedback_page
+    served.ui.settings.labels = ['train', 'prep']
+    served.ui.settings.context = 16384
+    served.ui.settings.chat_max_output_tokens = None
+    open_preferences(served, page)
+    page.get_by_role('tab', name='Compute & device', exact=True).click()
+    both = page.locator('#settings-left').get_by_role('radio', name='Both', exact=True)
+    expect(both).to_be_checked()
+    page.locator('#settings-left').get_by_role('radio', name='Train models', exact=True).check()
+    page.get_by_role('radio', name='Quit', exact=False).check()
+    page.get_by_role('tab', name='Models & providers', exact=True).click()
+    page.locator('#download_sources-internet').check()
+    context = page.locator('#settings-chatting #ctx')
+    context.get_by_role('slider').focus()
+    context.get_by_role('slider').press('ArrowRight')
+    output = page.locator('#settings-chatting output-token-slider')
+    output.get_by_role('slider').focus()
+    output.get_by_role('slider').press('ArrowRight')
+    expect(page.locator('#settings-dirty')).to_have_text('Unsaved preferences')
+    page.get_by_role('button', name='Discard preferences', exact=True).click()
+    expect(page.locator('#download_sources-both')).to_be_checked()
+    expect(context.locator('output')).to_have_text('16,384 tokens')
+    assert output.evaluate('node => node.value') == ''
+    page.get_by_role('tab', name='Compute & device', exact=True).click()
+    expect(both).to_be_checked()
+    expect(page.locator('input[name=on_close][value=""]')).to_be_checked()
+    expect(page.locator('#settings-dirty')).to_have_text('No unsaved preferences')
+    assert not errors
+
+
+def test_settings_auth_loss_rejects_old_save_completion(feedback_page):
+    served, page, errors = feedback_page
+    open_preferences(served, page)
+    expect(page.locator('theme-editor .theme-presets button')).to_have_count(2)
+    held = []
+
+    def delayed(route):
+        if route.request.method == 'POST':
+            held.append((route, route.fetch()))
+        else:
+            route.continue_()
+
+    page.route('**/ui/settings', delayed)
+    page.get_by_label('Studio undo steps', exact=True).fill('44')
+    page.get_by_role('button', name='Save preferences', exact=True).click()
+    expect(page.get_by_role('button', name='Saving…', exact=True)).to_be_disabled()
+    page.get_by_role('button', name='Sign out', exact=True).click()
+    page.wait_for_function("() => ['sign-in','launch-needed'].includes(fleetModel.route)")
+    held[0][0].fulfill(response=held[0][1])
+    page.evaluate('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+    assert page.evaluate("document.querySelector('settings-view').savedPick") is None
+    assert page.evaluate('fleetModel.preferences.studio_undo_steps') == 32
+    expect(page.locator('#settings-save')).to_have_text('Save preferences')
+    assert not errors
