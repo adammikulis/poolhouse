@@ -86,13 +86,18 @@ class Handle:
              stop: Callable[[], bool] | None = None) -> Outcome:
         """The answer, once there is one; an expired request is ``expired`` and so not approved.
         When ``timeout`` runs out first the request is withdrawn (unless ``withdraw`` is false)
-        and the outcome says ``pending``."""
+        and the outcome says ``pending``. A true stop reports local cancellation
+        before returning an approval, without rewriting a terminal answer."""
         began, pause = time.monotonic(), POLL_S
         while True:
             got = self.outcome()
+            if stop and stop():
+                if got.state == PENDING and withdraw:
+                    self.withdraw()
+                return Outcome("cancelled", why="The request owner stopped waiting")
             if got.state != PENDING:
                 return got
-            if (timeout is not None and time.monotonic() - began >= timeout) or (stop and stop()):
+            if timeout is not None and time.monotonic() - began >= timeout:
                 if withdraw:
                     self.withdraw()
                     return self.outcome()
@@ -113,19 +118,28 @@ class Handle:
         return done
 
 
-def raise_request(ask: Ask, *, inbox: Inbox | None = None) -> Handle:
+def raise_request(ask: Ask, *, inbox: Inbox | None = None,
+                  cancellation_secret: str | None = None, create: bool = True) -> Handle:
     """Put a question to the person and return the handle to wait on. Never raises: a store
-    that cannot be used gives a handle that answers ``denied``. ``ValueError`` only for a kind
-    or choice that does not exist."""
+    that cannot be used gives a handle that answers ``denied``. A retained cancellation
+    capability attaches the exact action to its first request; create=False refuses
+    missing history. Invalid kinds, choices or attachment inputs raise ValueError."""
+    if cancellation_secret is None and create is not True:
+        raise ValueError("Attaching an existing action requires its cancellation capability")
     held = inbox or default()
-    secret = secrets.token_urlsafe(16)
+    secret = secrets.token_urlsafe(16) if cancellation_secret is None else cancellation_secret
     request = build(ask, held._now())
+    created = True
     try:
-        held.add(request, secret)
+        if cancellation_secret is None:
+            held.add(request, secret)
+        else:
+            request, created = held.attach(request, secret, create=create)
     except (Unavailable, Refused) as exc:
         logger.warning("request not stored: %s", exc)
         return Handle(None, request, secret, str(exc))
-    _record("request.raised", request, "pending", "")
+    if created:
+        _record("request.raised", request, "pending", "")
     return Handle(held, request, secret)
 
 

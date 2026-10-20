@@ -183,6 +183,10 @@ class Inbox:
         is superseded. `Refused` (``full``) when too many are pending."""
         with self._edit() as rows:
             _expire(rows, self._now())
+            if ((request.key and request.extra.get("request_binding") == request.key)
+                    or any(row.request.key == request.key and row.request.key
+                           and row.request.extra.get("request_binding") == row.request.key for row in rows)):
+                raise Refused("secret", "An exact action request must use its retained cancellation capability")
             pending = [r for r in rows if r.request.state == PENDING]
             if len(pending) >= MAX_PENDING:
                 raise Refused("full", f"{MAX_PENDING} requests are already waiting")
@@ -195,6 +199,37 @@ class Inbox:
                                    row.fp, row.secret)
             rows.append(Row(request, request.fingerprint, hashed(secret)))
         return request
+
+    def attach(self, request: Request, secret: str, *, create: bool) -> tuple[Request, bool]:
+        """Attach an exact action to its original request without renewing an answer.
+
+        The trusted producer supplies a full binding digest and its retained
+        cancellation capability. A restarted action sets create=False; a missing
+        historical request then refuses instead of asking the same question again.
+        """
+        if (type(create) is not bool or len(request.key) != 64
+                or any(character not in "0123456789abcdef" for character in request.key)
+                or request.extra.get("request_binding") != request.key
+                or not isinstance(secret, str) or len(secret) < 32 or request.state != PENDING):
+            raise ValueError("An attached request needs a full action digest and cancellation capability")
+        with self._edit() as rows:
+            _expire(rows, self._now())
+            for row in rows:
+                original = row.request
+                if original.key != request.key:
+                    continue
+                proposed = replace(request, id=original.id, created=original.created, expires=original.expires)
+                if original.fingerprint != row.fp or proposed.fingerprint != row.fp:
+                    raise Refused("changed", "The action no longer matches the original request")
+                if not secrets.compare_digest(row.secret, hashed(secret)):
+                    raise Refused("secret", "Only the original producer may attach this action")
+                return original, False
+            if not create:
+                raise Refused("unknown", "The original action request is unavailable; this action stays interrupted")
+            if sum(row.request.state == PENDING for row in rows) >= MAX_PENDING:
+                raise Refused("full", f"{MAX_PENDING} requests are already waiting")
+            rows.append(Row(request, request.fingerprint, hashed(secret)))
+            return request, True
 
     # -- reading -------------------------------------------------------------------
     def get(self, ident: str) -> Request | None:
