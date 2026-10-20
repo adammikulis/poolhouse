@@ -28,11 +28,18 @@
   .studio-workspace button {
     padding: 7px 10px;
     min-height: 34px;
+    background: var(--bg-raised);
+    color: var(--text);
+    border: 1px solid var(--line-bright);
   }
-  .studio-primary {
-    background: var(--poolhouse-orange);
-    color: var(--poolhouse-orange-ink);
-    border-color: transparent;
+  .studio-workspace button:focus-visible {
+    outline: 2px solid var(--accent-ink);
+    outline-offset: 2px;
+  }
+  .studio-workspace .studio-primary {
+    border-color: var(--accent-ink);
+    box-shadow: inset 3px 0 var(--accent);
+    font-weight: 750;
   }
   .studio-shell {
     display: grid;
@@ -258,7 +265,7 @@
   }
   .studio-connections path {
     fill: none;
-    stroke: var(--poolhouse-orange);
+    stroke: var(--muted);
     stroke-width: 3;
     pointer-events: stroke;
   }
@@ -281,7 +288,7 @@
   }
   .studio-node header {
     padding: 10px 12px;
-    background: var(--accent-dim);
+    background: var(--bg-sunken);
     cursor: grab;
     display: flex;
     gap: 8px;
@@ -369,7 +376,7 @@
     border-radius: 8px;
   }
   .studio-minimap rect {
-    fill: var(--accent);
+    fill: var(--muted);
     stroke: var(--text);
     stroke-width: 1;
   }
