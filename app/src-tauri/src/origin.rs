@@ -8,12 +8,13 @@ use tauri::Url;
 pub const HOST: &str = "127.0.0.1";
 
 /// What the page on the own origin may ask the window for.
-pub const GRANTED: [&str; 5] = [
+pub const GRANTED: [&str; 6] = [
     "core:default",
     "window-state:default",
     "allow-close-choice",
     "allow-on-closing",
     "allow-reopen-page",
+    "allow-choose-studio-watch-source",
 ];
 
 /// The address the window loads, and the only one it may stay on.

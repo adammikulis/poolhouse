@@ -12,6 +12,7 @@
     "window-state:default",
     "allow-close-choice",
     "allow-on-closing",
-    "allow-reopen-page"
+    "allow-reopen-page",
+    "allow-choose-studio-watch-source"
   ]
 }
