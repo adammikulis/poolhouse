@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 import sealed_git
-from git_world import AGENT_PUSH, DEV, ROOT, World
+from git_world import AGENT_PUSH, DEV, ROOT, World, git
 
 from poolhouse import node_launch
 from poolhouse.board import client, place, session
@@ -25,6 +25,7 @@ from poolhouse.workspace import landing
 pytest_plugins = ["node_kit"]
 
 AUDITED = ("scripts/hooks/pushed",)
+SENSITIVE = "src/poolhouse/credentials/example.py"
 
 
 @pytest.fixture
@@ -282,3 +283,34 @@ def test_the_message_for_a_standing_reject_says_how_to_clear_it(world):
     refused = push(world, tree, sha, {})
     assert refused.returncode != 0 and "replace that commit" in refused.stderr and "new id" in refused.stderr, refused.stderr
     assert "Fix it in a new commit" not in refused.stderr, refused.stderr
+
+
+def test_a_replace_ref_does_not_change_what_the_push_check_reads(world):
+    tree, sha = world.start("replaced", {SENSITIVE: "VALUE = 1\n"})
+    base = world.proj.origin_head()
+    git(tree, "replace", sha, git(tree, "commit-tree", "-p", base, "-m", "docs: nothing", f"{base}^{{tree}}"))
+    assert sealed_git.sealed(tree, "diff-tree", "-r", "--name-only", base, sha).stdout.strip() == SENSITIVE
+
+
+def test_a_grafts_file_does_not_change_the_history_the_push_check_reads(world):
+    tree, sha = world.start("grafted", {"docs/a.md": "changed\n"})
+    info = common_path(tree) / "info"
+    info.mkdir(exist_ok=True)
+    (info / "grafts").write_text(f"{sha}\n", encoding="utf-8")
+    assert sealed_git.sealed(tree, "rev-list", "--count", sha).stdout.strip() == "2"
+
+
+def test_a_variable_that_moves_the_repository_does_not_reach_the_git_calls(world, monkeypatch, tmp_path):
+    tree, _ = world.start("moved-repo", {"docs/a.md": "changed\n"})
+    elsewhere = tmp_path / "elsewhere"
+    git(tmp_path, "init", "-q", "-b", "other", str(elsewhere))
+    monkeypatch.setenv("GIT_DIR", str(elsewhere / ".git"))
+    assert sealed_git.out(tree, "branch", "--show-current") == "moved-repo"
+
+
+def test_a_variable_that_adds_configuration_does_not_reach_the_git_calls(world, monkeypatch):
+    tree, _ = world.start("configured-git", {"docs/a.md": "changed\n"})
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.editor")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", "/nowhere")
+    assert sealed_git.git(tree, "config", "--get", "core.editor", check=False).stdout.strip() == ""
