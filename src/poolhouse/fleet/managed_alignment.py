@@ -258,9 +258,13 @@ class Alignment:
 
 
 @contextlib.contextmanager
-def code_update_admission(daemon):
-    with daemon.update_admission(), idle(daemon.environment, daemon.nothing_running):
-        yield
+def code_update_admission(daemon, ready=lambda: True):
+    with daemon.update_admission():
+        # A lock wait can make an update obsolete. Do not retire a warm broker for it.
+        if not ready():
+            raise Busy('The prepared code update is no longer current')
+        with idle(daemon.environment, daemon.nothing_running):
+            yield
 
 
 def may_start(daemon):

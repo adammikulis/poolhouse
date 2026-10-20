@@ -1084,7 +1084,7 @@ class TestUpdatingItself:
         monkeypatch.setattr(updates, "asset_for", lambda r, key="": r.assets[0])
         monkeypatch.setattr(updates, "download_release",
                             lambda r, a, into, **k: tmp_path / "a.zip")
-        monkeypatch.setattr(updates, "install", lambda a: seen.setdefault("put", a))
+        monkeypatch.setattr(updates, "install", lambda a, **kwargs: seen.setdefault("put", a))
 
         got = updates.apply_if_newer()
         assert got == {"ok": True, "installed": True, "version": "0.2.0"}, got
@@ -1159,7 +1159,8 @@ class TestUpdatingItself:
 
         done = threading.Event()
         monkeypatch.setattr(updates, "apply_if_newer",
-                            lambda: {"ok": True, "installed": True, "version": "9.9.9"})
+                            lambda **kwargs: {"ok": True, "installed": True, "version": "9.9.9",
+                                              "restarted": bool(kwargs["restart"]())})
         monkeypatch.setattr(updates, "relaunch",
                             lambda **k: (done.set(), True)[1])
         updates.watch(
