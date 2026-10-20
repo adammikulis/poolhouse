@@ -318,7 +318,7 @@ impl Node {
     /// the log refuses leaves the registry as it was. Returns name, token, whether new.
     pub fn register(&mut self, board: &str, parent_token: Option<&str>, native: Native, peer: &Peer) -> Result<Value> {
         let Native { model, harness, session } = native;
-        let (model, harness) = (identity::clean(model)?, identity::clean(harness)?);
+        let (model, harness) = (identity::clean_model(model)?, identity::clean(harness)?);
         if !valid_name(board) {
             return Err(Error::Invalid("a board id is a short lower-case word".into()));
         }
