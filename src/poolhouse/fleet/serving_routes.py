@@ -33,11 +33,11 @@ def _start(handler, can_serve):
                                  "machine on your network can serve one instead"})
         return True
     req = handler.body()
-    path = req.get("path")
-    found = ui.models.library_model(path) if ui.models and isinstance(path, str) else None
-    if found is None and not path and ui.models:
-        legacy = ui.models.find(str(req.get("name") or ""))
-        found = ui.models.library_model(str(legacy.path)) if legacy else None
+    if (not isinstance(req, dict) or set(req) - {'path', 'context'}
+            or not isinstance(req.get('path'), str) or not req['path']):
+        handler.send(400, {'error': 'Choose an installed model by its canonical path.'})
+        return True
+    found = ui.models.library_model(req['path']) if ui.models else None
     if found is None:
         handler.send(404, {"error": "no such model on this machine"})
         return True

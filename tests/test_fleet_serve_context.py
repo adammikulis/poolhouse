@@ -323,3 +323,25 @@ def test_failed_new_start_preserves_previous_hosting_lease(model, tmp_path, monk
     with pytest.raises(PermissionError):
         hosting.start(model)
     assert hosting.leases[23456] == [old] and released == []
+
+
+
+@pytest.mark.parametrize('selection,expected', [
+    ({'name': 'context-model.gguf'}, 400),
+    ({'path': 'canonical', 'name': 'context-model.gguf'}, 400),
+    ({'path': 'canonical', 'label': 'Context model'}, 400),
+    ({'path': 'context-model.gguf'}, 404),
+    ({'path': ''}, 400),
+    ({'path': True}, 400),
+    ({'context': 4096}, 400),
+    ([], 400),
+])
+def test_serving_requires_canonical_path_without_name_alias(app, model, monkeypatch, selection, expected):
+    instance, session, captured = app
+    def forbidden_find(*_args):
+        pytest.fail('Display names must never resolve serving identities')
+    monkeypatch.setattr(instance.ui.models, 'find', forbidden_find)
+    if isinstance(selection, dict) and selection.get('path') == 'canonical':
+        selection = dict(selection, path=str(model))
+    status, _, _ = instance.call('/ui/serving', method='POST', cookie='poolhouse_ui=' + session.sid, body=selection)
+    assert status == expected and captured == []
