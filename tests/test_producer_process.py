@@ -334,3 +334,38 @@ def test_control_binding_rejects_missing_and_nonfinite_generation():
     for value in ({}, {'daemon': {'pid': 0, 'started': float('nan')}}):
         with pytest.raises(ValueError):
             process._control(value)
+
+
+def test_deliberate_retry_forwards_only_event_and_mac_bound_command(bridge):
+    activate(bridge)
+    request = {'action': 'retry', 'event_id': 'row-1', 'retry_key': '5' * 32}
+    assert exchange(bridge, request)['ok']
+    assert exchange(bridge, request)['ok']
+    assert len(bridge.calls) == 2
+    assert all(item['action'] == 'bridge-retry' and item['retry_key'] == '5' * 32
+               and item['event_id'] == 'row-1' and item['raw'] is None
+               and item['wire_digest'] is None for item in bridge.calls)
+    assert bridge.calls[0]['nonce'] != bridge.calls[1]['nonce']
+
+
+@pytest.mark.parametrize('packet', [
+    {'action': 'retry', 'event_id': 'row-1'},
+    {'action': 'retry', 'event_id': 'row-1', 'retry_key': None},
+    {'action': 'retry', 'event_id': 'row-1', 'retry_key': '5' * 32, 'record': {}},
+    {'action': 'retry', 'event_id': 'row-1', 'retry_key': '5' * 32, 'raw': '{}'},
+    {'action': 'publish', 'event_id': 'row-1', 'record': {}, 'retry_key': '5' * 32},
+    {'action': 'receipt', 'event_id': 'row-1', 'retry_key': '5' * 32},
+])
+def test_data_retry_never_accepts_replacement_or_cross_action_fields(bridge, packet):
+    activate(bridge)
+    with pytest.raises(OSError):
+        exchange(bridge, packet)
+    assert not bridge.calls
+
+
+def test_retry_after_source_revocation_does_not_forward(bridge):
+    activate(bridge)
+    bridge.active['value'] = False
+    with pytest.raises(OSError):
+        exchange(bridge, {'action': 'retry', 'event_id': 'row-1', 'retry_key': '5' * 32})
+    assert not bridge.calls

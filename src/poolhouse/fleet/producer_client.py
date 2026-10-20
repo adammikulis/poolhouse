@@ -261,11 +261,16 @@ class ProducerClient:
             raise ProducerUnavailable("The software withdrawal is invalid.")
         return _offer(result["offer"], offer_id)
 
-    def _data(self, offer_id, event_id, record=None):
+    def _data(self, offer_id, event_id, record=None, *, retry_key=None):
         if not isinstance(event_id, str) or not _EVENT.fullmatch(event_id):
             raise ValueError(
                 "Use a stable event identity of letters, digits, dots, dashes or underscores."
             )
+        if retry_key is not None:
+            if not isinstance(retry_key, str) or not _HEX32.fullmatch(retry_key):
+                raise ValueError("A stable retry command identity is required.")
+            if record is not None:
+                raise ValueError("Retry cannot supply replacement records.")
         if record is not None:
             if not isinstance(record, dict):
                 raise ValueError("A software record must be a JSON object.")
@@ -280,7 +285,9 @@ class ProducerClient:
             raise ProducerUnavailable("The software offer is not currently connected.")
         deadline = time.monotonic() + producer_holder.DEADLINE
         request = {"action": "receipt" if record is None else "publish", "event_id": event_id}
-        if record is not None:
+        if retry_key is not None:
+            request.update(action="retry", retry_key=retry_key)
+        elif record is not None:
             request["record"] = record
         try:
             with self._connected(endpoint["path"], endpoint["process"], deadline) as channel:
@@ -304,3 +311,9 @@ class ProducerClient:
 
     def receipt(self, offer_id, event_id):
         return self._data(offer_id, event_id)
+
+    def retry(self, offer_id, event_id, retry_key):
+        """Explicitly retry the same immutable event only after definitive receiver rejection."""
+        if not isinstance(retry_key, str) or not _HEX32.fullmatch(retry_key):
+            raise ValueError("A stable retry command identity is required.")
+        return self._data(offer_id, event_id, retry_key=retry_key)
