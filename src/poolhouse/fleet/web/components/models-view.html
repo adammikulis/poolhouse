@@ -133,12 +133,19 @@ models-view .model-loading{padding:28px;border-radius:16px;background:var(--bg-r
     }
     async serve(name, label = name) {
       if (this.starting.has(name)) return;
+      const session = M.sessionContext();
       this.starting.add(name);
       this.browser.setLoading(name, true);
       this.note.replaceChildren(el("div", { class: "hint" },
         el("span", { class: "spin" }), ` Starting ${name}…`));
       try {
-        const r = await api("/ui/serving", { method: "POST", body: JSON.stringify(name.includes("/") || name.includes("\\") ? { path: name } : { name }) });
+        const inventory = await api('/ui/models');
+        if (session !== M.sessionContext() || M.route !== 'models' || M.refused(inventory)) return;
+        if (!inventory.ok) throw Error(inventory.error || 'Could not read available models.');
+        const found = (inventory.library || []).filter(row => row.servable && row.path === name);
+        if (found.length !== 1) throw Error('This installed model is no longer uniquely available.');
+        const r = await api("/ui/serving", { method: "POST", body: JSON.stringify({path:found[0].path}) });
+        if (session !== M.sessionContext() || M.route !== 'models' || M.refused(r)) return;
         const identity = (r.models || []).find(model => [name, name.split(/[\\/]/).pop(), label].includes(model));
         this.note.replaceChildren(r.error
           ? el("div", { class: "err" }, r.error)
@@ -152,7 +159,8 @@ models-view .model-loading{padding:28px;border-radius:16px;background:var(--bg-r
           }
         }
       } catch (error) {
-        this.note.replaceChildren(el("div", { class: "err" }, `Could not start ${name}: ${error.message}`));
+        if (session === M.sessionContext() && M.route === 'models')
+          this.note.replaceChildren(el("div", { class: "err" }, `Could not start ${name}: ${error.message}`));
       } finally {
         this.starting.delete(name);
         this.browser.setLoading(name, false);
