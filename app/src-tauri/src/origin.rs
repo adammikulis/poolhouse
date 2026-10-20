@@ -13,7 +13,7 @@ pub const GRANTED: [&str; 6] = [
     "window-state:default",
     "allow-close-choice",
     "allow-on-closing",
-    "allow-reopen-page",
+    "allow-renew-session",
     "allow-choose-studio-watch-source",
 ];
 

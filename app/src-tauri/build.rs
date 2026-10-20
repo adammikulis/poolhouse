@@ -27,7 +27,7 @@ fn ensure_sidecar() {
 
 fn main() {
     ensure_sidecar();
-    let commands = tauri_build::AppManifest::new().commands(&["close_choice", "on_closing", "reopen_page", "choose_studio_watch_source"]);
+    let commands = tauri_build::AppManifest::new().commands(&["close_choice", "on_closing", "renew_session", "choose_studio_watch_source"]);
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(commands))
         .expect("the window's own commands could not be declared")
 }

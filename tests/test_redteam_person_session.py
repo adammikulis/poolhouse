@@ -237,7 +237,7 @@ def test_a_page_opened_by_hand_says_how_to_open_it_and_a_launched_page_does_not(
         with hand_typed():
             page.goto(base)
         expect(page.locator("#launch-needed")).to_be_visible()
-        expect(page.locator("#launch-needed-command")).to_have_text("poolhouse members open")
+        expect(page.get_by_role("heading", name="Reconnect to Poolhouse")).to_be_visible()
         launched = chromium.new_page()
         launched.goto(f"{base}?launch_ticket={ticket(window)[1]['ticket']}")
         launched.wait_for_selector("#app:not([hidden])")

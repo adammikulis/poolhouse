@@ -57,16 +57,13 @@ fn close_choice(
     serde_json::json!({ "ok": true, "mode": mode, "remembered": remember })
 }
 
-/// Reloads the window with a fresh sign-in ticket from its own daemon.
+/// A one-shot ticket for this window's fixed local daemon; no page-supplied target.
 #[tauri::command]
-fn reopen_page(app: AppHandle, state: State<'_, Shell>) -> bool {
-    let Some(window) = app.get_webview_window("main") else {
-        return false;
-    };
-    let Ok(target) = serde_json::to_string(&launch::page_url(&state.root, state.port)) else {
-        return false;
-    };
-    window.eval(&format!("location.replace({target})")).is_ok()
+async fn renew_session(state: State<'_, Shell>) -> Result<Option<String>, String> {
+    let root = state.root.clone();
+    let port = state.port;
+    tauri::async_runtime::spawn_blocking(move || launch::session_ticket(&root, port))
+        .await.map_err(|_| "The local connection could not be renewed.".to_string())
 }
 
 /// The daemon chooses the mode; only the OS picker can supply the original path.
@@ -147,7 +144,7 @@ fn main() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![close_choice, on_closing, reopen_page, choose_studio_watch_source])
+        .invoke_handler(tauri::generate_handler![close_choice, on_closing, renew_session, choose_studio_watch_source])
         .setup(|app| {
             let handle = app.handle().clone();
             let home = app.path().home_dir()?;
@@ -202,6 +199,7 @@ fn main() {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.show();
                     let _ = window.set_focus();
+                    let _ = window.eval("window.dispatchEvent(new Event('poolhouse-native-reopen'))");
                 }
             }
             RunEvent::Exit => {
