@@ -231,10 +231,16 @@ to `conversation` (a string probe of the editable install) and `vision/payloads.
 leaving set is the named files plus `conversation` (it needs `answers` and `looking`), `relations` (it needs `dag`) and
 `smoothing`, which holds `smooth` split off `vectors` so that `vectors` (store coverage, `remember`) stays. 4,124 lines of
 `graph`, 830 of `backend` and 527 of `vision` leave the wheel. `backend/device.py` is the hardware profile the device report
-reads, so it moved to `fleet/hardware.py`. `grammar`, `prompts`, `replies`, `route`, `hygiene`, `merging`, `names` and
-`verdicts` (about 1,770 lines) have no release caller left and stay in the build until the owner names them. Torch stays in the
+reads, so it moved to `fleet/hardware.py`. Torch stays in the
 test install: `decide/pointer.py`, `speech/asr.py`, `speech/vad.py` and `fleet/accelerator.py` import it and their tests
 run in CI. `scripts/budgets` lost 1 broad except and 4 local imports and no gate count rose.
+
+**Slice 10: the graph files with no release caller.** `grammar`, `prompts`, `replies`, `route`, `hygiene`, `merging`, `names`
+and `verdicts` (1,770 lines) join the `graph_extras` set and the wheel exclude list. The `ast` walk over `src`, `tests`,
+`scripts` and the repository's scripts, with string references, finds their importers only among the other `graph_extras`
+files (`conversation`, `looking`, `absorbing`, `judging`, `tidy`, and these eight among themselves) and the experimental
+packages `ingest`, `bench`, `train` and `world`. No console script, hook, page or retained graph module reaches them, so no
+edge needed `poolhouse.optional`.
 
 ## 6 Security and red-team
 
