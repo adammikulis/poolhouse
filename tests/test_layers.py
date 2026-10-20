@@ -29,7 +29,7 @@ LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
               "entities", "errors", "extraction", "files", "files_windows", "gate", "geo", "gitstate",
               "home", "hook_bootstrap", "hook_diagnostics", "hookcheck", "http", "http_cancel", "httpguard", "installed", "interventions", "features", "jobs", "json_objects", "jsonl", "keystore", "keystore_guard", "kvtype", "lan", "leasetable", "legacy", "limits",
               "runtime", "runtime_launchers", "runtime_git", "runtime_bridges",
-              "lock", "log", "macauth", "sealing",
+              "lock", "log", "macauth", "maintenance", "maintenance_windows", "sealing",
               "markup", "sandbox",
               "deciders", "desktop", "devbranch", "media", "messages", "net", "node_health", "node_pool", "optional", "paths", "platform", "safenames", "redact", "sentinel",
               "real_machine", "records", "requests", "person", "private_path", "private_counters", "protectedwrites", "safetext", "secretpaths",
