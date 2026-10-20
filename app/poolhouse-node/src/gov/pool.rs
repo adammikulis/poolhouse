@@ -252,7 +252,7 @@ impl GovPool {
             self.ready.entry(id.clone()).or_insert(now);
         }
         self.dirty.seen |= self.ready.len() != known;
-        let roster = roster::build(&chain, &self.acts, &self.seen, now);
+        let roster = roster::build(&chain, &self.acts, &self.seen, now, self.joined.unwrap_or(0));
         self.admits_live = self.acts.iter().filter(|(id, a)| a.kind == "admit" && !roster.void.contains_key(*id) && !roster.short.contains_key(*id)).count();
         let ends = [chain.pending.as_ref().map(|p| p.effective_ms), chain.dispute.as_ref().map(|d| d.ends_ms)];
         self.deadline = ends.into_iter().flatten().chain(roster.delegates.values().map(|d| d.ends_ms)).min().unwrap_or(i64::MAX);

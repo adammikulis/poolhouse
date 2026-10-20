@@ -6,8 +6,9 @@
 //! * Removals commute: every removal of the step applies, unless together they would leave fewer strong admins than the
 //!   sensitive threshold needs, in which case none applies and a dispute opens. One removal that alone would leave too few is void.
 //! * An add or a threshold change counts only if its signers survive the removals of the step.
-//! * Two such acts that cannot both hold are settled by the number of distinct strong signers, then by the lower signer
-//!   fingerprints; a tie that remains applies neither and opens a dispute that the signers settle by signing one of them again.
+//! * Two such acts that cannot both hold are settled by the highest level among their signers, then by the number of signers, then by
+//!   the lower signer fingerprints; a tie that remains applies neither and opens a dispute that the signers settle by signing one of
+//!   them again.
 //!
 //! An act complete on this device only after the first act of its step has run its hold arrives too late to join or contest the step.
 //!
@@ -257,11 +258,12 @@ fn check_replace(add: &body::Add, s: &EpochState, pool: &str) -> Option<Check> {
     Some(Check::Void(why.into()))
 }
 
-/// Whether ``c`` still has an admin key at each floor and enough people at the governance floor once ``targets`` are gone.
+/// Whether ``c`` still has an admin key at each floor, enough people at the governance floor and every threshold within reach of the keys
+/// that count for its class, once ``targets`` are gone.
 fn survivors_ok(c: &Charter, targets: &BTreeSet<String>, need: usize) -> bool {
     let mut rest = c.clone();
     rest.admins.retain(|k| !targets.contains(&k.key));
-    rest.units(Class::Governance) >= need && rest.check_floors().is_ok()
+    rest.units(Class::Governance) >= need && rest.check_floors().is_ok() && rest.reachable()
 }
 
 /// Whether ``cand`` has the signatures its kind needs against the charter of ``s``.
@@ -301,7 +303,7 @@ fn check(act: &Act, signed: &[String], body: &Body, s: &EpochState, pool: &str) 
     }
     if let Body::AdminAdd(add) | Body::RecoveryReplace(add) = body {
         let top = counted.iter().filter_map(|k| c.admin(k)).map(|k| k.assurance).max();
-        if add.entry.role == Role::Admin && top.is_some_and(|top| add.entry.assurance > top) {
+        if top.is_some_and(|top| add.entry.assurance > top) {
             return Check::Void("a key is listed at no level above the keys that listed it".into());
         }
     }
@@ -404,11 +406,13 @@ fn veto_dispute(cx: &Ctx, chain: &Chain, s: &EpochState) -> Option<Dispute> {
     vetoes.iter().filter(|(id, _)| chain.void.get(*id).is_some_and(|w| w.contains("vetoed"))).map(|(id, at)| dispute(vec![id.clone()], *at, &s.charter, "the key a removal names vetoed it")).max_by_key(|d| d.ends_ms)
 }
 
-/// How an act ranks against one that cannot hold beside it: more distinct strong signers first, then the lower signer fingerprints.
-fn rank(cand: &Cand, c: &Charter) -> (Reverse<usize>, Vec<String>) {
-    let mut fingerprints: Vec<String> = cand.signers.iter().filter_map(|k| c.admin(k)).map(|k| k.fingerprint()).collect();
+/// How an act ranks against one that cannot hold beside it: the higher top level among its signers first, then more signers, then the lower
+/// signer fingerprints.
+fn rank(cand: &Cand, c: &Charter) -> (Reverse<Option<Level>>, Reverse<usize>, Vec<String>) {
+    let keys: Vec<&super::keys::AdminKey> = cand.signers.iter().filter_map(|k| c.admin(k)).collect();
+    let mut fingerprints: Vec<String> = keys.iter().map(|k| k.fingerprint()).collect();
     fingerprints.sort();
-    (Reverse(cand.signers.len()), fingerprints)
+    (Reverse(keys.iter().map(|k| k.assurance).max()), Reverse(cand.signers.len()), fingerprints)
 }
 
 fn round(cx: &Ctx, chain: &mut Chain, dropped: &mut BTreeSet<String>) -> Round {
@@ -460,7 +464,7 @@ fn round(cx: &Ctx, chain: &mut Chain, dropped: &mut BTreeSet<String>) -> Round {
         return settle(cx, dispute(ids, since, &s.charter, "two acts that cannot both hold have the same signers"), dropped);
     }
     for loser in others.iter().skip(1) {
-        chain.void.insert(loser.id.clone(), "another act that follows the same charter has more signers".into());
+        chain.void.insert(loser.id.clone(), "another act that follows the same charter outranks it: its signers hold a higher level or are more".into());
     }
     let step: Vec<&Cand> = removals.into_iter().chain(others.into_iter().take(1)).collect();
     if step.is_empty() {

@@ -116,16 +116,23 @@ fn delegate_hold(chain: &Chain, id: &str, act: &Act) -> i64 {
     if super::chain::above_computer(&e.charter, &counted) { 0 } else { COMPUTER_HOLD_MS }
 }
 
-fn delegates(chain: &Chain, acts: &BTreeMap<String, Act>, seen: &Seen, now: i64, out: &mut Roster) {
+/// The span of awake time in which the delegate act first seen at ``at`` counts: from the end of its hold for thirty days, and for a
+/// settled act (taken inside this device's join, its hold over) from the start for thirty days after ``joined``.
+fn delegate_span(chain: &Chain, id: &str, act: &Act, at: i64, joined: i64) -> (i64, i64) {
+    if at == SETTLED {
+        return (SETTLED, joined.saturating_add(DELEGATE_DAYS * DAY_MS));
+    }
+    let from = at.saturating_add(delegate_hold(chain, id, act));
+    (from, from.saturating_add(DELEGATE_DAYS * DAY_MS))
+}
+
+fn delegates(chain: &Chain, acts: &BTreeMap<String, Act>, seen: &Seen, now: i64, joined: i64, out: &mut Roster) {
     let mut ops: Vec<(i64, u64, &String, &Act)> = acts.iter().filter(|(_, a)| matches!(a.kind.as_str(), "delegate" | "delegate_end")).map(|(id, a)| (seen.get(id).copied().unwrap_or(now), a.at_ms, id, a)).collect();
     ops.sort_by_key(|(first, at, id, _)| (*first, *at, (*id).clone()));
     for (at, _, id, a) in ops {
         match (body::parse(a), a.kind.as_str()) {
             (Ok(Body::Delegate(d)), _) => match verdict(id, a, Some(Class::Governance), chain, false) {
-                Verdict::Ok => {
-                    let from = at.saturating_add(delegate_hold(chain, id, a));
-                    out.windows.entry(d.fingerprint).or_default().push((from, from.saturating_add(DELEGATE_DAYS * DAY_MS)));
-                }
+                Verdict::Ok => out.windows.entry(d.fingerprint).or_default().push(delegate_span(chain, id, a, at, joined)),
                 Verdict::Short(h, n, why) => drop(out.short.insert(id.clone(), (h, n, why))),
                 Verdict::Void(why) => drop(out.void.insert(id.clone(), why)),
             },
@@ -272,11 +279,11 @@ fn leaves(chain_ok: &BTreeSet<String>, acts: &BTreeMap<String, Act>) -> Vec<(Str
     }).collect()
 }
 
-/// Build the roster from the chain and the acts held.
-pub fn build(chain: &Chain, acts: &BTreeMap<String, Act>, seen: &Seen, now: i64) -> Roster {
+/// Build the roster from the chain and the acts held, as they stand ``now`` on a device that took the history of the pool at ``joined``.
+pub fn build(chain: &Chain, acts: &BTreeMap<String, Act>, seen: &Seen, now: i64, joined: i64) -> Roster {
     let mut out = Roster::default();
     let removed = removals(chain, acts, &mut out);
-    delegates(chain, acts, seen, now, &mut out);
+    delegates(chain, acts, seen, now, joined, &mut out);
     let mut cands = candidates(acts);
     let found = founding(chain);
     let found_id = found.as_ref().map(|c| c.id.clone()).unwrap_or_default();
