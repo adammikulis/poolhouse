@@ -297,9 +297,10 @@ def test_duplicate_normalized_projects_and_metadata_links_are_refused(tmp_path):
         proof._metadata(link, proof._file(link))
 
 
-def test_metadata_read_uses_existing_body_bound(tmp_path):
+def test_metadata_read_uses_its_own_bounded_contract(tmp_path):
+    assert proof.MAX_METADATA_BYTES == 4 * 1024 * 1024
     metadata = tmp_path / 'METADATA'
-    metadata.write_bytes(b'x' * (proof.MAX_BODY + 1))
+    metadata.write_bytes(b'x' * (proof.MAX_METADATA_BYTES + 1))
     with pytest.raises(OSError, match='metadata limit'):
         proof._metadata(metadata, proof._file(metadata))
 

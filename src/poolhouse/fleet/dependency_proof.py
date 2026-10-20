@@ -16,10 +16,11 @@ from packaging.utils import canonicalize_name
 from packaging.version import Version
 
 from poolhouse import private_path
-from poolhouse.graph.guard import MAX_BODY
 
 from . import compute_artifact
 from .managed_compute import process_environment
+
+MAX_METADATA_BYTES = 4 * 1024 * 1024
 
 _LOCKS = {}
 _LOCK = threading.Lock()
@@ -234,10 +235,10 @@ def _metadata(path, expected):
     with os.fdopen(os.open(path, flags), 'rb') as stream:
         if _stat_identity(os.fstat(stream.fileno())) != expected:
             raise OSError('Managed distribution metadata changed before reading')
-        data = stream.read(MAX_BODY + 1)
+        data = stream.read(MAX_METADATA_BYTES + 1)
         if (_stat_identity(os.fstat(stream.fileno())) != expected or _file(path) != expected):
             raise OSError('Managed distribution metadata changed while reading')
-    if len(data) > MAX_BODY:
+    if len(data) > MAX_METADATA_BYTES:
         raise OSError('Managed distribution metadata exceeds the metadata limit')
     message = BytesParser().parsebytes(data, headersonly=True)
     if (message.defects or any(len(message.get_all(name, [])) != 1 for name in ('Name', 'Version'))
