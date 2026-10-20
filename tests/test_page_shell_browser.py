@@ -38,6 +38,8 @@ def test_operational_pages_share_shell_without_redundant_titles(tmp_path, studio
                 gaps.append(shell.evaluate('node => getComputedStyle(node).paddingLeft'))
                 assert page.locator('#workspace').evaluate('node => getComputedStyle(node).paddingLeft') == '0px'
                 assert shell.locator('h2').count() > 0
+                if route in {'tools', 'knowledge', 'projects'}:
+                    assert shell.locator(':is(.workspace-card, .panel) > h2').first.evaluate('node => getComputedStyle(node).fontSize') == '17px'
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             nav.get_by_role('link', name='Pool', exact=True).click()
             pool = page.locator('pool-view .page-shell')
@@ -116,5 +118,35 @@ def test_operational_action_controls_share_geometry_and_keyboard_focus(tmp_path,
                     assert control.evaluate('node => getComputedStyle(node).outlineStyle') == 'solid'
                 assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             page.screenshot(path=f'/private/tmp/poolhouse-shared-actions-{theme}-{size[0]}-{size[1]}.png')
+        finally:
+            served.close()
+
+
+@pytest.mark.parametrize('width', [1440, 390])
+def test_pool_availability_fields_are_labelled_and_use_sidebar_width(tmp_path, studio_browser, width):  # noqa: F811
+    served = Serving(tmp_path)
+    served.ui.settings.setup_done = True
+    with studio_browser() as page:
+        try:
+            page.set_viewport_size({'width': width, 'height': 900})
+            page.goto(f'http://127.0.0.1:{served.port}/ui/#pool')
+            duration = page.get_by_label('Pause duration', exact=True)
+            reason = page.get_by_label('Reason (optional)', exact=True)
+            expect(duration).to_be_visible()
+            expect(reason).to_be_visible()
+            assert reason.bounding_box()['width'] == pytest.approx(duration.bounding_box()['width'], abs=1)
+            assert reason.bounding_box()['width'] >= 230
+            reason.fill('Preparing a local task')
+            duration.select_option('30m')
+            expect(reason).to_have_value('Preparing a local task')
+            expect(duration).to_have_value('30m')
+            reason.focus()
+            page.evaluate("document.querySelector('pool-view').drawPause(2, 1)")
+            expect(reason).to_be_focused()
+            expect(reason).to_have_value('Preparing a local task')
+            expect(page.locator('#pause-state')).to_contain_text('1 of 2 machines is paused')
+            actions = page.locator('#pool-pause .pause-actions')
+            assert actions.bounding_box()['y'] >= reason.bounding_box()['y'] + reason.bounding_box()['height']
+            assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         finally:
             served.close()

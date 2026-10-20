@@ -16,7 +16,10 @@ pool-view .member .loaded-models h3 { font-size:0.857rem; margin:0 0 8px; }
 pool-view .pool-control { background:var(--bg-raised); border:1px solid var(--line); border-radius:16px; padding:calc(22px * var(--ui-density,1)); }
 pool-view #pool-pause { margin:0; padding:0; border:0; }
 pool-view #pool-pause h2 { margin-top:0; font-size:1.214rem; }
-pool-view #pool-pause .searchrow { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+pool-view #pool-pause .pause-fields { display:grid; gap:12px; margin-top:16px; }
+pool-view #pool-pause label { margin:0; }
+pool-view #pool-pause .pause-fields > div > :is(input,select) { display:block; margin-top:6px; }
+pool-view #pool-pause .pause-actions { display:flex; flex-wrap:wrap; gap:8px; }
 pool-view #pool-pause input,pool-view #pool-pause select { width:100%; min-width:0; }
 pool-view .pool-config { margin-top:22px; padding-top:20px; border-top:1px solid var(--line); }
 pool-view .pool-config button { width:100%; margin-top:14px; }
@@ -221,6 +224,12 @@ pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere
     }
 
     drawPause(total, paused) {
+      const status = paused
+        ? `${paused} of ${total} machine${total === 1 ? "" : "s"} ${paused === 1 ? "is" : "are"} paused.`
+          + " A paused machine stops what it is running, keeps its progress and waits."
+        : `${total === 1 ? "The" : "All"} ${total === 1 ? "machine is" : `${total} machines are`} taking work.`;
+      const existing = this.querySelector("#pause-state");
+      if (existing) { existing.textContent = status; return; }
       if (this.pauseNote === undefined) this.pauseNote = null;
       const span = el("select", { id: "pause-for" },
         [["2h", "for 2 hours"], ["30m", "for 30 minutes"], ["8h", "for 8 hours"],
@@ -267,12 +276,11 @@ pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere
 
       this.querySelector("#pool-pause").replaceChildren(
         el("h2", {}, "Pool availability"),
-        el("div", { class: "hint" },
-          paused
-            ? `${paused} of ${total} machine${total === 1 ? "" : "s"} ${paused === 1 ? "is" : "are"} paused.`
-              + " A paused machine stops what it is running, keeps its progress and waits."
-            : `All ${total} machine${total === 1 ? "" : "s"} ${total === 1 ? "is" : "are"} taking work.`),
-        el("div", { class: "searchrow" }, span, why, stop, go),
+        el("div", { class: "hint", id:"pause-state" }, status),
+        el("div", { class: "pause-fields" },
+          el("div", {}, el("label", { for:"pause-for" }, "Pause duration"), span),
+          el("div", {}, el("label", { for:"pause-why" }, "Reason (optional)"), why),
+          el("div", { class:"pause-actions" }, stop, go)),
         note);
     }
 
