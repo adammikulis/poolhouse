@@ -280,6 +280,8 @@ which, in one line, at once, and do every part that is not blocked.
 
 ### Saying that something works
 
+**Report verification blockers immediately.** When installation, activation or a required live UI or hardware check cannot proceed, tell the owner in the same turn: what could not be verified, the current evidence, and the concrete fix or next diagnostic the agent owns. Verify the condition now before calling it a blocker; an old observation, an empty probe or a failed automation command is not proof of a locked screen, missing hardware or a person-only step. Diagnose and fix agent-controlled tooling first. Ask the owner only for a confirmed person-only action, explaining the exact refusal. Continue independent work and keep the missing check explicitly unfinished. Recheck the condition before repeating it. Distinguish headless browser, visible browser and native application evidence in every completion claim.
+
 Drive it the way a person does before you say it works: open the interface, click through the screen, type into the box,
 press the button, read what comes back.
 
