@@ -14,6 +14,8 @@ from poolhouse.studio.contracts import validate_graph
 from poolhouse.studio.engine import WorkflowEngine
 from poolhouse.studio.library import LocalLibrary
 from poolhouse.studio.packages import export_package, import_package
+from poolhouse.studio.resources import model_resource
+from poolhouse.studio.saved_models import PREFIX as SAVED_MODEL_PREFIX, SavedModels
 from poolhouse.studio.store import Conflict, StudioStore, digest
 from poolhouse.studio.templates import templates
 
@@ -62,7 +64,7 @@ class StudioRoutes:
                 store = StudioStore(Path(ui.root) / "studio.ladybug")
                 ui._studio_principals = {}
 
-                def authorize(principal, node, inputs):
+                def authorize_resources(principal, node, inputs):
                     if principal.get("scope") != _binding(ui):
                         return False
                     checker = ui._studio_principals.get(principal.get("id"))
@@ -79,8 +81,29 @@ class StudioRoutes:
                     additional = getattr(ui, "studio_authorize", None)
                     return bool(additional(principal, node, inputs)) if additional else True
 
+                saved = SavedModels(store, ui.runner.files_root, authorize_resources)
+
+                def resolve_model(binding, context):
+                    if binding.get('id', '').startswith(SAVED_MODEL_PREFIX):
+                        return saved.resolve(context['principal'], binding['id'])
+                    return model_resource(binding)
+
+                def authorize(principal, node, inputs):
+                    if not authorize_resources(principal, node, inputs):
+                        return False
+                    try:
+                        saved.check_inputs(principal, inputs)
+                        binding = (node or {}).get('bindings', {}).get('model', {})
+                        if binding.get('id', '').startswith(SAVED_MODEL_PREFIX):
+                            saved.resolve(principal, binding['id'])
+                    except (ValueError, PermissionError, OSError, KeyError):
+                        return False
+                    return True
+
+                ui.studio_saved_models = saved
                 dispatcher = DeviceDispatch(ui, store, authorize)
-                ui.studio = WorkflowEngine(store, ui.runner, Adapters(ui.runner, process_environment=process_environment), authorize, dispatcher)
+                adapters = Adapters(ui.runner, process_environment=process_environment, model_resolver=resolve_model)
+                ui.studio = WorkflowEngine(store, ui.runner, adapters, authorize, dispatcher)
         sid = parse_cookie(self.cookie)
         session = ui.sessions.get(sid)
         if sid and session is None:
@@ -129,7 +152,8 @@ class StudioRoutes:
             datasets = [{"id": path.name, "title": path.name} for path in sorted(root.iterdir())
                         if path.name not in {"jobs", "studio", "studio-device-resources"} and not path.name.startswith(".")
                         and path.resolve().is_relative_to(root.resolve())] if root.exists() else []
-            self.send(200, {"datasets": datasets, "models": [{"id": entry.id, "title": entry.id} for entry in hub.discover()]})
+            self.send(200, {"datasets": datasets, "models": [{"id": entry.id, "title": entry.id} for entry in hub.discover()]
+                       + self.ui.studio_saved_models.list(principal)})
             return True
         if self.path.startswith("/ui/studio/workflows"):
             return self._workflows(store, scope)
