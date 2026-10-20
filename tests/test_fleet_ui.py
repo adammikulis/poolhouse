@@ -90,10 +90,10 @@ class Serving:
         self.runner = JobRunner(root, self.files)
         self.ui = UI(name=name, pool_key_path=self.keyfile,
                      setup_token=setup_token)
-        from poolhouse.fleet.settings import Settings
         self.ui.runner = self.runner
-        self.ui.settings = Settings()
+        self.ui.settings = self.initial_settings()
         self.ui.settings_path = tmp_path / "settings.json"
+        self.ui.settings.save(self.ui.settings_path)
         self.ui.report = lambda: {"cpus": 8, "accelerator": False}
         self.port = _free_port()
         self.rows = arm(self)
@@ -116,6 +116,12 @@ class Serving:
                          schedule_path=(root / "availability.json") if schedule else None)))
         self.lan_httpd = None
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    @staticmethod
+    def initial_settings():
+        """Ordinary UI journeys start from an installation whose notice was acknowledged."""
+        from poolhouse.fleet.settings import Settings
+        return Settings(experimental_notice_accepted=True)
 
     def _pool_tokens(self):
         """Every token this daemon answers to, the way the real one works it out."""
