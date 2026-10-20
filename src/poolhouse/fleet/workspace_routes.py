@@ -9,6 +9,7 @@ from pathlib import Path
 
 from poolhouse.contracts import recipes
 from poolhouse.files import write_json
+from poolhouse.studio.dataset_assets import reserved
 
 from .dataset_routes import route as dataset_route
 from .files import safe_relpath
@@ -74,7 +75,7 @@ class WorkspaceRoutes:
         if self.path == "/ui/workspace/files" and self.method == "GET":
             return self._files(root)
         if self.path == "/ui/workspace/file" and self.method == "GET":
-            path = safe_relpath(root, self.asked("path"))
+            path = self._dataset_path(root, self.asked("path"))
             with path.open("rb") as source:
                 raw = source.read(1_000_001)
             self.send(200, {"path": path.relative_to(root).as_posix(), "text": raw[:1_000_000].decode("utf-8", "replace"),
@@ -82,7 +83,7 @@ class WorkspaceRoutes:
             return True
         if self.path == "/ui/workspace/file" and self.method == "POST":
             req = object_body(self)
-            path = safe_relpath(root, field(req, "path", str, ""))
+            path = self._dataset_path(root, field(req, "path", str, ""))
             content = field(req, "text", str, "")
             if len(content.encode()) > 10_000_000:
                 raise ValueError("Dataset upload limit is 10 MB; use poolhouse-members for larger files.")
@@ -111,14 +112,22 @@ class WorkspaceRoutes:
         self.send(405, {"error": "Unsupported workspace route or method."})
         return True
 
+    @staticmethod
+    def _dataset_path(root, relative):
+        path = safe_relpath(root, relative)
+        if reserved(relative) or reserved(path.relative_to(root.resolve())):
+            raise ValueError('Choose an imported dataset through its current dataset resource.')
+        return path
+
     def _files(self, root: Path) -> bool:
         rel = self.asked("path")
-        path = safe_relpath(root, rel) if rel else root.resolve()
+        path = self._dataset_path(root, rel) if rel else root.resolve()
         rows = []
         if path.exists():
             for child in sorted(path.iterdir(), key=lambda p: (not p.is_dir(), p.name)):
                 resolved = child.resolve()
-                if not resolved.is_relative_to(root.resolve()):
+                if (not resolved.is_relative_to(root.resolve()) or reserved(child.relative_to(root))
+                        or reserved(resolved.relative_to(root.resolve()))):
                     continue
                 rows.append({"name": child.name, "path": child.relative_to(root).as_posix(),
                              "directory": child.is_dir(), "bytes": child.stat().st_size})

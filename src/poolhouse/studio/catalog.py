@@ -41,6 +41,8 @@ def node_catalog() -> list[dict[str, Any]]:
               properties={"controls": {"type": "object", "format": "record-condition",
                                        "default": {"field": "value", "operator": "exists"}}}),
         _node("dataset", "Dataset", "Inputs", {}, {"dataset": "dataset"}),
+        _node("data.hf-preview", "Import selected preview rows", "Data", {}, {"dataset": "dataset", "artifact": "artifact"},
+              properties={"request_id": {"type": "string", "default": ""}}),
         _node("model", "Model", "Inputs", {}, {"model": "model"}),
         _node("data.validate", "Validate data", "Data", {"dataset": "dataset"}, {"dataset": "dataset", "report": "report"}),
         _node("data.split", "Split data", "Data", {"dataset": "dataset"}, {"train": "dataset", "test": "dataset"},

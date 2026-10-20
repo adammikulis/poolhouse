@@ -10,12 +10,12 @@ import threading
 from urllib.parse import urlsplit
 
 from poolhouse import home
+from poolhouse.files import stat_signature
 from poolhouse.studio.store import Conflict, digest
 
 from . import studio_epoch, tls
 from .discovery import Beacon, derive_token, memberships
 from .membership import fingerprint_of, roster
-from .producer_bootstrap import _signature
 from .producer_member import FIELDS
 from .producer_offers import _process, _text
 from .remote import Discovery, Member
@@ -38,7 +38,7 @@ def _machine():
             raw = os.read(fd, 257)
             after = os.fstat(fd)
             named = os.stat(path.name, dir_fd=directory, follow_symlinks=False)
-            if _signature(before) != _signature(after) or _signature(before) != _signature(named):
+            if stat_signature(before) != stat_signature(after) or stat_signature(before) != stat_signature(named):
                 raise PermissionError('The existing machine identity changed.')
             value = raw.decode('ascii').strip()
             if not re.fullmatch('[0-9a-f]{16}', value):
