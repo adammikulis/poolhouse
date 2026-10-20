@@ -611,34 +611,24 @@ class TestPreferences:
                      body={"mode": "create", "passphrase": WORDS, "group": "home"})
         return serving
 
-    def test_a_gpu_machine_is_suggested_for_training(self):
+    def test_availability_suggestions_do_not_assign_a_device_role(self):
         from poolhouse.fleet.settings import suggest
 
-        got = suggest({"accelerator": True, "gpu": "RTX 4090", "cpus": 16})
-        assert got["labels"].value == ["train"]
-        assert "RTX 4090" in got["labels"].why
-
-    def test_a_machine_with_no_gpu_is_suggested_for_data(self):
-        from poolhouse.fleet.settings import suggest
-
-        got = suggest({"accelerator": False, "cpus": 12})
-        assert got["labels"].value == ["prep"]
+        assert set(suggest()) == {"autostart", "work_hours", "on_paused"}
 
     def test_no_machine_is_offered_more_than_one_job_at_a_time(self):
         """Two jobs on one card contend for memory and both get slower, with nothing
         in the logs to say so."""
         from poolhouse.fleet.settings import suggest
 
-        for machine in ({"accelerator": True, "cpus": 16},
-                        {"accelerator": False, "cpus": 64}):
-            offered = suggest(machine)
-            assert offered, "suggesting nothing at all would pass the line below"
-            assert "slots" not in offered
+        offered = suggest()
+        assert offered, "suggesting nothing at all would pass the line below"
+        assert "slots" not in offered
 
     def test_every_suggestion_carries_a_reason(self):
         from poolhouse.fleet.settings import suggest
 
-        offered = suggest({"accelerator": True, "cpus": 8})
+        offered = suggest()
         assert offered, "suggesting nothing at all would pass the loop below"
         for key, s in offered.items():
             if key == "work_hours" and not s.value:
@@ -648,10 +638,10 @@ class TestPreferences:
     def test_settings_survive_a_restart(self, tmp_path):
         from poolhouse.fleet.settings import Settings
 
-        Settings(slots=6, labels=["prep"], on_paused="finish").save(tmp_path / "s.json")
+        Settings(slots=6, labels=["lab-a"], on_paused="finish").save(tmp_path / "s.json")
         back = Settings.load(tmp_path / "s.json")
 
-        assert back.slots == 6 and back.labels == ["prep"]
+        assert back.slots == 6 and back.labels == ["lab-a"]
         assert back.on_paused == "finish"
 
     def test_a_corrupt_settings_file_costs_preferences_not_the_daemon(self, tmp_path):
@@ -664,6 +654,7 @@ class TestPreferences:
         status, body, _ = joined.call("/ui/setup/suggest")
         assert status == 200
         assert "machine" in body and "suggest" in body
+        assert "labels" not in body["suggest"]
 
     def test_asking_for_more_jobs_leaves_it_at_one(self, joined):
         _, _, headers = joined.call("/ui/session", method="POST",
@@ -671,7 +662,7 @@ class TestPreferences:
         cookie = headers["Set-Cookie"].split(";")[0]
 
         status, body, _ = joined.call("/ui/setup/prefs", method="POST", cookie=cookie,
-                                      body={"slots": 4, "labels": ["prep"],
+                                      body={"slots": 4,
                                             "autostart": "manual"})
 
         assert status == 200, body
@@ -798,13 +789,14 @@ class TestSettingsScreen:
         from poolhouse.fleet.settings import Settings
 
         serving, cookie = signed_in
+        serving.ui.settings.labels = ["lab-a"]
         serving.call("/ui/settings", method="POST", cookie=cookie,
-                     body={"slots": 5, "labels": ["prep"], "autostart": "manual"})
+                     body={"slots": 5, "autostart": "manual"})
 
         assert serving.runner.slots == 1
         assert serving.call("/health")[1]["slots"] == 1
         saved = Settings.load(serving.ui.settings_path)
-        assert saved.slots == 1 and saved.labels == ["prep"]
+        assert saved.slots == 1 and saved.labels == ["lab-a"]
 
     def test_the_close_preference_can_be_set_from_settings(self, signed_in):
         from poolhouse.fleet.settings import Settings

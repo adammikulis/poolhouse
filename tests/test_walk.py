@@ -124,7 +124,7 @@ class TestWalkingTheDaemon:
         stops = walked(daemon, tmp_path, playwright,
                        screens=ops.screens_of("fleet", ["job", "name"]))
         assert [stop.screen for stop in stops] == ["name", "job"]
-        assert "What should this machine do?" in stops[1].text
+        assert "When can this device help?" in stops[1].text
 
     def test_a_port_with_nothing_on_it_is_refused_rather_than_walked(self, tmp_path,
                                                                      monkeypatch,
@@ -220,7 +220,9 @@ def test_saying_something_in_the_fleet_chat_waits_for_the_whole_reply(slow_model
         served.ui.setup_finished()
         served.ui.conversations = Conversations(tmp_path / "chats")
         models = Models(tmp_path / "serving.json")
-        models.register(slow_model.port, ["quince-2b.gguf"])
+        decoder = models.register(slow_model.port, ["quince-2b.gguf"])
+        decoder.capabilities = {"chat": True}
+        monkeypatch.setattr(models, "all", lambda: [decoder])
         served.ui.serving = models
         served.ui._members = (time.time(), [])
         stops = walked(served, tmp_path, playwright, screens=("chat",), passphrase=WORDS,

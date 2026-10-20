@@ -1,4 +1,4 @@
-<!-- first-run: naming this machine, joining a pool, and what it should be able to do -->
+<!-- first-run: naming this machine, joining a pool, and when it contributes -->
 <template>
   <div class="centre" id="first-run" hidden><div class="card" id="first-run-card"></div></div>
 </template>
@@ -70,7 +70,7 @@ first-run button { margin-top: 12px; }
       const s = this.state.step;
       if (s === 0) return this.nameStep();
       if (s === 1) return this.poolsStep();
-      if (s === 2) return this.jobStep();
+      if (s === 2) return this.availabilityStep();
       if (s === 3) return this.startStep();
       if (s === 4) return this.sourceStep();
       if (s === 5) return this.runStep();
@@ -155,7 +155,6 @@ first-run button { margin-top: 12px; }
       const r = st.suggest;
       const s = r.suggest || {};
       const pick = st.prefs || (st.prefs = {
-        labels: (s.labels?.value || []).join(","),
         autostart: s.autostart?.value || "manual",
         work_hours: !!s.work_hours?.value,
         on_paused: s.on_paused?.value || "stop",
@@ -175,26 +174,15 @@ first-run button { margin-top: 12px; }
         input.onchange = () => { pick[key] = input.checked; };
         return el("label", { class: "opt", for: key }, input, spec(label, why));
       };
-      return { s, machine: r.machine || {}, pick, spec, radio, check };
+      return { s, pick, spec, radio, check };
     }
 
-    async jobStep() {
-      const { s, machine, pick, spec, radio, check } = await this.asked();
-      const suggested = (s.labels?.value || []).join(",");
-      const why = (value, plain) => (value === suggested && s.labels?.why) || plain;
+    async availabilityStep() {
+      const { s, pick, spec, check } = await this.asked();
       this.show(
         this.steps(2, () => this.go(1)),
-        el("h1", {}, "What should this machine do?"),
-        el("p", { class: "sub" },
-          machine.gpu ? `Found ${machine.gpu}. These are set from that — change either.`
-                      : "These are set from what this machine is — change either."),
-        el("div", { class: "group" },
-          el("h2", {}, "Its job"),
-          radio("labels", "train", "Train models",
-            why("train", "fine-tuning and training runs, on a machine with a GPU")),
-          radio("labels", "prep", "Prepare data",
-            why("prep", "tokenizing and packing, while others train")),
-          radio("labels", "train,prep", "Both", why("train,prep", ""))),
+        el("h1", {}, "When can this device help?"),
+        el("p", { class: "sub" }, "Poolhouse uses available hardware and installed tools for each task."),
         el("div", { class: "group" },
           el("h2", {}, "When I need the machine"),
           check("work_hours", "Don't take work on weekdays, 9 to 5",
@@ -214,8 +202,7 @@ first-run button { margin-top: 12px; }
         go.disabled = true;
         go.innerHTML = '<span class="spin"></span> Applying…';
         const res = await api("/ui/setup/prefs", { method: "POST", body: JSON.stringify({
-          ...pick, name: this.state.name,
-          labels: pick.labels ? pick.labels.split(",") : [] }) });
+          ...pick, name: this.state.name }) });
         if (res.error || (!res.ok && !res.manual)) {
           go.disabled = false; go.textContent = "Continue";
           outcome.replaceChildren(el("div", { class: "err", role: "alert" }, res.error || "Could not save startup preferences. Try again."));

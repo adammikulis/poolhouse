@@ -127,23 +127,10 @@ def _has_battery() -> bool:
     return False
 
 
-def suggest(report: dict[str, Any] | None = None) -> dict[str, Suggestion]:
-    """What to pre-tick in the wizard, based on what this machine actually is."""
-    report = report or {}
-    accelerator = bool(report.get("accelerator") or report.get("cuda")
-                       or report.get("rocm"))
-    gpu = report.get("gpu") or "a GPU"
+def suggest() -> dict[str, Suggestion]:
+    """Suggest availability preferences from this device's battery status."""
     portable = _has_battery()
-
     out: dict[str, Suggestion] = {}
-
-    if accelerator:
-        out["labels"] = Suggestion(
-            ["train"], f"it has {gpu}, so it is the machine to train on")
-    else:
-        out["labels"] = Suggestion(
-            ["prep"], "no GPU found, so this is a good machine for preparing data "
-                      "while the others train")
 
     if portable:
         out["autostart"] = Suggestion(
