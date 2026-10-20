@@ -307,3 +307,45 @@ def test_http_error_limit_preserves_positional_guard():
 
     options = Options({}, "", 1, ONCE, guard)
     assert options.guard is guard and options.error_body_limit is None
+
+
+@pytest.mark.parametrize('cancelled', [False, True])
+@pytest.mark.parametrize('explicit', [False, True])
+def test_request_tls_context_overrides_pin_for_normal_and_cancelled_open(monkeypatch, cancelled, explicit):
+    import ssl
+    import urllib.request
+    from types import SimpleNamespace
+
+    from poolhouse import http
+
+    selected = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    global_pin = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    url = 'https://127.0.0.1:18443/request-context'
+    observed, cancelled_contexts = [], []
+    original_handlers = http.http_cancel.handlers
+    def handlers(control, context):
+        cancelled_contexts.append(context)
+        return original_handlers(control, context)
+    def opener(*configured):
+        observed.extend(handler._context for handler in configured if isinstance(handler, urllib.request.HTTPSHandler))
+        return SimpleNamespace(open=lambda *args, **kwargs: SimpleNamespace(headers={}, status=200))
+    monkeypatch.setattr(urllib.request, 'build_opener', opener)
+    monkeypatch.setattr(http.http_cancel, 'handlers', handlers)
+    options = http.Options(tls_context=selected if explicit else None, guard=lambda value: value)
+    with http.http_cancel.scope(http.http_cancel.Cancellation() if cancelled else None):
+        http.pin('127.0.0.1:18443', global_pin)
+        try:
+            http.open_stream(url, options=options)
+        finally:
+            http.pin('127.0.0.1:18443', None)
+    expected = selected if explicit else global_pin
+    assert observed == [expected]
+    assert cancelled_contexts == ([expected] if cancelled else [])
+    assert 'tls_context' not in repr(options)
+
+
+def test_request_tls_context_cannot_be_serialized_configuration():
+    from poolhouse import http
+
+    with pytest.raises(TypeError, match='SSLContext'):
+        http.Options(tls_context={'certificate': 'not a trusted software object'})

@@ -3,11 +3,14 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import http.client
 import json
+import ssl
 import time
+from http.client import IncompleteRead
 from urllib.parse import urlsplit
 
+from poolhouse import http
+from poolhouse.http import ONCE, Options, ServerError
 from poolhouse.studio.decision_templates import example_record, sample_sets
 from poolhouse.studio.store import Conflict, digest
 
@@ -21,6 +24,17 @@ UNKNOWN = 'This test webhook has an unresolved outcome. It will not be sent agai
 def samples():
     return [{'id': group['id'] + ':' + sample['id'], 'label': group['label'] + ' · ' + sample['label']}
             for group in sample_sets() for sample in group['samples']]
+
+
+class _OwnContext(ssl.SSLContext):
+    expected_der: bytes = b''
+
+    def wrap_socket(self, *args, **kwargs):
+        connection = super().wrap_socket(*args, **kwargs)
+        if not self.expected_der or not hmac.compare_digest(connection.getpeercert(binary_form=True), self.expected_der):
+            connection.close()
+            raise ssl.SSLError('The local webhook certificate changed.')
+        return connection
 
 
 class LocalSender:
@@ -186,7 +200,7 @@ class LocalSender:
         response = None
         try:
             response = self._send(intent, credential[0], lambda: self.active(principal, sub))
-        except (OSError, http.client.HTTPException, ValueError):
+        except (OSError, IncompleteRead, ValueError):
             pass  # Exact inbox evidence, never a transport guess, confirms delivery.
         finally:
             credential.clear()
@@ -205,26 +219,35 @@ class LocalSender:
 
     def _send(self, intent, credential, authorize):
         _, identity, port = self.endpoint()
-        context = tls.pinned_context(identity.beacon, who=identity)
+        context = tls.pinned_context(identity.beacon, who=identity, context_type=_OwnContext)
+        if not isinstance(context, _OwnContext):
+            raise TypeError('The local sender requires its fixed TLS context.')
+        context.expected_der = identity.der
         context.load_cert_chain(str(identity.certfile), str(identity.keyfile))
+        endpoint = f'https://127.0.0.1:{port}' + PREFIX + intent['source']
         raw = intent['raw'].encode()
         signature = hmac.new(credential['secret'].encode(), _frame(intent['source'], intent['generation'],
                              intent['event_id'], intent['timestamp'], raw), hashlib.sha256).hexdigest()
         headers = {HEADERS['event']: intent['event_id'], HEADERS['time']: intent['timestamp'],
                    HEADERS['generation']: intent['generation'], HEADERS['signature']: signature,
-                   'Content-Type': 'application/json', 'Content-Length': str(len(raw))}
-        connection = http.client.HTTPSConnection('127.0.0.1', port, context=context, timeout=10)
+                   'Content-Type': 'application/json', 'Content-Length': str(len(raw)), 'Authorization': ''}
+        contacted = False
+        def guard(url):
+            nonlocal contacted
+            authorize()
+            _, actual, actual_port = self.endpoint()
+            if contacted or url != endpoint or actual.der != identity.der or actual_port != port:
+                raise PermissionError('The built-in sender cannot redirect or change devices.')
+            contacted = True
+            return url
+        options = Options(headers=headers, token='', retry=ONCE, timeout=10, guard=guard, error_body_limit=4096, tls_context=context)
         try:
-            authorize()
-            connection.connect()
-            if connection.sock.getpeercert(binary_form=True) != identity.der:
-                raise PermissionError('The local webhook certificate changed.')
-            authorize()
-            connection.request('POST', PREFIX + intent['source'], body=raw, headers=headers)
-            response = connection.getresponse()
-            raw_reply = response.read(4097)
-            if len(raw_reply) > 4096:
-                raise ValueError('The webhook reply is too large.')
-            return response.status, json.loads(raw_reply)
-        finally:
-            connection.close()
+            with http.open_stream(endpoint, method='POST', data=raw, options=options) as response:
+                raw_reply = response.read(4097)
+                if len(raw_reply) > 4096:
+                    raise ValueError('The webhook reply is too large.')
+                return response.status, json.loads(raw_reply)
+        except ServerError as exc:
+            if exc.status in {400, 403, 409, 429}:
+                return exc.status, {}
+            raise OSError('The local webhook outcome is uncertain.') from None

@@ -14,6 +14,7 @@ def configured(request, tmp_path):
     app.call('/ui/studio/sources', cookie=cookie)
     server, thread, _ = _serve(tmp_path, app.ui, 'unused')
     app.ui.studio_endpoint = lambda: f'https://127.0.0.1:{server.server_port}'
+    app.ui._test_webhook_server = server
     try:
         yield app, cookie, session
     finally:
@@ -223,3 +224,70 @@ def test_new_current_owner_reconciles_existing_intent_without_adopting_old_sessi
     status, body, _ = send(app, renewed_cookie, source, sub)
     assert status == 202, body
     assert calls == [True]
+
+
+@pytest.mark.parametrize('same', [True, False])
+def test_tls_redirect_is_never_followed_even_back_to_same_url(configured, monkeypatch, same):
+    app, cookie, _ = configured
+    source, sub = create(app, cookie)
+    server = app.ui._test_webhook_server
+    hits = []
+    def redirect(handler):
+        handler.rfile.read(int(handler.headers.get('Content-Length', '0')))
+        hits.append(handler.path)
+        handler.send_response(301)
+        location = app.ui.studio_endpoint() + (handler.path if same else '/elsewhere')
+        handler.send_header('Location', location)
+        handler.send_header('Content-Length', '0')
+        handler.end_headers()
+    monkeypatch.setattr(server.RequestHandlerClass, 'do_POST', redirect)
+    assert send(app, cookie, source, sub)[0] == 409
+    assert len(hits) == 1
+
+
+def test_sender_never_consults_ambient_authorization(configured, monkeypatch):
+    from poolhouse import serverkeys
+
+    app, cookie, _ = configured
+    source, sub = create(app, cookie)
+    def forbidden(*args):
+        raise AssertionError('Ambient credentials must not be consulted.')
+    monkeypatch.setattr(serverkeys, 'for_url', forbidden)
+    assert send(app, cookie, source, sub)[0] == 202
+
+
+def test_ca_signed_different_leaf_is_refused_before_http_bytes(configured, tmp_path, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    app, cookie, _ = configured
+    source, sub = create(app, cookie)
+    identity = app.ui.studio_identity()
+    parent = x509.load_pem_x509_certificate(identity.certfile.read_bytes())
+    signing = serialization.load_pem_private_key(identity.keyfile.read_bytes(), password=None)
+    key = ec.generate_private_key(ec.SECP256R1())
+    now = datetime.now(UTC)
+    child = (x509.CertificateBuilder().subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, 'synthetic-child')]))
+             .issuer_name(parent.subject).public_key(key.public_key()).serial_number(x509.random_serial_number())
+             .not_valid_before(now - timedelta(minutes=1)).not_valid_after(now + timedelta(hours=1))
+             .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True).sign(signing, hashes.SHA256()))
+    certfile, keyfile = tmp_path / 'child.pem', tmp_path / 'child-key.pem'
+    certfile.write_bytes(child.public_bytes(serialization.Encoding.PEM) + identity.certfile.read_bytes())
+    keyfile.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+    server = app.ui._test_webhook_server
+    server.socket.context.load_cert_chain(str(certfile), str(keyfile))
+    from poolhouse import http
+    from poolhouse.fleet import tls
+    opened = http.open_stream
+    def clobbered_pin(url, **kwargs):
+        monkeypatch.setitem(http._PINNED, url.split('/')[2], tls.pinned_context(identity.beacon, who=identity))
+        return opened(url, **kwargs)
+    monkeypatch.setattr(http, 'open_stream', clobbered_pin)
+    hits = []
+    monkeypatch.setattr(server.RequestHandlerClass, 'do_POST', lambda handler: hits.append(handler.path))
+    assert send(app, cookie, source, sub)[0] == 409
+    assert hits == []
