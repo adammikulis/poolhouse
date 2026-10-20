@@ -1,6 +1,5 @@
 <style>
 pool-view { display:contents; }
-pool-view #pool { padding:calc(28px * var(--ui-density,1)) calc(32px * var(--ui-density,1)); max-width:1500px; width:100%; }
 pool-view .pool-heading { display:flex; align-items:center; gap:16px; margin-bottom:20px; }
 pool-view .pool-heading h1 { margin:0 0 4px; font-size:1.714rem; } pool-view .pool-heading p { margin:0; color:var(--muted); }
 pool-view #pool-stat { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:24px; }
@@ -28,12 +27,12 @@ pool-view .pool-connections { margin:24px 0; border:1px solid var(--line); borde
 pool-view .pool-connections summary { cursor:pointer; font-weight:600; }
 pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere; }
 @media(max-width:1000px) { pool-view .pool-layout { grid-template-columns:1fr; } }
-@media(max-width:600px) { pool-view #pool { padding:calc(20px * var(--ui-density,1)); } pool-view #pool-stat { grid-template-columns:repeat(2,1fr); } pool-view .stat { flex-wrap:wrap; } }
+@media(max-width:600px) { pool-view #pool-stat { grid-template-columns:repeat(2,1fr); } pool-view .stat { flex-wrap:wrap; } }
 </style>
 <!-- pool-view: the machines on this network, the pools this one is in, and a sweep across them -->
 <template>
-  <main id="pool" hidden>
-    <header class="pool-heading"><div><h1 data-t="devices.title">Devices</h1><p class="sub" id="pool-sub"></p></div></header>
+  <main id="pool" class="page-shell" hidden>
+    <header class="pool-heading page-heading"><div><h1 data-t="devices.title">Devices</h1><p class="sub" id="pool-sub"></p></div></header>
     <div class="stat" id="pool-stat"></div>
     <div class="pool-layout">
       <section aria-label="Pool devices"><div id="pool-cards"></div><section class="pool-jobs"><h2>Jobs on this device</h2><p class="hint">Training and tool jobs managed by this device. Each device card shows its pool slot usage.</p><workspace-jobs></workspace-jobs></section></section>

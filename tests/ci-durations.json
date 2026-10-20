@@ -370,7 +370,6 @@
   "tests/test_ingest_forget.py": 0.1,
   "tests/test_ingest_gold.py": 0.3,
   "tests/test_ingest_import.py": 2.9,
-  "tests/test_ingest_migrate.py": 5.2,
   "tests/test_ingest_pointers.py": 1.9,
   "tests/test_ingest_server_gone.py": 1.7,
   "tests/test_ingest_sources.py": 133.3,

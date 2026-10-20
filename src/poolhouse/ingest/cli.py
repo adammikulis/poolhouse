@@ -20,9 +20,8 @@ from poolhouse.ingest.ask import asked_f1, asked_lines, graph_of, read_asked, sc
 from poolhouse.ingest.extract import PER_SECTION, schema
 from poolhouse.ingest.fold import fold
 from poolhouse.ingest.gold import gold_lines, gold_score, read_gold
-from poolhouse.ingest.migrate import migrate
 from poolhouse.ingest.progress import GIVE_UP, Progress, _folded_at
-from poolhouse.ingest.reads import _read_json, forget_reads
+from poolhouse.ingest.reads import forget_reads
 from poolhouse.ingest.run import Stopped, _read_run, _stopping
 from poolhouse.ingest.sources import show, sources
 from poolhouse.ingest.stats import status
@@ -54,21 +53,6 @@ def _home() -> Path:
 def _jobs_home(home: Path | None = None) -> Path:
     """The `poolhouse.jobs` record directory under an ingest home."""
     return Path(home) / "jobs" if home is not None else _home() / "jobs"
-
-
-def _adopt(home: Path | None = None) -> None:
-    """Take over an ``ingesting.json`` -- a run started before the record moved into
-    `poolhouse.jobs` -- as this machine's ``ingest`` job, so `stop` and `wait` still find it."""
-    old = Path(home) / "ingesting.json" if home is not None else _home() / "ingesting.json"
-    old_record = _read_json(old)
-    if not isinstance(old_record, dict) or not int(old_record.get("pid") or 0):
-        return
-    if not jobs.alive(KIND, home=_jobs_home(home)):
-        jobs.record(KIND, pid=int(old_record["pid"]), argv=old_record.get("argv") or (),
-                    log=str(old_record.get("log") or ""),
-                    started=str(old_record.get("started") or ""),
-                    home=_jobs_home(home), refuse_if_alive=False)
-    old.unlink(missing_ok=True)
 
 
 def detach(argv: Sequence[str]) -> Path:
@@ -108,7 +92,6 @@ def stop(*, say: Callable[[str], None] = say, home: Path | None = None,
     kept either way, and the same command with ``--resume`` reads on.
     """
     where = _jobs_home(home)
-    _adopt(home)
     record = jobs.recorded(KIND, home=where)
     pid = int(record.get("pid") or 0)
     if not pid:
@@ -147,7 +130,6 @@ def wait(*, say: Callable[[str], None] = say, home: Path | None = None,
     ended, saying so every minute -- so the next command can follow it without a loop
     written by hand (`python -m poolhouse.ingest wait && python -m poolhouse.ingest tidy --out ... --model ...`)."""
     where = _jobs_home(home)
-    _adopt(home)
     if not jobs.alive(KIND, home=where):
         say("no detached ingest is running")
         return 0
@@ -156,7 +138,6 @@ def wait(*, say: Callable[[str], None] = say, home: Path | None = None,
 
 def _recorded_alive(home: Path | None = None) -> int:
     """The pid of the detached run this machine records, when it is still alive; else 0."""
-    _adopt(home)
     return jobs.alive(KIND, home=_jobs_home(home))
 
 
@@ -171,7 +152,7 @@ def _out_of(argv: Iterable[str]) -> str:
     return ""
 
 
-_WORDS = ("status", "show", "sources", "ask", "fold", "import", "retry", "tidy", "migrate",
+_WORDS = ("status", "show", "sources", "ask", "fold", "import", "retry", "tidy",
           "embed", "forget")
 """What a run does instead of reading a document, when one is named where a PDF would be."""
 
@@ -198,9 +179,6 @@ def parser() -> argparse.ArgumentParser:
                "  import   a nodes/edges CSV pair another extractor wrote, into this store\n"
                "           as one source -- `import DIR --out STORE`, or the two files\n"
                "  retry    let the units given up on be read again by the next --resume\n"
-               "  migrate  bring a store written before sources were called sources up to\n"
-               "           date: `book:` node ids, their edges, the unit documents, the\n"
-               "           progress file and the reads files\n"
                "  embed    embed every node into the store's vector index --\n"
                "           `embed --out STORE --embed-url URL --embed-model M`\n"
                "  forget   delete the extractions kept beside the store: every\n"
@@ -214,7 +192,7 @@ def parser() -> argparse.ArgumentParser:
                "  wait     block until the detached run has ended\n")
     ap.add_argument("docs", nargs="*", metavar="DOC",
                     help="the PDFs to read; or one of `status`, `show`, `sources`, `ask`, "
-                         "`fold`, `import`, `retry`, `migrate`, `forget`, `stop` (see "
+                         "`fold`, `import`, `retry`, `forget`, `stop` (see "
                          "below), which "
                          "does that and stops. `ask` takes the question after it, `import` "
                          "the CSV pair")
@@ -426,8 +404,6 @@ def _dispatch(args: Any, rest: list[str]) -> int:
             return _ask_run(args)
         if word == "retry":
             return retry(args.out)
-        if word == "migrate":
-            return migrate(args.out)
         if word == "forget":
             return _forget(args.out, source=args.source)
         if word == "embed":

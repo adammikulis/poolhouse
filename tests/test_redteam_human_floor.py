@@ -77,7 +77,7 @@ def commands(tmp_path: Path) -> list[tuple[str, str, str, list[str], str]]:
         ("autostart install", "poolhouse.fleet.autostart", "main",
          ["install", "--manifest", str(tmp_path / "manifest.json")], "yes"),
         ("autostart rollback", "poolhouse.fleet.autostart", "main", ["rollback"], "yes"),
-        ("members open", "poolhouse.fleet.members", "main", ["open", "--print"], ""),
+        ("open", "poolhouse.fleet.launch_open", "main", ["--print"], ""),
     ]
 
 

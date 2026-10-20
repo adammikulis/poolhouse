@@ -10,10 +10,11 @@ from typing import Any
 
 from poolhouse.entities.fold import merged_spans
 from poolhouse.graph.names import plurals
+from poolhouse.graph.store import GraphStore
 from poolhouse.ingest.extract import CORE_KINDS, VERBS
 from poolhouse.ingest.judge import sources_for
 from poolhouse.ingest.progress import Progress
-from poolhouse.ingest.reads import _slug, unit_of, units_of
+from poolhouse.ingest.reads import Damaged, _slug, unit_of, units_of
 from poolhouse.ingest.spans import locate, sentence_span, spans_for
 from poolhouse.log import say
 
@@ -67,8 +68,7 @@ def build(extraction: Mapping[str, Any], unit: Any, *, book_title: str = "", tex
     """One extraction as ``(nodes by id, edges by triple)``, every one pointing at where it came from.
 
     Names are the ids: two sections that both name the same concept are one node whose
-    provenance lists both. Provenance is pointers and nothing else -- unit ids -- because
-    Adam: "provenance should always be pointers to the textbook". The unit document holds
+    provenance lists both. Provenance holds unit pointers. The unit document holds
     the source, chapter, section and pages and points at the run that read it;
     `located()` and `origin()` follow the pointers back.
 
@@ -298,8 +298,7 @@ def write(out: str | Path, graph: Mapping[str, Any], *, source: str, title: str,
     The source itself is a node, so a store holding many can still be asked what came out
     of which; every concept hangs off it by ``read_from``.
 
-    An upsert, and nothing more. Adam: "if the book already exists, it should append new
-    nodes/connect new edges. additive." A node the store lacks is added; one it has keeps
+    An upsert adds missing nodes and edges. A node the store lacks is added; one it has keeps
     what other sources gave it and takes this source's part afresh: ``shares`` is this
     source's mentions per node (the fold's own count, before `absorb` rewrote its ids),
     kept in the ``ingest:shares:<source>`` document so the next fold can replace it;
@@ -313,7 +312,6 @@ def write(out: str | Path, graph: Mapping[str, Any], *, source: str, title: str,
     changed what a read means. ``keep_units`` names the units the source now has: any
     ``ingest:unit:`` document of this source outside it goes with the nodes.
     """
-    from poolhouse.graph.store import GraphStore
 
     source_id = f"source:{source}"
     nodes = [{"id": source_id, "kind": "source", "label": title or source, "mentions": 1,
@@ -442,9 +440,7 @@ def fold_into(out: str | Path, slug: str, *, title: str = "",
 
     Before the upsert the fold goes through `graph.absorbing.absorb`: a name the store already
     holds under case, spacing or plural lands on that node, and a close spelling goes to
-    ``judge`` when there is one (the run's own model, with the unit text in hand). Adam:
-    "the same dedupe mechanism should be used whenever the model is reading a new thing
-    or learning something new and saving to an existing graph." ``absorbed`` on the
+    ``judge`` when there is one (the run's own model, with the unit text in hand). ``absorbed`` on the
     result says how many names landed on existing nodes and how the judge ruled.
 
     Returns the counts: units read, nodes, edges, folds, ``seconds`` -- what the fold and
@@ -456,7 +452,9 @@ def fold_into(out: str | Path, slug: str, *, title: str = "",
     """
     from poolhouse.ingest.sources import Sources
 
+    _current_store(out)
     view = Sources(out)
+    view.validate()
     rows = list(reads) if reads is not None else view.reads(slug)
     state = view.progress.state["sources"].get(slug) or {}
     name = title or str(state.get("title") or "") or slug
@@ -479,7 +477,6 @@ def fold_into(out: str | Path, slug: str, *, title: str = "",
     shares = {str(n["id"]): int(n.get("mentions") or 0) for n in graph["nodes"]}
     if not rebuild and Path(out).expanduser().exists():
         from poolhouse.graph.absorbing import absorb
-        from poolhouse.graph.store import GraphStore
 
         with GraphStore(out) as store:
             taken = absorb(store, graph, judge=judge, sources=texts, log=log)
@@ -510,7 +507,6 @@ def _texts_of(out: str | Path, units: Mapping[str, Any]) -> Callable[[str], str]
 
 def _missing_from(out: str | Path, graph: Mapping[str, Any]) -> tuple[int, int]:
     """How many of a fold's nodes and edges the store does not hold yet."""
-    from poolhouse.graph.store import GraphStore
 
     if not Path(out).expanduser().exists():
         return len(graph.get("nodes") or ()), len(graph.get("edges") or ())
@@ -537,18 +533,15 @@ def fold(out: str | Path, *, source: str = "", rebuild: bool = False, dry_run: b
     line says how many verdicts were replayed, how many name a node the store no longer
     has, and what is left unjudged.
 
-    A store that still names its sources ``book:`` is refused, naming ``migrate``.
+    Unsupported provenance is refused before any store or progress write.
     """
-    from poolhouse.ingest.migrate import pending
     from poolhouse.ingest.sources import Sources
 
-    found = pending(out)
-    if any(found.values()):
-        say(f"{out} still names its sources `book:` -- {found['nodes']} node(s), "
-            f"{found['edges']} edge(s), {found['docs']} document(s), {found['rows']} reads "
-            f"row(s) and {found['progress']} progress entry(s). A fold would write "
-            f"`source:` beside them and the store would hold each source twice. Run "
-            f"python -m poolhouse.ingest migrate --out {out} first")
+    try:
+        _current_store(out)
+        Sources(out).validate()
+    except Damaged as exc:
+        say(str(exc))
         return 1
     view = Sources(out)
     wanted = [s for s in view.sources() if s.units and (not source or s.slug == source)]
@@ -569,7 +562,6 @@ def fold(out: str | Path, *, source: str = "", rebuild: bool = False, dry_run: b
             + (f" into {out}" if not dry_run else "")
             + ("  -- partial" if got["partial"] else ""))
     if not dry_run:
-        from poolhouse.graph.store import GraphStore
         from poolhouse.graph.tidy import tidy
 
         say("kept: " + tidy(out, dry_run=False).said())
@@ -582,3 +574,18 @@ def fold(out: str | Path, *, source: str = "", rebuild: bool = False, dry_run: b
             return 1
         say(f"{out}: reads back whole")
     return 0
+
+
+def _current_store(out: str | Path) -> None:
+    """Require current source provenance before any fold mutates an existing store."""
+
+    if not Path(out).expanduser().exists():
+        return
+    with GraphStore(out, read_only=True) as store:
+        nodes = {node['id']: node for node in store.nodes()}
+        for edge in store.edges('read_from'):
+            target = nodes.get(edge['target'], {})
+            slug = (target.get('attrs') or {}).get('source')
+            if (target.get('kind') != 'source' or not isinstance(slug, str) or not slug
+                    or target.get('id') != f'source:{slug}'):
+                raise Damaged('Unsupported ingest provenance; start a fresh current store.')

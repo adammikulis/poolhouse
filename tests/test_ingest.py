@@ -906,24 +906,26 @@ def test_stop_ends_the_recorded_run_and_says_so_when_there_is_none(tmp_path, cap
             child.kill()
 
 
-def test_a_run_recorded_before_the_record_moved_into_jobs_is_still_stopped(tmp_path, capsys):
-    """An ``ingesting.json`` written by the code that kept its own record: `stop` adopts it
-    as this machine's ``ingest`` job and ends it."""
-    import json as _json
+def test_stale_ingesting_record_never_adopts_or_signals_a_process(tmp_path):
     import subprocess
-    import sys
+
+    from poolhouse.ingest.cli import _recorded_alive
 
     child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
-    (tmp_path / "ingesting.json").write_text(_json.dumps({"pid": child.pid, "argv": []}))
+    record = tmp_path / "ingesting.json"
+    payload = json.dumps({"pid": child.pid, "argv": []})
+    record.write_text(payload)
     try:
-        assert ingest.stop(home=tmp_path) == 0
-        child.wait(timeout=10)
-        assert "--resume" in capsys.readouterr().out
-        assert not (tmp_path / "ingesting.json").exists(), "the old record is taken over"
-        assert not (tmp_path / "jobs" / "ingest.json").exists()
+        for _ in range(2):
+            assert ingest.stop(home=tmp_path, say=lambda _: None) == 1
+            assert ingest.wait(home=tmp_path, say=lambda _: None) == 0
+            assert _recorded_alive(home=tmp_path) == 0
+            assert child.poll() is None
+            assert record.read_text() == payload
+            assert not jobs.recorded("ingest", home=tmp_path / "jobs")
     finally:
-        if child.poll() is None:
-            child.kill()
+        child.terminate()
+        child.wait(timeout=10)
 
 
 def test_a_failed_unit_keeps_the_whole_reply_for_reading_later(monkeypatch):

@@ -25,7 +25,6 @@ test_graph_tidy.py
 test_graph_tidy_judge.py
 test_ingest.py
 test_ingest_ask.py
-test_ingest_migrate.py
 test_ingest_sources.py
 test_no_data_files.py
 test_pre_push.py

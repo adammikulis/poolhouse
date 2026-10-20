@@ -3,8 +3,8 @@
  "by_status": {
   "covered": 606,
   "partial": 193,
-  "uncovered": 52,
-  "n/a": 73,
+  "uncovered": 51,
+  "n/a": 74,
   "unmapped": 0
  },
  "by_kind": {
@@ -19,7 +19,7 @@
    "covered": 7,
    "partial": 5,
    "uncovered": 0,
-   "n/a": 19,
+   "n/a": 20,
    "unmapped": 0
   },
   "context": {
@@ -81,7 +81,7 @@
   "parser": {
    "covered": 92,
    "partial": 0,
-   "uncovered": 48,
+   "uncovered": 47,
    "n/a": 0,
    "unmapped": 0
   },
@@ -717,6 +717,16 @@
    "id": "cli:poolhouse-node",
    "kind": "cli",
    "source": "poolhouse.node_permission:main",
+   "trust": "the person at a terminal; arguments may carry text from outside",
+   "attacker": "hostile argument text or path reaches the command",
+   "status": "n/a",
+   "tests": [],
+   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
+  },
+  {
+   "id": "cli:poolhouse-open",
+   "kind": "cli",
+   "source": "poolhouse.fleet.launch_open:main",
    "trust": "the person at a terminal; arguments may carry text from outside",
    "attacker": "hostile argument text or path reaches the command",
    "status": "n/a",
@@ -3866,6 +3876,20 @@
    "note": "install and rollback refuse any agent marker or missing terminal before reading the manifest; an expired, replayed, other-device, tampered or redirected manifest writes nothing"
   },
   {
+   "id": "human:fleet/launch_open.py:_open",
+   "kind": "human",
+   "source": "fleet/launch_open.py:_open",
+   "trust": "an agent process or a member",
+   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_person_session.py::test_the_open_command_hands_an_agent_or_a_pipe_nothing",
+    "tests/test_redteam_person_session.py::test_the_open_command_hands_a_person_at_a_terminal_a_one_use_address",
+    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent"
+   ],
+   "note": "A process an agent started and a process with no terminal get no ticket from a live daemon; a person at a terminal gets an address that signs in once"
+  },
+  {
    "id": "human:fleet/launch_secret.py:_private_directory",
    "kind": "human",
    "source": "fleet/launch_secret.py:_private_directory",
@@ -3881,20 +3905,6 @@
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
-  },
-  {
-   "id": "human:fleet/members.py:cmd_open",
-   "kind": "human",
-   "source": "fleet/members.py:cmd_open",
-   "trust": "an agent process or a member",
-   "attacker": "an agent or a forged grant takes an action only a person may take",
-   "status": "covered",
-   "tests": [
-    "tests/test_redteam_person_session.py::test_the_open_command_hands_an_agent_or_a_pipe_nothing",
-    "tests/test_redteam_person_session.py::test_the_open_command_hands_a_person_at_a_terminal_a_one_use_address",
-    "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent"
-   ],
-   "note": "A process an agent started and a process with no terminal get no ticket from a live daemon; a person at a terminal gets an address that signs in once"
   },
   {
    "id": "human:fleet/members_cli.py:cmd_add",
@@ -7195,16 +7205,6 @@
    "id": "parser:ingest/imports.py",
    "kind": "parser",
    "source": "ingest/imports.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "uncovered",
-   "tests": [],
-   "note": "a crafted model-repository listing, card, document, mailbox, WAV or archive reaches the reader; only tests/test_hub_modelfile.py attacks one"
-  },
-  {
-   "id": "parser:ingest/migrate.py",
-   "kind": "parser",
-   "source": "ingest/migrate.py",
    "trust": "files, pages and archives from outside",
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "uncovered",

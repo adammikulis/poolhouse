@@ -7,7 +7,6 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from poolhouse import lock
-from poolhouse.fleet.conversation_legacy import read_legacy
 from poolhouse.fleet.conversation_settings import checked
 from poolhouse.fleet.conversation_types import Conversation, Message
 from poolhouse.graph.columns import column
@@ -15,7 +14,6 @@ from poolhouse.graph.store import GraphStore
 
 CONVERSATION = "conversation"
 MESSAGE = "conversation-message"
-SCHEMA = "_conversations"
 
 
 def node_id(cid: str) -> str:
@@ -26,17 +24,6 @@ def node_id(cid: str) -> str:
 def opened(root: Path) -> Iterator[GraphStore]:
     with (lock.only_one(root / "conversations.lock", timeout=30, announce=lambda text: None),
           GraphStore(root / "conversations.db", buffer_pool_size=32 << 20, max_db_size=1 << 30) as graph):
-        if graph.get_doc(SCHEMA, {}).get("version") != 1:
-            with graph.transaction():
-                imported = 0
-                for path in root.glob("*.json"):
-                    conversation = read_legacy(path)
-                    if conversation is not None:
-                        save(graph, conversation)
-                        for sequence, message in enumerate(conversation.messages):
-                            append(graph, conversation, message, sequence)
-                        imported += 1
-                graph.put_doc(SCHEMA, {"version": 1, "imported": imported})
         yield graph
 
 

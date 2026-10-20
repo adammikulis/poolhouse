@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from poolhouse.ingest.reads import Read, _read_json, _write_json
+from poolhouse.ingest.reads import Damaged, Read, _read_json, _write_json
 
 __all__ = ["GIVE_UP", "Progress"]
 
@@ -26,7 +26,15 @@ class Progress:
         self.path = Path(path).expanduser()
         self.state: dict[str, Any] = {"started": time.strftime("%FT%T"), "sources": {}}
         held = _read_json(self.path)
-        if isinstance(held, dict) and isinstance(held.get("sources"), dict):
+        if self.path.exists():
+            if (not isinstance(held, dict) or not isinstance(held.get("sources"), dict)
+                    or any(not isinstance(slug, str) or not slug
+                           or not isinstance(row, dict) or not isinstance(row.get("done"), dict)
+                           or any(not isinstance(unit, str) or not unit
+                                  or not isinstance(entry, dict)
+                                  for unit, entry in row["done"].items())
+                           for slug, row in held["sources"].items())):
+                raise Damaged("Unsupported ingest progress; start a fresh current store.")
             self.state = held
 
     @staticmethod

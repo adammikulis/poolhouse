@@ -21,7 +21,7 @@ Refusal shapes: `X is for a person; this process was started by an agent (CLAUDE
 | recovery `passphrase` | `fleet/recovery.py:149` | the pool passphrase | none |
 | onboard `signing export/rotate/revoke/confirm/accept` | `fleet/onboard/signing_cli.py` | the signing key | `signing show` is open |
 | `poolhouse-security review` | `sentinel/review.py:209` | the review screen | none |
-| `poolhouse-members open` | `fleet/members.py:212` | a signed-in ticket to the owner's page | none |
+| `poolhouse open` | `fleet/launch_open.py:main` | a signed-in ticket to the owner's page | none |
 | `poolhouse-workspace file delete`, `quarantine-release` | `workspace/filecli.py:292`, `mail_cli.py:123` | irreversible deletion; held messages | none through these |
 | chat tool names matching release, approv, grant, mint, sentinel, polic, guard, role, rule, request, answer | `chatpolicy.py:90-155` | the same actions as chat tools | none |
 | `git push` naming `main`; `--all`, `--tags`, `--mirror`, `--delete`, `--force` | `claude-bash-guard:102-113` | the owner's release; history | `main`: `person-consume propose`, a person selects the approval |
@@ -67,4 +67,4 @@ Refusal shapes: `X is for a person; this process was started by an agent (CLAUDE
 
 - A lead agent can run `authority set` and `authority preset`; only subagents are refused (`authority_cli.py:49-54`). No gate protects the registry.
 - In dev an agent can answer requests (`requests.answer`) and export the recovery key (`fleet.recovery`).
-- The onboarding journey (AGENTS.md section 2) is blocked today by: the network-on step in a terminal, the first phone, `roster add` for devices the beacon does not reach, autostart `install`, the owner's page (`members open`), and the hidden pool token.
+- The onboarding journey (AGENTS.md section 2) is blocked today by: the network-on step in a terminal, the first phone, `roster add` for devices the beacon does not reach, autostart `install`, the owner's page (`open`), and the hidden pool token.

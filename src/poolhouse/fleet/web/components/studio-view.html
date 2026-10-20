@@ -203,6 +203,7 @@
         this.setupHeaderCommands();
         M.onRoute((route) => {
           this.loadContext++;
+          this.dispatchEvent(new CustomEvent("studio-context"));
           this.host.hidden = route !== "studio";
           if (route === "studio") this.perform(() => this.load());
           else { this.n8nDialog?.close(); clearTimeout(this.poll); this.stopLive(); }
@@ -283,20 +284,21 @@
         } finally {
           if (request === this.loadRequest) {
             this.loading = false;
+            this.dispatchEvent(new CustomEvent("studio-load-settled", {detail:{context:initial.context,ready}}));
             live.disabled = !ready || this.host.hidden;
             if (initial.context !== this.loadContext && this.isConnected && !this.host.hidden)
               this.perform(() => this.load());
           }
         }
       }
-      add(spec, position) {
+      add(spec, position, bindings = {}) {
         this.checkpoint();
         const node = {
           id: S.id(),
           type: spec.type,
           version: spec.version,
           parameters: S.defaults(spec),
-          bindings: {},
+          bindings: structuredClone(bindings),
         };
         this.graph.nodes.push(node);
         this.graph.layout.nodes[node.id] = position || {

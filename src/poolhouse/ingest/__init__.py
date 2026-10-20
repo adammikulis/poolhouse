@@ -60,8 +60,7 @@ graph.
 The modules: `reads` (a unit's `Read`, and the files beside the store), `extract` (one
 section through the model), `vocabulary` (the verbs and kinds a store is read with, core
 and extension), `fold` (extractions into a graph, and into the store), `progress` (how far
-a run has got), `sources` (what has been read), `migrate` (a store written before the
-rename, brought up to date), `judge` (the run record and the judge a fold hands close
+a run has got), `sources` (what has been read), `judge` (the run record and the judge a fold hands close
 spellings to), `gold` (the extraction scored), `ask` (the store asked questions),
 `serving` (the model a run reads with), `run` (the read run), `embed` (the store given a
 vector index) and `cli` (the command).
@@ -168,15 +167,6 @@ from poolhouse.ingest.judge import (
     sources_for as sources_for,
     write_run as write_run,
 )
-from poolhouse.ingest.migrate import (
-    NEW_PREFIX as NEW_PREFIX,
-    OLD_PREFIX as OLD_PREFIX,
-    _rewrite as _rewrite,
-    _rewrite_progress as _rewrite_progress,
-    _rewrite_reads as _rewrite_reads,
-    migrate as migrate,
-    pending as pending,
-)
 from poolhouse.ingest.progress import (
     GIVE_UP as GIVE_UP,
     Progress as Progress,
@@ -250,7 +240,7 @@ __all__ = ["CONFIDENCE", "CORE", "CORE_KINDS", "FOLD_EVERY", "FOLD_SECONDS", "IN
            "asked_lines", "bring", "build", "closed", "core_kinds", "core_verbs", "detach",
            "embed_store", "extract_unit", "fenced", "fold", "fold_into", "fold_source",
            "gold_score", "graph_of", "home_dir", "import_lines", "imported", "instructions",
-           "locate", "main", "marked", "migrate", "quote", "read_asked", "read_gold",
+           "locate", "main", "marked", "quote", "read_asked", "read_gold",
            "reader_for", "run_attrs", "run_stats", "sayable", "schema", "score_asked",
            "sentence_span", "show", "sources", "spans_for", "status", "texts_for", "unit_of",
            "units_of", "unsourced", "vague", "verb_for", "write"]
