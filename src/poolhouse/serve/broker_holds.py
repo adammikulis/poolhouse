@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 from poolhouse import leasetable
 from poolhouse.node_health import Refused
 from poolhouse.serve import admission
+from poolhouse.serve.broker_lifecycle import admitted
 from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.process import started_at
 
@@ -41,6 +42,7 @@ class BrokerHolds:
         @staticmethod
         def _held_said(held: Any) -> str: ...
 
+    @admitted
     def claim(self, name: str, pid: int, info: Mapping[str, Any], *,
               timeout: float | None = 0.0, connected: Callable[[], bool] | None = None) -> dict[str, Any]:
         """Claim for this process generation; None waits until admission or cancellation."""
@@ -128,6 +130,7 @@ class BrokerHolds:
                 self.table.release(held["lease"])
         return True
 
+    @admitted
     def take_cores(self, pid: int, want: int) -> dict[str, Any]:
         """Cores for ``pid`` to run tests on: ``want`` at most, what is free at least one.
 
@@ -157,6 +160,7 @@ class BrokerHolds:
                 self.table.acquire([leasetable.memory(mb)], leasetable.Terms(
                     tag=f"unmanaged.{proc['port']}.{proc['pid']}", pid=int(proc["pid"]), ttl_s=admission.KEEP_S, wait=False))
 
+    @admitted
     def keep_leases(self) -> None:
         """Renew what this broker holds in the node's table: the lease of every live server on the registry (taken again when the
         node holds none) and of every claim."""
