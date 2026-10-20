@@ -159,7 +159,8 @@ models-view .model-loading{padding:28px;border-radius:16px;background:var(--bg-r
           }
         }
       } catch (error) {
-        this.note.replaceChildren(el("div", { class: "err" }, `Could not start ${name}: ${error.message}`));
+        if (session === M.sessionContext() && M.route === 'models')
+          this.note.replaceChildren(el("div", { class: "err" }, `Could not start ${name}: ${error.message}`));
       } finally {
         this.starting.delete(name);
         this.browser.setLoading(name, false);

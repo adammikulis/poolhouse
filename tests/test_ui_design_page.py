@@ -38,6 +38,7 @@ def route(request, state):
         if method == "POST":
             if state["delay_serve"]:
                 state["pending"] = request
+                request.request.frame.page.locator("body").evaluate("node => node.dataset.serveHeld = 'true'")
                 return
             if state["serve_error"]:
                 body = {"error": state["serve_error"]}
@@ -353,4 +354,22 @@ def test_stream_cancel_error_and_empty_response_restore_send(app, end):
     page.locator("#chat-note").get_by_text(text, exact=True).wait_for()
     assert page.get_by_role("button", name="Send", exact=True).is_enabled()
     assert page.get_by_role("button", name="Stop", exact=True).is_hidden()
+    assert not errors
+
+
+@pytest.mark.parametrize('action', ['route', 'signout'])
+def test_failed_model_start_cannot_publish_error_after_context_changes(app, action):
+    page, state, errors = app
+    discover(page)
+    state['delay_serve'] = True
+    page.locator("[data-model='quill-27B.gguf']").get_by_role('button', name='Start model', exact=True).click()
+    page.get_by_role('button', name='Loading…', exact=True).wait_for()
+    page.locator('body[data-serve-held=true]').wait_for()
+    if action == 'route':
+        page.evaluate("fleetModel.go('pool')")
+    else:
+        page.evaluate('fleetModel.signOut()')
+    state['pending'].abort('failed')
+    page.wait_for_function('() => !document.querySelector("models-view").starting.size')
+    assert 'Could not start' not in page.locator('#models-note').text_content()
     assert not errors
