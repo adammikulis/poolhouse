@@ -17,7 +17,7 @@
       const selected = this.webhookProvider.value;
       this.webhookProviders = providers || [];
       this.webhookProvider.replaceChildren(E('option', {value: ''}, 'Choose a provider…'),
-        ...this.webhookProviders.map((provider) => E('option', {value: provider.id, disabled: !['local-synthetic', 'paired-software-producer'].includes(provider.id) || provider.available !== true},
+        ...this.webhookProviders.map((provider) => E('option', {value: provider.id, disabled: !['local-synthetic', 'software-producer'].includes(provider.id) || provider.available !== true},
           provider.label + (provider.available === true ? '' : ' · unavailable'))));
       if (selected && !this.webhookProviders.some((provider) => provider.id === selected))
         this.webhookProvider.append(E('option', {value: selected, disabled: true}, 'Previously selected provider is unavailable. Choose another provider explicitly.'));
@@ -26,12 +26,12 @@
     },
     webhookProviderDetails() {
       const provider = this.webhookProviders?.find((row) => row.id === this.webhookProvider.value);
-      const supported = ['local-synthetic', 'paired-software-producer'].includes(provider?.id);
+      const supported = ['local-synthetic', 'software-producer'].includes(provider?.id);
       const selectionReady = this.producerCreateReady(provider);
       const ready = supported && provider.available === true && selectionReady;
-      this.webhookCreate.textContent = provider?.id === 'paired-software-producer' ? 'Pair software producer' : 'Add webhook source';
+      this.webhookCreate.textContent = provider?.id === 'software-producer' ? 'Connect publisher' : 'Add webhook source';
       this.webhookCreate.disabled = !ready;
-      this.webhookProviderInfo.textContent = provider?.id === 'paired-software-producer' && provider.available === true ? 'Select an exact live software offer and device. Pairing stays separate from Start.' : ready ? 'Local synthetic sender. Adding a source does not start a stream or send a test.' :
+      this.webhookProviderInfo.textContent = provider?.id === 'software-producer' && provider.available === true ? 'Select an exact live software offer and device. Connecting stays separate from Start.' : ready ? 'Local synthetic sender. Adding a source does not start a stream or send a test.' :
         provider?.requirements?.join('; ') || 'No supported webhook provider is currently available.';
     },
     webhookDraftSnapshot() {
@@ -41,7 +41,7 @@
     },
     async createWebhookSource() {
       const provider = this.webhookProviders?.find((row) => row.id === this.webhookProvider.value);
-      if (!['local-synthetic', 'paired-software-producer'].includes(provider?.id) || provider.available !== true) throw Error('Choose an available webhook provider.');
+      if (!['local-synthetic', 'software-producer'].includes(provider?.id) || provider.available !== true) throw Error('Choose an available webhook provider.');
       const label = this.webhookName.value.trim();
       if (!label) throw Error('Give this webhook source a name.');
       const snapshot = this.webhookDraftSnapshot();
@@ -58,7 +58,7 @@
       if (!source) throw Error('The created webhook source is unavailable. Refresh sources before choosing it.');
       this.liveSource.value = source.id; this.liveSourceDetails(); this.webhookName.value = '';
       this.liveNote.textContent = provider.id === 'local-synthetic' ? 'Built-in synthetic webhook source added. Create a paused stream, then start it explicitly before sending a test.' :
-        'Software source created · pairing ' + (source.pairing?.state || 'unavailable') + '. Create a paused stream and start it explicitly.';
+        'Software source created · connection ' + (source.connection?.state || 'unavailable') + '. Create a paused stream and start it explicitly.';
     },
     clearWebhook() {
       this.webhookProviders = []; this.webhookProvider.replaceChildren(); this.webhookProviderInfo.textContent = '';
@@ -71,7 +71,7 @@
     },
     webhookActions(source, sub, action, previousSample, sampleFocused) {
       if (source?.kind !== 'webhook') return;
-      if (source.provider === 'paired-software-producer') { this.producerStreamSummary(source); return; }
+      if (source.provider === 'software-producer') { this.producerStreamSummary(source); return; }
       if (source.provider !== 'local-synthetic') return;
       this.liveActions.append(E('p', {}, 'Built-in test sender · local synthetic. No external account is connected.'));
       const sample = E('select', {'aria-label': 'Registered webhook sample'},

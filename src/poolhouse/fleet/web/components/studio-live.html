@@ -115,7 +115,7 @@
       this.liveSourceInfo.replaceChildren(); this.renderProducerStatus();
       if (!source) return;
       this.liveSourceInfo.append(E('p', {}, source.available === false ? 'Unavailable: ' + (source.requirements || []).join('; ') :
-        source.origin === 'native' ? 'Watches the original selected file or folder.' : source.origin === 'managed' ? 'Watches the uploaded managed copy.' : source.kind === 'examples' ? 'Registered synthetic records; send one explicitly after starting.' : source.provider === 'local-synthetic' ? 'Built-in test sender · local synthetic. No external account is connected.' : source.provider === 'paired-software-producer' ? 'Live records from paired software. No synthetic sample sender is used.' : 'Source provider: ' + source.kind));
+        source.origin === 'native' ? 'Watches the original selected file or folder.' : source.origin === 'managed' ? 'Watches the uploaded managed copy.' : source.kind === 'examples' ? 'Registered synthetic records; send one explicitly after starting.' : source.provider === 'local-synthetic' ? 'Built-in test sender · local synthetic. No external account is connected.' : source.provider === 'software-producer' ? 'Live records from connected software. No synthetic sample sender is used.' : 'Source provider: ' + source.kind));
       if (source.requirements?.length && source.available !== false) this.liveSourceInfo.append(E('p', {}, source.requirements.join('; ')));
     },
     async liveMutation(path, body, method = 'POST', current = () => true) {
