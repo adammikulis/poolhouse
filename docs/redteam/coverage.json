@@ -1,7 +1,7 @@
 {
- "surfaces": 916,
+ "surfaces": 925,
  "by_status": {
-  "covered": 598,
+  "covered": 607,
   "partial": 193,
   "uncovered": 52,
   "n/a": 73,
@@ -37,14 +37,14 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 60,
+   "covered": 62,
    "partial": 46,
    "uncovered": 0,
    "n/a": 1,
    "unmapped": 0
   },
   "handler": {
-   "covered": 25,
+   "covered": 31,
    "partial": 2,
    "uncovered": 0,
    "n/a": 0,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 93,
+   "covered": 94,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -2043,6 +2043,30 @@
    "note": "The original SDK process retains one authenticated daemon anchor and offer-specific bridge generation. Fresh control and DATA connections verify actual kernel endpoint processes before application bytes, with exact control TLS certificate checks and bounded fixed schemas. Wrong or replaced endpoints receive no record bytes; inherited clients fail after fork. An explicit retry carries its stable command key without replacement data; there is no automatic uncertain resend. These isolated transport tests do not establish complete provider enrollment, current source authorization or durable event admission; deliberate forwarding by an already authorized connector remains outside kernel connector proof."
   },
   {
+   "id": "egress:fleet/producer_devices.py:Devices.request",
+   "kind": "egress",
+   "source": "src/poolhouse/fleet/producer_devices.py",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_devices.py::test_existing_self_and_cached_receivers_need_no_network_even_under_store_lock",
+    "tests/test_producer_devices.py::test_fixed_requests_inspect_and_intent_actions_use_only_authenticated_mapping",
+    "tests/test_producer_devices.py::test_cached_addresses_never_override_current_pool_identity_or_membership",
+    "tests/test_producer_devices.py::test_removed_member_during_request_discards_response",
+    "tests/test_producer_devices.py::test_discovery_never_accepts_ambiguous_same_certificate_or_unknown_target",
+    "tests/test_producer_devices.py::test_offer_collision_or_changed_address_never_remaps_original_offer",
+    "tests/test_producer_devices.py::test_private_offer_must_match_authenticated_producer_and_intended_receiver",
+    "tests/test_producer_devices.py::test_no_generic_compute_url_or_schema_fallback",
+    "tests/test_producer_devices.py::test_machine_identity_is_read_only_and_never_created_or_followed",
+    "tests/test_producer_devices.py::test_private_control_callback_cannot_adopt_another_context",
+    "tests/test_producer_devices.py::test_actual_self_adapter_uses_existing_identity_over_sealed_tls",
+    "tests/test_producer_devices.py::test_original_control_descriptor_is_never_silently_replaced",
+    "tests/test_producer_devices.py::test_self_listener_unavailable_during_refresh_denies_discovery_cleanly"
+   ],
+   "note": "Actual isolated device, roster and transport adapter checks pin the selected pool, existing machine identity, enrolled certificate, cached endpoint and immutable daemon descriptor. One actual sealed TLS self-request uses the existing identity. Discovery grants no source authority; full producer process and factory composition are separate requirements."
+  },
+  {
    "id": "egress:fleet/producer_host.py:ProducerHost._authorization",
    "kind": "egress",
    "source": "src/poolhouse/fleet/producer_host.py",
@@ -2113,6 +2137,26 @@
     "tests/test_producer_process.py::test_retry_after_source_revocation_does_not_forward"
    ],
    "note": "A private owned Unix listener accepts fresh original SDK process connections and forwards fixed generic JSON publication, receipt or explicit retry requests under the inherited source capability to the exact daemon TLS/control process. Complete binding validation, original listener inode, one-frame dispatch, parent death and cancellation-aware partial reads/writes are exercised under the original deadline. No source HMAC or device secret is exposed to the SDK. Isolated forwarding tests do not establish complete receiver admission, current source authorization, durable delivery or an installed producer journey; those remain factory obligations."
+  },
+  {
+   "id": "egress:fleet/producer_publications.py:Publications._send",
+   "kind": "egress",
+   "source": "src/poolhouse/fleet/producer_publications.py",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_publications.py::test_actual_admission_and_immutable_duplicate_send_only_once",
+    "tests/test_producer_publications.py::test_uncertain_ack_reconciles_exact_original_inbox_without_resending",
+    "tests/test_producer_publications.py::test_receipt_state_may_advance_while_the_same_exact_ack_is_read",
+    "tests/test_producer_publications.py::test_transport_failure_or_plain429_is_unknown_and_blocks_other_ids",
+    "tests/test_producer_publications.py::test_only_definitive_marker_permits_explicit_attempt_bound_retry",
+    "tests/test_producer_publications.py::test_grant_change_never_adopts_original_event_into_new_execution_authority",
+    "tests/test_producer_publications.py::test_revocation_between_claim_and_ingress_leaves_unknown_without_event",
+    "tests/test_producer_publications.py::test_alternate_sealed_device_and_source_binding_cannot_publish",
+    "tests/test_producer_publications.py::test_source_reconfiguration_cannot_reuse_old_business_event_identity"
+   ],
+   "note": "Actual isolated publication log, admission and inbox transactions at a controlled sender boundary verify one claimed send, immutable business event identity, server-derived grants, exact accepted receipts, terminal rejection evidence and deliberate retry. Wrong or missing acknowledgements remain interrupted until receipt reconciliation. These tests do not claim the real sender, TLS or full process/factory journey."
   },
   {
    "id": "egress:fleet/project_client.py:read",
@@ -3237,6 +3281,78 @@
    "note": "Each connection dispatches one fixed operation after current daemon and actual process checks. Ordinary clients cannot choose private bridge operations; current bridge admission is independently rechecked. Post-dispatch revocation suppresses a reply without repeating the callback. Response retention preserves endpoint verification within the original deadline and cannot append a second response. The fixed factory must separately authorize source capabilities and bound its callbacks; complete producer admission is not claimed by this primitive."
   },
   {
+   "id": "handler:fleet/producer_devices.py:Devices.control",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_devices.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_devices.py::test_existing_self_and_cached_receivers_need_no_network_even_under_store_lock",
+    "tests/test_producer_devices.py::test_fixed_requests_inspect_and_intent_actions_use_only_authenticated_mapping",
+    "tests/test_producer_devices.py::test_cached_addresses_never_override_current_pool_identity_or_membership",
+    "tests/test_producer_devices.py::test_removed_member_during_request_discards_response",
+    "tests/test_producer_devices.py::test_discovery_never_accepts_ambiguous_same_certificate_or_unknown_target",
+    "tests/test_producer_devices.py::test_offer_collision_or_changed_address_never_remaps_original_offer",
+    "tests/test_producer_devices.py::test_private_offer_must_match_authenticated_producer_and_intended_receiver",
+    "tests/test_producer_devices.py::test_no_generic_compute_url_or_schema_fallback",
+    "tests/test_producer_devices.py::test_machine_identity_is_read_only_and_never_created_or_followed",
+    "tests/test_producer_devices.py::test_private_control_callback_cannot_adopt_another_context",
+    "tests/test_producer_devices.py::test_actual_self_adapter_uses_existing_identity_over_sealed_tls",
+    "tests/test_producer_devices.py::test_original_control_descriptor_is_never_silently_replaced",
+    "tests/test_producer_devices.py::test_self_listener_unavailable_during_refresh_denies_discovery_cleanly"
+   ],
+   "note": "Actual isolated device, roster and transport adapter checks pin the selected pool, existing machine identity, enrolled certificate, cached endpoint and immutable daemon descriptor. One actual sealed TLS self-request uses the existing identity. Discovery grants no source authority; full producer process and factory composition are separate requirements."
+  },
+  {
+   "id": "handler:fleet/producer_devices.py:Devices.discover",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_devices.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_devices.py::test_existing_self_and_cached_receivers_need_no_network_even_under_store_lock",
+    "tests/test_producer_devices.py::test_fixed_requests_inspect_and_intent_actions_use_only_authenticated_mapping",
+    "tests/test_producer_devices.py::test_cached_addresses_never_override_current_pool_identity_or_membership",
+    "tests/test_producer_devices.py::test_removed_member_during_request_discards_response",
+    "tests/test_producer_devices.py::test_discovery_never_accepts_ambiguous_same_certificate_or_unknown_target",
+    "tests/test_producer_devices.py::test_offer_collision_or_changed_address_never_remaps_original_offer",
+    "tests/test_producer_devices.py::test_private_offer_must_match_authenticated_producer_and_intended_receiver",
+    "tests/test_producer_devices.py::test_no_generic_compute_url_or_schema_fallback",
+    "tests/test_producer_devices.py::test_machine_identity_is_read_only_and_never_created_or_followed",
+    "tests/test_producer_devices.py::test_private_control_callback_cannot_adopt_another_context",
+    "tests/test_producer_devices.py::test_actual_self_adapter_uses_existing_identity_over_sealed_tls",
+    "tests/test_producer_devices.py::test_original_control_descriptor_is_never_silently_replaced",
+    "tests/test_producer_devices.py::test_self_listener_unavailable_during_refresh_denies_discovery_cleanly"
+   ],
+   "note": "Actual isolated device, roster and transport adapter checks pin the selected pool, existing machine identity, enrolled certificate, cached endpoint and immutable daemon descriptor. One actual sealed TLS self-request uses the existing identity. Discovery grants no source authority; full producer process and factory composition are separate requirements."
+  },
+  {
+   "id": "handler:fleet/producer_devices.py:Devices.inspect",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_devices.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_devices.py::test_existing_self_and_cached_receivers_need_no_network_even_under_store_lock",
+    "tests/test_producer_devices.py::test_fixed_requests_inspect_and_intent_actions_use_only_authenticated_mapping",
+    "tests/test_producer_devices.py::test_cached_addresses_never_override_current_pool_identity_or_membership",
+    "tests/test_producer_devices.py::test_removed_member_during_request_discards_response",
+    "tests/test_producer_devices.py::test_discovery_never_accepts_ambiguous_same_certificate_or_unknown_target",
+    "tests/test_producer_devices.py::test_offer_collision_or_changed_address_never_remaps_original_offer",
+    "tests/test_producer_devices.py::test_private_offer_must_match_authenticated_producer_and_intended_receiver",
+    "tests/test_producer_devices.py::test_no_generic_compute_url_or_schema_fallback",
+    "tests/test_producer_devices.py::test_machine_identity_is_read_only_and_never_created_or_followed",
+    "tests/test_producer_devices.py::test_private_control_callback_cannot_adopt_another_context",
+    "tests/test_producer_devices.py::test_actual_self_adapter_uses_existing_identity_over_sealed_tls",
+    "tests/test_producer_devices.py::test_original_control_descriptor_is_never_silently_replaced",
+    "tests/test_producer_devices.py::test_self_listener_unavailable_during_refresh_denies_discovery_cleanly"
+   ],
+   "note": "Actual isolated device, roster and transport adapter checks pin the selected pool, existing machine identity, enrolled certificate, cached endpoint and immutable daemon descriptor. One actual sealed TLS self-request uses the existing identity. Discovery grants no source authority; full producer process and factory composition are separate requirements."
+  },
+  {
    "id": "handler:fleet/producer_host.py:ProducerHost.accepts",
    "kind": "handler",
    "source": "src/poolhouse/fleet/producer_host.py",
@@ -3443,6 +3559,66 @@
     "tests/test_producer_process.py::test_runtime_verification_precedes_fixed_child_command"
    ],
    "note": "One retained child is launched from a fixed verified managed runtime, with maintained reader admission spanning verification, launch and child lifetime. The listener is inert before exact private binding/capability activation; lost acknowledgement, changed binding and reentrant stop cannot adopt, relaunch or revive it. Tests use actual isolated CPU child processes. The factory must retain this owner before preparation and independently establish durable owner intent plus receiver acknowledgement before activation; this lifecycle primitive grants neither."
+  },
+  {
+   "id": "handler:fleet/producer_publications.py:Publications.current",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_publications.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_publications.py::test_actual_admission_and_immutable_duplicate_send_only_once",
+    "tests/test_producer_publications.py::test_uncertain_ack_reconciles_exact_original_inbox_without_resending",
+    "tests/test_producer_publications.py::test_receipt_state_may_advance_while_the_same_exact_ack_is_read",
+    "tests/test_producer_publications.py::test_transport_failure_or_plain429_is_unknown_and_blocks_other_ids",
+    "tests/test_producer_publications.py::test_only_definitive_marker_permits_explicit_attempt_bound_retry",
+    "tests/test_producer_publications.py::test_grant_change_never_adopts_original_event_into_new_execution_authority",
+    "tests/test_producer_publications.py::test_revocation_between_claim_and_ingress_leaves_unknown_without_event",
+    "tests/test_producer_publications.py::test_alternate_sealed_device_and_source_binding_cannot_publish",
+    "tests/test_producer_publications.py::test_source_reconfiguration_cannot_reuse_old_business_event_identity"
+   ],
+   "note": "Actual isolated publication log, admission and inbox transactions at a controlled sender boundary verify one claimed send, immutable business event identity, server-derived grants, exact accepted receipts, terminal rejection evidence and deliberate retry. Wrong or missing acknowledgements remain interrupted until receipt reconciliation. These tests do not claim the real sender, TLS or full process/factory journey."
+  },
+  {
+   "id": "handler:fleet/producer_publications.py:Publications.receipt_current",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_publications.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_publications.py::test_actual_admission_and_immutable_duplicate_send_only_once",
+    "tests/test_producer_publications.py::test_uncertain_ack_reconciles_exact_original_inbox_without_resending",
+    "tests/test_producer_publications.py::test_receipt_state_may_advance_while_the_same_exact_ack_is_read",
+    "tests/test_producer_publications.py::test_transport_failure_or_plain429_is_unknown_and_blocks_other_ids",
+    "tests/test_producer_publications.py::test_only_definitive_marker_permits_explicit_attempt_bound_retry",
+    "tests/test_producer_publications.py::test_grant_change_never_adopts_original_event_into_new_execution_authority",
+    "tests/test_producer_publications.py::test_revocation_between_claim_and_ingress_leaves_unknown_without_event",
+    "tests/test_producer_publications.py::test_alternate_sealed_device_and_source_binding_cannot_publish",
+    "tests/test_producer_publications.py::test_source_reconfiguration_cannot_reuse_old_business_event_identity"
+   ],
+   "note": "Actual isolated publication log, admission and inbox transactions at a controlled sender boundary verify one claimed send, immutable business event identity, server-derived grants, exact accepted receipts, terminal rejection evidence and deliberate retry. Wrong or missing acknowledgements remain interrupted until receipt reconciliation. These tests do not claim the real sender, TLS or full process/factory journey."
+  },
+  {
+   "id": "handler:fleet/producer_publications.py:Publications.receive",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_publications.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_publications.py::test_actual_admission_and_immutable_duplicate_send_only_once",
+    "tests/test_producer_publications.py::test_uncertain_ack_reconciles_exact_original_inbox_without_resending",
+    "tests/test_producer_publications.py::test_receipt_state_may_advance_while_the_same_exact_ack_is_read",
+    "tests/test_producer_publications.py::test_transport_failure_or_plain429_is_unknown_and_blocks_other_ids",
+    "tests/test_producer_publications.py::test_only_definitive_marker_permits_explicit_attempt_bound_retry",
+    "tests/test_producer_publications.py::test_grant_change_never_adopts_original_event_into_new_execution_authority",
+    "tests/test_producer_publications.py::test_revocation_between_claim_and_ingress_leaves_unknown_without_event",
+    "tests/test_producer_publications.py::test_alternate_sealed_device_and_source_binding_cannot_publish",
+    "tests/test_producer_publications.py::test_source_reconfiguration_cannot_reuse_old_business_event_identity"
+   ],
+   "note": "Actual isolated publication log, admission and inbox transactions at a controlled sender boundary verify one claimed send, immutable business event identity, server-derived grants, exact accepted receipts, terminal rejection evidence and deliberate retry. Wrong or missing acknowledgements remain interrupted until receipt reconciliation. These tests do not claim the real sender, TLS or full process/factory journey."
   },
   {
    "id": "handler:fleet/ui.py:_Loopback",
@@ -6504,6 +6680,30 @@
     "tests/test_producer_control.py::test_control_envelope_is_exact_before_fixed_dispatch"
    ],
    "note": "Length-prefixed metadata and admitted bridge frames have separate bounds. Duplicate keys, nonfinite values, wrong operation fields, plaintext control, partial frames and oversized or unread responses fail within the original connection deadline. The codec exports no credentials and cannot select code, roots or authority."
+  },
+  {
+   "id": "parser:fleet/producer_devices.py",
+   "kind": "parser",
+   "source": "src/poolhouse/fleet/producer_devices.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_devices.py::test_existing_self_and_cached_receivers_need_no_network_even_under_store_lock",
+    "tests/test_producer_devices.py::test_fixed_requests_inspect_and_intent_actions_use_only_authenticated_mapping",
+    "tests/test_producer_devices.py::test_cached_addresses_never_override_current_pool_identity_or_membership",
+    "tests/test_producer_devices.py::test_removed_member_during_request_discards_response",
+    "tests/test_producer_devices.py::test_discovery_never_accepts_ambiguous_same_certificate_or_unknown_target",
+    "tests/test_producer_devices.py::test_offer_collision_or_changed_address_never_remaps_original_offer",
+    "tests/test_producer_devices.py::test_private_offer_must_match_authenticated_producer_and_intended_receiver",
+    "tests/test_producer_devices.py::test_no_generic_compute_url_or_schema_fallback",
+    "tests/test_producer_devices.py::test_machine_identity_is_read_only_and_never_created_or_followed",
+    "tests/test_producer_devices.py::test_private_control_callback_cannot_adopt_another_context",
+    "tests/test_producer_devices.py::test_actual_self_adapter_uses_existing_identity_over_sealed_tls",
+    "tests/test_producer_devices.py::test_original_control_descriptor_is_never_silently_replaced",
+    "tests/test_producer_devices.py::test_self_listener_unavailable_during_refresh_denies_discovery_cleanly"
+   ],
+   "note": "Actual isolated device, roster and transport adapter checks pin the selected pool, existing machine identity, enrolled certificate, cached endpoint and immutable daemon descriptor. One actual sealed TLS self-request uses the existing identity. Discovery grants no source authority; full producer process and factory composition are separate requirements."
   },
   {
    "id": "parser:fleet/producer_holder.py",

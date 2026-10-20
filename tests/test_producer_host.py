@@ -1,6 +1,7 @@
 """Owner-intent host composition with real store/offer checks and a controlled child boundary."""
 import copy
 import os
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -229,5 +230,61 @@ def test_inspect_cannot_attach_changed_actual_child_binding(setup):
     setup.intent['phase'] = 'authorized'
     setup.intent['binding'] = {**binding, 'activation': '7' * 64}
     with pytest.raises(Conflict):
+        setup.host.prepare(setup.receiver, setup.body)
+    assert setup.state['creates'] == 1
+
+
+def test_one_software_offer_cannot_spawn_for_a_second_source_command(setup):
+    prepared(setup)
+    replacement = {**setup.body, 'source': '8' * 32, 'command_id': '9' * 64}
+    setup.intent.update(source=replacement['source'], command_id=replacement['command_id'], binding=None)
+    with pytest.raises(Conflict, match='already belongs'):
+        setup.host.prepare(setup.receiver, replacement)
+    assert setup.state['creates'] == 1
+    assert setup.host.consumed(setup.body['offer_id']) is True
+
+
+def test_consumed_offer_stays_terminal_after_explicit_revoke_and_restart(setup):
+    _, command = activated(setup)
+    setup.host.revoke(setup.receiver, command)
+    replacement = {**setup.body, 'source': '8' * 32, 'command_id': '9' * 64}
+    setup.intent.update(source=replacement['source'], command_id=replacement['command_id'], binding=None)
+    restarted = producer_host.ProducerHost(setup.host.root, setup.service, setup.registry, setup.transport)
+    with pytest.raises(Conflict, match='already belongs'):
+        restarted.prepare(setup.receiver, replacement)
+    assert setup.state['creates'] == 1
+
+
+def test_concurrent_source_commands_cannot_share_one_software_offer(setup, monkeypatch):
+    ready = threading.Barrier(2)
+    original = setup.transport.request
+    def authorize(caller, action, request):
+        reply = original(caller, action, request)
+        reply['intent'].update(source=request['source'], command_id=request['command_id'])
+        ready.wait(timeout=5)
+        return reply
+    monkeypatch.setattr(setup.transport, 'request', authorize)
+    results = []
+    def prepare(body):
+        try:
+            results.append(setup.host.prepare(setup.receiver, body))
+        except Conflict:
+            results.append('conflict')
+    different = {**setup.body, 'source': '8' * 32, 'command_id': '9' * 64}
+    threads = [threading.Thread(target=prepare, args=(body,)) for body in (setup.body, different)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+        assert not thread.is_alive()
+    assert len(results) == 2 and results.count('conflict') == 1
+    assert setup.state['creates'] == 1
+
+
+def test_existing_command_without_exact_offer_index_cannot_attach_on_inner_path(setup, monkeypatch):
+    prepared(setup)
+    setup.service.store.graph.delete_doc('studio.producer-offer-use:' + setup.body['offer_id'])
+    monkeypatch.setattr(setup.host, '_retained', lambda *args: None)
+    with pytest.raises(PermissionError, match='offer intent'):
         setup.host.prepare(setup.receiver, setup.body)
     assert setup.state['creates'] == 1

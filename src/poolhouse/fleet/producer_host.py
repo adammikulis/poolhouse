@@ -89,6 +89,14 @@ class ProducerHost:
         return {key: copy.deepcopy(intent[key]) for key in ('source', 'command_id', 'generation', 'epoch',
                 'context', 'receiver', 'offer', 'revision', 'request_key')}
 
+    @staticmethod
+    def _offer_use(receiver, body):
+        return {'receiver': copy.deepcopy(receiver), 'source': body['source'], 'command_id': body['command_id']}
+
+    def consumed(self, offer_id):
+        with self.store.lock:
+            return self.store.graph.get_doc('studio.producer-offer-use:' + offer_id) is not None
+
     def _retained(self, key, receiver, body, offer):
         with self.lock, self.store.lock:
             previous = self.store.graph.get_doc(key)
@@ -99,7 +107,8 @@ class ProducerHost:
                 raise InterruptedError('The original publisher launch cannot be adopted or repeated.')
             if (row['receiver'] != receiver or row['offer'] != offer or row['source'] != body['source']
                     or row['command_id'] != body['command_id'] or previous.get('intent') != row['intent']
-                    or previous.get('control') != self.control):
+                    or previous.get('control') != self.control
+                    or self.store.graph.get_doc('studio.producer-offer-use:' + offer['id']) != self._offer_use(receiver, body)):
                 raise Conflict('This command already names another publisher.')
         intent = self._authorization(receiver, body, 'inspect')
         if (self._intent_identity(intent) != row['intent']
@@ -107,6 +116,29 @@ class ProducerHost:
                 or (intent.get('binding') is None and (intent.get('phase') != 'prepare_started' or row['phase'] != 'prepared'))):
             raise Conflict('The retained source command changed.')
         return self._response(row)
+
+    def _claim_offer(self, key, fixed):
+        """Consume offer and possible launch together, before any process side effect."""
+        with self.store.lock, self.store.graph.transaction():
+            offer_key = 'studio.producer-offer-use:' + fixed['offer']['id']
+            use = self._offer_use(fixed['receiver'], fixed)
+            claimed = self.store.graph.get_doc(offer_key)
+            if claimed is not None and claimed != use:
+                raise Conflict('This software offer already belongs to another immutable source command.')
+            previous = self.store.graph.get_doc(key)
+            if previous:
+                if claimed != use:
+                    raise PermissionError('The original software offer intent requires reconciliation.')
+                if any(previous.get(name) != value for name, value in fixed.items()):
+                    raise Conflict('This command already names another publisher.')
+                if key not in self.rows:
+                    raise InterruptedError('The original publisher launch cannot be adopted or repeated.')
+                return self._response(self.rows[key])
+            if claimed is not None:
+                raise PermissionError('The original software offer intent requires reconciliation.')
+            self.store.graph.put_doc(offer_key, use)
+            self.store.graph.put_doc(key, {**fixed, 'phase': 'launching'})
+            return None
 
     def prepare(self, receiver, body):
         body = _command(body, preparing=True)
@@ -129,15 +161,9 @@ class ProducerHost:
                  'offer': offer, 'generation': intent['generation'], 'epoch': intent['epoch'],
                  'scope': intent['context']['scope'], 'control': self.control, 'intent': self._intent_identity(intent)}
         with self.lock:
-            with self.store.lock, self.store.graph.transaction():
-                previous = self.store.graph.get_doc(key)
-                if previous:
-                    if any(previous.get(name) != value for name, value in fixed.items()):
-                        raise Conflict('This command already names another publisher.')
-                    if key not in self.rows:
-                        raise InterruptedError('The original publisher launch cannot be adopted or repeated.')
-                    return self._response(self.rows[key])
-                self.store.graph.put_doc(key, {**fixed, 'phase': 'launching'})
+            existing = self._claim_offer(key, fixed)
+            if existing is not None:
+                return existing
             row = {**fixed, 'phase': 'launching', 'stopped': False, 'binding': None, 'cap': None}
             self.rows[key] = row
             owned = OwnedProducer(self.root, sdk=offer['process'], control=self.control, current=lambda: self._local(row))

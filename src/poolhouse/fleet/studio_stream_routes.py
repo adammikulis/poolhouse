@@ -10,12 +10,8 @@ from poolhouse.studio.stream_sources import bind
 from .files import safe_relpath
 from .request_fields import object_body
 from .studio_destinations import delivery_view, route as destination_routes
+from .studio_source_view import public_source
 from .studio_webhook_service import register as register_webhook
-
-
-def public_source(row: dict) -> dict:
-    return {key: value for key, value in row.items() if key in {
-        'id', 'kind', 'label', 'origin', 'formats', 'available', 'requirements', 'samples', 'default_sample_id', 'template_id', 'provider', 'test_supported'}}
 
 
 def public_subscription(row: dict, service) -> dict:
