@@ -23,7 +23,7 @@ first-run .wizard-step { color:var(--muted); margin-bottom:12px; }
   class FirstRun extends HTMLElement {
     connectedCallback() {
       if (this.wired) return;
-      this.wired = true; this.epoch = 0; this.step = 0;
+      this.wired = true; this.epoch = 0; this.step = 0; this.pollRevision = 0;
       this.box = this.querySelector('#first-run'); this.card = this.querySelector('#first-run-card');
       this.kept = {}; this.project = null; this.background = true; this.workHours = false;
       try { this.intent = JSON.parse(sessionStorage.getItem('poolhouse.setup.intent') || 'null'); } catch {}
@@ -50,7 +50,7 @@ first-run .wizard-step { color:var(--muted); margin-bottom:12px; }
       if (this.openSession !== session) {
         if (this.openSession !== undefined) this.clearProjectOperation();
         this.project = null; this.pendingProject = null; this.defaultOperation = null; this.kept = {}; this.modelInstall = null;
-        this.invitationOnly = undefined; this.name = undefined; this.systemTheme = null; }
+        this.invitationOnly = undefined; this.name = undefined; this.systemTheme = null; this.cancelUncertain = null; }
       this.openSession = session; this.operation = null; this.busy = null; this.finishing = null;
       this.progress = this.note(); this.controls = this.actions();
       this.show('Opening setup', 'Checking this device’s current setup…', this.progress, this.controls);
@@ -242,15 +242,31 @@ first-run .wizard-step { color:var(--muted); margin-bottom:12px; }
         this.intent.job = operation.id; this.keepIntent(); this.operation = operation; this.drawOperation(); this.poll();
       } catch (error) { if (this.current(epoch, session)) this.failure(error); } finally { if (this.busy === pending) this.busy = null; }
     }
+    async cancel(job) {
+      const session = M.sessionContext(), epoch = this.epoch;
+      if (this.cancelPending?.session === session || this.cancelUncertain === job.id) return;
+      const pending = {session}; this.cancelPending = pending; this.pollRevision++; clearTimeout(this.timer);
+      try {
+        const result = await this.request('/ui/setup/prepare/' + encodeURIComponent(job.id) + '/cancel', post({}), epoch, session);
+        if (this.cancelPending === pending && this.intent?.job === job.id) this.operation = result;
+      } catch (error) {
+        if (M.sessionContext() === session && this.cancelPending === pending && this.intent?.job === job.id) this.cancelUncertain = job.id;
+        throw error;
+      } finally {
+        if (this.cancelPending === pending) this.cancelPending = null;
+        if (M.route === 'first-run' && M.sessionContext() === session && this.intent?.job === job.id) this.poll();
+      }
+    }
     async poll() {
       clearTimeout(this.timer);
-      if (!this.intent?.job || M.route !== 'first-run') return;
-      const epoch = this.epoch, session = M.sessionContext();
+      if (!this.intent?.job || M.route !== 'first-run' || this.cancelPending?.session === M.sessionContext()) return;
+      const epoch = this.epoch, session = M.sessionContext(), job = this.intent.job, revision = ++this.pollRevision;
       try {
-        this.operation = await this.request('/ui/setup/prepare/' + encodeURIComponent(this.intent.job), undefined, epoch, session);
-        this.drawOperation();
-        if (['queued','installing','running'].includes(this.operation.state)) this.timer = setTimeout(() => this.poll(), 750);
-      } catch (error) { if (this.current(epoch, session)) this.failure(error); }
+        const result = await this.request('/ui/setup/prepare/' + encodeURIComponent(job), undefined, epoch, session);
+        if (revision !== this.pollRevision || this.intent?.job !== job) return;
+        this.operation = result; this.drawOperation();
+        if (['queued','installing'].includes(result.state)) this.timer = setTimeout(() => this.poll(), 750);
+      } catch (error) { if (this.current(epoch, session) && revision === this.pollRevision && this.intent?.job === job) this.failure(error); }
     }
     drawOperation() {
       if (!this.progress || !this.operation) return;
@@ -262,14 +278,12 @@ first-run .wizard-step { color:var(--muted); margin-bottom:12px; }
         this.description.textContent = 'Your selected model has answered successfully on this device.';
         this.progress.textContent = result.tools_ready === true ? 'Chat and tool use are ready.' : 'Chat is ready. Tool use has not been verified for this model.';
         buttons.push(this.button('Start chat', () => this.finish(true)));
-      } else if (['queued','installing','running'].includes(job.state)) {
-        const stop = this.button('Stop preparing', () => this.task(stop, this.progress, async () => {
-          this.operation = await this.request('/ui/setup/prepare/' + encodeURIComponent(job.id) + '/cancel', post({})); this.drawOperation(); this.poll();
-        }), true);
-        buttons.push(stop);
+      } else if (['queued','installing'].includes(job.state) && job.can_cancel === true && this.cancelUncertain !== job.id) {
+        const stop = this.button('Stop preparing', () => this.task(stop, this.progress, () => this.cancel(job)), true);
+        stop.disabled = this.cancelPending?.session === M.sessionContext(); buttons.push(stop);
       } else {
-        this.heading.textContent = job.state === 'cancelled' ? 'Preparation stopped' : 'Preparation needs attention';
-        this.description.textContent = 'Check its status or finish setup for now.';
+        this.heading.textContent = ['queued','installing'].includes(job.state) ? 'Preparation in progress' : job.state === 'cancelled' ? 'Preparation stopped' : 'Preparation needs attention';
+        this.description.textContent = this.cancelUncertain === job.id ? 'The stop reply was interrupted. Check status without repeating the request.' : 'Check its status or finish setup for now.';
         if (this.progress.textContent === this.heading.textContent) this.progress.textContent = 'No model is marked ready.';
         buttons.push(this.button('Check status', () => this.checkPreparation(), true), this.button('Finish setup for now', () => this.finish(false), true));
       }

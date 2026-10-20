@@ -18,7 +18,7 @@ class SetupPage:
         self.installed, self.state = installed, state
         self.pool_mode, self.name = 'dev', 'test-device'
         self.create_error = False
-        self.job = {'id': 'c' * 32, 'state': state, 'note': 'Checking the model', 'error': '',
+        self.job = {'id': 'c' * 32, 'state': state, 'can_cancel':state in {'queued','installing'}, 'note': 'Checking the model', 'error': '',
                     'result': {'chat_ready': state == 'done', 'tools_ready': state == 'done',
                                'model': '/models/decoder.gguf'}}
 
