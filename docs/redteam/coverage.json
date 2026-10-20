@@ -1,7 +1,7 @@
 {
- "surfaces": 848,
+ "surfaces": 850,
  "by_status": {
-  "covered": 535,
+  "covered": 537,
   "partial": 193,
   "uncovered": 52,
   "n/a": 68,
@@ -86,7 +86,7 @@
    "unmapped": 0
   },
   "route": {
-   "covered": 120,
+   "covered": 122,
    "partial": 58,
    "uncovered": 0,
    "n/a": 0,
@@ -8684,6 +8684,40 @@
     "tests/test_studio_transfer.py"
    ],
    "note": "Sealed enrolled-device requests bind dispatches to the current source certificate and pool. Actual TLS tests reject replay and revoked membership; target admission rejects executable fields, unauthorized resources, substituted kinds and external model references. Chunk tests reject traversal, links, byte substitution and cross-dispatch access."
+  },
+  {
+   "id": "route:fleet/studio_native_picks.py:/ui/studio/native-picks/*",
+   "kind": "route",
+   "source": "fleet/studio_native_picks.py:NativePickRoutes.public_route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_native_picks.py::test_native_endpoint_never_accepts_browser_headers_or_forged_secret",
+    "tests/test_studio_native_picks.py::test_authenticated_picker_request_and_private_callback_route",
+    "tests/test_studio_native_picks.py::test_revoke_or_expire_between_choosing_and_completion",
+    "tests/test_studio_native_picks.py::test_forged_native_selection_proofs_are_refused",
+    "tests/test_studio_native_picks.py::test_restart_never_resurrects_nonce_or_reopens_chooser",
+    "tests/test_studio_native_picks.py::test_native_endpoint_rejects_injected_selection_fields"
+   ],
+   "note": "Original-source selection requires the authenticated Studio principal and a current resource callback. Exact native callbacks additionally require the private local app launch proof, nonce and single-use chooser claim; hostile browser headers, forged proofs, stale authority and injected fields cannot mint a watch source."
+  },
+  {
+   "id": "route:fleet/studio_native_picks.py:/ui/studio/sources/pick",
+   "kind": "route",
+   "source": "fleet/studio_native_picks.py:NativePickRoutes.route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_native_picks.py::test_native_endpoint_never_accepts_browser_headers_or_forged_secret",
+    "tests/test_studio_native_picks.py::test_authenticated_picker_request_and_private_callback_route",
+    "tests/test_studio_native_picks.py::test_revoke_or_expire_between_choosing_and_completion",
+    "tests/test_studio_native_picks.py::test_forged_native_selection_proofs_are_refused",
+    "tests/test_studio_native_picks.py::test_restart_never_resurrects_nonce_or_reopens_chooser",
+    "tests/test_studio_native_picks.py::test_native_endpoint_rejects_injected_selection_fields"
+   ],
+   "note": "Original-source selection requires the authenticated Studio principal and a current resource callback. Exact native callbacks additionally require the private local app launch proof, nonce and single-use chooser claim; hostile browser headers, forged proofs, stale authority and injected fields cannot mint a watch source."
   },
   {
    "id": "route:fleet/studio_routes.py:/ui/studio/*",

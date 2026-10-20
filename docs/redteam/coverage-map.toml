@@ -15,6 +15,13 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["route:fleet/studio_native_picks.py:/ui/studio/native-picks/*", "route:fleet/studio_native_picks.py:/ui/studio/sources/pick"]
+status = "covered"
+count = 2
+tests = ["tests/test_studio_native_picks.py::test_native_endpoint_never_accepts_browser_headers_or_forged_secret", "tests/test_studio_native_picks.py::test_authenticated_picker_request_and_private_callback_route", "tests/test_studio_native_picks.py::test_revoke_or_expire_between_choosing_and_completion", "tests/test_studio_native_picks.py::test_forged_native_selection_proofs_are_refused", "tests/test_studio_native_picks.py::test_restart_never_resurrects_nonce_or_reopens_chooser", "tests/test_studio_native_picks.py::test_native_endpoint_rejects_injected_selection_fields"]
+note = "Original-source selection requires the authenticated Studio principal and a current resource callback. Exact native callbacks additionally require the private local app launch proof, nonce and single-use chooser claim; hostile browser headers, forged proofs, stale authority and injected fields cannot mint a watch source."
+
+[[group]]
 match = ["spawn:serve/python_runtime.py:command"]
 status = "covered"
 count = 1
