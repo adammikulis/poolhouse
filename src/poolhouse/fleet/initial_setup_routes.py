@@ -22,7 +22,9 @@ class InitialSetupRoutes:
         presented = self.ui.sessions.get(parse_cookie(self.cookie))
         if presented is None or not presented.credentialed:
             self.ui.record("session.refused", reason="setup-without-credential", source=self.client_ip)
-            self.send(403, {"error": "open poolhouse from its own window, or run: poolhouse open"})
+            self.send(401 if presented is None else 403,
+                      {"error": "Reconnect this Poolhouse window to continue setup." if presented is None
+                       else "Open setup from the Poolhouse window."})
             return True
         try:
             self._initial_preferences()
