@@ -100,6 +100,7 @@ def test_editable_paste_dismiss_and_native_clipboard_remain_ordinary(import_page
     expect(page.locator('.studio-node')).to_have_count(0)
     expect(title).to_have_value('Keep workflow')
     studio_command(page, 'Redo').click()
+    page.locator('.studio-node').click()
     page.locator('.studio-viewport').focus()
     page.keyboard.press('ControlOrMeta+c')
     page.keyboard.press('ControlOrMeta+v')
