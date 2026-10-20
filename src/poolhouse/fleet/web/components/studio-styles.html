@@ -406,6 +406,17 @@
   .studio-live pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; }
   .studio-live-event { border-top: 1px solid var(--line); padding: 8px 0; }
   .studio-live .studio-toolbar p { flex-basis: 100%; }
+  .studio-library-node { position: relative; padding: 10px; border: 1px solid var(--line); border-radius: 10px; margin: 6px 0; cursor: grab; background: var(--bg-sunken); }
+  .studio-library-node > span { display: block; font-weight: 650; }
+  .studio-library-node button { position: absolute; clip-path: inset(50%); width: 1px; height: 1px; padding: 0; overflow: hidden; white-space: nowrap; }
+  .studio-library-node button:focus-visible { clip-path: none; width: auto; height: auto; padding: 7px 10px; right: 8px; bottom: 4px; overflow: visible; }
+  @media (max-width: 700px) {
+    .studio-library-node button { position: static; clip-path: none; width: 100%; height: auto; padding: 7px 10px; overflow: visible; white-space: normal; }
+  }
+  .studio-placement-menu { position: fixed; z-index: 100; width: min(280px, calc(100vw - 16px)); max-height: min(380px, calc(100vh - 16px)); overflow: auto; padding: 12px; border: 1px solid var(--line-bright); border-radius: 12px; background: var(--bg-raised); color: var(--text); box-shadow: var(--shadow); }
+  .studio-placement-menu input { width: 100%; margin: 10px 0; }
+  .studio-placement-menu button { display: block; width: 100%; text-align: left; margin: 5px 0; }
+  .studio-placement-menu small { display: block; color: var(--muted); }
 </style>
 <script>
 void 0;

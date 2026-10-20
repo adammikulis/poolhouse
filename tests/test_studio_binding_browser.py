@@ -15,7 +15,8 @@ pytestmark = pytest.mark.slow
 
 def dataset_node(page):
     page.get_by_label('Search nodes, templates and groups').fill('Dataset')
-    page.locator('.studio-library').get_by_role('button', name=re.compile('^Dataset')).click()
+    page.locator('.studio-library').get_by_role('button', name=re.compile('^Add Dataset')).focus()
+    page.keyboard.press('Enter')
     picker = page.locator('.studio-inspector').get_by_label('Choose dataset', exact=True)
     expect(picker).to_be_enabled()
     return picker

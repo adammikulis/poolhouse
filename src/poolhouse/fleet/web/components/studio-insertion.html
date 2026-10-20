@@ -1,0 +1,117 @@
+<script>
+(function () {
+  const S = window.studioModel;
+  S.installInsertion = proto => Object.assign(proto, {
+    placementEntry(entry) {
+      if (entry?.kind === 'node' && Object.keys(entry).sort().join(',') === 'kind,type,version') {
+        const spec = this.editor.specs.find(s => s.type === entry.type && s.version === entry.version);
+        if (spec) return {spec, node: {id: S.id(), type: spec.type, version: spec.version, parameters: S.defaults(spec), bindings: {}}};
+      }
+      if (entry?.kind === 'group' && Object.keys(entry).sort().join(',') === 'group,kind' && typeof entry.group === 'string' && Object.hasOwn(this.editor.graph.groups, entry.group)) {
+        const node = {id: S.id(), type: 'group', group: entry.group, parameters: {}};
+        return {node, spec: S.spec(this.editor, node)};
+      }
+      return null;
+    },
+    placementStamp() {
+      return JSON.stringify([this.editor.workflowId, this.editor.context.map(c => c.node.id), this.editor.editSerial, this.editor.graph.edges, this.pending]);
+    },
+    insertionOptions(node, spec, edge) {
+      const graph = this.editor.graph;
+      if (!edge || !graph.edges.includes(edge) || [edge.source.node, edge.target.node].includes(node.id)) return [];
+      if (graph.nodes.includes(node) && (graph.edges.some(e => e.source.node === node.id || e.target.node === node.id) ||
+          (graph.controls || []).some(e => e.source.node === node.id || e.target.node === node.id))) return [];
+      const source = graph.nodes.find(n => n.id === edge.source.node), target = graph.nodes.find(n => n.id === edge.target.node);
+      if (!source || !target) return [];
+      const output = S.spec(this.editor, source).outputs?.find(p => p.name === edge.source.port);
+      const input = S.spec(this.editor, target).inputs?.find(p => p.name === edge.target.port);
+      if (!output || !input || output.type === 'gate' || input.type === 'gate') return [];
+      return (spec.inputs || []).flatMap(a => (spec.outputs || []).filter(b =>
+        a.type !== 'gate' && b.type !== 'gate' && S.compatible(output, a) && S.compatible(b, input)
+      ).map(b => ({input: a.name, output: b.name, label: a.name + ' (' + a.type + ') → ' + b.name + ' (' + b.type + ')'})));
+    },
+    insertionCycle(node, edge, ports) {
+      const edges = this.editor.graph.edges.filter(e => e !== edge).concat(this.editor.graph.controls || [], [
+        {source: edge.source, target: {node: node.id, port: ports.input}},
+        {source: {node: node.id, port: ports.output}, target: edge.target},
+      ]), visiting = new Set(), done = new Set();
+      const visit = id => {
+        if (visiting.has(id)) return true;
+        if (done.has(id)) return false;
+        visiting.add(id);
+        if (edges.some(e => e.source.node === id && visit(e.target.node))) return true;
+        visiting.delete(id); done.add(id); return false;
+      };
+      return edges.some(e => visit(e.source.node));
+    },
+    suggestedPorts(node, spec) {
+      const pending = this.pending, graph = this.editor.graph;
+      if (!pending) return [];
+      const peer = graph.nodes.find(n => n.id === pending.node), actual = peer && S.spec(this.editor, peer)[pending.side]?.find(p => p.name === pending.port);
+      if (!actual || actual.type !== pending.type || JSON.stringify(actual.accepted_types) !== JSON.stringify(pending.accepted_types)) {
+        this.pending = null; this.pendingPosition = null; this.editor.library();
+        this.editor.message('The selected port changed. Choose the port again.'); return null;
+      }
+      if (pending.side === 'inputs' && graph.edges.some(e => e.target.node === pending.node && e.target.port === pending.port)) return [];
+      const side = pending.side === 'outputs' ? 'inputs' : 'outputs';
+      return (spec[side] || []).filter(p => p.type !== 'gate' && (side === 'inputs' ? S.compatible(pending, p) : S.compatible(p, pending)))
+        .map(p => ({suggestion: true, name: p.name, side, label: p.name + ' (' + p.type + ')'}));
+    },
+    placeEntry(entry, point, edge = null, existing = null) {
+      const resolved = existing ? {node: existing, spec: S.spec(this.editor, existing)} : this.placementEntry(entry);
+      if (!resolved) { this.editor.message('This library node is unavailable. Refresh the node library.'); return; }
+      const {node, spec} = resolved, graph = this.editor.graph, stamp = this.placementStamp();
+      const suggestions = !edge && !existing ? this.suggestedPorts(node, spec) : [];
+      if (suggestions === null) return;
+      const options = edge ? this.insertionOptions(node, spec, edge).filter(p => !this.insertionCycle(node, edge, p)) : suggestions;
+      const commit = ports => {
+        if (graph !== this.editor.graph || stamp !== this.placementStamp()) {
+          this.editor.message('The workflow changed. Choose the connection again.'); return;
+        }
+        if (ports?.suggestion && !this.suggestedPorts(node, spec)?.some(p => p.name === ports.name && p.side === ports.side)) return;
+        if (ports && !ports.suggestion && !this.insertionOptions(node, spec, edge).some(p => p.input === ports.input && p.output === ports.output)) return;
+        if (ports && !ports.suggestion && this.insertionCycle(node, edge, ports)) return;
+        if (!existing) {
+          this.editor.checkpoint();
+          if (node.type === 'group') node.group = S.copyGroup(this.editor, graph.groups, node.group);
+          graph.nodes.push(node); graph.layout.nodes[node.id] = point;
+        }
+        if (ports?.suggestion) {
+          const reference = {node: this.pending.node, port: this.pending.port}, endpoint = {node: node.id, port: ports.name};
+          graph.edges.push(ports.side === 'inputs' ? {source: reference, target: endpoint} : {source: endpoint, target: reference});
+          this.pending = null; this.pendingPosition = null;
+        } else if (ports) {
+          graph.edges.splice(graph.edges.indexOf(edge), 1,
+            {source: {...edge.source}, target: {node: node.id, port: ports.input}},
+            {source: {node: node.id, port: ports.output}, target: {...edge.target}});
+        }
+        this.editor.selected = new Set([node.id]); this.editor.changed();
+        if (edge === false) this.editor.message('Connections overlap here. Node placed without changing either connection.');
+        else if (edge && !ports) this.editor.message('Connection unchanged: this node has no available compatible input and output.');
+        else if (ports) this.editor.message(ports.suggestion ? 'Node added and connected.' : 'Node inserted into the connection.');
+      };
+      if (options.length > 1) this.placementMenu(edge ? 'Choose connection ports' : 'Choose node port', options.map(p => ({title: p.label, choose: () => commit(p)})));
+      else commit(options[0] || null);
+    },
+    placementEdge(event) {
+      const hits = [];
+      for (const path of this.svg.querySelectorAll('path[data-edge-index]')) {
+        const matrix = path.getScreenCTM(), length = path.getTotalLength();
+        if (!matrix || !length) continue;
+        const distance = p => Math.hypot(p.x - event.clientX, p.y - event.clientY);
+        const start = path.getPointAtLength(0).matrixTransform(matrix), end = path.getPointAtLength(length).matrixTransform(matrix);
+        if (distance(start) < 14 || distance(end) < 14) continue;
+        let best = Infinity;
+        const steps = Math.min(2000, Math.ceil(length * this.viewport().zoom / 4));
+        for (let i = 0; i <= steps; i++) best = Math.min(best, distance(path.getPointAtLength(length * i / steps).matrixTransform(matrix)));
+        if (best <= 10) hits.push({edge: this.editor.graph.edges[Number(path.dataset.edgeIndex)], distance: best});
+      }
+      hits.sort((a, b) => a.distance - b.distance);
+      if (hits.length > 1 && hits[1].distance - hits[0].distance < 2) {
+        return false;
+      }
+      return hits[0]?.edge || null;
+    },
+  });
+})();
+</script>

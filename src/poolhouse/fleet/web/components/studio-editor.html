@@ -31,27 +31,8 @@
             sections.push(
               E("h2", {}, pending ? "Compatible nodes" : "Nodes"),
               ...nodes.map((spec) =>
-                E(
-                  "button",
-                  {
-                    type: "button",
-                    onclick: () => {
-                      const n = this.add(spec);
-                      if (pending) {
-                        const side =
-                            pending.side === "outputs" ? "inputs" : "outputs",
-                          port = spec[side].find((p) =>
-                            pending.side === "outputs"
-                              ? S.compatible(pending, p)
-                              : S.compatible(p, pending),
-                          );
-                        this.canvas.port(n, port, side);
-                      }
-                    },
-                  },
-                  spec.title || spec.type,
-                  E("small", {}, spec.family || "Workflow"),
-                ),
+                this.canvas.libraryPlacement({kind: "node", type: spec.type, version: spec.version},
+                  spec.title || spec.type, spec.family || "Workflow", pending),
               ),
             );
           const templates = this.templates.filter((t) => matches(t.title));
@@ -85,12 +66,7 @@
             sections.push(
               E("h2", {}, "Saved groups"),
               ...groups.map(([id, g]) =>
-                E(
-                  "button",
-                  { type: "button", onclick: () => this.insertGroup(id) },
-                  g.name || "Group",
-                  E("small", {}, "Independent copy"),
-                ),
+                this.canvas.libraryPlacement({kind: "group", group: id}, g.name || "Group", "Independent copy"),
               ),
             );
           if (!sections.length) sections.push(E("p", {}, "No matching nodes."));

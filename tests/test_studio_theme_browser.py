@@ -54,7 +54,7 @@ def test_studio_neutral_controls_canvas_and_run_dock(studio_page, tmp_path, them
     add(page, 'Prompt template')
     add(page, 'Report')
     page.locator('.studio-inspector').get_by_label('Connect text').select_option(index=1)
-    library = page.locator('.studio-library').get_by_role('button', name=re.compile('^Prompt template'))
+    library = page.locator('.studio-library').get_by_role('button', name=re.compile('^Add Prompt template'))
     style = assert_neutral(library)
     assert (contrast(style['surface'], 'rgb(0, 0, 0)') > 10) == (theme == 'light')
     primary = colors(page.get_by_role('button', name='Run workflow', exact=True))
