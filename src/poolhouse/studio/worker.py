@@ -18,6 +18,7 @@ from poolhouse.kvtype import DEFAULT_KV_BITS
 from poolhouse.serve import broker_wire, gpu
 from poolhouse.serve.decision_residents import fingerprint
 from poolhouse.studio.adapters import response_schema
+from poolhouse.studio.catalog import node_spec
 from poolhouse.studio.decision_models import source as decision_source
 from poolhouse.studio.decisions import assess, canonical_record, parse_record, route
 from poolhouse.studio.resources import (
@@ -214,10 +215,9 @@ def _prepare_data(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
 
 def _gym(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
     if kind == 'gym.train':
-        rows = rows_of(inputs['dataset'])
-        environment = parameters.get('environment') or rows[0].get('environment')
-        if not environment:
-            raise ValueError('Select the Gym environment for this recording')
+        environment = parameters.get('environment')
+        if environment not in node_spec('gym.train')['parameters']['properties']['environment']['enum']:
+            raise ValueError('Select a supported Gym environment')
         result = optional.module('poolhouse.gym.training').train(environment,
                     timesteps=parameters.get('timesteps', 2048), seed=parameters.get('seed', 0))
         source = Path(result['checkpoint'])

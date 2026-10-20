@@ -52,10 +52,10 @@ def templates() -> list[dict]:
             node['parameters'] = {'template': 'Return an empty JSON object.'}
         elif node['id'] == 'generate':
             node['parameters'] = {'json_schema': '{"type":"object","properties":{},"additionalProperties":false}'}
-    gym = _graph('gym-training-and-evaluation', [('recordings', 'gym.recordings'),
-                 ('train', 'gym.train'), ('evaluate', 'gym.evaluate'), ('chart', 'chart')],
-                 [('recordings', 'dataset', 'train', 'dataset'), ('train', 'model', 'evaluate', 'model'),
-                  ('evaluate', 'metrics', 'chart', 'metrics')])
+    gym = _graph('gym-training-and-evaluation', [('train', 'gym.train'),
+                 ('evaluate', 'gym.evaluate'), ('chart', 'chart')],
+                 [('train', 'model', 'evaluate', 'model'), ('evaluate', 'metrics', 'chart', 'metrics')])
+    gym['nodes'][0]['parameters'] = {'environment': 'warehouse', 'timesteps': 2048, 'seed': 0}
     sweep = _graph('benchmark-sweep', [('data', 'dataset'), ('model', 'model'),
                    ('evaluate', 'evaluate'), ('chart', 'chart')],
                    [('data', 'dataset', 'evaluate', 'dataset'), ('model', 'model', 'evaluate', 'model'),

@@ -30,6 +30,8 @@ def _parameters(values: Any, schema: dict) -> dict:
     if not isinstance(values, dict):
         raise ValueError("Parameters must be an object")
     fields = schema.get("properties", {})
+    if missing := set(schema.get("required", [])) - set(values):
+        raise ValueError(f"Missing required parameter: {sorted(missing)[0]}")
     if set(values) - set(fields):
         raise ValueError(f"Unknown parameter: {sorted(set(values) - set(fields))[0]}")
     result = {}

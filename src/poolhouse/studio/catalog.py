@@ -57,7 +57,7 @@ def node_catalog() -> list[dict[str, Any]]:
         _node("data.synthesize", "Synthesize tool examples", "Data", {"model": "model", "dataset": "dataset"}, {"dataset": "dataset"}, capabilities=["inference"]),
         _node("data.harvest", "Harvest benchmark traces", "Data", {}, {"dataset": "dataset"}),
         _node("gym.recordings", "Reviewed Gym recordings", "Data", {}, {"dataset": "dataset"}, capabilities=["gym"]),
-        _node("gym.train", "Gym policy training", "Training", {"dataset": "dataset"}, {"model": "model", "metrics": "metrics"}, capabilities=["gym"], side_effects=True),
+        _node("gym.train", "Gym policy training", "Training", {}, {"model": "model", "metrics": "metrics"}, capabilities=["gym"], side_effects=True),
         _node("gym.evaluate", "Evaluate Gym policy", "Evaluation", {"model": "model"}, {"metrics": "metrics", "report": "report"}, capabilities=["gym"]),
     ]
     catalog.extend([
@@ -122,8 +122,9 @@ def node_catalog() -> list[dict[str, Any]]:
         if spec["type"] == "gym.recordings":
             spec["bindings"] = {"trajectory": {"kind": "dataset", "required": True}, "reviews": {"kind": "dataset", "required": True}}
         if spec["type"] == "gym.train":
-            spec["parameters"] = _schema({"environment": {"type": "string", "enum": ["", "drone", "car", "traffic-driving", "warehouse", "traffic"], "default": ""},
+            spec["parameters"] = _schema({"environment": {"type": "string", "enum": ["warehouse", "drone", "car", "traffic-driving", "traffic"], "default": "warehouse"},
                 "timesteps": {"type": "integer", "default": 2048, "minimum": 1}, "seed": {"type": "integer", "default": 0}})
+            spec["parameters"]["required"] = ["environment"]
         if spec["type"] == "gym.evaluate":
             spec["parameters"] = _schema({"episodes": {"type": "integer", "default": 5, "minimum": 1}})
         if spec["type"].startswith("train.") and spec["type"] != "train.decision":
