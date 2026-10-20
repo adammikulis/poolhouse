@@ -98,7 +98,7 @@ def _execution(node: dict) -> None:
 def _expand(graph: dict, definitions: dict, stack: tuple = (), prefix: str = "") -> dict:
     if len(stack) > MAX_DEPTH:
         raise ValueError("Group nesting is too deep")
-    nodes, edges, instances = [], [], {}
+    nodes, edges, controls, instances = [], [], [], {}
     ids = set()
     for original in graph.get("nodes", []):
         if not isinstance(original, dict):
@@ -117,7 +117,7 @@ def _expand(graph: dict, definitions: dict, stack: tuple = (), prefix: str = "")
         if key not in definitions or key in stack:
             raise ValueError("Missing or recursive reusable group")
         definition = deepcopy(definitions[key])
-        if not isinstance(definition, dict) or set(definition) - {"name", "nodes", "edges", "inputs", "outputs", "parameters"}:
+        if not isinstance(definition, dict) or set(definition) - {"name", "nodes", "edges", "controls", "inputs", "outputs", "parameters"}:
             raise ValueError("Invalid reusable group definition")
         exposed = definition.get("parameters", {})
         if set(node.get("parameters", {})) - set(exposed):
@@ -132,6 +132,7 @@ def _expand(graph: dict, definitions: dict, stack: tuple = (), prefix: str = "")
         inner = _expand(definition, definitions, (*stack, key), child_prefix)
         nodes.extend(inner["nodes"])
         edges.extend(inner["edges"])
+        controls.extend(inner["controls"])
         instances[identifier] = _group_interface(definition, inner, definitions)
         if len(nodes) > MAX_NODES:
             raise ValueError("Expanded workflow has too many nodes")
@@ -151,9 +152,26 @@ def _expand(graph: dict, definitions: dict, stack: tuple = (), prefix: str = "")
             raise ValueError("Connections need a source and target")
         edges.append({"source": resolve(_endpoint(edge["source"]), "outputs"),
                       "target": resolve(_endpoint(edge["target"]), "inputs")})
+    controls.extend(_expand_controls(graph, resolve, instances, nodes, prefix))
+    return {"nodes": nodes, "edges": edges, "controls": controls, "resolve": resolve}
+
+
+def _expand_controls(graph: dict, resolve: Callable, instances: dict, nodes: list, prefix: str) -> list:
     if len(nodes) > MAX_NODES:
         raise ValueError("Expanded workflow has too many nodes")
-    return {"nodes": nodes, "edges": edges, "resolve": resolve}
+    ids = {node["id"] for node in graph.get("nodes", [])}
+    controls = []
+    for control in graph.get("controls", []):
+        if not isinstance(control, dict) or set(control) != {"source", "target"}:
+            raise ValueError("Controls need a source gate and target node")
+        target = control["target"]
+        if not isinstance(target, dict) or set(target) != {"node"} or target["node"] not in ids:
+            raise ValueError("Control target must be a node in this graph")
+        source = resolve(_endpoint(control["source"]), "outputs")
+        targets = ([n["id"] for n in nodes if n["id"].startswith(prefix + target["node"] + "/")]
+                   if target["node"] in instances else [prefix + target["node"]])
+        controls.extend({"source": source, "target": {"node": name}} for name in targets)
+    return controls
 
 
 def _validate_expanded(graph: dict, capabilities: set[str] | None, authorize: Callable | None) -> list[dict]:
@@ -193,6 +211,8 @@ def _validate_expanded(graph: dict, capabilities: set[str] | None, authorize: Ca
             if key in incoming:
                 raise ValueError("An input has more than one connection")
             incoming[key] = source
+            if output["type"] == "gate" or port["type"] == "gate":
+                raise ValueError("Gate ports require control connections")
             if output["type"] not in port.get("accepted_types", [port["type"]]):
                 raise ValueError("Connected port types do not match")
             if nodes[source["node"]].get("parameters", {}).get("mode") == "smoke" and source["port"] in ("model", "checkpoint"):
@@ -200,12 +220,31 @@ def _validate_expanded(graph: dict, capabilities: set[str] | None, authorize: Ca
             successors[source["node"]].add(target["node"])
         except (KeyError, StopIteration, ValueError) as exc:
             error(target["node"], "connection", str(exc) or "Unknown port")
+    errors.extend(_validate_controls(graph, specs, successors))
     for identifier, spec in specs.items():
         for port in spec["inputs"]:
             if port.get("required") and (identifier, port["name"]) not in incoming:
                 error(identifier, "input", f"Connect {port['name']}")
     if _has_cycle(nodes, successors):
         error("", "cycle", "Workflow connections contain a cycle")
+    return errors
+
+
+def _validate_controls(graph: dict, specs: dict, successors: dict) -> list:
+    errors, seen_controls = [], set()
+    for control in graph["controls"]:
+        source, target = control["source"], control["target"]["node"]
+        try:
+            output = next(p for p in specs[source["node"]]["outputs"] if p["name"] == source["port"])
+            if output["type"] != "gate" or target not in specs:
+                raise ValueError("Controls must connect a declared gate to a known node")
+            identity = (source["node"], source["port"], target)
+            if identity in seen_controls:
+                raise ValueError("Duplicate control connection")
+            seen_controls.add(identity)
+            successors[source["node"]].add(target)
+        except (KeyError, StopIteration, ValueError) as exc:
+            errors.append({"node": target, "code": "control", "message": str(exc) or "Unknown gate port"})
     return errors
 
 
@@ -243,7 +282,7 @@ def _sweeps(graph: dict) -> dict:
         size *= len(values)
         if size > MAX_NODES:
             raise ValueError("Expanded sweep has too many nodes")
-    nodes, edges = [], []
+    nodes, edges, controls = [], [], []
     variants = {node["id"]: [] for node in graph["nodes"]}
     for index, values in enumerate(itertools.product(*(request[2] for request in requests))):
         instance = deepcopy(graph)
@@ -254,23 +293,24 @@ def _sweeps(graph: dict) -> dict:
         for node in instance["nodes"]:
             variants[node["id"]].append(names[node["id"]])
             node["id"] = names[node["id"]]
-        for edge in instance["edges"]:
+        for edge in [*instance["edges"], *instance["controls"]]:
             for endpoint in edge.values():
                 endpoint["node"] = names[endpoint["node"]]
         nodes.extend(instance["nodes"])
         edges.extend(instance["edges"])
-    return {"nodes": nodes, "edges": edges, "variants": variants}
+        controls.extend(instance["controls"])
+    return {"nodes": nodes, "edges": edges, "controls": controls, "variants": variants}
 
 
 def validate_graph(graph: Any, *, capabilities: set[str] | None = None,
                    authorize: Callable | None = None) -> dict:
     """Validate and expand a workflow without executing or resolving resources."""
     try:
-        if not isinstance(graph, dict) or set(graph) - {"id", "name", "schema_version", "nodes", "edges", "groups", "layout", "description"}:
+        if not isinstance(graph, dict) or set(graph) - {"id", "name", "schema_version", "nodes", "edges", "controls", "groups", "layout", "description"}:
             raise ValueError("Invalid workflow fields")
         if type(graph.get("schema_version", 1)) is not int or graph.get("schema_version", 1) != 1 or not _finite(graph):
             raise ValueError("Unsupported workflow version or nonfinite value")
-        if not isinstance(graph.get("nodes"), list) or not isinstance(graph.get("edges", []), list) or not isinstance(graph.get("groups", {}), dict):
+        if not isinstance(graph.get("nodes"), list) or not isinstance(graph.get("edges", []), list) or not isinstance(graph.get("controls", []), list) or not isinstance(graph.get("groups", {}), dict):
             raise ValueError("Workflow needs nodes, connections and group definitions")
         if len(graph["nodes"]) > MAX_NODES or len(json.dumps(graph)) > 2_000_000:
             raise ValueError("Workflow exceeds the supported graph size")

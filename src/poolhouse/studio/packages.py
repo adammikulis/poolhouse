@@ -41,6 +41,13 @@ def _edge(edge: dict) -> dict:
     return _interfaces(edge, {"node", "port"})
 
 
+def _control(control: dict) -> dict:
+    if not isinstance(control, dict) or set(control) != {"source", "target"}:
+        raise ValueError("Invalid control fields")
+    return {"source": _interfaces({"source": control["source"]}, {"node", "port"})["source"],
+            "target": _interfaces({"target": control["target"]}, {"node"})["target"]}
+
+
 def _fields(node: dict, definitions: dict, stack: tuple = ()) -> dict:
     if node.get("type") != "group":
         return node_spec(node["type"], node.get("version", 1))["parameters"]["properties"]
@@ -77,7 +84,7 @@ def _portable_graph(graph: dict, selected: dict | None = None, prefix: str = "",
     definitions = definitions if definitions is not None else graph.get("groups", {})
     groups = {}
     for key, group in graph.get("groups", {}).items():
-        if set(group) - {"name", "nodes", "edges", "inputs", "outputs", "parameters"}:
+        if set(group) - {"name", "nodes", "edges", "controls", "inputs", "outputs", "parameters"}:
             raise ValueError("Invalid group definition fields")
         if not isinstance(group.get("name", key), str):
             raise ValueError("Group name must be text")
@@ -86,8 +93,15 @@ def _portable_graph(graph: dict, selected: dict | None = None, prefix: str = "",
                        "inputs": _interfaces(group.get("inputs", {}), {"node", "port"}),
                        "outputs": _interfaces(group.get("outputs", {}), {"node", "port"}),
                        "parameters": _interfaces(group.get("parameters", {}), {"node", "parameter"})}
-    return {"nodes": [_portable_node(node, selected, definitions, prefix) for node in graph["nodes"]],
+        if "controls" in nested:
+            groups[key]["controls"] = nested["controls"]
+    result = {"nodes": [_portable_node(node, selected, definitions, prefix) for node in graph["nodes"]],
             "edges": [_edge(edge) for edge in graph.get("edges", [])], "groups": groups}
+    if "controls" in graph:
+        if not isinstance(graph["controls"], list):
+            raise ValueError("Invalid control connections")
+        result["controls"] = [_control(control) for control in graph["controls"]]
+    return result
 
 
 def _declarations(graph: dict, selected: dict) -> None:
@@ -156,7 +170,7 @@ def import_package(value: Any) -> dict:
         raise ValueError("Package content digest does not match")
     package["digest"] = digest
     graph = package["graph"]
-    if not isinstance(graph, dict) or set(graph) != {"nodes", "edges", "groups"}:
+    if not isinstance(graph, dict) or (set(graph) - {"nodes", "edges", "groups", "controls"} or not {"nodes", "edges", "groups"} <= set(graph)):
         raise ValueError("Package graph contains undeclared content")
     if len(json.dumps(graph)) > 2_000_000:
         raise ValueError("Package graph is too large")
