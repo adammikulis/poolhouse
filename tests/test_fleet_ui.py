@@ -234,7 +234,7 @@ class TestAssets:
 
         js = (COMPONENTS_DIR / "first-run.html").read_text(encoding="utf-8")
         defined = set(re.findall(r"^    (?:async )?(\w+)\(", js, re.M))
-        called = set(re.findall(r"return this\.(\w+Step)\(", js))
+        called = set(re.findall(r"this\.(\w+Step)\(", js))
         assert called, "the wizard moves to no screen at all"
         assert called <= defined, f"screens that are gone: {sorted(called - defined)}"
 
