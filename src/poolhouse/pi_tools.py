@@ -13,6 +13,8 @@ from poolhouse.sandbox import policies
 
 MAX_FRAME = 4 * 1024 * 1024
 TOOLS = ("read", "bash", "edit", "write", "grep", "find", "ls")
+CONTROL_PATHS = (".git/config", ".git/config.worktree", ".git/hooks", ".claude/settings.json",
+                 ".claude/settings.local.json", ".codex/config.toml", ".pi/settings.json", ".mcp.json")
 
 
 def _inspect(command: list[str]) -> tuple[int, str]:
@@ -92,7 +94,7 @@ def prepared(files, binary: str, root: Path, role: str) -> Path:
         if candidate == root or candidate in root.parents or root in candidate.parents:
             raise ValueError("The coding repository and trusted tool runtime must not overlap")
     return files.write("tool-worker.json", json.dumps({**selected, "worker": str(worker),
-        "root": canonical, "write": role != "read-only"}, sort_keys=True))
+        "root": canonical, "tool_root": canonical, "write": role != "read-only"}, sort_keys=True))
 
 
 def execute(configuration: dict, frame: dict) -> dict:
@@ -104,14 +106,19 @@ def execute(configuration: dict, frame: dict) -> dict:
         raise ValueError("The coding tool request exceeds its limit")
     root = sandbox.checked_path(configuration["root"], what="coding repository")
     node = sandbox.checked_path(configuration["node"], what="Node runtime")
+    controls = [str(Path(root) / path) for path in CONTROL_PATHS if not (
+        path.startswith(".git/") and (Path(root) / ".git").is_file())]
+    if (Path(root) / ".git").is_file():
+        controls.append(str(Path(root) / ".git"))
     with policies.scratch("poolhouse-coding-tool-") as scratch:
         writable = (root, scratch) if configuration["write"] else (scratch,)
         policy = sandbox.Policy("coding-tool", read=(root, configuration["worker"], *configuration["reads"]),
             write=writable, exec=(node, root, scratch, *policies.SYSTEM_EXEC), strict=True,
-            read_metadata=tuple(configuration["metadata"]),
+            deny_write=tuple(controls),
+            read_metadata=(*configuration["metadata"], configuration["tool_root"]),
             env=policies.system_env(HOME=scratch, TMPDIR=scratch, PI_CODING_AGENT_DIR=scratch, OPENSSL_CONF=os.devnull),
             limits=sandbox.Limits(wall_seconds=120, output_bytes=MAX_FRAME))
-        result = sandbox.run([node, configuration["worker"], configuration["module"], root], policy,
+        result = sandbox.run([node, configuration["worker"], configuration["module"], configuration["tool_root"]], policy,
                              cwd=root, stdin=payload)
         if result.truncated or result.timed_out or not result.ok:
             raise ValueError("The isolated coding tool stopped: " + result.stderr[:500])

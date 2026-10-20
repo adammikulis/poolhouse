@@ -97,6 +97,28 @@ def test_read_only_worker_denies_repo_writes_but_can_read(installed):
     assert not (root / "created").exists()
 
 
+def test_shell_and_direct_tools_cannot_rewrite_future_trusted_repo_controls(installed):
+    root = Path(installed["root"])
+    (root / ".git").mkdir()
+    config = root / ".git" / "config"
+    config.write_text("trusted-config")
+    assert invoke(installed, "write", path=".git/config", content="changed").get("isError")
+    assert invoke(installed, "bash", command="printf changed > .git/config").get("isError")
+    assert invoke(installed, "bash", command="mkdir -p .pi && printf changed > .pi/settings.json").get("isError")
+    assert config.read_text() == "trusted-config"
+    assert not (root / ".pi" / "settings.json").exists()
+
+
+def test_worktree_pointer_is_frozen_without_granting_shared_metadata(installed):
+    root = Path(installed["root"])
+    pointer = root / ".git"
+    pointer.write_text("gitdir: ../unselected-repository/.git/worktrees/session\n")
+    (root / "file.txt").write_text("selected-worktree")
+    assert "selected-worktree" in text(invoke(installed, "read", path="file.txt"))
+    assert invoke(installed, "write", path=".git", content="changed").get("isError")
+    assert pointer.read_text().startswith("gitdir: ")
+
+
 def test_worker_environment_and_network_exclude_parent_authority(installed, monkeypatch):
     monkeypatch.setenv("POOLHOUSE_TEST_PARENT_CREDENTIAL", "secret-parent-marker")
     answer = invoke(installed, "bash", command='printf "parent=%s" "$POOLHOUSE_TEST_PARENT_CREDENTIAL"')
