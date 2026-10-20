@@ -10,6 +10,7 @@ from typing import Any
 
 from .catalog import is_model_type, node_spec
 from .contracts import validate_graph
+from .events import checked_event
 from .model_lineage import bind_model_base
 from .resources import base_fingerprint, model_fingerprint
 from .store import StudioStore, digest
@@ -79,30 +80,26 @@ class WorkflowEngine:
         self._thread.start()
 
     def _admit_child(self, job: Any) -> bool:
-        for run in self._all_runs():
-            if run["state"] not in {"queued", "running"}:
-                continue
-            for node in run["graph"]["nodes"]:
-                state = run["nodes"][node["id"]]
-                if state.get("job_id") == job.id:
-                    edges = [e for e in run["graph"]["edges"] if e["target"]["node"] == node["id"]]
-                    inputs = {e["target"]["port"]: run["nodes"][e["source"]["node"]]["outputs"].get(e["source"]["port"])
-                              for e in edges}
-                    return self.authorize(run["principal"], node, inputs)
-        return False
+        found = self.store.child_run(job.id)
+        if found is None:
+            return False
+        run, node = found
+        edges = [e for e in run["graph"]["edges"] if e["target"]["node"] == node["id"]]
+        inputs = {e["target"]["port"]: run["nodes"][e["source"]["node"]]["outputs"].get(e["source"]["port"])
+                  for e in edges}
+        return (self._controls(run, node["id"], dict(run["nodes"][node["id"]]))
+                and self.authorize(run["principal"], node, inputs))
 
     def _recover(self) -> None:
         with self.store.lock:
-            rows = self.store.graph.query("MATCH (n:Node) WHERE n.kind='studio.run' RETURN n.id AS id")
-            for row in rows:
-                run = self.store.graph.get_doc(row["id"])
+            for run in self.store.tracked_runs():
                 if run["state"] in {"queued", "running"}:
                     for node in run["nodes"].values():
                         if node["state"] == "running" and not node.get("execution") and not self.runner.jobs.get(node.get("job_id")):
                             node.update(state="interrupted", error="The prior execution outcome is unknown; it was not replayed.")
                     self.store.put("run", run)
 
-    def submit(self, principal: dict, workflow: dict, output_nodes: list[str], key: str) -> dict:
+    def prepare(self, principal: dict, workflow: dict, output_nodes: list[str]) -> dict:
         if not self.authorize(principal, None, {}):
             raise PermissionError("Sign in again before running this workflow.")
         checked = validate_graph(workflow["graph"])
@@ -123,7 +120,26 @@ class WorkflowEngine:
                 raise PermissionError("A workflow resource is no longer authorized.")
             if node in remote:
                 node["execution"] = self.dispatcher.identity(node)
-        run, _ = self.store.submit(principal, workflow, graph, output_nodes, key)
+        return graph
+
+    def submit(self, principal: dict, workflow: dict, output_nodes: list[str], key: str) -> dict:
+        graph = self.prepare(principal, workflow, output_nodes)
+        run, _ = self.store.submit(principal, workflow, graph, {"outputs": output_nodes, "key": key})
+        self._wake.set()
+        return run
+
+    def submit_event(self, principal: dict, workflow: dict, event: dict) -> dict:
+        """Only the subscription service supplies this immutable data envelope."""
+        event = checked_event(event)
+        if principal.get("kind") != "studio_subscription":
+            raise PermissionError("Only a scoped subscription can inject an event.")
+        graph = self.prepare(principal, workflow, event["output_nodes"])
+        source = next((node for node in graph["nodes"] if node["id"] == event["input_node"]), None)
+        if source is None or source["type"] != "stream.record":
+            raise ValueError("Choose the workflow's record input node.")
+        with self.lock:
+            run, _ = self.store.submit(principal, workflow, graph, {"outputs": event["output_nodes"],
+                                       "key": "stream:" + event["subscription"] + ":" + event["id"], "event": event})
         self._wake.set()
         return run
 
@@ -151,9 +167,7 @@ class WorkflowEngine:
                 "controls": [c for c in graph.get("controls", []) if c["target"]["node"] in selected]}
 
     def _all_runs(self) -> list[dict]:
-        with self.store.lock:
-            rows = self.store.graph.query("MATCH (n:Node) WHERE n.kind='studio.run' RETURN n.id AS id")
-            return [self.store.graph.get_doc(row["id"]) for row in rows]
+        return self.store.tracked_runs()
 
     def _loop(self) -> None:
         while not self._stop.is_set():
@@ -196,6 +210,8 @@ class WorkflowEngine:
                 continue
             inputs = {e["target"]["port"]: run["nodes"][e["source"]["node"]]["outputs"][e["source"]["port"]]
                       for e in edges}
+            if node["type"] == "stream.record" and run.get("event", {}).get("input_node") == ident:
+                inputs["record"] = run["event"]["payload"]
             context = {"run_id": run["id"], "node_id": ident, "files_root": self.runner.files_root,
                        "output_dir": self.runner.files_root / "studio" / run["id"] / hashlib.sha256(ident.encode()).hexdigest()[:24],
                        "bindings": node.get("bindings", {}), "principal": run["principal"]}
@@ -314,7 +330,7 @@ class WorkflowEngine:
                 state.update(state="done", outputs=cache["outputs"], reused_from=cache["run"])
                 self._completed(run, node, state, inputs)
                 return
-        immediate = self.adapters.immediate(node, inputs, context) if node["type"] in {"dataset", "model", "prompt"} else None
+        immediate = self.adapters.immediate(node, inputs, context) if node["type"] in {"dataset", "model", "prompt", "stream.record", "decision.route"} else None
         if immediate is not None:
             if spec.get("side_effects"):
                 raise ValueError("Side effects require a durable child job.")
