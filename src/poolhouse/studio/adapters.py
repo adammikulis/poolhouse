@@ -96,13 +96,11 @@ class Adapters:
             if required:
                 raise OSError('Install Training essentials in Libraries to run this node')
             return 'unavailable'
-        try:
-            companion = environment.require_compute()
-        except OSError:
-            if required:
-                raise
-            companion = 'unavailable'
-        packages = environment.installed()
+        evidence = environment.dependency_metadata()
+        if evidence['error'] and required:
+            raise OSError(evidence['error'])
+        companion = evidence['companion'] or 'unavailable'
+        packages = evidence['packages']
         names = {'numpy', 'safetensors', 'mlx', 'mlx-lm', 'torch', 'transformers',
                  'tokenizers', 'peft', 'huggingface-hub', 'mlx-vlm'}
         if kind.startswith('gym.'):

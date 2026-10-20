@@ -394,7 +394,8 @@ def test_training_preflight_refuses_incompatible_installed_models(tmp_path, monk
 
 def test_dependency_fingerprint_tracks_relevant_managed_versions():
     packages = {'mlx': '1', 'mlx-lm': '2', 'unrelated': '1'}
-    environment = SimpleNamespace(exists=True, require_compute=lambda: 'sealed', installed=lambda: dict(packages))
+    environment = SimpleNamespace(exists=True, dependency_metadata=lambda:
+                                  {'companion': 'sealed', 'error': None, 'packages': dict(packages)})
     adapter = Adapters(SimpleNamespace(environment=environment))
     node = {'type': 'train.tool-calls', 'parameters': {'framework': 'mlx'}}
     initial = adapter.dependency_fingerprint(node)
@@ -409,10 +410,9 @@ def test_dependency_fingerprint_tracks_relevant_managed_versions():
 
 
 def test_hosted_generation_fingerprint_records_missing_optional_compute():
-    def unavailable():
-        raise OSError('not installed')
     packages = {}
-    environment = SimpleNamespace(exists=True, require_compute=unavailable, installed=lambda: dict(packages))
+    environment = SimpleNamespace(exists=True, dependency_metadata=lambda:
+                                  {'companion': None, 'error': 'not installed', 'packages': dict(packages)})
     adapter = Adapters(SimpleNamespace(environment=environment))
     node = {'type': 'generate'}
     initial = adapter.dependency_fingerprint(node)

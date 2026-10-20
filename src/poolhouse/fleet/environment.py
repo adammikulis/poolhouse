@@ -27,7 +27,7 @@ from poolhouse.httpguard import Refused
 from poolhouse.lock import only_one
 from poolhouse.net import packages
 
-from . import compute_artifact
+from . import compute_artifact, dependency_proof
 from .managed_compute import process_environment
 from .runtime_wheel import cache_wheel, current_wheel, wheel_commit
 
@@ -409,6 +409,15 @@ class Environment:
     def require_compute(self) -> str:
         """Verify the app-owned optional code before a managed job executes it."""
         return compute_artifact.probe(self.python, environment=process_environment())
+
+    @maintenance.reading
+    def dependency_metadata(self) -> dict:
+        """Reuse verified code/version metadata only against fresh unchanged evidence."""
+        try:
+            return dependency_proof.read(self)
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            self._cache.pop('dependency_proof', None)
+            return {'companion': None, 'error': str(error), 'packages': self.installed()}
 
     def state(self, vendor: str = "") -> dict[str, Any]:
         have = self.installed()
