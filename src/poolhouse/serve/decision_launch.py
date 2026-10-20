@@ -145,6 +145,33 @@ def bootstrap(raw: bytes) -> Bootstrap:
     return Bootstrap(value["parent"], value["instance"], bytes.fromhex(value["secret"]), issuer(value["issuer"]))
 
 
+def _idle_boundary() -> None:
+    """Ask an existing broker to retire itself, never adopt it or signal its PID."""
+    held = broker_wire._record()
+    if not held:
+        return
+    generation = {"pid": held.get("pid"), "started": held.get("pid_started")}
+    if not _generation(generation):
+        raise InterruptedError("The current broker generation cannot be verified; it was not replaced.")
+    pid, started = generation["pid"], generation["started"]
+    if not pid_exists(pid) or started_at(pid) != started:
+        return  # A stale locator grants nothing; the new child must still obtain broker.lock.
+    answering = broker_wire._answering()
+    if (not answering or answering.get("pid") != pid or answering.get("pid_started") != started
+            or answering.get("port") != held.get("port")):
+        raise InterruptedError("The current broker is not answering with its verified generation.")
+    reply = broker_wire._send(answering, {"op": "idle-retire", "pid": os.getpid()}, timeout=5, expected=generation)
+    if reply == {"ok": True, "retiring": False}:
+        raise BlockingIOError("The current broker has active work; resident launch waits for its idle boundary.")
+    if reply != {"ok": True, "retiring": True}:
+        raise InterruptedError("The current broker did not confirm idle retirement; it was not replaced.")
+    until = time.monotonic() + broker_wire.START_WAIT_S
+    while pid_exists(pid) and started_at(pid) == started:
+        if time.monotonic() >= until:
+            raise InterruptedError("The retiring broker has not ended; no replacement was started.")
+        time.sleep(0.01)
+
+
 class OwnedBroker:
     """A retained daemon child. Starting twice attaches; no unowned process is adopted."""
 
@@ -165,6 +192,7 @@ class OwnedBroker:
         environment = Environment(home.state("traind"))
         environment.require_current_runtime()
         environment.require_compute()
+        _idle_boundary()
         self.process = start_process(
             [str(environment.python), "-I", "-m", "poolhouse.serve.cli", "broker-owned"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
