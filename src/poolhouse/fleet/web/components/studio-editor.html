@@ -70,6 +70,7 @@
               ),
             );
           if (!sections.length) sections.push(E("p", {}, "No matching nodes."));
+          if (!pending) sections.unshift(E("button", {type:"button", onclick:() => this.importN8n()}, "Import n8n / Paste JSON"));
           box.replaceChildren(...sections);
         },
         inspector() {

@@ -1,12 +1,10 @@
 # Changelog
 
-This project was renamed to Poolhouse on 2026-10-09 (it was ml-stack); the entries below keep the names it had when they were written.
 
 ## 0.3.0 (draft, for the owner to edit; release-please writes the dated entry)
 
 ### Breaking changes
 
-* **Renamed to Poolhouse.** Package `poolhouse`, commands `poolhouse*`, variables `POOLHOUSE_*`, state in `~/.poolhouse`. `poolhouse migrate run` moves the old state and cache directories, the keychain key and the project files once, with the old build stopped; nothing else moves them. The desktop app's identifier is now `app.poolhouse.app`: its data and Keychain access list start empty and its sign-ins are repeated once.
 
 * **One vocabulary: pools of devices.** `docs/glossary.md` is binding and `tests/test_glossary.py` enforces it. Devices *join* a pool and a person *adds a device*; a *member* is *removed*; a project's *board* is replicated as per-device *logs*. The words pair, pairing, paired, cluster, journal, mesh, seat and peer (for a member), a host board, a remote board and a project board as a separate kind, a Dev or Prod pool, and "revoke" for a device are gone from commands, flags, variables, files, interface text and documents. Because old and new nodes cannot talk after this change, every device of a pool must run the new build together, and each device joins its pool again.
   * Commands: `poolhouse-cluster` is `poolhouse-pool` (`listen` is `add-device`, `pair` is `join-with-code`, `revoke` is `remove`, `peers` is `model-sources`); `poolhouse-peers` is `poolhouse-members` (`members` is `roster`, `revoke` is `remove`); `poolhouse.node_join pair` is `join-with-code`; `--cluster`, `--cluster-key`, `--no-cluster`, `--peers`, `--no-peers` are `--pool`, `--pool-key`, `--no-pool`, `--members`, `--no-members`.
@@ -15,23 +13,23 @@ This project was renamed to Poolhouse on 2026-10-09 (it was ml-stack); the entri
   * Files: `cluster.key`, `cluster.group`, `peers.json`, the board's `mesh` and `journals` directories and the page's element ids move to the new words; the old files are not read. No migration is written; board history made before this change is discarded.
 
 * **Python 3.12 or later.** `requires-python` is `>=3.12`; CI runs 3.12 to 3.14.
-* **`mcp>=2.3,<3`.** `ml_stack.mcp` and `ml_stack.agent.McpTools` use the 2.x client (MCP revision 2026-07-28).
+* **`mcp>=2.3,<3`.** `poolhouse.mcp` and `poolhouse.agent.McpTools` use the 2.x client (MCP revision 2026-07-28).
 * **`psutil` is a core dependency.** The `serve` extra is gone; finding and stopping a server's process tree needs it.
-* **Fleet protocol 2, pinned TLS, signed requests.** A daemon beyond this machine speaks TLS to a certificate its peers pin, every request is signed with a secret derived from the cluster key, and the passphrase salt is random per cluster. A protocol 1 peer is ignored and a machine of a cluster joined before this must join again (`ml-stack-peers setup`). A passphrase is at least 12 characters. A daemon listens on this machine only until it joins a cluster, or `--lan`, `--host` or `--setup-from-lan` says otherwise.
+* **Fleet protocol 2, pinned TLS, signed requests.** A daemon beyond this machine speaks TLS to a certificate its peers pin, every request is signed with a secret derived from the cluster key, and the passphrase salt is random per cluster. A protocol 1 peer is ignored and a machine of a cluster joined before this must join again (`poolhouse-peers setup`). A passphrase is at least 12 characters. A daemon listens on this machine only until it joins a cluster, or `--lan`, `--host` or `--setup-from-lan` says otherwise.
 * **`Agent` runs with the guard.** With no `interventions` it builds the tool-policy, secrets, untrusted-text and taint rails and, when an installed model can serve as judge, the model tier. `interventions=guard.off(because=...)` is the way to run without; an empty list raises.
-* **Model servers come from the broker.** `ServerManager.lease` asks the machine's broker, which admits a server only when the memory is there and queues generation requests one at a time per pool. A server nothing in ml-stack started is adopted only when `ML_STACK_ADOPT_UNMANAGED` allows it.
-* **Credentials come from `ml_stack.credentials`.** A token is read from the environment variable, the file `NAME_FILE` names, `~/.ml-stack/credentials.toml`, Hugging Face's token file or the keychain, in that order; child processes do not inherit tokens.
-* **Downloads refuse private addresses.** Model and release downloads refuse loopback, private, link-local, metadata and carrier-grade-NAT addresses at every redirect; `ML_STACK_FETCH_ALLOW_HOSTS` names an exception.
+* **Model servers come from the broker.** `ServerManager.lease` asks the machine's broker, which admits a server only when the memory is there and queues generation requests one at a time per pool. A server nothing in poolhouse started is adopted only when `POOLHOUSE_ADOPT_UNMANAGED` allows it.
+* **Credentials come from `poolhouse.credentials`.** A token is read from the environment variable, the file `NAME_FILE` names, `~/.poolhouse/credentials.toml`, Hugging Face's token file or the keychain, in that order; child processes do not inherit tokens.
+* **Downloads refuse private addresses.** Model and release downloads refuse loopback, private, link-local, metadata and carrier-grade-NAT addresses at every redirect; `POOLHOUSE_FETCH_ALLOW_HOSTS` names an exception.
 
 ### Features
 
-* `ml-stack-models` lists installed models from the Hugging Face, llama.cpp, LM Studio and Ollama caches, estimates the memory a model needs, suggests settings for the machine and pulls a model with progress, resume and checksums.
-* `ml-stack-decide` and `/decide` on the daemon choose one of a named set of options and report a probability for each.
-* `ml-stack-security` (sentinel) keeps a hash-chained event log, quarantines a changed model or binary, holds text a rail denied and plants decoy credentials.
+* `poolhouse-models` lists installed models from the Hugging Face, llama.cpp, LM Studio and Ollama caches, estimates the memory a model needs, suggests settings for the machine and pulls a model with progress, resume and checksums.
+* `poolhouse-decide` and `/decide` on the daemon choose one of a named set of options and report a probability for each.
+* `poolhouse-security` (sentinel) keeps a hash-chained event log, quarantines a changed model or binary, holds text a rail denied and plants decoy credentials.
 * Taint tracking: once text from outside the person has been read, a call that changes something runs only when each argument is vouched for or the person confirms.
-* `python -m ml_stack.redteam` sends attacks at the library's own surfaces through PyRIT.
-* `ml_stack.web` and `ml_stack.datasheet` page through search results, read PDFs, download files with a provenance record and find a part's datasheet.
-* `ml_stack.ui` elements (`ml-meter`, `ml-chip`, `ml-table` and the rest) draw the daemon page.
+* `python -m poolhouse.redteam` sends attacks at the library's own surfaces through PyRIT.
+* `poolhouse.web` and `poolhouse.datasheet` page through search results, read PDFs, download files with a provenance record and find a part's datasheet.
+* `poolhouse.ui` elements (`ml-meter`, `ml-chip`, `ml-table` and the rest) draw the daemon page.
 * One bounded reader for GGUF and safetensors headers.
 
 ## [0.2.1](https://github.com/adammikulis/poolhouse/compare/v0.2.0...v0.2.1) (2026-09-26)
@@ -85,9 +83,9 @@ This project was renamed to Poolhouse on 2026-10-09 (it was ml-stack); the entri
 * device profile carries cores, capability, driver, fingerprint and free memory; a lock records what its holder is doing ([de41d0a](https://github.com/adammikulis/poolhouse/commit/de41d0ab91150612071dc45205b9de295bc49b81))
 * **docs:** profiles are a shape per model and workload ([0b2c444](https://github.com/adammikulis/poolhouse/commit/0b2c44405403ed9365163ea4178124f6e0435cef))
 * **docs:** the per-request speculative patch, written up as upstream would read it ([8656f5d](https://github.com/adammikulis/poolhouse/commit/8656f5d59104ffee0ca0e1e27ac37778b7553020))
-* **draft:** ml-stack-draft measures what a head is worth, against no head at all ([8fb1b54](https://github.com/adammikulis/poolhouse/commit/8fb1b54ea4822f6748974a9109bb7fc391f4ccd7))
+* **draft:** poolhouse-draft measures what a head is worth, against no head at all ([8fb1b54](https://github.com/adammikulis/poolhouse/commit/8fb1b54ea4822f6748974a9109bb7fc391f4ccd7))
 * embed an ingest store into its vector index ([ac7f78a](https://github.com/adammikulis/poolhouse/commit/ac7f78ad264b7e2b47cba54a97a5d763a4b68af7))
-* every model server start keeps its own log under ~/.ml-stack/logs, and status names it ([f3e09fb](https://github.com/adammikulis/poolhouse/commit/f3e09fb02c1d44e46c7d057b5665360b03d4f974))
+* every model server start keeps its own log under ~/.poolhouse/logs, and status names it ([f3e09fb](https://github.com/adammikulis/poolhouse/commit/f3e09fb02c1d44e46c7d057b5665360b03d4f974))
 * files.sha256_file is the one file hash ([3c47a9e](https://github.com/adammikulis/poolhouse/commit/3c47a9ea43deff07347461ab92e0baa72f61c9b1))
 * fleet/models.py splits into the cache, the catalogue and the reference ([104ff23](https://github.com/adammikulis/poolhouse/commit/104ff23baae6324a0bfb80cfa76b4a50e7676eb8))
 * **fleet:** a daemon adopts the cluster's pause when it starts ([607d5b4](https://github.com/adammikulis/poolhouse/commit/607d5b4c30220d6530b52c08a8da27dce862b60f))
@@ -95,7 +93,7 @@ This project was renamed to Poolhouse on 2026-10-09 (it was ml-stack); the entri
 * gguf.convert writes sentence-transformers dense modules on request ([0852c08](https://github.com/adammikulis/poolhouse/commit/0852c08388400e088d25a25272facc7cdd2a1c47))
 * grounded() says which entries an answer is about have a source behind them ([ff35303](https://github.com/adammikulis/poolhouse/commit/ff35303e69267ccad8211f1bd878d7b933ecf924))
 * health probes accept any 2xx, and a port can be waited on ([7d39d2f](https://github.com/adammikulis/poolhouse/commit/7d39d2f3181d11aca213a3237cc7f899cd8441f3))
-* how a question is asked is ml_stack.asking ([8f1b119](https://github.com/adammikulis/poolhouse/commit/8f1b1199828f86ea536fc9006907b3e91e721b52))
+* how a question is asked is poolhouse.asking ([8f1b119](https://github.com/adammikulis/poolhouse/commit/8f1b1199828f86ea536fc9006907b3e91e721b52))
 * hub is a package of seven modules ([c0442a7](https://github.com/adammikulis/poolhouse/commit/c0442a7e044d307224fc6b33feadbd832ea04450))
 * **hub:** the draft heads on this machine, paired with the models they draft for ([56609fd](https://github.com/adammikulis/poolhouse/commit/56609fd9aa4bcf4de7f5d4a251cdbaf7f5c1417a))
 * **ingest:** status counts the passes the server timed, where it timed them ([d482e19](https://github.com/adammikulis/poolhouse/commit/d482e19932f1e9c5da647969ed85ba36fbc33d43))
@@ -104,17 +102,17 @@ This project was renamed to Poolhouse on 2026-10-09 (it was ml-stack); the entri
 * jsonl reads, writes and appends records ([da4fb7a](https://github.com/adammikulis/poolhouse/commit/da4fb7a0802f9f73c89abc42ee15356d137d0a1b))
 * keep a served page's conversations in a store beside the corpus ([6de7e00](https://github.com/adammikulis/poolhouse/commit/6de7e00e32d2702a9228409ab5f2b6d8de639b2b))
 * ladybug 0.20.4, a schema-free CypherStore, and readers that never outlive a write ([46933c9](https://github.com/adammikulis/poolhouse/commit/46933c945988ef30bb736d383039aa1a706344c3))
-* load Qwen3.8-Flash-Next into the MLX tree engine, and ml-stack-bench tree ([b809a64](https://github.com/adammikulis/poolhouse/commit/b809a64af94b4b529670fec45e340d3fa39836f5))
+* load Qwen3.8-Flash-Next into the MLX tree engine, and poolhouse-bench tree ([b809a64](https://github.com/adammikulis/poolhouse/commit/b809a64af94b4b529670fec45e340d3fa39836f5))
 * macOS runs nightly and on demand, and every job caches pip ([185bf9c](https://github.com/adammikulis/poolhouse/commit/185bf9c39efe1b0879014445b3ec20d832cf774e))
-* Message and the product ids are ml_stack.messages ([a60b4e5](https://github.com/adammikulis/poolhouse/commit/a60b4e5ad5d272e6031aa73276f52d619720b844))
-* ml_stack.files and ml_stack.lock hold the shapes that were hand-rolled ([1b528d8](https://github.com/adammikulis/poolhouse/commit/1b528d8e5c7fa0bb9546d3edce49554e6b5e75c9))
-* ml-stack-bench declares its subcommands, and its work moves to bench/ops.py ([0b766e4](https://github.com/adammikulis/poolhouse/commit/0b766e48b4b958c18d7b27db61c8c62435a9277c))
-* ml-stack-ingest forget deletes the reads kept beside a store ([e4b61df](https://github.com/adammikulis/poolhouse/commit/e4b61dfbb4eb23b9e2ce3ef840109fbe728c469d))
-* ml-stack-serve up and ml-stack-draft read MLX weights ([dae9aa1](https://github.com/adammikulis/poolhouse/commit/dae9aa184c740f7a1b03f8cc2ce0b93ae57c9fd4))
-* ml-stack-setup checks the daemon, the fleet, a GGUF, the store and its ports ([203914a](https://github.com/adammikulis/poolhouse/commit/203914adbd76d7bc0d24146e5bf9a864c603b4c9))
-* ml-stack-surface -- every command's help and output, written down to be diffed ([0470578](https://github.com/adammikulis/poolhouse/commit/04705787959645191d1d070b54cab2cc883a3eba))
-* ml-stack-walk -- the interface opened, clicked through and read back ([7fd8b38](https://github.com/adammikulis/poolhouse/commit/7fd8b38a06e427ec14482ae96b4ae587ad88203e))
-* ml-stack-walk waits for a streamed answer, and fleet --say sends a chat message ([d850d3e](https://github.com/adammikulis/poolhouse/commit/d850d3e6c65d2f588df7a5f36a7d33a1d41359eb))
+* Message and the product ids are poolhouse.messages ([a60b4e5](https://github.com/adammikulis/poolhouse/commit/a60b4e5ad5d272e6031aa73276f52d619720b844))
+* poolhouse.files and poolhouse.lock hold the shapes that were hand-rolled ([1b528d8](https://github.com/adammikulis/poolhouse/commit/1b528d8e5c7fa0bb9546d3edce49554e6b5e75c9))
+* poolhouse-bench declares its subcommands, and its work moves to bench/ops.py ([0b766e4](https://github.com/adammikulis/poolhouse/commit/0b766e48b4b958c18d7b27db61c8c62435a9277c))
+* poolhouse-ingest forget deletes the reads kept beside a store ([e4b61df](https://github.com/adammikulis/poolhouse/commit/e4b61dfbb4eb23b9e2ce3ef840109fbe728c469d))
+* poolhouse-serve up and poolhouse-draft read MLX weights ([dae9aa1](https://github.com/adammikulis/poolhouse/commit/dae9aa184c740f7a1b03f8cc2ce0b93ae57c9fd4))
+* poolhouse-setup checks the daemon, the fleet, a GGUF, the store and its ports ([203914a](https://github.com/adammikulis/poolhouse/commit/203914adbd76d7bc0d24146e5bf9a864c603b4c9))
+* poolhouse-surface -- every command's help and output, written down to be diffed ([0470578](https://github.com/adammikulis/poolhouse/commit/04705787959645191d1d070b54cab2cc883a3eba))
+* poolhouse-walk -- the interface opened, clicked through and read back ([7fd8b38](https://github.com/adammikulis/poolhouse/commit/7fd8b38a06e427ec14482ae96b4ae587ad88203e))
+* poolhouse-walk waits for a streamed answer, and fleet --say sends a chat message ([d850d3e](https://github.com/adammikulis/poolhouse/commit/d850d3e6c65d2f588df7a5f36a7d33a1d41359eb))
 * move the graph's floating chips into Legend & filters ([e71312a](https://github.com/adammikulis/poolhouse/commit/e71312aaf09d1ddd5d036c68bc85a379221222fa))
 * no agent raises a budget ([658bb7f](https://github.com/adammikulis/poolhouse/commit/658bb7f4b774202b37af76de515c57efcdad4057))
 * one declaration per tool, and a selector that takes declarations ([bc6be25](https://github.com/adammikulis/poolhouse/commit/bc6be25e113d821d8b91aca3e99a12eaa86eeebd))
@@ -148,12 +146,12 @@ This project was renamed to Poolhouse on 2026-10-09 (it was ml-stack); the entri
 * **testing:** one fake model server, on a real socket and as a binary ([662d11e](https://github.com/adammikulis/poolhouse/commit/662d11ec04a967f612960eebbff08ce519dc048f))
 * **testing:** the last inline model-server handlers in the serve tests ([c4f314b](https://github.com/adammikulis/poolhouse/commit/c4f314b505472e8bc51d32fad823e994b7899136))
 * tests for the four functions the mutation gate found uncovered ([6ccb6fa](https://github.com/adammikulis/poolhouse/commit/6ccb6fac5c436dfeca330ae9699810a01e048f2a))
-* the array backend is ml_stack.backend ([9fe5c73](https://github.com/adammikulis/poolhouse/commit/9fe5c7377b8686d3fddcbb64b38e97e3e78bcbae))
+* the array backend is poolhouse.backend ([9fe5c73](https://github.com/adammikulis/poolhouse/commit/9fe5c7377b8686d3fddcbb64b38e97e3e78bcbae))
 * the banner title can be left off ([1020e00](https://github.com/adammikulis/poolhouse/commit/1020e00a3a642242e973b841aeec6f193f44dd4f))
 * the beacon says which speech protocols a machine has a provider for ([a774252](https://github.com/adammikulis/poolhouse/commit/a774252c9d1c0e16bef95ab9fd213e04c7187435))
 * the detail pane can be an inspector with no back link ([51b394c](https://github.com/adammikulis/poolhouse/commit/51b394c014eefad65543c1ad2814358052a5dd01))
 * the look_up step names what found each hit ([9e0bca7](https://github.com/adammikulis/poolhouse/commit/9e0bca7f66e50f21c6cd74f30a2238d1ddde4d33))
-* the memory limits record is ml_stack.limits ([c7f5c50](https://github.com/adammikulis/poolhouse/commit/c7f5c50ee3661df32aa90e1ae8eaee4e41649414))
+* the memory limits record is poolhouse.limits ([c7f5c50](https://github.com/adammikulis/poolhouse/commit/c7f5c50ee3661df32aa90e1ae8eaee4e41649414))
 * the mutation count says what it does not cover ([5f7153c](https://github.com/adammikulis/poolhouse/commit/5f7153ca9c1c40b5ed3d13a8d2183693a90b8728))
 * the release uploads the wheels to PyPI ([666fff7](https://github.com/adammikulis/poolhouse/commit/666fff764101bbc88343468b9a9d3dd9c68e8ad8))
 * the size gates refuse rather than budget ([9656636](https://github.com/adammikulis/poolhouse/commit/96566362837f3293f1543716af5fb2b750b79615))
@@ -230,12 +228,12 @@ This project was renamed to Poolhouse on 2026-10-09 (it was ml-stack); the entri
 * discovery sends to the multicast group on loopback as well as on the LAN ([2db4c28](https://github.com/adammikulis/poolhouse/commit/2db4c28d496f2e8ec0918473822a49234ea1396a))
 * each record written beside a file says which shape it has ([4b96ad2](https://github.com/adammikulis/poolhouse/commit/4b96ad231fcd3c0c0055c697b11e3b030d2c0122))
 * every architecture name llama.cpp defines is found in libllama ([819005b](https://github.com/adammikulis/poolhouse/commit/819005bcb9bcd3f2b983c4b04e01e8ad577a90dd))
-* every file lock goes through ml_stack.lock ([f5364bf](https://github.com/adammikulis/poolhouse/commit/f5364bf23c4c495d9bb73c7c415389df69361dfe))
+* every file lock goes through poolhouse.lock ([f5364bf](https://github.com/adammikulis/poolhouse/commit/f5364bf23c4c495d9bb73c7c415389df69361dfe))
 * every HTTP server binds without a reverse lookup of its own address ([7c1f0f1](https://github.com/adammikulis/poolhouse/commit/7c1f0f1a794b7d3751ef0e6a6c090cf620b7f25a))
 * every quoted measurement names the report it comes from ([c341582](https://github.com/adammikulis/poolhouse/commit/c341582e8b2130a6192a787804a44648f6b23ae3))
 * every skip names what to install ([8c5dd7a](https://github.com/adammikulis/poolhouse/commit/8c5dd7abf97221d2b4636c5579aea1eb3fea06ab))
-* every traind and bench default comes from ml_stack.home ([8eeddd3](https://github.com/adammikulis/poolhouse/commit/8eeddd36ff6e65c97eb89188fa6165f569127b26))
-* every write-then-replace goes through ml_stack.files ([6d79f57](https://github.com/adammikulis/poolhouse/commit/6d79f57be4d00f9b1d2f804613265b8f3db1d4b2))
+* every traind and bench default comes from poolhouse.home ([8eeddd3](https://github.com/adammikulis/poolhouse/commit/8eeddd36ff6e65c97eb89188fa6165f569127b26))
+* every write-then-replace goes through poolhouse.files ([6d79f57](https://github.com/adammikulis/poolhouse/commit/6d79f57be4d00f9b1d2f804613265b8f3db1d4b2))
 * exclude the graph, world, bench and ingest stack from the frozen daemon ([b362247](https://github.com/adammikulis/poolhouse/commit/b362247efb5ab73c72a7285d012c810e12366d32))
 * fetching a file the repo does not hold names the files it does ([02e1642](https://github.com/adammikulis/poolhouse/commit/02e164277faceba5410585fcf31a2575633d4502))
 * **gates:** ruff and pyright pinned to the versions the budgets were counted with ([da2718a](https://github.com/adammikulis/poolhouse/commit/da2718a47c68124598c7d9d9a76dcfe1e301bd88))
@@ -247,9 +245,9 @@ This project was renamed to Poolhouse on 2026-10-09 (it was ml-stack); the entri
 * key the linux test venv by stamp and give each run its own venv ([36b44ef](https://github.com/adammikulis/poolhouse/commit/36b44ef00ef76c6e0fa3c24e92993317479eabae))
 * leases survive a broker restart, and cores are granted like ports ([e2ba57b](https://github.com/adammikulis/poolhouse/commit/e2ba57b46d6bc0082a0b447569d1508e82f7b386))
 * local-imports counts a deferred dependency, not a line ([843ae92](https://github.com/adammikulis/poolhouse/commit/843ae923954f25518f0c858c0724c8ff5741c753))
-* local-imports counts import_module of a literal ml_stack name ([e1f27dc](https://github.com/adammikulis/poolhouse/commit/e1f27dcc1b216afe830fe4194c783bd358d783c0))
-* ml-stack-graph serve keeps change requests and a review queue ([92177e0](https://github.com/adammikulis/poolhouse/commit/92177e0f18af6ee11993e21e26d38ac39ddfe27c))
-* ml-stack-walk graph review opens the change panel before reading the queue ([ff640c9](https://github.com/adammikulis/poolhouse/commit/ff640c9f45113fadb9bb6baa993d6cd50d3c8974))
+* local-imports counts import_module of a literal poolhouse name ([e1f27dc](https://github.com/adammikulis/poolhouse/commit/e1f27dcc1b216afe830fe4194c783bd358d783c0))
+* poolhouse-graph serve keeps change requests and a review queue ([92177e0](https://github.com/adammikulis/poolhouse/commit/92177e0f18af6ee11993e21e26d38ac39ddfe27c))
+* poolhouse-walk graph review opens the change panel before reading the queue ([ff640c9](https://github.com/adammikulis/poolhouse/commit/ff640c9f45113fadb9bb6baa993d6cd50d3c8974))
 * MLX scatter_add differentiates when its index is computed from the input ([77b37c4](https://github.com/adammikulis/poolhouse/commit/77b37c41154b792cdcccd9f9b6907f8275c8355c))
 * MLXStep.restore refuses a checkpoint whose tensors are not exactly the model's ([87635d5](https://github.com/adammikulis/poolhouse/commit/87635d50460069a7a605f3acd28dac9c76e7cd25))
 * mmap and mlock are passed as --load-mode ([e34fa55](https://github.com/adammikulis/poolhouse/commit/e34fa55996fff149d9afa560cdc7b06732572169))
@@ -292,10 +290,10 @@ This project was renamed to Poolhouse on 2026-10-09 (it was ml-stack); the entri
 * the ask routing test embeds over a fixed vocabulary ([85df31c](https://github.com/adammikulis/poolhouse/commit/85df31c80efdb7df914efebbdafb10a1830f1b49))
 * the atomic-writes gate reads the syscall, not the spelling ([fa3acd7](https://github.com/adammikulis/poolhouse/commit/fa3acd7b06a37776e385da3835cdff6ff7ba54fe))
 * the bash guard reads a search pattern as text, not as a command ([bd256d3](https://github.com/adammikulis/poolhouse/commit/bd256d3b06a0d654865c8995bcd6d1d64c142a63))
-* the broker never stops a server put up with ml-stack-serve up, nor one that is answering ([30b54f0](https://github.com/adammikulis/poolhouse/commit/30b54f0947ca68cc9a2491c039bdf98e235a0e9e))
+* the broker never stops a server put up with poolhouse-serve up, nor one that is answering ([30b54f0](https://github.com/adammikulis/poolhouse/commit/30b54f0947ca68cc9a2491c039bdf98e235a0e9e))
 * the broker takes in running servers before every lease ([e5db561](https://github.com/adammikulis/poolhouse/commit/e5db561ec7d68205e931c6adde4ee6ca888176fb))
 * the broker takes in servers started after it ([e0987bc](https://github.com/adammikulis/poolhouse/commit/e0987bcaa88086a1615c608a97c37c68d4235433))
-* the checkouts the doctor examines come from --repo or $ML_STACK_CHECKOUTS ([d3eae1a](https://github.com/adammikulis/poolhouse/commit/d3eae1adc365ef79da44fcb8a094174b600e8646))
+* the checkouts the doctor examines come from --repo or $POOLHOUSE_CHECKOUTS ([d3eae1a](https://github.com/adammikulis/poolhouse/commit/d3eae1adc365ef79da44fcb8a094174b600e8646))
 * the command table names the conversation store and ingest forget ([4c18800](https://github.com/adammikulis/poolhouse/commit/4c1880036de7df20c1a9990cb94d6b2e6d3800db))
 * the console-script check parses the module instead of grepping it ([9f097fd](https://github.com/adammikulis/poolhouse/commit/9f097fdc1176f120a23125db686efb449ccc163f))
 * the container gets a git repository and a git to read it with ([4808ec3](https://github.com/adammikulis/poolhouse/commit/4808ec35c82f9758a2bad0e9fd6c3f5f9b95e5c2))
@@ -323,7 +321,7 @@ This project was renamed to Poolhouse on 2026-10-09 (it was ml-stack); the entri
 * the link layer's ink falls with the number of links drawn in it ([4c264fd](https://github.com/adammikulis/poolhouse/commit/4c264fd6cc3281e9f10524b4ab29f5cde45ce44d))
 * the Linux runner test reads the extras from ci.yml ([9061235](https://github.com/adammikulis/poolhouse/commit/906123563e45b91933da3c85be0422870a66ed3e))
 * the macOS test job runs where the store has a wheel ([b611f9b](https://github.com/adammikulis/poolhouse/commit/b611f9be66864ea611d17a4470fb1e21a2afe2c7))
-* the managed builds and the Hub cache follow ML_STACK_HOME ([6e5af5c](https://github.com/adammikulis/poolhouse/commit/6e5af5c2b650665a15b6918df911f84b210a7528))
+* the managed builds and the Hub cache follow POOLHOUSE_HOME ([6e5af5c](https://github.com/adammikulis/poolhouse/commit/6e5af5c2b650665a15b6918df911f84b210a7528))
 * the offline wheelhouse in the installer tests carries packaging ([f98c1ef](https://github.com/adammikulis/poolhouse/commit/f98c1ef2a8f64963dc859b75f830bb361a2362c7))
 * the page declares its encoding, and a document can be named ([67c5952](https://github.com/adammikulis/poolhouse/commit/67c5952084721a76b54fa40d03dc124b568351e2))
 * the panes do not depend on the map being drawn ([faa7b5c](https://github.com/adammikulis/poolhouse/commit/faa7b5c45a0922048087a5287afaf50899679160))
@@ -349,14 +347,14 @@ This project was renamed to Poolhouse on 2026-10-09 (it was ml-stack); the entri
 
 ### Features
 
-* `pip install ml-stack` — one package, with `[train]`, `[serve]`, `[app]` and `[all]` for what needs more than the standard library ([43d926f](https://github.com/adammikulis/poolhouse/commit/43d926f241d01063d717049fa0cfb4a83512c2b3))
+* `pip install poolhouse` — one package, with `[train]`, `[serve]`, `[app]` and `[all]` for what needs more than the standard library ([43d926f](https://github.com/adammikulis/poolhouse/commit/43d926f241d01063d717049fa0cfb4a83512c2b3))
 
 ## [0.1.6](https://github.com/adammikulis/poolhouse/compare/v0.1.5...v0.1.6) (2026-08-25)
 
 
 ### Features
 
-* The twelve packages are on PyPI: `pip install ml-stack-fleet`, `ml-stack-train`, `ml-stack-serve` and the rest ([69c1020](https://github.com/adammikulis/poolhouse/commit/69c102029893be2c4e09c604c65724fae897c8f8))
+* The twelve packages are on PyPI: `pip install poolhouse-fleet`, `poolhouse-train`, `poolhouse-serve` and the rest ([69c1020](https://github.com/adammikulis/poolhouse/commit/69c102029893be2c4e09c604c65724fae897c8f8))
 
 ## [0.1.5](https://github.com/adammikulis/poolhouse/compare/v0.1.4...v0.1.5) (2026-08-25)
 

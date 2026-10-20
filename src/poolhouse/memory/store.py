@@ -30,7 +30,6 @@ from poolhouse.memory.facts import (
     Refused,
     check,
 )
-from poolhouse.memory.migrate import import_v1
 from poolhouse.memory.project import Project
 from poolhouse.sentinel.human import protect
 from poolhouse.serve.binary import managed_current
@@ -111,14 +110,12 @@ class View:
 class Setup:
     """Whose store it is and how it is keyed. ``user`` defaults to this process's OS account and
     ``profile`` (or ``$POOLHOUSE_MEMORY_PROFILE``) names one of several memories for it; neither
-    is ever taken from model or request text. ``keys`` defaults to the OS keystore, ``legacy``
-    is a version 1 file to import, ``embed`` turns a fact into the vector stored with it and
+    is ever taken from model or request text. ``keys`` defaults to the OS keystore, ``embed`` turns a fact into the vector stored with it and
     ``project`` makes the store that project's (a separate sealed file under the same key)."""
 
     user: str | None = None
     profile: str | None = None
     keys: vault.Keys | None = None
-    legacy: Path | None = None
     embed: Callable[[str], Sequence[float]] | None = None
     project: Project | None = None
 
@@ -161,8 +158,7 @@ class Store:
         self.clock, self.scope = clock, scope
         self.owner = f"{self.user}|{self.profile}" + (f"|project:{self.project.key}" if self.project else "")
         keydir = base if path is None else self.path.parent
-        older = (base / "graph.enc", base / "graph.enc.prev") if self.project else (self.path, self.prev)
-        self.keys = setup.keys or vault.default_keys(self.user, self.profile, str(keydir.resolve()), older)
+        self.keys = setup.keys or vault.default_keys(self.user, self.profile, str(keydir.resolve()))
         self._g: GraphStore | None = None
         self._stamp: tuple[str, str] | None = None
         self._status, self._why, self._salt = "fresh", "", os.urandom(vault.SALT)
@@ -170,11 +166,6 @@ class Store:
         self.saved_project: dict[str, str] = {}
         self._next_key: bytes | None = None
         protect(base.parent if path is None else self.path.parent)
-        old = setup.legacy or (home.state("memory", "facts.json") if path is None and not self.project else None)
-        if old is not None and old.exists() and not self.path.exists():
-            with contextlib.suppress(vault.KeyUnavailable):
-                import_v1(self, old)
-
     # -- loading --------------------------------------------------------------------
     def close(self) -> None:
         """Release the in-memory graph."""

@@ -24,8 +24,8 @@ def test_desktop_grants_only_window_and_close_commands():
     assert capability["remote"]["urls"] == ["http://127.0.0.1:8770/*"]
     assert capability["local"] is False
     assert set(capability["permissions"]) == {
-        "core:default", "window-state:default", "allow-close-choice", "allow-on-closing", "allow-reopen-page",
-        "allow-choose-studio-watch-source",
+        "core:default", "window-state:default", "allow-close-choice", "allow-on-closing",
+        "allow-choose-studio-watch-source", "allow-renew-session",
     }
 
 

@@ -17,13 +17,13 @@ mod tests;
 /// recorded under `root`, or the bare page when none is issued.
 pub fn page_url(root: &Path, port: u16) -> String {
     let bare = crate::origin::address(port);
-    match ticket(root, port) {
+    match session_ticket(root, port) {
         Some(ticket) => format!("{bare}?launch_ticket={ticket}"),
         None => bare,
     }
 }
 
-fn ticket(root: &Path, port: u16) -> Option<String> {
+pub(crate) fn session_ticket(root: &Path, port: u16) -> Option<String> {
     ticket_from(&exchange(port, &native_secret(root, port)?)?)
 }
 

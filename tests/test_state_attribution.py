@@ -80,7 +80,7 @@ def test_nothing_changed_is_quiet(tmp_path):
 @pytest.mark.parametrize("argv,expected", [
     (["/venv/bin/poolhouse-bench", "prepare"], True),
     (["/venv/bin/python", "-m", "poolhouse.broker"], True),
-    (["python3", "/repos/ml-stack/scripts/test", "all"], False),
+    (["python3", "/repos/example-project/scripts/test", "all"], False),
     (["vim", "poolhouse/README.md"], False)])
 def test_poolhouse_processes_are_recognised_by_how_they_were_started(argv, expected):
     assert _is_poolhouse(argv) is expected

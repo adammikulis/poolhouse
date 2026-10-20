@@ -8,7 +8,7 @@
           const editor = this.editor,
             spec = S.spec(editor, node),
             p = S.position(editor, node.id),
-            state =
+            state = node.type === "import.unsupported" ? "blocked" :
               editor.activeRun?.nodes?.[
                 [...editor.context.map((c) => c.node.id), node.id].join("/")
               ]?.state ||

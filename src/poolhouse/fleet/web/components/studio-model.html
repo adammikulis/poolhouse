@@ -63,6 +63,7 @@
       return r;
     };
     S.spec = (editor, node, seen = []) => {
+      if (node.type === "import.unsupported" && S.n8nSpec) return S.n8nSpec(node);
       if (node.type !== "group") {
         const spec = editor.specs.find(
           (s) => s.type === node.type && s.version === node.version,

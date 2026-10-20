@@ -12,7 +12,7 @@ fn capabilities_reject_remote_shell_and_foreign_windows() {
     let authority = context.runtime_authority_mut();
     let local = remote("http://127.0.0.1:8770/ui/");
     assert!(authority.resolve_access("on_closing", "main", "main", &local).is_some());
-    assert!(authority.resolve_access("reopen_page", "main", "main", &local).is_some());
+    assert!(authority.resolve_access("renew_session", "main", "main", &local).is_some());
     for command in ["plugin:shell|execute", "plugin:shell|spawn", "plugin:shell|open", "plugin:fs|read_file", "plugin:dialog|open", "plugin:dialog|save"] {
         assert!(authority.resolve_access(command, "main", "main", &local).is_none(), "{command}");
     }
@@ -27,11 +27,11 @@ fn capabilities_reject_remote_shell_and_foreign_windows() {
         "https://127.0.0.1:8770/ui/",
     ] {
         assert!(authority.resolve_access("close_choice", "main", "main", &remote(url)).is_none(), "{url}");
-        assert!(authority.resolve_access("reopen_page", "main", "main", &remote(url)).is_none(), "{url}");
+        assert!(authority.resolve_access("renew_session", "main", "main", &remote(url)).is_none(), "{url}");
         assert!(authority.resolve_access("choose_studio_watch_source", "main", "main", &remote(url)).is_none(), "{url}");
     }
     assert!(authority.resolve_access("close_choice", "foreign", "foreign", &local).is_none());
-    assert!(authority.resolve_access("reopen_page", "foreign", "foreign", &local).is_none());
+    assert!(authority.resolve_access("renew_session", "foreign", "foreign", &local).is_none());
     assert!(authority.resolve_access("choose_studio_watch_source", "foreign", "foreign", &local).is_none());
 }
 
@@ -45,10 +45,12 @@ fn another_port_is_granted_that_port_alone() {
     authority.add_capability(origin::capability(9123)).unwrap();
     let own = remote("http://127.0.0.1:9123/ui/");
     assert!(authority.resolve_access("close_choice", "main", "main", &own).is_some());
+    assert!(authority.resolve_access("renew_session", "main", "main", &own).is_some());
     assert!(authority.resolve_access("choose_studio_watch_source", "main", "main", &own).is_some());
     assert!(authority.resolve_access("plugin:shell|execute", "main", "main", &own).is_none());
     for url in ["http://127.0.0.1:9124/ui/", "http://127.0.0.1:9000/ui/", "http://localhost:9123/ui/"] {
         assert!(authority.resolve_access("close_choice", "main", "main", &remote(url)).is_none(), "{url}");
+        assert!(authority.resolve_access("renew_session", "main", "main", &remote(url)).is_none(), "{url}");
         assert!(authority.resolve_access("choose_studio_watch_source", "main", "main", &remote(url)).is_none(), "{url}");
     }
     assert!(authority.resolve_access("choose_studio_watch_source", "foreign", "foreign", &own).is_none());

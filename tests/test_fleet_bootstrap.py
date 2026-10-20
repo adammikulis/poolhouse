@@ -74,7 +74,7 @@ def test_delayed_ticket_redemption_orders_eager_requests_and_expiry_asks_for_the
         }""")
         assert status == 401
         page.wait_for_function("() => fleetModel.route === 'launch-needed'")
-        assert page.locator("#launch-needed-command").is_visible()
+        assert page.get_by_role("heading", name="Reconnect to Poolhouse").is_visible()
     finally:
         page.close()
 

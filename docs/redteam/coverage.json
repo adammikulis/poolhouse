@@ -1,10 +1,10 @@
 {
- "surfaces": 925,
+ "surfaces": 921,
  "by_status": {
-  "covered": 607,
+  "covered": 604,
   "partial": 193,
   "uncovered": 52,
-  "n/a": 73,
+  "n/a": 72,
   "unmapped": 0
  },
  "by_kind": {
@@ -19,7 +19,7 @@
    "covered": 7,
    "partial": 5,
    "uncovered": 0,
-   "n/a": 20,
+   "n/a": 19,
    "unmapped": 0
   },
   "context": {
@@ -58,7 +58,7 @@
    "unmapped": 0
   },
   "keystore": {
-   "covered": 4,
+   "covered": 2,
    "partial": 0,
    "uncovered": 0,
    "n/a": 0,
@@ -79,14 +79,14 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 94,
+   "covered": 92,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
    "unmapped": 0
   },
   "route": {
-   "covered": 132,
+   "covered": 133,
    "partial": 58,
    "uncovered": 0,
    "n/a": 0,
@@ -702,16 +702,6 @@
     "tests/test_sentinel_redteam.py::test_the_command_line_refuses_release_under_an_agent_even_with_a_terminal"
    ],
    "note": ""
-  },
-  {
-   "id": "cli:poolhouse-migrate",
-   "kind": "cli",
-   "source": "poolhouse.migrate:main",
-   "trust": "the person at a terminal; arguments may carry text from outside",
-   "attacker": "hostile argument text or path reaches the command",
-   "status": "n/a",
-   "tests": [],
-   "note": "run by the person with the person's own arguments; an agent reaches these commands only through an mcp-tool or chat-tool row, which carry the hostile-argument tests"
   },
   {
    "id": "cli:poolhouse-models",
@@ -5063,40 +5053,6 @@
    "note": "approval decide, phone add and phone remove refuse a process an agent started and one with no terminal; the node accepts a decision only from the signature of a key it holds over the text it wrote, once, and a session never decides (app/poolhouse-node/tests/approvals.rs, phone_endpoint.rs, push_out.rs)"
   },
   {
-   "id": "keystore:fleet/onboard/signing.py:SigningKeys._drop",
-   "kind": "keystore",
-   "source": "fleet/onboard/signing.py:SigningKeys._drop",
-   "trust": "the process environment and the files on disk",
-   "attacker": "a failure path leaks, downgrades or overwrites a secret",
-   "status": "covered",
-   "tests": [
-    "tests/test_keystore.py::test_the_fleet_signing_key_moves_into_a_wrapped_file_and_the_old_item_goes",
-    "tests/test_keystore.py::test_a_signing_key_move_cut_off_after_the_wrap_is_finished_by_the_next_call",
-    "tests/test_keystore.py::test_a_signing_key_move_cut_off_after_the_old_item_went_still_signs",
-    "tests/test_onboard_signing.py",
-    "tests/test_redteam_human_floor.py::test_building_the_signing_keys_never_asks_the_keystore",
-    "tests/test_no_real_keychain.py"
-   ],
-   "note": "the wrapped key unwraps only for its purpose and directory; a refusing keystore leaves the old item and the record unchanged"
-  },
-  {
-   "id": "keystore:fleet/onboard/signing.py:SigningKeys._get",
-   "kind": "keystore",
-   "source": "fleet/onboard/signing.py:SigningKeys._get",
-   "trust": "the process environment and the files on disk",
-   "attacker": "a failure path leaks, downgrades or overwrites a secret",
-   "status": "covered",
-   "tests": [
-    "tests/test_keystore.py::test_the_fleet_signing_key_moves_into_a_wrapped_file_and_the_old_item_goes",
-    "tests/test_keystore.py::test_a_signing_key_move_cut_off_after_the_wrap_is_finished_by_the_next_call",
-    "tests/test_keystore.py::test_a_signing_key_move_cut_off_after_the_old_item_went_still_signs",
-    "tests/test_onboard_signing.py",
-    "tests/test_redteam_human_floor.py::test_building_the_signing_keys_never_asks_the_keystore",
-    "tests/test_no_real_keychain.py"
-   ],
-   "note": "the wrapped key unwraps only for its purpose and directory; a refusing keystore leaves the old item and the record unchanged"
-  },
-  {
    "id": "keystore:installed.py:<module>",
    "kind": "keystore",
    "source": "installed.py:<module>",
@@ -7272,20 +7228,6 @@
    "note": "a crafted model-repository listing, card, document, mailbox, WAV or archive reaches the reader; only tests/test_hub_modelfile.py attacks one"
   },
   {
-   "id": "parser:memory/migrate.py",
-   "kind": "parser",
-   "source": "memory/migrate.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_sentinel_store.py",
-    "tests/test_redteam_memory.py",
-    "tests/test_memory_vault.py::test_flipping_any_byte_of_the_ciphertext_or_header_is_detected"
-   ],
-   "note": ""
-  },
-  {
    "id": "parser:memory/project.py",
    "kind": "parser",
    "source": "memory/project.py",
@@ -7331,20 +7273,6 @@
    "id": "parser:memory/tools.py",
    "kind": "parser",
    "source": "memory/tools.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_sentinel_store.py",
-    "tests/test_redteam_memory.py",
-    "tests/test_memory_vault.py::test_flipping_any_byte_of_the_ciphertext_or_header_is_detected"
-   ],
-   "note": ""
-  },
-  {
-   "id": "parser:memory/vault.py",
-   "kind": "parser",
-   "source": "memory/vault.py",
    "trust": "files, pages and archives from outside",
    "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
    "status": "covered",
@@ -10071,6 +9999,20 @@
     "tests/test_studio_contracts.py"
    ],
    "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/import/n8n/preview",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._studio",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_n8n_browser.py::test_preview_endpoint_requires_authenticated_current_session",
+    "tests/test_studio_n8n.py",
+    "tests/test_studio_n8n_browser.py"
+   ],
+   "note": "The inert preview requires a current authenticated UI session. Strict bounded parsing and allowlisted translation omit credentials and executable parameters; unsupported nodes remain blocked, and preview/import neither dispatches work nor grants resources."
   },
   {
    "id": "route:fleet/studio_routes.py:/ui/studio/nodes",
