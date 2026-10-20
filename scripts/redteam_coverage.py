@@ -451,11 +451,17 @@ def discover() -> dict[str, Surface]:
         ("parser", "fleet/producer_control.py", "src/poolhouse/fleet/producer_control.py"),
         ("handler", "fleet/producer_control.py:ControlServer._answer", "src/poolhouse/fleet/producer_control.py"),
         ("parser", "studio/record_context.py", "src/poolhouse/studio/record_context.py"),
+        ("context", "studio/decisions.py", "src/poolhouse/studio/decisions.py"),
         ("parser", "studio/record_coverage.py", "src/poolhouse/studio/record_coverage.py"),
         ("handler", "fleet/producer_offers.py:OfferRegistry.inspect", "src/poolhouse/fleet/producer_offers.py"),
         ("parser", "fleet/producer_bridge.py", "src/poolhouse/fleet/producer_bridge.py"),
         ("handler", "fleet/producer_bridge.py:BridgeCapability.activate", "src/poolhouse/fleet/producer_bridge.py"),
         ("handler", "fleet/producer_bridge.py:BridgeCapability.verify", "src/poolhouse/fleet/producer_bridge.py"),
+        ("spawn", "fleet/producer_holder.py:_launch", "src/poolhouse/fleet/producer_holder.py"),
+        ("parser", "fleet/producer_holder.py", "src/poolhouse/fleet/producer_holder.py"),
+        ("parser", "fleet/producer_client.py", "src/poolhouse/fleet/producer_client.py"),
+        ("egress", "fleet/producer_client.py:ProducerClient._control", "src/poolhouse/fleet/producer_client.py"),
+        ("egress", "fleet/producer_client.py:ProducerClient._data", "src/poolhouse/fleet/producer_client.py"),
     ):
         if (ROOT / source).is_file():
             add(found, kind, name, source)
