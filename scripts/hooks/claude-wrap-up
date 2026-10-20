@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+"""A PostToolUse hook: counts a subagent's tool calls and, at 120 and again at 140, tells it to commit, push, clean up and report.
+
+The count is cleared by the SubagentStop hook. The main session (no agent_id) is not counted.
+
+Wire it in as a PostToolUse hook in `.claude/settings.json`:
+
+    {"hooks": [{"type": "command", "command": "$CLAUDE_PROJECT_DIR/scripts/hooks/claude-wrap-up", "timeout": 5}]}
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+
+import wrap_up
+
+
+def main() -> int:
+    try:
+        event = json.load(sys.stdin)
+        agent = str(event.get("agent_id") or "") if isinstance(event, dict) else ""
+        text = wrap_up.warning(agent, wrap_up.record(agent)) if agent else ""
+    except (OSError, ValueError):
+        return 0
+    if text:
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": text}}))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
