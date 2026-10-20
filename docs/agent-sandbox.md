@@ -186,7 +186,7 @@ VERIFIED from an agent; each sandboxed result is PREDICTED until the owner's ste
 | `scripts/test` lock directory `~/.cache/dev-test-slots` | works: in `allowWrite` | PREDICTED (command itself VERIFIED unsandboxed 2026-10-08) | add the directory |
 | `scripts/test` loopback RPC endpoint (`testslots_rpc` binds `127.0.0.1` with an ephemeral port) | works on macOS with `allowLocalBinding`; on Linux and WSL an ephemeral port cannot be listed in `allowedDomains` and the connect is refused | PREDICTED | give the broker a fixed port setting and list it; until then run Linux tests from a person's terminal |
 | `scripts/test` temp files and pytest tmp | works: temp directories in `allowWrite` | PREDICTED | add the directory the run reports |
-| `scripts/land`, `git worktree add/remove`, commit in a sibling worktree | works for listed checkouts; a new sibling fails with `Operation not permitted` | PREDICTED | rerun `prepare`, install |
+| `git worktree add/remove`, commit in a sibling worktree | works for listed checkouts; a new sibling fails with `Operation not permitted` | PREDICTED | rerun `prepare`, install |
 | Edit `scripts/hooks/*` or `.git/hooks` | refused by design | PREDICTED | the owner edits outside the sandbox |
 | git fetch/push over HTTPS to github.com | works through the proxy; credentials come from a token the person's helper supplies, not `~/.config/gh` | PREDICTED | none, or `excludedCommands: ["git fetch *"]` in managed settings if the proxy breaks a TLS handshake |
 | git over SSH | fails on macOS (SSH is blocked inside the sandbox; `~/.ssh` and `SSH_AUTH_SOCK` are denied) | PREDICTED | switch the remote to HTTPS |

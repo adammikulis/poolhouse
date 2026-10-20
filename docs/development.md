@@ -85,10 +85,8 @@ a file into, and a `chmod -R` that only adds permissions is not refused. The per
 and the other settings that decide what git runs, `gh pr merge` without the person's release approval, and `gh` or
 `curl` writing to rulesets, secrets, releases or settings are refused. `scripts/hooks/claude-tool-guard` applies
 the same paths to `Read`, `Glob`, `Grep` and MCP tools, refuses the owner's own browser, and lets only the main
-session stop a task. `scripts/land` and the pre-push hook require a standing independent accept of the exact commit for guarded
-repository source changes (`protectedwrites.REVIEWED`). Keystore, system approval and release
-authorization remain person-only. Tests: `tests/test_protected_writes.py`, `tests/test_protected_tools.py`,
-`tests/test_land_guards.py`.
+session stop a task. Keystore, system approval and release
+authorization remain person-only. Tests: `tests/test_protected_writes.py`, `tests/test_protected_tools.py`.
 
 What `no-real-names` takes for a name, and what stands a name-shaped pair down, is data:
 `contracts/name-shapes.json` holds the place prefixes and suffixes (a gazetteer's

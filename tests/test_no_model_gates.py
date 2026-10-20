@@ -44,5 +44,5 @@ def test_a_session_of_any_model_may_post_a_landing_review(workspace_node, model)
     node = workspace_node
     reviewer = node.member("reviewer", model=model)
     landing.review(node.session(reviewer), "feat/x", "a" * 40, "accept")
-    found = landing.accepts(node.session(node.member("someone")), "feat/x", "a" * 40)
+    found = landing.accepts(node.session(node.member("someone")), "a" * 40)
     assert [r["by"] for r in found["reviews"]] == [reviewer.name]

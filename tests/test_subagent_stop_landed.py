@@ -119,7 +119,7 @@ def test_unlanded_commits_block_the_stop_and_name_the_ways_out(world):
     commit(world.tree, "work.txt")
     reason = refusal(world.stop())
     assert "1 commit" in reason and "origin/0.3dev" in reason and "worker/topic" in reason
-    assert "scripts/land" in reason and f"scripts/worktrees close {world.tree.resolve()} --bundle" in reason
+    assert "git push origin HEAD:refs/heads/" in reason and f"scripts/worktrees close {world.tree.resolve()} --bundle" in reason
     assert "--abandon" in reason
     assert world.done() == [] and ["retire"] not in world.recorded()
 

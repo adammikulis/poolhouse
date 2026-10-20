@@ -20,7 +20,7 @@ import sys
 import time
 from pathlib import Path
 
-import land_git as lg
+import sealed_git as lg
 import srcpath  # noqa: F401
 
 from poolhouse import lan, lock

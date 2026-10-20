@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from land_support import Project, git
+from git_world import Project, git
 
 from poolhouse import (
     home,

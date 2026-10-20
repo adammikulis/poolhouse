@@ -59,7 +59,7 @@ install's command prefix (`ml-stack`) and the new one (`poolhouse`).
    if you can: `migrate` does not touch `~/.ml-stack/models`, but a server whose files lie under `~/.ml-stack`
    counts as running there and blocks the move; stop that one with `ml-stack-serve down MODEL`.
    `pgrep -fl 'ml-stack|ml_stack|poolside-node'` should print nothing.
-3. **Land** the rename (the lead runs `scripts/land BRANCH` once the new package is
+3. **Land** the rename (the lead pushes the branch once the new package is
    installed, or by hand on the primary checkout with the owner's authority).
 4. **Install the new package** into the pyenv 3.13.5 interpreter, then remove the old one:
 

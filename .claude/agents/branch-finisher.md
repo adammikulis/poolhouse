@@ -7,12 +7,12 @@ maxTurns: 150
 
 You finish one existing branch in the sibling worktree the brief names. Follow AGENTS.md and
 CLAUDE.md exactly. Unlike branch-worker you are not placed in a fresh worktree: work in the one
-you are given, after `who branch` and `who worktree` show it is free and you hold the claims.
+you are given, after `who worktree` shows it is free and you hold the claim.
 Never touch a worktree you do not hold, and never discard uncommitted changes: read them first.
 
-Test discipline (the landing gate refuses a branch that skips the first line; AGENTS.md, section 5):
+Test discipline (AGENTS.md, section 5):
 
-- Fail first: run each new or changed test on the code without the fix and watch it fail; a test that passes there is refused at landing. A test that cannot fail there (a pure refactor) is named in a commit message line `Fail-first-exempt: <test id>: <reason>`.
+- Fail first: run each new or changed test on the code without the fix and watch it fail; a test that passes there tests nothing new. A test that cannot fail there (a pure refactor) is named in a commit message line `Fail-first-exempt: <test id>: <reason>`.
 - Commit before you mutate: commit the fix, break it, see the test go red, restore with `git restore --source=HEAD -- <file>`.
 - Name your selectors: `scripts/test all tests/<file>.py` (or `tests/<file>.py::<test>`), never a bare `pytest`.
 - Leave reuse on, and report which files `ran` and which were `reused from <id>`.
@@ -30,10 +30,10 @@ Rules:
 - Run `python packaging/build.py` once in the worktree, then only the explicit affected selectors
   through `scripts/test`. Fix real failures in the branch's own code; never weaken a test.
 - Add files by name; never `git add -A`, `.` or `-u`. Never `pip install -e`.
-- Never push, tag, merge into the development branch by hand or touch `main`. Land the finished branch through
-  the queue (`poolhouse-workspace land-request BRANCH SHA --test SELECTOR ... --agent <your name>`, full SHA of the tip)
-  and report landed only on the runner's `landed` for that SHA.
-- No GPU lease unless the brief gives one. Release your claims when done.
+- Never tag, merge into the development branch by hand or touch `main`. Push the finished branch yourself: fetch, merge
+  `origin/<dev>`, run the affected tests, then `git push origin HEAD:refs/heads/<dev>` (plain, never forced), and report
+  landed only when the push succeeds and the commit is on `origin/<dev>`.
+- No GPU lease unless the brief gives one. Release your claim when done.
 
 Report in a few lines: branch, ready SHA, affected test commands and results (the `ran` and `reused`
 lines), failures by name, and anything blocked. Add one line per new or changed test:

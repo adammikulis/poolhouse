@@ -271,34 +271,6 @@ excludes a file with `--ignore`, `--deselect`, `-k` or `-m`. Locally they run li
 CI run (the mean over the files that ran it), and `record --history` from the per-test history above.
 `scripts/ci_shards.py summary --shards 8` prints each job's total and the longest file.
 
-## Landing a batch
-
-`scripts/land` (modules `scripts/land_*.py`) lands several ready branches with one verification.
-Every test and gate runs through `scripts/test`, so the broker admits them like any other run.
-
-- `plan [--cover] [BRANCH...]` lists each branch's unique patches (patch-id, `git cherry`
-  semantics), drops branches another one contains, orders the rest so each merges cleanly onto the
-  plan so far (`git merge-tree --write-tree`, no checkout), and reports files, commit and behind
-  counts, predicted conflicts and dirty worktrees. It warns past 50 commits or 20 behind.
-- `run [--dry-run] [--conflicts=eject|stop] [-n N] BRANCH...` merges with `--no-ff` and rerere in a
-  sibling `<repo>-land-<stamp>` worktree on `land/<stamp>`, keeping both sides of `HANDOFF.md`.
-  A documentation-only diff runs `scripts/budgets` and `git diff --check`. A code diff runs
-  `scripts/test gate` and `scripts/test all` on the selectors `scripts/affected.py` computes from the
-  combined diff. The whole suite runs on GitHub for pull requests, `main` and nightly.
-- A pass is recorded with `record_run` under the tree hash; the same tree and check later print
-  `reused from <id>`. A failing check is first run on a clean worktree of the base: failing there
-  too is reported as `baseline`. Otherwise the merge commits are bisected with only the failing
-  selectors, the branch is ejected, the integration branch is rebuilt without it, and the failed
-  checks run again. An ejection prints branch, check, evidence, owner (the tip's `Agent-Label`
-  trailer, else its worktree name) and commit count.
-- `finish [--apply]` is a dry run unless `--apply`. It fast-forwards the target only when the
-  primary checkout is clean and on the target, otherwise prints the command for the lead. It never
-  pushes. Then it removes each landed source branch's worktree and branch (never forced), keeping
-  dirty trees, trees holding the current directory and branches with unique patches, and the
-  integration tree while its landing run is alive.
-
-The last line of every command is a JSON summary.
-
 ## Rust builds in tests
 
 The tests that run `cargo test` (`tests/native_cargo.py`, `test_native_authority_*.py`, `test_phone_native_governance.py`) get a

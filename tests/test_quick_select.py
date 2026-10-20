@@ -30,7 +30,6 @@ FILES = {
     "tests/test_delta.py": "def test_run(): ...\n\n\nARGS = ['-m', 'poolhouse.delta']\n",
     "tests/test_leaf.py": "from poolhouse.pack import leaf\n\n\ndef test_v():\n    assert leaf.VALUE\n",
     "tests/test_conftest_guard.py": "def test_nothing(): ...\n",
-    "tests/test_land_review_policy.py": "def test_nothing(): ...\n",
     "tests/test_dynamic.py": "import importlib\n\n\ndef test_each(name='x'):\n    importlib.import_module(name)\n",
     "tests/test_table.py": "import tomllib\nSCRIPTS = tomllib.loads('')['project']['scripts']\n",
     "tests/test_literal.py": "import importlib\n\n\ndef test_one():\n    importlib.import_module('json')\n",
@@ -55,12 +54,7 @@ def toy(tmp_path: Path) -> Path:
 
 
 def chosen(root: Path, *changed: str, **kw) -> set[str]:
-    return set(affected.select(root, list(changed), **kw).files) - {"tests/test_conftest_guard.py", "tests/test_land_review_policy.py"}
-
-
-def test_a_new_library_package_selects_the_review_policy_test_that_classifies_it(toy) -> None:
-    selected = affected.select(toy, ["src/poolhouse/pack/leaf.py", "src/poolhouse/newarea/__init__.py"]).files
-    assert "tests/test_land_review_policy.py" in selected
+    return set(affected.select(root, list(changed), **kw).files) - {"tests/test_conftest_guard.py"}
 
 
 def test_a_change_selects_the_tests_that_import_it(toy) -> None:

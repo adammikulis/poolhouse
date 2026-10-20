@@ -218,14 +218,12 @@ def test_sweep_keeps_a_young_landed_tree(main):
     assert sweep(main, trees.MIN_AGE_S + 60) == ["young"]
 
 
-def test_sweep_keeps_locked_trees_integration_trees_and_work(main):
+def test_sweep_keeps_locked_trees_and_work(main):
     locked, work = tree(main, "locked"), tree(main, "work")
-    git(main, "worktree", "add", "-q", "-b", "land/batch", str(main.parent / "batch"))
-    batch = main.parent / "batch"
     git(main, "worktree", "lock", "--reason", "foreign operation", str(locked))
     commit(work, "f1")
     assert sweep(main) == []
-    assert locked.exists() and work.exists() and batch.exists()
+    assert locked.exists() and work.exists()
 
 
 def test_sweep_removes_a_detached_landed_tree(main):

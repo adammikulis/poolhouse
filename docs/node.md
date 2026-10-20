@@ -301,8 +301,7 @@ that parent's token, or under another parent, is `denied`, and so is registering
 identity retired and writes an `audit` entry. A session retires itself, and a main session takes its subagents with it;
 a parent (any ancestor) retires a descendant; a session retires no other main session. The end has a reason, recorded on the identity and in the
 audit entry: `done` (an ordinary end, such as a worker whose work is finished) or, given only by a parent and never
-by a session about itself, `revoked` or `forged` (an end for cause, which the landing runner holds against the work
-the session asked for or reviewed). The node itself ends a session as `idle` (see below). A main session that ended `done` or
+by a session about itself, `revoked` or `forged` (an end for cause, after which the reviews the session wrote no longer count). The node itself ends a session as `idle` (see below). A main session that ended `done` or
 `idle` registers again as the same session, from the lineage it was registered from and on the same terms as before it ended
 (a retired subagent never does); its old tokens stay refused and it is given a new one.
 
@@ -332,14 +331,13 @@ never runs `verify_cmd`: a client does and records `exit` and the SHA-256 of the
 **Landing reviews** are the `landing` entries of the board (channel `#landing`): a `review` names a plain `branch` (never
 `main` or `master`), a full 40-character `sha`, a `verdict` (`accept` or `reject`) and the `standing` the node stamps on it
 (the sender's name, model and model state at that moment, never taken from the caller). `land_review` writes one for the
-live session behind the token and refuses a session that ever held `claim branch BRANCH`. `land_accepts` (`branch`, `sha`,
-`worktree`) answers `scripts/land` and the push hook: the last review of each reviewer of this device for exactly that commit
-and branch, without the caller and without any session that ever acquired `claim branch BRANCH` or `claim worktree PATH`
-(read from the board's lease entries, whatever branch a reviewer wrote), and the `creators` it found; an empty list means no
-creator is on record. A review row appended by hand under a creator's name is left out the same way. Entries of the
+live session behind the token. `land_accepts` (`sha`, and optionally `branch` and `worktree`) answers the push hook and the unmerged runtime deployment: the last review of
+each reviewer of this device for exactly that commit under any branch name, without the caller and, given a branch or worktree,
+without any session that ever held its claim or was started by one (through any number of subagents); a session of that kind
+cannot write a review of the branch either, and the creators of record come back with the answer. Entries of the
 retired landing queue (`request`, `cancel`, `pause`, `resume`, `state`, `beat`, and reviews of a request) fold and count
 for nothing.
-`landing.standing` drops a reviewer retired as `revoked` or `forged`. No model identifier decides who may land, review or
+`landing.rejected` and `landing.standing` drop a reviewer retired as `revoked` or `forged`. No model identifier decides who may land, review or
 coordinate: the model on a review is the id the session claimed, kept as a label.
 
 A review counts only when this device wrote it. The device list (`<state>/land_trust.json`, kept per pool, empty by default,

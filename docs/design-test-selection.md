@@ -42,7 +42,6 @@ exists. Decisions the owner has made are in section 11.
 | --- | --- | --- |
 | An agent names files | AGENTS.md section 5; `scripts/testscope.py` | An agent may run any test files it names, never the whole suite |
 | `scripts/test quick` | `scripts/test`, `scripts/affected.py` | `affected.select` files, then testmon's per-checkout map for the rest; an unmapped path runs the full tier |
-| `scripts/land` | `scripts/land_exec.py` | `affected.select` files plus `scripts/test gate`; an unmapped path is ignored (GitHub runs everything) |
 | Reuse | `scripts/testreuse_*.py`, docs/test-reuse.md | A file's stored pass is reused when its key and manifest still hold |
 | GitHub `ci` | `.github/workflows/ci.yml`, `scripts/ci_shards.py` | Every test file, in 8 shards balanced by `tests/ci-durations.json`, on a pull request, a push to `main`, the nightly schedule and a manual dispatch; a push to a development branch runs no shard (`de1df9fc7`, the `shards` job `if:`); junit uploaded. HANDOFF records that no sharded run has completed yet |
 | Test farm | `scripts/test_on.py`, docs/test-farm.md | `--on DEVICE` runs a tier on a member of the pool |

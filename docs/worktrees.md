@@ -52,8 +52,7 @@ the branch description to `bundled: PATH`. `--abandon` needs a reason and is the
 `git diff HEAD` (`NAME-HEAD.dirty.diff`) and a tar of every changed, untracked, hidden and non-rebuildable ignored file
 (`NAME-HEAD.dirty.tar`) are written next to the bundles and the removal refuses if they cannot be written; it then sets the
 description to `abandoned: REASON`. Removal forces only `--abandon` of a dirty tree, after the files are saved: a locked tree stays, and `landed` deletes the branch with
-`git branch -d`, keeping it (and saying so in the result) when git calls it unmerged. `sweep` leaves locked trees
-and the landing runner's `land/` trees, which the runner removes itself.
+`git branch -d`, keeping it (and saying so in the result) when git calls it unmerged. `sweep` leaves locked trees.
 
 A tree removed some other way (`git worktree remove`, `rm -rf` then `git worktree prune`) leaves nothing to
 reconcile.
@@ -67,10 +66,9 @@ not its own. The test is the one in the table above, against `origin/<developmen
 origin has none): a commit that branch lacks, a changed or untracked file, an unfinished merge or rebase, or a tree git
 cannot read. A subagent whose directory is already gone, or that stopped outside any checkout, is let through.
 
-The refusal is one sentence that names the tree and says to land it with `scripts/land`, or, when the work is
-superseded or cannot land, to run `scripts/worktrees close TREE --bundle` (`--abandon 'reason'` for uncommitted files).
+The refusal is one sentence that names the tree and says to merge origin's development branch into it and push it, or, when the work is
+superseded, to run `scripts/worktrees close TREE --bundle` (`--abandon 'reason'` for uncommitted files).
 The second refusal of the same subagent also posts `announce blocked`; the third stop goes through, posts a milestone
 naming the branch and tree, and the tree stays as work for `scripts/worktrees` and its cleanup. That stop announces no
-`done` and does not retire the subagent: its identity and token stay, so the lead can resume it to claim and land after a
-review accept. A stop that finds everything landed (or the tree closed or gone) forgets the count, posts its `done` for its subscribers
+`done` and does not retire the subagent: its identity and token stay, so the lead can resume it to claim and push. A stop that finds everything landed (or the tree closed or gone) forgets the count, posts its `done` for its subscribers
 and retires the subagent. The count lives in the hooks' state directory (`POOLHOUSE_HOOK_STATE`).

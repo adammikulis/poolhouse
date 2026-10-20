@@ -195,7 +195,7 @@ class Session:
         """End ``target`` (default this session): its tokens, leases and name, and its subagents when it is a main session.
 
         ``reason`` is ``done`` (the default, an ordinary end) or, only for a subagent and by its parent, ``revoked``
-        or ``forged``: an end for cause, which the landing runner holds against the work it asked for.
+        or ``forged``: an end for cause, which the reviews and the push check hold against the work it did.
         """
         return dict(self.call("retire", target=target, **({"reason": reason} if reason else {})))
 

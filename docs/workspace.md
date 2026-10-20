@@ -234,7 +234,7 @@ not allowed, 4 over a quota, 5 claim conflict; `watch --timeout` exits 3 when no
 | files | `attach PATH\|- --to #room\|AGENT\|thread:SEQ`, `file HANDLE\|list\|search WORDS\|delete HANDLE` |
 | scratch | `scratch-new NAME [--ttl-hours H]`, `scratch-ls`, `scratch-path NAME [REL]`, `scratch-rm NAME` |
 | claims | `claim KIND KEY [--ttl S] [--pid N]`, `release KIND KEY [--held-by NAME]`, `heartbeat`, `who KIND KEY`, `claims [--kind K]` |
-| landing | `land-review`, `land-trust` (docs/landing.md) |
+| reviews | `land-review`, `land-trust` (docs/landing.md) |
 | tasks | `task-create`, `tasks`, `task`, `task-subscribe`, `task-unsubscribe`, `task-assign`, `task-claim`, `task-heartbeat`, `task-checkpoint`, `task-submit`, `task-review`, `task-credit`, `task-integrate`, `task-rebind-source`, `task-dematerialize`, `enforcement`, `issue-subscribe`, `issue-unsubscribe`, `worktrees` (docs/tasks.md) |
 | local agents | `agent start\|stop\|list\|backlog\|schedule\|supersede-issue\|resume-issue` (docs/local-agent.md) |
 | authority | `authority show\|set\|preset` (below) |

@@ -93,7 +93,8 @@ a day in the 7.49-day tally.
 - `leases.json` is already a local table. What is wrong is `mirror` (`lease/rpc.rs`), which writes every non-quiet grant and end
   of it to the log. The table stays; the mirror narrows.
 - Landing reviews count only on the device that wrote them (`landing.rs`, `e.origin == own`) and each also writes an audit copy.
-- The one reader of `worktree` lease rows is `landing.rs::creators`; it needs a local ledger before those rows stop (S1).
+- No reader of `worktree` lease rows is left: `landing.rs::creators` and `lease::merge::ever_held` are deleted with the lander
+  (`docs/notes/landing-deletion.md`), so those rows stop in S1 with no ledger behind them.
 - `tasks/fold.rs:344` reads other devices' held leases through `merge::view`, so `task` claims and `model_slot` stay rows.
 - Direct messages replicate to every member today (`node.md`, "Direct messages"). A malicious member reads every conversation
   between two local sessions, and every absolute worktree path. This design closes both (section 7).
@@ -277,14 +278,14 @@ until 1.0"):
 - Leftover Python files (`~/.cache/dev-test-slots`, `ci-watch/`, `worktree-lifecycle.json`, `broker-leases.json`) are not read and
   not deleted by code; they hold records of runs that ended.
 - One rule loses history in the reset: the creators ledger of S1 starts empty (with no marker, so it is not damaged), so a session
-  that created a branch before S0 is no longer excluded from reviewing it. Branches in flight are landed or abandoned before S0 and the cutover is announced.
+  that created a branch before S0 is no longer excluded from reviewing it. Branches in flight are pushed or abandoned before S0 and the cutover is announced.
 - The only cost is to the owner's devices, each of which is re-added by `python -m poolhouse.device_setup --yes`, run by an agent.
 
 ## 5. What is deleted, and the size of the log
 
 **Rust (`app/poolhouse-node/src`).**
 
-- S1: `lease::merge::ever_held` (replaced by the creators ledger); the `lease_takeover` audit in `mirror`; every `lease` line but
+- S1: the `lease_takeover` audit in `mirror`; every `lease` line but
   `claim:branch`, `claim:area`, `claim:task` and `model_slot` from `fold::lease` (a foreign row with another key is rejected,
   not folded); the fold per tick in `lease/rpc.rs::foreign` (replaced by the incremental index of section 3.1).
 - S2: the `land.review` audit copy (`landing.rs`, `audit()` in `review`), the `RETIRED` queue names in `landing.rs` (S0 set the old
@@ -345,7 +346,7 @@ code can write device state into the log any more. The tally cannot see direct m
 
 Each slice lands alone, written fail-first, with the attack test of section 7 for what it touches, an affected-selector run on
 this device and on the WSL device for process behaviour, and a fixed-cost test. A slice that moves a consumer deletes the old
-consumer in the same commit. Every new call is idempotent and its test calls it twice (the set-aside, a creators insert, a mail
+consumer in the same commit. Every new call is idempotent and its test calls it twice (the set-aside, a mail
 post with one `idem`, an ask).
 
 - **S0 Footing.** design-job-log slice 0 as written, plus row `v` 2 and the set-aside of section 4, plus the header on

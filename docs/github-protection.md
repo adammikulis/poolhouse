@@ -145,8 +145,8 @@ Rollback: unset the variables; the harness falls back to the owner's `gh` login.
 
 ## Push credential
 
-One device pushes to the development branch: the lander, the device whose `scripts/land` pushes it
-([landing.md](landing.md)). Every other device that runs agents holds no push credential; it fetches with
+One device pushes to the development branch: the lander, the device that holds the push credential and pushes for its agents
+(`git push`, [landing.md](landing.md)). Every other device that runs agents holds no push credential; it fetches with
 none or with a read-only one.
 
 - The lander's credential is the App's installation token, minted from the App's key for an hour. `scripts/agent-identity
@@ -471,7 +471,7 @@ checker code comes from the base commit and the data beside it from the pull req
 `.github/CODEOWNERS` begins with `* @owner`, so the owner already owns every path, and the lines for specific paths
 change nothing GitHub does: whole-repository code-owner review is what the `--owner-review` switch turns on. The
 specific lines record which paths decide what the gates accept: `.github/`, `.claude/`, `packaging/`,
-`pyproject.toml`, `budgets.json`, `scripts/hooks/`, `scripts/gates/`, `scripts/budgets`, `scripts/land*`,
+`pyproject.toml`, `budgets.json`, `scripts/hooks/`, `scripts/gates/`, `scripts/budgets`, `scripts/sealed_git*`, `scripts/primary_sync.py`, `scripts/ci_watch.py`,
 `scripts/test*`, `scripts/release-key`, `scripts/github-protection*`, `scripts/audit_gate.py`, `scripts/notices.py`,
 `tests/known-fixtures.txt`, the three gate tests, `release-please-config.json`, `.release-please-manifest.json`,
 `src/poolhouse/fleet/signing.py`, `src/poolhouse/fleet/updates.py`, `src/poolhouse/guard/`, `src/poolhouse/redact/`,
