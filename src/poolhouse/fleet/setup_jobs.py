@@ -157,12 +157,26 @@ class Jobs:
             self._save(graph, row)
             if current is not None and current() is not True:
                 raise PermissionError("Current setup access is required.")
-            if operation:
-                self._pending.append((row, operation, current))
-                if self._worker is None or not self._worker.is_alive():
-                    self._worker = threading.Thread(target=self._run, daemon=True, name="setup-installations")
+        if operation:
+            self._schedule(row, operation, current)
+        return dict(row)
+
+    def _schedule(self, row, operation, current):
+        with self._mutex:
+            entry = (row, operation, current)
+            self._pending.append(entry)
+            if self._worker is None or not self._worker.is_alive():
+                self._worker = threading.Thread(target=self._run, daemon=True, name="setup-installations")
+                started = False
+                try:
                     self._worker.start()
-            return dict(row)
+                    started = True
+                finally:
+                    if not started:
+                        self._pending.remove(entry)
+                        self._worker = None
+                        self._update(row, state="interrupted" if row["kind"] == PREPARATION else "failed",
+                                     error="The setup worker could not start.", note="Setup stopped")
 
     def _update(self, row, **changes):
         with self._mutex, only_one(self.root / "setup-jobs.lock"), self._store() as graph:

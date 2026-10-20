@@ -2,6 +2,7 @@
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 
 import pytest
 
@@ -212,3 +213,51 @@ def test_completion_revocation_after_save_rolls_back_ready(tmp_path):
     final = finished(jobs, row['id'])
     assert final['state'] == 'interrupted'
     assert final['result'] == {}
+
+
+def test_failed_enqueue_transaction_never_schedules_or_executes(tmp_path, monkeypatch):
+    jobs = setup_jobs.Jobs(tmp_path)
+    original_store = jobs._store
+    called = threading.Event()
+
+    def store():
+        graph = original_store()
+        transaction = graph.transaction
+        depth = [0]
+
+        @contextmanager
+        def failure():
+            outer = depth[0] == 0
+            depth[0] += 1
+            try:
+                with transaction():
+                    yield
+                    if outer:
+                        raise RuntimeError('commit refused')
+            finally:
+                depth[0] -= 1
+
+        graph.transaction = failure
+        return graph
+
+    monkeypatch.setattr(jobs, '_store', store)
+    with pytest.raises(RuntimeError, match='commit refused'):
+        jobs.prepare(request(), lambda progress: called.set(), current=lambda: True)
+    monkeypatch.setattr(jobs, '_store', original_store)
+    assert jobs._pending == [] and jobs._worker is None
+    assert jobs.all() == [] and not called.is_set()
+
+
+def test_owned_worker_start_failure_retains_interrupted_command_without_pending(tmp_path, monkeypatch):
+    jobs = setup_jobs.Jobs(tmp_path)
+
+    def failure(thread):
+        raise RuntimeError('thread start refused')
+
+    monkeypatch.setattr(threading.Thread, 'start', failure)
+    with pytest.raises(RuntimeError, match='thread start refused'):
+        jobs.prepare(request(), lambda progress: pytest.fail('must not execute'), current=lambda: True)
+    assert jobs._pending == [] and jobs._worker is None
+    row = jobs.all()[0]
+    assert row['state'] == 'interrupted'
+    assert jobs.prepare(request(), lambda progress: pytest.fail('must not repeat'), current=lambda: True)['id'] == row['id']
