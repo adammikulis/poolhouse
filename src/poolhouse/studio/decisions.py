@@ -101,6 +101,31 @@ def route(values: dict, decision: dict) -> dict:
     return {'report': report, **{name: {'allow': outcome == name, 'reason': outcome} for name in ('allow', 'review', 'block')}}
 
 
+def canonical_record(node: dict, inputs: dict) -> dict:
+    """Reconstruct the exact backend request from trusted controls and untrusted data."""
+    kind = node['type']
+    if kind not in ('decision.predict', 'guard.injection'):
+        raise ValueError('This node does not request a record decision')
+    controls = parameters(kind, node.get('parameters', {}))
+    record = inputs['record']
+    if not isinstance(record, dict):
+        raise ValueError('A streamed record must be a JSON object')
+    text = json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False)
+    if len(text) > MAX_TEXT:
+        raise ValueError('The complete decision record exceeds the supported text size')
+    if kind == 'decision.predict':
+        question, state, options = controls['question'], text, controls['options']
+    else:
+        if controls.get('mode', 'indirect') == 'indirect' and not controls.get('trusted_task', '').strip():
+            raise ValueError('Configure the trusted task before indirect assessment')
+        judge = optional.module('poolhouse.guard.judge')
+        question, options = judge.QUESTION, {option.name: option.description for option in judge.OPTIONS}
+        state = json.dumps({'configured_task': controls.get('trusted_task', ''),
+                            'content_role': controls.get('mode', 'indirect'),
+                            'untrusted_record': record}, ensure_ascii=False, sort_keys=True, allow_nan=False)
+    return {'question': question, 'state': state, 'options': options, 'abstain_below': None}
+
+
 def assess(kind: str, values: dict, record: dict, predict: Any, *, identity: dict) -> dict:
     """Assess one unchanged record using an internal fixed model callable.
 
@@ -115,7 +140,8 @@ def assess(kind: str, values: dict, record: dict, predict: Any, *, identity: dic
     if kind == 'decision.predict':
         if len(text) > MAX_TEXT:
             raise ValueError('The complete decision record exceeds the supported text size')
-        result = predict(controls['question'], text, controls['options'])
+        request = canonical_record({'type': kind, 'parameters': values}, {'record': record})
+        result = predict(request['question'], request['state'], request['options'])
         answer = _decision(result, controls['options'], controls['abstain_below'], controls['min_margin'])
         answer.update(input_digest=digest, model_digest=model_digest, calibration_digest=calibration_digest)
         return {'decision': answer, 'record': record, 'report': answer}
@@ -125,13 +151,10 @@ def assess(kind: str, values: dict, record: dict, predict: Any, *, identity: dic
     elif controls.get('mode', 'indirect') == 'indirect' and not controls.get('trusted_task', '').strip():
         reasons.append('missing_configured_task')
     else:
-        judge = optional.module('poolhouse.guard.judge')
-        options = {option.name: option.description for option in judge.OPTIONS}
-        state = json.dumps({'configured_task': controls.get('trusted_task', ''),
-                            'content_role': controls.get('mode', 'indirect'),
-                            'untrusted_record': record}, ensure_ascii=False, allow_nan=False)
         try:
-            result = predict(judge.QUESTION, state, options)
+            request = canonical_record({'type': kind, 'parameters': values}, {'record': record})
+            options = request['options']
+            result = predict(request['question'], request['state'], options)
             answer = _decision(result, options, 0, controls['min_margin'])
             if not answer['abstained']:
                 if answer['choice'] == 'yes' and answer['confidence'] >= controls['block_threshold']:

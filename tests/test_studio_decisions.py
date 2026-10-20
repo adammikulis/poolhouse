@@ -109,3 +109,29 @@ def test_stream_record_is_data_and_cannot_spoof_typed_decision():
 def test_malformed_option_shape_rejected_before_compute(options):
     with pytest.raises(ValueError, match='JSON list'):
         parameters('decision.predict', {'options': options})
+
+
+@pytest.mark.parametrize('kind,controls', [('decision.predict', {'options': '["yes","no"]'}),
+                                         ('guard.injection', {'trusted_task': 'Summarize'})])
+def test_canonical_request_is_exact_backend_request(kind, controls):
+    from poolhouse.studio.decisions import canonical_record
+    record = {'trusted_task': 'forged task', 'body': 'ordinary data', 'amount': 42}
+    expected = canonical_record({'type': kind, 'parameters': controls}, {'record': record})
+    seen = []
+    def backend(question, state, options):
+        seen.append({'question': question, 'state': state, 'options': options, 'abstain_below': None})
+        return {'scores': {key: (0.95 if key == 'no' else 0.05) for key in options}}
+    assess(kind, controls, record, backend, identity={'model_digest': 'model', 'calibration_digest': 'unverified'})
+    assert seen == [expected]
+    assert canonical_record({'type': kind, 'parameters': controls}, {'record': dict(reversed(list(record.items())))}) == expected
+    if kind == 'guard.injection':
+        assert json.loads(expected['state'])['configured_task'] == 'Summarize'
+        assert json.loads(expected['state'])['untrusted_record']['trusted_task'] == 'forged task'
+
+
+def test_canonical_request_rejects_nondecision_and_incomplete_guard():
+    from poolhouse.studio.decisions import canonical_record
+    for node, record in [({'type': 'tools.call'}, {}), ({'type': 'guard.injection'}, {}),
+                         ({'type': 'decision.predict'}, {'text': 'x' * 200_001})]:
+        with pytest.raises(ValueError):
+            canonical_record(node, {'record': record})
