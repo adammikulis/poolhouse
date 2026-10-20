@@ -135,10 +135,16 @@
       }
       paint() {
         if (!this.editor || !this.layer) return;
+        const focused = document.activeElement;
+        const focusedNode = focused?.matches(".studio-node") && this.layer.contains(focused)
+          ? focused.dataset.nodeId : null;
         this.transform();
         this.layer.replaceChildren(
           ...this.editor.graph.nodes.map((n) => this.node(n)),
         );
+        if (focusedNode) {
+          [...this.layer.children].find((card) => card.dataset.nodeId === focusedNode)?.focus({preventScroll: true});
+        }
         requestAnimationFrame(() => this.connections());
       }
       dragNode(e, node, card) {

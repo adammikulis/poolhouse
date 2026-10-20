@@ -122,3 +122,14 @@ def test_narrow_screen_configure_is_keyboard_accessible(configure_page):
     assert state['posts'] == [{}]
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     assert not errors
+
+
+def test_keyboard_node_focus_survives_background_setup_refresh(configure_page):
+    page, _state, _started, _release, errors, _served = configure_page
+    card = page.locator('.studio-node[data-node-id="model"]')
+    card.focus()
+    page.locator('studio-view').evaluate('editor => editor.render()')
+    expect(card).to_be_focused()
+    page.keyboard.press('Enter')
+    expect(page.locator('.studio-inspector').get_by_label('Choose model', exact=True)).to_be_visible()
+    assert not errors
