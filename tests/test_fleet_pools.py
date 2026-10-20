@@ -298,7 +298,7 @@ def test_the_pools_command_lists_what_the_network_offers_without_joining(
         advertise, tmp_path, udp, capsys):
     advertise("lab", "studio")
     code = fleet_join.main(["--pool-key", str(tmp_path / "none.key"), "--port", "1",
-                            "pools", "--timeout", "1"])
+                            "list", "--timeout", "1"])
     assert code == 0
     assert "1) lab - studio" in capsys.readouterr().out
     assert not (tmp_path / "none.key").exists()
@@ -306,7 +306,7 @@ def test_the_pools_command_lists_what_the_network_offers_without_joining(
 
 def test_the_pools_command_says_when_there_is_none(tmp_path, udp, capsys):
     assert fleet_join.main(["--pool-key", str(tmp_path / "none.key"), "--port", "1",
-                            "pools", "--timeout", "0.5"]) == 1
+                            "list", "--timeout", "0.5"]) == 1
     assert "no pool" in capsys.readouterr().out
 
 

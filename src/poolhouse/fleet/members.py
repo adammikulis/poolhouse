@@ -7,7 +7,6 @@ import getpass
 import json
 import os
 import sys
-from typing import Any
 
 from poolhouse import node_pool
 from poolhouse.log import say, warn
@@ -176,63 +175,6 @@ def cmd_ls(args: argparse.Namespace) -> int:
     return 0
 
 
-def _member(args: argparse.Namespace) -> Any:
-    from .remote import Discovery, Member
-    key = _require_key(args.pool_key)
-    if args.name:
-        return Member.find_one(name=args.name, discovery=Discovery(key=key))
-    return Member(f"http://127.0.0.1:{args.port}", derive_token(key))
-
-
-def cmd_pause(args: argparse.Namespace) -> int:
-    """Take this machine back, now."""
-    member = _member(args)
-    out = member.availability("pause", minutes=args.minutes, reason=args.reason)
-    say(out["unavailable_because"])
-    if args.minutes:
-        say(f"  it will start taking work again on its own in {args.minutes:.0f} min")
-    else:
-        say("  run 'poolhouse-members resume' when you are done with it")
-    return 0
-
-
-def cmd_resume(args: argparse.Namespace) -> int:
-    member = _member(args)
-    out = member.availability("resume")
-    say("taking work again" if out["available"]
-        else f"still not taking work: {out['unavailable_because']}")
-    return 0
-
-
-def cmd_when(args: argparse.Namespace) -> int:
-    """What this machine's schedule looks like."""
-    member = _member(args)
-    out = member.availability()
-    say("available now" if out["available"] else f"NOT available: {out['unavailable_because']}")
-    for window in out.get("windows", []):
-        say(f"  busy  {window}")
-    if out.get("reserved"):
-        r = out["reserved"]
-        say(f"  held by {r['holder']} for another {r['seconds_left']:.0f}s")
-    if not out.get("windows") and not out.get("reserved") and out["available"]:
-        say("  no schedule set -- it will take work at any hour")
-    return 0
-
-
-def cmd_busy(args: argparse.Namespace) -> int:
-    """Block out hours when this machine is somebody's desk."""
-    member = _member(args)
-    if args.clear:
-        member.availability("clear_windows")
-        say("cleared; it will take work at any hour")
-        return 0
-    out = member.availability("window", spec=args.when, busy=not args.free)
-    say("schedule now:")
-    for window in out.get("windows", []):
-        say(f"  busy  {window}")
-    return 0
-
-
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="poolhouse-members")
     ap.add_argument("--pool-key", default=None,
@@ -255,37 +197,12 @@ def main(argv: list[str] | None = None) -> int:
     ls.add_argument("--timeout", type=float, default=2.0)
     ls.add_argument("--json", action="store_true")
 
-    for verb, helptext in (
-        ("pause", "stop taking work now -- for when you want the machine back"),
-        ("resume", "start taking work again"),
-        ("when", "show this machine's schedule"),
-    ):
-        sp = sub.add_parser(verb, help=helptext)
-        sp.add_argument("--name", default="",
-                        help="another machine on the LAN (default: this one)")
-        sp.add_argument("--port", type=int, default=8770)
-        if verb == "pause":
-            sp.add_argument("--minutes", type=float, default=0,
-                            help="pause for this long, then resume on its own "
-                                 "(default: until you say otherwise)")
-            sp.add_argument("--reason", default="",
-                            help="shown to anyone looking at the fleet")
-
     members_cli.add_commands(sub)
-    busy = sub.add_parser("busy", help="block out hours, e.g. 'mon-fri 09:00-17:00'")
-    busy.add_argument("when", nargs="?", default="")
-    busy.add_argument("--free", action="store_true",
-                      help="carve an exception out of a busy window instead")
-    busy.add_argument("--clear", action="store_true", help="remove every window")
-    busy.add_argument("--name", default="")
-    busy.add_argument("--port", type=int, default=8770)
     args = ap.parse_args(argv)
     args.group_given = any(a == "--group" or a.startswith("--group=")
                            for a in (argv if argv is not None else sys.argv))
     fn = {"setup": cmd_setup, "init": cmd_init, "key": cmd_key,
-          "token": cmd_token, "ls": cmd_ls, "pause": cmd_pause,
-          "resume": cmd_resume, "when": cmd_when, "busy": cmd_busy,
-          "roster": cmd_ls}[args.cmd]
+          "token": cmd_token, "ls": cmd_ls, "roster": cmd_ls}[args.cmd]
     if args.cmd == "roster":
         return members_cli.run(args)
     try:
