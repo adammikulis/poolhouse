@@ -218,7 +218,7 @@ class Connections:
     def authorize(self, producer, body):
         expected = {'source', 'command_id', 'stage', 'challenge', 'binding_digest'}
         if (not isinstance(body, dict) or set(body) != expected
-                or not isinstance(body['stage'], str) or body['stage'] not in {'prepare', 'ready', 'current'}
+                or not isinstance(body['stage'], str) or body['stage'] not in {'prepare', 'ready', 'current', 'inspect'}
                 or not isinstance(body['source'], str) or not _HEX32.fullmatch(body['source'])
                 or not isinstance(body['command_id'], str) or not _HEX64.fullmatch(body['command_id'])
                 or (body['binding_digest'] is not None and (not isinstance(body['binding_digest'], str)
@@ -231,11 +231,13 @@ class Connections:
                     or producer != {'certificate': intent['offer']['context']['device_certificate'],
                                     'pool': intent['context']['pool']}):
                 raise PermissionError('No current source intent belongs to this producer.')
-            if body['stage'] == 'prepare':
+            if body['stage'] == 'inspect':
+                valid = intent['phase'] in {'prepare_started', 'authorized', 'activation_started', 'ready'} and body['binding_digest'] is None
+            elif body['stage'] == 'prepare':
                 valid = intent['phase'] == 'prepare_started' and body['binding_digest'] is None
             else:
                 valid = (intent['phase'] in {'authorized', 'activation_started', 'ready'}
                          and intent['binding'] is not None and body['binding_digest'] == digest(intent['binding']))
             if not valid:
                 raise PermissionError('The producer stage does not match its owner intent.')
-            return {'authorized': True, 'challenge': body['challenge'], 'intent': copy.deepcopy(intent)}
+            return {'authorized': True, 'challenge': body['challenge'], 'stage': body['stage'], 'intent': copy.deepcopy(intent)}
