@@ -264,3 +264,23 @@ def test_alignment_pending_defers_new_local_nodes_before_dependency_probe(setup)
     runner.managed_alignment_pending = False
     engine.adapters.dependency_fingerprint = lambda node: "test"
     assert engine.advance(pending)["state"] == "done"
+
+
+def test_inventory_model_completion_never_registers_checkpoint_producer(setup, tmp_path):
+    from poolhouse.studio.saved_models import SavedModels
+
+    store, engine, runner = setup
+    root = tmp_path / 'inventory-model'
+    root.mkdir()
+    (root / 'model.safetensors').write_bytes(b'synthetic model bytes')
+    saved = SavedModels(store, runner.files_root, lambda *args: True)
+    runner.studio_model_completed = saved.register
+    handle = {'kind': 'model', 'path': str(root)}
+    engine.adapters.immediate = lambda *args: {'model': handle}
+    workflow = store.save_workflow(PRINCIPAL['scope'], 'Inventory selection', {
+        'nodes': [{'id': 'model', 'type': 'model', 'bindings': {'model': {'kind': 'model', 'id': 'inventory'}}}], 'edges': []})
+    for key in ('first', 'cached'):
+        run = engine.advance(engine.submit(PRINCIPAL, workflow, [], key))
+        assert run['state'] == 'done', run['nodes']
+        assert run['nodes']['model']['outputs']['model'] == handle
+    assert store.records('model-reference', PRINCIPAL['scope']) == []

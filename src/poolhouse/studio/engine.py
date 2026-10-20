@@ -393,7 +393,7 @@ class WorkflowEngine:
         state["lineage"] = {"run": run["id"], "node": node["id"], "inputs": digest(inputs),
                             "implementation": node_spec(node["type"], node.get("version", 1))["implementation"]}
         completed = getattr(self.runner, "studio_model_completed", None)
-        if completed:
+        if completed and node["type"] in {"train.tool-calls", "train.classify-text", "train.text-lm", "train.decision", "gym.train"}:
             self.store.put("run", run)
             for port in node_spec(node["type"], node.get("version", 1))["outputs"]:
                 if is_model_type(port["type"]) and port["name"] in state["outputs"]:
