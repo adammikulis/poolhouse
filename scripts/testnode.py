@@ -25,6 +25,7 @@ from typing import NamedTuple
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from poolhouse import home, node_binary, worktreerules
+from poolhouse.files import writing
 from poolhouse.lock import only_one
 from poolhouse.redact.secrets import env_secrets, redact
 
@@ -157,6 +158,25 @@ def node_folder(cache: Path | None = None) -> Path:
     return (cache or cargo_root()) / FOLDER
 
 
+def workspace_wrapper(workspace: Path) -> None:
+    """Pin workspace artifact hashes to this content-keyed staging directory."""
+    if any(name in os.environ for name in ('RUSTC_WORKSPACE_WRAPPER', 'CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER')):
+        raise BuildError('Native tests require their maintained workspace compiler wrapper, without environment overrides')
+    wrapper = workspace / 'rustc-workspace'
+    configuration = workspace / '.cargo' / 'config.toml'
+    if any(path.is_symlink() for path in (wrapper, configuration, configuration.parent)):
+        raise BuildError('Native compiler controls cannot contain links')
+    controls = ((wrapper, '#!/bin/sh\nexec "$@"\n', 0o700),
+                (configuration, '[build]\nrustc-workspace-wrapper = ' + json.dumps(str(wrapper)) + '\n', 0o600))
+    for path, content, mode in controls:
+        if path.exists() and not path.is_file():
+            raise BuildError('Native compiler controls must be regular files')
+        if not path.exists() or path.read_text() != content or path.stat().st_mode & 0o777 != mode:
+            with writing(path) as temporary:
+                temporary.write_text(content)
+                temporary.chmod(mode)
+
+
 def shared_build(app: Path, *, root: Path | None = None) -> SharedBuild:
     """The workspace of ``app`` staged at a fixed path and the target folder every run with the same ``Cargo.lock`` and compiler shares, so
     only the crates whose files changed are compiled again; a run that stages different sources gets its own staged copy."""
@@ -168,6 +188,7 @@ def shared_build(app: Path, *, root: Path | None = None) -> SharedBuild:
     staged, target = base / "workspaces" / key / "app", base / "targets" / locked
     target.mkdir(parents=True, exist_ok=True)
     with only_one(base / "stage.lock", announce=lambda _text: None, note="staging the Rust workspace for the tests"):
+        workspace_wrapper(staged.parent)
         stage(app, files, staged)
         for folder in (staged.parent, target):
             os.utime(folder)
