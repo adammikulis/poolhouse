@@ -19,7 +19,7 @@
                 E(
                   "option",
                   { value: "selection" },
-                  "Selected nodes and groups",
+                  "Selected nodes and required dependencies",
                 ),
               );
             scope.onchange = () => this.sharingFields();
@@ -51,8 +51,9 @@
           const selected =
             this.querySelector("#studio-package-scope").value === "selection";
           const graph = selected ? this.graph : this.rootGraph(),
+            selection = S.selectionDependencies(graph, this.selected),
             nodes = selected
-              ? graph.nodes.filter((n) => this.selected.has(n.id))
+              ? graph.nodes.filter((n) => selection.has(n.id))
               : graph.nodes;
           const ids = new Set(nodes.map((n) => n.id)),
             groups = {};
@@ -69,6 +70,11 @@
             nodes: S.clone(nodes),
             edges: S.clone(
               graph.edges.filter(
+                (e) => ids.has(e.source.node) && ids.has(e.target.node),
+              ),
+            ),
+            controls: S.clone(
+              (graph.controls || []).filter(
                 (e) => ids.has(e.source.node) && ids.has(e.target.node),
               ),
             ),
@@ -144,7 +150,7 @@
             graph: this.sharingGraph(),
             kind:
               this.querySelector("#studio-package-scope").value === "selection"
-                ? this.selected.size === 1 &&
+                ? this.sharingGraph().nodes.length === 1 &&
                   this.graph.nodes.find((n) => this.selected.has(n.id)).type !==
                     "group"
                   ? "node"

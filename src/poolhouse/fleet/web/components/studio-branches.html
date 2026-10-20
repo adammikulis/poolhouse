@@ -1,0 +1,142 @@
+<script>
+  (function () {
+    const S = window.studioModel,
+      E = window.fleetModel.el;
+    S.installBranches = (proto) =>
+      Object.assign(proto, {
+        addBranch(source, target) {
+          if (source.node === target)
+            throw Error("Choose a different node for this branch.");
+          if (
+            (this.graph.controls || []).some(
+              (e) =>
+                e.source.node === source.node &&
+                e.source.port === source.port &&
+                e.target.node === target,
+            )
+          )
+            return;
+          this.checkpoint();
+          this.graph.controls ||= [];
+          this.graph.controls.push({
+            source: { node: source.node, port: source.port },
+            target: { node: target },
+          });
+          this.canvas.controlPending = null;
+          this.changed();
+        },
+        branchControls(host, node) {
+          const controls = this.graph.controls || [],
+            select = E(
+              "select",
+              { "aria-label": "Run only when" },
+              E("option", { value: "" }, "Add a branch condition…"),
+            );
+          for (const other of this.graph.nodes.filter(
+            (n) => n.id !== node.id,
+          )) {
+            const spec = S.spec(this, other);
+            for (const port of spec.outputs || []) {
+              if (port.type !== "gate") continue;
+              select.append(
+                E(
+                  "option",
+                  {
+                    value: JSON.stringify({ node: other.id, port: port.name }),
+                  },
+                  (spec.title || other.type) + " · " + port.name,
+                ),
+              );
+            }
+          }
+          if (select.options.length < 2) return;
+          select.onchange = () => {
+            if (select.value) this.addBranch(JSON.parse(select.value), node.id);
+          };
+          host.append(
+            E("label", {}, "Run only when", select),
+            E(
+              "small",
+              {},
+              "All branch conditions must allow this node. Other branches are skipped.",
+            ),
+          );
+          for (const edge of controls.filter(
+            (e) => e.target.node === node.id,
+          )) {
+            const source = this.graph.nodes.find(
+              (n) => n.id === edge.source.node,
+            );
+            host.append(
+              E(
+                "p",
+                {},
+                (source ? S.spec(this, source).title : edge.source.node) +
+                  " · " +
+                  edge.source.port,
+                E(
+                  "button",
+                  {
+                    type: "button",
+                    "aria-label": "Remove branch " + edge.source.port,
+                    onclick: () => {
+                      this.checkpoint();
+                      this.graph.controls = this.graph.controls.filter(
+                        (e) => e !== edge,
+                      );
+                      this.changed();
+                    },
+                  },
+                  "Remove",
+                ),
+              ),
+            );
+          }
+        },
+      });
+    S.drawBranches = (canvas) => {
+      const NS = "http://www.w3.org/2000/svg",
+        world = canvas.world.getBoundingClientRect(),
+        zoom = canvas.viewport().zoom;
+      for (const [index, edge] of (
+        canvas.editor.graph.controls || []
+      ).entries()) {
+        const a = canvas.layer.querySelector(
+            `[data-node-id="${CSS.escape(edge.source.node)}"] [data-port="${CSS.escape(edge.source.port)}"][data-side="outputs"]`,
+          ),
+          b = canvas.layer.querySelector(
+            `[data-node-id="${CSS.escape(edge.target.node)}"] header`,
+          );
+        if (!a || !b) continue;
+        const ar = a.getBoundingClientRect(),
+          br = b.getBoundingClientRect(),
+          x1 = (ar.right - world.left) / zoom,
+          y1 = (ar.top + ar.height / 2 - world.top) / zoom,
+          x2 = (br.left - world.left) / zoom,
+          y2 = (br.top + br.height / 2 - world.top) / zoom;
+        const path = document.createElementNS(NS, "path");
+        path.setAttribute(
+          "d",
+          `M${x1},${y1} C${x1 + 80},${y1} ${x2 - 80},${y2} ${x2},${y2}`,
+        );
+        path.setAttribute("stroke-dasharray", "7 5");
+        path.setAttribute("data-control", edge.source.port);
+        path.setAttribute("tabindex", "0");
+        path.setAttribute("role", "button");
+        path.setAttribute(
+          "aria-label",
+          `Branch ${edge.source.port} to ${edge.target.node}. Press Delete to remove.`,
+        );
+        path.onkeydown = (event) => {
+          if (["Delete", "Backspace"].includes(event.key)) {
+            event.stopPropagation();
+            canvas.editor.checkpoint();
+            canvas.editor.graph.controls.splice(index, 1);
+            canvas.editor.changed();
+          }
+        };
+        canvas.svg.append(path);
+      }
+    };
+  })();
+</script>

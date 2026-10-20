@@ -21,6 +21,7 @@
                 "Needs setup": "!",
                 running: "▶",
                 blocked: "⊘",
+                skipped: "↪",
                 interrupted: "?",
                 cancelled: "■",
               }[state] || "○";
@@ -44,6 +45,10 @@
           card.onkeydown = (e) => {
             if (e.target !== card) return;
             if (e.key === "Enter") {
+              if (this.controlPending) {
+                editor.addBranch(this.controlPending, node.id);
+                return;
+              }
               editor.select(node.id, e.shiftKey);
               editor.querySelector(".studio-inspector input")?.focus();
             }
@@ -69,6 +74,13 @@
             }
           };
           card.onclick = (e) => {
+            if (
+              this.controlPending &&
+              !e.target.closest("button,input,textarea,select")
+            ) {
+              editor.addBranch(this.controlPending, node.id);
+              return;
+            }
             if (e.target === card) editor.select(node.id, e.shiftKey);
           };
           head.ondblclick = () =>
@@ -132,10 +144,13 @@
           }
           card.append(ports);
           const controls = E("div", { class: "studio-node-controls" });
+          const record = editor.recordControls(controls, node);
           for (const [name, parameter] of Object.entries(
             spec.parameters?.properties || {},
           )
-            .filter(([, v]) => !v.advanced)
+            .filter(
+              ([name, v]) => !v.advanced && !(record && name === "sample"),
+            )
             .slice(0, 2))
             S.field(
               controls,
@@ -174,6 +189,14 @@
         },
         port(node, port, side) {
           const editor = this.editor;
+          if (port.type === "gate") {
+            this.pending = null;
+            this.controlPending = { node: node.id, port: port.name };
+            editor.message(
+              "Choose the node this branch controls, or use Run only when in the inspector.",
+            );
+            return;
+          }
           if (!this.pending) {
             this.pending = S.portReference(node, port, side);
             editor.message(

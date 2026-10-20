@@ -193,9 +193,11 @@
             id: t.id,
             title: t.title || t.name,
             description: t.description,
+            examples: t.examples || [],
             graph: t.graph || {
               nodes: t.nodes,
               edges: t.edges || [],
+              controls: t.controls || [],
               groups: t.groups || {},
               layout: t.layout || {},
             },
@@ -259,7 +261,7 @@
         this.changed();
       }
       copy() {
-        const ids = this.selected;
+        const ids = S.selectionDependencies(this.graph, this.selected);
         this.clipboard = {
           nodes: S.clone(this.graph.nodes.filter((n) => ids.has(n.id))),
           edges: S.clone(
@@ -267,10 +269,19 @@
               (e) => ids.has(e.source.node) && ids.has(e.target.node),
             ),
           ),
+          controls: S.clone(
+            (this.graph.controls || []).filter(
+              (e) => ids.has(e.source.node) && ids.has(e.target.node),
+            ),
+          ),
           groups: S.clone(this.graph.groups),
           layout: S.clone(this.graph.layout),
         };
-        this.message("Selection copied");
+        this.message(
+          ids.size > this.selected.size
+            ? "Copied selection and required branch/data dependencies"
+            : "Selection copied",
+        );
       }
       paste() {
         if (!this.clipboard) return;
@@ -290,6 +301,11 @@
           edge.target.node = map.get(edge.target.node);
           this.graph.edges.push(edge);
         }
+        for (const edge of S.clone(this.clipboard.controls || [])) {
+          edge.source.node = map.get(edge.source.node);
+          edge.target.node = map.get(edge.target.node);
+          this.graph.controls.push(edge);
+        }
         this.selected = new Set(map.values());
         this.changed();
       }
@@ -300,6 +316,11 @@
           (n) => !this.selected.has(n.id),
         );
         this.graph.edges = this.graph.edges.filter(
+          (e) =>
+            !this.selected.has(e.source.node) &&
+            !this.selected.has(e.target.node),
+        );
+        this.graph.controls = this.graph.controls.filter(
           (e) =>
             !this.selected.has(e.source.node) &&
             !this.selected.has(e.target.node),
@@ -365,6 +386,8 @@
     S.installEditor(StudioView.prototype);
     S.installSweeps(StudioView.prototype);
     S.installTargets(StudioView.prototype);
+    S.installRecords(StudioView.prototype);
+    S.installBranches(StudioView.prototype);
     S.installGroups(StudioView.prototype);
     S.installRuns(StudioView.prototype);
     S.installSharing(StudioView.prototype);

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+from poolhouse.studio.decision_templates import templates as decision_templates
+
 
 def _graph(name: str, types: list[tuple[str, str]], connections: list[tuple[str, str, str, str]]) -> dict:
     return {'id': name, 'name': name.replace('-', ' ').title(), 'schema_version': 1,
@@ -60,5 +62,5 @@ def templates() -> list[dict]:
                     ('evaluate', 'metrics', 'chart', 'metrics')])
     sweep['nodes'][2]['parameters'] = {'suite': 'tool-calls'}
     sweep['nodes'][2]['sweep'] = {'temperature': [0, 0.7]}
-    return deepcopy([training, comparison, sweep, inference, tools, gym])
+    return deepcopy([training, comparison, sweep, inference, tools, gym]) + decision_templates()
 

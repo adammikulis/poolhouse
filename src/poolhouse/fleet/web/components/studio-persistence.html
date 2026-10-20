@@ -15,7 +15,12 @@
           select.value = this.workflowId || "";
         },
         async open(workflow) {
-          if (this.dirty || this.saving || this.sweepDrafts?.size)
+          if (
+            this.dirty ||
+            this.saving ||
+            this.sweepDrafts?.size ||
+            this.recordDrafts?.size
+          )
             await this.save();
           this.context = [];
           this.packageId = null;
@@ -36,6 +41,7 @@
         normalize() {
           this.graph.nodes ||= [];
           this.graph.edges ||= [];
+          this.graph.controls ||= [];
           this.graph.groups ||= {};
           this.graph.layout ||= {};
           this.graph.layout.nodes ||= {};

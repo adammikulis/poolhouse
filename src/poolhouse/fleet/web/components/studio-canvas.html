@@ -292,6 +292,7 @@
           };
           this.svg.append(path);
         }
+        S.drawBranches(this);
         const map = this.querySelector(".studio-minimap");
         map.replaceChildren();
         const points = this.editor.graph.nodes.map((n) =>
