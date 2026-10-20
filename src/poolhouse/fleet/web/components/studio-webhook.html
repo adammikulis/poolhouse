@@ -44,7 +44,9 @@
       try { result = await this.liveMutation('/sources', {kind: 'webhook', provider: provider.id, label}); }
       catch (error) { if (snapshot === this.webhookDraftSnapshot()) throw error; return; }
       if (snapshot !== this.webhookDraftSnapshot()) return;
-      const inventory = await S.api('/sources');
+      let inventory;
+      try { inventory = await S.api('/sources'); }
+      catch (error) { if (snapshot === this.webhookDraftSnapshot()) throw error; return; }
       if (snapshot !== this.webhookDraftSnapshot()) return;
       this.updateWebhookProviders(inventory.providers); this.updateLiveSources(inventory.sources);
       const source = this.liveSources.find((row) => row.id === result.source.id && row.provider === provider.id);

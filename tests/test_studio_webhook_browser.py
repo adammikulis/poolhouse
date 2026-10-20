@@ -201,3 +201,50 @@ def test_delayed_send_error_does_not_overwrite_another_workflow(webhook_page, mo
     page.wait_for_function('() => !document.querySelector("studio-view").liveBusy')
     expect(note).to_have_text(previous)
     assert not errors
+
+
+@pytest.mark.parametrize('change', ['new-draft', 'new-workflow', 'new-source', 'current'])
+def test_inventory_denial_only_clears_its_current_configuration(webhook_page, monkeypatch, change):
+    page, app, errors, _posts = webhook_page
+    open_live(page)
+    page.get_by_text('Add a webhook source', exact=True).click()
+    page.get_by_label('Webhook source name', exact=True).fill('Submitted source')
+    held = []
+    def reject_inventory(route):
+        if route.request.method != 'GET':
+            route.continue_()
+            return
+        def denied(_principal):
+            raise PermissionError('Controlled source inventory denial')
+        with monkeypatch.context() as denial:
+            denial.setattr(app.ui.studio_authority, '_owner', denied)
+            response = route.fetch()
+        assert response.status == 403
+        held.append((route, response))
+        page.evaluate('window.inventoryDenialHeld = true')
+    page.route('**/ui/studio/sources', reject_inventory)
+    page.get_by_role('button', name='Add webhook source', exact=True).click()
+    page.wait_for_function('() => window.inventoryDenialHeld === true')
+    if change == 'new-workflow':
+        page.get_by_role('button', name='New', exact=True).click()
+        expect(page.get_by_label('Workflow title', exact=True)).to_have_value('Untitled experiment')
+    elif change == 'new-source':
+        page.get_by_label('Live source', exact=True).select_option(label='Fraud screening · synthetic examples')
+    elif change == 'new-draft':
+        page.get_by_label('Webhook source name', exact=True).fill('Current source draft')
+    note = page.locator('.studio-live [role="status"]')
+    previous = note.inner_text()
+    route, response = held[0]
+    route.fulfill(response=response)
+    page.wait_for_function('() => !document.querySelector("studio-view").liveBusy')
+    if change == 'current':
+        expect(note).to_contain_text('Controlled source inventory denial')
+        expect(page.get_by_label('Live source', exact=True).locator('option')).to_have_count(0)
+        expect(page.get_by_role('button', name='Add webhook source', exact=True)).to_be_disabled()
+    else:
+        expect(note).to_have_text(previous)
+        expect(page.get_by_label('Webhook source provider', exact=True)).to_have_value('local-synthetic')
+        expect(page.get_by_label('Live source', exact=True).locator('option')).not_to_have_count(0)
+        if change == 'new-draft':
+            expect(page.get_by_label('Webhook source name', exact=True)).to_have_value('Current source draft')
+    assert not errors
