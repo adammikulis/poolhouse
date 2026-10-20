@@ -55,6 +55,30 @@ def test_nested_group_breadcrumb_returns_to_root_without_losing_edits(studio_pag
     assert not state['submissions'] and not errors
 
 
+def test_detached_group_controls_cannot_mutate_a_different_canvas(studio_page):  # noqa: F811
+    page, _state, errors = studio_page
+    add(page, 'Prompt template')
+    named_group(page, 'Outer review')
+    page.locator('.studio-node header').click()
+    named_group(page, 'Inner review')
+    page.evaluate('''() => {
+      window.oldGroupName=document.querySelector('[aria-label="Group name"]');
+      window.oldAncestor=document.querySelector('[aria-label="Group: Outer review"]');
+    }''')
+    page.get_by_role('button', name='Workflow: Untitled experiment', exact=True).click()
+    before = page.locator('studio-view').evaluate('e=>({graph:structuredClone(e.rootGraph()),serial:e.editSerial})')
+    page.evaluate('''() => {
+      oldGroupName.value="Detached overwrite";
+      oldGroupName.dispatchEvent(new Event("change"));
+      oldAncestor.dispatchEvent(new MouseEvent("click"));
+      const editor=document.querySelector("studio-view");
+      for(const depth of [-1,0,1,NaN,Infinity,"0"]) editor.leaveGroup(depth);
+    }''')
+    assert page.locator('studio-view').evaluate('e=>({graph:structuredClone(e.rootGraph()),serial:e.editSerial})') == before
+    assert page.locator('studio-view').evaluate('e=>e.context.length') == 0
+    assert not errors
+
+
 @pytest.mark.parametrize('width,height', [(1440, 900), (1440, 600), (390, 844)])
 @pytest.mark.parametrize('theme', ['light', 'dark'])
 def test_group_navigation_is_compact_and_interface_controls_stay_in_inspector(studio_page, width, height, theme, tmp_path):  # noqa: F811

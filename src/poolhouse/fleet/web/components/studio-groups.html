@@ -249,7 +249,7 @@
           this.render();
         },
         leaveGroup(depth = this.context.length - 1) {
-          if (!this.context.length) return;
+          if (!Number.isInteger(depth) || depth < 0 || depth >= this.context.length) return;
           let left;
           while (this.context.length > depth) {
             this.flushGroup();
@@ -268,17 +268,21 @@
           box.setAttribute("aria-label", "Canvas location");
           box.replaceChildren();
           this.querySelector(".studio-group-settings")?.remove();
+          const origin = this.context.at(-1);
+          const navigate = (event, depth) => {
+            if (event.currentTarget.isConnected && this.context.at(-1) === origin) this.leaveGroup(depth);
+          };
           const crumb = (name, depth) => E("button", {
             type: "button", title: name,
             "aria-label": depth === 0 ? "Workflow: " + name : "Group: " + name,
-            onclick: () => this.leaveGroup(depth),
+            onclick: event => navigate(event, depth),
           }, name);
           if (this.context.length) {
             const parent = this.context.at(-2)?.definition.name || title;
             box.append(E("button", {
               type: "button", class: "studio-group-back",
               "aria-label": "Back to " + parent, title: "Back to " + parent + " (Escape)",
-              onclick: () => this.leaveGroup(),
+              onclick: event => navigate(event, this.context.length - 1),
             }, "← Back"), crumb(title, 0));
             for (const [index, current] of this.context.entries()) {
               box.append(E("span", {"aria-hidden": "true"}, "›"));
@@ -297,8 +301,10 @@
           const current = this.context.at(-1),
             box = E("details", {class: "studio-group-settings"}, E("summary", {}, "Group settings"));
           box.open = !this.selected.size;
+          const currentContext = () => box.isConnected && this.context.at(-1) === current;
           const name = E("input", {"aria-label": "Group name", value: current.definition.name});
           name.onchange = () => {
+            if (!currentContext()) return;
             this.checkpoint();
             current.definition.name = name.value || "Reusable group";
             this.changed(false);
@@ -311,11 +317,11 @@
               for (const [label, direction] of [["earlier", -1], ["later", 1]])
                 row.append(E("button", {
                   type: "button", "aria-label": "Move " + side + " " + name + " " + label,
-                  onclick: () => this.reorderInterface(side, name, direction),
+                  onclick: () => { if (currentContext()) this.reorderInterface(side, name, direction); },
                 }, direction < 0 ? "↑" : "↓"));
               row.append(E("button", {
                 type: "button", "aria-label": "Hide " + side + " " + name,
-                onclick: () => this.expose(side, "", ref, name),
+                onclick: () => { if (currentContext()) this.expose(side, "", ref, name); },
               }, "Hide"));
               box.append(row);
             }
