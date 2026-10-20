@@ -22,10 +22,10 @@ class PolicyError(ValueError):
     """A policy that names something the sandbox cannot hold to."""
 
 
-def checked_path(value: str | os.PathLike[str], *, what: str = "path", link: bool = False) -> str:
-    """``value`` as a string when it is absolute, exists, has no control characters or ``..``
-    segment and no symlink on the way (``link`` lets the last part be one); otherwise
-    `PolicyError`."""
+def checked_path(value: str | os.PathLike[str], *, what: str = "path", link: bool = False,
+                 future: bool = False) -> str:
+    """Validate an absolute canonical path; ``future`` permits missing tails and ``link``
+    permits a symlink at the final component."""
     text = os.fspath(value)
     if not isinstance(text, str) or not text:
         raise PolicyError(f"{what}: an empty or non-text path")
@@ -54,7 +54,7 @@ def checked_path(value: str | os.PathLike[str], *, what: str = "path", link: boo
         raise PolicyError(f"{what}: {text!r} holds an empty segment")
     if "/./" in segments or segments.endswith("/."):
         raise PolicyError(f"{what}: {text!r} holds a . segment")
-    if not os.path.lexists(text):
+    if not future and not os.path.lexists(text):
         raise PolicyError(f"{what}: {text!r} does not exist")
     parent, leaf = os.path.split(text)
     real = str(Path(os.path.realpath(parent or "/")) / leaf) if link else os.path.realpath(text)
@@ -67,6 +67,48 @@ def checked_path(value: str | os.PathLike[str], *, what: str = "path", link: boo
 def checked_paths(values: Iterable[str | os.PathLike[str]], *, what: str) -> tuple[str, ...]:
     """`checked_path` of each, in order, without repeats."""
     return tuple(dict.fromkeys(checked_path(v, what=what) for v in values))
+
+
+def _excluded_tree(path: str) -> None:
+    def fail(error: OSError) -> None:
+        raise PolicyError(f"exclusion: cannot inspect protected tree: {error}") from error
+
+    def check(info: os.stat_result) -> None:
+        if stat.S_ISLNK(info.st_mode) or (stat.S_ISREG(info.st_mode) and info.st_nlink > 1):
+            raise PolicyError("exclusion: protected files must not have symlink or hardlink aliases")
+        if ((stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode))
+                and (info.st_uid not in (0, os.getuid()) or info.st_mode & 0o022)):
+            raise PolicyError("exclusion: protected trees must not be writable by other users")
+
+    try:
+        info = os.lstat(path)
+        check(info)
+        if stat.S_ISDIR(info.st_mode):
+            for _, dirs, files, descriptor in os.fwalk(path, follow_symlinks=False, onerror=fail):
+                for name in (*dirs, *files):
+                    check(os.stat(name, dir_fd=descriptor, follow_symlinks=False))
+        after = os.lstat(path)
+        if (info.st_dev, info.st_ino) != (after.st_dev, after.st_ino):
+            raise PolicyError("exclusion: protected tree changed during inspection")
+    except OSError as error:
+        fail(error)
+
+
+def _exclusions(values: Iterable[str | os.PathLike[str]]) -> tuple[str, ...]:
+    paths = tuple(dict.fromkeys(checked_path(value, what="exclusion", future=True) for value in values))
+    for value in paths:
+        path = Path(value)
+        for ancestor in path.parents:
+            if not os.path.lexists(ancestor):
+                continue
+            info = ancestor.lstat()
+            sticky = info.st_uid == 0 and info.st_mode & stat.S_ISVTX
+            if (not stat.S_ISDIR(info.st_mode) or info.st_uid not in (0, os.getuid())
+                    or (info.st_mode & 0o022 and not sticky)):
+                raise PolicyError("exclusion: replaceable ancestry is refused")
+        if os.path.lexists(value):
+            _excluded_tree(value)
+    return paths
 
 
 class NetMode(StrEnum):
@@ -130,7 +172,8 @@ class Policy:
     else; ``cache`` is one directory the process may read and write besides ``write`` (shader
     and compile caches). ``unix_sockets`` grants outbound connections to exact endpoints;
     ``unix_namespaces`` separately grants bind/inbound/outbound in one private Darwin tree,
-    without a process or listener count guarantee."""
+    without a process or listener count guarantee. ``deny_read`` freezes and hides protected
+    trees; ``deny_write`` freezes them, including paths that do not yet exist."""
 
     name: str = "policy"
     read: tuple[str, ...] = ()
@@ -147,6 +190,8 @@ class Policy:
     unix_namespaces: tuple[str, ...] = ()
     strict: bool = False
     read_metadata: tuple[str, ...] = ()
+    deny_read: tuple[str, ...] = ()
+    deny_write: tuple[str, ...] = ()
 
     def validated(self) -> Policy:
         """This policy with every path checked, or `PolicyError`."""
@@ -172,6 +217,7 @@ class Policy:
                     raise PolicyError("Unix namespace: replaceable ancestry is refused")
         return replace(
             self, read=checked_paths(self.read, what="read"),
+            deny_read=_exclusions(self.deny_read), deny_write=_exclusions(self.deny_write),
             read_files=checked_paths(self.read_files, what="read file"),
             read_dirs=checked_paths(self.read_dirs, what="read directory"),
             unix_sockets=checked_paths(self.unix_sockets, what="Unix endpoint"),
