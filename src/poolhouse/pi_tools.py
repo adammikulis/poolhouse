@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from poolhouse import executable_libraries, sandbox
+from poolhouse import coding_policy, executable_libraries, sandbox
 from poolhouse.coding_workspace import CONTROL_PREFIXES
 from poolhouse.sandbox import policies
 
@@ -84,7 +84,7 @@ def runtime(binary: str) -> dict:
             *(os.path.realpath(path) for path in libraries if Path(path).exists())]))}
 
 
-def prepared(files, binary: str, root: Path, role: str) -> Path:
+def prepared(files, binary: str, root: Path, policy: coding_policy.Policy) -> Path:
     """Write the fixed worker and its launcher-owned configuration."""
     selected = runtime(binary)
     worker = files.write("tool-worker.mjs", WORKER)
@@ -94,7 +94,7 @@ def prepared(files, binary: str, root: Path, role: str) -> Path:
         if candidate == root or candidate in root.parents or root in candidate.parents:
             raise ValueError("The coding repository and trusted tool runtime must not overlap")
     return files.write("tool-worker.json", json.dumps({**selected, "worker": str(worker),
-        "root": canonical, "tool_root": canonical, "write": role != "read-only"}, sort_keys=True))
+        "root": canonical, "tool_root": canonical, "write": policy.writable}, sort_keys=True))
 
 
 def execute(configuration: dict, frame: dict) -> dict:

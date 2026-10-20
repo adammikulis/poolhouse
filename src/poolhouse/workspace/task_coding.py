@@ -10,6 +10,7 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any, NamedTuple
 
+from poolhouse import coding_policy, roles
 from poolhouse.board.session import Session
 from poolhouse.chatpolicy import READ_ONLY
 from poolhouse.client import families
@@ -136,8 +137,11 @@ def perform(s: Session, base: Path, agent, task, run: Run):
     reputation = work_reputation.brief_on(s)
     la.Status(base, agent.name).update(reputation=reputation)
     store = Conversations(la.folder(base) / f'{agent.name}-chats')
+    governance = roles.get(agent.role)
+    permissions = (coding_policy.READ_ONLY if not governance.acts else coding_policy.ASK_CHANGES
+                   if governance.asks == "each" else coding_policy.ASK_DANGEROUS)
     conversation = store.start(model=agent.model, title=task['title'], settings={
-        'harness': agent.harness, 'role': agent.role,
+        'harness': agent.harness, 'role': agent.role, 'permissions': permissions, 'execution_mode': coding_policy.EXECUTE,
         'project': str(project), 'context': agent.ctx, 'draft': 'auto',
         'effort': agent.effort, 'max_effort': agent.max_effort, 'max_output_tokens': agent.max_output_tokens})
     turn, done = Turn(conversation.id), threading.Event()

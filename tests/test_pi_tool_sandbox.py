@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import pi_tools
+from poolhouse import coding_policy, pi_tools
 from poolhouse.sandbox.backend import Availability, SandboxUnavailable
 from poolhouse.sandbox.seatbelt import Seatbelt
 
@@ -34,7 +34,7 @@ def installed(tmp_path, seatbelt):
     project = tmp_path / "selected-repo"
     project.mkdir()
     files = Files(tmp_path / "control")
-    configured = pi_tools.prepared(files, binary, project, "plan-and-go")
+    configured = pi_tools.prepared(files, binary, project, coding_policy.Policy("ask-dangerous"))
     return json.loads(configured.read_text())
 
 
@@ -149,3 +149,20 @@ def test_no_os_sandbox_never_runs_tool_or_falls_back(installed, monkeypatch):
 def test_tool_worker_rejects_caller_runtime_or_dispatch_authority(frame):
     with pytest.raises(ValueError, match="Invalid coding tool request"):
         pi_tools.execute({}, frame)
+
+
+def test_yolo_plan_configuration_denies_actual_shell_writes(installed):
+    from poolhouse import coding_policy, harnessing
+
+    root = Path(installed["root"])
+    (root / "code.txt").write_text("before")
+    files = harnessing.session_files(root)
+    try:
+        configuration = pi_tools.prepared(files, shutil.which("pi"), root, coding_policy.Policy("yolo", "plan"))
+        files.lock()
+        answer = pi_tools.execute(json.loads(configuration.read_text()), {
+            "tool": "bash", "input": {"command": "printf changed > code.txt", "permissions": "yolo", "execution_mode": "execute"}})
+        assert answer.get("isError")
+        assert (root / "code.txt").read_text() == "before"
+    finally:
+        files.release()

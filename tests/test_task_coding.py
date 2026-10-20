@@ -163,8 +163,8 @@ def test_pi_launcher_receives_independent_budget_and_clamped_effort(tmp_path, mo
         'harness': 'pi', 'project': str(project),
         'effort': 'high', 'max_effort': 'low', 'max_output_tokens': 32000})
     seen = {}
-    def launch(model, role, project, **options):
-        seen.update(options, model=model, role=role, project=project)
+    def launch(model, policy, project, **options):
+        seen.update(options, model=model, policy=policy, project=project)
         return 0
     monkeypatch.setattr(coding, 'launch_coding_agent', launch)
     agent = localagent.Agent('worker', 'qwen', identity='bound-worker', profile='coding', harness='pi', max_output_tokens=32000)
@@ -197,7 +197,9 @@ def test_unlimited_native_tool_counter_preserves_parser_bounds(tmp_path):
         task_caps.admit(path)
 
 
-def test_task_turn_creates_current_saved_conversation_before_dispatch(tmp_path, monkeypatch):
+@pytest.mark.parametrize("role,permissions", [("read-only", "read-only"), ("approve-first", "ask-changes"),
+                                             ("plan-and-go", "ask-dangerous")])
+def test_task_turn_creates_current_saved_conversation_before_dispatch(tmp_path, monkeypatch, role, permissions):
     seen = {}
     monkeypatch.setattr(task_coding.git, 'head', lambda _: 'a' * 40)
     monkeypatch.setattr(task_coding.work_reputation, 'brief_on', lambda *_: 'Recorded reputation data')
@@ -209,6 +211,8 @@ def test_task_turn_creates_current_saved_conversation_before_dispatch(tmp_path, 
         assert saved.settings['harness'] == 'pi'
         assert saved.settings['project'] == str(tmp_path)
         assert saved.settings['max_output_tokens'] == 32000
+        assert saved.settings['role'] == role
+        assert saved.settings['permissions'] == permissions and saved.settings['execution_mode'] == 'execute'
         seen['conversation'] = saved.id
         turn.text = 'Reviewed task result'
 
@@ -216,7 +220,7 @@ def test_task_turn_creates_current_saved_conversation_before_dispatch(tmp_path, 
     monkeypatch.setattr(task_coding, '_proposal', lambda *args: {'summary': args[3].text})
     task = {'id': 'task:' + 'b' * 32, 'title': 'Inspect queue', 'description': 'Inspect the queue',
             'acceptance': ['Returns a report']}
-    agent = localagent.Agent('worker', 'qwen', identity='bound-worker', harness='pi', max_output_tokens=32000)
+    agent = localagent.Agent('worker', 'qwen', identity='bound-worker', harness='pi', max_output_tokens=32000, role=role)
     result = task_coding.perform(owning_session(), tmp_path / 'state', agent, task,
                                 task_coding.Run(tmp_path, lambda: False, lambda _: None))
     assert seen['conversation']

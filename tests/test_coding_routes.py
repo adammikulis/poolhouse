@@ -9,6 +9,7 @@ from launch_support import signed
 from node_kit import node_binary, workspace_node  # noqa: F401
 from test_fleet_ui import Serving
 
+from poolhouse import coding_policy
 from poolhouse.board import person
 from poolhouse.fleet.conversations import Conversations
 from poolhouse.workspace import coding_turns
@@ -24,7 +25,7 @@ def coding_api(tmp_path, monkeypatch, workspace_node):  # noqa: F811
     server.ui.conversations = Conversations(tmp_path / "chats")
     folder = tmp_path / "project"
     folder.mkdir()
-    made = server.ui.conversations.start(model="test-model", settings={"project": str(folder), "role": "read-only", "harness": "codex"})
+    made = server.ui.conversations.start(model="test-model", settings={"project": str(folder), "permissions": "read-only", "execution_mode": "execute", "harness": "codex"})
     try:
         yield server, made, workspace_node
     finally:
@@ -170,7 +171,7 @@ def test_launch_adapter_forwards_exact_context_and_mtp_head(monkeypatch):
 
     calls = []
     monkeypatch.setitem(coding.HARNESSES, "codex", lambda argv, **options: calls.append(argv) or 0)
-    assert coding.launch_coding_agent("/models/qwen.gguf", "read-only", "/project", harness="codex", context=262144,
+    assert coding.launch_coding_agent("/models/qwen.gguf", coding_policy.Policy("read-only"), "/project", harness="codex", context=262144,
                                      draft="/models/mtp-qwen.gguf") == 0
     assert calls[0][calls[0].index("--ctx") + 1] == "262144"
     assert calls[0][calls[0].index("--draft") + 1] == "/models/mtp-qwen.gguf"
@@ -201,11 +202,10 @@ def test_cancel_and_status_stay_responsive_while_conversation_graph_is_locked(co
     assert finished(server, conversation.id)["state"] == "completed"
 
 
-@pytest.mark.parametrize("settings", [{"harness": ""}, {"harness": "missing-runtime"}, {"role": ""},
-                                      {"role": "not-a-role"}, {"project": "/missing-project"}])
+@pytest.mark.parametrize("settings", [{"harness": ""}, {"harness": "missing-runtime"}, {"project": "/missing-project"}])
 def test_incomplete_tool_capability_never_appends_or_launches(coding_api, settings):
     server, conversation, _node = coding_api
-    server.ui.conversations.update(conversation.id, settings=settings)
+    server.ui.conversations.update(conversation.id, settings=settings, expected_revision=conversation.policy_revision)
     assert post(server, conversation.id, "start", {"message": "must not execute"})[0] == 400
     assert server.ui.conversations.get(conversation.id).messages == []
     assert server.ui.coding_turns.turns == {}

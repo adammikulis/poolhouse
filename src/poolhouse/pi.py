@@ -11,7 +11,7 @@ import time
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from poolhouse import harnessing, pi_tools
+from poolhouse import coding_policy, harnessing, pi_tools
 from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of
 from poolhouse.client import families
 from poolhouse.log import say
@@ -63,7 +63,7 @@ export default function (pi) {{
     if (input.path && !input.file_path) input.file_path = input.path;
     if (input.oldText !== undefined) input.old_string = input.oldText;
     if (input.newText !== undefined) input.new_string = input.newText;
-    const result = call(["pre","--role",cfg.role,"--agent",cfg.agent,"--root",cfg.root,
+    const result = call(["pre","--permissions",cfg.permissions,"--execution-mode",cfg.executionMode,"--agent",cfg.agent,"--root",cfg.root,
       ...cfg.protected.flatMap(path => ["--protect",path]),"--wait","300"],
       {{tool_name:mapped,tool_input:input,cwd:cfg.root}});
     if (result.failed) return {{block:true,reason:"poolhouse: tool policy failed; blocked"}};
@@ -125,7 +125,7 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
         say("error: --max-turns must be positive")
         return 2
     try:
-        harnessing.check_role(args.role)
+        coding_policy.Policy(args.permissions, args.execution_mode)
     except ValueError as why:
         say(f"error: {why}")
         return 2
@@ -158,11 +158,11 @@ def _run(args, command, served, say, runner):
         with harnessing.opened(args,"pi",served,say) as run:
             config_dir = run.files.path
             (config_dir / "models.json").write_text(models(base_url,alias,window,args.max_output_tokens),encoding="utf-8")
-            tool_config = pi_tools.prepared(run.files, binary, run.cwd, args.role)
+            tool_config = pi_tools.prepared(run.files, binary, run.cwd, coding_policy.Policy(args.permissions, args.execution_mode))
             tool_module = json.loads(tool_config.read_text())["module"]
             protected = harnessing.protected_paths(run.files)
             hook = run.files.write("poolhouse.ts", extension({"python": sys.executable,
-                "role": args.role, "agent": run.session.name, "root": str(run.cwd),
+                "permissions": args.permissions, "executionMode": args.execution_mode, "agent": run.session.name, "root": str(run.cwd),
                 "toolConfig": str(tool_config), "toolModule": tool_module,
                 "protected": protected, "maxTurns": args.max_turns, "maxOutputTokens": args.max_output_tokens,
                 "thinking": families.for_model_id(alias).think_kwargs(args.effort != "off")}))
@@ -172,7 +172,7 @@ def _run(args, command, served, say, runner):
             argv = [binary,"--provider","poolhouse","--model",alias,"--mode","json","--print","--no-session",
                     "--no-mcp","--no-skills","--no-prompt-templates","--no-extensions","--extension",str(hook),
                     "--append-system-prompt",run.brief,"--thinking",args.effort,*extra]
-            say(f"role {args.role}; Pi tools pass through poolhouse's classifier")
+            say(f"permissions {args.permissions}; mode {args.execution_mode}; Pi tools pass through poolhouse's classifier")
             return int(runner(argv,env))
     except ValueError as why:
         say(f"error: {why}")

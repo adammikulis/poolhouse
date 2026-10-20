@@ -4,13 +4,13 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from poolhouse import coding_policy
+
 from .settings import Settings
 
 DEFAULTS: dict[str, Any] = {"temperature": None, "project": "", "role": "",
-                            "permissions": "read-only", "execution_mode": "execute",
+                            "permissions": coding_policy.READ_ONLY, "execution_mode": coding_policy.EXECUTE,
                             "effort": "off", "max_effort": "medium", "harness": "", "context": 0, "draft": "auto", "max_output_tokens": None}
-PERMISSIONS = ("read-only", "ask-changes", "ask-dangerous", "yolo")
-EXECUTION_MODES = ("plan", "execute")
 LEVELS = ("off", "low", "medium", "high")
 
 
@@ -31,8 +31,7 @@ def checked(settings: dict | None = None) -> dict[str, Any]:
     if result["max_output_tokens"] is not None and (isinstance(result["max_output_tokens"], bool)
             or not isinstance(result["max_output_tokens"], int) or result["max_output_tokens"] < 1):
         raise ValueError("maximum output tokens must be null or a positive integer")
-    if result["permissions"] not in PERMISSIONS or result["execution_mode"] not in EXECUTION_MODES:
-        raise ValueError("invalid coding permissions or execution mode")
+    coding_policy.Policy(result["permissions"], result["execution_mode"])
     if len(result["harness"]) > 64:
         raise ValueError("harness identifier is too long")
     if len(result["role"]) > 128:

@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 
-from poolhouse import pi
+from poolhouse import coding_policy, pi
 
 
 def test_pi_launch_is_offline_and_uses_the_policy_extension(monkeypatch, tmp_path):
@@ -83,7 +83,7 @@ def test_pi_extension_denies_writes_and_reports_exhausted_turns(tmp_path):
     if not node:
         pytest.skip("Node is required by Pi")
     hook = tmp_path / "policy.mjs"
-    hook.write_text(pi.extension({"python": sys.executable, "role": "read-only",
+    hook.write_text(pi.extension({"python": sys.executable, "permissions": "read-only", "executionMode": "execute",
         "agent": "isolated-pi", "root": str(tmp_path), "protected": [], "maxTurns": 1}))
     driver = tmp_path / "driver.mjs"
     driver.write_text(
@@ -112,7 +112,7 @@ def test_pi_post_checkpoint_failure_stops_the_session(tmp_path):
     if not node:
         pytest.skip("Node is required by Pi")
     hook = tmp_path / "policy.mjs"
-    hook.write_text(pi.extension({"python": "/usr/bin/false", "role": "plan-and-go",
+    hook.write_text(pi.extension({"python": "/usr/bin/false", "permissions": "ask-dangerous", "executionMode": "execute",
         "agent": "missing-checkpoint-identity", "root": str(tmp_path), "protected": []}))
     driver = tmp_path / "driver.mjs"
     driver.write_text(
@@ -165,7 +165,7 @@ def test_native_pi_options_keep_output_effort_and_turns_separate(monkeypatch):
         seen["args"] = argv
         return 0
     monkeypatch.setitem(coding.HARNESSES, "pi", launch)
-    assert coding.launch_coding_agent("model", "read-only", "/tmp", max_output_tokens=32000,
+    assert coding.launch_coding_agent("model", coding_policy.Policy("read-only"), "/tmp", max_output_tokens=32000,
                                       max_turns=7, effort="high", context=65536) == 0
     for flag, expected in (("--max-output-tokens", "32000"), ("--max-turns", "7"),
                            ("--effort", "high"), ("--ctx", "65536")):

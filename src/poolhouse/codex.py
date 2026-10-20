@@ -23,8 +23,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from poolhouse import agent_hooks, harnessing, serverkeys
-from poolhouse.chatpolicy import READ_ONLY
+from poolhouse import agent_hooks, coding_policy, harnessing, serverkeys
 from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of
 from poolhouse.log import say
 from poolhouse.serve import provenance
@@ -66,10 +65,10 @@ def config_toml(base_url: str, alias: str, window: int, hooks: tuple[str, str, f
     return "\n".join(lines) + "\n" + agent_hooks.codex_hooks(True, False, assigned)
 
 
-def policy_flags(role: str) -> list[str]:
+def policy_flags(policy: coding_policy.Policy) -> list[str]:
     """Codex's own sandbox and approval flags for ``role``: read-only never writes; the others write
     inside the working directory and ask before leaving it."""
-    if role == READ_ONLY:
+    if not policy.writable:
         return ["--sandbox", "read-only", "--ask-for-approval", "never"]
     return ["--sandbox", "workspace-write", "--ask-for-approval", "on-request"]
 
@@ -102,7 +101,7 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
         say("error: --on names a server already running; do not name a model as well")
         return 2
     try:
-        harnessing.check_role(args.role)
+        coding_policy.Policy(args.permissions, args.execution_mode)
     except ValueError as why:
         say(f"error: {why}")
         return 2
@@ -157,9 +156,9 @@ def _run(args: argparse.Namespace, command: Sequence[str], served: tuple[str, st
                 "\nUse the workspace MCP tools for inbox/send/thread/claim. They already carry your "
                 "assigned identity; never use shell workspace commands inside the coding sandbox.\n")
             run.files.write("AGENTS.md", run.brief + extra_brief)
-            say(f"role {args.role}; Bash, apply_patch and MCP calls go through poolhouse's classifier "
+            say(f"permissions {args.permissions}; mode {args.execution_mode}; Bash, apply_patch and MCP calls go through poolhouse's classifier "
                 f"(CODEX_HOME {path.parent}, outside the working tree)")
-            flags = [*policy_flags(args.role), "--dangerously-bypass-hook-trust", "--cd", str(run.cwd)]
+            flags = [*policy_flags(coding_policy.Policy(args.permissions, args.execution_mode)), "--dangerously-bypass-hook-trust", "--cd", str(run.cwd)]
             return int(runner([binary, *flags, *extra], environment(run.files.path, key=serverkeys.for_url(base_url))))
     except ValueError as why:
         say(f"error: {why}")

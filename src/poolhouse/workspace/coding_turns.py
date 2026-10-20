@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from poolhouse import coding, harnessing, platform, roles
+from poolhouse import coding, coding_policy, harnessing, platform
 from poolhouse.board import person
 from poolhouse.fleet import conversation_graph as graph
 from poolhouse.fleet.conversation_types import safe
@@ -90,9 +90,7 @@ class Manager:
         settings = conversation.settings
         if settings["harness"] not in coding.HARNESSES:
             raise ValueError("unsupported coding harness")
-        if not settings["role"]:
-            raise ValueError("choose tool permissions first")
-        roles.get(settings["role"])
+        coding_policy.Policy(settings["permissions"], settings["execution_mode"])
         if not harnessing.binary_for(settings["harness"]):
             raise ValueError("the selected tool runtime is not installed")
         folder = Path(settings["project"]).expanduser().resolve()
@@ -195,7 +193,7 @@ class Manager:
                 launch_options["max_output_tokens"] = settings["max_output_tokens"]
                 launch_options["effort"] = (localeffort.pick_for(prompt, settings["max_effort"])
                     if settings["effort"] == "auto" else localeffort.clamp(settings["effort"], settings["max_effort"]))
-            result = coding.launch_coding_agent(conversation.model, settings["role"],
+            result = coding.launch_coding_agent(conversation.model, coding_policy.Policy(settings["permissions"], settings["execution_mode"]),
                 settings["project"], harness=harness, context=settings["context"], draft=settings.get("draft", "auto"), name=f"chat-{conversation.id}",
                 parent=self._parent(settings["project"]),
                 harness_args=args, say=lambda text: turn.emit({"status": text}),

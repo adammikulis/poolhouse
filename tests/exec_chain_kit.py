@@ -6,12 +6,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from poolhouse import harnesshook, requests
+from poolhouse import coding_policy, harnesshook, requests
 from poolhouse.harnesspolicy import after_downloads, decide
+from poolhouse.interventions import Call
 from poolhouse.net import git
 from poolhouse.requests import store
 
-ROLES = ("approve-first", "plan-and-go")
+ROLES = ("ask-changes", "ask-dangerous")
 BODY = "import json\n\n\ndef load(path):\n    return json.loads(path.read_text())\n"
 
 
@@ -34,7 +35,7 @@ def world(tmp_path, monkeypatch):
 
 def bash(world, role, command, fetched=()):
     args = {"command": command}
-    return after_downloads(decide(role, "Bash", args, roots=world.roots), "Bash", args, world.roots, fetched)
+    return after_downloads(decide(coding_policy.Policy(role), Call("Bash", args), roots=world.roots), "Bash", args, world.roots, fetched)
 
 
 def asks(got):
@@ -56,10 +57,10 @@ class _Waiting:
 @pytest.fixture
 def raised(monkeypatch):
     """Run the hook on a payload and return the request the person would be shown, with its text escaped and cut as the inbox does."""
-    def run(payload, role="plan-and-go", roots=("/w",)):
+    def run(payload, role="ask-dangerous", roots=("/w",)):
         seen = []
         monkeypatch.setattr(requests, "raise_request", lambda ask, inbox=None: seen.append(ask) or _Waiting(False))
-        harnesshook.pre(payload, harnesshook.Rail(role, "local-test", roots, (), 0.2), requests.Inbox(memory=True))
+        harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy(role), "local-test", roots, (), 0.2), requests.Inbox(memory=True))
         return store.build(seen[0], 0.0)
 
     return run
@@ -71,9 +72,9 @@ def session(monkeypatch):
     seen = []
     monkeypatch.setattr(requests, "raise_request", lambda ask, inbox=None: seen.append(ask) or _Waiting(True))
 
-    def run(command, roots, agent="local-test", role="plan-and-go", name="Bash"):
+    def run(command, roots, agent="local-test", role="ask-dangerous", name="Bash"):
         payload = {"tool_name": name, "tool_input": {"command": command}}
-        out = harnesshook.pre(payload, harnesshook.Rail(role, agent, roots, (), 0.2), requests.Inbox(memory=True))
+        out = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy(role), agent, roots, (), 0.2), requests.Inbox(memory=True))
         return out["hookSpecificOutput"]["permissionDecision"], len(seen)
 
     return run

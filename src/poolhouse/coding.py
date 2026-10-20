@@ -1,8 +1,7 @@
 """The entry the workspace runner calls to start a local-model coding agent.
 
-``launch_coding_agent(model, role, project)`` runs Pi (or another supported coding harness) on a model served through
-the broker's lease: a context selected for this device, a role that sets the harness's sandbox and approval
-mode, a PreToolUse hook through the destructive-action classifier, and a workspace identity minted
+``launch_coding_agent(model, policy, project)`` runs Pi (or another supported coding harness) on a model served through
+the broker's lease: a context selected for this device, explicit permissions and execution mode, a PreToolUse hook through the destructive-action classifier, and a workspace identity minted
 for the session, placed on the project's board and revoked when the session ends.
 """
 
@@ -11,7 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from poolhouse import claude, codex, harnessing, pi
+from poolhouse import claude, codex, coding_policy, harnessing, pi
 from poolhouse.log import say as default_say
 
 __all__ = ["HARNESSES", "launch_coding_agent"]
@@ -19,9 +18,9 @@ __all__ = ["HARNESSES", "launch_coding_agent"]
 HARNESSES = {"pi": pi.launch, "codex": codex.launch, "claude": claude.launch}
 
 
-def launch_coding_agent(model: str, role: str, project: str | Path, harness: str = "pi",
+def launch_coding_agent(model: str, policy: coding_policy.Policy, project: str | Path, harness: str = "pi",
                         **options: Any) -> int:
-    """Run ``harness`` on ``model`` in ``project`` under ``role``; returns the harness's exit code.
+    """Run ``harness`` on ``model`` in ``project`` under ``policy``; returns the harness's exit code.
 
     ``model`` "" takes the coding default. Options: ``name`` overrides the workspace identity
     (``local-<model>-<harness>``); ``parent`` names the session that starts the agent (else the one of ``$POOLHOUSE_WORKSPACE_AGENT``); ``orders_from`` lists identities the agent obeys besides the
@@ -32,7 +31,7 @@ def launch_coding_agent(model: str, role: str, project: str | Path, harness: str
     if harness not in HARNESSES:
         say(f"error: no harness {harness!r}: the harnesses are {', '.join(HARNESSES)}")
         return 2
-    argv = [model or harnessing.DEFAULT_MODEL, "--role", role, "--project", str(project)]
+    argv = [model or harnessing.DEFAULT_MODEL, "--permissions", policy.permissions, "--execution-mode", policy.execution_mode, "--project", str(project)]
     if context := options.pop("context", 0):
         argv += ["--ctx", str(context)]
     if harness == "pi" and (max_turns := options.pop("max_turns", 0)):

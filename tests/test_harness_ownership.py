@@ -9,7 +9,7 @@ import pytest
 from harness_kit import held, hook, verdict
 from node_kit import node_binary, workspace_node  # noqa: F401
 
-from poolhouse import harness_claims, harnesshook
+from poolhouse import coding_policy, harness_claims, harnesshook
 from poolhouse.board import place, session as board_session
 from poolhouse.errors import Conflict, Denied
 from poolhouse.net import git
@@ -39,7 +39,7 @@ def test_actual_hook_blocks_other_owner_and_symlink_alias_before_write(kit):
     reserve(kit, kit.beta, 'Write', {'file_path': str(target), 'content': 'mine'})
     payload = {'tool_name': 'Write', 'tool_input': {'file_path': str(alias / target.name), 'content': 'hostile'},
                'cwd': str(kit.project)}
-    done = hook(kit.node, 'pre', payload, '--role', 'plan-and-go', '--agent', kit.alpha.name, '--root', str(kit.project))
+    done = hook(kit.node, 'pre', payload, '--permissions', 'ask-dangerous', '--agent', kit.alpha.name, '--root', str(kit.project))
     assert done.returncode == 0, done.stderr
     decision = verdict(done)
     if decision['permissionDecision'] == 'allow':
@@ -85,7 +85,7 @@ def test_a_token_file_of_another_session_is_not_the_launcher_identity(kit):
 def test_a_session_the_board_refuses_is_denied_and_never_waved_through(kit):
     kit.a.retire()
     payload = {'tool_name': 'Write', 'tool_input': {'file_path': str(kit.project / 'retired.txt')}, 'cwd': str(kit.project)}
-    answer = harnesshook.pre(payload, harnesshook.Rail('plan-and-go', kit.alpha.name, roots=[str(kit.project)], wait_s=0))
+    answer = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy('ask-dangerous'), kit.alpha.name, roots=[str(kit.project)], wait_s=0))
     decision = answer['hookSpecificOutput']
     assert decision['permissionDecision'] == 'deny' and 'refused the token' in decision['permissionDecisionReason']
 
@@ -96,7 +96,7 @@ def test_a_claim_taken_between_the_check_and_the_reservation_denies_the_call(kit
     reserve(kit, kit.beta, 'Write', {'file_path': str(target)})
     payload = {'tool_name': 'Write', 'tool_input': {'file_path': str(target), 'content': 'the second session writes this file\n'},
                'cwd': str(kit.project)}
-    answer = harnesshook.pre(payload, harnesshook.Rail('plan-and-go', kit.alpha.name, roots=[str(kit.project)], wait_s=0))
+    answer = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy('ask-dangerous'), kit.alpha.name, roots=[str(kit.project)], wait_s=0))
     decision = answer['hookSpecificOutput']
     assert decision['permissionDecision'] == 'deny' and kit.beta.name in decision['permissionDecisionReason']
     assert held(kit.a, kit.alpha.name) == []
@@ -142,7 +142,7 @@ def test_the_hook_denies_a_session_with_no_token_file_and_does_not_wave_it_throu
     (kit.node.state / 'client' / kit.node.board / f'{kit.alpha.name}.token').unlink()
     target = kit.project / 'source.py'
     payload = {'tool_name': 'Write', 'tool_input': {'file_path': str(target), 'content': 'x\n'}, 'cwd': str(kit.project)}
-    answer = harnesshook.pre(payload, harnesshook.Rail('plan-and-go', kit.alpha.name, roots=[str(kit.project)], wait_s=0))['hookSpecificOutput']
+    answer = harnesshook.pre(payload, harnesshook.Rail(coding_policy.Policy('ask-dangerous'), kit.alpha.name, roots=[str(kit.project)], wait_s=0))['hookSpecificOutput']
     assert answer['permissionDecision'] == 'deny' and 'no usable token' in answer['permissionDecisionReason']
     assert 'ownership not' not in answer['permissionDecisionReason']
     assert held(kit.b, kit.beta.name) == [] and held(kit.b, kit.alpha.name) == []
@@ -179,7 +179,7 @@ def test_explicit_port_worktree_and_install_mutations_reserve_native_resources(k
     assert ('port', '51548') in required
     reserve(kit, kit.alpha, 'Bash', {'command': command})
     decision = harnesshook.pre({'tool_name': 'Bash', 'tool_input': {'command': command}, 'cwd': str(kit.project)},
-                               harnesshook.Rail('plan-and-go', kit.beta.name, roots=[str(kit.project)], wait_s=0))
+                               harnesshook.Rail(coding_policy.Policy('ask-dangerous'), kit.beta.name, roots=[str(kit.project)], wait_s=0))
     assert decision['hookSpecificOutput']['permissionDecision'] == 'deny'
     owners = {(c.kind, c.key): c.owner for c in kit.b.claims()}
     assert owners[('install', str(python.parent.parent))] == kit.alpha.name
@@ -240,7 +240,7 @@ def test_native_read_inventory_null_sink_needs_no_mutation_claim(kit, command):
     assert harness_claims.resources('Bash', {'command': command}, str(kit.project)) == []
     decision = harnesshook.pre({'tool_name': 'Bash', 'tool_input': {'command': command},
                                'cwd': str(kit.project)},
-                              harnesshook.Rail('plan-and-go', kit.alpha.name, roots=[str(kit.project)], wait_s=0))
+                              harnesshook.Rail(coding_policy.Policy('ask-dangerous'), kit.alpha.name, roots=[str(kit.project)], wait_s=0))
     assert decision['hookSpecificOutput']['permissionDecision'] == 'allow'
     assert held(kit.a, kit.alpha.name) == []
 

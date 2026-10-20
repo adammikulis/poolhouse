@@ -1,9 +1,9 @@
-"""What a coding harness's tool call is allowed to do under a session role.
+"""What a coding harness's tool call is allowed to do under explicit session permissions.
 
-`decide` takes the role, the tool's name and its arguments and returns allow, deny or ask. The
-destructive-action classifier labels the call; the role decides what each label gets. A call
+`decide` takes the immutable coding policy and tool call and returns allow, deny or ask. The
+destructive-action classifier labels the call; the permission profile decides what each label gets. A call
 the classifier cannot read is ``unsure`` and asks. Text naming the launcher's session files, the
-state root or an action only a person can take is denied in every role.
+state root or an action only a person can take is denied in every profile.
 """
 
 from __future__ import annotations
@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from poolhouse import worktreerules
-from poolhouse.chatpolicy import APPROVE_FIRST, PLAN_AND_GO, READ_ONLY, refusal_for
+from poolhouse import coding_policy, worktreerules
+from poolhouse.chatpolicy import refusal_for
 from poolhouse.guard import fetchlog
 from poolhouse.guard.destructive import classify, reason_text
 from poolhouse.guard.shellscan import segments
@@ -110,14 +110,15 @@ def _unbrokered_tests(line):
     return False
 
 
-def decide(role: str, name: str, args: dict[str, Any] | None, *, roots: Sequence[str] = (),
+def decide(policy: coding_policy.Policy, call: Call, *, roots: Sequence[str] = (),
            protected: Sequence[str] = ()) -> Decision:
     """The decision for one tool call. ``protected`` are path strings no call may name."""
+    name, args = call.name, call.arguments
     if hit := _mentions(args, protected):
         return _denied("destructive", f"the call names {hit}, which belongs to the launcher")
     if _unbrokered_tests(_shell_line(name, args)):
         return _denied("reversible", "tests must use the maintained scripts/test broker queue")
-    verdict = classify(Call(name, args), roots=roots, catalog=CATALOG)
+    verdict = classify(call, roots=roots, catalog=CATALOG)
     why = reason_text(verdict)
     if verdict.forbidden:
         return _denied(verdict.label, f"{why}; an agent never opens one")
@@ -125,11 +126,11 @@ def decide(role: str, name: str, args: dict[str, Any] | None, *, roots: Sequence
         return Decision("allow", "safe", why)
     if refusal := refusal_for(_shell_line(name, args)):
         return _denied("destructive", f"{refusal[0]} is for a person; run `{refusal[1]}` yourself")
-    if role == READ_ONLY or role not in (APPROVE_FIRST, PLAN_AND_GO):
-        return _denied(verdict.label, f"the read-only role runs no acting call: {why}")
-    if verdict.label in ("destructive", "unsure"):
+    if not policy.writable:
+        return _denied(verdict.label, f"{policy.execution_mode}/{policy.permissions} runs no acting call: {why}")
+    if verdict.label == "unsure" or (verdict.label == "destructive" and policy.permissions != coding_policy.YOLO):
         return Decision("ask", verdict.label, why, "tool_call_destructive")
-    if role == APPROVE_FIRST:
+    if policy.permissions == coding_policy.ASK_CHANGES:
         return Decision("ask", verdict.label, why)
     return Decision("allow", verdict.label, why)
 
