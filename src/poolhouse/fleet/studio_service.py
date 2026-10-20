@@ -15,6 +15,7 @@ from poolhouse.studio.store import StudioStore, digest
 from .discovery import load_pool_key
 from .files import safe_relpath
 from .managed_compute import process_environment
+from .studio_decision_service import create as create_decisions
 from .studio_dispatch import DeviceDispatch
 from .studio_stream_service import create as create_streams
 
@@ -100,7 +101,8 @@ def _create(ui):
     ui.runner.studio_initializing = True
     ui.studio = WorkflowEngine(store, ui.runner, adapters, authorize, dispatcher)
     streams = create_streams(ui, ui.studio, saved, scope)
-    ui.studio.on_close = streams.close
+    decisions = create_decisions(ui, ui.studio)
+    ui.studio.on_close = lambda: (decisions.close(), streams.close())
     ui.studio.on_closed = ui.studio_authority.close
     ui.runner.studio_initializing = False
     streams.start_scheduler()

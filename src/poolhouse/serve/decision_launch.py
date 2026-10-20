@@ -145,6 +145,10 @@ def bootstrap(raw: bytes) -> Bootstrap:
     return Bootstrap(value["parent"], value["instance"], bytes.fromhex(value["secret"]), issuer(value["issuer"]))
 
 
+class BrokerBusy(BlockingIOError):
+    """A verified existing broker declined idle retirement before any new launch."""
+
+
 def _idle_boundary() -> None:
     """Ask an existing broker to retire itself, never adopt it or signal its PID."""
     held = broker_wire._record()
@@ -162,7 +166,7 @@ def _idle_boundary() -> None:
         raise InterruptedError("The current broker is not answering with its verified generation.")
     reply = broker_wire._send(answering, {"op": "idle-retire", "pid": os.getpid()}, timeout=5, expected=generation)
     if reply == {"ok": True, "retiring": False}:
-        raise BlockingIOError("The current broker has active work; resident launch waits for its idle boundary.")
+        raise BrokerBusy("The current broker has active work; resident launch waits for its idle boundary.")
     if reply != {"ok": True, "retiring": True}:
         raise InterruptedError("The current broker did not confirm idle retirement; it was not replaced.")
     until = time.monotonic() + broker_wire.START_WAIT_S

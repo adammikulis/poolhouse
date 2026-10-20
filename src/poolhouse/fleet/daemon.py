@@ -377,6 +377,8 @@ class DaemonRuntime:
             self.interface.projects = self.projects
             self.interface.display_url = lan_host(self.port)
             self.interface.studio_identity = lambda: self.cert
+            self.interface.studio_endpoint = lambda: (f"https://127.0.0.1:{self.httpd.server_address[1]}"
+                                                       if self.listening != LOOPBACK else None)
             if (self.root / "studio.ladybug").exists():
                 initialize_studio(self.interface)
 

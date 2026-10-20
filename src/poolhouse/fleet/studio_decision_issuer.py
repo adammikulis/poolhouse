@@ -8,6 +8,7 @@ import secrets
 import threading
 from dataclasses import asdict
 
+from poolhouse import maintenance
 from poolhouse.serve.decision_launch import OwnedBroker
 from poolhouse.serve.decision_residents import DecisionModel, fingerprint
 from poolhouse.studio.decisions import canonical_record
@@ -79,7 +80,8 @@ class DecisionIssuer:
                         raise PermissionError('A decision dependency is no longer complete.')
                     ancestor_inputs[edge['target']['port']] = predecessor['outputs'][edge['source']['port']]
                     pending.append(edge['source']['node'])
-                if ancestor['type'] == 'stream.record' and run.get('event', {}).get('input_node') == ident:
+                event_input = run.get('event', {}).get('input_node')
+                if ancestor['type'] == 'stream.record' and ident in run['graph'].get('variants', {}).get(event_input, [event_input]):
                     ancestor_inputs['record'] = run['event']['payload']
                 if self.current_authorize(run['principal'], ancestor, ancestor_inputs) is not True:
                     raise PermissionError('Current decision dependency authority is unavailable.')
@@ -112,7 +114,7 @@ class DecisionIssuer:
     def mint(self, run_id, node_id, job_id):
         """Called only after the engine persists the exact running job intent."""
         fixed, node, inputs, context = self._snapshot(run_id, node_id, job_id)
-        model = self._model(node, inputs, context)
+        model = self._model(node, inputs, {**context, 'decision_materialize': True})
         if fingerprint(self._snapshot(run_id, node_id, job_id)[0]) != fingerprint(fixed):
             raise PermissionError('The decision intent changed during model resolution.')
         fixed_digest = fingerprint(fixed)
@@ -140,15 +142,16 @@ class DecisionIssuer:
             return copy.deepcopy(request)
 
     def _current(self, permit):
-        fixed, node, inputs, context = self._snapshot(permit['run_id'], permit['node_id'], permit['job_id'])
-        if fingerprint(fixed) != permit['fixed_digest']:
-            raise PermissionError('The decision request snapshot changed.')
-        model = self._model(node, inputs, context)
-        if fingerprint(model) != permit['model_digest']:
-            raise PermissionError('The authorized decision model content changed.')
-        if fingerprint(self._snapshot(permit['run_id'], permit['node_id'], permit['job_id'])[0]) != permit['fixed_digest']:
-            raise PermissionError('The decision intent changed during model resolution.')
-        return model
+        with maintenance.read(existing=True):
+            fixed, node, inputs, context = self._snapshot(permit['run_id'], permit['node_id'], permit['job_id'])
+            if fingerprint(fixed) != permit['fixed_digest']:
+                raise PermissionError('The decision request snapshot changed.')
+            model = self._model(node, inputs, context)
+            if fingerprint(model) != permit['model_digest']:
+                raise PermissionError('The authorized decision model content changed.')
+            if fingerprint(self._snapshot(permit['run_id'], permit['node_id'], permit['job_id'])[0]) != permit['fixed_digest']:
+                raise PermissionError('The decision intent changed during model resolution.')
+            return model
 
     def close(self):
         """Invalidate this private authority; broker retirement remains coordinated."""

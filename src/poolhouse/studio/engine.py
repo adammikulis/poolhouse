@@ -19,6 +19,10 @@ from .store import StudioStore, digest
 TERMINAL = frozenset({"done", "failed", "cancelled", "blocked", "interrupted", "skipped"})
 
 
+class AdmissionWaiting(BlockingIOError):
+    """Known compute admission refusal before any owned launch or submission."""
+
+
 def artifact_fingerprints(value: Any) -> dict[str, str]:
     """Hash declared artifact bytes and refuse directory symlink escapes."""
     found = {}
@@ -237,7 +241,7 @@ class WorkflowEngine:
             try:
                 self._node(run, node, state, inputs, context)
             except (ValueError, OSError, RuntimeError) as exc:
-                state.update(state="failed", error=str(exc))
+                state.update(state="interrupted" if state.get("resident_decision") else "failed", error=str(exc))
             self.store.put("run", run)
         states = {n["state"] for n in run["nodes"].values()}
         if states <= TERMINAL:
@@ -320,7 +324,7 @@ class WorkflowEngine:
                 state.update(state="done", outputs=self.adapters.collect(node, job, context))
                 self._completed(run, node, state, inputs)
             elif job.state in {"failed", "stopped"}:
-                state.update(state="failed" if job.state == "failed" else "cancelled",
+                state.update(state="interrupted" if state.get("resident_decision") else "failed" if job.state == "failed" else "cancelled",
                              error=f"Child job {job.state}.")
             return
         if getattr(self.runner, "managed_alignment_pending", False):
@@ -330,6 +334,12 @@ class WorkflowEngine:
         dependency = getattr(self.adapters, "dependency_fingerprint", lambda node: "")(node)
         state["fingerprint"] = digest({"node": node, "inputs": inputs, "implementation": [spec, self.implementation, dependency],
                                        "artifacts": _artifacts(node, inputs, "inputs")})
+        preflight = getattr(self.runner, "studio_decision_preflight", None)
+        outputs = preflight(node, inputs, context) if preflight else None
+        if outputs is not None:
+            state.update(state="done", outputs=outputs)
+            self._completed(run, node, state, inputs)
+            return
         if not spec.get("side_effects"):
             with self.store.lock:
                 cache = self.store.graph.get_doc("studio.cache:" + digest({"principal": run["principal"], "key": state["fingerprint"]}))
@@ -361,8 +371,24 @@ class WorkflowEngine:
             state.update(state="done", outputs=outputs)
             self._completed(run, node, state, inputs)
             return
-        command = self.adapters.prepare(node, inputs, context)
+        self._dispatch(run, node, state, inputs, context)
+
+    def _dispatch(self, run, node, state, inputs, context):
         job_id = "studio-" + digest({"run": run["id"], "node": node["id"]})[:40]
+        mint = getattr(self.runner, "studio_decision_mint", None)
+        if mint and node["type"] in {"decision.predict", "guard.injection"}:
+            state.update(state="running", job_id=job_id, resident_decision=True, started_at=time.time())
+            self.store.put("run", run)
+            try:
+                mint(run["id"], node["id"], job_id)
+            except AdmissionWaiting:
+                state.update(state="pending", job_id=None)
+                return
+            except (ValueError, OSError, RuntimeError) as exc:
+                state.update(state="interrupted", error=str(exc))
+                return
+            context["resident_decision"] = True
+        command = self.adapters.prepare(node, inputs, context)
         state.update(state="running", job_id=job_id, dispatch_digest=digest(command),
                      started_at=time.time())
         self.store.put("run", run)

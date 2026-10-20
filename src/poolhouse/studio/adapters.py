@@ -305,7 +305,10 @@ class Adapters:
         out = Path(context['output_dir'])
         out.mkdir(parents=True, exist_ok=True)
         request = out / 'request.json'
-        write_json(request, {'node': node, 'inputs': inputs, 'output_dir': str(out)})
+        content = {'node': node, 'inputs': inputs, 'output_dir': str(out)}
+        if context.get('resident_decision') is True:
+            content['execution'] = {'kind': 'resident_decision'}
+        write_json(request, content)
         return {'argv': [str(environment.python), '-B', '-I', '-m', 'poolhouse.studio.worker', str(request)],
                 'cwd': str(out), 'env': self.process_environment()}
 
