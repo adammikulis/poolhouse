@@ -271,7 +271,10 @@ class WorkflowEngine:
             edges = [e for e in run["graph"]["edges"] if e["target"]["node"] == ident]
             inputs = {edge["target"]["port"]: run["nodes"][edge["source"]["node"]]["outputs"].get(edge["source"]["port"])
                       for edge in edges}
-            if not self.authorize(run["principal"], nodes[ident], inputs):
+            try:
+                if not self.authorize(run["principal"], nodes[ident], inputs):
+                    return False
+            except (OSError, ValueError, RuntimeError):
                 return False
             pending.extend(edge["source"]["node"] for edge in edges)
             pending.extend(control["source"]["node"] for control in run["graph"].get("controls", [])

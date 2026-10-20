@@ -320,3 +320,30 @@ def test_named_control_combined_cycle_and_wrong_target_rejected(setup):
     value = named_group_graph()
     value["groups"]["saved"]["control_inputs"]["condition"] = [{"node": "independent", "port": "non_group"}]
     assert not contracts.validate_graph(value)["valid"]
+
+
+@pytest.mark.parametrize("child_state", ["pending", "running", "unknown_cancellation"])
+def test_control_authority_lookup_failure_never_leaves_child_unmonitored(setup, child_state):
+    store, engine, _adapters, calls = setup
+    workflow = store.save_workflow(PRINCIPAL["scope"], "Unavailable authority", graph())
+    result = engine.submit(PRINCIPAL, workflow, [], "lookup-error")
+    result["nodes"]["guard"].update(state="done", outputs={
+        name: {"allow": name == "allow", "reason": "allow"} for name in ("allow", "review", "block")})
+    if child_state != "pending":
+        result["nodes"]["target"].update(state="running", job_id="owned-child")
+    def authorize(principal, node, inputs):
+        if node and node["id"] == "guard":
+            raise OSError("authority registry unavailable")
+        return True
+    stopped = []
+    def stop(state, principal):
+        stopped.append(state["job_id"])
+        if child_state == "unknown_cancellation":
+            raise OSError("lost cancellation acknowledgement")
+    engine.authorize, engine._stop_child = authorize, stop
+    result = engine.advance(result)
+    expected = {"pending": "blocked", "running": "cancelled", "unknown_cancellation": "interrupted"}
+    assert result["nodes"]["target"]["state"] == expected[child_state]
+    assert stopped == ([] if child_state == "pending" else ["owned-child"])
+    assert result["nodes"]["report"]["state"] == "done"
+    assert "target" not in calls
