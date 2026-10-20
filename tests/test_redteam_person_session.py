@@ -259,7 +259,7 @@ def launch_tickets(machine) -> list[dict]:
 
 @pytest.mark.skipif(sys.platform == "win32", reason="requires a POSIX pseudoterminal")
 def test_the_open_command_hands_a_person_at_a_terminal_a_one_use_address(machine, tmp_path):
-    done = run_command(tmp_path, ("poolhouse.fleet.members", "main", ["open", "--print"]), agent=False, terminal=True)
+    done = run_command(tmp_path, ("poolhouse.fleet.launch_open", "main", ["--print"]), agent=False, terminal=True)
     assert done.returncode == 0, done.stdout
     found = re.search(rf"http://127\.0\.0\.1:{machine.port}/ui/\?launch_ticket=([\w-]+)", done.stdout)
     assert found, done.stdout
@@ -271,13 +271,13 @@ def test_the_open_command_hands_a_person_at_a_terminal_a_one_use_address(machine
 def test_the_open_command_hands_an_agent_or_a_pipe_nothing(machine, tmp_path, agent, terminal):
     if terminal and sys.platform == "win32":
         pytest.skip("requires a POSIX pseudoterminal")
-    done = run_command(tmp_path, ("poolhouse.fleet.members", "main", ["open", "--print"]), agent=agent, terminal=terminal)
+    done = run_command(tmp_path, ("poolhouse.fleet.launch_open", "main", ["--print"]), agent=agent, terminal=terminal)
     assert done.returncode != 0
     assert "launch_ticket" not in done.stdout + (done.stderr or "")
     assert launch_tickets(machine) == []
 
 
-GATES = ("members open", "signed-in local person")
+GATES = ("open", "signed-in local person")
 
 
 def gated(reply) -> bool:
