@@ -1,7 +1,7 @@
 //! Independent reviews of landing commits as board entries. A review names one commit of one branch and a
 //! verdict, and the node stamps it with the reviewer's name and model. The lander asks which reviews of a
 //! commit stand: the node leaves out every session that ever held the claim on the branch or on its worktree,
-//! and the caller itself.
+//! every session started by one of those (through any number of subagents), and the caller itself.
 
 use std::collections::BTreeMap;
 
@@ -122,12 +122,18 @@ fn creators(node: &mut Node, board: &str, branch: &str, worktree: &str) -> Resul
     Ok(crate::lease::merge::ever_held(&node.view(board)?, &keys))
 }
 
+/// Whether ``name`` is one of ``creators`` or was started by one, through any number of subagents.
+fn on_creator_side(node: &mut Node, board: &str, creators: &[String], name: &str) -> Result<bool> {
+    Ok(node.host(board)?.names.line_of(name).iter().any(|up| creators.contains(up)))
+}
+
 fn review(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let actor = member(node, token, board)?;
     let (branch, sha, verdict) = (text(p, "branch"), text(p, "sha"), text(p, "verdict"));
     let body = json!({"ev": "review", "branch": branch, "sha": sha, "verdict": verdict, "standing": stamp(node, board, &actor)?});
-    if creators(node, board, branch, "")?.contains(&actor) {
-        return Err(Error::Denied("a session that held the claim on a branch does not review it".into()));
+    let creators = creators(node, board, branch, "")?;
+    if on_creator_side(node, board, &creators, &actor)? {
+        return Err(Error::Denied("a session that held the claim on a branch, or one started by it, does not review it".into()));
     }
     write(node, board, &actor, body)?;
     audit(node, board, &actor, "land.review", &format!("{branch}@{sha}"), verdict)?;
@@ -135,7 +141,8 @@ fn review(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
 }
 
 /// The reviews of ``sha`` under ``branch`` that stand for the caller: the last of each reviewer of this device, left out when the
-/// reviewer is the caller or ever held the claim on the branch or the worktree. The creators of record come back with them.
+/// reviewer is the caller, ever held the claim on the branch or the worktree, or was started by a session that did. The creators of
+/// record come back with them.
 fn accepts(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let caller = member(node, token, board)?;
     let (branch, sha, worktree) = (text(p, "branch"), text(p, "sha"), text(p, "worktree"));
@@ -151,8 +158,14 @@ fn accepts(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) ->
             last.insert(e.sender.clone(), e);
         }
     }
+    let mut barred = Vec::new();
+    for by in last.keys() {
+        if on_creator_side(node, board, &creators, by)? {
+            barred.push(by.clone());
+        }
+    }
     let reviews: Vec<Value> = last.into_iter()
-        .filter(|(by, _)| *by != caller && !creators.contains(by))
+        .filter(|(by, _)| *by != caller && !barred.contains(by))
         .map(|(by, e)| json!({"by": by, "verdict": field(e, "verdict"), "ts_ms": e.hlc.0, "standing": e.fields.get("standing").cloned().unwrap_or(Value::Null)}))
         .collect();
     Ok(json!({"sha": sha, "branch": branch, "reviews": reviews, "creators": creators}))
