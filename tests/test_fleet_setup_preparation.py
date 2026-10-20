@@ -1,5 +1,6 @@
 """Setup selections use the same current installed inventory and fixed catalogue."""
 from pathlib import Path
+from threading import Lock
 from types import SimpleNamespace
 
 import pytest
@@ -9,6 +10,111 @@ from poolhouse.fleet import setup_preparation as preparation
 from poolhouse.fleet.catalogue import Suggestion
 from poolhouse.fleet.models import Model
 from poolhouse.hub.probe import GIB, MachineMemory
+
+
+def completed_preparation(tmp_path):
+    ui = SimpleNamespace(root=tmp_path, setup_jobs=None, _setup_jobs_lock=Lock())
+    jobs = preparation.setup_jobs.jobs(ui)
+    binding = {'scope': 'original-pool', 'device': 'original-device', 'principal': 'original-session'}
+    request = {'idempotency_key': 'a' * 32, 'binding': binding,
+               'selection': {'model_id': 'installed:' + 'b' * 64, 'download': False}}
+    row = jobs.prepare(request, lambda reporter: {
+        'model': '/private/models/fixture.gguf', 'model_id': 'installed:' + 'b' * 64,
+        'chat_ready': True, 'tools_ready': True, 'evidence': {'ticket': 'private-ticket'},
+        'unexpected': 'not-public'}, current=lambda: True)
+    worker = jobs._worker
+    if worker is not None:
+        worker.join(timeout=5)
+        assert not worker.is_alive()
+    assert jobs.get(row['id'])['state'] == 'done'
+    return preparation.Preparation(ui), jobs, binding, row['id']
+
+
+def test_renewed_owner_inspects_same_context_without_adopting_execution_or_ready(tmp_path):
+    service, jobs, original, ident = completed_preparation(tmp_path)
+    renewed = {**original, 'principal': 'renewed-session'}
+    result = service.status(ident, binding=renewed, current=lambda: True)
+    assert result['state'] == 'done'
+    assert result['can_cancel'] is False
+    assert result['result'] == {'model_id': 'installed:' + 'b' * 64,
+                                'chat_ready': False, 'tools_ready': False, 'historical': True}
+    assert not {'request', 'provenance', 'pid', 'born'} & result.keys()
+    with pytest.raises(PermissionError, match='original current'):
+        service.cancel(ident, binding=renewed, current=lambda: True)
+    assert jobs.get(ident)['request']['binding'] == original
+    assert jobs.get(ident)['cancel_requested'] is False
+    assert service.status(ident, binding=renewed, current=lambda: True) == result
+
+
+@pytest.mark.parametrize('field', ['scope', 'device'])
+def test_preparation_history_is_not_visible_in_another_context(tmp_path, field):
+    service, _, original, ident = completed_preparation(tmp_path)
+    with pytest.raises(KeyError):
+        service.status(ident, binding={**original, field: 'foreign'}, current=lambda: True)
+
+
+@pytest.mark.parametrize('allowed', [False, 1, None])
+def test_preparation_history_requires_actual_strict_current_owner(tmp_path, allowed):
+    service, _, original, ident = completed_preparation(tmp_path)
+    with pytest.raises(PermissionError):
+        service.status(ident, binding=original, current=lambda: allowed)
+
+
+def test_preparation_status_rechecks_current_after_lookup_and_projection(tmp_path, monkeypatch):
+    service, jobs, original, ident = completed_preparation(tmp_path)
+    active = [True]
+    get = jobs.get
+
+    def revoked(selected):
+        row = get(selected)
+        active[0] = False
+        return row
+
+    monkeypatch.setattr(jobs, 'get', revoked)
+    with pytest.raises(PermissionError):
+        service.status(ident, binding=original, current=lambda: active[0])
+
+
+def test_preparation_status_rechecks_current_after_public_projection(tmp_path, monkeypatch):
+    service, _, original, ident = completed_preparation(tmp_path)
+    active = [True]
+    project = service._public
+
+    def revoked(row, *, binding):
+        result = project(row, binding=binding)
+        active[0] = False
+        return result
+
+    monkeypatch.setattr(service, '_public', revoked)
+    with pytest.raises(PermissionError):
+        service.status(ident, binding=original, current=lambda: active[0])
+
+
+def test_preparation_history_projects_exact_nested_scalars_without_internal_evidence(tmp_path):
+    service, jobs, binding, ident = completed_preparation(tmp_path)
+    private = {'evidence': {'ticket': 'private-ticket'}, 'lease': 'private-lease',
+               'pid': 123, 'path': '/private/internal'}
+    row = jobs.get(ident)
+    jobs._update(row, result={
+        'model': private, 'model_id': private, 'artifact_digest': private,
+        'serving': {**private, 'port': 12345, 'context': 4096, 'slot_context': True},
+        'transfer': {**private, 'owner': 'setup-job', 'id': ident, 'done': 5, 'total': 10}})
+    result = service.status(ident, binding=binding, current=lambda: True)['result']
+    assert result == {'serving': {'port': 12345, 'context': 4096},
+                      'transfer': {'owner': 'setup-job', 'id': ident, 'done': 5, 'total': 10},
+                      'chat_ready': False, 'tools_ready': False, 'historical': True}
+
+
+def test_can_cancel_is_only_original_current_unattempted_cancel_request(tmp_path):
+    service, jobs, original, ident = completed_preparation(tmp_path)
+    row = jobs.get(ident)
+    jobs._update(row, state='queued')
+    assert service.status(ident, binding=original, current=lambda: True)['can_cancel'] is True
+    renewed = {**original, 'principal': 'renewed-session'}
+    assert service.status(ident, binding=renewed, current=lambda: True)['can_cancel'] is False
+    cancelled = service.cancel(ident, binding=original, current=lambda: True)
+    assert cancelled['cancel_requested'] is True and cancelled['can_cancel'] is False
+    assert service.cancel(ident, binding=original, current=lambda: True) == cancelled
 
 
 def fixture_ui(tmp_path, monkeypatch):

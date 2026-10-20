@@ -1,4 +1,6 @@
-"""Exact first-run model choices; readiness requires a later observed serving proof."""
+"""Exact first-run choices and independently authorized historical job inspection."""
+import copy
+import re
 from pathlib import Path
 
 from poolhouse.files import stat_signature
@@ -7,8 +9,86 @@ from poolhouse.serve.estimate import Setup, estimate
 from poolhouse.serve.process import every_server
 from poolhouse.studio.store import digest
 
-from . import model_components, startup_models
+from . import model_components, setup_jobs, startup_models
 from .catalogue import SUGGESTED
+
+
+class Preparation:
+    """Private setup service. Callers supply actual current strong-owner proofs.
+
+    Inspection never adopts the original principal's execution or cancellation
+    authority. Completed evidence remains historical until a resident startup
+    receipt can independently prove the current loaded implementation.
+    """
+
+    def __init__(self, ui):
+        self.ui = ui
+
+    @staticmethod
+    def _check(binding, current):
+        if (not isinstance(binding, dict) or set(binding) != {'scope', 'device', 'principal'}
+                or any(not isinstance(value, str) or not value or len(value) > 256
+                       for value in binding.values())):
+            raise ValueError('Invalid setup context.')
+        if not callable(current) or current() is not True:
+            raise PermissionError('Current setup access is required.')
+
+    def _row(self, ident, binding, current):
+        self._check(binding, current)
+        if not isinstance(ident, str) or re.fullmatch(r'[a-f0-9]{32}', ident) is None:
+            raise ValueError('Invalid preparation identifier.')
+        row = setup_jobs.jobs(self.ui).get(ident)
+        self._check(binding, current)
+        original = row.get('request', {}).get('binding', {}) if row else {}
+        if (row is None or row['kind'] != setup_jobs.PREPARATION
+                or any(original.get(key) != binding[key] for key in ('scope', 'device'))):
+            raise KeyError(ident)
+        self._check(binding, current)
+        return row
+
+    @staticmethod
+    def _public(row, *, binding):
+        result = row.get('result', {})
+        model_id = result.get('model_id')
+        safe = {}
+        if isinstance(model_id, str) and (re.fullmatch(r'installed:[a-f0-9]{64}', model_id)
+                                         or any(pick.file == model_id for pick in SUGGESTED)):
+            safe['model_id'] = model_id
+        fingerprint = result.get('artifact_digest')
+        if isinstance(fingerprint, str) and re.fullmatch(r'[a-f0-9]{64}', fingerprint):
+            safe['artifact_digest'] = fingerprint
+        serving = result.get('serving')
+        if isinstance(serving, dict):
+            safe['serving'] = {key: serving[key] for key in ('port', 'context', 'slot_context')
+                               if type(serving.get(key)) is int and 0 < serving[key] <= (
+                                   65535 if key == 'port' else 2**31 - 1)}
+        transfer = result.get('transfer')
+        if (isinstance(transfer, dict) and transfer.get('owner') in ('setup-job', 'shared-download')
+                and isinstance(transfer.get('id'), str)
+                and re.fullmatch(r'(?:[a-f0-9]{32}|[0-9]{1,20}-[a-f0-9]{6})', transfer['id'])
+                and all(type(transfer.get(key)) is int and transfer[key] >= 0 for key in ('done', 'total'))):
+            safe['transfer'] = {key: transfer[key] for key in ('owner', 'id', 'done', 'total')}
+        safe.update(chat_ready=False, tools_ready=False, historical=True)
+        can_cancel = (row['request']['binding'] == binding and row['state'] in setup_jobs.ACTIVE
+                      and row['cancel_requested'] is False)
+        return {**{key: copy.deepcopy(row[key]) for key in (
+            'id', 'kind', 'state', 'stage', 'progress', 'cancel_requested', 'created', 'note', 'error')
+                   if key in row}, 'result': safe, 'can_cancel': can_cancel}
+
+    def status(self, ident, *, binding, current):
+        row = self._row(ident, binding, current)
+        result = self._public(row, binding=binding)
+        self._check(binding, current)
+        return result
+
+    def cancel(self, ident, *, binding, current):
+        row = self._row(ident, binding, current)
+        if row['request']['binding'] != binding:
+            raise PermissionError('Only the original current setup session may cancel preparation.')
+        row = setup_jobs.jobs(self.ui).cancel_preparation(ident, binding=binding, current=current)
+        result = self._public(row, binding=binding)
+        self._check(binding, current)
+        return result
 
 
 def _installed(ui):
