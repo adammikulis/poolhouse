@@ -15,6 +15,20 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["spawn:fleet/producer_process.py:OwnedProducer._spawn", "handler:fleet/producer_process.py:OwnedProducer.activate"]
+status = "covered"
+count = 2
+tests = ["tests/test_producer_process.py::test_inert_listener_does_not_dispatch_before_activation", "tests/test_producer_process.py::test_activation_cannot_substitute_actual_launch_binding", "tests/test_producer_process.py::test_lost_activation_ack_never_reactivates_or_relaunches", "tests/test_producer_process.py::test_current_callback_cannot_revive_reentrantly_closed_owner", "tests/test_producer_process.py::test_original_sdk_death_invalidates_inert_prepared_process", "tests/test_producer_process.py::test_managed_reader_is_retained_until_actual_child_exit", "tests/test_producer_process.py::test_writer_blocks_prepare_before_runtime_verification_and_spawn", "tests/test_producer_process.py::test_runtime_verification_precedes_fixed_child_command"]
+note = "One retained child is launched from a fixed verified managed runtime, with maintained reader admission spanning verification, launch and child lifetime. The listener is inert before exact private binding/capability activation; lost acknowledgement, changed binding and reentrant stop cannot adopt, relaunch or revive it. Tests use actual isolated CPU child processes. The factory must retain this owner before preparation and independently establish durable owner intent plus receiver acknowledgement before activation; this lifecycle primitive grants neither."
+
+[[group]]
+match = ["listener:fleet/producer_process.py:_Data.__init__", "parser:fleet/producer_process.py", "egress:fleet/producer_process.py:_forward"]
+status = "covered"
+count = 3
+tests = ["tests/test_producer_process.py::test_real_generic_json_and_receipt_use_exact_owned_bridge", "tests/test_producer_process.py::test_fresh_sibling_process_cannot_use_the_sdk_data_channel", "tests/test_producer_process.py::test_revocation_unblocks_partial_frame_and_ends_exact_child", "tests/test_producer_process.py::test_parent_private_eof_stops_the_original_child", "tests/test_producer_process.py::test_data_connection_cannot_dispatch_a_second_frame", "tests/test_producer_process.py::test_replaced_data_inode_is_not_unlinked_or_used", "tests/test_producer_process.py::test_blocked_data_writer_rechecks_revocation_without_extending_deadline", "tests/test_producer_process.py::test_control_binding_rejects_missing_and_nonfinite_generation"]
+note = "A private owned Unix listener accepts fresh original SDK process connections and forwards fixed generic JSON publication or receipt requests under the inherited source capability to the exact daemon TLS/control process. Complete binding validation, original listener inode, one-frame dispatch, parent death and cancellation-aware partial reads/writes are exercised under the original deadline. No source HMAC or device secret is exposed to the SDK. Isolated forwarding tests do not establish complete receiver admission, current source authorization, durable delivery or an installed producer journey; those remain factory obligations."
+
+[[group]]
 match = ["spawn:fleet/producer_holder.py:_launch"]
 status = "covered"
 count = 1

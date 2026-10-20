@@ -462,6 +462,10 @@ def discover() -> dict[str, Surface]:
         ("parser", "fleet/producer_client.py", "src/poolhouse/fleet/producer_client.py"),
         ("egress", "fleet/producer_client.py:ProducerClient._control", "src/poolhouse/fleet/producer_client.py"),
         ("egress", "fleet/producer_client.py:ProducerClient._data", "src/poolhouse/fleet/producer_client.py"),
+        ("spawn", "fleet/producer_process.py:OwnedProducer._spawn", "src/poolhouse/fleet/producer_process.py"),
+        ("handler", "fleet/producer_process.py:OwnedProducer.activate", "src/poolhouse/fleet/producer_process.py"),
+        ("parser", "fleet/producer_process.py", "src/poolhouse/fleet/producer_process.py"),
+        ("egress", "fleet/producer_process.py:_forward", "src/poolhouse/fleet/producer_process.py"),
     ):
         if (ROOT / source).is_file():
             add(found, kind, name, source)

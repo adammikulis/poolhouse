@@ -1,7 +1,7 @@
 {
- "surfaces": 892,
+ "surfaces": 897,
  "by_status": {
-  "covered": 574,
+  "covered": 579,
   "partial": 193,
   "uncovered": 52,
   "n/a": 73,
@@ -37,14 +37,14 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 57,
+   "covered": 58,
    "partial": 46,
    "uncovered": 0,
    "n/a": 1,
    "unmapped": 0
   },
   "handler": {
-   "covered": 10,
+   "covered": 11,
    "partial": 2,
    "uncovered": 0,
    "n/a": 0,
@@ -65,7 +65,7 @@
    "unmapped": 0
   },
   "listener": {
-   "covered": 6,
+   "covered": 7,
    "partial": 5,
    "uncovered": 0,
    "n/a": 17,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 89,
+   "covered": 90,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 101,
+   "covered": 102,
    "partial": 58,
    "uncovered": 0,
    "n/a": 4,
@@ -2037,6 +2037,25 @@
    "note": "The original SDK process retains one authenticated daemon anchor and offer-specific bridge generation. Fresh control and DATA connections verify actual kernel endpoint processes before application bytes, with exact control TLS certificate checks and bounded fixed schemas. Wrong or replaced endpoints receive no record bytes; inherited clients fail after fork. There is no automatic uncertain resend. These isolated transport tests do not establish complete provider enrollment, current source authorization or durable event admission; deliberate forwarding by an already authorized connector remains outside kernel connector proof."
   },
   {
+   "id": "egress:fleet/producer_process.py:_forward",
+   "kind": "egress",
+   "source": "src/poolhouse/fleet/producer_process.py",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_process.py::test_real_generic_json_and_receipt_use_exact_owned_bridge",
+    "tests/test_producer_process.py::test_fresh_sibling_process_cannot_use_the_sdk_data_channel",
+    "tests/test_producer_process.py::test_revocation_unblocks_partial_frame_and_ends_exact_child",
+    "tests/test_producer_process.py::test_parent_private_eof_stops_the_original_child",
+    "tests/test_producer_process.py::test_data_connection_cannot_dispatch_a_second_frame",
+    "tests/test_producer_process.py::test_replaced_data_inode_is_not_unlinked_or_used",
+    "tests/test_producer_process.py::test_blocked_data_writer_rechecks_revocation_without_extending_deadline",
+    "tests/test_producer_process.py::test_control_binding_rejects_missing_and_nonfinite_generation"
+   ],
+   "note": "A private owned Unix listener accepts fresh original SDK process connections and forwards fixed generic JSON publication or receipt requests under the inherited source capability to the exact daemon TLS/control process. Complete binding validation, original listener inode, one-frame dispatch, parent death and cancellation-aware partial reads/writes are exercised under the original deadline. No source HMAC or device secret is exposed to the SDK. Isolated forwarding tests do not establish complete receiver admission, current source authorization, durable delivery or an installed producer journey; those remain factory obligations."
+  },
+  {
    "id": "egress:fleet/project_client.py:read",
    "kind": "egress",
    "source": "fleet/project_client.py:read",
@@ -3038,6 +3057,25 @@
     "tests/test_producer_offers.py::test_returned_private_and_public_views_cannot_mutate_registry"
    ],
    "note": "RAM-only observational offers bind transport-supplied process generations, implementation and exact current receiver context. Tests replace liveness/current callbacks to attack stale identities, receiver substitution, withdrawn offers and revision checks. No listener or grant exists here: fixed daemon callers must obtain actual kernel identity and independently authorize owner enrollment before inspecting private evidence. Labels are informational, not authority."
+  },
+  {
+   "id": "handler:fleet/producer_process.py:OwnedProducer.activate",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_process.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_process.py::test_inert_listener_does_not_dispatch_before_activation",
+    "tests/test_producer_process.py::test_activation_cannot_substitute_actual_launch_binding",
+    "tests/test_producer_process.py::test_lost_activation_ack_never_reactivates_or_relaunches",
+    "tests/test_producer_process.py::test_current_callback_cannot_revive_reentrantly_closed_owner",
+    "tests/test_producer_process.py::test_original_sdk_death_invalidates_inert_prepared_process",
+    "tests/test_producer_process.py::test_managed_reader_is_retained_until_actual_child_exit",
+    "tests/test_producer_process.py::test_writer_blocks_prepare_before_runtime_verification_and_spawn",
+    "tests/test_producer_process.py::test_runtime_verification_precedes_fixed_child_command"
+   ],
+   "note": "One retained child is launched from a fixed verified managed runtime, with maintained reader admission spanning verification, launch and child lifetime. The listener is inert before exact private binding/capability activation; lost acknowledgement, changed binding and reentrant stop cannot adopt, relaunch or revive it. Tests use actual isolated CPU child processes. The factory must retain this owner before preparation and independently establish durable owner intent plus receiver acknowledgement before activation; this lifecycle primitive grants neither."
   },
   {
    "id": "handler:fleet/ui.py:_Loopback",
@@ -4651,6 +4689,25 @@
    "note": "The factory creates two private Unix listeners in an owned directory: nonce-only bootstrap and TLS control. Kernel process generation, private directory and original socket identities are checked throughout. Connection slots and deadlines bound owned threads; repeated or concurrent cleanup invalidates raw descriptor ownership once and never adopts replacement socket inodes, including partial binding failures. These are local transport surfaces, not source grants."
   },
   {
+   "id": "listener:fleet/producer_process.py:_Data.__init__",
+   "kind": "listener",
+   "source": "fleet/producer_process.py:_Data.__init__",
+   "trust": "anything that can connect to the address",
+   "attacker": "an unauthenticated or cross-origin client reaches the port",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_process.py::test_real_generic_json_and_receipt_use_exact_owned_bridge",
+    "tests/test_producer_process.py::test_fresh_sibling_process_cannot_use_the_sdk_data_channel",
+    "tests/test_producer_process.py::test_revocation_unblocks_partial_frame_and_ends_exact_child",
+    "tests/test_producer_process.py::test_parent_private_eof_stops_the_original_child",
+    "tests/test_producer_process.py::test_data_connection_cannot_dispatch_a_second_frame",
+    "tests/test_producer_process.py::test_replaced_data_inode_is_not_unlinked_or_used",
+    "tests/test_producer_process.py::test_blocked_data_writer_rechecks_revocation_without_extending_deadline",
+    "tests/test_producer_process.py::test_control_binding_rejects_missing_and_nonfinite_generation"
+   ],
+   "note": "A private owned Unix listener accepts fresh original SDK process connections and forwards fixed generic JSON publication or receipt requests under the inherited source capability to the exact daemon TLS/control process. Complete binding validation, original listener inode, one-frame dispatch, parent death and cancellation-aware partial reads/writes are exercised under the original deadline. No source HMAC or device secret is exposed to the SDK. Isolated forwarding tests do not establish complete receiver admission, current source authorization, durable delivery or an installed producer journey; those remain factory obligations."
+  },
+  {
    "id": "listener:fleet/studio_stream_routes.py:sources",
    "kind": "listener",
    "source": "fleet/studio_stream_routes.py:sources",
@@ -6039,6 +6096,25 @@
     "tests/test_producer_sdk.py::test_actual_holder_forgery_partial_or_lost_ack_refuses_and_reaps"
    ],
    "note": "Only the installed helper passes the real-machine gate before reading its fixed account root and existing private locator. Descriptor checks reject symlinks and public permissions; nonce and exact private acknowledgement schemas are checked. Only a public authenticated daemon anchor crosses to the SDK. The existing software installation-secret compromise boundary remains; no hardware clone resistance or source authority is conferred."
+  },
+  {
+   "id": "parser:fleet/producer_process.py",
+   "kind": "parser",
+   "source": "src/poolhouse/fleet/producer_process.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_process.py::test_real_generic_json_and_receipt_use_exact_owned_bridge",
+    "tests/test_producer_process.py::test_fresh_sibling_process_cannot_use_the_sdk_data_channel",
+    "tests/test_producer_process.py::test_revocation_unblocks_partial_frame_and_ends_exact_child",
+    "tests/test_producer_process.py::test_parent_private_eof_stops_the_original_child",
+    "tests/test_producer_process.py::test_data_connection_cannot_dispatch_a_second_frame",
+    "tests/test_producer_process.py::test_replaced_data_inode_is_not_unlinked_or_used",
+    "tests/test_producer_process.py::test_blocked_data_writer_rechecks_revocation_without_extending_deadline",
+    "tests/test_producer_process.py::test_control_binding_rejects_missing_and_nonfinite_generation"
+   ],
+   "note": "A private owned Unix listener accepts fresh original SDK process connections and forwards fixed generic JSON publication or receipt requests under the inherited source capability to the exact daemon TLS/control process. Complete binding validation, original listener inode, one-frame dispatch, parent death and cancellation-aware partial reads/writes are exercised under the original deadline. No source HMAC or device secret is exposed to the SDK. Isolated forwarding tests do not establish complete receiver admission, current source authorization, durable delivery or an installed producer journey; those remain factory obligations."
   },
   {
    "id": "parser:fleet/request_fields.py",
@@ -11199,6 +11275,25 @@
     "tests/test_producer_sdk.py::test_production_launcher_uses_only_fixed_verified_runtime_entry"
    ],
    "note": "The SDK launches one fixed verified installed isolated interpreter entry through the maintained process launcher. An inherited private channel binds a fresh nonce, retained child process generation and acknowledgement; forged or incomplete replies fail and retained children are reaped even when initial birth inspection fails. Forked children close bootstrap descriptors. Tests use isolated real Mac child processes, not the real installation secret."
+  },
+  {
+   "id": "spawn:fleet/producer_process.py:OwnedProducer._spawn",
+   "kind": "spawn",
+   "source": "src/poolhouse/fleet/producer_process.py",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_process.py::test_inert_listener_does_not_dispatch_before_activation",
+    "tests/test_producer_process.py::test_activation_cannot_substitute_actual_launch_binding",
+    "tests/test_producer_process.py::test_lost_activation_ack_never_reactivates_or_relaunches",
+    "tests/test_producer_process.py::test_current_callback_cannot_revive_reentrantly_closed_owner",
+    "tests/test_producer_process.py::test_original_sdk_death_invalidates_inert_prepared_process",
+    "tests/test_producer_process.py::test_managed_reader_is_retained_until_actual_child_exit",
+    "tests/test_producer_process.py::test_writer_blocks_prepare_before_runtime_verification_and_spawn",
+    "tests/test_producer_process.py::test_runtime_verification_precedes_fixed_child_command"
+   ],
+   "note": "One retained child is launched from a fixed verified managed runtime, with maintained reader admission spanning verification, launch and child lifetime. The listener is inert before exact private binding/capability activation; lost acknowledgement, changed binding and reentrant stop cannot adopt, relaunch or revive it. Tests use actual isolated CPU child processes. The factory must retain this owner before preparation and independently establish durable owner intent plus receiver acknowledgement before activation; this lifecycle primitive grants neither."
   },
   {
    "id": "spawn:fleet/projects.py:local_root",
