@@ -49,7 +49,7 @@ def report(environment):
         if cached and now - cached[0] < 60:
             return dict(cached[1])
         try:
-            done = subprocess.run([str(environment.python), "-I", "-c", _PROBE],
+            done = subprocess.run([str(environment.python), "-B", "-I", "-c", _PROBE],
                                   capture_output=True, text=True, timeout=20, env=process_environment())
             result = json.loads(done.stdout) if done.returncode == 0 else {}
             if not isinstance(result, dict) or not isinstance(result.get("compute_runtime"), dict):

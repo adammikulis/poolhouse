@@ -41,7 +41,7 @@ def test_frozen_report_probes_the_job_interpreter_and_keeps_provenance(environme
     assert device.device_report(environment=environment) == result
     assert len(calls) == 1
     argv, kwargs = calls[0]
-    assert argv[:3] == [str(environment.python), "-I", "-c"]
+    assert argv[:4] == [str(environment.python), "-B", "-I", "-c"]
     assert kwargs["timeout"] == 20
     assert "EXAMPLE_API_KEY" not in kwargs["env"]
     assert "PYTHONPATH" not in kwargs["env"]

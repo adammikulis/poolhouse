@@ -137,7 +137,7 @@ def test_probe_uses_fixed_isolated_argv_and_refuses_hostile_result(bundle, tmp_p
     assert secret not in str(failure.value)
     assert len(calls) == 1, 'a failed integrity check must never install, retry or use a fallback'
     argv, options = calls[0]
-    assert argv == [str(interpreter), '-I', '-c', artifact.PROBE]
+    assert argv == [str(interpreter), '-B', '-I', '-c', artifact.PROBE]
     assert not options.get('shell', False)
     assert options['env'] == environment
     assert json.loads(options['input']) == manifest

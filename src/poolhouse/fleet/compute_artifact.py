@@ -188,7 +188,7 @@ def probe(python: Path, *, environment: dict) -> str:
     import subprocess
 
     manifest = expected()
-    result = subprocess.run([str(python), '-I', '-c', PROBE], input=json.dumps(manifest),
+    result = subprocess.run([str(python), '-B', '-I', '-c', PROBE], input=json.dumps(manifest),
                             capture_output=True, text=True, timeout=20, env=environment)
     if result.returncode or result.stdout.strip() != manifest['sha256']:
         raise OSError('Refresh Training essentials in Libraries to install the app verified compute runtime')
