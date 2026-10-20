@@ -137,3 +137,9 @@ class StudioAuthority:
     def epoch(self, principal: dict) -> str:
         context = self._owner(principal)
         return studio_epoch.read(self.root, context["pool"])
+
+    def selection_epoch(self, principal: dict, *, create: bool = False) -> str:
+        context = self._owner(principal)
+        if create:
+            return studio_epoch.ensure_selection(self.root, context["pool"])
+        return studio_epoch.generation(self.root, context["pool"])

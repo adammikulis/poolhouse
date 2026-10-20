@@ -15,7 +15,7 @@ from poolhouse.files import promote
 
 NAME = "studio-authority-epoch.json"
 HEX = re.compile(r"[0-9a-f]{64}\Z")
-REASONS = {"start", "leave", "forget", "invitation-revoked", "member-revoked", "security-reset"}
+REASONS = {"start", "leave", "forget", "invitation-revoked", "member-revoked", "security-reset", "source-selection"}
 
 
 def _private(info: os.stat_result) -> None:
@@ -117,7 +117,7 @@ def activate(fd: int, value: dict, pool: str) -> str:
         raise ValueError("Invalid authority pool identity.")
     row = value["pools"].get(pool)
     if row is None or not row["active"]:
-        row = {"epoch": secrets.token_hex(32), "active": True, "reason": "start"}
+        row = {"epoch": row["epoch"] if row else secrets.token_hex(32), "active": True, "reason": "start"}
         value["pools"][pool] = row
         _write(fd, value)
     return row["epoch"]
@@ -125,12 +125,29 @@ def activate(fd: int, value: dict, pool: str) -> str:
 
 def invalidate(root: Path, pools: list[str], reason: str) -> None:
     """Explicit credential changes revoke before modifying their own state."""
-    if reason not in REASONS - {"start"} or any(not HEX.fullmatch(pool) for pool in pools):
+    if reason not in REASONS - {"start", "source-selection"} or any(not HEX.fullmatch(pool) for pool in pools):
         raise ValueError("Invalid authority revocation.")
     with changing(root) as (fd, value):
         for pool in pools:
-            existing = value["pools"].get(pool)
-            if existing and not existing["active"]:
-                continue
             value["pools"][pool] = {"epoch": secrets.token_hex(32), "active": False, "reason": reason}
         _write(fd, value)
+
+
+def generation(root: Path, pool: str) -> str:
+    """A picker can compare a disabled security generation without enabling execution."""
+    with directory(root) as fd:
+        row = _read(fd)["pools"].get(pool)
+    if row is None:
+        raise PermissionError("Studio selection authority has not been established.")
+    return row["epoch"]
+
+
+def ensure_selection(root: Path, pool: str) -> str:
+    """An explicit owner picker creates only a disabled tombstone, never a grant."""
+    if not HEX.fullmatch(pool):
+        raise ValueError("Invalid selection pool identity.")
+    with changing(root) as (fd, value):
+        if pool not in value["pools"]:
+            value["pools"][pool] = {"epoch": secrets.token_hex(32), "active": False, "reason": "source-selection"}
+            _write(fd, value)
+        return value["pools"][pool]["epoch"]

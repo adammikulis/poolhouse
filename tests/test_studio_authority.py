@@ -171,12 +171,12 @@ def test_stopped_daemon_revocation_requires_no_database_open(setup):
     assert not authority.authorize(authority.principal(grant), None, {})
 
 
-def test_tombstone_is_inert_and_repeated_revoke_preserves_epoch(setup):
+def test_tombstone_is_inert_and_security_revoke_rotates_picker_epoch(setup):
     authority, _, root = setup
     studio_epoch.invalidate(root, [POOL], "leave")
     before = (root / studio_epoch.NAME).read_bytes()
     studio_epoch.invalidate(root, [POOL], "leave")
-    assert (root / studio_epoch.NAME).read_bytes() == before
+    assert (root / studio_epoch.NAME).read_bytes() != before
     with pytest.raises(PermissionError):
         studio_epoch.read(root, POOL)
     grant = authority.mint(PRINCIPAL, "subscription", manifest(), "explicit-start")
@@ -205,12 +205,12 @@ def test_forget_revocation_failure_leaves_credentials_untouched(setup, monkeypat
     _, _, root = setup
     calls = []
     monkeypatch.setattr(recovery, "memberships", lambda path=None: [SimpleNamespace(group="example", key=b"key")])
-    monkeypatch.setattr(recovery, "_held", lambda path: calls.append("read") or {})
+    monkeypatch.setattr(recovery, "_held", lambda path: {"example": "wrapped-credential"})
+    monkeypatch.setattr(recovery, "write_json", lambda *args: calls.append("write"))
     def refuse(*args):
         raise OSError("cannot persist revocation")
     monkeypatch.setattr(studio_epoch, "invalidate", refuse)
-    with pytest.raises(OSError):
-        recovery.forget("example", root / "pool.key")
+    recovery.forget("example", root / "pool.key")
     assert calls == []
 
 
@@ -229,3 +229,39 @@ def test_invitation_revokes_before_removing_credential(setup, monkeypatch):
     before = (root / studio_epoch.NAME).read_bytes()
     invitations.revoke("credential")
     assert (root / studio_epoch.NAME).read_bytes() == before
+
+
+def test_first_picker_only_creates_disabled_epoch_and_start_preserves_pending_selection(setup):
+    authority, _, root = setup
+    with pytest.raises(PermissionError):
+        authority.selection_epoch(PRINCIPAL)
+    assert not (root / studio_epoch.NAME).exists()
+    selection = authority.selection_epoch(PRINCIPAL, create=True)
+    with pytest.raises(PermissionError):
+        studio_epoch.read(root, POOL)
+    assert authority.graph.query("MATCH (n:Node) WHERE n.kind='studio.authority.grant' RETURN n.id AS id") == []
+    grant = authority.mint(PRINCIPAL, "subscription", manifest(), "start")
+    assert grant["epoch"] == selection == authority.selection_epoch(PRINCIPAL)
+    studio_epoch.invalidate(root, [POOL], "security-reset")
+    assert authority.selection_epoch(PRINCIPAL) != selection
+    assert not authority.authorize(authority.principal(grant), None, {})
+
+
+def test_second_revocation_invalidates_disabled_picker_without_reactivating_old_grant(setup):
+    authority, _, root = setup
+    grant = authority.mint(PRINCIPAL, "subscription", manifest(), "start")
+    studio_epoch.invalidate(root, [POOL], "security-reset")
+    selected = authority.selection_epoch(PRINCIPAL, create=True)
+    studio_epoch.invalidate(root, [POOL], "invitation-revoked")
+    assert authority.selection_epoch(PRINCIPAL) != selected
+    renewed = authority.mint(PRINCIPAL, "subscription", manifest(), "renew")
+    assert renewed["epoch"] != grant["epoch"]
+    assert not authority.authorize(authority.principal(grant), None, {})
+
+
+@pytest.mark.parametrize("reason", ["start", "source-selection", "arbitrary"])
+def test_invalidation_cannot_select_activation_or_picker_operation(setup, reason):
+    _, _, root = setup
+    with pytest.raises(ValueError):
+        studio_epoch.invalidate(root, [POOL], reason)
+    assert not (root / studio_epoch.NAME).exists()

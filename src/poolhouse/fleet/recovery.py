@@ -79,15 +79,15 @@ def recall(group: str = "", path: Path | str | None = None) -> str | None:
 def forget(group: str, path: Path | str | None = None) -> None:
     """Drop the stored passphrase for ``group``; a file another command holds, or one that cannot be
     locked, is reported and left as it was."""
-    leaving = [hashlib.sha256(member.key).hexdigest() for member in memberships(path) if member.group == group]
-    if leaving:
-        studio_epoch.invalidate(pools_path(path).parent, leaving, "forget")
     try:
         with lock.rewriting(passphrases_path(path)):
             rows = _held(path)
             kept = {g: v for g, v in rows.items() if g != group}
             if kept == rows:
                 return
+            leaving = [hashlib.sha256(member.key).hexdigest() for member in memberships(path) if member.group == group]
+            if leaving:
+                studio_epoch.invalidate(pools_path(path).parent, leaving, "forget")
             if kept:
                 write_json(passphrases_path(path), kept)
             else:
