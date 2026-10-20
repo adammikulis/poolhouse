@@ -12,8 +12,10 @@ import ast
 import json
 import re
 import subprocess
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 
 SKIP = {"__pycache__", ".git", "node_modules"}
 LIMIT = 600_000
@@ -23,14 +25,14 @@ GENERATED = {"docs/redteam/coverage.json": "scripts/redteam_coverage.py",
 BUDGETS = "budgets.json"
 
 
-@dataclass
+@dataclass(frozen=True)
 class Source:
     """One scanned file: its text, the names it imports and the string constants it holds."""
 
     rel: str
     text: str
-    segments: set[str] = field(default_factory=set)
-    consts: set[str] = field(default_factory=set)
+    segments: frozenset[str] = field(default_factory=frozenset)
+    consts: frozenset[str] = field(default_factory=frozenset)
     blob: str = ""
     parsed: bool = False
 
@@ -53,21 +55,21 @@ def parse(rel: str, text: str) -> Source:
         tree = ast.parse(text)
     except (SyntaxError, ValueError):
         return src
-    src.parsed = True
+    segments: set[str] = set()
+    consts: set[str] = set()
     prose = {id(n.body[0].value) for n in ast.walk(tree) if isinstance(
         n, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and n.body
         and isinstance(n.body[0], ast.Expr) and isinstance(n.body[0].value, ast.Constant)}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
-                src.segments.update(alias.name.split("."))
+                segments.update(alias.name.split("."))
         elif isinstance(node, ast.ImportFrom):
-            src.segments.update((node.module or "").split("."))
-            src.segments.update(alias.name for alias in node.names)
+            segments.update((node.module or "").split("."))
+            segments.update(alias.name for alias in node.names)
         elif isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in prose:
-            src.consts.add(node.value)
-    src.blob = "\n".join(sorted(src.consts))
-    return src
+            consts.add(node.value)
+    return Source(rel, text, frozenset(segments), frozenset(consts), "\n".join(sorted(consts)), True)
 
 
 def corpus(root: Path) -> dict[str, Source]:
@@ -133,10 +135,36 @@ def is_test(rel: str) -> bool:
     return rel.startswith("tests/test_") and rel.count("/") == 1 and rel.endswith(".py")
 
 
+class ReferenceIndex:
+    """Exact reverse references cached within one immutable source snapshot."""
+
+    def __init__(self, files: Mapping[str, Source]) -> None:
+        self.files = MappingProxyType(dict(files))
+        self._matches: dict[str, tuple[tuple[str, str], ...]] = {}
+        self._infrastructure = infrastructure(self.files)
+        self._listers = tuple(listers(self.files))
+
+    def referrers(self, rel: str) -> tuple[tuple[str, str], ...]:
+        if rel not in self._matches:
+            wanted = target(rel)
+            self._matches[rel] = tuple((name, reason) for name, source in self.files.items()
+                                       if (reason := refers(source, wanted)))
+        return self._matches[rel]
+
+    def reaching(self, rel: str) -> tuple[dict[str, str], set[str], str]:
+        return _reaching(self, rel)
+
+    def script_tests(self, rel: str) -> tuple[dict[str, str], set[str], str]:
+        why, modules, shared = self.reaching(rel)
+        for name in self._listers:
+            why.setdefault(name, f"{name} enumerates scripts/")
+        return why, modules, shared
+
+
 PLUGINS = re.compile(r"""["']-p["'],\s*["'](\w+)["']""")
 
 
-def infrastructure(files: dict[str, Source]) -> dict[str, str]:
+def infrastructure(files: Mapping[str, Source]) -> dict[str, str]:
     """Files that run in every test session: conftest, the package marker and the ``-p`` plugins."""
     out = {"tests/conftest.py": "tests/conftest.py", "tests/__init__.py": "tests/__init__.py"}
     runner = files.get("scripts/test")
@@ -145,21 +173,17 @@ def infrastructure(files: dict[str, Source]) -> dict[str, str]:
     return out
 
 
-def reaching(files: dict[str, Source], rel: str) -> tuple[dict[str, str], set[str], str]:
+def _reaching(index: ReferenceIndex, rel: str) -> tuple[dict[str, str], set[str], str]:
     """Test files that reach ``rel`` through scripts and helpers, with why, the src modules on
     the way and, when a file every test session runs depends on ``rel``, which one."""
     why: dict[str, str] = {}
     modules: set[str] = set()
-    infra = infrastructure(files)
+    infra = index._infrastructure
     shared = f"{infra[rel]} runs in every test session" if rel in infra else ""
     seen, queue = {rel}, [(rel, True)]
     while queue:
         current, pure = queue.pop()
-        tgt = target(current)
-        for name, src in files.items():
-            reason = refers(src, tgt)
-            if not reason:
-                continue
+        for name, reason in index.referrers(current):
             if name in infra:
                 if pure:    # its code runs in every session; a name only held by a helper may never run
                     shared = shared or f"{infra[name]} {reason} (every test session loads it)"
@@ -173,7 +197,12 @@ def reaching(files: dict[str, Source], rel: str) -> tuple[dict[str, str], set[st
     return why, modules, shared
 
 
-def listers(files: dict[str, Source]) -> list[str]:
+def reaching(files: Mapping[str, Source], rel: str) -> tuple[dict[str, str], set[str], str]:
+    """Exact reverse references from a fresh source snapshot."""
+    return ReferenceIndex(files).reaching(rel)
+
+
+def listers(files: Mapping[str, Source]) -> list[str]:
     """Test files that enumerate directories while mentioning ``scripts``."""
     return sorted(n for n, s in files.items() if is_test(n) and s.lists_scripts)
 
@@ -181,10 +210,7 @@ def listers(files: dict[str, Source]) -> list[str]:
 def script_tests(files: dict[str, Source], rel: str) -> tuple[dict[str, str], set[str], str]:
     """Test files that exercise the script ``rel``, with why, the src modules that name it and
     the session-wide file that loads it, if any."""
-    why, modules, shared = reaching(files, rel)
-    for name in listers(files):
-        why.setdefault(name, f"{name} enumerates scripts/")
-    return why, modules, shared
+    return ReferenceIndex(files).script_tests(rel)
 
 
 def lowered_only(old: object, new: object) -> bool:

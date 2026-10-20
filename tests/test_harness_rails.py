@@ -414,7 +414,7 @@ class TestHarnessSession:
         args = harnessing.parser("codex", "codex", 8080, 1).parse_args(["qwen", "--project", str(kit.project)])
         with harnessing.opened(args, "codex", ("http://127.0.0.1:9", "qwen", 0), lambda _: None) as run:
             assert self.agents(kit)[run.session.name].parent == kit.lead.name
-            assert f"activation owner: {kit.lead.name}" in run.brief and f"the lead ({kit.lead.name})" in run.brief
+            assert f"update owner: {kit.lead.name}" in run.brief and f"the lead ({kit.lead.name})" in run.brief
         assert self.agents(kit, retired=True)[run.session.name].retired
 
     def test_a_launcher_whose_named_parent_has_no_session_is_refused(self, kit):
