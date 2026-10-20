@@ -13,7 +13,7 @@ from typing import Any
 
 from poolhouse.board import client
 from poolhouse.board.session import Agent, Entry, Session
-from poolhouse.workspace import board_pages, filecli, inbound, plain
+from poolhouse.workspace import board_mentions, board_pages, filecli, inbound, plain
 from poolhouse.workspace.agent_display import describe
 from poolhouse.workspace.plain import data_line
 from poolhouse.workspace.screen import Refused
@@ -39,6 +39,7 @@ class Log:
         for e in self.entries:
             last = self.number[e.id] = max(e.at_ms * TICKS + min(e.counter, TICKS - 1), last + 1)
         self.by_number = {self.number[e.id]: e for e in self.entries}
+        self.personal: dict[str, set[int]] = {}
 
     def of(self, ref: str) -> int:
         """The number of the message with id ``ref`` (0 when it is not here)."""
@@ -47,6 +48,13 @@ class Log:
     def thread(self, e: Entry) -> int:
         """The number of the message that starts the thread ``e`` is in."""
         return self.of(str(e.fields.get("thread_id") or e.id)) or self.number[e.id]
+
+    def personal_thread(self, entry: Entry, name: str) -> bool | None:
+        """Whether the authenticated reader participates in this canonical thread."""
+        if name not in self.personal:
+            self.personal[name] = {self.thread(e) for e in self.entries if e.sender == name}
+        root = self.of(str(entry.fields.get("thread_id") or entry.id))
+        return root in self.personal[name] if root else None
 
     def rows(self) -> list[dict[str, Any]]:
         return [{"seq": self.number[e.id], "entry": e} for e in self.entries]
@@ -58,13 +66,13 @@ def _kind(agent: Agent | None, name: str) -> dict[str, Any]:
     return describe(agent)
 
 
-def _plain(log: Log, who: Mapping[str, Agent], row: dict[str, Any]) -> dict[str, Any]:
+def _plain(log: Log, who: Mapping[str, Agent], row: dict[str, Any], me: str) -> dict[str, Any]:
     e: Entry = row["entry"]
     body, cut = plain.text(e.text, BODY_CHARS)
     agent = who.get(e.sender.split("@")[0])
     found = {"seq": row["seq"], "type": str(e.fields.get("type", "note")), "from": e.sender, **_kind(agent, e.sender),
-             "role": "agent", "to": str(e.fields.get("to", e.channel)), "ts": e.at_ms / 1000, "thread": log.thread(e),
-             "reply_to": log.of(str(e.fields.get("reply_id", ""))), "mentions": [],
+             "role": ("human" if agent.person else "agent") if agent else "unknown", "to": str(e.fields.get("to", e.channel)), "ts": e.at_ms / 1000, "thread": log.thread(e),
+             "personal_thread": log.personal_thread(e, me), "reply_to": log.of(str(e.fields.get("reply_id", ""))), "mentions": [me] if board_mentions.mentions(e.text, me) else [],
              "subject": plain.line(str(e.fields.get("subject", "")), SUBJECT_CHARS), "body": body,
              "held": inbound.judge(e)[2], "truncated": cut, "model": agent.model if agent else "",
              "model_state": agent.model_state if agent else ""}
@@ -99,13 +107,13 @@ def boards(s: Session) -> dict[str, Any]:
         out.append({"name": room["name"], "title": data_line(room["title"], 60), "project": False, "open": room["open"],
                     "created_by": room["created_by"], "members": room["members"], "member": room["member"],
                     "posts": room["posts"], "last": room["last_ms"] / 1000, "unread": unread})
-    return {"me": s.name, "boards": out}
+    return {"me": s.name, "view_scope": s.board, "boards": out}
 
 
 def agents(s: Session) -> dict[str, Any]:
     """The sessions of the board other than the person's, as the page lists them."""
     return {"owner_id": s.name, "agents": [
-        {"id": a.name, "role": "agent", "device": "", "display_name": describe(a)["display_name"],
+        {"id": a.name, "role": "human" if a.person else "agent", "device": "", "display_name": describe(a)["display_name"],
          "session_kind": describe(a)["session_kind"], "parent": a.parent}
         for a in s.agents()[:200] if a.name != s.name]}
 
@@ -137,7 +145,7 @@ def read(s: Session, board: str, window: tuple[int, int, int]) -> dict[str, Any]
     """A page of the messages of a room."""
     limit, after, before = window
     log, who = _channel(s, board), _who(s)
-    return {"board": board, **board_pages.page(log.rows() if limit else [], lambda r: _plain(log, who, r), limit, after, before)}
+    return {"board": board, **board_pages.page(log.rows() if limit else [], lambda r: _plain(log, who, r, s.name), limit, after, before)}
 
 
 def thread(s: Session, root: int, window: tuple[int, int, int]) -> dict[str, Any]:
@@ -150,7 +158,7 @@ def thread(s: Session, root: int, window: tuple[int, int, int]) -> dict[str, Any
     limit, after, before = window
     who = _who(s)
     rows = [r for r in log.rows() if r["entry"].id in kept] if limit else []
-    return {"root": root, **board_pages.page(rows, lambda r: _plain(log, who, r), limit, after, before)}
+    return {"root": root, **board_pages.page(rows, lambda r: _plain(log, who, r, s.name), limit, after, before)}
 
 
 def _other(s: Session, a: str, b: str) -> str:
@@ -167,7 +175,7 @@ def dm(s: Session, a: str, b: str, window: tuple[int, int, int]) -> dict[str, An
     rows = log.rows() if limit else []
 
     def show(row: dict[str, Any]) -> dict[str, Any]:
-        return {**_plain(log, who, row), "direction": "sent" if row["entry"].sender == a else "received"}
+        return {**_plain(log, who, row, s.name), "direction": "sent" if row["entry"].sender == a else "received"}
     return {"a": a, "b": b, **board_pages.page(rows, show, limit, after, before)}
 
 
