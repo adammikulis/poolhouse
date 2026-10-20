@@ -44,7 +44,8 @@ def _json(url):
     try:
         value = json.loads(reply.body, object_pairs_hook=unique_object,
                            parse_constant=lambda value: (_ for _ in ()).throw(ValueError('Nonfinite dataset metadata')))
-    except (ValueError, UnicodeError):
+        value = _value(value)
+    except (ValueError, UnicodeError, RecursionError):
         raise ValueError('The dataset catalogue returned invalid JSON.') from None
     return value, {key.lower(): value for key, value in reply.headers.items()}
 
@@ -113,7 +114,9 @@ def search(query='', task='', language='', sort='downloads', cursor=''):
     rows, headers = _json(HUB + '?' + urlencode(params, doseq=True))
     if not isinstance(rows, list) or len(rows) > 24:
         raise ValueError('The dataset catalogue returned an invalid page.')
-    return {'datasets': [_summary(row) for row in rows if isinstance(row, dict) and not row.get('private')],
+    if any(not isinstance(row, dict) for row in rows):
+        raise ValueError('The dataset catalogue returned an invalid result.')
+    return {'datasets': [_summary(row) for row in rows if not row.get('private')],
             'cursor': _cursor(headers, params)}
 
 
@@ -234,7 +237,8 @@ def selection(repo, config, split):
         entry = names.get(path, {})
         lfs = entry.get('lfs')
         if (path in seen or not isinstance(lfs, dict) or not _SHA.fullmatch(str(lfs.get('sha256', '')))
-                or type(lfs.get('size')) is not int or lfs['size'] <= 0 or row.get('size') != lfs['size']):
+                or type(lfs.get('size')) is not int or lfs['size'] <= 0
+                or type(row.get('size')) is not int or row['size'] != lfs['size']):
             raise ValueError('A converted dataset file lacks a matching immutable digest and size.')
         seen.add(path)
         files.append({'path': path, 'sha256': lfs['sha256'], 'size': lfs['size']})

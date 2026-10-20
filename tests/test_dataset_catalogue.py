@@ -36,7 +36,7 @@ def remote(monkeypatch):
             endpoint = location.path.rsplit('/', 1)[-1]
             key = ('converted' if endpoint == 'refs%2Fconvert%2Fparquet' else 'main') if '/revision/' in location.path else endpoint
             key = 'search' if location.path == '/api/datasets' else key
-            body = values.get('raw', json.dumps(values[key]).encode())
+            body = values['raw'] if 'raw' in values and values.get('raw_key', key) == key else json.dumps(values[key]).encode()
             return Fetched(url, values.get('status', 200), values['headers'] if key == 'search' else {}, body)
 
     monkeypatch.setattr(net, 'default', Pipeline)
@@ -154,3 +154,35 @@ def test_repo_selection_is_not_a_url_or_filesystem_path(remote, value):
     with pytest.raises(ValueError):
         catalogue.details(value)
     assert calls == []
+
+
+@pytest.mark.parametrize('function', ['search', 'info', 'parquet'])
+@pytest.mark.parametrize('malformed', ['deep', 'overflow'])
+def test_all_remote_metadata_has_bounded_finite_structure(remote, function, malformed):
+    values, _ = remote
+    key = {'search': 'search', 'info': 'main', 'parquet': 'parquet'}[function]
+    envelope = copy.deepcopy(values[key])
+    target = envelope[0] if isinstance(envelope, list) else envelope
+    target['unused'] = 'REPLACE_VALUE'
+    encoded = json.dumps(envelope).encode()
+    injected = b'[' * 1100 + b'0' + b']' * 1100 if malformed == 'deep' else b'1e999'
+    values['raw'], values['raw_key'] = encoded.replace(b'"REPLACE_VALUE"', injected), key
+    operation = {'search': catalogue.search, 'info': lambda: catalogue.details(REPO),
+                 'parquet': lambda: catalogue.selection(REPO, 'default', 'train')}[function]
+    with pytest.raises(ValueError):
+        operation()
+
+
+def test_search_does_not_silently_drop_malformed_rows(remote):
+    values, _ = remote
+    values['search'].append(None)
+    with pytest.raises(ValueError):
+        catalogue.search()
+
+
+def test_selection_size_requires_an_integer_not_boolean_equality(remote):
+    values, _ = remote
+    values['parquet']['parquet_files'][0]['size'] = True
+    values['converted']['siblings'][0]['lfs']['size'] = 1
+    with pytest.raises(ValueError):
+        catalogue.selection(REPO, 'default', 'train')
