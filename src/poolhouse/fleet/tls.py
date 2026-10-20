@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import contextlib
 import hashlib
+import hmac
 import json
 import os
 import shutil
@@ -237,6 +238,19 @@ def device_directory() -> Path:
 def local() -> Identity:
     """This machine's identity: the one it presents as a client, made on first use."""
     return _PRESENTED or identity(device_directory(), socket.gethostname())
+
+
+class ExactContext(ssl.SSLContext):
+    """A fixed holder checks the exact enrolled leaf before any application bytes."""
+
+    expected_der: bytes = b''
+
+    def wrap_socket(self, *args, **kwargs):
+        connection = super().wrap_socket(*args, **kwargs)
+        if not self.expected_der or not hmac.compare_digest(connection.getpeercert(binary_form=True), self.expected_der):
+            connection.close()
+            raise ssl.SSLError('The local webhook certificate changed.')
+        return connection
 
 
 def certificate_context(cert: str, *, context_type: type[ssl.SSLContext] = ssl.SSLContext) -> ssl.SSLContext:

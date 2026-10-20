@@ -4,7 +4,6 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-import ssl
 import time
 from http.client import IncompleteRead
 from urllib.parse import urlsplit
@@ -24,17 +23,6 @@ UNKNOWN = 'This test webhook has an unresolved outcome. It will not be sent agai
 def samples():
     return [{'id': group['id'] + ':' + sample['id'], 'label': group['label'] + ' · ' + sample['label']}
             for group in sample_sets() for sample in group['samples']]
-
-
-class _OwnContext(ssl.SSLContext):
-    expected_der: bytes = b''
-
-    def wrap_socket(self, *args, **kwargs):
-        connection = super().wrap_socket(*args, **kwargs)
-        if not self.expected_der or not hmac.compare_digest(connection.getpeercert(binary_form=True), self.expected_der):
-            connection.close()
-            raise ssl.SSLError('The local webhook certificate changed.')
-        return connection
 
 
 class LocalSender:
@@ -219,8 +207,8 @@ class LocalSender:
 
     def _send(self, intent, credential, authorize):
         _, identity, port = self.endpoint()
-        context = tls.pinned_context(identity.beacon, who=identity, context_type=_OwnContext)
-        if not isinstance(context, _OwnContext):
+        context = tls.pinned_context(identity.beacon, who=identity, context_type=tls.ExactContext)
+        if not isinstance(context, tls.ExactContext):
             raise TypeError('The local sender requires its fixed TLS context.')
         context.expected_der = identity.der
         context.load_cert_chain(str(identity.certfile), str(identity.keyfile))
