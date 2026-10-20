@@ -15,7 +15,7 @@ from poolhouse.studio.stream_sources import WatchedSource
 from poolhouse.studio.streams import Streams
 
 from . import studio_epoch, tls
-from .discovery import load_pool_key
+from .discovery import key_path, load_pool_key
 from .pool_roster import Pool
 from .studio_authority import StudioAuthority
 from .studio_watch_registry import create_native_picks
@@ -41,7 +41,7 @@ def create(ui, engine, saved, scope):
                      for member, roster in Pool(ui.pool_key_path).rosters())
         return {'pool': group, 'device': identity.fingerprint, 'scope': scope(ui), 'active': active}
 
-    authority = StudioAuthority(ui.pool_key_path.parent, current=current, owner=origin,
+    authority = StudioAuthority(key_path(ui.pool_key_path).parent, current=current, owner=origin,
                                 resources=lambda grant, node, inputs: resources_current(ui, saved, grant, node, inputs))
     service = Streams(engine, authority, sources=Sources(engine.store),
                       resources=lambda principal, graph: pin_resources(saved, principal, graph))
@@ -114,7 +114,7 @@ def resources_current(ui, saved, grant: dict, node, inputs) -> bool:
         if sub.get('grant') != grant['id'] or sub['state'] == 'cancelled':
             return False
     source = grant['manifest']['source']
-    if source.get('selection_epoch') and studio_epoch.generation(ui.pool_key_path.parent, grant['pool']) != source['selection_epoch']:
+    if source.get('selection_epoch') and studio_epoch.generation(key_path(ui.pool_key_path).parent, grant['pool']) != source['selection_epoch']:
         return False
     proofs = grant['manifest']['resources']
     for proof in proofs:
