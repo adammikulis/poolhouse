@@ -15,11 +15,12 @@ import threading
 import time
 from pathlib import Path
 
+import psutil
 import pytest
 
 from poolhouse.serve import LlamaServerBackend, ServerManager
 from poolhouse.serve.broker import Ask, Broker, BrokerError
-from poolhouse.serve.process import every_server, kill_process_tree, pid_exists
+from poolhouse.serve.process import kill_process_tree, pid_exists
 from poolhouse.testing.fakes import fake_llama_binary
 from tests.model_approval import approved
 
@@ -182,7 +183,7 @@ def test_a_held_server_is_not_stopped_on_request_and_a_foreign_one_never(
     foreign = subprocess.Popen([str(llama_binary), "--port", str(port), "-m", models[1]])
     try:
         deadline = time.monotonic() + 20
-        broker.scan = lambda: [s for s in every_server() if s["pid"] == foreign.pid]
+        broker.scan = lambda: _owned_scan(foreign, port, models[1])
         while time.monotonic() < deadline and port not in broker.servers:
             broker.adopt()
             time.sleep(0.2)
@@ -195,6 +196,14 @@ def test_a_held_server_is_not_stopped_on_request_and_a_foreign_one_never(
     finally:
         foreign.kill()
         foreign.wait(timeout=10)
+
+
+def _owned_scan(process, port, model):
+    """Supply only this fixture's server through the broker's injected scanner seam."""
+    if process.poll() is not None:
+        return []
+    return [{"pid": process.pid, "port": port, "model": model, "defunct": False,
+             "rss": psutil.Process(process.pid).memory_info().rss}]
 
 
 def _outside(llama_binary, model):
@@ -213,7 +222,7 @@ def test_a_server_started_outside_the_broker_is_listed_and_not_leased_from(
         broker, models, holders, llama_binary):
     port, foreign = _outside(llama_binary, models[0])
     try:
-        broker.scan = lambda: [s for s in every_server() if s["pid"] == foreign.pid]
+        broker.scan = lambda: _owned_scan(foreign, port, models[0])
         grant = broker.lease(ask(models[0], holders().pid), timeout=30)
         assert grant.port != port and not grant.shared
         assert broker.servers[port].unmanaged
@@ -233,7 +242,7 @@ def test_an_unmanaged_server_is_shared_when_adoption_is_on_and_it_passes_the_che
         "pid": foreign.pid, "ip": "127.0.0.1", "uid": os.getuid(), "user": "x",
         "exe": "/opt/llama/llama-server", "rss": 123})
     try:
-        broker.scan = lambda: [s for s in every_server() if s["pid"] == foreign.pid]
+        broker.scan = lambda: _owned_scan(foreign, port, models[0])
         grant = broker.lease(ask(models[0], holders().pid), timeout=30)
         assert grant.port == port and grant.shared
         assert broker.servers[port].ours is False and not broker.servers[port].unmanaged
