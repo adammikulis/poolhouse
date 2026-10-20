@@ -23,8 +23,8 @@ from typing import Any
 
 from poolhouse.files import read_json, write_json
 from poolhouse.platform import private_file
+from poolhouse.sentinel.human import HumanGrant
 
-from .human import HumanGrant
 from .manifest import SHARING_LEVELS, Entry
 
 __all__ = ["NEVER", "OPEN", "OWNER", "SHARING", "Access", "Licences", "classify", "decide"]

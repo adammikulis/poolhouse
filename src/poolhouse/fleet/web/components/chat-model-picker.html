@@ -4,7 +4,7 @@ chat-view dialog::backdrop { background:color-mix(in srgb,var(--poolhouse-navy,v
 chat-view #chat-model-dialog { width:min(600px,90vw); max-height:85vh; }
 chat-view #chat-model-list { overflow-y:auto; max-height:55vh; margin:calc(16px * var(--ui-density,1)) 0; }
 chat-view .chat-model-family h3 { color:var(--muted); font-size:0.7857rem; letter-spacing:.06em; text-transform:uppercase; margin:calc(18px * var(--ui-density,1)) 0 calc(8px * var(--ui-density,1)); }
-chat-view .chat-model-choice { display:flex; justify-content:space-between; gap:calc(12px * var(--ui-density,1)); width:100%; text-align:left; margin:calc(6px * var(--ui-density,1)) 0; background:var(--bg); border:1px solid var(--line); }
+chat-view .chat-model-choice { display:flex; justify-content:space-between; gap:calc(12px * var(--ui-density,1)); width:100%; text-align:left; margin:calc(6px * var(--ui-density,1)) 0; background:var(--bg); color:var(--text); border:1px solid var(--line); }
 chat-view .chat-model-choice small { color:var(--muted); }
 chat-view .chat-model-choice[aria-pressed=true] { border-color:var(--poolhouse-pink); background:color-mix(in srgb,var(--poolhouse-pink) 10%,var(--bg-raised)); }
 chat-view .chat-model-action { color:var(--accent-ink,var(--text)); }
@@ -169,7 +169,12 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
     }
     route(route) {
       this.active = route === 'board';
-      this.board?.setActive(this.active);
+      this.visible = ['chat', 'board'].includes(route);
+      this.board?.setActive?.(this.visible);
+      if (!this.visible) {
+        this.projectRequest = (this.projectRequest || 0) + 1;
+        this.projectsLoaded = false;
+      }
       this.mobile.setAttribute('aria-expanded', 'false');
       this.chat.box.dataset.sidebar = 'false';
       this.team.hidden = !this.active;
@@ -178,38 +183,54 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       if (['chat','board'].includes(route) && !this.projectsLoaded) { this.projectsLoaded = true; this.projects(); }
     }
     async projects() {
+      const request = this.projectRequest = (this.projectRequest || 0) + 1;
       let result;
       try { result = await M.api('/ui/projects'); }
       catch { result = {ok:false, error:'Could not connect to the workspace. Reload to try again.'}; }
+      if (request !== this.projectRequest || !this.visible || !['chat', 'board'].includes(M.route)) return;
       if (M.refused(result)) return;
       const projects = (result.ok ? result.workspaces || [] : []).filter(row =>
         /^[a-f0-9]{32}$/.test(row.id) && row.is_self === true);
       let saved = '';
       try { saved = localStorage.getItem('poolhouse.conversations.project') || ''; } catch {}
+      if (!/^[a-f0-9]{32}$/.test(saved) && saved !== 'local') saved = '';
+      this.projectRows = new Map(projects.map(row => [row.id, row]));
       this.project.replaceChildren(M.el('option', {value:''}, 'Choose a workspace'),
-        ...projects.map(row => M.el('option', {value:row.id}, row.name)),
+        ...projects.map(row => M.el('option', {value:row.id, disabled:row.available !== true},
+          row.name + (row.available === true ? '' : ' · unavailable'))),
+        ...(saved && saved !== 'local' && !this.projectRows.has(saved) ?
+          [M.el('option', {value:saved, disabled:true}, 'Previously selected workspace · unavailable')] : []),
         M.el('option', {value:'local'}, 'Device-local Board'));
-      const valid = projects.find(row => row.id === saved) || projects.find(row => row.is_self) || projects[0];
+      const valid = saved ? projects.find(row => row.id === saved && row.available === true) :
+        projects.find(row => row.available === true && row.preferred === true) || projects.find(row => row.available === true);
       if (saved === 'local') { this.project.value = 'local'; this.selectProject(); }
       else if (valid) { this.project.value = valid.id; this.selectProject(); }
-      else this.channels.replaceChildren(M.el('p', {class:'hint'}, result.error || 'Choose a workspace to open its channels. Device-local messages are not shared with your pool.'));
+      else if (saved) { this.project.value = saved; this.selectProject(); }
+      else { this.project.value = ''; this.selectProject(); this.channels.replaceChildren(M.el('p', {class:'hint'}, result.error || 'Choose an available workspace to open its channels. Device-local messages are not shared with your pool.')); }
     }
     selectProject() {
-      const id = this.project.value;
+      const id = this.project.value, selection = this.projectSelection = (this.projectSelection || 0) + 1;
       this.board?.remove();
       this.board = null;
       this.navigationData = null;
       this.direct.replaceChildren();
       if (!id) { this.channels.textContent = 'Choose a workspace to see its channels.'; return; }
+      if (id !== 'local' && this.projectRows?.get(id)?.available !== true) {
+        this.team.replaceChildren();
+        this.channels.textContent = 'This workspace is unavailable. Choose an available workspace to see its current activity.';
+        return;
+      }
       this.channels.textContent = 'Connecting to workspace…';
-      this.board = M.el('ml-board', {endpoint:id === 'local' ? '/ui/board' : `/ui/projects/${id}/board`,
+      const board = this.board = M.el('ml-board', {endpoint:id === 'local' ? '/ui/board' : `/ui/projects/${id}/board`,
         'channel-feed':'', integrated:''});
-      this.board.addEventListener('board-navigation', event => {
-        this.navigation(event.detail);
-        if (!this.active) this.board.setActive(false);
+      const current = () => board === this.board && selection === this.projectSelection && id === this.project.value;
+      board.addEventListener('board-navigation', event => {
+        if (!current()) return;
+        if (event.detail.me || event.detail.error || event.detail.personSetupRequired) this.navigation(event.detail);
+        board.setActive(this.visible);
       });
-      this.board.addEventListener('ml-board-open', () => M.go('board'));
-      this.team.replaceChildren(this.board);
+      board.addEventListener('ml-board-open', () => { if (current()) M.go('board'); });
+      this.team.replaceChildren(board);
       try { localStorage.setItem('poolhouse.conversations.project', id); } catch {}
     }
     navigation(data) {

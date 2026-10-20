@@ -114,7 +114,8 @@ fn member(node: &mut Node, token: &str, board: &str) -> Result<String> {
     Ok(access.actor)
 }
 
-/// Every session of this device that ever acquired the claim on ``branch`` or on the worktree ``worktree``, from the board's lease entries.
+/// Every session of this device that ever acquired the claim on ``branch`` (from the board's lease entries) or on the worktree
+/// ``worktree`` (from this device's record of worktree claims, which write no entry).
 fn creators(node: &mut Node, board: &str, branch: &str, worktree: &str) -> Result<Vec<String>> {
     let mut keys = Vec::new();
     if !branch.is_empty() {
@@ -123,7 +124,13 @@ fn creators(node: &mut Node, board: &str, branch: &str, worktree: &str) -> Resul
     if !worktree.is_empty() {
         keys.push(format!("claim:worktree:{worktree}"));
     }
-    Ok(crate::lease::merge::ever_held(&node.view(board)?, &keys))
+    let mut who = crate::lease::merge::ever_held(&node.view(board)?, &keys);
+    if !worktree.is_empty() {
+        who.extend(node.leases.holders.of(board, worktree));
+    }
+    who.sort();
+    who.dedup();
+    Ok(who)
 }
 
 /// Whether ``name`` is one of ``creators`` or was started by one, through any number of subagents.

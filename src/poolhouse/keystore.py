@@ -64,7 +64,7 @@ STATE_WAIT_S = 10.0
 SCRYPT_N = 1 << 15
 NOTICE = ("Poolhouse will ask your computer to store one encryption key so your memory and fleet "
           "identity stay private. You will see one Keychain prompt.")
-_SALT = b"ml-stack/keystore/v1"
+_SALT = b"poolhouse/keystore/v1"
 _MAGIC = b"MKW1"
 _VERSION = 1
 
@@ -164,7 +164,7 @@ def _fields(*parts: bytes) -> bytes:
 
 
 def _aad(purpose: str, owner: str) -> bytes:
-    return _fields(b"ml-stack/keystore/v1", purpose.encode(), owner.encode())
+    return _fields(b"poolhouse/keystore/v1", purpose.encode(), owner.encode())
 
 
 class Wires(NamedTuple):

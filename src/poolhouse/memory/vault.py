@@ -238,7 +238,7 @@ def _aead(key: bytes) -> Any:
 
 
 def _kid(key: bytes) -> bytes:
-    return hmac.new(key, b"ml-stack-memory-key-id", hashlib.sha256).digest()[:KID]
+    return hmac.new(key, b"poolhouse/memory/key-id/v1", hashlib.sha256).digest()[:KID]
 
 
 def seal_blob(plain: bytes, key: bytes, *, mode: str, salt: bytes, owner: str) -> bytes:

@@ -8,15 +8,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home
+from poolhouse import deciders, home
 from poolhouse.decide.sources import FORMAT
 from poolhouse.decide.types import DecideError
-from poolhouse.deciders import (  # noqa: F401  (the readers live below hub; re-exported here)
-    CONFIG,
-    listing,
-    local_bases,
-    path,
-)
 from poolhouse.files import read_json, write_json
 from poolhouse.home import expand
 
@@ -41,7 +35,7 @@ def models_dir() -> Path:
 
 def taken(name: str) -> bool:
     """Whether a decider is registered as ``name``."""
-    return any(r["name"] == name for r in listing())
+    return any(r["name"] == name for r in deciders.listing())
 
 
 def register(directory: Path | str, *, replace: bool = False) -> dict[str, Any]:
@@ -51,15 +45,15 @@ def register(directory: Path | str, *, replace: bool = False) -> dict[str, Any]:
     keeps the old entry (and its directory) as ``<name>.prev``.
     """
     root = expand(directory).resolve()
-    cfg = json.loads((root / CONFIG).read_text())
+    cfg = json.loads((root / deciders.CONFIG).read_text())
     if cfg.get("format") != FORMAT:
-        raise DecideError(f"{root / CONFIG} is not a {FORMAT} config")
+        raise DecideError(f"{root / deciders.CONFIG} is not a {FORMAT} config")
     check_name(str(cfg.get("name", "")))
     manifest = read_json(root / "manifest.json", {})
     entry = {"name": cfg["name"], "path": str(root), "base": cfg["base"]["repo"],
              "data_hash": manifest.get("data_hash", ""), "metrics": manifest.get("metrics", {}),
              "registered": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
-    held = {e["name"]: e for e in listing()}
+    held = {e["name"]: e for e in deciders.listing()}
     old = held.get(entry["name"])
     if old is not None and Path(old["path"]).resolve() != root:
         if not replace:
@@ -68,14 +62,14 @@ def register(directory: Path | str, *, replace: bool = False) -> dict[str, Any]:
                               f"old one is kept as {entry['name'] + PREVIOUS!r})")
         held[entry["name"] + PREVIOUS] = {**old, "name": entry["name"] + PREVIOUS}
     held[entry["name"]] = entry
-    write_json(path(), sorted(held.values(), key=lambda e: e["name"]))
+    write_json(deciders.path(), sorted(held.values(), key=lambda e: e["name"]))
     return entry
 
 
 def find(name: str) -> Path:
     """The directory registered as ``name``."""
-    for row in listing():
+    for row in deciders.listing():
         if row["name"] == name:
             return Path(row["path"])
     raise DecideError(f"no decider called {name!r}; registered: "
-                      f"{[r['name'] for r in listing()]}")
+                      f"{[r['name'] for r in deciders.listing()]}")

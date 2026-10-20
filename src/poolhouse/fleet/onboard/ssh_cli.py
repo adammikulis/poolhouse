@@ -11,9 +11,9 @@ from typing import Any
 
 from poolhouse import home
 from poolhouse.log import say, warn
+from poolhouse.sentinel.human import HumanRequired
 
 from ..tailnet import detect
-from .human import HumanRequired
 from .requests import Devices
 from .routes import ssh_address
 from .signing import KeyStoreError, SigningKeys

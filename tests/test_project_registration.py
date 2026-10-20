@@ -159,3 +159,15 @@ def test_local_registration_requires_available_daemon(tmp_path, monkeypatch):
     monkeypatch.setattr(project_client, "open_stream", unreachable)
     with pytest.raises(ProjectError, match="start poolhouse and retry"):
         project_client.register_local(tmp_path, b"k" * 32, "a" * 32, 8770)
+
+
+def test_board_availability_rechecks_checkout_identity_without_sharing(tmp_path):
+    checkout = repository(tmp_path / 'current')
+    registry = projects.ProjectRegistry(tmp_path / 'registry', 'device', (checkout,))
+    assert registry.boards()[0]['available'] is True
+    assert registry.boards()[0]['preferred'] is True
+    git.run(['remote', 'set-url', 'origin', 'https://code.example.invalid/team/changed.git'], cwd=checkout)
+    assert registry.boards()[0]['available'] is False
+    assert registry.boards()[0]['preferred'] is False
+    assert registry.list() == []
+    assert not registry.path.exists()

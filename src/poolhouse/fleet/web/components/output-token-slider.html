@@ -1,0 +1,75 @@
+<style>
+output-token-slider { display:block; min-width:0; }
+output-token-slider input { width:100%; accent-color:var(--accent); }
+output-token-slider output { display:block; font-variant-numeric:tabular-nums; color:var(--text); }
+output-token-slider .hint { margin-top:4px; }
+</style>
+<script>
+(() => {
+  const M = window.fleetModel;
+  class OutputTokenSlider extends HTMLElement {
+    constructor() {
+      super();
+      this.raw = "";
+      this.options = {nullable:true, minimum:1};
+      this.refresh = () => this.paint();
+    }
+    connectedCallback() {
+      if (!this.input) {
+        this.input = M.el("input", {type:"range", step:1});
+        this.readout = M.el("output");
+        this.hint = M.el("p", {class:"hint"});
+        this.append(this.input, this.readout, this.hint);
+        this.input.oninput = () => {
+          this.raw = this.options.nullable && this.input.value === "0" ? "" : this.input.value;
+          this.paint();
+        };
+        const commit = () => {
+          this.input.dispatchEvent(new Event("input", {bubbles:true}));
+          this.input.dispatchEvent(new Event("change", {bubbles:true}));
+        };
+        this.input.onkeydown = event => {
+          if (!["Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          this.input.value = event.key === "Home" ? this.input.min : this.input.max;
+          commit();
+        };
+        this.input.onpointerup = () => {
+          if (this.raw !== this.input.value && !(this.raw === "" && this.input.value === "0")) commit();
+        };
+      }
+      window.addEventListener("fleet-preferences", this.refresh);
+      this.paint();
+    }
+    disconnectedCallback() { window.removeEventListener("fleet-preferences", this.refresh); }
+    configure(options) { Object.assign(this.options, options); this.paint(); return this; }
+    get value() { return this.raw; }
+    set value(value) { this.raw = value == null ? "" : String(value); this.paint(); }
+    get disabled() { return !!this.input?.disabled; }
+    set disabled(value) { this.busy = !!value; this.paint(); }
+    checkValidity() {
+      return this.raw === "" ? this.options.nullable : Number.isSafeInteger(Number(this.raw)) && Number(this.raw) >= this.options.minimum;
+    }
+    paint() {
+      if (!this.input) return;
+      const context = this.options.context ?? M.preferences.context;
+      const valid = value => Number.isSafeInteger(value) && value > 0;
+      const maximum = Math.min(valid(context) ? context : 8192,
+        valid(this.options.maximum) ? this.options.maximum : Infinity);
+      const minimum = this.options.nullable ? 0 : this.options.minimum;
+      this.input.min = minimum;
+      this.input.max = maximum;
+      this.input.disabled = this.busy || maximum < minimum;
+      this.input.setAttribute("aria-label", this.options.label || "Maximum output tokens");
+      this.input.value = this.raw || minimum;
+      const words = this.raw === "" ? "No user cap" : `${Number(this.raw).toLocaleString()} ${Number(this.raw) === 1 ? "token" : "tokens"}`;
+      this.readout.textContent = words;
+      this.input.setAttribute("aria-valuetext", words);
+      this.hint.textContent = Number(this.raw) > maximum
+        ? `Saved limit exceeds the current ${maximum.toLocaleString()} token slider limit. Move the slider to choose a new limit.`
+        : this.options.nullable ? "Select 0 for no user cap." : "";
+    }
+  }
+  customElements.define("output-token-slider", OutputTokenSlider);
+})();
+</script>

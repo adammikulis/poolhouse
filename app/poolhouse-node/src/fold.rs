@@ -20,7 +20,7 @@ const ANNOUNCE_TYPES: [&str; 4] = ["joined", "milestone", "done", "blocked"];
 const NOTE_KINDS: [&str; 4] = ["decision", "rule", "fact", "question"];
 const MESSAGE_KEYS: [&str; 8] = ["type", "from", "to", "subject", "body", "reply_id", "thread_id", "file"];
 const NOTE_KEYS: [&str; 9] = ["nkind", "title", "body", "source", "tags", "author", "supersedes", "verify_cmd", "ttl_days"];
-const IDENTITY_KEYS: [&str; 8] = ["name", "parent", "family", "model", "model_state", "harness", "retired", "retired_reason"];
+const IDENTITY_KEYS: [&str; 10] = ["name", "parent", "family", "model", "model_state", "harness", "retired", "retired_reason", "retired_by", "detail"];
 const VERIFY_KEYS: [&str; 4] = ["note", "exit", "cmd", "out_sha"];
 const LEASE_KEYS: [&str; 3] = ["lease", "action", "resources"];
 const LEASE_ACTIONS: [&str; 5] = ["acquire", "release", "expire", "dead", "abandon"];
@@ -207,9 +207,13 @@ fn identity(row: &Row, ctx: &mut Context, foreign: bool) -> Result<(String, Map<
     if map.get("retired").is_some_and(|r| !r.is_boolean()) {
         return reject("retired is true or false");
     }
-    if !["", "done", "revoked", "forged"].contains(&line(&map, "retired_reason", 16)?) {
-        return reject("a retired session ended done, revoked or forged");
+    if !["", "done", "idle", "revoked", "forged"].contains(&line(&map, "retired_reason", 16)?) {
+        return reject("a retired session ended done, idle, revoked or forged");
     }
+    if !line(&map, "retired_by", 48)?.is_empty() && !valid_actor(text(&map, "retired_by", 48, true)?) {
+        return reject("retired_by is a session name");
+    }
+    line(&map, "detail", 300)?;
     Ok((who, map))
 }
 

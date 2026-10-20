@@ -32,8 +32,8 @@
       <details class="aside" id="chat-options" data-advanced hidden>
         <summary>Advanced options</summary>
         <label for="chat-output-tokens">Maximum output tokens</label>
-        <input id="chat-output-tokens" type="number" min="1" step="1" placeholder="No user cap">
-        <p class="hint">Applies to Chat and Pi coding. Independent of reasoning effort. Leave blank for no user cap.</p>
+        <output-token-slider id="chat-output-tokens"></output-token-slider>
+        <p class="hint">Applies to Chat and Pi coding. Independent of reasoning effort. Select 0 for no user cap.</p>
         <div data-chat>
         <label for="chat-temperature">Temperature</label>
         <input id="chat-temperature" type="number" min="0" max="2" step="0.1" placeholder="Model default">
@@ -215,7 +215,7 @@
         this.options.hidden = false;
         await this.modelPicker.catalogue();
         this.workspace.models(available);
-        if (document.activeElement !== this.outputTokens) this.outputTokens.value = this.savedSettings.max_output_tokens ?? "";
+        if (!this.outputTokens.contains(document.activeElement)) this.outputTokens.value = this.savedSettings.max_output_tokens ?? "";
         await this.coding.restore(this.savedSettings, this.picker.value);
         this.updateReadiness();
         await this.paintList();

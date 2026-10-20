@@ -2,7 +2,7 @@
 
 import pytest
 
-from poolhouse.fleet.onboard.human import HumanGrant, HumanRequired, mint
+from poolhouse.sentinel.human import HumanGrant, HumanRequired, mint
 
 
 def typed(text):

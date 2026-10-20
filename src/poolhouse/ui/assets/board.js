@@ -198,6 +198,7 @@ class MlBoard extends MlElement {
       if (!response.ok) {
         const error = Error(line(answer.error || response.status, 160));
         error.personSetupRequired = answer.person_setup_required === true;
+        error.status = response.status;
         throw error;
       }
       return answer;
@@ -214,16 +215,28 @@ class MlBoard extends MlElement {
   }
 
   async poll() {
+    const revision = this.loadRevision;
     let pause = 0;
     try {
       const { seq } = await this.get("wait", { after: this.seq, timeout: WAIT_S });
       this.delay = nextDelay(this.delay, false);
       if (seq > this.seq) { this.seq = seq; await this.load(); }
-    } catch {
+    } catch (error) {
+      if (revision === this.loadRevision && !this.stopped && [401, 403].includes(error.status)) {
+        this.clearAuthorization(error); this.error = line(error.message, 160); this.update();
+      }
       this.delay = nextDelay(this.delay, true);
       pause = this.delay;
     }
     this.schedule(pause);
+  }
+
+  clearAuthorization(error) {
+    if (![401, 403].includes(error.status)) return;
+    this.me = ""; this.boards = []; this.dms = []; this.agents = []; this.items = [];
+    this.view = {kind:"none"}; this.page = null; this.loading = false;
+    this.viewRevision++; this.draft = {body:"", subject:"", error:""};
+    this.personSetupRequired = error.personSetupRequired === true;
   }
 
   async load() {
@@ -235,7 +248,10 @@ class MlBoard extends MlElement {
       this.me = line(b.me ?? "", 48);
       this.boards = b.boards ?? [];
       this.dms = d.conversations ?? [];
-      try { this.agents = (await this.get("agents")).agents || []; } catch { this.agents = []; }
+      try { this.agents = (await this.get("agents")).agents || []; } catch (error) {
+        if ([401, 403].includes(error.status)) throw error;
+        this.agents = [];
+      }
       if (revision !== this.loadRevision || this.stopped) return;
       this.error = "";
       this.personSetupRequired = false;
@@ -244,8 +260,9 @@ class MlBoard extends MlElement {
       await this.open(view, false);
     } catch (e) {
       if (revision !== this.loadRevision || this.stopped) return;
+      this.clearAuthorization(e);
       this.personSetupRequired = e.personSetupRequired === true;
-      this.error = `The workspace did not answer (${line(e.message, 40)}).`;
+      this.error = `The workspace could not load: ${line(e.message, 160)}`;
     }
     this.update();
   }
@@ -275,6 +292,7 @@ class MlBoard extends MlElement {
       this.error = "";
     } catch (error) {
       if (revision !== this.viewRevision || this.stopped) return;
+      this.clearAuthorization(error);
       this.items = []; this.error = `That did not load (${line(error.message, 160)}).`;
     }
     this.loading = false;

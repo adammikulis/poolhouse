@@ -71,7 +71,7 @@ DEFAULT_JOIN_OPTIONS = JoinOptions()
 
 def join_secret(passphrase: str, group: str) -> str:
     """The password the join handshake runs on: scrypt of the passphrase under the pool's name."""
-    salt = hashlib.sha256(b"ml-stack-join-v1/" + group.encode()).digest()
+    salt = hashlib.sha256(b"poolhouse/join/v1/" + group.encode()).digest()
     return base64.urlsafe_b64encode(keystore.scrypt_key(passphrase.strip(), salt)).decode().rstrip("=")
 
 

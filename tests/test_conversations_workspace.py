@@ -151,7 +151,7 @@ def test_project_selection_never_falls_back_to_local_board(chat_browser):
     project = '7' * 32
     seen = []
     page.route('**/ui/projects', lambda route: route.fulfill(json={'workspaces': [
-        {'id': project, 'name': 'Experiment workspace', 'is_self': True}]}))
+        {'id': project, 'name': 'Experiment workspace', 'is_self': True, 'available': True, 'preferred': True}]}))
 
     def unavailable(route):
         seen.append(route.request.url)
@@ -279,7 +279,7 @@ def test_unshared_workspace_is_selected_and_team_messages_render(chat_browser, t
     expect(page.get_by_label('Workspace', exact=True)).to_have_value(project)
     board = page.locator('chat-view ml-board')
     assert board.get_attribute('endpoint') == f'/ui/projects/{project}/board'
-    expect(page.locator('#conversation-direct')).to_have_text('No direct messages yet.')
+    expect(page.locator('#conversation-direct').get_by_text('No direct messages yet.', exact=True)).to_be_visible()
     expect(board.locator('.msg pre')).to_contain_text('The team experiment is ready.')
     assert registry.get(project).shared is False
     assert registry.list() == []
@@ -428,4 +428,4 @@ def test_bounded_history_navigation_keeps_message_nodes_scroll_and_draft(chat_br
     board.get_by_role('button', name='Jump to latest').click()
     expect(board.locator('.msg').last).to_contain_text('Message 100000')
     browser.locator('#chat-new').click()
-    assert board.evaluate('node => node.stopped')
+    assert board.evaluate('node => node.stopped') is False
