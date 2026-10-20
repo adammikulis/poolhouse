@@ -6,6 +6,7 @@ import platform
 import stat
 import subprocess
 import tempfile
+from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
 
@@ -153,7 +154,8 @@ class PrismBackend(LlamaServerBackend):
     def environment(self, extra=None):
         return environment(extra)
 
-    def start(self, spec, *, lease, **starting):
+    @contextmanager
+    def preparing(self, spec, lease):
         grant.require(lease, Lease)
         before = identity(spec.model)
         parent = directory().parent
@@ -169,7 +171,7 @@ class PrismBackend(LlamaServerBackend):
             if identity(spec.model) != before:
                 raise ServerFailed('The model changed while its serving runtime was prepared')
             grant.require(lease, Lease)
-            return super().start(spec, lease=lease, **starting)
+            yield
 
 
 def for_model(backend, model, cached):

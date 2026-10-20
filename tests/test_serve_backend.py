@@ -13,6 +13,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from conftest import leased, write_gguf
 
 from poolhouse.hub.admission import PERSON
 from poolhouse.serve import backend
@@ -28,7 +29,6 @@ from poolhouse.serve.backend import (
 )
 from poolhouse.serve.emitted import emitted_flags
 from poolhouse.testing.fakes import fake_binary
-from tests.conftest import leased, write_gguf
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -631,8 +631,8 @@ def test_start_fetches_the_model_before_preflight(monkeypatch, tmp_path):
     binary.chmod(0o755)
     backend = be.LlamaServerBackend(binary=binary)
     with pytest.raises(pf.PreflightFailed):
-        backend.start(be.ServerSpec(model="hf:owner/thing-GGUF/thing-Q4_K_M.gguf"),
-                      lease=None, check_flags=False)
+        leased(backend, be.ServerSpec(model="hf:owner/thing-GGUF/thing-Q4_K_M.gguf"),
+               check_flags=False)
     assert seen == [str(weights)]
 
 
@@ -722,10 +722,10 @@ def test_start_fetches_the_projector_and_the_server_gets_a_path(monkeypatch, tmp
     binary.write_text("#!/bin/sh\necho usage: llama-server\n")
     binary.chmod(0o755)
     with pytest.raises(be.ServerFailed, match="stop here"):
-        be.LlamaServerBackend(binary=binary).start(
-            be.ServerSpec(model="hf:owner/thing-GGUF/thing-Q4_K_M.gguf",
-                          mmproj="hf:owner/thing-GGUF/mmproj-thing-F16.gguf"),
-            lease=None, check_flags=False)
+        leased(be.LlamaServerBackend(binary=binary),
+               be.ServerSpec(model="hf:owner/thing-GGUF/thing-Q4_K_M.gguf",
+                             mmproj="hf:owner/thing-GGUF/mmproj-thing-F16.gguf"),
+               check_flags=False)
     assert seen[0].mmproj == str(projector) and seen[0].model == str(weights)
     assert fetched == ["hf:owner/thing-GGUF/thing-Q4_K_M.gguf",
                        "hf:owner/thing-GGUF/mmproj-thing-F16.gguf"]
