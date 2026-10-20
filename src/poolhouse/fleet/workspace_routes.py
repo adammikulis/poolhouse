@@ -10,6 +10,7 @@ from pathlib import Path
 from poolhouse.contracts import recipes
 from poolhouse.files import write_json
 
+from .dataset_routes import route as dataset_route
 from .files import safe_relpath
 from .jobs import DaemonError
 from .request_fields import field, object_body
@@ -57,6 +58,8 @@ class WorkspaceRoutes:
             return True
 
     def _workspace(self) -> bool:
+        if dataset_route(self):
+            return True
         runner = self.ui.runner
         if self.path == "/ui/workspace/recipes" and self.method == "GET":
             self.send(200, {"recipes": recipes()})
