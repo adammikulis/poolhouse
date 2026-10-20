@@ -108,13 +108,13 @@ def test_settings_failure_is_visible_and_only_selected_libraries_install(usabili
 
 
 def _assert_workspace_pages(page, primary, expect):
-    headings = {'Models': ('models-view', 'Models'), 'Fine-tune': ('training-view', 'Fine-tuning'),
-                'Worlds': ('gym-view', 'Reinforcement learning'), 'Evaluate': ('benchmarks-view', 'Benchmarks'),
-                'Data': ('data-view', 'Datasets'), 'Projects': ('projects-view', 'Projects'),
+    headings = {'Models': ('models-view', 'Models'), 'Training': ('training-view', 'Fine-tuning'),
+                'Gym': ('gym-view', 'Reinforcement learning'), 'Evaluation': ('benchmarks-view', 'Benchmarks'),
+                'Datasets': ('data-view', 'Datasets'), 'Projects': ('projects-view', 'Projects'),
                 'Tools': ('tools-view', 'Tools'), 'Graph': ('knowledge-view', 'Graph inspector'),
-                'History': ('history-view', 'Activity'), 'Devices': ('pool-view', 'Devices')}
-    for group, titles in [('Studio', ['Canvas', 'Fine-tune', 'Worlds', 'Evaluate', 'Data']),
-                          ('Work', ['Tasks', 'Projects', 'Tools', 'Graph', 'History']),
+                'Activity': ('history-view', 'Activity'), 'Devices': ('pool-view', 'Devices')}
+    for group, titles in [('Studio', ['Canvas', 'Training', 'Gym', 'Evaluation', 'Datasets']),
+                          ('Work', ['Tasks', 'Projects', 'Tools', 'Graph', 'Activity']),
                           ('Pool', ['Devices', 'Capacity'])]:
         primary.get_by_role('link', name=group, exact=True).click()
         context = page.get_by_role('navigation', name='Workspace pages')
@@ -155,7 +155,7 @@ def test_primary_workspaces_context_pages_and_theme_navigation(usability_page):
     expect(page.locator('.demo-slice')).to_have_count(10)
     page.locator('.demo-slice').filter(has_text='Fine-tune a model').click()
     assert page.url.endswith('#training')
-    expect(page.get_by_role('button', name='Training jobs:', exact=False)).to_be_visible()
+    expect(page.get_by_role('button', name='Jobs:', exact=False)).to_be_visible()
     primary.get_by_role('link', name='Conversations', exact=True).click()
     for theme in ('light', 'dark'):
         page.evaluate('(theme)=>window.fleetModel.setPreferences({...window.fleetModel.preferences,resolved_theme:{base:theme}})', theme)
@@ -184,15 +184,18 @@ def test_settings_queued_install_keeps_navigation_usable_until_ready(usability_p
     from playwright.sync_api import expect
     served, page, errors = usability_page
     installed = False
+    posts = []
     job = {'id': 'setup-core', 'state': 'queued', 'note': 'Waiting to install', 'result': {}}
     def libraries(route):
         if route.request.method == 'POST':
+            posts.append(route.request.post_data_json)
             route.fulfill(status=202, json={'ok': True, 'job': job})
         else:
             route.fulfill(json={'libraries': [{'name': 'core', 'title': 'Training essentials', 'blurb': 'Training tools', 'installed': installed, 'size_mb': 40}]})
     page.route('**/ui/libraries', libraries)
     page.route('**/ui/setup/jobs', lambda route: route.fulfill(json={'jobs': [job]}))
     page.goto(f'http://127.0.0.1:{served.port}/ui/#settings')
+    page.get_by_label('Studio undo steps', exact=True).fill('44')
     page.get_by_role('tab', name='Libraries & simulators', exact=True).click()
     page.locator('#lib-core').check()
     apply = page.get_by_role('button', name='Apply library changes', exact=True)
@@ -204,13 +207,70 @@ def test_settings_queued_install_keeps_navigation_usable_until_ready(usability_p
     job.update(state='installing', note='Downloading training tools')
     page.evaluate("location.hash = '#settings'")
     page.get_by_role('tab', name='Libraries & simulators', exact=True).click()
-    expect(page.locator('#lib-core')).not_to_be_checked()
+    expect(page.locator('#lib-core')).to_be_checked()
+    expect(page.locator('#lib-core')).to_be_disabled()
+    expect(page.locator('#settings-libs')).to_contain_text('Queued to install')
+    apply.click()
+    apply.focus()
+    page.keyboard.press('Enter')
+    assert posts == [{'install': ['core'], 'remove': []}]
+    page.get_by_role('tab', name='Appearance & advanced', exact=True).click()
+    expect(page.get_by_label('Studio undo steps', exact=True)).to_have_value('44')
+    expect(page.locator('#settings-dirty')).to_have_text('Unsaved preferences')
+    page.get_by_role('tab', name='Libraries & simulators', exact=True).click()
     installed = True
     job.update(state='done', result={'changed': {'core': {'ok': True}}})
     expect(page.locator('#lib-core')).to_be_checked(timeout=5000)
     expect(page.locator('#settings-libs')).to_contain_text('Library changes applied')
+    expect(page.locator('#lib-core')).to_be_enabled()
+    assert posts == [{'install': ['core'], 'remove': []}]
     assert not errors
 
+
+
+def test_settings_library_failure_preserves_explicit_retry_and_ignores_old_ack(usability_page):
+    from playwright.sync_api import expect
+
+    served, page, errors = usability_page
+    job = {'id': 'setup-core', 'state': 'queued', 'note': 'Waiting to install', 'result': {}}
+    posts, held = [], []
+
+    def libraries(route):
+        if route.request.method == 'POST':
+            posts.append(route.request.post_data_json)
+            if len(posts) == 2:
+                held.append(route)
+            else:
+                route.fulfill(status=202, json={'ok': True, 'job': job})
+        else:
+            route.fulfill(json={'libraries': [{'name': 'core', 'title': 'Training essentials',
+                'blurb': 'Training tools', 'installed': False, 'size_mb': 40}]})
+
+    page.route('**/ui/libraries', libraries)
+    page.route('**/ui/setup/jobs', lambda route: route.fulfill(json={'jobs': [job]}))
+    page.goto(f'http://127.0.0.1:{served.port}/ui/#settings')
+    page.get_by_role('tab', name='Libraries & simulators', exact=True).click()
+    page.locator('#lib-core').check()
+    apply = page.get_by_role('button', name='Apply library changes', exact=True)
+    apply.click()
+    expect(page.locator('#lib-core')).to_be_disabled()
+    job.update(state='failed', error='Download unavailable')
+    expect(page.locator('#settings-libs')).to_contain_text('Download unavailable')
+    expect(page.locator('#lib-core')).to_be_enabled()
+    expect(page.locator('#lib-core')).to_be_checked()
+    expect(page.locator('#settings-libs .library-kind')).to_have_text('Available to install')
+    assert posts == [{'install': ['core'], 'remove': []}]
+    apply.focus()
+    page.keyboard.press('Enter')
+    expect(page.get_by_role('button', name='Installing libraries…', exact=True)).to_be_disabled()
+    page.get_by_role('button', name='Sign out', exact=True).click()
+    page.wait_for_function("() => ['sign-in','launch-needed'].includes(fleetModel.route)")
+    assert len(held) == 1
+    held[0].fulfill(status=202, json={'ok': True, 'job': {'id': 'setup-retry', 'state': 'done', 'result': {}}})
+    page.evaluate('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+    assert page.locator('settings-view').evaluate('e => e.savedPick') is None
+    assert posts == [{'install': ['core'], 'remove': []}] * 2
+    assert not errors
 
 def test_named_workspace_tools_stay_with_main_navigation_at_all_sizes(usability_page):
     from playwright.sync_api import expect
@@ -222,11 +282,11 @@ def test_named_workspace_tools_stay_with_main_navigation_at_all_sizes(usability_
         page.set_viewport_size({'width': width, 'height': height})
         tools = page.get_by_role('group', name='Workspace tools', exact=True)
         explore = tools.get_by_role('button', name='Explore Poolhouse', exact=True)
-        training = tools.get_by_role('button', name='Training jobs:', exact=False)
+        training = tools.get_by_role('button', name='Jobs:', exact=False)
         expect(explore).to_be_visible()
         expect(training).to_be_visible()
         expect(explore.locator('span')).to_have_text('Explore')
-        expect(training.locator('span').first).to_have_text('Training')
+        expect(training.locator('span').first).to_have_text('Jobs')
         assert page.locator('.connection-dot').count() == 0
         reference = page.locator('#nav-tabs a').first.bounding_box()
         for button in (explore, training, page.get_by_role('link', name='Settings', exact=True), page.get_by_role('button', name='Sign out', exact=True)):
@@ -234,10 +294,19 @@ def test_named_workspace_tools_stay_with_main_navigation_at_all_sizes(usability_
             assert (bounds['width'], bounds['height']) == pytest.approx((reference['width'], reference['height']), abs=0.001)
             assert button.locator('svg').bounding_box()['width'] == page.locator('#nav-tabs a svg').first.bounding_box()['width']
         assert tools.bounding_box()['y'] > page.locator('#nav-tabs').bounding_box()['y']
-        assert page.locator('.rail-utilities').bounding_box()['y'] >= tools.bounding_box()['y'] + tools.bounding_box()['height']
+        main = page.locator('.rail-main').bounding_box()
+        assert page.locator('.rail-utilities').bounding_box()['y'] >= main['y'] + main['height']
         expect(page.get_by_role('button', name='Sign out', exact=True)).to_be_in_viewport()
         expect(page.get_by_role('link', name='Settings', exact=True)).to_be_in_viewport()
-        assert page.locator('.workspace-rail').evaluate('node => node.scrollHeight <= node.clientHeight')
+        assert page.locator('.workspace-rail').evaluate('node => getComputedStyle(node).overflowY') == 'auto'
+        assert page.locator('.workspace-rail').evaluate('''node => {
+            const rail=node.getBoundingClientRect();
+            return getComputedStyle(node).overflowX === 'hidden' &&
+              [...node.querySelectorAll('.rail-link')].every(link => {
+                const bounds=link.getBoundingClientRect();
+                return bounds.left >= rail.left && bounds.right <= rail.right;
+              });
+        }''')
         explore.click()
         expect(page.locator('.demo-slice')).to_have_count(10)
         page.locator('.demo-slice').filter(has_text='Find the right model').click()
