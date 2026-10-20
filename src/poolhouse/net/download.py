@@ -150,7 +150,15 @@ def _stream_to(pipe: Pipeline, url: str, part: Path, want: Want,
     sent = bearer(url, {**want.headers, **sent}, want.token, pipe.plain())
     limits = pipe.limited(want.purpose, admit=want.admit,
                           max_bytes=max(1, want.max_bytes - offset), deadline_s=want.deadline_s)
-    with httpguard.stream(url, headers=sent, limits=limits) as shown:
+    host_vet = limits.vet
+
+    def vet(target: str) -> None:
+        _check_cancel(hooks.cancel)
+        if host_vet is not None:
+            host_vet(target)
+        _check_cancel(hooks.cancel)
+
+    with httpguard.stream(url, headers=sent, limits=replace(limits, vet=vet)) as shown:
         if shown.status == 416:
             part.unlink(missing_ok=True)
             raise Truncated("the partial file did not fit the server's; it was discarded, retry")
@@ -182,6 +190,7 @@ def _stream_to(pipe: Pipeline, url: str, part: Path, want: Want,
                     hooks.progress(got, total)
         if total and got != total:
             raise Truncated(f"{got} of {total} bytes arrived; the partial file is kept")
+        _check_cancel(hooks.cancel)
         return shown
 
 
@@ -260,7 +269,7 @@ def download(url: str, dest: Path | str, want: Want | None = None, pipeline: Pip
         hooks.phase("verifying")
     return _finish(pipe, staged, final, want, Arrival(url, shown.url, shown.status,
                        tuple(shown.redirects), shown.headers, host, hooks.phase,
-                       not pipe.policy.lists_every_host()))
+                       not pipe.policy.lists_every_host(), hooks.cancel))
 
 
 @dataclass(frozen=True, slots=True)
@@ -275,6 +284,12 @@ class Arrival:
     host: str
     phase: Callable[[str], None] | None = None
     named: bool = True
+    cancel: Cancel | None = field(default=None, repr=False, compare=False)
+
+
+def _check_cancel(cancel: Cancel | None) -> None:
+    if cancel is not None and cancel.cancelled:
+        raise Truncated("cancelled; the partial file is kept")
 
 
 def _finish(pipe: Pipeline, staged: Path, final: Path, want: Want,
@@ -313,6 +328,7 @@ def _finish(pipe: Pipeline, staged: Path, final: Path, want: Want,
                 *(r.detail for r in summary.results if r.outcome == Outcome.NO_SCANNER))
     if arrival.phase:
         arrival.phase("installing")
+    _check_cancel(arrival.cancel)
     _promote(staged, final)
     observed.downloaded(url)
     _pin_pulled(final, verdict.kind, want, digest, arrival)

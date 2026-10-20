@@ -1,18 +1,23 @@
 <style>
-data-discover .dataset-search { display:flex; flex-wrap:wrap; gap:12px; align-items:end; margin:18px 0; }
+data-discover {display:flex;flex:1;min-height:0}
+data-discover>section {display:flex;flex-direction:column;gap:12px;min-height:0;width:100%;overflow:hidden}
+data-discover .dataset-status {margin:0}data-discover .dataset-status:empty{display:none}
+data-discover .dataset-results-panel{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+data-discover .dataset-inspect{min-height:0;overflow:auto}
+data-discover .dataset-search { display:flex; flex-wrap:wrap; gap:12px; align-items:end; margin:0; }
 data-discover .dataset-search label { margin:0; display:grid; gap:6px; }
 data-discover .dataset-search input { width:220px; }
-data-discover .data-discovery { display:grid; grid-template-columns:minmax(240px,.8fr) minmax(0,1.6fr); gap:20px; }
-data-discover .dataset-results { display:grid; gap:8px; align-content:start; }
+data-discover .data-discovery { display:grid; grid-template-columns:minmax(240px,.8fr) minmax(0,1.6fr); gap:var(--page-gap);flex:1;min-height:0;overflow:hidden; }
+data-discover .dataset-results { display:grid; gap:8px; align-content:start;overflow:auto;min-height:0; }
 data-discover .dataset-result { display:grid; gap:6px; width:100%; text-align:left; overflow-wrap:anywhere; background:var(--bg-raised); color:var(--text); border:1px solid var(--line); }
 data-discover .dataset-result[aria-pressed=true] { border-color:var(--accent); }
-data-discover .dataset-detail { min-width:0; background:var(--bg-raised); border:1px solid var(--line); border-radius:16px; padding:20px; }
+data-discover .dataset-detail { min-width:0; background:var(--bg-raised); border:1px solid var(--line); border-radius:var(--page-panel-radius);padding:var(--page-gutter); }
 data-discover .dataset-metadata { display:flex; flex-wrap:wrap; gap:8px; margin:14px 0; }
 data-discover .dataset-metadata span { border:1px solid var(--line); padding:5px 9px; border-radius:20px; font-size:12px; }
 data-discover .dataset-subsets { display:flex; gap:12px; flex-wrap:wrap; }
 data-discover .dataset-description { white-space:pre-wrap; overflow-wrap:anywhere; max-height:200px; overflow:auto; }
 data-discover .dataset-revision { font-size:11px; overflow-wrap:anywhere; color:var(--muted); }
-@media(max-width:850px){data-discover .data-discovery{grid-template-columns:1fr}data-discover .dataset-search input{max-width:100%;width:100%}}
+@media(max-width:850px){data-discover .data-discovery{grid-template-columns:1fr;grid-template-rows:minmax(100px,.4fr) minmax(0,1fr)}data-discover .dataset-search{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}data-discover .dataset-search label:first-child{grid-column:1/-1}data-discover .dataset-search input,data-discover .dataset-search select{max-width:100%;width:100%;min-width:0}}
 </style>
 <template>
  <section aria-label="Discover Hugging Face datasets">
@@ -25,7 +30,7 @@ data-discover .dataset-revision { font-size:11px; overflow-wrap:anywhere; color:
    <button type="submit" class="data-primary">Search datasets</button>
   </form>
   <p class="dataset-status" role="status" aria-live="polite"></p>
-  <div class="data-discovery"><div><div class="dataset-results" aria-label="Hugging Face dataset results"></div><button type="button" class="dataset-more" hidden>Load more datasets</button></div><div class="dataset-detail"><p>Choose a dataset to inspect its subsets, splits, fields and sample records.</p></div></div>
+  <div class="data-discovery"><div class="dataset-results-panel"><div class="dataset-results" tabindex="0" aria-label="Hugging Face dataset results"></div><button type="button" class="dataset-more" hidden>Load more datasets</button></div><div class="dataset-inspect" tabindex="0" aria-label="Dataset details"><div class="dataset-detail"><p>Choose a dataset to inspect its subsets, splits, fields and sample records.</p></div><data-import></data-import></div></div>
  </section>
 </template>
 <script>
@@ -34,14 +39,14 @@ data-discover .dataset-revision { font-size:11px; overflow-wrap:anywhere; color:
  class DatasetDiscover extends HTMLElement{
   connectedCallback(){
    if(this.wired)return;this.wired=true;this.generation=0;this.rows=[];this.cursor=null;this.chosen=null;
-   this.form=this.querySelector('form');this.note=this.querySelector('.dataset-status');this.detail=this.querySelector('.dataset-detail');
+   this.importer=this.querySelector('data-import');this.form=this.querySelector('form');this.note=this.querySelector('.dataset-status');this.detail=this.querySelector('.dataset-detail');
    this.form.onsubmit=event=>{event.preventDefault();this.search(false);};
-   this.form.oninput=()=>{this.generation++;this.cursor=null;this.chosen=null;this.querySelector('.dataset-more').hidden=true;this.note.textContent='Search to apply these filters.';};
+   this.form.oninput=()=>{this.importer.select(null,null);this.generation++;this.cursor=null;this.chosen=null;this.querySelector('.dataset-more').hidden=true;this.note.textContent='Search to apply these filters.';};
    this.querySelector('.dataset-more').onclick=()=>this.search(true);
    M.onRoute(route=>{this.generation++;if(route!=='data')this.active=false;});
   }
-  enter(){this.active=true;if(!this.rows.length)this.search(false);}
-  leave(){this.active=false;this.generation++;}
+  enter(){this.active=true;this.importer.enter();if(!this.rows.length)this.search(false);}
+  leave(){this.importer.leave();this.active=false;this.generation++;}
   held(){return {generation:this.generation,chosen:this.chosen};}
   current(held){return this.active&&this.isConnected&&M.route==='data'&&location.hash==='#data'&&!this.closest('[hidden]')&&held.generation===this.generation&&held.chosen===this.chosen;}
   async read(action,params,held){
@@ -53,7 +58,7 @@ data-discover .dataset-revision { font-size:11px; overflow-wrap:anywhere; color:
   async search(more){
    const params=Object.fromEntries(new FormData(this.form));
    if(more&&!this.cursor)return;
-   if(more)params.cursor=this.cursor;else{this.rows=[];this.chosen=null;this.detail.replaceChildren(E('p',{},'Choose a dataset to inspect its data.'));}
+   if(more)params.cursor=this.cursor;else{this.importer.select(null,null);this.rows=[];this.chosen=null;this.detail.replaceChildren(E('p',{},'Choose a dataset to inspect its data.'));}
    this.generation++;const held=this.held();this.note.textContent='Searching Hugging Face…';
    try{
     const result=await this.read('search',params,held);if(!result)return;
@@ -71,7 +76,7 @@ data-discover .dataset-revision { font-size:11px; overflow-wrap:anywhere; color:
    this.querySelector('.dataset-more').hidden=!this.cursor;
   }
   async open(row){
-   this.generation++;this.chosen=row.id;const held=this.held();this.draw();this.detail.replaceChildren(E('p',{},'Loading dataset details…'));
+   this.importer.select(null,null);this.generation++;this.chosen=row.id;const held=this.held();this.draw();this.detail.replaceChildren(E('p',{},'Loading dataset details…'));
    try{
     const result=await this.read('details',{repo:row.id},held);if(!result)return;
     if(result.id!==row.id||!Array.isArray(result.splits))throw Error('The selected dataset details changed.');
@@ -93,12 +98,13 @@ data-discover .dataset-revision { font-size:11px; overflow-wrap:anywhere; color:
   }
   async preview(){
    this.generation++;const held=this.held(),params={repo:this.chosen,config:this.config.value,split:this.split.value};
-   this.selection=null;this.sample.replaceChildren(E('p',{},'Loading sample rows and immutable export information…'));this.pins.textContent='';
+   this.selection=null;this.importer.select(null,null);this.sample.replaceChildren(E('p',{},'Loading sample rows and immutable export information…'));this.pins.textContent='';
    try{
     const [sample,selection]=await Promise.allSettled([this.read('preview',params,held),this.read('selection',params,held)]);
     if(!this.current(held))return;
     if(sample.status==='rejected')throw sample.reason;if(!sample.value)return;
     this.previewData=sample.value;
+    this.importer.select(params,sample.value,()=>this.active&&M.route==='data'&&location.hash==='#data'&&this.previewData===sample.value&&this.chosen===params.repo&&this.config.value===params.config&&this.split.value===params.split);
     D.table(this.sample,sample.value.rows,sample.value.columns,'Current viewer sample · '+sample.value.rows.length+' of '+(sample.value.total_rows??'unknown')+' rows'+(sample.value.partial?' · viewer covers only part of this dataset':'')+' · not an immutable file preview');
     if(selection.status==='fulfilled'&&selection.value){
      this.selection=selection.value;this.pins.textContent='Source revision: '+selection.value.revision+' · Parquet export revision: '+selection.value.converted_revision;

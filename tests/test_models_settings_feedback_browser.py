@@ -261,7 +261,7 @@ def test_settings_token_controls_share_chrome_and_lead_preferences(feedback_page
     assert positions['context'] < positions['output'] < positions['theme']
     assert positions['contextChrome'] == positions['outputChrome']
     context.press('ArrowRight')
-    expect(output).to_have_attribute('max', '16384')
+    assert output.evaluate('node => node.getRootNode().host.stops.at(-1)') == 16384
     output.press('End')
     expect(output).to_have_attribute('aria-valuetext', '16,384 tokens')
     submitted = []

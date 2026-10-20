@@ -9,6 +9,7 @@ pytestmark = pytest.mark.slow
 @pytest.fixture
 def usability_page(tmp_path, playwright):
     served = Serving(tmp_path)
+    served.ui.root = tmp_path / "traind"
     served.ui.settings.setup_done = True
     browser = playwright.chromium.launch(headless=True)
     page = browser.new_page(viewport={'width': 1280, 'height': 900})
@@ -18,7 +19,12 @@ def usability_page(tmp_path, playwright):
         yield served, page, errors
     finally:
         browser.close()
-        served.close()
+        try:
+            if engine := getattr(served.ui, "studio", None):
+                engine.close()
+                engine.store.close()
+        finally:
+            served.close()
 
 
 def test_training_environment_catalogue_drafts_and_pending_submission(usability_page):
@@ -110,7 +116,7 @@ def test_settings_failure_is_visible_and_only_selected_libraries_install(usabili
 def _assert_workspace_pages(page, primary, expect):
     headings = {'Models': ('models-view', 'Models'), 'Training': ('training-view', 'Fine-tuning'),
                 'Gym': ('gym-view', 'Reinforcement learning'), 'Evaluation': ('benchmarks-view', 'Benchmarks'),
-                'Datasets': ('data-view', 'Datasets'), 'Projects': ('projects-view', 'Projects'),
+                'Projects': ('projects-view', 'Projects'),
                 'Tools': ('tools-view', 'Tools'), 'Graph': ('knowledge-view', 'Graph inspector'),
                 'Activity': ('history-view', 'Activity'), 'Devices': ('pool-view', 'Devices')}
     for group, titles in [('Studio', ['Canvas', 'Training', 'Gym', 'Evaluation', 'Datasets']),
@@ -125,6 +131,11 @@ def _assert_workspace_pages(page, primary, expect):
             if title in headings:
                 component, heading = headings[title]
                 expect(page.locator(component).get_by_role('heading', level=1)).to_have_text(heading)
+            if title == 'Datasets':
+                expect(page.locator('data-view h1')).to_have_count(0)
+                expect(page.locator('data-view > section')).to_have_attribute('aria-label', 'Datasets')
+                expect(page.get_by_role('tab', name='Local datasets', exact=True)).to_be_visible()
+                expect(page.get_by_role('tab', name='Discover Hugging Face', exact=True)).to_be_visible()
             if title == 'Capacity':
                 expect(page.locator('fit-view').get_by_role('heading', level=1)).to_have_count(1)
         assert primary.evaluate('(nav)=>nav.scrollHeight <= nav.clientHeight')
@@ -272,16 +283,19 @@ def test_settings_library_failure_preserves_explicit_retry_and_ignores_old_ack(u
     assert posts == [{'install': ['core'], 'remove': []}] * 2
     assert not errors
 
-def test_named_workspace_tools_stay_with_main_navigation_at_all_sizes(usability_page):
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_workspace_tools_and_utilities_at_all_sizes(usability_page, theme):
     from playwright.sync_api import expect
 
     served, page, errors = usability_page
     page.route('**/ui/workspace/jobs', lambda route: route.fulfill(status=503, json={'error': 'Job status unavailable'}))
     page.goto(f'http://127.0.0.1:{served.port}/ui/')
+    page.evaluate('theme => document.documentElement.dataset.theme = theme', theme)
     for width, height in [(1440, 900), (1280, 768), (1280, 640), (1024, 420), (390, 844)]:
         page.set_viewport_size({'width': width, 'height': height})
         tools = page.get_by_role('group', name='Workspace tools', exact=True)
-        explore = tools.get_by_role('button', name='Explore Poolhouse', exact=True)
+        utilities = page.locator('.rail-utilities')
+        explore = utilities.get_by_role('button', name='Explore Poolhouse', exact=True)
         training = tools.get_by_role('button', name='Jobs:', exact=False)
         expect(explore).to_be_visible()
         expect(training).to_be_visible()
@@ -307,7 +321,10 @@ def test_named_workspace_tools_stay_with_main_navigation_at_all_sizes(usability_
                 return bounds.left >= rail.left && bounds.right <= rail.right;
               });
         }''')
-        explore.click()
+        assert utilities.locator('.rail-link').evaluate_all('nodes => nodes.map(node => node.id)') == ['nav-guide', 'nav-settings', 'nav-signout']
+        expect(explore).to_be_in_viewport()
+        explore.focus()
+        explore.press('Enter')
         expect(page.locator('.demo-slice')).to_have_count(10)
         page.locator('.demo-slice').filter(has_text='Find the right model').click()
         expect(page.locator('#models')).to_be_visible()

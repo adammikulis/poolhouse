@@ -39,7 +39,7 @@ from poolhouse.serve.ports import DEFAULT_HOST
 from poolhouse.serve.process import owns_connection, pid_exists, started_at
 
 __all__ = ["call", "claim", "cores", "give_back_cores", "lease", "record_path", "release",
-           "serve", "status", "stop", "unclaim"]
+           "serve", "startup", "status", "stop", "unclaim"]
 
 LOCAL_ENV = "POOLHOUSE_BROKER_LOCAL"
 """Set to ``1`` to run the broker inside the process instead of reaching the machine's."""
@@ -188,6 +188,8 @@ class _Server(socketserver.ThreadingTCPServer):
             return {"ok": True}
         if op == "release":
             return {"ok": True, "released": self.broker.release(str(body["lease"]))}
+        if op == "startup":
+            return {"ok": True, "receipt": self.broker.startup(int(body["port"]))}
         if op == "status":
             return {"ok": True, **self.broker.snapshot(), "runtime": self.runtime}
         if op == "stop":
@@ -549,6 +551,11 @@ def lease(purpose: str, models: list[str] | tuple[str, ...], *, reason: str,
 def release(lease_id: str) -> bool:
     """Let go of a lease. False when the broker held no such lease."""
     return bool(call("release", start=False, lease=lease_id)["released"])
+
+
+def startup(port: int) -> dict[str, Any] | None:
+    """Read retained native launch evidence without starting the broker or a model."""
+    return call("startup", port=port, start=False).get("receipt")
 
 
 def status(*, start: bool = False) -> dict[str, Any]:

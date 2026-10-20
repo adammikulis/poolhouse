@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import http.server
 import json
 import os
@@ -14,7 +15,7 @@ import pytest
 from conftest import threaded_server
 
 from poolhouse import http as phttp, hub as hubmod
-from poolhouse.fleet.models import Models
+from poolhouse.fleet.models import Models, ModelTransfer
 from poolhouse.fleet.weights import ModelError, reference
 from poolhouse.http import Server
 from poolhouse.testing.fakehub import fake_hub
@@ -143,7 +144,7 @@ class TestSources:
 class TestGetting:
     def test_a_model_already_here_is_not_fetched_again(self, store, tmp_path):
         a_model(tmp_path / "models")
-        got = store.ensure("qwen3", source="http://127.0.0.1:1/never.gguf")
+        got = store.ensure("qwen3-4b-q4.gguf")
         assert got.name == "qwen3-4b-q4.gguf"
 
     def test_with_automatic_downloading_off_it_refuses(self, store):
@@ -176,13 +177,13 @@ class TestChoosingAQuant:
     def test_it_prefers_q4(self, names, want, monkeypatch):
         from poolhouse.fleet import weights as mod
 
-        monkeypatch.setattr(mod, "repo_files", lambda o, r: names)
+        monkeypatch.setattr(mod, "repo_files", lambda o, r, check=None: names)
         assert mod.quant_in("o", "r") == want
 
     def test_a_sharded_model_is_not_offered_as_one_file(self, monkeypatch):
         from poolhouse.fleet import weights as mod
 
-        monkeypatch.setattr(mod, "repo_files", lambda o, r: [
+        monkeypatch.setattr(mod, "repo_files", lambda o, r, check=None: [
             "big-Q4_K_M-00001-of-00003.gguf", "big-Q4_K_M-00002-of-00003.gguf",
             "small-Q8_0.gguf"])
         assert mod.quant_in("o", "r") == "small-Q8_0.gguf"
@@ -190,7 +191,7 @@ class TestChoosingAQuant:
     def test_a_repository_with_no_gguf_says_so(self, monkeypatch):
         from poolhouse.fleet import weights as mod
 
-        monkeypatch.setattr(mod, "repo_files", lambda o, r: ["README.md"])
+        monkeypatch.setattr(mod, "repo_files", lambda o, r, check=None: ["README.md"])
         with pytest.raises(ModelError, match="no single-file gguf"):
             mod.quant_in("o", "r")
 
@@ -257,6 +258,11 @@ class TestReadingWhatAModelIs:
         ("gpt-oss-20b", "GPT-OSS"),
         ("LFM2.5-2.6B", "LFM"),
         ("Bonsai-27B-gguf", "Bonsai"),
+        ("sentence-transformers/all-MiniLM-L6-v2", "MiniLM"),
+        ("all-MiniLM-L12-v2", "MiniLM"),
+        ("paraphrase-multilingual-MiniLM-L12-v2", "MiniLM"),
+        ("sentence-transformers/all-mpnet-base-v2", "MPNet"),
+        ("paraphrase-multilingual-mpnet-base-v2", "MPNet"),
     ])
     def test_the_family_is_read_off_the_name(self, name, family):
         from poolhouse.fleet.catalogue import family_of
@@ -541,8 +547,8 @@ class TestProgress:
         hub_of({"unsloth/m-GGUF": {"m.gguf": payload}})
 
         notes, seen = [], []
-        store.ensure("m.gguf", source="hf:unsloth/m-GGUF/m.gguf", on_note=notes.append,
-                     on_progress=lambda done, total: seen.append((done, total)))
+        store.ensure("m.gguf", source="hf:unsloth/m-GGUF/m.gguf",
+                     transfer=ModelTransfer(note=notes.append, progress=lambda done, total: seen.append((done, total))))
 
         assert notes == ["Downloading m.gguf"]
         assert seen, "no byte counts arrived"
@@ -562,7 +568,7 @@ class TestGettingInTheBackground:
             on_progress(Progress(ref, "downloading", "f", 0, 1, len(payload) // 2, len(payload)))
             halfway.set()
             release.wait(20)
-            path = tmp_path / "pulled.gguf"
+            path = tmp_path / hashlib.sha256(payload).hexdigest()
             path.write_bytes(payload)
             on_progress(Progress(ref, "done", "f", 0, 1, len(payload), len(payload)))
             return path
@@ -733,7 +739,7 @@ class TestOverHTTP:
 
     def test_a_member_asks_a_machine_for_a_model_it_already_has(self, served):
         member, theirs = served
-        got = member.get_model("qwen3")
+        got = member.get_model("qwen3-4b-q4.gguf")
         assert got["name"] == "qwen3-4b-q4.gguf"
         assert got["size"] == (theirs / "qwen3-4b-q4.gguf").stat().st_size
 
@@ -790,7 +796,8 @@ class TestWhereADownloadMayComeFrom:
                        "http://[::1]/m.gguf"):
             with pytest.raises(ModelError, match="not a Hugging Face reference"):
                 store.ensure("m.gguf", source=source)
-        assert not list(store.store.glob("*"))
+        assert all(path.name.startswith('.download-') and path.suffix == '.lock'
+                   for path in store.store.iterdir())
 
     @pytest.mark.parametrize("name", ["../escape.gguf", "a/../../escape.gguf", "nul.gguf",
                                       "con", "x\x00.gguf", "bad|name.gguf"])
@@ -820,21 +827,20 @@ def a_member_holding(listing, body):
 class TestWhatAMemberOrServerSends:
     @pytest.mark.parametrize("evil", ["../../escaped.gguf", "/tmp/escaped-abs.gguf"])
     def test_a_member_cannot_place_a_file_outside_the_store(self, store, tmp_path, evil):
-        with a_member_holding([{"name": evil}], gguf_bytes()) as base:
-            got = store._from_member("escaped", base, b"k", None)
-        assert got.path.parent == store.store
+        with a_member_holding([{"name": evil}], gguf_bytes()) as base, pytest.raises(ModelError):
+            store._from_member(evil, base, b"k", None)
+        assert not list(store.store.glob("*"))
         assert not (tmp_path / "escaped.gguf").exists()
-        assert not Path("/tmp/escaped-abs.gguf").exists()
 
     def test_a_member_name_without_a_weights_suffix_is_refused(self, store):
         with a_member_holding([{"name": "evil.sh"}], gguf_bytes()) as base, pytest.raises(ModelError):
-            store._from_member("evil", base, b"k", None)
+            store._from_member("evil.sh", base, b"k", None)
         assert not list(store.store.glob("*"))
 
     def test_a_member_file_that_is_not_a_gguf_is_deleted(self, store):
         with a_member_holding([{"name": "m.gguf"}], b"<html>not a model</html>") as base, \
                 pytest.raises(ModelError):
-            store._from_member("m", base, b"k", None)
+            store._from_member("m.gguf", base, b"k", None)
         assert not list(store.store.glob("*"))
 
     def test_a_download_that_is_not_a_gguf_is_deleted(self, store):
@@ -858,4 +864,5 @@ class TestWhatAMemberOrServerSends:
                              source=f"http://127.0.0.1:{srv.server_address[1]}/far.gguf")
         finally:
             srv.shutdown()
-        assert not list(store.store.glob("*"))
+        assert all(path.name.startswith('.download-') and path.suffix == '.lock'
+                   for path in store.store.iterdir())

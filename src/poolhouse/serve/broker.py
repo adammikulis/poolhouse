@@ -35,6 +35,7 @@ from poolhouse.serve import (
     guarded,
     lease_history,
     provenance,
+    startup,
     unmanaged,
 )
 from poolhouse.serve.backend import LlamaServerBackend, ServerFailed, ServerInfo, ServerSpec
@@ -816,6 +817,13 @@ class Broker(BrokerHolds):
             return bool(self.queue or self.claims or self.claim_waiters or self.cores
                         or (self._decision_hosts is not None and self._decision_hosts.residents)
                         or any(h.ours or h.holders or h.loading for h in self.servers.values()))
+
+    def startup(self, port: int) -> dict | None:
+        """The live owner's native startup evidence, without adopting or leasing."""
+        with self._cond:
+            held = self.servers.get(port)
+            info = held.info if held is not None and held.ours and not held.unmanaged else None
+        return startup.retained(info)
 
     def snapshot(self) -> dict[str, Any]:
         """Servers, their holders, the queue and the claims, for a person looking."""

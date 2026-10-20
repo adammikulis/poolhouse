@@ -29,7 +29,7 @@ QUANTS = ("q4_k_m", "q4_k_s", "q4_1", "q4_0", "q5_k_m", "q8_0")
 LISTING = "https://huggingface.co/api/models"
 
 
-def reference(source: str) -> str:
+def reference(source: str, *, check=None) -> str:
     """``hf:owner/repo/file.gguf``, or ``hf:owner/repo`` answered with its Q4 build, as `hub.pull` takes it.
 
     Only a Hugging Face reference is a source: it is fetched at its commit, from a publisher a person
@@ -40,25 +40,30 @@ def reference(source: str) -> str:
         raise ModelError(f"{source!r} is not a Hugging Face reference (hf:owner/repo/file.gguf)")
     parts = source[3:].strip("/").split("/")
     if len(parts) == 2:
-        parts = [parts[0], parts[1], quant_in(parts[0], parts[1])]
+        parts = [parts[0], parts[1], quant_in(parts[0], parts[1], check=check)]
     if len(parts) < 3:
         raise ModelError(f"{source!r} should look like hf:owner/repo/file.gguf")
     return "hf:" + "/".join(parts)
 
 
-def repo_files(owner: str, repo: str) -> list[str]:
+def repo_files(owner: str, repo: str, *, check=None) -> list[str]:
     """Every file Hugging Face lists in a repository."""
     try:
         listed = net.default().json(f"{LISTING}/{owner}/{repo}",
-                                    net.Ask(purpose="model hub", tries=3))
+                                    net.Ask(purpose="model hub", tries=3, check=check))
+    except PermissionError:
+        raise
     except (ServerError, OSError, ValueError) as exc:
         raise ModelError(f"could not read hf:{owner}/{repo}: {exc}") from None
+    finally:
+        if check is not None:
+            check()
     return [str(f.get("rfilename", "")) for f in listed.get("siblings") or []]
 
 
-def quant_in(owner: str, repo: str) -> str:
+def quant_in(owner: str, repo: str, *, check=None) -> str:
     """The file to take from a repository nobody named a file in."""
-    files = repo_files(owner, repo)
+    files = repo_files(owner, repo, check=check)
     whole = [f for f in files
              if f.lower().endswith(".gguf") and not is_a_piece(f)
              and not is_beside(f)]

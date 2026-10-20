@@ -7,8 +7,8 @@
   const selected=data.selected,studio=document.querySelector('studio-view');
   if(!selected||!studio||!data.currentLocal()||!selected.path.endsWith('.jsonl'))throw Error('Select a JSONL dataset before opening Studio.');
   const held={graph:studio.graph,root:studio.rootGraph(),workflow:studio.workflowId,serial:studio.editSerial,
-   ownership:studio.workflowContext,group:(studio.context||[]).map(item=>item.node.id).join('/'),selected};
-  const same=()=>studio.isConnected&&data.selected===held.selected&&studio.graph===held.graph&&studio.rootGraph()===held.root
+   ownership:studio.workflowContext,session:M.sessionContext(),group:(studio.context||[]).map(item=>item.node.id).join('/'),selected};
+  const same=()=>M.sessionContext()===held.session&&studio.isConnected&&data.selected===held.selected&&studio.graph===held.graph&&studio.rootGraph()===held.root
    &&studio.workflowContext===held.ownership&&(!held.workflow||studio.workflowId===held.workflow)&&studio.editSerial===held.serial&&(studio.context||[]).map(item=>item.node.id).join('/')===held.group;
   const run=async()=>{
    const intent=++studio.selectionIntent;
@@ -31,10 +31,10 @@
    });
    if(!same()||studio.selectionIntent!==intent||M.route!=='studio')return;
    const folder=selected.path.split('/').slice(0,-1).join('/');
-   const result=await M.api('/ui/workspace/files?path='+encodeURIComponent(folder));
+   const result=await M.api(selected.managed?'/ui/studio/resources':'/ui/workspace/files?path='+encodeURIComponent(folder));
    if(!same()||studio.selectionIntent!==intent||M.route!=='studio'||location.hash!=='#studio')return;
    if(!result.ok){M.refused(result);throw Error(result.error||'This dataset is unavailable.');}
-   const file=result.files?.find(row=>row.path===selected.path&&row.directory===false&&row.bytes===selected.bytes);
+   const file=selected.managed?result.datasets?.find(row=>row.id===selected.path):result.files?.find(row=>row.path===selected.path&&row.directory===false&&row.bytes===selected.bytes);
    if(!file)throw Error('The selected dataset changed. Open its current preview again.');
    const spec=studio.specs.find(item=>item.type==='dataset');
    if(!spec)throw Error('The dataset node is unavailable.');

@@ -65,7 +65,9 @@ def test_a_file_is_linked_into_blobs_without_a_copy(tmp_path):
     source.parent.mkdir()
     source.write_bytes(BODY)
     name = hashlib.sha256(BODY).hexdigest()
-    assert hfstore.into_blobs(source, blob, name) == "new"
+    with hfstore.Placement(source, blob, name) as placement:
+        assert placement.publish() == "new"
+        placement.commit()
     assert source.samefile(blob) and blob.read_bytes() == BODY
 
 
@@ -75,7 +77,9 @@ def test_a_blob_that_is_already_these_bytes_is_kept(tmp_path):
     blob.parent.mkdir()
     blob.write_bytes(BODY)
     before = blob.stat().st_ino
-    assert hfstore.into_blobs(source, blob, hashlib.sha256(BODY).hexdigest()) == "have"
+    with hfstore.Placement(source, blob, hashlib.sha256(BODY).hexdigest()) as placement:
+        assert placement.publish() == "have"
+        placement.commit()
     assert blob.stat().st_ino == before
 
 
@@ -84,7 +88,10 @@ def test_a_blob_of_that_name_with_other_bytes_is_never_replaced(tmp_path):
     source.write_bytes(BODY)
     blob.parent.mkdir()
     blob.write_bytes(b"x" * len(BODY))
-    got = hfstore.into_blobs(source, blob, hashlib.sha256(BODY).hexdigest())
+    with hfstore.Placement(source, blob, hashlib.sha256(BODY).hexdigest()) as placement:
+        got = placement.publish()
+        if got in ("new", "have"):
+            placement.commit()
     assert "other bytes" in got and blob.read_bytes() == b"x" * len(BODY)
 
 
@@ -96,7 +103,10 @@ def test_another_volume_is_refused_when_a_copy_is_not_allowed(tmp_path, monkeypa
         raise OSError(errno.EXDEV, "cross-device link")
 
     monkeypatch.setattr(os, "link", across)
-    got = hfstore.into_blobs(source, blob, hashlib.sha256(BODY).hexdigest(), copy=False)
+    with hfstore.Placement(source, blob, hashlib.sha256(BODY).hexdigest()) as placement:
+        got = placement.publish(copy=False)
+        if got in ("new", "have"):
+            placement.commit()
     assert "another volume" in got and not blob.exists()
     assert not list(tmp_path.rglob("*.incomplete"))
 
@@ -112,7 +122,9 @@ def test_another_volume_copies_when_a_copy_is_allowed(tmp_path, monkeypatch):
         return real(src, dst, *args, **kw)
 
     monkeypatch.setattr(os, "link", across)
-    assert hfstore.into_blobs(source, blob, hashlib.sha256(BODY).hexdigest()) == "new"
+    with hfstore.Placement(source, blob, hashlib.sha256(BODY).hexdigest()) as placement:
+        assert placement.publish() == "new"
+        placement.commit()
     assert blob.read_bytes() == BODY
 
 
@@ -120,5 +132,6 @@ def test_another_volume_copies_when_a_copy_is_allowed(tmp_path, monkeypatch):
 def test_a_name_that_is_not_a_digest_is_refused(tmp_path, name):
     source = tmp_path / "f"
     source.write_bytes(BODY)
-    with pytest.raises(ValueError, match="digest"):
-        hfstore.into_blobs(source, tmp_path / "blobs" / name, name)
+    with pytest.raises(ValueError, match="digest"), hfstore.Placement(source, tmp_path / 'blobs' / name, name) as placement:
+        placement.publish()
+        placement.commit()
