@@ -62,8 +62,10 @@ def delivery_page(tmp_path, request, monkeypatch):
         assert node['type'] == 'report'
         return {'artifact': {'report': inputs['report']}}
     monkeypatch.setattr(Adapters, 'execute_authorized', execute)
+    packages = {'torch': '1', 'transformers': '1', 'peft': '1'}
     environment = SimpleNamespace(exists=True, require_current_runtime=lambda: None,
-        require_compute=lambda: 'controlled-runtime', installed=lambda: {'torch': '1', 'transformers': '1', 'peft': '1'})
+        require_compute=lambda: 'controlled-runtime', installed=lambda: dict(packages),
+        dependency_metadata=lambda: {'companion': 'controlled-runtime', 'error': None, 'packages': dict(packages)})
     app = Serving(tmp_path)
     app.httpd.daemon_threads = False
     app.ui.root, app.ui.settings.setup_done = tmp_path / 'traind', True

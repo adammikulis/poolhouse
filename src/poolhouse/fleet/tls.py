@@ -239,12 +239,13 @@ def local() -> Identity:
     return _PRESENTED or identity(device_directory(), socket.gethostname())
 
 
-def pinned_context(cert: str, *, who: Identity | None = None) -> ssl.SSLContext:
+def pinned_context(cert: str, *, who: Identity | None = None,
+                   context_type: type[ssl.SSLContext] = ssl.SSLContext) -> ssl.SSLContext:
     """A client context that trusts the one certificate ``cert`` (base64 DER) and nothing else:
     another certificate, or this one past its dates, fails the handshake. It presents ``who``
     (this machine's identity unless said) to a server that asks who is calling."""
     pem = ssl.DER_cert_to_PEM_cert(base64.b64decode(cert))
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx = context_type(ssl.PROTOCOL_TLS_CLIENT)
     ctx.minimum_version = ssl.TLSVersion.TLSv1_3
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_REQUIRED

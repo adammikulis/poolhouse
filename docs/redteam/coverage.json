@@ -1,7 +1,7 @@
 {
- "surfaces": 872,
+ "surfaces": 873,
  "by_status": {
-  "covered": 554,
+  "covered": 555,
   "partial": 193,
   "uncovered": 52,
   "n/a": 73,
@@ -37,7 +37,7 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 55,
+   "covered": 56,
    "partial": 46,
    "uncovered": 0,
    "n/a": 1,
@@ -2098,6 +2098,24 @@
     "tests/test_studio_transport.py::test_collect_rejects_another_dispatch_before_fetching"
    ],
    "note": "Fixed Studio endpoints require the selected enrolled device certificate, current authorization and request-bound sealed responses; redirects, oversized or plaintext responses, changed identities and another dispatch's artifacts are refused"
+  },
+  {
+   "id": "egress:fleet/studio_webhook_setup.py:LocalSender._send",
+   "kind": "egress",
+   "source": "fleet/studio_webhook_setup.py:LocalSender._send",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_webhook_setup.py::test_actual_tls_sender_receipt_duplicate_and_changed_sample",
+    "tests/test_studio_webhook_setup.py::test_unknown_never_retransmits_or_accepts_new_key_after_reload",
+    "tests/test_studio_webhook_setup.py::test_lost_ack_reconciles_only_exact_actual_inbox",
+    "tests/test_studio_webhook_setup.py::test_current_epoch_and_tls_identity_control_availability",
+    "tests/test_studio_webhook_setup.py::test_tls_redirect_is_never_followed_even_back_to_same_url",
+    "tests/test_studio_webhook_setup.py::test_sender_never_consults_ambient_authorization",
+    "tests/test_studio_webhook_setup.py::test_ca_signed_different_leaf_is_refused_before_http_bytes"
+   ],
+   "note": "The fixed synthetic sender uses only the existing local app listener and client identity through maintained HTTPS. A private request context pins the exact leaf before HTTP bytes despite global pin changes. Current authority, bounded replies, no ambient authorization, no redirects and one attempt are exercised; lost acknowledgements reconcile exact inbox evidence without retransmission. No external connector account is claimed."
   },
   {
    "id": "egress:fleet/ui.py:_scraped",
@@ -10605,9 +10623,11 @@
     "tests/test_dependency_proof.py::test_actual_layout_ignores_hostile_pythonpath",
     "tests/test_dependency_proof.py::test_malformed_layout_is_a_controlled_proof_failure",
     "tests/test_dependency_proof.py::test_actual_cold_checks_are_coalesced_and_warm_calls_launch_no_subprocesses",
-    "tests/test_dependency_proof.py::test_python_startup_selectors_cannot_bless_cached_inspection"
+    "tests/test_dependency_proof.py::test_site_hooks_and_customization_are_not_metadata_discovery",
+    "tests/test_dependency_proof.py::test_layout_roots_must_be_confined_without_aliases",
+    "tests/test_dependency_proof.py::test_actual_setuptools_distutils_hook_does_not_repeat_cold_verification"
    ],
-   "note": "Fixed isolated managed-interpreter layout discovery accepts no caller code or model selection. Hostile startup paths cannot alter the isolated layout, malformed replies are refused, and unsupported startup environments retain uncached verification. Cached proofs require fresh matching package and file evidence."
+   "note": "Fixed isolated startup-free layout discovery verifies the exact managed executable, prefix and unique confined sites. Hostile startup paths and hooks cannot select metadata. Versions come from bounded descriptor-verified singleton project and version fields; cached proofs require fresh matching package and file evidence plus strict cold artifact verification."
   },
   {
    "id": "spawn:fleet/device.py:_ram_used_gb",

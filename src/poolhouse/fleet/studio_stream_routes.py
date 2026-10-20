@@ -15,14 +15,15 @@ from .studio_webhook_service import register as register_webhook
 
 def public_source(row: dict) -> dict:
     return {key: value for key, value in row.items() if key in {
-        'id', 'kind', 'label', 'origin', 'formats', 'available', 'requirements', 'samples', 'default_sample_id', 'template_id'}}
+        'id', 'kind', 'label', 'origin', 'formats', 'available', 'requirements', 'samples', 'default_sample_id', 'template_id', 'provider', 'test_supported'}}
 
 
 def public_subscription(row: dict, service) -> dict:
     return {key: row[key] for key in ('id', 'revision', 'state', 'reason', 'source_id', 'input_node', 'output_nodes', 'destinations') if key in row} | {
         'workflow_id': row['workflow']['id'], 'workflow_revision': row['workflow']['revision'],
         'counts': row.get('counts', {}), 'cursor': row['next_sequence'] - 1,
-        'has_grant': bool(row.get('grant')), 'can_resume': can_resume(row, service)}
+        'has_grant': bool(row.get('grant')), 'can_resume': can_resume(row, service),
+        'webhook_test_pending': service.webhook_setup.pending(row)}
 
 
 def can_resume(row, service) -> bool:
@@ -42,12 +43,17 @@ def sources(handler, service, principal) -> bool:
     if handler.method == 'GET':
         for sample in sample_sets():
             service.store.create('source', principal, {**sample, 'template_id': sample['id'], 'generation': 'examples-v1'}, 'example:' + sample['id'])
-        handler.send(200, {'sources': [public_source(row) for row in service.store.indexed('source', principal['scope'])]})
+        setup = handler.ui.studio_webhook_setup
+        handler.send(200, {'sources': [public_source(setup.describe(row)) for row in service.store.indexed('source', principal['scope'])],
+                           'providers': setup.providers()})
     elif handler.method == 'POST':
         body = object_body(handler)
         if body.get('kind') == 'webhook':
-            row = register_webhook(service, principal, body)
-            handler.ui.studio_webhooks.register(principal, row['id'], row['generation'])
+            if 'provider' in body:
+                row = handler.ui.studio_webhook_setup.register(principal, body)
+            else:
+                row = register_webhook(service, principal, body)
+                handler.ui.studio_webhooks.register(principal, row['id'], row['generation'])
             handler.send(201, {'source': public_source(row)})
             return True
         if set(body) != {'kind', 'resource_id', 'idempotency_key'} or body['kind'] != 'watched_file':
@@ -90,6 +96,14 @@ def subscriptions(handler, service, principal, parts: list[str]) -> bool:
     if len(parts) != 2:
         return False
     action = parts[1]
+    if action == 'test-webhook' and handler.method == 'POST':
+        try:
+            receipt = handler.ui.studio_webhook_setup.send(principal, sub, object_body(handler))
+        except BlockingIOError as exc:
+            handler.send(429, {'error': str(exc)})
+            return True
+        handler.send(202, {'receipt': receipt})
+        return True
     if action in {'start', 'renew', 'resume', 'pause', 'cancel'} and handler.method == 'POST':
         body = object_body(handler)
         if set(body) != {'revision', 'idempotency_key'}:

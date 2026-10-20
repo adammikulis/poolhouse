@@ -80,9 +80,12 @@ class Options:
     retry: Retry = ONCE
     guard: Callable[[str], str] | None = field(default=None, repr=False)
     error_body_limit: int | None = None
+    tls_context: ssl.SSLContext | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, 'headers', MappingProxyType(dict(self.headers)))
+        if self.tls_context is not None and not isinstance(self.tls_context, ssl.SSLContext):
+            raise TypeError('HTTP TLS context must be a software-owned SSLContext')
         limit = self.error_body_limit
         if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or limit < 0):
             raise ValueError('HTTP error body limit must be a nonnegative integer')
@@ -234,9 +237,9 @@ class _Guarded(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, *rest)
 
 
-def _open(request: urllib.request.Request, timeout: float | None, guard: Callable[[str], str] | None
-          ) -> Any:
-    context = _https_context(request.full_url)
+def _open(request: urllib.request.Request, timeout: float | None, guard: Callable[[str], str] | None,
+          context: ssl.SSLContext | None = None) -> Any:
+    context = context if context is not None else _https_context(request.full_url)
     proxies = []
     if guard is not None:
         try:
@@ -272,7 +275,7 @@ def open_stream(url: str, *, data: bytes | None = None, method: str | None = Non
     for attempt in range(tries):
         request = build_request(url, data=data, method=method, headers=dict(options.headers), token=options.token)
         try:
-            response = _open(request, options.timeout, options.guard)
+            response = _open(request, options.timeout, options.guard, options.tls_context)
             response.sealed = request.sealed
             return response
 

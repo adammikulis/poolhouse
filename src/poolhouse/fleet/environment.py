@@ -412,12 +412,12 @@ class Environment:
 
     @maintenance.reading
     def dependency_metadata(self) -> dict:
-        """Reuse verified code/version metadata only against fresh unchanged evidence."""
+        """Reuse verified code and fixed-site installed versions against fresh evidence."""
         try:
             return dependency_proof.read(self)
         except (OSError, ValueError, subprocess.SubprocessError) as error:
             self._cache.pop('dependency_proof', None)
-            return {'companion': None, 'error': str(error), 'packages': self.installed()}
+            return {'companion': None, 'error': str(error), 'packages': {}}
 
     def state(self, vendor: str = "") -> dict[str, Any]:
         have = self.installed()

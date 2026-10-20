@@ -1,0 +1,115 @@
+<script>
+(function () {
+  const S = window.studioModel, E = window.fleetModel.el;
+  S.installWebhook = (proto) => Object.assign(proto, {
+    setupWebhook() {
+      this.webhookName = E('input', {'aria-label': 'Webhook source name', maxlength: 200, autocomplete: 'off'});
+      this.webhookProvider = E('select', {'aria-label': 'Webhook source provider', onchange: () => this.webhookProviderDetails()});
+      this.webhookProviderInfo = E('p', {});
+      this.webhookCreate = E('button', {type: 'button', disabled: true, onclick: () => this.livePerform(() => this.createWebhookSource())}, 'Add webhook source');
+      return E('details', {}, E('summary', {}, 'Add a webhook source'),
+        E('p', {}, 'The built-in sender tests the webhook receiver using registered synthetic records. It does not connect an external account.'),
+        E('label', {}, 'Name', this.webhookName), E('label', {}, 'Provider', this.webhookProvider),
+        this.webhookProviderInfo, this.webhookCreate,
+        E('p', {}, 'External provider accounts: Not connected. External account setup is not available here yet.'));
+    },
+    updateWebhookProviders(providers) {
+      const selected = this.webhookProvider.value;
+      this.webhookProviders = providers || [];
+      this.webhookProvider.replaceChildren(E('option', {value: ''}, 'Choose a provider…'),
+        ...this.webhookProviders.map((provider) => E('option', {value: provider.id, disabled: provider.id !== 'local-synthetic' || provider.available !== true},
+          provider.label + (provider.available === true ? '' : ' · unavailable'))));
+      this.webhookProvider.value = this.webhookProviders.some((provider) => provider.id === selected) ? selected :
+        this.webhookProviders.find((provider) => provider.id === 'local-synthetic')?.id || '';
+      this.webhookProviderDetails();
+    },
+    webhookProviderDetails() {
+      const provider = this.webhookProviders?.find((row) => row.id === this.webhookProvider.value);
+      const ready = provider?.id === 'local-synthetic' && provider.available === true;
+      this.webhookCreate.disabled = !ready;
+      this.webhookProviderInfo.textContent = ready ? 'Local synthetic sender. Adding a source does not start a stream or send a test.' :
+        provider?.requirements?.join('; ') || 'No supported webhook provider is currently available.';
+    },
+    webhookDraftSnapshot() {
+      return JSON.stringify([this.liveGeneration, this.webhookDraftEpoch, this.workflowId, this.editSerial, this.liveSource.value,
+        this.webhookProvider.value, this.webhookName.value]);
+    },
+    async createWebhookSource() {
+      const provider = this.webhookProviders?.find((row) => row.id === this.webhookProvider.value);
+      if (provider?.id !== 'local-synthetic' || provider.available !== true) throw Error('Choose an available built-in test sender.');
+      const label = this.webhookName.value.trim();
+      if (!label) throw Error('Give this webhook source a name.');
+      const snapshot = this.webhookDraftSnapshot();
+      let result;
+      try { result = await this.liveMutation('/sources', {kind: 'webhook', provider: provider.id, label}); }
+      catch (error) { if (snapshot === this.webhookDraftSnapshot()) throw error; return; }
+      if (snapshot !== this.webhookDraftSnapshot()) return;
+      let inventory;
+      try { inventory = await S.api('/sources'); }
+      catch (error) { if (snapshot === this.webhookDraftSnapshot()) throw error; return; }
+      if (snapshot !== this.webhookDraftSnapshot()) return;
+      this.updateWebhookProviders(inventory.providers); this.updateLiveSources(inventory.sources);
+      const source = this.liveSources.find((row) => row.id === result.source.id && row.provider === provider.id);
+      if (!source) throw Error('The created webhook source is unavailable. Refresh sources before choosing it.');
+      this.liveSource.value = source.id; this.liveSourceDetails(); this.webhookName.value = '';
+      this.liveNote.textContent = 'Built-in synthetic webhook source added. Create a paused stream, then start it explicitly before sending a test.';
+    },
+    clearWebhook() {
+      this.webhookProviders = []; this.webhookProvider.replaceChildren(); this.webhookProviderInfo.textContent = '';
+      this.webhookCreate.disabled = true; this.webhookName.value = ''; this.webhookPending?.clear();
+      this.webhookDraftEpoch = (this.webhookDraftEpoch || 0) + 1;
+    },
+    resetWebhookDraft() {
+      if (!this.webhookName) return;
+      this.webhookDraftEpoch = (this.webhookDraftEpoch || 0) + 1; this.webhookName.value = '';
+    },
+    webhookActions(source, sub, action, previousSample, sampleFocused) {
+      if (source?.kind !== 'webhook' || source.provider !== 'local-synthetic') return;
+      this.liveActions.append(E('p', {}, 'Built-in test sender · local synthetic. No external account is connected.'));
+      const sample = E('select', {'aria-label': 'Registered webhook sample'},
+        ...(source.samples || []).map((row) => E('option', {value: row.id}, row.label)));
+      this.webhookPending ||= new Map();
+      const serverPending = sub.webhook_test_pending;
+      if (serverPending && source.samples?.some((row) => row.id === serverPending.sample_id))
+        this.webhookPending.set(JSON.stringify([sub.id, source.id, serverPending.sample_id]),
+          {sample_id: serverPending.sample_id, idempotency_key: serverPending.idempotency_key});
+      const unresolved = [...this.webhookPending].find(([key]) => {
+        const [subscription, sourceId] = JSON.parse(key); return subscription === sub.id && sourceId === source.id;
+      })?.[1];
+      sample.value = unresolved?.sample_id || ([...sample.options].some((option) => option.value === previousSample) ? previousSample : source.default_sample_id || sample.options[0]?.value || '');
+      sample.disabled = !!unresolved;
+      sample.onchange = () => this.liveRenderActions();
+      this.liveActions.append(sample);
+      if (sampleFocused) sample.focus({preventScroll: true});
+      const pending = this.webhookPending?.get(JSON.stringify([sub.id, source.id, sample.value]));
+      action(pending ? 'Check test receipt' : 'Send test webhook', () => this.sendTestWebhook(source, sub, sample.value),
+        source.test_supported !== true || sub.state !== 'active' || !sample.value);
+      if (pending) this.liveActions.append(E('p', {}, 'The previous test request has an uncertain outcome. Checking keeps its original identity and never resends a recorded attempt.'));
+      if (source.test_supported !== true) this.liveActions.append(E('p', {}, (source.requirements || []).join('; ') || 'The built-in sender is unavailable.'));
+    },
+    async sendTestWebhook(source, sub, sample) {
+      if (this.liveSub?.id !== sub.id || this.liveSub.source_id !== source.id || !source.samples?.some((row) => row.id === sample))
+        throw Error('Choose the current stream and a registered webhook sample.');
+      this.stopLive();
+      const generation = this.liveGeneration, workflow = this.workflowId, edit = this.editSerial, selection = this.liveSource.value;
+      const signature = JSON.stringify([sub.id, source.id, sample]);
+      this.webhookPending ||= new Map();
+      if (!this.webhookPending.has(signature)) this.webhookPending.set(signature, {sample_id: sample, idempotency_key: S.id()});
+      const current = () => generation === this.liveGeneration && workflow === this.workflowId && edit === this.editSerial && this.liveSub?.id === sub.id &&
+        this.liveSource.value === selection && this.liveActions.querySelector('select')?.value === sample;
+      try {
+        const result = await S.api('/subscriptions/' + encodeURIComponent(sub.id) + '/test-webhook', this.webhookPending.get(signature));
+        this.webhookPending.delete(signature);
+        if (!current()) return;
+        this.liveNote.textContent = 'Test webhook received · ' + result.receipt.status + '. Local synthetic sender; no external account.';
+        await this.pollLive();
+      } catch (error) {
+        if ([400, 401, 403, 404, 429].includes(error.response?.status)) this.webhookPending.delete(signature);
+        if (!current()) return;
+        await this.pollLive();
+        if (current()) throw error;
+      }
+    },
+  });
+})();
+</script>
