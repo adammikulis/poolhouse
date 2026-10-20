@@ -7,6 +7,7 @@ import os
 import shutil
 import struct
 import subprocess
+import sys
 import tarfile
 from concurrent.futures import ThreadPoolExecutor
 
@@ -305,3 +306,22 @@ def test_archive_rejects_nonlibrary_aliases_even_when_not_installed(tmp_path):
                                              ('other-tool', b'', '../outside')])
     with pytest.raises(ValueError, match='unexpected executable alias'):
         provider_archive.contents(path, hashlib.sha256(path.read_bytes()).hexdigest(), 'fixture')
+
+
+def test_runtime_fifo_is_refused_before_blocking_read(tmp_path):
+    path = tmp_path / 'runtime-fifo'
+    os.mkfifo(path)
+    code = """import runpy, sys
+from pathlib import Path
+read = runpy.run_path(sys.argv[1])['_read']
+try:
+    read(Path(sys.argv[2]))
+except ValueError as exc:
+    assert 'filesystem alias' in str(exc)
+else:
+    raise AssertionError('FIFO accepted as runtime bytes')
+"""
+    done = subprocess.run([sys.executable, '-B', '-I', '-c', code,
+                           provider_archive.__file__, str(path)], cwd=tmp_path,
+                          capture_output=True, text=True, timeout=3)
+    assert done.returncode == 0, done.stdout + done.stderr

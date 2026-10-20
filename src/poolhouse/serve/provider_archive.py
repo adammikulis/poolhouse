@@ -18,7 +18,7 @@ class Entry:
 
 def _read(path: Path) -> bytes:
     """Read only one owned nofollow descriptor, rejecting concurrent replacements/writes."""
-    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         before = os.fstat(descriptor)
         if (not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid()
