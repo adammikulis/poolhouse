@@ -21,6 +21,7 @@
                 "Needs setup": "!",
                 running: "▶",
                 blocked: "⊘",
+                skipped: "↪",
                 interrupted: "?",
                 cancelled: "■",
               }[state] || "○";
@@ -44,6 +45,10 @@
           card.onkeydown = (e) => {
             if (e.target !== card) return;
             if (e.key === "Enter") {
+              if (this.controlPending) {
+                editor.addBranch(this.controlPending, node.id);
+                return;
+              }
               editor.select(node.id, e.shiftKey);
               editor.querySelector(".studio-inspector input")?.focus();
             }
@@ -69,12 +74,19 @@
             }
           };
           card.onclick = (e) => {
+            if (
+              this.controlPending &&
+              !e.target.closest("button,input,textarea,select")
+            ) {
+              editor.addBranch(this.controlPending, node.id);
+              return;
+            }
             if (e.target === card) editor.select(node.id, e.shiftKey);
           };
           head.ondblclick = () =>
             node.type === "group" && editor.enterGroup(node);
           const ports = E("div", { class: "studio-node-ports" });
-          for (const side of ["inputs", "outputs"]) {
+          for (const side of ["inputs", "control_inputs", "outputs"]) {
             const box = E("div", {
               class: side === "outputs" ? "studio-output" : "studio-input",
             });
@@ -89,7 +101,7 @@
                   type: "button",
                   "data-port": port.name,
                   "data-side": side,
-                  "aria-label": `${spec.title} ${side === "inputs" ? "input" : "output"} ${port.name}, ${port.type}`,
+                  "aria-label": `${spec.title} ${side === "outputs" ? "output" : "input"} ${port.name}, ${port.type}`,
                   "aria-pressed": String(!!pending),
                 },
                 (side === "inputs" ? "◉ " : "") +
@@ -132,10 +144,13 @@
           }
           card.append(ports);
           const controls = E("div", { class: "studio-node-controls" });
+          const record = editor.recordControls(controls, node);
           for (const [name, parameter] of Object.entries(
             spec.parameters?.properties || {},
           )
-            .filter(([, v]) => !v.advanced)
+            .filter(
+              ([name, v]) => !v.advanced && !(record && name === "sample"),
+            )
             .slice(0, 2))
             S.field(
               controls,
@@ -148,6 +163,7 @@
                 editor.changed();
               },
             );
+          editor.decisionSetupControls(controls, node);
           card.append(controls);
           const execution = editor.executionSummary(node);
           if (execution) card.append(execution);
@@ -174,6 +190,26 @@
         },
         port(node, port, side) {
           const editor = this.editor;
+          if (side === "control_inputs") {
+            if (this.controlPending)
+              editor.addBranch(this.controlPending, {
+                node: node.id,
+                port: port.name,
+              });
+            else
+              editor.message(
+                "Choose a gate output, then this required branch input.",
+              );
+            return;
+          }
+          if (port.type === "gate") {
+            this.pending = null;
+            this.controlPending = { node: node.id, port: port.name };
+            editor.message(
+              "Choose the node this branch controls, or use Run only when in the inspector.",
+            );
+            return;
+          }
           if (!this.pending) {
             this.pending = S.portReference(node, port, side);
             editor.message(

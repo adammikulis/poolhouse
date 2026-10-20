@@ -9,7 +9,6 @@ head, ``ngram``, or nothing -- and ``spec_draft_max`` the most tree nodes a pass
 from __future__ import annotations
 
 import json
-import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -17,7 +16,7 @@ from typing import Any
 from poolhouse import home, hub
 from poolhouse.hub import room
 from poolhouse.hub.modelfile import safetensors_header
-from poolhouse.serve import kvcache
+from poolhouse.serve import kvcache, python_runtime
 from poolhouse.serve.backend import (
     Lease,
     ServerBackend,
@@ -150,7 +149,7 @@ class MlxTreeBackend(ServerBackend):
 
     def command(self, spec: ServerSpec) -> list[str]:
         kind = drafter_of(spec.draft)
-        argv = [sys.executable, "-m", "poolhouse.serve.mlx_tree_server", str(spec.model),
+        argv = [*python_runtime.command(self.name), str(spec.model),
                 "--port", str(spec.port), "--context", str(spec.context),
                 "--drafter", kind,
                 "--max-nodes", str(spec.spec_draft_max or MAX_NODES),
@@ -174,6 +173,6 @@ class MlxTreeBackend(ServerBackend):
                 raise ServerFailed(report.said())
         log_path = server_log("mlx-tree", spec.port)
         process, base_url, load_s = launch(argv, lease, log_path=log_path,
-                                           timeout=timeout, env=hub_environment())
+                                           timeout=timeout, env=python_runtime.environment_for_child(hub_environment()))
         return ServerInfo(base_url=base_url, port=spec.port, pid=process.pid, backend=self.name,
                           log_path=log_path, load_s=load_s, process=process)

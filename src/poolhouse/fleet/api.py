@@ -24,6 +24,7 @@ from typing import Any
 
 from poolhouse import gate, sealing, sentinel, serverkeys
 from poolhouse.files import promote
+from poolhouse.graph.guard import MAX_BODY
 from poolhouse.http import _open
 from poolhouse.macauth import Verdict, parts
 from poolhouse.sentinel.adapters import watch_authenticator
@@ -41,6 +42,7 @@ from . import (
     projects as project_routes,
     studio_device_routes,
     studio_library,
+    studio_webhooks,
 )
 from .availability import Availability, parse_window
 from .daemon_control import protected
@@ -406,6 +408,8 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             return True
 
         def do_GET(self) -> None:
+            if studio_webhooks.public(ui, self, None):
+                return
             if companion_routes.answer(ui, self):
                 return
             if self.path == "/favicon.ico":
@@ -599,6 +603,11 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             self._send(status, payload)
 
         def do_POST(self) -> None:
+            if self.path.startswith("/studio/ingest/"):
+                body = self._body(MAX_BODY)
+                if body is not None:
+                    studio_webhooks.public(ui, self, body)
+                return
             if daemon.launcher_control and daemon.launcher_control().route(self):
                 return
             if self.path.split("?", 1)[0].startswith("/companion/"):

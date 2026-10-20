@@ -93,7 +93,7 @@ def install_runtime(binary: Path, name: str, *, select: bool = True) -> Path:
     wrapper.chmod(0o700)
     node_binary.install(prefix, wrapper, commit=git(source, "rev-parse", "HEAD"))
     if select:
-        with only_one(worktreerules.landing_lock(source), timeout=15, note="test runtime selection"):
+        with only_one(worktreerules.cutover_lock(source), timeout=15, note="test runtime selection"):
             (runtime.directory() / "selected.json").write_text(json.dumps({"prefix": str(prefix)}), encoding="utf-8")
     return prefix
 
@@ -196,13 +196,13 @@ def test_fixture_selection_waits_for_the_same_runtime_boundary(home, built, monk
     real_lock = only_one
 
     def observed_lock(path, **options):
-        assert path == worktreerules.landing_lock(home / "source")
+        assert path == worktreerules.cutover_lock(home / "source")
         entered.set()
         return real_lock(path, **options)
 
     monkeypatch.setitem(install_runtime.__globals__, "only_one", observed_lock)
     with ThreadPoolExecutor(max_workers=1) as executor:
-        with real_lock(worktreerules.landing_lock(home / "source"), note="held test cutover"):
+        with real_lock(worktreerules.cutover_lock(home / "source"), note="held test cutover"):
             pending = executor.submit(install_runtime, built, "b")
             assert entered.wait(5), "selection writer did not reach the shared boundary"
             assert not pending.done()
@@ -272,7 +272,7 @@ def test_swap_to_a_new_binary_keeps_the_board_and_the_socket(home, built):
     second = install_runtime(newer, "b")
     done = node_launch.swap(state)
     assert done["action"] in {"swapped", "current"} or done == {
-        "action": "deferred", "detail": "node replacement waits for landing"}, done
+        "action": "deferred", "detail": "node replacement waits for the runtime cutover"}, done
     now = waited("the selected binary to answer", lambda: selected_node(state, second))
     assert now["pid"] != old["pid"] and now["sha256"] != old["sha256"] and now["socket"] == old["socket"]
     assert "row before" in posts(state, board(state)[1])
@@ -292,7 +292,7 @@ def test_swap_to_an_unhealthy_binary_rolls_back_to_the_old_one(home, built):
     install_runtime(broken, "c")
     done = node_launch.swap(state, wait_s=4)
     assert (done["action"] == "failed" and "runs the previous binary again" in done["detail"]) or done == {
-        "action": "deferred", "detail": "node replacement waits for landing"}, done
+        "action": "deferred", "detail": "node replacement waits for the runtime cutover"}, done
     now = waited("the attempted target to recover", lambda: recovered_node(state, first, attempted))
     assert now["healthy"] and now["sha256"] == old["sha256"] and now["pinned"]
     assert "row before" in posts(state, board(state)[1])
@@ -330,14 +330,14 @@ def test_runtime_status_line_and_ensure_move_the_node(home, built):
     moved = runtime_cli._with_node(runtime_deploy.Outcome("switched", "d" * 40, "selected"))
     assert moved.action == "switched"
     assert moved.detail.startswith(("selected; node swapped:", "selected; node current:")) or moved.detail == (
-        "selected; node deferred: node replacement waits for landing"), moved
+        "selected; node deferred: node replacement waits for the runtime cutover"), moved
     now = waited("the selected binary to answer", lambda: selected_node(state, second))
     assert now["sha256"] != node_binary.record_of(first)["sha256"]
     broken, attempted = broken_node(home)
     install_runtime(broken, "e")
     refused = runtime_cli._with_node(runtime_deploy.Outcome("switched", "e" * 40, "selected"))
     assert (refused.action == "failed" and "previous binary again" in refused.detail) or (
-        refused.action == "switched" and refused.detail == "selected; node deferred: node replacement waits for landing"), refused
+        refused.action == "switched" and refused.detail == "selected; node deferred: node replacement waits for the runtime cutover"), refused
     recovered = waited("the attempted target to recover", lambda: recovered_node(state, second, attempted))
     assert recovered["socket"] == now["socket"]
     assert "PINNED" in runtime_cli.node_line()

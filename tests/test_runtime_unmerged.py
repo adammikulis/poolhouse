@@ -3,7 +3,7 @@
 from dataclasses import replace
 
 import pytest
-from land_support import Project, git
+from git_world import Project, git
 
 from poolhouse import (
     authority,
@@ -17,7 +17,8 @@ from poolhouse import (
     runtime_unmerged,
     worktreerules,
 )
-from poolhouse.board import place
+from poolhouse.board import place, session as board_session
+from poolhouse.board.client import Denied
 from poolhouse.fleet import runtime_wheel
 from poolhouse.workspace import landing
 
@@ -34,12 +35,10 @@ def reviewed(tmp_path, monkeypatch, workspace_node):
     monkeypatch.delenv("POOLHOUSE_BOARD", raising=False)
     board = place.resolve(workspace_node.client, project.root)
     workspace_node.board = board
-    author = workspace_node.member("source-author")
     reviewer = workspace_node.member("source-reviewer")
     lead = workspace_node.member("runtime-owner")
     project.branch("reviewed-source", {"extra.py": "VALUE = 2\n"})
     sha = git(project.root, "rev-parse", "reviewed-source")
-    workspace_node.session(author).claim("branch", "reviewed-source")
     landing.review(workspace_node.session(reviewer), "reviewed-source", sha, "accept")
     monkeypatch.delenv(authority.FLOOR_ENV, raising=False)
     monkeypatch.setenv("CLAUDECODE", "1")
@@ -103,20 +102,63 @@ def test_branch_movement_invalidates_approval(reviewed):
 
 
 def test_a_branch_with_no_independent_accept_is_not_approved(reviewed):
-    project, node, _, _, _, _ = reviewed
-    node.session(node.members["source-author"]).claim("branch", "unreviewed")
+    project, _, _, _, _, _ = reviewed
     project.branch("unreviewed", {"other.py": "VALUE = 3\n"})
     sha = git(project.root, "rev-parse", "unreviewed")
     with pytest.raises(runtime_source.DeployError, match="standing independent"):
         runtime_unmerged.approve(project.root, sha, "unreviewed")
 
 
-def test_helper_and_lowest_tier_cannot_use_lead_approval(reviewed, monkeypatch):
+def test_the_deploying_lead_cannot_accept_its_own_commit(reviewed):
+    project, node, lead, _, _, _ = reviewed
+    project.branch("own-work", {"mine.py": "VALUE = 4\n"})
+    sha = git(project.root, "rev-parse", "own-work")
+    landing.review(node.session(lead), "own-work", sha, "accept")
+    with pytest.raises(runtime_source.DeployError, match="standing independent"):
+        runtime_unmerged.approve(project.root, sha, "own-work")
+
+
+def test_a_helper_cannot_use_lead_approval(reviewed, monkeypatch):
     project, node, lead, _, sha, branch = reviewed
-    for member in (node.member("helper", parent=lead), node.member("small", model="claude-haiku-5-5")):
-        monkeypatch.setenv(authority.AGENT_ENV, member.name)
-        with pytest.raises(runtime_source.DeployError, match="live eligible lead"):
-            runtime_unmerged.approve(project.root, sha, branch)
+    member = node.member("helper", parent=lead)
+    monkeypatch.setenv(authority.AGENT_ENV, member.name)
+    with pytest.raises(runtime_source.DeployError, match="live lead"):
+        runtime_unmerged.approve(project.root, sha, branch)
+
+
+def test_a_retired_lead_cannot_use_its_own_approval_or_ask_for_one(reviewed):
+    project, node, lead, _, sha, branch = reviewed
+    granted = approval(reviewed)
+    node.session(lead).retire()
+    with pytest.raises(runtime_source.DeployError, match="unavailable"):
+        runtime_source.admit(project.root, sha, allow_unmerged=granted)
+    with pytest.raises(runtime_source.DeployError, match="unavailable"):
+        runtime_unmerged.approve(project.root, sha, branch)
+
+
+def test_a_session_other_than_the_named_actor_cannot_use_the_approval(reviewed, monkeypatch):
+    project, node, lead, _, sha, branch = reviewed
+    granted = approval(reviewed)
+    node.member("stand-in")
+    monkeypatch.setenv(board_session.SUBAGENT_ENV, "stand-in")
+    monkeypatch.setenv(authority.AGENT_ENV, lead.name)
+    with pytest.raises(runtime_source.DeployError, match="live lead"):
+        runtime_unmerged.validate(granted, project.root, sha)
+    with pytest.raises(runtime_source.DeployError, match="live lead"):
+        runtime_unmerged.approve(project.root, sha, branch)
+
+
+def test_a_session_started_by_the_claim_holder_does_not_make_a_review_stand(reviewed):
+    project, node, _, _, _, _ = reviewed
+    author = node.member("source-author")
+    helper = node.member("author-helper", parent=author)
+    project.branch("helped", {"helped.py": "VALUE = 4\n"})
+    sha = git(project.root, "rev-parse", "helped")
+    node.session(author).claim("branch", "helped")
+    with pytest.raises(Denied):
+        landing.review(node.session(helper), "helped", sha, "accept")
+    with pytest.raises(runtime_source.DeployError, match="standing independent"):
+        runtime_unmerged.approve(project.root, sha, "helped")
 
 
 def test_offline_node_cannot_reuse_approval(reviewed):
@@ -202,7 +244,7 @@ def test_reviewed_archive_ignores_replacements_attributes_config_and_path(review
     command = hostile / "git"
     command.write_text(f"#!/bin/sh\ntouch {marker}\nexit 1\n")
     command.chmod(0o700)
-    expected_lock = worktreerules.landing_lock(project.root)
+    expected_lock = worktreerules.cutover_lock(project.root)
     monkeypatch.setenv("PATH", str(hostile))
     monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
     monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.fsmonitor")

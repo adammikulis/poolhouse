@@ -25,7 +25,7 @@ from datetime import datetime
 from pathlib import Path
 
 import github_status
-import land_git as lg
+import sealed_git as lg
 import srcpath  # noqa: F401
 
 from poolhouse import lan, lock

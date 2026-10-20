@@ -31,6 +31,8 @@ def node_catalog() -> list[dict[str, Any]]:
     """Return the fixed node catalogue with training fields from recipe contracts."""
     text = {"type": "string", "default": ""}
     catalog = [
+        _node("stream.record", "Record", "Inputs", {}, {"record": "json"},
+              properties={"sample": {"type": "string", "default": "{}"}}),
         _node("dataset", "Dataset", "Inputs", {}, {"dataset": "dataset"}),
         _node("model", "Model", "Inputs", {}, {"model": "model"}),
         _node("data.validate", "Validate data", "Data", {"dataset": "dataset"}, {"dataset": "dataset", "report": "report"}),
@@ -55,10 +57,16 @@ def node_catalog() -> list[dict[str, Any]]:
         _node("data.synthesize", "Synthesize tool examples", "Data", {"model": "model", "dataset": "dataset"}, {"dataset": "dataset"}, capabilities=["inference"]),
         _node("data.harvest", "Harvest benchmark traces", "Data", {}, {"dataset": "dataset"}),
         _node("gym.recordings", "Reviewed Gym recordings", "Data", {}, {"dataset": "dataset"}, capabilities=["gym"]),
-        _node("gym.train", "Gym policy training", "Training", {"dataset": "dataset"}, {"model": "model", "metrics": "metrics"}, capabilities=["gym"], side_effects=True),
+        _node("gym.train", "Gym policy training", "Training", {}, {"model": "model", "metrics": "metrics"}, capabilities=["gym"], side_effects=True),
         _node("gym.evaluate", "Evaluate Gym policy", "Evaluation", {"model": "model"}, {"metrics": "metrics", "report": "report"}, capabilities=["gym"]),
     ]
     catalog.extend([
+        _node("generate.record", "Generate from assessed sources", "Inference", {"model": "model", "record": "json"},
+              {"text": "text", "response": "json", "report": "report"}, properties={
+                  "trusted_task": {"type": "string", "default": ""},
+                  "question_field": {"type": "string", "default": "question"},
+                  "sources_field": {"type": "string", "default": "retrieved_sources"},
+                  "temperature": {"type": "number", "default": 0, "minimum": 0, "maximum": 2}}, capabilities=["inference"]),
         _node("generate.structured", "Structured response", "Inference", {"model": "model", "prompt": "text"},
               {"text": "text", "response": "json"}, properties={"temperature": {"type": "number", "default": 0.7, "minimum": 0, "maximum": 2},
               "json_schema": {"type": "string", "default": '{"type":"object"}'}}, capabilities=["inference"]),
@@ -69,6 +77,29 @@ def node_catalog() -> list[dict[str, Any]]:
               capabilities=["training"], side_effects=True),
         _node("evaluate.decision", "Evaluate decision model", "Evaluation", {"model": "model", "dataset": "dataset"},
               {"metrics": "metrics", "report": "report"}, capabilities=["evaluation"]),
+    ])
+    decision_properties = {
+        "question": {"type": "string", "default": "Which option best describes this record?"},
+        "options": {"type": "string", "default": '["accept","review"]'},
+        "abstain_below": {"type": "number", "default": 0.8, "minimum": 0, "maximum": 1},
+        "min_margin": {"type": "number", "default": 0.2, "minimum": 0, "maximum": 1},
+    }
+    catalog.extend([
+        _node("decision.predict", "Decide on a record", "Inference", {"record": "json", "model": "decision-model"},
+              {"decision": "decision", "record": "json", "report": "report"}, properties=decision_properties,
+              capabilities=["inference"]),
+        _node("decision.route", "Route a decision", "Inference", {"decision": "decision"},
+              {"allow": "gate", "review": "gate", "block": "gate", "report": "report"},
+              properties={"label": {"type": "string", "default": "accept"}}),
+        _node("guard.injection", "Assess prompt injection", "Inference", {"record": "json", "model": "decision-model"},
+              {"signal": "json", "record": "json", "report": "report", "allow": "gate", "review": "gate", "block": "gate"},
+              properties={"mode": {"type": "string", "enum": ["direct", "indirect"], "default": "indirect"},
+                          "trusted_task": {"type": "string", "default": ""},
+                          "input_fields": {"type": "string", "default": "[]", "title": "Literal record fields (JSON list; [] assesses all)"},
+                          "allow_threshold": {"type": "number", "default": 0.8, "minimum": 0.5, "maximum": 1},
+                          "block_threshold": {"type": "number", "default": 0.8, "minimum": 0.5, "maximum": 1},
+                          "min_margin": {"type": "number", "default": 0.2, "minimum": 0, "maximum": 1}},
+              capabilities=["inference"]),
     ])
     for recipe in recipes():
         fields: dict[str, Any] = {}
@@ -88,7 +119,7 @@ def node_catalog() -> list[dict[str, Any]]:
                              {"model": "model", "metrics": "metrics", "checkpoint": "artifact"}, properties=fields,
                              capabilities=["training"], side_effects=True, recipe=recipe["id"]))
     for spec in catalog:
-        if spec["type"] in ("generate", "generate.structured"):
+        if spec["type"] in ("generate", "generate.structured", "generate.record"):
             spec["parameters"]["properties"]["max_tokens"] = {"type": "integer", "default": 512, "minimum": 1, "maximum": 32768}
         if spec["type"] in ("dataset", "model", "data.harvest", "gym.recordings"):
             resource = {"data.harvest": "traces", "gym.recordings": "recordings"}.get(spec["type"], spec["type"])
@@ -98,8 +129,9 @@ def node_catalog() -> list[dict[str, Any]]:
         if spec["type"] == "gym.recordings":
             spec["bindings"] = {"trajectory": {"kind": "dataset", "required": True}, "reviews": {"kind": "dataset", "required": True}}
         if spec["type"] == "gym.train":
-            spec["parameters"] = _schema({"environment": {"type": "string", "enum": ["", "drone", "car", "traffic-driving", "warehouse", "traffic"], "default": ""},
+            spec["parameters"] = _schema({"environment": {"type": "string", "enum": ["warehouse", "drone", "car", "traffic-driving", "traffic"], "default": "warehouse"},
                 "timesteps": {"type": "integer", "default": 2048, "minimum": 1}, "seed": {"type": "integer", "default": 0}})
+            spec["parameters"]["required"] = ["environment"]
         if spec["type"] == "gym.evaluate":
             spec["parameters"] = _schema({"episodes": {"type": "integer", "default": 5, "minimum": 1}})
         if spec["type"].startswith("train.") and spec["type"] != "train.decision":
@@ -112,7 +144,8 @@ def _model_ports(catalog: list[dict]) -> None:
     outputs = {"train.classify-text": "classifier-model", "train.text-lm": "language-model",
                "train.tool-calls": "language-model", "train.decision": "decision-model", "gym.train": "gym-policy"}
     accepted = {"evaluate": ["model", "language-model", "classifier-model"],
-                "evaluate.decision": ["model", "decision-model"], "gym.evaluate": ["model", "gym-policy"],
+                "evaluate.decision": ["model", "decision-model"],
+                "decision.predict": ["model", "decision-model"], "guard.injection": ["model", "decision-model"], "gym.evaluate": ["model", "gym-policy"],
                 "export": ["model", "language-model", "classifier-model"]}
     for spec in catalog:
         for port in spec["outputs"]:

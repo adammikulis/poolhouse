@@ -1,6 +1,7 @@
 """Sealed Studio execution requests and explicit resource exchange with one enrolled device."""
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -10,11 +11,14 @@ from http.client import IncompleteRead
 from pathlib import Path
 from urllib.parse import quote, urlencode, urlsplit
 
-from poolhouse import http, macauth, sealing
+from poolhouse import macauth, sealing
 from poolhouse.http import ONCE, Options, Sealed, ServerError, open_stream
+from poolhouse.studio.catalog import is_model_type
 from poolhouse.studio.resources import model_files, open_model_file
 
 from . import tls
+from .producer_control import BRIDGE_BYTES
+from .producer_member import ACTIONS as PRODUCER_ACTIONS
 from .studio_transfer import (
     CHUNK_BYTES,
     MANIFEST_BYTES,
@@ -28,7 +32,7 @@ from .studio_transfer import (
     resource_ports,
 )
 
-ACTIONS = frozenset({"validate", "submit", "status", "cancel", "result", "authorize", "resume"})
+ACTIONS = frozenset({"validate", "submit", "status", "cancel", "result", "authorize", "resume", "decision-authorize"}) | PRODUCER_ACTIONS
 MAX_REPLY = MANIFEST_BYTES * 2
 _ID = re.compile(r"[a-f0-9]{32}(?:[a-f0-9]{32})?")
 
@@ -58,7 +62,7 @@ class MemberUncertain(OSError):
 
 class MemberExecution:
     """Exchange fixed Studio actions with the currently selected enrolled member."""
-    def __init__(self, member, authorize):
+    def __init__(self, member, authorize, *, identity: tls.Identity | None = None):
         parts = urlsplit(member.base_url)
         beacon = member.beacon
         if (parts.scheme != "https" or parts.username or parts.password or parts.path not in ("", "/")
@@ -70,13 +74,25 @@ class MemberExecution:
         self.member, self.authorize = member, authorize
         self.base_url, self.machine, self.certificate = member.base_url, beacon.machine, beacon.cert
         self._allowed()
-        http.pin(parts.netloc, tls.pinned_context(beacon.cert))
+        if identity is not None:
+            if not isinstance(identity, tls.Identity):
+                raise TypeError("A resident issuer requires its existing local TLS identity.")
+            context = tls.pinned_context(beacon.cert, who=identity, context_type=tls.ExactContext)
+            # Unlike general discovery, this client must present its existing key.
+            # Do not inherit pinned_context's optional-client failure suppression.
+            context.load_cert_chain(str(identity.certfile), str(identity.keyfile))
+        else:
+            context = tls.pinned_context(beacon.cert, context_type=tls.ExactContext)
+        if not isinstance(context, tls.ExactContext):
+            raise TypeError('Studio device requests require an exact enrolled certificate context.')
+        context.expected_der = base64.b64decode(beacon.cert, validate=True)
+        self.context = context
 
     def _allowed(self):
         if (self.member.base_url != self.base_url or self.member.beacon.machine != self.machine
                 or self.member.beacon.cert != self.certificate):
             raise PermissionError("The selected execution device identity changed.")
-        if self.authorize() is False:
+        if self.authorize() is not True:
             raise PermissionError("This device execution is no longer authorized.")
 
     def _wire(self, method: str, path: str, raw: bytes | None, limit: int) -> bytes:
@@ -89,7 +105,8 @@ class MemberExecution:
             return url
         options = Options(token=self.member.token, headers={sealing.HEADER: "2", "Content-Type": "application/json"},
                           retry=ONCE, timeout=min(self.member.timeout, 30), guard=guard,
-                          error_body_limit=MAX_REPLY + sealing.NONCE_BYTES + 16)
+                          error_body_limit=MAX_REPLY + sealing.NONCE_BYTES + 16,
+                          tls_context=self.context, follow_redirects=False)
         try:
             with open_stream(endpoint, method=method, data=raw, options=options) as response:
                 if response.headers.get(sealing.HEADER) != "1":
@@ -113,9 +130,9 @@ class MemberExecution:
         self._allowed()
         return data
 
-    def _json(self, method: str, path: str, value: dict | None = None) -> dict:
+    def _json(self, method: str, path: str, value: dict | None = None, request_limit: int = MAX_REPLY) -> dict:
         raw = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode() if value is not None else None
-        if raw is not None and len(raw) > MAX_REPLY:
+        if raw is not None and len(raw) > request_limit:
             raise ValueError("The Studio device request exceeds its size limit.")
         value = json.loads(self._wire(method, path, raw, MAX_REPLY))
         if not isinstance(value, dict):
@@ -125,7 +142,8 @@ class MemberExecution:
     def request(self, action: str, payload: dict) -> dict:
         if action not in ACTIONS or not isinstance(payload, dict):
             raise ValueError("Choose a fixed Studio execution action.")
-        return self._json("POST", "/studio/v1/executions/" + action, payload)
+        limit = BRIDGE_BYTES if action == 'producer-publish' else MAX_REPLY
+        return self._json("POST", "/studio/v1/executions/" + action, payload, limit)
 
     @staticmethod
     def _resource(dispatch: str, resource: str, action: str, **query) -> str:
@@ -142,12 +160,15 @@ class MemberExecution:
                 continue
             if not isinstance(value, dict) or not isinstance(value.get("path"), str):
                 raise ValueError("Choose an authorized local input resource.")
-            path = Path(value["path"]).absolute()
-            resource, approved = _input_manifest(value)
-            checked_manifest(resource, resource["bytes"])
-            safe[name] = resource_handle(value, resource)
-            if resource["id"] in resources:
-                continue
+            safe[name] = self._stage_value(dispatch, value, resources)
+        return {"inputs": safe, "resources": list(resources.values())}
+
+    def _stage_value(self, dispatch: str, value: dict, resources: dict) -> dict:
+        path = Path(value["path"]).absolute()
+        resource, approved = _input_manifest(value)
+        checked_manifest(resource, resource["bytes"])
+        safe = resource_handle(value, resource)
+        if resource["id"] not in resources:
             self._json("POST", self._resource(dispatch, resource["id"], "begin"), resource)
             root = path if resource["shape"] == "directory" else path.parent
             for file in resource["files"]:
@@ -157,7 +178,13 @@ class MemberExecution:
             if acknowledged != resource:
                 raise ValueError("The selected device acknowledged different resource content.")
             resources[resource["id"]] = resource
-        return {"inputs": safe, "resources": list(resources.values())}
+        if "base" in value:
+            base = value["base"]
+            if not isinstance(base, dict) or base.get("kind") != "model" or "base" in base:
+                raise ValueError("Checkpoint bases require one explicit model resource.")
+            staged_base = self._stage_value(dispatch, base, resources)
+            safe.update(base_resource=staged_base["resource"], base_digest=value["base_digest"])
+        return safe
 
     def _upload(self, dispatch: str, resource: str, root: Path, file: dict) -> None:
         stream = (open_model_file(file["approved"]) if "approved" in file
@@ -187,6 +214,12 @@ class MemberExecution:
         dispatch = reply.get("dispatch_id")
         if not isinstance(dispatch_id, str) or not _ID.fullmatch(dispatch_id) or dispatch != dispatch_id:
             raise ValueError("The device returned another execution dispatch.")
+        for port in spec["outputs"]:
+            kind = "model" if is_model_type(port["type"]) else port["type"]
+            value = reply["outputs"].get(port["name"])
+            if (value is not None and kind in {"model", "dataset", "artifact"}
+                    and (not isinstance(value, dict) or value.get("kind") != kind or not isinstance(value.get("resource"), str))):
+                raise ValueError("The device output resource kind differs from its declared port.")
         resources = {}
         total = 0
         for resource in reply["resources"]:
@@ -197,6 +230,8 @@ class MemberExecution:
             total += resource["bytes"]
         expected = {value.get("resource") for name, value in reply["outputs"].items()
                     if name in resource_ports(spec, "outputs") and isinstance(value, dict)}
+        expected.update(value["base_resource"] for name, value in reply["outputs"].items()
+                        if name in resource_ports(spec, "outputs") and isinstance(value, dict) and "base_resource" in value)
         if set(resources) != expected:
             raise ValueError("The device returned undeclared output resources.")
         output_dir = Path(output_dir).absolute()

@@ -7,6 +7,8 @@ never killed; a host that cannot be replaced that way is reported and left runni
 
 from __future__ import annotations
 
+import hashlib
+import re
 import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -14,7 +16,6 @@ from typing import NamedTuple
 
 from poolhouse import jobs, runtime
 from poolhouse.fleet import launch
-from poolhouse.fleet.measuring import same_commit
 from poolhouse.runtime_deploy import Outcome
 
 RESTART_WAIT_S = 120.0
@@ -38,11 +39,25 @@ def _health(port: int) -> dict | None:
     return None
 
 
-def _waited(port: int, wanted: str, wait_s: float, health: Callable[[int], dict | None]) -> bool:
+class _Target(NamedTuple):
+    commit: str
+    prefix_digest: str
+    previous: str = ""
+
+
+def _ready(said: dict | None, target: _Target) -> bool:
+    if said is None:
+        return False
+    generation = said.get("launcher_control")
+    return (isinstance(generation, str) and re.fullmatch("[a-f0-9]{32}", generation) is not None
+            and generation != target.previous and said.get("commit") == target.commit
+            and said.get("runtime_prefix_digest") == target.prefix_digest)
+
+
+def _waited(port: int, target: _Target, wait_s: float, health: Callable[[int], dict | None]) -> bool:
     deadline = time.monotonic() + wait_s
     while True:
-        said = health(port)
-        if said is not None and same_commit(str(said.get("commit") or ""), wanted):
+        if _ready(health(port), target):
             return True
         if time.monotonic() >= deadline:
             return False
@@ -63,7 +78,7 @@ def restart(port: int, root: Path, *, wait_s: float = RESTART_WAIT_S, force: boo
 
     The replacement is a detached `poolhouse --restart` run by the selected runtime: it asks the old host to stop at the
     job-preserving boundary, waits for its port to free and starts the new host in the same place. With `wait_s` above 0
-    this returns once the host reports the selected commit.
+    this returns once a different launcher generation reports the exact selected commit and runtime prefix.
     """
     chosen = runtime.available()
     if chosen is None:
@@ -74,14 +89,16 @@ def restart(port: int, root: Path, *, wait_s: float = RESTART_WAIT_S, force: boo
         return Outcome("failed", chosen.commit, f"something holds port {port} and did not answer /health; retry shortly")
     if running is None:
         return Outcome("not-running", chosen.commit, f"nothing answers on port {port}; the next start runs the selected runtime")
-    if not force and same_commit(str(running.get("commit") or ""), chosen.commit):
+    target = _Target(chosen.commit, hashlib.sha256(str(chosen.prefix.resolve()).encode()).hexdigest())
+    if not force and _ready(running, target):
         return Outcome("current", chosen.commit, f"the host on port {port} already runs it")
-    if not running.get("launcher_control"):
+    previous = running.get("launcher_control")
+    if not isinstance(previous, str) or not re.fullmatch("[a-f0-9]{32}", previous):
         return Outcome("failed", chosen.commit, OLD_HOST)
     spawn("poolhouse.fleet.launch", ["--restart", "--no-browser", "--port", str(port), "--root", str(root)],
           log=runtime.directory() / "restart.log")
     if wait_s <= 0:
         return Outcome("restarting", chosen.commit, f"replacing the host on port {port}; log: {runtime.directory() / 'restart.log'}")
-    if _waited(port, chosen.commit, wait_s, health):
+    if _waited(port, target._replace(previous=previous), wait_s, health):
         return Outcome("restarted", chosen.commit, f"the host on port {port} runs it")
-    return Outcome("failed", chosen.commit, f"the host on port {port} still runs another commit after {wait_s:.0f}s; see restart.log")
+    return Outcome("failed", chosen.commit, f"the host on port {port} still runs its previous generation or has not confirmed the selected runtime after {wait_s:.0f}s; see restart.log")

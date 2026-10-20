@@ -31,7 +31,7 @@ PERSISTENCE = [
 ]
 RUNNABLE_WRITES = [
     "x.plist", "tools/x.plist", "x.service", "x.timer", ".mcp.json", "CLAUDE.md", "AGENTS.md", "GEMINI.md", ".cursorrules", ".gitattributes",
-    ".git/info/attributes", "scripts/test", "scripts/land", "scripts/hooks/claude-bash-guard", "docs/CLAUDE.md",
+    ".git/info/attributes", "scripts/test", "scripts/hooks/claude-bash-guard", "docs/CLAUDE.md",
 ]
 
 
@@ -136,7 +136,7 @@ class TestLoginPersistence:
 
     @pytest.mark.parametrize("role", ROLES)
     @pytest.mark.parametrize("command", [
-        "echo x >> .gitattributes", "echo '* filter=x' >> .git/info/attributes", "cp x scripts/hooks/y", "tee -a CLAUDE.md", "cp evil .mcp.json", "mv evil scripts/land",
+        "echo x >> .gitattributes", "echo '* filter=x' >> .git/info/attributes", "cp x scripts/hooks/y", "tee -a CLAUDE.md", "cp evil .mcp.json",
     ])
     def test_a_shell_write_to_those_files_asks(self, world, role, command):
         assert asks(bash(world, role, command)), command

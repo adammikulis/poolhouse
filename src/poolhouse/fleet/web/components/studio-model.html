@@ -6,10 +6,38 @@
     S.empty = () => ({
       nodes: [],
       edges: [],
+      controls: [],
       groups: {},
       layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
     });
     S.id = () => crypto.randomUUID();
+    S.selectionContext = (editor) => {
+      const inherited = editor.context.some(
+        (c) =>
+          Object.keys(c.definition.control_inputs || {}).length ||
+          (c.parent.controls || []).some((e) => e.target.node === c.node.id),
+      );
+      return inherited
+        ? {
+            graph: editor.rootGraph(),
+            selected: new Set([editor.context[0].node.id]),
+            inherited: true,
+          }
+        : { graph: editor.graph, selected: editor.selected, inherited: false };
+    };
+    S.selectionDependencies = (graph, selected) => {
+      const ids = new Set(selected);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const edge of [...graph.edges, ...(graph.controls || [])])
+          if (ids.has(edge.target.node) && !ids.has(edge.source.node)) {
+            ids.add(edge.source.node);
+            changed = true;
+          }
+      }
+      return ids;
+    };
     S.compatible = (output, input) =>
       (input.accepted_types || [input.type]).includes(output.type);
     S.portReference = (node, port, side) => ({
@@ -35,17 +63,17 @@
       return r;
     };
     S.spec = (editor, node, seen = []) => {
-      if (node.type !== "group")
-        return (
-          editor.specs.find(
-            (s) => s.type === node.type && s.version === node.version,
-          ) || {
-            title: node.type,
-            inputs: [],
-            outputs: [],
-            parameters: { properties: {} },
-          }
-        );
+      if (node.type !== "group") {
+        const spec = editor.specs.find(
+          (s) => s.type === node.type && s.version === node.version,
+        ) || {
+          title: node.type,
+          inputs: [],
+          outputs: [],
+          parameters: { properties: {} },
+        };
+        return node.name ? { ...spec, title: node.name } : spec;
+      }
       if (seen.includes(node.group) || seen.length > 16)
         return {
           title: "Invalid recursive group",
@@ -85,6 +113,11 @@
         family: "Saved groups",
         inputs: ports("inputs"),
         outputs: ports("outputs"),
+        control_inputs: Object.keys(group.control_inputs || {}).map((name) => ({
+          name,
+          type: "gate",
+          required: true,
+        })),
         parameters: { properties },
       };
     };

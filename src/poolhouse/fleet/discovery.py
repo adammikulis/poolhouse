@@ -24,7 +24,7 @@ from poolhouse.files import write_json
 from poolhouse.log import warn
 from poolhouse.platform import private_file
 
-from . import tls, wsl_network
+from . import studio_epoch, tls, wsl_network
 from .membership import Roster, fingerprint_of, roster
 from .pool_modes import validate
 
@@ -219,6 +219,9 @@ def leave(group: str, path: Path | str | None = None) -> list[Membership]:
     """Drop a pool. The machine stops answering to it at once."""
     held = memberships(path)
     rows = [m for m in held if m.group != group]
+    leaving = [hashlib.sha256(m.key).hexdigest() for m in held if m.group == group]
+    if leaving:
+        studio_epoch.invalidate(key_path(path).parent, leaving, "leave")
     _write_memberships(rows, path)
     for gone in held:
         if gone.group == group and not any(m.key == gone.key for m in rows):

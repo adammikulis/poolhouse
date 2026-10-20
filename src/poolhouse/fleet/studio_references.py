@@ -5,6 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from poolhouse.studio.checkpoint_assets import prepare_checkpoint
+from poolhouse.studio.decision_inventory import staged_resource
+
 PATH_FIELDS = frozenset({"base", "base_id", "base_model_name_or_path", "tokenizer_file", "directory",
                          "checkpoint_path", "resume_from_checkpoint", "model_path", "vocab_file", "merges_file",
                          "sentencepiece_model_file"})
@@ -32,7 +35,7 @@ def _references(value, root: Path, files: set[str]) -> None:
             _references(item, root, files)
 
 
-def validate_models(inputs: dict, manifests: list[dict], hydrated: dict) -> None:
+def validate_models(inputs: dict, manifests: list[dict], hydrated: dict, output_dir: Path | None = None) -> None:
     """Reject external loader references before any worker or compute admission."""
     by_id = {manifest["id"]: manifest for manifest in manifests}
     for name, value in inputs.items():
@@ -44,8 +47,17 @@ def validate_models(inputs: dict, manifests: list[dict], hydrated: dict) -> None
         path = Path(hydrated[name]["path"])
         root = path if manifest["shape"] == "directory" else path.parent
         files = {entry["name"] for entry in manifest["files"]}
-        if any(Path(filename).name == "state.json" for filename in files):
-            raise ValueError("Checkpoint reuse requires an explicitly staged base override.")
+        if value.get("format") == "pointer":
+            hydrated[name] = staged_resource(path, manifest["files"])
+            continue
+        if "state.json" in files:
+            if output_dir is None:
+                raise ValueError("Checkpoint reuse requires an explicitly staged base override.")
+            prepared = prepare_checkpoint(path, hydrated[name].get("base"), manifest["files"], output_dir / ("input-" + name))
+            hydrated[name].update(prepared)
+            configuration = json.loads((Path(prepared["path"]) / "state.json").read_text())["config"]
+            hydrated[name].update(recipe=configuration["recipe"], framework=configuration["framework"])
+            continue
         for filename in files:
             if filename.endswith(".json"):
                 with (root / filename).open() as source:

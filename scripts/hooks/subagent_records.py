@@ -7,12 +7,12 @@ import json
 import os
 from pathlib import Path
 
-import workspace_hook
+import hook_state
 
 
 def folder() -> Path:
     """The private directory holding one record per subagent."""
-    path = workspace_hook.state_dir() / "subagents"
+    path = hook_state.state_dir() / "subagents"
     path.mkdir(parents=True, exist_ok=True, mode=0o700)
     return path
 

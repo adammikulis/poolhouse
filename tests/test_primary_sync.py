@@ -11,7 +11,7 @@ from pathlib import Path
 
 import primary_sync
 import pytest
-from land_support import DEV, Project, git as run_git
+from git_world import DEV, Project, git as run_git
 
 from poolhouse import lock
 

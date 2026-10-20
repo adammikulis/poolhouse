@@ -69,6 +69,9 @@ branch from the development branch. `poolhouse.harnesshook pre` applies the same
 and local-model sessions the launchers start (add a `[[hooks.PreToolUse]]` entry running it to a
 Codex config the launchers did not write), and `scripts/hooks/primary-only` refuses a commit by an
 agent in the primary checkout or on the development branch. Tests: `tests/test_worktree_rules.py`.
+`claude-wrap-up` (PostToolUse) counts each subagent's tool calls in an append-only file under the hook state
+directory, injects a wrap-up instruction as additional context at 120 calls and again at 140, and
+`claude-subagent-stop` clears the count. Tests: `tests/test_wrap_up_hook.py`.
 
 The paths an agent never writes, and the shell forms that write them, are in `src/poolhouse/protectedwrites.py`,
 which `worktreerules` loads for both guards and for the local-model harness. The guards, `.claude/settings*.json`,
@@ -82,10 +85,8 @@ a file into, and a `chmod -R` that only adds permissions is not refused. The per
 and the other settings that decide what git runs, `gh pr merge` without the person's release approval, and `gh` or
 `curl` writing to rulesets, secrets, releases or settings are refused. `scripts/hooks/claude-tool-guard` applies
 the same paths to `Read`, `Glob`, `Grep` and MCP tools, refuses the owner's own browser, and lets only the main
-session stop a task. `scripts/land` and the pre-push hook require a standing independent accept of the exact commit for guarded
-repository source changes (`protectedwrites.REVIEWED`). Keystore, system approval and release
-authorization remain person-only. Tests: `tests/test_protected_writes.py`, `tests/test_protected_tools.py`,
-`tests/test_land_guards.py`.
+session stop a task. Keystore, system approval and release
+authorization remain person-only. Tests: `tests/test_protected_writes.py`, `tests/test_protected_tools.py`.
 
 What `no-real-names` takes for a name, and what stands a name-shaped pair down, is data:
 `contracts/name-shapes.json` holds the place prefixes and suffixes (a gazetteer's
@@ -102,10 +103,10 @@ rules file instead of the shipped one.
 
 ### Hook failures and runtime cutover checks
 
-The rules are in AGENTS.md, "Hook failures are active incidents" and "Activating a fix"; this is
+The rules are in AGENTS.md, "Hook failures are active incidents" and "Updating to a fix"; this is
 the procedure.
 
-After changing or activating a runtime, exercise the installed hook commands for pre, post and
+After changing or updating a runtime, exercise the installed hook commands for pre, post and
 stop under the owning authenticated session. Check the actual launcher interpreter, the
 distribution revision, the structured output and the exit status: source tests and a daemon
 health response do not establish which hook runtime is active. Preserve any diagnostic ID and
@@ -138,7 +139,7 @@ When a development hook fails repeatedly, or the owner asks to fix it:
   though a broken hook succeeded.
 - Complete the authorized build, isolated installation and exact-command smoke before
   requesting any required host trust review. Preserve active jobs, original configuration and
-  rollback artifacts. Never fabricate a trust hash or bypass authorization to activate a change.
+  rollback artifacts. Never fabricate a trust hash or bypass authorization to update to a change.
 - Completion requires the actual configuration selecting the repaired artifact, required trust
   approval saved, and a successful installed invocation on the available hardware. Verify the
   normal host-triggered hook too; report any remaining reload or verification step. A source

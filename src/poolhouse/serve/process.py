@@ -142,6 +142,15 @@ def started_at(pid: int | None) -> float | None:
         return None
 
 
+def owns_connection(pid: int, local: tuple, remote: tuple) -> bool:
+    """Whether this process owns the exact client connection, without trusting its claim."""
+    try:
+        return any(tuple(row.laddr) == local and tuple(row.raddr) == remote
+                   for row in psutil.Process(pid).net_connections(kind="tcp"))
+    except (psutil.Error, OSError):
+        return False
+
+
 def cmdline_digest(pid: int | None) -> str | None:
     """A digest of ``pid``'s command line, or None when it is not running or will not say."""
     if not pid_exists(pid):
@@ -286,14 +295,17 @@ def running_within(path: Path) -> list[int]:
                    for word in [info.get("exe") or "", info.get("cwd") or "", *(info.get("cmdline") or [])])]
 
 
-def readable(attrs: list[str]) -> list[tuple[Any, dict]]:
-    """Every process whose ``attrs`` could be read, as (process, values); one that exits mid-read is skipped."""
+def readable(attrs: list[str], *, uncertain: bool = False) -> list[tuple[Any, dict]]:
+    """Read process attributes; retain unknown entries when an idle proof requires them."""
     found = []
     for proc in psutil.process_iter():
         try:
             found.append((proc, proc.as_dict(attrs)))
-        except (psutil.Error, OSError, SystemError):
+        except psutil.NoSuchProcess:
             continue
+        except (psutil.Error, OSError, SystemError):
+            if uncertain:
+                found.append((proc, dict.fromkeys(attrs)))
     return found
 
 

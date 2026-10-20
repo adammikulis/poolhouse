@@ -181,7 +181,6 @@ abuse by one session is not kept (the owner never asked for one). The security f
 | `pytest timeout` | 120 s a test | `pyproject.toml:268` | one test that hangs; a longer one carries `@pytest.mark.timeout(N)` | the owner |
 | `CI test timeout` | 120 s a test | `.github/workflows/ci.yml:108` | the same limit on the pushed commit | the owner |
 | `CI shard timeout` | 30 minutes | `.github/workflows/ci.yml:46` | one of the eight test shards that hangs | the owner |
-| `STOP_GRACE_S` | 90.0 s | `scripts/land_exec.py:32` | seconds a land leader gets to cancel its test jobs before its process group is killed | the owner |
 | `REFUSALS` | 2 | `scripts/hooks/stop_landed.py:16` | stops of one subagent refused for work development lacks before it may stop; the stop hook's other refusal is a test job it could not cancel (`scripts/hooks/stop_jobs.py`) | the owner |
 | `ci_watch WAIT_S` | 180 | `scripts/ci_watch.py:34` | seconds the watcher waits for a run to appear | the owner |
 | `ci_watch POLL_S` | 60 | `scripts/ci_watch.py:35` | seconds between asks of GitHub while a run is watched | the owner |

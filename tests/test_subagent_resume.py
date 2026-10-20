@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from land_support import DEV, World, git
+from git_world import DEV, World, git
 from node_kit import SRC
 
 from poolhouse.board import session as board_session
@@ -78,7 +78,7 @@ def scene(tmp_path, workspace_node, monkeypatch):
     return Scene(world, lead, tree)
 
 
-def test_a_worker_that_hands_back_unlanded_work_is_resumed_with_its_own_token_to_claim_and_land(scene):
+def test_a_worker_that_hands_back_unlanded_work_is_resumed_with_its_own_token_to_claim(scene):
     assert scene.refused() and scene.refused()
     assert not scene.refused(), "the third stop goes through"
     assert scene.token_works()
@@ -88,8 +88,6 @@ def test_a_worker_that_hands_back_unlanded_work_is_resumed_with_its_own_token_to
     for kind, key in (("branch", f"agent-{AGENT}"), ("worktree", str(scene.tree))):
         claimed = scene.node.cli("claim", kind, key, who=scene.child)
         assert claimed.returncode == 0 and scene.child.name in claimed.stdout, claimed.stderr
-    code, out = scene.world.land(scene.tree, "--dry-run", who=scene.child)
-    assert code == 0, out
 
 
 def test_a_worker_is_retired_when_it_stops_with_its_branch_landed_and_not_before(scene):

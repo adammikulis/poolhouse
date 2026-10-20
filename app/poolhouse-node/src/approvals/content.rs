@@ -24,7 +24,7 @@ pub fn risk_of(action: &str) -> (&'static str, &'static str) {
         "shard_call" => (SENSITIVE, "It sends tests and their files to run on another device."),
         "shard_consent" => (SENSITIVE, "It lets other devices run code here."),
         "land_trust" => (SENSITIVE, "It makes this device count the tasks, grants and reviews another device wrote."),
-        "task_authority" => (SENSITIVE, "It acts for you on tasks, including accepting them and recording landings."),
+        "task_authority" => (SENSITIVE, "It acts for you on tasks, including accepting them and marking them done."),
         "quarantine_release" => (SENSITIVE, "It releases a held message that may carry instructions meant to mislead an agent."),
         "link_write" => (SENSITIVE, "Another board can write into this one."),
         "source_add" => (SENSITIVE, "It makes a folder part of a project, so the project's agents can read it."),
@@ -127,7 +127,7 @@ pub fn sentence(action: &str, resource: &str) -> String {
         "shard_call" => format!("Send test runs to the device {named}."),
         "shard_consent" => format!("Let other devices send test runs here ({named})."),
         "land_trust" => format!("Count the board entries of the device {named} as if they were made here."),
-        "task_authority" => format!("Act for you on tasks ({named}): assign, review, record a landing."),
+        "task_authority" => format!("Act for you on tasks ({named}): assign, review, mark done."),
         "note_verify" => format!("Record that a note's command was run ({named})."),
         "quarantine_release" => format!("Release the held message {named} so agents can read it."),
         "file_delete" => format!("Delete the shared file {named} for good."),
@@ -207,7 +207,7 @@ pub fn grants_text(d: &Draft) -> (String, String, &'static str) {
     out.push(format!("RISK: {}. {worst}", risk.to_uppercase()));
     out.push(d.ctx.said_line());
     let kind = if d.who.parent.is_empty() { "a main session".to_string() } else { format!("a subagent of {}", d.who.parent) };
-    let claim = if d.who.verified { format!("verified as {} in {}", d.who.model, d.who.harness) } else { format!("which says it is {} in {} (unverified)", d.who.model, d.who.harness) };
+    let claim = if d.who.verified { format!("verified as {} in {}", d.who.model, d.who.harness) } else if d.who.model.is_empty() { format!("which names no model in {} (unverified)", d.who.harness) } else { format!("which says it is {} in {} (unverified)", d.who.model, d.who.harness) };
     out.push(format!("WHO: {}, {claim}, {kind}, on device {}, board {}.", d.who.name, d.who.device, d.who.board));
     out.push(d.ctx.verdict_line());
     out.push(d.ctx.taint_line());

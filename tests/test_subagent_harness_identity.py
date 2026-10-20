@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from land_support import DEV, World
+from git_world import DEV, World
 from node_kit import SRC
 
 from poolhouse import authority
@@ -91,13 +91,13 @@ def scene(tmp_path, workspace_node, monkeypatch):
 
 
 def test_a_general_purpose_subagent_with_an_empty_brief_is_registered_and_records_a_review_with_no_flag(scene):
-    tree, sha = scene.world.start("fix/x", {"docs/a.md": "changed\n"})
+    _, sha = scene.world.start("fix/x", {"docs/a.md": "changed\n"})
     context = scene.start("rev1")
     child = scene.name("rev1")
     assert child and child != scene.lead.name and f"You are the subagent {child}, spawned by {scene.lead.name}" in context
     done = scene.run("rev1", f"poolhouse-workspace land-review fix/x {sha} --verdict accept")
     assert done.returncode == 0, done.stderr
-    accepts = scene.node.client.call("land_accepts", scene.node.board, scene.lead.token, branch="fix/x", sha=sha, worktree=str(tree))
+    accepts = scene.node.client.call("land_accepts", scene.node.board, scene.lead.token, sha=sha)
     assert child in json.dumps(accepts) and scene.lead.name not in json.dumps(accepts)
 
 
@@ -120,7 +120,7 @@ def test_a_stale_agent_name_falls_back_to_the_callers_own_identity(scene):
     assert scene.node.cli("whoami", "--agent", "claude-000000").returncode == 3
 
 
-def test_a_resumed_worker_keeps_its_identity_and_claims_and_lands_with_no_flag(scene, tmp_path, monkeypatch):
+def test_a_resumed_worker_keeps_its_identity_and_claims(scene, tmp_path, monkeypatch):
     tree = scene.world.proj.branch("agent-w1", {"docs/a.md": "changed\n"})
     private = tmp_path / "private-terms"
     private.write_text("finished\n")
@@ -134,8 +134,6 @@ def test_a_resumed_worker_keeps_its_identity_and_claims_and_lands_with_no_flag(s
     for kind, key in (("branch", "agent-w1"), ("worktree", str(tree))):
         claimed = scene.run("w1", f"poolhouse-workspace claim {kind} {key}", cwd=tree)
         assert claimed.returncode == 0 and child in claimed.stdout, claimed.stderr
-    dry = scene.run("w1", f"{sys.executable} scripts/land --dry-run", cwd=tree)
-    assert dry.returncode == 0, dry.stdout + dry.stderr
 
 
 def test_a_finished_reviewer_is_retired_and_its_name_stops_working(scene):

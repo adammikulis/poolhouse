@@ -26,7 +26,7 @@ takeover or board epoch.
    is a replicated record (section 7). Person approvals use the chat-attested channel of
    `person-delegation.md`; machine settings stay human-only.
 6. Pool size is 1 to N with no special case (section 3).
-7. Model rules from earlier notes stand: the lowest tier never coordinates, an agent is never a human, every
+7. Rules from earlier notes stand: no model identifier decides a right, an agent is never a human, every
    agent acts as itself.
 
 ## 1. Where the code does not support this
@@ -58,7 +58,7 @@ takeover or board epoch.
   Section 7 adds all three; it is the largest new piece.
 - Identity: agent ids are bare names in one registry (`identity.py:157`, `_live` `:275-280`); two devices
   that each ran alone can both hold `claude-code`. Section 4 keys agents by creating device.
-- `person_record`/`consume` and the model tier table are not in the tree; until they land approval is a
+- `person_record`/`consume` are not in the tree; until they land approval is a
   terminal `HumanGrant` (`sentinel/human.py:35-66`).
 
 ## 2. Vocabulary
@@ -202,10 +202,9 @@ summary is what lets other devices decide a row is settled.
 ### Replica coordinator
 
 Computed by every device from the presence summaries and the membership fold; no lease, no election, no
-message. Eligibility, all from replicated fields: a main session (`coordinator_eligible`,
+message. Eligibility, all from replicated fields: a main session (`session_kind`,
 `session-liveness.md` section 1(e)); role agent; live (the summary's `valid_until` plus `skew_max` is in the
-future); tier not the lowest of its family; model verified (`session-liveness.md` section 5). Rank:
-tier descending, `registered_hlc` ascending, then `session_key`. Each device submits only its own best
+future). Rank: `registered_hlc` ascending, then `session_key`. Each device submits only its own best
 candidate (the device coordinator), so the answer is the minimum over N candidates.
 
 - **Same answer for any N and any partition shape**: the rank is a total order over replicated fields, and
@@ -213,15 +212,12 @@ candidate (the device coordinator), so the answer is the minimum over N candidat
   that is a partition, not a bug.
 - **Complexity**: O(N) for a full evaluation; O(log N) per updated summary with a heap. The device
   coordinator is O(sessions on the device).
-- **No preemption by joining**: a later registration never outranks an earlier one at the same tier.
-  Tier demotion (`session-liveness.md` section 5.4) changes the summary and re-ranks.
+- **No preemption by joining**: a later registration never outranks an earlier one.
 - **Partition**: each side derives its own coordinator after the other's summaries pass `valid_until`.
   Decisions carry `coord: (session, rank)`. On merge, every decision taken under a coordinator that is not
   the merged minimum is shown `made under a split coordinator`, and CAS decisions are re-decided by the
   fold (below). A person-visible `status` line says `coordinator: <name> (provisional: 2 seen)`.
-- **Lowest tier**: a device whose only main sessions are lowest tier has no candidate; it spawns a
-  coordinating subagent (nominated by its parent, verified model passes the tier check). The helper's
-  parent linkage is in the summary; a transient helper is not a coordinator by naming.
+- **Subagents**: a transient helper is not a coordinator by naming or model label; its parent linkage is in the summary.
 
 ### Decisions
 
@@ -236,7 +232,7 @@ candidate (the device coordinator), so the answer is the minimum over N candidat
 | Landing the shared development branch | none | git atomic ref update at the remote; the session that wins the push lands; losers fetch and retry. A `landing` row is a record only |
 | Test-result reuse entries | none | content-keyed rows, merge is union |
 | Mint a token for an agent on this device | the creating device | signed `agent-create` |
-| Enroll or remove a device; designate a coordinator; tier table edit | a person | authorization row (section 7) |
+| Enroll or remove a device; designate a coordinator | a person | authorization row (section 7) |
 | Machine settings, daemons, guards | a person at a terminal | not replicated |
 
 ### Claim compare-and-set
@@ -292,7 +288,7 @@ status list): `local` (logged), `synced n/m` (m = active members reached recentl
 
 ### Person approvals
 
-Enrolling a device, revoking one, designating a coordinator and editing the tier table are authorization
+Enrolling a device, revoking one and designating a coordinator are authorization
 kinds in the closed registry of `person-delegation.md` section 7. The attesting device writes an
 `authorization` row carrying the attestation reference; the fold applies the action only if the row's
 origin is a member and the kind is in the registry. Devices cannot independently verify what the person said:
@@ -406,7 +402,7 @@ Each slice leaves the current coordinator path working until slice 6. File lists
 2. **Claims and tasks as folds.** `claims.py`, `task_actions.py`, `taskboard.py` write rows and read the
    claim fold; Conflict raised from the visible view; `coordinator_calls.py` call nodes replaced by `idem`.
 3. **Presence and the derived coordinator.** `workspace/presence.py` register, derivation, `status` line,
-   device coordinator lock, tier gate; the `session-liveness.md` slices fold in here.
+   device coordinator lock; the `session-liveness.md` slices fold in here.
 4. **Membership, enrollment records, revocation, snapshots, bounded fan-out, mutual TLS.**
    `workspace/membership.py`, `fleet/tls.py` client authentication, `fleet/onboard` enrollment signing,
    retention and compaction.

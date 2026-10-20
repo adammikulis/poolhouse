@@ -1,0 +1,128 @@
+<script>
+  (function () {
+    const S = window.studioModel,
+      E = window.fleetModel.el;
+    S.installRecords = (proto) =>
+      Object.assign(proto, {
+        recordControls(host, node) {
+          if (node.type !== "stream.record") return false;
+          const path = this.context.map((c) => c.node.id),
+            key = [...path, node.id].join("/");
+          const input = E("textarea", {
+            rows: 7,
+            "aria-label": "Sample record JSON",
+            "data-record-draft": key,
+          });
+          input.value =
+            this.recordDrafts?.get(key)?.value ??
+            node.parameters.sample ??
+            "{}";
+          const check = () => {
+            try {
+              const value = JSON.parse(input.value);
+              if (!value || Array.isArray(value) || typeof value !== "object")
+                throw Error();
+              input.setCustomValidity("");
+              this.recordDrafts?.delete(key);
+              return true;
+            } catch {
+              input.setCustomValidity(
+                "Enter a JSON object for the sample record.",
+              );
+              this.recordDrafts ||= new Map();
+              this.recordDrafts.set(key, {
+                path,
+                node: node.id,
+                value: input.value,
+              });
+              return false;
+            }
+          };
+          const apply = () => {
+            if (!check()) {
+              input.reportValidity();
+              return;
+            }
+            this.checkpoint();
+            node.parameters.sample = input.value;
+            this.changed();
+          };
+          input.oninput = check;
+          input.onchange = apply;
+          check();
+          const samples = this.templates.flatMap((t) => {
+            const sample = t.graph?.nodes.find(
+              (n) => n.type === "stream.record",
+            )?.parameters?.sample;
+            try {
+              return sample
+                ? [
+                    {
+                      title: t.title,
+                      label: "Synthetic example",
+                      record: JSON.parse(sample),
+                    },
+                  ]
+                : [];
+            } catch {
+              return [];
+            }
+          });
+          if (samples.length) {
+            const select = E(
+              "select",
+              { "aria-label": "Choose synthetic sample" },
+              E("option", { value: "" }, "Choose a synthetic sample…"),
+              ...samples.map((v, i) =>
+                E("option", { value: String(i) }, v.title + " · " + v.label),
+              ),
+            );
+            select.onchange = () => {
+              if (select.value === "") return;
+              input.value = JSON.stringify(
+                samples[Number(select.value)].record,
+                null,
+                2,
+              );
+              apply();
+            };
+            host.append(E("label", {}, "Synthetic examples", select));
+          }
+          host.append(
+            E("label", {}, "Sample record JSON", input),
+            E(
+              "p",
+              {},
+              "This record is untrusted input. Run workflow sends it to your configured model. Synthetic examples do not demonstrate production accuracy.",
+            ),
+          );
+          return true;
+        },
+        validateRecordControls() {
+          const root = this.rootGraph();
+          for (const [key, draft] of this.recordDrafts || []) {
+            let graph = root;
+            for (const id of draft.path) {
+              const instance = graph?.nodes.find((n) => n.id === id);
+              graph = instance ? root.groups[instance.group] : null;
+            }
+            if (!graph?.nodes.some((n) => n.id === draft.node)) {
+              this.recordDrafts.delete(key);
+              continue;
+            }
+            this.openContext(root, draft.path);
+            this.selected = new Set([draft.node]);
+            this.render();
+            const input = [
+              ...this.querySelectorAll("[data-record-draft]"),
+            ].find((n) => n.dataset.recordDraft === key);
+            input?.focus();
+            input?.reportValidity();
+            throw Error(
+              "Correct the sample record JSON before saving or running.",
+            );
+          }
+        },
+      });
+  })();
+</script>

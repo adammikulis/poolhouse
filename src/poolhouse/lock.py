@@ -54,6 +54,16 @@ def _fileno(handle: Any) -> int:
     return handle if isinstance(handle, int) else handle.fileno()
 
 
+def _windows():
+    import msvcrt
+    return msvcrt
+
+
+def windows_handle(fd: int) -> int:
+    """Return the native handle for a CRT descriptor used by Windows file locks."""
+    return _windows().get_osfhandle(fd)
+
+
 def take(handle: Any, *, shared: bool = False) -> bool:
     """Take the lock on an open file without waiting.
 
@@ -63,7 +73,7 @@ def take(handle: Any, *, shared: bool = False) -> bool:
     """
     handle = _fileno(handle)
     if sys.platform == "win32":
-        import msvcrt
+        msvcrt = _windows()
 
         os.lseek(handle, _LOCKED_BYTE, os.SEEK_SET)
         try:
@@ -90,7 +100,7 @@ def release(handle: Any) -> None:
     """Give back the lock taken on an open file by `take`."""
     handle = _fileno(handle)
     if sys.platform == "win32":
-        import msvcrt
+        msvcrt = _windows()
 
         os.lseek(handle, _LOCKED_BYTE, os.SEEK_SET)
         msvcrt.locking(handle, msvcrt.LK_UNLCK, 1)

@@ -1,7 +1,8 @@
-//! Independent reviews of landing commits as board entries. A review names one commit of one branch and a
-//! verdict, and the node stamps it with the reviewer's name and model. The lander asks which reviews of a
-//! commit stand: the node leaves out every session that ever held the claim on the branch or on its worktree,
-//! and the caller itself.
+//! Reviews of commits as board entries. A review names a commit, the branch it was written under and a
+//! verdict, and the node stamps it with the reviewer's name and model. A review is advice; the push check asks
+//! which reviews of the commit being pushed stand, and a runtime deployment of an unmerged commit asks for an accept.
+//! Given a branch or a worktree, the node leaves out every session that ever held its claim, every session started by
+//! one of those (through any number of subagents), and the caller itself.
 
 use std::collections::BTreeMap;
 
@@ -103,12 +104,12 @@ fn audit(node: &mut Node, board: &str, actor: &str, event: &str, subject: &str, 
     Ok(())
 }
 
-/// The session of this board behind ``token``, live; a retired or linked-in session does not land work.
+/// The session of this board behind ``token``, live; a retired or linked-in session does not use the reviews.
 fn member(node: &mut Node, token: &str, board: &str) -> Result<String> {
     let access = node.access(token, board, true)?;
     let retired = node.host(board)?.names.get(&access.actor).is_none_or(|i| i.retired);
     if access.holder.board != board || retired {
-        return Err(Error::Denied("only a live session of this board uses its landing reviews".into()));
+        return Err(Error::Denied("only a live session of this board uses its reviews".into()));
     }
     Ok(access.actor)
 }
@@ -116,7 +117,10 @@ fn member(node: &mut Node, token: &str, board: &str) -> Result<String> {
 /// Every session of this device that ever acquired the claim on ``branch`` (from the board's lease entries) or on the worktree
 /// ``worktree`` (from this device's record of worktree claims, which write no entry).
 fn creators(node: &mut Node, board: &str, branch: &str, worktree: &str) -> Result<Vec<String>> {
-    let mut keys = vec![format!("claim:branch:{board}/{branch}")];
+    let mut keys = Vec::new();
+    if !branch.is_empty() {
+        keys.push(format!("claim:branch:{board}/{branch}"));
+    }
     if !worktree.is_empty() {
         keys.push(format!("claim:worktree:{worktree}"));
     }
@@ -129,38 +133,51 @@ fn creators(node: &mut Node, board: &str, branch: &str, worktree: &str) -> Resul
     Ok(who)
 }
 
+/// Whether ``name`` is one of ``creators`` or was started by one, through any number of subagents.
+fn on_creator_side(node: &mut Node, board: &str, creators: &[String], name: &str) -> Result<bool> {
+    Ok(node.host(board)?.names.line_of(name).iter().any(|up| creators.contains(up)))
+}
+
 fn review(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let actor = member(node, token, board)?;
     let (branch, sha, verdict) = (text(p, "branch"), text(p, "sha"), text(p, "verdict"));
     let body = json!({"ev": "review", "branch": branch, "sha": sha, "verdict": verdict, "standing": stamp(node, board, &actor)?});
-    if creators(node, board, branch, "")?.contains(&actor) {
-        return Err(Error::Denied("a session that held the claim on a branch does not review it".into()));
+    let creators = creators(node, board, branch, "")?;
+    if on_creator_side(node, board, &creators, &actor)? {
+        return Err(Error::Denied("a session that held the claim on a branch, or one started by it, does not review it".into()));
     }
     write(node, board, &actor, body)?;
     audit(node, board, &actor, "land.review", &format!("{branch}@{sha}"), verdict)?;
     Ok(json!({"branch": branch, "sha": sha, "verdict": verdict}))
 }
 
-/// The reviews of ``sha`` under ``branch`` that stand for the caller: the last of each reviewer of this device, left out when the
-/// reviewer is the caller or ever held the claim on the branch or the worktree. The creators of record come back with them.
+/// The reviews of ``sha`` written on this device under any branch name that stand for the caller: the last of each reviewer, left
+/// out when the reviewer is the caller or, given ``branch`` or ``worktree``, ever held the claim on it or was started by a session
+/// that did. The creators of record of ``branch`` and ``worktree`` come back with them.
 fn accepts(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let caller = member(node, token, board)?;
     let (branch, sha, worktree) = (text(p, "branch"), text(p, "sha"), text(p, "worktree"));
-    if !plain_branch(branch) || !full_sha(sha) || worktree.len() > 1024 || !is_line(worktree) {
-        return bad("accepts names a plain branch, the full commit and one line for the worktree");
+    if (!branch.is_empty() && !plain_branch(branch)) || !full_sha(sha) || worktree.len() > 1024 || !is_line(worktree) {
+        return bad("accepts names the full commit, and optionally a plain branch and one line for the worktree");
     }
     let own = node.host(board)?.board.origin().to_string();
     let creators = creators(node, board, branch, worktree)?;
     let entries = node.view(board)?;
     let mut last: BTreeMap<String, &Entry> = BTreeMap::new();
     for e in entries.iter().filter(|e| e.kind == Kind::Landing && e.origin == own && field(e, "ev") == "review" && !e.fields.contains_key("req")) {
-        if field(e, "sha") == sha && field(e, "branch") == branch {
+        if field(e, "sha") == sha {
             last.insert(e.sender.clone(), e);
         }
     }
+    let mut barred = Vec::new();
+    for by in last.keys() {
+        if on_creator_side(node, board, &creators, by)? {
+            barred.push(by.clone());
+        }
+    }
     let reviews: Vec<Value> = last.into_iter()
-        .filter(|(by, _)| *by != caller && !creators.contains(by))
-        .map(|(by, e)| json!({"by": by, "verdict": field(e, "verdict"), "ts_ms": e.hlc.0, "standing": e.fields.get("standing").cloned().unwrap_or(Value::Null)}))
+        .filter(|(by, _)| *by != caller && !barred.contains(by))
+        .map(|(by, e)| json!({"by": by, "branch": field(e, "branch"), "verdict": field(e, "verdict"), "ts_ms": e.hlc.0, "standing": e.fields.get("standing").cloned().unwrap_or(Value::Null)}))
         .collect();
     Ok(json!({"sha": sha, "branch": branch, "reviews": reviews, "creators": creators}))
 }

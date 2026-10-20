@@ -17,7 +17,7 @@ SCRIPT = '''
 import json, os, signal, subprocess, sys
 path, argv = sys.argv[1], sys.argv[2:]
 try:
-    child = subprocess.Popen(argv, creationflags=getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0))
+    child = subprocess.Popen(argv, **globals().get('_launch_options', {}), creationflags=getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0))
 except (OSError, ValueError) as exc:
     sys.stderr.write('failed to start: %s\\n' % exc)
     code = -1
@@ -30,6 +30,8 @@ else:
     for name in ('SIGTERM', 'SIGINT', 'SIGHUP', 'SIGBREAK'):
         if hasattr(signal, name):
             signal.signal(getattr(signal, name), forward)
+    if '_studio_started' in globals():
+        _studio_started(child)
     code = child.wait()
 descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, 'O_NOFOLLOW', 0), 0o600)
 with os.fdopen(descriptor, 'w') as stream:
@@ -40,9 +42,9 @@ os._exit(code if code >= 0 else 128 - code)
 '''
 
 
-def command(directory, argv):
+def command(directory, argv, *, setup=''):
     """The argument vector that runs ``argv`` and records how it ended in ``directory``."""
-    return [sys.executable, '-I', '-c', SCRIPT, str(Path(directory) / NAME), *argv]
+    return [sys.executable, '-I', '-c', setup + SCRIPT, str(Path(directory) / NAME), *argv]
 
 
 def clear(directory):

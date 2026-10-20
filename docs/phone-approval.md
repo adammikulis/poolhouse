@@ -185,8 +185,10 @@ a line out. A source that is wired in later fills the same fields and changes no
 
 The model and harness on the `WHO:` line are what
 the session said about itself when it registered, and the line says `(unverified)` unless the node checked the model. A session chooses
-those strings, so the node keeps only letters, digits and `._/-` of them, at most 48 characters, and a character that is anything
-else becomes a hyphen: a session cannot write a line of the text through its model name. A notice about a requester whose name
+those strings, so the node keeps a harness as letters, digits and `._/-`, at most 48 characters, with any other character a hyphen,
+and a model only when it is an id (1 to 80 letters, digits and `._:/+@-`, starting with a letter or digit; `:`, `+` and `@` are kept as
+hyphens, at most 48 characters): a claim that is not an id is no model, and the line says `which names no model`. A session cannot
+write a line of the text through either. A notice about a requester whose name
 is not plain shows the odd characters as hyphens, so every notice can be signed and the person can always block.
 
 The `RISK:` level is fixed per action in `approvals::content::risk_of` (a table, not a judgement of the agent): `sync_now`,

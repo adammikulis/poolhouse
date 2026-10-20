@@ -553,7 +553,7 @@ class UpdateRuntime:
     git: Git | None = None
     pip: Callable[[Path], tuple[int, str]] = pip_install
     restart: Callable[[], Any] | None = None
-    admission: Callable[[], contextlib.AbstractContextManager[Any]] = contextlib.nullcontext
+    admission: Callable[..., contextlib.AbstractContextManager[Any]] = contextlib.nullcontext
 
 
 @dataclass(frozen=True, slots=True)
@@ -606,7 +606,8 @@ def _unsigned(run: Git, target: str = "FETCH_HEAD") -> str:
     return "" if rc == 0 else (out or "verify-commit failed")
 
 
-def track_once(source: TrackedBranch, *, runtime: UpdateRuntime = _DEFAULT_RUNTIME) -> Pulled:
+def track_once(source: TrackedBranch, *, runtime: UpdateRuntime = _DEFAULT_RUNTIME,
+               idle: Callable[[], bool] = lambda: True) -> Pulled:
     """Fast-forward a signed branch and install its immutable wheel before restarting."""
     repo_url, branch = source.repo_url, source.branch
     checkout = Path(source.install_dir).expanduser()
@@ -636,33 +637,48 @@ def track_once(source: TrackedBranch, *, runtime: UpdateRuntime = _DEFAULT_RUNTI
         return Pulled(branch, was=local, now=local, remote=head,
                       error=f"could not fetch {branch}: {out}")
 
-    refused = _unsigned(run, local if _same(local, head) else "FETCH_HEAD")
+    rc, out = run(["rev-parse", "FETCH_HEAD"])
+    fetched = out.split()[0] if rc == 0 and out.split() else ""
+    if fetched != head:
+        return Pulled(branch, was=local, now=local, remote=head,
+                      error="the fetched update target changed; it is left alone")
+    refused = _unsigned(run, fetched)
     if refused:
         return Pulled(branch, was=local, now=local, remote=head,
                       error=f"{branch} at {head[:7]} is not signed by the release key, "
                             f"so it is not pulled: {refused}")
 
-    if _same(local, head):
-        return _install_branch(Pulled(branch, was=local, now=local, remote=head),
+    if not _same(local, head):
+        rc, _ = run(["merge-base", "--is-ancestor", local, fetched])
+        if rc != 0:
+            return Pulled(branch, was=local, now=local, remote=head, diverged=True,
+                          error=f"{checkout} has commits {branch} does not, so it is left "
+                                "alone. Merge or reset it by hand, then it follows again.")
+
+    def current() -> bool:
+        if not idle():
+            return False
+        before = run(["rev-parse", "HEAD"])
+        candidate = run(["rev-parse", "FETCH_HEAD"])
+        return (before[0] == candidate[0] == 0 and before[1].strip() == local
+                and candidate[1].strip() == fetched
+                and not (_same(local, head) and _same(_installed_commit(), local)))
+
+    if not current():
+        return Pulled(branch, was=local, now=local, remote=head)
+    with runtime.admission(current):
+        if not current():
+            return Pulled(branch, was=local, now=local, remote=head)
+        if _same(local, head):
+            return _install_branch(Pulled(branch, was=local, now=local, remote=head),
+                                   checkout, runtime.pip, bring_back)
+        rc, out = run(["merge", "--ff-only", fetched])
+        if rc != 0:
+            return Pulled(branch, was=local, now=local, remote=head,
+                          error=f"git merge --ff-only failed, so this machine keeps the code "
+                                f"it has: {out}")
+        return _install_branch(Pulled(branch, was=local, now=fetched, remote=head, pulled=True),
                                checkout, runtime.pip, bring_back)
-
-    rc, _ = run(["merge-base", "--is-ancestor", "HEAD", "FETCH_HEAD"])
-    if rc != 0:
-        return Pulled(branch, was=local, now=local, remote=head, diverged=True,
-                      error=f"{checkout} has commits {branch} does not, so it is left "
-                            f"alone. Merge or reset it by hand, then it follows again.")
-
-    rc, out = run(["merge", "--ff-only", "FETCH_HEAD"])
-    if rc != 0:
-        return Pulled(branch, was=local, now=local, remote=head,
-                      error=f"git merge --ff-only failed, so this machine keeps the code "
-                            f"it has: {out}")
-
-    rc, out = run(["rev-parse", "HEAD"])
-    now = out.split()[0] if rc == 0 and out.split() else head
-
-    return _install_branch(Pulled(branch, was=local, now=now, remote=head, pulled=True),
-                           checkout, runtime.pip, bring_back)
 
 
 def _install_branch(result: Pulled, checkout: Path,
@@ -686,13 +702,12 @@ def track(source: TrackedBranch, *, idle: Callable[[], bool] = lambda: True,
         while not schedule.rounds or seen < schedule.rounds:
             seen += 1
             try:
-                with runtime.admission():
-                    if idle():
-                        got = track_once(source, runtime=runtime)
-                        note(checked_at=time.time(), error=got.error,
-                             commit=got.now or LAST.get("commit", ""))
-                        if got.restarted:
-                            return
+                if idle():
+                    got = track_once(source, runtime=runtime, idle=idle)
+                    note(checked_at=time.time(), error=got.error,
+                         commit=got.now or LAST.get("commit", ""))
+                    if got.restarted:
+                        return
             except Busy:
                 pass
             except Exception as exc:                  # noqa: BLE001 - a loop that dies stops following
@@ -729,7 +744,7 @@ def selected_commit() -> str:
 
 
 def follow_runtime(*, idle: Callable[[], bool], schedule: UpdateSchedule = _FOLLOW_SCHEDULE,
-                   admission: Callable[[], contextlib.AbstractContextManager[Any]] = contextlib.nullcontext
+                   admission: Callable[..., contextlib.AbstractContextManager[Any]] = contextlib.nullcontext
                    ) -> threading.Thread | None:
     """Restart this process onto the selected runtime when it is behind it and nothing is in the way.
 
@@ -740,14 +755,20 @@ def follow_runtime(*, idle: Callable[[], bool], schedule: UpdateSchedule = _FOLL
 
     def loop() -> None:
         time.sleep(schedule.first_after_s)
-        while True:
+        seen = 0
+        while not schedule.rounds or seen < schedule.rounds:
+            seen += 1
             try:
-                with admission():
-                    chosen = selected_commit()
-                    if chosen and not _same(chosen, _installed_commit()) and idle():
-                        note(commit=chosen)
-                        if restart_after_update():
-                            return
+                chosen = selected_commit()
+                def current(chosen=chosen) -> bool:
+                    return selected_commit() == chosen and bool(chosen) and not _same(chosen, _installed_commit()) and idle()
+
+                if current():
+                    with admission(current):
+                        if current():
+                            note(commit=chosen)
+                            if restart_after_update():
+                                return
             except Busy:
                 pass
             except (OSError, ValueError, subprocess.SubprocessError) as exc:
@@ -759,9 +780,13 @@ def follow_runtime(*, idle: Callable[[], bool], schedule: UpdateSchedule = _FOLL
     return thread
 
 
-def apply_if_newer() -> dict[str, Any]:
-    """Put the newest release in place, if there is one. Says what happened."""
-    if running_path() is None:
+def apply_if_newer(*,
+                   admission: Callable[..., contextlib.AbstractContextManager[Any]] = contextlib.nullcontext,
+                   ready: Callable[[], bool] = lambda: True,
+                   restart: Callable[[], Any] | None = None) -> dict[str, Any]:
+    """Resolve a verified newer release before admitting its installation."""
+    target = running_path()
+    if target is None:
         return {"ok": False, "installed": False,
                 "error": "this copy was installed with pip; update it with pip"}
     now = current_version()
@@ -772,20 +797,31 @@ def apply_if_newer() -> dict[str, Any]:
         asset = asset_for(release)
         if asset is None:
             return {"ok": False, "installed": False,
-                    "error": f"release {release.version} has no download for "
-                             "this machine"}
-        archive = download_release(release, asset,
-                                   tempfile.mkdtemp(prefix="poolhouse-update-"))
-        install(archive)
+                    "error": f"release {release.version} has no download for this machine"}
+        with tempfile.TemporaryDirectory(prefix="poolhouse-update-") as directory:
+            archive = download_release(release, asset, directory)
+
+            def current() -> bool:
+                return ready() and running_path() == target and current_version() == now
+
+            if not current():
+                return {"ok": True, "installed": False, "version": current_version()}
+            with admission(current):
+                if not current():
+                    return {"ok": True, "installed": False, "version": current_version()}
+                install(archive, app_path=target)
+                result = {"ok": True, "installed": True, "version": release.version}
+                if restart is not None:
+                    result["restarted"] = bool(restart())
+                return result
     except UpdateError as exc:
         return {"ok": False, "installed": False, "error": str(exc)}
-    return {"ok": True, "installed": True, "version": release.version}
 
 
 def watch(*, wanted: Callable[[], bool], idle: Callable[[], bool],
           restart: Callable[[], Any] | None = None,
           schedule: UpdateSchedule = _RELEASE_SCHEDULE,
-          admission: Callable[[], contextlib.AbstractContextManager[Any]] = contextlib.nullcontext) -> threading.Thread:
+          admission: Callable[..., contextlib.AbstractContextManager[Any]] = contextlib.nullcontext) -> threading.Thread:
     """Check releases on a schedule and install them when the machine is idle."""
     bring_back = restart if restart is not None else restart_after_update
     # Recorded here rather than from inside the thread: which mode this machine is in is
@@ -799,12 +835,12 @@ def watch(*, wanted: Callable[[], bool], idle: Callable[[], bool],
         while not schedule.rounds or seen < schedule.rounds:
             seen += 1
             try:
-                with admission():
-                    if wanted() and idle():
-                        got = apply_if_newer()
-                        note(checked_at=time.time(), error=str(got.get("error") or ""))
-                        if got.get("installed") and bring_back():
-                            return
+                if wanted() and idle():
+                    got = apply_if_newer(admission=admission, ready=lambda: wanted() and idle(),
+                                         restart=bring_back)
+                    note(checked_at=time.time(), error=str(got.get("error") or ""))
+                    if got.get("restarted"):
+                        return
             except Busy:
                 pass
             except Exception as exc:                  # noqa: BLE001

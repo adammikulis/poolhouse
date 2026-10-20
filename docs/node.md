@@ -181,10 +181,11 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `hello` | | | `{node, version, pid, fingerprint, device (the certificate fingerprint grants and approvals name), build, build_seq, wire}` |
 | `lineage` | | | `{lineage}`: the processes the node reads for the one asking, from it up to the shell of its terminal, each `{pid, start}`; the last is the `anchor` a person signs for |
 | `register` | board | `model, harness, session` (token = parent, or the session's own token) | `{name, token, created, parent, origin}`; a main session already registered is answered only to its lineage, and the token it gets is bound to the lineage it registers from |
+| `register_person` | board | `session` (token = none, or the person's own session's token) | as `register`, for the person's own main session (harness `poolhouse-ui`, model `person`), which the node marks `person`; `register` and `whoami` refuse the harness `poolhouse-ui` |
 | `rebind` | board | `harness, session, at_ms, nonce, anchor, by, sig` (a person key's signature) | `{name, moved, tokens_ended}` |
 | `whoami` | board, token | `model, harness` (claim what you run on) | `{name, board, target, identity}` |
 | `session_lookup` | board | `harness, session` | `{name}` (denied when none is registered) |
-| `agents` | board, token | `retired` | `{agents: [{name, parent, family, model, model_state, harness, retired, retired_reason, seen_ms, idle}]}`; retires the sessions idle for a day first |
+| `agents` | board, token | `retired` | `{agents: [{name, parent, family, model, model_state, harness, retired, retired_reason, person, seen_ms, idle}]}`; retires the sessions idle for a day first |
 | `retire` | board, token | `target` (empty = yourself), `reason` (`done`, the default, `revoked` or `forged`) | `{name, retired, reason, by, tokens_revoked, leases_released, subagents_retired}` |
 | `post` | board, token | `kind` (message or note), `idem`, `fields` | `{id, seq, sender, status}` |
 | `read` | board, token | `since` (cursor map), `kind`, `channel`, `by` (sender), `limit`, `inbox` (direct messages and what the caller's subscriptions and mentions send to its inbox), `digest` (what its digest subscriptions collected), `mentions`, `with`, `thread` (a message and every reply under it), `head` (no entries: the cursor of now), `files` (file messages only) | `{entries, cursor}` |
@@ -300,8 +301,8 @@ that parent's token, or under another parent, is `denied`, and so is registering
 identity retired and writes one identity entry that says who ended it (`retired_by`) and what that released (`detail`). A session retires itself, and a main session takes its subagents with it;
 a parent (any ancestor) retires a descendant; a session retires no other main session. The end has a reason, recorded on the identity and in its
 ending entry: `done` (an ordinary end, such as a worker whose work is finished) or, given only by a parent and never
-by a session about itself, `revoked` or `forged` (an end for cause, which the landing runner holds against the work
-the session asked for or reviewed). The node itself ends a session as `idle` (see below). A main session that ended `done` or
+by a session about itself, `revoked` or `forged` (an end for cause, after which the reviews the session wrote no longer count). The node itself ends a session as `idle` (see below). A main session that ended `done` or
+
 `idle` registers again as the same session, from the lineage it was registered from and on the same terms as before it ended
 (a retired subagent never does); its old tokens stay refused and it is given a new one.
 
@@ -331,20 +332,14 @@ never runs `verify_cmd`: a client does and records `exit` and the SHA-256 of the
 **Landing reviews** are the `landing` entries of the board (channel `#landing`): a `review` names a plain `branch` (never
 `main` or `master`), a full 40-character `sha`, a `verdict` (`accept` or `reject`) and the `standing` the node stamps on it
 (the sender's name, model and model state at that moment, never taken from the caller). `land_review` writes one for the
-live session behind the token and refuses a session that ever held `claim branch BRANCH`. `land_accepts` (`branch`, `sha`,
-`worktree`) answers `scripts/land` and the push hook: the last review of each reviewer of this device for exactly that commit
-and branch, without the caller and without any session that ever acquired `claim branch BRANCH` or `claim worktree PATH`
-(read from the board's lease entries, whatever branch a reviewer wrote), and the `creators` it found; an empty list means no
-creator is on record. A review row appended by hand under a creator's name is left out the same way. Entries of the
+live session behind the token. `land_accepts` (`sha`, and optionally `branch` and `worktree`) answers the push hook and the unmerged runtime deployment: the last review of
+each reviewer of this device for exactly that commit under any branch name, without the caller and, given a branch or worktree,
+without any session that ever held its claim or was started by one (through any number of subagents); a session of that kind
+cannot write a review of the branch either, and the creators of record come back with the answer. Entries of the
 retired landing queue (`request`, `cancel`, `pause`, `resume`, `state`, `beat`, and reviews of a request) fold and count
 for nothing.
-A model's tier is not the node's to judge, so `landing.eligible` in Python bars the lowest tier and an
-unlisted model from landing or reviewing, and `landing.standing` re-derives each reviewer's tier from the stamped model and
-drops a reviewer retired as `revoked` or `forged`. The tier
-comes from `src/poolhouse/workspace/model_tiers.json` (families `anthropic`, `openai` and `qwen`;
-docs/model-benchmarks.md, section 1): a local agent claims the id `localmodel.model_identity` gives, which
-drops the quantisation, so the `qwen` family lists those short ids and every quantisation of Qwen3.8-27B and
-Qwen3.8-Flash-Next above its lowest tier, on the same claimed-id trust as the other families.
+`landing.rejected` and `landing.standing` drop a reviewer retired as `revoked` or `forged`. No model identifier decides who may land, review or
+coordinate: the model on a review is the id the session claimed, kept as a label.
 
 A review counts only when this device wrote it. The device list (`<state>/land_trust.json`, kept per pool, empty by default,
 never replicated) decides whose `task` and `grant` entries count besides this device's own; it is changed by `land_trust`
@@ -384,8 +379,7 @@ body holds no fractions: times are whole milliseconds. Followers (`task_watch`) 
 others are shown under `foreign_ignored`. The `task` claim kind is the node's own: `claim` refuses it and `claims` does not list it.
 
 **Stubs.** One check waits for the trust ledger and is a stub that allows nothing: model verification (no session is ever
-`verified`, so `landing.eligible` reads a listed model id as claimed, and a grant naming a verified model or a verified class
-holds for nobody yet).
+`verified`, so a grant naming a verified model or a verified class holds for nobody yet).
 
 The Rust client (`client::Client`, `client::ensure_running`) finds a dead socket, takes
 `start.lock` (single-flight, so callers queue and the second finds the first's node), spawns
@@ -687,7 +681,7 @@ worktree, an area, a port, a server or an install (`lease::types::DEVICE_CLAIMS`
 (a path of its disk, a port or server of its network, an area spelled under the path of its repository), so no other device can hold
 or ask for it: the device's table keeps it (`leases.json`) and the board is not told. A lease that holds only such claims is
 not mirrored (`Lease::on_board`); a lease that holds a branch or a task claim with them is. The sessions that held a worktree
-claim are kept in `worktree-holders.json` (`lease/holders.rs`: at most `max_worktree_records` for one process tree and `MOST_HOLDERS` in all, kept 90 days, a new path past either refused, never one dropped to make room), which the landing reviews read to leave
+claim are kept in `worktree-holders.json` (`lease/holders.rs`: at most `max_worktree_records` for one process tree and `MOST_HOLDERS` in all, retained without age-out, a new path past either refused, never one dropped to make room), which the landing reviews read to leave
 a branch's creator out of its reviewers. The holder of an expired device-only claim is still told by a notice.
 
 ## Sync

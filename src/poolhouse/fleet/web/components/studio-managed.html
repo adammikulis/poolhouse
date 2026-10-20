@@ -1,0 +1,92 @@
+<script>
+(function () {
+  const S = window.studioModel, M = window.fleetModel, E = M.el;
+  S.installManaged = (proto) => Object.assign(proto, {
+    setupManaged() {
+      const button = (title, fn) => E('button', {type: 'button', onclick: () => this.livePerform(fn)}, title);
+      this.managedPath = '';
+      this.managedCrumbs = E('nav', {class: 'studio-toolbar', 'aria-label': 'Uploaded folder navigation'});
+      this.managedNote = E('p', {'aria-live': 'polite'});
+      this.liveManaged = E('select', {'aria-label': 'Uploaded file or folder', onchange: () => this.managedControls()});
+      this.managedOpen = button('Open selected folder', () => this.browseManaged(this.managedSelection().path, true));
+      this.managedWatch = button('Watch uploaded copy', () => this.createManagedSource());
+      this.invalidateManaged();
+      return E('div', {}, this.managedCrumbs, E('label', {}, 'Uploaded file or folder', this.liveManaged),
+        E('div', {class: 'studio-toolbar'}, this.managedOpen, this.managedWatch,
+          button('Refresh uploaded files', () => this.browseManaged(this.managedPath, true))), this.managedNote);
+    },
+    invalidateManaged(clearPath = false) {
+      this.managedRequest = Symbol(); this.managedReady = false; this.managedLoading = false;
+      this.managedRows = []; this.managedCrumbs?.replaceChildren();
+      if (clearPath) this.managedPath = '';
+      this.liveManaged?.replaceChildren(E('option', {value: ''}, 'Choose an uploaded file or folder…'));
+      this.managedControls();
+    },
+    managedEditorCurrent(context) {
+      return context && context.workflow === this.workflowId && context.graph === this.rootGraph()
+        && context.edit === this.editSerial && context.group === (this.context || []).map((item) => item.node.id).join('/')
+        && !this.liveBox.hidden && !this.host.hidden;
+    },
+    managedCurrent(context) {
+      return this.managedEditorCurrent(context) && context.token === this.managedRequest
+        && context.generation === this.liveGeneration;
+    },
+    managedControls() {
+      if (!this.liveManaged) return;
+      const valid = this.managedReady && this.managedCurrent(this.managedContext);
+      if (!valid) this.liveManaged.value = '';
+      const selected = valid && this.managedRows.find((row) => row.path === this.liveManaged.value);
+      this.liveManaged.disabled = this.managedLoading;
+      this.managedOpen.disabled = !selected?.directory || selected.path === this.managedPath;
+      this.managedWatch.disabled = !selected;
+    },
+    managedSelection() {
+      const selected = this.managedReady && this.managedCurrent(this.managedContext)
+        && this.managedRows.find((row) => row.path === this.liveManaged.value);
+      if (!selected) throw Error('Choose an uploaded file or folder from the current folder.');
+      return selected;
+    },
+    async browseManaged(path = '', focus = false) {
+      this.invalidateManaged(); this.managedLoading = true; this.managedControls();
+      this.managedNote.textContent = 'Opening uploaded folder…';
+      const context = {token: this.managedRequest, generation: this.liveGeneration, workflow: this.workflowId,
+        graph: this.rootGraph(), edit: this.editSerial, group: (this.context || []).map((item) => item.node.id).join('/')};
+      try {
+        const result = await M.api('/ui/workspace/files?path=' + encodeURIComponent(path));
+        if (!this.managedCurrent(context)) return;
+        if (!result.ok) {
+          M.refused(result);
+          throw Object.assign(Error(result.error || 'Uploaded files are unavailable.'), {response: result});
+        }
+        if (result.path !== path || !Array.isArray(result.files)) throw Error('Uploaded folder is unavailable.');
+        const prefix = path ? path + '/' : '';
+        this.managedRows = result.files.filter((row) => typeof row.name === 'string'
+          && row.name && !row.name.startsWith('.') && !/[\\/]/.test(row.name)
+          && row.path === prefix + row.name && (path || !['jobs', 'studio', 'studio-device-resources'].includes(row.name))
+          && (row.directory === true || /\.(csv|jsonl)$/i.test(row.name)));
+        if (path) this.managedRows.unshift({path, name: 'This folder: ' + path, directory: true});
+        this.managedPath = path; this.managedContext = context; this.managedReady = true;
+        this.liveManaged.replaceChildren(E('option', {value: ''}, 'Choose an uploaded file or folder…'),
+          ...this.managedRows.map((row) => E('option', {value: row.path}, (row.directory ? 'Folder · ' : '') + row.name)));
+        const crumbs = [E('button', {type: 'button', onclick: () => this.livePerform(() => this.browseManaged('', true))}, 'Uploaded files')];
+        let current = '';
+        for (const segment of path.split('/').filter(Boolean)) {
+          current += (current ? '/' : '') + segment;
+          const folder = current;
+          crumbs.push(E('span', {}, '/'), E('button', {type: 'button', onclick: () => this.livePerform(() => this.browseManaged(folder, true))}, segment));
+        }
+        this.managedCrumbs.replaceChildren(...crumbs);
+        this.managedNote.textContent = 'Choose a CSV or JSONL file, or explicitly select a folder to watch its files.';
+        return context;
+      } catch (error) {
+        if (this.managedCurrent(context)) this.liveError(error);
+      } finally {
+        if (context.token === this.managedRequest) {
+          this.managedLoading = false; this.managedControls();
+          if (focus && this.managedReady && this.managedCurrent(context)) this.liveManaged.focus();
+        }
+      }
+    },
+  });
+})();
+</script>

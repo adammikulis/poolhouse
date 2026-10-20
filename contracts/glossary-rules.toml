@@ -408,3 +408,13 @@ say = "remove a member; revoke only a key, token or grant"
 family = "revoke"
 pattern = '\b(?:device|member|machine)s? (?:is |was |are |were |gets? |got )?revoked\b'
 say = "remove a member; revoke only a key, token or grant"
+
+[[gate]]
+family = "update"
+pattern = '\bactivat(?:e|es|ed|ing|ion)\b[ \w`"-]{0,24}\b(?:a fix|the fix|a change|the change|a runtime|the runtime|the build|a build|owner|steps|handoffs?)\b'
+say = "moving the installed build or runtime to a newer one is an update: updating, updated, update owner"
+
+[[gate]]
+family = "update"
+pattern = '\b(?:landed|published|installed-runtime|installing or|changing or)[ ,\w-]{0,24}\bactivat(?:e|es|ed|ing|ion)\b'
+say = "moving the installed build or runtime to a newer one is an update: updating, updated, update owner"

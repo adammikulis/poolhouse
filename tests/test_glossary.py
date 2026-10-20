@@ -74,6 +74,8 @@ def test_an_allowed_word_is_only_allowed_where_the_allowlist_says():
     ("a seat in the harness", "seat"), ("peer.rs", "peer"), ("the host board", "board-kind"),
     ("a remote board", "board-kind"), ("the project board", "board-kind"), ("the Dev cluster", "home-pool"),
     ("revoke the device", "revoke"), ("a revoked device", "revoke"),
+    ("the activation owner", "update"), ("Activating a fix", "update"), ("the landed, activated result", "update"),
+    ("changing or activating a runtime", "update"),
 ])
 def test_the_scan_finds_each_banned_word_in_the_shapes_it_takes(text, family):
     assert family in {f for _, _, f in VOCAB.findings(text, "docs/x.md")}
@@ -82,6 +84,7 @@ def test_the_scan_finds_each_banned_word_in_the_shapes_it_takes(text, family):
 @pytest.mark.parametrize("text", [
     "repair the file", "a socketpair", "pairwise distances", "a seatbelt profile", "revoke the key",
     "the token is revoked", "a keypair", "the node daemon", "clustering the entries",
+    "activate the venv", "activations cost memory per token", "the LiteRT activation type",
 ])
 def test_the_scan_leaves_ordinary_words_alone(text):
     assert not VOCAB.findings(text, "docs/x.md")

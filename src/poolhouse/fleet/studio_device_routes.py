@@ -10,7 +10,7 @@ import urllib.parse
 from poolhouse.home import machine_id
 from poolhouse.studio.store import Conflict
 
-from . import project_enrollment
+from . import producer_member, project_enrollment
 from .discovery import memberships
 from .membership import fingerprint_of
 from .pool_roster import Pool
@@ -81,14 +81,21 @@ def answer(handler, ui, path: str, body=None) -> bool:
             return _resource(handler, service(ui), source, path, body)
         if handler.command != "POST":
             raise ValueError("Device execution uses sealed typed requests.")
+        action = path.removeprefix(PREFIX + "executions/")
+        if producer_member.answer(handler, ui, membership, action, body):
+            return True
         request = json.loads(body or b"{}")
         if not isinstance(request, dict):
             raise ValueError("Device execution requires an object.")
-        action = path.removeprefix(PREFIX + "executions/")
         if action == "authorize":
             studio = getattr(ui, "studio", None)
             authorized = bool(studio and studio.dispatcher and studio.dispatcher.authorize_execution(source, request))
             handler._send(200, {"authorized": authorized})
+        elif action == "decision-authorize":
+            issuer = getattr(ui, "studio_decision_issuer", None)
+            if issuer is None:
+                raise PermissionError("This daemon has no current resident decision issuer.")
+            handler._send(200, issuer.authorize(request, handler.client_address, handler.connection.getsockname()))
         elif action == "validate":
             if set(request) != {"nodes"} or not isinstance(request["nodes"], list):
                 raise ValueError("Choose fixed nodes to validate on this device.")

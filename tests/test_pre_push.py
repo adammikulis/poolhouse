@@ -155,6 +155,11 @@ def test_an_agents_push_of_a_data_file_is_refused(checkout):
     assert "store.lbug" in done.stderr
 
 
+def warnings(stderr: str) -> list[str]:
+    """The warning lines of a push, without the one that says the board was not asked (no session runs these pushes)."""
+    return [line for line in stderr.splitlines() if "warning" in line and "the board could not be asked" not in line]
+
+
 def test_a_merged_worktree_is_warned_about_and_never_blocks_the_development_branch(checkout):
     tree = checkout.parent / "done"
     git(checkout, "worktree", "add", "-q", "-b", "done-work", str(tree))
@@ -162,11 +167,11 @@ def test_a_merged_worktree_is_warned_about_and_never_blocks_the_development_bran
     git(checkout, "merge", "-q", "--ff-only", "done-work")
     done = push(checkout, "0.9dev", CLAUDECODE="1")
     assert done.returncode == 0, done.stderr
-    assert "warning" in done.stderr
+    assert warnings(done.stderr)
     assert shlex.join(["git", "worktree", "remove", tree.as_posix()]) in done.stderr
     git(checkout, "worktree", "lock", str(tree))
     quiet = push(checkout, "0.9dev", CLAUDECODE="1")
-    assert quiet.returncode == 0 and "warning" not in quiet.stderr
+    assert quiet.returncode == 0 and not warnings(quiet.stderr)
 
 
 def test_the_development_branch_pushes_from_a_clean_sibling_worktree(checkout):

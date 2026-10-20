@@ -130,12 +130,11 @@ def test_subagent_event_includes_brief_and_actual_primary_branch_rules(commands,
     records = json.loads(commands[1].read_text())
     assert [record['argv'] for record in records] == [
         ['spawn', '--session', 'abcdef12345', '--harness', 'claude-code', '--json'],
-        ['subs', '--json'],
         ['subscribe', 'agent', 'claude-aaaaaa', '--mode', 'inbox', '--force'],
         ['brief', '--registered']]
     assert records[0]['session'] == 'native-parent' and records[0]['harness'] == 'claude-code'
-    assert records[0]['agent'] == records[1]['agent'] == records[2]['agent'] != child
-    assert records[3]['agent'] == child
+    assert records[0]['agent'] == records[1]['agent'] != child
+    assert records[2]['agent'] == child
 
 
 @pytest.mark.parametrize('stage', ['SessionStart', 'SubagentStart'])
