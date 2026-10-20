@@ -104,3 +104,42 @@ def test_old_tool_catalogue_cannot_overwrite_newer_capability_controls(coding_br
     assert page.locator('#chat-role').input_value() == 'current-role'
     assert page.locator('chat-view').evaluate('chat => chat.coding.data || null') is None
     assert served.ui.conversations.get(first.id).messages == []
+
+
+@pytest.mark.parametrize(('status', 'action'), [(200, None), (403, None), (200, 'new'), (403, 'new'), (200, 'switch')])
+def test_pending_conversation_load_owns_controls_until_current_response(coding_browser, status, action):
+    served, page, _project = coding_browser
+    first = served.ui.conversations.start(model='test-model', title='Current conversation')
+    second = served.ui.conversations.start(model='test-model', title='Pending conversation')
+    page.goto(f'http://127.0.0.1:{served.port}/ui#chat')
+    page.get_by_role('link', name=first.title, exact=True).click()
+    expect(page.get_by_label('Tools', exact=True)).to_be_enabled()
+    held = []
+    page.route(f'**/ui/conversations/{second.id}', lambda route: held.append(route))
+    with page.expect_request(f'**/ui/conversations/{second.id}'):
+        page.get_by_role('link', name=second.title, exact=True).click()
+    expect(page.get_by_label('Tools', exact=True)).to_be_disabled()
+    expect(page.locator('#chat-model-button')).to_be_disabled()
+    expect(page.locator('#chat-send')).to_be_disabled()
+    page.locator('chat-view').evaluate('chat => { chat.ask(); chat.saveSettings(); }')
+    if action == 'new':
+        page.locator('#chat-new').click()
+        expect(page.locator('#chat-title')).to_have_text('New conversation')
+    elif action == 'switch':
+        page.get_by_role('link', name=first.title, exact=True).click()
+        expect(page.get_by_label('Tools', exact=True)).to_be_enabled()
+    if status == 403:
+        held[0].fulfill(status=403, json={'error':'Conversation access unavailable'})
+    else:
+        held[0].continue_()
+    if action:
+        page.locator('chat-view').evaluate('async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); }')
+        assert page.locator('chat-view').evaluate('chat => chat.open') == (None if action == 'new' else first.id)
+        expect(page.locator('#chat-note')).not_to_contain_text('Conversation access unavailable')
+    elif status == 200:
+        expect(page.locator('#chat-title')).to_have_text(second.title)
+    else:
+        expect(page.locator('#chat-note')).to_contain_text('Conversation access unavailable')
+    expect(page.get_by_label('Tools', exact=True)).to_be_enabled()
+    assert served.ui.conversations.get(first.id).messages == []
+    assert served.ui.conversations.get(second.id).messages == []

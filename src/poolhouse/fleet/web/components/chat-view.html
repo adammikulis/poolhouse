@@ -112,7 +112,7 @@
       this.searchEpoch = 0;
       this.loadEpoch = 0;
       this.askrow.addEventListener("composer-send", () => this.ask());
-      this.picker.onchange = () => { this.updateReadiness(); this.modelPicker.render(); this.saveSettings(); };
+      this.picker.onchange = () => { if (this.loadingConversation) return; this.updateReadiness(); this.modelPicker.render(); this.saveSettings(); };
       this.temperature.onchange = () => this.saveSettings();
       this.outputTokens = this.querySelector("#chat-output-tokens");
       this.outputTokens.onchange = () => this.saveSettings();
@@ -125,12 +125,16 @@
         localStorage.removeItem("poolhouse.chat.selected");
         this.heading.textContent = "New conversation";
         this.loadEpoch++;
+        this.loadingConversation = false;
+        this.coding.busy(false);
+        this.temperature.disabled = this.outputTokens.disabled = false;
         this.input.value = "";
         this.messages = [];
         this.savedSettings = { ...this.defaultSettings };
         this.temperature.value = "";
         this.outputTokens.value = this.savedSettings.max_output_tokens ?? "";
         this.coding.restore(this.savedSettings);
+        this.updateReadiness();
         this.welcome();
         this.note.replaceChildren();
         this.paintList();
@@ -235,6 +239,7 @@
     }
 
     saveSettings() {
+      if (this.loadingConversation) return;
       if (!this.outputTokens.checkValidity()) { this.showError("Maximum output tokens must be a positive integer."); return; }
       if (!this.temperature.checkValidity()) { this.showError("Temperature must be between 0 and 2."); return; }
       this.savedSettings = this.settings();
@@ -253,6 +258,7 @@
       this.send.disabled = (!this.coding.active && this.runtimeReady === false) || !this.picker.value || !!this.picker.selectedOptions[0]?.disabled;
       if (!this.coding.active) M.agentRuntimeAlert(this);
       this.coding.readiness();
+      if (this.loadingConversation) this.send.disabled = true;
     }
 
     showError(message) {
@@ -330,6 +336,10 @@
     async load(id) {
       if (this.request) return;
       const epoch = ++this.loadEpoch;
+      this.loadingConversation = true;
+      this.coding.busy(true);
+      this.temperature.disabled = this.outputTokens.disabled = true;
+      this.updateReadiness();
       try {
         await this.savePending;
         if (epoch !== this.loadEpoch) return;
@@ -368,10 +378,19 @@
         this.updateReadiness();
         this.modelPicker.render();
         this.coding.reattach();
-      } catch (error) { this.showError(error.message); }
+      } catch (error) { if (epoch === this.loadEpoch) this.showError(error.message); }
+      finally {
+        if (epoch === this.loadEpoch) {
+          this.loadingConversation = false;
+          this.coding.busy(!!this.request);
+          this.temperature.disabled = this.outputTokens.disabled = !!this.request;
+          this.updateReadiness();
+        }
+      }
     }
 
     async ask() {
+      if (this.loadingConversation) return;
       const text = this.input.value.trim();
       if (!this.outputTokens.checkValidity()) { this.showError("Maximum output tokens must be a positive integer."); return; }
       if (!this.temperature.checkValidity()) { this.showError("Temperature must be between 0 and 2."); return; }

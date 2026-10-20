@@ -40,7 +40,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       this.list = chat.querySelector("#chat-model-list");
       this.library = [];
       this.button.onclick = () => {
-        if (chat.request) return;
+        if (chat.request || chat.loadingConversation) return;
         this.search.value = "";
         this.render();
         this.dialog.showModal();
@@ -88,7 +88,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
     render() {
       const chat = this.chat;
       this.button.textContent = chat.picker.selectedOptions[0]?.textContent || "Choose a model";
-      this.button.disabled = !!chat.request;
+      this.button.disabled = !!chat.request || !!chat.loadingConversation;
       const query = this.search.value.trim().toLowerCase();
       const rows = this.rows().filter((one) => `${one.name} ${one.family} ${one.quant} ${one.status}`.toLowerCase().includes(query));
       const groups = new Map();
@@ -123,7 +123,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       const section = M.el('section', {class:'chat-model-family'}, M.el('h3', {}, 'Workspace agents'));
       for (const row of agents) section.append(M.el('button', {type:'button', class:'chat-model-choice',
         'data-picker-kind':'agent', 'data-agent-id':row.id, title:row.id, onclick:() => {
-          if (this.chat.request || board !== workspace.board || selection !== workspace.projectSelection ||
+          if (this.chat.request || this.chat.loadingConversation || board !== workspace.board || selection !== workspace.projectSelection ||
               data !== workspace.navigationData || !workspace.visible) return;
           this.dialog.close(); M.go('board'); board.open({kind:'dm', a:data.me, b:row.id});
         }}, M.el('span', {}, row.display_name || row.display_label || row.id), M.el('small', {}, 'Agent · scoped direct message')));
@@ -131,7 +131,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       this.list.append(section);
     }
     async choose(row) {
-      if (this.chat.request || row.disabled) return;
+      if (this.chat.request || this.chat.loadingConversation || row.disabled) return;
       if (row.needsLoad) {
         this.dialog.close();
         window.dispatchEvent(new CustomEvent("fleet-select-model", {detail:{path:row.installed.path, name:row.installed.name, from:"chat"}}));
@@ -262,7 +262,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       const board = this.board, selection = this.projectSelection;
       const button = (label, current, view, identity = '') => M.el('button', {title:identity,
         type:'button', 'aria-current':String(this.active && current), onclick:() => {
-          if (board !== this.board || selection !== this.projectSelection || this.navigationData !== data || !this.visible) return;
+          if (this.chat.loadingConversation || board !== this.board || selection !== this.projectSelection || this.navigationData !== data || !this.visible) return;
           M.go('board'); board.open(view);
         }}, label);
       const query = this.chat.search.value.trim().toLowerCase();
@@ -337,6 +337,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
     }
     models(rows) {
       this.live.replaceChildren(...rows.map(row => M.el('button', {type:'button', onclick:() => {
+        if (this.chat.loadingConversation) return;
         if (M.route !== 'chat') { this.chat.pendingModel = row.model; M.go('chat'); }
         else { this.chat.picker.value = row.model; this.chat.picker.dispatchEvent(new Event('change')); }
         this.chat.input.focus();
