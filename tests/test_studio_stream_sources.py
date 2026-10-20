@@ -117,22 +117,141 @@ def test_same_inode_consumed_prefix_changes_require_deliberate_reset(tmp_path, c
     watcher.close()
 
 
-def test_atomic_replacement_creates_new_generation_and_reports_old_partial(tmp_path):
-    path, binding, watcher = file_source(tmp_path, b'{"old":true}\n{"partial":')
-    first = read(watcher)
-    pending = read(watcher, first['cursor'])
-    replacement = tmp_path / 'replacement'
-    replacement.write_bytes(b'{"new":true}\n')
+def replace_source(path, content):
+    replacement = path.with_name('replacement')
+    replacement.write_bytes(content)
     replacement.replace(path)
-    rotation = read(watcher, pending['cursor'])
-    assert 'pending record' in rotation['event']['error']
-    new = read(watcher, rotation['cursor'])
-    assert new['event']['payload'] == {'new': True}
-    assert new['event']['generation'] != first['event']['generation']
+
+
+@pytest.mark.parametrize('suffix,prefix,next_row,payload', [
+    ('jsonl', b'{"n":1}\n', b'{"n":2}\n', {'n': 2}),
+    ('csv', b'n\n1\n', b'2\n', {'n': '2'}),
+])
+def test_atomic_replacement_preserves_consumed_records_and_retry_identity(tmp_path, suffix, prefix, next_row, payload):
+    path, binding, watcher = file_source(tmp_path, prefix, suffix)
+    first = read(watcher)
+    if first['event'] is None:
+        first = read(watcher, first['cursor'])
+    replace_source(path, prefix + next_row)
+    next_record = read(watcher, first['cursor'])
+    assert next_record['event']['payload'] == payload
+    assert next_record['event']['generation'] == first['event']['generation']
+    assert next_record['event']['id'] != first['event']['id']
+    # Backpressure leaves the durable cursor unchanged; retry attaches the same record.
+    assert read(watcher, first['cursor']) == next_record
     watcher.close()
     restarted = WatchedSource(binding)
-    assert read(restarted, new['cursor'])['event'] is None
+    assert read(restarted, first['cursor']) == next_record
+    assert read(restarted, next_record['cursor'])['event'] is None
+    replace_source(path, prefix + next_row)
+    assert read(restarted, next_record['cursor'])['event'] is None
     restarted.close()
+
+
+@pytest.mark.parametrize('case', [
+    ('jsonl', b'{"n":1}\n', b'{"n":', b'{"n":2}\n', {'n': 2}),
+    ('jsonl', b'{"n":1}\n', b'{"n":9', b'{"n":2}\n', {'n': 2}),
+    ('csv', b'text,label\nfirst,yes\n', b'"second\n', b'"second\nrow",yes\n',
+     {'text': 'second\nrow', 'label': 'yes'}),
+    ('csv', b'text,label\nfirst,yes\n', b'"discarded\n', b'"current\nrow",yes\n',
+     {'text': 'current\nrow', 'label': 'yes'}),
+])
+def test_atomic_replacement_completes_pending_record_without_replaying_consumed_prefix(tmp_path, case):
+    suffix, prefix, partial, completed, payload = case
+    path, binding, watcher = file_source(tmp_path, prefix + partial, suffix)
+    first = read(watcher)
+    if first['event'] is None:
+        first = read(watcher, first['cursor'])
+    pending = read(watcher, first['cursor'])
+    assert pending['event'] is None
+    replace_source(path, prefix + completed)
+    watcher.close()
+    restarted = WatchedSource(binding)
+    ready = read(restarted, pending['cursor'])
+    assert ready['event']['payload'] == payload
+    assert ready['event']['generation'] == first['event']['generation']
+    assert read(restarted, ready['cursor'])['event'] is None
+    restarted.close()
+
+
+@pytest.mark.parametrize('suffix,prefix,partial', [
+    ('jsonl', b'{"n":1}\n', b'{"n":'),
+    ('csv', b'text\nfirst\n', b'"pending\n'),
+])
+def test_replacement_may_discard_uncommitted_partial_without_replaying_prefix(tmp_path, suffix, prefix, partial):
+    path, binding, watcher = file_source(tmp_path, prefix + partial, suffix)
+    first = read(watcher)
+    if first['event'] is None:
+        first = read(watcher, first['cursor'])
+    pending = read(watcher, first['cursor'])
+    assert pending['event'] is None
+    assert pending['cursor']['files'][path.name]['pending']
+    replace_source(path, prefix)
+    watcher.close()
+    restarted = WatchedSource(binding)
+    result = read(restarted, pending['cursor'])
+    assert result['event'] is None
+    assert result['cursor']['files'][path.name]['pending'] is None
+    assert result['cursor']['files'][path.name]['offset'] == len(prefix)
+    restarted.close()
+
+
+@pytest.mark.parametrize('suffix,original,changed', [
+    ('jsonl', b'{"n":1}\n', b'{"n":9}\n{"n":2}\n'),
+    ('jsonl', b'{"n":1}\n', b''),
+    ('csv', b'n\n1\n', b'n\n9\n2\n'),
+    ('csv', b'n\n1\n', b'n\n'),
+])
+def test_atomic_replacement_of_consumed_prefix_requires_explicit_reset(tmp_path, suffix, original, changed):
+    path, binding, watcher = file_source(tmp_path, original, suffix)
+    first = read(watcher)
+    if first['event'] is None:
+        first = read(watcher, first['cursor'])
+    replace_source(path, changed)
+    with pytest.raises(SourceChanged):
+        read(watcher, first['cursor'])
+    watcher.close()
+    restarted = WatchedSource(binding)
+    with pytest.raises(SourceChanged):
+        read(restarted, first['cursor'])
+    restarted.close()
+
+
+
+def test_folder_atomic_replacement_keeps_the_file_cursor(tmp_path):
+    root = tmp_path / 'folder'
+    root.mkdir()
+    path = root / 'events.jsonl'
+    path.write_bytes(b'{"n":1}\n')
+    watcher = WatchedSource(bind(root, 'folder', authorize=allowed))
+    first = read(watcher)
+    replace_source(path, b'{"n":1}\n{"n":2}\n')
+    result = read(watcher, first['cursor'])
+    while result['event'] is None:
+        result = read(watcher, result['cursor'])
+    assert result['event']['payload'] == {'n': 2}
+    assert result['event']['generation'] == first['event']['generation']
+    watcher.close()
+
+
+def test_replacement_during_verification_returns_no_event_or_advanced_cursor(tmp_path, monkeypatch):
+    from poolhouse.studio import stream_sources
+    path, _, watcher = file_source(tmp_path, b'{"n":1}\n')
+    first = read(watcher)
+    replace_source(path, b'{"n":1}\n{"n":2}\n')
+    original = stream_sources._Record.read
+    def replace_after_read(reader, *args):
+        ready = original(reader, *args)
+        replace_source(path, b'{"n":1}\n{"n":3}\n')
+        return ready
+    monkeypatch.setattr(stream_sources._Record, 'read', replace_after_read)
+    unstable = read(watcher, first['cursor'])
+    assert unstable['event'] is None and unstable['cursor'] == first['cursor']
+    monkeypatch.setattr(stream_sources._Record, 'read', original)
+    ready = read(watcher, unstable['cursor'])
+    assert ready['event']['payload'] == {'n': 3}
+    assert ready['event']['generation'] == first['event']['generation']
+    watcher.close()
 
 
 def test_folder_scanner_is_nonrecursive_and_eventually_visits_all_files(tmp_path):
@@ -296,13 +415,17 @@ def test_consumed_prefix_changed_during_read_never_acknowledges_next_record(tmp_
     watcher.close()
 
 
-def test_prefix_verification_resumes_across_scheduler_quantums(tmp_path, monkeypatch):
+@pytest.mark.parametrize('replacement', [False, True])
+def test_prefix_verification_resumes_across_scheduler_quantums(tmp_path, monkeypatch, replacement):
     import itertools
 
     from poolhouse.studio import stream_sources
-    _, binding, watcher = file_source(tmp_path, b'{"large":"' + b'x' * 100_000 + b'"}\n{"next":true}\n')
+    content = b'{"large":"' + b'x' * 100_000 + b'"}\n{"next":true}\n'
+    path, binding, watcher = file_source(tmp_path, content)
     first = read(watcher)
     watcher.close()
+    if replacement:
+        replace_source(path, content)
     watcher = WatchedSource(binding)
     ticks = itertools.count()
     monkeypatch.setattr(stream_sources.time, 'monotonic', lambda: next(ticks))

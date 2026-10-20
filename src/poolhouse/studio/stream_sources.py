@@ -258,19 +258,12 @@ class WatchedSource:
             return None
         try:
             info = _regular(descriptor)
-            identity = _identity(info)
-            old = cursor['files'].get(name)
-            if old is None or old['identity'] != identity:
-                row = {'identity': identity, 'generation': old['generation'] + 1 if old else 0,
-                       'offset': 0, 'prefix': hashlib.sha256(b'').hexdigest(), 'header': None, 'pending': None}
-                cursor['files'][name] = row
-                reader = self.readers.pop(name, None)
-                if reader:
-                    reader.close()
-                if old and old['pending']:
-                    pending = old['pending']
-                    return self._event(name, old, old['offset'], old['offset'] + pending['bytes'], pending['sha256'],
-                                       error='The source rotated before its pending record was complete')
+            if name not in cursor['files']:
+                # This identity anchors the logical stream, not its current inode.
+                # Replacement files must prove the same consumed prefix below.
+                cursor['files'][name] = {'identity': _identity(info), 'generation': 0,
+                                        'offset': 0, 'prefix': hashlib.sha256(b'').hexdigest(),
+                                        'header': None, 'pending': None}
             row = cursor['files'][name]
             if info.st_size < row['offset']:
                 raise SourceChanged('The source truncated a consumed prefix')
@@ -291,6 +284,8 @@ class WatchedSource:
             if not ready:
                 if reader.size:
                     row['pending'] = {'bytes': reader.size, 'sha256': reader.content.hexdigest()}
+                elif reader.verified == row['offset']:
+                    row['pending'] = None
                 return None
             before = copy.deepcopy(row)
             start = row['offset']
