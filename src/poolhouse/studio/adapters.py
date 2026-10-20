@@ -15,6 +15,7 @@ from poolhouse.serve.python_requirements import missing_mlx
 from .catalog import node_spec
 from .decision_models import source as decision_source
 from .decisions import parameters as decision_parameters, parse_record, route
+from .record_context import generation_context, generation_parameters
 from .resources import model_resource, training_base
 
 
@@ -88,7 +89,7 @@ class Adapters:
     def dependency_fingerprint(self, node: dict) -> str:
         kind = node['type']
         required = needs_compute(node) or kind == 'evaluate.decision'
-        native = required or kind in {'generate', 'generate.structured', 'evaluate', 'export'}
+        native = required or kind in {'generate', 'generate.structured', 'generate.record', 'evaluate', 'export'}
         if not native:
             return ''
         environment = self.runner.environment
@@ -205,6 +206,11 @@ class Adapters:
                     decision_parameters(node['type'], node.get('parameters', {}))
                 except (ValueError, TypeError, AttributeError) as error:
                     schema_errors.append({'node': node['id'], 'code': 'parameter', 'message': str(error)})
+            if node['type'] == 'generate.record':
+                try:
+                    generation_parameters(node.get('parameters', {}))
+                except (ValueError, TypeError) as error:
+                    schema_errors.append({'node': node['id'], 'code': 'parameter', 'message': str(error)})
             if node['type'] == 'generate.structured':
                 try:
                     response_schema(node.get('parameters', {}).get('json_schema'))
@@ -279,6 +285,8 @@ class Adapters:
         return {'result': self.tool_call(node.get('parameters', {}).get('tool', ''), inputs['arguments'], context)}
 
     def prepare(self, node: dict, inputs: dict, context: dict) -> dict:
+        if node['type'] == 'generate.record':
+            generation_context(node.get('parameters', {}), inputs['record'])
         environment = self.runner.environment
         if environment is None or not environment.exists:
             raise ValueError("Install the managed compute runtime before running this node")
@@ -323,5 +331,5 @@ class Adapters:
 def _mlx_serving(node: dict, model: dict) -> bool:
     if model.get('format') != 'mlx' or model.get('recipe'):
         return False
-    return node['type'] in {'generate', 'generate.structured', 'data.synthesize'} or (
+    return node['type'] in {'generate', 'generate.structured', 'generate.record', 'data.synthesize'} or (
         node['type'] == 'evaluate' and node.get('parameters', {}).get('suite', 'holdout') != 'holdout')

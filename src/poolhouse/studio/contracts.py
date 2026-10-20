@@ -10,6 +10,7 @@ from copy import deepcopy
 from typing import Any
 
 from poolhouse.studio.catalog import node_spec
+from poolhouse.studio.record_coverage import coverage_errors
 
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_.-]+$")
 MAX_NODES = 1000
@@ -258,6 +259,7 @@ def _validate_expanded(graph: dict, capabilities: set[str] | None, authorize: Ca
         except (KeyError, StopIteration, ValueError) as exc:
             error(target["node"], "connection", str(exc) or "Unknown port")
     errors.extend(_validate_controls(graph, specs, successors))
+    errors.extend(coverage_errors(graph))
     for identifier, spec in specs.items():
         for port in spec["inputs"]:
             if port.get("required") and (identifier, port["name"]) not in incoming:

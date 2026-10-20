@@ -61,6 +61,12 @@ def node_catalog() -> list[dict[str, Any]]:
         _node("gym.evaluate", "Evaluate Gym policy", "Evaluation", {"model": "model"}, {"metrics": "metrics", "report": "report"}, capabilities=["gym"]),
     ]
     catalog.extend([
+        _node("generate.record", "Generate from assessed sources", "Inference", {"model": "model", "record": "json"},
+              {"text": "text", "response": "json", "report": "report"}, properties={
+                  "trusted_task": {"type": "string", "default": ""},
+                  "question_field": {"type": "string", "default": "question"},
+                  "sources_field": {"type": "string", "default": "retrieved_sources"},
+                  "temperature": {"type": "number", "default": 0, "minimum": 0, "maximum": 2}}, capabilities=["inference"]),
         _node("generate.structured", "Structured response", "Inference", {"model": "model", "prompt": "text"},
               {"text": "text", "response": "json"}, properties={"temperature": {"type": "number", "default": 0.7, "minimum": 0, "maximum": 2},
               "json_schema": {"type": "string", "default": '{"type":"object"}'}}, capabilities=["inference"]),
@@ -89,6 +95,7 @@ def node_catalog() -> list[dict[str, Any]]:
               {"signal": "json", "record": "json", "report": "report", "allow": "gate", "review": "gate", "block": "gate"},
               properties={"mode": {"type": "string", "enum": ["direct", "indirect"], "default": "indirect"},
                           "trusted_task": {"type": "string", "default": ""},
+                          "input_fields": {"type": "string", "default": "[]", "title": "Literal record fields (JSON list; [] assesses all)"},
                           "allow_threshold": {"type": "number", "default": 0.8, "minimum": 0.5, "maximum": 1},
                           "block_threshold": {"type": "number", "default": 0.8, "minimum": 0.5, "maximum": 1},
                           "min_margin": {"type": "number", "default": 0.2, "minimum": 0, "maximum": 1}},
@@ -112,7 +119,7 @@ def node_catalog() -> list[dict[str, Any]]:
                              {"model": "model", "metrics": "metrics", "checkpoint": "artifact"}, properties=fields,
                              capabilities=["training"], side_effects=True, recipe=recipe["id"]))
     for spec in catalog:
-        if spec["type"] in ("generate", "generate.structured"):
+        if spec["type"] in ("generate", "generate.structured", "generate.record"):
             spec["parameters"]["properties"]["max_tokens"] = {"type": "integer", "default": 512, "minimum": 1, "maximum": 32768}
         if spec["type"] in ("dataset", "model", "data.harvest", "gym.recordings"):
             resource = {"data.harvest": "traces", "gym.recordings": "recordings"}.get(spec["type"], spec["type"])

@@ -107,3 +107,22 @@ def test_factory_is_lazy_and_never_assumes_identity_on_startup(tmp_path):
     assert service.issuer is None
     assert engine.runner.studio_decision_mint == service.mint
     service.close()
+
+
+@pytest.mark.parametrize('record', [{}, {'question': {}}, {'question': 'x' * 200_001}])
+def test_scoped_guard_preflight_reviews_before_resident_permit(tmp_path, monkeypatch, record):
+    calls = []
+    engine = SimpleNamespace(runner=SimpleNamespace(files_root=tmp_path),
+                             authorize=lambda *args: calls.append('authorized') or True)
+    monkeypatch.setattr('poolhouse.fleet.studio_decision_service.source',
+                        lambda *args: (None, {'model_digest': 'owned-model', 'calibration_digest': 'unverified'}))
+    service = ResidentDecisions(SimpleNamespace(), engine)
+    monkeypatch.setattr(service, '_issuer', lambda: pytest.fail('Invalid scoped data must not mint a permit'))
+    node = {'type': 'guard.injection', 'parameters': {
+        'mode': 'direct', 'trusted_task': 'Answer using provided evidence', 'input_fields': '["question"]'}}
+    outputs = service.preflight(node, {'record': record, 'model': {}}, {'principal': {}})
+    assert calls == ['authorized'] and outputs['record'] is record
+    assert outputs['review'] == {'allow': True, 'reason': 'review'}
+    assert not outputs['allow']['allow'] and outputs['signal']['coverage'] == 'incomplete'
+    assert not Adapters(SimpleNamespace()).cacheable_outputs(node, outputs)
+    assert service.issuer is None
