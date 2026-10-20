@@ -13,18 +13,18 @@ CLAIM = "gpu-training"
 
 
 @contextlib.contextmanager
-def hold(purpose: str, *, wait_s: float = 0.0, wire: Any = broker_wire) -> Iterator[None]:
+def hold(purpose: str, *, wait_s: float | None = 0.0, wire: Any = broker_wire) -> Iterator[None]:
     """Claim ``gpu-training`` at the Broker for the block, where it shows in
     ``poolhouse-serve status``.
 
     Raises `BrokerError` when a model server is held by another process or another run
-    already holds the claim for longer than ``wait_s``.
+    already holds the claim for longer than ``wait_s``; None waits until admitted.
     """
     try:
         busy = [s for s in wire.status(start=False)["servers"] if s["holders"] or s["loading"]]
     except (BrokerError, OSError):
         busy = []
-    if busy and wait_s <= 0:
+    if busy and wait_s is not None and wait_s <= 0:
         who = "; ".join(f"{s['model']} on port {s['port']} held by "
                         f"{[h['label'] or h['pid'] for h in s['holders']]}" for s in busy)
         raise BrokerError(f"the GPU is in use: {who}. Release it, or wait until it is free")

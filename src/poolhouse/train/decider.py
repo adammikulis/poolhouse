@@ -80,7 +80,7 @@ class Settings:
     ``strands``, ``none`` or the name of a registered decider."""
     allow_worse: bool = False
     replace: bool = False
-    wait_s: float = 0.0
+    wait_s: float | None = 0.0
     floor: float = metrics.FLOOR
     allow_repo: bool = False
 
