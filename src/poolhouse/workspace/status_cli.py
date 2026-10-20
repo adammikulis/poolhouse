@@ -7,7 +7,6 @@ from typing import Any
 
 from poolhouse.board.session import Session
 from poolhouse.workspace import (
-    agent_display,
     autostart_status,
     board_cli,
     claims_cli,
@@ -27,7 +26,7 @@ def status(args: argparse.Namespace, s: Session) -> Any:
     names = {row["id"] for row in registered}
     unread = len(s.read(s.cursor("inbox"), inbox=True).entries)
     return {
-        "agents": sorted(names), "registered": registered, "coordinator_notice": agent_display.vacancy_notice(registered),
+        "agents": sorted(names), "registered": registered,
         "messages": board["entries"].get("message", 0), "notes": board["entries"].get("note", 0),
         "quarantined": sum(1 for item in s.held() if item["state"] == "quarantined"),
         "claims": [claims_cli.shown(c) for c in s.claims()], "chains_ok": not board["damaged"], "rejected": board["rejected"],

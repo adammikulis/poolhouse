@@ -43,6 +43,7 @@ Poolhouse pools devices. Devices join a pool, the pool's compute is pooled, and 
 | **handoff** | The signed act that reissues a pool. |
 | **offer** | A device lets a pool's members use a named model. |
 | **share** | A person-signed charter by which pools hold one board. |
+| **update**, **updating**, **updated** | Move the build or runtime a device runs to a newer one (`poolhouse runtime ensure`), and the finished state of it. A fix is done when it is landed and the owner's setup is updated to it, and the update owner is the agent responsible until then. |
 | **roll** | The devices of one pool that hold a shared board for the other pools. |
 
 ## The banned words
@@ -63,6 +64,7 @@ the public API, documents, identifiers or file names. The allowlist names every 
 | peer, where a member or device is meant | member, device |
 | revoke, in text a person reads | remove (a member), or "revoke" only for a key, token or grant |
 | node, where a device is meant | device |
+| activate, activation, activating, activated, for moving the installed build or runtime to a newer one (an "activation owner", "activation steps", "Activating a fix") | update, updating, updated, update owner |
 
 Two pieces of design text may name the cryptographic handshake: "the join-code handshake (SPAKE2)". It is never
 called pairing.

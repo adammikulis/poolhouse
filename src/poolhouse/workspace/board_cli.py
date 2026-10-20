@@ -172,7 +172,7 @@ def whoami(args: argparse.Namespace, s: Session) -> Any:
 
 
 def agents(args: argparse.Namespace, s: Session) -> Any:
-    """Every live identity with its model and whether it may coordinate."""
+    """Every live identity with its model, harness and whether it is a main session or a subagent."""
     return [{"id": a.name, "role": "agent", "parent": a.parent, "model": safe(a.model), "model_state": a.model_state,
              "harness": a.harness, "last_acted": a.seen_ms / 1000, "retired": a.retired, "idle": a.idle,
              **agent_display.describe(a)}

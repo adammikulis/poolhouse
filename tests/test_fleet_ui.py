@@ -854,8 +854,9 @@ class TestTheInterfaceAndTheDaemonAgree:
         from poolhouse.fleet.page import render
 
         source = render()
-        found = set(re.findall(r"""api\(\s*[`"']([^`"']+)""", source))
-        found |= set(re.findall(r"""fetch\(\s*[`"']([^`"']+)""", source))
+        # A literal followed by `+` is the start of an address being built, not an address.
+        found = set(re.findall(r"""api\(\s*[`"']([^`"']+)[`"'](?!\s*\+)""", source))
+        found |= set(re.findall(r"""fetch\(\s*[`"']([^`"']+)[`"'](?!\s*\+)""", source))
         # Only the path matters here. A query string carries template holes, and
         # any id will do for asking whether the route exists at all.
         cleaned = set()

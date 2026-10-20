@@ -1,6 +1,7 @@
 """Sealed Studio execution requests and explicit resource exchange with one enrolled device."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -11,12 +12,15 @@ from urllib.parse import quote, urlencode, urlsplit
 
 from poolhouse import http, macauth, sealing
 from poolhouse.http import ONCE, Options, Sealed, ServerError, open_stream
+from poolhouse.studio.catalog import is_model_type
+from poolhouse.studio.resources import model_files, open_model_file
 
 from . import tls
 from .studio_transfer import (
     CHUNK_BYTES,
     MANIFEST_BYTES,
     TransferStore,
+    _digest,
     _name,
     _open,
     checked_manifest,
@@ -28,6 +32,25 @@ from .studio_transfer import (
 ACTIONS = frozenset({"validate", "submit", "status", "cancel", "result", "authorize", "resume"})
 MAX_REPLY = MANIFEST_BYTES * 2
 _ID = re.compile(r"[a-f0-9]{32}(?:[a-f0-9]{32})?")
+
+
+def _input_manifest(value: dict) -> tuple[dict, dict]:
+    """Resolve installed library files before allowing their native cache links."""
+    if value.get("kind") != "model" or not value.get("id"):
+        return manifest(Path(value["path"]).absolute(), value["kind"], gym=value.get("gym", False)), {}
+    members = {entry["relative"]: entry for entry in model_files(value)}
+    files = []
+    for name, member in sorted(members.items()):
+        checksum = hashlib.sha256()
+        with open_model_file(member) as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                checksum.update(chunk)
+        files.append({"name": name, "size": member["size"], "sha256": checksum.hexdigest()})
+    folder = Path(value["path"]).is_dir()
+    content = {"kind": "model", "shape": "directory" if folder else "file",
+               "entrypoint": "" if folder else Path(value["path"]).name,
+               "bytes": sum(entry["size"] for entry in files), "files": files}
+    return {"id": _digest(content), **content}, members
 
 
 class MemberUncertain(OSError):
@@ -120,25 +143,36 @@ class MemberExecution:
                 continue
             if not isinstance(value, dict) or not isinstance(value.get("path"), str):
                 raise ValueError("Choose an authorized local input resource.")
-            path = Path(value["path"]).absolute()
-            resource = manifest(path, value["kind"], gym=value.get("gym", False))
-            checked_manifest(resource, resource["bytes"])
-            safe[name] = resource_handle(value, resource)
-            if resource["id"] in resources:
-                continue
+            safe[name] = self._stage_value(dispatch, value, resources)
+        return {"inputs": safe, "resources": list(resources.values())}
+
+    def _stage_value(self, dispatch: str, value: dict, resources: dict) -> dict:
+        path = Path(value["path"]).absolute()
+        resource, approved = _input_manifest(value)
+        checked_manifest(resource, resource["bytes"])
+        safe = resource_handle(value, resource)
+        if resource["id"] not in resources:
             self._json("POST", self._resource(dispatch, resource["id"], "begin"), resource)
             root = path if resource["shape"] == "directory" else path.parent
             for file in resource["files"]:
-                self._upload(dispatch, resource["id"], root, file)
+                selected = {**file, "approved": approved[file["name"]]} if approved else file
+                self._upload(dispatch, resource["id"], root, selected)
             acknowledged = self._json("POST", self._resource(dispatch, resource["id"], "finish"), {})
             if acknowledged != resource:
                 raise ValueError("The selected device acknowledged different resource content.")
             resources[resource["id"]] = resource
-        return {"inputs": safe, "resources": list(resources.values())}
+        if "base" in value:
+            base = value["base"]
+            if not isinstance(base, dict) or base.get("kind") != "model" or "base" in base:
+                raise ValueError("Checkpoint bases require one explicit model resource.")
+            staged_base = self._stage_value(dispatch, base, resources)
+            safe.update(base_resource=staged_base["resource"], base_digest=value["base_digest"])
+        return safe
 
     def _upload(self, dispatch: str, resource: str, root: Path, file: dict) -> None:
-        descriptor = _open(root, _name(file["name"]), os.O_RDONLY)
-        with os.fdopen(descriptor, "rb") as stream:
+        stream = (open_model_file(file["approved"]) if "approved" in file
+                  else os.fdopen(_open(root, _name(file["name"]), os.O_RDONLY), "rb"))
+        with stream as stream:
             offset = 0
             while True:
                 data = stream.read(CHUNK_BYTES)
@@ -163,6 +197,12 @@ class MemberExecution:
         dispatch = reply.get("dispatch_id")
         if not isinstance(dispatch_id, str) or not _ID.fullmatch(dispatch_id) or dispatch != dispatch_id:
             raise ValueError("The device returned another execution dispatch.")
+        for port in spec["outputs"]:
+            kind = "model" if is_model_type(port["type"]) else port["type"]
+            value = reply["outputs"].get(port["name"])
+            if (value is not None and kind in {"model", "dataset", "artifact"}
+                    and (not isinstance(value, dict) or value.get("kind") != kind or not isinstance(value.get("resource"), str))):
+                raise ValueError("The device output resource kind differs from its declared port.")
         resources = {}
         total = 0
         for resource in reply["resources"]:
@@ -173,6 +213,8 @@ class MemberExecution:
             total += resource["bytes"]
         expected = {value.get("resource") for name, value in reply["outputs"].items()
                     if name in resource_ports(spec, "outputs") and isinstance(value, dict)}
+        expected.update(value["base_resource"] for name, value in reply["outputs"].items()
+                        if name in resource_ports(spec, "outputs") and isinstance(value, dict) and "base_resource" in value)
         if set(resources) != expected:
             raise ValueError("The device returned undeclared output resources.")
         output_dir = Path(output_dir).absolute()

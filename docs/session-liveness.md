@@ -96,12 +96,11 @@ Facts from code. "Blocks" means what a stale entry stops another agent doing.
   so installed-runtime ownership is whatever `install` claims (path claims, 900 s) provide.
 - The model/GPU broker has its own leases and is out of scope; it already checks its own holders.
 
-### (e) Main-session registration and `coordinator_eligible`
+### (e) Main-session registration
 
-- `agent_display.metadata` computes eligible = no parent, `presentation.kind == 'main'`, role
-  `AGENT` (live), and full `CAPS` (`agent_display.py:42-43`); a helper label forces false (`:44-48`).
+- `agent_display.describe` lists a session with no parent as a `main` session and one with a parent as a `subagent`.
 - Nothing in it reads last-seen. A session closed yesterday whose token is still valid is
-  `coordinator_eligible: true` forever (up to 30 days). `kind = 'main'` is never reset.
+  listed `main` forever (up to 30 days). `kind = 'main'` is never reset.
 
 ### (f) The board service
 
@@ -127,7 +126,7 @@ Facts from code. "Blocks" means what a stale entry stops another agent doing.
 | task lease | nobody | forever until a reviewer runs `ready(expired)` | task and its dependents |
 | child token | parent token expiry or 8 h child TTL | hours to 30 days | identity count limits (`within`, 64 live) |
 | test job | `state()` on query | runner survives owner | whole-tier slot |
-| `coordinator_eligible` | nobody | token lifetime | nothing yet, but any election would pick a ghost |
+| main-session listing | nobody | token lifetime | nothing yet, but any election would pick a ghost |
 | board host | nobody | until restarted | all remote devices |
 
 ## 2. Presence
@@ -257,7 +256,7 @@ the current `epoch` of each holding (fencing).
   and the install has no verified completed marker; a half-written environment is renamed to
   `*.orphaned`, never deleted. The background full suite (AGENTS.md: one at a time) is adopted.
 - **Main-session registration.** On dead/expired the host sets `presence.kind` effective state to
-  `gone` and `coordinator_eligible` false in `agent_display.metadata` (it reads presence). The
+  `gone` and `agent_display` lists it as gone (it reads presence). The
   registry record is left (audit), and ordinals are not reused.
 
 ### 3.3 Grace and fencing
@@ -301,14 +300,11 @@ presence interval = 90 s). The holder renews on each presence touch, so renewal 
 1. `kind == main` and no parent; role `AGENT` with full `CAPS` (the existing `agent_display.py:42-43` test).
 2. Presence *alive* (section 2 rule 1 or 3 and not suspect).
 3. Registered model and device profile present (`model_state` recorded, device not unknown).
-4. Model tier is not the lowest tier of its vendor family and the model id matches the tier
-   table (section 5). Fail closed.
-5. No `revoked` coordinator designation by the person (section 4.3).
-6. Not a subagent (an identity with a `parent`) or transient (`agent_display.py`).
+4. No `revoked` coordinator designation by the person (section 4.3).
+5. Not a subagent (an identity with a `parent`) or transient (`agent_display.py`).
 
-`coordinator_eligible` in `agent_display.metadata` becomes this computed value (it takes the
-presence and tier table as inputs), replacing today's static `kind == 'main'`. Label and parent
-checks stay.
+The listing carries no coordinator flag; the lease derives eligibility from presence and the rules above.
+Label and parent checks stay.
 
 ### Promotion rule (deterministic)
 
@@ -321,9 +317,8 @@ all agree):
 
 1. A person designation (section 4.3), if that session is eligible.
 2. A nomination recorded by the outgoing coordinator before it ended (`handoff` record).
-3. Highest tier rank in the tier table.
-4. Longest continuous presence in this workspace (earliest `registered_s`).
-5. Lowest lexicographic `session_key`.
+3. Longest continuous presence in this workspace (earliest `registered_s`).
+4. Lowest lexicographic `session_key`.
 
 Only the winner may CAS; a candidate that is not the winner does nothing (it recomputes next touch,
 so if the winner's presence goes suspect before it acts, the next candidate wins at the next tick).
@@ -331,16 +326,15 @@ Two simultaneous CAS attempts: one succeeds at `n+1`, the other fails and observ
 Announcement: `announce milestone "coordinator: <display> promoted, epoch 8 (previous <display> dead)"`.
 
 - **Zero eligible sessions:** the lease stays vacant. Recovery of verified-dead holdings still
-  runs through the self-service path, claims keep expiring, nothing else is promoted. When only
-  lowest-tier mains exist, section 5.3 applies. The board lists `coordinator: none` in `status`.
+  runs through the self-service path, claims keep expiring, nothing else is promoted. The board lists
+  `coordinator: none` in `status`.
 - **Partition:** the board host is the single authority. A device that cannot reach it has no lease
   to read, takes no promotion, and its sessions keep working in "open mode" (below) but their
   coordinator-only calls fail. If the board host itself is partitioned from the rest, sessions on
   its side form the only electorate; the other side never elects, so two coordinators never exist.
   The lease and the board have one writer by construction; what is not designed here is failover
   of the board host (open question 1).
-- **Eligible session joins while another is coordinating:** no preemption, except for tier
-  demotion (section 5.4). A joining device becomes a candidate for the next vacancy.
+- **Eligible session joins while another is coordinating:** no preemption. A joining device becomes a candidate for the next vacancy.
 
 ### Person designation and revocation
 
@@ -353,8 +347,8 @@ session is eligible. "Stop X being coordinator" records `coordinator-revoke`, wh
 session ineligible (rule 5) and, if it holds the lease, ends it with `origin: revoked`. Promotion
 itself is an ordinary agent action under the agent's own token: no human credential is used, no
 agent can write a `person-attestation` (person-delegation section 6), and an agent's own message
-claiming the owner said so has no effect. A designation of an ineligible (lowest-tier or unknown) model
-is recorded but not honoured and the board says why; it is the owner's table to edit (section 5.1).
+claiming the owner said so has no effect. A designation of an ineligible session (a subagent or one not alive) is
+recorded but not honoured and the board says why.
 
 ### Reconstructing state
 
@@ -373,86 +367,12 @@ worker with an allocation may claim a queued task); working-lease heartbeats; th
 What needs the coordinator: assigning, reviewing batches, landing, `recover` beyond verified death,
 worktree handoff offers, retention of the lease.
 
-## 5. Model tiers and eligibility
+## 5. The model is a label
 
-AGENTS.md rule (`0.2dev`): the lowest tier of a vendor (Haiku, Luna and the like) never coordinates; a model
-absent from the table is not eligible; with only lowest-tier agents, one spawns a higher-level
-subagent to coordinate; it hands back when a higher-tier main session joins. Tier is read from the
-exact model id in the registry through a maintained table, never from a display name or label.
-
-### 5.1 The table
-
-Data file `src/poolhouse/workspace/model_tiers.json` (package data, in the wheel), edited by the owner and
-changed only through a normal commit; there is no runtime write path an agent can reach.
-
-```json
-{"version": 1,
- "families": [
-  {"family": "<vendor family name>",
-   "tiers": [
-     {"lowest": true,  "id_globs": ["<exact-id glob>", "..."]},
-     {"lowest": false, "id_globs": ["..."]},
-     {"lowest": false, "id_globs": ["..."]}]}]}
-```
-
-Rules: tiers are listed low to high; a model id matches a tier when it equals or globs (`fnmatch`,
-case-sensitive, no regex) one `id_globs` entry; the first family and tier that match win; a glob may not
-appear in two tiers, and a literal id may not match another tier's glob (the loader refuses the file).
-`lowest` is declared per family on exactly one tier, the first. No vendor name or model id is written
-in code; tests load a substitute table with invented family names. The loader is `workspace/model_tiers.py`
-(`tier_of(model_id, state) -> Tier(family, index, lowest, coordinator_eligible, reason)`, an unknown
-result has index -1), consulted by `agent_display.metadata` and by promotion.
-
-### 5.2 Unknown and unverified models
-
-`tier_of` returning `None` (no pattern, empty model, family missing) means ineligible. Fail
-closed. The registry stores `model_state` as `verified` or `claimed` (`modelid.py`); a claimed model id is
-what the agent *said* and is therefore also not eligible for the lease. Eligibility requires the
-model be `verified`, or `claimed` and the person has designated that session (the person's
-statement is the verification). This keeps "the model is a label, never a right"
-(docs/workspace.md, "Which model is it"): a tier grants no permission, it only removes
-candidacy. Inherited model labels on subagents never make them eligible (rule 6).
-
-### 5.3 All main sessions are lowest tier
-
-1. Presence shows no eligible main session and at least one live lowest-tier main session `M`.
-2. After `grace_s`, the board posts the vacancy. `M` (the session running the nudge hook, the
-   lowest `session_key` of the lowest-tier mains if several) spawns a subagent through its harness
-   (Agent tool) at a model `tier_of(...)` accepts, with a brief that names the coordination role,
-   the parent, the epoch and the fencing rule. Who spawns: the lowest-tier main only; the hook
-   adds an `additionalContext` instruction `coordinator vacancy: spawn a coordinating subagent`.
-   Others do nothing; a spawn is announced and recorded as `coordinator-spawn` with `spawned_by`.
-3. The subagent registers as the lowest tier's delegate, not as a main session: SubagentStart
-   gives it a normal child identity with `parent = M`. It does not elect itself. `M` posts a
-   `coordinator-nominate` record (an authorised nomination by its parent, naming the child
-   session and the epoch) and the subagent's lease CAS is allowed only if that nomination exists,
-   is by its authenticated parent, and the child's verified model passes the tier check.
-   The lease row carries `origin: spawned`, `nominated_by: M`, `lease_epoch`.
-4. This is the only case in which a non-main identity holds the lease. Its authority is
-   the lease, not its parent's rights. `M` cannot reuse the nomination for another child; one
-   spawned coordinator per vacancy.
-5. Hand-back: when an eligible higher-tier main session `H` has presence *alive*, the spawned
-   coordinator's lease is demoted (section 5.4); it finishes its current atomic step, writes a
-   `handback` summary note, and releases. A spawned coordinator that is *dead* (parent's terminal
-   closed) goes through the same promotion: the parent is dead too, and its child tokens died with it.
-6. If `M` dies, the spawned coordinator dies with it and the cycle restarts.
-
-### 5.4 Demotion mid-flight
-
-A higher-tier eligible session `H` appearing does not preempt a legitimately elected (rank-ordered,
-non-spawned) coordinator of equal or higher tier. It demotes a *spawned* one, or a coordinator whose tier is
-no longer eligible (the table was edited). Mechanics:
-
-- `H`'s next touch finds `lease.origin == spawned` and `H` eligible; it CASes a `demote_request`
-  field (not the epoch). The holder sees it on its next touch (its section 4 renew) and
-  must stop starting new batches, finish or checkpoint the current landing step (section 6), post
-  the summary and release; the vacancy then promotes `H` by the normal rule (the nominee ranking
-  has `H` first on tier). A holder that does not release within `demote_grace_s` (default
-  5 min, longer than a landing step) is treated as wedged (section 6).
-- Promotion in flight: if a candidate computed itself winner and the table changes, the CAS
-  recomputes eligibility inside the transaction and fails if the winner is no longer eligible.
-- A coordinator whose model is later edited to the lowest tier in the table is demoted the same way
-  at its next touch; the table is read per touch (cached by mtime).
+No model identifier decides who may coordinate or be promoted. Eligibility is the structural rule above (a main
+session with live presence and no revoked designation); the registry's `model` and `model_state` are labels that
+`status` and `agents` show and that no rule reads. A subagent never holds the lease by inheriting a label, and a
+person's designation (section 4.3) is the only way a session is preferred.
 
 ## 6. Failure modes and tests
 
@@ -474,10 +394,6 @@ advance them instead of sleeping, but the process kill is real.
 | Mass death (power loss) | all presences stale at once; first candidate promotes; recovery sweeps in dependency order, bounded per sweep (50 holdings) with one announcement | kill -9 N child sessions, restart one: it promotes (if eligible), recovers every claim and lease, announces once, unique worktree commits intact |
 | Coordinator dies mid-landing | `landing:<id>` node (batch commits, worktree, step, claims) written before each step. New coordinator reads it: a half-merged batch is *blocked with recovery_required* (as `integrate_completed` does for a dead owner), the integration worktree is orphaned and offered, the shared claims it held are released after verification, the background full suite is adopted (one at a time) | kill the coordinator between `merge` and `fetch`; successor refuses to re-run, shows the block, preserves the worktree and offers it through handoff |
 | Recovery races a revived owner | CAS plus epoch | owner renews while the recovery transaction is open; exactly one wins; the loser has a consistent view and no claim is released that the owner just renewed |
-| Recovery of lowest-tier-only workspace | spawn path, section 5.3 | a lowest-tier session is the only live main session: it is not promoted; the vacancy and spawn instruction appear; its nominated subagent obtains the lease only with the nomination, loses it to a higher-tier session's arrival, and the lowest-tier session cannot hold the lease directly even when designated... (a person designation of a lowest-tier model is recorded but not honoured) |
-| Unknown model id | ineligible | model id missing from the table: `coordinator_eligible` false, promotion skips it, `status` says "model not in tier table" |
-| Tier table edited mid-flight | demotion | holder's pattern moved to the lowest tier; next touch starts demotion; a successor promotes |
-| Table misuse | loader refuses duplicates, a family with two `lowest`, or an empty pattern | loader tests |
 
 Red-team (extend `scripts/redteam_coverage.py` coverage; real child processes with `CLAUDECODE=1`):
 a subagent cannot take or renew the lease except by an authorised nomination from its parent;
@@ -487,9 +403,8 @@ person-delegation red-team set); text on the board claiming "the owner designate
 a forged `presence verified-dead` for another device's record is rejected; a session cannot declare
 another session dead on the same device unless the pid/start check agrees; a recovered session cannot
 reacquire its old epoch; a presence record cannot be created for a `session_key` the caller's token
-does not own; touch rate limiting holds under 100 hook calls in one second; a model id that merely
-resembles a higher-tier pattern (substring, case, unicode confusable) does not match; a label or
-display name of a higher tier on a lowest-tier model does not raise its tier.
+does not own; touch rate limiting holds under 100 hook calls in one second;
+a model id or display name changes no eligibility.
 
 Integration tests (real workspace): SessionStart then a `post` nudge writes presence at most once per
 interval; a closed terminal (kill -9 of the process recorded in presence) frees its native claims at
@@ -513,7 +428,7 @@ Each slice is independently landable; files are expected, not final.
   (`:117-119`) and `holder_session`; `reserve` records `holder_session`.
 - `src/poolhouse/workspace/task_actions.py`: `recover_dead(board, ws, lease)` requeues with checkpoint,
   no failure increment; recording `previous_owner`.
-- `src/poolhouse/workspace/agent_display.py`: `coordinator_eligible` also requires live presence.
+- `src/poolhouse/workspace/agent_display.py`: shows `session_kind` and `spawned_by`; a dead session shows as gone.
 - `src/poolhouse/workspace/harness_remote.py`: pass `holder_session`; use presence in `conflict`.
 - Docs: `docs/workspace.md` section on session liveness; tests as in section 6 for claims, leases,
   presence, hooks.
@@ -530,11 +445,6 @@ Touch also renews claims/leases/children; revoke descendants of a dead parent. F
 returns recovered holdings to the hook. Files: `task_actions.py`, `claims.py`, `harness_remote.py`,
 `scripts/hooks/workspace_hook.py`, `nudge.py` output.
 
-### Slice 4: tier table and eligibility
-
-`model_tiers.json`, `model_tiers.py`, `agent_display.py` (`coordinator_eligible`), `docs/workspace.md`,
-loader and pattern tests, unknown/fail-closed tests. No lease yet.
-
 ### Slice 5: coordinator lease, promotion, designation
 
 `coordinator_lease.py` (CAS, epochs, promote), `person_*` authorization kinds
@@ -547,8 +457,8 @@ the epoch (`task_scheduler.py`, `task_integration.py`, `task_authority.py`). Fix
 ### Slice 6: orphan worktrees, background jobs, landing record
 
 `worktree_lifecycle.py` (`orphaned` state), `claims.handoff` for a dead owner, `scripts/testjobs.py`
-(`owner_session`, adopt/cancel by kind), `task_scheduler.py` (`landing:<id>` node), spawned-coordinator
-path and demotion (section 5.3-5.4), hooks adding the vacancy instruction.
+(`owner_session`, adopt/cancel by kind), `task_scheduler.py` (`landing:<id>` node), hooks adding the
+vacancy instruction.
 
 ## 8. Open questions for the owner
 
@@ -563,9 +473,5 @@ path and demotion (section 5.3-5.4), hooks adding the vacancy instruction.
    session's expiry be longer than a working one's?
 4. Should a task whose worker died count against `max_retries`? The design says no (death is not
    task failure); cost: a task that kills its worker's machine repeatedly never exhausts retries.
-5. A claimed (unverified) model with a person designation: honour the designation as verification
-   (section 5.2), or require a launcher-verified model id always?
-6. Test jobs of a dead owner: adopt (design) or cancel? Adoption keeps a possibly wanted result and
+5. Test jobs of a dead owner: adopt (design) or cancel? Adoption keeps a possibly wanted result and
    the whole-tier slot held until it finishes.
-7. Tier-table membership of the models actually in use today; the table's content (which ids are
-   in which tier, which family's lowest tier) is the owner's, and no id is proposed here.

@@ -117,12 +117,12 @@ def test_the_deploying_lead_cannot_accept_its_own_commit(reviewed):
         runtime_unmerged.approve(project.root, sha, "own-work")
 
 
-def test_helper_and_lowest_tier_cannot_use_lead_approval(reviewed, monkeypatch):
+def test_a_helper_cannot_use_lead_approval(reviewed, monkeypatch):
     project, node, lead, _, sha, branch = reviewed
-    for member in (node.member("helper", parent=lead), node.member("small", model="claude-haiku-5-5")):
-        monkeypatch.setenv(authority.AGENT_ENV, member.name)
-        with pytest.raises(runtime_source.DeployError, match="live eligible lead"):
-            runtime_unmerged.approve(project.root, sha, branch)
+    member = node.member("helper", parent=lead)
+    monkeypatch.setenv(authority.AGENT_ENV, member.name)
+    with pytest.raises(runtime_source.DeployError, match="live lead"):
+        runtime_unmerged.approve(project.root, sha, branch)
 
 
 def test_offline_node_cannot_reuse_approval(reviewed):

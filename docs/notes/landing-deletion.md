@@ -65,7 +65,7 @@ Changed behaviour, attack-first (what a non-author reviewer is asked to break):
   hung node holds a push for at most 10 seconds. An error on one commit keeps the rejects found on the others; a node that
   stops answering ends the questions. An agent can also skip the hook with `git push --no-verify`; the Bash guard and the GitHub
   `gates` job are what stop it. A reject is advice.
-- **A hostile reviewer can stall a commit.** Any live session of the board above the lowest model tier can post a reject for any
+- **A hostile reviewer can stall a commit.** Any live session of the board can post a reject for any
   commit. The pusher replaces the commit, or the reviewer replaces its reject with an accept. Before, the reject was also scoped by
   a branch name; it is now by commit, so a reject posted under another name still stops the commit. A session retired as
   `revoked` or `forged` no longer counts.

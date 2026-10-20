@@ -224,7 +224,7 @@ verified signatures accumulate as evidence against its fingerprint in the source
 (kind `peer`, key `device:<fingerprint>`, 6 h short term, 30 d half-life). A device earns L2 (active
 for all boards) by evidence, and keeps it the way an agent does: a hard fault (3.4 grades 3 and 4)
 drops it to L0 at once. L3 (coordinator) for a device needs the ledger's accepted-work evidence plus
-`coordinator_eligible`; never from time alone. L4 never. A person's "Let it in" is a standing-grant
+a live main session on it; never from time alone. L4 never. A person's "Let it in" is a standing-grant
 on one fingerprint, scoped, logged and revocable (graduated autonomy).
 
 ### 3.7 What `open` is allowed to do when the device is alone

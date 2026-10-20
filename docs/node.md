@@ -334,13 +334,8 @@ live session behind the token. `land_accepts` (`sha`) answers the push hook and 
 each reviewer of this device for exactly that commit under any branch name, without the caller. Entries of the
 retired landing queue (`request`, `cancel`, `pause`, `resume`, `state`, `beat`, and reviews of a request) fold and count
 for nothing.
-A model's tier is not the node's to judge, so `landing.eligible` in Python bars the lowest tier and an
-unlisted model from reviewing, and `landing.rejected` and `landing.standing` re-derive each reviewer's tier from the stamped model and
-drop a reviewer retired as `revoked` or `forged`. The tier
-comes from `src/poolhouse/workspace/model_tiers.json` (families `anthropic`, `openai` and `qwen`;
-docs/model-benchmarks.md, section 1): a local agent claims the id `localmodel.model_identity` gives, which
-drops the quantisation, so the `qwen` family lists those short ids and every quantisation of Qwen3.8-27B and
-Qwen3.8-Flash-Next above its lowest tier, on the same claimed-id trust as the other families.
+`landing.rejected` and `landing.standing` drop a reviewer retired as `revoked` or `forged`. No model identifier decides who may land, review or
+coordinate: the model on a review is the id the session claimed, kept as a label.
 
 A review counts only when this device wrote it. The device list (`<state>/land_trust.json`, kept per pool, empty by default,
 never replicated) decides whose `task` and `grant` entries count besides this device's own; it is changed by `land_trust`
@@ -380,8 +375,7 @@ body holds no fractions: times are whole milliseconds. Followers (`task_watch`) 
 others are shown under `foreign_ignored`. The `task` claim kind is the node's own: `claim` refuses it and `claims` does not list it.
 
 **Stubs.** One check waits for the trust ledger and is a stub that allows nothing: model verification (no session is ever
-`verified`, so `landing.eligible` reads a listed model id as claimed, and a grant naming a verified model or a verified class
-holds for nobody yet).
+`verified`, so a grant naming a verified model or a verified class holds for nobody yet).
 
 The Rust client (`client::Client`, `client::ensure_running`) finds a dead socket, takes
 `start.lock` (single-flight, so callers queue and the second finds the first's node), spawns

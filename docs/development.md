@@ -100,10 +100,10 @@ rules file instead of the shipped one.
 
 ### Hook failures and runtime cutover checks
 
-The rules are in AGENTS.md, "Hook failures are active incidents" and "Activating a fix"; this is
+The rules are in AGENTS.md, "Hook failures are active incidents" and "Updating to a fix"; this is
 the procedure.
 
-After changing or activating a runtime, exercise the installed hook commands for pre, post and
+After changing or updating a runtime, exercise the installed hook commands for pre, post and
 stop under the owning authenticated session. Check the actual launcher interpreter, the
 distribution revision, the structured output and the exit status: source tests and a daemon
 health response do not establish which hook runtime is active. Preserve any diagnostic ID and
@@ -136,7 +136,7 @@ When a development hook fails repeatedly, or the owner asks to fix it:
   though a broken hook succeeded.
 - Complete the authorized build, isolated installation and exact-command smoke before
   requesting any required host trust review. Preserve active jobs, original configuration and
-  rollback artifacts. Never fabricate a trust hash or bypass authorization to activate a change.
+  rollback artifacts. Never fabricate a trust hash or bypass authorization to update to a change.
 - Completion requires the actual configuration selecting the repaired artifact, required trust
   approval saved, and a successful installed invocation on the available hardware. Verify the
   normal host-triggered hook too; report any remaining reload or verification step. A source

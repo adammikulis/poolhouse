@@ -73,7 +73,7 @@ names the `claim` command that takes it again.
 
 A subagent makes no room, joins and subscribes to nothing, has no scratch folder, spends only the grants that name it
 (a grant that names a session reaches its subagents only when it was signed with `--with-subagents`), and is never
-coordinator-eligible. Without the hook, a parent runs `spawn --session UNIQUE-ID` and `brief --agent NAME` itself.
+a main session. Without the hook, a parent runs `spawn --session UNIQUE-ID` and `brief --agent NAME` itself.
 There is no label: no flag, header or field names a sender, parent or name, and the node refuses a request that
 carries one.
 
