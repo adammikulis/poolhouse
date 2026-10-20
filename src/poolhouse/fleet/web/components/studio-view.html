@@ -197,6 +197,7 @@
           );
         };
         this.addEventListener("keydown", (e) => this.key(e));
+        this.setupN8nPaste();
         this.setupSharing();
         this.setupLive();
         this.setupWorkspaceTabs();
@@ -327,7 +328,7 @@
           this.submitting || !this.selected.size;
         this.groupPath();
       }
-      copy() {
+      copy(event) {
         this.flushGroup();
         const context = S.selectionContext(this),
           graph = context.graph,
@@ -347,6 +348,7 @@
           groups: S.clone(graph.groups),
           layout: S.clone(graph.layout),
         };
+        this.writeStudioClipboard(event);
         this.message(
           context.inherited
             ? "Copied containing controlled group and required dependencies"
@@ -422,13 +424,12 @@
         this.changed();
       }
       key(e) {
-        if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return;
+        if (this.n8nEditing(e)) return;
         const mod = e.metaKey || e.ctrlKey;
         if (mod && ["z", "c", "v", "a"].includes(e.key.toLowerCase())) {
+          if (["c", "v"].includes(e.key.toLowerCase())) return;
           e.preventDefault();
           if (e.key.toLowerCase() === "z") this.undo(e.shiftKey);
-          if (e.key.toLowerCase() === "c") this.copy();
-          if (e.key.toLowerCase() === "v") this.paste();
           if (e.key.toLowerCase() === "a") {
             this.selected = new Set(this.graph.nodes.map((n) => n.id));
             this.render();
