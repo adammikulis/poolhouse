@@ -2012,9 +2012,12 @@
     "tests/test_producer_sdk.py::test_records_are_finite_objects_before_data",
     "tests/test_producer_sdk.py::test_fork_invalidates_client_and_closes_inherited_owned_socket",
     "tests/test_producer_sdk.py::test_wrong_control_certificate_refuses_before_metadata_application",
-    "tests/test_producer_sdk.py::test_socket_path_replacement_cannot_receive_record"
+    "tests/test_producer_sdk.py::test_socket_path_replacement_cannot_receive_record",
+    "tests/test_producer_sdk.py::test_explicit_retry_uses_fresh_authenticated_data_and_preserves_command",
+    "tests/test_producer_sdk.py::test_invalid_retry_never_opens_control_or_data",
+    "tests/test_producer_sdk.py::test_retry_wrong_data_process_gets_zero_application_bytes"
    ],
-   "note": "The original SDK process retains one authenticated daemon anchor and offer-specific bridge generation. Fresh control and DATA connections verify actual kernel endpoint processes before application bytes, with exact control TLS certificate checks and bounded fixed schemas. Wrong or replaced endpoints receive no record bytes; inherited clients fail after fork. There is no automatic uncertain resend. These isolated transport tests do not establish complete provider enrollment, current source authorization or durable event admission; deliberate forwarding by an already authorized connector remains outside kernel connector proof."
+   "note": "The original SDK process retains one authenticated daemon anchor and offer-specific bridge generation. Fresh control and DATA connections verify actual kernel endpoint processes before application bytes, with exact control TLS certificate checks and bounded fixed schemas. Wrong or replaced endpoints receive no record bytes; inherited clients fail after fork. An explicit retry carries its stable command key without replacement data; there is no automatic uncertain resend. These isolated transport tests do not establish complete provider enrollment, current source authorization or durable event admission; deliberate forwarding by an already authorized connector remains outside kernel connector proof."
   },
   {
    "id": "egress:fleet/producer_client.py:ProducerClient._data",
@@ -2032,9 +2035,12 @@
     "tests/test_producer_sdk.py::test_records_are_finite_objects_before_data",
     "tests/test_producer_sdk.py::test_fork_invalidates_client_and_closes_inherited_owned_socket",
     "tests/test_producer_sdk.py::test_wrong_control_certificate_refuses_before_metadata_application",
-    "tests/test_producer_sdk.py::test_socket_path_replacement_cannot_receive_record"
+    "tests/test_producer_sdk.py::test_socket_path_replacement_cannot_receive_record",
+    "tests/test_producer_sdk.py::test_explicit_retry_uses_fresh_authenticated_data_and_preserves_command",
+    "tests/test_producer_sdk.py::test_invalid_retry_never_opens_control_or_data",
+    "tests/test_producer_sdk.py::test_retry_wrong_data_process_gets_zero_application_bytes"
    ],
-   "note": "The original SDK process retains one authenticated daemon anchor and offer-specific bridge generation. Fresh control and DATA connections verify actual kernel endpoint processes before application bytes, with exact control TLS certificate checks and bounded fixed schemas. Wrong or replaced endpoints receive no record bytes; inherited clients fail after fork. There is no automatic uncertain resend. These isolated transport tests do not establish complete provider enrollment, current source authorization or durable event admission; deliberate forwarding by an already authorized connector remains outside kernel connector proof."
+   "note": "The original SDK process retains one authenticated daemon anchor and offer-specific bridge generation. Fresh control and DATA connections verify actual kernel endpoint processes before application bytes, with exact control TLS certificate checks and bounded fixed schemas. Wrong or replaced endpoints receive no record bytes; inherited clients fail after fork. An explicit retry carries its stable command key without replacement data; there is no automatic uncertain resend. These isolated transport tests do not establish complete provider enrollment, current source authorization or durable event admission; deliberate forwarding by an already authorized connector remains outside kernel connector proof."
   },
   {
    "id": "egress:fleet/producer_process.py:_forward",
@@ -2051,9 +2057,12 @@
     "tests/test_producer_process.py::test_data_connection_cannot_dispatch_a_second_frame",
     "tests/test_producer_process.py::test_replaced_data_inode_is_not_unlinked_or_used",
     "tests/test_producer_process.py::test_blocked_data_writer_rechecks_revocation_without_extending_deadline",
-    "tests/test_producer_process.py::test_control_binding_rejects_missing_and_nonfinite_generation"
+    "tests/test_producer_process.py::test_control_binding_rejects_missing_and_nonfinite_generation",
+    "tests/test_producer_process.py::test_deliberate_retry_forwards_only_event_and_mac_bound_command",
+    "tests/test_producer_process.py::test_data_retry_never_accepts_replacement_or_cross_action_fields",
+    "tests/test_producer_process.py::test_retry_after_source_revocation_does_not_forward"
    ],
-   "note": "A private owned Unix listener accepts fresh original SDK process connections and forwards fixed generic JSON publication or receipt requests under the inherited source capability to the exact daemon TLS/control process. Complete binding validation, original listener inode, one-frame dispatch, parent death and cancellation-aware partial reads/writes are exercised under the original deadline. No source HMAC or device secret is exposed to the SDK. Isolated forwarding tests do not establish complete receiver admission, current source authorization, durable delivery or an installed producer journey; those remain factory obligations."
+   "note": "A private owned Unix listener accepts fresh original SDK process connections and forwards fixed generic JSON publication, receipt or explicit retry requests under the inherited source capability to the exact daemon TLS/control process. Complete binding validation, original listener inode, one-frame dispatch, parent death and cancellation-aware partial reads/writes are exercised under the original deadline. No source HMAC or device secret is exposed to the SDK. Isolated forwarding tests do not establish complete receiver admission, current source authorization, durable delivery or an installed producer journey; those remain factory obligations."
   },
   {
    "id": "egress:fleet/project_client.py:read",
@@ -2990,9 +2999,12 @@
     "tests/test_producer_bridge.py::test_changed_raw_bytes_or_mac_or_unknown_fields_never_verify",
     "tests/test_producer_bridge.py::test_receipt_is_fixed_original_binding_and_cannot_include_replacement_data",
     "tests/test_producer_bridge.py::test_revocation_during_verification_does_not_consume_nonce",
-    "tests/test_producer_bridge.py::test_only_finite_json_objects_have_record_bytes"
+    "tests/test_producer_bridge.py::test_only_finite_json_objects_have_record_bytes",
+    "tests/test_producer_bridge.py::test_retry_key_is_mac_bound_and_cannot_supply_replacement_bytes",
+    "tests/test_producer_bridge.py::test_retry_schema_has_no_old_version_missing_key_or_replacement_fallback",
+    "tests/test_producer_bridge.py::test_retry_requires_exact_command_identity"
    ],
-   "note": "Private bridge requests bind the full immutable source context, exact finite JSON bytes, action and nonce under a domain-separated MAC. Activation requires the persisted binding digest; explicit revocation is sticky and replay is refused. Callback-based tests exercise retained-child/current-source requirements, not complete process custody or owner authorization. The fixed factory must supply both checks; bounded RAM nonce tracking supplements the durable source/event ledger and cannot itself promise durable replay prevention. No listener, source enrollment or publication transport is provided by this primitive."
+   "note": "Private bridge requests bind the full immutable source context, exact finite JSON bytes, action, nonce and required action-specific retry key under the v2 domain-separated MAC. Old versions and missing keys are refused; receipt/retry cannot supply replacement bytes. Activation requires the persisted binding digest; explicit revocation is sticky and replay is refused. Callback-based tests exercise retained-child/current-source requirements, not complete process custody or owner authorization. The fixed factory must supply both checks; bounded RAM nonce tracking supplements the durable source/event ledger and cannot itself promise durable replay prevention. No listener, source enrollment or publication transport is provided by this primitive."
   },
   {
    "id": "handler:fleet/producer_bridge.py:BridgeCapability.verify",
@@ -3014,9 +3026,12 @@
     "tests/test_producer_bridge.py::test_changed_raw_bytes_or_mac_or_unknown_fields_never_verify",
     "tests/test_producer_bridge.py::test_receipt_is_fixed_original_binding_and_cannot_include_replacement_data",
     "tests/test_producer_bridge.py::test_revocation_during_verification_does_not_consume_nonce",
-    "tests/test_producer_bridge.py::test_only_finite_json_objects_have_record_bytes"
+    "tests/test_producer_bridge.py::test_only_finite_json_objects_have_record_bytes",
+    "tests/test_producer_bridge.py::test_retry_key_is_mac_bound_and_cannot_supply_replacement_bytes",
+    "tests/test_producer_bridge.py::test_retry_schema_has_no_old_version_missing_key_or_replacement_fallback",
+    "tests/test_producer_bridge.py::test_retry_requires_exact_command_identity"
    ],
-   "note": "Private bridge requests bind the full immutable source context, exact finite JSON bytes, action and nonce under a domain-separated MAC. Activation requires the persisted binding digest; explicit revocation is sticky and replay is refused. Callback-based tests exercise retained-child/current-source requirements, not complete process custody or owner authorization. The fixed factory must supply both checks; bounded RAM nonce tracking supplements the durable source/event ledger and cannot itself promise durable replay prevention. No listener, source enrollment or publication transport is provided by this primitive."
+   "note": "Private bridge requests bind the full immutable source context, exact finite JSON bytes, action, nonce and required action-specific retry key under the v2 domain-separated MAC. Old versions and missing keys are refused; receipt/retry cannot supply replacement bytes. Activation requires the persisted binding digest; explicit revocation is sticky and replay is refused. Callback-based tests exercise retained-child/current-source requirements, not complete process custody or owner authorization. The fixed factory must supply both checks; bounded RAM nonce tracking supplements the durable source/event ledger and cannot itself promise durable replay prevention. No listener, source enrollment or publication transport is provided by this primitive."
   },
   {
    "id": "handler:fleet/producer_control.py:ControlServer._answer",
@@ -4728,9 +4743,12 @@
     "tests/test_producer_process.py::test_data_connection_cannot_dispatch_a_second_frame",
     "tests/test_producer_process.py::test_replaced_data_inode_is_not_unlinked_or_used",
     "tests/test_producer_process.py::test_blocked_data_writer_rechecks_revocation_without_extending_deadline",
-    "tests/test_producer_process.py::test_control_binding_rejects_missing_and_nonfinite_generation"
+    "tests/test_producer_process.py::test_control_binding_rejects_missing_and_nonfinite_generation",
+    "tests/test_producer_process.py::test_deliberate_retry_forwards_only_event_and_mac_bound_command",
+    "tests/test_producer_process.py::test_data_retry_never_accepts_replacement_or_cross_action_fields",
+    "tests/test_producer_process.py::test_retry_after_source_revocation_does_not_forward"
    ],
-   "note": "A private owned Unix listener accepts fresh original SDK process connections and forwards fixed generic JSON publication or receipt requests under the inherited source capability to the exact daemon TLS/control process. Complete binding validation, original listener inode, one-frame dispatch, parent death and cancellation-aware partial reads/writes are exercised under the original deadline. No source HMAC or device secret is exposed to the SDK. Isolated forwarding tests do not establish complete receiver admission, current source authorization, durable delivery or an installed producer journey; those remain factory obligations."
+   "note": "A private owned Unix listener accepts fresh original SDK process connections and forwards fixed generic JSON publication, receipt or explicit retry requests under the inherited source capability to the exact daemon TLS/control process. Complete binding validation, original listener inode, one-frame dispatch, parent death and cancellation-aware partial reads/writes are exercised under the original deadline. No source HMAC or device secret is exposed to the SDK. Isolated forwarding tests do not establish complete receiver admission, current source authorization, durable delivery or an installed producer journey; those remain factory obligations."
   },
   {
    "id": "listener:fleet/studio_stream_routes.py:sources",
@@ -6066,9 +6084,12 @@
     "tests/test_producer_bridge.py::test_changed_raw_bytes_or_mac_or_unknown_fields_never_verify",
     "tests/test_producer_bridge.py::test_receipt_is_fixed_original_binding_and_cannot_include_replacement_data",
     "tests/test_producer_bridge.py::test_revocation_during_verification_does_not_consume_nonce",
-    "tests/test_producer_bridge.py::test_only_finite_json_objects_have_record_bytes"
+    "tests/test_producer_bridge.py::test_only_finite_json_objects_have_record_bytes",
+    "tests/test_producer_bridge.py::test_retry_key_is_mac_bound_and_cannot_supply_replacement_bytes",
+    "tests/test_producer_bridge.py::test_retry_schema_has_no_old_version_missing_key_or_replacement_fallback",
+    "tests/test_producer_bridge.py::test_retry_requires_exact_command_identity"
    ],
-   "note": "Private bridge requests bind the full immutable source context, exact finite JSON bytes, action and nonce under a domain-separated MAC. Activation requires the persisted binding digest; explicit revocation is sticky and replay is refused. Callback-based tests exercise retained-child/current-source requirements, not complete process custody or owner authorization. The fixed factory must supply both checks; bounded RAM nonce tracking supplements the durable source/event ledger and cannot itself promise durable replay prevention. No listener, source enrollment or publication transport is provided by this primitive."
+   "note": "Private bridge requests bind the full immutable source context, exact finite JSON bytes, action, nonce and required action-specific retry key under the v2 domain-separated MAC. Old versions and missing keys are refused; receipt/retry cannot supply replacement bytes. Activation requires the persisted binding digest; explicit revocation is sticky and replay is refused. Callback-based tests exercise retained-child/current-source requirements, not complete process custody or owner authorization. The fixed factory must supply both checks; bounded RAM nonce tracking supplements the durable source/event ledger and cannot itself promise durable replay prevention. No listener, source enrollment or publication transport is provided by this primitive."
   },
   {
    "id": "parser:fleet/producer_client.py",
@@ -6086,9 +6107,12 @@
     "tests/test_producer_sdk.py::test_records_are_finite_objects_before_data",
     "tests/test_producer_sdk.py::test_fork_invalidates_client_and_closes_inherited_owned_socket",
     "tests/test_producer_sdk.py::test_wrong_control_certificate_refuses_before_metadata_application",
-    "tests/test_producer_sdk.py::test_socket_path_replacement_cannot_receive_record"
+    "tests/test_producer_sdk.py::test_socket_path_replacement_cannot_receive_record",
+    "tests/test_producer_sdk.py::test_explicit_retry_uses_fresh_authenticated_data_and_preserves_command",
+    "tests/test_producer_sdk.py::test_invalid_retry_never_opens_control_or_data",
+    "tests/test_producer_sdk.py::test_retry_wrong_data_process_gets_zero_application_bytes"
    ],
-   "note": "The original SDK process retains one authenticated daemon anchor and offer-specific bridge generation. Fresh control and DATA connections verify actual kernel endpoint processes before application bytes, with exact control TLS certificate checks and bounded fixed schemas. Wrong or replaced endpoints receive no record bytes; inherited clients fail after fork. There is no automatic uncertain resend. These isolated transport tests do not establish complete provider enrollment, current source authorization or durable event admission; deliberate forwarding by an already authorized connector remains outside kernel connector proof."
+   "note": "The original SDK process retains one authenticated daemon anchor and offer-specific bridge generation. Fresh control and DATA connections verify actual kernel endpoint processes before application bytes, with exact control TLS certificate checks and bounded fixed schemas. Wrong or replaced endpoints receive no record bytes; inherited clients fail after fork. An explicit retry carries its stable command key without replacement data; there is no automatic uncertain resend. These isolated transport tests do not establish complete provider enrollment, current source authorization or durable event admission; deliberate forwarding by an already authorized connector remains outside kernel connector proof."
   },
   {
    "id": "parser:fleet/producer_control.py",
@@ -6137,9 +6161,12 @@
     "tests/test_producer_process.py::test_data_connection_cannot_dispatch_a_second_frame",
     "tests/test_producer_process.py::test_replaced_data_inode_is_not_unlinked_or_used",
     "tests/test_producer_process.py::test_blocked_data_writer_rechecks_revocation_without_extending_deadline",
-    "tests/test_producer_process.py::test_control_binding_rejects_missing_and_nonfinite_generation"
+    "tests/test_producer_process.py::test_control_binding_rejects_missing_and_nonfinite_generation",
+    "tests/test_producer_process.py::test_deliberate_retry_forwards_only_event_and_mac_bound_command",
+    "tests/test_producer_process.py::test_data_retry_never_accepts_replacement_or_cross_action_fields",
+    "tests/test_producer_process.py::test_retry_after_source_revocation_does_not_forward"
    ],
-   "note": "A private owned Unix listener accepts fresh original SDK process connections and forwards fixed generic JSON publication or receipt requests under the inherited source capability to the exact daemon TLS/control process. Complete binding validation, original listener inode, one-frame dispatch, parent death and cancellation-aware partial reads/writes are exercised under the original deadline. No source HMAC or device secret is exposed to the SDK. Isolated forwarding tests do not establish complete receiver admission, current source authorization, durable delivery or an installed producer journey; those remain factory obligations."
+   "note": "A private owned Unix listener accepts fresh original SDK process connections and forwards fixed generic JSON publication, receipt or explicit retry requests under the inherited source capability to the exact daemon TLS/control process. Complete binding validation, original listener inode, one-frame dispatch, parent death and cancellation-aware partial reads/writes are exercised under the original deadline. No source HMAC or device secret is exposed to the SDK. Isolated forwarding tests do not establish complete receiver admission, current source authorization, durable delivery or an installed producer journey; those remain factory obligations."
   },
   {
    "id": "parser:fleet/request_fields.py",
