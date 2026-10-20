@@ -1,7 +1,7 @@
 {
- "surfaces": 893,
+ "surfaces": 892,
  "by_status": {
-  "covered": 575,
+  "covered": 574,
   "partial": 193,
   "uncovered": 52,
   "n/a": 73,
@@ -37,7 +37,7 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 58,
+   "covered": 57,
    "partial": 46,
    "uncovered": 0,
    "n/a": 1,
@@ -2138,23 +2138,6 @@
    "note": "Current enrolled pool discovery pins encrypted devices. Exact destination guards refuse redirects, bounded sealed responses reject malformed packages and nonmonotonic pages, and bounded error bodies prevent a malicious device exhausting memory. Immutable versions and safe offline warnings preserve local publication."
   },
   {
-   "id": "egress:fleet/studio_transport.py:MemberExecution.__init__",
-   "kind": "egress",
-   "source": "fleet/studio_transport.py:MemberExecution.__init__",
-   "trust": "addresses and redirects named by pages, repositories and members",
-   "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "covered",
-   "tests": [
-    "tests/test_studio_transport.py::test_only_discovered_https_enrolled_member_is_accepted",
-    "tests/test_studio_transport.py::test_plaintext_oversized_redirect_and_error_responses_are_refused",
-    "tests/test_studio_transport.py::test_revocation_is_checked_before_each_request",
-    "tests/test_studio_transport.py::test_selected_device_identity_cannot_change_after_binding",
-    "tests/test_studio_transport.py::test_response_must_be_bound_to_its_sealed_request",
-    "tests/test_studio_transport.py::test_collect_rejects_another_dispatch_before_fetching"
-   ],
-   "note": "Fixed Studio endpoints require the selected enrolled device certificate, current authorization and request-bound sealed responses; redirects, oversized or plaintext responses, changed identities and another dispatch's artifacts are refused"
-  },
-  {
    "id": "egress:fleet/studio_transport.py:MemberExecution._wire",
    "kind": "egress",
    "source": "fleet/studio_transport.py:MemberExecution._wire",
@@ -2163,13 +2146,16 @@
    "status": "covered",
    "tests": [
     "tests/test_studio_transport.py::test_only_discovered_https_enrolled_member_is_accepted",
+    "tests/test_studio_device_http.py::test_member_tls_redirects_never_contact_a_second_endpoint",
+    "tests/test_studio_device_http.py::test_member_exact_leaf_survives_global_pin_replacement",
+    "tests/test_http.py::test_explicit_no_redirect_contacts_once_for_hostnames_and_loopback",
     "tests/test_studio_transport.py::test_plaintext_oversized_redirect_and_error_responses_are_refused",
     "tests/test_studio_transport.py::test_revocation_is_checked_before_each_request",
     "tests/test_studio_transport.py::test_selected_device_identity_cannot_change_after_binding",
     "tests/test_studio_transport.py::test_response_must_be_bound_to_its_sealed_request",
     "tests/test_studio_transport.py::test_collect_rejects_another_dispatch_before_fetching"
    ],
-   "note": "Fixed Studio endpoints require the selected enrolled device certificate, current authorization and request-bound sealed responses; redirects, oversized or plaintext responses, changed identities and another dispatch's artifacts are refused"
+   "note": "Fixed Studio endpoints require an exact selected enrolled device certificate in a request-owned TLS context, strict current authorization and request-bound sealed responses. Global pin replacement cannot substitute another certificate, even a different leaf signed by the same CA. Numeric and hostname redirects, including back to the same URL, cannot send a second request in normal or cancellable HTTP paths. Oversized or plaintext responses, changed identities and another dispatch's artifacts are refused. Constructor-only context creation no longer registers a global network pin; network contact occurs in _wire."
   },
   {
    "id": "egress:fleet/studio_webhook_setup.py:LocalSender._send",
