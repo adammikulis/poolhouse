@@ -1,7 +1,7 @@
 {
- "surfaces": 901,
+ "surfaces": 907,
  "by_status": {
-  "covered": 583,
+  "covered": 589,
   "partial": 193,
   "uncovered": 52,
   "n/a": 73,
@@ -44,7 +44,7 @@
    "unmapped": 0
   },
   "handler": {
-   "covered": 15,
+   "covered": 19,
    "partial": 2,
    "uncovered": 0,
    "n/a": 0,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 90,
+   "covered": 92,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -2980,6 +2980,75 @@
    "note": ""
   },
   {
+   "id": "handler:fleet/producer_admission.py:Admission.admit",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_admission.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_admission.py::test_actual_inbox_receipt_wins_after_lost_ack_and_execution_revocation",
+    "tests/test_producer_admission.py::test_capacity_marker_commits_before_429_and_remains_terminal_when_capacity_frees",
+    "tests/test_producer_admission.py::test_raising_inside_outer_transaction_does_not_forge_durable_negative",
+    "tests/test_producer_admission.py::test_explicit_retry_new_attempt_cannot_replay_old_hmac_nonce",
+    "tests/test_producer_admission.py::test_changed_signed_tuple_or_record_never_enters_inbox",
+    "tests/test_producer_admission.py::test_actual_source_is_reloaded_before_new_admission",
+    "tests/test_producer_admission.py::test_stale_passed_subscription_cannot_hide_actual_capacity_or_revoked_grant",
+    "tests/test_producer_admission.py::test_current_revocation_before_commit_rolls_back_inbox_or_negative",
+    "tests/test_producer_admission.py::test_concurrent_admission_and_negative_settlement_cannot_lose_accepted_inbox",
+    "tests/test_producer_admission.py::test_corrupted_referenced_event_cannot_become_positive_or_negative_proof",
+    "tests/test_producer_admission.py::test_receipt_denial_happens_before_intent_or_inbox_reads",
+    "tests/test_producer_admission.py::test_historical_revocation_during_accepted_lookup_never_returns_proof"
+   ],
+   "note": "Isolated actual store, stream and publication-log transactions verify exact admission identities, accepted-inbox precedence, terminal rejection markers, retry fencing, current source reload and independent historical authorization before and after lookup. Factory authorization callbacks and the real outer HTTP commit-before-rejection wrapper are not claimed by these module tests."
+  },
+  {
+   "id": "handler:fleet/producer_admission.py:Admission.negative",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_admission.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_admission.py::test_actual_inbox_receipt_wins_after_lost_ack_and_execution_revocation",
+    "tests/test_producer_admission.py::test_capacity_marker_commits_before_429_and_remains_terminal_when_capacity_frees",
+    "tests/test_producer_admission.py::test_raising_inside_outer_transaction_does_not_forge_durable_negative",
+    "tests/test_producer_admission.py::test_explicit_retry_new_attempt_cannot_replay_old_hmac_nonce",
+    "tests/test_producer_admission.py::test_changed_signed_tuple_or_record_never_enters_inbox",
+    "tests/test_producer_admission.py::test_actual_source_is_reloaded_before_new_admission",
+    "tests/test_producer_admission.py::test_stale_passed_subscription_cannot_hide_actual_capacity_or_revoked_grant",
+    "tests/test_producer_admission.py::test_current_revocation_before_commit_rolls_back_inbox_or_negative",
+    "tests/test_producer_admission.py::test_concurrent_admission_and_negative_settlement_cannot_lose_accepted_inbox",
+    "tests/test_producer_admission.py::test_corrupted_referenced_event_cannot_become_positive_or_negative_proof",
+    "tests/test_producer_admission.py::test_receipt_denial_happens_before_intent_or_inbox_reads",
+    "tests/test_producer_admission.py::test_historical_revocation_during_accepted_lookup_never_returns_proof"
+   ],
+   "note": "Isolated actual store, stream and publication-log transactions verify exact admission identities, accepted-inbox precedence, terminal rejection markers, retry fencing, current source reload and independent historical authorization before and after lookup. Factory authorization callbacks and the real outer HTTP commit-before-rejection wrapper are not claimed by these module tests."
+  },
+  {
+   "id": "handler:fleet/producer_admission.py:Admission.receipt",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_admission.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_admission.py::test_actual_inbox_receipt_wins_after_lost_ack_and_execution_revocation",
+    "tests/test_producer_admission.py::test_capacity_marker_commits_before_429_and_remains_terminal_when_capacity_frees",
+    "tests/test_producer_admission.py::test_raising_inside_outer_transaction_does_not_forge_durable_negative",
+    "tests/test_producer_admission.py::test_explicit_retry_new_attempt_cannot_replay_old_hmac_nonce",
+    "tests/test_producer_admission.py::test_changed_signed_tuple_or_record_never_enters_inbox",
+    "tests/test_producer_admission.py::test_actual_source_is_reloaded_before_new_admission",
+    "tests/test_producer_admission.py::test_stale_passed_subscription_cannot_hide_actual_capacity_or_revoked_grant",
+    "tests/test_producer_admission.py::test_current_revocation_before_commit_rolls_back_inbox_or_negative",
+    "tests/test_producer_admission.py::test_concurrent_admission_and_negative_settlement_cannot_lose_accepted_inbox",
+    "tests/test_producer_admission.py::test_corrupted_referenced_event_cannot_become_positive_or_negative_proof",
+    "tests/test_producer_admission.py::test_receipt_denial_happens_before_intent_or_inbox_reads",
+    "tests/test_producer_admission.py::test_historical_revocation_during_accepted_lookup_never_returns_proof"
+   ],
+   "note": "Isolated actual store, stream and publication-log transactions verify exact admission identities, accepted-inbox precedence, terminal rejection markers, retry fencing, current source reload and independent historical authorization before and after lookup. Factory authorization callbacks and the real outer HTTP commit-before-rejection wrapper are not claimed by these module tests."
+  },
+  {
    "id": "handler:fleet/producer_bridge.py:BridgeCapability.activate",
    "kind": "handler",
    "source": "src/poolhouse/fleet/producer_bridge.py",
@@ -3116,6 +3185,24 @@
     "tests/test_producer_control.py::test_retention_error_never_appends_second_response"
    ],
    "note": "Each connection dispatches one fixed operation after current daemon and actual process checks. Ordinary clients cannot choose private bridge operations; current bridge admission is independently rechecked. Post-dispatch revocation suppresses a reply without repeating the callback. Response retention preserves endpoint verification within the original deadline and cannot append a second response. The fixed factory must separately authorize source capabilities and bound its callbacks; complete producer admission is not claimed by this primitive."
+  },
+  {
+   "id": "handler:fleet/producer_member.py:answer",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_member.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_member.py::test_real_sealed_tls_uses_actual_current_caller_not_record_fields",
+    "tests/test_producer_member.py::test_duplicate_and_nonfinite_fields_never_dispatch_over_actual_tls",
+    "tests/test_producer_member.py::test_missing_service_and_mismatched_tls_identity_fail_closed",
+    "tests/test_producer_member.py::test_only_publisher_action_can_carry_maximum_record_over_sealed_tls",
+    "tests/test_producer_member.py::test_metadata_budget_is_fixed_before_provider_dispatch",
+    "tests/test_producer_member.py::test_no_tls_channel_or_current_membership_cannot_dispatch",
+    "tests/test_producer_member.py::test_only_fixed_action_has_large_request_budget"
+   ],
+   "note": "Actual sealed TLS adapter tests bind the authenticated caller certificate and pool, reject substituted identities and malformed fixed schemas, and limit large bodies to publishing. Provider source capability, grant checks and full factory composition remain separate requirements."
   },
   {
    "id": "handler:fleet/producer_offers.py:OfferRegistry.inspect",
@@ -6110,6 +6197,29 @@
    "note": ""
   },
   {
+   "id": "parser:fleet/producer_admission.py",
+   "kind": "parser",
+   "source": "src/poolhouse/fleet/producer_admission.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_admission.py::test_actual_inbox_receipt_wins_after_lost_ack_and_execution_revocation",
+    "tests/test_producer_admission.py::test_capacity_marker_commits_before_429_and_remains_terminal_when_capacity_frees",
+    "tests/test_producer_admission.py::test_raising_inside_outer_transaction_does_not_forge_durable_negative",
+    "tests/test_producer_admission.py::test_explicit_retry_new_attempt_cannot_replay_old_hmac_nonce",
+    "tests/test_producer_admission.py::test_changed_signed_tuple_or_record_never_enters_inbox",
+    "tests/test_producer_admission.py::test_actual_source_is_reloaded_before_new_admission",
+    "tests/test_producer_admission.py::test_stale_passed_subscription_cannot_hide_actual_capacity_or_revoked_grant",
+    "tests/test_producer_admission.py::test_current_revocation_before_commit_rolls_back_inbox_or_negative",
+    "tests/test_producer_admission.py::test_concurrent_admission_and_negative_settlement_cannot_lose_accepted_inbox",
+    "tests/test_producer_admission.py::test_corrupted_referenced_event_cannot_become_positive_or_negative_proof",
+    "tests/test_producer_admission.py::test_receipt_denial_happens_before_intent_or_inbox_reads",
+    "tests/test_producer_admission.py::test_historical_revocation_during_accepted_lookup_never_returns_proof"
+   ],
+   "note": "Isolated actual store, stream and publication-log transactions verify exact admission identities, accepted-inbox precedence, terminal rejection markers, retry fencing, current source reload and independent historical authorization before and after lookup. Factory authorization callbacks and the real outer HTTP commit-before-rejection wrapper are not claimed by these module tests."
+  },
+  {
    "id": "parser:fleet/producer_bootstrap.py",
    "kind": "parser",
    "source": "src/poolhouse/fleet/producer_bootstrap.py",
@@ -6210,6 +6320,24 @@
     "tests/test_producer_sdk.py::test_actual_holder_forgery_partial_or_lost_ack_refuses_and_reaps"
    ],
    "note": "Only the installed helper passes the real-machine gate before reading its fixed account root and existing private locator. Descriptor checks reject symlinks and public permissions; nonce and exact private acknowledgement schemas are checked. Only a public authenticated daemon anchor crosses to the SDK. The existing software installation-secret compromise boundary remains; no hardware clone resistance or source authority is conferred."
+  },
+  {
+   "id": "parser:fleet/producer_member.py",
+   "kind": "parser",
+   "source": "src/poolhouse/fleet/producer_member.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_member.py::test_real_sealed_tls_uses_actual_current_caller_not_record_fields",
+    "tests/test_producer_member.py::test_duplicate_and_nonfinite_fields_never_dispatch_over_actual_tls",
+    "tests/test_producer_member.py::test_missing_service_and_mismatched_tls_identity_fail_closed",
+    "tests/test_producer_member.py::test_only_publisher_action_can_carry_maximum_record_over_sealed_tls",
+    "tests/test_producer_member.py::test_metadata_budget_is_fixed_before_provider_dispatch",
+    "tests/test_producer_member.py::test_no_tls_channel_or_current_membership_cannot_dispatch",
+    "tests/test_producer_member.py::test_only_fixed_action_has_large_request_budget"
+   ],
+   "note": "Actual sealed TLS adapter tests bind the authenticated caller certificate and pool, reject substituted identities and malformed fixed schemas, and limit large bodies to publishing. Provider source capability, grant checks and full factory composition remain separate requirements."
   },
   {
    "id": "parser:fleet/producer_process.py",
