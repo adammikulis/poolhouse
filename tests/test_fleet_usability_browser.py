@@ -283,16 +283,19 @@ def test_settings_library_failure_preserves_explicit_retry_and_ignores_old_ack(u
     assert posts == [{'install': ['core'], 'remove': []}] * 2
     assert not errors
 
-def test_named_workspace_tools_stay_with_main_navigation_at_all_sizes(usability_page):
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_workspace_tools_and_utilities_at_all_sizes(usability_page, theme):
     from playwright.sync_api import expect
 
     served, page, errors = usability_page
     page.route('**/ui/workspace/jobs', lambda route: route.fulfill(status=503, json={'error': 'Job status unavailable'}))
     page.goto(f'http://127.0.0.1:{served.port}/ui/')
+    page.evaluate('theme => document.documentElement.dataset.theme = theme', theme)
     for width, height in [(1440, 900), (1280, 768), (1280, 640), (1024, 420), (390, 844)]:
         page.set_viewport_size({'width': width, 'height': height})
         tools = page.get_by_role('group', name='Workspace tools', exact=True)
-        explore = tools.get_by_role('button', name='Explore Poolhouse', exact=True)
+        utilities = page.locator('.rail-utilities')
+        explore = utilities.get_by_role('button', name='Explore Poolhouse', exact=True)
         training = tools.get_by_role('button', name='Jobs:', exact=False)
         expect(explore).to_be_visible()
         expect(training).to_be_visible()
@@ -318,7 +321,10 @@ def test_named_workspace_tools_stay_with_main_navigation_at_all_sizes(usability_
                 return bounds.left >= rail.left && bounds.right <= rail.right;
               });
         }''')
-        explore.click()
+        assert utilities.locator('.rail-link').evaluate_all('nodes => nodes.map(node => node.id)') == ['nav-guide', 'nav-settings', 'nav-signout']
+        expect(explore).to_be_in_viewport()
+        explore.focus()
+        explore.press('Enter')
         expect(page.locator('.demo-slice')).to_have_count(10)
         page.locator('.demo-slice').filter(has_text='Find the right model').click()
         expect(page.locator('#models')).to_be_visible()

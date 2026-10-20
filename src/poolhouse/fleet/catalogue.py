@@ -146,6 +146,7 @@ KNOWN = {
     "nemotron": "Nemotron", "minicpm": "MiniCPM", "smollm": "SmolLM",
     "granite": "Granite", "mistral": "Mistral", "mixtral": "Mixtral",
     "starcoder": "StarCoder", "codestral": "Codestral", "exaone": "EXAONE",
+    "minilm": "MiniLM", "mpnet": "MPNet",
     "internlm": "InternLM", "falcon": "Falcon", "bonsai": "Bonsai",
     "ornith": "Ornith", "gemma": "Gemma", "llama": "Llama", "qwen": "Qwen",
     "phi": "Phi", "olmo": "OLMo", "yi": "Yi", "glm": "GLM", "lfm": "LFM",
