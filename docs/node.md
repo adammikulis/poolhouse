@@ -63,7 +63,7 @@ Bodies hold integers, text, booleans, arrays and objects; fractions are refused 
 depends on a float format.
 
 Kinds: `message`, `note`, `verify`, `identity`, `lease`, `audit`, `landing`, `room`, `task` and `grant` are folded into the view now;
-`reputation_event` is in the schema so a later log still parses, and a foreign entry of that kind is not shown yet. `head` is a signature row, never shown.
+`reputation_event` is in the schema so a later log still parses, and a foreign entry of that kind is not shown yet. `head` is a signature row and `base` the first row of a segment (below); neither is ever shown.
 
 - **Crash safety.** Append is one write plus `fsync`; it returns when the row is on disk. On open, a
   last line without its newline was never acknowledged and is cut off (a torn write from `kill -9`);
@@ -71,6 +71,14 @@ Kinds: `message`, `note`, `verify`, `identity`, `lease`, `audit`, `landing`, `ro
 - **Heads.** A head row signs (Ed25519, the device key: "Where the device key is kept") the row directly before it.
   Only rows through the last verified head are given to peers or stored from peers. A pool of one
   never needs to sign.
+- **Segments.** A log that holds 75 percent of the rows or of the bytes it may keep starts a new segment (`board/rotate.rs`,
+  `docs/notes/2026-10-19-log-rotation.md`): a `base` row that continues the chain, this device's notes, rooms, tasks and grants
+  restated, and a head, in one file that replaces the log by a rename; the rows before it go to `archive/<origin>.<first>-<last>.jsonl`.
+  Seqs go on across segments. A copy of the log takes the base as any next row, applies the segment once every restated row is
+  held (until then its view is the old rows), and a member that holds nothing of the origin, or is behind a base whose archive is
+  gone, starts the chain at the base. A base may start a chain at a seq of at least 2; it is refused when it ends a segment under half
+  the cap, restates more than half the rows or leaves out a grant row the copy holds. Nothing in the rows before a base is needed to
+  verify the rows after it: the head that covers the base is signed by the key pinned for the origin, as every head is.
 - **Merge.** All rows sort by (wall, counter, origin, seq): one total order for any delivery order,
   with a row delivered twice kept once and a repeated `idem` key of one actor on one origin kept at
   its first row. Foreign rows dated more than five minutes ahead are held back from the view.
@@ -79,7 +87,7 @@ Kinds: `message`, `note`, `verify`, `identity`, `lease`, `audit`, `landing`, `ro
   refused), must be a usable name and must not be a local session's name, and is shown as
   `actor@dN`. Posts target `#general` or `#announcements` (with announcement types only). Notes per
   foreign sender are capped. Refusals are recorded (the latest 200) and shown in `status`.
-- **Quotas.** 64 origins per board, 200,000 rows and 128 MiB per log (one session writes a tenth of each and the sessions of one process tree
+- **Quotas.** 64 origins per board, 200,000 rows and 128 MiB per live segment of a log (one session writes a tenth of each and the sessions of one process tree
   a quarter between them; the last 2,000 rows and 8 MiB are the node's own: the identity entry and the audit of a session ending, and in
   the last 500 rows and 2 MiB only a head and the rows a person's decision makes; docs/limits.md, "At a bound"), 128 KiB per row, 64 KiB per
   body text.

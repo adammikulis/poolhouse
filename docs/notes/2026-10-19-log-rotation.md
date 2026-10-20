@@ -73,7 +73,7 @@ actor, idem and body); a base that leaves one out marks the origin damaged, so a
 segment.
 
 **A member that holds nothing of the origin.** Its first rows may start at a base: seq at least 2 and at most 2^48, `carried` at most
-the carry bound, a head covering it under the key that is then pinned. It starts the chain there.
+half the rows of the cap, a head covering it under the key that is then pinned. It starts the chain there.
 
 **A member behind the base.** It holds rows up to seq t, the base is at seq b and b > t+1. The writer serves it from its archive
 (from t, in the same batches of 400 rows) while the archive holds t, so nothing between is missed; when the archive is gone the writer
@@ -81,8 +81,8 @@ serves the base and the member starts a new segment at it, if the head covering 
 origin and b > t. The old rows it held go to its archive.
 
 **What a base may not do.** A member refuses a base (the origin is damaged when the writer sent it directly, as for any bad row) when:
-`carried` or `left` is over the bounds; the segment before it holds under `MIN_SEGMENT_PERCENT` (50) of the rows and of the bytes of
-the cap; its `seq` is not above the held tip; it names a seq a held row has with another hash (a fork); or it leaves out a held grant.
+`carried` or `left` is over the bounds; the segment before it, as the copy holds it, has under `MIN_SEGMENT_PERCENT` (50) of the rows and of the bytes of
+the cap (a copy that starts at the base, or jumps to it, holds no such segment and does not check this); its `seq` is not above the held tip; it names a seq a held row has with another hash (a fork); or it leaves out a held grant.
 A base needs no new kind of trust: nothing but the pinned key's head makes any row storable.
 
 **Serving.** `rows_since` serves a member that holds nothing of an origin from the start of the live segment (the base, for a rotated
@@ -103,6 +103,8 @@ refused as today.
   row is a base.
 - `fold::merge` leaves a base out of the view as it leaves out a head.
 - Tally counts and the grant book rebuild when the live segment's first seq changes.
+- A failed segment start (a full disk) is said on stderr and leaves the log as it was; it is tried again at the next write. The check
+  for "is a segment due" reads the rows and bytes the log already counts and costs nothing per write.
 - Gap: a request retried after the row it wrote was moved to the archive writes again (the idem key is in the archive only). It needs
   a reply lost at the moment a segment starts.
 - Gap: a note that another device's note supersedes is not restated, but a note restated on this device and superseded later by
@@ -143,7 +145,9 @@ For each case: the attack, what stops it, what is left.
   archive is gone it starts at the base. Left: rows between its tip and the base that were never delivered (messages) are not
   delivered; the durable rows are carried.
 - **Compromised or malicious member.** It can start a segment at any time only if its previous segment held 50 percent of the cap
-  (`MIN_SEGMENT_PERCENT`), so it cannot force every member to rewrite its files on every row; to retract recent history it must first
+  (`MIN_SEGMENT_PERCENT`) as far as a member that holds that segment can see, so it cannot force those members to rewrite their
+  files on every row; a member that is behind and jumps cannot see it, and the cost to that member is one archive write of the rows
+  it held; to retract recent history it must first
   write that much. A base at every 50 percent of the cap costs each member two file writes of the segment, once per 100,000 rows. It
   can omit durable rows (above). It can choose `carried` and `left` only within the bounds. It can fill its log (existing share
   bounds do not stop a device from filling its own log).

@@ -424,12 +424,13 @@ impl Board {
         let cap = cut.as_ref().map(|c| c.seq);
         let kept: Vec<Row> = incoming.iter().filter(|r| cap.is_none_or(|c| r.seq <= c)).cloned().collect();
         let (dropped, incoming) = (kept.len() < incoming.len(), kept);
-        let held: Vec<Row> = self.chain(origin).to_vec();
+        let mut held: Vec<Row> = self.chain(origin).to_vec();
         let (board, pool) = (self.id.clone(), self.pool.clone());
         let (mut took, pin) = match rules::accept(&board, origin, &held, &incoming, key_of(&pin), &pool) {
             Ok(t) => (t, pin),
             Err(Error::Damaged(_)) if authoritative && pin.as_ref().is_some_and(|p| !p.bound) => {
                 self.reset(origin)?;
+                held.clear();
                 (rules::accept(&board, origin, &[], &incoming, None, &pool)?, None)
             }
             Err(e) => return Err(e),

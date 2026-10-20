@@ -106,7 +106,7 @@ impl Log {
 
     /// The rows and bytes from the base a new segment is waiting on, or all of them.
     pub fn segment_held(&self) -> Held {
-        let from = self.pending.map_or(0, |(at, _)| at);
+        let Some((from, _)) = self.pending else { return Held { rows: self.rows.len(), bytes: self.bytes } };
         Held { rows: self.rows.len() - from, bytes: self.rows[from..].iter().map(|r| r.size() as u64 + 1).sum() }
     }
 

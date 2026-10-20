@@ -16,6 +16,10 @@ pub const RESERVED_BYTES: u64 = 8 * 1024 * 1024;
 pub const LAST_ROWS: usize = 500;
 /// Bytes at the very end of `MAX_LOG_BYTES` that only a head and the rows a person's decision makes use.
 pub const LAST_BYTES: u64 = 2 * 1024 * 1024;
+/// The share of the rows and of the bytes one session writes, in percent; its process tree's share (`LINEAGE_SHARE_PERCENT`) holds it.
+pub const AUTHOR_SHARE_PERCENT: usize = 10;
+/// The share of the rows and of the bytes the sessions of one process tree write together, in percent.
+pub const LINEAGE_SHARE_PERCENT: usize = 25;
 /// The share of the rows or of the bytes of a log at which the device starts a new segment, in percent.
 pub const ROTATE_PERCENT: usize = 75;
 /// The least a segment holds, in percent of the rows or of the bytes, before a copy takes a base that ends it.
@@ -28,10 +32,6 @@ pub const MOST_ARCHIVES: usize = 8;
 pub const ARCHIVE_MIN_MS: u64 = 7 * 24 * 3600 * 1000;
 /// How long an archived segment is kept at most, in milliseconds, whoever has not yet acknowledged past it.
 pub const ARCHIVE_MAX_MS: u64 = 30 * 24 * 3600 * 1000;
-/// The share of the rows and of the bytes one session writes, in percent; its process tree's share (`LINEAGE_SHARE_PERCENT`) holds it.
-pub const AUTHOR_SHARE_PERCENT: usize = 10;
-/// The share of the rows and of the bytes the sessions of one process tree write together, in percent.
-pub const LINEAGE_SHARE_PERCENT: usize = 25;
 
 /// The bounds of one log: `Default` holds the constants above.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -526,7 +526,7 @@ percent of the segment to `scripts/status`; the real number replaces this estima
 segment start. Without its 21 percent of lease entries it still gains about 5,700 rows a day on the reviewer's count, so a log
 that holds 45,507 such rows today reaches its cap in about four weeks, and `Board::add` then refuses every row, a head
 included. The mechanism of section 3.7 (a `base` row, carried state, an atomic new segment) is what that log needs; it is a
-separate piece of work and a pending item for the lead, not a slice here.
+separate piece of work and a pending item for the lead, not a slice here. It is built for the entry log in `docs/notes/2026-10-19-log-rotation.md` (the carried state there is the durable entry kinds, since the entry log, unlike the job chain, holds notes, rooms, tasks and grants that only its rows record).
 
 The append checks `idem` by scanning the origin's rows; slice 1 measures it at 200,000 rows and adds an index if it is over
 5 ms. The write-ahead flush costs one `fsync` per grant, as a lease entry does now.
