@@ -75,10 +75,8 @@ committed at the time of reading), `worktree-agent-a359e808db0d18e70` (`docs/ser
 
 ### 1.4 What coordinator eligibility reads today
 
-`coordinator_eligible` is true for a main, non-helper session with the agent capabilities whose exact
-model id is listed in `model_tiers.json` at a non-lowest tier **and** whose model state is `verified`;
-otherwise a reason string. The ledger is not consulted and there is no tie-break beyond that.
-[V `workspace/agent_display.py`, `workspace/model_tiers.py`]
+The agent listing marks a session `main` when it has no parent and `subagent` otherwise; no model id decides who may
+coordinate. The ledger is not consulted and there is no tie-break. [V `workspace/agent_display.py`]
 
 ## 2. What is forgeable, and what verifies it
 
@@ -99,8 +97,8 @@ otherwise a reason string. The ledger is not consulted and there is no tie-break
   never authority." [V `session_name.py` in the `a274f998` checkout] So standing must key on the
   registry id, never on a display string; two sessions can share a family word. [analysis]
 - **Model id is a claim until verified.** The registry stores `model_state` in
-  `verified`, `claimed`, `inherited`; only `verified` reaches a tier. Subagents inherit the parent's
-  device and label it inherited. [V `workspace/modelid.py`, `model_tiers.tier_of`; D `AGENTS.md`]
+  `verified`, `claimed`, `inherited`. Subagents inherit the parent's
+  device and label it inherited. [V `workspace/modelid.py`; D `AGENTS.md`]
 
 ### 2.2 Per signal
 
@@ -261,17 +259,17 @@ risk [D `docs/reputation.md`]. Proposed: [analysis]
 
 ## 6. Coordinator eligibility and tie-break from the same ledger
 
-Today: eligibility is model tier plus verified state, with no tie-break and nothing from the ledger.
-[V `agent_display.py`, `model_tiers.py`]. Proposed, one ledger: [analysis]
+Today: any main session may coordinate, with no tie-break and nothing from the ledger.
+[V `agent_display.py`]. Proposed, one ledger: [analysis]
 
-1. **Gate (unchanged).** Main session, agent capabilities, model verified and not lowest tier.
-2. **Level gate (new).** The identity is at L3. A tier-eligible identity below L3 cannot coordinate
+1. **Gate (unchanged).** Main session with the agent capabilities.
+2. **Level gate (new).** The identity is at L3. A main session below L3 cannot coordinate
    while an L3 one exists.
 3. **Tie-break among eligible.** Order by: higher reviewer-diverse accepted count in the last 60 days
    (distinct reviewers capped, so one friendly reviewer is worth little), then lower
    reverts-per-landing (M1), then reliability with more samples, then longer continuous liveness, then
    registry id for determinism. Show the keys on the page so the choice can be read.
-4. **No bootstrap hole.** When nobody is L3, the tier rule alone decides (today's behaviour), and the
+4. **No bootstrap hole.** When nobody is L3, any main session may coordinate (today's behaviour), and the
    person can name the coordinator.
 5. **Takeover.** The coordinator is demoted like anyone else; a coordinator suspended to L0 hands its
    claims to the next eligible identity or the person.
@@ -325,7 +323,7 @@ Each decision records the option taken and the option rejected.
 - **Model upgrade.** An upgrade within a family keeps standing, and one accepted task on the new model is required before L3 coordination. Rejected: keeping standing completely, because an unproven model could coordinate at once.
 - **Automatic suspension.** Rules suspend to L0 on security, tamper and forged-claim events and notify; the person lifts it. Rejected: notify only, because a real forgery would keep acting until someone reacted.
 - **Head anchor.** The external anchor for signed heads lives in the OS keystore under the person's gate, signed by a key agents cannot read. Headless devices follow the passphrase-wrapped key file decision in docs/pool-encryption.md. Rejected: an append-only file in a path agents cannot write, because it rests on filesystem permissions a same-user process can often bypass.
-- **Coordinator eligibility.** L3 standing is preferred for the coordinator role, and a fresh pool needs no hand-named coordinator: when no eligible live agent is L3, the best eligible live main session by model tier coordinates (lowest tier of any vendor, subagents and unverified models stay ineligible), and the role passes to an L3 agent as soon as one exists. A person can still name a coordinator at any time. Rejected: requiring L3 with a hand-named first coordinator, and tier-only eligibility with the ledger as tie-break alone, because the first leaves a fresh pool without a coordinator and the second never prefers earned standing.
+- **Coordinator eligibility.** L3 standing is preferred for the coordinator role, and a fresh pool needs no hand-named coordinator: when no live main session is L3, any live main session may coordinate (subagents stay ineligible), and the role passes to an L3 agent as soon as one exists. A person can still name a coordinator at any time. Rejected: requiring L3 with a hand-named first coordinator, and structural eligibility with the ledger as tie-break alone, because the first leaves a fresh pool without a coordinator and the second never prefers earned standing.
 - **Standing is per model and version; agent identities are ephemeral.** Agents disappear and are replaced by successors (`docs/continuity.md`), so credit and the L1 to L3 level key off the model-and-version account, not the session name. A successor starts at its account's level. Brakes, suspension and L0 on forgery or tamper events still act on the individual agent identity; review outcomes count against the account. Consequence: anti-forgery now centres on model attestation. The board must know the model that really ran, so only a `verified` model_state earns or draws standing and a `claimed` one binds no account. Hosted models (Claude and others) get accounts too, which `family_accounts.binding` does not give them today (local qwen, gemma, gpt-oss only). Rejected: per-agent standing, because it is lost with every disappearance. Details and ledger changes: `docs/continuity.md` section 13.
 
 ## 10. Proposed wording for AGENTS.md (not edited here)

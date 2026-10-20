@@ -177,10 +177,9 @@ def test_clean_git_view_ignores_hostile_source_configuration(built, tmp_path):
 
 @pytest.mark.parametrize('identity_case', [
     ('chatgpt-parent', False, 'gpt-6.1-sol', 'chatgpt-lead'),
-    ('', True, 'gpt-6.1-sol', 'chatgpt-lead'), ('', False, 'unlisted-model', 'chatgpt-lead'),
-    ('', False, 'gpt-6.1-sol', 'chatgpt-impostor'),
+    ('', True, 'gpt-6.1-sol', 'chatgpt-lead'), ('', False, 'gpt-6.1-sol', 'chatgpt-impostor'),
 ])
-def test_holder_refuses_helper_ended_unknown_and_mismatched_session(tmp_path, monkeypatch, identity_case):
+def test_holder_refuses_helper_ended_and_mismatched_session(tmp_path, monkeypatch, identity_case):
     parent, retired, model, name = identity_case
     monkeypatch.setattr(holder.real_machine, 'require', lambda action: None)
     _selected_holder(tmp_path, monkeypatch)

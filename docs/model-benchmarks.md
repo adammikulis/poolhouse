@@ -27,7 +27,7 @@ dateless id is its own alias.
 
 - Batch API is 50% off. Cache reads cost 10% of input (5% on Opus 5.5 and Sonnet 5.5, 2.5% on Fable 5.1).
   Opus 5.5 fast mode: $8 / $40 (https://www.anthropic.com/news/claude-opus-5-5, 2026-09-22).
-- Claude Mythos 5.1 is named on the overview page. Its id was not fetched; it is not in the draft tier table.
+- Claude Mythos 5.1 is named on the overview page. Its id was not fetched; it is not used here.
 - Legacy and still available: Fable 5, Opus 5, Opus 4.8/4.7/4.6/4.5, Sonnet 5, Sonnet 4.6, Haiku 4.5.
   `claude-haiku-4-5-20251001` is the Haiku 4.5 id (third-party, https://www.gradually.ai/en/claude-models/,
   unverified against the platform page).
@@ -67,17 +67,7 @@ Names as they appear in this repository's docs, not looked up externally: `Qwen3
 base `Qwen3.5-2B`. Vendor-reported and aggregator figures for the 27B and Flash-Next were collected on
 2026-10-12 (section 2.7); none was collected for the 2B.
 
-**The tier table's `qwen` family (owner's decision, 2026-10-12).** `src/poolhouse/workspace/model_tiers.json`
-lists every quantisation of Qwen3.8-27B and Qwen3.8-Flash-Next, with no per-quantisation exclusion, above the
-lowest tier of its family, so a local session on either counts as landing-level (docs/landing.md). The Qwen3.5 0.8B, 2B and 4B models are the family's lowest tier, which never
-lands. The owner's view is that the 27B is at Claude Opus 4.6's level and Flash-Next comparable or higher.
-Qwen's own evaluation table, as three pages relay it, prints Flash-Next above the 27B on every row where
-both appear (section 2.7): a vendor claim, not reproduced here. Section 2.7's figures are for full-precision weights, vendor-reported and unreproduced, and no published
-benchmark covers the low-bit quantisations, so the tier of every quantisation is the owner's decision and not
-a measurement; this file does not claim a quantisation matches full precision. A local agent registers the
-id `model_identity` gives (the quantisation removed, for example `qwen3.8-27b`), so the table cannot tell the
-quantisations of one model apart for an agent started by `agent start`; a named file or MLX id is matched by
-its model name and quantisation suffix. A draft head, a fine-tune or another Qwen is not listed.
+A local agent registers the id `model_identity` gives (the quantisation removed, for example `qwen3.8-27b`). The owner's view is that the 27B is at Claude Opus 4.6's level and Flash-Next comparable or higher. Qwen's own evaluation table, as three pages relay it, prints Flash-Next above the 27B on every row where both appear (section 2.7): a vendor claim, not reproduced here. No published benchmark covers the low-bit quantisations, and this file does not claim a quantisation matches full precision.
 
 ## 2. Benchmarks
 
@@ -206,8 +196,7 @@ more points. `CLAUDE.md`, "Subagent effort", sets the delegation rule from this:
 
 Every figure here is vendor-reported or from a third-party aggregator, for full-precision weights, and none
 was reproduced by this repository or, as far as the pages say, by anyone else. No published benchmark
-covers a low-bit quantisation of either model (IQ1_M, IQ3_S and the like); section 1.3 says what that
-means for the tier table.
+covers a low-bit quantisation of either model (IQ1_M, IQ3_S and the like).
 
 Qwen3.8-27B against Claude Opus 4.6 Max, Alibaba's model-card figures as two aggregator pages quote them:
 
@@ -297,7 +286,6 @@ fails, Fable only when the owner asks.
 | Routine implementation with tests in a claimed worktree | `claude-sonnet-5-5` | Terminal-Bench 4.0 39.2% (Haiku) vs 70.6% (Sonnet); FrontierCode 46.4% vs 52.1%; Anthropic names Sonnet/Opus the better choice for complex agentic coding |
 | Architecture, security diagnosis, hard debugging | Sonnet 5.5 first; Opus 5.5 after it fails | Opus leads HLE (67.7 vs 64.5) and FrontierCode (54.4 vs 52.1) by small margins at twice the price |
 | Independent review | A different model from the author; Sonnet 5.5 or higher | Same-model review shares blind spots |
-| Coordination (main session) | Sonnet 5.5 or higher; never Haiku 5.5 or Luna | Lowest tier never coordinates |
 | Codex-side work | `gpt-6.1-sol` for coding; `gpt-6-luna` for read-only and extraction | OpenAI Codex docs; Luna Terminal-Bench 4.0 13.64% to 16.4% |
 | Hardest end-to-end work, on request | `claude-fable-5-1` or `gpt-6-astra` | Fable 5.1 scores below Opus 5.5 on every vendor-table benchmark collected, at 2.5 times the price |
 
@@ -313,8 +301,6 @@ FrontierCode than at xhigh, so max is not a default.
 - "Opus only after Sonnet fails": consistent. Sonnet 5.5 matches Opus 5.5 on Terminal-Bench 4.0 (70.6 vs 66.4
   vendor; 64.14 vs 65.15 Vals) at half the price.
 - "Fable only when the owner asks": consistent.
-- "Lowest tier never coordinates": nothing collected argues against it; Haiku 5.5 and Luna are the weakest
-  agentic scores above.
 
 ## 4. Limits of public benchmarks
 

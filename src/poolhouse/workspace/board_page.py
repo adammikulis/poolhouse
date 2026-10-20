@@ -54,8 +54,7 @@ class Log:
 
 def _kind(agent: Agent | None, name: str) -> dict[str, Any]:
     if agent is None:
-        return {"display_name": data_line(name, 80), "session_kind": "unknown", "coordinator_eligible": False,
-                "coordinator_reason": "not a session of this board", "spawned_by": ""}
+        return {"display_name": data_line(name, 80), "session_kind": "unknown", "spawned_by": ""}
     return describe(agent)
 
 
@@ -107,8 +106,7 @@ def agents(s: Session) -> dict[str, Any]:
     """The sessions of the board other than the person's, as the page lists them."""
     return {"owner_id": s.name, "agents": [
         {"id": a.name, "role": "agent", "device": "", "display_name": describe(a)["display_name"],
-         "session_kind": describe(a)["session_kind"], "parent": a.parent,
-         "coordinator_eligible": describe(a)["coordinator_eligible"], "coordinator_reason": describe(a)["coordinator_reason"]}
+         "session_kind": describe(a)["session_kind"], "parent": a.parent}
         for a in s.agents()[:200] if a.name != s.name]}
 
 
