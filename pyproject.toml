@@ -165,6 +165,7 @@ Changelog = "https://github.com/adammikulis/poolhouse/blob/main/CHANGELOG.md"
 # `poolhouse <command>` runs any `poolhouse-<command>` below; bare, it starts the daemon and
 # opens the browser on it (`poolhouse.fleet.launch`).
 poolhouse = "poolhouse.cli:main"
+poolhouse-open = "poolhouse.fleet.launch_open:main"
 poolhouse-traind = "poolhouse.cli.daemon:main"
 # the macOS identity of the LAN node: build Poolhouse.app, ask for Local Network permission
 poolhouse-node = "poolhouse.node_permission:main"

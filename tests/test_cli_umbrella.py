@@ -148,7 +148,7 @@ def test_every_command_in_pyproject_resolves_to_a_main():
         word = name[len(cli.PREFIX):]
         assert word in words, f"{name} is not a subcommand of poolhouse"
         assert callable(cli.load(words[word])), f"{name} -> {target} has no main"
-    assert "serve" in words and "bench" in words and "train-run" in words
+    assert "serve" in words and "chat" in words and "open" in words
 
 
 def test_help_lists_every_command_and_hands_a_named_one_its_own_help(capsys):
@@ -156,9 +156,9 @@ def test_help_lists_every_command_and_hands_a_named_one_its_own_help(capsys):
 
     assert cli.help_main([]) == 0
     out = capsys.readouterr().out
-    assert "bench" in out and "chat" in out and "usage: poolhouse help" in out and "asks itself" not in out
-    code = cli.help_main(["bench"])
-    assert code == 0 and "usage: poolhouse bench" in capsys.readouterr().out
+    assert "open" in out and "chat" in out and "usage: poolhouse help" in out and "asks itself" not in out
+    code = cli.help_main(["open"])
+    assert code == 0 and "usage: poolhouse open" in capsys.readouterr().out
     assert cli.main(["help", "chat"]) == 0
     assert "usage: poolhouse chat" in capsys.readouterr().out
     assert cli.help_main(["benc"]) == 2
@@ -290,3 +290,34 @@ def test_all_without_listing_never_launches_the_app(monkeypatch):
     with pytest.raises(SystemExit) as left:
         cli.main(["--all"])
     assert left.value.code == 2
+
+
+def test_open_is_a_primary_command_and_help_never_requests_a_ticket(monkeypatch, capsys):
+    from poolhouse.fleet import launch_open, members
+
+    def forbidden():
+        raise AssertionError("help or rejected old command requested a ticket")
+
+    monkeypatch.setattr(launch_open, "ticket_url", forbidden)
+    assert cli.commands()["open"] == "poolhouse.fleet.launch_open:main"
+    assert cli.help_main(["open"]) == 0
+    assert "poolhouse open" in capsys.readouterr().out
+    with pytest.raises(SystemExit) as refused:
+        members.main(["open", "--print"])
+    assert refused.value.code == 2
+
+
+def test_primary_open_print_is_denied_before_ticket_or_browser_work(monkeypatch):
+    from poolhouse.fleet import launch_open
+    from poolhouse.person import HumanRequired
+
+    def denied(reason):
+        raise HumanRequired(reason)
+
+    def forbidden(*args):
+        raise AssertionError("a denied caller reached ticket or browser work")
+
+    monkeypatch.setattr(launch_open, "require_person", denied)
+    monkeypatch.setattr(launch_open, "ticket_url", forbidden)
+    monkeypatch.setattr(launch_open.webbrowser, "open", forbidden)
+    assert cli.main(["open", "--print"]) == 2
