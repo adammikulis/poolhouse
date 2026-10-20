@@ -108,7 +108,7 @@
       this.searchEpoch = 0;
       this.loadEpoch = 0;
       this.askrow.addEventListener("composer-send", () => this.ask());
-      this.picker.onchange = () => { if (this.loadingConversation) return; this.modelPicker.selectionEpoch++; this.updateReadiness(); this.modelPicker.render(); this.saveSettings(); };
+      this.picker.onchange = () => { if (this.loadingConversation) return; this.modelPicker.selectIntent(); this.updateReadiness(); this.modelPicker.render(); this.saveSettings(); };
       this.temperature.onchange = () => this.saveSettings();
       this.outputTokens = this.querySelector("#chat-output-tokens");
       this.outputTokens.onchange = () => this.saveSettings();
@@ -147,7 +147,7 @@
         this.workspace.route(route);
         if (on && !this.request) this.draw();
       });
-      window.addEventListener("fleet-chat-ready", event => { this.pendingModel = event.detail.model; });
+      window.addEventListener("fleet-chat-ready", event => { this.modelPicker.requestHandoff(event.detail.model); });
       this.welcome();
     }
 
@@ -191,45 +191,6 @@
       return body;
     }
 
-    async draw() {
-      const preserveEmptyModel = !!this.modelPicker.startPending && !this.picker.value;
-      this.coding.tools.disabled = true;
-      try {
-        const defaults = await api("/ui/conversations/defaults");
-        if (M.refused(defaults)) return;
-        if (!defaults.ok) throw new Error(defaults.error || "Could not read conversation settings.");
-        this.defaultSettings = defaults.settings || {};
-        if (!Object.keys(this.savedSettings).length) this.savedSettings = { ...this.defaultSettings };
-        const where = await api("/ui/chat");
-        if (M.refused(where)) return;
-        if (!where.ok) throw new Error(where.error || "Could not read the serving models.");
-        this.runtimeReady = where.runtime_ready !== false;
-        this.runtimeError = where.runtime_error || "The agent runtime is not installed.";
-        const available = where.models || [];
-        this.chatModels = available;
-        const selected = this.picker.value;
-        this.picker.replaceChildren(...available.map((m) =>
-          el("option", { value: m.model }, m.local ? m.model : `${m.model} — on ${m.member}`)));
-        if (preserveEmptyModel && !selected) this.picker.prepend(el("option", {value:""}, "Choose a model"));
-        if (preserveEmptyModel || available.some((m) => m.model === selected)) this.picker.value = selected;
-        this.pickrow.hidden = false;
-        this.askrow.hidden = false;
-        this.options.hidden = false;
-        await this.modelPicker.catalogue();
-        this.workspace.models(available);
-        if (!this.outputTokens.contains(document.activeElement)) this.outputTokens.value = this.savedSettings.max_output_tokens ?? "";
-        await this.coding.restore(this.savedSettings, this.picker.value);
-        this.updateReadiness();
-        await this.paintList();
-        const selectedChat = this.open || localStorage.getItem("poolhouse.chat.selected");
-        if (selectedChat) await this.load(selectedChat);
-        if (this.pendingModel && available.some(model => model.model === this.pendingModel)) {
-          this.picker.value = this.pendingModel; this.pendingModel = null;
-          this.modelPicker.render(); this.updateReadiness(); this.saveSettings();
-        }
-      } catch (error) { this.showError(error.message); }
-      finally { this.coding.tools.disabled = !!this.request; }
-    }
 
     settings() {
       return { ...this.savedSettings, ...this.coding.settings(), temperature: this.temperature.value === "" ? null : Number(this.temperature.value), max_output_tokens: this.outputTokens.value === "" ? null : Number(this.outputTokens.value) };
@@ -251,7 +212,7 @@
     }
 
     updateReadiness() {
-      this.askrow.setAttribute("recipient", `Message ${this.picker.value || "your model"}`);
+      this.askrow.setAttribute("recipient", `Message ${this.picker.selectedOptions[0]?.textContent || "your model"}`);
       this.send.disabled = (!this.coding.active && this.runtimeReady === false) || !this.picker.value || !!this.picker.selectedOptions[0]?.disabled;
       if (!this.coding.active) M.agentRuntimeAlert(this);
       this.coding.readiness();
@@ -332,16 +293,16 @@
 
     async load(id) {
       if (this.request) return;
-      const epoch = ++this.loadEpoch;
-      this.loadingConversation = true;
+      const epoch = ++this.loadEpoch, session = M.sessionContext();
+      this.loadingConversation = true; this.loadingSession = session;
       this.coding.busy(true);
       this.temperature.disabled = this.outputTokens.disabled = true;
       this.updateReadiness();
       try {
         await this.savePending;
-        if (epoch !== this.loadEpoch) return;
+        if (epoch !== this.loadEpoch || session !== M.sessionContext()) return;
         const one = await api(`/ui/conversations/${id}`);
-        if (epoch !== this.loadEpoch || M.refused(one)) return;
+        if (epoch !== this.loadEpoch || session !== M.sessionContext() || M.refused(one)) return;
         if (one.status === 404) {
           this.open = null; this.messages = []; this.heading.textContent = "New conversation";
           localStorage.removeItem("poolhouse.chat.selected");
@@ -360,14 +321,14 @@
         this.savedSettings = one.settings || { ...this.defaultSettings };
         this.temperature.value = this.savedSettings.temperature ?? "";
         this.outputTokens.value = this.savedSettings.max_output_tokens ?? "";
-        await this.coding.restore(this.savedSettings, one.model);
-        if (epoch !== this.loadEpoch || id !== this.open) return;
+        await this.coding.restore(this.savedSettings, one.model, () => epoch === this.loadEpoch && session === M.sessionContext());
+        if (epoch !== this.loadEpoch || session !== M.sessionContext() || id !== this.open) return;
         this.list.replaceChildren();
         for (const m of this.messages) this.say(m.role, m.content, m.reasoning || "");
         if (!this.messages.length) this.welcome();
         if (one.model) {
           if (![...this.picker.options].some((option) => option.value === one.model)) {
-            this.picker.append(el("option", { value: one.model, disabled: "" }, `${one.model} — not running`));
+            this.picker.append(el("option", { value: one.model, disabled: "" }, "Selected model — not running"));
           }
           this.picker.value = one.model;
         }
@@ -375,9 +336,9 @@
         this.updateReadiness();
         this.modelPicker.render();
         this.coding.reattach();
-      } catch (error) { if (epoch === this.loadEpoch) this.showError(error.message); }
+      } catch (error) { if (epoch === this.loadEpoch && session === M.sessionContext()) this.showError(error.message); }
       finally {
-        if (epoch === this.loadEpoch) {
+        if (epoch === this.loadEpoch && session === M.sessionContext()) {
           this.loadingConversation = false;
           this.coding.busy(!!this.request);
           this.temperature.disabled = this.outputTokens.disabled = !!this.request;
@@ -484,6 +445,7 @@
       } finally { activity.textContent = ""; }
     }
   }
+  Object.assign(ChatView.prototype, M.chatDiscovery);
   customElements.define("chat-view", ChatView);
 })();
 </script>

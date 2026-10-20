@@ -153,6 +153,7 @@ def test_model_picker_groups_and_searches_loaded_and_installed_models(chat_brows
     from playwright.sync_api import expect
 
     served, page = chat_browser
+    page.route("**/ui/chat", lambda route: route.fulfill(json={"models": [{"model":"model-a", "local":True, "path":"/models/model-a.gguf"}]}))
     page.route("**/ui/models", lambda route: route.fulfill(json={"ok": True, "library": [
         {"path": "/models/model-a.gguf", "name": "model-a", "family": "Qwen", "quantization": "Q4_K_XL", "servable": True},
         {"path": "/models/other.gguf", "name": "Other model", "family": "Gemma", "quantization": "Q8_0", "servable": True}]}))
@@ -166,7 +167,7 @@ def test_model_picker_groups_and_searches_loaded_and_installed_models(chat_brows
     expect(page.locator("chat-view .chat-model-choice")).to_have_count(1)
     page.locator("chat-view").get_by_label("Search models and workspace agents", exact=True).press("Enter")
     expect(page.locator("chat-view #chat-model-dialog")).not_to_be_visible()
-    expect(page.locator("chat-view #model")).to_have_value("model-a")
+    expect(page.locator("chat-view #model")).to_have_value("/models/model-a.gguf")
     page.locator("chat-view #chat-model-button").click()
     page.locator("chat-view").get_by_label("Search models and workspace agents", exact=True).fill("no matches")
     expect(page.locator("chat-view #chat-model-list p")).to_have_text("No models match your search.")
@@ -257,7 +258,7 @@ def test_saved_model_switch_updates_visible_picker(chat_browser):
     served.ui.conversations.start(model="offline-model", title="Offline model chat")
     _open(served, page)
     page.get_by_role("link", name="Offline model chat", exact=True).click()
-    expect(page.locator("chat-view #chat-model-button")).to_have_text("offline-model — unavailable")
+    expect(page.locator("chat-view #chat-model-button")).to_have_text("Selected model — unavailable")
     expect(page.locator("chat-view #chat-send")).to_be_disabled()
 
 

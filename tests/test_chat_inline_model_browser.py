@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from browser_expect import expect
+from conftest import write_gguf
 from test_fleet_ui import Serving
 from test_studio_canvas_browser import studio_browser  # noqa: F401
 
@@ -23,9 +24,11 @@ def inline_models(tmp_path, monkeypatch, studio_browser):  # noqa: F811
     weights = tmp_path / 'models'
     weights.mkdir()
     model = weights / 'chat-decoder.gguf'
-    model.touch()
+    write_gguf(model, {'general.architecture': 'llama', 'llama.context_length': 16384})
     inventory = [{'path': str(model), 'name': model.name, 'family': 'Fixture', 'servable': True,
-                  'size_bytes': 0, 'mtime': 1, 'capabilities': {'chat': True}},
+                  'id': 'chat-decoder', 'format': 'gguf', 'kind': 'text', 'status': 'installed',
+                  'shards': 1, 'is_complete': True, 'files': [],
+                  'size_bytes': 0, 'mtime': 1, 'context_length': 16384, 'capabilities': {'chat': True}},
                  {'path': str(weights / 'encoder.gguf'), 'name': 'Encoder', 'family': 'Fixture',
                   'servable': True, 'size_bytes': 0, 'mtime': 1, 'capabilities': {'chat': False}}]
     app.ui.models = Models([weights], weights)
@@ -58,6 +61,7 @@ def test_available_model_starts_in_chat_without_library_navigation_and_preserves
     app, page, model, starts, _current, _inventory = inline_models
     open_picker(app, page)
     expect(page.locator('#chat-model-list button').first).to_have_text('Add New Model (Model Library)')
+    expect(page.locator('#conversation-models')).to_contain_text('No models running. Choose a model to start Chat.')
     expect(page.locator('#chat-model-list')).not_to_contain_text('Encoder')
     page.get_by_role('button', name='Close', exact=True).click()
     expect(page.locator('#ask')).to_be_visible()
@@ -66,7 +70,7 @@ def test_available_model_starts_in_chat_without_library_navigation_and_preserves
     page.locator('#chat-model-button').click()
     page.get_by_role('button', name=f'{model.name} Available Start in Chat', exact=True).click()
     expect(page.locator('#chat-model-dialog')).not_to_be_visible()
-    expect(page.locator('#model')).to_have_value(model.name)
+    expect(page.locator('#model')).to_have_value(str(model))
     expect(page).to_have_url(f'http://127.0.0.1:{app.port}/ui#chat')
     expect(page.locator('#ask')).to_have_value('Keep this unsent draft')
     assert starts == [str(model)]
@@ -98,7 +102,7 @@ def test_lost_start_ack_reconciles_read_only_without_second_start(inline_models)
     expect(page.locator('#chat-note')).to_contain_text('Failed to fetch')
     choice.click()
     expect(page.locator('#chat-model-dialog')).not_to_be_visible()
-    expect(page.locator('#model')).to_have_value(model.name)
+    expect(page.locator('#model')).to_have_value(str(model))
     assert starts == [str(model)]
 
 
@@ -173,7 +177,7 @@ def test_start_then_error_reconciles_without_second_start(inline_models):
     expect(page.locator('#chat-note')).to_contain_text('acknowledgement unavailable')
     choice.click()
     expect(page.locator('#chat-model-dialog')).not_to_be_visible()
-    expect(page.locator('#model')).to_have_value(model.name)
+    expect(page.locator('#model')).to_have_value(str(model))
     assert starts == [str(model)]
 
 

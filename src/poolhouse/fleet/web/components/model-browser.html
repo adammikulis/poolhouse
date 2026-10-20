@@ -125,7 +125,7 @@ model-browser #browser-pages{display:flex;gap:12px;align-items:center;margin-top
       const installed = (this.inventory.library || []).filter(row => row.servable);
       const local = new Set(installed.map(row => row.name));
       const running = new Map((this.run.running || []).flatMap((r) =>
-        (r.models || []).map((name) => [name, r.port])));
+        [...(r.models || []), ...(r.aliases || [])].map((name) => [name, r.port])));
       const rows = [...installed.map((x) => ({ ...x, size:x.size_bytes, local: true })),
         ...(this.inventory.elsewhere || []).filter((x) => !local.has(x.name))]
         .filter((x) => isWeight(x.name) && x.name.toLowerCase().includes(this.search.typed.toLowerCase()));
@@ -178,7 +178,8 @@ model-browser #browser-pages{display:flex;gap:12px;align-items:center;margin-top
         this.selected.set(key, name);
         card.dataset.model = name;
         const loading = this.pending.has(chosen.local ? chosen.path : name);
-        const active = running.has(name);
+        const target = chosen.local ? chosen.path : name;
+        const active = running.has(target);
         const weightsGB = chosen.download_gb ?? (chosen.gb === undefined ? NaN : chosen.gb * 2**30 / 1e9);
         const draftGB = chosen.draft_download_gb ?? (chosen.draft_gb === undefined ? NaN : chosen.draft_gb * 2**30 / 1e9);
         const total = weightsGB + (chosen.draft_ref ? draftGB : 0);
@@ -194,7 +195,7 @@ model-browser #browser-pages{display:flex;gap:12px;align-items:center;margin-top
           ? el("button", { class: "ghost small", onclick: () => this.owner.get(name, chosen.ref, !!(chosen.draft_ref || chosen.mtp_ref)) }, "Download")
           : chosen.local ? (this.run.can_serve
             ? el("button", { class: active ? "ghost small" : "small", onclick: () => active
-                ? this.owner.halt(running.get(name)) : this.owner.serve(chosen.path, chosen.name) }, active ? "Stop" : "Start model")
+                ? this.owner.halt(running.get(target)) : this.owner.serve(chosen.path, chosen.name) }, active ? "Stop" : "Start model")
             : el("span", { class: "label" }, "Installed"))
             : el("button", { class: "ghost small", onclick: () => this.owner.get(name, "") }, "Copy here");
         if (loading) { button.disabled = true; button.replaceChildren(el("span", { class: "spin" }), "Loading…"); }

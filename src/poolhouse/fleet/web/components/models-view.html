@@ -25,7 +25,7 @@ models-view .model-loading{padding:28px;border-radius:16px;background:var(--bg-r
 <template>
   <main id="models" hidden>
     <header class="models-heading"><div><h1>Models</h1></div><button type="button" id="add-model">+ Add a model</button></header>
-    <div class="models-overview"><div class="models-stat"><div class="stat-icon" aria-hidden="true">▦</div><div><strong id="models-count">—</strong><br><span>Installed models</span></div></div><div class="models-stat"><div class="stat-icon" aria-hidden="true">↗</div><div><strong id="models-running">—</strong><br><span>Chat-ready models</span></div></div><div class="models-stat"><div class="stat-icon" aria-hidden="true">◉</div><div><strong id="models-free">—</strong><br><span>Free storage on this device</span></div></div></div>
+    <div class="models-overview"><div class="models-stat"><div class="stat-icon" aria-hidden="true">▦</div><div><strong id="models-count">—</strong><br><span>Installed models</span></div></div><div class="models-stat"><div class="stat-icon" aria-hidden="true">↗</div><div><strong id="models-running">—</strong><br><span>Running chat models</span></div></div><div class="models-stat"><div class="stat-icon" aria-hidden="true">◉</div><div><strong id="models-free">—</strong><br><span>Free storage on this device</span></div></div></div>
     <div id="models-note" role="status"></div>
     <section id="models-getting" hidden><h2>Downloads</h2><div id="download-rows"></div></section>
     <section id="models-here"><models-library></models-library></section>
@@ -82,7 +82,7 @@ models-view .model-loading{padding:28px;border-radius:16px;background:var(--bg-r
           ? String(new Set(ready.map(model => JSON.stringify([model.member || "local", model.path || model.model]))).size) : "Unavailable";
         this.browser.setInventory(m, run);
         this.querySelector("models-library").update(m.library || [], run,
-          (path, name) => this.serve(path, name), (port) => this.halt(port));
+          (path, name, options) => this.serve(path, name, options), (port) => this.halt(port));
         this.paintDownloads(m.getting || []);
         const section = this.querySelector("#models-unfinished");
         const key = JSON.stringify(m.unfinished || []);
@@ -131,9 +131,9 @@ models-view .model-loading{padding:28px;border-radius:16px;background:var(--bg-r
         progress.remove(); this.progress.delete(key);
       }
     }
-    async serve(name, label = name) {
+    async serve(name, label = name, options = {}) {
       if (this.starting.has(name)) return;
-      const session = M.sessionContext();
+      const session = M.sessionContext(), context = options.context;
       this.starting.add(name);
       this.browser.setLoading(name, true);
       this.note.replaceChildren(el("div", { class: "hint" },
@@ -142,20 +142,20 @@ models-view .model-loading{padding:28px;border-radius:16px;background:var(--bg-r
         const inventory = await api('/ui/models');
         if (session !== M.sessionContext() || M.route !== 'models' || M.refused(inventory)) return;
         if (!inventory.ok) throw Error(inventory.error || 'Could not read available models.');
-        const found = (inventory.library || []).filter(row => row.servable && row.path === name);
+        const found = (inventory.library || []).filter(row => row.servable &&
+          row.path === name);
         if (found.length !== 1) throw Error('This installed model is no longer uniquely available.');
-        const r = await api("/ui/serving", { method: "POST", body: JSON.stringify({path:found[0].path}) });
+        const r = await api("/ui/serving", { method: "POST", body: JSON.stringify({path:found[0].path, ...(context === undefined ? {} : {context})}) });
         if (session !== M.sessionContext() || M.route !== 'models' || M.refused(r)) return;
-        const identity = (r.models || []).find(model => [name, name.split(/[\\/]/).pop(), label].includes(model));
         this.note.replaceChildren(r.error
           ? el("div", { class: "err" }, r.error)
-          : el("div", { class: "ok" }, `${label} is ready. `, el("button", {class:"ghost small", onclick:()=>this.openChat(identity || name.split(/[\\/]/).pop())}, "Open chat")));
+          : el("div", { class: "ok" }, `${label} is ready. `, el("button", {class:"ghost small", onclick:()=>this.openChat(found[0].path)}, "Open chat")));
         if (!r.error) {
           this.draw();
           const selected = this.selectedModel;
           if (selected?.from === "chat" && [selected.path, selected.name, selected.id].includes(name)) {
             this.selectedModel = null;
-            this.openChat(identity || name.split(/[\\/]/).pop());
+            this.openChat(found[0].path);
           }
         }
       } catch (error) {
