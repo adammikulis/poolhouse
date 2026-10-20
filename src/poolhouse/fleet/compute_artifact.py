@@ -13,6 +13,7 @@ from pathlib import Path, PurePosixPath
 from packaging.version import Version
 
 from poolhouse.files import writing
+from poolhouse.fleet.compute_bytecode import CLEANUP
 from poolhouse.fleet.compute_members import EXTRA_FILES, OWNED_ROOTS, PREFIXES
 from poolhouse.fleet.wheel_provenance import write_wheel
 from poolhouse.net import packages
@@ -153,7 +154,7 @@ def expected() -> dict:
     return manifest
 
 
-PROBE = '''import hashlib,json,sys
+_VERIFY = '''import hashlib,json,sys
 from pathlib import Path
 from importlib.metadata import distribution
 m=json.load(sys.stdin)
@@ -167,7 +168,8 @@ for name,digest in (m['base_files'] | m['files']).items():
  assert not p.is_symlink() and p.is_file(), 'Managed compute file is missing or linked'
  assert all(not ancestor.is_symlink() for ancestor in p.parents if ancestor!=site and ancestor.is_relative_to(site)), 'Managed compute directory is linked'
  assert hashlib.sha256(p.read_bytes()).hexdigest()==digest, 'Managed compute file changed'
-for prefix in OWNED_NAMESPACE_ROOTS:
+'''
+_INVENTORY = '''for prefix in OWNED_NAMESPACE_ROOTS:
  root=Path(d.locate_file(prefix))
  for p in root.rglob('*'):
   assert not p.is_symlink(), 'Managed compute contains a linked file'
@@ -181,18 +183,23 @@ for p in Path(d.locate_file(info)).rglob('*'):
   assert name in m['files'] or p.name in ('RECORD','INSTALLER','REQUESTED','direct_url.json'), 'Unexpected compute metadata'
 print(m['sha256'])
 '''.replace('OWNED_NAMESPACE_ROOTS', repr(OWNED_ROOTS))
+PROBE = _VERIFY + _INVENTORY
 
 
-def probe(python: Path, *, environment: dict) -> str:
-    """Verify installed files with an isolated managed interpreter before work."""
+def _checked(python: Path, environment: dict, script: str) -> str:
     import subprocess
 
     manifest = expected()
-    result = subprocess.run([str(python), '-B', '-I', '-c', PROBE], input=json.dumps(manifest),
+    result = subprocess.run([str(python), '-B', '-I', '-c', script], input=json.dumps(manifest),
                             capture_output=True, text=True, timeout=20, env=environment)
     if result.returncode or result.stdout.strip() != manifest['sha256']:
         raise OSError('Refresh Training essentials in Libraries to install the app verified compute runtime')
     return manifest['sha256']
+
+
+def probe(python: Path, *, environment: dict) -> str:
+    """Verify installed files with an isolated managed interpreter before work."""
+    return _checked(python, environment, PROBE)
 
 
 def install(python: Path, directory: Path, *, environment: dict):
@@ -203,5 +210,5 @@ def install(python: Path, directory: Path, *, environment: dict):
     result = packages.run(python, ['install', '--no-index', '--no-deps', '--no-compile',
                                   '--force-reinstall', str(wheel)], timeout=3600, env=environment)
     if result.returncode == 0:
-        probe(python, environment=environment)
+        _checked(python, environment, _VERIFY + CLEANUP + _INVENTORY)
     return result

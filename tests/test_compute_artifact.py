@@ -1,6 +1,7 @@
 """Optional compute artifacts remain bound to the minimal app revision."""
 import hashlib
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -22,7 +23,8 @@ def bundle(tmp_path):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text('VALUE = 42\n')
     base = tmp_path / 'poolhouse-0.1.0-py3-none-any.whl'
-    write_wheel(base, {'poolhouse/__init__.py': b'', 'poolhouse-0.1.0.dist-info/METADATA':
+    write_wheel(base, {'poolhouse/__init__.py': b'', 'poolhouse/graph/__init__.py': b'',
+                      'poolhouse/graph/payloads.py': b'VALUE = 17\n', 'poolhouse-0.1.0.dist-info/METADATA':
                       b'Name: poolhouse\nVersion: 0.1.0\n', 'poolhouse-0.1.0.dist-info/WHEEL':
                       b'Wheel-Version: 1.0\nRoot-Is-Purelib: true\nTag: py3-none-any\n',
                       'poolhouse-0.1.0.dist-info/RECORD': b''})
@@ -202,3 +204,76 @@ def test_shared_base_ownership_refuses_outside_or_overlapping_files(bundle, name
     manifest['base_files'] = {name: 'a' * 64}
     with pytest.raises(ValueError, match='base ownership'):
         artifact.verify(companion, manifest, REVISION)
+
+
+def test_install_clears_only_verified_source_bytecode_before_strict_probe(bundle, tmp_path, monkeypatch):
+    import os
+    import subprocess
+    import sys
+
+    from poolhouse.fleet.environment import Environment
+    from poolhouse.fleet.wheel_provenance import stamp
+
+    _, base, companion, manifest = bundle
+    stamp(base, REVISION, tmp_path)
+    environment = Environment(tmp_path / 'managed')
+    subprocess.run([sys.executable, '-m', 'venv', str(environment.path)], check=True, capture_output=True)
+    subprocess.run([str(environment.python), '-m', 'pip', 'install', '--no-deps', '--no-index', '--no-compile', str(base), str(companion)],
+                   check=True, capture_output=True)
+    monkeypatch.setattr(artifact, 'expected', lambda: manifest)
+    old = subprocess.run([str(environment.python), '-I', '-c',
+                          'import poolhouse.graph.payloads,poolhouse.backend;print(poolhouse.graph.payloads.__file__)'],
+                         check=True, capture_output=True, text=True)
+    package = Path(old.stdout.strip()).parent
+    assert list(package.rglob('*.pyc'))
+    with environment._mutation(['core']):
+        assert artifact.install(environment.python, base.parent, environment=dict(os.environ)).returncode == 0
+    assert not list(package.rglob('*.pyc'))
+    assert artifact.probe(environment.python, environment=dict(os.environ)) == manifest['sha256']
+    with environment._mutation(['core']):
+        assert artifact.install(environment.python, base.parent, environment=dict(os.environ)).returncode == 0
+    assert artifact.probe(environment.python, environment=dict(os.environ)) == manifest['sha256']
+
+
+@pytest.mark.parametrize('kind', ['unknown', 'loose', 'symlink', 'hardlink', 'changed-source'])
+def test_installer_does_not_clean_untrusted_bytecode_or_changed_source(bundle, tmp_path, monkeypatch, kind):
+    import importlib.util
+    import os
+    import subprocess
+    import sys
+
+    from poolhouse.fleet.environment import Environment
+    from poolhouse.fleet.wheel_provenance import stamp
+
+    _, base, companion, manifest = bundle
+    stamp(base, REVISION, tmp_path)
+    environment = Environment(tmp_path / 'managed')
+    subprocess.run([sys.executable, '-m', 'venv', str(environment.path)], check=True, capture_output=True)
+    subprocess.run([str(environment.python), '-m', 'pip', 'install', '--no-deps', '--no-index', '--no-compile', str(base), str(companion)],
+                   check=True, capture_output=True)
+    monkeypatch.setattr(artifact, 'expected', lambda: manifest)
+    located = subprocess.run([str(environment.python), '-B', '-I', '-c',
+                              'import poolhouse.graph.payloads;print(poolhouse.graph.payloads.__file__)'],
+                             check=True, capture_output=True, text=True)
+    source = Path(located.stdout.strip())
+    cache = Path(importlib.util.cache_from_source(str(source)))
+    cache.parent.mkdir(exist_ok=True)
+    outside = tmp_path / 'outside.pyc'
+    outside.write_bytes(b'outside bytes')
+    if kind == 'unknown':
+        cache = cache.with_name('unlisted.' + sys.implementation.cache_tag + '.pyc')
+        cache.write_bytes(b'unknown')
+    elif kind == 'loose':
+        cache = source.with_suffix('.pyc')
+        cache.write_bytes(b'loose')
+    elif kind == 'symlink':
+        cache.symlink_to(outside)
+    elif kind == 'hardlink':
+        cache.hardlink_to(outside)
+    else:
+        cache.write_bytes(b'previous cache')
+        source.write_text('VALUE = 99')
+    with environment._mutation(['core']), pytest.raises(OSError, match='verified compute'):
+        artifact.install(environment.python, base.parent, environment=dict(os.environ))
+    assert cache.exists()
+    assert outside.read_bytes() == b'outside bytes'
