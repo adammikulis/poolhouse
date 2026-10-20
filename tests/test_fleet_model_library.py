@@ -68,7 +68,7 @@ def test_serving_refuses_missing_first_shard_and_outside_paths(joined, monkeypat
     first = weights(joined.files / 'Qwen3-27B-Q4_K_M-00002-of-00002.gguf', 'Qwen3-27B')
     weights(joined.files / 'Qwen3-27B-Q4_K_M-00003-of-00002.gguf', 'Qwen3-27B')
     calls = []
-    joined.ui.start_serving = lambda model: calls.append(model) or SimpleNamespace(public=lambda: {'port': 12345})
+    joined.ui.start_serving = lambda model, **_options: calls.append(model) or SimpleNamespace(public=lambda: {'port': 12345})
     for path in (str(first), str(joined.files.parent / 'outside.gguf')):
         status, _, _ = joined.call('/ui/serving', method='POST', body={'path': path}, cookie=joined.cookie)
         assert status == 404
@@ -83,7 +83,7 @@ def test_models_browser_groups_shards_filters_sorts_and_serves_exact_path(joined
     weights(joined.files / 'Qwen3-27B-Q4_K_M-00002-of-00002.gguf', 'Qwen3-27B')
     weights(joined.files / 'Ornith-9B-Q8_0.gguf', 'Ornith-9B', modified=200)
     calls = []
-    joined.ui.start_serving = lambda model: calls.append(model.path) or SimpleNamespace(public=lambda: {'port': 12345})
+    joined.ui.start_serving = lambda model, **_options: calls.append(model.path) or SimpleNamespace(public=lambda: {'port': 12345})
     page, errors = open_page(joined, cookie=joined.cookie, path='/ui/#models')
     library = page.locator('models-library')
     library.locator('article').filter(has_text='Qwen3-27B').wait_for()

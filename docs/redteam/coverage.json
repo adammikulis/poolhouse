@@ -1,7 +1,7 @@
 {
- "surfaces": 925,
+ "surfaces": 926,
  "by_status": {
-  "covered": 606,
+  "covered": 607,
   "partial": 193,
   "uncovered": 51,
   "n/a": 75,
@@ -86,8 +86,8 @@
    "unmapped": 0
   },
   "route": {
-   "covered": 134,
-   "partial": 58,
+   "covered": 135,
+   "partial": 57,
    "uncovered": 0,
    "n/a": 1,
    "unmapped": 0
@@ -101,7 +101,7 @@
   },
   "spawn": {
    "covered": 102,
-   "partial": 58,
+   "partial": 59,
    "uncovered": 0,
    "n/a": 4,
    "unmapped": 0
@@ -9595,21 +9595,6 @@
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
   {
-   "id": "route:fleet/routes.py:/ui/serving",
-   "kind": "route",
-   "source": "fleet/routes.py:ModelRoutes.route",
-   "trust": "browser session on this machine behind the UI header",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "partial",
-   "tests": [
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
-   ],
-   "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
-  },
-  {
    "id": "route:fleet/routes.py:/ui/serving/install",
    "kind": "route",
    "source": "fleet/routes.py:ModelRoutes.route",
@@ -9888,6 +9873,20 @@
     "tests/test_runtime_repair.py::test_public_errors_redact_environment_credentials"
    ],
    "note": "Hostile browser requests cannot resume jobs; public status omits artifact paths and person provenance and redacts credential-bearing failures."
+  },
+  {
+   "id": "route:fleet/serving_routes.py:/ui/serving",
+   "kind": "route",
+   "source": "fleet/serving_routes.py:route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_fleet_serve_context.py",
+    "tests/test_fleet_serving.py",
+    "tests/test_bonsai_provider.py"
+   ],
+   "note": "Serving validates installed model identity and context, fences the current session and artifact fingerprint around admission, reports the actual broker lease, and preserves owned lease cleanup. Fixed format-provider preparation is tested against tampering and filesystem substitution. These isolated tests do not prove installed model loading or generation."
   },
   {
    "id": "route:fleet/setup_recovery_routes.py:/ui/setup/recovery",
@@ -12985,6 +12984,18 @@
    "id": "spawn:serve/build_persist.py:_install_persist_windows",
    "kind": "spawn",
    "source": "serve/build_persist.py:_install_persist_windows",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "partial",
+   "tests": [
+    "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
+   ],
+   "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+  },
+  {
+   "id": "spawn:serve/build_platform.py:verify_libraries",
+   "kind": "spawn",
+   "source": "serve/build_platform.py:verify_libraries",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "partial",

@@ -253,7 +253,8 @@ def child_env(binary: Path | str, extra: dict[str, str] | None = None) -> dict[s
     env["PATH"] = bindir + os.pathsep + env.get("PATH", "")
     if extra:
         env.update(extra)
-    return env
+    return {key: value for key, value in env.items()
+            if not key.startswith(("DYLD_", "LD_"))}
 
 
 def _name_variants(name: str) -> tuple[str, ...]:

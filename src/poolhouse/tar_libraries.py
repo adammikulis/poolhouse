@@ -10,7 +10,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from poolhouse.safenames import MOST_ENTRIES, MOST_UNPACKED, Unsafe, safe_join
 
-SHARED_OBJECT = re.compile(r".+\.so(?:\.\d+)*$")
+SHARED_OBJECT = re.compile(r"(?:.+\.so(?:\.\d+)*|.+\.dylib)$")
 
 
 def members(tf: tarfile.TarFile) -> list[tuple[tarfile.TarInfo, tarfile.TarInfo]]:

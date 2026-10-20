@@ -42,6 +42,7 @@ from .page_security import PAGE_HEADERS
 from .pausing import minutes_of
 from .room_routes import RoomRoutes
 from .runtime_repair_routes import RuntimeRepairRoutes
+from .serving_routes import route as serving_route
 from .session import parse_cookie
 from .setup_jobs import jobs, libraries, provenance, server
 from .setup_recovery_routes import SetupRecoveryRoutes
@@ -490,8 +491,8 @@ class ModelRoutes:
                 return True
             if self.method == "POST":
                 return self._install_server()
-        if self.path == "/ui/serving":
-            return self._serving()
+        if serving_route(self, _can_serve):
+            return True
         return super().route()
 
     def _popular(self) -> bool:
@@ -626,45 +627,6 @@ class ModelRoutes:
         self.send(202, {"ok": True, "job": job})
         return True
 
-    def _serving(self) -> bool:
-        ui = self.ui
-        if ui.serving is None:
-            self.send(501, {"error": "nothing on this daemon can run a model"})
-            return True
-        if self.method == "GET":
-            self.send(200, {"running": [x.public() for x in ui.serving.live(force=True)],
-                            "can_serve": _can_serve()})
-            return True
-        if self.method == "POST":
-            return self._start_serving()
-        if self.method == "DELETE":
-            ui.stop_serving(int(self.body().get("port") or 0))
-            self.send(200, {"running": [x.public() for x in ui.serving.live(force=True)]})
-            return True
-        return super().route()
-
-    def _start_serving(self) -> bool:
-        ui = self.ui
-        if not _can_serve():
-            self.send(501, {"error": "this install cannot run a model itself; a "
-                                     "machine on your network can serve one instead"})
-            return True
-        req = self.body()
-        path = req.get("path")
-        found = ui.models.library_model(path) if ui.models and isinstance(path, str) else None
-        if found is None and not path and ui.models:
-            legacy = ui.models.find(str(req.get("name") or ""))
-            found = ui.models.library_model(str(legacy.path)) if legacy else None
-        if found is None:
-            self.send(404, {"error": "no such model on this machine"})
-            return True
-        try:
-            served = ui.start_serving(found)
-        except (OSError, RuntimeError, ValueError) as exc:
-            self.send(400, {"error": str(exc)})
-            return True
-        self.send(201, served.public())
-        return True
 
 
 class UpdateRoutes:

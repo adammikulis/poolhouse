@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import socket
+import threading
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, dataclass, field, replace
@@ -16,7 +17,7 @@ from poolhouse import lock
 from poolhouse.client.counters import read_speculative
 from poolhouse.client.health import is_healthy, reported_models, serving_params
 from poolhouse.client.settings import Transport
-from poolhouse.files import write_json
+from poolhouse.files import stat_signature, write_json
 from poolhouse.hub.capabilities import capabilities
 from poolhouse.hub.probe import machine_memory
 from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_port
@@ -36,6 +37,7 @@ __all__ = [
     "Served",
     "Serving",
     "Started",
+    "context_settings",
     "discover_serving",
     "start_model",
     "stop_model",
@@ -171,17 +173,41 @@ class ServeSettings:
     room: int = 0
     port: int | None = None
     escalate: bool | None = None
+    model_identity: tuple = ()
+    current: Callable[[], bool] | None = field(default=None, repr=False, compare=False)
 
+
+
+def context_settings(model_path, context, default=8192):
+    """Validate an explicit per-start context against the selected effective GGUF."""
+    if context is None:
+        return ServeSettings(context=default)
+    if type(context) is not int or context <= 0:
+        raise ValueError('Context length must be a positive whole number.')
+    path = model_components.effective(Path(model_path)).resolve()
+    identity = (str(path), stat_signature(path.stat()))
+    metadata = read_gguf_header(path)
+    architecture = metadata.get('general.architecture')
+    maximum = metadata.get(f'{architecture}.context_length') if isinstance(architecture, str) else None
+    if type(maximum) is not int or maximum <= 0:
+        raise ValueError('This model does not report a verified context limit.')
+    if context > maximum:
+        raise ValueError(f'This model supports at most {maximum} context tokens.')
+    settings = ServeSettings(context=context, model_identity=identity)
+    _check_context_model(path, settings)
+    return settings
+
+
+def _check_context_model(path, settings):
+    if settings.current is not None and settings.current() is not True:
+        raise PermissionError('Sign in again before starting this model.')
+    if settings.model_identity and (str(Path(path).resolve()), stat_signature(Path(path).stat())) != settings.model_identity:
+        raise ValueError('The selected model changed. Select it again before starting.')
 
 def start_model(root: Path | str, model_path: Path | str, *, settings: ServeSettings | None = None,
                 manager: Any = None, serving: Serving | None = None) -> Started:
     """Lease the configured model and optionally register its serving endpoint."""
     settings = settings or ServeSettings()
-    if manager is None:
-        from .llama import ensure_server
-        manager = ServerManager(
-            backend=LlamaServerBackend(binary=ensure_server(root)))
-
     port = free_port() if settings.port is None else settings.port
     parallel = max(1, int(settings.parallel))
     context = int(settings.context)
@@ -196,10 +222,17 @@ def start_model(root: Path | str, model_path: Path | str, *, settings: ServeSett
         arch = found.get("general.architecture")
         if found.get(f"{arch}.nextn_predict_layers"):
             kind = "draft-mtp"
+    _check_context_model(model_path, settings)
+    if manager is None:
+        from .llama import ensure_server
+        manager = ServerManager(
+            backend=LlamaServerBackend(binary=ensure_server(root)))
+
     sizing = estimate(model_path, Setup(context=int(context), parallel=parallel, draft=draft, mmproj=projector,
                                        draft_cache_type=DEFAULT_KV))
     if verdict(sizing, machine_memory()) == "red":
         raise NoRoom(f"{Path(model_path).name}: not enough free memory for the model, head and context")
+    _check_context_model(model_path, settings)
     lease = manager.lease(ServerSpec(model=model_path, port=port, context=int(context),
                                      parallel=parallel, draft=str(draft) if draft else None,
                                      mmproj=str(projector) if projector else None,
@@ -209,10 +242,19 @@ def start_model(root: Path | str, model_path: Path | str, *, settings: ServeSett
                                      spec_type=kind, spec_draft_ngl=99 if draft else None),
                           escalate=bool(settings.escalate),
                           reason=f"fleet serving of {Path(model_path).name}")
-    served = None
-    if serving is not None:
-        served = serving.register(port, [settings.name or Path(model_path).name], slots=parallel)
-    return Started(port=port, lease=lease, manager=manager, served=served)
+    retained = False
+    try:
+        _check_context_model(model_path, settings)
+        port = lease.port
+        if type(port) is not int or not 1 <= port <= 65535:
+            raise ValueError('The model broker did not return a valid serving endpoint.')
+        served = serving.register(port, [settings.name or Path(model_path).name], slots=parallel) if serving else None
+        started = Started(port=port, lease=lease, manager=manager, served=served)
+        retained = True
+        return started
+    finally:
+        if not retained:
+            manager.release(lease)
 
 
 class NoRoom(RuntimeError):
@@ -228,7 +270,8 @@ class Hosting:
         self.serving = serving
         self.manager = manager
         self.fits = fits
-        self.leases: dict[int, Any] = {}
+        self.leases: dict[int, list[Any]] = {}
+        self._lock = threading.RLock()
 
     def already(self, name: str) -> Served | None:
         """The live server holding ``name``, or None."""
@@ -259,28 +302,36 @@ class Hosting:
 
     def start(self, model_path: Path | str, settings: ServeSettings | None = None) -> Served:
         """Serve the configured model, admitting its memory and slot requirements."""
-        settings = settings or ServeSettings()
-        name = settings.name or Path(model_path).name
-        why = self.fits_in(name, context=int(settings.context), parallel=int(settings.parallel), room=int(settings.room))
-        if why:
-            raise NoRoom(f"{name} does not fit: {why}")
-        configured = replace(settings, name=name, escalate=True if settings.escalate is None else settings.escalate)
-        started = start_model(self.root, model_path, settings=configured,
-                              manager=self.manager, serving=self.serving)
-        self.manager = started.manager
-        self.leases[started.port] = started.lease
-        return started.served or Served(port=started.port, models=[name],
-                                        slots=max(1, int(settings.parallel)))
+        with self._lock:
+            settings = settings or ServeSettings()
+            name = settings.name or Path(model_path).name
+            why = self.fits_in(name, context=int(settings.context), parallel=int(settings.parallel), room=int(settings.room))
+            if why:
+                raise NoRoom(f"{name} does not fit: {why}")
+            configured = replace(settings, name=name, escalate=True if settings.escalate is None else settings.escalate)
+            started = start_model(self.root, model_path, settings=configured,
+                                  manager=self.manager, serving=self.serving)
+            self.manager = started.manager
+            held = self.leases.setdefault(started.port, [])
+            if not any(lease is started.lease for lease in held):
+                held.append(started.lease)
+            while len(held) > 1:
+                self.manager.release(held[0])
+                del held[0]
+            observed = self.serving.live(force=True) if self.serving is not None else []
+            return next((row for row in observed if row.port == started.port), None) or started.served or Served(
+                port=started.port, models=[name], slots=max(1, int(settings.parallel)))
 
     def stop(self, port: int) -> None:
-        """Release the server on ``port``; a port this process did not start is only
-        taken out of the registry."""
-        held = self.leases.pop(port, None)
-        if held is None or self.manager is None:
-            self.serving.unregister(port)
-            return
-        stop_model(Started(port=port, lease=held, manager=self.manager),
-                   serving=self.serving)
+        """Release only this Hosting's retained handles, then remove its registry entry."""
+        with self._lock:
+            held = self.leases.get(port, [])
+            while held and self.manager is not None:
+                self.manager.release(held[0])
+                del held[0]
+            if not held:
+                self.leases.pop(port, None)
+                self.serving.unregister(port)
 
 
 def stop_model(started: Started, serving: Serving | None = None) -> None:

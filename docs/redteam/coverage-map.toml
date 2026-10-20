@@ -1101,6 +1101,13 @@ tests = ["tests/test_fleet_android.py::test_android_device_controls_reject_forei
 note = "Foreign source/host, machine-token browser authority, oversized bodies, wrong methods and unauthenticated revocation are refused while the existing phone session remains valid"
 # -- HTTP routes and handlers --------------------------------------------------------------
 [[group]]
+match = ["route:fleet/serving_routes.py:*"]
+status = "covered"
+count = 1
+tests = ["tests/test_fleet_serve_context.py", "tests/test_fleet_serving.py", "tests/test_bonsai_provider.py"]
+note = "Serving validates installed model identity and context, fences the current session and artifact fingerprint around admission, reports the actual broker lease, and preserves owned lease cleanup. Fixed format-provider preparation is tested against tampering and filesystem substitution. These isolated tests do not prove installed model loading or generation."
+
+[[group]]
 match = ["route:fleet/gym_routes.py:*", "route:fleet/gym_recording_routes.py:*", "route:fleet/workspace_routes.py:*"]
 status = "covered"
 count = 10
