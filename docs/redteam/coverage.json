@@ -1,7 +1,7 @@
 {
- "surfaces": 897,
+ "surfaces": 898,
  "by_status": {
-  "covered": 579,
+  "covered": 580,
   "partial": 193,
   "uncovered": 52,
   "n/a": 73,
@@ -44,7 +44,7 @@
    "unmapped": 0
   },
   "handler": {
-   "covered": 11,
+   "covered": 12,
    "partial": 2,
    "uncovered": 0,
    "n/a": 0,
@@ -3119,6 +3119,31 @@
     "tests/test_pdf_engine.py"
    ],
    "note": ""
+  },
+  {
+   "id": "handler:studio/producer_log.py:ProducerLog.retry",
+   "kind": "handler",
+   "source": "src/poolhouse/studio/producer_log.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_log.py::test_definitive_rejection_keeps_attempted_tombstone_and_releases_pending",
+    "tests/test_producer_log.py::test_rejection_requires_exact_receiver_negative_evidence",
+    "tests/test_producer_log.py::test_positive_receipt_always_wins_over_negative_and_keeps_other_pending",
+    "tests/test_producer_log.py::test_retry_is_explicit_idempotent_and_attempt_nonce_changes_same_second",
+    "tests/test_producer_log.py::test_unknown_cannot_retry_or_bypass_with_new_id",
+    "tests/test_producer_log.py::test_retry_rechecks_negative_and_current_authority_with_rollback",
+    "tests/test_producer_log.py::test_retry_refuses_changed_binding_or_intervening_pending",
+    "tests/test_producer_log.py::test_concurrent_retry_commands_have_one_winner",
+    "tests/test_producer_log.py::test_stale_reject_cannot_release_new_retry_pending",
+    "tests/test_producer_log.py::test_owner_can_cancel_only_unattempted_retry_retaining_history",
+    "tests/test_producer_log.py::test_owner_cancel_retry_revocation_rolls_back_and_claim_race_has_one_winner",
+    "tests/test_producer_log.py::test_accepted_receipt_beats_429_negative_under_shared_receiver_transaction",
+    "tests/test_producer_log.py::test_restart_retains_exact_retry_command_and_never_reclaims_initial",
+    "tests/test_producer_log.py::test_old_retry_snapshot_after_done_is_not_current_status_or_send_authority"
+   ],
+   "note": "The private retry transition requires current original-binding authority and definitive receiver evidence, then persists an idempotent immutable command revision. Stale commands, changed bindings, unknown outcomes, concurrent commands and receipt/rejection races cannot obtain another send claim. Tests supply trusted receiver callbacks over isolated storage; actual ingress negative markers and attempt-bound wire enforcement remain separate factory obligations."
   },
   {
    "id": "human:activity/cli.py:_export",
@@ -7104,7 +7129,7 @@
     "tests/test_producer_log.py::test_attempted_or_unknown_event_cannot_be_discarded",
     "tests/test_producer_log.py::test_missing_or_mismatched_pending_index_never_issues_send_authority"
    ],
-   "note": "Private daemon persistence pins exact finite JSON bytes before parsing, source-wide event identity and the original binding. Current authorization and exact pending-index checks precede a single send claim; transaction races roll back. Unknown attempts require exact trusted inbox evidence and never resend across restart or replacement. Explicit current-owner discard applies only to provably unattempted records and retains their immutable identity. Reads and receipt access require independent factory authorization; this primitive provides no publisher-facing endpoint, credential or source capability."
+   "note": "Private persistence pins finite exact JSON bytes, source-wide event identity and the original binding. A command gets one send claim after current authorization and exact pending-index checks. Unknown outcomes never resend across restart or replacement. A deliberate retry requires exact receiver-owned attempt-bound non-admission evidence; accepted inbox evidence wins. Immutable command snapshots and claim keys cannot send a later revision, and historical attempted bytes never become not_sent. Owner discard applies only to a provably unattempted command and preserves event/history tombstones. The factory must authorize reads and supply negative evidence checked atomically against the receiver inbox in this same transaction; neither an HTTP 429 nor a client assertion is such proof. This primitive provides no publisher endpoint or capability."
   },
   {
    "id": "parser:studio/record_context.py",
