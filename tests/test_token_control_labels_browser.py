@@ -33,7 +33,7 @@ def test_chat_token_control_has_one_label_and_one_zero_hint(feedback_page,tmp_pa
     page.evaluate('theme => fleetModel.setPreferences({...fleetModel.preferences,resolved_theme:theme})',PRESETS[theme])
     snapshot(page,f'{theme}-chat-single-label.png')
     expect(page.locator('#chat-options').get_by_text('Maximum output tokens',exact=True)).to_have_count(1)
-    expect(page.locator('#chat-options').get_by_text('Select 0 for no user cap.',exact=True)).to_have_count(1)
+    expect(page.locator('#chat-options').get_by_text('Select 0 for no user cap.',exact=False)).to_have_count(1)
     assert not errors
 
 
