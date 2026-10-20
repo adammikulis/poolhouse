@@ -3,6 +3,7 @@ import copy
 
 import pytest
 from browser_expect import expect
+from studio_commands import workflow_picker
 from test_fleet_ui import Serving
 from test_studio_canvas_browser import SPECS, studio_browser  # noqa: F401
 
@@ -158,7 +159,7 @@ def test_explicit_selection_and_failed_selection_survive_initial_response(delaye
         state['save_error'] = True
         title.fill('Keep failed draft')
         title.press('Tab')
-    page.get_by_label('Saved workflows', exact=True).select_option('')
+    workflow_picker(page).select_option('')
     if failure:
         expect(page.locator('.studio-status')).to_contain_text('Controlled save failure')
     else:

@@ -2,6 +2,7 @@
 import pytest
 import test_studio_canvas_browser
 from browser_expect import expect
+from studio_commands import studio_command
 from test_studio_canvas_browser import add, studio_browser  # noqa: F401
 
 pytestmark = pytest.mark.slow
@@ -72,12 +73,16 @@ def test_drag_library_places_world_coordinates_and_title_click_does_not_add(plac
 def test_context_menu_search_at_cursor_and_escape(placement_page):
     page, _state, errors = placement_page
     viewport = page.locator('.studio-viewport')
+    viewport.evaluate('''view => view.addEventListener('contextmenu', event => {
+      const box = view.getBoundingClientRect();
+      window.contextPlacementPointer = {x:event.clientX-box.left,y:event.clientY-box.top};
+    }, {once:true})''')
     viewport.click(button='right', position={'x': 210, 'y': 140})
     search = page.get_by_label('Search nodes to place', exact=True)
     search.fill('Text relay')
     page.get_by_role('dialog').get_by_role('button', name='Text relay Tests', exact=True).click()
     current = graph(page)
-    assert current['layout']['nodes'][current['nodes'][0]['id']] == {'x': 210, 'y': 140}
+    assert current['layout']['nodes'][current['nodes'][0]['id']] == page.evaluate('window.contextPlacementPointer')
     viewport.click(button='right', position={'x': 30, 'y': 30})
     page.get_by_label('Search nodes to place', exact=True).press('Escape')
     expect(page.get_by_role('dialog')).to_have_count(0)
@@ -101,9 +106,9 @@ def test_compatible_edge_insertion_is_one_undo_and_redo(placement_page, interact
     relay = next(n for n in current['nodes'] if n['type'] == 'relay')
     assert len(current['edges']) == 2
     assert {e['target']['node'] for e in current['edges']} == {relay['id'], before['edges'][0]['target']['node']}
-    page.get_by_role('button', name='Undo', exact=True).click()
+    studio_command(page, 'Undo').click()
     assert graph(page) == before
-    page.get_by_role('button', name='Redo', exact=True).click()
+    studio_command(page, 'Redo').click()
     assert graph(page) == current
     assert not errors
 
@@ -165,7 +170,7 @@ def test_existing_unconnected_node_splices_with_movement_in_same_undo(placement_
     page.mouse.up()
     expect(page.locator('.studio-status')).to_contain_text('inserted')
     assert len(graph(page)['edges']) == 2
-    page.get_by_role('button', name='Undo', exact=True).click()
+    studio_command(page, 'Undo').click()
     assert graph(page) == before
     assert not errors
 
@@ -190,7 +195,7 @@ def test_connected_node_input_is_not_stolen_by_dragging_onto_an_edge(placement_p
 def test_saved_group_drop_is_independent_and_nested_coordinates_are_local(placement_page):
     page, _state, errors = placement_page
     add(page, 'Prompt template')
-    page.get_by_role('button', name='Group selection', exact=True).click()
+    studio_command(page, 'Group selection').click()
     before = graph(page)
     box = page.locator('.studio-viewport').bounding_box()
     drop_at(page, 'group', {'x': box['x'] + 70, 'y': box['y'] + 350})
@@ -198,7 +203,7 @@ def test_saved_group_drop_is_independent_and_nested_coordinates_are_local(placem
     assert len(current['nodes']) == 2
     first, second = current['nodes']
     assert first['group'] != second['group']
-    page.get_by_role('button', name='Undo', exact=True).click()
+    studio_command(page, 'Undo').click()
     assert graph(page) == before
     page.get_by_role('button', name='Open group', exact=True).first.click()
     page.locator('studio-view').evaluate('''editor => {

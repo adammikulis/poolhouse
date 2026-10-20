@@ -3,6 +3,7 @@ import pytest
 import test_studio_canvas_browser
 import test_studio_placement_browser
 from browser_expect import expect
+from studio_commands import studio_command
 from test_studio_canvas_browser import add, studio_browser  # noqa: F401
 from test_studio_placement_browser import graph, wire_point
 
@@ -69,9 +70,9 @@ def test_free_second_input_preserves_fanout_controls_and_atomic_undo(connected_p
     assert {'source': {'node': node_id, 'port': 'out'}, 'target': original['target']} in after['edges']
     assert len(after['edges']) == len(before['edges']) + 1
     assert after['layout']['nodes'][node_id] != before['layout']['nodes'][node_id]
-    page.get_by_role('button', name='Undo', exact=True).click()
+    studio_command(page, 'Undo').click()
     assert graph(page) == before
-    page.get_by_role('button', name='Redo', exact=True).click()
+    studio_command(page, 'Redo').click()
     assert graph(page) == after
     assert not errors
 
@@ -125,7 +126,7 @@ def test_multiple_free_inputs_still_require_choice_and_cancel_keeps_wiring(conne
     assert graph(page)['edges'] == before['edges']
     chooser.get_by_role('button', name='Cancel', exact=True).click()
     assert graph(page)['edges'] == before['edges']
-    page.get_by_role('button', name='Undo', exact=True).click()
+    studio_command(page, 'Undo').click()
     assert graph(page) == before
     drag_existing(page, node_id)
     assert chooser.count() == 1, {'status': page.locator('.studio-status').inner_text(), 'graph': graph(page)}

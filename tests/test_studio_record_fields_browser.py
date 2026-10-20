@@ -6,6 +6,7 @@ import re
 
 import pytest
 from browser_expect import expect
+from studio_commands import studio_command, workflow_picker
 from test_fleet_ui import Serving
 from test_studio_canvas_browser import studio_browser  # noqa: F401
 from test_studio_record_nodes import graph
@@ -48,7 +49,7 @@ def record_page(tmp_path, studio_browser):  # noqa: F811
                     if request.method == 'POST' and '/ui/studio/' in request.url else None)
             page.goto(f'http://127.0.0.1:{app.port}/ui/#studio')
             page.wait_for_function('(id) => document.querySelector("studio-view")?.workflows?.some(w => w.id === id)', arg=workflow['id'])
-            page.get_by_label('Saved workflows', exact=True).select_option(workflow['id'])
+            workflow_picker(page).select_option(workflow['id'])
             page.wait_for_function('(id) => document.querySelector("studio-view")?.workflowId === id', arg=workflow['id'])
             yield page, app, errors, posts
     finally:
@@ -62,7 +63,7 @@ def record_page(tmp_path, studio_browser):  # noqa: F811
 
 def select_node(page, title):
     if not page.locator('.studio-outline').is_visible():
-        page.get_by_role('button', name='Outline', exact=True).click()
+        studio_command(page, 'Outline').click()
     page.locator('.studio-outline').get_by_role('button', name=re.compile('^' + re.escape(title))).click()
     return page.locator('.studio-inspector')
 
@@ -147,8 +148,8 @@ def test_detached_inspector_and_reinserted_node_cannot_receive_stale_edits(recor
     assert page.evaluate('document.querySelector("studio-view").graph.nodes.find(n => n.id === "map").parameters.controls.assignments[0].target') == 'original'
     inspector = select_node(page, 'Map record fields')
     old = inspector.get_by_label('Output field 1', exact=True).element_handle()
-    page.get_by_role('button', name='Delete', exact=True).click()
-    page.get_by_role('button', name='Undo', exact=True).click()
+    studio_command(page, 'Delete').click()
+    studio_command(page, 'Undo').click()
     page.evaluate('(input) => { input.value = "reinserted"; input.dispatchEvent(new Event("change", {bubbles:true})); }', old)
     assert page.evaluate('document.querySelector("studio-view").graph.nodes.find(n => n.id === "map").parameters.controls.assignments[0].target') == 'original'
     assert errors == []

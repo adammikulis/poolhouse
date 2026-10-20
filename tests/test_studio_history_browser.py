@@ -2,6 +2,7 @@
 import pytest
 import test_studio_canvas_browser
 from browser_expect import expect
+from studio_commands import studio_command
 from test_studio_canvas_browser import add, studio_browser  # noqa: F401
 
 studio_page = test_studio_canvas_browser.studio_page
@@ -13,7 +14,7 @@ def history(page):
 
 
 def undo(page, redo=False):
-    page.get_by_role('button', name='Redo' if redo else 'Undo', exact=True).click()
+    studio_command(page, 'Redo' if redo else 'Undo').click()
 
 
 def test_settings_limit_persists_and_trims_both_stacks_to_nearest_states(studio_page):
@@ -74,7 +75,7 @@ def test_title_viewport_group_navigation_and_arrange_are_atomic_draft_edits(stud
     assert page.locator('studio-view').evaluate('e=>e.graph.layout') == before
     undo(page, True)
     page.locator('.studio-node header').click()
-    page.get_by_role('button', name='Group selection', exact=True).click()
+    studio_command(page, 'Group selection').click()
     page.get_by_role('button', name='Open group', exact=True).first.click()
     name = page.get_by_label('Group name', exact=True)
     name.fill('Named reusable group')
@@ -89,7 +90,7 @@ def test_title_viewport_group_navigation_and_arrange_are_atomic_draft_edits(stud
     undo(page, True)
     assert page.locator('studio-view').evaluate('e=>e.rootGraph().nodes[0].type') == 'group'
     depth = history(page)[0]
-    page.get_by_role('button', name='Arrange', exact=True).click()
+    studio_command(page, 'Arrange').click()
     assert history(page)[0] == depth + 1
     arranged = page.locator('studio-view').evaluate('e=>structuredClone(e.graph.layout)')
     undo(page)
@@ -122,8 +123,8 @@ def test_node_configuration_connections_copy_delete_and_run_history_are_independ
     assert page.locator('studio-view').evaluate('e=>e.graph.nodes[0].parameters.template') == 'Hello'
     undo(page, True)
     page.locator('.studio-node header').first.click()
-    page.get_by_role('button', name='Copy', exact=True).click()
-    page.get_by_role('button', name='Paste', exact=True).click()
+    studio_command(page, 'Copy').click()
+    studio_command(page, 'Paste').click()
     expect(page.locator('.studio-node')).to_have_count(3)
     undo(page)
     expect(page.locator('.studio-node')).to_have_count(2)
@@ -139,13 +140,12 @@ def test_node_configuration_connections_copy_delete_and_run_history_are_independ
 def test_arrange_only_viewport_change_is_one_step_and_noop_preserves_redo(studio_page):
     page, _state, errors = studio_page
     add(page, 'Prompt template')
-    arrange = page.get_by_role('button', name='Arrange', exact=True)
-    arrange.click()
+    studio_command(page, 'Arrange').click()
     fitted = page.locator('studio-view').evaluate('e=>structuredClone(e.graph.layout.viewport)')
     page.locator('studio-view').evaluate('e=>e.canvas.zoom(1.2)')
     before = page.locator('studio-view').evaluate('e=>structuredClone(e.graph.layout.viewport)')
     depth = history(page)[0]
-    arrange.click()
+    studio_command(page, 'Arrange').click()
     assert history(page)[0] == depth + 1
     undo(page)
     assert page.locator('studio-view').evaluate('e=>e.graph.layout.viewport') == before
@@ -156,6 +156,6 @@ def test_arrange_only_viewport_change_is_one_step_and_noop_preserves_redo(studio
     page.get_by_label('Workflow title', exact=True).press('Tab')
     undo(page)
     counts = history(page)
-    arrange.click()
+    studio_command(page, 'Arrange').click()
     assert history(page) == counts
     assert not errors

@@ -4,6 +4,7 @@ import json
 import pytest
 import test_studio_stream_http as stream_http
 from browser_expect import expect
+from studio_commands import studio_command
 from test_studio_canvas_browser import studio_browser  # noqa: F401
 from test_studio_n8n import node, workflow
 
@@ -51,9 +52,9 @@ def test_paste_preview_draft_undo_save_and_selected_run_blocker(import_page):
     page.wait_for_timeout(900)
     assert not any('/workflows' in url or '/runs' in url for url in posts)
     assert 'omit-secret' not in page.locator('studio-view').evaluate('editor => JSON.stringify(editor.graph)')
-    page.get_by_role('button', name='Undo', exact=True).click()
+    studio_command(page, 'Undo').click()
     expect(page.locator('.studio-node')).to_have_count(0)
-    page.get_by_role('button', name='Redo', exact=True).click()
+    studio_command(page, 'Redo').click()
     expect(page.locator('.studio-node')).to_have_count(2)
     page.get_by_role('button', name='Save', exact=True).click()
     expect(page.locator('.studio-status')).to_contain_text('Saved · revision')
@@ -154,11 +155,11 @@ def test_import_fit_is_the_baseline_for_the_next_title_edit(import_page):
     title = page.get_by_label('Workflow title', exact=True)
     title.fill('Edited title')
     title.press('Tab')
-    page.get_by_role('button', name='Undo', exact=True).click()
+    studio_command(page, 'Undo').click()
     assert page.locator('studio-view').evaluate('editor => editor.graph') == fitted
     expect(title).to_have_value('Imported example')
-    page.get_by_role('button', name='Undo', exact=True).click()
+    studio_command(page, 'Undo').click()
     expect(page.locator('.studio-node')).to_have_count(0)
-    page.get_by_role('button', name='Redo', exact=True).click()
+    studio_command(page, 'Redo').click()
     assert page.locator('studio-view').evaluate('editor => editor.graph') == fitted
     assert not errors
