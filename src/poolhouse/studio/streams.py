@@ -82,6 +82,14 @@ class Streams:
                 raise ValueError('A cancelled subscription cannot be restarted.')
             if sub.get('inflight'):
                 raise ValueError('Resolve the admitted event before changing execution authority.')
+            source = self.store.get('source', sub['source_id'], principal['scope'])
+        if source['kind'] == 'webhook' and source.get('provider'):
+            self.webhook_setup.preflight(source)
+        with self.store.lock:
+            if (self.store.get('subscription', ident, principal['scope']) != sub
+                    or self.store.get('source', source['id'], principal['scope']) != source):
+                raise Conflict('The subscription or source changed during Start.')
+            self.authority._owner(principal)
             graph = self.engine.prepare(principal, sub['workflow'], sub['execution_output_nodes'])
             names = graph.get('variants', {}).get(sub['input_node'], [sub['input_node']])
             inputs = [node for node in graph['nodes'] if node['id'] in names and node['type'] == 'stream.record']

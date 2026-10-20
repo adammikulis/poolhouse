@@ -54,18 +54,20 @@
       this.placementMenu(edge ? 'Insert node into connection' : 'Add node here', entries.map(row => ({...row, choose: () => {
         if (graph !== this.editor.graph || stamp !== this.placementStamp()) { this.editor.message('The workflow changed. Open the node menu again.'); return; }
         this.placeEntry(row.entry, point, edge);
-      }})), event);
+      }})), event, true);
     },
-    placementMenu(title, choices, event) {
+    placementMenu(title, choices, event, arrange = false) {
       this.closePlacement();
       const active = document.activeElement, origin = !active?.isConnected || active === document.body ? this.view : active;
       const menu = E('div', {class: 'studio-placement-menu', role: 'dialog', 'aria-label': title});
       const search = E('input', {type: 'search', 'aria-label': 'Search nodes to place', placeholder: 'Search nodes…'});
       const list = E('div', {class: 'studio-placement-choices'});
       const draw = () => list.replaceChildren(...choices.filter(c => (c.title + ' ' + (c.detail || '')).toLowerCase().includes(search.value.toLowerCase())).map(c =>
-        E('button', {type: 'button', onclick: () => { this.closePlacement(false); c.choose(); }}, c.title, ...(c.detail ? [E('small', {}, c.detail)] : []))));
+        E('button', {type: 'button', class: 'ghost', onclick: () => { this.closePlacement(false); c.choose(); }}, c.title, ...(c.detail ? [E('small', {}, c.detail)] : []))));
       search.oninput = draw;
-      menu.append(E('strong', {}, title), search, list, E('button', {type: 'button', onclick: () => this.closePlacement()}, 'Cancel'));
+      menu.append(E('strong', {}, title), ...(arrange ? [E('button', {type: 'button', class: 'ghost', onclick: () => {
+        this.closePlacement(false); this.editor.arrange(); this.view.focus({preventScroll: true});
+      }}, 'Arrange nodes')] : []), search, list, E('button', {type: 'button', class: 'ghost', onclick: () => this.closePlacement()}, 'Cancel'));
       this.editor.append(menu); this.placementPopup = {menu, origin, graph: this.editor.graph};
       const box = this.view.getBoundingClientRect();
       menu.style.left = Math.max(8, Math.min(event?.clientX ?? box.left + box.width / 2, innerWidth - 300)) + 'px';

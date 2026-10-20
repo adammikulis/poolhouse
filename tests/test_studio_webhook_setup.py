@@ -66,7 +66,7 @@ def test_actual_tls_sender_receipt_duplicate_and_changed_sample(configured):
 def test_unknown_never_retransmits_or_accepts_new_key_after_reload(configured, monkeypatch):
     app, cookie, _ = configured
     source, sub = create(app, cookie)
-    setup = app.ui.studio_webhook_setup
+    setup = app.ui.studio_webhook_setup.local
     calls = []
     def lost(*args):
         calls.append(True)
@@ -84,7 +84,7 @@ def test_unknown_never_retransmits_or_accepts_new_key_after_reload(configured, m
 def test_lost_ack_reconciles_only_exact_actual_inbox(configured, monkeypatch):
     app, cookie, _ = configured
     source, sub = create(app, cookie)
-    setup = app.ui.studio_webhook_setup
+    setup = app.ui.studio_webhook_setup.local
     original = setup._send
     calls = []
     def lost(*args):
@@ -140,7 +140,7 @@ def test_known_rejection_never_retries_same_request(configured, monkeypatch):
     def capacity(*args):
         calls.append(True)
         return 429, {'error': 'No capacity'}
-    monkeypatch.setattr(app.ui.studio_webhook_setup, '_send', capacity)
+    monkeypatch.setattr(app.ui.studio_webhook_setup.local, '_send', capacity)
     assert send(app, cookie, source, sub)[0] == 429
     assert send(app, cookie, source, sub)[0] == 429
     assert calls == [True]
@@ -151,7 +151,7 @@ def test_known_rejection_never_retries_same_request(configured, monkeypatch):
 def test_mismatched_ack_is_interrupted_until_explicit_exact_reconciliation(configured, monkeypatch):
     app, cookie, _ = configured
     source, sub = create(app, cookie)
-    setup = app.ui.studio_webhook_setup
+    setup = app.ui.studio_webhook_setup.local
     original = setup._send
     calls = []
     def mismatch(*args):
@@ -181,7 +181,7 @@ def test_concurrent_duplicate_test_posts_only_once(configured, monkeypatch):
 
     app, cookie, _ = configured
     source, sub = create(app, cookie)
-    setup = app.ui.studio_webhook_setup
+    setup = app.ui.studio_webhook_setup.local
     original = setup._send
     entered, release = threading.Event(), threading.Event()
     calls = []
@@ -205,7 +205,7 @@ def test_concurrent_duplicate_test_posts_only_once(configured, monkeypatch):
 def test_new_current_owner_reconciles_existing_intent_without_adopting_old_session(configured, monkeypatch):
     app, cookie, session = configured
     source, sub = create(app, cookie)
-    setup = app.ui.studio_webhook_setup
+    setup = app.ui.studio_webhook_setup.local
     original = setup._send
     calls = []
     def wrong_receipt(*args):

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from poolhouse.studio.store import digest
 
+from .producer_runtime import start as start_producers
+from .producer_setup import Setup
 from .studio_webhook_setup import LocalSender
 from .studio_webhooks import PRODUCER_PROTOCOL, PROTOCOL, WebhookSources
 
@@ -54,10 +56,15 @@ def create(ui, service):
                 result = service.ingest(sub, event)
             if current(ident) != context:
                 raise PermissionError('Webhook source authority changed before admission committed.')
-            return result
+        if result == {'rejected': True}:
+            raise BlockingIOError('The previous record is still being processed.')
+        return result
 
     ui.studio_webhooks = WebhookSources(service.authority.root, current=current, admit=admit, configure=configure)
-    ui.studio_webhook_setup = LocalSender(ui, service)
+    local = LocalSender(ui, service)
+    ui.studio_webhook_setup = Setup(ui, service, local, lambda: start_producers(ui, service, local))
+    service.webhook_setup = ui.studio_webhook_setup
+    ui.studio_webhooks.provider_current = ui.studio_webhook_setup.current
     service.sources.webhook_current = ui.studio_webhook_setup.ready
     return ui.studio_webhooks
 
