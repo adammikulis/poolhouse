@@ -196,3 +196,38 @@ def test_pause_and_cancel_release_source_scanners(served, monkeypatch):
                                body={'revision': body['subscription']['revision'], 'idempotency_key': 'cancel'})
     assert status == 200 and body['subscription']['state'] == 'cancelled', body
     assert releases == [sub['id'], sub['id']]
+
+
+def test_duplicate_cancel_finishes_exact_run_after_intent_crash(served, monkeypatch):
+    app, cookie, _ = served
+    sub = create(app, cookie)
+    path = '/ui/studio/subscriptions/' + sub['id']
+    status, body, _ = app.call(path + '/start', method='POST', cookie=cookie,
+                               body={'revision': 1, 'idempotency_key': 'start'})
+    assert status == 200, body
+    service = app.ui.studio_streams
+    service.close()
+    actual = service.store.get('subscription', sub['id'], app.ui.studio_authority._context()['scope'])
+    event = service.ingest(actual, {'id': 'cancel-event', 'generation': 'examples-v1', 'payload': {'value': 1}})
+    # Existing run committed but service never received its submit acknowledgement.
+    run = app.ui.studio.submit_event(actual['service_principal'], actual['workflow'], event['envelope'])
+    attempts = []
+    original = app.ui.studio.cancel
+    def stop(principal, ident):
+        attempts.append(ident)
+        return original(principal, ident)
+    monkeypatch.setattr(app.ui.studio, 'cancel', stop)
+    original_revoke = service.authority.revoke
+    def crash(*args):
+        raise OSError('simulated shutdown after cancellation intent')
+    monkeypatch.setattr(service.authority, 'revoke', crash)
+    request = {'revision': actual['revision'], 'idempotency_key': 'cancel'}
+    status, _, _ = app.call(path + '/cancel', method='POST', cookie=cookie, body=request)
+    assert status == 400 and attempts == []
+    monkeypatch.setattr(service.authority, 'revoke', original_revoke)
+    status, body, _ = app.call(path + '/cancel', method='POST', cookie=cookie, body=request)
+    assert status == 200, body
+    assert attempts == [run['id']]
+    assert service.store.get('stream-event', event['id'], actual['scope'])['run_id'] == run['id']
+    with pytest.raises(PermissionError):
+        service.authority.get(actual['service_principal'])

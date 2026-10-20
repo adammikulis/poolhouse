@@ -106,6 +106,10 @@ def pin_resources(saved, principal: dict, graph: dict) -> list[dict]:
 
 def resources_current(ui, saved, grant: dict, node, inputs) -> bool:
     """Exact pinned resources remain independently revocable after browser expiry."""
+    if 'id' in grant:
+        sub = ui.studio.store.get('subscription', grant['subscription'], grant['scope'])
+        if sub.get('grant') != grant['id'] or sub['state'] == 'cancelled':
+            return False
     source = grant['manifest']['source']
     if source.get('selection_epoch') and studio_epoch.generation(ui.pool_key_path.parent, grant['pool']) != source['selection_epoch']:
         return False

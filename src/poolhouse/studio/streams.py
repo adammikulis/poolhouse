@@ -129,14 +129,15 @@ class Streams:
         with self.store.lock, self.store.graph.transaction():
             sub = self.store.get('subscription', ident, principal['scope'])
             command = self._command(sub, principal, 'cancel', request)
-            if self.store.graph.get_doc(command):
-                return sub
-            if request['revision'] != sub['revision']:
-                raise Conflict('This subscription changed elsewhere.')
-            sub.update(state='cancelled', reason='Cancellation requested.', revision=sub['revision'] + 1)
-            self.store.graph.put_doc(command, {'request': digest(request)})
-            self.store.put_subscription(sub)
+            if not self.store.graph.get_doc(command):
+                if request['revision'] != sub['revision']:
+                    raise Conflict('This subscription changed elsewhere.')
+                sub.update(state='cancelled', reason='Cancellation requested.', revision=sub['revision'] + 1)
+                self.store.graph.put_doc(command, {'request': digest(request)})
+                self.store.put_subscription(sub)
         self._release(sub['id'])
+        if sub.get('grant'):
+            self.authority.revoke(principal, sub['grant'])
         if sub.get('inflight'):
             event = self.store.get('stream-event', sub['inflight'], sub['scope'])
             if not event.get('run_id'):
