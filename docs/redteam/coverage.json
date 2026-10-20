@@ -1,7 +1,7 @@
 {
- "surfaces": 883,
+ "surfaces": 887,
  "by_status": {
-  "covered": 565,
+  "covered": 569,
   "partial": 193,
   "uncovered": 52,
   "n/a": 73,
@@ -44,7 +44,7 @@
    "unmapped": 0
   },
   "handler": {
-   "covered": 7,
+   "covered": 10,
    "partial": 2,
    "uncovered": 0,
    "n/a": 0,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 86,
+   "covered": 87,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -2912,6 +2912,54 @@
    "note": ""
   },
   {
+   "id": "handler:fleet/producer_bridge.py:BridgeCapability.activate",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_bridge.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_bridge.py::test_inert_until_exact_persisted_owner_intent_activation",
+    "tests/test_producer_bridge.py::test_private_nonce_replay_denied_but_new_request_keeps_same_event_identity",
+    "tests/test_producer_bridge.py::test_concurrent_same_nonce_only_one_verification",
+    "tests/test_producer_bridge.py::test_full_immutable_binding_cannot_be_substituted_even_with_same_private_secret",
+    "tests/test_producer_bridge.py::test_sibling_or_reused_pid_has_no_capability",
+    "tests/test_producer_bridge.py::test_source_and_retained_child_checks_require_exact_true",
+    "tests/test_producer_bridge.py::test_revoke_before_result_or_before_new_frame_denies",
+    "tests/test_producer_bridge.py::test_late_activation_ack_never_revives_revoked_capability",
+    "tests/test_producer_bridge.py::test_reentrant_revocation_from_final_callback_never_returns_authority",
+    "tests/test_producer_bridge.py::test_changed_raw_bytes_or_mac_or_unknown_fields_never_verify",
+    "tests/test_producer_bridge.py::test_receipt_is_fixed_original_binding_and_cannot_include_replacement_data",
+    "tests/test_producer_bridge.py::test_revocation_during_verification_does_not_consume_nonce",
+    "tests/test_producer_bridge.py::test_only_finite_json_objects_have_record_bytes"
+   ],
+   "note": "Private bridge requests bind the full immutable source context, exact finite JSON bytes, action and nonce under a domain-separated MAC. Activation requires the persisted binding digest; explicit revocation is sticky and replay is refused. Callback-based tests exercise retained-child/current-source requirements, not complete process custody or owner authorization. The fixed factory must supply both checks; bounded RAM nonce tracking supplements the durable source/event ledger and cannot itself promise durable replay prevention. No listener, source enrollment or publication transport is provided by this primitive."
+  },
+  {
+   "id": "handler:fleet/producer_bridge.py:BridgeCapability.verify",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_bridge.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_bridge.py::test_inert_until_exact_persisted_owner_intent_activation",
+    "tests/test_producer_bridge.py::test_private_nonce_replay_denied_but_new_request_keeps_same_event_identity",
+    "tests/test_producer_bridge.py::test_concurrent_same_nonce_only_one_verification",
+    "tests/test_producer_bridge.py::test_full_immutable_binding_cannot_be_substituted_even_with_same_private_secret",
+    "tests/test_producer_bridge.py::test_sibling_or_reused_pid_has_no_capability",
+    "tests/test_producer_bridge.py::test_source_and_retained_child_checks_require_exact_true",
+    "tests/test_producer_bridge.py::test_revoke_before_result_or_before_new_frame_denies",
+    "tests/test_producer_bridge.py::test_late_activation_ack_never_revives_revoked_capability",
+    "tests/test_producer_bridge.py::test_reentrant_revocation_from_final_callback_never_returns_authority",
+    "tests/test_producer_bridge.py::test_changed_raw_bytes_or_mac_or_unknown_fields_never_verify",
+    "tests/test_producer_bridge.py::test_receipt_is_fixed_original_binding_and_cannot_include_replacement_data",
+    "tests/test_producer_bridge.py::test_revocation_during_verification_does_not_consume_nonce",
+    "tests/test_producer_bridge.py::test_only_finite_json_objects_have_record_bytes"
+   ],
+   "note": "Private bridge requests bind the full immutable source context, exact finite JSON bytes, action and nonce under a domain-separated MAC. Activation requires the persisted binding digest; explicit revocation is sticky and replay is refused. Callback-based tests exercise retained-child/current-source requirements, not complete process custody or owner authorization. The fixed factory must supply both checks; bounded RAM nonce tracking supplements the durable source/event ledger and cannot itself promise durable replay prevention. No listener, source enrollment or publication transport is provided by this primitive."
+  },
+  {
    "id": "handler:fleet/producer_control.py:ControlServer._answer",
    "kind": "handler",
    "source": "src/poolhouse/fleet/producer_control.py",
@@ -2929,6 +2977,27 @@
     "tests/test_producer_control.py::test_retention_error_never_appends_second_response"
    ],
    "note": "Each connection dispatches one fixed operation after current daemon and actual process checks. Ordinary clients cannot choose private bridge operations; current bridge admission is independently rechecked. Post-dispatch revocation suppresses a reply without repeating the callback. Response retention preserves endpoint verification within the original deadline and cannot append a second response. The fixed factory must separately authorize source capabilities and bound its callbacks; complete producer admission is not claimed by this primitive."
+  },
+  {
+   "id": "handler:fleet/producer_offers.py:OfferRegistry.inspect",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_offers.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_offers.py::test_identical_offer_attaches_without_authority_or_spawn",
+    "tests/test_producer_offers.py::test_changed_label_conflicts_and_withdrawn_offer_never_revives",
+    "tests/test_producer_offers.py::test_foreign_or_reused_pid_cannot_read_or_withdraw",
+    "tests/test_producer_offers.py::test_context_change_invalidates_old_process_evidence",
+    "tests/test_producer_offers.py::test_exit_hides_offer_and_restart_does_not_adopt_it",
+    "tests/test_producer_offers.py::test_current_receiver_is_exact_unique_enrolled_snapshot",
+    "tests/test_producer_offers.py::test_wrong_intended_receiver_and_stale_revision_do_not_enroll",
+    "tests/test_producer_offers.py::test_revocation_during_creation_leaves_no_offer",
+    "tests/test_producer_offers.py::test_payload_cannot_select_code_endpoint_or_process",
+    "tests/test_producer_offers.py::test_returned_private_and_public_views_cannot_mutate_registry"
+   ],
+   "note": "RAM-only observational offers bind transport-supplied process generations, implementation and exact current receiver context. Tests replace liveness/current callbacks to attack stale identities, receiver substitution, withdrawn offers and revision checks. No listener or grant exists here: fixed daemon callers must obtain actual kernel identity and independently authorize owner enrollment before inspecting private evidence. Labels are informational, not authority."
   },
   {
    "id": "handler:fleet/ui.py:_Loopback",
@@ -5854,6 +5923,30 @@
     "tests/test_producer_bootstrap.py::test_unmodified_signed_reply_expires"
    ],
    "note": "The internal holder reads an existing private installation identity without creation or repair. A domain-separated MAC binds the complete typed, fresh daemon context; actual bootstrap process identity precedes control-path use, then exact TLS DER and control process identity are checked. This authenticates software only and grants no source, owner or compute authority. Copying the existing software installation secret can forge its bootstrap proof; no hardware clone resistance or complete producer transport is claimed."
+  },
+  {
+   "id": "parser:fleet/producer_bridge.py",
+   "kind": "parser",
+   "source": "src/poolhouse/fleet/producer_bridge.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_bridge.py::test_inert_until_exact_persisted_owner_intent_activation",
+    "tests/test_producer_bridge.py::test_private_nonce_replay_denied_but_new_request_keeps_same_event_identity",
+    "tests/test_producer_bridge.py::test_concurrent_same_nonce_only_one_verification",
+    "tests/test_producer_bridge.py::test_full_immutable_binding_cannot_be_substituted_even_with_same_private_secret",
+    "tests/test_producer_bridge.py::test_sibling_or_reused_pid_has_no_capability",
+    "tests/test_producer_bridge.py::test_source_and_retained_child_checks_require_exact_true",
+    "tests/test_producer_bridge.py::test_revoke_before_result_or_before_new_frame_denies",
+    "tests/test_producer_bridge.py::test_late_activation_ack_never_revives_revoked_capability",
+    "tests/test_producer_bridge.py::test_reentrant_revocation_from_final_callback_never_returns_authority",
+    "tests/test_producer_bridge.py::test_changed_raw_bytes_or_mac_or_unknown_fields_never_verify",
+    "tests/test_producer_bridge.py::test_receipt_is_fixed_original_binding_and_cannot_include_replacement_data",
+    "tests/test_producer_bridge.py::test_revocation_during_verification_does_not_consume_nonce",
+    "tests/test_producer_bridge.py::test_only_finite_json_objects_have_record_bytes"
+   ],
+   "note": "Private bridge requests bind the full immutable source context, exact finite JSON bytes, action and nonce under a domain-separated MAC. Activation requires the persisted binding digest; explicit revocation is sticky and replay is refused. Callback-based tests exercise retained-child/current-source requirements, not complete process custody or owner authorization. The fixed factory must supply both checks; bounded RAM nonce tracking supplements the durable source/event ledger and cannot itself promise durable replay prevention. No listener, source enrollment or publication transport is provided by this primitive."
   },
   {
    "id": "parser:fleet/producer_control.py",
