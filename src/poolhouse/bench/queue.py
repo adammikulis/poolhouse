@@ -30,6 +30,7 @@ smoke, the lock -- stays in the step, where it already is.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -40,9 +41,10 @@ import sys
 import threading
 import time
 from collections import deque
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any
 
 from poolhouse import bench
 from poolhouse.log import say
@@ -98,7 +100,7 @@ def expand(text: str, variables: dict[str, str], *, line: int) -> str:
     """
     missing: list[str] = []
 
-    def one(m: "re.Match[str]") -> str:
+    def one(m: re.Match[str]) -> str:
         name = m.group(1)
         if name in variables:
             return variables[name]
@@ -284,7 +286,7 @@ def queue_status() -> str:
 
 # -- running it ------------------------------------------------------------------------------
 
-_running: "subprocess.Popen[bytes] | None" = None
+_running: subprocess.Popen[bytes] | None = None
 
 FAST_DEATH_S = 1.0
 """A step that exits non-zero within this many seconds measured nothing; its last stderr
@@ -293,7 +295,7 @@ lines are printed beside its summary."""
 TAIL_LINES = 15
 
 
-def _forward_stderr(stream: Any, kept: "deque[str]") -> None:
+def _forward_stderr(stream: Any, kept: deque[str]) -> None:
     """Copy ``stream`` to this process's stderr line by line, keeping the last few."""
     for raw in iter(stream.readline, b""):
         line = raw.decode("utf-8", "replace")
@@ -313,7 +315,7 @@ def run_step(argv: Sequence[str]) -> int:
     have its last lines printed under "died in Ns:".
     """
     global _running
-    command = [sys.executable, "-m", "poolhouse.bench", *argv]
+    command = [sys.executable, "-B", "-m", "poolhouse.bench", *argv]
     sys.stdout.flush()
     began = time.monotonic()
     _running = subprocess.Popen(command, stdin=subprocess.DEVNULL, stderr=subprocess.PIPE,
@@ -403,10 +405,8 @@ def run_queue(path: str | Path, *, dry_run: bool = False, resume: bool = False,
         _write_state(state)
 
     previous = None
-    try:
+    with contextlib.suppress(ValueError):
         previous = signal.signal(signal.SIGTERM, lambda *_: (_stop_running(), sys.exit(143)))
-    except ValueError:
-        pass                                 # not the main thread: nothing to hand a signal
     failed_smoke: Step | None = None
     try:
         for step in steps:

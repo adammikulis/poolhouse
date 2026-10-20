@@ -39,6 +39,8 @@ from poolhouse.serve import (
 )
 from poolhouse.serve.backend import LlamaServerBackend, ServerFailed, ServerInfo, ServerSpec
 from poolhouse.serve.broker_holds import MODEL_START, POLL_S, BrokerHolds
+from poolhouse.serve.broker_lifecycle import admitted
+from poolhouse.serve.decision_residents import DecisionResidents
 from poolhouse.serve.events import Caller, Growth
 from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.manager import ASKING, Measuring, ServerManager, Starting
@@ -276,6 +278,24 @@ class Broker(BrokerHolds):
         self.cpus = os.cpu_count() or 1
         self._unmanaged_told: set[int] = set()
         self._cond = threading.Condition()
+        self._decision_hosts = None
+        self._active_calls = 0
+        self._retiring = False
+
+    @admitted
+    def decision_once(self, record, request_id, owner, resolve, connected):
+        """Run one authorized record through broker-owned pointer residency."""
+        with self._cond:
+            if self._decision_hosts is None:
+                self._decision_hosts = DecisionResidents(self)
+            residents = self._decision_hosts
+        with grant.broker_grant():
+            return residents.request(record, request_id, owner, resolve, connected)
+
+    def close_decisions(self):
+        """Stop broker-owned decision residents and close their outcome ledger."""
+        if self._decision_hosts is not None:
+            self._decision_hosts.close()
 
     # ------------------------------------------------------------------ servers by spec
     def _manager_for(self, options: Mapping[str, Any]) -> ServerManager:
@@ -289,6 +309,7 @@ class Broker(BrokerHolds):
                 self.managers[key] = self.manager.with_backend(LlamaServerBackend(**wanted))
             return self.managers[key]
 
+    @admitted
     def start(self, spec: ServerSpec, caller: Caller | None = None, *,
               timeout: float | None = None,
               options: Mapping[str, Any] | None = None) -> ServerInfo:
@@ -368,6 +389,7 @@ class Broker(BrokerHolds):
         elif not info.adopted and info.pid and self.alive(info.pid):
             self.manager._stop_server(info, grace_s=grace_s)
 
+    @admitted
     def escalate(self, spec: ServerSpec, growth: Growth, caller: Caller | None = None, *,
                  options: Mapping[str, Any] | None = None) -> ServerInfo:
         """Grow the server on ``spec.port`` as ``growth`` says."""
@@ -379,6 +401,7 @@ class Broker(BrokerHolds):
                 held.info, held.pid = info, info.pid
         return info
 
+    @admitted
     def detach(self, info: ServerInfo) -> None:
         """Record the server under its own pid, held by nobody but itself."""
         self.manager._detach(info)
@@ -391,6 +414,7 @@ class Broker(BrokerHolds):
                 self._write_held()
 
     # ------------------------------------------------------------------ leases
+    @admitted
     def lease(self, ask: Ask, *, timeout: float) -> Grant:
         """A lease for ``ask``, waiting up to ``timeout`` seconds for its turn. Servers
         started outside the broker since it last looked are taken in first, so an ask never
@@ -656,9 +680,12 @@ class Broker(BrokerHolds):
         return {"stopped": True, "port": port, "model": held.model}
 
     # ------------------------------------------------------------------ upkeep
+    @admitted
     def reap(self) -> list[Held]:
         """Drop every lease, wait and claim whose pid has ended, forget servers that have
         died, and stop the idle ones of ours. Returns the servers stopped."""
+        if self._decision_hosts is not None:
+            self._decision_hosts.upkeep()
         now = time.monotonic()
         with self._cond:
             for held in list(self.servers.values()):
@@ -693,6 +720,7 @@ class Broker(BrokerHolds):
             self._stop(held)
         return idle
 
+    @admitted
     def adopt(self) -> list[Held]:
         """Take in every server already running: one on the lease record is ours, held by
         its recorded owner while that process lives; any other llama-server is shared but
@@ -786,6 +814,7 @@ class Broker(BrokerHolds):
         one, a waiting ask, a claim or a core grant."""
         with self._cond:
             return bool(self.queue or self.claims or self.claim_waiters or self.cores
+                        or (self._decision_hosts is not None and self._decision_hosts.residents)
                         or any(h.ours or h.holders or h.loading for h in self.servers.values()))
 
     def snapshot(self) -> dict[str, Any]:
@@ -794,6 +823,7 @@ class Broker(BrokerHolds):
         with self._cond:
             return {
                 "exclusive_gpu_claims": True,
+                "decision_residents": self._decision_hosts.snapshot() if self._decision_hosts is not None else [],
                 "servers": [h.said() for h in sorted(self.servers.values(), key=lambda h: h.port)],
                 "queue": [{"lease": w.lease, "purpose": w.ask.purpose, "model": w.ask.models[0],
                            "pid": w.ask.pid, "label": w.ask.label,

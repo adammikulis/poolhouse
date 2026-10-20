@@ -10,6 +10,7 @@ from copy import deepcopy
 from typing import Any
 
 from poolhouse.studio.catalog import node_spec
+from poolhouse.studio.record_coverage import coverage_errors
 
 IDENTIFIER = re.compile(r"^[A-Za-z0-9_.-]+$")
 MAX_NODES = 1000
@@ -30,6 +31,8 @@ def _parameters(values: Any, schema: dict) -> dict:
     if not isinstance(values, dict):
         raise ValueError("Parameters must be an object")
     fields = schema.get("properties", {})
+    if missing := set(schema.get("required", [])) - set(values):
+        raise ValueError(f"Missing required parameter: {sorted(missing)[0]}")
     if set(values) - set(fields):
         raise ValueError(f"Unknown parameter: {sorted(set(values) - set(fields))[0]}")
     result = {}
@@ -73,6 +76,8 @@ def _group_interface(definition: dict, inner: dict, definitions: dict) -> dict:
             if not any(port["name"] == endpoint["port"] for port in ports):
                 raise ValueError("Group interface references an unknown port")
             interfaces[direction][name] = endpoint
+    interfaces["control_inputs"] = inner["control_inputs"]
+    interfaces["missing_controls"] = inner["missing_controls"]
     original = {node["id"]: node for node in definition["nodes"]}
     for name, target in definition.get("parameters", {}).items():
         if not isinstance(name, str) or not IDENTIFIER.fullmatch(name) or not isinstance(target, dict) or set(target) != {"node", "parameter"}:
@@ -98,7 +103,7 @@ def _execution(node: dict) -> None:
 def _expand(graph: dict, definitions: dict, stack: tuple = (), prefix: str = "") -> dict:
     if len(stack) > MAX_DEPTH:
         raise ValueError("Group nesting is too deep")
-    nodes, edges, instances = [], [], {}
+    nodes, edges, controls, instances = [], [], [], {}
     ids = set()
     for original in graph.get("nodes", []):
         if not isinstance(original, dict):
@@ -117,7 +122,7 @@ def _expand(graph: dict, definitions: dict, stack: tuple = (), prefix: str = "")
         if key not in definitions or key in stack:
             raise ValueError("Missing or recursive reusable group")
         definition = deepcopy(definitions[key])
-        if not isinstance(definition, dict) or set(definition) - {"name", "nodes", "edges", "inputs", "outputs", "parameters"}:
+        if not isinstance(definition, dict) or set(definition) - {"name", "nodes", "edges", "controls", "control_inputs", "inputs", "outputs", "parameters"}:
             raise ValueError("Invalid reusable group definition")
         exposed = definition.get("parameters", {})
         if set(node.get("parameters", {})) - set(exposed):
@@ -132,6 +137,7 @@ def _expand(graph: dict, definitions: dict, stack: tuple = (), prefix: str = "")
         inner = _expand(definition, definitions, (*stack, key), child_prefix)
         nodes.extend(inner["nodes"])
         edges.extend(inner["edges"])
+        controls.extend(inner["controls"])
         instances[identifier] = _group_interface(definition, inner, definitions)
         if len(nodes) > MAX_NODES:
             raise ValueError("Expanded workflow has too many nodes")
@@ -151,21 +157,71 @@ def _expand(graph: dict, definitions: dict, stack: tuple = (), prefix: str = "")
             raise ValueError("Connections need a source and target")
         edges.append({"source": resolve(_endpoint(edge["source"]), "outputs"),
                       "target": resolve(_endpoint(edge["target"]), "inputs")})
+    result = _expand_controls(graph, resolve, instances, nodes, prefix)
+    result["controls"][:0] = controls
+    return {"nodes": nodes, "edges": edges, "resolve": resolve, **result}
+
+
+def _control_targets(target: Any, context: dict) -> list[dict]:
+    if (not isinstance(target, dict) or set(target) not in ({"node"}, {"node", "port"})
+            or not isinstance(target["node"], str) or target["node"] not in context["ids"]):
+        raise ValueError("Control target must be a node in this graph")
+    identifier = target["node"]
+    interface = context["instances"].get(identifier)
+    if "port" in target:
+        port = target["port"]
+        if not isinstance(port, str) or interface is None or port not in interface["control_inputs"]:
+            raise ValueError("Unknown required group control input")
+        key = (identifier, port)
+        if key in context["provided"]:
+            raise ValueError("A required group control input has more than one connection")
+        context["provided"].add(key)
+        return deepcopy(interface["control_inputs"][port])
+    if interface is not None:
+        return [{"node": node["id"]} for node in context["nodes"]
+                if node["id"].startswith(context["prefix"] + identifier + "/")]
+    return [{"node": context["prefix"] + identifier}]
+
+
+def _expand_controls(graph: dict, resolve: Callable, instances: dict, nodes: list, prefix: str) -> dict:
     if len(nodes) > MAX_NODES:
         raise ValueError("Expanded workflow has too many nodes")
-    return {"nodes": nodes, "edges": edges, "resolve": resolve}
+    context = {"ids": {node["id"] for node in graph.get("nodes", [])}, "instances": instances,
+               "nodes": nodes, "prefix": prefix, "provided": set()}
+    controls, exposed = [], {}
+    for control in graph.get("controls", []):
+        if not isinstance(control, dict) or set(control) != {"source", "target"}:
+            raise ValueError("Controls need a source gate and target node")
+        source = resolve(_endpoint(control["source"]), "outputs")
+        controls.extend({"source": source, "target": target} for target in _control_targets(control["target"], context))
+    interfaces = graph.get("control_inputs", {})
+    if not isinstance(interfaces, dict):
+        raise ValueError("Group control inputs must be an object")
+    for name, targets in interfaces.items():
+        if not isinstance(name, str) or not IDENTIFIER.fullmatch(name) or not isinstance(targets, list) or not targets:
+            raise ValueError("Required group controls need named nonempty target lists")
+        expanded = [target for raw in targets for target in _control_targets(raw, context)]
+        if len({target["node"] for target in expanded}) != len(expanded):
+            raise ValueError("A group control interface repeats a target")
+        exposed[name] = expanded
+    missing = [requirement for interface in instances.values() for requirement in interface["missing_controls"]]
+    missing.extend({"node": prefix + identifier, "port": name} for identifier, interface in instances.items()
+                   for name in interface["control_inputs"] if (identifier, name) not in context["provided"])
+    return {"controls": controls, "control_inputs": exposed, "missing_controls": missing}
 
 
 def _validate_expanded(graph: dict, capabilities: set[str] | None, authorize: Callable | None) -> list[dict]:
     errors, specs, nodes = [], {}, {n["id"]: n for n in graph["nodes"]}
     def error(node: str, code: str, message: str) -> None:
         errors.append({"node": node, "code": code, "message": message})
+    for requirement in graph.get("missing_controls", []):
+        error(requirement["node"], "control_input", f"Connect required group control {requirement['port']}")
     for identifier, node in nodes.items():
         try:
             spec = node_spec(node.get("type", ""), node.get("version", 1))
-            specs[identifier] = spec
             node["version"] = spec["version"]
             node["parameters"] = _parameters(node.get("parameters", {}), spec["parameters"])
+            specs[identifier] = spec
             if capabilities is not None and set(spec["capabilities"]) - capabilities:
                 error(identifier, "dependency", "Required capabilities are unavailable")
             bindings = node.get("bindings", {})
@@ -193,6 +249,8 @@ def _validate_expanded(graph: dict, capabilities: set[str] | None, authorize: Ca
             if key in incoming:
                 raise ValueError("An input has more than one connection")
             incoming[key] = source
+            if output["type"] == "gate" or port["type"] == "gate":
+                raise ValueError("Gate ports require control connections")
             if output["type"] not in port.get("accepted_types", [port["type"]]):
                 raise ValueError("Connected port types do not match")
             if nodes[source["node"]].get("parameters", {}).get("mode") == "smoke" and source["port"] in ("model", "checkpoint"):
@@ -200,12 +258,32 @@ def _validate_expanded(graph: dict, capabilities: set[str] | None, authorize: Ca
             successors[source["node"]].add(target["node"])
         except (KeyError, StopIteration, ValueError) as exc:
             error(target["node"], "connection", str(exc) or "Unknown port")
+    errors.extend(_validate_controls(graph, specs, successors))
+    errors.extend(coverage_errors(graph))
     for identifier, spec in specs.items():
         for port in spec["inputs"]:
             if port.get("required") and (identifier, port["name"]) not in incoming:
                 error(identifier, "input", f"Connect {port['name']}")
     if _has_cycle(nodes, successors):
         error("", "cycle", "Workflow connections contain a cycle")
+    return errors
+
+
+def _validate_controls(graph: dict, specs: dict, successors: dict) -> list:
+    errors, seen_controls = [], set()
+    for control in graph["controls"]:
+        source, target = control["source"], control["target"]["node"]
+        try:
+            output = next(p for p in specs[source["node"]]["outputs"] if p["name"] == source["port"])
+            if output["type"] != "gate" or target not in specs:
+                raise ValueError("Controls must connect a declared gate to a known node")
+            identity = (source["node"], source["port"], target)
+            if identity in seen_controls:
+                raise ValueError("Duplicate control connection")
+            seen_controls.add(identity)
+            successors[source["node"]].add(target)
+        except (KeyError, StopIteration, ValueError) as exc:
+            errors.append({"node": target, "code": "control", "message": str(exc) or "Unknown gate port"})
     return errors
 
 
@@ -243,7 +321,7 @@ def _sweeps(graph: dict) -> dict:
         size *= len(values)
         if size > MAX_NODES:
             raise ValueError("Expanded sweep has too many nodes")
-    nodes, edges = [], []
+    nodes, edges, controls = [], [], []
     variants = {node["id"]: [] for node in graph["nodes"]}
     for index, values in enumerate(itertools.product(*(request[2] for request in requests))):
         instance = deepcopy(graph)
@@ -254,23 +332,25 @@ def _sweeps(graph: dict) -> dict:
         for node in instance["nodes"]:
             variants[node["id"]].append(names[node["id"]])
             node["id"] = names[node["id"]]
-        for edge in instance["edges"]:
+        for edge in [*instance["edges"], *instance["controls"]]:
             for endpoint in edge.values():
                 endpoint["node"] = names[endpoint["node"]]
         nodes.extend(instance["nodes"])
         edges.extend(instance["edges"])
-    return {"nodes": nodes, "edges": edges, "variants": variants}
+        controls.extend(instance["controls"])
+    return {"nodes": nodes, "edges": edges, "controls": controls, "variants": variants,
+            "missing_controls": graph.get("missing_controls", [])}
 
 
 def validate_graph(graph: Any, *, capabilities: set[str] | None = None,
                    authorize: Callable | None = None) -> dict:
     """Validate and expand a workflow without executing or resolving resources."""
     try:
-        if not isinstance(graph, dict) or set(graph) - {"id", "name", "schema_version", "nodes", "edges", "groups", "layout", "description"}:
+        if not isinstance(graph, dict) or set(graph) - {"id", "name", "schema_version", "nodes", "edges", "controls", "groups", "layout", "description"}:
             raise ValueError("Invalid workflow fields")
         if type(graph.get("schema_version", 1)) is not int or graph.get("schema_version", 1) != 1 or not _finite(graph):
             raise ValueError("Unsupported workflow version or nonfinite value")
-        if not isinstance(graph.get("nodes"), list) or not isinstance(graph.get("edges", []), list) or not isinstance(graph.get("groups", {}), dict):
+        if not isinstance(graph.get("nodes"), list) or not isinstance(graph.get("edges", []), list) or not isinstance(graph.get("controls", []), list) or not isinstance(graph.get("groups", {}), dict):
             raise ValueError("Workflow needs nodes, connections and group definitions")
         if len(graph["nodes"]) > MAX_NODES or len(json.dumps(graph)) > 2_000_000:
             raise ValueError("Workflow exceeds the supported graph size")
@@ -284,3 +364,32 @@ def validate_graph(graph: Any, *, capabilities: set[str] | None = None,
         return {"valid": not errors, "errors": errors, "graph": expanded}
     except (ValueError, TypeError, KeyError, RecursionError) as exc:
         return {"valid": False, "errors": [{"node": "", "code": "graph", "message": str(exc)}], "graph": None}
+
+
+def resolve_output_ports(raw: dict, expanded: dict, selected: list) -> list[dict]:
+    """Resolve explicit value ports through existing group interfaces and sweep variants."""
+    if not isinstance(selected, list) or not selected:
+        raise ValueError('Select at least one declared value output for this destination')
+    base = _expand(raw, raw.get('groups', {}))
+    original = {node['id'] for node in base['nodes']}
+    nodes = {node['id']: node for node in expanded['nodes']}
+    result = []
+    for item in selected:
+        if not isinstance(item, dict) or set(item) != {'node', 'port'}:
+            raise ValueError('Delivery outputs must name declared node ports')
+        endpoint = _endpoint(item)
+        if endpoint['node'] not in original and endpoint['node'] not in nodes:
+            endpoint = base['resolve'](endpoint, 'outputs')
+        for identifier in expanded.get('variants', {}).get(endpoint['node'], [endpoint['node']]):
+            node = nodes.get(identifier)
+            if node is None:
+                raise ValueError('A selected delivery output is unavailable')
+            spec = node_spec(node['type'], node.get('version', 1))
+            port = next((port for port in spec['outputs'] if port['name'] == endpoint['port']), None)
+            if port is None or port['type'] not in {'json', 'text', 'decision', 'metrics', 'gate'}:
+                raise ValueError('Select a declared JSON, decision, metrics or text output; resources stay private')
+            resolved = {'node': identifier, 'port': endpoint['port']}
+            if resolved in result:
+                raise ValueError('Select each delivery output only once')
+            result.append(resolved)
+    return result

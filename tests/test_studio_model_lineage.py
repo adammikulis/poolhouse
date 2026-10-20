@@ -9,7 +9,8 @@ from poolhouse.studio.model_lineage import bind_model_base
 from poolhouse.studio.resources import base_fingerprint
 
 
-def test_successful_producer_replaces_worker_base_and_writes_content_sidecar(tmp_path):
+@pytest.mark.parametrize("producer", ["train.tool-calls", "train.decision"])
+def test_successful_producer_replaces_worker_base_and_writes_content_sidecar(tmp_path, producer):
     base = tmp_path / 'base'
     base.mkdir()
     (base / 'weights.safetensors').write_bytes(b'actual frozen base')
@@ -19,12 +20,12 @@ def test_successful_producer_replaces_worker_base_and_writes_content_sidecar(tmp
     (model / 'state.json').write_text('{}')
     handle = {'kind': 'model', 'path': str(base)}
     outputs = {'model': {'kind': 'model', 'path': str(model), 'base': {'path': '/private/forged'}}}
-    bind_model_base({'type': 'train.tool-calls'}, outputs, {'model': handle}, output)
+    bind_model_base({'type': producer}, outputs, {'model': handle}, output)
     assert outputs['model']['base'] == handle
     assert outputs['model']['base_digest'] == base_fingerprint(handle)
     assert json.loads((model / 'studio-model.json').read_text()) == {
         'version': 1, 'base_digest': base_fingerprint(handle)}
-    bind_model_base({'type': 'train.tool-calls'}, outputs, {'model': handle}, output)
+    bind_model_base({'type': producer}, outputs, {'model': handle}, output)
     assert outputs['model']['base'] == handle
     before = artifact_fingerprints(outputs['model'])
     assert str(base) in before

@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import contextlib
 import hashlib
+import hmac
 import json
 import os
 import shutil
@@ -239,17 +240,35 @@ def local() -> Identity:
     return _PRESENTED or identity(device_directory(), socket.gethostname())
 
 
-def pinned_context(cert: str, *, who: Identity | None = None) -> ssl.SSLContext:
-    """A client context that trusts the one certificate ``cert`` (base64 DER) and nothing else:
-    another certificate, or this one past its dates, fails the handshake. It presents ``who``
-    (this machine's identity unless said) to a server that asks who is calling."""
+class ExactContext(ssl.SSLContext):
+    """A fixed holder checks the exact enrolled leaf before any application bytes."""
+
+    expected_der: bytes = b''
+
+    def wrap_socket(self, *args, **kwargs):
+        connection = super().wrap_socket(*args, **kwargs)
+        if not self.expected_der or not hmac.compare_digest(connection.getpeercert(binary_form=True), self.expected_der):
+            connection.close()
+            raise ssl.SSLError('The local webhook certificate changed.')
+        return connection
+
+
+def certificate_context(cert: str, *, context_type: type[ssl.SSLContext] = ssl.SSLContext) -> ssl.SSLContext:
+    """Trust the public certificate without loading or creating a client identity."""
     pem = ssl.DER_cert_to_PEM_cert(base64.b64decode(cert))
-    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx = context_type(ssl.PROTOCOL_TLS_CLIENT)
     ctx.minimum_version = ssl.TLSVersion.TLSv1_3
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_REQUIRED
     _partial(ctx)
     ctx.load_verify_locations(cadata=pem)
+    return ctx
+
+
+def pinned_context(cert: str, *, who: Identity | None = None,
+                   context_type: type[ssl.SSLContext] = ssl.SSLContext) -> ssl.SSLContext:
+    """Trust the certificate and present ``who`` (this machine's identity unless said)."""
+    ctx = certificate_context(cert, context_type=context_type)
     with contextlib.suppress(TlsUnavailable, OSError):
         caller = who or local()
         ctx.load_cert_chain(str(caller.certfile), str(caller.keyfile))

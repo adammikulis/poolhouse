@@ -11,6 +11,7 @@ import pytest
 from test_fleet_ui import Serving
 
 from poolhouse.fleet.jobs import Job
+from poolhouse.fleet.studio_service import scope
 
 
 @pytest.fixture
@@ -73,7 +74,7 @@ def test_submission_identity_is_scoped_to_current_execution_principal(studio):
     status, _, _ = studio.call(f"/ui/studio/runs/{run['id']}/cancel", method="POST", cookie=second)
     assert status in {403, 404}
     persisted = json.dumps(studio.ui.studio.store.get("run", run["id"],
-                                                     studio.ui.studio._all_runs()[0]["scope"]))
+                                                     scope(studio.ui)))
     assert first_session.sid not in persisted
     studio.ui.sessions.close(first_session.sid)
     status, _, _ = studio.call(f"/ui/studio/runs/{run['id']}/artifacts", cookie=first)

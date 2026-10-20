@@ -2,20 +2,30 @@
 from __future__ import annotations
 
 import json
+import os
 import random
 import shutil
 import sys
 from pathlib import Path
 from typing import Any
 
-from poolhouse import optional
+from poolhouse import optional, studio_launch
 from poolhouse.client import Client, Request
 from poolhouse.decide.cases import case_from
 from poolhouse.decide.pointer import PointerDecider
 from poolhouse.files import write_json
 from poolhouse.kvtype import DEFAULT_KV_BITS
 from poolhouse.serve import broker_wire, gpu
+from poolhouse.serve.decision_residents import fingerprint
 from poolhouse.studio.adapters import response_schema
+from poolhouse.studio.catalog import node_spec
+from poolhouse.studio.decision_models import source as decision_source
+from poolhouse.studio.decisions import assess, canonical_record, parse_record, route
+from poolhouse.studio.record_context import (
+    generation_context,
+    generation_outputs,
+    generation_parameters,
+)
 from poolhouse.studio.resources import (
     ADAPTER_FILES,
     checkpoint_base,
@@ -61,6 +71,14 @@ def _decision(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
     accuracy = sum(answer.choice == case.label for answer, case in zip(decisions, cases, strict=True)) / len(cases)
     metrics = {'accuracy': accuracy, 'examples': len(cases)}
     return {'metrics': metrics, 'report': metrics}
+
+
+def _predict_record(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
+    resolved, identity = decision_source(inputs['model'], out)
+    def predict(question, state, options):
+        with gpu.hold('Studio record decision', wait_s=None):
+            return PointerDecider(resolved, download=False).decide(question, state, options)
+    return assess(kind, parameters, inputs['record'], predict, identity=identity)
 
 
 def _train(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
@@ -117,8 +135,9 @@ def _checkpoint_evaluate(inputs: dict, parameters: dict) -> dict:
     return {'metrics': metrics, 'report': metrics}
 
 
-def _native_generate(inputs: dict, parameters: dict, structured: bool) -> dict:
+def _native_generate(inputs: dict, parameters: dict, structured: bool, record: bool = False) -> dict:
     schema = response_schema(parameters.get('json_schema')) if structured else None
+    messages, identity = generation_context(parameters, inputs['record']) if record else ([{'role': 'user', 'content': inputs['prompt']}], None)
     base = checkpoint_base(inputs['model'], framework='mlx')
     if inputs['model'].get('recipe') != 'tool-calls':
         raise ValueError('Trained generation requires an MLX conversation model')
@@ -128,7 +147,7 @@ def _native_generate(inputs: dict, parameters: dict, structured: bool) -> dict:
             raise ValueError('Trained generation requires an MLX conversation model')
         tokenizer = optional.module('transformers').AutoTokenizer.from_pretrained(
             built.config['base'], local_files_only=True, trust_remote_code=False)
-        prompt = tokenizer.apply_chat_template([{'role': 'user', 'content': inputs['prompt']}],
+        prompt = tokenizer.apply_chat_template(messages,
                                                tokenize=False, add_generation_prompt=True)
         sampler = optional.module('mlx_lm.sample_utils').make_sampler(temp=parameters.get('temperature', .7))
         text = optional.module('mlx_lm').generate(built.model, tokenizer, prompt=prompt,
@@ -140,11 +159,13 @@ def _native_generate(inputs: dict, parameters: dict, structured: bool) -> dict:
         if errors:
             raise ValueError('Structured response did not match its schema: ' + '; '.join(errors))
         return {'text': text, 'response': response}
-    return {'text': text, 'response': {'text': text, 'tool_calls': []}}
+    return generation_outputs({'text': text, 'response': {'text': text, 'tool_calls': []}}, identity)
 
 
-def _generate(inputs: dict, parameters: dict, evaluate: bool = False, structured: bool = False) -> dict:
+def _generate(inputs: dict, parameters: dict, evaluate: bool = False, structured: bool = False, record: bool = False) -> dict:
     schema = response_schema(parameters.get('json_schema')) if structured else None
+    messages, identity = (None, None) if evaluate else (generation_context(parameters, inputs['record']) if record
+                            else ([{'role': 'user', 'content': inputs['prompt']}], None))
     grant = broker_wire.lease('studio', [inputs['model']['path']], reason='Studio inference')
     try:
         client = Client(grant.base_url, model=grant.model, request=Request(temperature=parameters.get('temperature', 0))) if evaluate else Client(grant.base_url, model=grant.model)
@@ -155,7 +176,7 @@ def _generate(inputs: dict, parameters: dict, evaluate: bool = False, structured
         extra = {}
         if structured:
             extra['response_format'] = {'type': 'json_schema', 'json_schema': {'name': 'response', 'strict': True, 'schema': schema}}
-        reply = client.chat([{'role': 'user', 'content': inputs['prompt']}],
+        reply = client.chat(messages,
                             temperature=parameters.get('temperature', 0.7), max_tokens=parameters.get('max_tokens', 512), **extra)
         if structured:
             response = json.loads(reply.content or '')
@@ -163,7 +184,7 @@ def _generate(inputs: dict, parameters: dict, evaluate: bool = False, structured
             if errors:
                 raise ValueError('Structured response did not match its schema: ' + '; '.join(errors))
             return {'text': reply.content, 'response': response}
-        return {'text': reply.content, 'response': {'text': reply.content, 'tool_calls': reply.tool_calls}}
+        return generation_outputs({'text': reply.content, 'response': {'text': reply.content, 'tool_calls': reply.tool_calls}}, identity)
     finally:
         broker_wire.release(grant.lease)
 
@@ -202,10 +223,9 @@ def _prepare_data(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
 
 def _gym(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
     if kind == 'gym.train':
-        rows = rows_of(inputs['dataset'])
-        environment = parameters.get('environment') or rows[0].get('environment')
-        if not environment:
-            raise ValueError('Select the Gym environment for this recording')
+        environment = parameters.get('environment')
+        if environment not in node_spec('gym.train')['parameters']['properties']['environment']['enum']:
+            raise ValueError('Select a supported Gym environment')
         result = optional.module('poolhouse.gym.training').train(environment,
                     timesteps=parameters.get('timesteps', 2048), seed=parameters.get('seed', 0))
         source = Path(result['checkpoint'])
@@ -263,6 +283,14 @@ def _export(model: dict, format: str, out: Path) -> dict:
 def execute(node: dict, inputs: dict, out: Path) -> dict[str, Any]:
     kind = node['type']
     parameters = node.get('parameters', {})
+    if kind == 'generate.record':
+        parameters = generation_parameters(parameters)
+    if kind == 'decision.route':
+        return route(parameters, inputs['decision'])
+    if kind == 'stream.record':
+        return {'record': inputs['record'] if 'record' in inputs else parse_record(parameters.get('sample', '{}'))}
+    if kind in ('decision.predict', 'guard.injection'):
+        return _predict_record(kind, parameters, inputs, out)
     if kind in ('train.decision', 'evaluate.decision'):
         return _decision(kind, parameters, inputs, out)
     if kind.startswith('train.'):
@@ -282,10 +310,10 @@ def execute(node: dict, inputs: dict, out: Path) -> dict[str, Any]:
     if kind == 'evaluate' and (inputs['model'].get('recipe') or (Path(inputs['model']['path']) / 'state.json').is_file()
                                or parameters.get('suite', 'holdout') == 'holdout'):
         return _checkpoint_evaluate(inputs, parameters)
-    if kind in ('generate', 'generate.structured') and (inputs['model'].get('recipe') or (Path(inputs['model']['path']) / 'state.json').is_file()):
-        return _native_generate(inputs, parameters, structured=kind == 'generate.structured')
-    if kind in ('generate', 'generate.structured', 'evaluate'):
-        return _generate(inputs, parameters, evaluate=kind == 'evaluate', structured=kind == 'generate.structured')
+    if kind in ('generate', 'generate.structured', 'generate.record') and (inputs['model'].get('recipe') or (Path(inputs['model']['path']) / 'state.json').is_file()):
+        return _native_generate(inputs, parameters, structured=kind == 'generate.structured', record=kind == 'generate.record')
+    if kind in ('generate', 'generate.structured', 'generate.record', 'evaluate'):
+        return _generate(inputs, parameters, evaluate=kind == 'evaluate', structured=kind == 'generate.structured', record=kind == 'generate.record')
     if kind == 'compare':
         base, trained = inputs['base'], inputs['trained']
         delta = {k: trained[k] - v for k, v in base.items()
@@ -303,10 +331,30 @@ def execute(node: dict, inputs: dict, out: Path) -> dict[str, Any]:
     raise ValueError(f'Node {kind} requires an installed execution integration')
 
 
+def _resident_record(request: dict) -> dict:
+    if request.get('execution') != {'kind': 'resident_decision'} or studio_launch.FD_ENV not in os.environ:
+        raise studio_launch.LaunchInterrupted('Studio resident launch proof is required')
+    context = studio_launch.worker_context()
+    content = {key: request[key] for key in ('node', 'inputs', 'output_dir')}
+    if fingerprint(content) != context['request_digest'] or request['node'].get('id') != context['node_id']:
+        raise studio_launch.LaunchInterrupted('Studio resident request changed after admission')
+    node, inputs = request['node'], request['inputs']
+    result = broker_wire.decision({
+        'permit_id': context['permit_id'], 'request_id': context['request_id'],
+        'model_digest': context['model_digest'], 'record': canonical_record(node, inputs),
+    }, context['broker'])
+    return assess(node['type'], node.get('parameters', {}), inputs['record'],
+                  lambda question, state, options: result,
+                  identity={key: context[key] for key in ('model_digest', 'calibration_digest')})
+
+
 def run() -> int:
     request = json.loads(Path(sys.argv[1]).read_text())
     out = Path(request['output_dir'])
-    outputs = execute(request['node'], request['inputs'], out)
+    if 'execution' in request or studio_launch.FD_ENV in os.environ:
+        outputs = _resident_record(request)
+    else:
+        outputs = execute(request['node'], request['inputs'], out)
     write_json(out / 'result.json', {'outputs': outputs})
     return 0
 

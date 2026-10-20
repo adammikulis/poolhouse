@@ -57,6 +57,7 @@ import affected
 import gaterun
 import gatescope
 import queue_doctor
+import testapp
 import testcommand
 import testextras
 import testhistory
@@ -629,6 +630,13 @@ def build_node(files: list[str] | None = None) -> int:
 
     A selection of named files that cannot start a node builds nothing and asks cargo nothing.
     """
+    try:
+        if testapp.needed(ROOT, files, testreuse_key.import_facts(reuse_store().folder)):
+            os.environ[testapp.ENV] = str(testapp.ensure(ROOT, admit=lambda: testslots.lease(2, 1, label="app test build"),
+                                                       say=lambda text: print(text, file=sys.stderr, flush=True)))
+    except (testnode.BuildError, OSError, ValueError) as error:
+        print(f"test: {error}", file=sys.stderr)
+        return 4
     if files and not testnode.needed(ROOT, files, testreuse_key.import_facts(reuse_store().folder)):
         return 0
     try:

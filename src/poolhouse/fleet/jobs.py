@@ -13,13 +13,16 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from poolhouse import maintenance
 from poolhouse.credentials import child_environment
 from poolhouse.log import say
 from poolhouse.platform import process_group_kwargs, stop_gently, stop_pid
+from poolhouse.studio_launch import FD_ENV, LaunchInterrupted
 
 from . import job_exit
 from .environment import Environment
 from .job_records import Records, ownership, owns, process_started
+from .studio_worker_launch import LaunchProof
 
 
 class DaemonError(RuntimeError):
@@ -71,6 +74,9 @@ class JobRunner:
         self.gate = gate
         self.studio_gate = None
         self.studio_device_gate = None
+        self.studio_launch_context = None
+        self._studio_workers = {}
+        self._studio_proof_lock = threading.RLock()
         self.environment = environment
         self.slots = slots
         self.jobs: dict[str, Job] = {}
@@ -385,20 +391,56 @@ class JobRunner:
             env["POOLHOUSE_PYTHON"] = str(self.environment.python)
             env["PATH"] = os.pathsep.join(
                 [str(self.environment.python.parent), env.get("PATH", "")])
+        env.pop(FD_ENV, None)
         return env
+
+    def verify_studio_worker(self, job_id, pid, started, permit_id, request_id):
+        with self._studio_proof_lock:
+            proof = self._studio_workers.get(job_id)
+        if proof is None or self.studio_launch_context is None:
+            return False
+        job = self.jobs.get(job_id)
+        if job is None or job.state != 'running' or self._stop.is_set():
+            return False
+        try:
+            return proof.verifies(pid, started, permit_id, request_id,
+                                  lambda: self._current_studio_context(job)) is True
+        except (OSError, ValueError, PermissionError):
+            return False
+
+    def _current_studio_context(self, job):
+        if (self._stop.is_set() or job.state != 'running'
+                or self._running.get(job.id) is None or not owns(job)):
+            raise LaunchInterrupted('Studio worker launch is no longer current')
+        return self.studio_launch_context(job)
 
     def _launch(self, job, fh, env):
         """Start the job's process and checkpoint its ownership, or None when admission is frozen."""
+        try:
+            context = self.studio_launch_context(job) if self.studio_launch_context else None
+            proof = LaunchProof(job.id, context) if context is not None else None
+        except (OSError, ValueError) as exc:
+            raise LaunchInterrupted('Studio worker authorization is unavailable') from exc
+        try:
+            return self._launch_process(job, fh, env, proof)
+        finally:
+            if proof:
+                proof.close()
+
+    def _launch_process(self, job, fh, env, proof):
         with self._lock:
             if self._stop.is_set():
+                if proof:
+                    proof.close()
                 return None
             job.state = 'launching'
             self.record(job)
             self._settled[job.id] = threading.Event()
             job_exit.clear(self.job_dir(job.id))
-            proc = subprocess.Popen(job_exit.command(self.job_dir(job.id), job.argv),
+            proc = subprocess.Popen(job_exit.command(self.job_dir(job.id), job.argv,
+                                                      setup=proof.setup() if proof else ''),
                                     cwd=job.cwd or None, env=env, stdout=fh, stderr=subprocess.STDOUT,
-                                    **process_group_kwargs())
+                                    **process_group_kwargs(), **({'pass_fds': proof.descriptors} if proof else {}))
             self._starting.discard(job.id)
             self._running[job.id] = proc
             job.state = "running"
@@ -406,8 +448,20 @@ class JobRunner:
             job.process_started = process_started(proc.pid)
             job.started_at = time.time()
             self.record(job)
-            return proc
+        if proof:
+            try:
+                def register(value):
+                    with self._studio_proof_lock:
+                        self._studio_workers[job.id] = value
+                proof.admit(proc, lambda: self._current_studio_context(job), register)
+            except (OSError, ValueError) as exc:
+                stop_gently(proc)
+                raise LaunchInterrupted('Studio worker launch admission interrupted') from exc
+            finally:
+                proof.close()
+        return proc
 
+    @maintenance.reading
     def _run_one(self, job: Job) -> None:
         log = self.log_path(job.id)
         log.parent.mkdir(parents=True, exist_ok=True)
@@ -430,14 +484,17 @@ class JobRunner:
                 rc = rc if recorded is None else recorded
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
             if proc := self._running.get(job.id):
-                self._stop.set()
-                job.recovery_note = 'Process ownership checkpoint failed; admission is frozen.'
+                if not isinstance(exc, LaunchInterrupted):
+                    self._stop.set()
+                job.recovery_note = ('Studio worker launch interrupted; reconcile before resuming.'
+                                     if isinstance(exc, LaunchInterrupted) else
+                                     'Process ownership checkpoint failed; admission is frozen.')
                 with log.open('a') as failure_log:
                     failure_log.write(f'ownership checkpoint failed: {exc}\n')
                 job.returncode = proc.wait()
-                job.state = 'done' if job.returncode == 0 else 'failed'
+                job.state = 'interrupted' if isinstance(exc, LaunchInterrupted) else ('done' if job.returncode == 0 else 'failed')
             else:
-                job.state = "failed"
+                job.state = "interrupted" if isinstance(exc, LaunchInterrupted) else "failed"
                 job.returncode = -1
                 log.write_text(f"failed to start: {exc}\n")
         else:
@@ -445,6 +502,8 @@ class JobRunner:
             if job.state != "stopped":
                 job.state = "done" if rc == 0 else "failed"
         finally:
+            with self._studio_proof_lock:
+                self._studio_workers.pop(job.id, None)
             if job.id in self._running or not self._stop.is_set():
                 job.finished_at = time.time()
                 with self._lock:

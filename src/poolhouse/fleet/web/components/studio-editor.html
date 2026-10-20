@@ -120,18 +120,24 @@
           this.executionControls(box, node);
           for (const message of this.nodeIssues(node))
             box.append(E("p", { class: "error", role: "status" }, message));
+          const record = this.recordControls(box, node);
           for (const [name, schema] of Object.entries(
             spec.parameters?.properties || {},
           ))
-            S.field(box, name, schema, node.parameters[name], (value) => {
-              this.checkpoint();
-              node.parameters[name] = value;
-              this.changed();
-            });
+            if (!(record && name === "sample"))
+              S.field(box, name, schema, node.parameters[name], (value) => {
+                this.checkpoint();
+                node.parameters[name] = value;
+                this.changed();
+              });
           for (const [name, resource] of Object.entries(spec.bindings || {})) {
             if (!resource.kind) continue;
-            const kind = resource.kind,
-              choices =
+            const kind = resource.kind;
+            if (kind === "dataset") {
+              box.append(S.datasetBinding(this, node, name));
+              continue;
+            }
+            const choices =
                 this.resources?.[kind + "s"] ||
                 (kind === "model"
                   ? this.resources?.models
@@ -156,7 +162,9 @@
             };
             box.append(E("label", {}, "Choose " + name, select));
           }
+          this.decisionSetupControls(box, node);
           this.sweepControls(box, node, spec);
+          this.branchControls(box, node);
           const links = E("div", { class: "studio-links" });
           for (const input of spec.inputs || []) {
             const select = E(

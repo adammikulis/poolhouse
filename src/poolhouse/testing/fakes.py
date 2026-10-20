@@ -813,14 +813,14 @@ def _import_root() -> Path:
 _LAUNCHER = """#!{python}
 import os, sys
 sys.path.insert(0, {root!r})
-# argv[0] is what a process scan matches a llama-server on, so this wears the name.
+# A test process must not be discovered and counted by the installed model broker.
 # CPython reads its prefix from argv[0], and a name that is not an interpreter leaves it
 # with no stdlib, so the child is told where its stdlib and its packages are.
 if not os.environ.get("POOLHOUSE_FAKE_LLAMA"):
     os.environ["POOLHOUSE_FAKE_LLAMA"] = "1"
     os.environ["PYTHONHOME"] = sys.base_prefix
     os.environ["PYTHONPATH"] = os.pathsep.join(p for p in sys.path if p)
-    os.execv({interpreter!r}, ["llama-server", __file__, *sys.argv[1:]])
+    os.execv({interpreter!r}, ["poolhouse-test-server", __file__, *sys.argv[1:]])
 from pathlib import Path
 
 from poolhouse.testing.fakes import serve_from_argv
@@ -837,12 +837,12 @@ def _interpreter() -> str:
         else sys.executable
 
 
-def fake_llama_binary(where: Path, *, name: str = "llama-server",
+def fake_llama_binary(where: Path, *, name: str = "poolhouse-test-server",
                       help_text: str | None = None) -> Path:
     """An executable in ``where`` that answers ``--help`` with ``help_text`` and then serves.
 
     Started for real by ``Popen``, it binds the ``--port`` it was given, presents to a
-    process scan as ``llama-server``, and answers everything `FakeLlamaServer` answers
+    process scan as a test server, and answers everything `FakeLlamaServer` answers
     for the model, context, slots and draft head its command line named.
     """
     if os.name == "nt":

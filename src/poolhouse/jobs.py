@@ -13,6 +13,7 @@ import json
 import os
 import signal
 import subprocess
+import sys
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -24,6 +25,7 @@ from poolhouse.command import Group, flag
 from poolhouse.home import expand, state
 from poolhouse.lock import Busy
 from poolhouse.log import say, warn
+from poolhouse.paths import source_checkout
 
 
 def home_dir() -> Path:
@@ -151,7 +153,7 @@ class Detached:
 
 
 def detach(module: str, argv: Sequence[str], *, log: Path, lines: Sequence[str] = (),
-           kind: str = "", home: Path | None = None) -> Detached:
+           kind: str = "", home: Path | None = None, same_interpreter: bool = False) -> Detached:
     """Run ``python -m module argv`` owned by no terminal, its output appended to ``log``,
     whose header is its ``argv:`` and ``started:`` lines and then ``lines``.
 
@@ -162,12 +164,21 @@ def detach(module: str, argv: Sequence[str], *, log: Path, lines: Sequence[str] 
 
     started = time.strftime("%FT%T")
     rest = [str(a) for a in argv]
-    chosen = runtime.available()
-    python = chosen.python if chosen is not None else runtime.python()
-    command = [str(python), *(["-I"] if chosen is not None else []), "-m", module, *rest]
+    if same_interpreter and getattr(sys, 'frozen', False):
+        raise ValueError('This detached task needs a Python compute interpreter')
+    source = source_checkout() if same_interpreter else None
+    chosen = None if same_interpreter else runtime.available()
+    python = sys.executable if same_interpreter else chosen.python if chosen is not None else runtime.python()
+    options = ['-B', '-u', *([] if source else ['-I'])] if same_interpreter else ['-I'] if chosen is not None else []
+    command = [str(python), *options, "-m", module, *rest]
     environment = {**os.environ, "PYTHONUNBUFFERED": "1"}
-    if chosen is not None:
+    if chosen is not None or same_interpreter:
         environment = runtime.environment(environment)
+    if same_interpreter:
+        environment = {name: value for name, value in environment.items()
+                       if not name.startswith(('PYTHON', 'DYLD_')) and name not in {'LD_PRELOAD', 'LD_AUDIT'}}
+        if source:
+            environment['PYTHONPATH'] = str(source / 'src')
     log = Path(log)
     log.parent.mkdir(parents=True, exist_ok=True)
     head = [f"argv: {' '.join(rest)}", f"started: {started}", *lines]

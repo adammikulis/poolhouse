@@ -31,6 +31,7 @@ class StudioStore:
     def __init__(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         self.graph = GraphStore(path)
+        self.graph.query("CREATE NODE TABLE IF NOT EXISTS StudioRunActive(id STRING, PRIMARY KEY(id))")
         self.lock = threading.RLock()
 
     def close(self) -> None:
@@ -57,7 +58,50 @@ class StudioStore:
             self.graph.upsert_node({"id": key, "kind": "studio." + kind,
                                     "label": row.get("title", row["id"])})
             self.graph.put_doc(key, row)
+            if kind == "run":
+                self._run_indexes(row)
             return copy.deepcopy(row)
+
+    def _run_indexes(self, row: dict) -> None:
+        index = row["id"]
+        if row["state"] in {"queued", "running", "interrupted"}:
+            self.graph.query("MERGE (a:StudioRunActive {id:$id})", {"id": index})
+        else:
+            self.graph.query("MATCH (a:StudioRunActive {id:$id}) DELETE a", {"id": index})
+        for node, state in row["nodes"].items():
+            if state.get("job_id"):
+                self.graph.put_doc("studio.child:" + state["job_id"], {"run": row["id"], "node": node})
+
+    def tracked_runs(self) -> list[dict]:
+        """Read unresolved run pointers, independent of completed history size."""
+        with self.lock:
+            indexes = self.graph.query("MATCH (a:StudioRunActive) RETURN a.id AS id")
+            runs = []
+            for index in indexes:
+                ident = index["id"]
+                key = ident
+                run = self.graph.get_doc("studio.run:" + key)
+                if run and run.get("id") == key and run.get("state") in {"queued", "running", "interrupted"}:
+                    runs.append(run)
+                else:
+                    self.graph.put_doc("studio.index_error:" + ident, {"error": "Run index requires reconciliation.", "run": key})
+            return runs
+
+    def child_run(self, job: str) -> tuple[dict, dict] | None:
+        """A child must match its exact durable run/node ownership before admission."""
+        with self.lock:
+            index = self.graph.get_doc("studio.child:" + job)
+            if not isinstance(index, dict) or set(index) != {"run", "node"}:
+                return None
+            run = self.graph.get_doc("studio.run:" + str(index["run"]))
+            if not run or run.get("id") != index["run"] or run.get("state") not in {"queued", "running"}:
+                return None
+            node = next((node for node in run["graph"]["nodes"] if node["id"] == index["node"]), None)
+            if node is None or run["nodes"].get(index["node"], {}).get("job_id") != job:
+                return None
+            active = self.graph.query("MATCH (a:StudioRunActive {id:$id}) RETURN a.id AS id",
+                                      {"id": run["id"]})
+            return (run, node) if active else None
 
     def save_workflow(self, scope: str, title: str, graph: dict, *,
                       ident: str | None = None, revision: int | None = None) -> dict:
@@ -73,11 +117,12 @@ class StudioStore:
             raise Conflict("This workflow changed elsewhere. Your edits were saved as a recoverable copy.", row)
         return row
 
-    def submit(self, principal: dict, workflow: dict, graph: dict, outputs: list[str], key: str) -> tuple[dict, bool]:
+    def submit(self, principal: dict, workflow: dict, graph: dict, request: dict) -> tuple[dict, bool]:
+        outputs, key, event = request["outputs"], request["key"], request.get("event")
         if not isinstance(key, str) or not key.strip() or len(key) > 256:
             raise ValueError("A submission identity is required.")
         fingerprint = digest({"graph": graph, "workflow": workflow["id"],
-                              "revision": workflow["revision"], "outputs": sorted(outputs)})
+                              "revision": workflow["revision"], "outputs": sorted(outputs), "event": event})
         identity = "studio.submission:" + digest({"principal": principal, "key": key})
         with self.lock, self.graph.transaction():
             prior = self.graph.get_doc(identity)
@@ -91,6 +136,8 @@ class StudioStore:
                    "output_nodes": outputs, "state": "queued", "created_at": time.time(),
                    "nodes": {node["id"]: {"state": "pending", "outputs": {}}
                              for node in graph["nodes"]}}
+            if event is not None:
+                row["event"] = copy.deepcopy(event)
             self.put("run", row)
             self.graph.put_doc(identity, {"digest": fingerprint, "run": row["id"]})
             return row, True

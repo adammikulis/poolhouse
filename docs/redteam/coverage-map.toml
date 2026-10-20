@@ -15,6 +15,228 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["handler:fleet/producer_connections.py:Connections.register", "handler:fleet/producer_connections.py:Connections.check"]
+status = "covered"
+count = 2
+tests = ["tests/test_producer_connections.py::test_source_stays_paused_and_activation_follows_custody_owner_cas", "tests/test_producer_connections.py::test_repeated_create_inspects_original_process_without_provisioning_again", "tests/test_producer_connections.py::test_reused_key_with_changed_producer_or_label_conflicts", "tests/test_producer_connections.py::test_weak_owner_cannot_inspect_offer_or_mint_intent", "tests/test_producer_connections.py::test_offer_for_another_receiver_or_pool_never_mints_source", "tests/test_producer_connections.py::test_revocation_after_prepare_prevents_activation", "tests/test_producer_connections.py::test_owner_session_loss_or_receiver_change_after_prepare_never_activates", "tests/test_producer_connections.py::test_custody_requires_exact_true_before_activation", "tests/test_producer_connections.py::test_lost_prepare_ack_recovers_exact_inert_process_without_respawn", "tests/test_producer_connections.py::test_lost_activation_ack_only_checks_and_never_repeats_activation", "tests/test_producer_connections.py::test_unknown_inactive_activation_never_repeats_or_starts_another_process", "tests/test_producer_connections.py::test_pre_cas_active_response_is_not_adopted", "tests/test_producer_connections.py::test_check_requires_original_request_and_source_revision", "tests/test_producer_connections.py::test_offer_response_bool_revision_is_not_an_owner_cas"]
+note = "Durable owner intent precedes producer contact; exact receiver credential custody and a fresh current-owner CAS precede activation. Callback-based tests exercise weak origins, changed context/receiver, strict revisions, uncertain acknowledgements and idempotent status-only recovery over real isolated storage. No subscription starts and no stored person session is reconstructed. Transport callbacks are isolated substitutes: actual enrolled-member authentication, HMAC custody, process activation and per-node source authorization require the assembled factory and remain separate obligations."
+
+[[group]]
+match = ["handler:fleet/producer_connections.py:Connections.authorize"]
+status = "covered"
+count = 1
+tests = ["tests/test_producer_connections.py::test_alternate_member_cannot_read_owner_intent", "tests/test_producer_connections.py::test_old_stage_or_wrong_binding_never_authorizes", "tests/test_producer_connections.py::test_authorization_challenge_has_strict_exact_schema", "tests/test_producer_connections.py::test_revocation_after_prepare_prevents_activation"]
+note = "A fixed private authorization challenge requires the current original producer certificate/pool, exact owner command, current source generation/epoch, allowed phase and binding digest. Wrong members, stale stages, substituted bindings and malformed fields are refused. The network handler must derive the producer identity from actual current authenticated transport; caller-supplied identity data is not authority. This predicate alone does not authenticate a network request or issue an execution grant."
+
+[[group]]
+match = ["spawn:fleet/producer_process.py:OwnedProducer._spawn", "handler:fleet/producer_process.py:OwnedProducer.activate"]
+status = "covered"
+count = 2
+tests = ["tests/test_producer_process.py::test_inert_listener_does_not_dispatch_before_activation", "tests/test_producer_process.py::test_activation_cannot_substitute_actual_launch_binding", "tests/test_producer_process.py::test_lost_activation_ack_never_reactivates_or_relaunches", "tests/test_producer_process.py::test_current_callback_cannot_revive_reentrantly_closed_owner", "tests/test_producer_process.py::test_original_sdk_death_invalidates_inert_prepared_process", "tests/test_producer_process.py::test_managed_reader_is_retained_until_actual_child_exit", "tests/test_producer_process.py::test_writer_blocks_prepare_before_runtime_verification_and_spawn", "tests/test_producer_process.py::test_runtime_verification_precedes_fixed_child_command"]
+note = "One retained child is launched from a fixed verified managed runtime, with maintained reader admission spanning verification, launch and child lifetime. The listener is inert before exact private binding/capability activation; lost acknowledgement, changed binding and reentrant stop cannot adopt, relaunch or revive it. Tests use actual isolated CPU child processes. The factory must retain this owner before preparation and independently establish durable owner intent plus receiver acknowledgement before activation; this lifecycle primitive grants neither."
+
+[[group]]
+match = ["listener:fleet/producer_process.py:_Data.__init__", "parser:fleet/producer_process.py", "egress:fleet/producer_process.py:_forward"]
+status = "covered"
+count = 3
+tests = ["tests/test_producer_process.py::test_real_generic_json_and_receipt_use_exact_owned_bridge", "tests/test_producer_process.py::test_fresh_sibling_process_cannot_use_the_sdk_data_channel", "tests/test_producer_process.py::test_revocation_unblocks_partial_frame_and_ends_exact_child", "tests/test_producer_process.py::test_parent_private_eof_stops_the_original_child", "tests/test_producer_process.py::test_data_connection_cannot_dispatch_a_second_frame", "tests/test_producer_process.py::test_replaced_data_inode_is_not_unlinked_or_used", "tests/test_producer_process.py::test_blocked_data_writer_rechecks_revocation_without_extending_deadline", "tests/test_producer_process.py::test_control_binding_rejects_missing_and_nonfinite_generation", "tests/test_producer_process.py::test_deliberate_retry_forwards_only_event_and_mac_bound_command", "tests/test_producer_process.py::test_data_retry_never_accepts_replacement_or_cross_action_fields", "tests/test_producer_process.py::test_retry_after_source_revocation_does_not_forward"]
+note = "A private owned Unix listener accepts fresh original SDK process connections and forwards fixed generic JSON publication, receipt or explicit retry requests under the inherited source capability to the exact daemon TLS/control process. Complete binding validation, original listener inode, one-frame dispatch, parent death and cancellation-aware partial reads/writes are exercised under the original deadline. No source HMAC or device secret is exposed to the SDK. Isolated forwarding tests do not establish complete receiver admission, current source authorization, durable delivery or an installed producer journey; those remain factory obligations."
+
+[[group]]
+match = ["spawn:fleet/producer_holder.py:_launch"]
+status = "covered"
+count = 1
+tests = ["tests/test_producer_sdk.py::test_real_owned_holder_nonce_ack_returns_only_public_anchor", "tests/test_producer_sdk.py::test_actual_holder_forgery_partial_or_lost_ack_refuses_and_reaps", "tests/test_producer_sdk.py::test_missing_initial_birth_proof_still_reaps_retained_owned_child", "tests/test_producer_sdk.py::test_fork_during_holder_construction_closes_private_channels", "tests/test_producer_sdk.py::test_production_launcher_uses_only_fixed_verified_runtime_entry"]
+note = "The SDK launches one fixed verified installed isolated interpreter entry through the maintained process launcher. An inherited private channel binds a fresh nonce, retained child process generation and acknowledgement; forged or incomplete replies fail and retained children are reaped even when initial birth inspection fails. Forked children close bootstrap descriptors. Tests use isolated real Mac child processes, not the real installation secret."
+
+[[group]]
+match = ["parser:fleet/producer_holder.py"]
+status = "covered"
+count = 1
+tests = ["tests/test_producer_sdk.py::test_holder_production_gate_runs_before_root_or_secret", "tests/test_producer_sdk.py::test_locator_links_and_public_permissions_are_refused", "tests/test_producer_sdk.py::test_runtime_location_override_refuses_before_selection", "tests/test_producer_sdk.py::test_real_owned_holder_nonce_ack_returns_only_public_anchor", "tests/test_producer_sdk.py::test_actual_holder_forgery_partial_or_lost_ack_refuses_and_reaps"]
+note = "Only the installed helper passes the real-machine gate before reading its fixed account root and existing private locator. Descriptor checks reject symlinks and public permissions; nonce and exact private acknowledgement schemas are checked. Only a public authenticated daemon anchor crosses to the SDK. The existing software installation-secret compromise boundary remains; no hardware clone resistance or source authority is conferred."
+
+[[group]]
+match = ["parser:fleet/producer_client.py", "egress:fleet/producer_client.py:ProducerClient._control", "egress:fleet/producer_client.py:ProducerClient._data"]
+status = "covered"
+count = 3
+tests = ["tests/test_producer_sdk.py::test_public_metadata_publish_and_receipt_use_authenticated_status", "tests/test_producer_sdk.py::test_wrong_data_process_receives_zero_record_bytes", "tests/test_producer_sdk.py::test_changed_bridge_generation_or_mismatched_offer_cannot_be_adopted", "tests/test_producer_sdk.py::test_anchor_stands_after_bootstrap_expiry_but_pool_change_refuses", "tests/test_producer_sdk.py::test_event_identity_contract_is_ascii_and_bounded_before_data", "tests/test_producer_sdk.py::test_records_are_finite_objects_before_data", "tests/test_producer_sdk.py::test_fork_invalidates_client_and_closes_inherited_owned_socket", "tests/test_producer_sdk.py::test_wrong_control_certificate_refuses_before_metadata_application", "tests/test_producer_sdk.py::test_socket_path_replacement_cannot_receive_record", "tests/test_producer_sdk.py::test_explicit_retry_uses_fresh_authenticated_data_and_preserves_command", "tests/test_producer_sdk.py::test_invalid_retry_never_opens_control_or_data", "tests/test_producer_sdk.py::test_retry_wrong_data_process_gets_zero_application_bytes"]
+note = "The original SDK process retains one authenticated daemon anchor and offer-specific bridge generation. Fresh control and DATA connections verify actual kernel endpoint processes before application bytes, with exact control TLS certificate checks and bounded fixed schemas. Wrong or replaced endpoints receive no record bytes; inherited clients fail after fork. An explicit retry carries its stable command key without replacement data; there is no automatic uncertain resend. These isolated transport tests do not establish complete provider enrollment, current source authorization or durable event admission; deliberate forwarding by an already authorized connector remains outside kernel connector proof."
+
+[[group]]
+match = ["context:studio/decisions.py"]
+status = "covered"
+count = 1
+tests = ["tests/test_studio_record_generation.py::test_guard_question_explicitly_targets_complete_selected_data_not_trusted_context", "tests/test_studio_record_generation.py::test_guard_views_are_scoped_but_output_record_and_original_identity_are_preserved", "tests/test_studio_record_generation.py::test_missing_or_wrong_selected_data_reviews_without_model_or_generation"]
+note = "The fixed assessment question explicitly classifies only the complete selected untrusted_record JSON, with configured task and server-assigned content role as comparison context. Nested misleading keys and instructions stay data; state, original identity and confidence semantics are retained. Tests verify prompt construction and missing-data refusal, not actual model accuracy or injection resistance."
+
+[[group]]
+match = ["handler:fleet/producer_offers.py:OfferRegistry.inspect"]
+status = "covered"
+count = 1
+tests = ["tests/test_producer_offers.py::test_identical_offer_attaches_without_authority_or_spawn", "tests/test_producer_offers.py::test_changed_label_conflicts_and_withdrawn_offer_never_revives", "tests/test_producer_offers.py::test_foreign_or_reused_pid_cannot_read_or_withdraw", "tests/test_producer_offers.py::test_context_change_invalidates_old_process_evidence", "tests/test_producer_offers.py::test_exit_hides_offer_and_restart_does_not_adopt_it", "tests/test_producer_offers.py::test_current_receiver_is_exact_unique_enrolled_snapshot", "tests/test_producer_offers.py::test_wrong_intended_receiver_and_stale_revision_do_not_enroll", "tests/test_producer_offers.py::test_revocation_during_creation_leaves_no_offer", "tests/test_producer_offers.py::test_payload_cannot_select_code_endpoint_or_process", "tests/test_producer_offers.py::test_returned_private_and_public_views_cannot_mutate_registry"]
+note = "RAM-only observational offers bind transport-supplied process generations, implementation and exact current receiver context. Tests replace liveness/current callbacks to attack stale identities, receiver substitution, withdrawn offers and revision checks. No listener or grant exists here: fixed daemon callers must obtain actual kernel identity and independently authorize owner enrollment before inspecting private evidence. Labels are informational, not authority."
+
+[[group]]
+match = ["parser:fleet/producer_bridge.py", "handler:fleet/producer_bridge.py:BridgeCapability.activate", "handler:fleet/producer_bridge.py:BridgeCapability.verify"]
+status = "covered"
+count = 3
+tests = ["tests/test_producer_bridge.py::test_inert_until_exact_persisted_owner_intent_activation", "tests/test_producer_bridge.py::test_private_nonce_replay_denied_but_new_request_keeps_same_event_identity", "tests/test_producer_bridge.py::test_concurrent_same_nonce_only_one_verification", "tests/test_producer_bridge.py::test_full_immutable_binding_cannot_be_substituted_even_with_same_private_secret", "tests/test_producer_bridge.py::test_sibling_or_reused_pid_has_no_capability", "tests/test_producer_bridge.py::test_source_and_retained_child_checks_require_exact_true", "tests/test_producer_bridge.py::test_revoke_before_result_or_before_new_frame_denies", "tests/test_producer_bridge.py::test_late_activation_ack_never_revives_revoked_capability", "tests/test_producer_bridge.py::test_reentrant_revocation_from_final_callback_never_returns_authority", "tests/test_producer_bridge.py::test_changed_raw_bytes_or_mac_or_unknown_fields_never_verify", "tests/test_producer_bridge.py::test_receipt_is_fixed_original_binding_and_cannot_include_replacement_data", "tests/test_producer_bridge.py::test_revocation_during_verification_does_not_consume_nonce", "tests/test_producer_bridge.py::test_only_finite_json_objects_have_record_bytes", "tests/test_producer_bridge.py::test_retry_key_is_mac_bound_and_cannot_supply_replacement_bytes", "tests/test_producer_bridge.py::test_retry_schema_has_no_old_version_missing_key_or_replacement_fallback", "tests/test_producer_bridge.py::test_retry_requires_exact_command_identity"]
+note = "Private bridge requests bind the full immutable source context, exact finite JSON bytes, action, nonce and required action-specific retry key under the v2 domain-separated MAC. Old versions and missing keys are refused; receipt/retry cannot supply replacement bytes. Activation requires the persisted binding digest; explicit revocation is sticky and replay is refused. Callback-based tests exercise retained-child/current-source requirements, not complete process custody or owner authorization. The fixed factory must supply both checks; bounded RAM nonce tracking supplements the durable source/event ledger and cannot itself promise durable replay prevention. No listener, source enrollment or publication transport is provided by this primitive."
+
+[[group]]
+match = ["context:studio/record_context.py", "parser:studio/record_context.py"]
+status = "covered"
+count = 2
+tests = ["tests/test_studio_record_generation.py::test_invalid_field_selectors_never_fall_back_to_whole_record", "tests/test_studio_record_generation.py::test_guard_views_are_scoped_but_output_record_and_original_identity_are_preserved", "tests/test_studio_record_generation.py::test_missing_or_wrong_selected_data_reviews_without_model_or_generation", "tests/test_studio_record_generation.py::test_oversize_and_nonfinite_generation_refuse_without_truncation", "tests/test_studio_record_generation.py::test_literal_field_names_are_data_keys_not_paths_or_expressions", "tests/test_studio_record_generation.py::test_broker_generation_uses_separate_system_and_user_and_returns_tool_requests_as_data", "tests/test_studio_record_generation.py::test_native_checkpoint_generation_keeps_role_separation_and_single_compute_hold"]
+note = "Literal field selection preserves the original record identity and fails on missing, malformed, oversized or nonfinite data. Generation keeps the configured task in a system message and only selected question/source data in a user message, through both broker and native checkpoint adapters. Tool requests remain data. These structural tests do not establish model resistance to injection or protect against a compromised executor fabricating outputs; guard assessments remain advisory."
+
+[[group]]
+match = ["parser:studio/record_coverage.py"]
+status = "covered"
+count = 1
+tests = ["tests/test_studio_record_generation.py::test_ready_template_has_complete_server_validated_coverage_and_selected_dependencies", "tests/test_studio_record_generation.py::test_editing_guard_coverage_is_rejected_before_dispatch", "tests/test_studio_record_generation.py::test_whole_record_guards_are_an_explicit_valid_coverage_feature", "tests/test_studio_record_generation.py::test_invalid_parameter_containers_return_validation_errors"]
+note = "Expanded graph validation requires distinct direct and indirect actual guard Allow controls for the same original record, configured task and selected fields. Forged signals, duplicate controls, mismatched origins and malformed parameter containers are refused before dispatch; selected-output and reusable-group expansion retain required controls. Whole-record assessment is an explicit supported configuration, never a malformed-selector fallback."
+
+[[group]]
+match = ["listener:fleet/producer_control.py:_Location.bind", "listener:fleet/producer_control.py:ControlServer.__init__"]
+status = "covered"
+count = 2
+tests = ["tests/test_producer_control.py::test_real_bootstrap_then_exact_tls_control", "tests/test_producer_control.py::test_partial_tls_and_frames_expire_and_close_unblocks_owned_threads", "tests/test_producer_control.py::test_connection_admission_is_bounded_before_threads", "tests/test_producer_control.py::test_replaced_listener_is_refused_and_never_unlinked_on_close", "tests/test_producer_control.py::test_repeated_close_never_uses_recycled_directory_descriptor", "tests/test_producer_control.py::test_concurrent_close_hands_off_each_descriptor_once", "tests/test_producer_control.py::test_bind_failure_removes_only_captured_listener_inode", "tests/test_producer_control.py::test_bind_failure_never_unlinks_substituted_inode", "tests/test_producer_control.py::test_partial_location_constructor_removes_captured_directory", "tests/test_producer_control.py::test_successful_chmod_cannot_transfer_listener_ownership"]
+note = "The factory creates two private Unix listeners in an owned directory: nonce-only bootstrap and TLS control. Kernel process generation, private directory and original socket identities are checked throughout. Connection slots and deadlines bound owned threads; repeated or concurrent cleanup invalidates raw descriptor ownership once and never adopts replacement socket inodes, including partial binding failures. These are local transport surfaces, not source grants."
+
+[[group]]
+match = ["handler:fleet/producer_control.py:ControlServer._answer"]
+status = "covered"
+count = 1
+tests = ["tests/test_producer_control.py::test_ordinary_sdk_cannot_choose_operations_or_private_bridge", "tests/test_producer_control.py::test_admitted_bridge_large_frame_and_revocation_before_reply", "tests/test_producer_control.py::test_one_connection_never_dispatches_a_second_frame", "tests/test_producer_control.py::test_current_change_after_dispatch_has_unknown_reply_without_repeat", "tests/test_producer_control.py::test_bridge_revocation_during_dispatch_suppresses_reply", "tests/test_producer_control.py::test_current_change_during_tls_handshake_prevents_dispatch", "tests/test_producer_control.py::test_control_envelope_is_exact_before_fixed_dispatch", "tests/test_producer_control.py::test_retention_error_never_appends_second_response"]
+note = "Each connection dispatches one fixed operation after current daemon and actual process checks. Ordinary clients cannot choose private bridge operations; current bridge admission is independently rechecked. Post-dispatch revocation suppresses a reply without repeating the callback. Response retention preserves endpoint verification within the original deadline and cannot append a second response. The fixed factory must separately authorize source capabilities and bound its callbacks; complete producer admission is not claimed by this primitive."
+
+[[group]]
+match = ["parser:fleet/producer_control.py"]
+status = "covered"
+count = 1
+tests = ["tests/test_producer_control.py::test_bootstrap_rejects_ambiguous_or_extra_json", "tests/test_producer_control.py::test_oversize_sdk_frame_and_response_are_bounded", "tests/test_producer_control.py::test_plain_control_and_nonfinite_callback_never_return_success", "tests/test_producer_control.py::test_partial_body_and_unread_large_reply_obey_deadline", "tests/test_producer_control.py::test_control_envelope_is_exact_before_fixed_dispatch"]
+note = "Length-prefixed metadata and admitted bridge frames have separate bounds. Duplicate keys, nonfinite values, wrong operation fields, plaintext control, partial frames and oversized or unread responses fail within the original connection deadline. The codec exports no credentials and cannot select code, roots or authority."
+
+[[group]]
+match = ["parser:studio/producer_log.py"]
+status = "covered"
+count = 1
+tests = ["tests/test_producer_log.py::test_exact_wire_bytes_are_pinned_and_repeated_commands_attach", "tests/test_producer_log.py::test_invalid_records_never_create_intents", "tests/test_producer_log.py::test_concurrent_claims_return_one_send_permission", "tests/test_producer_log.py::test_unknown_blocks_new_event_even_after_rotate_or_process_replacement", "tests/test_producer_log.py::test_restart_retains_unknown_and_exact_original_receipt_releases_pending", "tests/test_producer_log.py::test_completed_event_is_not_published_again_after_rotation", "tests/test_producer_log.py::test_mismatched_receipt_never_settles_or_unlocks_another_event", "tests/test_producer_log.py::test_revocation_during_transaction_rolls_back_stage_and_claim", "tests/test_producer_log.py::test_payload_binding_fields_are_data_and_do_not_choose_namespace", "tests/test_producer_log.py::test_owner_discard_retains_tombstone_and_unblocks_other_ids", "tests/test_producer_log.py::test_owner_revoked_during_discard_rolls_back_row_and_pending", "tests/test_producer_log.py::test_attempted_or_unknown_event_cannot_be_discarded", "tests/test_producer_log.py::test_missing_or_mismatched_pending_index_never_issues_send_authority"]
+note = "Private persistence pins finite exact JSON bytes, source-wide event identity and the original binding. A command gets one send claim after current authorization and exact pending-index checks. Unknown outcomes never resend across restart or replacement. A deliberate retry requires exact receiver-owned attempt-bound non-admission evidence; accepted inbox evidence wins. Immutable command snapshots and claim keys cannot send a later revision, and historical attempted bytes never become not_sent. Owner discard applies only to a provably unattempted command and preserves event/history tombstones. The factory must authorize reads and supply negative evidence checked atomically against the receiver inbox in this same transaction; neither an HTTP 429 nor a client assertion is such proof. This primitive provides no publisher endpoint or capability."
+
+[[group]]
+match = ["handler:studio/producer_log.py:ProducerLog.retry"]
+status = "covered"
+count = 1
+tests = ["tests/test_producer_log.py::test_definitive_rejection_keeps_attempted_tombstone_and_releases_pending", "tests/test_producer_log.py::test_rejection_requires_exact_receiver_negative_evidence", "tests/test_producer_log.py::test_positive_receipt_always_wins_over_negative_and_keeps_other_pending", "tests/test_producer_log.py::test_retry_is_explicit_idempotent_and_attempt_nonce_changes_same_second", "tests/test_producer_log.py::test_unknown_cannot_retry_or_bypass_with_new_id", "tests/test_producer_log.py::test_retry_rechecks_negative_and_current_authority_with_rollback", "tests/test_producer_log.py::test_retry_refuses_changed_binding_or_intervening_pending", "tests/test_producer_log.py::test_concurrent_retry_commands_have_one_winner", "tests/test_producer_log.py::test_stale_reject_cannot_release_new_retry_pending", "tests/test_producer_log.py::test_owner_can_cancel_only_unattempted_retry_retaining_history", "tests/test_producer_log.py::test_owner_cancel_retry_revocation_rolls_back_and_claim_race_has_one_winner", "tests/test_producer_log.py::test_accepted_receipt_beats_429_negative_under_shared_receiver_transaction", "tests/test_producer_log.py::test_restart_retains_exact_retry_command_and_never_reclaims_initial", "tests/test_producer_log.py::test_old_retry_snapshot_after_done_is_not_current_status_or_send_authority"]
+note = "The private retry transition requires current original-binding authority and definitive receiver evidence, then persists an idempotent immutable command revision. Stale commands, changed bindings, unknown outcomes, concurrent commands and receipt/rejection races cannot obtain another send claim. Tests supply trusted receiver callbacks over isolated storage; actual ingress negative markers and attempt-bound wire enforcement remain separate factory obligations."
+
+[[group]]
+match = ["parser:unix_socket.py"]
+status = "covered"
+count = 1
+tests = ["tests/test_unix_socket.py::test_actual_kernel_endpoint_and_generation_reject_sibling_and_reused_pid", "tests/test_unix_socket.py::test_client_verifies_actual_server_before_sending_payload", "tests/test_unix_socket.py::test_fork_uses_actual_kernel_identity_without_ancestry_fallback", "tests/test_unix_socket.py::test_non_connected_pathname_streams_deny", "tests/test_unix_socket.py::test_credentials_and_process_generation_rechecked", "tests/test_unix_socket.py::test_process_replacement_between_checks_denies", "tests/test_unix_socket.py::test_foreign_or_unknown_endpoint_denies", "tests/test_unix_socket.py::test_unsupported_platform_denies", "tests/test_unix_socket.py::test_truncated_kernel_credential_rejected"]
+note = "Kernel credentials and live process birth bind a connected pathname stream to an exact same-user process generation; malformed, unstable, unsupported or unrelated endpoints fail closed. Actual Mac process tests include both client and server verification. Linux credential decoding is unit-tested; Linux hardware remains unverified. Socket identity does not prove descriptor custody after an authorized process deliberately delegates a connected descriptor."
+
+[[group]]
+match = ["parser:fleet/producer_bootstrap.py"]
+status = "covered"
+count = 1
+tests = ["tests/test_producer_bootstrap.py::test_actual_plain_bootstrap_then_pinned_tls_control", "tests/test_producer_bootstrap.py::test_every_binding_field_is_mac_bound", "tests/test_producer_bootstrap.py::test_malformed_stale_or_substituted_proofs_fail", "tests/test_producer_bootstrap.py::test_other_installation_secret_and_old_nonce_cannot_authenticate", "tests/test_producer_bootstrap.py::test_control_der_and_process_must_both_match", "tests/test_producer_bootstrap.py::test_existing_identity_is_never_created_repaired_or_followed", "tests/test_producer_bootstrap.py::test_replaced_file_during_read_and_symlink_ancestor_denied", "tests/test_producer_bootstrap.py::test_valid_mac_still_requires_actual_bootstrap_process", "tests/test_producer_bootstrap.py::test_unmodified_signed_reply_expires"]
+note = "The internal holder reads an existing private installation identity without creation or repair. A domain-separated MAC binds the complete typed, fresh daemon context; actual bootstrap process identity precedes control-path use, then exact TLS DER and control process identity are checked. This authenticates software only and grants no source, owner or compute authority. Copying the existing software installation secret can forge its bootstrap proof; no hardware clone resistance or complete producer transport is claimed."
+
+[[group]]
+match = ["egress:fleet/studio_webhook_setup.py:LocalSender._send"]
+status = "covered"
+count = 1
+tests = ["tests/test_studio_webhook_setup.py::test_actual_tls_sender_receipt_duplicate_and_changed_sample", "tests/test_studio_webhook_setup.py::test_unknown_never_retransmits_or_accepts_new_key_after_reload", "tests/test_studio_webhook_setup.py::test_lost_ack_reconciles_only_exact_actual_inbox", "tests/test_studio_webhook_setup.py::test_current_epoch_and_tls_identity_control_availability", "tests/test_studio_webhook_setup.py::test_tls_redirect_is_never_followed_even_back_to_same_url", "tests/test_studio_webhook_setup.py::test_sender_never_consults_ambient_authorization", "tests/test_studio_webhook_setup.py::test_ca_signed_different_leaf_is_refused_before_http_bytes"]
+note = "The fixed synthetic sender uses only the existing local app listener and client identity through maintained HTTPS. A private request context pins the exact leaf before HTTP bytes despite global pin changes. Current authority, bounded replies, no ambient authorization, no redirects and one attempt are exercised; lost acknowledgements reconcile exact inbox evidence without retransmission. No external connector account is claimed."
+
+[[group]]
+match = ["spawn:fleet/dependency_proof.py:_layout"]
+status = "covered"
+count = 1
+tests = ["tests/test_dependency_proof.py::test_actual_layout_ignores_hostile_pythonpath", "tests/test_dependency_proof.py::test_malformed_layout_is_a_controlled_proof_failure", "tests/test_dependency_proof.py::test_actual_cold_checks_are_coalesced_and_warm_calls_launch_no_subprocesses", "tests/test_dependency_proof.py::test_site_hooks_and_customization_are_not_metadata_discovery", "tests/test_dependency_proof.py::test_layout_roots_must_be_confined_without_aliases", "tests/test_dependency_proof.py::test_actual_setuptools_distutils_hook_does_not_repeat_cold_verification"]
+note = "Fixed isolated startup-free layout discovery verifies the exact managed executable, prefix and unique confined sites. Hostile startup paths and hooks cannot select metadata. Versions come from bounded descriptor-verified singleton project and version fields; cached proofs require fresh matching package and file evidence plus strict cold artifact verification."
+
+[[group]]
+match = ["egress:fleet/studio_destinations.py:_configuration"]
+status = "n/a"
+tests = ["tests/test_studio_destinations.py::test_crud_is_revision_checked_idempotent_and_never_contacts_endpoint", "tests/test_studio_destinations.py::test_unsafe_endpoint_rejected_without_echoing_input"]
+note = "URL syntax configuration only: no address resolution or socket; fixed delivery transport has separate network coverage"
+
+[[group]]
+match = ["route:fleet/studio_destinations.py:/ui/studio/*"]
+status = "covered"
+tests = ["tests/test_studio_destinations.py::test_actual_origin_scope_and_membership_not_owner_flag_authorize", "tests/test_studio_destinations.py::test_route_rejects_unknown_fields_duplicate_json_and_boolean_revision", "tests/test_studio_destinations.py::test_historical_attestation_never_restores_execution_or_chooses_new_endpoint", "tests/test_studio_destinations.py::test_resource_or_interactive_revocation_blocks_delivery_reads_and_actions"]
+note = "Direct adapter tests exercise current owner origin/scope, revoked resources, bounded hostile JSON and historical actions without restoring authority; these do not claim full factory HTTP coverage"
+
+[[group]]
+match = ["human:studio/engine.py:WorkflowEngine._dispatch"]
+status = "n/a"
+tests = ["tests/test_studio_resident_service.py::test_resident_mint_observes_persisted_intent_before_prepare", "tests/test_studio_resident_service.py::test_only_named_presubmit_busy_is_pending", "tests/test_studio_resident_service.py::test_guard_preflight_never_turns_resource_denial_into_review"]
+note = "Internal resident execution permit under the authorized principal and private worker proof; no person authority, signing permission or human grant is minted"
+
+
+[[group]]
+match = ["route:fleet/studio_webhooks.py:/studio/ingest/*", "route:fleet/api.py:/studio/ingest/*"]
+status = "covered"
+count = 2
+tests = ["tests/test_studio_stream_http.py::test_actual_hmac_ingress_uses_only_source_authority_and_atomic_backpressure", "tests/test_studio_webhooks.py::test_real_tls_replay_attaches_and_different_raw_content_conflicts", "tests/test_studio_webhooks.py::test_authentication_and_routing_substitution_fails_without_admission", "tests/test_studio_webhooks.py::test_payload_injection_is_data_not_source_or_execution_authority", "tests/test_studio_webhooks.py::test_revoke_copy_rotation_and_missing_wiring_fail_closed", "tests/test_studio_webhooks.py::test_revocation_after_verification_is_rechecked_at_atomic_admission", "tests/test_studio_webhooks.py::test_plain_http_cannot_use_a_valid_source_signature"]
+note = "Actual TLS ingress verifies a current source-scoped HMAC over the exact path, generation, timestamp, event identity and raw body. Forged, replayed with changed content, copied, revoked or plaintext requests cannot admit work; untrusted records cannot choose execution or grants."
+
+[[group]]
+match = ["listener:studio/streams.py:Streams.activate"]
+status = "n/a"
+count = 1
+tests = []
+note = "This bind call associates an existing software-owned webhook source with a subscription grant. It neither creates a socket nor listens for connections."
+
+[[group]]
+match = ["route:fleet/studio_stream_routes.py:/ui/studio/sources", "route:fleet/studio_stream_routes.py:/ui/studio/subscriptions*", "route:fleet/studio_routes.py:/ui/studio/sources*", "route:fleet/studio_routes.py:/ui/studio/subscriptions*"]
+status = "covered"
+count = 4
+tests = ["tests/test_studio_stream_http.py::test_weak_session_cannot_delegate_and_revocation_blocks_output", "tests/test_studio_stream_http.py::test_managed_source_revoke_between_bind_and_persist_creates_nothing", "tests/test_studio_stream_http.py::test_expanded_group_or_sweep_manifest_remains_exact", "tests/test_studio_stream_http.py::test_restart_resumes_delegation_without_any_browser_identity", "tests/test_studio_stream_http.py::test_pause_and_cancel_release_source_scanners"]
+note = "Actual authenticated HTTP routes require strong current owner authority for source registration and subscription controls. Source epochs are checked atomically at persistence; group and sweep snapshots remain exact, and revoked service authority blocks live results across browser expiry and daemon restart."
+
+[[group]]
+match = ["egress:studio/stream_delivery.py:*"]
+status = "covered"
+count = 4
+tests = ["tests/test_studio_stream_delivery.py::test_any_private_dns_answer_refuses_even_with_ambient_allowlist", "tests/test_studio_stream_delivery.py::test_possible_send_failure_never_tries_second_dns_address", "tests/test_studio_stream_delivery.py::test_forged_or_malformed_receipt_does_not_complete", "tests/test_studio_stream_delivery.py::test_maintained_socket_connects_pinned_ip_with_original_tls_sni_and_host", "tests/test_studio_stream_delivery.py::test_ambiguous_duplicate_receipt_fields_remain_uncertain", "tests/test_studio_stream_delivery.py::test_revocation_before_and_after_possible_send"]
+note = "Registered HTTPS deliveries reject every private DNS answer, pin the actual socket to one public address with the original TLS name, refuse redirects and ambient credentials, and send once. Malformed or ambiguous receipts and possible-send failures remain interrupted, with current authorization checked across the attempt."
+
+[[group]]
+match = ["spawn:serve/decision_process.py:DecisionProcess.start", "spawn:serve/decision_launch.py:OwnedBroker.start"]
+status = "covered"
+count = 2
+tests = ["tests/test_decision_residents.py::test_managed_host_cannot_be_created_without_broker_grant", "tests/test_decision_residents.py::test_owner_transfer_failure_keeps_uncertain_child_and_memory_tracked", "tests/test_decision_residents.py::test_nonreading_host_pipe_remains_cancellable", "tests/test_decision_launch.py::test_start_uses_fixed_managed_entrypoint_and_attaches", "tests/test_decision_launch.py::test_lost_parent_ack_keeps_possible_admitted_child_tracked", "tests/test_decision_launch.py::test_partial_ack_with_open_writer_is_bounded_and_never_admits"]
+note = "Fixed managed child launches require current compute integrity and broker admission. Daemon-owned launches bind the actual parent and child generations through private bounded frames; lost acknowledgement retains ownership, and partial frames cannot hang admission. Host cleanup retains compute and memory until exit is proven."
+
+[[group]]
+match = ["route:fleet/studio_routes.py:/ui/studio/resources/decision/install"]
+status = "covered"
+count = 1
+tests = ["tests/test_studio_decision_setup.py::test_configure_cannot_select_download_or_execution", "tests/test_studio_decision_setup.py::test_download_policy_and_current_setup_access_are_required", "tests/test_studio_decision_setup.py::test_revocation_between_libraries_and_model_fetch_stops_new_downloads", "tests/test_studio_decision_setup.py::test_duplicate_click_attaches_pending_install"]
+note = "Explicit authenticated setup accepts an empty body and only the fixed dependency extra and compiled official model pins. Current resource and download policy are rechecked, while duplicate clicks attach to the durable setup job."
+
+[[group]]
+match = ["route:fleet/studio_native_picks.py:/ui/studio/native-picks/*", "route:fleet/studio_native_picks.py:/ui/studio/sources/pick"]
+status = "covered"
+count = 2
+tests = ["tests/test_studio_native_picks.py::test_native_endpoint_never_accepts_browser_headers_or_forged_secret", "tests/test_studio_native_picks.py::test_authenticated_picker_request_and_private_callback_route", "tests/test_studio_native_picks.py::test_revoke_or_expire_between_choosing_and_completion", "tests/test_studio_native_picks.py::test_forged_native_selection_proofs_are_refused", "tests/test_studio_native_picks.py::test_restart_never_resurrects_nonce_or_reopens_chooser", "tests/test_studio_native_picks.py::test_native_endpoint_rejects_injected_selection_fields"]
+note = "Original-source selection requires the authenticated Studio principal and a current resource callback. Exact native callbacks additionally require the private local app launch proof, nonce and single-use chooser claim; hostile browser headers, forged proofs, stale authority and injected fields cannot mint a watch source."
+
+[[group]]
+match = ["spawn:serve/python_runtime.py:command"]
+status = "covered"
+count = 1
+tests = ["tests/test_serve_python_runtime.py::test_unready_managed_runtime_never_falls_back", "tests/test_serve_python_runtime.py::test_installed_or_forged_source_shape_cannot_downgrade", "tests/test_serve_python_runtime.py::test_isolated_module_probe_executes_without_model_import", "tests/test_serve_python_runtime.py::test_server_environment_preserves_only_explicit_hub_credential"]
+note = "The dependency probe uses a fixed isolated module check and the verified managed interpreter. Missing or changed runtime proofs refuse dispatch; installed source shapes cannot select an editable interpreter, and inherited Python and loader injection variables are removed."
+
+[[group]]
 match = ["route:fleet/studio_device_routes.py:/studio/v1/executions/*", "route:fleet/studio_device_routes.py:/studio/v1/resources/*"]
 status = "covered"
 count = 2
@@ -34,6 +256,13 @@ status = "covered"
 count = 1
 tests = ["tests/test_onboard_join_code.py::test_a_request_nobody_accepted_cannot_start_an_exchange", "tests/test_onboard_join_code.py::test_a_confirmation_cannot_be_replayed", "tests/test_onboard_join_code.py::test_plain_http_is_refused_even_from_this_machine", "tests/test_onboard_join_code.py::test_oversize_and_malformed_bodies_are_refused", "tests/test_onboard_join_code.py::test_a_member_cannot_be_swapped_for_another_mid_conversation"]
 note = "Join exchanges require accepted requests over the protected transport; malformed and oversized bodies, replayed confirmations and replacement members are refused."
+
+[[group]]
+match = ["route:fleet/studio_routes.py:/ui/studio/destinations*", "route:fleet/studio_routes.py:/ui/studio/deliveries*"]
+status = "covered"
+count = 2
+tests = ["tests/test_studio_delivery_service.py::test_actual_http_outbound_receipt_settles_and_retry_never_resends", "tests/test_studio_delivery_service.py::test_current_destination_change_blocks_send_and_record_body_mutation_refuses", "tests/test_studio_delivery_service.py::test_revoked_service_history_owner_attestation_settles_without_sending", "tests/test_studio_delivery_service.py::test_stale_selected_revision_never_creates_a_subscription", "tests/test_studio_delivery_browser.py::test_concurrent_destination_revision_change_rejects_stream_creation"]
+note = "Authenticated delivery routes bind explicit output projections to a selected destination revision. Current authority and body integrity are rechecked before sending; historical owner attestation settles a recorded uncertain outcome without sending again. Stale destination selection cannot create a subscription."
 
 [[group]]
 match = ["route:fleet/studio_routes.py:/ui/studio/*"]
@@ -404,7 +633,7 @@ tests = ["tests/test_fleet_environment.py::test_runtime_revision_probe_rejects_s
 note = "Real interpreter paths containing shell punctuation remain literal argv; unstamped and mismatched revisions cannot start work, and probing has an explicit timeout and no shell"
 
 [[group]]
-match = ["spawn:fleet/compute_artifact.py:probe"]
+match = ["spawn:fleet/compute_artifact.py:_checked"]
 status = "covered"
 count = 1
 tests = ["tests/test_compute_artifact.py::test_probe_uses_fixed_isolated_argv_and_refuses_hostile_result",
@@ -412,17 +641,19 @@ tests = ["tests/test_compute_artifact.py::test_probe_uses_fixed_isolated_argv_an
 note = "The isolated interpreter ignores injected Python startup and manifest environment values, rejects unexpected source and compiled bytecode plus changed revisions, and uses fixed argv with trusted JSON stdin and no shell, retry or fallback"
 
 [[group]]
-match = ["egress:fleet/studio_transport.py:MemberExecution.__init__",
-         "egress:fleet/studio_transport.py:MemberExecution._wire"]
+match = ["egress:fleet/studio_transport.py:MemberExecution._wire"]
 status = "covered"
-count = 2
+count = 1
 tests = ["tests/test_studio_transport.py::test_only_discovered_https_enrolled_member_is_accepted",
+         "tests/test_studio_device_http.py::test_member_tls_redirects_never_contact_a_second_endpoint",
+         "tests/test_studio_device_http.py::test_member_exact_leaf_survives_global_pin_replacement",
+         "tests/test_http.py::test_explicit_no_redirect_contacts_once_for_hostnames_and_loopback",
          "tests/test_studio_transport.py::test_plaintext_oversized_redirect_and_error_responses_are_refused",
          "tests/test_studio_transport.py::test_revocation_is_checked_before_each_request",
          "tests/test_studio_transport.py::test_selected_device_identity_cannot_change_after_binding",
          "tests/test_studio_transport.py::test_response_must_be_bound_to_its_sealed_request",
          "tests/test_studio_transport.py::test_collect_rejects_another_dispatch_before_fetching"]
-note = "Fixed Studio endpoints require the selected enrolled device certificate, current authorization and request-bound sealed responses; redirects, oversized or plaintext responses, changed identities and another dispatch's artifacts are refused"
+note = "Fixed Studio endpoints require an exact selected enrolled device certificate in a request-owned TLS context, strict current authorization and request-bound sealed responses. Global pin replacement cannot substitute another certificate, even a different leaf signed by the same CA. Numeric and hostname redirects, including back to the same URL, cannot send a second request in normal or cancellable HTTP paths. Oversized or plaintext responses, changed identities and another dispatch's artifacts are refused. Constructor-only context creation no longer registers a global network pin; network contact occurs in _wire."
 
 [[group]]
 match = ["spawn:fleet/managed_compute.py:report"]
@@ -628,7 +859,7 @@ note = "actual subprocess receives hostile arguments only inside JSON and closes
 match = ["desktop:app/src-tauri/capabilities/main.json"]
 status = "covered"
 count = 1
-tests = ["tests/test_redteam_desktop_capabilities.py"]
+tests = ["tests/test_redteam_desktop_capabilities.py", "tests/test_studio_native_picker.py"]
 note = "compiled Tauri authority grants only the daemon's own origin and port, rejects foreign origins, ports and windows, shell execution and filesystem reads; the window stays on its own origin; the daemon is recognised only by a proof from a secret its user alone can read"
 
 [[group]]

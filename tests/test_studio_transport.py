@@ -1,5 +1,6 @@
 """Fixed sealed member actions and digest-checked resource round trips."""
 import json
+import ssl
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
@@ -35,10 +36,10 @@ class Response:
 
 @pytest.fixture
 def device(tmp_path, monkeypatch):
-    monkeypatch.setattr(transport.tls, 'pinned_context', lambda cert: ('pinned', cert))
-    monkeypatch.setattr(transport.http, 'pin', lambda host, context: None)
+    monkeypatch.setattr(transport.tls, 'pinned_context', lambda cert, *, context_type: context_type(ssl.PROTOCOL_TLS_CLIENT))
     member = SimpleNamespace(base_url='https://127.0.0.1:12345', token=macauth.PREFIX + 'a' * 64, timeout=5,
-                             beacon=SimpleNamespace(cert='enrolled-cert', machine='target', host='127.0.0.1', hostname='target', port=12345))
+                             beacon=SimpleNamespace(cert='ZW5yb2xsZWQtY2VydA==',
+                                                    machine='target', host='127.0.0.1', hostname='target', port=12345))
     live = {'allowed': True}
     store = TransferStore(tmp_path / 'target', max_bytes=10 * CHUNK_BYTES,
                           authorize=lambda source, dispatch: source == SOURCE and live['allowed'])
@@ -47,6 +48,9 @@ def device(tmp_path, monkeypatch):
         assert options.headers[sealing.HEADER] == '2'
         assert options.error_body_limit <= transport.MAX_REPLY + sealing.NONCE_BYTES + 16
         assert options.retry.tries == 1
+        assert options.follow_redirects is False
+        assert isinstance(options.tls_context, transport.tls.ExactContext)
+        assert options.tls_context.expected_der == b'enrolled-cert'
         options.guard(url)
         parts = urlsplit(url)
         calls.append((method, parts.path))
@@ -80,6 +84,55 @@ def test_fixed_sealed_request_no_fallback_actions(device):
     assert len(calls) == 1
     assert client.request("resume", {"dispatch_id": DISPATCH}) == {"accepted": True}
     assert calls[-1] == ("POST", "/studio/v1/executions/resume")
+    assert client.request("decision-authorize", {"permit_id": "permit"}) == {"accepted": True}
+    assert calls[-1] == ("POST", "/studio/v1/executions/decision-authorize")
+
+
+@pytest.mark.parametrize('value', [None, 1, 'yes'])
+def test_member_authorization_requires_exact_true(device, value):
+    client, _, live, calls = device
+    live['allowed'] = value
+    with pytest.raises(PermissionError):
+        client.request('validate', {'dispatch_id': DISPATCH})
+    assert calls == []
+
+
+def test_member_context_is_owned_even_when_global_endpoint_pin_changes(device):
+    from poolhouse import http
+
+    client, _, _, _ = device
+    context = client.context
+    http.pin('127.0.0.1:12345', ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT))
+    try:
+        assert client.request('validate', {'dispatch_id': DISPATCH}) == {'accepted': True}
+        assert client.context is context
+    finally:
+        http.pin('127.0.0.1:12345', None)
+
+
+def test_explicit_existing_identity_keeps_device_pin_and_requires_client_key(device, tmp_path, monkeypatch):
+    client, _, _, _ = device
+    identity = transport.tls.Identity(tmp_path / "cert.pem", tmp_path / "key.pem", b"certificate", 123.0)
+    calls = []
+    context = transport.tls.ExactContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.load_cert_chain = lambda cert, key: calls.append((cert, key))
+    def pinned(cert, *, who, context_type):
+        assert cert == client.member.beacon.cert and who is identity
+        assert context_type is transport.tls.ExactContext
+        return context
+    monkeypatch.setattr(transport.tls, "pinned_context", pinned)
+    selected = transport.MemberExecution(client.member, lambda: True, identity=identity)
+    assert selected.context is context
+    assert calls == [(str(identity.certfile), str(identity.keyfile))]
+    def missing(*_args):
+        raise OSError("existing client identity unavailable")
+    context.load_cert_chain = missing
+    calls.clear()
+    with pytest.raises(OSError, match="unavailable"):
+        transport.MemberExecution(client.member, lambda: True, identity=identity)
+    assert calls == []  # Failure cannot publish a context without its client proof.
+    with pytest.raises(TypeError):
+        transport.MemberExecution(client.member, lambda: True, identity={"certfile": "chosen"})
 
 
 def test_explicit_multichunk_stage_collect_and_duplicate_submission(device, tmp_path):

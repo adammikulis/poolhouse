@@ -9,6 +9,7 @@ from typing import Any
 
 from poolhouse.fleet.hardware import detect_device
 from poolhouse.fleet.telemetry import gpu_telemetry
+from poolhouse.serve.python_requirements import installed_mlx
 
 __all__ = ["apple_telemetry", "gpu_power", "report", "torch_report", "vendor_of"]
 
@@ -133,6 +134,8 @@ def report() -> dict[str, Any]:
     """Accelerator facts, as far as they can be established on this machine."""
     out: dict[str, Any] = {}
     out["backends"] = [name for name in ARRAY_LIBRARIES if find_spec(name) is not None]
+    out["serving_backends"] = ['mlx-tree'] if (installed_mlx() and all(
+        find_spec(name) is not None for name in ('mlx', 'mlx_lm', 'mlx_vlm'))) else []
     try:
         profile = detect_device()
         out["vendor"] = str(profile.vendor)

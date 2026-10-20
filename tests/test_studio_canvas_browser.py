@@ -11,6 +11,7 @@ import pytest
 from browser_expect import expect
 from test_fleet_ui import Serving
 
+from poolhouse.fleet import studio_service
 from poolhouse.scrape.browser import Window, browser
 
 pytestmark = pytest.mark.slow
@@ -439,9 +440,10 @@ def test_actual_sweep_controls_save_typed_choices(tmp_path, studio_browser):
         served.close()
 
 
-def seed_report_artifact(served):
+def seed_report_artifact(served, source_id):
     engine = served.ui.studio
-    source = engine._all_runs()[0]
+    source = engine.store.get('run', source_id, studio_service.scope(served.ui))
+    assert source['state'] == 'done'
     ident = uuid.uuid4().hex
     node = {'id': 'report', 'type': 'report', 'version': 1, 'parameters': {}, 'bindings': {}}
     folder = served.files / 'studio' / ident / hashlib.sha256(b'report').hexdigest()[:24]
@@ -465,9 +467,11 @@ def test_actual_run_logs_and_declared_artifact_download(tmp_path, studio_browser
         with studio_browser() as page:
             page.goto(f'http://127.0.0.1:{served.port}/ui/')
             add(page, 'Prompt template')
-            page.get_by_role('button', name='Run workflow', exact=True).click()
+            with page.expect_response(lambda response: response.request.method == 'POST' and response.url.endswith('/ui/studio/runs')) as submitted:
+                page.get_by_role('button', name='Run workflow', exact=True).click()
+            source_id = submitted.value.json()['run']['id']
             expect(page.locator('#studio-runs')).to_contain_text('done')
-            seed_report_artifact(served)
+            seed_report_artifact(served, source_id)
             page.get_by_role('button', name='Refresh', exact=True).click()
             page.get_by_role('button', name='Report artifact', exact=True).click()
             page.get_by_role('button', name='View logs · report', exact=True).click()

@@ -89,6 +89,11 @@ def answer(handler, ui, path: str, body=None) -> bool:
             studio = getattr(ui, "studio", None)
             authorized = bool(studio and studio.dispatcher and studio.dispatcher.authorize_execution(source, request))
             handler._send(200, {"authorized": authorized})
+        elif action == "decision-authorize":
+            issuer = getattr(ui, "studio_decision_issuer", None)
+            if issuer is None:
+                raise PermissionError("This daemon has no current resident decision issuer.")
+            handler._send(200, issuer.authorize(request, handler.client_address, handler.connection.getsockname()))
         elif action == "validate":
             if set(request) != {"nodes"} or not isinstance(request["nodes"], list):
                 raise ValueError("Choose fixed nodes to validate on this device.")
