@@ -252,7 +252,7 @@ edge needed `poolhouse.optional`.
 | `src/poolhouse/redteam/` and its test files (`tests/test_redteam_*.py`, 49 files) | 2 | Leaves the wheel only. The harness, scenarios and tests stay, still run, and still run in `redteam.yml`. |
 | Red-team rows for ingest, sources, scrape, web, bench, speech | 4, 6, 8 | Same: moved with their package. `web` has 4 covered rows (private-address refusal, robots, redirect); they and `tests/test_web.py` move with it. |
 | `net/pdf*` hostile-PDF children and `tests/test_pdf_engine.py`, `test_pdf_render.py` | 6 follow-up | Not removed. They stay in `net` until D5. |
-| `scripts/land_review.py` policy, `test_land_review_policy.py`, `test_land_sealed.py`, `test_land_trust.py`, `stop_landed.py`, `protectedwrites.py` entries | 7 | Owner-ordered deletion of a gate. It needs the attack-first pass: what a standing reject currently stops, and that `pre-push` still refuses a standing reject of the pushed commit after the lander is gone. |
+| The landing review gate (`docs/notes/landing-deletion.md`) | 7 | Owner-ordered deletion of a gate. The security note of that document is its attack-first pass; `scripts/hooks/pushed` refuses a standing reject of a pushed commit. |
 | Gates (`scripts/gates/*`) | all | Not touched. Isolation keeps code under every gate and under `redteam_coverage.py --check`, which is why section 3 does not move code out of `src/poolhouse`. |
 
 Review order: slices 3 to 6 are not security-adjacent in what they add, but each removes or moves tests under
