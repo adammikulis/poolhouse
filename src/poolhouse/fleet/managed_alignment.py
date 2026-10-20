@@ -119,7 +119,7 @@ def idle(environment, quiet):
     if not quiet():
         raise Busy('Existing work is still using its runtime')
     with maintenance.intent() as writer:
-        if not quiet() or managed_busy(targets(environment)) or not broker_idle():
+        if not quiet() or not broker_idle() or managed_busy(targets(environment)):
             raise Busy('Existing managed work is still using its runtime')
         with writer.exclusive():
             if not quiet() or managed_busy(targets(environment)):

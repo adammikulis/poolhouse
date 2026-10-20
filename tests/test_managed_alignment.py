@@ -358,3 +358,36 @@ def test_crossprocess_accounting_reader_racing_drain_prevents_mutation(tmp_path,
             child.stdin.close()
             child.wait(timeout=5)
             child.stdout.close()
+
+
+@pytest.mark.parametrize('leftover', [False, True])
+def test_managed_idle_resident_is_drained_before_scanning_surviving_children(tmp_path, monkeypatch, leftover):
+    environment = Environment(tmp_path / 'managed')
+    environment.python.parent.mkdir(parents=True)
+    environment.python.symlink_to(sys.executable)
+    children = [subprocess.Popen([str(environment.python), '-c', 'import time;time.sleep(60)'],
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                for _ in range(2 if leftover else 1)]
+    drained = []
+    def drain():
+        children[0].terminate()
+        children[0].wait(timeout=5)
+        drained.append(True)
+        return True
+    monkeypatch.setattr(alignment, 'broker_idle', drain)
+    try:
+        assert alignment.managed_busy([environment])
+        if leftover:
+            with pytest.raises(Busy), alignment.idle(environment, lambda: True):
+                pytest.fail('An unrelated surviving managed child must still block mutation')
+            with maintenance.read():
+                pass
+        else:
+            with alignment.idle(environment, lambda: True):
+                assert maintenance.transaction_record() is None
+        assert drained == [True]
+    finally:
+        for child in children:
+            if child.poll() is None:
+                child.terminate()
+            child.wait(timeout=5)
