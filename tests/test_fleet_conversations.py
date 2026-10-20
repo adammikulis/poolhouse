@@ -97,17 +97,17 @@ class TestSearching:
 
 
 def test_conversation_settings_and_model_survive_reopening(store, tmp_path):
-    made = store.start(model="small", settings={"mode": "coding", "project": "/tmp/project", "effort": "low", "max_output_tokens": 23456})
+    made = store.start(model="small", settings={"project": "/tmp/project", "effort": "low", "max_output_tokens": 23456})
     store.append(made.id, "user", "Review the brakes")
     store.update(made.id, model="large", settings={"temperature": .3, "max_effort": "high"}, title="Brake review")
     again = Conversations(tmp_path / "chats").get(made.id)
     assert again.model == "large"
-    assert again.settings["mode"] == "coding"
+    assert "mode" not in again.settings
     assert again.settings["project"] == "/tmp/project"
     assert again.settings["temperature"] == .3
     assert again.settings["effort"] == "low"
     assert again.settings["max_effort"] == "high"
-    assert again.settings["harness"] == "pi"
+    assert again.settings["harness"] == ""
     assert again.settings["context"] == 0
     assert again.settings["max_output_tokens"] == 23456
     assert [message.content for message in again.messages] == ["Review the brakes"]
@@ -134,7 +134,7 @@ def test_old_saved_messages_acquire_default_settings_and_version_on_update(store
     path.write_text(json.dumps(raw))
     old = store.get("legacy")
     assert old.model == "old-model"
-    assert old.settings["mode"] == "chat"
+    assert "mode" not in old.settings
     assert old.settings["max_output_tokens"] is None
     store.update("legacy", settings={"temperature": .7})
     saved = store.get("legacy").public()

@@ -55,7 +55,7 @@ def test_model_names_and_statuses_have_contrast_and_keyboard_selection(model_cho
         assert contrast(row['nameColor'], row['background']) >= 4.5, row
         for status in row['statuses']:
             assert contrast(status, row['background']) >= 4.5, row
-    search = page.locator('#chat-model-dialog').get_by_label('Search models', exact=True)
+    search = page.locator('#chat-model-dialog').get_by_label('Search models and workspace agents', exact=True)
     search.fill('Cedar')
     expect(choices).to_have_count(1)
     search.press('Tab')

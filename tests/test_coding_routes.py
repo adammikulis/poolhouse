@@ -18,12 +18,13 @@ from poolhouse.workspace import coding_turns
 def coding_api(tmp_path, monkeypatch, workspace_node):  # noqa: F811
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_HOME", str(tmp_path / "workspace"))
     monkeypatch.setattr(coding_turns, "worker", fixture_worker)
+    monkeypatch.setattr(coding_turns.harnessing, "binary_for", lambda name: "fixture-cli" if name == "codex" else "")
     server = signed(Serving(tmp_path))
     server.ui.settings.setup_done = True
     server.ui.conversations = Conversations(tmp_path / "chats")
     folder = tmp_path / "project"
     folder.mkdir()
-    made = server.ui.conversations.start(model="test-model", settings={"mode": "coding", "project": str(folder), "role": "read-only", "harness": "codex"})
+    made = server.ui.conversations.start(model="test-model", settings={"project": str(folder), "role": "read-only", "harness": "codex"})
     try:
         yield server, made, workspace_node
     finally:
@@ -198,3 +199,21 @@ def test_cancel_and_status_stay_responsive_while_conversation_graph_is_locked(co
     assert server.call("/ui/coding/ffffffffffff/status")[0] == 400
     assert post(server, conversation.id, "start", {"message": "continue inspection"})[0] == 202
     assert finished(server, conversation.id)["state"] == "completed"
+
+
+@pytest.mark.parametrize("settings", [{"harness": ""}, {"harness": "missing-runtime"}, {"role": ""},
+                                      {"role": "not-a-role"}, {"project": "/missing-project"}])
+def test_incomplete_tool_capability_never_appends_or_launches(coding_api, settings):
+    server, conversation, _node = coding_api
+    server.ui.conversations.update(conversation.id, settings=settings)
+    assert post(server, conversation.id, "start", {"message": "must not execute"})[0] == 400
+    assert server.ui.conversations.get(conversation.id).messages == []
+    assert server.ui.coding_turns.turns == {}
+
+
+def test_unavailable_runtime_never_appends_or_launches(coding_api, monkeypatch):
+    server, conversation, _node = coding_api
+    monkeypatch.setattr(coding_turns.harnessing, "binary_for", lambda name: "")
+    assert post(server, conversation.id, "start", {"message": "must not execute"})[0] == 400
+    assert server.ui.conversations.get(conversation.id).messages == []
+    assert server.ui.coding_turns.turns == {}
