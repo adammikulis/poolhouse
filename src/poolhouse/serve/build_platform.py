@@ -17,7 +17,7 @@ from poolhouse.http import ServerError
 from poolhouse.serve.binary import child_env, is_windows
 
 __all__ = ["arches_at", "arches_from_source", "can_build_from_source", "cmake_flags", "copy_flat",
-           "now_iso", "server_name", "version_of", "vulkan_available"]
+           "now_iso", "server_name", "verify_libraries", "version_of", "vulkan_available"]
 
 # `LLM_ARCH_QWEN4EXP, "qwen4exp"` -- every architecture name llama.cpp's own source reads,
 # read straight out of the enum-to-string table rather than kept as a separate list.
@@ -114,3 +114,37 @@ def arches_at(ref: str, *, repo: str = "ggml-org/llama.cpp") -> set[str]:
     if reply.status >= 400:
         return set()
     return set(_ARCH_NAME.findall(reply.body.decode("utf-8", errors="replace")))
+
+
+def verify_libraries(root: Path, names, environment: dict[str, str]) -> None:
+    """Reject dependency paths outside the verified provider and operating-system libraries."""
+    for name in names:
+        if name == 'LICENSE':
+            continue
+        done = subprocess.run(['/usr/bin/otool', '-l', str(root / name)], env=environment,
+                              capture_output=True, text=True, check=True)
+        command = ''
+        for line in done.stdout.splitlines():
+            fields = line.split()
+            if fields[:1] == ['cmd']:
+                command = fields[1]
+                if command == 'LC_DYLD_ENVIRONMENT':
+                    raise ValueError('The Bonsai runtime embeds a dynamic loader override')
+            if fields[:1] not in (['name'], ['path']):
+                continue
+            if command not in ('LC_LOAD_DYLIB', 'LC_LOAD_WEAK_DYLIB', 'LC_REEXPORT_DYLIB',
+                               'LC_LOAD_UPWARD_DYLIB', 'LC_RPATH'):
+                continue
+            value = fields[1]
+            if '..' in value.split('/'):
+                raise ValueError('The Bonsai runtime names an unverified dynamic library location')
+            if value.startswith(('/usr/lib/', '/System/Library/')):
+                continue
+            if command == 'LC_RPATH' and value in ('@loader_path', '@executable_path'):
+                continue
+            head, separator, relative = value.partition('/')
+            if (command != 'LC_RPATH' and separator and head in ('@rpath', '@loader_path', '@executable_path')
+                    and relative in names):
+                continue
+            raise ValueError('The Bonsai runtime names an unverified dynamic library location')
+
