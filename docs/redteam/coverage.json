@@ -9064,15 +9064,13 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
-    "tests/test_studio_devices.py",
-    "tests/test_studio_device_identity.py",
-    "tests/test_studio_device_http.py",
-    "tests/test_studio_security.py",
-    "tests/test_studio_engine.py",
-    "tests/test_studio_artifacts.py",
-    "tests/test_studio_contracts.py"
+    "tests/test_studio_stream_http.py::test_weak_session_cannot_delegate_and_revocation_blocks_output",
+    "tests/test_studio_stream_http.py::test_managed_source_revoke_between_bind_and_persist_creates_nothing",
+    "tests/test_studio_stream_http.py::test_expanded_group_or_sweep_manifest_remains_exact",
+    "tests/test_studio_stream_http.py::test_restart_resumes_delegation_without_any_browser_identity",
+    "tests/test_studio_stream_http.py::test_pause_and_cancel_release_source_scanners"
    ],
-   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+   "note": "Actual authenticated HTTP routes require strong current owner authority for source registration and subscription controls. Source epochs are checked atomically at persistence; group and sweep snapshots remain exact, and revoked service authority blocks live results across browser expiry and daemon restart."
   },
   {
    "id": "route:fleet/studio_routes.py:/ui/studio/subscriptions*",
