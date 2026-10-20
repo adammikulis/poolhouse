@@ -344,6 +344,63 @@ def test_request_tls_context_overrides_pin_for_normal_and_cancelled_open(monkeyp
     assert 'tls_context' not in repr(options)
 
 
+@pytest.mark.parametrize('value', [None, 0, 1, 'false'])
+def test_redirect_policy_requires_an_actual_boolean(value):
+    from poolhouse import http
+
+    with pytest.raises(TypeError, match='redirect'):
+        http.Options(follow_redirects=value)
+    assert http.Options().follow_redirects is True
+
+
+@pytest.mark.parametrize('cancelled', [False, True])
+@pytest.mark.parametrize('hostname', ['127.0.0.1', 'localhost'])
+@pytest.mark.parametrize('same_url', [False, True])
+@pytest.mark.parametrize('status', [301, 302, 307, 308])
+def test_explicit_no_redirect_contacts_once_for_hostnames_and_loopback(monkeypatch, cancelled, hostname, same_url, status):
+    import threading
+    import urllib.request
+    from http.server import BaseHTTPRequestHandler
+
+    from poolhouse import http, http_cancel
+
+    calls = []
+
+    class Redirect(BaseHTTPRequestHandler):
+        def do_POST(self):
+            calls.append(('POST', self.path))
+            self.send_response(status)
+            self.send_header('Location', self.path if same_url else '/another')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+
+        def do_GET(self):
+            calls.append(('GET', self.path))
+            self.send_response(200)
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+
+        def log_message(self, *_args):
+            pass
+
+    monkeypatch.setattr(urllib.request, 'getproxies', lambda: {})
+    server = Server(('127.0.0.1', 0), Redirect)
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    endpoint = f'http://{hostname}:{server.server_port}/original'
+    try:
+        options = http.Options(headers={'Authorization': ''}, follow_redirects=False,
+                               guard=lambda value: value, timeout=2)
+        with http_cancel.scope(http_cancel.Cancellation() if cancelled else None), pytest.raises(http.ServerError) as caught:
+            http.request_bytes(endpoint, method='POST', data=b'{}', options=options)
+        assert caught.value.status == status
+        assert calls == [('POST', '/original')]
+    finally:
+        server.shutdown()
+        server.server_close()
+        worker.join(timeout=2)
+
+
 def test_request_tls_context_cannot_be_serialized_configuration():
     from poolhouse import http
 

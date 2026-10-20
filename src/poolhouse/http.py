@@ -81,11 +81,14 @@ class Options:
     guard: Callable[[str], str] | None = field(default=None, repr=False)
     error_body_limit: int | None = None
     tls_context: ssl.SSLContext | None = field(default=None, repr=False)
+    follow_redirects: bool = True
 
     def __post_init__(self) -> None:
         object.__setattr__(self, 'headers', MappingProxyType(dict(self.headers)))
         if self.tls_context is not None and not isinstance(self.tls_context, ssl.SSLContext):
             raise TypeError('HTTP TLS context must be a software-owned SSLContext')
+        if type(self.follow_redirects) is not bool:
+            raise TypeError('HTTP redirect policy must be a boolean')
         limit = self.error_body_limit
         if limit is not None and (isinstance(limit, bool) or not isinstance(limit, int) or limit < 0):
             raise ValueError('HTTP error body limit must be a nonnegative integer')
@@ -238,7 +241,7 @@ class _Guarded(urllib.request.HTTPRedirectHandler):
 
 
 def _open(request: urllib.request.Request, timeout: float | None, guard: Callable[[str], str] | None,
-          context: ssl.SSLContext | None = None) -> Any:
+          context: ssl.SSLContext | None = None, follow_redirects: bool = True) -> Any:
     context = context if context is not None else _https_context(request.full_url)
     proxies = []
     if guard is not None:
@@ -249,14 +252,14 @@ def _open(request: urllib.request.Request, timeout: float | None, guard: Callabl
         if loopback:
             guard(request.full_url)
             proxies.append(urllib.request.ProxyHandler({}))
+    redirects = ([_NoRedirect()] if not follow_redirects else [_Guarded(guard)] if guard is not None else [])
     if control := http_cancel.active():
         handlers = [*proxies, *http_cancel.handlers(control, context)]
-        if guard is not None:
-            handlers.append(_Guarded(guard))
+        handlers.extend(redirects)
         return urllib.request.build_opener(*handlers).open(request, timeout=timeout)
-    if guard is None:
+    if guard is None and follow_redirects:
         return urllib.request.urlopen(request, timeout=timeout, context=context)  # noqa: S310
-    opener = urllib.request.build_opener(*proxies, _Guarded(guard), urllib.request.HTTPSHandler(
+    opener = urllib.request.build_opener(*proxies, *redirects, urllib.request.HTTPSHandler(
         context=context))
     return opener.open(request, timeout=timeout)
 
@@ -275,7 +278,7 @@ def open_stream(url: str, *, data: bytes | None = None, method: str | None = Non
     for attempt in range(tries):
         request = build_request(url, data=data, method=method, headers=dict(options.headers), token=options.token)
         try:
-            response = _open(request, options.timeout, options.guard, options.tls_context)
+            response = _open(request, options.timeout, options.guard, options.tls_context, options.follow_redirects)
             response.sealed = request.sealed
             return response
 
