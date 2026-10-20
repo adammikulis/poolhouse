@@ -14,8 +14,8 @@ abuse by one session is not kept (the owner never asked for one). The security f
   refused with the share named and every session of another tree still writes. A session's registration, and the return of a main
   session that ended, write an identity entry to its own share; a registration the log refuses leaves the registry as it was. Three
   stretches of the log are kept for what an agent cannot make at will: author rows stop `RESERVED_ROWS` rows (and `RESERVED_BYTES`
-  bytes) before the end, which leaves room for the node's rows about a session's end (its identity entry, and one audit for each session
-  however often it ends, skipped when there is no room: the registry is the record of an ending); the last `LAST_ROWS` rows (and
+  bytes) before the end, which leaves room for the node's rows about a session's end (its identity entry, which carries who ended it and
+  what that released, skipped when there is no room: the registry is the record of an ending); the last `LAST_ROWS` rows (and
   `LAST_BYTES` bytes) are for a head, so the log is still signed and synced, and for the rows a person's decision makes (a grant they
   signed or approved on the phone, a session they moved). A lease entry or a notice a full log refuses is skipped: the lease table is the
   record of a lease. A copy of another device's log that would pass the rows or the bytes is refused whole. A log that reaches the end
@@ -118,6 +118,7 @@ abuse by one session is not kept (the owner never asked for one). The security f
 | `memory_mb` | 0 (no budget) | `app/poolhouse-node/src/lease/types.rs:241` | megabytes the table grants and the most one request asks for | the owner, `<state>/lease-config.json` |
 | `MAX_TAG` | 64 | `app/poolhouse-node/src/lease/types.rs:16` | length of a lease tag | the owner, in source |
 | `max_ttl_s` | 86 400 | `app/poolhouse-node/src/lease/types.rs:251` | seconds one renewal keeps a lease; a quiet lease with no pid is kept `default_ttl_s` instead: a dead holder without a pid frees its resource | the owner, `<state>/lease-config.json` |
+| `MOST_HOLDERS` | 4096 | `app/poolhouse-node/src/lease/holders.rs:14` | (board, worktree, session) records of worktree claims, which write no board entry: `worktree-holders.json` is written whole when one is new; past it the oldest is dropped | the owner, in source |
 | `MOST_WAITERS` | 64 | `app/poolhouse-node/src/lease/rpc.rs:25` | `lease_wait` requests a node holds a thread for at once | the owner, in source |
 | `MOST_WAITERS_PER_LINEAGE` | 16 | `app/poolhouse-node/src/lease/rpc.rs:27` | `lease_wait` requests the processes of one process tree hold a thread for at once: one tree cannot take every place | the owner, in source |
 | `MAX_WAIT_MS` | 600_000 | `app/poolhouse-node/src/lease/rpc.rs:23` | milliseconds a `lease_wait` holds a server thread and keeps its queued request alive: a client that left would otherwise hold both for ever | the owner, in source |

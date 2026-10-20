@@ -34,16 +34,16 @@ Ranked by rows per day over the whole period.
 | 1 | test file claim and end: `testboard.BoardEvents.claimed` and `.finished`, one `test-run` and one `test-result` per test file | 17,669 | 2,400 | 2,477 | `scripts/test subscribe --key` | no | cut |
 | 2 | landing queue: `beat`, `state`, `request`, `cancel` rows and their `audit land.*` copies (the old lander) | 14,939 | 2,030 | 0 | the lander runner | no | removed 2026-10-17; `landing.rs` keeps the names as retired |
 | 3 | test job start and end: `job_started`, `job_done`, two rows per background job | 8,896 | 1,209 | 1,317 | followers of the thread, task watchers | no | cut; the end of a job is one row only when a task watcher follows it |
-| 4 | install claims: `runtime_deploy.owning`, acquire and release for the new tree, the launchers and the selection of every build | 8,033 | 1,091 | 85 | the claim check of the hooks | no | cut to the launchers and the selection of a switch that happens (4 rows); node follow-up for the rest |
-| 5 | branch and worktree claims: `claim`, `task_worktrees`, the harness hooks | 2,110 | 287 | 151 | the claim check, `scripts/worktrees` | yes, a refusal | kept |
-| 6 | edit and area claims: `harness_claims.reserve` (one area claim per file the generic harness edits) and `claim area` | 1,792 | 243 | 0 | the claim check of the hooks | yes, a refusal | kept; node follow-up |
-| 7 | identity rows: register, the model recorded at a subagent's stop, retire | 995 | 135 | 224 | every node (replicated state) | yes | kept; node follow-up |
+| 4 | install claims: `runtime_deploy.owning`, acquire and release for the new tree, the launchers and the selection of every build | 8,033 | 1,091 | 85 | the claim check of the hooks | no | cut to the launchers and the selection of a switch that happens (4 rows); the node writes none (device-only) |
+| 5 | branch and worktree claims: `claim`, `task_worktrees`, the harness hooks | 2,110 | 287 | 151 | the claim check, `scripts/worktrees` | yes, a refusal | branch claims kept; worktree claims cut (device-only) |
+| 6 | edit and area claims: `harness_claims.reserve` (one area claim per file the generic harness edits) and `claim area` | 1,792 | 243 | 0 | the claim check of the hooks | yes, a refusal | cut (device-only) |
+| 7 | identity rows: register, the model recorded at a subagent's stop, retire | 995 | 135 | 224 | every node (replicated state) | yes | one row at registration and one at the end; the end carries the audit |
 | 8 | landing reviews and their audit copy | 642 | 87 | 32 | `pre-push`, `land_accepts` | yes, a standing reject stops a push | kept |
 | 9 | announcements by hooks: `joined` and `done` of the session and subagent hooks | 603 | 82 | 98 | none | no | removed 2026-10-19 12:00 (`eb881b97c`) |
-| 10 | audit rows: `retire`, `announce_over_quota` | 483 | 66 | 92 | the audit view | no | kept; node follow-up |
+| 10 | audit rows: `retire`, `announce_over_quota` | 483 | 66 | 92 | the audit view | no | `retire` folded into the identity row of the end; `announce_over_quota` kept |
 | 11 | other announcements: `blocked` and `milestone` (ci, runtime failures, handed-back work, agents' own lines, the old lander's) | 334 | 45 | 21 | all sessions | yes | kept |
 | 12 | `joined` written by a subagent or an agent as free text, from `.claude/agents/branch-worker.md` and `branch-finisher.md` | 132 | 18 | 22 | none | no | cut |
-| 13 | server and port claims: `coordination` | 136 | 18 | 0 | the claim check | yes | kept |
+| 13 | server and port claims: `coordination` | 136 | 18 | 0 | the claim check | yes | cut (device-only) |
 | 14 | `stopped, done refused` milestones: `claude-subagent-stop` when its done post fails | 103 | 14 | 25 | none | no | cut |
 | 15 | `runtime ensure X (was Y)` milestones: `runtime_board.announce` on every switch | 101 | 14 | 11 | none | no | cut |
 | 16 | done post of a stopped subagent: `claude-subagent-stop` | 43 | 6 | 25 | the session subscribed to the subagent | yes | kept |
@@ -66,9 +66,28 @@ Each cut has a test that failed before it.
 | A runtime build takes its install claims after the build, its smoke and a free landing boundary, for the launchers and the selection only (`runtime_deploy.build_and_switch`; `tests/test_runtime_quiet.py`) | 6 rows for every build, a failed or deferred one included (72 a day on 2026-10-19) | 4 rows for a switch, 0 for a failed or deferred build, 0 for a runtime that is current |
 | `claude-subagent-stop` records the transcript model only when it differs from the model registered at start (`spawn` returns it, `subagent_records` keeps it; `tests/test_claude_workspace_hooks.py`) | about 35 | 0 for a subagent on its parent's model |
 
-The steady state after these cuts is about 600 rows a day (identity 190, claims 190, audit 92, reviews 32, the done post 25 and the
+The Rust cuts (`fix/fewer-board-writes-3`; `app/poolhouse-node/tests/board_rows.rs`, `tests/test_board_row_counts.py`):
+
+| cut | before | after |
+| --- | --- | --- |
+| A claim of a worktree, area, port, server or install leaves no `lease` row (`lease::types::DEVICE_CLAIMS`, `Lease::on_board`); a branch or task claim keeps its rows | 2 rows for each claim and release; on the board 2026-10-19 (1.3 days): install 177, worktree 119, area 76 and port 2 a day, 374 together | 0; a branch claim and its release 2 |
+| A session's ending is one identity row carrying `retired_by` and `detail`; the `audit retire` row is not written | 3 rows for a subagent that starts and ends (the board: audit retire 137 a day) | 2 |
+| A `whoami` that changes neither the model nor the harness (only `inherited` to `claimed`) writes no identity row | 4 rows for a subagent whose model is recorded at its end | 3 for a subagent on a model of its own, 2 for one on its parent's |
+
+Measured on a fresh node with `scripts/board_tally.py`'s labels (`scripts/test all tests/test_board_row_counts.py -s`): ten subagents that start
+and end wrote 30 rows (identity 10 registered, 10 retired, audit retire 10) before and 20 after; an install claim with its release 2 rows before and 0
+after; a worktree claim 2 before and 0 after; a branch claim 2 before and 2 after. The in-process harness (`board_rows.rs`) counts the same and also
+counts the label-only model record (40 rows for ten before, 20 after) and the model of its own (40 before, 30 after).
+
+Audit kinds, and which stay: `retire` is folded into the identity row of the end (its subject, who ended it and the counts are fields of that row);
+`rebind` (a person moved a session), `land.review`, `land.trust` and `land.untrust`, `lease_takeover` (for the leases that are written),
+`board.create` and its siblings, `file.delete`, `quarantine.release`, `enforcement.set`, `agent.effort`, `authority.set_denied`,
+`announce_over_quota` and the pool's governance entries all stay: each records an act a person or another device may need to see, and none of
+them is written at the rate of a session. A takeover of a device-only claim is not an entry because the claim is not.
+
+The steady state after the Python cuts was about 600 rows a day (identity 190, claims 190, audit 92, reviews 32, the done post 25 and the
 announcements someone acts on), against 4,581 a day before. The log holds 200,000 rows and holds 57,300: at 4,581 a day it is full
-in 31 days, at 600 a day in 238.
+in 31 days, at 600 a day in 238. The Rust cuts take the device-only claims and the retire audit out of that.
 
 Decided to keep, with who acts on it: `landing review` and `audit land.review` (a standing reject stops a push), `blocked` lines of
 a failed deploy or a failed run, the `milestone` of a handed-back worker with unlanded work, and the done post of a stopped subagent
@@ -78,11 +97,11 @@ per-file and per-job rows.
 
 ## What remains, and why
 
-- Identity and audit rows are node state: a registered subagent writes its identity when it starts and once more when it retires,
-  with one audit row for the retirement (and one more identity row when its model differs from the one it was registered with).
-- Claim rows for paths that exist on one device only (`install`, `worktree`, `area`, `server`, `port`) are replicated to the pool
-  although no other device can hold them. Keeping those claims in the node's own table and out of the board log is a change to
-  `app/poolhouse-node/src/lease/` and `claims.rs` (HANDOFF).
+- Identity rows are node state: a registered subagent writes its identity when it starts and once more when it ends, the second
+  naming who ended it and what that released (and one more identity row when its model differs from the one it was registered with).
+- Device-only claims (`install`, `worktree`, `area`, `server`, `port`) are kept in the node's own table and not written to the board.
+  The sessions that held a worktree claim are kept in `worktree-holders.json` for the landing reviews; the lease rows that older nodes
+  wrote stay in the log until it rotates.
 - The install-claim loop of 2026-10-16 19:30 to 2026-10-17 21:30 (6,918 rows from one session, a build every 70 seconds): the board
   shows one commit (`3f7cd18`) built again and again, each time into a new tree, with no other row from that session. A build took
   its claims for the new tree, the launchers and the selection first and then built for 38 seconds; the cutover needs the primary
