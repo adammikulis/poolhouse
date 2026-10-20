@@ -157,11 +157,7 @@
               name,
               parameter,
               node.parameters[name],
-              (value) => {
-                editor.checkpoint();
-                node.parameters[name] = value;
-                editor.changed();
-              },
+              S.parameterChange({editor, node, name, host: controls}),
             );
           editor.decisionSetupControls(controls, node);
           card.append(controls);
