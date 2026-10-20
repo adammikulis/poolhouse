@@ -15,6 +15,9 @@ from poolhouse.fleet.wheel_provenance import stamp, write_wheel
 
 @pytest.fixture
 def managed(tmp_path, monkeypatch):
+    # The runner exposes checkout/user imports; the fixed isolated fixture needs neither.
+    for name in ('PYTHONHOME', 'PYTHONPATH', 'PYTHONUSERBASE'):
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(home, 'state', lambda *parts: tmp_path.joinpath('state', *parts))
     source = tmp_path / 'source'
     for name in ('backend', 'train', 'bench', 'gym', 'world'):
@@ -197,3 +200,70 @@ def test_interpreter_configuration_and_process_identity_reverify(managed, monkey
     monkeypatch.setattr(proof.os, 'getpid', lambda: current + 1)
     assert environment.dependency_metadata()['error'] is None
     assert counters == {'compute': 3, 'inspect': 3, 'layout': 3}
+
+
+def test_external_pth_metadata_uses_uncached_existing_contract(managed):
+    environment, site, _, counters = managed
+    external = environment.path / 'external-metadata'
+    info = external / 'outside_package-1.0.dist-info'
+    info.mkdir(parents=True)
+    metadata = info / 'METADATA'
+    metadata.write_text('Name: outside-package\nVersion: 1.0\n')
+    (site / 'external.pth').write_text(str(external) + '\n')
+    assert environment.dependency_metadata()['packages']['outside-package'] == '1.0'
+    metadata.write_text('Name: outside-package\nVersion: 2.0\n')
+    assert environment.dependency_metadata()['packages']['outside-package'] == '2.0'
+    assert counters['compute'] == counters['inspect'] == 2
+    assert 'dependency_proof' not in environment._cache
+
+
+def test_executable_pth_preserves_supported_uncached_verification(managed):
+    environment, site, _, counters = managed
+    (site / 'hook.pth').write_text('import sys\n')
+    assert environment.dependency_metadata()['error'] is None
+    assert environment.dependency_metadata()['error'] is None
+    assert counters['compute'] == counters['inspect'] == 2
+    assert 'dependency_proof' not in environment._cache
+
+
+def test_actual_layout_ignores_hostile_pythonpath(managed, monkeypatch):
+    environment, _, app, _ = managed
+    marker = app / 'executed'
+    poison = app / 'poison'
+    poison.mkdir()
+    (poison / 'sitecustomize.py').write_text(f'from pathlib import Path\nPath({str(marker)!r}).touch()\n')
+    monkeypatch.setenv('PYTHONPATH', str(poison))
+    assert proof._layout(environment)[0]
+    assert not marker.exists()
+
+
+@pytest.mark.parametrize('value', [None, [], {'roots': [None]}, {'roots': 'not-a-list'}])
+def test_malformed_layout_is_a_controlled_proof_failure(tmp_path, monkeypatch, value):
+    from types import SimpleNamespace
+    if isinstance(value, dict):
+        value = {'prefix': str(tmp_path), 'executable': str(tmp_path / 'bin/python'),
+                 'roots': [str(tmp_path / 'site-packages')], 'standard': [], 'paths': [],
+                 'abi': 'fixture', 'user_site': False, **value}
+    monkeypatch.setattr(proof.subprocess, 'run', lambda *args, **kwargs:
+                        SimpleNamespace(returncode=0, stdout=json.dumps(value)))
+    with pytest.raises(OSError, match='another interpreter'):
+        proof._layout(SimpleNamespace(path=tmp_path, python=tmp_path / 'bin/python'))
+
+
+@pytest.mark.parametrize('selector', ['PYTHONPATH', 'PYTHONHOME', 'PYTHONUSERBASE'])
+def test_python_startup_selectors_cannot_bless_cached_inspection(tmp_path, monkeypatch, selector):
+    for name in ('PYTHONHOME', 'PYTHONPATH', 'PYTHONUSERBASE'):
+        monkeypatch.delenv(name, raising=False)
+    assert proof._cacheable(('abi', (tmp_path,), (), (str(tmp_path),), False))
+    monkeypatch.setenv(selector, str(tmp_path / 'outside'))
+    assert not proof._cacheable(('abi', (tmp_path,), (), (str(tmp_path),), False))
+
+
+@pytest.mark.parametrize('customization', ['sitecustomize.py', 'sitecustomize', 'usercustomize.py'])
+def test_startup_customization_requires_uncached_inspection(tmp_path, monkeypatch, customization):
+    for name in ('PYTHONHOME', 'PYTHONPATH', 'PYTHONUSERBASE'):
+        monkeypatch.delenv(name, raising=False)
+    assert proof._cacheable(('abi', (tmp_path,), (), (str(tmp_path),), False))
+    path = tmp_path / customization
+    path.mkdir() if '.' not in customization else path.write_text('# harmless fixture\n')
+    assert not proof._cacheable(('abi', (tmp_path,), (), (str(tmp_path),), False))

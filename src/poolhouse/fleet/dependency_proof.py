@@ -18,10 +18,13 @@ from .managed_compute import process_environment
 
 _LOCKS = {}
 _LOCK = threading.Lock()
-_LAYOUT = """import json,sys,sysconfig
+_LAYOUT = """import json,sys,sysconfig,os,site
 print(json.dumps({'prefix':sys.prefix,'executable':sys.executable,
  'roots':sorted(set(sysconfig.get_paths()[key] for key in ('purelib','platlib'))),
- 'abi':sys.implementation.cache_tag}))
+ 'abi':sys.implementation.cache_tag,'paths':sys.path,'user_site':site.ENABLE_USER_SITE,
+ 'standard':[sysconfig.get_path('stdlib'),sysconfig.get_path('platstdlib'),
+ os.path.join(sysconfig.get_path('stdlib'),'lib-dynload'),
+ os.path.join(sys.base_prefix,'lib',f'python{sys.version_info.major}{sys.version_info.minor}.zip')]}))
 """
 
 
@@ -102,14 +105,50 @@ def _layout(environment):
         raise OSError('The managed dependency layout could not be verified')
     value = json.loads(result.stdout)
     prefix = environment.path.absolute()
-    if (set(value) != {'prefix', 'executable', 'roots', 'abi'} or value['prefix'] != str(prefix)
+    if (not isinstance(value, dict) or set(value) != {'prefix', 'executable', 'roots', 'abi', 'paths', 'standard', 'user_site'}
+            or value['prefix'] != str(prefix)
             or value['executable'] != str(environment.python.absolute()) or not isinstance(value['roots'], list)
-            or not value['roots'] or not isinstance(value['abi'], str)):
+            or not value['roots'] or not isinstance(value['abi'], str) or (value['user_site'] is not None and type(value['user_site']) is not bool)
+            or any(not isinstance(value[field], list) or not all(isinstance(item, str) for item in value[field])
+                   for field in ('roots', 'paths', 'standard'))):
         raise OSError('The managed dependency layout belongs to another interpreter')
     roots = tuple(Path(name) for name in value['roots'])
     if any(not root.is_absolute() or not root.is_relative_to(prefix) or root.name != 'site-packages' for root in roots):
         raise OSError('Managed dependency metadata must remain inside its interpreter')
-    return (value['abi'], roots)
+    standard = tuple(Path(name) for name in value['standard'])
+    if any(not path.is_absolute() for path in standard):
+        raise OSError('The managed standard library layout is invalid')
+    return (value['abi'], roots, standard, tuple(value['paths']), value['user_site'])
+
+
+def _cacheable(layout):
+    selectors = {'PYTHONHOME', 'PYTHONPATH', 'PYTHONUSERBASE', 'PYTHONPLATLIBDIR',
+                 'PYTHONCASEOK', 'PYTHONEXECUTABLE', '__PYVENV_LAUNCHER__', 'PYTHON_PRESITE'}
+    if layout[4] is not False or any(os.environ.get(name) for name in selectors):
+        return False
+    locations = (*layout[1], *layout[2], Path.cwd())
+    if any((root / name).exists() or (root / name).is_symlink() for root in locations
+           for name in ('sitecustomize.py', 'sitecustomize.pyc', 'sitecustomize',
+                        'usercustomize.py', 'usercustomize.pyc', 'usercustomize')):
+        return False
+    if any(Path.cwd().glob('*.dist-info')) or any(Path.cwd().glob('*.egg-info')):
+        return False
+    if any((Path.cwd() / name).exists() for name in ('pip.py', 'pip.pyc', 'pip')):
+        return False
+    allowed = {str(path) for path in (*layout[1], *layout[2])}
+    if any(name not in allowed for name in layout[3]):
+        return False
+    for root in layout[1]:
+        for path in root.glob('*.pth'):
+            if _file(path)[6] > 65536:
+                return False
+            for line in path.read_text().splitlines():
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                if line.startswith(('import ', 'import\t')) or str(root / line) not in allowed:
+                    return False
+    return True
 
 
 def _signature(layout, expected):
@@ -120,9 +159,10 @@ def _signature(layout, expected):
                 info = parent.lstat()
                 if private_path.redirected(info) or not stat.S_ISDIR(info.st_mode):
                     raise OSError('Managed dependency directories cannot be linked')
-                rows[str(parent)] = (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid)
-    def add(path):
-        current = _identity(path)
+                rows[str(parent)] = (_identity(parent) if any(parent.is_relative_to(root) for root in layout[1])
+                                     else (info.st_dev, info.st_ino, info.st_mode, info.st_uid, info.st_gid))
+    def add(path, current=None):
+        current = _identity(path) if current is None else current
         previous = rows.get(str(path))
         if previous is not None and len(previous) == 9 and previous != current:
             raise OSError('Managed dependency evidence changed during enumeration')
@@ -136,8 +176,7 @@ def _signature(layout, expected):
                 walk(entry)
         elif not path.is_file():
             raise OSError('Managed dependency evidence contains a nonregular entry')
-    names = set(expected['files']) | set(expected.get('base_files', {}))
-    names.add('poolhouse/fleet/built-from')
+    names = set(expected['files']) | set(expected.get('base_files', {})) | {'poolhouse/fleet/built-from'}
     for root in layout[1]:
         parents(root)
         add(root)
@@ -148,7 +187,7 @@ def _signature(layout, expected):
             path = root / name
             if path.exists() or path.is_symlink():
                 parents(path)
-                rows[str(path)] = _file(path)
+                add(path, _file(path))
         with os.scandir(root) as listing:
             entries = sorted((Path(entry.path) for entry in listing), key=str)
         for entry in entries:
@@ -160,7 +199,20 @@ def _signature(layout, expected):
             if folder.exists() or folder.is_symlink():
                 parents(folder)
                 walk(folder)
-        rows[str(root / 'poolhouse/fleet/compute-artifact.json')] = _file(root / 'poolhouse/fleet/compute-artifact.json')
+        manifest = root / 'poolhouse/fleet/compute-artifact.json'
+        add(manifest, _file(manifest))
+    for root in layout[2]:
+        if root.exists() or root.is_symlink():
+            parents(root)
+            add(root)
+            if root.is_dir():
+                for entry in root.iterdir():
+                    if entry.name.endswith(('.dist-info', '.egg-info')):
+                        walk(entry)
+    return _restat(rows)
+
+
+def _restat(rows):
     for name, observed in rows.items():
         path = Path(name)
         if len(observed) == 9:
@@ -182,16 +234,15 @@ def read(environment):
         key, expected = _context(environment)
         cached = environment._cache.get('dependency_proof')
         layout = cached.layout if isinstance(cached, Evidence) and cached.key == key else _layout(environment)
+        if not _cacheable(layout):
+            environment._cache.pop('dependency_proof', None)
+            return _verified(environment)
         before = _signature(layout, expected)
         if isinstance(cached, Evidence) and cached.key == key and cached.signature == before and key == _context(environment)[0]:
             return json.loads(cached.payload)
         environment._cache.pop('dependency_proof', None)
-        error, companion = None, None
-        try:
-            companion = environment.require_compute()
-        except OSError as failure:
-            error = str(failure)
-        packages = environment.installed()
+        result = _verified(environment)
+        error, companion, packages = result['error'], result['companion'], result['packages']
         after = _signature(layout, expected)
         if key != _context(environment)[0] or before != after:
             raise OSError('Managed dependency evidence changed during verification')
@@ -200,3 +251,12 @@ def read(environment):
                 and {'poolhouse', compute_artifact.DISTRIBUTION}.issubset(packages)):
             environment._cache['dependency_proof'] = Evidence(key, layout, after, json.dumps(result, sort_keys=True))
         return copy.deepcopy(result)
+
+
+def _verified(environment):
+    error, companion = None, None
+    try:
+        companion = environment.require_compute()
+    except OSError as failure:
+        error = str(failure)
+    return {'companion': companion, 'error': error, 'packages': environment.installed()}
