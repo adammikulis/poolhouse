@@ -10,7 +10,8 @@ from typing import Any
 
 from .catalog import is_model_type, node_spec
 from .contracts import validate_graph
-from .resources import model_fingerprint
+from .model_lineage import bind_model_base
+from .resources import base_fingerprint, model_fingerprint
 from .store import StudioStore, digest
 
 TERMINAL = frozenset({"done", "failed", "cancelled", "blocked", "interrupted"})
@@ -38,6 +39,12 @@ def artifact_fingerprints(value: Any) -> dict[str, str]:
             else:
                 entries.append([str(child.relative_to(root)), "directory"])
         found[str(path)] = digest(entries)
+        if value.get("kind") == "model" and "base" in value:
+            base = value["base"]
+            checksum = model_fingerprint(base) if base.get("id") else base_fingerprint(base)
+            if checksum != value.get("base_digest"):
+                raise ValueError("The checkpoint base content changed after training.")
+            found[base["path"]] = checksum
     return found
 
 
@@ -109,6 +116,8 @@ class WorkflowEngine:
         for node in graph["nodes"]:
             if not self.authorize(principal, node, {}):
                 raise PermissionError("A workflow resource is no longer authorized.")
+            if node in remote:
+                node["execution"] = self.dispatcher.identity(node)
         run, _ = self.store.submit(principal, workflow, graph, output_nodes, key)
         self._wake.set()
         return run
@@ -257,6 +266,8 @@ class WorkflowEngine:
                            command.get("env"), job_id=job_id)
 
     def _completed(self, run: dict, node: dict, state: dict, inputs: dict) -> None:
+        output_dir = self.runner.files_root / "studio" / run["id"] / hashlib.sha256(node["id"].encode()).hexdigest()[:24]
+        bind_model_base(node, state["outputs"], inputs, output_dir)
         state["output_digest"] = digest(state["outputs"])
         expected = {port["name"] for port in node_spec(node["type"], node.get("version", 1))["outputs"]}
         if node.get("parameters", {}).get("mode") == "smoke":
@@ -355,7 +366,8 @@ class WorkflowEngine:
             implementation = getattr(self.dispatcher, "fingerprint", lambda node: "")(node)
             dispatch_id = digest({"run": run["id"], "node": node["id"]})
             state.update(state="running", job_id="studio-device-" + dispatch_id[:32],
-                         execution={"machine": node["execution"]["machine"], "id": dispatch_id,
+                         execution={**node["execution"], "id": dispatch_id,
+                                    "implementation": implementation,
                                     "digest": digest({"node": node, "inputs": inputs, "artifacts": artifacts,
                                                       "implementation": [self.implementation, implementation]})})
             state["input_artifacts"] = artifacts

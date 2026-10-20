@@ -70,6 +70,7 @@ class JobRunner:
         self.files_root = Path(files_root) if files_root is not None else root / "files"
         self.gate = gate
         self.studio_gate = None
+        self.studio_device_gate = None
         self.environment = environment
         self.slots = slots
         self.jobs: dict[str, Job] = {}
@@ -344,7 +345,12 @@ class JobRunner:
                     continue
                 job_id = self._queue.pop(0)
                 job = self.jobs[job_id]
-                if job_id.startswith("studio-") and (self.studio_gate is None or not self.studio_gate(job)):
+                if job_id.startswith("studio-") and any(other.id != job_id and other.state in {"launching", "running", "preparing"}
+                                                        for other in self.jobs.values()):
+                    self._queue.insert(0, job_id)
+                    continue
+                admission = self.studio_device_gate if job_id.startswith("studio-remote-") else self.studio_gate
+                if job_id.startswith("studio-") and (admission is None or not admission(job)):
                     job.state = "interrupted"
                     job.recovery_note = "Studio execution requires renewed authorization after restart."
                     job.finished_at = time.time()

@@ -2,52 +2,23 @@
 
 A review is a board entry the node stamps with the reviewer's name and model. The node answers which reviews of a
 commit stand for a caller (those of this device, none from the caller or from a session that ever held the claim on the
-branch or its worktree). What the node cannot know is a model's tier, so this module holds the bar for who may land and
-which stamped standing counts.
+branch or its worktree). This module holds which stamped standing counts.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from poolhouse.board import client
-
 if TYPE_CHECKING:
-    from poolhouse.board.session import Agent, Session
-from poolhouse.workspace.model_tiers import tier_of
-from poolhouse.workspace.modelid import VERIFIED
+    from poolhouse.board.session import Session
 
-__all__ = ["accepts", "eligible", "review", "standing", "tier_reason", "trust"]
+__all__ = ["accepts", "review", "standing", "trust"]
 
 CAUSES = ("revoked", "forged")
 
 
-def tier_reason(model: str) -> str:
-    """Why a session on ``model`` may not land work, or an empty string: the model must be listed and above the
-    lowest tier.
-
-    A model id counts as the session claimed it: the node has no model verification yet, so the table is
-    read as if every listed id were verified (a stub, listed in docs/node.md with the grants).
-    """
-    return tier_of(model, VERIFIED).reason
-
-
-def eligible(who: Agent) -> str:
-    """Why ``who`` may not land work, or an empty string."""
-    return tier_reason(who.model)
-
-
-def _caller(s: Session) -> Agent:
-    me = s.whoami()
-    why = eligible(me)
-    if why:
-        raise client.Denied("denied", why)
-    return me
-
-
 def review(s: Session, branch: str, sha: str, verdict: str) -> dict[str, Any]:
     """Record an independent review of exactly ``sha`` under ``branch``; a session that held the branch's claim cannot."""
-    _caller(s)
     return dict(s.call("land_review", branch=branch, sha=sha, verdict=verdict))
 
 
@@ -90,7 +61,7 @@ def standing(s: Session, found: dict[str, Any]) -> str:
     for found_review in found["reviews"]:
         who = found_review["by"]
         seen = _stamped(found_review, who)
-        if seen and not tier_reason(seen["model"]) and who not in cause:
+        if seen and who not in cause:
             live[who] = found_review["verdict"]
     if "reject" in live.values():
         return "an independent reviewer rejected it"

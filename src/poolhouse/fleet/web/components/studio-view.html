@@ -181,12 +181,14 @@
         if (this.loading) return;
         this.loading = true;
         try {
-          const [nodes, templates, workflows] = await Promise.all([
+          const [nodes, templates, workflows, devices] = await Promise.all([
             S.api("/nodes"),
             S.api("/templates"),
             S.api("/workflows"),
+            S.api("/devices"),
           ]);
           this.specs = nodes.nodes || [];
+          this.devices = devices.devices || [];
           this.templates = (templates.templates || []).map((t) => ({
             id: t.id,
             title: t.title || t.name,
@@ -362,6 +364,7 @@
     S.installPersistence(StudioView.prototype);
     S.installEditor(StudioView.prototype);
     S.installSweeps(StudioView.prototype);
+    S.installTargets(StudioView.prototype);
     S.installGroups(StudioView.prototype);
     S.installRuns(StudioView.prototype);
     S.installSharing(StudioView.prototype);

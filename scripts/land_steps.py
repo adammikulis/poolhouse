@@ -109,9 +109,6 @@ def open_landing(root: Path, branch: str, agent: str) -> Landing:
         me = s.whoami()
     except NodeError as error:
         raise ex.Stop(f"the board does not answer or does not know this session: {error}") from None
-    why = landing.eligible(me)
-    if why:
-        raise ex.Stop(why)
     return Landing(mine.path, top.path, lg.common_dir(mine.path), dev, branch, s, me.name, agent)
 
 

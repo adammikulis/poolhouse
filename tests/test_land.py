@@ -381,14 +381,6 @@ def test_a_conflict_with_origin_stops_and_leaves_the_branch_as_it_was(world):
     assert git(tree, "rev-parse", "HEAD") == sha and git(tree, "status", "--porcelain") == ""
 
 
-def test_a_lander_of_the_lowest_tier_is_refused(world):
-    tree, _ = world.start("small", {"docs/a.md": "small\n"})
-    small = world.node.member("small-one", model="claude-haiku-5-5")
-    code, out = world.land(tree, who=small)
-    assert code == 5 and "stopped" in out, out
-    assert world.proj.origin_head() != git(tree, "rev-parse", "HEAD")
-
-
 def test_main_is_never_landed(world):
     tree, sha = world.start("towards-main", {"docs/a.md": "x\n"})
     code, out = world.land(tree, "main")

@@ -212,8 +212,8 @@ scripts/land_review.py scripts/land_stale.py scripts/land_steps.py src/poolhouse
 src/poolhouse/workspace/landing_cli.py docs/landing.md`; tests `tests/land_support.py test_land.py test_land_concurrent.py
 test_land_plan.py test_land_review_policy.py test_land_sealed.py test_land_stale.py test_land_trust.py
 test_lander_ends_jobs.py test_subagent_stop_landed.py`. Edit callers: `workspace/cli.py` (the `landing_cli.TABLE`
-entry), `workspace/github_release.py` (`eligible`), `runtime_unmerged.py`, `protectedwrites.py`, `scripts/hooks/stop_landed.py`,
-`scripts/github-protection`, `test_model_tiers.py`, `test_runtime_unmerged.py`. Then the four one-shot scripts that only
+entry), `workspace/github_release.py`, `runtime_unmerged.py`, `protectedwrites.py`, `scripts/hooks/stop_landed.py`,
+`scripts/github-protection`, `test_runtime_unmerged.py`. Then the four one-shot scripts that only
 `land_review.py` names: `scripts/rename_to_poolhouse.py`, `commit_types_chart.py`, `compare-harnesses`,
 `prepare_medmcqa.py` with their tests (`test_rename_to_poolhouse.py`, `test_commit_types_chart.py`, `test_compare_harnesses.py`, `test_prepare_medmcqa.py`). The commit carries `Owner-order:`.
 

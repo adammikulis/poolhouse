@@ -117,6 +117,9 @@
             spec = S.spec(this, node);
           box.replaceChildren(E("h2", {}, spec.title || node.type));
           if (spec.description) box.append(E("p", {}, spec.description));
+          this.executionControls(box, node);
+          for (const message of this.nodeIssues(node))
+            box.append(E("p", { class: "error", role: "status" }, message));
           for (const [name, schema] of Object.entries(
             spec.parameters?.properties || {},
           ))
