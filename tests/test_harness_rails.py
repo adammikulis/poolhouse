@@ -64,11 +64,13 @@ class TestPolicy:
         assert decide(coding_policy.Policy("ask-dangerous"), Call(*call), roots=("/w",)).kind == "tool_call_destructive"
         assert decide(coding_policy.Policy("read-only"), Call(*call), roots=("/w",)).action == "deny"
 
-    def test_a_reversible_call_asks_in_approve_first_and_runs_in_plan_and_go(self):
-        edit = ("Edit", {"file_path": "/w/a.py", "old_string": "a", "new_string": "b"})
-        assert decide(coding_policy.Policy("ask-changes"), Call(*edit), roots=("/w",)).action == "ask"
-        assert decide(coding_policy.Policy("ask-dangerous"), Call(*edit), roots=("/w",)).action == "allow"
-        assert decide(coding_policy.Policy("read-only"), Call(*edit), roots=("/w",)).action == "deny"
+    def test_a_valid_edit_obeys_each_permission_profile(self, tmp_path):
+        target = tmp_path / "a.py"
+        target.write_text("a")
+        edit = ("Edit", {"file_path": str(target), "old_string": "a", "new_string": "b"})
+        assert decide(coding_policy.Policy("ask-changes"), Call(*edit), roots=(str(tmp_path),)).action == "ask"
+        assert decide(coding_policy.Policy("ask-dangerous"), Call(*edit), roots=(str(tmp_path),)).action == "allow"
+        assert decide(coding_policy.Policy("read-only"), Call(*edit), roots=(str(tmp_path),)).action == "deny"
 
     def test_a_tool_nobody_classified_asks_as_destructive(self):
         got = decide(coding_policy.Policy("ask-dangerous"), Call("SomeNewTool", {"x": "y"}), roots=("/w",))

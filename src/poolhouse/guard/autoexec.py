@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import os
 import re
+import stat
 from collections.abc import Iterator, Mapping, Sequence
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, secretpaths
+from poolhouse import files, home, secretpaths
 from poolhouse.guard import fetchexec
 from poolhouse.guard.harm import Finding, outside, resolve
 from poolhouse.guard.verbs import words_of
@@ -58,7 +60,7 @@ CONFIGS = re.compile(r"(?i).+\.config\.(?:js|mjs|cjs|ts)|\.(?:eslintrc|babelrc)\
 EDITS = frozenset({"edit", "write", "append", "create", "update", "patch", "replace", "insert", "save", "put"})
 WRITE_TOOLS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit", "apply_patch"})
 PATH_KEYS = ("file_path", "path", "notebook_path", "filepath", "filename", "file")
-TEXT_KEYS = ("content", "contents", "text", "file_text", "new_string", "new_text", "new_source", "data", "body")
+TEXT_KEYS = ("content", "contents", "text", "file_text", "new_string", "new_text", "newText", "new_source", "data", "body")
 BEGIN = "*** Begin Patch"
 EXCERPT = 2
 MAX_FILE = 1 << 20
@@ -124,9 +126,11 @@ def _patch(text: str) -> Iterator[tuple[str, str]]:
 
 
 def _edits(args: Mapping[str, Any]) -> Iterator[str]:
-    for edit in args.get("edits") or ():
-        if isinstance(edit, Mapping):
-            yield from (str(edit[k]) for k in ("new_string", "new_text") if k in edit)
+    edits = args.get("edits")
+    if isinstance(edits, list):
+        for edit in edits:
+            if isinstance(edit, Mapping):
+                yield from (edit[k] for k in ("new_string", "new_text", "newText") if isinstance(edit.get(k), str))
 
 
 def written(name: str, args: Mapping[str, Any]) -> list[tuple[str, str]]:
@@ -153,21 +157,62 @@ def escapes(path: str, roots: Sequence[str]) -> list[Finding]:
     return []
 
 
-def _merged(path: str, roots: Sequence[str], args: Mapping[str, Any]) -> tuple[str, str] | None:
-    """The text of the file before and after an edit call, or None when the call is no edit or the file cannot be read."""
-    edits = [args] if "old_string" in args else [e for e in args.get("edits") or () if isinstance(e, Mapping)]
-    full = resolve(path, roots)
-    try:
-        if not edits or not full.is_file() or full.stat().st_size > MAX_FILE:
-            return None
-        before = full.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-    after = before
+def _replacements(before: str, args: Mapping[str, Any]) -> str:
+    top = {"old_string", "new_string", "oldText", "newText"} & args.keys()
+    edits = args.get("edits") if "edits" in args else [args] if top else None
+    if not isinstance(edits, list) or not edits or ("edits" in args and top):
+        raise ValueError("the edit arguments do not describe exact replacements")
+    camel = all(isinstance(e, Mapping) and set(e) == {"oldText", "newText"} for e in edits)
+    snake = all(isinstance(e, Mapping) and {"old_string", "new_string"} <= e.keys()
+                and not {"oldText", "newText"} & e.keys() for e in edits)
+    if not camel and not snake:
+        raise ValueError("the edit mixes or omits replacement fields")
+    after, matches = before, []
     for edit in edits:
-        if isinstance(edit.get("old_string"), str) and isinstance(edit.get("new_string"), str) and edit["old_string"]:
-            after = after.replace(edit["old_string"], edit["new_string"], -1 if edit.get("replace_all") else 1)
-    return before, after
+        old, new = (edit.get(k) for k in (("oldText", "newText") if camel else ("old_string", "new_string")))
+        if not isinstance(old, str) or not old or not isinstance(new, str) or "\r" in old + new:
+            raise ValueError("the edit is not an exact text replacement")
+        many = edit.get("replace_all", False)
+        if not isinstance(many, bool):
+            raise ValueError("the edit has an invalid replacement count")
+        content = before if camel else after
+        count = content.count(old)
+        if not count or (count != 1 and not many):
+            raise ValueError("the edit text is missing or not unique in the current file")
+        if camel:
+            at = before.index(old)
+            matches.append((at, at + len(old), new))
+        else:
+            after = after.replace(old, new, -1 if many else 1)
+    matches.sort()
+    if any(left[1] > right[0] for left, right in pairwise(matches)):
+        raise ValueError("the edits overlap in the original file")
+    for start, end, new in reversed(matches):
+        after = after[:start] + new + after[end:]
+    return after
+
+
+def _merged(path: str, roots: Sequence[str], args: Mapping[str, Any]) -> tuple[str, str] | None:
+    """Return the current file and exact prospective postimage of an edit."""
+    if not {"edits", "old_string", "new_string", "oldText", "newText"} & args.keys():
+        return None
+    if not roots or secretpaths.beyond(path, roots):
+        raise ValueError("the edited file is outside the selected project")
+    try:
+        descriptor = os.open(resolve(path, roots), os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(descriptor, "rb") as stream:
+            initial = os.fstat(stream.fileno())
+            if not stat.S_ISREG(initial.st_mode) or initial.st_size > MAX_FILE:
+                raise ValueError("the edited file cannot be inspected within its size limit")
+            raw = stream.read(MAX_FILE + 1)
+            if len(raw) > MAX_FILE or files.stat_signature(initial) != files.stat_signature(os.fstat(stream.fileno())):
+                raise ValueError("the edited file changed while it was inspected")
+        before = raw.decode("utf-8")
+    except (OSError, UnicodeError) as error:
+        raise ValueError("the current edited file cannot be inspected") from error
+    if "\r" in before:
+        raise ValueError("the edit requires newline normalization")
+    return before, _replacements(before, args)
 
 
 def _flags(text: str, path: str, roots: Sequence[str], args: Mapping[str, Any], strict: bool) -> list[fetchexec.Flag]:
@@ -184,10 +229,20 @@ def write_findings(name: str, args: Mapping[str, Any], roots: Sequence[str] = ()
     """One finding for each file a write call would change that runs by itself or whose new text
     downloads and runs code, sends a credential out or hides its meaning."""
     found: list[Finding] = []
-    for path, text in written(name, args):
+    pairs = written(name, args)
+    if name in {"Edit", "MultiEdit"}:
+        if not pairs:
+            found.append(Finding(U, "the edit has no file path"))
+        if not {"edits", "old_string", "new_string", "oldText", "newText"} & args.keys():
+            found.append(Finding(U, "the edit has no exact replacements"))
+    for path, text in pairs:
         found += escapes(path, roots)
         why = path_reason(path, roots)
-        flags = _flags(text, path, roots, args, bool(why))
+        try:
+            flags = _flags(text, path, roots, args, bool(why))
+        except ValueError as error:
+            found.append(Finding(U, str(error)))
+            flags = fetchexec.scan(text, strict=bool(why))
         shown = fetchexec.describe(flags)
         base = fetchexec.ascii_line(Path(path).name or path, SHOWN)
         if why:

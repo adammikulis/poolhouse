@@ -63,8 +63,6 @@ export default function (pi) {{
     const mapped = names[event.toolName] || event.toolName;
     const input = {{...event.input}};
     if (input.path && !input.file_path) input.file_path = input.path;
-    if (input.oldText !== undefined) input.old_string = input.oldText;
-    if (input.newText !== undefined) input.new_string = input.newText;
     const result = call(["pre","--permissions",cfg.permissions,"--execution-mode",cfg.executionMode,"--agent",cfg.agent,"--root",cfg.root,
       ...cfg.protected.flatMap(path => ["--protect",path]),"--wait","300"],
       {{tool_name:mapped,tool_input:input,cwd:cfg.root}});

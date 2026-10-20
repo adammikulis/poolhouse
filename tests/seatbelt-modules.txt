@@ -9,6 +9,7 @@ test_coding_workspace.py
 test_coding_workspace_resume.py
 test_coding_import_boundary.py
 test_pi_tool_sandbox.py
+test_pi_edit_policy.py
 test_sandbox_exclusions.py
 test_sandbox_denial_cut.py
 test_sandbox_denial_forged.py

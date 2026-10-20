@@ -465,6 +465,8 @@ class TestOrdinarySessions:
         for name, args in calls:
             got = decide(coding_policy.Policy("ask-dangerous"), Call(name, args), roots=world.roots)
             assert got.action == "allow", (name, args, got)
+            if name == "Edit":
+                Path(args["file_path"]).write_text("print(2)  # changed\n")
 
     def test_a_read_only_session_still_reads_the_project(self, world):
         got = decide(coding_policy.Policy("read-only"), Call("Read", {"file_path": str(world.proj / "src" / "app.py")}), roots=world.roots)
