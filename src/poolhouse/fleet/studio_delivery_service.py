@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 
 from poolhouse.studio.outbox import Outbox, body_digest
+from poolhouse.studio.store import Conflict
 from poolhouse.studio.stream_delivery import deliver
 
 from .studio_destinations import create as create_registry
@@ -12,6 +13,9 @@ from .studio_destinations import create as create_registry
 def create(ui, service):
     registry = create_registry(ui, service)
     service.destinations = lambda principal, selected: destinations(registry, principal, selected)
+    service.destinations_current = lambda principal, selected: all(
+        item == {'kind': 'live'} or registry.snapshot(principal, item['destination']['id']) == item['destination']
+        for item in selected)
     service.delivery_current = lambda row: current(service, row)
     service.delivery_owner = lambda principal, row: owner(service, principal, row)
     service.delivery_settled = lambda principal, row: settled(service, principal, row)
@@ -25,8 +29,11 @@ def destinations(registry, principal, selected):
     for item in selected:
         if item == {'kind': 'live'}:
             resolved = item
-        elif isinstance(item, dict) and set(item) == {'kind', 'id', 'outputs'} and item['kind'] == 'webhook':
-            resolved = {'kind': 'webhook', 'destination': registry.snapshot(principal, item['id']), 'outputs': copy.deepcopy(item['outputs'])}
+        elif isinstance(item, dict) and set(item) == {'kind', 'id', 'revision', 'outputs'} and item['kind'] == 'webhook':
+            snapshot = registry.snapshot(principal, item['id'])
+            if type(item['revision']) is not int or item['revision'] != snapshot['revision']:
+                raise Conflict('This destination changed elsewhere. Reload its current revision.')
+            resolved = {'kind': 'webhook', 'destination': snapshot, 'outputs': copy.deepcopy(item['outputs'])}
         else:
             raise ValueError('Select a registered destination; records cannot supply delivery URLs.')
         if any(previous['kind'] == resolved['kind'] and (resolved['kind'] == 'live'

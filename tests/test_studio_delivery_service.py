@@ -24,7 +24,7 @@ def prepared(app, cookie, *, external_only=False):
         original, outputs = add_external_branch(app, cookie, original)
     config = {'workflow_id': original['workflow_id'], 'revision': original['workflow_revision'],
               'source_id': original['source_id'], 'input_node': original['input_node'], 'output_nodes': original['output_nodes'],
-              'destinations': [{'kind': 'live'}, {'kind': 'webhook', 'id': destination['id'], 'outputs': outputs}], 'idempotency_key': 'outbound'}
+              'destinations': [{'kind': 'live'}, {'kind': 'webhook', 'id': destination['id'], 'revision': destination['revision'], 'outputs': outputs}], 'idempotency_key': 'outbound'}
     status, body, _ = app.call('/ui/studio/subscriptions', method='POST', cookie=cookie, body=config)
     assert status == 201, body
     sub = body['subscription']
@@ -160,10 +160,47 @@ def test_duplicate_destination_different_projection_rejects_before_any_run(serve
     ident = body['destination']['id']
     config = {'workflow_id': original['workflow_id'], 'revision': original['workflow_revision'],
               'source_id': original['source_id'], 'input_node': 'record', 'output_nodes': ['record'],
-              'destinations': [{'kind': 'webhook', 'id': ident, 'outputs': [{'node': 'record', 'port': 'record'}]},
-                               {'kind': 'webhook', 'id': ident, 'outputs': [{'node': 'record', 'port': 'other'}]}],
+              'destinations': [{'kind': 'webhook', 'id': ident, 'revision': body['destination']['revision'], 'outputs': [{'node': 'record', 'port': 'record'}]},
+                               {'kind': 'webhook', 'id': ident, 'revision': body['destination']['revision'], 'outputs': [{'node': 'record', 'port': 'other'}]}],
               'idempotency_key': 'duplicate'}
     status, body, _ = app.call('/ui/studio/subscriptions', method='POST', cookie=cookie, body=config)
     assert status == 400 and 'each destination only once' in body['error'], body
     scope = app.ui.studio_authority._context()['scope']
     assert app.ui.studio.store.records('run', scope) == []
+
+
+@pytest.mark.parametrize('race', ['before', 'during', 'truthy'])
+def test_stale_selected_revision_never_creates_a_subscription(served, monkeypatch, race):
+    app, cookie, _ = served
+    original = create(app, cookie)
+    status, body, _ = app.call('/ui/studio/destinations', method='POST', cookie=cookie,
+                               body={'label': 'Receiver', 'url': 'https://receiver.invalid/events', 'idempotency_key': 'receiver'})
+    assert status == 201, body
+    destination = body['destination']
+    change = {'label': 'Changed', 'url': 'https://other.invalid/events', 'revision': 1, 'idempotency_key': 'change'}
+    if race == 'during':
+        registry = app.ui.studio_streams.destination_registry
+        snapshot = registry.snapshot
+        changed = []
+        def raced(principal, ident):
+            value = snapshot(principal, ident)
+            if not changed:
+                registry.mutate(principal, 'update', change, ident)
+                changed.append(True)
+            return value
+        monkeypatch.setattr(registry, 'snapshot', raced)
+    elif race == 'truthy':
+        app.ui.studio_streams.destinations_current = lambda *args: 'yes'
+    else:
+        status, body, _ = app.call('/ui/studio/destinations/' + destination['id'], method='PUT', cookie=cookie, body=change)
+        assert status == 200, body
+    config = {'workflow_id': original['workflow_id'], 'revision': original['workflow_revision'],
+              'source_id': original['source_id'], 'input_node': 'record', 'output_nodes': ['record'],
+              'destinations': [{'kind': 'webhook', 'id': destination['id'], 'revision': 1,
+                                'outputs': [{'node': 'record', 'port': 'record'}]}], 'idempotency_key': 'stale'}
+    status, body, _ = app.call('/ui/studio/subscriptions', method='POST', cookie=cookie, body=config)
+    assert status == 409, body
+    service = app.ui.studio_streams
+    scope = app.ui.studio_authority._context()['scope']
+    assert len(service.store.indexed('subscription', scope)) == 1
+    assert service.engine.store.records('run', scope) == []

@@ -174,6 +174,7 @@ def configure_delivery(service, store, delivery):
     if delivery:
         from poolhouse.studio.outbox import Outbox
         destination = {'id': 'registered', 'revision': 1, 'url': 'https://receiver.invalid/events'}
+        service.destinations_current = lambda *args: True
         service.destinations = lambda principal, selected: [{'kind': 'webhook', 'destination': destination, 'outputs': [{'node': 'record', 'port': 'record'}]}]
         def send(destination, envelope, *, authorize):
             sends.append(envelope)

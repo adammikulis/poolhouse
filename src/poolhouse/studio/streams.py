@@ -22,6 +22,7 @@ class Streams:
         self._thread = None
         self.outbox = None
         self.destinations = None
+        self.destinations_current = lambda principal, selected: selected == [{'kind': 'live'}]
 
     def start_scheduler(self) -> None:
         if self.outbox:
@@ -63,7 +64,10 @@ class Streams:
         source = self.store.get('source', configuration['source_id'], principal['scope'])
         if source['owner'] != principal['id'] and not principal.get('owner'):
             raise PermissionError('This source belongs to another session.')
-        return self.store.create('subscription', principal, configuration, key)
+        with self.store.lock, self.store.graph.transaction():
+            if self.destinations_current(principal, configuration['destinations']) is not True:
+                raise Conflict('This destination changed elsewhere. Reload its current revision.')
+            return self.store.create('subscription', principal, configuration, key)
 
     def activate(self, principal: dict, ident: str, request: dict) -> dict:
         with self.store.lock:
