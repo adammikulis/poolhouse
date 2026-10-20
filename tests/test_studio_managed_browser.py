@@ -11,7 +11,7 @@ pytestmark = pytest.mark.slow
 
 
 def upload_default(page, app):
-    page.get_by_role('navigation', name='Workspace pages').get_by_role('link', name='Data', exact=True).click()
+    page.get_by_role('navigation', name='Workspace pages').get_by_role('link', name='Datasets', exact=True).click()
     page.get_by_role('button', name='+ Add dataset', exact=True).click()
     page.get_by_role('button', name='Choose a file', exact=True).click()
     page.get_by_label('Choose a text / JSONL file', exact=True).set_input_files({
@@ -190,7 +190,7 @@ def test_late_workflow_load_cannot_enable_live_on_another_page(live_page):
             return
         response = route.fetch()
         held.append(True)
-        page.get_by_role('navigation', name='Workspace pages').get_by_role('link', name='Data', exact=True).click()
+        page.get_by_role('navigation', name='Workspace pages').get_by_role('link', name='Datasets', exact=True).click()
         route.fulfill(response=response)
     page.route('**/ui/studio/resources', resources)
     page.reload()

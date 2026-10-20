@@ -73,12 +73,16 @@ def test_drag_library_places_world_coordinates_and_title_click_does_not_add(plac
 def test_context_menu_search_at_cursor_and_escape(placement_page):
     page, _state, errors = placement_page
     viewport = page.locator('.studio-viewport')
+    viewport.evaluate('''view => view.addEventListener('contextmenu', event => {
+      const box = view.getBoundingClientRect();
+      window.contextPlacementPointer = {x:event.clientX-box.left,y:event.clientY-box.top};
+    }, {once:true})''')
     viewport.click(button='right', position={'x': 210, 'y': 140})
     search = page.get_by_label('Search nodes to place', exact=True)
     search.fill('Text relay')
     page.get_by_role('dialog').get_by_role('button', name='Text relay Tests', exact=True).click()
     current = graph(page)
-    assert current['layout']['nodes'][current['nodes'][0]['id']] == {'x': 210, 'y': 140}
+    assert current['layout']['nodes'][current['nodes'][0]['id']] == page.evaluate('window.contextPlacementPointer')
     viewport.click(button='right', position={'x': 30, 'y': 30})
     page.get_by_label('Search nodes to place', exact=True).press('Escape')
     expect(page.get_by_role('dialog')).to_have_count(0)
