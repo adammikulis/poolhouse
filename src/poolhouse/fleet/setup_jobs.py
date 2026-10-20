@@ -41,6 +41,19 @@ class Reporter:
             raise PreparationStopped("Preparation stopped before the next stage.")
         return True
 
+    def local_check(self):
+        """Cheap in-process cancellation; durable check remains a stage boundary.
+
+        Another process's cancellation is observed by check(), not this RAM fast
+        path. The current callback must be local and must not open a store or RPC.
+        """
+        with self.jobs._mutex:
+            if (self.jobs._running_preparations.get(self.row['id']) is not self.row
+                    or self.row['state'] != 'installing' or self.row['cancel_requested']
+                    or self.current() is not True):
+                raise PreparationStopped('Preparation stopped before the next chunk.')
+            return True
+
     def __call__(self, note):
         self.check()
         self.jobs._update(self.row, note=str(note)[:1000])
@@ -83,6 +96,7 @@ class Jobs:
         self.root.mkdir(parents=True, exist_ok=True)
         self._mutex = threading.RLock()
         self._pending = []
+        self._running_preparations = {}
         self._worker = None
         self._recover()
 
@@ -132,15 +146,19 @@ class Jobs:
     def cancel_preparation(self, ident, *, binding, current):
         if current() is not True:
             raise PermissionError("Current setup access is required.")
-        with self._mutex, only_one(self.root / "setup-jobs.lock"), self._store() as graph, graph.transaction():
-            row = next((node["attrs"] for node in graph.nodes("setup-job") if node["id"] == ident), None)
-            if row is None or row["kind"] != PREPARATION or row["request"]["binding"] != binding:
-                raise KeyError(ident)
-            if row["state"] in ACTIVE:
-                row.update(cancel_requested=True)
-                self._save(graph, row)
-            if current() is not True:
-                raise PermissionError("Current setup access is required.")
+        with self._mutex:
+            with only_one(self.root / "setup-jobs.lock"), self._store() as graph, graph.transaction():
+                row = next((node["attrs"] for node in graph.nodes("setup-job") if node["id"] == ident), None)
+                if row is None or row["kind"] != PREPARATION or row["request"]["binding"] != binding:
+                    raise KeyError(ident)
+                if row["state"] in ACTIVE:
+                    row.update(cancel_requested=True)
+                    self._save(graph, row)
+                if current() is not True:
+                    raise PermissionError("Current setup access is required.")
+            active = self._running_preparations.get(ident)
+            if active is not None:
+                active['cancel_requested'] = row['cancel_requested']
             return row
 
     def active(self):
@@ -255,7 +273,7 @@ class Jobs:
             if current() is not True:
                 raise PreparationStopped('Preparation stopped before probe receipt.')
             result = {**old, 'fresh': fresh}
-        row.update(latest)
+            row.update(latest)
         return result
 
     def _serving(self, row, receipt, current):
@@ -271,7 +289,7 @@ class Jobs:
             self._save(graph, latest)
             if current() is not True:
                 raise PreparationStopped('Preparation stopped before serving receipt.')
-        row.update(latest)
+            row.update(latest)
         return dict(receipt)
 
     def _run(self):
@@ -299,11 +317,17 @@ class Jobs:
         with only_one(self.root / "setup-install.lock"):
             self._update(row, state="installing", note="Preparing installation")
             if row["kind"] == PREPARATION:
-                progress = Reporter(self, row, current)
-                progress.check()
-                result = operation(progress)
-                progress.check()
-                self._finish_preparation(row, result, current)
+                with self._mutex:
+                    self._running_preparations[row['id']] = row
+                try:
+                    progress = Reporter(self, row, current)
+                    progress.check()
+                    result = operation(progress)
+                    progress.check()
+                    self._finish_preparation(row, result, current)
+                finally:
+                    with self._mutex:
+                        self._running_preparations.pop(row['id'], None)
                 return
             result = operation(lambda note, current=row: self._update(current, note=str(note)[:1000]))
             errors = [str(value.get("error") or "Installation failed") for value in result.get("changed", {}).values() if not value.get("ok")]

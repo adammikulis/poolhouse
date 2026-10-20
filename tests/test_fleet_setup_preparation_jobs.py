@@ -463,3 +463,96 @@ def test_owned_worker_start_failure_retains_interrupted_command_without_pending(
     row = jobs.all()[0]
     assert row['state'] == 'interrupted'
     assert jobs.prepare(request(), lambda progress: pytest.fail('must not repeat'), current=lambda: True)['id'] == row['id']
+
+
+def test_local_chunk_check_uses_no_store_and_expires_with_actual_operation(tmp_path, monkeypatch):
+    jobs = setup_jobs.Jobs(tmp_path)
+    reporters = []
+
+    def operation(progress):
+        reporters.append(progress)
+        with jobs._mutex, monkeypatch.context() as patch:
+            patch.setattr(jobs, '_store', lambda: pytest.fail('chunk check opened database'))
+            for _ in range(1000):
+                assert progress.local_check() is True
+        return {}
+
+    row = jobs.prepare(request(), operation, current=lambda: True)
+    assert finished(jobs, row['id'])['state'] == 'done'
+    with pytest.raises(setup_jobs.PreparationStopped):
+        reporters[0].local_check()
+    assert jobs._running_preparations == {}
+
+
+def test_committed_cancel_stops_next_local_chunk_and_poll(tmp_path):
+    jobs = setup_jobs.Jobs(tmp_path)
+    entered, release = threading.Event(), threading.Event()
+    reporters = []
+
+    def operation(progress):
+        reporters.append(progress)
+        entered.set()
+        assert release.wait(5)
+        progress.local_check()
+        pytest.fail('cancelled operation crossed next chunk')
+
+    row = jobs.prepare(request(), operation, current=lambda: True)
+    assert entered.wait(5)
+    try:
+        jobs.cancel_preparation(row['id'], binding=request()['binding'], current=lambda: True)
+        with pytest.raises(setup_jobs.PreparationStopped):
+            reporters[0].local_check()
+    finally:
+        release.set()
+    assert finished(jobs, row['id'])['state'] == 'cancelled'
+    assert jobs._running_preparations == {}
+
+
+def test_cancel_transaction_rollback_does_not_signal_active_operation(tmp_path, monkeypatch):
+    jobs = setup_jobs.Jobs(tmp_path)
+    entered, release = threading.Event(), threading.Event()
+    reporters = []
+
+    def operation(progress):
+        reporters.append(progress)
+        entered.set()
+        assert release.wait(5)
+        assert progress.local_check() is True
+        return {}
+
+    row = jobs.prepare(request(), operation, current=lambda: True)
+    assert entered.wait(5)
+    save = jobs._save
+
+    def failure(graph, value):
+        save(graph, value)
+        if value['cancel_requested']:
+            raise RuntimeError('cancel commit refused')
+
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(jobs, '_save', failure)
+            with pytest.raises(RuntimeError, match='commit refused'):
+                jobs.cancel_preparation(row['id'], binding=request()['binding'], current=lambda: True)
+        assert jobs.get(row['id'])['cancel_requested'] is False
+        assert reporters[0].local_check() is True
+    finally:
+        release.set()
+    assert finished(jobs, row['id'])['state'] == 'done'
+
+
+def test_local_current_revoke_and_exception_remove_execution_registration(tmp_path):
+    jobs = setup_jobs.Jobs(tmp_path)
+    allowed, reporters = [True], []
+
+    def operation(progress):
+        reporters.append(progress)
+        allowed[0] = False
+        progress.local_check()
+        pytest.fail('revoked current crossed chunk')
+
+    row = jobs.prepare(request(), operation, current=lambda: allowed[0])
+    assert finished(jobs, row['id'])['state'] == 'interrupted'
+    assert jobs._running_preparations == {}
+    with pytest.raises(setup_jobs.PreparationStopped):
+        reporters[0].local_check()
