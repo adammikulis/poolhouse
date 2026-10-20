@@ -59,5 +59,5 @@ def on(node: Client, board: str) -> sessions.Session:
             return sessions.Session(node, board, credentials.load(node.state, board, name), name)
         except Denied:
             pass
-    made = sessions.register(node, board, sessions.Native(MODEL, HARNESS, native_id()))
+    made = sessions.register(node, board, sessions.Native(MODEL, HARNESS, native_id()), person=True)
     return sessions.Session(node, board, made.token, made.name)

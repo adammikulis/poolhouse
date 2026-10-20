@@ -14,7 +14,7 @@ from .model_lineage import bind_model_base
 from .resources import base_fingerprint, model_fingerprint
 from .store import StudioStore, digest
 
-TERMINAL = frozenset({"done", "failed", "cancelled", "blocked", "interrupted"})
+TERMINAL = frozenset({"done", "failed", "cancelled", "blocked", "interrupted", "skipped"})
 
 
 def artifact_fingerprints(value: Any) -> dict[str, str]:
@@ -54,6 +54,11 @@ def _artifacts(node: dict, values: dict, direction: str) -> dict:
         if port["type"] in {"dataset", "artifact"} or is_model_type(port["type"]):
             result.update(artifact_fingerprints(values.get(port["name"])))
     return result
+
+
+def _valid_gate(value: Any) -> bool:
+    return (isinstance(value, dict) and set(value) == {"allow", "reason"}
+            and type(value["allow"]) is bool and isinstance(value["reason"], str) and value["reason"] in {"allow", "review", "block"})
 
 
 class WorkflowEngine:
@@ -137,11 +142,13 @@ class WorkflowEngine:
         selected = set(outputs)
         while True:
             prior = set(selected)
-            selected.update(e["source"]["node"] for e in graph["edges"] if e["target"]["node"] in selected)
+            selected.update(e["source"]["node"] for e in [*graph["edges"], *graph.get("controls", [])]
+                            if e["target"]["node"] in selected)
             if prior == selected:
                 break
         return {**graph, "nodes": [n for n in graph["nodes"] if n["id"] in selected],
-                "edges": [e for e in graph["edges"] if e["target"]["node"] in selected]}
+                "edges": [e for e in graph["edges"] if e["target"]["node"] in selected],
+                "controls": [c for c in graph.get("controls", []) if c["target"]["node"] in selected]}
 
     def _all_runs(self) -> list[dict]:
         with self.store.lock:
@@ -169,8 +176,16 @@ class WorkflowEngine:
             state = run["nodes"][ident]
             if state["state"] in TERMINAL:
                 continue
+            was_running = state["state"] == "running"
+            if not self._controls(run, ident, state):
+                if was_running and state["state"] != "running":
+                    self._cancel_controlled(run, state)
+                continue
             edges = [e for e in graph["edges"] if e["target"]["node"] == ident]
             predecessors = [run["nodes"][e["source"]["node"]] for e in edges]
+            if any(p["state"] == "skipped" for p in predecessors):
+                state.update(state="skipped", reason="An input branch was skipped.")
+                continue
             if any(p["state"] in TERMINAL - {"done"} for p in predecessors):
                 state.update(state="blocked", error="An input did not complete.")
                 continue
@@ -200,11 +215,71 @@ class WorkflowEngine:
             self.store.put("run", run)
         states = {n["state"] for n in run["nodes"].values()}
         if states <= TERMINAL:
-            run["state"] = ("done" if states <= {"done"} else "interrupted" if "interrupted" in states
+            run["state"] = ("done" if states <= {"done", "skipped"} else "interrupted" if "interrupted" in states
                             else "failed")
             run["finished_at"] = time.time()
         self.store.put("run", run)
         return run
+
+    def _controls(self, run: dict, ident: str, state: dict) -> bool:
+        controls = [c for c in run["graph"].get("controls", []) if c["target"]["node"] == ident]
+        waiting = False
+        for control in controls:
+            source = run["nodes"][control["source"]["node"]]
+            if source["state"] == "skipped":
+                state.update(state="skipped", reason="A controlling branch was skipped.")
+                return False
+            if source["state"] != "done":
+                if source["state"] in TERMINAL:
+                    state.update(state="blocked", error="A control did not complete.")
+                    return False
+                waiting = True
+                continue
+            if not self._control_authorized(run, control["source"]["node"]):
+                state.update(state="blocked", error="A control resource is no longer authorized.")
+                return False
+            gate = source["outputs"].get(control["source"]["port"])
+            if not _valid_gate(gate):
+                state.update(state="blocked", error="A control gate is invalid.")
+                return False
+            if not gate["allow"]:
+                state.update(state="skipped", reason="Control selected another branch.")
+                return False
+        return not waiting
+
+    def _cancel_controlled(self, run: dict, state: dict) -> None:
+        state.update(state="interrupted", error="A control changed after dispatch; cancellation must be reconciled.")
+        self.store.put("run", run)
+        if not state.get("job_id") and not state.get("execution"):
+            return
+        try:
+            self._stop_child(state, run["principal"])
+        except (ValueError, OSError, RuntimeError) as exc:
+            state.update(error="Control cancellation outcome is unknown: " + str(exc))
+            return
+        state.update(state="cancelled", error="A control changed after dispatch; the child was cancelled.")
+        state.pop("reason", None)
+
+    def _control_authorized(self, run: dict, source: str) -> bool:
+        nodes = {node["id"]: node for node in run["graph"]["nodes"]}
+        pending, seen = [source], set()
+        while pending:
+            ident = pending.pop()
+            if ident in seen:
+                continue
+            seen.add(ident)
+            edges = [e for e in run["graph"]["edges"] if e["target"]["node"] == ident]
+            inputs = {edge["target"]["port"]: run["nodes"][edge["source"]["node"]]["outputs"].get(edge["source"]["port"])
+                      for edge in edges}
+            try:
+                if not self.authorize(run["principal"], nodes[ident], inputs):
+                    return False
+            except (OSError, ValueError, RuntimeError):
+                return False
+            pending.extend(edge["source"]["node"] for edge in edges)
+            pending.extend(control["source"]["node"] for control in run["graph"].get("controls", [])
+                           if control["target"]["node"] == ident)
+        return True
 
     def _node(self, run: dict, node: dict, state: dict, inputs: dict, context: dict) -> None:
         if self._remote(node):
@@ -231,7 +306,8 @@ class WorkflowEngine:
             with self.store.lock:
                 cache = self.store.graph.get_doc("studio.cache:" + digest({"principal": run["principal"], "key": state["fingerprint"]}))
             try:
-                cache_valid = cache and cache["artifacts"] == _artifacts(node, cache["outputs"], "outputs")
+                cache_valid = (cache and self._cacheable(node, cache["outputs"])
+                               and cache["artifacts"] == _artifacts(node, cache["outputs"], "outputs"))
             except OSError:
                 cache_valid = False
             if cache_valid:
@@ -265,6 +341,9 @@ class WorkflowEngine:
         self.runner.submit(node["type"], command["argv"], command["cwd"],
                            command.get("env"), job_id=job_id)
 
+    def _cacheable(self, node: dict, outputs: dict) -> bool:
+        return bool(getattr(self.adapters, "cacheable_outputs", lambda node, outputs: True)(node, outputs))
+
     def _completed(self, run: dict, node: dict, state: dict, inputs: dict) -> None:
         output_dir = self.runner.files_root / "studio" / run["id"] / hashlib.sha256(node["id"].encode()).hexdigest()[:24]
         bind_model_base(node, state["outputs"], inputs, output_dir)
@@ -274,10 +353,19 @@ class WorkflowEngine:
             expected -= {"model", "checkpoint"}
         if not expected <= state["outputs"].keys():
             raise ValueError("The worker omitted a declared output.")
+        gates = [p["name"] for p in node_spec(node["type"], node.get("version", 1))["outputs"] if p["type"] == "gate"]
+        if gates:
+            values = [state["outputs"].get(name) for name in gates]
+            if (not all(_valid_gate(value) for value in values)
+                    or sum(value["allow"] for value in values) != 1
+                    or len({value["reason"] for value in values}) != 1
+                    or any(value["allow"] != (name == value["reason"]) for name, value in zip(gates, values, strict=True))):
+                raise ValueError("The worker returned invalid or ambiguous control gates.")
         state["artifacts"] = _artifacts(node, state["outputs"], "outputs")
         state["lineage"] = {"run": run["id"], "node": node["id"], "inputs": digest(inputs),
                             "implementation": node_spec(node["type"], node.get("version", 1))["implementation"]}
-        if not state.get("execution") and not node_spec(node["type"], node.get("version", 1)).get("side_effects"):
+        if (not state.get("execution") and not node_spec(node["type"], node.get("version", 1)).get("side_effects")
+                and self._cacheable(node, state["outputs"])):
             with self.store.lock:
                 self.store.graph.put_doc("studio.cache:" + digest({"principal": run["principal"], "key": state["fingerprint"]}),
                                          {"outputs": state["outputs"], "artifacts": state["artifacts"], "run": run["id"]})
