@@ -20,9 +20,11 @@ def test_frozen_daemon_keeps_graph_conversations_after_restart(tmp_path):
         pytest.skip("set POOLHOUSE_FROZEN_BINARY to the built standalone daemon")
     root = tmp_path / "daemon"
     (root / "chats").mkdir(parents=True)
-    legacy = {"id": "saved", "title": "Saved before packaging", "model": "saved-model", "created": 1,
-              "messages": [{"role": "user", "content": "Keep my conversation", "at": 1}]}
-    (root / "chats" / "saved.json").write_text(json.dumps(legacy))
+    from poolhouse.fleet.conversations import Conversations
+
+    conversations = Conversations(root / "chats")
+    seeded = conversations.start(title="Saved before packaging", model="saved-model")
+    seeded = conversations.append(seeded.id, "user", "Keep my conversation")
     (root / "settings.json").write_text(json.dumps({"setup_done": True}))
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -34,13 +36,12 @@ def test_frozen_daemon_keeps_graph_conversations_after_restart(tmp_path):
         assert readiness["runtime_ready"], readiness.get("runtime_error")
         board = call(port, "GET", "/ui/board/agents")
         assert board["agents"] == [] and board["owner_id"]
-        assert call(port, "GET", "/ui/conversations/saved")["messages"] == [
-            {**legacy["messages"][0], "reasoning": "", "status": "complete"}]
+        assert call(port, "GET", f"/ui/conversations/{seeded.id}")["messages"] == seeded.public()["messages"]
         made = call(port, "POST", "/ui/conversations", {"model": "chosen-model", "title": "Packaged chat",
                     "settings": {"project": "/tmp/project", "temperature": .4}})
         assert made["settings"]["temperature"] == .4
         call(port, "POST", f"/ui/conversations/{made['id']}", {"title": "Renamed packaged chat"})
-        call(port, "DELETE", "/ui/conversations/saved")
+        call(port, "DELETE", f"/ui/conversations/{seeded.id}")
     with running(Path(binary), root, port, environment, tmp_path / "second.log"):
         chats = call(port, "GET", "/ui/conversations")["conversations"]
         assert [chat["id"] for chat in chats] == [made["id"]]
@@ -50,7 +51,6 @@ def test_frozen_daemon_keeps_graph_conversations_after_restart(tmp_path):
         assert saved["settings"]["project"] == "/tmp/project"
         assert saved["settings"]["temperature"] == .4
     assert (root / "chats" / "conversations.db").exists()
-    assert json.loads((root / "chats" / "saved.json").read_text()) == legacy
 
 
 COOKIES: dict[int, str] = {}

@@ -1,5 +1,4 @@
-"""The three role names are defined once and the old ones are not used as role names; saved rules
-written under the old names are read under the new ones."""
+"""Only the three current role names may constrain saved rules."""
 
 from __future__ import annotations
 
@@ -29,7 +28,7 @@ ALLOWED = {"tests/test_role_names.py"}
 def test_the_table_uses_the_three_new_names():
     assert tuple(roles.ROLES) == ("read-only", "approve-first", "plan-and-go")
     assert (roles.DEFAULT, roles.TASK_DEFAULT) == ("approve-first", "plan-and-go")
-    assert tuple(chatpolicy.LEGACY_ROLE_NAMES) == OLD
+    assert tuple(roles.ROLES) == chatpolicy.ROLE_NAMES
 
 
 @pytest.mark.parametrize("rel", sorted(set(SCANNED) - ALLOWED))
@@ -50,17 +49,32 @@ def _file(tmp_path, version, role):
     return path
 
 
-@pytest.mark.parametrize("old,new", list(chatpolicy.LEGACY_ROLE_NAMES.items()))
-def test_a_rule_saved_under_an_old_role_name_applies_to_the_new_one_and_is_rewritten(tmp_path, old, new):
-    path = _file(tmp_path, 1, old)
-    rules = saved.Rules(path)
-    args = {"model": "quince-2b.gguf"}
-    assert not rules.broken and rules.rules[0].role == new
-    assert rules.covers("serve_up", args, new, False).verdict == "always"
-    rules.add("serve_up", {"model": "other.gguf"}, "never", new)
-    data = json.loads(path.read_text())
-    assert data["version"] == saved.SCHEMA_VERSION
-    assert [r["role"] for r in data["rules"]] == [new, new]
+@pytest.mark.parametrize("role", [*OLD, "unknown", None, False, 0, [], {}])
+def test_unsupported_saved_roles_refuse_the_entire_file_without_rewrite(tmp_path, role):
+    path = _file(tmp_path, 2, role)
+    original = path.read_bytes()
+    loaded = saved.Rules(path)
+    assert loaded.broken and loaded.rules == []
+    for current in chatpolicy.ROLE_NAMES:
+        assert loaded.covers("serve_up", {"model": "quince-2b.gguf"}, current, False) is None
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize("role", [*OLD, "unknown", None, False, 0, [], {}])
+def test_unsupported_caller_roles_cannot_use_a_global_rule(tmp_path, role):
+    loaded = saved.Rules(_file(tmp_path, 2, ""))
+    assert not loaded.broken
+    assert loaded.covers("serve_up", {"model": "quince-2b.gguf"}, role, False) is None
+
+
+def test_mixed_supported_and_unsupported_rules_match_nothing(tmp_path):
+    path = _file(tmp_path, 2, "approve-first")
+    value = json.loads(path.read_text())
+    value["rules"].append({**value["rules"][0], "role": "unsupported"})
+    path.write_text(json.dumps(value))
+    loaded = saved.Rules(path)
+    assert loaded.broken and loaded.rules == []
+    assert loaded.covers("serve_up", {"model": "quince-2b.gguf"}, "approve-first", False) is None
 
 
 def test_an_unknown_role_name_in_a_saved_rule_is_refused_not_dropped(tmp_path):

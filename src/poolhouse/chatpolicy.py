@@ -17,16 +17,15 @@ from poolhouse.interventions import Base, Call, Context, Deny, Proceed, Verdict
 from poolhouse.net.cli import command as security_command
 from poolhouse.sentinel.human import agent_may
 
-__all__ = ["APPROVE_FIRST", "CONFIRM", "FENCED", "HUMAN_ONLY", "LEGACY_ROLE_NAMES", "PLAN_AND_GO", "READ",
+__all__ = ["APPROVE_FIRST", "CONFIRM", "FENCED", "HUMAN_ONLY", "PLAN_AND_GO", "READ",
            "READ_ONLY", "ROLE_NAMES", "HumanOnlyRail", "catalog", "refusal_for", "review_view"]
 
 READ_ONLY = "read-only"
 APPROVE_FIRST = "approve-first"
 PLAN_AND_GO = "plan-and-go"
 ROLE_NAMES = (READ_ONLY, APPROVE_FIRST, PLAN_AND_GO)
-LEGACY_ROLE_NAMES = {"reader": READ_ONLY, "operator": APPROVE_FIRST, "runner": PLAN_AND_GO}
-"""The role names, and the older spellings a saved rule may still carry."""
-_ROLE_WORDS = "|".join(re.escape(n) for n in (*ROLE_NAMES, *LEGACY_ROLE_NAMES))
+_ROLE_WORDS = "|".join(re.escape(name) for name in ROLE_NAMES)
+
 
 READ = frozenset({
     "serve_status", "models_find", "models_files", "bench_status", "bench_history", "bench_show",
