@@ -35,6 +35,8 @@ class FakeGit:
     def __call__(self, args) -> tuple[int, str]:
         argv = [str(a) for a in args]
         self.calls.append(argv)
+        if argv == ["rev-parse", "FETCH_HEAD"]:
+            return self.answers.get("fetched", (0, NEW))
         return self.answers.get(_word(argv), (0, ""))
 
     def ran(self, word: str) -> bool:
@@ -91,24 +93,12 @@ class TestFollowingABranch:
         assert restarts == [], "it restarted for nothing"
 
     def test_a_fast_forward_is_pulled_and_restarted(self, tmp_path):
-        # rev-parse answers OLD before the pull and NEW after it; a real git does the same.
-        seen = iter([(0, OLD), (0, NEW)])
         git = _git()
-        git.answers["rev-parse"] = (0, OLD)
-        original = git.__call__
-
-        def answering(args):
-            argv = [str(a) for a in args]
-            if argv[0] == "rev-parse":
-                git.calls.append(argv)
-                return next(seen)
-            return original(args)
-
         restarts = []
         got = updates.track_once(
             updates.TrackedBranch(REPO, 'main', tmp_path),
             runtime=updates.UpdateRuntime(
-                git=answering,
+                git=git,
                 pip=lambda where: (0, 'installed'),
                 restart=lambda: restarts.append(1) or 'service',
             ),
@@ -118,7 +108,7 @@ class TestFollowingABranch:
         assert got.installed is True
         assert restarts == [1], "a machine on new code that never restarted runs the old"
         pull = next(c for c in git.calls if c[0] == "merge")
-        assert pull == ["merge", "--ff-only", "FETCH_HEAD"]
+        assert pull == ["merge", "--ff-only", NEW]
 
     def test_a_diverged_checkout_is_reported_and_left_alone(self, tmp_path):
         """Somebody's work in progress is not a thing a daemon resets at 3am."""
@@ -311,8 +301,9 @@ class TestFollowingReleases:
         applied = []
         restarted = []
         monkeypatch.setattr(updates, "apply_if_newer",
-                            lambda: (applied.append(1), {"installed": True,
-                                                         "version": "9.9.9"})[1])
+                            lambda **kwargs: (applied.append(1), {"installed": True,
+                                                         "version": "9.9.9",
+                                                         "restarted": bool(kwargs["restart"]())})[1])
         thread = updates.watch(
             wanted=lambda: True,
             idle=lambda: True,
@@ -331,7 +322,7 @@ class TestFollowingReleases:
     def test_a_busy_machine_is_not_updated(self, monkeypatch):
         tried = threading.Event()
         monkeypatch.setattr(updates, "apply_if_newer",
-                            lambda: (tried.set(), {"installed": False})[1])
+                            lambda **kwargs: (tried.set(), {"installed": False})[1])
         thread = updates.watch(
             wanted=lambda: True,
             idle=lambda: False,

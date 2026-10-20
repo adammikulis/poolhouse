@@ -1,7 +1,8 @@
-"""Worktrees as git states them: landed (clean, every commit in development) or work (anything else).
+"""Worktrees as git states them: landed (clean, every commit in development), new (clean, no commit of its own yet) or work.
 
 A work tree is never removed automatically. ``close`` removes one tree on a decision and ``sweep``
-removes the landed trees nobody has touched for ``MIN_AGE_S`` and no process is working in.
+removes the landed trees nobody has touched for ``MIN_AGE_S`` and no process is working in; a new tree, and a tree
+a live agent or claim owns, waits for ``NEW_MIN_AGE_S``.
 """
 
 from __future__ import annotations
@@ -22,7 +23,7 @@ WORKERS = 8
 PROTECTED = ("main", "master")
 MIN_AGE_S = 600.0
 BRANCH_MIN_AGE_S = 86400.0
-INTEGRATION = "land/"
+NEW_MIN_AGE_S = 86400.0
 CLOSED = {"bundle": "bundled", "abandon": "abandoned"}
 MARKERS = ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply")
 ACTIVITY = ("HEAD", "index", "logs/HEAD")
@@ -90,14 +91,21 @@ def unlanded(path: Path, tip: str, ref: str) -> int:
     return plus + int(git(path, "rev-list", "--merges", "--count", f"{tip}..{ref}"))
 
 
+def fresh(path: Path, branch: str) -> bool:
+    """Whether the branch (HEAD when detached) has no history beyond its creation: a tree nobody has committed in."""
+    return len(git(path, "reflog", "show", "--format=%ct", f"refs/heads/{branch}" if branch else "HEAD").split()) <= 1
+
+
 def standing(tree: Tree, tip: str, now: float) -> dict:
     """One tree against the development tip: unlanded commits, dirty paths, ahead and behind, age of its newest commit."""
     behind, ahead = (int(x) for x in git(tree.path, "rev-list", "--left-right", "--count", f"{tip}...{tree.head}").split())
     operations, unsaved = dirt(tree.path)
     held, count = unlanded(tree.path, tip, tree.head), len(operations) + unsaved.total
     stamp = int(git(tree.path, "show", "-s", "--format=%ct", tree.head))
+    clean = not held and not count
+    new = clean and not ahead and fresh(tree.path, tree.branch)
     return {"path": str(tree.path), "branch": tree.branch or "(detached)", "head": tree.head, "locked": tree.locked,
-            "landed": not held and not count, "unlanded": held, "dirty": count, "ahead": ahead, "behind": behind,
+            "landed": clean and not new, "new": new, "unlanded": held, "dirty": count, "ahead": ahead, "behind": behind,
             "tip_age_d": max(0.0, (now - stamp) / 86400)}
 
 
@@ -107,7 +115,7 @@ def _read(tree: Tree, tip: str, now: float) -> dict:
         return standing(tree, tip, now)
     except (RuntimeError, OSError, ValueError) as error:
         return {"path": str(tree.path), "branch": tree.branch or "(detached)", "head": tree.head, "locked": tree.locked,
-                "landed": False, "unlanded": 0, "dirty": 0, "ahead": 0, "behind": 0, "tip_age_d": 0.0,
+                "landed": False, "new": False, "unlanded": 0, "dirty": 0, "ahead": 0, "behind": 0, "tip_age_d": 0.0,
                 "unreadable": str(error)}
 
 
@@ -174,7 +182,7 @@ def _allowed(row: dict, mode: str, reason: str) -> None:
         raise Refused("--abandon needs a reason")
     if mode == "abandon" and row["branch"] == "(detached)" and row["unlanded"]:
         raise Refused(f"{row['path']} has unlanded commits on no branch; use --bundle")
-    if mode == "landed" and not row["landed"]:
+    if mode == "landed" and not row["landed"] and not row["new"]:
         raise Refused(f"{row['path']} is not landed: {row['unlanded']} unlanded commits, {row['dirty']} dirty files; "
                       "land it, or --bundle / --abandon 'reason'")
     if mode == "bundle" and row["dirty"]:
@@ -237,21 +245,23 @@ def occupied(path: Path, directories: list[str | None]) -> bool:
     return any(d is None or d == str(path) or d.startswith(str(path) + "/") for d in directories)
 
 
-def sweep(root: Path | str, now: float, working: Callable[[], list[str | None]],
-          minimum: float = MIN_AGE_S) -> tuple[list[dict], list[tuple[str, str]]]:
-    """Close every landed tree untouched for ``minimum`` seconds; the closed trees and (path, why) for those that stayed.
+def sweep(root: Path | str, now: float, working: Callable[[], list[str | None]], minimum: float = MIN_AGE_S,
+          owned: Callable[[], set[str]] = set) -> tuple[list[dict], list[tuple[str, str]]]:
+    """Close every landed or new tree untouched long enough; the closed trees and (path, why) for those that stayed.
 
-    ``working`` lists the working directory of every running process. Locked trees, the landing runner's
-    integration trees and trees a process is working in are left alone; a tree whose branch is less than
-    ``BRANCH_MIN_AGE_S`` old is removed and its branch kept.
+    ``working`` lists the working directory of every running process; ``owned`` names the paths, directory names and
+    branches a live agent or claim holds. A tree is untouched long enough after ``minimum`` seconds, or ``NEW_MIN_AGE_S`` when it is
+    new or owned. Locked trees and trees a process is working in are left
+    alone; a tree whose branch is less than ``BRANCH_MIN_AGE_S`` old is removed and its branch kept.
     """
     closed, stayed = [], []
     for row in rows(root, now):
         path = Path(row["path"])
-        if not row["landed"] or row["locked"] or row["branch"].startswith(INTEGRATION):
+        if not (row["landed"] or row["new"]) or row["locked"]:
             continue
         try:
-            if now - touched(path) < minimum or occupied(path, working()):
+            held = row["new"] or bool({row["path"], path.name, row["branch"]} & owned())
+            if now - touched(path) < (max(minimum, NEW_MIN_AGE_S) if held else minimum) or occupied(path, working()):
                 continue
             young = row["branch"] != "(detached)" and now - created(path, row["branch"]) < BRANCH_MIN_AGE_S
             closed.append(close(root, path, ("landed", ""), "the branch is less than a day old" if young else ""))

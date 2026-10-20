@@ -1,0 +1,159 @@
+<script>
+  (function () {
+    const S = window.studioModel,
+      E = window.fleetModel.el;
+    S.installTargets = (proto) =>
+      Object.assign(proto, {
+        computeNode(node) {
+          const spec = S.spec(this, node);
+          return (
+            node.type !== "tools.call" &&
+            (spec.capabilities || []).some((c) =>
+              ["training", "inference", "evaluation", "gym"].includes(c),
+            )
+          );
+        },
+        executionDevice(node) {
+          const id = node.execution?.machine;
+          return (this.devices || []).find((d) =>
+            id ? d.id === id : d.is_self,
+          );
+        },
+        nodeIssues(node) {
+          const key = [...this.context.map((c) => c.node.id), node.id].join(
+            "/",
+          );
+          const errors = (this.validationErrors || [])
+            .filter(
+              (e) =>
+                typeof e.node === "string" &&
+                (e.node === key ||
+                  e.node.startsWith(key + "/") ||
+                  (this.validationVariants?.[key] || []).includes(e.node)),
+            )
+            .map((e) => e.message);
+          if (
+            (this.graph.controls || []).some(
+              (e) =>
+                e.target.node === node.id &&
+                !this.graph.nodes.some((source) => source.id === e.source.node),
+            )
+          )
+            errors.push("Reconnect the required branch source.");
+          const device = this.executionDevice(node),
+            spec = S.spec(this, node);
+          for (const [name, binding] of Object.entries(spec.bindings || {}))
+            if (binding.required && !node.bindings?.[name]?.id)
+              errors.push("Choose an installed " + name + ".");
+          for (const input of spec.control_inputs || [])
+            if (
+              !(this.graph.controls || []).some(
+                (e) =>
+                  e.target.node === node.id && e.target.port === input.name,
+              ) &&
+              !Object.values(this.graph.control_inputs || {})
+                .flat()
+                .some(
+                  (target) =>
+                    target.node === node.id && target.port === input.name,
+                )
+            )
+              errors.push("Connect required branch " + input.name + ".");
+          if (!node.execution?.machine || device?.is_self)
+            errors.push(...(spec.requirements || []));
+          if (
+            node.execution?.machine &&
+            (!device || device.available === false)
+          )
+            errors.unshift("Selected device is unavailable.");
+          return [...new Set(errors.filter(Boolean))];
+        },
+        showValidation(errors) {
+          this.validationErrors = (errors || []).filter(
+            (e) => e && typeof e === "object" && typeof e.message === "string",
+          );
+          this.message(
+            (errors || [])
+              .map((e) =>
+                typeof e === "string"
+                  ? e
+                  : (e.node ? e.node + ": " : "") +
+                    (e.message || "Workflow configuration needs attention."),
+              )
+              .join(" · "),
+          );
+          this.render();
+        },
+        executionControls(host, node) {
+          if (!this.computeNode(node)) return;
+          const selected =
+            node.execution?.machine || this.executionDevice(node)?.id || "";
+          const devices = this.devices || [],
+            id = "studio-" + S.id();
+          const select = E(
+            "select",
+            {
+              id,
+              "data-execution-target": "",
+              "aria-label": "Execution device",
+            },
+            ...devices.map((d) =>
+              E(
+                "option",
+                { value: d.id, disabled: d.available === false },
+                d.name +
+                  (d.is_self ? " · This device" : "") +
+                  (d.available === false ? " · Unavailable" : ""),
+              ),
+            ),
+          );
+          if (!devices.some((d) => d.id === selected))
+            select.prepend(
+              E(
+                "option",
+                { value: selected, disabled: !!selected },
+                selected ? "Unavailable device" : "This device",
+              ),
+            );
+          select.value = selected;
+          select.onchange = () => {
+            this.checkpoint();
+            if (select.value) node.execution = { machine: select.value };
+            else delete node.execution;
+            this.changed();
+          };
+          host.append(
+            E("label", { for: id }, "Execution device (next run)"),
+            select,
+            E(
+              "p",
+              {},
+              "Uses the device’s managed CPU or accelerator. Selected files are sent to this device for the run.",
+            ),
+          );
+          const device = this.executionDevice(node);
+          if (device?.capabilities?.length)
+            host.append(
+              E("small", {}, "Available: " + device.capabilities.join(", ")),
+            );
+        },
+        executionSummary(node) {
+          if (!this.computeNode(node)) return null;
+          const device = this.executionDevice(node);
+          return E(
+            "button",
+            {
+              type: "button",
+              onclick: () => {
+                this.select(node.id);
+                this.querySelector("[data-execution-target]")?.focus();
+              },
+            },
+            "Device: " +
+              (device?.name ||
+                (node.execution?.machine ? "Unavailable" : "This device")),
+          );
+        },
+      });
+  })();
+</script>

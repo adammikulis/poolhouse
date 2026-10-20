@@ -10,8 +10,11 @@ import secrets
 import threading
 import time
 import urllib.parse
+from pathlib import Path
 from typing import Any
 
+from . import studio_epoch
+from .discovery import key_path
 from .membership import fingerprint_of
 from .onboard.lan import in_tailnet
 
@@ -34,8 +37,9 @@ def proof(secret: bytes, fields: dict[str, Any], fingerprint: str) -> str:
 
 
 class Invitations:
-    def __init__(self, members: Any, origin: Any, enrol: Any = None):
+    def __init__(self, members: Any, origin: Any, enrol: Any = None, *, authority_root: Path | None = None):
         self.members = members
+        self.authority_root = authority_root if authority_root is not None else key_path().parent
         self.origin = origin
         self.enrol = enrol
         """``enrol(group, certificate, name)`` lists a computer that redeemed an invitation as a device of the pool."""
@@ -95,6 +99,11 @@ class Invitations:
 
     def revoke(self, ident: str) -> None:
         with self.lock:
+            row = self.rows.get(ident) or self.devices.get(ident)
+            if row is not None:
+                pools = [hashlib.sha256(member.key).hexdigest() for member in self.members() if member.group == row["group"]]
+                if pools:
+                    studio_epoch.invalidate(self.authority_root, pools, "invitation-revoked")
             self.rows.pop(ident, None)
             self.devices.pop(ident, None)
 

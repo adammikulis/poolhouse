@@ -28,7 +28,7 @@ from importlib.metadata import PackageNotFoundError, distribution, version
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, optional
+from poolhouse import home, maintenance, optional
 from poolhouse.home import machine_id
 from poolhouse.hub import room as machine_room
 from poolhouse.lock import held_by
@@ -280,12 +280,13 @@ def bench_python(environment: Environment | None) -> Path:
     return environment.python
 
 
+@maintenance.reading
 def _measures(environment: Environment) -> bool:
     """Whether ``environment``'s own interpreter imports the bench and its runs store."""
     if not environment.exists:
         return False
     try:
-        done = subprocess.run([str(environment.python), "-c",
+        done = subprocess.run([str(environment.python), "-B", "-c",
                                "import poolhouse.bench.member_runs, ladybug"],
                               capture_output=True, timeout=120)
     except (OSError, subprocess.SubprocessError):
@@ -293,13 +294,14 @@ def _measures(environment: Environment) -> bool:
     return done.returncode == 0
 
 
+@maintenance.reading
 def detach_bench(line: Sequence[str], home: Path, python: Path) -> tuple[int, Path]:
     """Start ``python -m poolhouse.bench <line> --no-queue --detach`` and return the child's
     pid and log. ``--detach`` re-runs the command in its own session with its output in a
     log under ``home/logs`` and writes the pid into ``home/measuring.json``, which is where
     this reads it back; ``--no-queue`` makes a race for the lock a failed job rather than a
     run queued behind another, since the lock was checked before this was called."""
-    done = subprocess.run([str(python), "-m", "poolhouse.bench", *line,
+    done = subprocess.run([str(python), "-B", "-m", "poolhouse.bench", *line,
                            "--no-queue", "--detach"],
                           capture_output=True, text=True, timeout=120,
                           env={**os.environ, "POOLHOUSE_BENCH_HOME": str(home)})

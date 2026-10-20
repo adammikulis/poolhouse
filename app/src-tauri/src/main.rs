@@ -6,6 +6,7 @@ mod identity;
 mod launch;
 mod origin;
 mod settings;
+mod studio_watch;
 #[cfg(test)]
 mod security_tests;
 
@@ -66,6 +67,16 @@ fn reopen_page(app: AppHandle, state: State<'_, Shell>) -> bool {
         return false;
     };
     window.eval(&format!("location.replace({target})")).is_ok()
+}
+
+/// The daemon chooses the mode; only the OS picker can supply the original path.
+#[tauri::command]
+async fn choose_studio_watch_source(app: AppHandle, state: State<'_, Shell>, request_id: String, nonce: String) -> Result<serde_json::Value, String> {
+    let root = state.root.clone();
+    let port = state.port;
+    tauri::async_runtime::spawn_blocking(move || studio_watch::choose(app, root, port, request_id, nonce))
+        .await.map_err(|_| "The file selection was interrupted.".to_string())?
+        .map_err(str::to_string)
 }
 
 /// Whether the window may close now, raising the question when nothing is saved.
@@ -135,7 +146,8 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![close_choice, on_closing, reopen_page])
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![close_choice, on_closing, reopen_page, choose_studio_watch_source])
         .setup(|app| {
             let handle = app.handle().clone();
             let home = app.path().home_dir()?;

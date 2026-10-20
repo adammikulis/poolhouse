@@ -53,8 +53,8 @@ def _verified(pin: Pin, path: Path) -> bool:
 ENDPOINT = "https://huggingface.co"
 
 
-def _url(pin: Pin) -> str:
-    base = (os.environ.get("HF_ENDPOINT") or ENDPOINT).rstrip("/")
+def _url(pin: Pin, endpoint: str | None = None) -> str:
+    base = (endpoint or os.environ.get("HF_ENDPOINT") or ENDPOINT).rstrip("/")
     return (f"{base}/{pin.repo}/resolve/{urllib.parse.quote(pin.revision, safe='')}/"
             f"{urllib.parse.quote(pin.filename)}")
 
@@ -67,13 +67,13 @@ def _where(pin: Pin) -> Path:
     return folder.joinpath(*(safe_filename(part) for part in pin.filename.split("/")))
 
 
-def _fetch(pin: Pin, path: Path) -> None:
+def _fetch(pin: Pin, path: Path, *, endpoint: str | None = None) -> None:
     """Download ``pin`` through the net pipeline into the repository's blobs and link it at ``path``."""
     blob = hfstore.repo_root(pin.repo) / "blobs" / pin.sha256
     want = net.Want(sha256=pin.sha256, size=pin.size, require_digest=True,
                     max_bytes=pin.size + (1 << 20), purpose="decide model")
     try:
-        net.download(_url(pin), blob, want, pipeline=net.default())
+        net.download(_url(pin, endpoint), blob, want, pipeline=net.default())
     except net.Blocked as exc:
         raise DecideError(f"{pin.repo}/{pin.filename} does not match its pinned size and "
                           f"hash; the file was held: {exc}") from None
@@ -82,7 +82,7 @@ def _fetch(pin: Pin, path: Path) -> None:
     hfstore.link(path, blob)
 
 
-def locate(pin: Pin, *, download: bool = False) -> Path:
+def locate(pin: Pin, *, download: bool = False, endpoint: str | None = None) -> Path:
     """The verified file for ``pin``, downloading it only when ``download`` is set.
 
     The download goes through the net pipeline (allow-listed host, pinned size and SHA-256,
@@ -96,7 +96,7 @@ def locate(pin: Pin, *, download: bool = False) -> Path:
             raise BackendUnavailable(
                 f"{pin.repo}/{pin.filename} is not downloaded; "
                 "run `poolhouse decide fetch` to download it")
-        _fetch(pin, path)
+        _fetch(pin, path, endpoint=endpoint)
         if not _verified(pin, path):
             raise DecideError(f"{pin.repo}/{pin.filename} does not match its pinned size and hash")
     return path

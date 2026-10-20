@@ -15,7 +15,12 @@
           select.value = this.workflowId || "";
         },
         async open(workflow) {
-          if (this.dirty || this.saving || this.sweepDrafts?.size)
+          if (
+            this.dirty ||
+            this.saving ||
+            this.sweepDrafts?.size ||
+            this.recordDrafts?.size
+          )
             await this.save();
           this.context = [];
           this.packageId = null;
@@ -31,11 +36,14 @@
           this.redoStack = [];
           this.dirty = false;
           this.workflowList();
+          this.resetDeliveryDraft();
+          this.resetWebhookDraft();
           this.render();
         },
         normalize() {
           this.graph.nodes ||= [];
           this.graph.edges ||= [];
+          this.graph.controls ||= [];
           this.graph.groups ||= {};
           this.graph.layout ||= {};
           this.graph.layout.nodes ||= {};
@@ -48,6 +56,7 @@
         changed(paint = true) {
           this.dirty = true;
           this.editSerial++;
+          this.validationErrors = [];
           this.message("Unsaved changes");
           if (paint) this.render();
           clearTimeout(this.autosave);

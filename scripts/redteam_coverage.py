@@ -187,6 +187,32 @@ def string_defaults(tree: ast.Module) -> dict[str, str]:
     return out
 
 
+def route_literal(node: ast.AST, constants: dict[str, str]) -> str | None:
+    """Resolve string literals and fixed constant concatenation without executing code."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.Name):
+        return constants.get(node.id)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = route_literal(node.left, constants)
+        right = route_literal(node.right, constants)
+        if left is not None and right is not None:
+            return left + right
+    return None
+
+
+def route_constants(tree: ast.Module) -> dict[str, str]:
+    """Only unreassigned, module-level literal constants name a fixed route prefix."""
+    stores: dict[str, int] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            stores[node.id] = stores.get(node.id, 0) + 1
+    return {target.id: node.value.value for node in tree.body if isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
+            for target in node.targets if isinstance(target, ast.Name) and target.id.isupper()
+            and stores[target.id] == 1}
+
+
 def route_names(node: ast.Compare | ast.Call, where: str, defaults: dict[str, str] | None = None) -> list[str]:
     """The path constants a comparison or `startswith` tests."""
     names: list[str] = []
@@ -195,10 +221,10 @@ def route_names(node: ast.Compare | ast.Call, where: str, defaults: dict[str, st
         if isinstance(func, ast.Attribute) and func.attr == "startswith" and node.args \
                 and ROUTE_NAME.search(ast.unparse(func.value)):
             arg = node.args[0]
-            if isinstance(arg, ast.Name) and arg.id in (defaults or {}):
-                names.append(defaults[arg.id] + "*")
-            elif isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-                names.append(arg.value + "*")
+            for item in arg.elts if isinstance(arg, ast.Tuple) else [arg]:
+                value = route_literal(item, defaults or {})
+                if value is not None:
+                    names.append(value + "*")
         return [n for n in names if n.startswith("/") and len(n) > 2]
     if not any(isinstance(op, (ast.Eq, ast.NotEq, ast.In, ast.NotIn)) for op in node.ops):
         return []
@@ -231,7 +257,7 @@ def find_routes(found: dict[str, Surface], where: str, tree: ast.Module) -> None
     if not sub.startswith(ROUTE_DIRS) and sub not in ROUTE_FILES:
         return
     table = spans(tree)
-    defaults = string_defaults(tree)
+    defaults = {**string_defaults(tree), **route_constants(tree)}
     trust = next((t for k, t in TRUST_BY_FILE.items() if sub.startswith(k)), "")
     for node in ast.walk(tree):
         if isinstance(node, (ast.Compare, ast.Call)):
@@ -411,11 +437,63 @@ def discover() -> dict[str, Surface]:
     for kind, name, source in (
         ("desktop", "app/src-tauri/capabilities/main.json", "app/src-tauri/capabilities/main.json"),
         ("spawn", "scripts/test-on-linux", "scripts/test-on-linux"),
+        ("spawn", "serve/decision_process.py:DecisionProcess.start", "src/poolhouse/serve/decision_process.py"),
+        ("spawn", "serve/decision_launch.py:OwnedBroker.start", "src/poolhouse/serve/decision_launch.py"),
         ("spawn", "gym/transport.py:Process.start", "src/poolhouse/gym/transport.py"),
         ("spawn", "gym/decision_process.py:DecisionProcess.__init__", "src/poolhouse/gym/decision_process.py"),
         ("context", "gym/vision_process.py:image_request", "src/poolhouse/gym/vision_process.py"),
         ("spawn", "sandbox/bubblewrap.py:_probe", "src/poolhouse/sandbox/bubblewrap.py"),
         ("route", "fleet/gym_recording_routes.py:/ui/gym/recordings*", "src/poolhouse/fleet/gym_recording_routes.py"),
+        ("route", "fleet/studio_stream_routes.py:/ui/studio/subscriptions*", "src/poolhouse/fleet/studio_stream_routes.py"),
+        ("parser", "unix_socket.py", "src/poolhouse/unix_socket.py"),
+        ("parser", "fleet/producer_bootstrap.py", "src/poolhouse/fleet/producer_bootstrap.py"),
+        ("parser", "studio/producer_log.py", "src/poolhouse/studio/producer_log.py"),
+        ("handler", "studio/producer_log.py:ProducerLog.retry", "src/poolhouse/studio/producer_log.py"),
+        ("parser", "fleet/producer_control.py", "src/poolhouse/fleet/producer_control.py"),
+        ("handler", "fleet/producer_control.py:ControlServer._answer", "src/poolhouse/fleet/producer_control.py"),
+        ("parser", "studio/record_context.py", "src/poolhouse/studio/record_context.py"),
+        ("context", "studio/decisions.py", "src/poolhouse/studio/decisions.py"),
+        ("parser", "studio/record_coverage.py", "src/poolhouse/studio/record_coverage.py"),
+        ("handler", "fleet/producer_offers.py:OfferRegistry.inspect", "src/poolhouse/fleet/producer_offers.py"),
+        ("parser", "fleet/producer_bridge.py", "src/poolhouse/fleet/producer_bridge.py"),
+        ("handler", "fleet/producer_bridge.py:BridgeCapability.activate", "src/poolhouse/fleet/producer_bridge.py"),
+        ("handler", "fleet/producer_bridge.py:BridgeCapability.verify", "src/poolhouse/fleet/producer_bridge.py"),
+        ("spawn", "fleet/producer_holder.py:_launch", "src/poolhouse/fleet/producer_holder.py"),
+        ("parser", "fleet/producer_holder.py", "src/poolhouse/fleet/producer_holder.py"),
+        ("parser", "fleet/producer_client.py", "src/poolhouse/fleet/producer_client.py"),
+        ("egress", "fleet/producer_client.py:ProducerClient._control", "src/poolhouse/fleet/producer_client.py"),
+        ("egress", "fleet/producer_client.py:ProducerClient._data", "src/poolhouse/fleet/producer_client.py"),
+        ("spawn", "fleet/producer_process.py:OwnedProducer._spawn", "src/poolhouse/fleet/producer_process.py"),
+        ("handler", "fleet/producer_process.py:OwnedProducer.activate", "src/poolhouse/fleet/producer_process.py"),
+        ("parser", "fleet/producer_process.py", "src/poolhouse/fleet/producer_process.py"),
+        ("egress", "fleet/producer_process.py:_forward", "src/poolhouse/fleet/producer_process.py"),
+        ("parser", "fleet/producer_devices.py", "src/poolhouse/fleet/producer_devices.py"),
+        ("handler", "fleet/producer_devices.py:Devices.discover", "src/poolhouse/fleet/producer_devices.py"),
+        ("handler", "fleet/producer_devices.py:Devices.inspect", "src/poolhouse/fleet/producer_devices.py"),
+        ("handler", "fleet/producer_devices.py:Devices.control", "src/poolhouse/fleet/producer_devices.py"),
+        ("egress", "fleet/producer_devices.py:Devices.request", "src/poolhouse/fleet/producer_devices.py"),
+        ("handler", "fleet/producer_publications.py:Publications.receive", "src/poolhouse/fleet/producer_publications.py"),
+        ("handler", "fleet/producer_publications.py:Publications.current", "src/poolhouse/fleet/producer_publications.py"),
+        ("handler", "fleet/producer_publications.py:Publications.receipt_current", "src/poolhouse/fleet/producer_publications.py"),
+        ("egress", "fleet/producer_publications.py:Publications._send", "src/poolhouse/fleet/producer_publications.py"),
+        ("parser", "fleet/producer_host.py", "src/poolhouse/fleet/producer_host.py"),
+        ("handler", "fleet/producer_host.py:ProducerHost.prepare", "src/poolhouse/fleet/producer_host.py"),
+        ("handler", "fleet/producer_host.py:ProducerHost.activate", "src/poolhouse/fleet/producer_host.py"),
+        ("handler", "fleet/producer_host.py:ProducerHost.status", "src/poolhouse/fleet/producer_host.py"),
+        ("handler", "fleet/producer_host.py:ProducerHost.revoke", "src/poolhouse/fleet/producer_host.py"),
+        ("handler", "fleet/producer_host.py:ProducerHost.accepts", "src/poolhouse/fleet/producer_host.py"),
+        ("handler", "fleet/producer_host.py:ProducerHost.bridge", "src/poolhouse/fleet/producer_host.py"),
+        ("egress", "fleet/producer_host.py:ProducerHost._authorization", "src/poolhouse/fleet/producer_host.py"),
+        ("egress", "fleet/producer_host.py:ProducerHost.bridge", "src/poolhouse/fleet/producer_host.py"),
+        ("parser", "fleet/producer_member.py", "src/poolhouse/fleet/producer_member.py"),
+        ("handler", "fleet/producer_member.py:answer", "src/poolhouse/fleet/producer_member.py"),
+        ("parser", "fleet/producer_admission.py", "src/poolhouse/fleet/producer_admission.py"),
+        ("handler", "fleet/producer_admission.py:Admission.admit", "src/poolhouse/fleet/producer_admission.py"),
+        ("handler", "fleet/producer_admission.py:Admission.receipt", "src/poolhouse/fleet/producer_admission.py"),
+        ("handler", "fleet/producer_admission.py:Admission.negative", "src/poolhouse/fleet/producer_admission.py"),
+        ("handler", "fleet/producer_connections.py:Connections.register", "src/poolhouse/fleet/producer_connections.py"),
+        ("handler", "fleet/producer_connections.py:Connections.check", "src/poolhouse/fleet/producer_connections.py"),
+        ("handler", "fleet/producer_connections.py:Connections.authorize", "src/poolhouse/fleet/producer_connections.py"),
     ):
         if (ROOT / source).is_file():
             add(found, kind, name, source)

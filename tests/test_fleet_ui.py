@@ -854,8 +854,9 @@ class TestTheInterfaceAndTheDaemonAgree:
         from poolhouse.fleet.page import render
 
         source = render()
-        found = set(re.findall(r"""api\(\s*[`"']([^`"']+)""", source))
-        found |= set(re.findall(r"""fetch\(\s*[`"']([^`"']+)""", source))
+        # A literal followed by `+` is the start of an address being built, not an address.
+        found = set(re.findall(r"""api\(\s*[`"']([^`"']+)[`"'](?!\s*\+)""", source))
+        found |= set(re.findall(r"""fetch\(\s*[`"']([^`"']+)[`"'](?!\s*\+)""", source))
         # Only the path matters here. A query string carries template holes, and
         # any id will do for asking whether the route exists at all.
         cleaned = set()
@@ -1083,7 +1084,7 @@ class TestUpdatingItself:
         monkeypatch.setattr(updates, "asset_for", lambda r, key="": r.assets[0])
         monkeypatch.setattr(updates, "download_release",
                             lambda r, a, into, **k: tmp_path / "a.zip")
-        monkeypatch.setattr(updates, "install", lambda a: seen.setdefault("put", a))
+        monkeypatch.setattr(updates, "install", lambda a, **kwargs: seen.setdefault("put", a))
 
         got = updates.apply_if_newer()
         assert got == {"ok": True, "installed": True, "version": "0.2.0"}, got
@@ -1158,7 +1159,8 @@ class TestUpdatingItself:
 
         done = threading.Event()
         monkeypatch.setattr(updates, "apply_if_newer",
-                            lambda: {"ok": True, "installed": True, "version": "9.9.9"})
+                            lambda **kwargs: {"ok": True, "installed": True, "version": "9.9.9",
+                                              "restarted": bool(kwargs["restart"]())})
         monkeypatch.setattr(updates, "relaunch",
                             lambda **k: (done.set(), True)[1])
         updates.watch(

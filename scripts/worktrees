@@ -6,10 +6,12 @@
     worktrees close TREE --bundle         bundle its unlanded commits, verify the bundle, then remove
     worktrees close TREE --abandon WHY    save the uncommitted changes, remove the tree, keep its branch with WHY as the description
     worktrees sweep [--min-age SECONDS]   remove every landed tree untouched for ten minutes (600 seconds)
-                                          that no process is working in
+                                          that no process is working in; a new tree, and one a live agent or
+                                          claim holds, is removed only after a day untouched
 
 A tree is landed when it is clean (ignored files that a build or a test run recreates do not count) and
-every commit is in the development branch, the branch the primary checkout is on; any other tree is work
+every commit is in the development branch, the branch the primary checkout is on; it is new when it is clean
+and its branch has no commit or other history since it was created; any other tree is work
 and is never removed except by ``close``. Notes (information only, listed in docs/limits.md): more than 10 commits
 ahead, more than 30 ahead (split or land part), more than 20 behind, and behind without a merge of the development
 branch within a day. See docs/worktrees.md.
@@ -18,6 +20,7 @@ branch within a day. See docs/worktrees.md.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import sys
 import time
@@ -26,8 +29,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-import land_git as lg
+import sealed_git as lg
 import primary_sync
+import tree_owners
 
 from poolhouse import trees
 from poolhouse.serve.process import working_directories
@@ -58,7 +62,7 @@ def report(target: str) -> int:
     unreadable = False
     for row in found:
         flags = flags_for(row["ahead"], row["behind"], row["tip_age_d"])
-        state = "landed" if row["landed"] else "work"
+        state = "landed" if row["landed"] else "new" if row["new"] else "work"
         if "unreadable" in row:
             flags, state, unreadable = (*flags, f"unreadable: {row['unreadable']}"), "work unreadable", True
         print(f"{'NOTE' if flags else 'ok  '} {row['branch']}  +{row['ahead']} -{row['behind']}  {row['tip_age_d']:.1f}d  "
@@ -86,7 +90,8 @@ def command(argv: list[str]) -> int:
             mode = "landed" if args.landed else "bundle" if args.bundle else "abandon"
             print(json.dumps(trees.close(root, args.tree, (mode, args.abandon or ""))))
             return 0
-        closed, stayed = trees.sweep(root, time.time(), working_directories, args.min_age)
+        closed, stayed = trees.sweep(root, time.time(), working_directories, args.min_age,
+                                    functools.cache(tree_owners.owned))
     except (trees.Refused, RuntimeError) as error:
         print(f"worktrees: {error}", file=sys.stderr)
         return 2

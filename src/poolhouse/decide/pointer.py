@@ -104,10 +104,10 @@ class PointerDecider(BaseDecider):
 
     name = "pointer"
 
-    def __init__(self, source: Checkpoint | Path | str = STRANDS_V19, *, device: str = "auto",
+    def __init__(self, source: Checkpoint | Source | Path | str = STRANDS_V19, *, device: str = "auto",
                  download: bool = False, calibration: Calibration | None = None) -> None:
         self.source = source
-        self.model = source.name if isinstance(source, Checkpoint) else Path(source).name
+        self.model = source.name if isinstance(source, (Checkpoint, Source)) else Path(source).name
         self.device_request = device
         self.download = download
         self.calibration = calibration
@@ -116,6 +116,8 @@ class PointerDecider(BaseDecider):
 
     def resolve(self) -> Source:
         """The verified local files."""
+        if isinstance(self.source, Source):
+            return self.source
         if isinstance(self.source, Checkpoint):
             return strands_source(self.source, download=self.download)
         return local_source(self.source, download=self.download)

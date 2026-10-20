@@ -9,6 +9,7 @@ import sys
 import threading
 from pathlib import Path
 
+from poolhouse import maintenance
 from poolhouse.platform import start_process, terminate_process_group
 
 
@@ -60,7 +61,7 @@ class Process:
         environment = python_environment()
         environment.pop("POOLHOUSE_GYM_PYTHON", None)
         environment.pop("POOLHOUSE_GYM_PYTHONS", None)
-        self.handle = start_process([interpreter(self.settings["environment"]), "-m", "poolhouse.gym.worker_entry",
+        self.handle = maintenance.spawn(start_process, [interpreter(self.settings["environment"]), "-m", "poolhouse.gym.worker_entry",
                                         json.dumps(self.settings)], stdin=subprocess.PIPE,
                                        stdout=subprocess.PIPE, stderr=self.log, text=True, bufsize=1, env=environment)
         self.commands = Commands(self.handle.stdin)

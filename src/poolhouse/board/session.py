@@ -83,6 +83,8 @@ class Agent:
     seen_ms: int
     retired_reason: str = ""
     idle: bool = False
+    person: bool = False
+    """Whether the node marked this as the person's own session (`register_person`); no claim sets it."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,7 +146,7 @@ def _entry(raw: dict[str, Any]) -> Entry:
 def _agent(raw: dict[str, Any]) -> Agent:
     return Agent(raw["name"], raw["parent"], raw["family"], raw["model"], raw["model_state"], raw["harness"],
                  raw["retired"], raw["seen_ms"], raw.get("retired_reason", ""),
-                 bool(raw.get("idle", False)))
+                 bool(raw.get("idle", False)), bool(raw.get("person", False)))
 
 
 def _claim(raw: dict[str, Any], changed: bool = True) -> Claim:
@@ -193,7 +195,7 @@ class Session:
         """End ``target`` (default this session): its tokens, leases and name, and its subagents when it is a main session.
 
         ``reason`` is ``done`` (the default, an ordinary end) or, only for a subagent and by its parent, ``revoked``
-        or ``forged``: an end for cause, which the landing runner holds against the work it asked for.
+        or ``forged``: an end for cause, which the reviews and the push check hold against the work it did.
         """
         return dict(self.call("retire", target=target, **({"reason": reason} if reason else {})))
 
@@ -410,17 +412,18 @@ def _own_token(client: Client, board: str, native: Native) -> str:
         return ""
 
 
-def register(client: Client, board: str, native: Native, parent_token: str = "") -> Registration:
+def register(client: Client, board: str, native: Native, parent_token: str = "", *, person: bool = False) -> Registration:
     """Register a native session on ``board`` (as a subagent of ``parent_token``'s owner when given);
     its token is kept in a private file for later commands. A session registered before keeps presenting its own token, which
-    is how the node takes a session it holds no lineage for."""
+    is how the node takes a session it holds no lineage for. ``person`` registers the person's own session, which the node marks."""
     own = "" if parent_token else _own_token(client, board, native)
+    method, params = ("register_person", {"session": native.id}) if person else ("register", {"model": native.model, "harness": native.harness, "session": native.id})
     try:
-        got = client.call("register", board, parent_token or own, model=native.model, harness=native.harness, session=native.id)
+        got = client.call(method, board, parent_token or own, **params)
     except Denied:
         if not own:
             raise
-        got = client.call("register", board, "", model=native.model, harness=native.harness, session=native.id)
+        got = client.call(method, board, "", **params)
     credentials.store(client.state, board, got["name"], got["token"], got["parent"])
     return Registration(got["name"], got["token"], got["parent"], got["created"], board)
 

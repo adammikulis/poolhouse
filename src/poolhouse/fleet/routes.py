@@ -46,6 +46,7 @@ from .session import parse_cookie
 from .setup_jobs import jobs, libraries, provenance, server
 from .setup_recovery_routes import SetupRecoveryRoutes
 from .startup_models import choices
+from .studio_native_picks import NativePickRoutes
 from .studio_routes import StudioRoutes
 from .themes import default_appearance, registry, resolve
 from .workspace_routes import WorkspaceRoutes
@@ -847,7 +848,7 @@ class JobRoutes:
 
 class Router(InitialSetupRoutes, RuntimeRepairRoutes, PageRoutes, SetupRecoveryRoutes, SetupRoutes, SessionRoutes, MeasureRoutes, SettingsRoutes,
              BoardRoutes, RoomRoutes, FeatureRoutes, ModelRoutes, ChatRoutes, UpdateRoutes, PoolRoutes, JobRoutes,
-             KnowledgeRoutes, *experimental_routes.load(), StudioRoutes, WorkspaceRoutes, LaunchRoutes, ExtensionRoutes, Base):
+             KnowledgeRoutes, *experimental_routes.load(), NativePickRoutes, StudioRoutes, WorkspaceRoutes, LaunchRoutes, ExtensionRoutes, Base):
     """Every screen's routes, in the order a request meets them."""
 
     def run(self) -> bool:

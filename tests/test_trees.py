@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -55,6 +56,14 @@ def tree(main: Path, name: str) -> Path:
     return path
 
 
+def landed(main: Path, name: str) -> Path:
+    """A worktree whose one commit development holds."""
+    path = tree(main, name)
+    commit(path, f"{name}-file")
+    git(main, "merge", "-q", "--ff-only", name)
+    return path
+
+
 LATER = 3600.0
 OLD = 2 * 86400.0
 
@@ -76,10 +85,39 @@ def sweep(main: Path, later: float = LATER) -> list[str]:
 
 
 def test_a_clean_tree_with_every_commit_in_development_is_landed(main):
-    tree(main, "fresh")
+    landed(main, "fresh")
     row = standing(main)["fresh"]
-    assert row["landed"] and row["unlanded"] == 0 and row["dirty"] == 0 and row["branch"] == "fresh"
+    assert row["landed"] and not row["new"] and row["unlanded"] == 0 and row["dirty"] == 0 and row["branch"] == "fresh"
     assert not (main / ".git" / "poolhouse-trees.json").exists()
+
+
+def test_a_tree_with_no_commit_yet_is_new_and_not_landed(main):
+    tree(main, "fresh")
+    commit(main, "advance")
+    row = standing(main)["fresh"]
+    assert row["new"] and not row["landed"] and row["unlanded"] == 0 and row["dirty"] == 0
+
+
+def test_sweep_keeps_a_new_tree_a_worker_has_not_yet_committed_in(main):
+    path, loose = tree(main, "fresh"), main.parent / "loose"
+    git(main, "worktree", "add", "-q", "--detach", str(loose))
+    assert sweep(main, trees.MIN_AGE_S + 60) == [] and sweep(main, trees.NEW_MIN_AGE_S - 60) == []
+    assert path.exists() and loose.exists()
+    assert sweep(main, trees.NEW_MIN_AGE_S + 60) == ["fresh", "loose"] and not path.exists()
+
+
+def test_sweep_keeps_a_new_tree_when_the_minimum_age_is_zero(main):
+    path = tree(main, "fresh")
+    closed, stayed = trees.sweep(main, time.time(), visible, 0.0)
+    assert closed == [] and not stayed and path.exists()
+
+
+def test_a_tree_a_live_agent_owns_waits_a_day_and_a_released_one_does_not(main):
+    path, other = landed(main, "mine"), landed(main, "free")
+    closed, _ = trees.sweep(main, time.time() + LATER, visible, trees.MIN_AGE_S, lambda: {path.name})
+    assert [Path(done["path"]).name for done in closed] == ["free"] and path.exists() and not other.exists()
+    closed, _ = trees.sweep(main, time.time() + OLD, visible, trees.MIN_AGE_S, lambda: {path.name})
+    assert [Path(done["path"]).name for done in closed] == ["mine"]
 
 
 def test_a_commit_development_lacks_makes_the_tree_work_until_development_holds_it(main):
@@ -142,7 +180,7 @@ def test_dirty_content_makes_the_tree_work_and_nothing_removes_it(main, kind):
 
 
 def test_files_a_build_or_a_test_run_recreates_do_not_make_a_tree_work(main):
-    path = tree(main, "built")
+    path = landed(main, "built")
     for name in ("__pycache__/m.pyc", "src/__pycache__/n.pyc", "build/out.o", "dist/w.whl", ".pytest_cache/v", ".coverage"):
         (path / name).parent.mkdir(parents=True, exist_ok=True)
         (path / name).write_text("x")
@@ -174,31 +212,31 @@ def test_sweep_removes_a_landed_tree_and_its_branch_once_it_is_old(main):
 
 
 def test_sweep_keeps_a_young_landed_tree(main):
-    path = tree(main, "young")
+    path = landed(main, "young")
     assert sweep(main, 0.0) == [] and path.exists()
     assert sweep(main, trees.MIN_AGE_S - 60) == [] and path.exists()
     assert sweep(main, trees.MIN_AGE_S + 60) == ["young"]
 
 
-def test_sweep_keeps_locked_trees_integration_trees_and_work(main):
+def test_sweep_keeps_locked_trees_and_work(main):
     locked, work = tree(main, "locked"), tree(main, "work")
-    git(main, "worktree", "add", "-q", "-b", "land/batch", str(main.parent / "batch"))
-    batch = main.parent / "batch"
     git(main, "worktree", "lock", "--reason", "foreign operation", str(locked))
     commit(work, "f1")
     assert sweep(main) == []
-    assert locked.exists() and work.exists() and batch.exists()
+    assert locked.exists() and work.exists()
 
 
 def test_sweep_removes_a_detached_landed_tree(main):
     path = main.parent / "loose"
     git(main, "worktree", "add", "-q", "--detach", str(path))
-    assert standing(main)["loose"]["branch"] == "(detached)"
+    commit(path, "loose-file")
+    git(main, "merge", "-q", "--ff-only", git(path, "rev-parse", "HEAD"))
+    assert standing(main)["loose"]["branch"] == "(detached)" and standing(main)["loose"]["landed"]
     assert sweep(main) == ["loose"] and not path.exists()
 
 
 def test_sweep_reports_a_landed_tree_it_could_not_remove(main, monkeypatch):
-    path = tree(main, "stuck")
+    path = landed(main, "stuck")
     original = trees.git
 
     def failing(root, *args):
@@ -392,26 +430,28 @@ def run(main: Path, *args: str) -> subprocess.CompletedProcess:
 
 
 def test_the_script_lists_work_and_landed_trees(main):
+    landed(main, "merged")
     work = tree(main, "work")
     commit(work, "f1")
     (work / "note").write_text("x")
     tree(main, "fresh")
     out = run(main)
     assert out.returncode == 0, out.stderr
+    assert "[new unlanded=0 dirty=0]" in out.stdout
     assert "work  +1 -0" in out.stdout and "[work unlanded=1 dirty=1]" in out.stdout
     assert "[landed unlanded=0 dirty=0]" in out.stdout
 
 
 def test_the_script_reports_an_unreadable_tree_and_exits_1(main):
     broken = tree(main, "broken")
-    tree(main, "fine")
+    landed(main, "fine")
     (broken / ".git").write_text("not a gitdir pointer")
     out = run(main)
     assert out.returncode == 1 and "unreadable:" in out.stdout and "[landed unlanded=0 dirty=0]" in out.stdout
 
 
 def test_the_script_closes_and_sweeps(main):
-    work, done = tree(main, "work"), tree(main, "done")
+    work, done = tree(main, "work"), landed(main, "done")
     commit(work, "f1")
     assert run(main, "close", str(work), "--landed").returncode == 2 and work.exists()
     assert run(main, "close", str(work), "--abandon", "test").returncode == 0 and not work.exists()
@@ -513,7 +553,7 @@ def test_sweep_leaves_every_tree_while_a_process_of_this_user_hides_its_director
 
 
 def test_sweep_removes_a_young_tree_and_keeps_its_branch(main):
-    path = tree(main, "fresh")
+    path = landed(main, "fresh")
     closed, stayed = trees.sweep(main, time.time() + LATER, visible)
     assert not stayed and not path.exists()
     assert "day" in closed[0]["branch_kept"] and git(main, "branch", "--list", "fresh")
@@ -523,7 +563,7 @@ def test_sweep_removes_a_young_tree_and_keeps_its_branch(main):
 
 
 def test_one_unreadable_tree_is_reported_and_the_rest_are_listed(main):
-    broken, fine = tree(main, "broken"), tree(main, "fine")
+    broken, fine = tree(main, "broken"), landed(main, "fine")
     (broken / ".git").write_text("not a gitdir pointer")
     found = standing(main)
     assert found["fine"]["landed"] and "unreadable" not in found["fine"]
@@ -577,3 +617,24 @@ def test_abandon_keeps_the_tree_when_what_it_held_cannot_be_written(main, monkey
     with pytest.raises(trees.Refused, match="disk full"):
         trees.close(main, path, ("abandon", "why"))
     assert (path / "note").read_text() == "unsaved text"
+
+
+def test_a_registered_subagent_owns_its_harness_tree_until_it_retires(tmp_path, monkeypatch):
+    monkeypatch.setenv("POOLHOUSE_HOOK_STATE", str(tmp_path / "hookstate"))
+    import tree_owners
+
+    tree_owners.subagent_records.save("live1", name="claude-aaaaaa")
+    tree_owners.subagent_records.save("gone1", name="claude-bbbbbb")
+    tree_owners.subagent_records.next_identity("gone1")
+    assert tree_owners.registered() == {"agent-live1"}
+
+
+def test_the_live_worktree_and_branch_claims_are_owned(monkeypatch):
+    import tree_owners
+
+    rows = [{"kind": "worktree", "key": "/w/one"}, {"kind": "branch", "key": "fix/x"}, {"kind": "port", "key": "9"}]
+    answer = type("Done", (), {"stdout": json.dumps(rows)})()
+    monkeypatch.setattr(tree_owners.workspace_hook, "run", lambda *args, **kwargs: answer)
+    assert tree_owners.claimed() == {"/w/one", "fix/x"}
+    monkeypatch.setattr(tree_owners.workspace_hook, "run", lambda *args, **kwargs: None)
+    assert tree_owners.claimed() == set()

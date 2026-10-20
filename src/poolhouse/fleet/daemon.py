@@ -10,6 +10,7 @@ import json
 import os
 import secrets
 import socket
+import sys
 import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -37,6 +38,7 @@ from . import (
     autostart_guard,
     invite_client,
     invite_routes,
+    managed_alignment,
     pool_modes,
     runtime_repair,
     tls,
@@ -73,6 +75,7 @@ from .projects import ProjectRegistry, lan_host, local_candidates
 from .runtime_paths import announce_token, configure as configure_runtime_paths, default_root
 from .serving import Hosting, Serving
 from .settings import Settings
+from .studio_service import initialize as initialize_studio
 from .ui import UI
 
 DEFAULT_PORT = 8770
@@ -232,6 +235,7 @@ class DaemonRuntime:
 
     def services(self) -> None:
         self.environment = Environment(self.root)
+        self.managed_alignment = managed_alignment.Alignment(self.environment)
         self.serving = Serving(self.root / "serving.json")
         self.hosting = Hosting(self.root, self.serving)
         self.models = Models(
@@ -314,6 +318,7 @@ class DaemonRuntime:
                 lambda: memberships(self.pool_key_path),
                 lambda: (lan_host(self.port), self.fingerprint()),
                 enrol=lambda group, cert, name: admit(self.members, group, cert, name),
+                authority_root=key_path(self.pool_key_path).parent,
             )
             self.interface.join_invitation = lambda code: invite_routes.joined(
                 self.interface, invite_client.redeem(code, self.name)
@@ -326,7 +331,8 @@ class DaemonRuntime:
             measuring=lambda: bool(self.bench_host.measuring()),
             leases=lambda: bool(self.serving.live()),
         )
-        updating.follow_runtime(idle=self.nothing_running, admission=self.update_admission)
+        self.managed_alignment.start(self.runner, self.nothing_running, self.update_admission)
+        updating.follow_runtime(idle=self.nothing_running, admission=self.code_update_admission)
         self.control = create_control(self)
         self.tracked = str(getattr(self.settings, "track_branch", "") or "").strip()
         self.tracked_from = str(getattr(self.settings, "track_repo", "") or "") or updating.GIT_URL
@@ -336,7 +342,7 @@ class DaemonRuntime:
             updating.track(
                 updating.TrackedBranch(self.tracked_from, self.tracked, self.checkout),
                 idle=self.nothing_running,
-                runtime=updating.UpdateRuntime(admission=self.update_admission),
+                runtime=updating.UpdateRuntime(admission=self.code_update_admission),
             )
         else:
             if self.tracked:
@@ -346,7 +352,7 @@ class DaemonRuntime:
             updating.watch(
                 wanted=lambda: bool(getattr(self.settings, "auto_update", False)),
                 idle=self.nothing_running,
-                admission=self.update_admission,
+                admission=self.code_update_admission,
             )
 
     def announcements(self) -> None:
@@ -373,6 +379,11 @@ class DaemonRuntime:
             self.interface.root = self.root
             self.interface.projects = self.projects
             self.interface.display_url = lan_host(self.port)
+            self.interface.studio_identity = lambda: self.cert
+            self.interface.studio_endpoint = lambda: (f"https://127.0.0.1:{self.httpd.server_address[1]}"
+                                                       if self.listening != LOOPBACK else None)
+            if (self.root / "studio.ladybug").exists():
+                initialize_studio(self.interface)
 
     def report_startup(self) -> None:
         if self.announce:
@@ -479,14 +490,18 @@ class DaemonRuntime:
                     self.control.close()
 
     def _shutdown_jobs(self):
+        self.managed_alignment.close()
         studio = getattr(self.interface, "studio", None)
         if studio is not None:
             studio.close()
+        executions = getattr(self.interface, "studio_executions", None)
         try:
             self.runner.shutdown()
         finally:
             if studio is not None:
                 studio.store.close()
+            if executions is not None:
+                executions.close()
             pool_store = getattr(self.interface, "_studio_pool_store", None)
             if pool_store is not None:
                 pool_store.close()
@@ -494,15 +509,11 @@ class DaemonRuntime:
     def update_admission(self):
         return only_one(self.root / "runtime-install.lock", wait=False)
 
-    def background_busy(self) -> bool:
-        return (bool(self.web and self.initial_setup and not self.settings.setup_done) or bool(self.runner.status()["busy"]) or any(row.state == "getting" for row in self.downloads.active())
-                or bool(self.interface and self.interface.setup_jobs and self.interface.setup_jobs.active()))
+    code_update_admission = managed_alignment.code_update_admission
 
-    def may_start(self) -> tuple[bool, str]:
-        """A measurement holds the GPU and blocks new work."""
-        if self.bench_host and self.bench_host.measuring():
-            return (False, "a benchmark is measuring on this machine")
-        return self.schedule.may_start()
+    background_busy = managed_alignment.background_busy
+
+    may_start = managed_alignment.may_start
 
     def probe_speech(self) -> None:
         self.heard[:] = speech.working()
@@ -515,6 +526,7 @@ class DaemonRuntime:
             **updating.state(),
             "autostart": autostart_check.state_word(),
             "launcher_control": self.control.instance if hasattr(self, "control") else "",
+            "runtime_prefix_digest": hashlib.sha256(str(Path(sys.prefix).resolve()).encode()).hexdigest(),
             "speech": list(self.heard),
         }
 

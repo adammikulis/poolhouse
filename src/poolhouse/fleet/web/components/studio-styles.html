@@ -28,11 +28,18 @@
   .studio-workspace button {
     padding: 7px 10px;
     min-height: 34px;
+    background: var(--bg-raised);
+    color: var(--text);
+    border: 1px solid var(--line-bright);
   }
-  .studio-primary {
-    background: var(--poolhouse-orange);
-    color: var(--poolhouse-orange-ink);
-    border-color: transparent;
+  .studio-workspace button:focus-visible {
+    outline: 2px solid var(--accent-ink);
+    outline-offset: 2px;
+  }
+  .studio-workspace .studio-primary {
+    border-color: var(--accent-ink);
+    box-shadow: inset 3px 0 var(--accent);
+    font-weight: 750;
   }
   .studio-shell {
     display: grid;
@@ -231,8 +238,7 @@
     position: relative;
     min-width: 0;
     min-height: 540px;
-    background: radial-gradient(var(--line-bright) 1px, transparent 1px) 0 0 /
-      20px 20px;
+    background: var(--bg-raised);
     overflow: hidden;
     touch-action: none;
   }
@@ -258,7 +264,7 @@
   }
   .studio-connections path {
     fill: none;
-    stroke: var(--poolhouse-orange);
+    stroke: var(--muted);
     stroke-width: 3;
     pointer-events: stroke;
   }
@@ -281,7 +287,7 @@
   }
   .studio-node header {
     padding: 10px 12px;
-    background: var(--accent-dim);
+    background: var(--bg-sunken);
     cursor: grab;
     display: flex;
     gap: 8px;
@@ -319,6 +325,13 @@
   }
   .studio-node-ports > div {
     min-width: 0;
+  }
+  .studio-node-ports > .studio-input {
+    grid-column: 1;
+  }
+  .studio-node-ports > .studio-output {
+    grid-column: 2;
+    grid-row: 1 / span 2;
   }
   .studio-node-ports button {
     display: block;
@@ -369,7 +382,7 @@
     border-radius: 8px;
   }
   .studio-minimap rect {
-    fill: var(--accent);
+    fill: var(--muted);
     stroke: var(--text);
     stroke-width: 1;
   }
@@ -394,6 +407,22 @@
     font-size: 11px;
   }
 
+  .studio-live { min-width: 0; overflow-wrap: anywhere; }
+  .studio-live select { max-width: 100%; }
+  .studio-live pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 320px; overflow: auto; }
+  .studio-live-event { border-top: 1px solid var(--line); padding: 8px 0; }
+  .studio-live .studio-toolbar p { flex-basis: 100%; }
+  .studio-library-node { position: relative; padding: 10px; border: 1px solid var(--line); border-radius: 10px; margin: 6px 0; cursor: grab; background: var(--bg-sunken); }
+  .studio-library-node > span { display: block; font-weight: 650; }
+  .studio-library-node button { position: absolute; clip-path: inset(50%); width: 1px; height: 1px; padding: 0; overflow: hidden; white-space: nowrap; }
+  .studio-library-node button:focus-visible { clip-path: none; width: auto; height: auto; padding: 7px 10px; right: 8px; bottom: 4px; overflow: visible; }
+  @media (max-width: 700px) {
+    .studio-library-node button { position: static; clip-path: none; width: 100%; height: auto; padding: 7px 10px; overflow: visible; white-space: normal; }
+  }
+  .studio-placement-menu { position: fixed; z-index: 100; width: min(280px, calc(100vw - 16px)); max-height: min(380px, calc(100vh - 16px)); overflow: auto; padding: 12px; border: 1px solid var(--line-bright); border-radius: 12px; background: var(--bg-raised); color: var(--text); box-shadow: var(--shadow); }
+  .studio-placement-menu input { width: 100%; margin: 10px 0; }
+  .studio-placement-menu button { display: block; width: 100%; text-align: left; margin: 5px 0; }
+  .studio-placement-menu small { display: block; color: var(--muted); }
 </style>
 <script>
 void 0;

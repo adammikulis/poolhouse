@@ -489,6 +489,8 @@ def test_a_frozen_member_installs_the_bench_after_accepting_the_job(boxes, tmp_p
     """The install runs after ``POST /bench`` has answered, so an install slower than the
     dispatcher's member timeout is ``preparing``, not an unreachable member."""
     from poolhouse.fleet.environment import Environment
+    from poolhouse.fleet import compute_artifact
+    from poolhouse.fleet.wheel_provenance import stamp
 
     roomy, _ = boxes
     environment = Environment(tmp_path / "managed")
@@ -496,8 +498,22 @@ def test_a_frozen_member_installs_the_bench_after_accepting_the_job(boxes, tmp_p
     # what `_measures` imports: the bench's store reader, and the store itself
     bundled = tmp_path / "bundle" / "wheels"
     bundled.mkdir(parents=True)
-    _wheel(bundled, "poolhouse", "0.0.1", ("graph", "store", "serve", "hub"),
-           ("poolhouse/bench/__init__.py", "poolhouse/bench/member_runs.py", "ladybug.py"))
+    base = _wheel(bundled, "poolhouse", "0.0.1", ("graph", "store", "serve", "hub"),
+                  ("poolhouse/__init__.py", "ladybug.py"))
+    source = tmp_path / 'compute-source'
+    for prefix in compute_artifact.PREFIXES:
+        path = source / 'src' / prefix / '__init__.py'
+        path.parent.mkdir(parents=True)
+        path.write_text('')
+    for name in (*compute_artifact.EXTRA_FILES, 'poolhouse/bench/member_runs.py'):
+        path = source / 'src' / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('')
+    revision = 'c' * 40
+    compute_artifact.build(source, base, revision)
+    stamp(base, revision, tmp_path)
+    manifest = compute_artifact.from_wheel(base)
+    monkeypatch.setattr(compute_artifact, 'expected', lambda: manifest)
     real_pip = Environment.pip
 
     def slow_pip(self, args, **kw):
@@ -862,7 +878,7 @@ def test_a_detached_bench_is_told_the_home_whose_lock_the_daemon_watches(tmp_pat
     monkeypatch.setattr(fb.subprocess, "run", run)
     pid, log = fb.detach_bench(["run", "m.gguf"], tmp_path / "bench", Path("/env/bin/python"))
     assert pid == 4242 and log == tmp_path / "bench" / "x.log"
-    assert seen["argv"][:3] == ["/env/bin/python", "-m", "poolhouse.bench"]
+    assert seen["argv"][:4] == ["/env/bin/python", "-B", "-m", "poolhouse.bench"]
     assert seen["env"]["POOLHOUSE_BENCH_HOME"] == str(tmp_path / "bench")
     assert "PATH" in seen["env"]                     # the rest of the environment came along
 

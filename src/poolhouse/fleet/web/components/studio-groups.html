@@ -24,6 +24,8 @@
             this.graph = {
               nodes: definition.nodes,
               edges: definition.edges,
+              controls: definition.controls || [],
+              control_inputs: definition.control_inputs || {},
               groups: this.graph.groups,
               layout: this.graph.layout.groups?.[node.group] || {
                 nodes: {},
@@ -66,6 +68,19 @@
               });
             }
           }
+          if (previous && previous !== name && side === "outputs")
+            current.parent.controls = (current.parent.controls || []).filter(
+              (edge) => {
+                if (
+                  edge.source.node !== current.node.id ||
+                  edge.source.port !== previous
+                )
+                  return true;
+                if (!name) return true;
+                edge.source.port = name;
+                return true;
+              },
+            );
           this.changed();
         },
         reorderInterface(side, name, direction) {
@@ -99,6 +114,11 @@
               name: "Reusable group",
               nodes: S.clone(nodes),
               edges: S.clone(edges),
+              controls: S.clone(
+                (this.graph.controls || []).filter(
+                  (e) => ids.has(e.source.node) && ids.has(e.target.node),
+                ),
+              ),
               inputs: {},
               outputs: {},
               parameters: {},
@@ -123,7 +143,12 @@
             definition.inputs[key] = S.clone(edge.target);
             edge.target = { node: instanceId, port: key };
           }
-          for (const edge of outgoing) {
+          for (const edge of [
+            ...outgoing,
+            ...(this.graph.controls || []).filter(
+              (e) => ids.has(e.source.node) && !ids.has(e.target.node),
+            ),
+          ]) {
             let key = Object.entries(definition.outputs).find(
               ([, p]) =>
                 p.node === edge.source.node && p.port === edge.source.port,
@@ -134,6 +159,22 @@
             }
             edge.source = { node: instanceId, port: key };
           }
+          const outer = this.context.at(-1)?.definition;
+          if (outer)
+            for (const side of ["inputs", "outputs", "parameters"])
+              for (const [name, ref] of Object.entries(outer[side] || {})) {
+                if (!ids.has(ref.node)) continue;
+                const key = unique(definition[side], name);
+                definition[side][key] = S.clone(ref);
+                outer[side][name] = {
+                  node: instanceId,
+                  [side === "parameters" ? "parameter" : "port"]: key,
+                };
+              }
+          this.groupControlInputs(ids, definition, instanceId);
+          this.graph.controls = (this.graph.controls || []).filter(
+            (e) => !ids.has(e.source.node) && !ids.has(e.target.node),
+          );
           this.graph.groups[id] = definition;
           this.graph.nodes = this.graph.nodes.filter((n) => !ids.has(n.id));
           this.graph.nodes.push({
@@ -177,6 +218,8 @@
           Object.assign(current.definition, {
             nodes: this.graph.nodes,
             edges: this.graph.edges,
+            controls: this.graph.controls,
+            control_inputs: this.graph.control_inputs,
           });
           current.parent.layout.groups ||= {};
           current.parent.layout.groups[current.node.group] = this.graph.layout;
@@ -189,6 +232,8 @@
           this.graph = {
             nodes: definition.nodes,
             edges: definition.edges,
+            controls: definition.controls || [],
+            control_inputs: definition.control_inputs || {},
             groups: this.graph.groups,
             layout: this.graph.layout.groups?.[node.group] || {
               nodes: {},
@@ -294,6 +339,26 @@
         unpackGroup(node) {
           const group = this.graph.groups[node.group];
           if (!group) return;
+          const missing = Object.keys(group.control_inputs || {}).filter(
+            (name) =>
+              !(this.graph.controls || []).some(
+                (edge) =>
+                  edge.target.node === node.id && edge.target.port === name,
+              ) &&
+              !Object.values(this.graph.control_inputs || {})
+                .flat()
+                .some(
+                  (target) => target.node === node.id && target.port === name,
+                ),
+          );
+          if (missing.length) {
+            this.message(
+              "Connect required branch " +
+                missing.join(", ") +
+                " before unpacking this group.",
+            );
+            return;
+          }
           this.checkpoint();
           const ids = new Map(group.nodes.map((n) => [n.id, S.id()])),
             offset = S.position(this, node.id);
@@ -325,6 +390,50 @@
               edge.target = { node: ids.get(ref.node), port: ref.port };
             }
           }
+          const outer = this.context.at(-1)?.definition;
+          if (outer)
+            for (const side of ["inputs", "outputs", "parameters"])
+              for (const [name, ref] of Object.entries(outer[side] || {})) {
+                if (ref.node !== node.id) continue;
+                const target =
+                  group[side][
+                    ref[side === "parameters" ? "parameter" : "port"]
+                  ];
+                outer[side][name] = { ...target, node: ids.get(target.node) };
+              }
+          const controls = [];
+          for (const edge of S.clone(this.graph.controls || [])) {
+            if (edge.source.node === node.id) {
+              const ref = group.outputs[edge.source.port];
+              edge.source = { node: ids.get(ref.node), port: ref.port };
+            }
+            if (edge.target.node === node.id) {
+              const targets = edge.target.port
+                ? group.control_inputs[edge.target.port]
+                : group.nodes.map((n) => ({ node: n.id }));
+              for (const target of targets)
+                controls.push({
+                  ...S.clone(edge),
+                  target: { ...target, node: ids.get(target.node) },
+                });
+            } else controls.push(edge);
+          }
+          for (const edge of S.clone(group.controls || [])) {
+            edge.source.node = ids.get(edge.source.node);
+            edge.target.node = ids.get(edge.target.node);
+            controls.push(edge);
+          }
+          this.graph.controls = controls;
+          for (const [name, targets] of Object.entries(
+            this.graph.control_inputs || {},
+          ))
+            this.graph.control_inputs[name] = targets.flatMap((target) => {
+              if (target.node !== node.id) return [target];
+              const refs = target.port
+                ? group.control_inputs[target.port]
+                : group.nodes.map((n) => ({ node: n.id }));
+              return refs.map((ref) => ({ ...ref, node: ids.get(ref.node) }));
+            });
           for (const [name, ref] of Object.entries(group.parameters || {}))
             if (name in node.parameters)
               this.graph.nodes.find(

@@ -31,11 +31,11 @@ The rules never to break, then the ones needed every hour; each names the sectio
 14. **Security is invisible**: a new check that adds a visible step, prompt, wait, flag or error to a normal journey is a
     regression to redesign (2).
 15. **A budget is a debt, nothing is grandfathered, no agent raises a number**; nothing is cemented before 1.0 (2, 5).
-16. **"If I can't use it, it's not done"**: landed, activated, driven the way a person does (2, 3, 4).
+16. **"If I can't use it, it's not done"**: landed, updated, driven the way a person does (2, 3, 4).
 17. **Inbox first**: read and answer it at every session start and between tasks; contact comes first (3).
 18. **Stage files by name, never `git add -A`**, in your own claimed worktree beside the primary checkout (4).
 19. **Push the development branch yourself**: fetch, merge `origin/<dev>`, run only your changed test files,
-    `git push origin HEAD:refs/heads/<dev>`; no accept, claim or lander lock; clean up before reporting (4).
+    `git push origin HEAD:refs/heads/<dev>`; no accept or lock; clean up before reporting (4).
 20. **Test your own change with explicit `scripts/test` selectors**, any list of files and never the full suite (GitHub runs it on pull requests, on `main` and nightly; a development push runs only the `gates` job)
     (5).
 
@@ -162,7 +162,7 @@ request answer) changes only through a named gate in one registry, `poolhouse.au
 Repository App setup and publication are the scoped exception for software-owned credentials: on the owner's explicit
 instruction for that operation, the installed `agent-identity setup`, `publish-release` and `push-development` holder may
 prepare and use repository GitHub App credentials under `github.release`. Agent use requires an authenticated live
-eligible main session; agent setup is bound to the installed repository policy and recorded primary source. The key and
+main session; agent setup is bound to the installed repository policy and recorded primary source. The key and
 short-lived token stay inside the holder and its fixed Git transport. GitHub account consent, OS keystore unlocking and
 token export remain person-only; release authorization, main promotion and permission checks remain separate. This permits
 no personal credential, arbitrary command or permission expansion.
@@ -348,13 +348,13 @@ Mechanics behind these rules: [docs/agent-rules.md](docs/agent-rules.md) and doc
 
 Every main agent and subagent reads this project's trusted `AGENTS.md` first, then `CLAUDE.md` when the harness is
 Claude Code, before work; briefings point to these rules. The first response briefly names the assigned scope, the exact
-runtime model and reasoning settings when available, and the owner responsible through activation. Never invent runtime
+runtime model and reasoning settings when available, and the owner responsible through the update. Never invent runtime
 metadata. Write readable messages, with normal spaces between words and numbers.
 
-**If I can't use it, it's not done.** Completion means the user can use the landed, published, activated result in their
+**If I can't use it, it's not done.** Completion means the user can use the landed, published, updated result in their
 current setup, with the original workflow verified on available hardware. Commits, tests, prepared builds and handoffs
-are checkpoints. Name any missing activation or live proof and keep the work unfinished. Delivery, handoff and
-activation: section 4, "Integrate continuously" and "Activating a fix".
+are checkpoints. Name any missing update or live proof and keep the work unfinished. Delivery, handoff and
+updating: section 4, "Integrate continuously" and "Updating to a fix".
 
 ### The workspace
 
@@ -396,8 +396,8 @@ human").
   another agent's or person's token. No protocol flag, header or field overrides the sender, parent or name; the token
   decides, and the host refuses a call that carries such an override or names an identity other than the caller's. Main
   sessions retain central coordination by default; subagents disclose their authenticated parent and task, stay bounded
-  helpers, hand ready work back and do not elect themselves coordinator (an authorized handoff may nominate an eligible
-  main session); readable labels never add permissions or alter device workspace authority.
+  helpers, hand ready work back and do not elect themselves coordinator (an authorized handoff may nominate a main
+  session); readable labels never add permissions or alter device workspace authority.
 - **Native identity and credential selection.** The harness task name, actual native session ID and node-assigned
   workspace name identify the same agent. An authenticated parent registers an actual child through the maintained
   registration API only after verifying native parentage; it never invents an alternate identity. A subagent's required
@@ -409,12 +409,9 @@ human").
   person's right. Other devices of the pool hold the same board, so there is no invitation to one. Private person
   credentials are never read or minted through an agent flow and approval is never bypassed; person-only provisioning
   and system settings remain person-only (section 1).
-- **The lowest tier never coordinates.** The lowest model tier a vendor offers (Haiku, Luna and the like), and any model
-  missing from the tier table, is never a coordinator or eligible for promotion. With only lowest-tier agents present,
-  one spawns a subagent at a suitable level (Sonnet 5.5 is acceptable) to coordinate, which hands coordination back when
-  a higher-tier main session joins. Tier is read from the exact model identifier in the registry through a maintained
-  table, never from a display name or label. A lead joining passes its own model id (`--model <id>`); the model is a
-  label, never a right.
+- **The model is a label.** No model identifier decides who may coordinate, be promoted, land or review; a subagent is
+  not a main session and a main session may coordinate by default, both structural facts. A lead joining passes its own
+  model id (`--model <id>`), recorded as a claim; the model is a label, never a right.
 
 ### Shared ownership before mutation
 
@@ -444,7 +441,7 @@ the suite result on that branch.
   answer cap from a thinking level or overwrite an explicit caller budget; a bounded task that exhausts a limit records
   outcome, checkpoint and reason. Detail: docs/agent-rules.md, "Delegation, accounts and limits".
 - Managed workers perform only their assigned task and report through their parent; they gain no workspace permissions
-  and do not take over publication or activation.
+  and do not take over publication or the update.
 
 ### Agent coordination and profiles
 
@@ -497,7 +494,7 @@ Whoever made a branch finishes it and pushes it; the lead steps in only for cros
 1. **Prepare.** In your own worktree beside the primary checkout: fetch, merge `origin/<dev>`, run the change's own
    tests with `scripts/test all <files>`, commit by named files.
 2. **Push.** `git fetch origin`, merge `origin/<dev>` again if it moved, then `git push origin HEAD:refs/heads/<dev>`.
-   No accept, claim, creator or lander lock is needed. The push check refuses Python that does not parse and data
+   No accept or lock is needed. The push check refuses Python that does not parse and data
    files, and a standing reject of that commit; nothing else.
 3. **Watch GitHub.** GitHub runs the `gates` job on the pushed commit (the full suite runs on pull requests, on `main` and
    nightly, never on a development push). The CI watcher posts a red run to the session that pushed it, naming the failing
@@ -527,13 +524,13 @@ Whoever made a branch finishes it and pushes it; the lead steps in only for cros
   affected gates before landing the exact tree; if the remote moved, fetch, reconcile, gate the new changes and retry.
   Every agent starting a task, finishing one or returning from a wait fetches and fast-forwards development first; a
   local-only commit on it is not left past the end of its task. Do not accumulate ready branches, wait for every worker,
-  impose broad development holds, or defer publication or activation behind unrelated development or work, another
+  impose broad development holds, or defer publication or the update behind unrelated development or work, another
   feature, refactoring, cleanup or the GitHub run; keep authorization and required checks intact. A push that is
   refused because the remote moved is merged and pushed again at once.
 - **Keep landing short.** A ready branch lands the moment it is verified and never waits for a day, an hour or
   another task. Run `git cherry <dev> <branch>` before porting and drop equivalent patches; a tree already gated is not
   gated again (section 5, "Scoped merge gates and background verification"). Finish before starting: no new branch while your own ready branches await landing, about ten open
-  worktrees at most per lead. A `HANDOFF.md` conflict stops the lander naming the file; resolve it by keeping the other
+  worktrees at most per lead. A `HANDOFF.md` conflict is resolved by keeping the other
   side's added entries and your own deletions.
 - An agent pushes only the development branch, plainly: never `main`, never forced, never a tag. The primary checkout
   receives changes by fast-forward or authorized named-file commits, resolves conflicts in an isolated worktree, and is
@@ -558,11 +555,11 @@ Whoever made a branch finishes it and pushes it; the lead steps in only for cros
 
 ### Cleanup
 
-**Cleanup is part of completion, before the final report or `announce done`.** Whoever merges, prunes: the lander
+**Cleanup is part of completion, before the final report or `announce done`.** Whoever merges, prunes: the agent that pushes
 removes its own worktree and branch in the same step; a merge is not finished until `git worktree list` shows only trees
 with live work. The sequence, run from outside the worktree being removed: `git fetch origin`,
-`git merge --ff-only <branch>`, `git fetch origin`, `git push origin <development-branch>` (the lead's hand landing; `scripts/land`
-cleans up its own branch), `git worktree remove ../poolhouse-<branch>`, `git branch -d <branch>`,
+`git merge --ff-only <branch>`, `git fetch origin`, `git push origin <development-branch>` (the lead's hand landing),
+`git worktree remove ../poolhouse-<branch>`, `git branch -d <branch>`,
 `git worktree prune`.
 
 - In the worktree check `git status --short --untracked-files=all`, `git status --short --ignored` and
@@ -579,20 +576,20 @@ cleans up its own branch), `git worktree remove ../poolhouse-<branch>`, `git bra
   cleanup for every branch it requested (docs/agent-rules.md, "Landed trees, work trees and nested trees";
   docs/worktrees.md).
 
-### Activating a fix
+### Updating to a fix
 
-- A requested fix includes landing, publishing, installing or activating it in the owner's current setup, and exercising
+- A requested fix includes landing, publishing, installing or updating to it in the owner's current setup, and exercising
   the original failure on available hardware; a source commit, review, passing test or prepared artifact is a
   checkpoint, never completion. After independent review and affected checks, finish the authorized integration, build,
   installation and verification at once, not behind any of the things "Integrate continuously" (Landing) lists.
-- One owner is responsible through activation. A worker handoff names the exact commit, affected-check evidence,
-  activation steps and remaining verification; the receiving owner must acknowledge, until then the current owner
+- One owner is responsible through the update. A worker handoff names the exact commit, affected-check evidence,
+  update steps and remaining verification; the receiving owner must acknowledge, until then the current owner
   retains responsibility, and sending a message does not transfer or complete the task.
 - Verify the active command or application selects the repaired artifact; record its installed version, commit and path,
-  then repeat the original user workflow. Carry activation through a safe boundary that preserves active jobs and
-  models. If access, required approval or unavailable hardware prevents activation, report the exact blocker promptly
+  then repeat the original user workflow. Carry the update through a safe boundary that preserves active jobs and
+  models. If access, required approval or unavailable hardware prevents the update, report the exact blocker promptly
   and keep the fix unfinished; do not describe it as fixed or ready.
-- After changing or activating a runtime, exercise the installed hook commands for pre, post and stop under the owning
+- After changing or updating a runtime, exercise the installed hook commands for pre, post and stop under the owning
   authenticated session and record the runtime cutover checks in the handoff. Hooks and agent instructions preserve
   authenticated claims, named-file changes, independent review, and restrictions on destructive commands and `main`;
   primary-checkout location alone is not a reason to refuse an authorized development change.
@@ -603,8 +600,8 @@ A hook that fails repeatedly, or that the owner asks to fix, pauses unrelated wo
 installation and verification. Reproduce the exact installed command at once and verify the hook the owner uses, never a
 checkout test; never swallow a failure or proceed as though a broken hook succeeded, fabricate a trust hash or bypass
 authorization. The fix is complete only when the actual configuration selects the repaired artifact, trust approval is
-saved and the installed and the normal host-triggered hook both run; anything short of that is a checkpoint ("Activating
-a fix"). Inspect records with `poolhouse-doctor hooks [ID]` or `python -m poolhouse.hook_diagnostics [ID]`. Procedure:
+saved and the installed and the normal host-triggered hook both run; anything short of that is a checkpoint ("Updating
+to a fix"). Inspect records with `poolhouse-doctor hooks [ID]` or `python -m poolhouse.hook_diagnostics [ID]`. Procedure:
 docs/development.md, "Hook failures and runtime cutover checks".
 
 ### Reviewing the backlog
@@ -614,9 +611,8 @@ docs/development.md, "Hook failures and runtime cutover checks".
 owner's tokens stop paying for routine review: a local or cheap model reads first and a person or a landing-level agent
 reads only what it flags.
 
-- **A report is advice.** Qwen3.8-27B and Qwen3.8-Flash-Next, in any quantisation, are listed above the lowest tier and
-  may review like any listed id, on the same claimed-id trust (the node verifies no model); the smaller Qwens are the
-  lowest tier, and an unlisted model cannot run `land-review`. A report from `scripts/review-backlog` changes no gate,
+- **A report is advice.** Any model may review and post `land-review`: the node verifies no model, and the id a reviewer
+  claims is a label, never a right. A report from `scripts/review-backlog` changes no gate,
   budget or authorization, and no push waits for one (section 1, "Review scope"). **The owner never reviews code.** A
   reviewer told to break a change posts `land-review` accept or reject; a reject goes back to the worker.
 - **Three rounds at most.** A branch gets one review pass and at most two fix-and-recheck rounds; a finding that
@@ -654,8 +650,8 @@ that names every test file (`quick` and `gate` stay allowed). Workers do not run
   run of a pull request, a promotion or the nightly schedule; its result, not a local run, is the end-to-end verification. Shared checks are
   not repeated for every leaf branch or intermediate commit. Do not raise budgets to clear a check.
 - Gate cost is per batch, scaled to the diff: combine all ready leaves into one run; documentation-only diffs need a
-  clean diff and `scripts/budgets`, code diffs `scripts/test gate` and the affected selectors of the combined diff
-  (`scripts/land`). A tree that already passed a check is not checked again (`reused from <id>`); a failure that
+  clean diff and `scripts/budgets`, code diffs `scripts/test gate` and the affected selectors of the combined diff.
+  A tree that already passed a check is not checked again (`reused from <id>`); a failure that
   also fails on the clean target is `baseline`.
 - Known failures remain named tasks with evidence and ownership; a scoped pass is not a full-suite pass; fix a known
   relevant regression before the affected change lands. **Linux testing is active, not paused**: use the available WSL

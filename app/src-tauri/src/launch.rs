@@ -24,6 +24,11 @@ pub fn page_url(root: &Path, port: u16) -> String {
 }
 
 fn ticket(root: &Path, port: u16) -> Option<String> {
+    ticket_from(&exchange(port, &native_secret(root, port)?)?)
+}
+
+/// The private software credential for this exact daemon, never exposed to the page.
+pub(crate) fn native_secret(root: &Path, port: u16) -> Option<String> {
     let path = root.join("launch").join("secret.json");
     if !private(&path) {
         return None;
@@ -32,8 +37,7 @@ fn ticket(root: &Path, port: u16) -> Option<String> {
     if record["version"].as_u64()? != RECORD_VERSION || record["port"].as_u64()? != u64::from(port) {
         return None;
     }
-    let secret = record["secret"].as_str().filter(|s| token(s))?;
-    ticket_from(&exchange(port, secret)?)
+    record["secret"].as_str().filter(|s| token(s)).map(str::to_string)
 }
 
 /// Whether `path` is a plain file only its owner can read.

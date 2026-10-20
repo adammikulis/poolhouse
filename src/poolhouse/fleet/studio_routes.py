@@ -2,36 +2,23 @@
 
 from __future__ import annotations
 
-import hashlib
-import threading
-from pathlib import Path
-
 from poolhouse import hub
-from poolhouse.home import machine_id
-from poolhouse.studio.adapters import Adapters
 from poolhouse.studio.catalog import node_catalog
 from poolhouse.studio.contracts import validate_graph
-from poolhouse.studio.engine import WorkflowEngine
+from poolhouse.studio.decision_inventory import inventory as decision_inventory
 from poolhouse.studio.library import LocalLibrary
 from poolhouse.studio.packages import export_package, import_package
-from poolhouse.studio.store import Conflict, StudioStore, digest
+from poolhouse.studio.store import Conflict, digest
 from poolhouse.studio.templates import templates
 
 from .discovery import load_pool_key
-from .files import safe_relpath
-from .managed_compute import process_environment
 from .request_fields import field, object_body
 from .session import parse_cookie
 from .studio_artifacts import artifact_files, open_artifact, stream_artifact
+from .studio_decision_setup import configure as configure_decision
 from .studio_library import provider as pool_library
-
-_INITIALIZE = threading.Lock()
-
-
-def _binding(ui) -> str:
-    key = load_pool_key(ui.pool_key_path)
-    return digest({"pool": hashlib.sha256(key).hexdigest() if key else "local",
-                   "device": machine_id(), "board": str(Path(ui.root).resolve())})
+from .studio_service import initialize, scope as _binding
+from .studio_stream_routes import route as stream_route
 
 
 class StudioRoutes:
@@ -49,36 +36,14 @@ class StudioRoutes:
         except KeyError as exc:
             self.send(404, {"error": str(exc)})
         except (ValueError, OSError, RuntimeError) as exc:
-            self.send(400, {"error": str(exc)})
+            self.send(400, {"error": str(exc), "errors": exc.args[0] if exc.args and isinstance(exc.args[0], list) else []})
         return True
 
     def _service(self):
         ui = self.ui
         if ui.runner is None or not ui.root:
             raise ValueError("Start the daemon job queue to use Studio.")
-        with _INITIALIZE:
-            if not hasattr(ui, "studio"):
-                store = StudioStore(Path(ui.root) / "studio.ladybug")
-                ui._studio_principals = {}
-
-                def authorize(principal, node, inputs):
-                    if principal.get("scope") != _binding(ui):
-                        return False
-                    checker = ui._studio_principals.get(principal.get("id"))
-                    if checker is None or not checker():
-                        return False
-                    for binding in (node or {}).get("bindings", {}).values():
-                        if not isinstance(binding, dict) or binding.get("kind") not in {"dataset", "model", "recordings", "traces"}:
-                            return False
-                        if binding["kind"] != "model":
-                            try:
-                                safe_relpath(ui.runner.files_root, binding.get("id", ""))
-                            except (ValueError, RuntimeError):
-                                return False
-                    additional = getattr(ui, "studio_authorize", None)
-                    return bool(additional(principal, node, inputs)) if additional else True
-
-                ui.studio = WorkflowEngine(store, ui.runner, Adapters(ui.runner, process_environment=process_environment), authorize)
+        initialize(ui)
         sid = parse_cookie(self.cookie)
         session = ui.sessions.get(sid)
         if sid and session is None:
@@ -86,6 +51,7 @@ class StudioRoutes:
         if session:
             principal = {"id": digest({"session": sid}), "scope": _binding(ui), "owner": session.credentialed}
             ui._studio_principals[principal["id"]] = lambda: ui.sessions.get(sid) is not None
+            ui._studio_origins[principal["id"]] = lambda: (ui.sessions.get(sid).origin if ui.sessions.get(sid) else "")
         else:
             principal = {"id": digest({"local": self.client_ip, "scope": _binding(ui)}), "scope": _binding(ui), "owner": True}
             ip, host, token = self.client_ip, self.host_header, self.header("X-Poolhouse-Setup", "")
@@ -94,24 +60,48 @@ class StudioRoutes:
 
     def _studio(self) -> bool:
         if self.path == "/ui/studio/nodes" and self.method == "GET":
-            self.send(200, {"nodes": node_catalog()})
+            nodes = node_catalog()
+            if self.ui.runner is not None and self.ui.root:
+                engine, _ = self._service()
+                availability = getattr(engine.adapters, "availability", lambda nodes: {})(nodes)
+                nodes = [{**node, "requirements": availability.get(node["type"], [])} for node in nodes]
+            self.send(200, {"nodes": nodes})
             return True
         if self.path == "/ui/studio/templates" and self.method == "GET":
             self.send(200, {"templates": templates()})
             return True
         if self.path == "/ui/studio/validate" and self.method == "POST":
-            self.send(200, validate_graph(field(object_body(self), "graph", dict, {})))
+            checked = validate_graph(field(object_body(self), "graph", dict, {}))
+            if checked["valid"]:
+                engine, principal = self._service()
+                remote = [node for node in checked["graph"]["nodes"] if engine._remote(node)]
+                local = [node for node in checked["graph"]["nodes"] if node not in remote]
+                checked["errors"].extend(engine.adapters.validate(local))
+                checked["errors"].extend(engine.dispatcher.validate(remote, principal))
+                checked["valid"] = not checked["errors"]
+            self.send(200, checked)
             return True
         engine, principal = self._service()
         store, scope = engine.store, principal["scope"]
         if not engine.authorize(principal, None, {}):
             raise PermissionError("Sign in again to use Studio.")
+        if (self.path.startswith(("/ui/studio/sources", "/ui/studio/subscriptions", "/ui/studio/destinations", "/ui/studio/deliveries"))
+                and stream_route(self, self.ui.studio_streams, principal)):
+            return True
+        if self.path == "/ui/studio/devices" and self.method == "GET":
+            self.send(200, {"devices": engine.dispatcher.devices()})
+            return True
+        if self.path == "/ui/studio/resources/decision/install" and self.method == "POST":
+            status, payload = configure_decision(self, engine, principal)
+            self.send(status, payload)
+            return True
         if self.path == "/ui/studio/resources" and self.method == "GET":
             root = self.ui.runner.files_root
             datasets = [{"id": path.name, "title": path.name} for path in sorted(root.iterdir())
-                        if path.name not in {"jobs", "studio"} and not path.name.startswith(".")
+                        if path.name not in {"jobs", "studio", "studio-device-resources"} and not path.name.startswith(".")
                         and path.resolve().is_relative_to(root.resolve())] if root.exists() else []
-            self.send(200, {"datasets": datasets, "models": [{"id": entry.id, "title": entry.id} for entry in hub.discover()]})
+            self.send(200, {"datasets": datasets, "models": [{"id": entry.id, "title": entry.id} for entry in hub.discover()]
+                       + self.ui.studio_saved_models.list(principal) + decision_inventory()})
             return True
         if self.path.startswith("/ui/studio/workflows"):
             return self._workflows(store, scope)

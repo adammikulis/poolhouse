@@ -1,5 +1,6 @@
 """Fixed sealed member actions and digest-checked resource round trips."""
 import json
+import ssl
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
@@ -10,6 +11,7 @@ from poolhouse import macauth, sealing
 from poolhouse.fleet import studio_transport as transport
 from poolhouse.fleet.studio_transfer import CHUNK_BYTES, TransferStore
 from poolhouse.http import Sealed, ServerError
+from poolhouse.studio import resources as model_resources
 from poolhouse.studio.catalog import node_spec
 
 DISPATCH = 'a' * 64
@@ -34,10 +36,10 @@ class Response:
 
 @pytest.fixture
 def device(tmp_path, monkeypatch):
-    monkeypatch.setattr(transport.tls, 'pinned_context', lambda cert: ('pinned', cert))
-    monkeypatch.setattr(transport.http, 'pin', lambda host, context: None)
+    monkeypatch.setattr(transport.tls, 'pinned_context', lambda cert, *, context_type: context_type(ssl.PROTOCOL_TLS_CLIENT))
     member = SimpleNamespace(base_url='https://127.0.0.1:12345', token=macauth.PREFIX + 'a' * 64, timeout=5,
-                             beacon=SimpleNamespace(cert='enrolled-cert', machine='target', host='127.0.0.1', hostname='target', port=12345))
+                             beacon=SimpleNamespace(cert='ZW5yb2xsZWQtY2VydA==',
+                                                    machine='target', host='127.0.0.1', hostname='target', port=12345))
     live = {'allowed': True}
     store = TransferStore(tmp_path / 'target', max_bytes=10 * CHUNK_BYTES,
                           authorize=lambda source, dispatch: source == SOURCE and live['allowed'])
@@ -46,6 +48,9 @@ def device(tmp_path, monkeypatch):
         assert options.headers[sealing.HEADER] == '2'
         assert options.error_body_limit <= transport.MAX_REPLY + sealing.NONCE_BYTES + 16
         assert options.retry.tries == 1
+        assert options.follow_redirects is False
+        assert isinstance(options.tls_context, transport.tls.ExactContext)
+        assert options.tls_context.expected_der == b'enrolled-cert'
         options.guard(url)
         parts = urlsplit(url)
         calls.append((method, parts.path))
@@ -79,6 +84,55 @@ def test_fixed_sealed_request_no_fallback_actions(device):
     assert len(calls) == 1
     assert client.request("resume", {"dispatch_id": DISPATCH}) == {"accepted": True}
     assert calls[-1] == ("POST", "/studio/v1/executions/resume")
+    assert client.request("decision-authorize", {"permit_id": "permit"}) == {"accepted": True}
+    assert calls[-1] == ("POST", "/studio/v1/executions/decision-authorize")
+
+
+@pytest.mark.parametrize('value', [None, 1, 'yes'])
+def test_member_authorization_requires_exact_true(device, value):
+    client, _, live, calls = device
+    live['allowed'] = value
+    with pytest.raises(PermissionError):
+        client.request('validate', {'dispatch_id': DISPATCH})
+    assert calls == []
+
+
+def test_member_context_is_owned_even_when_global_endpoint_pin_changes(device):
+    from poolhouse import http
+
+    client, _, _, _ = device
+    context = client.context
+    http.pin('127.0.0.1:12345', ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT))
+    try:
+        assert client.request('validate', {'dispatch_id': DISPATCH}) == {'accepted': True}
+        assert client.context is context
+    finally:
+        http.pin('127.0.0.1:12345', None)
+
+
+def test_explicit_existing_identity_keeps_device_pin_and_requires_client_key(device, tmp_path, monkeypatch):
+    client, _, _, _ = device
+    identity = transport.tls.Identity(tmp_path / "cert.pem", tmp_path / "key.pem", b"certificate", 123.0)
+    calls = []
+    context = transport.tls.ExactContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.load_cert_chain = lambda cert, key: calls.append((cert, key))
+    def pinned(cert, *, who, context_type):
+        assert cert == client.member.beacon.cert and who is identity
+        assert context_type is transport.tls.ExactContext
+        return context
+    monkeypatch.setattr(transport.tls, "pinned_context", pinned)
+    selected = transport.MemberExecution(client.member, lambda: True, identity=identity)
+    assert selected.context is context
+    assert calls == [(str(identity.certfile), str(identity.keyfile))]
+    def missing(*_args):
+        raise OSError("existing client identity unavailable")
+    context.load_cert_chain = missing
+    calls.clear()
+    with pytest.raises(OSError, match="unavailable"):
+        transport.MemberExecution(client.member, lambda: True, identity=identity)
+    assert calls == []  # Failure cannot publish a context without its client proof.
+    with pytest.raises(TypeError):
+        transport.MemberExecution(client.member, lambda: True, identity={"certfile": "chosen"})
 
 
 def test_explicit_multichunk_stage_collect_and_duplicate_submission(device, tmp_path):
@@ -210,3 +264,81 @@ def test_collect_rejects_another_dispatch_before_fetching(device, tmp_path):
     with pytest.raises(ValueError, match='another'):
         client.collect(reply, tmp_path / 'out', node_spec('report'), dispatch_id=DISPATCH)
     assert not calls
+
+
+def test_native_library_cache_links_stage_only_verified_repository_blobs(device, tmp_path, monkeypatch):
+    client, store, _, _ = device
+    repository = tmp_path / "repository"
+    snapshot = repository / "snapshots" / ("a" * 40)
+    snapshot.mkdir(parents=True)
+    blobs = repository / "blobs"
+    blobs.mkdir()
+    (blobs / "weights").write_bytes(b"approved model bytes")
+    (snapshot / "model.safetensors").symlink_to("../../blobs/weights")
+    (snapshot / "config.json").write_text('{"model_type":"example"}')
+    handle = {"kind": "model", "id": "hf:example/model", "path": str(snapshot), "repo": "example/model"}
+    monkeypatch.setattr(model_resources, "model_resource", lambda selected: handle if selected == handle else None)
+    monkeypatch.setattr(model_resources.hfstore, "repo_root", lambda repo: repository)
+    staged = client.stage(DISPATCH, {"model": handle}, node_spec("generate"))
+    local = store.inputs(SOURCE, DISPATCH, staged["inputs"])["model"]
+    assert (Path(local["path"]) / "model.safetensors").read_bytes() == b"approved model bytes"
+    assert not (Path(local["path"]) / "model.safetensors").is_symlink()
+    outside = tmp_path / "outside"
+    outside.write_bytes(b"private")
+    (snapshot / "model.safetensors").unlink()
+    (snapshot / "model.safetensors").symlink_to(outside)
+    with pytest.raises(ValueError, match="repository blob"):
+        client.stage(DISPATCH, {"model": handle}, node_spec("generate"))
+
+
+def test_checkpoint_base_is_separate_finalized_same_dispatch_resource(device, tmp_path):
+    client, store, _, _ = device
+    model, base = tmp_path / "checkpoint", tmp_path / "base"
+    model.mkdir()
+    base.mkdir()
+    (model / "model.safetensors").write_bytes(b"adapter")
+    (base / "model.safetensors").write_bytes(b"frozen weights")
+    handle = {"kind": "model", "path": str(model), "base_digest": "c" * 64,
+              "base": {"kind": "model", "path": str(base)}}
+    staged = client.stage(DISPATCH, {"model": handle}, node_spec("generate"))
+    assert len(staged["resources"]) == 2
+    safe = staged["inputs"]["model"]
+    assert "path" not in safe and "base" not in safe
+    assert safe["base_resource"] != safe["resource"]
+    hydrated = store.inputs(SOURCE, DISPATCH, staged["inputs"])["model"]
+    assert hydrated["base"]["digest"] == "c" * 64
+    assert (Path(hydrated["base"]["path"]) / "model.safetensors").read_bytes() == b"frozen weights"
+    with pytest.raises((FileNotFoundError, ValueError)):
+        store.inputs(SOURCE, "d" * 64, staged["inputs"])
+    safe["base_resource"] = "e" * 64
+    with pytest.raises((FileNotFoundError, ValueError)):
+        store.inputs(SOURCE, DISPATCH, staged["inputs"])
+
+
+def test_model_result_carries_only_its_own_staged_base_dependency(device, tmp_path):
+    client, store, _, _ = device
+    base = tmp_path / 'base'
+    base.mkdir()
+    (base / 'weights.safetensors').write_bytes(b'base bytes')
+    staged = client.stage(DISPATCH, {'model': {'kind': 'model', 'path': str(base)}}, node_spec('generate'))
+    hydrated = store.inputs(SOURCE, DISPATCH, staged['inputs'])['model']
+    own = store.directory(SOURCE, DISPATCH)
+    model = own / 'model'
+    model.mkdir()
+    (model / 'model.safetensors').write_bytes(b'adapter')
+    value = {'kind': 'model', 'path': str(model), 'base': hydrated, 'base_digest': 'c' * 64}
+    result = store.result(SOURCE, DISPATCH, {'model': value}, node_spec('train.tool-calls'))
+    result['dispatch_id'] = DISPATCH
+    outputs = client.collect(result, tmp_path / 'received', node_spec('train.tool-calls'), dispatch_id=DISPATCH)
+    assert (Path(outputs['model']['base']['path']) / 'weights.safetensors').read_bytes() == b'base bytes'
+    value['base'] = {'path': str(base)}
+    with pytest.raises(ValueError, match="dispatch's explicitly staged"):
+        store.result(SOURCE, DISPATCH, {'model': value}, node_spec('train.tool-calls'))
+
+
+def test_collected_model_port_cannot_substitute_an_artifact_manifest(device, tmp_path):
+    client, _, _, calls = device
+    reply = {"dispatch_id": DISPATCH, "outputs": {"model": {"kind": "artifact", "resource": "b" * 64}}, "resources": []}
+    with pytest.raises(ValueError, match="resource kind"):
+        client.collect(reply, tmp_path / "received", node_spec("train.tool-calls"), dispatch_id=DISPATCH)
+    assert calls == []

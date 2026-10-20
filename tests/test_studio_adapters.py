@@ -56,7 +56,8 @@ def test_training_smoke_does_not_declare_model_or_checkpoint(tmp_path, monkeypat
     held = []
 
     @contextmanager
-    def hold(purpose):
+    def hold(purpose, *, wait_s):
+        assert wait_s is None
         held.append(purpose)
         yield
 
@@ -94,7 +95,7 @@ def test_training_checkpoint_evaluation_and_export(tmp_path, monkeypatch):
 
     from poolhouse.serve import gpu
 
-    monkeypatch.setattr(gpu, 'hold', lambda purpose: nullcontext())
+    monkeypatch.setattr(gpu, 'hold', lambda purpose, **kwargs: nullcontext())
     monkeypatch.setenv('POOLHOUSE_DEVICE', 'cpu')
     source = tmp_path / 'labelled.jsonl'
     source.write_text(''.join(json.dumps({'text': f'example {i}', 'label': 'even' if i % 2 else 'odd'}) + '\n'
@@ -211,7 +212,7 @@ def test_templates_cover_lifecycle_and_keep_resources_unbound():
     from poolhouse.studio.templates import templates
 
     library = templates()
-    assert len(library) == 6
+    assert {'fine-tuning-and-evaluation', 'inference-and-tools', 'base-versus-trained'} <= {graph['id'] for graph in library}
     assert all(graph['schema_version'] == 1 and isinstance(graph['groups'], dict) for graph in library)
     for graph in library:
         assert all(not node['bindings'] for node in graph['nodes'])
@@ -223,9 +224,9 @@ def test_templates_cover_lifecycle_and_keep_resources_unbound():
 def test_dependencies_checked_in_managed_runtime_before_dispatch(monkeypatch):
     probes = []
     environment = SimpleNamespace(exists=True, require_current_runtime=lambda: None,
-                                  installed=lambda: probes.append('managed') or {'torch': '2'})
+                                  installed=lambda: probes.append('managed') or {'torch': '2'},
+                                  require_compute=lambda: probes.append('code') or 'digest')
     adapter = Adapters(SimpleNamespace(environment=environment))
-    monkeypatch.setattr(adapter, 'dependency_fingerprint', lambda node: probes.append('code') or 'digest')
     errors = adapter.validate([{'id': 'data', 'type': 'dataset'},
                                {'id': 'train', 'type': 'train.tool-calls', 'parameters': {'framework': 'mlx'}},
                                {'id': 'gym', 'type': 'gym.train'}])
@@ -260,11 +261,13 @@ def test_base_and_trained_holdout_share_native_loss_contract(tmp_path, monkeypat
         calls.append(('build', recipe, config, data))
         return built
 
-    def load(path, data):
+    def load(path, data, *, base_override):
+        assert base_override == tmp_path
         calls.append(('load', path, data))
         return built
 
-    monkeypatch.setattr(worker.gpu, 'hold', lambda purpose: nullcontext())
+    monkeypatch.setattr(worker.gpu, 'hold', lambda purpose, **kwargs: nullcontext())
+    monkeypatch.setattr(worker, 'checkpoint_base', lambda model, **kwargs: tmp_path)
     monkeypatch.setattr(worker.optional, 'module', lambda name: SimpleNamespace(build=build, load=load))
     dataset = {'path': str(tmp_path / 'dataset')}
     base = execute({'type': 'evaluate', 'parameters': {'suite': 'holdout', 'framework': 'mlx'}},
@@ -287,7 +290,8 @@ def test_trained_mlx_generation_holds_compute_and_quantizes_cache(tmp_path, monk
     generated = []
 
     @contextmanager
-    def hold(purpose):
+    def hold(purpose, *, wait_s):
+        assert wait_s is None
         held.append(True)
         yield
         held.pop()
@@ -300,11 +304,12 @@ def test_trained_mlx_generation_holds_compute_and_quantizes_cache(tmp_path, monk
         generated.append(kwargs)
         return 'answer'
 
-    modules = {'poolhouse.train.recipes': SimpleNamespace(load=lambda path: built),
+    modules = {'poolhouse.train.recipes': SimpleNamespace(load=lambda path, **kwargs: built),
                'transformers': SimpleNamespace(AutoTokenizer=SimpleNamespace(from_pretrained=lambda *args, **kwargs: tokenizer)),
                'mlx_lm.sample_utils': SimpleNamespace(make_sampler=lambda **kwargs: 'sampler'),
                'mlx_lm': SimpleNamespace(generate=generate)}
     monkeypatch.setattr(worker.gpu, 'hold', hold)
+    monkeypatch.setattr(worker, 'checkpoint_base', lambda model, **kwargs: tmp_path)
     monkeypatch.setattr(worker.optional, 'module', modules.__getitem__)
     result = execute({'type': 'generate', 'parameters': {'max_tokens': 8}},
                      {'model': {'path': str(tmp_path), 'recipe': 'tool-calls'}, 'prompt': 'question'}, tmp_path)
@@ -345,7 +350,8 @@ def test_library_model_id_preflight_and_worker_use_same_native_base(tmp_path, mo
     held = []
 
     @contextmanager
-    def hold(purpose):
+    def hold(purpose, *, wait_s):
+        assert wait_s is None
         held.append(purpose)
         yield
 
@@ -384,3 +390,69 @@ def test_training_preflight_refuses_incompatible_installed_models(tmp_path, monk
                        {'id': 'train', 'type': 'train.tool-calls', 'parameters': {'framework': framework, 'lora': True}}],
              'edges': [{'source': {'node': 'base', 'port': 'model'}, 'target': {'node': 'train', 'port': 'model'}}]}
     assert Adapters(None).validate_resources(graph)
+
+
+def test_dependency_fingerprint_tracks_relevant_managed_versions():
+    packages = {'mlx': '1', 'mlx-lm': '2', 'unrelated': '1'}
+    environment = SimpleNamespace(exists=True, dependency_metadata=lambda:
+                                  {'companion': 'sealed', 'error': None, 'packages': dict(packages)})
+    adapter = Adapters(SimpleNamespace(environment=environment))
+    node = {'type': 'train.tool-calls', 'parameters': {'framework': 'mlx'}}
+    initial = adapter.dependency_fingerprint(node)
+    packages['unrelated'] = '2'
+    assert adapter.dependency_fingerprint(node) == initial
+    packages['mlx-lm'] = '3'
+    assert adapter.dependency_fingerprint(node) != initial
+    del packages['mlx-lm']
+    with pytest.raises(OSError, match='mlx-lm'):
+        adapter.dependency_fingerprint(node)
+    assert adapter.dependency_fingerprint({'type': 'prompt'}) == ''
+
+
+def test_hosted_generation_fingerprint_records_missing_optional_compute():
+    packages = {}
+    environment = SimpleNamespace(exists=True, dependency_metadata=lambda:
+                                  {'companion': None, 'error': 'not installed', 'packages': dict(packages)})
+    adapter = Adapters(SimpleNamespace(environment=environment))
+    node = {'type': 'generate'}
+    initial = adapter.dependency_fingerprint(node)
+    packages['mlx'] = '1'
+    assert adapter.dependency_fingerprint(node) != initial
+    with pytest.raises(OSError, match='not installed'):
+        adapter.dependency_fingerprint({'type': 'train.text-lm'})
+
+
+def test_on_policy_gym_training_and_evaluation_use_native_environment_without_dataset(tmp_path, monkeypatch):
+    from poolhouse.studio import worker
+
+    calls = []
+    native = tmp_path / 'native' / 'policy.zip'
+    native.parent.mkdir()
+    native.write_bytes(b'owned-policy')
+    manifest = {'environment': 'warehouse', 'checkpoint': str(native), 'config': {}, 'timesteps': 2048}
+    training = SimpleNamespace(
+        train=lambda environment, **kwargs: calls.append(('train', environment, kwargs)) or manifest,
+        matching_policy=lambda policy, root: (native, manifest),
+        evaluate=lambda environment, checkpoint, **kwargs:
+            calls.append(('evaluate', environment, checkpoint, kwargs)) or {'mean_reward': 1.0})
+    monkeypatch.setattr(worker.optional, 'module', lambda name: training if name == 'poolhouse.gym.training' else pytest.fail(name))
+    monkeypatch.setattr(worker, 'rows_of', lambda _value: pytest.fail('PPO does not consume an offline dataset'))
+    out = tmp_path / 'run' / 'train'
+    out.mkdir(parents=True)
+    result = execute({'type': 'gym.train', 'parameters': {'environment': 'warehouse', 'timesteps': 2048, 'seed': 7}}, {}, out)
+    assert result['model'] == {'kind': 'model', 'path': str(out / 'policy.zip'), 'gym': True}
+    assert (out / 'policy.zip').read_bytes() == native.read_bytes()
+    assert 'checkpoint' not in json.loads((out / 'policy-manifest.json').read_text())
+    evaluated = execute({'type': 'gym.evaluate', 'parameters': {'episodes': 3}}, {'model': result['model']}, tmp_path / 'run' / 'evaluate')
+    assert evaluated == {'metrics': {'mean_reward': 1.0}, 'report': {'mean_reward': 1.0}}
+    assert calls == [('train', 'warehouse', {'timesteps': 2048, 'seed': 7}),
+                     ('evaluate', 'warehouse', native, {'config': {}, 'episodes': 3})]
+
+
+@pytest.mark.parametrize('environment', [None, '', 'custom.py', 'unknown'])
+def test_gym_worker_refuses_missing_or_unknown_environment_before_native_import(tmp_path, monkeypatch, environment):
+    from poolhouse.studio import worker
+
+    monkeypatch.setattr(worker.optional, 'module', lambda _name: pytest.fail('Invalid environment reached native compute'))
+    with pytest.raises(ValueError, match='supported Gym environment'):
+        execute({'type': 'gym.train', 'parameters': {'environment': environment}}, {}, tmp_path)

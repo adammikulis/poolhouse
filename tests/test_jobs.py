@@ -199,3 +199,72 @@ def test_detach_without_a_kind_writes_no_record(tmp_path, monkeypatch):
     assert seen["kw"].get("start_new_session") or "creationflags" in seen["kw"]
     assert list(tmp_path.glob("*.json")) == [], "no record without a kind"
     assert jobs.status(home=tmp_path) == 0
+
+
+def test_compute_detach_keeps_current_prefix_and_isolates_imports(tmp_path, monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    marker = tmp_path / 'executed'
+    (tmp_path / 'sitecustomize.py').write_text(f'from pathlib import Path;Path({str(marker)!r}).touch()')
+    for name in ('PYTHONPATH', 'PYTHONHOME', 'PYTHONSTARTUP', 'DYLD_INSERT_LIBRARIES', 'LD_PRELOAD'):
+        monkeypatch.setenv(name, str(tmp_path))
+    monkeypatch.setattr(jobs, 'source_checkout', lambda: None)
+    monkeypatch.setattr(jobs.runtime, 'available', lambda: SimpleNamespace(python=tmp_path / 'unavailable-app-python'))
+    children, observed = [], []
+    popen = subprocess.Popen
+    def spawn(*args, **kwargs):
+        observed.append(kwargs['env'])
+        child = popen(*args, **kwargs)
+        children.append(child)
+        return child
+    monkeypatch.setattr(jobs.subprocess, 'Popen', spawn)
+    log = tmp_path / 'child.log'
+    try:
+        result = jobs.detach('site', [], log=log, same_interpreter=True)
+        assert children[0].wait(timeout=10) == 0
+        assert result.command[:5] == (sys.executable, '-B', '-u', '-I', '-m')
+        assert sys.prefix in log.read_text()
+        assert not marker.exists()
+        assert not any(name.startswith(('PYTHON', 'DYLD_')) or name in {'LD_PRELOAD', 'LD_AUDIT'} for name in observed[0])
+    finally:
+        for child in children:
+            if child.poll() is None:
+                child.kill()
+            child.wait(timeout=10)
+
+
+def test_source_compute_detach_constructs_only_the_trusted_source_path(tmp_path, monkeypatch):
+    import sys
+
+    source = jobs.source_checkout()
+    assert source is not None
+    children, observed = [], []
+    popen = subprocess.Popen
+    def spawn(*args, **kwargs):
+        observed.append(kwargs['env'])
+        child = popen(*args, **kwargs)
+        children.append(child)
+        return child
+    monkeypatch.setenv('PYTHONPATH', str(tmp_path / 'injected'))
+    monkeypatch.setattr(jobs.subprocess, 'Popen', spawn)
+    try:
+        result = jobs.detach('poolhouse.jobs', ['--help'], log=tmp_path / 'source.log', same_interpreter=True)
+        assert children[0].wait(timeout=10) == 0
+        assert result.command[:4] == (sys.executable, '-B', '-u', '-m')
+        assert observed[0]['PYTHONPATH'] == str(source / 'src')
+        assert 'usage: poolhouse jobs' in result.log.read_text()
+    finally:
+        for child in children:
+            if child.poll() is None:
+                child.kill()
+            child.wait(timeout=10)
+
+
+def test_compute_detach_refuses_frozen_app_as_python(tmp_path, monkeypatch):
+    import sys
+
+    monkeypatch.setattr(sys, 'frozen', True, raising=False)
+    with pytest.raises(ValueError, match='Python compute interpreter'):
+        jobs.detach('poolhouse.bench', [], log=tmp_path / 'unused.log', same_interpreter=True)
+    assert not (tmp_path / 'unused.log').exists()

@@ -18,7 +18,8 @@
       </button>
     </header>
     <div class="studio-toolbar" role="toolbar" aria-label="Workflow editing">
-      <button id="studio-new" type="button">New</button
+      <button id="studio-live" type="button" aria-expanded="false" disabled>Live sources</button
+      ><button id="studio-new" type="button">New</button
       ><button id="studio-undo" type="button">Undo</button
       ><button id="studio-redo" type="button">Redo</button
       ><button id="studio-copy" type="button">Copy</button
@@ -105,6 +106,7 @@
         this.host = this.querySelector("section");
         this.note = this.querySelector(".studio-status");
         this.graph = S.empty();
+        this.startupGraph = this.graph;
         this.specs = [];
         this.templates = [];
         this.selected = new Set();
@@ -112,6 +114,8 @@
         this.redoStack = [];
         this.revision = 0;
         this.editSerial = 0;
+        this.selectionIntent = 0;
+        this.loadContext = 0;
         try {
           const value = JSON.parse(
             sessionStorage.getItem("poolhouse-studio-submission") || "null",
@@ -127,8 +131,10 @@
         this.canvas = this.querySelector("studio-canvas");
         this.canvas.editor = this;
         const bind = (id, fn) =>
-          (this.querySelector("#studio-" + id).onclick = () =>
-            this.perform(fn));
+          (this.querySelector("#studio-" + id).onclick = () => {
+            if (["new", "save"].includes(id)) this.selectionIntent++;
+            this.perform(fn);
+          });
         bind("new", () => this.open(null));
         bind("save", () => this.save());
         bind("undo", () => this.undo());
@@ -153,18 +159,23 @@
           );
         });
         this.querySelector("#studio-search").oninput = () => this.library();
+        this.querySelector("#studio-title").oninput = () => this.selectionIntent++;
         this.querySelector("#studio-title").onchange = () =>
           this.changed(false);
-        this.querySelector("#studio-workflows").onchange = (e) =>
+        this.querySelector("#studio-workflows").onchange = (e) => {
+          this.selectionIntent++;
           this.perform(() =>
             this.open(this.workflows.find((w) => w.id === e.target.value)),
           );
+        };
         this.addEventListener("keydown", (e) => this.key(e));
         this.setupSharing();
+        this.setupLive();
         M.onRoute((route) => {
+          this.loadContext++;
           this.host.hidden = route !== "studio";
           if (route === "studio") this.perform(() => this.load());
-          else clearTimeout(this.poll);
+          else { clearTimeout(this.poll); this.stopLive(); }
         });
       }
       async perform(fn) {
@@ -180,36 +191,72 @@
       async load() {
         if (this.loading) return;
         this.loading = true;
+        const request = this.loadRequest = Symbol(), live = this.querySelector('#studio-live');
+        const initial = {graph: this.graph, serial: this.editSerial, intent: this.selectionIntent,
+          context: this.loadContext, workflows: this.workflows};
+        const current = () => request === this.loadRequest && initial.context === this.loadContext && this.isConnected &&
+          M.route === "studio" && !this.host.hidden && (!location.hash || location.hash === "#studio");
+
+        live.disabled = true;
+        let ready = false;
         try {
-          const [nodes, templates, workflows] = await Promise.all([
+          const [nodes, templates, workflows, devices] = await Promise.all([
             S.api("/nodes"),
             S.api("/templates"),
             S.api("/workflows"),
+            S.api("/devices"),
           ]);
+          if (!current()) return;
           this.specs = nodes.nodes || [];
+          this.devices = devices.devices || [];
           this.templates = (templates.templates || []).map((t) => ({
             id: t.id,
             title: t.title || t.name,
             description: t.description,
+            examples: t.examples || [],
             graph: t.graph || {
               nodes: t.nodes,
               edges: t.edges || [],
+              controls: t.controls || [],
               groups: t.groups || {},
               layout: t.layout || {},
             },
           }));
-          this.resources = await S.api("/resources");
-          this.workflows = workflows.workflows || [];
+          const resources = await S.api("/resources");
+          if (!current()) return;
+          this.resources = resources;
+          this.perform(() => this.attachDecisionSetup());
+          const inventory = workflows.workflows || [];
+          const saved = !this.loaded && initial.workflows !== this.workflows ? (this.workflows || []) : [];
+          this.workflows = [...inventory];
+          for (const local of saved) {
+            const index = this.workflows.findIndex(w => w.id === local.id);
+            if (index < 0) this.workflows.push(local);
+            else if (local.revision > this.workflows[index].revision) this.workflows[index] = local;
+          }
           this.workflowList();
           if (!this.loaded) {
+            if (initial.graph === this.graph && this.graph === this.startupGraph &&
+                initial.serial === this.editSerial && this.editSerial === 0 &&
+                initial.intent === this.selectionIntent && this.selectionIntent === 0 &&
+                !this.workflowId && this.revision === 0 && !this.dirty && !this.saving)
+              await this.open(inventory[0] || null);
             this.loaded = true;
-            this.open(this.workflows[0] || null);
           }
           this.library();
           this.render();
           await this.refreshRuns();
+          if (!current()) return;
+          if (!this.liveBox.hidden) await this.loadLive();
+          if (!current()) return;
+          ready = true;
         } finally {
-          this.loading = false;
+          if (request === this.loadRequest) {
+            this.loading = false;
+            live.disabled = !ready || this.host.hidden;
+            if (initial.context !== this.loadContext && this.isConnected && !this.host.hidden)
+              this.perform(() => this.load());
+          }
         }
       }
       add(spec, position) {
@@ -237,6 +284,7 @@
         this.render();
       }
       render() {
+        this.managedControls();
         this.canvas.paint?.();
         this.inspector();
         this.outlineView();
@@ -257,18 +305,32 @@
         this.changed();
       }
       copy() {
-        const ids = this.selected;
+        this.flushGroup();
+        const context = S.selectionContext(this),
+          graph = context.graph,
+          ids = S.selectionDependencies(graph, context.selected);
         this.clipboard = {
-          nodes: S.clone(this.graph.nodes.filter((n) => ids.has(n.id))),
+          nodes: S.clone(graph.nodes.filter((n) => ids.has(n.id))),
           edges: S.clone(
-            this.graph.edges.filter(
+            graph.edges.filter(
               (e) => ids.has(e.source.node) && ids.has(e.target.node),
             ),
           ),
-          groups: S.clone(this.graph.groups),
-          layout: S.clone(this.graph.layout),
+          controls: S.clone(
+            (graph.controls || []).filter(
+              (e) => ids.has(e.source.node) && ids.has(e.target.node),
+            ),
+          ),
+          groups: S.clone(graph.groups),
+          layout: S.clone(graph.layout),
         };
-        this.message("Selection copied");
+        this.message(
+          context.inherited
+            ? "Copied containing controlled group and required dependencies"
+            : ids.size > this.selected.size
+              ? "Copied selection and required branch/data dependencies"
+              : "Selection copied",
+        );
       }
       paste() {
         if (!this.clipboard) return;
@@ -288,6 +350,11 @@
           edge.target.node = map.get(edge.target.node);
           this.graph.edges.push(edge);
         }
+        for (const edge of S.clone(this.clipboard.controls || [])) {
+          edge.source.node = map.get(edge.source.node);
+          edge.target.node = map.get(edge.target.node);
+          this.graph.controls.push(edge);
+        }
         this.selected = new Set(map.values());
         this.changed();
       }
@@ -301,6 +368,9 @@
           (e) =>
             !this.selected.has(e.source.node) &&
             !this.selected.has(e.target.node),
+        );
+        this.graph.controls = this.graph.controls.filter(
+          (e) => !this.selected.has(e.target.node),
         );
         for (const id of this.selected) delete this.graph.layout.nodes[id];
         this.selected.clear();
@@ -362,6 +432,15 @@
     S.installPersistence(StudioView.prototype);
     S.installEditor(StudioView.prototype);
     S.installSweeps(StudioView.prototype);
+    S.installTargets(StudioView.prototype);
+    S.installSetup(StudioView.prototype);
+    S.installManaged(StudioView.prototype);
+    S.installLive(StudioView.prototype);
+    S.installDelivery(StudioView.prototype);
+  S.installWebhook(StudioView.prototype);
+  S.installProducer(StudioView.prototype);
+    S.installRecords(StudioView.prototype);
+    S.installBranches(StudioView.prototype);
     S.installGroups(StudioView.prototype);
     S.installRuns(StudioView.prototype);
     S.installSharing(StudioView.prototype);

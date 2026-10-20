@@ -1,0 +1,145 @@
+<script>
+(function () {
+  const S = window.studioModel, E = window.fleetModel.el, PROVIDER = 'software-producer';
+  S.installProducer = (proto) => Object.assign(proto, {
+    setupProducer() {
+      this.producerOffer = E('select', {'aria-label': 'Live software producer offer', onchange: () => this.webhookProviderDetails()});
+      this.producerCreateBox = E('div', {hidden: true}, E('label', {}, 'Live software producer', this.producerOffer),
+        E('p', {}, 'Choose the exact live software offer and device. Connecting authorizes that process to publish records to this source; it does not start a stream.'));
+      return this.producerCreateBox;
+    },
+    setupProducerStatus() {
+      this.producerReplacement = E('select', {'aria-label': 'Replacement software producer offer', onchange: () => this.renderProducerStatus()});
+      this.producerStatus = E('section', {'aria-label': 'Software producer connection', hidden: true});
+      return this.producerStatus;
+    },
+    producerOfferKey(offer) { return JSON.stringify([offer.id, offer.revision]); },
+    producerOfferOptions(select) {
+      const selected = select.value;
+      select.replaceChildren(E('option', {value: ''}, 'Choose a live software offer…'),
+        ...(this.producerOffers || []).map((offer) => E('option', {value: this.producerOfferKey(offer), disabled: offer.available !== true},
+          offer.label + ' · ' + offer.software_label + ' · ' + offer.device_label + ' · ' + offer.id.slice(0, 8) + ' · revision ' + offer.revision +
+          (offer.available === true ? '' : ' · unavailable'))));
+      if (selected && ![...select.options].some((option) => option.value === selected))
+        select.append(E('option', {value: selected, disabled: true}, 'Previously selected offer revision is unavailable. Choose an offer explicitly.'));
+      select.value = selected;
+    },
+    updateProducerOffers(providers) {
+      this.producerOffers = providers?.find((provider) => provider.id === PROVIDER)?.offers || [];
+      if (this.producerOffer) this.producerOfferOptions(this.producerOffer);
+      if (this.producerReplacement) this.producerOfferOptions(this.producerReplacement);
+      this.renderProducerStatus();
+    },
+    selectedProducer(select = this.producerOffer) {
+      return this.producerOffers?.find((offer) => offer.available === true && this.producerOfferKey(offer) === select.value);
+    },
+    producerCreateReady(provider) {
+      if (this.producerCreateBox) this.producerCreateBox.hidden = provider?.id !== PROVIDER;
+      return provider?.id !== PROVIDER || !!this.selectedProducer();
+    },
+    producerCreateBinding(provider) {
+      if (provider.id !== PROVIDER) return {};
+      const offer = this.selectedProducer();
+      if (!offer) throw Error('Choose a current live software offer revision.');
+      return {producer: {id: offer.id, revision: offer.revision}};
+    },
+    producerSnapshot(source) {
+      return JSON.stringify([this.webhookDraftSnapshot(), source.id,
+        this.liveSources?.find((row) => row.id === source.id)?.revision, this.producerReplacement?.value]);
+    },
+    async producerInventory(source, snapshot) {
+      let inventory;
+      try { inventory = await S.api('/sources'); }
+      catch (error) { if (snapshot === this.producerSnapshot(source)) throw error; return null; }
+      return snapshot === this.producerSnapshot(source) ? inventory : null;
+    },
+    applyProducerInventory(inventory) {
+      this.updateWebhookProviders(inventory.providers); this.updateLiveSources(inventory.sources);
+      this.liveRenderActions();
+    },
+    renderProducerStatus() {
+      if (!this.producerStatus) return;
+      const source = this.liveSources?.find((row) => row.id === this.liveSource.value);
+      const connection = source?.provider === PROVIDER ? source.connection : null;
+      this.producerStatus.hidden = !connection;
+      if (!connection) { this.producerStatus.replaceChildren(); this.producerStatusSource = null; return; }
+      const focused = document.activeElement, inside = this.producerStatus.contains(focused);
+      const focusKey = inside ? focused.dataset.producerAction : null, selectFocused = focused === this.producerReplacement;
+      if (this.producerStatusSource !== source.id) this.producerReplacement.value = '';
+      this.producerStatusSource = source.id;
+      const bound = connection.producer;
+      const parts = [E('h3', {}, 'Software producer · ' + connection.state),
+        E('p', {}, source.label + ' · source revision ' + source.revision),
+        ...(bound ? [E('p', {}, 'Source producer: ' + bound.label + ' · software: ' + bound.software_label + ' · device: ' + bound.device_label)] : []),
+        ...(connection.reason ? [E('p', {}, connection.reason)] : []),
+        E('p', {}, 'Connecting and credential rotation do not start or resume a stream. The Start control remains separate.')];
+      const button = (label, action, disabled = false) => E('button', {type: 'button', 'data-producer-action': action,
+        disabled: this.liveBusy || disabled, onclick: () => this.livePerform(() => this.producerAction(source, action))}, label);
+      if (connection.can_check === true && connection.pending?.idempotency_key)
+        parts.push(button('Check connection status', 'connection-status'), E('p', {}, 'Check the original connection intent only. This does not provision or resend it.'));
+      if (connection.can_connect === true) parts.push(E('label', {}, 'Replacement live offer', this.producerReplacement),
+        button('Connect selected producer', 'connect', !this.selectedProducer(this.producerReplacement)));
+      if (connection.can_rotate === true) parts.push(E('p', {}, 'Rotation invalidates the previous producer generation. The new connection may remain pending or unavailable.'),
+        button('Rotate producer binding', 'rotate'));
+      if (connection.can_revoke === true) parts.push(E('p', {}, 'Revoking this binding stops the source from accepting new records.'),
+        button('Revoke producer binding', 'revoke'));
+      this.producerStatus.replaceChildren(...parts);
+      if (selectFocused && this.producerReplacement.isConnected) this.producerReplacement.focus({preventScroll: true});
+      else if (focusKey) [...this.producerStatus.querySelectorAll('[data-producer-action]')].find((button) => button.dataset.producerAction === focusKey)?.focus({preventScroll: true});
+    },
+    async producerAction(source, action) {
+      if (source.id !== this.liveSource.value) throw Error('Choose the current connected source.');
+      const flag = {'connect': 'can_connect', 'rotate': 'can_rotate', 'revoke': 'can_revoke', 'connection-status': 'can_check'}[action];
+      if (!flag || source.connection?.[flag] !== true) throw Error('This source action is unavailable. Refresh its current status.');
+      const body = {revision: source.revision};
+      if (action === 'connect') {
+        const offer = this.selectedProducer(this.producerReplacement);
+        if (!offer) throw Error('Choose a current replacement offer revision.');
+        body.producer = {id: offer.id, revision: offer.revision};
+      }
+      const signature = JSON.stringify([source.id, action, body]);
+      this.producerPending ||= new Map();
+      if (action === 'connection-status') {
+        if (!source.connection.pending?.idempotency_key) throw Error('No original connection intent is available to check.');
+        body.idempotency_key = source.connection.pending.idempotency_key;
+      } else {
+        if (!this.producerPending.has(signature)) this.producerPending.set(signature, S.id());
+        body.idempotency_key = this.producerPending.get(signature);
+      }
+      const snapshot = this.producerSnapshot(source);
+      try { await S.api('/sources/' + encodeURIComponent(source.id) + '/' + action, body); }
+      catch (error) {
+        if (snapshot !== this.producerSnapshot(source)) return;
+        if (error.response?.status === 409 || !error.response?.status) {
+          const inventory = await this.producerInventory(source, snapshot);
+          if (!inventory) return;
+          this.applyProducerInventory(inventory);
+        }
+        throw error;
+      }
+      this.producerPending.delete(signature);
+      if (snapshot !== this.producerSnapshot(source)) return;
+      const inventory = await this.producerInventory(source, snapshot);
+      if (!inventory) return;
+      this.applyProducerInventory(inventory);
+      const current = this.liveSources.find((row) => row.id === source.id);
+      this.liveNote.textContent = 'Source status: ' + (current?.connection?.state || 'unavailable') + '. No stream was started or resumed.';
+    },
+    producerStreamSummary(source) {
+      if (source?.provider !== PROVIDER) return;
+      const connection = source.connection, bound = connection?.producer;
+      this.liveActions.append(E('p', {}, 'Live software producer · ' + (connection?.state || 'unavailable') +
+        (bound ? ' · ' + bound.software_label + ' · ' + bound.device_label : '') + (connection?.reason ? ' · ' + connection.reason : '')));
+    },
+    clearProducer() {
+      this.producerOffers = []; this.producerOffer?.replaceChildren(); this.producerReplacement?.replaceChildren();
+      this.producerPending?.clear(); this.producerStatus?.replaceChildren();
+      if (this.producerStatus) this.producerStatus.hidden = true;
+    },
+    resetProducerDraft() {
+      if (this.producerOffer) this.producerOffer.value = '';
+      if (this.producerReplacement) this.producerReplacement.value = '';
+    },
+  });
+})();
+</script>

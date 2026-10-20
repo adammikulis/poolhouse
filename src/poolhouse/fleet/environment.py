@@ -20,14 +20,14 @@ from typing import Any
 from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
-from poolhouse import net
+from poolhouse import maintenance, net
 from poolhouse.files import promote
 from poolhouse.http import ServerError
 from poolhouse.httpguard import Refused
 from poolhouse.lock import only_one
 from poolhouse.net import packages
 
-from . import compute_artifact
+from . import compute_artifact, dependency_proof
 from .managed_compute import process_environment
 from .runtime_wheel import cache_wheel, current_wheel, wheel_commit
 
@@ -83,6 +83,10 @@ CATALOG: tuple[Library, ...] = (
     Library("mlx", "MLX",
             "Training on Apple silicon, using the GPU.",
             ("mlx>=0.18",), size_mb=120, default=True,
+            platforms=("darwin",), vendors=("apple",)),
+    Library("serve-mlx", "MLX model serving",
+            "Run cached language models on Apple silicon with the speculative engine.",
+            ("poolhouse[spec]",), size_mb=350,
             platforms=("darwin",), vendors=("apple",)),
     Library("train-mlx", "MLX language model fine-tuning",
             "Train adapters for cached language models on Apple silicon.",
@@ -290,6 +294,7 @@ class Environment:
                 return candidate
         return None
 
+    @maintenance.reading
     def pip(self, args: list[str], *, timeout: float = 3600.0
             ) -> subprocess.CompletedProcess:
         installing = bool(args and args[0] == "install")
@@ -354,6 +359,7 @@ class Environment:
                 out[canonicalize_name(name)] = dist.version
         return out
 
+    @maintenance.reading
     def installed(self) -> dict[str, str]:
         """Package versions available to the managed job interpreter."""
         if not self.exists:
@@ -379,6 +385,7 @@ class Environment:
         have = target.installed()
         return _library_installed(library, have, target._cache)
 
+    @maintenance.reading
     def require_current_runtime(self, *, python: Path | str | None = None) -> None:
         """Require the bundled source revision in a frozen app's job interpreter."""
         if not getattr(sys, "frozen", False):
@@ -398,9 +405,19 @@ class Environment:
             raise OSError("Refresh Training essentials in Libraries before starting work: "
                           f"managed runtime {actual or 'unstamped'}; app runtime {expected}")
 
+    @maintenance.reading
     def require_compute(self) -> str:
         """Verify the app-owned optional code before a managed job executes it."""
         return compute_artifact.probe(self.python, environment=process_environment())
+
+    @maintenance.reading
+    def dependency_metadata(self) -> dict:
+        """Reuse verified code and fixed-site installed versions against fresh evidence."""
+        try:
+            return dependency_proof.read(self)
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            self._cache.pop('dependency_proof', None)
+            return {'companion': None, 'error': str(error), 'packages': {}}
 
     def state(self, vendor: str = "") -> dict[str, Any]:
         have = self.installed()
@@ -423,7 +440,7 @@ class Environment:
         if installed and lib.name == "core":
             try:
                 target.require_current_runtime()
-                compute_artifact.probe(target.python, environment=process_environment())
+                target.require_compute()
             except (OSError, subprocess.SubprocessError):
                 installed = False
         return {"name": lib.name, "title": lib.title, "blurb": lib.blurb,
@@ -437,7 +454,7 @@ class Environment:
     @contextlib.contextmanager
     def _mutation(self, names):
         targets = sorted({self.for_library(lib).path for lib in CATALOG if lib.name in names})
-        with contextlib.ExitStack() as stack:
+        with maintenance.read(), contextlib.ExitStack() as stack:
             for target in targets:
                 stack.enter_context(only_one(target.parent / ".env-install.lock"))
             yield

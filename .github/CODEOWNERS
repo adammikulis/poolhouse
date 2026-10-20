@@ -8,7 +8,9 @@
 /scripts/hooks/ @adammikulis
 /scripts/gates/ @adammikulis
 /scripts/budgets @adammikulis
-/scripts/land* @adammikulis
+/scripts/sealed_git* @adammikulis
+/scripts/primary_sync.py @adammikulis
+/scripts/ci_watch.py @adammikulis
 /scripts/test* @adammikulis
 /scripts/release-key @adammikulis
 /scripts/github-protection @adammikulis

@@ -29,8 +29,8 @@ volume of the owner's real board is the reviewer's count (section 8), not the au
 | State | Where | Written by | Read by |
 | --- | --- | --- | --- |
 | Lease table | `<state>/leases.json`, node memory | `lease/rpc.rs`, `claims.rs`, `tasks/calls.rs` | node sweep; `leasetable.py` (serve broker, request gate, `localslot.py`); `api/leases.py`; `api/pool.py` (slots and leases held and queued, shown as the pool's capacity); `gate.py` (the GPU turn, taken quietly); `board/session.py` |
-| Lease entries | board kind `lease`, `#leases` | `mirror` in `lease/rpc.rs` (grants, ends, takeover audit; queued requests are not written; a quiet lease writes nothing) | `lease/merge.rs` (pool-wide holds of other devices); `ever_held` (landing review exclusion); board pages |
-| Claims | `Resource::Claim`: worktree, branch, area, port, server, install, task; 15 min TTL; 8 h cap (`MAX_CLAIM_LIFETIME_S`, removed by (L)) | `claim`, `reserve`, `release`, `heartbeat`; hooks (`harness_claims.py`) | `claims`, `who`; `stop_landed.py`; `land_steps.py` (dev branch claim, 7,200 s) |
+| Lease entries | board kind `lease`, `#leases` | `mirror` in `lease/rpc.rs` (grants, ends, takeover audit; queued requests are not written; a quiet lease writes nothing) | `lease/merge.rs` (pool-wide holds of other devices); board pages |
+| Claims | `Resource::Claim`: worktree, branch, area, port, server, install, task; 15 min TTL; 8 h cap (`MAX_CLAIM_LIFETIME_S`, removed by (L)) | `claim`, `reserve`, `release`, `heartbeat`; hooks (`harness_claims.py`) | `claims`, `who`; `stop_landed.py` |
 | Announcements | `#announcements` messages: joined, milestone, done, blocked | `announce` (`board_cli.py`, `board/public.py`); SubagentStart and SubagentStop hooks; `stop_jobs.py`, `stop_landed.py`; `status_cli.py` (autostart line), `testboard.py` (canary), `queue_notice.py`; the text of `onboard.py` and of the two `.claude/agents` files tells agents to post | `inbox` roll-up and `digest` (`board_cli.py`); `subs.rs` (digest and inbox delivery; the `agent` subscription a parent holds on its subagents, made by `child_watch.py`); `rooms.rs` (the channels everyone reads); `workspace/attention.py` and `claude-lead-attention` (the lead's line and its new-news count); `board_page.py`; `rooms_cli.py` |
 | Write quotas | in-memory `Rates` (`limits.rs`, cleared by a restart). Callers that are not security floors: sends and announcements (`writes.rs`, 30 and 150 a minute, 6 per 10 minutes), new boards (16 an hour per lineage, `node.rs:271`), links and projects a minute (`api.rs:141`), `pool_submit` (120 a minute, `poolapi.rs:135`). Callers that are security floors: open joins (the join handler), phone codes (`phone/`), approval requests (`approvals/request.rs`), pool asks (`gov/ops.rs`). `tally.rs` counts unread messages and notes (not rates); `write-limits.json`; `limits.json` (`workspace/limits.py`) | node | node. (L) removes the callers that are not security floors and the send and announce keys; `Rates` stays for the floors |
 | Test permits | `~/.cache/dev-test-slots`: `*.slot`, `*.run`, `allocation.json`, `heavy-N.lane`, and the admission socket | `testslots.py`, `testqueue.py`, `testslots_rpc.py` (admission socket for sandboxed pytest) | `runstatus.py`, `scripts/test status`, `workspace/slots.py`, `queue_doctor.py`, `queue_notice.py`; `agent_sandbox_profile.py` (the sandbox may write the folder) |
@@ -40,17 +40,17 @@ volume of the owner's real board is the reviewer's count (section 8), not the au
 | Reuse claims | `inflight/<lookup>.json` in the reuse store, one per test file (owner pid and start time) | `testreuse_run.py` (`Store.claim`, line 320) | other runs waiting on the same file |
 | Worktree locks | `git worktree lock --reason <ident>` | `task_integration.py`; `integration_git.py` unlocks (line 137 refuses a lock whose reason is not its own) | git itself (`worktree remove` and `prune` honour it), a person's terminal, `trees.py` (`locked`, `dead_owner` reads "pid N"), `scripts/worktrees` |
 | Worktree ownership | `worktree-lifecycle.json` (+ lock), `local-agents/<id>.assigned` | `claims_cli.claim` (worktree), `task_worktrees.py`, `harness_claims.py` (`remember`), `notification_reader.py` | `harness_claims.py`, `harnesshook.py`, `harness_session.py`, `codex_hooks.py`, `task_runtime.py`, `task_cli.py`, `board_cli.py`, `poolhouse-workspace worktrees`, Stop hooks, `task_worktree_recovery.py` |
-| Landing locks | `<git-common>/land/runner.lock` (held only around push and cleanup, `land_steps.exclusive`), `branch-<hash>.lock` (held for a whole run, per branch), `primary-sync.lock`, `primary-sync.again` | `land_steps.py`, `primary_sync.py` | a second lander; the runtime cutover (`runtime_git.boundary`, `worktreerules.landing_lock`); `pushed` hook |
-| Landing history | `<git-common>/land/landings.jsonl`, one line a run | `land_steps.py` (line 485) | nothing in `src` or `scripts` (`docs/landing.md` describes it) |
+| Primary sync locks | `<git-common>/primary-sync.lock`, `primary-sync.again` | `primary_sync.py` | a second `primary_sync.py` |
+| Cutover lock | `<git-common>/runtime-cutover.lock` (held while a runtime build or switch crosses the boundary) | `runtime_git.crossing` | the runtime cutover (`runtime_git.until_free`, `worktreerules.cutover_lock`), `node_supervise`, the node launch |
 | CI watcher | `<git-common>/ci-watch/<sha>.json`, `.lock`, `.log`, `.stuck-N` | `ci_watch.py` (started by `hooks/pushed`) | `ci_watch.py` (a second call prints the first result; red streak) |
 | Status | none; reads the test permits, test jobs and `gh run list` (20 s timeout, no cache; `github_status.py` 3 s, only when something is stuck) | `runstatus.py` | `scripts/status`; the lead's attention hook (cached 5 minutes) |
 | Session liveness | `seen_ms` in `names.json`; live lease test in `writes.rs::is_live` | node | idle retire, `agents` |
 | Detached commands | one JSON per kind (`src/poolhouse/jobs.py`) | `poolhouse-jobs` | `status`, `wait`, `stop` |
-| Landing reviews | board kind `landing` | `land_review` | `pushed` hook, `scripts/land` |
+| Landing reviews | board kind `landing` | `land_review` | `pushed` hook, `runtime_unmerged.py` |
 | Model servers | `servers.json` (`serve/leases.py`) | serve manager | `reclaim.py` |
 | Test nodes left behind | processes whose state folder is under `/tmp/ml` | `testreap.py` | reads processes only, no lease or job state |
 
-The last three rows stay (section 5, "What stays"), with `landings.jsonl`. Everything else above becomes a view or is deleted.
+The last three rows stay (section 5, "What stays"). Everything else above becomes a view or is deleted.
 
 ## 3. The record
 
@@ -146,7 +146,6 @@ stopped session whose tree this job continues.
 | `hold` | `claim port`, `server`, `install`, `area`; one `reuse` hold for a test run | that claim | `hold:<kind>:<name>` (`hold:reuse:<run>`) | released or expired |
 | `test` | `scripts/test` | cpu_slots `min`..`count`, lanes or gpu for heavy tests | `test:<hash of argv and tree>` | done, failed, cancelled; `exit` |
 | `serve` | `poolhouse-serve up`, the broker | model_slot, gpu, memory_mb, port | `serve:<model>` | released |
-| `land` | `scripts/land` | nothing pool-wide; its `push` phase holds the device-local landing claim | `land:<branch>:<sha>`, once per actor | landed or stopped |
 | `ci` | the `pushed` hook | nothing | `ci:<sha>`, once per actor | green, red, skipped |
 | `sync` | `primary_sync.py` | a device-local claim on its path | `sync:<dev>` | done |
 | `tidy` | `worktrees close` and `sweep` | a device-local claim on the tree while it is removed | `tidy:<tree>:<head>`, once per actor | landed, bundled, abandoned |
@@ -169,7 +168,7 @@ Three layers, each with one rule. They follow AGENTS.md ("Every command, hook, r
   exclusive resource held by another session queues the job, or answers `busy` with `wait: false`.
 - **Once.** `once: true` returns the first job *this actor* opened for the key, open or ended. It is never answered with
   another actor's job, and no outcome of an ended job is read as a verdict by anyone else. "One landing per branch and SHA"
-  is then git's fact (a second `scripts/land` finds the commit already on the development branch), "one CI watch per commit"
+  is then git's fact (a second push of a commit finds it already on the development branch), "one CI watch per commit"
   is a live `ci:<sha>` job that a second caller follows, and after it ends a second caller reads the run from GitHub (cached,
   section 4.3). `--no-reuse` adds a nonce to the `test` key so it is a new run.
 
@@ -248,7 +247,6 @@ Each view is computed from the index; none is stored.
 | `scripts/status` | open and recent jobs of every device, stuck rules (below) | `scripts/status` |
 | `scripts/worktrees` | git's landed or work, plus the open local jobs on each tree and the last owner | `scripts/worktrees` |
 | `ci_watch` state | the `ci` jobs of a branch: result, red streak, stuck notes | `scripts/ci_watch.py SHA` |
-| Landing and push state | `land`, `sync` and `ci` jobs; `pushed` writes the pushed `sha` on the `land` or `work` job | `scripts/land` |
 | `#announcements` | the `news` view (below) | `poolhouse-workspace inbox`, `digest` |
 | Write quotas | no view (section 4.7) | none |
 | `is_live` | a recent `seen_ms` or an open local job whose process is alive | `agents` |
@@ -333,7 +331,7 @@ an ended job is removed). The job is the source of truth; the lock is derived fr
 reading "pid N"; `stale_lock` goes. `task_integration.py` and `integration_git.py` take the lock reason from the job (they
 compare it at line 137 as now) and stop inventing their own.
 
-### 4.5 CI and landing
+### 4.5 CI and sync
 
 `hooks/pushed` opens `ci:<sha>` (once, per actor) for the pushing session and starts the watcher, which beats the job while it
 polls GitHub, writes the stuck marks as `note` rows (idempotent per mark), sends the one red message and ends the job with
@@ -341,23 +339,16 @@ polls GitHub, writes the stuck marks as `note` rows (idempotent per mark), sends
 streak is the last ended `ci` jobs of the branch in the index (the last 1,024 ended jobs of each kind per device are kept, and
 only those of the current segment).
 
-`scripts/land` opens `land:<branch>:<sha>` (once, per actor) and writes each step as a `note`. There is no lock for the whole
-run, and nothing pool-wide: git's atomic ref update decides who lands, and two landers of one branch with different commits
-run side by side (today `branch-<hash>.lock` allows one per branch; it becomes one per commit). Only the short part that
-today sits under `runner.lock` is exclusive: the **`push` phase**, a child job (`within` the `land` job) holding a device-local
-claim on the repository's landing, which covers the fetch, the recheck, the push and the cleanup after it. The runtime cutover
-(`runtime_git.boundary`, `worktreerules.landing_lock`) waits on an open `push` phase, as it waits on `runner.lock` today, not
-on the whole run. A second lander of the same branch and commit follows the first job and shows its step. The landing reviewer
-exclusion (`ever_held` in `landing.rs`) reads the `work` jobs that held the branch or tree, as it reads claim entries now.
-`primary_sync.py` is a `sync` job; a second request while it runs is a `follow` row, which tells the holder to go round again
-(replacing `primary-sync.again`).
+A push opens no job and holds no lock: git's atomic ref update decides who lands. The runtime cutover waits on its own lock
+(`runtime_git.boundary`, `worktreerules.cutover_lock`), which no push takes. `primary_sync.py` is a `sync` job; a second request while
+it runs is a `follow` row, which tells the holder to go round again (replacing `primary-sync.again`).
 
 ### 4.6 News (the announcements)
 
-This view lands after the `work` jobs (slice 6) and the `land` jobs (slice 8) exist, because it is built from them. The four
+This view lands after the `work` jobs (slice 6) exist, because it is built from them. The four
 announcement types become derived lines of `inbox` and `digest`: joined is the identity entry that exists; done is the
 `end` of a subagent's `work` job; milestone is an `end` with `outcome: landed` and a `sha`, flagged when the commit touched
-`AGENTS.md` or `CLAUDE.md` (the lander computes that from the diff, so "every agent re-reads both files" needs no free text);
+`AGENTS.md` or `CLAUDE.md` (computed from the commit's diff, so "every agent re-reads both files" needs no free text);
 blocked is a `note` with a blocked reason on an open job. One line per job, newest state only. A decision needed is a direct
 `question` message, unchanged. What the slice deletes is only the sending of free text: the `announce` verb and its allowed
 kinds, the `#announcements` post path, the posts of the subagent hooks and the other posters of section 2, and the
@@ -396,7 +387,7 @@ lose their file locks and their calls into `testslots.py` and keep the runner si
 and `give_back_cores`, `broker_wire.py` the op `cores`, and the broker its `cores`, its `broker-leases.json` and its in-memory
 claims (it reads the job index); `testjobs.py` loses `spec.json`, `status.json`, `followers.json` and keeps spawning, log and
 junit files; `testreuse_run.py` waits on the run's job instead of a pid; `ci_watch.py` loses `state_dir`, `load`, `save`,
-`records`, the markers and the lock; `land_steps.py` loses `exclusive`, `one_run`, `dev_claim`; `primary_sync.py` loses its lock
+`records`, the markers and the lock; `primary_sync.py` loses its lock
 and again files; `trees.py` loses `stale_lock` and reads the lock reason as a job id; `task_integration.py` and
 `integration_git.py` take their lock reason from the job; `worktree_lifecycle.py`, `task_worktree_recovery.py` and the record
 half of `worktree_archive.py` go, and so do the calls into `worktree_lifecycle` of `harness_claims.py`, `harnesshook.py`,
@@ -423,8 +414,7 @@ AGENTS.md and CLAUDE.md lose the `announce` kinds and the claim wording; the own
 
 **What stays, and why.** `landing` entries (a verdict about a commit, not state of work); `servers.json` (a registry of
 processes for the reaper); `broker.json` (the broker's port and token: connection information); `lease-history.ladybug` (a
-graph of ended model leases for later measurement, written from the ended `serve` job); `land/landings.jsonl` (a history of
-finished landing runs); `lock.py` for exclusion around file writes; test duration, history and reuse stores (measurements)
+graph of ended model leases for later measurement, written from the ended `serve` job); `lock.py` for exclusion around file writes; test duration, history and reuse stores (measurements)
 and the reuse store's per-file marks; job logs and junit files (data named by job id); `lease-config.json` (capacity, not
 state); `testreap.py` (reads processes only).
 
@@ -518,7 +508,7 @@ cap, so a rate limit does not bound the log; a segment does.
 
 What the design adds, by estimate: a test run is 3 rows and its `reuse` hold 3 more; about 240 runs a day (724 stored job logs
 kept for 3 days, `test-execution.md`) is about 1,400 rows. A `work` job is 3 rows plus an `areas` note a minute while editing,
-about 100 rows; 20 a day is 2,000. `ci` and `land` add about 400. That is about 3,800 job rows a day in a chain of their own, so
+about 100 rows; 20 a day is 2,000. `ci` and `sync` add about 400. That is about 3,800 job rows a day in a chain of their own, so
 the chain starts a segment about every 40 days and an idle log never refuses. Slice 2 adds a rows-per-day counter and the
 percent of the segment to `scripts/status`; the real number replaces this estimate.
 
@@ -546,7 +536,7 @@ they hold records of runs that ended. The cost falls on the owner's devices only
 ## 10. Onboarding impact
 
 No human step is added. Job rows are written by commands and hooks that agents already run (SessionStart, the claim verbs,
-`scripts/test`, `scripts/land`, the `pushed` hook); no new prompt, flag, code or file for a person. The token is the identity, so
+`scripts/test`, the `pushed` hook); no new prompt, flag, code or file for a person. The token is the identity, so
 nothing is registered by hand. A new person sees no change; only the owner's existing devices see the refusal of
 section 9, once. `scripts/status` needs no network for the local part, and its `github:` section is left out when GitHub does
 not answer in 3 seconds. The runner needs a node: a device that runs an agent has one, and `scripts/test` on a bare checkout
@@ -564,18 +554,18 @@ after the views that replace it.
 | --- | --- | --- | --- |
 | 0 | The footing | the pool id in the signed head (`Node.pool` assigned, the head message verifies under the receiver's pool); a device that founds or joins a pool starts a new origin for each board; `ingest` of a relayed origin needs the writer's key to be an active member's; `node` in `RESERVED` | a head signed for pool A is refused by a member of pool B; a relayed log signed by a key no member holds is not stored as a member's; a joined device's earlier log is not exchanged; no session can be named `node` |
 | 1 | The job chain | the second chain per origin, `Kind::Job` and `Kind::Base`; 75 percent segment start with `base` and `carry` rows, written atomically; 90 percent refusal of `open` and `grant` only; the first-seq addressing in `check_chain`, `accept`, `trusted`, `cut`, `acknowledge`, `rows_since`; the stream name in the head | a chain driven to 150,000 rows starts a segment that holds every open job; at 180,000 an `end` is still written and an `open` is refused; a member holding old rows continues across a base; a member offline past the segment retention starts from the base; a hostile base is refused (a lower `seq`, a `rows` over 1,024, a duplicated job, a writer who is no member); a crash during the start leaves the old segment; a head of one chain does not verify in the other; the first sync of a new device is at most 3 rounds; `idem` scan at 200,000 rows |
-| 2 | The log is the table (Rust; the same calls, a different store) | `jobs/` with `Index::apply` and `view.rs` (pool-wide holds of other devices, `ever_held`); `leases.json` deleted, the table is the fold; `open`, `grant`, `end` rows with write-ahead for `open` and `grant` (queued requests are now written); the refusal of the device's own old state; the lease arm of `fold::entry` deleted; the rows-per-day counter and the 75 percent verdict in `scripts/status`; glossary row | port `lease.rs`, `lease_parties.rs`; new: cross-origin `end` ignored, an `end` never refused for a full log, a replayed request is one row, a foreign `node` row ends nothing local, a foreign `lease` row is rejected and refuses nothing, a restart folds to the same table, an earlier foreign row arriving late changes the winner and costs only the contested resource, an origin of a non-member counts for nothing, a rebuild when a log is refetched to the same length, fixed-cost bound of the start fold |
+| 2 | The log is the table (Rust; the same calls, a different store) | `jobs/` with `Index::apply` and `view.rs` (pool-wide holds of other devices); `leases.json` deleted, the table is the fold; `open`, `grant`, `end` rows with write-ahead for `open` and `grant` (queued requests are now written); the refusal of the device's own old state; the lease arm of `fold::entry` deleted; the rows-per-day counter and the 75 percent verdict in `scripts/status`; glossary row | port `lease.rs`, `lease_parties.rs`; new: cross-origin `end` ignored, an `end` never refused for a full log, a replayed request is one row, a foreign `node` row ends nothing local, a foreign `lease` row is rejected and refuses nothing, a restart folds to the same table, an earlier foreign row arriving late changes the winner and costs only the contested resource, an origin of a non-member counts for nothing, a rebuild when a log is refetched to the same length, fixed-cost bound of the start fold |
 | 3 | The job calls | `job_open`, `job_wait`, `job_note`, `job_beat`, `job_end`, `job_follow`, `job_list` with `what`, `key`, `on`, `once`, notes and follow; the verbs, `leasetable.py`, `api/leases.py`, `api/pool.py`, `gate.py`, `board/session.py`, `harness_claims.py`, the serve broker (its holders read from jobs) and the request gate call them; `claims.rs` and the `claim`, `reserve`, `release`, `claims`, `lease_*` methods deleted; path claims confined to `git worktree list` paths; ancestors end a child's job; foreign job text screened | port `claims.rs`, `claims_foreign.rs`, `test_leasetable.py`, `test_board_claims.py`, `test_workspace_claim_output.py`; new: a parent and a grandparent end a child's job, a stranger cannot, `once` of one actor never returns another's job, a claim of `/` and of a planted `~/.git` home are refused, a quiet hold is written after 10 minutes |
 | 4 | Test permits | `test` jobs with `cpu_slots min..count` and `lanes`; exempt from `work_gate` and the 90 percent refusal; the worker count from the grant; `testslots.py`, `testslots_policy.py`, `testqueue.py`, `slots.py`, `testing/cores.py`, the broker's `cores` and the file locks of `testslots_pytest.py` and `testslots_runner.py` deleted; the runner holds the job | port the `testslots` tests onto a private node (`tests/node_kit.py`); a killed runner ends `dead` and frees its slots; a stale-build node and a full job log still grant a `test` job; a sleep gap ends no job; fixed-cost test of reaching the node |
 | 5 | Test jobs and the reaper | follow, cancel and status as `follow`, `end` and `job_list`; `testjobs.py` loses its records; `queue_doctor.py`, `queue_notice.py` replaced by the node's sweep and notices; `stop_jobs.py` reads jobs; one `reuse` hold per run, the reuse store's marks name the job; a main session of the device ends a queued `test` job or one whose runner stopped renewing | port `test_testjobs*.py`, `test_queue_*.py`, `test_subagent_stop_jobs.py`; two runs of one tree and selectors follow one job; the last `unfollow` ends it; a gate run of 920 files writes under 10 rows; a follower with another tree hash does not take the result |
 | 6 | Worktrees | `work` and `tidy` jobs; `worktree-lifecycle.json`, `.assigned` deleted; the git lock mirrors the job (`job:<id>`); `trees.py`, `scripts/worktrees` and the Stop hooks and the other readers of section 5 read jobs | port `test_trees.py`, `test_worktree_lifecycle.py`, `test_subagent_stop_landed.py`; a dead owner leaves a `work` tree that a `resumes` job takes; a terminal's `git worktree remove` of a tree with an open job is refused by git; sweep ignores job text |
 | 7 | CI watcher and status | `ci` jobs; `ci-watch` deleted; `runstatus.py` reads jobs and prints a section per device; the `github:` section with a 3 second timeout and a 60 second cache | port `test_ci_watch.py`, `test_status.py`; a second call while the job is open follows it and after it ends reads GitHub; a job of a second device shows as `name@d2` and `stale`; GitHub not answering leaves the section out |
-| 8 | Landing and push | `land` (per branch and commit) and `sync` jobs; the `push` phase; the landing lock files, the dev branch claim and the `primary-sync` files deleted; the runtime cutover waits on the `push` phase | port `test_land*.py`, `test_primary_sync.py`; a second lander of one commit follows the first job; two commits of one branch run side by side and push one at a time; the cutover waits for an open push phase only |
+| 8 | Sync | `sync` jobs; the `primary-sync` files deleted | port `test_primary_sync.py`; a second request while a sync runs is a `follow` row and makes the holder go round again |
 | 9 | News and quotas | the `news` view in `inbox` and `digest`; the `announce` verb, the subagent hooks' posts, the other posters and the send and announce keys deleted; the readers of section 4.6 moved; the AGENTS.md and CLAUDE.md edit; no `Rates` caller outside these keys is touched | `news` shows landed, blocked and done once per job; a subagent's done reaches its parent through the `agent` subscription; no reader of `#announcements` is left |
 | 10 | Cleanup | `jobs.py` writes `detach` jobs; the remaining files and docs of section 5; budgets lowered with `scripts/budgets --update`, said by how much | the budget and layer checks; `scripts/test gate` on the combined tree |
 
 Slice 0 lands first, then slice 1, then slice 2, then slice 3. Slices 4 to 8 may land in any order after 3. Slice 9 lands after
-slices 6 and 8, because it deletes `announce` and the hooks' posts and the news view is built from `work` and `land` jobs.
+slices 6 and 8, because it deletes `announce` and the hooks' posts and the news view is built from `work` jobs.
 Slice 10 is last. Slice 4 is the first high-volume producer and follows slice 1 by construction.
 
 ## 12. Attack first
@@ -676,7 +666,7 @@ section 11 (old 1 is now 2, old 2 is 3, old 3 is 1, old 4 is 9, old 5 to 9 are 4
 | 6: path claims; `git_root` trusts any `.git` file | Confirmed: `registry::git_root` follows any `gitdir:` file, `Projects::resolve` accepts its result, `refuse_broad` runs only in `source()` | Section 4.1: a path claim must lie below a path `git worktree list` prints for the project's git source or below a registered source; slice 3 tests it with a planted `~/.git` |
 | 7: dead workers: start time, wall-clock expiry, `EPERM`, a quiet hold with no row | Confirmed: `live::inspect` returns `None` for any failure and `is_alive` reads it as dead; `expires_ms` is wall time (`Leases::now`); a quiet lease writes no row. The 8 hour cap is not adopted as an end: the owner's order removes lifetime caps (`fix/node-limits` removes `MAX_CLAIM_LIFETIME_S` and `QUIET_MAX_TTL_S`) and AGENTS.md has the queue doctor end nothing for time | Section 6: `pid_start` in the `grant` row, a missing start means dead; monotonic time and a 30 second tick-gap grace; `inspect` answers seen, gone or unknown, and unknown keeps the job; a quiet hold writes its `grant` row after 10 minutes and a notice at 8 hours |
 | 8: `once` and `follow` let any session end `ci:<sha>` or `land:<branch>:<sha>` green for everyone | Confirmed as a design flaw: `once` returned the first job of any actor and its outcome was trusted | Section 3.5: `once` is per actor; a follower joins only a live job; the verdict is GitHub's, git's or junit bound to the tree hash, never an `outcome` |
-| 9: dropped guards: worktree lock, `runner.lock`, `branch-<hash>.lock`, readers of `worktree-lifecycle.json` | Confirmed: git, a terminal and `integration_git.py:137` honour the lock and read no job; `exclusive` wraps only `publish` and the already-landed finish, `one_run` is per branch; ten files read `worktree_lifecycle` (the reviewer named three) | Section 4.4: the lock stays as a mirror written from the job; section 4.5: a short `push` phase replaces `runner.lock`, `land` is per commit; section 5 lists every reader |
+| 9: dropped guards: worktree lock, `runner.lock`, `branch-<hash>.lock`, readers of `worktree-lifecycle.json` | Confirmed: git, a terminal and `integration_git.py:137` honour the lock and read no job; `exclusive` wraps only `publish` and the already-landed finish, `one_run` is per branch; ten files read `worktree_lifecycle` (the reviewer named three) | Section 4.4: the lock stays as a mirror written from the job; section 4.5: a push takes no lock; section 5 lists every reader |
 | 10: section 2 rows missing; the quota row is wrong | Confirmed each: `broker.json`, `broker-leases.json`, `lease-history.ladybug`, `testing/cores.py` with `take_cores`, `landings.jsonl`, `worktreerules.landing_lock`, `runtime_git.boundary`, `agent_sandbox_profile.py`, `api/pool.py`, `gate.py`, `testreap.py`. `broker-handoff.json` is named only in `scripts/test_kernel_role_home.py`; no source here writes it. `testreap.py` reads processes only | Section 2 rows added and the quota row rewritten; section 5 says what each becomes; `testreap.py` and `lease-history.ladybug` stay with their reasons |
 | 11: slice 5, `work_gate()` refuses a stale build | Confirmed: `lease_acquire` calls `work_gate()` for every non-quiet request | `test` jobs are exempt from `work_gate()` and from the 90 percent refusal (section 4.2, slice 4) |
 | LOW: `node` in `RESERVED` | Confirmed: it is not in the list (`row.rs`) | Rule 5 and slice 0 |

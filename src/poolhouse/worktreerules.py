@@ -100,12 +100,12 @@ def checkouts(directory: str | Path) -> tuple[Path, Path] | None:
     return top, common.parent if common.name == ".git" else common
 
 
-def landing_lock(directory: Path) -> Path:
-    """The shared landing and runtime cutover lock of a source repository."""
+def cutover_lock(directory: Path) -> Path:
+    """The runtime cutover lock of a source repository."""
     found = checkouts(directory)
     if found is None:
         raise ValueError(f"{directory} is not a source repository")
-    return found[1] / ".git" / "land" / "runner.lock"
+    return found[1] / ".git" / "runtime-cutover.lock"
 
 
 def in_primary(directory: str | Path) -> Path | None:

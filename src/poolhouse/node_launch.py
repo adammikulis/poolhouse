@@ -222,7 +222,7 @@ def swap(state: Path | None = None, *, wait_s: float = SWAP_WAIT_S, allow_unmerg
                     return {"action": "swapped", "detail": f"node {came['pid']} runs {new_sha[:12]}"}
                 return _rolled_back(state, pin, new_sha, wait_s, direct=True)
     except Busy:
-        return {"action": "deferred", "detail": "node replacement waits for landing"}
+        return {"action": "deferred", "detail": "node replacement waits for the runtime cutover"}
     except (OSError, ValueError, RuntimeError) as exc:
         return {"action": "failed", "detail": f"node replacement is refused: {exc}"}
     came = _until(time.monotonic() + wait_s, lambda: _answers_as(state, new_sha, int(run.get("pid", -1))))
@@ -234,7 +234,7 @@ def swap(state: Path | None = None, *, wait_s: float = SWAP_WAIT_S, allow_unmerg
                 return {"action": "swapped", "detail": f"node {current['pid']} runs {new_sha[:12]}"}
             rollback = _rollback_pointer(state, pin, new_sha)
     except Busy:
-        return {"action": "deferred", "detail": "node replacement waits for landing"}
+        return {"action": "deferred", "detail": "node replacement waits for the runtime cutover"}
     if rollback is None:
         return {"action": "failed", "detail": "the previous node runtime is refused"}
     return _rollback_answer(state, rollback, new_sha, wait_s)
