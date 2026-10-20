@@ -71,11 +71,11 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
           [one.name, one.path].includes(live?.model) || one.path === live?.path);
         return { value: option.value, name: installed?.name || option.textContent,
           family: installed?.family || "Other models", status: live ? "Loaded" : installed ? "Installed" :
-          option.disabled ? "Unavailable" : chat.coding.active ? "Installed" : "Loaded",
+          option.disabled ? "Unavailable" : "Loaded",
           quant: installed?.quantization || "", disabled: option.disabled, installed,
           capabilities: live?.capabilities || installed?.capabilities };
       }).filter((one) => one.capabilities?.chat !== false);
-      if (!chat.coding.active) {
+      {
         for (const installed of this.library.filter((one) => one.servable && one.capabilities?.chat !== false)) {
           if (rows.some((one) => one.installed?.path === installed.path || one.name === installed.name)) continue;
           rows.push({ value: installed.path, name: installed.name, family: installed.family || "Other models",
@@ -102,16 +102,33 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
         for (const row of models.sort((a, b) => Number(b.status === "Loaded") - Number(a.status === "Loaded") || a.name.localeCompare(b.name))) {
           group.append(M.el("button", { type: "button", class: "chat-model-choice",
             ...(row.disabled ? { disabled: "" } : {}),
-            "aria-pressed": String(chat.picker.value === row.value), onclick: () => this.choose(row) },
+            "data-picker-kind":"model", "aria-pressed": String(chat.picker.value === row.value), onclick: () => this.choose(row) },
           M.el("span", {}, row.name), M.el("small", {}, [row.status, row.quant,
             row.capabilities?.chat === null ? "Chat capability unverified" : ""].filter(Boolean).join(" · ")),
           row.needsLoad ? M.el("small", {class:"chat-model-action"}, "Configure in Models →") : null));
         }
         this.list.append(group);
       }
+      this.renderAgents(query);
       if (!rows.length) this.list.append(M.el("p", { class: "hint" }, this.problem ||
         (query ? "No models match your search." : "No installed or running models are available.")),
         M.el('button', {type:'button', onclick:() => { this.dialog.close(); M.go('models'); }}, 'Browse model library'));
+    }
+    renderAgents(query) {
+      const workspace = this.chat.workspace, data = workspace?.navigationData;
+      if (!data?.me || !workspace.visible) return;
+      const board = workspace.board, selection = workspace.projectSelection;
+      const agents = data.agents.filter(row => row.role === 'agent' && row.id !== data.me &&
+        `${row.display_name || row.display_label || row.id} ${row.id}`.toLowerCase().includes(query));
+      const section = M.el('section', {class:'chat-model-family'}, M.el('h3', {}, 'Workspace agents'));
+      for (const row of agents) section.append(M.el('button', {type:'button', class:'chat-model-choice',
+        'data-picker-kind':'agent', 'data-agent-id':row.id, title:row.id, onclick:() => {
+          if (this.chat.request || board !== workspace.board || selection !== workspace.projectSelection ||
+              data !== workspace.navigationData || !workspace.visible) return;
+          this.dialog.close(); M.go('board'); board.open({kind:'dm', a:data.me, b:row.id});
+        }}, M.el('span', {}, row.display_name || row.display_label || row.id), M.el('small', {}, 'Agent · scoped direct message')));
+      if (!agents.length) section.append(M.el('p', {class:'hint'}, query ? 'No workspace agents match your search.' : 'No agents available in this workspace.'));
+      this.list.append(section);
     }
     async choose(row) {
       if (this.chat.request || row.disabled) return;
@@ -195,6 +212,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       let saved = '';
       try { saved = localStorage.getItem('poolhouse.conversations.project') || ''; } catch {}
       if (!/^[a-f0-9]{32}$/.test(saved) && saved !== 'local') saved = '';
+      if (saved !== 'local' && !projects.some(row => row.id === saved)) saved = '';
       this.projectRows = new Map(projects.map(row => [row.id, row]));
       this.project.replaceChildren(M.el('option', {value:''}, 'Choose a workspace'),
         ...projects.map(row => M.el('option', {value:row.id, disabled:row.available !== true},

@@ -162,16 +162,16 @@ def test_model_picker_groups_and_searches_loaded_and_installed_models(chat_brows
     expect(page.get_by_role("heading", name="Gemma", exact=True)).to_be_visible()
     expect(page.locator("chat-view #chat-model-list")).to_contain_text("Loaded · Q4_K_XL")
     expect(page.locator("chat-view #chat-model-list")).to_contain_text("Installed · Q8_0")
-    page.locator("chat-view").get_by_label("Search models", exact=True).fill("Qwen")
+    page.locator("chat-view").get_by_label("Search models and workspace agents", exact=True).fill("Qwen")
     expect(page.locator("chat-view .chat-model-choice")).to_have_count(1)
-    page.locator("chat-view").get_by_label("Search models", exact=True).press("Enter")
+    page.locator("chat-view").get_by_label("Search models and workspace agents", exact=True).press("Enter")
     expect(page.locator("chat-view #chat-model-dialog")).not_to_be_visible()
     expect(page.locator("chat-view #model")).to_have_value("model-a")
     page.locator("chat-view #chat-model-button").click()
-    page.locator("chat-view").get_by_label("Search models", exact=True).fill("no matches")
+    page.locator("chat-view").get_by_label("Search models and workspace agents", exact=True).fill("no matches")
     expect(page.locator("chat-view #chat-model-list p")).to_have_text("No models match your search.")
     expect(page.locator("chat-view #chat-model-list").get_by_role("button", name="Browse model library")).to_be_visible()
-    page.locator("chat-view").get_by_label("Search models", exact=True).press("Escape")
+    page.locator("chat-view").get_by_label("Search models and workspace agents", exact=True).press("Escape")
     expect(page.locator("chat-view #chat-model-dialog")).not_to_be_visible()
     assert page.locator("chat-view textarea:visible").count() == 1
 
@@ -222,14 +222,14 @@ def test_installed_model_picker_remains_visible_with_no_loaded_server(chat_brows
     expect(page.locator("chat-view #chat-askrow")).to_be_hidden()
 
 
-def test_learning_prompts_preserve_draft_and_team_channels_are_connected(chat_browser):
+def test_learning_prompts_preserve_draft_and_team_channels_are_connected(chat_browser, tmp_path):
     from playwright.sync_api import expect
 
     served, page = chat_browser
     _open(served, page)
     expect(page.locator("chat-view .chat-welcome strong")).to_have_text("Start a conversation")
-    expect(page.locator("chat-view .conversation-space small")).to_have_count(0)
-    page.screenshot(path="/private/tmp/poolhouse-conversations-welcome.png", full_page=True)
+    expect(page.locator("#conversation-workspace-status")).to_be_visible()
+    page.screenshot(path=str(tmp_path / "conversations-welcome.png"), full_page=True)
     page.get_by_role("button", name="Plan an experiment", exact=True).click()
     composer = page.get_by_role("textbox", name="Message", exact=True)
     expect(composer).to_have_value("Help me design a reproducible training experiment. Ask me about the model, data, and success criteria.")
@@ -239,13 +239,13 @@ def test_learning_prompts_preserve_draft_and_team_channels_are_connected(chat_br
     expect(page.locator("chat-view .chats")).to_be_visible()
     page.get_by_role("button", name="● model-a", exact=True).click()
     expect(composer).to_have_value("Help me design a reproducible training experiment. Ask me about the model, data, and success criteria.")
-    page.screenshot(path="/private/tmp/poolhouse-conversations-desktop.png", full_page=True)
+    page.screenshot(path=str(tmp_path / "conversations-desktop.png"), full_page=True)
     page.set_viewport_size({"width": 390, "height": 844})
     expect(page.locator("chat-view .chats")).to_be_hidden()
     page.get_by_role("button", name="Channels and model chats ▾").click()
     expect(page.locator("chat-view .chats")).to_be_visible()
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-    page.screenshot(path="/private/tmp/poolhouse-conversations-mobile.png", full_page=True)
+    page.screenshot(path=str(tmp_path / "conversations-mobile.png"), full_page=True)
 
 
 def test_saved_model_switch_updates_visible_picker(chat_browser):

@@ -6,8 +6,8 @@ from typing import Any
 
 from .settings import Settings
 
-DEFAULTS: dict[str, Any] = {"mode": "chat", "temperature": None, "project": "", "role": "",
-                            "effort": "off", "max_effort": "medium", "harness": "pi", "context": 0, "draft": "auto", "max_output_tokens": None}
+DEFAULTS: dict[str, Any] = {"temperature": None, "project": "", "role": "",
+                            "effort": "off", "max_effort": "medium", "harness": "", "context": 0, "draft": "auto", "max_output_tokens": None}
 LEVELS = ("off", "low", "medium", "high")
 
 
@@ -19,8 +19,6 @@ def checked(settings: dict | None = None) -> dict[str, Any]:
     if set(supplied) - set(DEFAULTS):
         raise ValueError("unknown conversation setting")
     result = {**DEFAULTS, **supplied}
-    if result["mode"] not in ("chat", "coding"):
-        raise ValueError("mode is chat or coding")
     for key in ("project", "role", "effort", "max_effort", "harness", "draft"):
         if not isinstance(result[key], str):
             raise ValueError(f"{key} must be text")
