@@ -44,6 +44,8 @@ class _Location:
     def __init__(self, root):
         self.root = Path(root)
         self.descriptors, self.anchors, self.sockets = [], [], {}
+        self.directory = self.parent = self.created = None
+        self._closed, self._close_lock = False, threading.Lock()
         self.name = "producer-" + secrets.token_hex(8)
         if not self.root.is_absolute() or ".." in self.root.parts:
             raise ValueError("Private producer directory must be absolute")
@@ -63,6 +65,7 @@ class _Location:
             if len(os.fsencode(self.path / "bootstrap.sock")) > 103:
                 raise ValueError("Private producer directory path is too long")
             os.mkdir(self.name, mode=0o700, dir_fd=at)
+            self.created = _identity(os.stat(self.name, dir_fd=at, follow_symlinks=False))
             self.directory = os.open(
                 self.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=at
             )
@@ -75,13 +78,18 @@ class _Location:
             raise
 
     def bind(self, name):
+        self.check()
         channel = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             channel.bind(str(self.path / name))
-            os.chmod(name, 0o600, dir_fd=self.directory, follow_symlinks=False)
             self.sockets[name] = _identity(
                 os.stat(name, dir_fd=self.directory, follow_symlinks=False)
             )
+            os.chmod(name, 0o600, dir_fd=self.directory, follow_symlinks=False)
+            after = _identity(os.stat(name, dir_fd=self.directory, follow_symlinks=False))
+            if after[:2] != self.sockets[name][:2]:
+                raise OSError("Private producer listener changed during binding")
+            self.sockets[name] = after
             channel.listen(MOST_CONNECTIONS)
             channel.settimeout(0.01)
             self.check()
@@ -91,6 +99,8 @@ class _Location:
             raise
 
     def check(self):
+        if self._closed:
+            raise OSError("Private producer directory is closed")
         for parent, name, child, original in self.anchors:
             if (
                 _identity(os.fstat(child)) != original
@@ -102,22 +112,31 @@ class _Location:
                 raise OSError("Private producer listener changed")
 
     def close(self):
-        for name, original in self.sockets.items():
+        # Hand ownership off exactly once, before closing any recyclable FD number.
+        with self._close_lock:
+            if self._closed:
+                return
+            self._closed = True
+            directory, parent, created = self.directory, self.parent, self.created
+            sockets, descriptors = self.sockets, self.descriptors
+            self.directory = self.parent = self.created = None
+            self.sockets, self.descriptors, self.anchors = {}, [], []
+        for name, original in sockets.items():
             with contextlib.suppress(OSError):
                 if (
-                    _identity(os.stat(name, dir_fd=self.directory, follow_symlinks=False))
-                    == original
+                    _identity(os.stat(name, dir_fd=directory, follow_symlinks=False))[:2]
+                    == original[:2]
                 ):
-                    os.unlink(name, dir_fd=self.directory)
-        if hasattr(self, "directory"):
+                    os.unlink(name, dir_fd=directory)
+        if created is not None:
             with contextlib.suppress(OSError):
-                if _identity(
-                    os.stat(self.name, dir_fd=self.parent, follow_symlinks=False)
-                ) == _identity(os.fstat(self.directory)):
-                    os.rmdir(self.name, dir_fd=self.parent)
-        for descriptor in reversed(self.descriptors):
+                if (
+                    _identity(os.stat(self.name, dir_fd=parent, follow_symlinks=False))[:2]
+                    == created[:2]
+                ):
+                    os.rmdir(self.name, dir_fd=parent)
+        for descriptor in reversed(descriptors):
             os.close(descriptor)
-        self.descriptors.clear()
 
 
 def _remaining(channel, deadline, most=None):

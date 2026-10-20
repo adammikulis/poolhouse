@@ -6,6 +6,7 @@ import os
 import socket
 import ssl
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -356,3 +357,150 @@ def test_control_envelope_is_exact_before_fixed_dispatch(factory, raw):
         channel.sendall(raw_frame(raw))
         assert read(channel)["ok"] is False
     assert calls == []
+
+
+def test_repeated_close_never_uses_recycled_directory_descriptor(factory, monkeypatch):
+    create, root, _identity = factory
+    server = create()
+    directory_fd = server._location.directory
+    server.close()
+    unrelated = root / "unrelated"
+    unrelated.mkdir()
+    sentinel = unrelated / "bootstrap.sock"
+    sentinel.write_text("not a listener")
+    owned = os.open(unrelated, os.O_RDONLY | os.O_DIRECTORY)
+    reused = os.dup2(owned, directory_fd)
+    original_stat = os.stat
+
+    def no_recycled_access(path, *args, **options):
+        assert options.get("dir_fd") != reused, "Repeated close accessed a recycled descriptor"
+        return original_stat(path, *args, **options)
+
+    monkeypatch.setattr(os, "stat", no_recycled_access)
+    try:
+        server.close()
+        assert os.fstat(reused).st_ino == unrelated.stat().st_ino
+        assert sentinel.read_text() == "not a listener"
+    finally:
+        os.close(reused)
+        if owned != reused:
+            os.close(owned)
+
+
+@pytest.mark.parametrize("failure", ["chmod", "post-chmod-stat"])
+def test_bind_failure_removes_only_captured_listener_inode(factory, monkeypatch, failure):
+    _create, root, _identity = factory
+    location = control._Location(root)
+    path = location.path
+    original_chmod, original_stat = os.chmod, os.stat
+    changed = {"value": False, "raised": False}
+
+    def chmod(name, *args, **options):
+        if name == "bootstrap.sock" and failure == "chmod":
+            raise PermissionError("Injected chmod failure")
+        result = original_chmod(name, *args, **options)
+        if name == "bootstrap.sock":
+            changed["value"] = True
+        return result
+
+    def stat_after_chmod(name, *args, **options):
+        if name == "bootstrap.sock" and changed["value"] and not changed["raised"]:
+            changed["raised"] = True
+            raise OSError("Injected post-bind stat failure")
+        return original_stat(name, *args, **options)
+
+    monkeypatch.setattr(os, "chmod", chmod)
+    monkeypatch.setattr(os, "stat", stat_after_chmod)
+    try:
+        with pytest.raises(OSError):
+            location.bind("bootstrap.sock")
+    finally:
+        location.close()
+    assert not path.exists()
+
+
+def test_bind_failure_never_unlinks_substituted_inode(factory, monkeypatch):
+    _create, root, _identity = factory
+    location = control._Location(root)
+    path = location.path / "bootstrap.sock"
+
+    def substitute(*_args, **_options):
+        path.unlink()
+        path.write_text("replacement is not owned")
+        raise PermissionError("Injected replacement")
+
+    monkeypatch.setattr(os, "chmod", substitute)
+    try:
+        with pytest.raises(OSError):
+            location.bind("bootstrap.sock")
+    finally:
+        location.close()
+    assert path.read_text() == "replacement is not owned"
+
+
+def test_concurrent_close_hands_off_each_descriptor_once(factory, monkeypatch):
+    create, _root, _identity = factory
+    server = create()
+    descriptors = set(server._location.descriptors)
+    counts, errors = {}, []
+    original_close = os.close
+
+    def close_once(fd):
+        if threading.current_thread().name.startswith("owned-cleanup-") and fd in descriptors:
+            counts[fd] = counts.get(fd, 0) + 1
+        return original_close(fd)
+
+    monkeypatch.setattr(os, "close", close_once)
+    ready = threading.Barrier(2)
+
+    def close():
+        try:
+            ready.wait(timeout=2)
+            server.close()
+        except (OSError, RuntimeError) as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=close, name=f"owned-cleanup-{index}") for index in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(3)
+        assert not thread.is_alive()
+    assert not errors and counts == dict.fromkeys(descriptors, 1)
+    assert server._location.directory is None and server._location.parent is None
+    assert not server._location.anchors and not server._location.sockets
+
+
+def test_partial_location_constructor_removes_captured_directory(factory, monkeypatch):
+    _create, root, _identity = factory
+    original = os.open
+
+    def refuse_child(path, *args, **options):
+        if str(path).startswith("producer-"):
+            raise PermissionError("Injected private-directory open failure")
+        return original(path, *args, **options)
+
+    monkeypatch.setattr(os, "open", refuse_child)
+    with pytest.raises(OSError):
+        control._Location(root)
+    assert not list(root.glob("producer-*"))
+
+
+def test_successful_chmod_cannot_transfer_listener_ownership(factory, monkeypatch):
+    _create, root, _identity = factory
+    location = control._Location(root)
+    path = location.path / "bootstrap.sock"
+    original = os.chmod
+
+    def substitute(name, *args, **options):
+        path.unlink()
+        path.write_text("replacement must remain")
+        return original(name, *args, **options)
+
+    monkeypatch.setattr(os, "chmod", substitute)
+    try:
+        with pytest.raises(OSError):
+            location.bind("bootstrap.sock")
+    finally:
+        location.close()
+    assert path.read_text() == "replacement must remain"
