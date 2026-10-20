@@ -27,7 +27,8 @@ def opened(root: Path) -> Iterator[GraphStore]:
         yield graph
 
 
-def get(graph: GraphStore, cid: str) -> Conversation | None:
+def record(graph: GraphStore, cid: str) -> Conversation | None:
+    """Read current saved settings without loading conversation history."""
     rows = graph.query("MATCH (c:Node {id:$id}) RETURN c.label AS title, c.attrs AS attrs", {"id": node_id(cid)})
     if not rows:
         return None
@@ -35,6 +36,14 @@ def get(graph: GraphStore, cid: str) -> Conversation | None:
     revision = attrs.get("policy_revision")
     if attrs.get("version") != 2 or type(revision) is not int or revision < 0:
         raise ValueError("This conversation format is unsupported; start a new conversation")
+    return Conversation(id=cid, title=rows[0]["title"], model=attrs.get("model", ""),
+                        created=attrs["created"], policy_revision=revision, settings=checked(attrs.get("settings")))
+
+
+def get(graph: GraphStore, cid: str) -> Conversation | None:
+    conversation = record(graph, cid)
+    if conversation is None:
+        return None
     messages = []
     found = graph.query("MATCH (c:Node {id:$id})-[:Edge {rel:'contains'}]->(m:Node) "
                         "RETURN m.label AS content, m.attrs AS attrs", {"id": node_id(cid)})
@@ -42,8 +51,8 @@ def get(graph: GraphStore, cid: str) -> Conversation | None:
     for info, content in sorted(ordered, key=lambda pair: pair[0]["sequence"]):
         messages.append(Message(role=info["role"], content=content, at=info["at"],
                                 reasoning=info.get("reasoning", ""), status=info.get("status", "complete")))
-    return Conversation(id=cid, title=rows[0]["title"], model=attrs.get("model", ""),
-                        created=attrs["created"], policy_revision=revision, messages=messages, settings=checked(attrs.get("settings")))
+    conversation.messages = messages
+    return conversation
 
 
 def all_ids(graph: GraphStore) -> list[str]:

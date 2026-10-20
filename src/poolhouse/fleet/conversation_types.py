@@ -11,6 +11,24 @@ from poolhouse.fleet.conversation_settings import checked
 TITLE_CHARS = 60
 ROLES = ("system", "user", "assistant")
 
+
+@dataclass(frozen=True, slots=True)
+class CodingState:
+    """Immutable current settings bound to one coding conversation."""
+
+    conversation: str
+    revision: int
+    model: str
+    settings: tuple[tuple[str, Any], ...]
+
+    @classmethod
+    def from_conversation(cls, conversation: Conversation) -> CodingState:
+        if not conversation.settings["harness"] or not conversation.settings["project_id"]:
+            raise ValueError("Choose a registered project for this coding session")
+        return cls(conversation.id, conversation.policy_revision, conversation.model,
+                   tuple(sorted(conversation.settings.items())))
+
+
 @dataclass
 class Message:
     role: str

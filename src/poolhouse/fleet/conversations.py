@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 from poolhouse.fleet import conversation_graph as graph
@@ -9,6 +10,7 @@ from poolhouse.fleet.conversation_settings import checked
 from poolhouse.fleet.conversation_types import (
     ROLES,
     TITLE_CHARS,
+    CodingState,
     Conversation,
     Message,
     safe,
@@ -40,6 +42,36 @@ class Conversations:
         with graph.opened(self.root) as store, store.transaction():
             graph.save(store, made)
         return made
+
+    def coding_state(self, cid: str) -> CodingState:
+        """Read one current coding policy without loading its conversation history."""
+        if not safe(cid):
+            raise ValueError("invalid conversation id")
+        with graph.opened(self.root) as store:
+            found = graph.record(store, cid)
+            if found is None:
+                raise ValueError("no such coding session")
+            return CodingState.from_conversation(found)
+
+    @contextmanager
+    def coding_guard(self, expected: CodingState, *, current):
+        """Hold current policy only around a bounded parent-owned publication.
+
+        Resource resolution, captures and tool execution precede this guard. The
+        trusted current callback checks retained resource and execution identity
+        locally, without subprocesses, network calls or acquiring registry locks.
+        """
+        if (not isinstance(expected, CodingState) or not safe(expected.conversation)
+                or type(expected.revision) is not int or expected.revision < 0):
+            raise ValueError("invalid coding session policy")
+        with graph.opened(self.root) as store, store.transaction():
+            found = graph.record(store, expected.conversation)
+            if found is None or CodingState.from_conversation(found) != expected or current() is not True:
+                raise ValueError("The coding session changed; reload its current settings")
+            yield store
+            found = graph.record(store, expected.conversation)
+            if found is None or CodingState.from_conversation(found) != expected or current() is not True:
+                raise ValueError("The coding session changed before publishing its result")
 
     def append(self, cid: str, role: str, content: str, *,
                reasoning: str = "", status: str = "complete") -> Conversation:

@@ -6,9 +6,10 @@ from typing import Any
 
 from poolhouse import coding_policy
 
+from .project_source import project_id
 from .settings import Settings
 
-DEFAULTS: dict[str, Any] = {"temperature": None, "project": "", "role": "",
+DEFAULTS: dict[str, Any] = {"temperature": None, "project": "", "project_id": "", "role": "",
                             "permissions": coding_policy.READ_ONLY, "execution_mode": coding_policy.EXECUTE,
                             "effort": "off", "max_effort": "medium", "harness": "", "context": 0, "draft": "auto", "max_output_tokens": None}
 LEVELS = ("off", "low", "medium", "high")
@@ -22,7 +23,7 @@ def checked(settings: dict | None = None) -> dict[str, Any]:
     if set(supplied) - set(DEFAULTS):
         raise ValueError("unknown conversation setting")
     result = {**DEFAULTS, **supplied}
-    for key in ("project", "role", "effort", "max_effort", "harness", "draft"):
+    for key in ("project", "project_id", "role", "effort", "max_effort", "harness", "draft"):
         if not isinstance(result[key], str):
             raise ValueError(f"{key} must be text")
     if (isinstance(result["context"], bool) or not isinstance(result["context"], int)
@@ -42,6 +43,8 @@ def checked(settings: dict | None = None) -> dict[str, Any]:
         raise ValueError("draft model path is too long")
     if len(result["project"]) > 4096:
         raise ValueError("project path is too long")
+    if result["project_id"]:
+        project_id(result["project_id"])
     temperature = result["temperature"]
     if temperature is not None:
         if isinstance(temperature, bool) or not isinstance(temperature, (int, float)):

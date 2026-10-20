@@ -210,7 +210,7 @@ class Manager:
                 self.store.append(conversation.id, "assistant", turn.text)
             turn.state = "cancelled" if turn.cancelled.is_set() else "failed" if turn.error else "completed"
             with graph.opened(self.store.root) as store, store.transaction():
-                store.put_doc(f"coding:{conversation.id}", {"version": 1, "session": turn.session,
+                store.put_doc(f"coding:{conversation.id}", {**store.get_doc(f"coding:{conversation.id}", {}), "version": 1, "session": turn.session,
                     "fingerprint": fingerprint, "state": turn.state, "updated": time.time()})
             turn.emit({"state": turn.state, "done": True})
 
