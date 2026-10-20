@@ -17,8 +17,8 @@ partial = 193
 [[group]]
 match = ["route:fleet/studio_routes.py:/ui/studio/*"]
 status = "covered"
-count = 17
-tests = ["tests/test_studio_security.py", "tests/test_studio_engine.py", "tests/test_studio_artifacts.py", "tests/test_studio_contracts.py"]
+count = 18
+tests = ["tests/test_studio_devices.py", "tests/test_studio_device_identity.py", "tests/test_studio_device_http.py", "tests/test_studio_security.py", "tests/test_studio_engine.py", "tests/test_studio_artifacts.py", "tests/test_studio_contracts.py"]
 note = "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
 
 [[group]]
