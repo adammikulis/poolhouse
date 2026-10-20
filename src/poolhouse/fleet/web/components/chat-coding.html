@@ -83,11 +83,8 @@
         chat.picker.value = "";
       }
       chat.pickrow.hidden = false;
-      chat.askrow.hidden = !models.length && !selected;
+      chat.askrow.hidden = false;
       chat.options.hidden = false;
-      chat.none.hidden = !!models.length;
-      chat.none.replaceChildren(document.createTextNode("No model is running. "),
-        el("a", {href:"#models"}, "Open Models"), document.createTextNode(" to prepare a model, then return here."));
       chat.input.placeholder = "Message your model…";
       chat.modelPicker?.render();
       this.readiness();

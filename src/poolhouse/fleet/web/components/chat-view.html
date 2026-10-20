@@ -10,7 +10,7 @@
       <section class="conversation-group"><h2>Direct messages</h2><div id="conversation-direct"></div></section>
       <section class="conversation-group"><h2 id="conversation-directory-label">Workspace agents</h2><div id="conversation-directory" aria-labelledby="conversation-directory-label"></div></section>
       <section class="conversation-group"><h2>Device-local conversations</h2><div id="chat-list"></div></section>
-      <section class="conversation-group"><h2>Running models</h2><div id="conversation-models"></div><a class="conversation-library" href="#models">Browse model library →</a></section>
+      <section class="conversation-group"><h2>Running models</h2><div id="conversation-models"></div><button id="conversation-choose-model" class="conversation-library ghost" type="button">Choose a model</button></section>
       <details class="conversation-coordination" id="conversation-local-agents" data-advanced><summary>Device agents</summary><div id="conversation-agents"></div></details>
     </aside>
     <div id="conversation-team" hidden></div>
@@ -20,9 +20,6 @@
       <div class="pickrow" id="chat-pickrow" hidden>
         <span>Model</span><button class="ghost chat-model-current" id="chat-model-button" aria-haspopup="dialog">Choose a model</button>
         <select id="model" aria-label="Selected model" hidden></select>
-      </div>
-      <div class="hint" id="chat-none" hidden>
-        <strong>Bring a model into the conversation.</strong> Choose an installed model to serve on your pool.<button type="button" class="conversation-choose">Choose a model</button>
       </div>
       <div class="chat-coding-fields" data-coding hidden>
         <label for="chat-project">Project directory</label><input id="chat-project" placeholder="/path/to/project">
@@ -86,7 +83,6 @@
       this.sidebar = this.querySelector("#chat-list");
       this.picker = this.querySelector("#model");
       this.pickrow = this.querySelector("#chat-pickrow");
-      this.none = this.querySelector("#chat-none");
       this.options = this.querySelector("#chat-options");
       this.temperature = this.querySelector("#chat-temperature");
       this.list = this.querySelector("#chat-messages");
@@ -112,7 +108,7 @@
       this.searchEpoch = 0;
       this.loadEpoch = 0;
       this.askrow.addEventListener("composer-send", () => this.ask());
-      this.picker.onchange = () => { if (this.loadingConversation) return; this.updateReadiness(); this.modelPicker.render(); this.saveSettings(); };
+      this.picker.onchange = () => { if (this.loadingConversation) return; this.modelPicker.selectionEpoch++; this.updateReadiness(); this.modelPicker.render(); this.saveSettings(); };
       this.temperature.onchange = () => this.saveSettings();
       this.outputTokens = this.querySelector("#chat-output-tokens");
       this.outputTokens.onchange = () => this.saveSettings();
@@ -196,6 +192,7 @@
     }
 
     async draw() {
+      const preserveEmptyModel = !!this.modelPicker.startPending && !this.picker.value;
       this.coding.tools.disabled = true;
       try {
         const defaults = await api("/ui/conversations/defaults");
@@ -213,10 +210,10 @@
         const selected = this.picker.value;
         this.picker.replaceChildren(...available.map((m) =>
           el("option", { value: m.model }, m.local ? m.model : `${m.model} — on ${m.member}`)));
-        if (available.some((m) => m.model === selected)) this.picker.value = selected;
+        if (preserveEmptyModel && !selected) this.picker.prepend(el("option", {value:""}, "Choose a model"));
+        if (preserveEmptyModel || available.some((m) => m.model === selected)) this.picker.value = selected;
         this.pickrow.hidden = false;
-        this.askrow.hidden = !available.length;
-        this.none.hidden = !!available.length;
+        this.askrow.hidden = false;
         this.options.hidden = false;
         await this.modelPicker.catalogue();
         this.workspace.models(available);
