@@ -5,62 +5,153 @@
     S.installBranches = (proto) =>
       Object.assign(proto, {
         addBranch(source, target) {
-          if (source.node === target)
+          target = typeof target === "string" ? { node: target } : target;
+          if (source.node === target.node)
             throw Error("Choose a different node for this branch.");
           if (
             (this.graph.controls || []).some(
               (e) =>
                 e.source.node === source.node &&
                 e.source.port === source.port &&
-                e.target.node === target,
+                JSON.stringify(e.target) === JSON.stringify(target),
             )
           )
             return;
           this.checkpoint();
           this.graph.controls ||= [];
+          if (target.port)
+            this.graph.controls = this.graph.controls.filter(
+              (e) =>
+                e.target.node !== target.node || e.target.port !== target.port,
+            );
           this.graph.controls.push({
             source: { node: source.node, port: source.port },
-            target: { node: target },
+            target,
           });
           this.canvas.controlPending = null;
           this.changed();
         },
+        groupControlInputs(ids, definition, instanceId) {
+          definition.control_inputs = {};
+          const unique = (suggested) => {
+              let name = suggested,
+                index = 2;
+              while (definition.control_inputs[name])
+                name = suggested + "_" + index++;
+              return name;
+            },
+            controls = [],
+            incoming = new Map();
+          for (const edge of this.graph.controls || []) {
+            if (!ids.has(edge.source.node) && ids.has(edge.target.node)) {
+              const key = JSON.stringify(edge.source);
+              let name = incoming.get(key);
+              if (!name) {
+                name = unique(edge.source.port);
+                incoming.set(key, name);
+                definition.control_inputs[name] = [];
+                controls.push({
+                  source: S.clone(edge.source),
+                  target: { node: instanceId, port: name },
+                });
+              }
+              definition.control_inputs[name].push(S.clone(edge.target));
+            } else controls.push(edge);
+          }
+          this.graph.controls = controls;
+          for (const [name, targets] of Object.entries(
+            this.graph.control_inputs || {},
+          )) {
+            const chosen = targets.filter((target) => ids.has(target.node));
+            if (!chosen.length) continue;
+            const exposed = unique(name);
+            definition.control_inputs[exposed] = S.clone(chosen);
+            this.graph.control_inputs[name] = [
+              ...targets.filter((target) => !ids.has(target.node)),
+              { node: instanceId, port: exposed },
+            ];
+          }
+        },
         branchControls(host, node) {
           const controls = this.graph.controls || [],
-            select = E(
+            spec = S.spec(this, node);
+          const targets = [
+            ...(spec.control_inputs || []).map((port) => ({
+              target: { node: node.id, port: port.name },
+              label: "Required branch " + port.name,
+            })),
+            {
+              target: { node: node.id },
+              label:
+                node.type === "group"
+                  ? "Run whole group only when"
+                  : "Run only when",
+            },
+          ];
+          for (const { target, label } of targets) {
+            const select = E(
               "select",
-              { "aria-label": "Run only when" },
-              E("option", { value: "" }, "Add a branch condition…"),
+              { "aria-label": label },
+              E(
+                "option",
+                { value: "" },
+                target.port
+                  ? "Choose the required gate…"
+                  : "Add a branch condition…",
+              ),
             );
-          for (const other of this.graph.nodes.filter(
-            (n) => n.id !== node.id,
-          )) {
-            const spec = S.spec(this, other);
-            for (const port of spec.outputs || []) {
-              if (port.type !== "gate") continue;
-              select.append(
+            for (const other of this.graph.nodes.filter(
+              (n) => n.id !== node.id,
+            )) {
+              const sourceSpec = S.spec(this, other);
+              for (const port of sourceSpec.outputs || []) {
+                if (port.type !== "gate") continue;
+                const ref = { node: other.id, port: port.name },
+                  value = JSON.stringify(ref);
+                select.append(
+                  E(
+                    "option",
+                    { value },
+                    (sourceSpec.title || other.type) + " · " + port.name,
+                  ),
+                );
+                if (
+                  target.port &&
+                  controls.some(
+                    (e) =>
+                      e.target.node === target.node &&
+                      e.target.port === target.port &&
+                      e.source.node === ref.node &&
+                      e.source.port === ref.port,
+                  )
+                )
+                  select.value = value;
+              }
+            }
+            if (select.options.length < 2 && !target.port) continue;
+            select.onchange = () => {
+              if (select.value)
+                this.addBranch(JSON.parse(select.value), target);
+              else if (target.port) {
+                this.checkpoint();
+                this.graph.controls = controls.filter(
+                  (e) =>
+                    e.target.node !== target.node ||
+                    e.target.port !== target.port,
+                );
+                this.changed();
+              }
+            };
+            host.append(E("label", {}, label, select));
+            if (target.port)
+              host.append(
                 E(
-                  "option",
-                  {
-                    value: JSON.stringify({ node: other.id, port: port.name }),
-                  },
-                  (spec.title || other.type) + " · " + port.name,
+                  "small",
+                  {},
+                  "Required for the named internal targets. A whole-group condition does not replace it.",
                 ),
               );
-            }
           }
-          if (select.options.length < 2) return;
-          select.onchange = () => {
-            if (select.value) this.addBranch(JSON.parse(select.value), node.id);
-          };
-          host.append(
-            E("label", {}, "Run only when", select),
-            E(
-              "small",
-              {},
-              "All branch conditions must allow this node. Other branches are skipped.",
-            ),
-          );
           for (const edge of controls.filter(
             (e) => e.target.node === node.id,
           )) {
@@ -73,7 +164,8 @@
                 {},
                 (source ? S.spec(this, source).title : edge.source.node) +
                   " · " +
-                  edge.source.port,
+                  edge.source.port +
+                  (edge.target.port ? " → " + edge.target.port : ""),
                 E(
                   "button",
                   {
@@ -104,9 +196,13 @@
         const a = canvas.layer.querySelector(
             `[data-node-id="${CSS.escape(edge.source.node)}"] [data-port="${CSS.escape(edge.source.port)}"][data-side="outputs"]`,
           ),
-          b = canvas.layer.querySelector(
-            `[data-node-id="${CSS.escape(edge.target.node)}"] header`,
-          );
+          b = edge.target.port
+            ? canvas.layer.querySelector(
+                `[data-node-id="${CSS.escape(edge.target.node)}"] [data-side="control_inputs"][data-port="${CSS.escape(edge.target.port)}"]`,
+              )
+            : canvas.layer.querySelector(
+                `[data-node-id="${CSS.escape(edge.target.node)}"] header`,
+              );
         if (!a || !b) continue;
         const ar = a.getBoundingClientRect(),
           br = b.getBoundingClientRect(),

@@ -11,6 +11,20 @@
       layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
     });
     S.id = () => crypto.randomUUID();
+    S.selectionContext = (editor) => {
+      const inherited = editor.context.some(
+        (c) =>
+          Object.keys(c.definition.control_inputs || {}).length ||
+          (c.parent.controls || []).some((e) => e.target.node === c.node.id),
+      );
+      return inherited
+        ? {
+            graph: editor.rootGraph(),
+            selected: new Set([editor.context[0].node.id]),
+            inherited: true,
+          }
+        : { graph: editor.graph, selected: editor.selected, inherited: false };
+    };
     S.selectionDependencies = (graph, selected) => {
       const ids = new Set(selected);
       let changed = true;
@@ -99,6 +113,11 @@
         family: "Saved groups",
         inputs: ports("inputs"),
         outputs: ports("outputs"),
+        control_inputs: Object.keys(group.control_inputs || {}).map((name) => ({
+          name,
+          type: "gate",
+          required: true,
+        })),
         parameters: { properties },
       };
     };

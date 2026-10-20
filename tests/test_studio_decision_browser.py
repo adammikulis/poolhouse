@@ -11,6 +11,7 @@ from test_fleet_ui import Serving
 from test_studio_canvas_browser import studio_browser  # noqa: F401
 
 from poolhouse.studio.adapters import Adapters
+from poolhouse.studio.contracts import validate_graph
 from poolhouse.studio.decisions import assess, parse_record, route
 
 pytestmark = pytest.mark.slow
@@ -138,4 +139,77 @@ def test_guard_blocks_branch_and_partial_copy_export_keeps_gate(synthetic_model,
     assert package['graph']['controls'] == copied['controls']
     assert {node['id'] for node in package['graph']['nodes']} == {'record', 'model', 'assess', 'block'}
     assert all(not node['bindings'] for node in package['graph']['nodes'])
+    assert not errors
+
+
+def test_group_required_control_survives_nested_edit_copy_and_export(synthetic_model, decision_page):
+    page, errors, _submissions = decision_page
+    choose_template(page, 'Prompt injection check')
+    focus_node(page, 'block')
+    page.get_by_role('button', name='Group selection', exact=True).click()
+    group = page.locator('.studio-node').filter(has=page.get_by_role('button', name='Open group'))
+    expect(group).to_have_count(1)
+    group_id = group.get_attribute('data-node-id')
+    definition = page.locator('studio-view').evaluate('editor => editor.graph.groups[editor.graph.nodes.find(n => n.type === "group").group]')
+    assert definition['control_inputs'] == {'block': [{'node': 'block'}]}
+    focus_node(page, group_id)
+    expect(page.get_by_label('Required branch block', exact=True)).to_have_value('{"node":"assess","port":"block"}')
+    # A blanket condition cannot replace the required precise condition.
+    page.get_by_label('Required branch block', exact=True).select_option('')
+    expect(group).to_contain_text('Connect required branch block')
+    page.get_by_label('Run whole group only when', exact=True).select_option('{"node":"assess","port":"block"}')
+    page.get_by_role('button', name='Run workflow', exact=True).click()
+    expect(page.locator('.studio-status')).to_contain_text('required group control block')
+    page.get_by_label('Required branch block', exact=True).select_option('{"node":"assess","port":"block"}')
+    page.get_by_role('button', name='Remove branch block', exact=True).first.click()
+    group.get_by_role('button', name='Open group').click()
+    focus_node(page, 'block')
+    page.get_by_role('button', name='Group selection', exact=True).click()
+    nested = page.locator('.studio-node')
+    nested_id = nested.get_attribute('data-node-id')
+    nested_definition = page.locator('studio-view').evaluate('editor => editor.graph.groups[editor.graph.nodes[0].group]')
+    assert nested_definition['control_inputs'] == {'block': [{'node': 'block'}]}
+    forwarded = page.locator('studio-view').evaluate('editor => editor.graph.control_inputs')
+    assert forwarded == {'block': [{'node': nested_id, 'port': 'block'}]}
+    nested.get_by_role('button', name='Open group').click()
+    focus_node(page, 'block')
+    page.get_by_role('button', name='Copy', exact=True).click()
+    copied = page.locator('studio-view').evaluate('editor => editor.clipboard')
+    assert {node['id'] for node in copied['nodes']} == {'record', 'model', 'assess', group_id}
+    assert any(edge['target'].get('port') == 'block' for edge in copied['controls'])
+    page.get_by_role('button', name='Share', exact=True).click()
+    page.get_by_label('Package content').select_option('selection')
+    expect(page.get_by_label('Package content')).to_contain_text('Containing controlled group')
+    payload = page.locator('studio-view').evaluate('editor => editor.sharingGraph()')
+    checked = validate_graph(payload)
+    assert all(error['code'] == 'binding' for error in checked['errors']), checked['errors']
+    with page.expect_download() as downloaded:
+        page.get_by_role('button', name='Export file', exact=True).click()
+    package = json.loads(downloaded.value.path().read_text())
+    assert any(edge['target'].get('port') == 'block' for edge in package['graph']['controls'])
+    assert any(group['control_inputs'] for group in package['graph']['groups'].values())
+    assert not errors
+
+
+def test_mixed_group_gate_skips_only_intended_target(synthetic_model, decision_page):
+    page, errors, _submissions = decision_page
+    choose_template(page, 'Prompt injection check')
+    focus_node(page, 'model')
+    page.get_by_label('Choose model', exact=True).select_option('test-decision-model')
+    focus_node(page, 'allow')
+    page.locator('.studio-node[data-node-id="assessment"]').focus()
+    page.keyboard.press('Shift+Enter')
+    page.get_by_role('button', name='Group selection', exact=True).click()
+    group = page.locator('.studio-node').filter(has=page.get_by_role('button', name='Open group'))
+    group_id = group.get_attribute('data-node-id')
+    definition = page.locator('studio-view').evaluate('editor => editor.graph.groups[editor.graph.nodes.find(n => n.type === "group").group]')
+    assert definition['control_inputs'] == {'allow': [{'node': 'allow'}]}
+    assert {node['id'] for node in definition['nodes']} == {'allow', 'assessment'}
+    page.get_by_role('button', name='Run workflow', exact=True).click()
+    expect(page.locator('#studio-runs')).to_contain_text('done', timeout=10000)
+    states = page.locator('studio-view').evaluate('editor => editor.activeRun.nodes')
+    assert states[group_id + '/allow']['state'] == 'skipped'
+    assert states[group_id + '/assessment']['state'] == 'done'
+    assert group_id + '/allow' not in synthetic_model
+    assert group_id + '/assessment' in synthetic_model
     assert not errors

@@ -19,7 +19,9 @@
                 E(
                   "option",
                   { value: "selection" },
-                  "Selected nodes and required dependencies",
+                  S.selectionContext(this).inherited
+                    ? "Containing controlled group and required dependencies"
+                    : "Selected nodes and required dependencies",
                 ),
               );
             scope.onchange = () => this.sharingFields();
@@ -50,8 +52,9 @@
         sharingGraph() {
           const selected =
             this.querySelector("#studio-package-scope").value === "selection";
-          const graph = selected ? this.graph : this.rootGraph(),
-            selection = S.selectionDependencies(graph, this.selected),
+          const context = S.selectionContext(this),
+            graph = selected ? context.graph : this.rootGraph(),
+            selection = S.selectionDependencies(graph, context.selected),
             nodes = selected
               ? graph.nodes.filter((n) => selection.has(n.id))
               : graph.nodes;
@@ -151,8 +154,7 @@
             kind:
               this.querySelector("#studio-package-scope").value === "selection"
                 ? this.sharingGraph().nodes.length === 1 &&
-                  this.graph.nodes.find((n) => this.selected.has(n.id)).type !==
-                    "group"
+                  this.sharingGraph().nodes[0].type !== "group"
                   ? "node"
                   : "group"
                 : "workflow",

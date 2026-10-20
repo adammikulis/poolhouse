@@ -86,7 +86,7 @@
           head.ondblclick = () =>
             node.type === "group" && editor.enterGroup(node);
           const ports = E("div", { class: "studio-node-ports" });
-          for (const side of ["inputs", "outputs"]) {
+          for (const side of ["inputs", "control_inputs", "outputs"]) {
             const box = E("div", {
               class: side === "outputs" ? "studio-output" : "studio-input",
             });
@@ -189,6 +189,18 @@
         },
         port(node, port, side) {
           const editor = this.editor;
+          if (side === "control_inputs") {
+            if (this.controlPending)
+              editor.addBranch(this.controlPending, {
+                node: node.id,
+                port: port.name,
+              });
+            else
+              editor.message(
+                "Choose a gate output, then this required branch input.",
+              );
+            return;
+          }
           if (port.type === "gate") {
             this.pending = null;
             this.controlPending = { node: node.id, port: port.name };

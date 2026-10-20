@@ -32,11 +32,33 @@
                   (this.validationVariants?.[key] || []).includes(e.node)),
             )
             .map((e) => e.message);
+          if (
+            (this.graph.controls || []).some(
+              (e) =>
+                e.target.node === node.id &&
+                !this.graph.nodes.some((source) => source.id === e.source.node),
+            )
+          )
+            errors.push("Reconnect the required branch source.");
           const device = this.executionDevice(node),
             spec = S.spec(this, node);
           for (const [name, binding] of Object.entries(spec.bindings || {}))
             if (binding.required && !node.bindings?.[name]?.id)
               errors.push("Choose an installed " + name + ".");
+          for (const input of spec.control_inputs || [])
+            if (
+              !(this.graph.controls || []).some(
+                (e) =>
+                  e.target.node === node.id && e.target.port === input.name,
+              ) &&
+              !Object.values(this.graph.control_inputs || {})
+                .flat()
+                .some(
+                  (target) =>
+                    target.node === node.id && target.port === input.name,
+                )
+            )
+              errors.push("Connect required branch " + input.name + ".");
           if (!node.execution?.machine || device?.is_self)
             errors.push(...(spec.requirements || []));
           if (
