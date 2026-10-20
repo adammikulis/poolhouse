@@ -5,10 +5,9 @@ import re
 import shutil
 from pathlib import Path
 
-from poolhouse.decide.pins import STRANDS, STRANDS_REV, STRANDS_V19
+from poolhouse.decide.pins import STRANDS_V19
 from poolhouse.decide.sources import FORMAT, Source, valid_temperature
 from poolhouse.files import write_json, writing
-from poolhouse.hub import hfstore
 
 from .decision_inventory import RESOURCE_ID, _digest, _hash, _json, _member, _pinned
 from .model_content import open_model_file
@@ -68,10 +67,8 @@ def source(model: dict, output_dir: Path | None) -> tuple[Source | None, dict]:
 
     This function grants no authority and never uses serialized model or tokenizer locators.
     """
-    if model.get('id') == RESOURCE_ID:
-        paths, cfg = _pinned(model)
-        base = hfstore.repo_root(STRANDS_V19.base_repo) / 'snapshots' / next(pin.revision for pin in STRANDS_V19.base_files)
-        tokenizer = hfstore.repo_root(STRANDS) / 'snapshots' / STRANDS_REV
+    if model.get('id') == RESOURCE_ID or model.get('fixed_source') == 'staged-strands-v19':
+        paths, cfg, base, tokenizer = _pinned(model)
         head = paths['head.safetensors']
         adapter = _json(paths['lora/adapter_config.json'])
         weights = paths['lora/adapter_model.safetensors']

@@ -101,12 +101,13 @@ def route(values: dict, decision: dict) -> dict:
     return {'report': report, **{name: {'allow': outcome == name, 'reason': outcome} for name in ('allow', 'review', 'block')}}
 
 
-def assess(kind: str, values: dict, record: dict, predict: Any, *, model_digest: str) -> dict:
+def assess(kind: str, values: dict, record: dict, predict: Any, *, identity: dict) -> dict:
     """Assess one unchanged record using an internal fixed model callable.
 
     Labels and scores classify data. They never make that data trusted or grant a tool call.
     """
     controls = parameters(kind, values)
+    model_digest, calibration_digest = identity['model_digest'], identity['calibration_digest']
     if not isinstance(record, dict):
         raise ValueError('A streamed record must be a JSON object')
     text = json.dumps(record, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False)
@@ -116,7 +117,7 @@ def assess(kind: str, values: dict, record: dict, predict: Any, *, model_digest:
             raise ValueError('The complete decision record exceeds the supported text size')
         result = predict(controls['question'], text, controls['options'])
         answer = _decision(result, controls['options'], controls['abstain_below'], controls['min_margin'])
-        answer.update(input_digest=digest, model_digest=model_digest)
+        answer.update(input_digest=digest, model_digest=model_digest, calibration_digest=calibration_digest)
         return {'decision': answer, 'record': record, 'report': answer}
     reasons, answer, outcome = [], None, 'review'
     if len(text) > MAX_TEXT:
@@ -148,6 +149,6 @@ def assess(kind: str, values: dict, record: dict, predict: Any, *, model_digest:
                 outcome = 'review'
     signal = {'outcome': outcome, 'decision': answer, 'reason_codes': reasons,
               'coverage': 'incomplete' if any(reason in reasons for reason in ('input_too_large', 'assessment_unavailable', 'missing_configured_task')) else 'complete',
-              'input_digest': digest, 'model_digest': model_digest, 'score_semantics': 'uncalibrated'}
+              'input_digest': digest, 'model_digest': model_digest, 'calibration_digest': calibration_digest, 'score_semantics': 'uncalibrated'}
     return {'signal': signal, 'record': record, 'report': signal,
             **{route: {'allow': outcome == route, 'reason': outcome} for route in ('allow', 'review', 'block')}}

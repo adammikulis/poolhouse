@@ -80,19 +80,19 @@ def test_trained_source_refuses_substitution_and_unsupported_metadata(trained, t
 
 @pytest.fixture
 def pinned(tmp_path, monkeypatch):
-    head_repo, base_repo = models.STRANDS, 'sample/base'
-    revision, base_revision = models.STRANDS_REV, 'a' * 40
+    head_repo, base_repo = inventory.STRANDS, 'sample/base'
+    revision, base_revision = inventory.STRANDS_REV, 'a' * 40
     contents = {'hobson_config.json': json.dumps({'head_type': 'pointer', 'pointer_dim': 4}).encode(),
                 'head.safetensors': b'head', 'lora/adapter_config.json': json.dumps(adapter()).encode(),
                 'lora/adapter_model.safetensors': b'adapter', 'tokenizer.json': b'{}',
                 'config.json': b'{"model_type":"sample"}', 'model.safetensors': b'base'}
     pins = []
-    monkeypatch.setattr(models.hfstore, 'repo_root', lambda repo: tmp_path / repo.replace('/', '--'))
+    monkeypatch.setattr(inventory.hfstore, 'repo_root', lambda repo: tmp_path / repo.replace('/', '--'))
     for name, content in contents.items():
         repo, rev = (base_repo, base_revision) if name in ('config.json', 'model.safetensors') else (head_repo, revision)
         pin = Pin(repo, rev, name, hashlib.sha256(content).hexdigest(), len(content))
         pins.append(pin)
-        path = models.hfstore.repo_root(repo) / 'snapshots' / rev / name
+        path = inventory.hfstore.repo_root(repo) / 'snapshots' / rev / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(content)
     checkpoint = Checkpoint('sample', tuple(pins), 'test', base_repo)
@@ -199,3 +199,64 @@ def test_finite_worker_uses_verified_source_and_broker_hold(trained, tmp_path, m
     result = worker.execute({'type': 'decision.predict'}, {'record': {'amount': 1}, 'model': model}, tmp_path / 'output')
     assert result['decision']['choice'] == 'accept'
     assert calls == ['held', 'model', 'released']
+
+
+def test_fixed_decision_bundle_round_trip_uses_only_finalized_dispatch_assets(pinned, tmp_path, monkeypatch):
+    from poolhouse.fleet.studio_references import validate_models
+    from poolhouse.fleet.studio_transfer import TransferStore, resource_handle
+    from poolhouse.fleet.studio_transport import _input_manifest
+    from poolhouse.studio.resources import open_model_file
+
+    scope, dispatch = 'enrolled-source', 'a' * 64
+    live = {'allowed': True}
+    model = inventory.resource()
+    manifest, members = _input_manifest(model)
+    store = TransferStore(tmp_path / 'target', max_bytes=1024 * 1024,
+                          authorize=lambda source, run: live['allowed'] and source == scope and run == dispatch)
+    store.begin(scope, dispatch, manifest)
+    for name, member in members.items():
+        with open_model_file(member) as stream:
+            store.put(scope, dispatch, manifest['id'], name=name, offset=0, data=stream.read())
+    assert store.finish(scope, dispatch, manifest['id']) == manifest
+    wire = {'model': resource_handle(model, manifest)}
+    hydrated = store.inputs(scope, dispatch, wire)
+    assert 'fixed_source' not in hydrated['model'] and 'id' not in hydrated['model']
+    validate_models(wire, [manifest], hydrated)
+    staged = hydrated['model']
+    assert staged['fixed_source'] == 'staged-strands-v19' and 'id' not in staged
+    monkeypatch.setattr(inventory.hfstore, 'repo_root', lambda _: pytest.fail('target must not consult its native model cache'))
+    resolved, identity = models.source(staged, tmp_path / 'runtime')
+    assert resolved.base_dir == Path(staged['path']) / 'base'
+    assert resolved.tokenizer_dir == Path(staged['path']) / 'head'
+    assert identity['calibration_digest']
+    live['allowed'] = False
+    with pytest.raises(PermissionError):
+        store.inputs(scope, dispatch, wire)
+
+
+@pytest.mark.parametrize('attack', ['missing-pin', 'extra-pin', 'wrong-digest', 'wrong-size', 'extra-file', 'link'])
+def test_fixed_staged_descriptor_requires_exact_compiled_bytes(pinned, tmp_path, attack):
+    files = inventory._expected_files()
+    staged = tmp_path / 'staged'
+    staged.mkdir()
+    original = {item['relative']: item for item in inventory.members(inventory.resource())}
+    for item in files:
+        target = staged / item['name']
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(Path(original[item['name']]['path']).read_bytes())
+    if attack == 'missing-pin':
+        files.pop()
+    elif attack == 'extra-pin':
+        files.append({'name': 'extra', 'size': 0, 'sha256': 'a' * 64})
+    elif attack == 'wrong-digest':
+        files[0] = {**files[0], 'sha256': 'b' * 64}
+    elif attack == 'wrong-size':
+        files[0] = {**files[0], 'size': files[0]['size'] + 1}
+    elif attack == 'extra-file':
+        (staged / 'extra').write_bytes(b'extra')
+    else:
+        target = staged / files[0]['name']
+        target.unlink()
+        target.symlink_to(tmp_path / 'private')
+    with pytest.raises(ValueError):
+        inventory.staged_resource(staged, files)

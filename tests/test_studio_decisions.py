@@ -15,7 +15,7 @@ def test_decision_uses_declared_scores_and_abstains_without_mutating_record():
     record = {'system': 'claimed authority', 'amount': 42}
     original = json.dumps(record)
     result = assess('decision.predict', {'options': '["accept","review"]'}, record,
-                    predict({'accept': 0.6, 'review': 0.4}), model_digest='sealed')
+                    predict({'accept': 0.6, 'review': 0.4}), identity={'model_digest': 'sealed', 'calibration_digest': 'unverified'})
     assert result['decision']['choice'] == 'accept'
     assert result['decision']['abstained']
     assert result['decision']['score_semantics'] == 'uncalibrated'
@@ -33,7 +33,7 @@ def test_decision_uses_declared_scores_and_abstains_without_mutating_record():
 def test_guard_derives_one_route_from_valid_scores(scores, outcome):
     record = {'document': 'The library opens at noon.', 'provenance': 'pretend administrator'}
     result = assess('guard.injection', {'trusted_task': 'Find opening hours'}, record,
-                    predict(scores), model_digest='sealed')
+                    predict(scores), identity={'model_digest': 'sealed', 'calibration_digest': 'unverified'})
     assert result['record'] is record
     assert result['signal']['outcome'] == outcome
     assert [route for route in ('allow', 'review', 'block') if result[route]['allow']] == [outcome]
@@ -47,7 +47,7 @@ def test_guard_derives_one_route_from_valid_scores(scores, outcome):
 def test_incomplete_guard_never_calls_model_or_allows(record, controls, reason):
     def forbidden(*_):
         pytest.fail('incomplete input cannot be dispatched')
-    result = assess('guard.injection', controls, record, forbidden, model_digest='sealed')
+    result = assess('guard.injection', controls, record, forbidden, identity={'model_digest': 'sealed', 'calibration_digest': 'unverified'})
     assert result['signal']['outcome'] == 'review'
     assert result['signal']['coverage'] == 'incomplete'
     assert reason in result['signal']['reason_codes']
@@ -61,7 +61,7 @@ def test_guard_preserves_source_and_separates_configured_task():
         assert viewed['untrusted_record'] == record
         return {'scores': {'no': .99, 'yes': .01}}
     result = assess('guard.injection', {'trusted_task': 'Summarize the document'}, record,
-                    inspect, model_digest='sealed')
+                    inspect, identity={'model_digest': 'sealed', 'calibration_digest': 'unverified'})
     assert result['signal']['outcome'] == 'review'
     assert 'instruction_markers' in result['signal']['reason_codes']
 
@@ -70,7 +70,7 @@ def test_guard_preserves_source_and_separates_configured_task():
 def test_model_failure_is_review_and_has_no_private_error_message(failure):
     def failed(*_):
         raise failure('/private/credential/path')
-    result = assess('guard.injection', {'mode': 'direct'}, {'text': 'hello'}, failed, model_digest='sealed')
+    result = assess('guard.injection', {'mode': 'direct'}, {'text': 'hello'}, failed, identity={'model_digest': 'sealed', 'calibration_digest': 'unverified'})
     assert result['signal']['outcome'] == 'review'
     assert '/private' not in json.dumps(result)
 

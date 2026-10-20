@@ -101,11 +101,59 @@ def inventory() -> list[dict]:
              'type': 'decision-model', 'issues': issues}]
 
 
+def _expected_files() -> list[dict]:
+    return sorted(({'name': ('base' if pin.repo == STRANDS_V19.base_repo else 'head') + '/' + pin.filename,
+                    'size': pin.size, 'sha256': pin.sha256} for pin in STRANDS_V19.files), key=lambda item: item['name'])
+
+
+def staged_members(model: dict) -> list[dict]:
+    root = Path(model['path'])
+    if model.get('fixed_source') != 'staged-strands-v19' or model.get('format') != 'pointer' or model.get('kind') != 'model' or model.get('id'):
+        raise ValueError('A fixed decision bundle requires its verified staged descriptor')
+    if not root.is_absolute() or '..' in root.parts or any(path.is_symlink() for path in (root, *root.parents)):
+        raise ValueError('A staged decision bundle must be an owned regular directory')
+    expected = _expected_files()
+    actual = set()
+    for path in root.rglob('*'):
+        if stat.S_ISDIR(path.lstat().st_mode):
+            continue
+        _regular(path)
+        actual.add(path.relative_to(root).as_posix())
+    if actual != {item['name'] for item in expected}:
+        raise ValueError('The staged decision bundle does not match its compiled inventory')
+    found = []
+    for item in expected:
+        path = root / item['name']
+        if path.stat().st_size != item['size']:
+            raise ValueError('A staged decision pin has an unexpected size')
+        found.append({**_member(path), 'relative': item['name'], 'size': item['size'], 'blob_digest': item['sha256']})
+    return found
+
+
+def staged_resource(root: Path, files: list[dict]) -> dict:
+    """Reconstruct only after the caller verifies this source and dispatch's transfer.
+
+    The marker selects a loader, never permission; the worker rechecks all compiled pins.
+    """
+    if not isinstance(files, list) or sorted(files, key=lambda item: item.get('name', '')) != _expected_files():
+        raise ValueError('The staged decision manifest must contain exactly the compiled pins')
+    model = {'kind': 'model', 'path': str(root), 'format': 'pointer', 'model_kind': 'decision',
+             'studio_type': 'decision-model', 'fixed_source': 'staged-strands-v19'}
+    _fingerprint(staged_members(model))
+    return model
+
+
 def _pinned(model: dict):
-    entries = members(model)
+    if model.get('fixed_source') == 'staged-strands-v19':
+        entries = staged_members(model)
+        base, tokenizer = Path(model['path']) / 'base', Path(model['path']) / 'head'
+    else:
+        entries = members(model)
+        base = hfstore.repo_root(STRANDS_V19.base_repo) / 'snapshots' / STRANDS_V19.base_files[0].revision
+        tokenizer = hfstore.repo_root(STRANDS) / 'snapshots' / STRANDS_REV
     _fingerprint(entries)
     paths = {entry['relative'].split('/', 1)[1]: Path(entry['path']) for entry in entries}
     cfg = _json(paths['hobson_config.json'])
     if cfg.get('head_type') != 'pointer':
         raise ValueError('The selected decision model has no pointer head')
-    return paths, cfg
+    return paths, cfg, base, tokenizer

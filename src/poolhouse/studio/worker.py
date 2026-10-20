@@ -70,7 +70,7 @@ def _predict_record(kind: str, parameters: dict, inputs: dict, out: Path) -> dic
     def predict(question, state, options):
         with gpu.hold('Studio record decision', wait_s=None):
             return PointerDecider(resolved, download=False).decide(question, state, options)
-    return assess(kind, parameters, inputs['record'], predict, model_digest=identity['model_digest'])
+    return assess(kind, parameters, inputs['record'], predict, identity=identity)
 
 
 def _train(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:

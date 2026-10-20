@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from poolhouse.studio.checkpoint_assets import prepare_checkpoint
+from poolhouse.studio.decision_inventory import staged_resource
 
 PATH_FIELDS = frozenset({"base", "base_id", "base_model_name_or_path", "tokenizer_file", "directory",
                          "checkpoint_path", "resume_from_checkpoint", "model_path", "vocab_file", "merges_file",
@@ -46,6 +47,9 @@ def validate_models(inputs: dict, manifests: list[dict], hydrated: dict, output_
         path = Path(hydrated[name]["path"])
         root = path if manifest["shape"] == "directory" else path.parent
         files = {entry["name"] for entry in manifest["files"]}
+        if value.get("format") == "pointer":
+            hydrated[name] = staged_resource(path, manifest["files"])
+            continue
         if "state.json" in files:
             if output_dir is None:
                 raise ValueError("Checkpoint reuse requires an explicitly staged base override.")
