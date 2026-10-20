@@ -93,6 +93,7 @@ def pytest_sessionfinish(session, exitstatus) -> None:
 import githooks_ready  # noqa: E402  (``scripts`` is on the path above)
 import testslots  # noqa: E402
 import walkbound  # noqa: E402
+from daemon_guard import daemons_stop_with_the_test  # noqa: E402,F401  (an autouse fixture)
 from environ_guard import (  # noqa: E402,F401  (autouse fixtures)
     environment_is_restored,
     nodes_stop_with_this_process,

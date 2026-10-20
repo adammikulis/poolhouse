@@ -1,8 +1,11 @@
 mod kit;
 
 use kit::*;
+#[cfg(unix)]
+use kit::procs;
 use poolhouse_node::node::Node;
-use poolhouse_node::subs::mentions;
+use poolhouse_node::rooms::{MEMBERS_PER_ROOM, MOST_ROOMS_PER_LINEAGE};
+use poolhouse_node::subs::{mentions, MOST_SUBS};
 use poolhouse_node::sync::exchange_nodes;
 use serde_json::{json, Value};
 use tempfile::tempdir;
@@ -83,17 +86,81 @@ fn a_private_room_is_joined_only_through_its_makers_add_and_is_not_listed_to_oth
 }
 
 #[test]
-fn a_subagent_does_not_make_join_or_subscribe_and_the_limits_hold() {
+fn a_subagent_does_not_make_join_or_subscribe() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
     let (_, lead) = session(&mut n, "demo", "lead");
     let (_, child) = kid(&mut n, &lead, "kid");
     assert_eq!(code(&room(&mut n, &child, "create", "#kids", json!({}))), "denied");
     assert_eq!(code(&req(&mut n, "subscribe", "demo", &child, json!({"stype": "mentions"}))), "denied");
-    for i in 0..5 {
+}
+
+#[test]
+fn the_sessions_of_one_process_tree_keep_a_bounded_number_of_rooms_between_them() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (_, lead) = session(&mut n, "demo", "lead");
+    let (_, second) = session(&mut n, "demo", "second");
+    for i in 0..MOST_ROOMS_PER_LINEAGE {
         ok(room(&mut n, &lead, "create", &format!("#r{i}"), json!({})));
     }
-    assert_eq!(code(&room(&mut n, &lead, "create", "#r5", json!({}))), "quota", "five rooms a session makes");
+    for token in [&lead, &second] {
+        let refused = room(&mut n, token, "create", "#one-more", json!({}));
+        assert_eq!(code(&refused), "quota", "{refused}");
+        let said = refused["error"]["message"].as_str().unwrap();
+        assert!(said.contains(&format!("the limit is {MOST_ROOMS_PER_LINEAGE}, set by MOST_ROOMS_PER_LINEAGE in rooms.rs")), "a fresh session of the tree has no room of its own to make: {said}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn another_process_tree_makes_rooms_and_a_board_holds_no_more_than_it_may() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (_, lead) = session(&mut n, "demo", "lead");
+    for i in 0..MOST_ROOMS_PER_LINEAGE {
+        ok(room(&mut n, &lead, "create", &format!("#r{i}"), json!({})));
+    }
+    let trees: Vec<_> = (0..14).map(|_| procs::process(true)).collect();
+    let mut made = MOST_ROOMS_PER_LINEAGE;
+    let mut said = String::new();
+    'fill: for (t, tree) in trees.iter().enumerate() {
+        let registered = ok(req_from(&mut n, &procs::peer(tree), "register", "demo", "", json!({"model": "claude-sonnet-5-5", "harness": "claude-code", "session": format!("tree{t}")})));
+        let token = registered["token"].as_str().unwrap().to_string();
+        for i in 0..MOST_ROOMS_PER_LINEAGE {
+            let reply = room(&mut n, &token, "create", &format!("#t{t}-{i}"), json!({}));
+            if reply["ok"] == false {
+                assert_eq!(code(&reply), "quota", "{reply}");
+                said = reply["error"]["message"].as_str().unwrap().to_string();
+                break 'fill;
+            }
+            made += 1;
+        }
+    }
+    assert_eq!(made, 200, "a board holds 200 rooms between all its trees");
+    assert!(said.contains("the limit is 200, set by ROOMS_TOTAL in rooms.rs"), "{said}");
+    procs::done(trees);
+}
+
+#[test]
+fn a_room_holds_no_more_members_than_it_may() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    n.writes.live_main_sessions = MEMBERS_PER_ROOM + 2;
+    let (_, lead) = session(&mut n, "demo", "lead");
+    ok(room(&mut n, &lead, "create", "#crowd", json!({})));
+    let mut refused = Value::Null;
+    for i in 1..MEMBERS_PER_ROOM + 2 {
+        let (_, token) = session(&mut n, "demo", &format!("m{i}"));
+        let reply = room(&mut n, &token, "join", "#crowd", json!({}));
+        if reply["ok"] == false {
+            refused = reply;
+            assert_eq!(i, MEMBERS_PER_ROOM, "the maker is the first member");
+            break;
+        }
+    }
+    assert_eq!(code(&refused), "quota", "{refused}");
+    assert!(refused["error"]["message"].as_str().unwrap().contains(&format!("the limit is {MEMBERS_PER_ROOM}, set by MEMBERS_PER_ROOM in rooms.rs")), "{refused}");
 }
 
 #[test]
@@ -205,7 +272,8 @@ fn subscribing_to_threads_senders_and_kinds_checks_the_target_and_counts_the_cos
     ok(req(&mut n, "subscribe", "demo", &ct, json!({"stype": "mentions", "mode": "digest"})));
     ok(req(&mut n, "subscribe", "demo", &ct, json!({"stype": "board", "target": "#general", "mode": "digest"})));
     ok(req(&mut n, "subscribe", "demo", &ct, json!({"stype": "board", "target": "#announcements", "mode": "silent"})));
-    assert_eq!(code(&req(&mut n, "subscribe", "demo", &ct, json!({"stype": "thread", "target": root, "mode": "digest"}))), "quota", "twelve subscriptions a session");
+    ok(req(&mut n, "subscribe", "demo", &ct, json!({"stype": "thread", "target": root, "mode": "digest"})));
+    assert_eq!(ok(req(&mut n, "subs", "demo", &ct, json!({})))["subs"].as_array().unwrap().len(), 13, "a session keeps more than twelve subscriptions");
 }
 
 #[test]
@@ -247,4 +315,50 @@ fn a_foreign_message_to_a_room_nobody_made_or_a_member_forged_is_read_by_no_one(
     assert_eq!(code(&join), "denied", "a private room of another device is not joined");
     let other = ok(req(&mut b, "rooms", "demo", &bt, json!({})))["rooms"].as_array().unwrap().iter().map(|r| r["name"].clone()).collect::<Vec<_>>();
     assert!(!other.contains(&json!("#mine")));
+}
+
+fn watch(n: &mut Node, token: &str, agent: &str) -> Value {
+    req(n, "subscribe", "demo", token, json!({"stype": "agent", "target": agent, "mode": "inbox", "force": true}))
+}
+
+fn kids_watched(n: &mut Node, most: usize) -> (String, Vec<(String, String)>) {
+    let (_, lead) = session(n, "demo", "lead");
+    n.boards.get_mut("demo").unwrap().subs.most = most;
+    let kids: Vec<(String, String)> = (0..most + 1).map(|i| kid(n, &lead, &format!("kid{i}"))).collect();
+    for (name, _) in &kids[..most] {
+        ok(watch(n, &lead, name));
+    }
+    (lead, kids)
+}
+
+#[test]
+fn the_default_bound_on_the_subscriptions_of_a_session_is_the_constant() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    session(&mut n, "demo", "lead");
+    assert_eq!((MOST_SUBS, n.boards["demo"].subs.most), (256, 256));
+}
+
+#[test]
+fn a_session_keeps_a_bounded_number_of_subscriptions_and_the_refusal_names_the_limit() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (lead, kids) = kids_watched(&mut n, 6);
+    let refused = watch(&mut n, &lead, &kids[6].0);
+    assert_eq!(code(&refused), "quota", "{refused}");
+    assert!(refused["error"]["message"].as_str().unwrap().contains("the limit is 6, set by MOST_SUBS in subs.rs"), "{refused}");
+    ok(watch(&mut n, &lead, &kids[0].0));
+}
+
+#[test]
+fn a_full_set_of_subscriptions_drops_the_ones_to_subagents_that_ended_before_it_refuses() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let (lead, kids) = kids_watched(&mut n, 6);
+    for (name, _) in &kids[..2] {
+        ok(req(&mut n, "retire", "demo", &lead, json!({"target": name})));
+    }
+    ok(watch(&mut n, &lead, &kids[6].0));
+    let held = ok(req(&mut n, "subs", "demo", &lead, json!({})))["subs"].as_array().unwrap().len();
+    assert_eq!(held, 5, "the two ended subagents were dropped to make room");
 }

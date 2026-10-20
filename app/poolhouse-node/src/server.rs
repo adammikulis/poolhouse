@@ -99,7 +99,7 @@ fn connection(mut stream: Stream, node: &Mutex<Node>, allowed: &Principal, net: 
                 Ok(mut n) => Ok(handle(&mut n, r, &who)),
                 Err(_) => Err(Error::Damaged("node poisoned".into())),
             },
-        }, &request)?;
+        }, &request, &who)?;
         write_frame(&mut stream, &reply)?;
     }
     Ok(())

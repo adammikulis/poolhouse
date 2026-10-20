@@ -13,6 +13,8 @@ pub struct Log {
     path: PathBuf,
     file: File,
     rows: Vec<Row>,
+    /// Bytes of the rows held, newlines included.
+    bytes: u64,
     /// Bytes of an unfinished last line dropped when the log was opened.
     pub torn_bytes: u64,
 }
@@ -42,11 +44,16 @@ impl Log {
             rows.push(row);
         }
         check_chain(&rows, board, origin, None)?;
-        Ok(Log { path: path.to_path_buf(), file, rows, torn_bytes })
+        Ok(Log { path: path.to_path_buf(), file, rows, bytes: good as u64, torn_bytes })
     }
 
     pub fn rows(&self) -> &[Row] {
         &self.rows
+    }
+
+    /// The bytes of the rows held, newlines included.
+    pub fn bytes(&self) -> u64 {
+        self.bytes
     }
 
     pub fn path(&self) -> &Path {
@@ -72,6 +79,7 @@ impl Log {
             return Err(e.into());
         }
         self.rows.extend(rows);
+        self.bytes += buf.len() as u64;
         Ok(())
     }
 
@@ -86,6 +94,7 @@ impl Log {
         self.file.set_len(end as u64)?;
         self.file.sync_all()?;
         self.file.seek(SeekFrom::End(0))?;
+        self.bytes = end as u64;
         self.rows.truncate(keep);
         Ok(())
     }

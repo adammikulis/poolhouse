@@ -118,11 +118,11 @@ fn make(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Re
     let mine = rows(node, board, &actor, &dir);
     let folder = dir.join(name);
     if mine.len() >= MOST_FOLDERS && !folder.is_dir() {
-        return Err(Error::Quota(format!("{actor} already has {MOST_FOLDERS} scratch folders")));
+        return Err(crate::limits::refuse(&format!("{actor} already has as many scratch folders as it may"), MOST_FOLDERS, "MOST_FOLDERS", "scratch.rs"));
     }
     let used: u64 = mine.iter().map(|r| r["bytes"].as_u64().unwrap_or(0)).sum();
     if used > MAX_BYTES {
-        return Err(Error::Quota(format!("{actor}'s scratch folders hold {used} bytes, over the limit")));
+        return Err(crate::limits::refuse(&format!("{actor}'s scratch folders hold {used} bytes"), format!("{MAX_BYTES} bytes"), "MAX_BYTES", "scratch.rs"));
     }
     if linked(&folder) {
         return Err(Error::Denied(format!("{name} is a link, not a folder")));

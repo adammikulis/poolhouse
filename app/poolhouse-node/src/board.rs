@@ -11,12 +11,12 @@ use crate::device::{fingerprint, public_hex};
 use crate::error::{Error, Result};
 use crate::fsutil::{hex, private_dir, random_hex, sha256_hex, unhex, write_atomic};
 use crate::log::Log;
+use crate::logbounds::{Bounds, Class, Held, Shares};
 use crate::row::{check_body, valid_actor, valid_name, valid_origin, is_line, Kind, Row, GENESIS, MAX_ROW_BYTES, VERSION};
 use crate::rules::{self, head_message, held_back, tick};
 use crate::state::{Cut, Pin, State};
 
 pub const MAX_ORIGINS: usize = 64;
-pub const MAX_LOG_ROWS: usize = 200_000;
 const MAX_REJECTED: usize = 200;
 /// A head is written after this many rows, or this many bytes of rows, without one.
 pub const HEAD_EVERY_ROWS: usize = 64;
@@ -40,6 +40,32 @@ pub struct Board {
     clock: Box<dyn Fn() -> u64 + Send>,
     /// The board fingerprints of the devices removed from the pool: nothing they sign is taken past what a removal names.
     removed: BTreeSet<String>,
+    bounds: Bounds,
+    /// The rows and bytes each author has in this device's log (heads are no author's).
+    authors: BTreeMap<String, Held>,
+    /// The rows and bytes the authors of each group have in this device's log: the group an author was put in (`group`), or the author alone.
+    lineages: BTreeMap<String, Held>,
+    /// The group each author was put in.
+    groups: BTreeMap<String, String>,
+}
+
+/// Rows built to follow the log but not written yet, and what they come to for the log, their authors and their groups.
+#[derive(Default)]
+struct Staged {
+    rows: Vec<Row>,
+    held: Held,
+    authors: BTreeMap<String, Held>,
+    groups: BTreeMap<String, Held>,
+}
+
+impl Staged {
+    fn push(&mut self, row: Row, group: String) {
+        let bytes = row.size() as u64 + 1;
+        self.held.add(bytes);
+        self.authors.entry(row.actor.clone()).or_default().add(bytes);
+        self.groups.entry(group).or_default().add(bytes);
+        self.rows.push(row);
+    }
 }
 
 fn wall_ms() -> u64 {
@@ -52,7 +78,16 @@ impl Board {
         Board::open_with_clock(dir, id, pool, key, Box::new(wall_ms))
     }
 
+    /// `open` with the bounds ``bounds`` on the log.
+    pub fn open_bounded(dir: &Path, id: &str, pool: &str, key: SigningKey, bounds: Bounds) -> Result<Board> {
+        Board::open_with(dir, (id, pool, key), Box::new(wall_ms), bounds)
+    }
+
     pub fn open_with_clock(dir: &Path, id: &str, pool: &str, key: SigningKey, clock: Box<dyn Fn() -> u64 + Send>) -> Result<Board> {
+        Board::open_with(dir, (id, pool, key), clock, Bounds::default())
+    }
+
+    fn open_with(dir: &Path, (id, pool, key): (&str, &str, SigningKey), clock: Box<dyn Fn() -> u64 + Send>, bounds: Bounds) -> Result<Board> {
         if !valid_name(id) {
             return Err(Error::Invalid("a board id is a short lower-case word".into()));
         }
@@ -67,8 +102,13 @@ impl Board {
                 logs.insert(origin.clone(), Log::open(&path, id, &origin)?);
             }
         }
-        let mut board = Board { id: id.into(), dir: dir.into(), pool: pool.into(), key, origin: origin.clone(), logs, state, clock, removed: BTreeSet::new() };
-        board.log_mut(&origin)?;
+        let mut board = Board { id: id.into(), dir: dir.into(), pool: pool.into(), key, origin: origin.clone(), logs, state, clock, removed: BTreeSet::new(), bounds, authors: BTreeMap::new(), lineages: BTreeMap::new(), groups: BTreeMap::new() };
+        let mut authors: BTreeMap<String, Held> = BTreeMap::new();
+        for row in board.log_mut(&origin)?.rows().iter().filter(|r| r.kind != Kind::Head) {
+            authors.entry(row.actor.clone()).or_default().add(row.size() as u64 + 1);
+        }
+        board.lineages = authors.clone();
+        board.authors = authors;
         Ok(board)
     }
 
@@ -141,20 +181,51 @@ impl Board {
         &self.state.t.damaged
     }
 
-    /// Add a row to this device's log; a repeated ``idem`` of the same actor returns the row
-    /// already written.
+    /// Add a row a session's own action asks for to this device's log; a repeated ``idem`` of the same actor returns the row
+    /// already written. It is held to the whole log less the reserve, to the author's share and to its group's.
     pub fn append(&mut self, kind: Kind, actor: &str, body: Value, idem: &str) -> Result<Row> {
+        self.write(Class::Author, kind, actor, body, idem)
+    }
+
+    /// Add a row the node writes because a session registered or ended (an identity, the audit of an ending); it is held to the whole
+    /// log less the last stretch, and not to an author's share. A repeated ``idem`` of the same kind returns the row already written.
+    pub fn append_node(&mut self, kind: Kind, actor: &str, body: Value, idem: &str) -> Result<Row> {
+        self.write(Class::Node, kind, actor, body, idem)
+    }
+
+    /// Add a row a person's decision makes (a grant they signed or approved, a session they moved); it is held only to the whole log.
+    pub fn append_person(&mut self, kind: Kind, actor: &str, body: Value) -> Result<Row> {
+        self.write(Class::Last, kind, actor, body, "")
+    }
+
+    /// Put ``actor`` in the group ``key``: what its rows count toward in the share of the group, the process tree its session belongs to.
+    pub fn group(&mut self, actor: &str, key: &str) {
+        let from = self.groups.insert(actor.into(), key.into()).unwrap_or_else(|| actor.into());
+        let held = self.authors.get(actor).copied().unwrap_or_default();
+        if from == key || held.rows == 0 {
+            return;
+        }
+        let left = self.lineages.entry(from).or_default();
+        (left.rows, left.bytes) = (left.rows.saturating_sub(held.rows), left.bytes.saturating_sub(held.bytes));
+        let joined = self.lineages.entry(key.into()).or_default();
+        (joined.rows, joined.bytes) = (joined.rows + held.rows, joined.bytes + held.bytes);
+    }
+
+    fn write(&mut self, class: Class, kind: Kind, actor: &str, body: Value, idem: &str) -> Result<Row> {
         if kind == Kind::Head || !(actor.is_empty() || valid_actor(actor)) || idem.len() > 128 || !is_line(idem) {
             return Err(Error::Invalid("a row needs a real kind, a usable actor and a clean key".into()));
         }
         check_body(&body)?;
         let origin = self.origin.clone();
-        if let Some(found) = self.rows(&origin).iter().find(|r| !idem.is_empty() && r.actor == actor && r.idem == idem) {
+        let same = |r: &&Row| r.idem == idem && if class == Class::Author { r.actor == actor } else { r.kind == kind };
+        if let Some(found) = self.rows(&origin).iter().find(|r| !idem.is_empty() && same(r)) {
             return Ok(found.clone());
         }
-        let row = self.add(kind, actor, idem, body)?;
-        self.seal_when_due()?;
-        Ok(row)
+        let row = self.add(class, kind, actor, idem, body)?;
+        match self.seal_when_due() {
+            Ok(()) | Err(Error::Quota(_)) => Ok(row),
+            Err(e) => Err(e),
+        }
     }
 
     /// Sign the tip once enough rows have gone unsigned that a batch of a peer's request could
@@ -172,12 +243,60 @@ impl Board {
         Ok(())
     }
 
-    fn add(&mut self, kind: Kind, actor: &str, idem: &str, body: Value) -> Result<Row> {
+    fn add(&mut self, class: Class, kind: Kind, actor: &str, idem: &str, body: Value) -> Result<Row> {
+        let row = self.stage(class, (kind, actor, idem), body, &Staged::default())?;
         let origin = self.origin.clone();
-        let (last, seen, now) = (self.rows(&origin).last().cloned(), self.state.t.seen, self.now_ms());
-        if self.rows(&origin).len() >= MAX_LOG_ROWS {
-            return Err(Error::Quota("this log is past the rows a device keeps".into()));
+        self.log_mut(&origin)?.append(row.clone())?;
+        self.count(&row);
+        Ok(row)
+    }
+
+    /// Add the rows ``drafts`` name (kind, actor and body), each as `append` would, in one write and one fsync; a row the bounds refuse
+    /// is left out. How many were added.
+    pub fn append_many(&mut self, drafts: Vec<(Kind, String, Value)>) -> Result<usize> {
+        let mut staged = Staged::default();
+        for (kind, actor, body) in drafts {
+            if kind == Kind::Head || !valid_actor(&actor) {
+                return Err(Error::Invalid("a row needs a real kind and a usable actor".into()));
+            }
+            check_body(&body)?;
+            match self.stage(Class::Author, (kind, &actor, ""), body, &staged) {
+                Ok(row) => staged.push(row, self.group_of(&actor)),
+                Err(Error::Quota(_)) => {}
+                Err(e) => return Err(e),
+            }
         }
+        if staged.rows.is_empty() {
+            return Ok(0);
+        }
+        let origin = self.origin.clone();
+        self.log_mut(&origin)?.extend(staged.rows.clone())?;
+        staged.rows.iter().for_each(|r| self.count(r));
+        match self.seal_when_due() {
+            Ok(()) | Err(Error::Quota(_)) => Ok(staged.rows.len()),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// The group ``actor`` counts in: the one it was put in, or itself.
+    fn group_of(&self, actor: &str) -> String {
+        self.groups.get(actor).map_or(actor, String::as_str).to_string()
+    }
+
+    /// Count a row written to the log toward its author and its group.
+    fn count(&mut self, row: &Row) {
+        if row.kind != Kind::Head {
+            let bytes = row.size() as u64 + 1;
+            self.authors.entry(row.actor.clone()).or_default().add(bytes);
+            self.lineages.entry(self.group_of(&row.actor)).or_default().add(bytes);
+        }
+    }
+
+    /// The row that follows the rows the log holds and the ``staged`` ones after them, when the bounds admit it.
+    fn stage(&mut self, class: Class, (kind, actor, idem): (Kind, &str, &str), body: Value, staged: &Staged) -> Result<Row> {
+        let origin = self.origin.clone();
+        let (seen, now) = (self.state.t.seen, self.now_ms());
+        let last = staged.rows.last().or_else(|| self.rows(&origin).last()).cloned();
         let (wall, counter) = tick(last.as_ref().map_or((0, 0), |r| (r.hlc.0, r.hlc.1)), now, seen);
         let mut row = Row {
             v: VERSION, board: self.id.clone(), origin: origin.clone(),
@@ -186,10 +305,18 @@ impl Board {
             hlc: (wall, counter, origin.clone()), kind, actor: actor.into(), idem: idem.into(), body, hash: String::new(),
         };
         row.hash = row.digest();
-        if row.size() > MAX_ROW_BYTES {
-            return Err(Error::Quota("the row is larger than a row may be".into()));
+        let bytes = row.size() as u64;
+        if bytes as usize > MAX_ROW_BYTES {
+            return Err(crate::limits::refuse("the row is larger than a row may be", MAX_ROW_BYTES, "MAX_ROW_BYTES", "row.rs"));
         }
-        self.log_mut(&origin)?.append(row.clone())?;
+        let log = self.log_mut(&origin)?;
+        let held = Held { rows: log.rows().len(), bytes: log.bytes() }.plus(staged.held);
+        let group = self.group_of(actor);
+        let shares = Shares {
+            author: self.authors.get(actor).copied().unwrap_or_default().plus(staged.authors.get(actor).copied().unwrap_or_default()),
+            lineage: self.lineages.get(&group).copied().unwrap_or_default().plus(staged.groups.get(&group).copied().unwrap_or_default()),
+        };
+        self.bounds.admit(class, actor, bytes + 1, held, shares)?;
         Ok(row)
     }
 
@@ -201,7 +328,7 @@ impl Board {
         }
         let signature = self.key.sign(&head_message(&self.pool, &self.id, &self.origin, tip.seq, &tip.hash));
         let body = json!({"head": tip.seq, "hash": tip.hash, "public": public_hex(&self.key), "sig": hex(&signature.to_bytes())});
-        self.add(Kind::Head, "", "", body).map(Some)
+        self.add(Class::Last, Kind::Head, "", "", body).map(Some)
     }
 
     /// Store the rows of another device's log that verify; returns how many. A forged or
@@ -218,7 +345,7 @@ impl Board {
             return Err(Error::Damaged(format!("log {origin} was refused: {why}")));
         }
         if !self.logs.contains_key(origin) && self.logs.len() >= MAX_ORIGINS {
-            return Err(Error::Quota("this device holds as many logs as it will".into()));
+            return Err(crate::limits::refuse("this device holds as many logs as it may", MAX_ORIGINS, "MAX_ORIGINS", "board.rs"));
         }
         match self.store(origin, incoming, authoritative) {
             Err(Error::Damaged(why)) if authoritative => {
@@ -269,9 +396,9 @@ impl Board {
                 return Err(Error::Invalid("that log does not pass through the point the removal of its device named".into()));
             }
         }
-        if self.rows(origin).len() + took.rows.len() > MAX_LOG_ROWS {
-            return Err(Error::Quota("this log is past the rows a device keeps".into()));
-        }
+        let held = self.logs.get(origin).map_or_else(Held::default, |l| Held { rows: l.rows().len(), bytes: l.bytes() });
+        let incoming = Held { rows: took.rows.len(), bytes: took.rows.iter().map(|r| r.size() as u64 + 1).sum() };
+        self.bounds.admit_copy(held, incoming)?;
         if took.rows.is_empty() {
             return if blocked { Err(Error::Invalid("the device that wrote that log was removed from the pool".into())) } else { Ok(0) };
         }
@@ -374,6 +501,22 @@ impl Board {
         let bound = self.state.t.peers.entry(fingerprint.into()).or_insert_with(|| origin.into()).clone();
         self.state.save()?;
         Ok(bound == origin)
+    }
+
+    /// Whether the device ``fingerprint`` may be tied to ``origin``: it is tied to no origin yet, or to this one.
+    pub fn peer_agrees(&self, fingerprint: &str, origin: &str) -> bool {
+        self.state.t.peers.get(fingerprint).is_none_or(|o| o == origin)
+    }
+
+    /// Whether the device ``fingerprint`` is tied to an origin.
+    pub fn has_peer(&self, fingerprint: &str) -> bool {
+        self.state.t.peers.contains_key(fingerprint)
+    }
+
+    /// Undo the tie of the device ``fingerprint`` to the origin it writes.
+    pub fn release_peer(&mut self, fingerprint: &str) -> Result<()> {
+        self.state.t.peers.remove(fingerprint);
+        self.state.save()
     }
 
     /// The fingerprint (hash of the public key) of the device whose key verified the log of ``origin``, if one did.

@@ -41,7 +41,7 @@ def device_for() -> Any:
     A string naming the gap when torch is absent, so a ``--dry-run`` can still print its
     plan on a machine that has yet to install it.
     """
-    from poolhouse.backend.device import resolve_torch_device
+    from poolhouse.backend import resolve_torch_device
     try:
         return resolve_torch_device(os.environ.get("POOLHOUSE_DEVICE") or None)
     except (ImportError, RuntimeError):

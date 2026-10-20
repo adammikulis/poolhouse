@@ -246,8 +246,8 @@ weights and outputs, and can return wrong answers. So, **[plan]**:
   type allowlist (inference of named models only in the open market) is the stronger control.
 - **Illegal content.** Cannot be detected by the provider side if jobs are encrypted; this is an
   operator and terms-of-service problem (section 5) and a reason for narrow job types.
-- **Denial of service.** Per-tenant rate limits; the node's per-sender sliding windows (`app/poolhouse-node/src/limits.rs`, `writes.rs`)
-  are a starting point [code].
+- **Denial of service.** Per-tenant rate limits; the node's sliding windows for approvals, joins and phones (`app/poolhouse-node/src/limits.rs`) and its counts of
+  unread messages and notes (`writes.rs`) are a starting point [code].
 
 ### 4.3 Dispute handling
 

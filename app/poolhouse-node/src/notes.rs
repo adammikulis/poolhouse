@@ -176,7 +176,7 @@ fn verify(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
     if !crate::grants::check(node, &access.holder, "note_verify", &Scope::on(&id))? {
         return Err(crate::grants::refused_for(node, token, "note_verify", &id, message));
     }
-    node.host(board)?.board.append(Kind::Verify, &access.actor, body, "")?;
+    node.writer(board, &access.actor)?.append(Kind::Verify, &access.actor, body, "")?;
     let (notes, origin, _) = notes_of(node, board)?;
     Ok(json!({"notes": [show(&notes[&id], &origin, now)]}))
 }

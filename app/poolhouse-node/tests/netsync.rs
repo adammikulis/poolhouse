@@ -98,7 +98,6 @@ fn the_owner_of_a_log_that_sends_a_forged_copy_of_it_is_marked_damaged() {
 #[test]
 fn a_pull_carries_at_most_the_rows_and_bytes_of_a_batch() {
     let [(a, at), (b, bt), _] = trio();
-    a.node.lock().unwrap().writes.sends = usize::MAX;
     for i in 0..MAX_ROWS + 20 {
         a.say("demo", &at, &format!("row {i}"));
     }

@@ -54,7 +54,7 @@ impl Client {
         let message = reply["error"]["message"].as_str().unwrap_or("refused").to_string();
         Err(match reply["error"]["code"].as_str() {
             Some("denied") => Error::Denied(message),
-            Some("quota") => Error::Quota(message),
+            Some("quota") => crate::limits::relayed(message),
             Some("damaged") => Error::Damaged(message),
             _ => Error::Invalid(message),
         })

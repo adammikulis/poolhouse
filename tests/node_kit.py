@@ -246,11 +246,6 @@ class WorkspaceNode:
         node_launch.stop_node(self.state)
 
 
-WRITE_LIMITS = {"sends": 1_000_000, "subagent_sends": 1_000_000}
-"""What a test node's sessions may write: fixtures post whole pages of messages, so the send rate is out of the way. A test module
-that checks the limits sets ``NODE_WRITE_LIMITS`` to its own (``{}`` is the node's defaults)."""
-
-
 @pytest.fixture
 def workspace_node(node_binary, monkeypatch, request):
     """A running node on a short temporary root; in-process clients and child commands find it by the environment."""
@@ -258,7 +253,8 @@ def workspace_node(node_binary, monkeypatch, request):
     state = root / "node"
     state.mkdir(mode=0o700)
     node_orphans.claim(root)
-    (state / "write-limits.json").write_text(json.dumps(getattr(request.module, "NODE_WRITE_LIMITS", WRITE_LIMITS)))
+    if limits := getattr(request.module, "NODE_WRITE_LIMITS", None):
+        (state / "write-limits.json").write_text(json.dumps(limits))
     monkeypatch.setenv("POOLHOUSE_HOME", str(root))
     monkeypatch.setenv("POOLHOUSE_BOARD", BOARD)
     for name in STRIPPED:

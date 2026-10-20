@@ -3,19 +3,21 @@
 
 use serde_json::json;
 
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::node::Node;
 use crate::row::Kind;
 
 /// The name the node writes its own messages under.
 pub const FROM: &str = "node";
 
-/// Write ``body`` to the live session ``to`` of ``board``; nothing when it is gone.
+/// Write ``body`` to the live session ``to`` of ``board``; nothing when it is gone or when the node's own share of the log is used up.
 pub fn tell(node: &mut Node, board: &str, to: &str, subject: &str, body: &str) -> Result<()> {
     if !node.can_receive(board, to)? {
         return Ok(());
     }
     let fields = json!({"from": FROM, "to": to, "type": "status", "subject": subject, "body": body});
-    node.host(board)?.board.append(Kind::Message, FROM, fields, "")?;
-    Ok(())
+    match node.host(board)?.board.append(Kind::Message, FROM, fields, "") {
+        Ok(_) | Err(Error::Quota(_)) => Ok(()),
+        Err(e) => Err(e),
+    }
 }

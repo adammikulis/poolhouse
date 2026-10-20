@@ -57,7 +57,7 @@ answer in a detached process. That function is the one seam the Requests inbox r
 cannot change roles, rules, quarantine, approvals, its ceiling or its caps; it holds no credential.
 
 Caps per task: 12 tool-calling rounds, 30 tool calls, 24 model calls, 600 s, and the kill switch
-(the stop file, checked before every model call). Workspace rate limits apply to what it sends.
+(the stop file, checked before every model call).
 
 ## Effort and the prompt cache
 

@@ -100,7 +100,7 @@ fn a_place_is_never_inside_around_or_the_same_as_a_place_of_another_project() {
 }
 
 #[test]
-fn a_project_is_added_by_a_session_of_its_own_board_a_few_a_minute() {
+fn a_project_is_added_by_a_session_of_its_own_board() {
     let (state, work) = (tempdir().unwrap(), tempdir().unwrap());
     let mut n = node(state.path());
     let place = |name: &str| {
@@ -118,9 +118,8 @@ fn a_project_is_added_by_a_session_of_its_own_board_a_few_a_minute() {
     for i in 0..9 {
         ok(add(&mut n, &format!("extra-{i}"), "folder", &place(&format!("extra-{i}"))));
     }
-    let tenth = place("one-too-many");
-    assert_eq!(code(&add(&mut n, "one-too-many", "folder", &tenth)), "quota", "a node takes ten projects a minute");
-    assert!(ok(req(&mut n, "project_list", "", "", json!({}))).as_array().unwrap().len() == 10);
+    ok(add(&mut n, "eleventh", "folder", &place("eleventh")));
+    assert!(ok(req(&mut n, "project_list", "", "", json!({}))).as_array().unwrap().len() == 11);
 }
 
 #[test]

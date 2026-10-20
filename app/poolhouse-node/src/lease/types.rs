@@ -14,10 +14,6 @@ pub const PATH_CLAIMS: [&str; 3] = ["worktree", "install", "area"];
 pub const MAX_RESOURCES: usize = 8;
 /// The longest tag a request names itself with.
 pub const MAX_TAG: usize = 64;
-/// The longest a quiet lease lasts between renewals: a request takes one for the time it runs.
-pub const QUIET_MAX_TTL_S: u64 = 600;
-/// How long after it was granted a claim may be kept by renewals.
-pub const MAX_CLAIM_LIFETIME_S: u64 = 8 * 3600;
 
 fn local() -> String {
     LOCAL.into()
@@ -233,17 +229,6 @@ impl Lease {
     pub fn party(&self) -> (&str, &str) {
         (&self.holder, &self.tag)
     }
-
-    /// When a claim ends at the latest however it is renewed; `None` for a lease that holds no claim of the user's.
-    pub fn lifetime_end_ms(&self) -> Option<u64> {
-        let claims = self.resources.iter().any(|r| matches!(r, Resource::Claim { kind, .. } if kind != "task"));
-        claims.then(|| self.granted_ms + MAX_CLAIM_LIFETIME_S * 1000)
-    }
-
-    /// Whether a renewal now would reach past the lifetime of a held claim and is held back to it.
-    pub fn capped(&self, now: u64) -> bool {
-        self.state == State::Held && self.lifetime_end_ms().is_some_and(|end| now + self.ttl_s * 1000 > end)
-    }
 }
 
 /// What admission decides, in one place so it is configuration, not code.
@@ -264,6 +249,12 @@ pub struct Config {
     pub queue_patience_s: u64,
     pub default_ttl_s: u64,
     pub max_ttl_s: u64,
+    /// Leases, held or queued, one holder keeps.
+    pub max_leases_per_holder: usize,
+    /// Leases, held or queued, the table keeps.
+    pub max_leases: usize,
+    /// Leases, held or queued, the sessions of one process tree keep together.
+    pub max_leases_per_lineage: usize,
 }
 
 impl Default for Config {
@@ -271,7 +262,7 @@ impl Default for Config {
         let cores = std::thread::available_parallelism().map_or(1, |n| n.get() as u32);
         Config {
             cpu_slots: cores, memory_mb: 0, max_wait_s: 600, background_share_percent: 50, unknown_background_s: 180,
-            queue_patience_s: 60, default_ttl_s: 300, max_ttl_s: 86_400,
+            queue_patience_s: 60, default_ttl_s: 300, max_ttl_s: 86_400, max_leases_per_holder: 512, max_leases: 4096, max_leases_per_lineage: 1024,
         }
     }
 }
@@ -282,7 +273,7 @@ impl Config {
     pub fn parse(bytes: &[u8]) -> Option<Config> {
         let doc: serde_json::Value = serde_json::from_slice(bytes).ok()?;
         let cfg: Config = doc.is_object().then(|| serde_json::from_value(doc).ok()).flatten()?;
-        (cfg.max_ttl_s >= 1 && cfg.background_share_percent <= 100).then_some(cfg)
+        (cfg.max_ttl_s >= 1 && cfg.background_share_percent <= 100 && cfg.max_leases_per_holder >= 1 && cfg.max_leases >= 1 && cfg.max_leases_per_lineage >= 1).then_some(cfg)
     }
 }
 

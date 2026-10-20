@@ -5,21 +5,16 @@
 
 use std::collections::BTreeMap;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
 
 use serde_json::{json, Map, Value};
 
 use crate::error::{Error, Result};
 use crate::fold::Entry;
-use crate::lineage::{limit_key, Asking, Peer};
+use crate::lineage::{Asking, Peer};
 use crate::node::{Native, Node, READ_DEFAULT, READ_MAX};
 use crate::row::{valid_name, Kind};
 
 pub const API_VERSION: u64 = 1;
-/// How many links and how many projects one lineage makes in a minute.
-const MOST_LINKS_PER_MINUTE: usize = 6;
-const MOST_PROJECTS_PER_MINUTE: usize = 10;
-const MINUTE: Duration = Duration::from_secs(60);
 const ENVELOPE: [&str; 6] = ["v", "id", "method", "board", "token", "params"];
 const FORBIDDEN: [&str; 9] = ["sender", "name", "parent", "label", "from", "author", "actor", "identity", "as"];
 
@@ -136,23 +131,13 @@ fn post(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>) -> Re
     node.post(token, board, kind, &fields, str_of(p, "idem")?)
 }
 
-/// The refusal for a lineage that did ``what`` as often as it may.
-fn too_often(node: &mut Node, key: &str, most: usize, what: &str) -> Result<()> {
-    if node.rates.permits(key, most, MINUTE) {
-        return Ok(());
-    }
-    Err(Error::Quota(format!("this process tree {what} as fast as it may: try again in a minute")))
-}
-
-/// Make or end a link. What is done is checked first, the grant is spent once it was done, and the lineage's count goes up
-/// only for a link that was made.
-fn link(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>, make: bool, peer: &Peer) -> Result<Value> {
+/// Make or end a link. What is done is checked first and the grant is spent once it was done.
+fn link(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>, make: bool) -> Result<Value> {
     let access = node.access(token, board, true)?;
     if access.holder.board != board {
         return Err(Error::Denied("only a session of the sharing board makes or revokes its links".into()));
     }
     let by = format!("{}/{}", board, access.actor);
-    let key = format!("link {}", limit_key(&peer.lineage()));
     let (done, holder, action, resource) = if make {
         let channels: Vec<String> = serde_json::from_value(p.get("channels").cloned().unwrap_or(json!([])))
             .map_err(|_| Error::Invalid("channels is a list of #names".into()))?;
@@ -164,7 +149,6 @@ fn link(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>, make:
         node.links.room_for(board)?;
         let (action, resource) = (if write { "link_write" } else { "link_read" }, format!("{board}>{to}"));
         let holder = crate::poolapi::require(node, token, action, &resource)?;
-        too_often(node, &key, MOST_LINKS_PER_MINUTE, "makes links")?;
         (node.links.add(board, to, channels, write, &by)?, holder, action, resource)
     } else {
         let id = str_of(p, "id")?;
@@ -177,38 +161,28 @@ fn link(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>, make:
         }
         return Err(e);
     }
-    if make {
-        node.rates.record(&key, MINUTE);
-    }
     let detail = format!("{}>{} {} {}", done.from, done.to, if done.write { "rw" } else { "ro" }, done.channels.join(","));
     let event = if make { "link" } else { "unlink" };
     for side in [&done.from, &done.to] {
         let actor = if side == board { access.actor.clone() } else { format!("{}@{board}", access.actor) };
-        node.host(side)?.board.append(Kind::Audit, &actor, json!({"event": event, "subject": done.id, "detail": detail}), "")?;
+        node.writer(side, &actor)?.append(Kind::Audit, &actor, json!({"event": event, "subject": done.id, "detail": detail}), "")?;
     }
     Ok(json!(done))
 }
 
 /// Add a project, or a place to one. A place that is not a git repository needs the grant `source_add` on the project; what is
-/// added is checked first, the grant is spent once it was added, and the lineage's count goes up only for a project that was made.
-fn project(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>, peer: &Peer) -> Result<Value> {
+/// added is checked first and the grant is spent once it was added.
+fn project(node: &mut Node, method: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let (id, kind, path) = (str_of(p, "id")?, str_of(p, "kind")?, str_of(p, "path")?);
     let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("a registered session adds a project or a place to one".into()))?;
     if holder.board != id {
         return Err(Error::Denied("only a session of a board adds its project or a place to it".into()));
     }
-    let key = format!("project {}", limit_key(&peer.lineage()));
     let made = method == "project_add";
     let granted = (!made || (kind != "git" && crate::registry::KINDS.contains(&kind))).then(|| crate::poolapi::require(node, token, "source_add", id)).transpose()?;
-    if made {
-        too_often(node, &key, MOST_PROJECTS_PER_MINUTE, "takes projects")?;
-    }
     let done = if made { node.projects.add(id, kind, path)? } else { node.projects.add_source(id, kind, path)? };
     if let Some(holder) = granted {
         crate::poolapi::spend(node, token, &holder, "source_add", id)?;
-    }
-    if made {
-        node.rates.record(&key, MINUTE);
     }
     node.host(id)?;
     Ok(json!(done))
@@ -242,8 +216,8 @@ fn dispatch(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
         "status" => status(node, token, board),
         "post" => post(node, token, board, p),
         "read" => read(node, token, board, p),
-        "link" | "unlink" => link(node, token, board, p, method == "link", peer),
-        "project_add" | "source_add" => project(node, method, token, p, peer),
+        "link" | "unlink" => link(node, token, board, p, method == "link"),
+        "project_add" | "source_add" => project(node, method, token, p),
         "lineage" => Ok(json!({"lineage": peer.lineage()})),
         "project_list" => Ok(json!(node.projects.all())),
         "project_resolve" => node.projects.resolve(str_of(p, "path")?).map(|p| json!({"board": p.id})),

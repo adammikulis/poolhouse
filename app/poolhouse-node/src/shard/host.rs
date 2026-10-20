@@ -200,7 +200,7 @@ impl Shards {
         let mut jobs = lock(&self.jobs)?;
         if offset == 0 && !jobs.contains_key(id) {
             if jobs.values().filter(|j| j.phase.open()).count() >= MOST_OPEN || jobs.values().filter(|j| j.owner == fp && j.phase == Phase::Uploading).count() >= 2 {
-                return Err(Error::Quota("this device is taking as many shards as it can; try again shortly".into()));
+                return Err(crate::limits::refuse("this device is taking as many shards as it can; try again shortly", format!("{MOST_OPEN} open and 2 uploading from one device"), "MOST_OPEN", "shard/host.rs"));
             }
             let dir = self.root.join(id);
             std::fs::create_dir(&dir)?;
@@ -246,7 +246,7 @@ impl Shards {
         let dir = {
             let mut jobs = lock(&self.jobs)?;
             if jobs.values().filter(|j| j.phase == Phase::Running).count() >= MOST_RUNNING {
-                return Err(Error::Quota(format!("{MOST_RUNNING} shards are already running here")));
+                return Err(crate::limits::refuse("as many shards as may run are already running here", MOST_RUNNING, "MOST_RUNNING", "shard/host.rs"));
             }
             let job = jobs.get_mut(&spec.id).filter(|j| j.owner == fp).ok_or_else(unknown)?;
             if job.phase != Phase::Uploading || job.got != spec.size {
@@ -278,7 +278,7 @@ impl Shards {
         Ok(json!({"id": req["id"], "state": "running", "python": version}))
     }
 
-    /// The device's CPU slots for this shard from the lease service; `Quota` when none are free.
+    /// The device's CPU slots for this shard from the lease service; a quota refusal when none are free.
     fn take_slots(&self, node: &mut Node, spec: &Spec) -> Result<String> {
         let name = format!("shard-{}", &spec.id[..8]);
         let count = (node.leases.cfg.cpu_slots / 2).max(1);
@@ -286,13 +286,14 @@ impl Shards {
             class: Class::Background, estimate_s: Some(spec.timeout_s), ttl_s: Some(spec.timeout_s + GRACE_S + 300), pid: 0, remote: true, local: false, wait: false, tag: String::new(), quiet: false };
         rpc::tick(node, &[POOL_BOARD])?;
         let (now, id) = (node.leases.now(), format!("l{}", random_hex(8)?));
-        let id = node.leases.table.enqueue(&node.leases.cfg, now, &request, id)?;
+        let tree = node.tree_leases(POOL_BOARD, &name);
+        let id = node.leases.table.enqueue(&node.leases.cfg, now, &request, (id, tree))?;
         rpc::tick(node, &[POOL_BOARD])?;
         let held = node.leases.table.find(&id).is_some_and(|l| l.state == State::Held);
         if !held {
             let _ = node.leases.table.release(&id, &format!("{POOL_BOARD}/{name}"));
             node.leases.save()?;
-            return Err(Error::Quota("this device's CPU slots are in use; try again shortly".into()));
+            return Err(crate::limits::refuse("this device's CPU slots are in use; try again shortly", node.leases.cfg.cpu_slots, "cpu_slots", "lease-config.json"));
         }
         node.leases.save()?;
         Ok(id)

@@ -142,8 +142,6 @@ def start(state: Path, binary: Path, args: list[str], key: str = "", level: str 
     if key:
         plant_key(state, key, level)
     node_supervise.point(state, binary, node_binary.sha256(binary))
-    # the rig posts 1,500 entries in one burst to cut a sync in half: the per-sender limit of a session is the node's, not the step's subject
-    (state / "write-limits.json").write_text(json.dumps({"sends": 1_000_000, "subagent_sends": 1_000_000}))
     return {"ok": True, "result": node_launch.ensure_node(state, extra=args)}
 
 

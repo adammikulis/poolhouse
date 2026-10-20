@@ -118,7 +118,7 @@ impl Phones {
 
     pub fn add(&mut self, phone: Phone) -> Result<()> {
         if self.held() >= MOST_PHONES {
-            return Err(Error::Quota("This device holds as many phones as it will; remove one first.".into()));
+            return Err(crate::limits::refuse("This device holds as many phones as it may; remove one first.", MOST_PHONES, "MOST_PHONES", "phone/mod.rs"));
         }
         self.items.insert(phone.id.clone(), phone);
         self.save()

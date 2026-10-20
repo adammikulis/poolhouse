@@ -210,7 +210,7 @@ fn create(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
         return Ok(show::task(&b, old));
     }
     if b.tasks.len() >= MAX_TASKS {
-        return Err(Error::Quota("task board capacity reached".into()));
+        return Err(crate::limits::refuse("the task board is full", MAX_TASKS, "MAX_TASKS", "tasks/mod.rs"));
     }
     let mut body = spec;
     body.insert("op".into(), json!("create"));

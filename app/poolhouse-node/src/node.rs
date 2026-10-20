@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex, Weak};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use ed25519_dalek::SigningKey;
 use serde_json::{json, Map, Value};
@@ -19,11 +19,11 @@ use crate::membership::Pool;
 use crate::device::{self, fingerprint, Custody, Supplied};
 use crate::error::{Error, Result};
 use crate::fold::{self, check_local, Context, Entry};
-use crate::fsutil::private_dir;
+use crate::fsutil::{private_dir, write_atomic};
 use crate::identity::{self, Holder, Ident, ModelState, Registry, Tokens, Who};
 use crate::lease::Leases;
 use crate::limits::Rates;
-use crate::lineage::{limit_key, Anchor, Asking, Peer};
+use crate::lineage::{shares, Anchor, Asking, Peer};
 use crate::landtrust::LandTrust;
 use crate::links::Links;
 use crate::quarantine::Quarantine;
@@ -34,13 +34,13 @@ use crate::tally::Tally;
 
 pub const READ_DEFAULT: usize = 200;
 pub const READ_MAX: usize = 1000;
-/// How many boards a node hosts at most, and how many boards a lineage creates in an hour.
+/// How many boards a node hosts at most.
 pub const MAX_BOARDS: usize = 256;
+/// How many boards the live sessions of one process tree hold at most.
+pub const MOST_BOARDS_PER_LINEAGE: usize = 32;
 /// What a request with a token the node does not hold is told.
 const UNKNOWN_TOKEN: &str =
     "the token is not known: its session was retired (an idle session is retired after a day, and so is one its parent ends) or never registered; start a new session";
-const MOST_NEW_BOARDS_PER_HOUR: usize = 16;
-const HOUR: Duration = Duration::from_secs(3600);
 
 /// One board this node holds and the names registered on it.
 pub struct Hosted {
@@ -51,7 +51,12 @@ pub struct Hosted {
     pub book: Book,
     /// What the write limits count, kept as rows arrive (`tally`).
     pub tally: Tally,
+    /// The processes of the lineage that made the board by registering a session on it; None for a board made any other way.
+    pub made_by: Option<Vec<Anchor>>,
 }
+
+/// The file in a board's folder that holds the lineage that made it.
+const MADE_BY: &str = "made_by.json";
 
 pub struct Node {
     pub dir: PathBuf,
@@ -94,6 +99,10 @@ pub struct Node {
     pub rates: Rates,
     /// What one session may write (`writes`).
     pub writes: crate::writes::WriteLimits,
+    /// The bounds a board opened from now on holds its own log to (`logbounds`).
+    pub log_bounds: crate::logbounds::Bounds,
+    /// Milliseconds a board that holds nothing but the ends of its sessions is left alone before it may be removed.
+    pub board_grace_ms: u64,
     /// Who is asking, while a request is answered (`lineage::Asking`).
     pub asking: Asking,
     pub stop: Arc<AtomicBool>,
@@ -153,18 +162,20 @@ impl Node {
         let cert = cert::load_or_create(dir, &key)?;
         let members = Pool::load(dir)?;
         let facts = Facts::open(&dir.join("peers.json"))?;
+        let writes = crate::writes::WriteLimits::open(dir)?;
         let mut node = Node {
             dir: dir.into(), pool: String::new(), cert, members, persons: Persons::open(&dir.join("persons.json"))?,
             approvals: crate::approvals::Approvals::open(&dir.join("approvals.json"))?, fatigue: crate::approvals::fatigue::Fatigue::open(&dir.join("fatigue.json"))?,
             evidence: Box::new(crate::approvals::context::Unrecorded), phones: crate::phone::Phones::open(&dir.join("phones.json"))?,
             phone_cert: crate::phone::cert::load_or_create(dir)?, phone_port: 0, local_server: Weak::new(), firsts: crate::presence::Firsts::new(crate::presence::default_presence()), offer: None, pusher: Box::new(crate::phone::push::NoPusher), land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, custody, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
-            projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), writes: crate::writes::WriteLimits::open(dir)?, asking: Asking::default(),
+            projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), board_grace_ms: writes.board_grace_s * 1000, writes, log_bounds: crate::logbounds::Bounds::default(), asking: Asking::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(), folds: 0,
             build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, key_binding: KeyBinding::File, declined: BTreeMap::new(),
         };
         let root = dir.join("boards");
         if root.is_dir() {
+            crate::reap::clear_trash(&root);
             for entry in std::fs::read_dir(&root)? {
                 let id = entry?.file_name().to_string_lossy().to_string();
                 if valid_name(&id) {
@@ -188,13 +199,19 @@ impl Node {
             }
             let dir = self.dir.join("boards").join(id);
             private_dir(&dir)?;
-            let mut board = Board::open(&dir.join("log"), id, &self.pool, self.key.clone())?;
+            let mut board = Board::open_bounded(&dir.join("log"), id, &self.pool, self.key.clone(), self.log_bounds)?;
             let names = Registry::open(&dir.join("names.json"))?;
             let quarantine = Quarantine::open(&dir.join("quarantine.json"))?;
             let subs = Subs::open(&dir.join("subs.json"))?;
             let mut tally = Tally::default();
             tally.catch_up(&mut board, &names)?;
-            self.boards.insert(id.into(), Hosted { board, names, quarantine, subs, book: Book::default(), tally });
+            names.all().keys().for_each(|name| board.group(name, &names.tree(name)));
+            let made_by = match std::fs::read(dir.join(MADE_BY)) {
+                Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| Error::Damaged(format!("{MADE_BY} unreadable: {e}")))?,
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                Err(e) => return Err(e.into()),
+            };
+            self.boards.insert(id.into(), Hosted { board, names, quarantine, subs, book: Book::default(), tally, made_by });
             self.apply_log_cuts(id)?;
         }
         Ok(self.boards.get_mut(id).expect("hosted above"))
@@ -252,10 +269,53 @@ impl Node {
         self.tokens.revoke_where(&|h| idle.iter().any(|(b, n)| *b == h.board && *n == h.name)).map(|_| ())
     }
 
+    /// How many boards the process tree ``lineage`` made by registering a session on them.
+    fn boards_made_by(&self, lineage: &[Anchor]) -> usize {
+        self.boards.values().filter(|h| h.made_by.as_deref().is_some_and(|by| shares(by, lineage))).count()
+    }
+
+    /// Room for one more board made by the process tree ``lineage``: boards that hold only the ends of their sessions are removed first
+    /// when the node or the tree is at its bound.
+    fn make_room_for_a_board(&mut self, lineage: &[Anchor]) -> Result<()> {
+        if self.boards.len() >= MAX_BOARDS || self.boards_made_by(lineage) >= MOST_BOARDS_PER_LINEAGE {
+            self.reap_idle_boards()?;
+        }
+        if self.boards.len() >= MAX_BOARDS {
+            return Err(crate::limits::refuse("this node hosts as many boards as it may", MAX_BOARDS, "MAX_BOARDS", "node.rs"));
+        }
+        if self.boards_made_by(lineage) >= MOST_BOARDS_PER_LINEAGE {
+            return Err(crate::limits::refuse("the sessions of this process tree have made as many boards as they may", MOST_BOARDS_PER_LINEAGE, "MOST_BOARDS_PER_LINEAGE", "node.rs"));
+        }
+        Ok(())
+    }
+
+    /// Room on ``board`` for one more live main session.
+    fn make_room_for_a_main_session(&self, board: &str) -> Result<()> {
+        let live = self.boards.get(board).map_or(0, |h| h.names.all().values().filter(|i| i.parent.is_empty() && !i.retired).count());
+        if live >= self.writes.live_main_sessions {
+            return Err(crate::limits::refuse("this board has as many live main sessions as it may: end one first", self.writes.live_main_sessions, "live_main_sessions", "write-limits.json"));
+        }
+        Ok(())
+    }
+
+    /// How many leases, held or queued, the sessions of the process tree of ``name`` of ``board`` keep, on every board.
+    pub fn tree_leases(&self, board: &str, name: &str) -> usize {
+        let Some(hosted) = self.boards.get(board) else { return 0 };
+        let tree = hosted.names.tree(name);
+        self.leases.table.leases.iter().filter(|l| self.boards.get(&l.board).is_some_and(|b| b.names.tree(&l.name) == tree)).count()
+    }
+
+    /// Note that the process tree ``lineage`` made ``board`` by registering a session on it.
+    fn record_maker(&mut self, board: &str, lineage: &[Anchor]) -> Result<()> {
+        self.host(board)?.made_by = Some(lineage.to_vec());
+        write_atomic(&self.dir.join("boards").join(board).join(MADE_BY), &serde_json::to_vec(lineage)?)
+    }
+
     /// Register a session on ``board`` (creating the board on first use) from the process ``peer``; a token given makes
     /// the new session a subagent of the token's owner. A main session that is already registered gets a token only from
-    /// the lineage it was registered from. A lineage creates a few boards an hour, and a node hosts a bounded number of
-    /// boards. Returns name, token, whether new.
+    /// the lineage it was registered from. A node hosts a bounded number of boards, and one process tree makes a bounded number
+    /// of them. The identity entry of a new or returning session is written for it, to its share of the log, and a registration
+    /// the log refuses leaves the registry as it was. Returns name, token, whether new.
     pub fn register(&mut self, board: &str, parent_token: Option<&str>, native: Native, peer: &Peer) -> Result<Value> {
         let Native { model, harness, session } = native;
         let (model, harness) = (identity::clean(model)?, identity::clean(harness)?);
@@ -266,30 +326,37 @@ impl Node {
             return Err(Error::Denied("a session name needs the native harness and session id".into()));
         }
         let lineage = peer.lineage();
-        let boards = format!("board {}", limit_key(&lineage));
-        let new_board = !self.boards.contains_key(board);
-        if new_board && (self.boards.len() >= MAX_BOARDS || !self.rates.permits(&boards, MOST_NEW_BOARDS_PER_HOUR, HOUR)) {
-            return Err(Error::Quota("this process tree creates boards as fast as it may, or this node hosts as many as it will".into()));
+        let fresh = !self.boards.contains_key(board);
+        if fresh {
+            self.make_room_for_a_board(&lineage)?;
         }
         let (parent, proven, bound) = self.parent_of(board, parent_token, (&harness, session), &lineage)?;
         if parent.is_empty() {
             crate::idle::sweep(self, board)?;
         }
-        let revived = self.boards.get(board).and_then(|h| h.names.find(&harness, session).and_then(|n| h.names.get(n))).is_some_and(|i| i.retired);
+        if fresh {
+            self.record_maker(board, &lineage)?;
+        }
+        let before = self.boards.get(board).and_then(|h| h.names.find(&harness, session).and_then(|n| h.names.get(n).map(|i| (n.to_string(), i.clone()))));
+        let revived = before.as_ref().is_some_and(|(_, i)| i.retired);
+        if parent.is_empty() && (before.is_none() || revived) {
+            self.make_room_for_a_main_session(board)?;
+        }
         self.make_room_for_a_token()?;
         let inherited = model.trim().is_empty().then(|| self.boards.get(board).and_then(|h| h.names.get(&parent)).map(|p| p.model.clone())).flatten().unwrap_or_default();
         let (model, state) = if inherited.is_empty() { (model, ModelState::Claimed) } else { (inherited, ModelState::Inherited) };
         let hosted = self.host(board)?;
         let now = hosted.board.now_ms();
         let (name, created) = hosted.names.assign(Who { harness: &harness, session, parent: &parent }, &model, state, now, &lineage, proven)?;
+        hosted.board.group(&name, &hosted.names.tree(&name));
         if created || revived {
-            self.write_identity(board, &name)?;
+            if let Err(refused) = self.write_identity(board, &name) {
+                self.host(board)?.names.restore(&name, before.map(|(_, i)| i))?;
+                return Err(refused);
+            }
         }
         let origin = self.host(board)?.board.origin().to_string();
         let token = self.tokens.issue(board, &name, &bound)?;
-        if new_board {
-            self.rates.record(&boards, HOUR);
-        }
         Ok(json!({"name": name, "token": token, "created": created, "parent": parent, "board": board, "origin": origin}))
     }
 
@@ -342,21 +409,44 @@ impl Node {
         body.insert(if kind == Kind::Note { "author" } else { "from" }.into(), Value::String(access.actor.clone()));
         let body = Value::Object(body);
         check_local(kind, &access.actor, &body, "")?;
-        let admitted = crate::writes::check_post(self, board, &access.holder, &access.actor, kind, fields)?;
-        let hosted = self.hosted(board)?;
-        let row = hosted.board.append(kind, &access.actor, body, idem)?;
-        let mut reply = json!({"id": row.id(), "seq": row.seq, "sender": access.actor, "status": hosted.board.status(row.seq, &[])});
-        if crate::writes::wrote(self, board, &access.holder, &access.actor, admitted)? {
-            reply["over_quota"] = json!(true);
-        }
-        Ok(reply)
+        crate::writes::check_post(self, board, &access.actor, kind, fields)?;
+        let row = self.writer(board, &access.actor)?.append(kind, &access.actor, body, idem)?;
+        Ok(json!({"id": row.id(), "seq": row.seq, "sender": access.actor, "status": self.hosted(board)?.board.status(row.seq, &[])}))
     }
 
-    /// Write the current state of the session ``name`` to its board as an identity entry.
+    /// The log of ``board`` to write a row of ``actor`` to. An actor from another board (`name@home`) is put in the group of its process
+    /// tree on `home` first, so what it writes counts toward that tree's share of this log.
+    pub fn writer(&mut self, board: &str, actor: &str) -> Result<&mut Board> {
+        let tree = actor.split_once('@').and_then(|(name, home)| self.boards.get(home).map(|h| h.names.tree(name)));
+        let hosted = self.hosted(board)?;
+        if let Some(tree) = tree {
+            hosted.board.group(actor, &tree);
+        }
+        Ok(&mut hosted.board)
+    }
+
+    /// Put every session of ``board`` in the group of its process tree, so what each writes counts toward its tree's share of the log.
+    pub fn regroup(&mut self, board: &str) -> Result<()> {
+        let Hosted { board, names, .. } = self.hosted(board)?;
+        names.all().keys().for_each(|name| board.group(name, &names.tree(name)));
+        Ok(())
+    }
+
+    /// Write the current state of the session ``name`` to its board as an identity entry (registered, or its model changed): held to the
+    /// share of the log of the session and of its process tree.
     pub fn write_identity(&mut self, board: &str, name: &str) -> Result<()> {
         let hosted = self.hosted(board)?;
         let ident = hosted.names.get(name).cloned().ok_or_else(|| Error::Denied("no such session".into()))?;
         hosted.board.append(Kind::Identity, name, identity_body(name, &ident)?, "")?;
+        Ok(())
+    }
+
+    /// Write the state of the session ``name`` that just ended to its board as an identity entry the node writes for itself: held to the
+    /// log less its last stretch, and not to a share, since the session's registration was.
+    pub fn write_ended(&mut self, board: &str, name: &str) -> Result<()> {
+        let hosted = self.hosted(board)?;
+        let ident = hosted.names.get(name).cloned().ok_or_else(|| Error::Denied("no such session".into()))?;
+        hosted.board.append_node(Kind::Identity, name, identity_body(name, &ident)?, "")?;
         Ok(())
     }
 

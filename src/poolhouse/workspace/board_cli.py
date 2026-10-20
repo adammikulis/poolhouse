@@ -209,9 +209,6 @@ def announced(s: Session, kind: str, text: str) -> dict[str, Any]:
         worktree_lifecycle.require_clean(limits.root(), s.name)
     sent = s.post(ANNOUNCE, kind, text, subject=kind)
     told = {"seq": sent["id"].rsplit(":", 1)[-1], "type": kind, "to": ANNOUNCE, "from": sent["sender"]}
-    if sent.get("over_quota"):
-        told["warning"] = ("over the announce quota (6 in 10 minutes): it was posted, and it crowds out other roll-up lines; "
-                           "announce only news another agent acts on and send the rest as a direct message")
     return told
 
 

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import logging
 import time
+from importlib.util import find_spec
 from typing import Any
 
+from poolhouse.fleet.hardware import detect_device
 from poolhouse.fleet.telemetry import gpu_telemetry
 
 __all__ = ["apple_telemetry", "gpu_power", "report", "torch_report", "vendor_of"]
@@ -13,6 +15,8 @@ __all__ = ["apple_telemetry", "gpu_power", "report", "torch_report", "vendor_of"
 #: ``metal_smi.gpu_power`` integrates over a sampling window and blocks for about a
 #: second and a quarter, so a reading is kept this long rather than taken per caller.
 POWER_SAMPLE_S = 5.0
+#: the array libraries a device advertises as backends when they are installed
+ARRAY_LIBRARIES = ("mlx", "torch")
 _LOG = logging.getLogger(__name__)
 
 _last_power: dict[str, Any] = {"at": 0.0, "reading": {}}
@@ -128,13 +132,8 @@ def mlx_report() -> dict[str, Any]:
 def report() -> dict[str, Any]:
     """Accelerator facts, as far as they can be established on this machine."""
     out: dict[str, Any] = {}
+    out["backends"] = [name for name in ARRAY_LIBRARIES if find_spec(name) is not None]
     try:
-        from poolhouse.backend import available
-        out["backends"] = list(available())
-    except Exception:                                 # noqa: BLE001
-        _LOG.debug("Accelerator probe unavailable", exc_info=True)
-    try:
-        from poolhouse.backend import detect_device
         profile = detect_device()
         out["vendor"] = str(profile.vendor)
         out["device"] = out["gpu"] = profile.name

@@ -69,10 +69,10 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
+from poolhouse import optional
 from poolhouse.asking import ASKING
 from poolhouse.client.spent import Spent
 from poolhouse.graph.completions import CompletionRoutes
-from poolhouse.graph.conversation import converse, converse_stream
 from poolhouse.graph.guard import MAX_BODY, Guarded
 from poolhouse.graph.metrics import MetricsRoutes
 from poolhouse.graph.payloads import answer_payload, drained, sse, thread_request
@@ -111,6 +111,10 @@ finds this on for answers, and asks nothing otherwise."""
 
 READING = "the model is reading this request"
 """The concern a filed request carries until the model has proposed its edits."""
+
+
+CONVERSATION = "poolhouse.graph.conversation"
+"""The module that answers a question over a graph; a build without it serves everything but `/ask`."""
 
 
 PORT = 8794
@@ -599,17 +603,20 @@ class Handler(Guarded, RefreshRoutes, ReviewRoutes, RequestRoutes, DraftRoutes, 
               emit: Any) -> Any:
         if self.graph is None:
             raise RuntimeError("no graph on this server: serve with --graph FILE")
+        conversation = optional.module(CONVERSATION)
         client = self.client_on_slot(index=0)
         asked = {"asking": self.config.asking if self.config is not None else ASKING,
                 "turns": turns, "highlighted": highlighted, "finder": self.finder(),
                 "summary": getattr(turns, "summary", None),
                 "recalled": list(getattr(turns, "recalled", ()) or ())}
         if stream:
-            return converse_stream(question, self.graph, client, on_event=emit, **asked)
-        return converse(question, self.graph, client, **asked)
+            return conversation.converse_stream(question, self.graph, client, on_event=emit, **asked)
+        return conversation.converse(question, self.graph, client, **asked)
 
     def ready(self) -> str | None:
         if type(self).asker is Handler.asker and type(self).client_on_slot is AskRoutes.client_on_slot:
+            if not optional.held(CONVERSATION):
+                return "this build does not answer questions about a graph"
             if self.graph is None:
                 return "no graph on this server: serve with --graph FILE"
             if self.config is None:

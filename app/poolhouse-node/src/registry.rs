@@ -135,7 +135,7 @@ impl Projects {
             return Err(Error::Invalid("a project id is a new short lower-case word".into()));
         }
         if self.all.len() >= MAX_PROJECTS {
-            return Err(Error::Quota(format!("a node holds at most {MAX_PROJECTS} projects")));
+            return Err(crate::limits::refuse("a node holds as many projects as it may", MAX_PROJECTS, "MAX_PROJECTS", "registry.rs"));
         }
         let source = Projects::source(kind, path)?;
         self.claim_check(id, &source)?;
@@ -150,7 +150,7 @@ impl Projects {
         self.claim_check(id, &source)?;
         let project = self.all.iter_mut().find(|p| p.id == id).ok_or_else(|| Error::Invalid("no such project".into()))?;
         if project.sources.len() >= MAX_SOURCES {
-            return Err(Error::Quota("a project keeps this many sources at most".into()));
+            return Err(crate::limits::refuse("a project keeps as many sources as it may", MAX_SOURCES, "MAX_SOURCES", "registry.rs"));
         }
         if !project.sources.contains(&source) {
             project.sources.push(source);

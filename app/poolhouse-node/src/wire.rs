@@ -17,11 +17,19 @@ pub fn write_frame(out: &mut impl Write, value: &Value) -> Result<()> {
     write_frame_max(out, value, MAX_FRAME)
 }
 
+fn over_frame(max: usize) -> Error {
+    if max == MAX_PEER_FRAME {
+        crate::limits::refuse("the frame is larger than a frame may be", MAX_PEER_FRAME, "MAX_PEER_FRAME", "wire.rs")
+    } else {
+        crate::limits::refuse("the frame is larger than a frame may be", max, "MAX_FRAME", "wire.rs")
+    }
+}
+
 /// Like `write_frame`, with a frame limit of ``max`` bytes.
 pub fn write_frame_max(out: &mut impl Write, value: &Value, max: usize) -> Result<()> {
     let bytes = serde_json::to_vec(value)?;
     if bytes.len() > max {
-        return Err(Error::Quota("the frame is larger than a frame may be".into()));
+        return Err(over_frame(max));
     }
     out.write_all(&(bytes.len() as u32).to_be_bytes())?;
     out.write_all(&bytes)?;
@@ -44,7 +52,7 @@ pub fn read_frame_max(input: &mut impl Read, max: usize) -> Result<Option<Value>
     }
     let len = u32::from_be_bytes(len) as usize;
     if len > max {
-        return Err(Error::Quota("the frame is larger than a frame may be".into()));
+        return Err(over_frame(max));
     }
     let mut bytes = vec![0u8; len];
     input.read_exact(&mut bytes)?;

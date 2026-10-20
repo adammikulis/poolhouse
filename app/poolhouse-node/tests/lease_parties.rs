@@ -154,16 +154,44 @@ fn a_gpu_lease_folds_no_board_and_a_pool_wide_claim_still_does() {
 }
 
 #[test]
-fn a_quiet_lease_lasts_minutes_between_renewals_however_long_it_asks() {
+fn a_quiet_lease_with_no_process_behind_it_lasts_the_default_between_renewals_however_long_it_asks() {
     let dir = tempfile::tempdir().unwrap();
     let mut n = Node::open(dir.path()).unwrap();
     let t = session(&mut n, "demo", "broker").1;
+    let default = n.leases.cfg.default_ttl_s;
     let lease = ok(req(&mut n, "lease_acquire", "demo", &t, json!({"resources": [gpu()], "tag": "q", "quiet": true, "ttl_s": 86400})));
-    assert_eq!(lease["ttl_s"], 600);
+    assert_eq!(lease["ttl_s"], default, "a holder that is gone frees the GPU within the default time");
     let renewed = ok(req(&mut n, "lease_renew", "demo", &t, json!({"id": lease["id"], "ttl_s": 86400})));
-    assert_eq!(renewed["ttl_s"], 600);
+    assert_eq!(renewed["ttl_s"], default);
     let loud = ok(req(&mut n, "lease_acquire", "demo", &t, json!({"resources": [{"type": "claim", "kind": "port", "name": "9001"}], "ttl_s": 7200})));
-    assert_eq!(loud["ttl_s"], 7200, "only a quiet lease is held to minutes");
+    assert_eq!(loud["ttl_s"], 7200, "a lease that is not quiet asks as long as the configuration allows");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_quiet_lease_bound_to_a_process_lasts_as_long_as_it_asks_because_it_ends_with_the_process() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut n = Node::open(dir.path()).unwrap();
+    let t = session(&mut n, "demo", "broker").1;
+    let mut holder = std::process::Command::new("sleep").arg("120").spawn().unwrap();
+    let lease = ok(req(&mut n, "lease_acquire", "demo", &t, json!({"resources": [gpu()], "tag": "q", "quiet": true, "ttl_s": 86400, "pid": holder.id()})));
+    assert_eq!(lease["ttl_s"], 86400);
+    let free = req(&mut n, "lease_renew", "demo", &t, json!({"id": lease["id"], "ttl_s": 7200}));
+    assert_eq!(ok(free)["ttl_s"], 7200);
+    holder.kill().unwrap();
+    holder.wait().unwrap();
+    let again = ok(req(&mut n, "lease_acquire", "demo", &t, json!({"resources": [gpu()], "tag": "other", "quiet": true})));
+    assert_eq!(again["state"], "held", "the lease ended with its process");
+}
+
+#[test]
+fn a_quiet_lease_given_a_process_later_may_then_be_renewed_for_longer() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut n = Node::open(dir.path()).unwrap();
+    let t = session(&mut n, "demo", "broker").1;
+    let lease = ok(req(&mut n, "lease_acquire", "demo", &t, json!({"resources": [gpu()], "tag": "q", "quiet": true})));
+    let renewed = ok(req(&mut n, "lease_renew", "demo", &t, json!({"id": lease["id"], "ttl_s": 7200, "pid": std::process::id()})));
+    assert_eq!(renewed["ttl_s"], 7200);
 }
 
 #[test]

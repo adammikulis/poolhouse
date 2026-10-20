@@ -709,7 +709,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"test: {error}", file=sys.stderr)
             return 4
     if not os.environ.get("DEV_TEST_JOB"):
-        testreap.reap(say=lambda text: print(text, file=sys.stderr, flush=True))
+        testreap.reap_all(say=lambda text: print(text, file=sys.stderr, flush=True))
         return follow(argv, args)
     command = pytest_command(args.workers, *TIER_FLAGS.get(args.tier, []), *rest)
     doctor_admits(testprelude.begin(args, rest, ROOT, reused_files(command)))

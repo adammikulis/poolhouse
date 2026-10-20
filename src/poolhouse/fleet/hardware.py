@@ -82,21 +82,6 @@ def detect_device() -> DeviceProfile:
                          cpu_model=cpu, ram_gb=ram)
 
 
-def resolve_torch_device(prefer: str | None = None):
-    """A ``torch.device`` for this machine."""
-    from poolhouse.backend.torch_ops import require_torch
-
-    torch, _ = require_torch()
-
-    if prefer and prefer != "auto":
-        return torch.device(prefer)
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
-
-
 def _system_ram_gb() -> float:
     try:
         return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / _GIB

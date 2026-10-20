@@ -16,7 +16,7 @@ use crate::error::{Error, Result};
 use crate::node::{Hosted, Node};
 use crate::peer::PeerClient;
 use crate::row::Row;
-use crate::sync::{rows_since, seqs, take, Report, MAX_ROUNDS};
+use crate::sync::{rows_since, seqs, take_from, Report, DIFFERENT_LOG, MAX_ROUNDS};
 
 fn locked(node: &Mutex<Node>) -> Result<MutexGuard<'_, Node>> {
     node.lock().map_err(|_| Error::Damaged("node poisoned".into()))
@@ -83,12 +83,12 @@ pub fn sync_board(node: &Mutex<Node>, c: &mut PeerClient, id: &str) -> Result<Re
         let reply = c.call(&json!({"op": "pull", "board": id, "origin": origin, "vector": vector}))?;
         let pulled = with_board(node, &c.fingerprint, id, |h| {
             let remote = reply["origin"].as_str().unwrap_or("");
-            if !crate::row::valid_origin(remote) || !h.board.bind_peer(&c.board_fingerprint, remote)? {
-                return Err(Error::Denied("this device writes a different log than the one it presented before".into()));
+            if !crate::row::valid_origin(remote) || !h.board.peer_agrees(&c.board_fingerprint, remote) {
+                return Err(Error::Denied(DIFFERENT_LOG.into()));
             }
             h.board.acknowledge(&c.board_fingerprint, &tips(&reply, "trusted_vector")?)?;
             let logs: BTreeMap<String, Vec<Row>> = serde_json::from_value(reply["logs"].clone()).map_err(|_| Error::Invalid("logs map origins to rows".into()))?;
-            take(&mut h.board, &logs, &c.board_fingerprint, &mut report)
+            take_from(&mut h.board, &logs, &c.board_fingerprint, remote, &mut report)
         })?;
         report.pulled += pulled;
         let pushed = push_once(node, c, id, &origin, &mut report)?;
@@ -102,6 +102,7 @@ pub fn sync_board(node: &Mutex<Node>, c: &mut PeerClient, id: &str) -> Result<Re
 fn push_once(node: &Mutex<Node>, c: &mut PeerClient, id: &str, origin: &str, report: &mut Report) -> Result<usize> {
     let reply = c.call(&json!({"op": "vector", "board": id, "origin": origin}))?;
     let remote = tips(&reply, "vector")?;
+    let reply_origin = reply["origin"].as_str().unwrap_or("").to_string();
     let (logs, trusted) = with_board(node, &c.fingerprint, id, |h| {
         h.board.acknowledge(&c.board_fingerprint, &remote)?;
         Ok((rows_since(&h.board, &seqs(&remote)), h.board.trusted_vector()))
@@ -115,6 +116,15 @@ fn push_once(node: &Mutex<Node>, c: &mut PeerClient, id: &str, origin: &str, rep
         report.refused.extend(refused.iter().map(|(k, v)| (k.clone(), v.as_str().unwrap_or("").to_string())));
     }
     report.pushed += stored;
+    if stored > 0 {
+        let remote = reply_origin.as_str();
+        with_board(node, &c.fingerprint, id, |h| {
+            if !crate::row::valid_origin(remote) || !h.board.peer_agrees(&c.board_fingerprint, remote) {
+                return Err(Error::Denied(DIFFERENT_LOG.into()));
+            }
+            h.board.bind_peer(&c.board_fingerprint, remote).map(drop)
+        })?;
+    }
     Ok(stored)
 }
 

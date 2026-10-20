@@ -14,6 +14,7 @@ pub const MAX_ROWS: usize = 400;
 pub const MAX_ROUNDS: usize = 20;
 pub const MAX_BATCH_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_REQUEST_ORIGINS: usize = 16;
+pub const DIFFERENT_LOG: &str = "this device writes a different log than the one it presented before";
 
 /// What one exchange moved, and what was refused (origin to error code).
 #[derive(Debug, Default, PartialEq)]
@@ -70,6 +71,23 @@ pub fn take(board: &mut Board, logs: &BTreeMap<String, Vec<Row>>, from: &str, re
         }
     }
     Ok(stored)
+}
+
+/// Store what ``logs`` carries from the device ``from`` that writes ``origin``. The device is tied to the origin only when a row
+/// was stored, so a device that asked and moved nothing is not a device that holds a copy.
+pub fn take_from(board: &mut Board, logs: &BTreeMap<String, Vec<Row>>, from: &str, origin: &str, report: &mut Report) -> Result<usize> {
+    if !board.peer_agrees(from, origin) {
+        return Err(Error::Denied(DIFFERENT_LOG.into()));
+    }
+    let fresh = !board.has_peer(from);
+    if fresh {
+        board.bind_peer(from, origin)?;
+    }
+    let stored = take(board, logs, from, report);
+    if fresh && !matches!(stored, Ok(n) if n > 0) {
+        board.release_peer(from)?;
+    }
+    stored
 }
 
 fn pull(local: &mut Board, remote: &mut Board, report: &mut Report) -> Result<()> {
