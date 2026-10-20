@@ -8669,9 +8669,12 @@
    "tests": [
     "tests/test_dataset_routes.py",
     "tests/test_dataset_catalogue.py",
-    "tests/test_dataset_preview.py"
+    "tests/test_dataset_preview.py",
+    "tests/test_dataset_imports.py",
+    "tests/test_dataset_assets.py",
+    "tests/test_dataset_samples.py"
    ],
-   "note": "Fixed read-only catalogue and confined local-preview routes require a current authenticated session before and after work, reject extra or duplicate query fields, redact transport errors and never create resources or import authority. Catalogue payload tests use fixtures; this is not live Hugging Face or installed UI evidence."
+   "note": "Catalogue and confined previews require current session checks and reject duplicate or extra query fields. Explicit preview-row import binds one durable request to its run, scope and authorization epoch; typed resources recheck current ownership and reserve raw workspace and producer-artifact namespaces. Tests attack duplicate submission, revocation, copied bindings, atomic artifact promotion and aliases. Catalogue fixtures and HTTP/engine checks do not prove live Hugging Face or installed import UI."
   },
   {
    "id": "route:fleet/features_routes.py:/ui/features",
