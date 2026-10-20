@@ -110,7 +110,7 @@ class WorkflowEngine:
         requirements = getattr(self.adapters, "validate", lambda nodes: [])(local)
         if remote:
             requirements.extend(self.dispatcher.validate(remote, principal))
-        requirements.extend(getattr(self.adapters, "validate_resources", lambda selected: [])(graph))
+        requirements.extend(getattr(self.adapters, "validate_resources", lambda selected, context: [])(graph, {"principal": principal}))
         if requirements:
             raise ValueError(requirements)
         for node in graph["nodes"]:
