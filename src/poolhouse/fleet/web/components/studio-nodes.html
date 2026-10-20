@@ -163,6 +163,7 @@
                 editor.changed();
               },
             );
+          editor.decisionSetupControls(controls, node);
           card.append(controls);
           const execution = editor.executionSummary(node);
           if (execution) card.append(execution);

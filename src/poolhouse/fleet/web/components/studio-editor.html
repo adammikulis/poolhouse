@@ -158,6 +158,7 @@
             };
             box.append(E("label", {}, "Choose " + name, select));
           }
+          this.decisionSetupControls(box, node);
           this.sweepControls(box, node, spec);
           this.branchControls(box, node);
           const links = E("div", { class: "studio-links" });

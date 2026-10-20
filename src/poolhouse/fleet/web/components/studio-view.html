@@ -203,6 +203,7 @@
             },
           }));
           this.resources = await S.api("/resources");
+          this.perform(() => this.attachDecisionSetup());
           this.workflows = workflows.workflows || [];
           this.workflowList();
           if (!this.loaded) {
@@ -389,6 +390,7 @@
     S.installEditor(StudioView.prototype);
     S.installSweeps(StudioView.prototype);
     S.installTargets(StudioView.prototype);
+    S.installSetup(StudioView.prototype);
     S.installRecords(StudioView.prototype);
     S.installBranches(StudioView.prototype);
     S.installGroups(StudioView.prototype);
