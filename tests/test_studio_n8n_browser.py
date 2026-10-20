@@ -62,6 +62,7 @@ def test_paste_preview_draft_undo_save_and_selected_run_blocker(import_page):
     assert 'omit-' not in json.dumps(saved) and 'private.invalid' not in json.dumps(saved)
     page.locator('.studio-node').filter(has=page.locator('strong', has_text='Start')).focus()
     page.keyboard.press('Enter')
+    page.get_by_role('tab', name='Runs and Results', exact=True).click()
     page.get_by_role('button', name='Run selected outputs', exact=True).click()
     expect(page.locator('.studio-status')).to_contain_text('Unknown node version: import.unsupported')
     _, runs, _ = app.call('/ui/studio/runs', cookie=cookie)
