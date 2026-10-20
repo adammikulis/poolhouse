@@ -181,7 +181,7 @@ class DecisionResidents:
             raise ValueError("The decision memory reservation is below its supported architecture estimate.")
         self.broker.table.budget(admission.budget_mb())
         got = self.broker.table.acquire([leasetable.memory(math.ceil(model.memory_bytes / admission.MIB))],
-                  leasetable.Terms(tag="decision.resident:" + model.identity, pid=os.getpid(),
+                  leasetable.Terms(tag=fingerprint({'lease': 'decision.resident', 'model': model.identity}), pid=os.getpid(),
                                    ttl_s=admission.KEEP_S, wait=True))
         process = None
         ready = False
