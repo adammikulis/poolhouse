@@ -29,7 +29,7 @@ def test_startup_lookup_never_starts_a_broker(monkeypatch):
     assert calls == [('startup', {'port': 32109, 'start': False})]
 
 
-pytest_plugins = ['serve_node']
+pytest_plugins = ['serve_node', 'native_server_kit']
 
 
 def arguments(spec, binary):
@@ -40,46 +40,6 @@ def arguments(spec, binary):
 @pytest.fixture(autouse=True)
 def metadata_verifier(monkeypatch):
     monkeypatch.setattr(startup, 'verify_libraries', lambda *_: None)
-
-
-@pytest.fixture(scope='module')
-def native_executable(tmp_path_factory):
-    if sys.platform != 'darwin' or not shutil.which('cc'):
-        pytest.skip('native Mach-O receipt fixture requires the macOS compiler')
-    root = tmp_path_factory.mktemp('native-receipt')
-    source = root / 'fixture.c'
-    source.write_text(r'''#include <arpa/inet.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <unistd.h>
-int main(int argc, char **argv) {
-    int port=0;
-    for(int i=1;i<argc;i++) if(!strcmp(argv[i],"--help") || !strcmp(argv[i],"--version")) {
-        puts("usage: fixture"); return 0;
-    }
-    for(int i=1;i+1<argc;i++) if(!strcmp(argv[i],"--port")) port=atoi(argv[i+1]);
-    int s=socket(AF_INET,SOCK_STREAM,0), yes=1;
-    setsockopt(s,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(yes));
-    struct sockaddr_in a={0}; a.sin_family=AF_INET; a.sin_addr.s_addr=htonl(INADDR_LOOPBACK);
-    a.sin_port=htons(port);
-    if(bind(s,(struct sockaddr *)&a,sizeof(a)) || listen(s,8)) return 2;
-    socklen_t n=sizeof(a); getsockname(s,(struct sockaddr *)&a,&n);
-    printf("%d\n",ntohs(a.sin_port)); fflush(stdout);
-    for(;;) {
-        int c=accept(s,NULL,NULL); if(c<0) return 3;
-        char buffer[4096]; read(c,buffer,sizeof(buffer));
-        const char *body="{\"data\":[],\"status\":\"ok\"}";
-        dprintf(c,"HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nContent-Length: %zu\r\n\r\n%s",strlen(body),body);
-        close(c);
-    }
-}
-''')
-    binary = root / 'fixture-server'
-    done = subprocess.run(['cc', str(source), '-o', str(binary)], capture_output=True, text=True, timeout=20)
-    assert done.returncode == 0, done.stderr
-    return binary
 
 
 @pytest.fixture
