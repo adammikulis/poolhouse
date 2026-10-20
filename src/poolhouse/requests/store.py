@@ -43,7 +43,7 @@ def failures() -> tuple[type[BaseException], ...]:
     module = sys.modules.get("cryptography.exceptions")
     return (*_PLAIN_FAILURES, module.InvalidTag) if module is not None else _PLAIN_FAILURES
 PURPOSE = "requests"
-_AAD = b"ml-stack/requests/v1"
+_AAD = b"poolhouse/requests/v1"
 _MAGIC = b"MLR1"
 SCHEMA_VERSION = 1
 DAY = 86400.0
