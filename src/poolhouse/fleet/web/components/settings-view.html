@@ -175,18 +175,19 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
             "your computer will ask for your password"),
           this.radio("autostart", "manual", "Only when I open it", "")));
 
-      const output = el("input", {type:"number", min:"1", step:"1", "aria-label":"Default maximum output tokens"});
-      output.value = cur.chat_max_output_tokens ?? "";
+      const output = el("output-token-slider");
+      output.configure({label:"Default maximum output tokens", context:this.pick.context});
+      output.value = cur.chat_max_output_tokens;
       output.oninput = () => { this.pick.chat_max_output_tokens = output.value === "" ? null : Number(output.value); };
       this.querySelector("#settings-chatting").replaceChildren(
         el("h2", {}, "Model defaults"),
         el("label", {}, "Default maximum output tokens", output),
-        el("p", {class:"hint"}, "Used by new conversations. Leave blank for no output cap. Existing conversations keep their selected limits. Reasoning effort is configured separately."),
+        el("p", {class:"hint"}, "Used by new conversations. Select 0 for no output cap. Existing conversations keep their selected limits. Reasoning effort is configured separately."),
         el("h3", {}, "Download sources"),
         this.radio("download_sources", "internet", "Internet only", "Skip LAN model transfers."),
         this.radio("download_sources", "lan", "LAN only", "No Internet fallback for models or MTP heads."),
         this.radio("download_sources", "both", "Both", "Try your Pool first, then the Internet."),
-        M.contextPicker(cur.context || 8192, (n) => { this.pick.context = n; }),
+        M.contextPicker(cur.context || 8192, (n) => { this.pick.context = n; output.configure({context:n}); }),
         el("p", {class:"hint"}, "Serving context controls the model memory window. Coding conversations can select automatic context separately."));
 
       const status = el("div", { class: "hint", style: "margin-top:10px" },
