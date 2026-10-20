@@ -191,7 +191,7 @@ class UI:
             self.settings.setup_done = True
             if self.settings_path is not None:
                 self.settings.save(self.settings_path)
-        return self.state()
+        return {"ok": True, **self.state()}
 
     def leave(self, group: str) -> list[Any]:
         """Drop a pool and its stored passphrase; the pools left."""
