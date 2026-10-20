@@ -17,7 +17,8 @@ from poolhouse import (
     runtime_unmerged,
     worktreerules,
 )
-from poolhouse.board import place
+from poolhouse.board import place, session as board_session
+from poolhouse.board.client import Denied
 from poolhouse.fleet import runtime_wheel
 from poolhouse.workspace import landing
 
@@ -123,6 +124,41 @@ def test_a_helper_cannot_use_lead_approval(reviewed, monkeypatch):
     monkeypatch.setenv(authority.AGENT_ENV, member.name)
     with pytest.raises(runtime_source.DeployError, match="live lead"):
         runtime_unmerged.approve(project.root, sha, branch)
+
+
+def test_a_retired_lead_cannot_use_its_own_approval_or_ask_for_one(reviewed):
+    project, node, lead, _, sha, branch = reviewed
+    granted = approval(reviewed)
+    node.session(lead).retire()
+    with pytest.raises(runtime_source.DeployError, match="unavailable"):
+        runtime_source.admit(project.root, sha, allow_unmerged=granted)
+    with pytest.raises(runtime_source.DeployError, match="unavailable"):
+        runtime_unmerged.approve(project.root, sha, branch)
+
+
+def test_a_session_other_than_the_named_actor_cannot_use_the_approval(reviewed, monkeypatch):
+    project, node, lead, _, sha, branch = reviewed
+    granted = approval(reviewed)
+    node.member("stand-in")
+    monkeypatch.setenv(board_session.SUBAGENT_ENV, "stand-in")
+    monkeypatch.setenv(authority.AGENT_ENV, lead.name)
+    with pytest.raises(runtime_source.DeployError, match="live lead"):
+        runtime_unmerged.validate(granted, project.root, sha)
+    with pytest.raises(runtime_source.DeployError, match="live lead"):
+        runtime_unmerged.approve(project.root, sha, branch)
+
+
+def test_a_session_started_by_the_claim_holder_does_not_make_a_review_stand(reviewed):
+    project, node, _, _, _, _ = reviewed
+    author = node.member("source-author")
+    helper = node.member("author-helper", parent=author)
+    project.branch("helped", {"helped.py": "VALUE = 4\n"})
+    sha = git(project.root, "rev-parse", "helped")
+    node.session(author).claim("branch", "helped")
+    with pytest.raises(Denied):
+        landing.review(node.session(helper), "helped", sha, "accept")
+    with pytest.raises(runtime_source.DeployError, match="standing independent"):
+        runtime_unmerged.approve(project.root, sha, "helped")
 
 
 def test_offline_node_cannot_reuse_approval(reviewed):

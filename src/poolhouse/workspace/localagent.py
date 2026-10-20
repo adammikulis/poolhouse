@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import home, node_launch, roles
-from poolhouse.board import credentials, grants, person
+from poolhouse.board import credentials, grants
 from poolhouse.board.client import Client
 from poolhouse.board.names import valid_id, valid_name
 from poolhouse.board.session import Agent as Registered, Session
@@ -204,7 +204,7 @@ def status_of(base: Path, name: str) -> dict[str, Any]:
 def is_person(s: Session) -> bool:
     """Whether ``s`` is a session of the person's own screen or terminal."""
     me = next((a for a in s.agents() if a.name == s.name), None)
-    return bool(me and not me.parent and me.harness == person.HARNESS and me.model == person.MODEL)
+    return bool(me and not me.parent and me.person)
 
 
 def manages(s: Session, agent: Agent) -> bool:
@@ -230,7 +230,7 @@ def _giver(agent: Agent, known: dict[str, Registered], lead: Callable[[], frozen
         if who is None or who.retired:
             return ""
         reason = ""
-        if not who.parent and who.harness == person.HARNESS and who.model == person.MODEL:
+        if not who.parent and who.person:
             reason = "the person"
         elif name in agent.orders_from:
             reason = f"{name}, whom the person named"

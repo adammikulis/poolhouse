@@ -1,7 +1,8 @@
 """Reviews of commits, seen from a session.
 
 A review is a board entry the node stamps with the reviewer's name and model. The node answers which reviews of a
-commit stand for a caller (those of this device, none from the caller). This module holds which stamped standing counts.
+commit stand for a caller (those of this device, none from the caller and, for a named branch or worktree, none from a
+session that ever held its claim or was started by one that did). This module holds which stamped standing counts.
 """
 
 from __future__ import annotations
@@ -17,13 +18,13 @@ CAUSES = ("revoked", "forged")
 
 
 def review(s: Session, branch: str, sha: str, verdict: str) -> dict[str, Any]:
-    """Record a review of exactly ``sha`` under ``branch``."""
+    """Record a review of exactly ``sha`` under ``branch``; a session that held the branch's claim, or one it started, cannot."""
     return dict(s.call("land_review", branch=branch, sha=sha, verdict=verdict))
 
 
-def accepts(s: Session, sha: str) -> dict[str, Any]:
-    """The reviews of ``sha`` under any branch name that stand for the caller."""
-    return dict(s.call("land_accepts", sha=sha))
+def accepts(s: Session, sha: str, branch: str = "", worktree: str = "") -> dict[str, Any]:
+    """The reviews of ``sha`` under any branch name that stand for the caller, with the creators of record of ``branch`` and ``worktree``."""
+    return dict(s.call("land_accepts", sha=sha, branch=branch, worktree=worktree))
 
 
 def trust(s: Session, device: str, trusted: bool = True) -> dict[str, Any]:

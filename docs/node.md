@@ -181,10 +181,11 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `hello` | | | `{node, version, pid, fingerprint, device (the certificate fingerprint grants and approvals name), build, build_seq, wire}` |
 | `lineage` | | | `{lineage}`: the processes the node reads for the one asking, from it up to the shell of its terminal, each `{pid, start}`; the last is the `anchor` a person signs for |
 | `register` | board | `model, harness, session` (token = parent, or the session's own token) | `{name, token, created, parent, origin}`; a main session already registered is answered only to its lineage, and the token it gets is bound to the lineage it registers from |
+| `register_person` | board | `session` (token = none, or the person's own session's token) | as `register`, for the person's own main session (harness `poolhouse-ui`, model `person`), which the node marks `person`; `register` and `whoami` refuse the harness `poolhouse-ui` |
 | `rebind` | board | `harness, session, at_ms, nonce, anchor, by, sig` (a person key's signature) | `{name, moved, tokens_ended}` |
 | `whoami` | board, token | `model, harness` (claim what you run on) | `{name, board, target, identity}` |
 | `session_lookup` | board | `harness, session` | `{name}` (denied when none is registered) |
-| `agents` | board, token | `retired` | `{agents: [{name, parent, family, model, model_state, harness, retired, retired_reason, seen_ms, idle}]}`; retires the sessions idle for a day first |
+| `agents` | board, token | `retired` | `{agents: [{name, parent, family, model, model_state, harness, retired, retired_reason, person, seen_ms, idle}]}`; retires the sessions idle for a day first |
 | `retire` | board, token | `target` (empty = yourself), `reason` (`done`, the default, `revoked` or `forged`) | `{name, retired, reason, by, tokens_revoked, leases_released, subagents_retired}` |
 | `post` | board, token | `kind` (message or note), `idem`, `fields` | `{id, seq, sender, status}` |
 | `read` | board, token | `since` (cursor map), `kind`, `channel`, `by` (sender), `limit`, `inbox` (direct messages and what the caller's subscriptions and mentions send to its inbox), `digest` (what its digest subscriptions collected), `mentions`, `with`, `thread` (a message and every reply under it), `head` (no entries: the cursor of now), `files` (file messages only) | `{entries, cursor}` |
@@ -330,8 +331,10 @@ never runs `verify_cmd`: a client does and records `exit` and the SHA-256 of the
 **Landing reviews** are the `landing` entries of the board (channel `#landing`): a `review` names a plain `branch` (never
 `main` or `master`), a full 40-character `sha`, a `verdict` (`accept` or `reject`) and the `standing` the node stamps on it
 (the sender's name, model and model state at that moment, never taken from the caller). `land_review` writes one for the
-live session behind the token. `land_accepts` (`sha`) answers the push hook and the unmerged runtime deployment: the last review of
-each reviewer of this device for exactly that commit under any branch name, without the caller. Entries of the
+live session behind the token. `land_accepts` (`sha`, and optionally `branch` and `worktree`) answers the push hook and the unmerged runtime deployment: the last review of
+each reviewer of this device for exactly that commit under any branch name, without the caller and, given a branch or worktree,
+without any session that ever held its claim or was started by one (through any number of subagents); a session of that kind
+cannot write a review of the branch either, and the creators of record come back with the answer. Entries of the
 retired landing queue (`request`, `cancel`, `pause`, `resume`, `state`, `beat`, and reviews of a request) fold and count
 for nothing.
 `landing.rejected` and `landing.standing` drop a reviewer retired as `revoked` or `forged`. No model identifier decides who may land, review or

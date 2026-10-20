@@ -34,7 +34,7 @@ fn text<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
 
 fn show(name: &str, i: &Ident, idle: bool) -> Value {
     json!({"name": name, "parent": i.parent, "family": i.family, "model": i.model, "model_state": i.model_state,
-           "harness": i.harness, "retired": i.retired, "retired_reason": i.retired_reason, "seen_ms": i.seen_ms, "idle": idle})
+           "harness": i.harness, "retired": i.retired, "retired_reason": i.retired_reason, "person": i.person, "seen_ms": i.seen_ms, "idle": idle})
 }
 
 /// Whether ``i`` is idle: not retired and neither heard from lately nor holding a live lease.

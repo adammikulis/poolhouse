@@ -42,7 +42,7 @@ def validate(approval: Approval, primary: Path, commit: str) -> None:
             raise DeployError("reviewed runtime deployment needs a live lead agent")
         authority.require("runtime.deploy", f"runtime deploy {commit} from {primary}")
         authority.require(GATE, f"runtime deploy {commit} from {primary} review {approval.branch}")
-        if landing.standing(own, landing.accepts(own, commit)):
+        if landing.standing(own, landing.accepts(own, commit, approval.branch)):
             raise DeployError("the runtime commit has no standing independent approval")
         if git(primary, "rev-parse", "--verify", f"refs/heads/{approval.branch}") != commit:
             raise DeployError("the reviewed runtime branch changed")

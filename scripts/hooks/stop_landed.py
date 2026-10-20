@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import NamedTuple
 
+import hook_state
 import workspace_hook
 
 from poolhouse import devbranch, trees
@@ -104,7 +105,7 @@ def where(held: list[Held]) -> str:
 
 def counter(agent: str) -> Path:
     """The file that counts the refusals of one subagent."""
-    return workspace_hook.state_dir() / "stop-refusals" / hashlib.sha256(agent.encode()).hexdigest()[:24]
+    return hook_state.state_dir() / "stop-refusals" / hashlib.sha256(agent.encode()).hexdigest()[:24]
 
 
 def refused(agent: str) -> int:

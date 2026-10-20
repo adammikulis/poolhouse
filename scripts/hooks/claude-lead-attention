@@ -7,6 +7,7 @@ import json
 import os
 import time
 
+import hook_state
 import stuck_verdict
 import tree_watch
 import workspace_hook
@@ -17,7 +18,7 @@ EVERY_S = 600.0
 def due(session: str, now: float) -> bool:
     """Whether the interval since this session was last checked has passed; records the check."""
     every = float(os.environ.get("POOLHOUSE_ATTENTION_EVERY_S") or EVERY_S)
-    stamp = workspace_hook.state_dir() / "attention" / (session if session.replace("-", "").isalnum() else "none")
+    stamp = hook_state.state_dir() / "attention" / (session if session.replace("-", "").isalnum() else "none")
     try:
         if now - float(stamp.read_text()) < every:
             return False
@@ -37,7 +38,7 @@ def main() -> int:
         return 0
     if not due(str(event.get("session_id") or "none"), time.time()):
         return 0
-    stuck = stuck_verdict.check(workspace_hook.state_dir())
+    stuck = stuck_verdict.check(hook_state.state_dir())
     environment = workspace_hook.session_environment(event, "Attention")
     owed = orphans = ""
     if environment is not None:

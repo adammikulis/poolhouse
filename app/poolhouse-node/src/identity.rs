@@ -62,6 +62,9 @@ pub struct Ident {
     /// Why a retired session ended: empty or ``done`` for an ordinary end, ``revoked`` or ``forged`` for a cause.
     #[serde(default)]
     pub retired_reason: String,
+    /// Whether this is the person's own session, made by `register_person`; no claim sets it and no other device's entry carries it.
+    #[serde(default)]
+    pub person: bool,
     /// Wall milliseconds of the last request this session made (written at most every 30 s).
     pub seen_ms: u64,
     /// The processes the session was registered from (`lineage`); empty when they were not known.
@@ -70,6 +73,15 @@ pub struct Ident {
     /// How far the session has read its inbox: the furthest cursor it presented when it read it, by origin.
     #[serde(default)]
     pub inbox_read: BTreeMap<String, u64>,
+}
+
+/// The harness and model of the person's own session, set by `register_person` and by no other call.
+pub const PERSON_HARNESS: &str = "poolhouse-ui";
+pub const PERSON_MODEL: &str = "person";
+
+/// Whether ``harness`` (as `clean` keeps it) names the person's own session.
+pub fn is_person_harness(harness: &str) -> bool {
+    harness.eq_ignore_ascii_case(PERSON_HARNESS)
 }
 
 /// The most characters of a model id or harness name that are kept.
@@ -133,6 +145,15 @@ impl Registry {
         &self.names
     }
 
+    /// ``name`` and every session above it by parent links, nearest first; a name the registry does not hold is alone.
+    pub fn line_of(&self, name: &str) -> Vec<String> {
+        let mut line = vec![name.to_string()];
+        while let Some(parent) = self.names.get(line[line.len() - 1].as_str()).map(|i| i.parent.as_str()).filter(|p| !p.is_empty() && line.len() <= self.names.len()) {
+            line.push(parent.to_string());
+        }
+        line
+    }
+
     /// What the share of a log is kept under for ``name``: the process tree its main session was registered from, or that main session
     /// alone when no tree is known.
     pub fn tree(&self, name: &str) -> String {
@@ -163,10 +184,18 @@ impl Registry {
         self.names.iter().find(|(_, i)| i.digest == full).map(|(n, _)| n.as_str())
     }
 
-    /// Record what a session says it runs on; a verified model is never lowered to a claim.
+    /// Record what a session says it runs on; a verified model is never lowered to a claim. The person's session keeps the harness and
+    /// model the node gave it, and no other session takes that harness.
     pub fn claim_model(&mut self, name: &str, model: &str, harness: &str) -> Result<bool> {
         let (model, harness) = (clean_model(model)?, clean(harness)?);
         let ident = self.names.get_mut(name).ok_or_else(|| Error::Denied("no such session".into()))?;
+        if ident.person {
+            if (!model.is_empty() && model != ident.model) || (!harness.is_empty() && harness != ident.harness) {
+                return Err(Error::Denied("the person's session is named by the node".into()));
+            }
+        } else if is_person_harness(&harness) {
+            return Err(Error::Denied(format!("the harness {PERSON_HARNESS} is the person's own session, which only the person's own call registers")));
+        }
         let new_harness = if harness.is_empty() { ident.harness.clone() } else { harness };
         let (new, state) = match (model.is_empty(), ident.model_state) {
             (true, state) => (ident.model.clone(), state),
@@ -188,6 +217,16 @@ impl Registry {
         let ident = self.names.get_mut(name).ok_or_else(|| Error::Denied("no such session".into()))?;
         (ident.model, ident.model_state) = (model, ModelState::Verified);
         self.save()
+    }
+
+    /// Mark ``name`` as the person's own session; only `Node::register_person` calls this.
+    pub fn mark_person(&mut self, name: &str) -> Result<()> {
+        let ident = self.names.get_mut(name).ok_or_else(|| Error::Denied("no such session".into()))?;
+        if !ident.person {
+            ident.person = true;
+            self.save()?;
+        }
+        Ok(())
     }
 
     /// Mark ``name`` retired for ``reason`` (``done``, ``revoked`` or ``forged``); true when it was not already.
@@ -272,7 +311,7 @@ impl Registry {
         let state = if model.is_empty() { ModelState::Unknown } else { state };
         self.names.insert(name.clone(), Ident {
             digest: full, family: word.into(), parent: parent.into(), model, model_state: state, harness: clean(harness)?,
-            retired: false, retired_reason: String::new(), seen_ms: now_ms, lineage: lineage.to_vec(), inbox_read: BTreeMap::new(),
+            retired: false, retired_reason: String::new(), person: false, seen_ms: now_ms, lineage: lineage.to_vec(), inbox_read: BTreeMap::new(),
         });
         self.save()?;
         Ok((name, true))

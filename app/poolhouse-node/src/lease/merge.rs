@@ -91,3 +91,15 @@ pub fn view(entries: &[Entry]) -> View {
 pub fn foreign_holds(board: &str, entries: &[Entry]) -> Foreign {
     view(entries).exclusive.into_iter().filter(|((scope, _), h)| scope == "pool" && h.foreign).map(|((_, key), h)| ((board.to_string(), key), h.holder)).collect()
 }
+
+/// The sessions of this device that ever acquired one of the resources ``keys`` (a key is `claim:kind:name`), from the board's lease entries.
+pub fn ever_held(entries: &[Entry], keys: &[String]) -> Vec<String> {
+    let mut who: Vec<String> = entries.iter()
+        .filter(|e| e.kind == Kind::Lease && !e.foreign && e.fields.get("action").and_then(Value::as_str) == Some("acquire"))
+        .filter(|e| lines(&e.fields).iter().any(|l| l.split('|').next().is_some_and(|k| keys.iter().any(|w| w == k))))
+        .map(|e| e.sender.clone())
+        .collect();
+    who.sort();
+    who.dedup();
+    who
+}
