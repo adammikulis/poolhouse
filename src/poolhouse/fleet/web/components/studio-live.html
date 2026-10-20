@@ -19,7 +19,7 @@
         E('p', {}, 'Each record runs the saved workflow. Live output is local unless you explicitly configure a registered destination.'),
         E('label', {}, 'Source', this.liveSource), this.liveSourceInfo,
         E('label', {}, 'Record input', this.liveInput), this.setupDeliveries(),
-        button('Create paused stream', () => this.createLive()),
+        button('Create paused stream', () => this.createLive()), this.setupWebhook(),
         E('details', {}, E('summary', {}, 'Watch a file or folder'),
           E('p', {}, 'Uploaded files watch the managed copy. In the installed app, choose an original file or folder to watch it directly.'),
           E('label', {}, 'Uploaded file or folder', managed),
@@ -58,7 +58,7 @@
         this.liveSource.replaceChildren(); this.liveSubscriptions.replaceChildren();
         this.liveResults.replaceChildren(); this.livePreview.hidden = true;
         this.liveManaged.replaceChildren(); this.livePending?.clear(); this.livePickKeys?.clear();
-        this.liveRenderActions(); this.clearDeliveries();
+        this.liveRenderActions(); this.clearDeliveries(); this.clearWebhook();
       }
     },
     async loadLive() {
@@ -67,18 +67,7 @@
       const [sources, subscriptions, destinations] = await Promise.all([S.api('/sources'), S.api('/subscriptions'), S.api('/destinations')]);
       if (generation !== this.liveGeneration || this.liveBox.hidden || this.host.hidden) return;
       this.updateDestinations(destinations.destinations);
-      const sourceId = this.liveSource.value;
-      this.liveSources = sources.sources || [];
-      this.liveSource.replaceChildren(E('option', {value: ''}, 'Choose a source…'),
-        ...this.liveSources.map((source) => E('option', {value: source.id},
-          source.label + (source.origin === 'native' ? ' · original' : source.origin === 'managed' ? ' · uploaded copy' : source.kind === 'examples' ? ' · synthetic examples' : ' · ' + source.kind))));
-      if (this.liveSources.some((s) => s.id === sourceId)) this.liveSource.value = sourceId;
-      else {
-        const title = this.querySelector('#studio-title').value;
-        const template = this.templates.find((t) => t.title === title);
-        this.liveSource.value = this.liveSources.find((s) => s.template_id === template?.id)?.id || '';
-      }
-      this.liveSourceDetails(); this.liveInputOptions();
+      this.updateWebhookProviders(sources.providers); this.updateLiveSources(sources.sources); this.liveInputOptions();
       this.liveManaged.replaceChildren(E('option', {value: ''}, 'Choose an uploaded file or folder…'),
         ...(this.resources?.datasets || []).map((r) => E('option', {value: r.id}, r.title || r.id)));
       this.liveList = subscriptions.subscriptions || [];
@@ -88,6 +77,20 @@
           (this.workflows.find((w) => w.id === s.workflow_id)?.title || 'Workflow') + ' · revision ' + s.workflow_revision + ' · ' + s.state + ' · ' + s.id.slice(0, 8))));
       const next = this.liveList.find((s) => s.id === id) || this.liveList.find((s) => s.workflow_id === this.workflowId);
       this.selectLive(next?.id || '');
+    },
+    updateLiveSources(rows) {
+      const sourceId = this.liveSource.value;
+      this.liveSources = rows || [];
+      this.liveSource.replaceChildren(E('option', {value: ''}, 'Choose a source…'),
+        ...this.liveSources.map((source) => E('option', {value: source.id},
+          source.label + (source.origin === 'native' ? ' · original' : source.origin === 'managed' ? ' · uploaded copy' : source.kind === 'examples' ? ' · synthetic examples' : ' · ' + source.kind))));
+      if (this.liveSources.some((s) => s.id === sourceId)) this.liveSource.value = sourceId;
+      else {
+        const title = this.querySelector('#studio-title').value;
+        const template = this.templates.find((t) => t.title === title);
+        this.liveSource.value = this.liveSources.find((s) => s.template_id === template?.id)?.id || '';
+      }
+      this.liveSourceDetails();
     },
     liveInputOptions() {
       const old = this.liveInput.value, inputs = [], root = this.rootGraph();
@@ -111,7 +114,7 @@
       this.liveSourceInfo.replaceChildren();
       if (!source) return;
       this.liveSourceInfo.append(E('p', {}, source.available === false ? 'Unavailable: ' + (source.requirements || []).join('; ') :
-        source.origin === 'native' ? 'Watches the original selected file or folder.' : source.origin === 'managed' ? 'Watches the uploaded managed copy.' : source.kind === 'examples' ? 'Registered synthetic records; send one explicitly after starting.' : 'Source provider: ' + source.kind));
+        source.origin === 'native' ? 'Watches the original selected file or folder.' : source.origin === 'managed' ? 'Watches the uploaded managed copy.' : source.kind === 'examples' ? 'Registered synthetic records; send one explicitly after starting.' : source.provider === 'local-synthetic' ? 'Built-in test sender · local synthetic. No external account is connected.' : 'Source provider: ' + source.kind));
       if (source.requirements?.length && source.available !== false) this.liveSourceInfo.append(E('p', {}, source.requirements.join('; ')));
     },
     async liveMutation(path, body, method = 'POST') {
@@ -130,7 +133,7 @@
             error.message = 'This destination changed elsewhere. Review its current revision, then choose the action again.';
           } else if (path === '/subscriptions' && body.destinations?.some((item) => item.kind === 'webhook')) {
             await this.refreshDestinations();
-          } else {
+          } else if (path !== '/sources') {
             if (this.liveSub) this.liveSub = (await S.api('/subscriptions/' + encodeURIComponent(this.liveSub.id))).subscription;
             error.message = 'This stream changed elsewhere. Review its current state, then choose the action again.';
           }
@@ -213,6 +216,7 @@
           await this.pollLive();
         }, sub.state !== 'active');
       }
+      this.webhookActions(source, sub, action, sampleValue, sampleFocused);
       const counts = sub.counts || {};
       if (focusKey) [...this.liveActions.querySelectorAll('[data-live-action]')].find((button) => button.dataset.liveAction === focusKey)?.focus({preventScroll: true});
       this.liveActions.append(E('p', {}, ['queued', 'running', 'done', 'failed', 'interrupted'].map((key) => key + ': ' + (counts[key] || 0)).join(' · ')));
