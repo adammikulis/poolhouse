@@ -24,7 +24,6 @@ from test_onboard_cli import env_for, fleet as run_fleet, read_document, spawn, 
 from poolhouse import hub, sentinel
 from poolhouse.fleet import tls
 from poolhouse.fleet.onboard import memberfirst, memberlearn, modelstore, pake
-from poolhouse.fleet.onboard.human import mint
 from poolhouse.fleet.onboard.join_code import (
     API,
     Grant,
@@ -42,6 +41,7 @@ from poolhouse.hub import members as hub_members, origins
 from poolhouse.hub.memberbook import MemberBook
 from poolhouse.hub.places import Place
 from poolhouse.safenames import Unsafe
+from poolhouse.sentinel.human import mint
 from poolhouse.sentinel.store import Holding
 from tests.pool_support import join as pool_join
 

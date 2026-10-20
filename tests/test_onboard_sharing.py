@@ -9,9 +9,9 @@ from onboard_support import Clock, Recorder, info, requests
 
 from poolhouse import macauth
 from poolhouse.fleet.onboard import manifest as mf, sharing, transfer
-from poolhouse.fleet.onboard.human import HumanRequired, mint
 from poolhouse.fleet.onboard.requests import Requests
 from poolhouse.fleet.onboard.sharing import Licences
+from poolhouse.sentinel.human import HumanRequired, mint
 
 CHUNK = 65536
 PAYLOAD = os.urandom(CHUNK * 2 + 17)

@@ -27,9 +27,9 @@ from poolhouse import keystore, legacy, person
 from poolhouse.files import read_json, write_json, writing
 from poolhouse.log import warn
 from poolhouse.platform import private_file
+from poolhouse.sentinel.human import HumanGrant
 
 from .events import BUS, Bus
-from .human import HumanGrant
 from .manifest import VALID_S, Carried, Entry, Signer
 
 __all__ = ["UNLOCK_ENV", "ConfirmedKeys", "KeyStoreError", "SigningKeys", "open_file", "seal_file"]
