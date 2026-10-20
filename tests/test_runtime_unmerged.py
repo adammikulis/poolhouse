@@ -3,7 +3,7 @@
 from dataclasses import replace
 
 import pytest
-from land_support import Project, git
+from git_world import Project, git
 
 from poolhouse import (
     authority,
@@ -34,12 +34,10 @@ def reviewed(tmp_path, monkeypatch, workspace_node):
     monkeypatch.delenv("POOLHOUSE_BOARD", raising=False)
     board = place.resolve(workspace_node.client, project.root)
     workspace_node.board = board
-    author = workspace_node.member("source-author")
     reviewer = workspace_node.member("source-reviewer")
     lead = workspace_node.member("runtime-owner")
     project.branch("reviewed-source", {"extra.py": "VALUE = 2\n"})
     sha = git(project.root, "rev-parse", "reviewed-source")
-    workspace_node.session(author).claim("branch", "reviewed-source")
     landing.review(workspace_node.session(reviewer), "reviewed-source", sha, "accept")
     monkeypatch.delenv(authority.FLOOR_ENV, raising=False)
     monkeypatch.setenv("CLAUDECODE", "1")
@@ -103,12 +101,20 @@ def test_branch_movement_invalidates_approval(reviewed):
 
 
 def test_a_branch_with_no_independent_accept_is_not_approved(reviewed):
-    project, node, _, _, _, _ = reviewed
-    node.session(node.members["source-author"]).claim("branch", "unreviewed")
+    project, _, _, _, _, _ = reviewed
     project.branch("unreviewed", {"other.py": "VALUE = 3\n"})
     sha = git(project.root, "rev-parse", "unreviewed")
     with pytest.raises(runtime_source.DeployError, match="standing independent"):
         runtime_unmerged.approve(project.root, sha, "unreviewed")
+
+
+def test_the_deploying_lead_cannot_accept_its_own_commit(reviewed):
+    project, node, lead, _, _, _ = reviewed
+    project.branch("own-work", {"mine.py": "VALUE = 4\n"})
+    sha = git(project.root, "rev-parse", "own-work")
+    landing.review(node.session(lead), "own-work", sha, "accept")
+    with pytest.raises(runtime_source.DeployError, match="standing independent"):
+        runtime_unmerged.approve(project.root, sha, "own-work")
 
 
 def test_helper_and_lowest_tier_cannot_use_lead_approval(reviewed, monkeypatch):
@@ -202,7 +208,7 @@ def test_reviewed_archive_ignores_replacements_attributes_config_and_path(review
     command = hostile / "git"
     command.write_text(f"#!/bin/sh\ntouch {marker}\nexit 1\n")
     command.chmod(0o700)
-    expected_lock = worktreerules.landing_lock(project.root)
+    expected_lock = worktreerules.cutover_lock(project.root)
     monkeypatch.setenv("PATH", str(hostile))
     monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
     monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.fsmonitor")

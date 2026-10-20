@@ -6,7 +6,7 @@ against development `34e5e3aef` (the files it cites are unchanged since `f803ba4
 draft (2026-10-16) is answered in "Review round 1" and its second round, the last fix round, in "Review round 2"; a finding
 that survives round 2 is the owner's decision. The attack table is the author's pass and does not count: AGENTS.md section 1
 still requires a different agent to try to break this revision before it is built, and section 4 requires that agent's
-exact-SHA `land-review` accept before the build lands.
+exact-SHA `land-review` accept before the build is pushed.
 
 ## What changes
 

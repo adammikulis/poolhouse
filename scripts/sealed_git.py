@@ -1,8 +1,7 @@
-"""Git queries and worktree helpers for the lander and the push check: ``git`` runs in the checkout, ``sealed`` reads commits and trees as stored."""
+"""Git queries and worktree helpers for the push check and the scripts that follow it: ``git`` runs in the checkout, ``sealed`` reads commits and trees as stored."""
 
 from __future__ import annotations
 
-import ast
 import atexit
 import functools
 import os
@@ -10,7 +9,6 @@ import re
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -20,7 +18,6 @@ REDIRECTS = re.compile(
     r"|SHALLOW_FILE|CONFIG_COUNT|CONFIG_KEY_\d+|CONFIG_VALUE_\d+|CONFIG_PARAMETERS)$")
 STORED = {"GIT_NO_REPLACE_OBJECTS": "1", "GIT_GRAFT_FILE": os.devnull}
 HEX = re.compile(r"[0-9a-f]{40}")
-LANDER = re.compile(r"scripts/(land[^/]*|affected[^/]*)")
 OBJECT_COMMANDS = frozenset({"cat-file", "cherry", "diff", "diff-tree", "hash-object", "log", "ls-tree", "merge-base", "merge-tree",
                              "rev-list", "show"})
 SEALED_KEEP = ("PATH", "SYSTEMROOT")
@@ -63,7 +60,7 @@ def git(root: Path | str, *args: str, check: bool = True, env: dict[str, str] | 
 @functools.cache
 def scratch() -> Path:
     """An empty bare repository, removed when the process ends, that :func:`sealed` commands run in."""
-    base = Path(tempfile.mkdtemp(prefix="land-sealed-"))
+    base = Path(tempfile.mkdtemp(prefix="sealed-git-"))
     atexit.register(shutil.rmtree, base, ignore_errors=True)
     for name in ("home", "templates"):
         (base / name).mkdir()
@@ -138,25 +135,6 @@ def out(root: Path | str, *args: str) -> str:
     return git(root, *args).stdout.strip()
 
 
-def empty_tree(root: Path | str) -> str:
-    """The id of the tree with no files, in the hash of this repository."""
-    return sealed(root, "hash-object", "-t", "tree", "--stdin", stdin="").stdout.strip()
-
-
-def lines(root: Path | str, *args: str) -> list[str]:
-    """Non-empty output lines of a git command that must succeed."""
-    return [x for x in git(root, *args).stdout.splitlines() if x]
-
-
-def merge_tree(root: Path | str, ours: str, theirs: str) -> tuple[str, list[str]]:
-    """The tree of the automatic merge of two commits, or an empty string and the paths that conflict."""
-    done = sealed(root, "merge-tree", "--write-tree", "--name-only", "--no-messages", ours, theirs, check=False, write=True)
-    if done.returncode > 1:
-        raise RuntimeError(f"git merge-tree: {(done.stderr or done.stdout).strip()}")
-    tree, *names = done.stdout.splitlines()
-    return ("", [n for n in names if n]) if done.returncode else (tree, [])
-
-
 def toplevel(start: Path | str) -> Path:
     """The root of the worktree containing ``start``."""
     return Path(out(start, "rev-parse", "--show-toplevel"))
@@ -189,29 +167,12 @@ def primary(root: Path | str) -> Tree:
     return trees(root)[0]
 
 
-def tree_of(root: Path | str, branch: str) -> Tree | None:
-    """The worktree that has ``branch`` checked out, if any."""
-    return next((t for t in trees(root) if t.branch == branch), None)
-
-
-def dirty(path: Path | str) -> bool:
-    """Whether the worktree at ``path`` has uncommitted or untracked files; a missing directory has none."""
-    if not Path(path).is_dir():
-        return False
-    return bool(git(path, "status", "--porcelain").stdout.strip())
-
-
 def commit_id(root: Path | str, sha: str) -> str:
     """The commit with id ``sha`` (a full id; a name or an abbreviation names none), or an empty string when the repository lacks it."""
     if not HEX.fullmatch(sha):
         return ""
     done = sealed(root, "rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}", check=False)
     return done.stdout.strip() if done.returncode == 0 else ""
-
-
-def tree_id(root: Path | str, commit: str) -> str:
-    """The id of the tree of the commit with id ``commit``."""
-    return sealed(root, "rev-parse", f"{commit}^{{tree}}").stdout.strip()
 
 
 def is_ancestor(root: Path | str, older: str, newer: str) -> bool:
@@ -229,80 +190,3 @@ def unpushed(root: Path | str, tip: str) -> str:
     """Revisions for ``--stdin`` that select the commits reachable from ``tip`` and from no remote-tracking ref."""
     held = git(root, "for-each-ref", "--format=%(objectname)", "refs/remotes").stdout.split()
     return "".join(f"{rev}\n" for rev in [tip, *(f"^{sha}" for sha in held)])
-
-
-def conflicted(root: Path | str) -> list[str]:
-    """The paths the index of the worktree at ``root`` holds unmerged."""
-    rows = git(root, "ls-files", "-z", "--unmerged").stdout.split("\0")
-    return sorted({row.split("\t", 1)[1] for row in rows if "\t" in row})
-
-
-def imported_names(source: bytes) -> set[str]:
-    """The top-level module names the Python ``source`` imports; empty when it does not parse."""
-    try:
-        tree = ast.parse(source)
-    except (SyntaxError, ValueError):
-        return set()
-    names: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            names.update(alias.name.split(".")[0] for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
-            names.add(node.module.split(".")[0])
-    return names
-
-
-def lander_modules(read: Callable[[str], bytes | None]) -> set[str]:
-    """scripts/land and every scripts/ module it imports, directly or through another, as ``read`` returns the files."""
-    found = {"scripts/land"} if read("scripts/land") is not None else set()
-    pending = list(found)
-    while pending:
-        for module in imported_names(read(pending.pop()) or b""):
-            name = f"scripts/{module}.py"
-            if name not in found and read(name) is not None:
-                found.add(name)
-                pending.append(name)
-    return found
-
-
-def lander_set(names: set[str], read: Callable[[str], bytes | None]) -> set[str]:
-    """The lander files among the scripts/ files ``names``: those matching LANDER and the modules lander_modules finds through ``read``."""
-    return {name for name in names if LANDER.fullmatch(name)} | lander_modules(read)
-
-
-def commit_reader(root: Path | str, commit: str) -> tuple[set[str], Callable[[str], bytes | None]]:
-    """The scripts/ files of ``commit`` and a reader of their bytes that returns None for a file the commit lacks."""
-    listed = {name for name in sealed(root, "ls-tree", "--name-only", "-z", commit, "scripts/").stdout.split("\0") if name}
-    return listed, lambda name: blob(root, commit, name) if name in listed else None
-
-
-def lander_problem(top: Path | str, commit: str) -> str:
-    """The first lander file (scripts/land*, scripts/affected*, every scripts/ module they import) whose bytes in the checkout ``top`` differ from those in ``commit``, or an empty string."""
-    listed, from_commit = commit_reader(top, commit)
-
-    def from_checkout(name: str) -> bytes | None:
-        path = Path(top) / name
-        return path.read_bytes() if path.is_file() else None
-
-    here = {f"scripts/{p.name}" for p in (Path(top) / "scripts").iterdir() if p.is_file()}
-    stored = lander_set(listed, from_commit)
-    present = lander_set(here, from_checkout)
-    for name in sorted(stored | present):
-        want = from_commit(name)
-        if want is None or name not in present or from_checkout(name) != want:
-            return name
-    return ""
-
-
-def lander_moved(root: Path | str, old: str, new: str) -> str:
-    """The first lander file whose bytes differ between the commits ``old`` and ``new`` (one that only one of them has counts), or an empty string."""
-    names_old, read_old = commit_reader(root, old)
-    names_new, read_new = commit_reader(root, new)
-    return next((n for n in sorted(lander_set(names_old, read_old) | lander_set(names_new, read_new)) if read_old(n) != read_new(n)), "")
-
-
-def refuse_protected(*names: str) -> None:
-    """Raise when a branch named here is one landing never touches."""
-    for name in names:
-        if name in PROTECTED:
-            raise ValueError(f"land never touches {name}")

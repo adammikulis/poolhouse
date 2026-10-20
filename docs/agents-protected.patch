@@ -1,6 +1,6 @@
 --- a/.claude/agents/branch-worker.md
 +++ b/.claude/agents/branch-worker.md
-@@ -34,11 +34,12 @@
+@@ -34,11 +34,10 @@
    and conflicts require separate sibling worktrees and branches. Preserve unrelated work.
  - Never `pip install -e`; run your tree's code with `PYTHONPATH=src`.
  - Add files by name; never `git add -A`, `.` or `-u`.
@@ -9,12 +9,10 @@
 -  holds merges or is shared), run the affected tests, and run
 -  `poolhouse-workspace land-request BRANCH SHA --test SELECTOR ... --agent <your name>` with the tip's full SHA.
 -  The runner pushes only after a gate result for that exact SHA; report landed only on its `landed`.
-+- Never push, tag or merge by hand. Claim your branch and worktree when you start
-+  (`poolhouse-workspace claim branch BRANCH --agent <your name>`, `claim worktree PATH`). Commit named files on the
-+  claimed branch, then land it: fetch, rebase your own linear commits onto `origin/<dev>` (merge it instead when the
-+  branch holds merges or is shared), run the affected tests, run `scripts/land --dry-run --agent <your name>` (it says
-+  whether another agent must `land-review` the exact SHA), then `scripts/land --agent <your name>`. Report landed only
-+  when it exits 0.
++- Never tag or touch `main`. Claim your branch and worktree when you start (`poolhouse-workspace claim branch BRANCH --agent
++  <your name>`, `claim worktree PATH`). Commit named files on your branch, then push it yourself: fetch, merge
++  `origin/<dev>`, run the affected tests, then `git push origin HEAD:refs/heads/<dev>` (plain, never forced). Report
++  landed only when the push succeeds and the commit is on `origin/<dev>`.
  - Test your own changes with reviewed explicit affected selectors through `scripts/test`.
    Report your results. The main agent handles shared gates, full end-to-end checks and
    background suites once per consolidated integration batch.
@@ -26,9 +24,9 @@
 -- Never push, tag, merge into the development branch by hand or touch `main`. Land the finished branch through
 -  the queue (`poolhouse-workspace land-request BRANCH SHA --test SELECTOR ... --agent <your name>`, full SHA of the tip)
 -  and report landed only on the runner's `landed` for that SHA.
-+- Never push, tag, merge into the development branch by hand or touch `main`. Land the finished branch with
-+  `scripts/land --agent <your name>` from its worktree (`scripts/land --dry-run` first says whether another agent must
-+  `land-review` the exact SHA) and report landed only when it exits 0.
++- Never tag, merge into the development branch by hand or touch `main`. Push the finished branch yourself: fetch, merge
++  `origin/<dev>`, run the affected tests, then `git push origin HEAD:refs/heads/<dev>` (plain, never forced), and report
++  landed only when the push succeeds and the commit is on `origin/<dev>`.
  - No GPU lease unless the brief gives one. Release your claims when done.
 
  Report in a few lines: branch, ready SHA, affected test commands and results (the `ran` and `reused`

@@ -30,7 +30,7 @@ RUNS = {
     (".git", "hooks"): HOOKS, (".git", "config"): "sets commands git runs on its own", (".github", "workflows"): CI,
     (".github", "actions"): CI, (".local", "bin"): "puts a program on the command search path",
     (".cargo", "config.toml"): BUILD, (".cargo", "config"): BUILD, (".git", "info"): "sets commands git runs on its own",
-    ("scripts", "test"): "runs when the project is tested", ("scripts", "land"): "runs when work is landed", ("scripts", "hooks"): HOOKS,
+    ("scripts", "test"): "runs when the project is tested", ("scripts", "hooks"): HOOKS,
     (".config", "systemd"): "starts programs for the person", (".config", "autostart"): "starts programs at login",
 }
 FOLDERS = {

@@ -22,7 +22,6 @@ WORKERS = 8
 PROTECTED = ("main", "master")
 MIN_AGE_S = 600.0
 BRANCH_MIN_AGE_S = 86400.0
-INTEGRATION = "land/"
 CLOSED = {"bundle": "bundled", "abandon": "abandoned"}
 MARKERS = ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply")
 ACTIVITY = ("HEAD", "index", "logs/HEAD")
@@ -241,14 +240,14 @@ def sweep(root: Path | str, now: float, working: Callable[[], list[str | None]],
           minimum: float = MIN_AGE_S) -> tuple[list[dict], list[tuple[str, str]]]:
     """Close every landed tree untouched for ``minimum`` seconds; the closed trees and (path, why) for those that stayed.
 
-    ``working`` lists the working directory of every running process. Locked trees, the landing runner's
-    integration trees and trees a process is working in are left alone; a tree whose branch is less than
+    ``working`` lists the working directory of every running process. Locked trees and trees a process is
+    working in are left alone; a tree whose branch is less than
     ``BRANCH_MIN_AGE_S`` old is removed and its branch kept.
     """
     closed, stayed = [], []
     for row in rows(root, now):
         path = Path(row["path"])
-        if not row["landed"] or row["locked"] or row["branch"].startswith(INTEGRATION):
+        if not row["landed"] or row["locked"]:
             continue
         try:
             if now - touched(path) < minimum or occupied(path, working()):

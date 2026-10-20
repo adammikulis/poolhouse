@@ -206,16 +206,9 @@ messages that name `poolhouse-ingest`. Leaves: `src/poolhouse/ingest/` (19), `so
 `pdftext.py`, `pdfchild.py`, `pdfrenderchild.py` (about 980 lines, the hostile-PDF child) lose their last caller;
 they stay in `net` (security) until D5 decides.
 
-**Slice 7: the old landing machinery (already ordered in `HANDOFF.md`, "Delete the old landing machinery in one piece").**
-Security-adjacent, so it follows its attack-first pass. `git rm scripts/land scripts/land_exec.py scripts/land_git.py
-scripts/land_review.py scripts/land_stale.py scripts/land_steps.py src/poolhouse/workspace/landing.py
-src/poolhouse/workspace/landing_cli.py docs/landing.md`; tests `tests/land_support.py test_land.py test_land_concurrent.py
-test_land_plan.py test_land_review_policy.py test_land_sealed.py test_land_stale.py test_land_trust.py
-test_lander_ends_jobs.py test_subagent_stop_landed.py`. Edit callers: `workspace/cli.py` (the `landing_cli.TABLE`
-entry), `workspace/github_release.py` (`eligible`), `runtime_unmerged.py`, `protectedwrites.py`, `scripts/hooks/stop_landed.py`,
-`scripts/github-protection`, `test_model_tiers.py`, `test_runtime_unmerged.py`. Then the four one-shot scripts that only
-`land_review.py` names: `scripts/rename_to_poolhouse.py`, `commit_types_chart.py`, `compare-harnesses`,
-`prepare_medmcqa.py` with their tests (`test_rename_to_poolhouse.py`, `test_commit_types_chart.py`, `test_compare_harnesses.py`, `test_prepare_medmcqa.py`). The commit carries `Owner-order:`.
+**Slice 7: four one-shot scripts.** The old landing machinery is deleted (`docs/notes/landing-deletion.md`). Left from this slice:
+`scripts/rename_to_poolhouse.py`, `commit_types_chart.py`, `compare-harnesses` and `prepare_medmcqa.py`, with their tests
+(`test_rename_to_poolhouse.py`, `test_commit_types_chart.py`, `test_compare_harnesses.py`, `test_prepare_medmcqa.py`).
 
 **Slice 8: speech (dropped; D2 keeps it).** Cut: `fleet/api.py` (3), `fleet/daemon.py`, `fleet/remote.py` (2), `mcp.py` (3), `setup.py`
 (1). Leaves: `src/poolhouse/speech/` (8), `poolhouse-speech`, speech routes, `tests/test_speech.py`,

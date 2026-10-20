@@ -77,7 +77,7 @@ with no model, and each one asks (`unsure`, a request of kind `tool_call_destruc
   hook, `.git/config`, the agent folders (`.claude`, `.codex`, `.cursor`, `.agents`), `conftest.py`,
   `setup.py`, `pyproject.toml`, `package.json`, `Makefile`, a CI workflow, `.envrc`, an editor task
   file, `sitecustomize.py`, a `.pth` file, a shell startup file, an agent instruction file (`CLAUDE.md`,
-  `AGENTS.md`, `.mcp.json`, `.cursorrules`), `.gitattributes`, `.git/info/`, `scripts/test`, `scripts/land`,
+  `AGENTS.md`, `.mcp.json`, `.cursorrules`), `.gitattributes`, `.git/info/`, `scripts/test`,
   `scripts/hooks/*`, a `.plist`, `.service` or `.timer` file. The ask names the file, says when it
   runs and quotes what the write starts with. Paths are read relative to the project folder, case-folded and through links,
   so `.git/Hooks/x`, `src/../.git/hooks/x` and a link to the hooks folder are the same file.

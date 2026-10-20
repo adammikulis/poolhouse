@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check what an agent pushes: Python parses, no data files, and a warning for a merged worktree that outlives a push.
+"""Check what an agent pushes: Python parses, no data files, no commit with a standing reject, and a warning for a merged worktree that outlives a push.
 
     pushed DEV   reads pre-push lines on stdin; DEV is the development branch
 """
@@ -16,7 +16,7 @@ ZERO = "0" * 40
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE.parent), str(HERE.parents[1] / "src")]
 try:
-    import land_git as lg
+    import sealed_git as lg
 except ImportError as exc:
     raise SystemExit(f"pushed: the git helper could not load ({exc}); the push is refused") from None
 try:
@@ -83,6 +83,32 @@ def unparseable(base: str, tip: str) -> list[str]:
     return bad
 
 
+def rejected(tip: str) -> list[str]:
+    """The new commits of ``tip`` (those on no remote-tracking ref) that a reviewer rejected and that stand.
+
+    A push with no registered session has nobody to ask as and goes on; a board that cannot be asked, or a checkout that cannot
+    ask, is a warning on stderr and the push goes on: a review is advice.
+    """
+    root = Path.cwd()
+    try:
+        from poolhouse.board import session
+        from poolhouse.errors import Denied, Error
+        from poolhouse.workspace import landing
+    except ImportError as exc:
+        print(f"pushed: warning: the reject check could not load ({exc}); reviews are not read", file=sys.stderr)
+        return []
+    try:
+        try:
+            asked = session.connect(cwd=lg.toplevel(root))
+        except Denied:
+            return []
+        commits = lg.sealed(root, "rev-list", "--stdin", stdin=lg.unpushed(root, tip)).stdout.split()
+        return [sha for sha in commits if landing.rejected(asked, landing.accepts(asked, sha))]
+    except (OSError, ValueError, RuntimeError, KeyError, Error) as exc:
+        print(f"pushed: warning: the board could not be asked for reviews ({exc}); the push is not checked for a reject", file=sys.stderr)
+        return []
+
+
 def watch_ci(dev: str, tips: list[str]) -> None:
     """Start the detached watcher of the GitHub `ci` run of each pushed development tip; a failure to start is a warning."""
     for tip in tips if ci_watch else []:
@@ -113,6 +139,10 @@ def main(dev: str, lines: list[str]) -> int:
         _, tip, remote_ref, base = parts
         if remote_ref == f"refs/heads/{dev}":
             tips.append(tip)
+            for sha in rejected(tip):
+                refused = 1
+                print(f"pushed: {remote_ref} carries {sha[:12]}, which an independent reviewer rejected; fix it in a new commit, "
+                      f"or the reviewer posts: poolhouse-workspace land-review BRANCH {sha} --verdict accept", file=sys.stderr)
             for where, branch in leftover_worktrees(tip):
                 print(f"pushed: warning: {branch} has nothing outside {dev}; remove its worktree:",
                       f"  git worktree remove {shlex.quote(where)}", f"  git branch -d {shlex.quote(branch)}", sep="\n", file=sys.stderr)

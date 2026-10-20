@@ -35,7 +35,7 @@ The rules never to break, then the ones needed every hour; each names the sectio
 17. **Inbox first**: read and answer it at every session start and between tasks; contact comes first (3).
 18. **Stage files by name, never `git add -A`**, in your own claimed worktree beside the primary checkout (4).
 19. **Push the development branch yourself**: fetch, merge `origin/<dev>`, run only your changed test files,
-    `git push origin HEAD:refs/heads/<dev>`; no accept, claim or lander lock; clean up before reporting (4).
+    `git push origin HEAD:refs/heads/<dev>`; no accept or lock; clean up before reporting (4).
 20. **Test your own change with explicit `scripts/test` selectors**, any list of files and never the full suite (GitHub runs it on pull requests, on `main` and nightly; a development push runs only the `gates` job)
     (5).
 
@@ -497,7 +497,7 @@ Whoever made a branch finishes it and pushes it; the lead steps in only for cros
 1. **Prepare.** In your own worktree beside the primary checkout: fetch, merge `origin/<dev>`, run the change's own
    tests with `scripts/test all <files>`, commit by named files.
 2. **Push.** `git fetch origin`, merge `origin/<dev>` again if it moved, then `git push origin HEAD:refs/heads/<dev>`.
-   No accept, claim, creator or lander lock is needed. The push check refuses Python that does not parse and data
+   No accept or lock is needed. The push check refuses Python that does not parse and data
    files, and a standing reject of that commit; nothing else.
 3. **Watch GitHub.** GitHub runs the `gates` job on the pushed commit (the full suite runs on pull requests, on `main` and
    nightly, never on a development push). The CI watcher posts a red run to the session that pushed it, naming the failing
@@ -533,7 +533,7 @@ Whoever made a branch finishes it and pushes it; the lead steps in only for cros
 - **Keep landing short.** A ready branch lands the moment it is verified and never waits for a day, an hour or
   another task. Run `git cherry <dev> <branch>` before porting and drop equivalent patches; a tree already gated is not
   gated again (section 5, "Scoped merge gates and background verification"). Finish before starting: no new branch while your own ready branches await landing, about ten open
-  worktrees at most per lead. A `HANDOFF.md` conflict stops the lander naming the file; resolve it by keeping the other
+  worktrees at most per lead. A `HANDOFF.md` conflict is resolved by keeping the other
   side's added entries and your own deletions.
 - An agent pushes only the development branch, plainly: never `main`, never forced, never a tag. The primary checkout
   receives changes by fast-forward or authorized named-file commits, resolves conflicts in an isolated worktree, and is
@@ -558,11 +558,11 @@ Whoever made a branch finishes it and pushes it; the lead steps in only for cros
 
 ### Cleanup
 
-**Cleanup is part of completion, before the final report or `announce done`.** Whoever merges, prunes: the lander
+**Cleanup is part of completion, before the final report or `announce done`.** Whoever merges, prunes: the agent that pushes
 removes its own worktree and branch in the same step; a merge is not finished until `git worktree list` shows only trees
 with live work. The sequence, run from outside the worktree being removed: `git fetch origin`,
-`git merge --ff-only <branch>`, `git fetch origin`, `git push origin <development-branch>` (the lead's hand landing; `scripts/land`
-cleans up its own branch), `git worktree remove ../poolhouse-<branch>`, `git branch -d <branch>`,
+`git merge --ff-only <branch>`, `git fetch origin`, `git push origin <development-branch>` (the lead's hand landing),
+`git worktree remove ../poolhouse-<branch>`, `git branch -d <branch>`,
 `git worktree prune`.
 
 - In the worktree check `git status --short --untracked-files=all`, `git status --short --ignored` and
@@ -654,8 +654,8 @@ that names every test file (`quick` and `gate` stay allowed). Workers do not run
   run of a pull request, a promotion or the nightly schedule; its result, not a local run, is the end-to-end verification. Shared checks are
   not repeated for every leaf branch or intermediate commit. Do not raise budgets to clear a check.
 - Gate cost is per batch, scaled to the diff: combine all ready leaves into one run; documentation-only diffs need a
-  clean diff and `scripts/budgets`, code diffs `scripts/test gate` and the affected selectors of the combined diff
-  (`scripts/land`). A tree that already passed a check is not checked again (`reused from <id>`); a failure that
+  clean diff and `scripts/budgets`, code diffs `scripts/test gate` and the affected selectors of the combined diff.
+  A tree that already passed a check is not checked again (`reused from <id>`); a failure that
   also fails on the clean target is `baseline`.
 - Known failures remain named tasks with evidence and ownership; a scoped pass is not a full-suite pass; fix a known
   relevant regression before the affected change lands. **Linux testing is active, not paused**: use the available WSL

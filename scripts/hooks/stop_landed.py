@@ -93,7 +93,7 @@ def reason(held: list[Held]) -> str:
     """The sentence that refuses the stop and names the ways out."""
     work = "; ".join(f"{one.branch} in {one.path} holds {one.detail}" for one in held)
     closing = " and ".join(f"scripts/worktrees close {one.path} --bundle" for one in held)
-    return (f"Do not stop yet, {work}: land it with scripts/land, or when it is superseded or cannot land run {closing} "
+    return (f"Do not stop yet, {work}: merge origin's development branch into it and push it with git push origin HEAD:refs/heads/<development branch>, or when it is superseded run {closing} "
             "(--abandon 'reason' in place of --bundle when files are uncommitted) from outside the tree.")
 
 

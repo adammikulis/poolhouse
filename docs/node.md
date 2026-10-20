@@ -329,16 +329,13 @@ never runs `verify_cmd`: a client does and records `exit` and the SHA-256 of the
 **Landing reviews** are the `landing` entries of the board (channel `#landing`): a `review` names a plain `branch` (never
 `main` or `master`), a full 40-character `sha`, a `verdict` (`accept` or `reject`) and the `standing` the node stamps on it
 (the sender's name, model and model state at that moment, never taken from the caller). `land_review` writes one for the
-live session behind the token and refuses a session that ever held `claim branch BRANCH`. `land_accepts` (`branch`, `sha`,
-`worktree`) answers `scripts/land` and the push hook: the last review of each reviewer of this device for exactly that commit
-and branch, without the caller and without any session that ever acquired `claim branch BRANCH` or `claim worktree PATH`
-(read from the board's lease entries, whatever branch a reviewer wrote), and the `creators` it found; an empty list means no
-creator is on record. A review row appended by hand under a creator's name is left out the same way. Entries of the
+live session behind the token. `land_accepts` (`sha`) answers the push hook and the unmerged runtime deployment: the last review of
+each reviewer of this device for exactly that commit under any branch name, without the caller. Entries of the
 retired landing queue (`request`, `cancel`, `pause`, `resume`, `state`, `beat`, and reviews of a request) fold and count
 for nothing.
 A model's tier is not the node's to judge, so `landing.eligible` in Python bars the lowest tier and an
-unlisted model from landing or reviewing, and `landing.standing` re-derives each reviewer's tier from the stamped model and
-drops a reviewer retired as `revoked` or `forged`. The tier
+unlisted model from reviewing, and `landing.rejected` and `landing.standing` re-derive each reviewer's tier from the stamped model and
+drop a reviewer retired as `revoked` or `forged`. The tier
 comes from `src/poolhouse/workspace/model_tiers.json` (families `anthropic`, `openai` and `qwen`;
 docs/model-benchmarks.md, section 1): a local agent claims the id `localmodel.model_identity` gives, which
 drops the quantisation, so the `qwen` family lists those short ids and every quantisation of Qwen3.8-27B and

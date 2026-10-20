@@ -19,7 +19,7 @@ from pathlib import Path
 
 import ci_watch
 import pytest
-from land_support import DEV, Project
+from git_world import DEV, Project
 
 pytest_plugins = ["node_kit"]
 

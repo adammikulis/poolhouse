@@ -1,4 +1,4 @@
-"""A process-held lock on a repository's landing and cutover boundary file, for tests that need another holder."""
+"""A process-held lock on a repository's runtime cutover lock file, for tests that need another holder."""
 
 from __future__ import annotations
 
@@ -9,15 +9,13 @@ from pathlib import Path
 from poolhouse import lock
 
 
-class RunnerLock:
-    """An exclusive lock on the landing lock file of a checkout, held by the process until released."""
+class CutoverLock:
+    """An exclusive lock on the runtime cutover lock file of a checkout, held by the process until released."""
 
     def __init__(self, root: Path) -> None:
         common = subprocess.run(["git", "-C", str(root), "rev-parse", "--path-format=absolute", "--git-common-dir"],
                                 capture_output=True, text=True, check=True).stdout.strip()
-        folder = Path(common) / "land"
-        folder.mkdir(exist_ok=True)
-        self.path = folder / "runner.lock"
+        self.path = Path(common) / "runtime-cutover.lock"
         self.fd: int | None = None
 
     def acquire(self) -> bool:

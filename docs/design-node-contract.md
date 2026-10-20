@@ -222,7 +222,7 @@ not in `pre-push`, so a push to the development branch is not checked by it at a
 `pre-push` call for `floors-only-tighten` and adds the same two for `budgets-only-fall`. The pre-commit chain is opt-in and is
 not counted. CODEOWNERS bites only where the repository applies `--owner-review` (`docs/github-protection.md`, "Optional:
 GitHub enforces the owner's approval"), and `REVIEWED` in `protectedwrites.py` feeds only the release authorization check
-(`workspace/person_release.py:44`) and the legacy `scripts/land_review.py`; `contracts/node/floors.toml`, `scripts/contract` and
+(`workspace/person_release.py:44`); `contracts/node/floors.toml`, `scripts/contract` and
 the hook are added to both, and neither is relied on as the barrier. CI runs the hook from the trusted base overlay (`ci.yml`,
 "the base commit's gate over this tree", which copies `scripts/hooks`, `scripts/gates` and `scripts/budgets` from the base
 checkout before anything runs); `scripts/contract` is added to that overlay, so a pull request cannot edit the check that

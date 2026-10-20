@@ -1,4 +1,4 @@
-"""Commands that review a commit before it lands and name the devices whose entries count."""
+"""Commands that review a commit and name the devices whose entries count."""
 
 from __future__ import annotations
 
@@ -9,9 +9,8 @@ __all__ = ["TABLE"]
 
 TABLE = [
     ("land-review",
-     "independently review the exact commit of a branch before `scripts/land` lands it (a session that held the "
-     "branch's claim cannot)",
-     [flag("branch"), flag("sha", help="the full SHA you reviewed; must be the tip `scripts/land --dry-run` prints"),
+     "review the exact commit of a branch: an accept is advice, a reject stops a push of that commit",
+     [flag("branch"), flag("sha", help="the full SHA you reviewed"),
       flag("--verdict", choices=("accept", "reject"), default="accept")],
      lambda a, s: landing.review(s, a.branch, a.sha, a.verdict)),
     ("land-trust", "count the tasks and grants of another device of the pool (its certificate fingerprint; a person "

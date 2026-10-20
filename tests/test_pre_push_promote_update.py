@@ -39,7 +39,7 @@ def hooks(tmp_path) -> Path:
     """A copy of scripts/hooks with the patch applied unless the real hooks already carry it."""
     root = tmp_path / "copy"
     shutil.copytree(REPO / "scripts" / "hooks", root / "scripts" / "hooks")
-    shutil.copy(REPO / "scripts" / "land_git.py", root / "scripts" / "land_git.py")
+    shutil.copy(REPO / "scripts" / "sealed_git.py", root / "scripts" / "sealed_git.py")
     patch = ["git", "apply", "-p1", str(PATCH)]
     if subprocess.run([*patch[:2], "--check", *patch[2:]], cwd=root, capture_output=True, check=False).returncode == 0:
         subprocess.run(patch, cwd=root, check=True, capture_output=True)

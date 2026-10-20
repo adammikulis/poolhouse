@@ -86,7 +86,7 @@ per-file and per-job rows.
 - The install-claim loop of 2026-10-16 19:30 to 2026-10-17 21:30 (6,918 rows from one session, a build every 70 seconds): the board
   shows one commit (`3f7cd18`) built again and again, each time into a new tree, with no other row from that session. A build took
   its claims for the new tree, the launchers and the selection first and then built for 38 seconds; the cutover needs the primary
-  checkout's landing boundary (`.git/land/runner.lock`), which the landing runner held, so it ended `busy` with the tree kept and
+  checkout's runtime cutover lock (then `.git/land/runner.lock`, now `.git/runtime-cutover.lock`), which the landing runner held, so it ended `busy` with the tree kept and
   the claims released, and the caller built again 32 seconds later. `tests/test_runtime_quiet.py` reproduces the rows (18 for three
   calls with the boundary held). Claims are now taken after the boundary is known to be free, ensure waits for the boundary before it
   builds (`c26590c50`), and the landing runner left on 2026-10-17 23:01. The caller that retried every 32 seconds was part of the
