@@ -11,6 +11,7 @@ from typing import Any
 from .catalog import is_model_type, node_spec
 from .contracts import validate_graph
 from .events import checked_event
+from .model_content import owned_model_entries
 from .model_lineage import bind_model_base
 from .resources import base_fingerprint, model_fingerprint
 from .store import StudioStore, digest
@@ -25,6 +26,15 @@ def artifact_fingerprints(value: Any) -> dict[str, str]:
         if value.get("kind") == "model" and value.get("id"):
             return {value["path"]: model_fingerprint(value)}
         path = Path(value["path"]).resolve(strict=True)
+        if value.get("kind") == "model":
+            found[str(path)] = digest(owned_model_entries(value))
+            if "base" in value:
+                base = value["base"]
+                checksum = model_fingerprint(base) if base.get("id") else base_fingerprint(base)
+                if checksum != value.get("base_digest"):
+                    raise ValueError("The checkpoint base content changed after training.")
+                found[base["path"]] = checksum
+            return found
         files = sorted(path.rglob("*")) if path.is_dir() else [path]
         root = path if path.is_dir() else path.parent
         entries = []
@@ -40,12 +50,6 @@ def artifact_fingerprints(value: Any) -> dict[str, str]:
             else:
                 entries.append([str(child.relative_to(root)), "directory"])
         found[str(path)] = digest(entries)
-        if value.get("kind") == "model" and "base" in value:
-            base = value["base"]
-            checksum = model_fingerprint(base) if base.get("id") else base_fingerprint(base)
-            if checksum != value.get("base_digest"):
-                raise ValueError("The checkpoint base content changed after training.")
-            found[base["path"]] = checksum
     return found
 
 

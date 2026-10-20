@@ -65,33 +65,61 @@ class _ContentReader:
         return data
 
 
-def base_fingerprint(handle: dict) -> str:
-    """Hash an explicitly authorized staged base; this function grants no authority."""
-    root = Path(handle['path'])
-    if not root.is_dir() or any(path.is_symlink() for path in (root, *root.parents)):
-        raise ValueError('A staged base must be a regular owned directory')
+def _owned_members(handle: dict) -> tuple[Path, list[Path], list[dict]]:
+    path = Path(handle['path'])
+    if any(member.is_symlink() for member in (path, *path.parents)):
+        raise ValueError('An owned model cannot contain symbolic links')
+    info = path.lstat()
+    root = path if stat.S_ISDIR(info.st_mode) else path.parent
+    files = sorted(path.rglob('*')) if stat.S_ISDIR(info.st_mode) else [path]
     members = []
-    for path in sorted(root.rglob('*')):
-        info = path.lstat()
+    for child in files:
+        info = child.lstat()
+        if any(parent.is_symlink() for parent in child.parents):
+            raise ValueError('An owned model directory changed')
         if stat.S_ISDIR(info.st_mode):
             continue
-        if not stat.S_ISREG(info.st_mode):
-            raise ValueError('A staged base cannot contain symbolic links or special files')
-        members.append({'relative': path.relative_to(root).as_posix(), 'path': str(path),
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise ValueError('An owned model requires regular files without symbolic links or hard links')
+        members.append({'relative': child.relative_to(root).as_posix(), 'path': str(child),
                         'size': info.st_size, 'identity': _identity(info)})
+    return root, files, members
+
+
+def base_fingerprint(handle: dict) -> str:
+    """Hash an explicitly authorized staged base; this function grants no authority."""
+    if not Path(handle['path']).is_dir():
+        raise ValueError('A staged base must be a regular owned directory')
+    _, _, members = _owned_members(handle)
     if not members:
         raise ValueError('A staged base has no regular files')
     return _fingerprint(members)
 
 
+def owned_model_entries(handle: dict) -> list[list]:
+    """Reuse verified content while retaining the artifact manifest's directory framing."""
+    root, files, members = _owned_members(handle)
+    rows = {row[0]: list(row) for row in _content_rows(members)}
+    entries = []
+    for path in files:
+        name = str(path.relative_to(root))
+        entries.append(rows.get(name, [name, 'directory']))
+    return entries
+
+
 def _fingerprint(members: list[dict]) -> str:
+    rows = _content_rows(members)
+    return hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+
+def _content_rows(members: list[dict]) -> tuple:
     # Callers re-enumerate paths, links and identities before any content hash is reused.
     key = tuple((item['relative'], item['path'], item['size'], tuple(item['identity']), item.get('blob_digest', '')) for item in members)
     return _fingerprint_checked(key)
 
 
 @lru_cache(maxsize=128)
-def _fingerprint_checked(key: tuple) -> str:
+def _fingerprint_checked(key: tuple) -> tuple:
     rows = []
     for relative, path, size, identity, expected in key:
         member = {'path': path, 'size': size, 'identity': list(identity)}
@@ -101,5 +129,5 @@ def _fingerprint_checked(key: tuple) -> str:
         with open_model_file(member) as source:
             for chunk in iter(lambda: source.read(1024 * 1024), b''):
                 checksum.update(chunk)
-        rows.append([relative, size, checksum.hexdigest()])
-    return hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        rows.append((relative, size, checksum.hexdigest()))
+    return tuple(rows)
