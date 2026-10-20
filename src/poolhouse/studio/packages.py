@@ -45,7 +45,20 @@ def _control(control: dict) -> dict:
     if not isinstance(control, dict) or set(control) != {"source", "target"}:
         raise ValueError("Invalid control fields")
     return {"source": _interfaces({"source": control["source"]}, {"node", "port"})["source"],
-            "target": _interfaces({"target": control["target"]}, {"node"})["target"]}
+            "target": _interfaces({"target": control["target"]},
+                                  {"node", "port"} if "port" in control["target"] else {"node"})["target"]}
+
+
+def _control_inputs(interfaces: dict) -> dict:
+    if not isinstance(interfaces, dict):
+        raise ValueError("Invalid required group control interfaces")
+    result = {}
+    for name, targets in interfaces.items():
+        if not isinstance(name, str) or not ID.fullmatch(name) or not isinstance(targets, list) or not targets:
+            raise ValueError("Invalid required group control input")
+        result[name] = [_interfaces({"target": target}, {"node", "port"} if "port" in target else {"node"})["target"]
+                        for target in targets]
+    return result
 
 
 def _fields(node: dict, definitions: dict, stack: tuple = ()) -> dict:
@@ -84,7 +97,7 @@ def _portable_graph(graph: dict, selected: dict | None = None, prefix: str = "",
     definitions = definitions if definitions is not None else graph.get("groups", {})
     groups = {}
     for key, group in graph.get("groups", {}).items():
-        if set(group) - {"name", "nodes", "edges", "controls", "inputs", "outputs", "parameters"}:
+        if set(group) - {"name", "nodes", "edges", "controls", "control_inputs", "inputs", "outputs", "parameters"}:
             raise ValueError("Invalid group definition fields")
         if not isinstance(group.get("name", key), str):
             raise ValueError("Group name must be text")
@@ -93,6 +106,8 @@ def _portable_graph(graph: dict, selected: dict | None = None, prefix: str = "",
                        "inputs": _interfaces(group.get("inputs", {}), {"node", "port"}),
                        "outputs": _interfaces(group.get("outputs", {}), {"node", "port"}),
                        "parameters": _interfaces(group.get("parameters", {}), {"node", "parameter"})}
+        if "control_inputs" in group:
+            groups[key]["control_inputs"] = _control_inputs(group["control_inputs"])
         if "controls" in nested:
             groups[key]["controls"] = nested["controls"]
     result = {"nodes": [_portable_node(node, selected, definitions, prefix) for node in graph["nodes"]],
@@ -185,7 +200,7 @@ def import_package(value: Any) -> dict:
     if graph != sanitized:
         raise ValueError("Package contains private or undeclared node content")
     errors = validate_graph(graph)["errors"]
-    allowed_errors = {"binding"} | ({"input"} if package["kind"] in ("node", "group") else set())
+    allowed_errors = {"binding"} | ({"input", "control_input"} if package["kind"] in ("node", "group") else set())
     if any(error["code"] not in allowed_errors for error in errors):
         raise ValueError("Package graph is invalid: " + "; ".join(error["message"] for error in errors))
     if package["dependencies"] != _dependencies(graph):

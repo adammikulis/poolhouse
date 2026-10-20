@@ -237,3 +237,86 @@ def test_revoked_control_cancels_running_child_and_preserves_unknown(setup, unce
     assert stopped == ["owned-child"]
     assert result["nodes"]["target"]["state"] == ("interrupted" if uncertain else "cancelled")
     assert result["nodes"]["report"]["state"] == "done"
+
+
+def named_group_graph():
+    value = graph()
+    value["nodes"] = [value["nodes"][0], {"id": "group", "type": "group", "group": "saved"}]
+    value["groups"] = {"saved": {"nodes": [
+        {"id": name, "type": "prompt", "parameters": {"template": name}}
+        for name in ("guarded", "independent", "reviewed")], "edges": [],
+        "control_inputs": {"condition": [{"node": "guarded"}], "review": [{"node": "reviewed"}]}}}
+    value["controls"] = [
+        {"source": {"node": "guard", "port": "allow"}, "target": {"node": "group", "port": "condition"}},
+        {"source": {"node": "guard", "port": "review"}, "target": {"node": "group", "port": "review"}}]
+    return value
+
+
+def test_named_controls_preserve_independent_group_members(setup):
+    result = run(setup, named_group_graph())
+    assert result["nodes"]["group/guarded"]["state"] == "skipped"
+    assert result["nodes"]["group/reviewed"]["state"] == "done"
+    assert result["nodes"]["group/independent"]["state"] == "done"
+    assert result["graph"]["controls"] == [
+        {"source": {"node": "guard", "port": "allow"}, "target": {"node": "group/guarded"}},
+        {"source": {"node": "guard", "port": "review"}, "target": {"node": "group/reviewed"}}]
+
+
+@pytest.mark.parametrize("mode", ["missing", "unknown", "duplicate", "blanket"])
+def test_required_group_controls_reject_missing_unknown_duplicate_and_blanket(setup, mode):
+    value = named_group_graph()
+    if mode == "missing":
+        value["controls"].pop()
+    elif mode == "unknown":
+        value["controls"][0]["target"]["port"] = "unknown"
+    elif mode == "duplicate":
+        value["controls"].append(deepcopy(value["controls"][0]))
+    else:
+        value["controls"][0]["target"].pop("port")
+    checked = contracts.validate_graph(value)
+    assert not checked["valid"]
+    if mode in {"missing", "blanket"}:
+        assert any(error["code"] == "control_input" for error in checked["errors"])
+
+
+def test_nested_required_control_forwarding_selected_closure_and_package(setup, monkeypatch):
+    from poolhouse.studio import packages
+    monkeypatch.setattr(packages, "node_spec", contracts.node_spec)
+    value = named_group_graph()
+    value["groups"]["outer"] = {"nodes": [{"id": "inner", "type": "group", "group": "saved"}],
+                                  "edges": [], "control_inputs": {
+                                      "condition": [{"node": "inner", "port": "condition"}],
+                                      "review": [{"node": "inner", "port": "review"}]}}
+    value["nodes"][1]["group"] = "outer"
+    result = run(setup, value, outputs=["group/inner/guarded"])
+    assert set(result["nodes"]) == {"guard", "group/inner/guarded"}
+    assert result["nodes"]["group/inner/guarded"]["state"] == "skipped"
+    package = packages.export_package(value, package_id="nested-controls", version="1", name="Nested controls")
+    restored = packages.import_package(package)
+    assert restored["graph"]["groups"]["outer"]["control_inputs"] == value["groups"]["outer"]["control_inputs"]
+    assert contracts.validate_graph(restored["graph"])["valid"]
+
+
+def test_inert_reusable_group_requires_control_when_used(setup, monkeypatch):
+    from poolhouse.studio import packages
+    monkeypatch.setattr(packages, "node_spec", contracts.node_spec)
+    value = named_group_graph()
+    value["nodes"] = [value["nodes"][1]]
+    value["controls"] = []
+    package = packages.export_package(value, package_id="required-controls", version="1", name="Required controls", kind="group")
+    restored = packages.import_package(package)
+    checked = contracts.validate_graph(restored["graph"])
+    assert not checked["valid"]
+    assert {error["code"] for error in checked["errors"]} == {"control_input"}
+
+
+def test_named_control_combined_cycle_and_wrong_target_rejected(setup):
+    value = named_group_graph()
+    value["groups"]["saved"]["nodes"].append({"id": "inside", "type": "test.guard"})
+    value["groups"]["saved"]["outputs"] = {"gate": {"node": "inside", "port": "allow"}}
+    value["controls"].append({"source": {"node": "group", "port": "gate"}, "target": {"node": "guard"}})
+    value["groups"]["saved"]["control_inputs"]["condition"].append({"node": "inside"})
+    assert any(error["code"] == "cycle" for error in contracts.validate_graph(value)["errors"])
+    value = named_group_graph()
+    value["groups"]["saved"]["control_inputs"]["condition"] = [{"node": "independent", "port": "non_group"}]
+    assert not contracts.validate_graph(value)["valid"]

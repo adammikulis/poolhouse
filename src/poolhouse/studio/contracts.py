@@ -73,6 +73,8 @@ def _group_interface(definition: dict, inner: dict, definitions: dict) -> dict:
             if not any(port["name"] == endpoint["port"] for port in ports):
                 raise ValueError("Group interface references an unknown port")
             interfaces[direction][name] = endpoint
+    interfaces["control_inputs"] = inner["control_inputs"]
+    interfaces["missing_controls"] = inner["missing_controls"]
     original = {node["id"]: node for node in definition["nodes"]}
     for name, target in definition.get("parameters", {}).items():
         if not isinstance(name, str) or not IDENTIFIER.fullmatch(name) or not isinstance(target, dict) or set(target) != {"node", "parameter"}:
@@ -117,7 +119,7 @@ def _expand(graph: dict, definitions: dict, stack: tuple = (), prefix: str = "")
         if key not in definitions or key in stack:
             raise ValueError("Missing or recursive reusable group")
         definition = deepcopy(definitions[key])
-        if not isinstance(definition, dict) or set(definition) - {"name", "nodes", "edges", "controls", "inputs", "outputs", "parameters"}:
+        if not isinstance(definition, dict) or set(definition) - {"name", "nodes", "edges", "controls", "control_inputs", "inputs", "outputs", "parameters"}:
             raise ValueError("Invalid reusable group definition")
         exposed = definition.get("parameters", {})
         if set(node.get("parameters", {})) - set(exposed):
@@ -152,32 +154,65 @@ def _expand(graph: dict, definitions: dict, stack: tuple = (), prefix: str = "")
             raise ValueError("Connections need a source and target")
         edges.append({"source": resolve(_endpoint(edge["source"]), "outputs"),
                       "target": resolve(_endpoint(edge["target"]), "inputs")})
-    controls.extend(_expand_controls(graph, resolve, instances, nodes, prefix))
-    return {"nodes": nodes, "edges": edges, "controls": controls, "resolve": resolve}
+    result = _expand_controls(graph, resolve, instances, nodes, prefix)
+    result["controls"][:0] = controls
+    return {"nodes": nodes, "edges": edges, "resolve": resolve, **result}
 
 
-def _expand_controls(graph: dict, resolve: Callable, instances: dict, nodes: list, prefix: str) -> list:
+def _control_targets(target: Any, context: dict) -> list[dict]:
+    if (not isinstance(target, dict) or set(target) not in ({"node"}, {"node", "port"})
+            or not isinstance(target["node"], str) or target["node"] not in context["ids"]):
+        raise ValueError("Control target must be a node in this graph")
+    identifier = target["node"]
+    interface = context["instances"].get(identifier)
+    if "port" in target:
+        port = target["port"]
+        if not isinstance(port, str) or interface is None or port not in interface["control_inputs"]:
+            raise ValueError("Unknown required group control input")
+        key = (identifier, port)
+        if key in context["provided"]:
+            raise ValueError("A required group control input has more than one connection")
+        context["provided"].add(key)
+        return deepcopy(interface["control_inputs"][port])
+    if interface is not None:
+        return [{"node": node["id"]} for node in context["nodes"]
+                if node["id"].startswith(context["prefix"] + identifier + "/")]
+    return [{"node": context["prefix"] + identifier}]
+
+
+def _expand_controls(graph: dict, resolve: Callable, instances: dict, nodes: list, prefix: str) -> dict:
     if len(nodes) > MAX_NODES:
         raise ValueError("Expanded workflow has too many nodes")
-    ids = {node["id"] for node in graph.get("nodes", [])}
-    controls = []
+    context = {"ids": {node["id"] for node in graph.get("nodes", [])}, "instances": instances,
+               "nodes": nodes, "prefix": prefix, "provided": set()}
+    controls, exposed = [], {}
     for control in graph.get("controls", []):
         if not isinstance(control, dict) or set(control) != {"source", "target"}:
             raise ValueError("Controls need a source gate and target node")
-        target = control["target"]
-        if not isinstance(target, dict) or set(target) != {"node"} or target["node"] not in ids:
-            raise ValueError("Control target must be a node in this graph")
         source = resolve(_endpoint(control["source"]), "outputs")
-        targets = ([n["id"] for n in nodes if n["id"].startswith(prefix + target["node"] + "/")]
-                   if target["node"] in instances else [prefix + target["node"]])
-        controls.extend({"source": source, "target": {"node": name}} for name in targets)
-    return controls
+        controls.extend({"source": source, "target": target} for target in _control_targets(control["target"], context))
+    interfaces = graph.get("control_inputs", {})
+    if not isinstance(interfaces, dict):
+        raise ValueError("Group control inputs must be an object")
+    for name, targets in interfaces.items():
+        if not isinstance(name, str) or not IDENTIFIER.fullmatch(name) or not isinstance(targets, list) or not targets:
+            raise ValueError("Required group controls need named nonempty target lists")
+        expanded = [target for raw in targets for target in _control_targets(raw, context)]
+        if len({target["node"] for target in expanded}) != len(expanded):
+            raise ValueError("A group control interface repeats a target")
+        exposed[name] = expanded
+    missing = [requirement for interface in instances.values() for requirement in interface["missing_controls"]]
+    missing.extend({"node": prefix + identifier, "port": name} for identifier, interface in instances.items()
+                   for name in interface["control_inputs"] if (identifier, name) not in context["provided"])
+    return {"controls": controls, "control_inputs": exposed, "missing_controls": missing}
 
 
 def _validate_expanded(graph: dict, capabilities: set[str] | None, authorize: Callable | None) -> list[dict]:
     errors, specs, nodes = [], {}, {n["id"]: n for n in graph["nodes"]}
     def error(node: str, code: str, message: str) -> None:
         errors.append({"node": node, "code": code, "message": message})
+    for requirement in graph.get("missing_controls", []):
+        error(requirement["node"], "control_input", f"Connect required group control {requirement['port']}")
     for identifier, node in nodes.items():
         try:
             spec = node_spec(node.get("type", ""), node.get("version", 1))
@@ -299,7 +334,8 @@ def _sweeps(graph: dict) -> dict:
         nodes.extend(instance["nodes"])
         edges.extend(instance["edges"])
         controls.extend(instance["controls"])
-    return {"nodes": nodes, "edges": edges, "controls": controls, "variants": variants}
+    return {"nodes": nodes, "edges": edges, "controls": controls, "variants": variants,
+            "missing_controls": graph.get("missing_controls", [])}
 
 
 def validate_graph(graph: Any, *, capabilities: set[str] | None = None,
