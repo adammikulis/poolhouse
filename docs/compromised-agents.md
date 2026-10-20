@@ -222,9 +222,10 @@ for it.
 (build scripts and macros run), and `smoke` runs the built tree's hook scripts. `runtime_trust.admit` accepts the primary
 checkout's tip or an ancestor of it, and an agent may commit to the primary checkout (AGENTS.md, section 4). An agent that commits
 a build script and runs `ensure` therefore runs it unsandboxed as the person: an escape through a command the sandbox excludes by
-name. S0 closes it twice. (a) For an agent, `ensure` builds only a commit that the remote holds: the helper reads the remote's
-tip with `git ls-remote`, not a local ref, since a sandboxed command can write local refs, and only the landing runner pushes the
-development branch (the person at a terminal may still build any commit). (b) The build and the smoke run inside a nested
+name. S0 closes it with (b); (a) narrows it. (a) For an agent, `ensure` builds only a commit that the remote holds: the helper reads
+the remote's tip with `git ls-remote`, not a local ref, since a sandboxed command can write local refs. An agent pushes the
+development branch itself, so (a) puts a planted build script on origin, where the GitHub `gates` job runs on it and the pusher is
+named, and does not stop it (the person at a terminal may still build any commit). (b) The build and the smoke run inside a nested
 sandbox (write only the staging directory and the shared cargo cache, no `node/person`, network only the package hosts); the last
 step, copying the finished tree into `~/.poolhouse/runtimes` and rewriting the launchers, runs unsandboxed and executes none of
 what it copies. `rollback` selects an earlier verified runtime and builds nothing; `restart-host` starts the selected one.
@@ -791,7 +792,7 @@ attest and report lets the session read itself clean, or blind the hook.
    `tee`, a redirect and a Python write count like an Edit.
 5. **A label on each worktree.** The node holds `{level, writers, at}` per worktree: raised (the maximum) when a session whose
    effective taint is `T1` or `T2` writes in it, by any tool; lowered only when the node finds the worktree clean (`git status`
-   shows nothing tracked or untracked and not ignored) at a commit that the landing runner pushed or that is an ancestor of one, or
+   shows nothing tracked or untracked and not ignored) at a commit that origin's development branch holds or that is an ancestor of one, or
    the worktree gone. A session that starts in a labelled worktree, or reads a file in one, reads at least the label's level, class
    `file`. A dirty tree that a tainted session edited therefore does not read `T0` to the next reader, whoever reads it.
 6. **Local is not an address.** No MCP server is local by default, whatever host it listens on (4.2). A server the person's own list
@@ -800,7 +801,7 @@ attest and report lets the session read itself clean, or blind the hook.
    carries the time, so two packs of one tree differ, and it cannot be compared with a commit. S7a adds a **manifest**: the SHA-256 of
    the sorted lines `mode name sha256(content)` of the shipped files (`fleet/shard_tree.py`: tracked files and untracked files not
    ignored, under the shipped directories). The sending node computes it from the chunks it forwards; the sender supplies none. The
-   node holds the manifest of each commit the landing runner pushed and of its ancestors back to the checkout's merge base, computed
+   node holds the manifest of each commit of origin's development branch back to the checkout's merge base, computed
    once per commit from its tree. At `T1` or above, a manifest that equals none of them (an unlanded edit, an untracked file, a file
    the pack adds) makes the use `ask`, and the card says "the files it would send differ from what was landed (3 files)". The
    comparison needs no hook and sees every kind of edit, whichever tool made it.

@@ -1,4 +1,4 @@
-"""Runtime selection and supervisor replacement share the actual landing runner's atomic boundary."""
+"""Runtime selection and supervisor replacement share the cutover lock's atomic boundary."""
 
 from __future__ import annotations
 

@@ -15,7 +15,7 @@ Branch `chore/delete-lander`. A non-author reviews it before it is pushed becaus
 | Node (`app/poolhouse-node`) | `creators`, `lease::merge::ever_held`, the refusal of a reviewer that held the claim, the `branch` and `worktree` parameters of `land_accepts` (it takes the commit and answers under any branch name) |
 | Python | `landing.standing` no longer needs a creator on record; `landing.accepts(session, sha)`; `landing.rejected` is new; the `scripts/land` autoexec entry; `trees.INTEGRATION` (the `land/` tree exemption of `sweep`); the `scripts/land*` protected-path patterns now name `scripts/sealed_git*` (`protectedwrites.py`, `scripts/github-protection`, `.github/CODEOWNERS`) |
 | Tests (1,402 lines) | `test_land.py`, `test_land_concurrent.py`, `test_land_plan.py`, `test_land_review_policy.py`, `test_land_stale.py`, `test_land_trust.py`, `test_lander_ends_jobs.py`; `test_land_sealed.py` is cut to `test_sealed_git.py`; `land_support.py` is `git_world.py` without the fake test runner, the lander and the landing log; `runner_lock.py` is `cutover_lock.py` |
-| Docs | `docs/landing.md` rewritten (push, push hook, reviews, primary checkout follows origin, CI run); the lander is gone from `docs/agent-rules.md`, `AGENTS.md`, `docs/test-execution.md` ("Landing a batch"), `docs/node.md`, `docs/pool.md`, `docs/worktrees.md`, `docs/heartbeat.md` and the others `grep -rn "scripts/land"` found; `docs/agents-protected.patch` carries the push instructions for the two agent files only a person edits |
+| Docs | `docs/landing.md` rewritten (push, push hook, reviews, primary checkout follows origin, CI run); the lander is gone from `docs/agent-rules.md`, `AGENTS.md`, `docs/test-execution.md` ("Landing a batch"), `docs/node.md`, `docs/pool.md`, `docs/worktrees.md`, `docs/heartbeat.md` and the others `grep -rn "scripts/land"` found; `.claude/agents/branch-worker.md` and `branch-finisher.md` tell a worker to push the development branch itself |
 
 There was no hook entry, workflow step, glossary or allowlist entry, red-team coverage row or budget line for the lander:
 `.claude/settings.json` and `.github/workflows` never named it, `scripts/redteam_coverage.py --write` changes nothing and
@@ -60,15 +60,18 @@ Changed behaviour, attack-first (what a non-author reviewer is asked to break):
   a lead can then deploy it. The gate is no weaker than the merged path: the development branch needs no accept and the runtime
   follows it. If the owner wants author independence there, the missing piece is an author the node can name (the session that
   registered the worktree), not the claim record.
-- **Reject check fails open.** A push with no registered session, or a board that does not answer, goes on (a warning on stderr
-  when the board does not answer). An agent can also skip the hook with `git push --no-verify`; the Bash guard and the GitHub
+- **Reject check fails open.** A push with no registered session, a node that is not running or does not answer, and a reply that
+  cannot be read each go on with a warning on stderr. The node is asked without being started and at most 10 seconds a call, so a
+  hung node holds a push for at most 10 seconds. An error on one commit keeps the rejects found on the others; a node that
+  stops answering ends the questions. An agent can also skip the hook with `git push --no-verify`; the Bash guard and the GitHub
   `gates` job are what stop it. A reject is advice.
 - **A hostile reviewer can stall a commit.** Any live session of the board above the lowest model tier can post a reject for any
-  commit. The pusher makes another commit, or the reviewer replaces its reject with an accept. Before, the reject was also scoped by
+  commit. The pusher replaces the commit, or the reviewer replaces its reject with an accept. Before, the reject was also scoped by
   a branch name; it is now by commit, so a reject posted under another name still stops the commit. A session retired as
   `revoked` or `forged` no longer counts.
 - **A rejected commit cannot be hidden in a merge.** The check covers every commit the push adds (those on no remote-tracking
-  ref), so merging `origin/<dev>` into a rejected branch does not clear the reject. Amending the commit does, as it is another commit.
+  ref), so merging `origin/<dev>` into a rejected branch, or committing on top of it, does not clear the reject. Replacing the commit
+  (an amend or a rebase gives it a new id) does, and the push message says so.
 - **Copied pool or device, replay, forged signature, compromised member:** unchanged. The reviews are entries the node stamps with
   the sender's name and model; only this device's own entries count (`landtrust.rs`, untouched); a replayed review is bound to the
   full commit id; a forged stamp is refused by the node's own checks (`fold::check_local`).
@@ -80,7 +83,7 @@ Changed behaviour, attack-first (what a non-author reviewer is asked to break):
 ## Tests removed because they test deleted behaviour
 
 - `test_land.py`, `test_land_concurrent.py`, `test_land_plan.py`, `test_land_stale.py`, `test_lander_ends_jobs.py`,
-  `test_land_trust.py`: the lander's sync, review, checks, push, locks, plan, reuse of a green result and ending of check jobs.
+  `test_land_trust.py` (the other four of its tests are in `test_sealed_git.py`): the lander's sync, review, checks, push, locks, plan, reuse of a green result and ending of check jobs.
 - `test_land_review_policy.py`: the classifier of security-adjacent paths and its coverage of every top-level path.
 - In `test_land_sealed.py`: the merge-driver and union-attribute tests of `merge_tree`, the two lander merge tests, the diff-setting
   test of `required`, the forged commit graph test and the non-UTF8 path test of `merged_parents` and `required`, and the `required`
@@ -93,12 +96,15 @@ Changed behaviour, attack-first (what a non-author reviewer is asked to break):
 
 Added: five tests of the reject check in `test_sealed_git.py` (a reject refuses and the same reviewer's accept lifts it; a reject of
 an earlier added commit; an accept, a review of another commit and no review never stop a push; a board that cannot be asked is a
-warning), a Rust test that a review stands under any branch name, and a runtime test that the deploying lead cannot accept its own commit.
+warning; an error on one commit keeps the rejects found on the others; a node that goes away mid-list ends the questions; a node
+that never answers holds the check for its timeout and starts no node; a push with no session to ask as warns; the reject message
+says how to clear it), the four tests of `test_land_trust.py` that still describe `sealed_git` (a replace ref, a grafts file,
+`GIT_DIR` and `GIT_CONFIG_*` in the environment), a Rust test that a review stands under any branch name, and a runtime test that the
+deploying lead cannot accept its own commit. `scripts/hooks/pre-push`, `scripts/primary_sync.py` and `scripts/ci_watch.py` are named in
+`protectedwrites.REVIEWED`, `.github/CODEOWNERS` and `scripts/github-protection`.
 
 ## Not done here
 
-- `.claude/agents/branch-worker.md` and `branch-finisher.md` still name `land-request` and `scripts/land`: person-only, the
-  replacement text is `docs/agents-protected.patch`.
 - `scripts/github-protection --lander` and the "lander" device role in `docs/github-protection.md` and
   `docs/compromise-containment.md` (the device that holds the push credential) are not the script; renaming the role is a pending item.
 - The four one-shot scripts that only `land_review.py` named are the remainder of `docs/design-shrink-surface.md` slice 7.

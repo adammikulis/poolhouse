@@ -300,8 +300,7 @@ that parent's token, or under another parent, is `denied`, and so is registering
 identity retired and writes an `audit` entry. A session retires itself, and a main session takes its subagents with it;
 a parent (any ancestor) retires a descendant; a session retires no other main session. The end has a reason, recorded on the identity and in the
 audit entry: `done` (an ordinary end, such as a worker whose work is finished) or, given only by a parent and never
-by a session about itself, `revoked` or `forged` (an end for cause, which the landing runner holds against the work
-the session asked for or reviewed). The node itself ends a session as `idle` (see below). A main session that ended `done` or
+by a session about itself, `revoked` or `forged` (an end for cause, after which the reviews the session wrote no longer count). The node itself ends a session as `idle` (see below). A main session that ended `done` or
 `idle` registers again as the same session, from the lineage it was registered from and on the same terms as before it ended
 (a retired subagent never does); its old tokens stay refused and it is given a new one.
 
