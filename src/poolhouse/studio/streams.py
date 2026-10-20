@@ -4,6 +4,7 @@ from __future__ import annotations
 import copy
 import threading
 
+from .catalog import node_spec
 from .store import Conflict, digest
 from .stream_store import StreamStore
 
@@ -19,6 +20,8 @@ class Streams:
         self.sources, self.resources = sources, resources
         self._stop = threading.Event()
         self._thread = None
+        self.outbox = None
+        self.destinations = None
 
     def start_scheduler(self) -> None:
         if self._thread is None:
@@ -30,11 +33,18 @@ class Streams:
         if self._thread:
             self._thread.join()
         self.sources.close()
+        if self.outbox:
+            self.outbox.close()
 
     def create(self, principal: dict, configuration: dict, key: str) -> dict:
         allowed = {'workflow', 'source_id', 'input_node', 'output_nodes', 'destinations'}
-        if set(configuration) != allowed or configuration['destinations'] != [{'kind': 'live'}]:
-            raise ValueError('Select a workflow, source and local live output.')
+        if set(configuration) != allowed:
+            raise ValueError('Select a workflow, source and outputs.')
+        configuration = copy.deepcopy(configuration)
+        if self.destinations:
+            configuration['destinations'] = self.destinations(principal, configuration['destinations'])
+        elif configuration['destinations'] != [{'kind': 'live'}]:
+            raise ValueError('Select local live output.')
         workflow = configuration['workflow']
         self.engine.prepare(principal, workflow, configuration['output_nodes'])
         source = self.store.get('source', configuration['source_id'], principal['scope'])
@@ -216,6 +226,9 @@ class Streams:
             event = self.store.get('stream-event', sub['inflight'], sub['scope'])
         if event['principal'] != principal:
             raise PermissionError('An admitted event cannot change execution identity.')
+        if event.get('deliveries'):
+            self._delivery_event(sub, event, principal)
+            return
         if event['state'] == 'queued' and sub['state'] != 'active':
             return
         if event['state'] == 'queued':
@@ -236,15 +249,55 @@ class Streams:
                 with self.store.lock, self.store.graph.transaction():
                     if not self.authorized(sub, principal):
                         raise PermissionError('Output authority changed.')
+                    if run['state'] == 'done' and self.outbox:
+                        destinations = [item for item in sub['destinations'] if item.get('kind') == 'webhook']
+                        if destinations:
+                            body = self._delivery_body(run, event)
+                            event['deliveries'] = [self.outbox.stage(event, item['destination'], body)['id'] for item in destinations]
+                            event['state'] = 'running'
                     self.store.store.put('stream-event', event)
                     current = self.store.get('subscription', sub['id'], sub['scope'])
                     if current.get('inflight') != event['id'] or current.get('service_principal') != event['principal']:
                         raise Conflict('The admitted event slot changed during completion.')
                     if event['state'] == 'interrupted':
                         current.update(state='blocked', reason='An event outcome needs reconciliation.')
-                    else:
+                    elif not event.get('deliveries'):
                         current['inflight'] = None
                     self.store.put_subscription(current)
+
+    def _delivery_event(self, sub, event, principal):
+        with self.store.lock, self.store.graph.transaction():
+            current = self.store.get('subscription', sub['id'], sub['scope'])
+            if current.get('inflight') != event['id'] or current.get('service_principal') != principal:
+                raise Conflict('The admitted delivery slot changed.')
+            if not self.authorized(current, principal):
+                raise PermissionError('Delivery output authority changed.')
+            rows = [self.store.get('delivery', ident, sub['scope']) for ident in event['deliveries']]
+            if any(row['event'] != event['id'] or row['principal'] != principal for row in rows):
+                raise PermissionError('Delivery identity changed.')
+            event['delivery_states'] = [{'id': row['id'], 'state': row['state']} for row in rows]
+            if all(row['state'] == 'done' for row in rows):
+                event['state'] = 'done'
+                current['inflight'] = None
+                if current['state'] == 'blocked':
+                    current.update(state='paused', reason='Delivery reconciled. Resume to admit new records.')
+            elif any(row['state'] in {'blocked', 'interrupted'} for row in rows):
+                event['state'] = 'interrupted'
+                current.update(state='blocked', reason='A delivery needs reconciliation or an explicit retry.')
+            self.store.store.put('stream-event', event)
+            self.store.put_subscription(current)
+
+    @staticmethod
+    def _delivery_body(run, event):
+        # Only declared value ports cross to a receiver; artifact/resource paths remain private.
+        nodes = {node['id']: node for node in run['graph']['nodes']}
+        allowed = {'json', 'text', 'decision', 'metrics', 'gate'}
+        outputs = [item for item in event['result']['outputs']
+                   if any(port['name'] == item['port'] and port['type'] in allowed
+                          for port in node_spec(nodes[item['node']]['type'], nodes[item['node']].get('version', 1))['outputs'])]
+        if not outputs:
+            raise ValueError('Select a JSON, decision, metrics or text output for webhook delivery.')
+        return {'event_id': event['id'], 'sequence': event['sequence'], 'outputs': copy.deepcopy(outputs)}
 
     @staticmethod
     def _output_selected(run: dict, selected: list[str], node: str) -> bool:

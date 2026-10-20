@@ -89,7 +89,8 @@ def test_tail_reads_direct_last_sequence_only(setup, monkeypatch):
     assert page['next_cursor'] == 8
 
 
-def test_actual_finite_event_survives_submit_ack_loss_and_delivers_once(tmp_path):
+@pytest.mark.parametrize('delivery', [None, 'done', 'interrupted'])
+def test_actual_finite_event_survives_submit_ack_loss_and_delivers_once(tmp_path, delivery):
     from types import SimpleNamespace
 
     from poolhouse.fleet.studio_authority import StudioAuthority
@@ -110,6 +111,7 @@ def test_actual_finite_event_survives_submit_ack_loss_and_delivers_once(tmp_path
     engine.close()
     sources = SimpleNamespace(close=lambda: None, poll=lambda *args, **kwargs: None, bind=lambda *args: None)
     service = Streams(engine, authority, sources=sources, resources=lambda *args: [])
+    sends = configure_delivery(service, store, delivery)
     try:
         source = service.store.create('source', P, {'kind': 'examples'}, 'source')
         workflow = store.save_workflow('scope', 'Records', {'nodes': [{'id': 'record', 'type': 'stream.record'}], 'edges': []})
@@ -127,10 +129,23 @@ def test_actual_finite_event_survives_submit_ack_loss_and_delivers_once(tmp_path
         engine.advance(store.get('run', original['id'], 'scope'))
         service.advance(sub)
         page = service.store.page(sub)
-        assert page['events'][0]['state'] == 'done'
-        assert page['events'][0]['result']['outputs'][0]['value'] == {'value': 1}
+        if delivery:
+            event = page['events'][0]
+            assert event['state'] == 'running' and len(event['deliveries']) == 1
+            assert service.store.get('subscription', sub['id'], 'scope')['inflight'] == event['id']
+            assert service.outbox.attempt(event['deliveries'][0], 'scope')['state'] == delivery
+            service.advance(sub)
+            page = service.store.page(sub)
+            assert len(sends) == 1
+        assert (page['events'][0]['state'] == ('interrupted' if delivery == 'interrupted' else 'done')
+                and page['events'][0]['result']['outputs'][0]['value'] == {'value': 1})
         assert calls == [{'value': 1}]
-        assert service.store.get('subscription', sub['id'], 'scope')['inflight'] is None
+        current = service.store.get('subscription', sub['id'], 'scope')
+        assert bool(current['inflight']) is (delivery == 'interrupted')
+        if delivery == 'interrupted':
+            assert current['state'] == 'blocked'
+            service.advance(sub)
+            assert len(sends) == 1
     finally:
         service.close()
         authority.close()
@@ -152,3 +167,16 @@ def test_corrupt_active_pointer_does_not_stop_healthy_subscription(setup):
     store.graph.query("MERGE (a:StudioSubscriptionActive {id:'missing'}) SET a.scope='scope'")
     assert [row['id'] for row in store.active()] == [sub['id']]
     assert store.graph.get_doc('studio.stream-index-error:missing')
+
+
+def configure_delivery(service, store, delivery):
+    sends = []
+    if delivery:
+        from poolhouse.studio.outbox import Outbox
+        destination = {'id': 'registered', 'revision': 1, 'url': 'https://receiver.invalid/events'}
+        service.destinations = lambda principal, selected: [{'kind': 'webhook', 'destination': destination}]
+        def send(destination, envelope, *, authorize):
+            sends.append(envelope)
+            return {'state': delivery}
+        service.outbox = Outbox(store, authorize=lambda row: True, send=send)
+    return sends
