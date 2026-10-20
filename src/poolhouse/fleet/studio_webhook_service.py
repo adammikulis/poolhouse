@@ -4,7 +4,7 @@ from __future__ import annotations
 from poolhouse.studio.store import digest
 
 from .studio_webhook_setup import LocalSender
-from .studio_webhooks import WebhookSources
+from .studio_webhooks import PRODUCER_PROTOCOL, PROTOCOL, WebhookSources
 
 
 def create(ui, service):
@@ -17,18 +17,22 @@ def create(ui, service):
 
     def current(ident):
         source = source_row(ident)
+        protocol = {None: PROTOCOL, 'local-synthetic': PROTOCOL,
+                    'software-producer': PRODUCER_PROTOCOL}[source.get('provider')]
         if source.get('provider') and not ui.studio_webhook_setup.ready(ident, source['generation']):
             raise PermissionError('This software sender is no longer authorized.')
         with service.store.lock:
             binding = service.store.graph.get_doc('studio.webhook-subscription:' + ident)
             if not binding:
-                return {'scope': source['scope'], 'generation': source['generation'], 'enabled': False, 'subscription': ''}
+                return {'scope': source['scope'], 'generation': source['generation'], 'enabled': False,
+                        'subscription': '', 'protocol': protocol}
             sub = service.store.get('subscription', binding['subscription'], source['scope'])
             enabled = (binding == {'scope': source['scope'], 'generation': source['generation'],
                                    'subscription': sub['id'], 'grant': sub.get('grant')}
                        and sub['source_id'] == ident and sub['state'] == 'active'
                        and service.authorized(sub, sub['service_principal']))
-            return {'scope': source['scope'], 'generation': source['generation'], 'enabled': enabled, 'subscription': sub['id']}
+            return {'scope': source['scope'], 'generation': source['generation'], 'enabled': enabled,
+                    'subscription': sub['id'], 'protocol': protocol}
 
     def configure(principal, ident, generation):
         service.authority._owner(principal)
@@ -41,7 +45,13 @@ def create(ui, service):
             if not context['enabled'] or context['generation'] != event['generation']:
                 raise PermissionError('Webhook source authority changed.')
             sub = service.store.get('subscription', context['subscription'], context['scope'])
-            result = service.ingest(sub, event)
+            if context['protocol'] == PRODUCER_PROTOCOL:
+                admission = getattr(ui, 'studio_producer_admission', None)
+                if admission is None:
+                    raise PermissionError('This software producer is not configured.')
+                result = admission.admit(sub, event)
+            else:
+                result = service.ingest(sub, event)
             if current(ident) != context:
                 raise PermissionError('Webhook source authority changed before admission committed.')
             return result

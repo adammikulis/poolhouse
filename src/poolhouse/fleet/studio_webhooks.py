@@ -30,6 +30,9 @@ EVENT = re.compile(r'[A-Za-z0-9_.:-]{1,256}')
 SHA = re.compile(r'[a-f0-9]{64}')
 ERROR = 'This source event was not accepted.'
 SKEW = 300
+PROTOCOL = 'webhook-v1'
+PRODUCER_PROTOCOL = 'producer-attempt-v1'
+ATTEMPT_HEADER = 'X-Poolhouse-Attempt'
 
 
 def _identity(value):
@@ -47,6 +50,15 @@ def _private(info):
 def _frame(source, generation, event, timestamp, raw):
     return ('poolhouse-studio-webhook-v1\nPOST\n' + PREFIX + source + '\n' + timestamp
             + '\n' + event + '\n' + hashlib.sha256(raw).hexdigest() + '\n' + generation).encode('ascii')
+
+
+def _attempt_frame(source, fields, raw):
+    """Bind a receiver-owned admission attempt independently of timestamp resolution."""
+    if not isinstance(fields.get('attempt'), str) or not SHA.fullmatch(fields['attempt']):
+        raise PermissionError(ERROR)
+    return ('poolhouse-studio-producer-webhook-v1\nPOST\n' + PREFIX + source + '\n' + fields['time']
+            + '\n' + fields['event'] + '\n' + hashlib.sha256(raw).hexdigest() + '\n'
+            + fields['generation'] + '\n' + fields['attempt']).encode('ascii')
 
 
 def _payload(raw):
@@ -187,6 +199,7 @@ class WebhookSources:
     def _active(self, source, generation):
         current = self.current(source)
         if (not isinstance(current, dict) or current.get('enabled') is not True
+                or current.get('protocol') not in {PROTOCOL, PRODUCER_PROTOCOL}
                 or current.get('generation') != generation or not current.get('subscription')
                 or not isinstance(current.get('scope'), str) or not current['scope']):
             raise PermissionError(ERROR)
@@ -209,14 +222,24 @@ class WebhookSources:
             raise PermissionError(ERROR)
         if not isinstance(raw, bytes) or not 0 < len(raw) <= MAX_BODY:
             raise ValueError(ERROR)
-        expected = hmac.new(row['secret'].encode(), _frame(source, generation, event, timestamp, raw), hashlib.sha256).hexdigest()
+        attempt = headers.get('attempt')
+        if current['protocol'] == PRODUCER_PROTOCOL:
+            frame = _attempt_frame(source, headers, raw)
+        else:
+            if attempt is not None:
+                raise PermissionError(ERROR)
+            frame = _frame(source, generation, event, timestamp, raw)
+        expected = hmac.new(row['secret'].encode(), frame, hashlib.sha256).hexdigest()
         if not hmac.compare_digest(signature, expected):
             raise PermissionError(ERROR)
         payload = _payload(raw)
         if self._active(source, generation) != current:
             raise PermissionError(ERROR)
-        result = self.admit(source, {'id': event, 'generation': generation, 'payload': payload,
-                                     'digest': hashlib.sha256(raw).hexdigest()})
+        incoming = {'id': event, 'generation': generation, 'payload': payload,
+                    'digest': hashlib.sha256(raw).hexdigest()}
+        if current['protocol'] == PRODUCER_PROTOCOL:
+            incoming['attempt'] = attempt
+        result = self.admit(source, incoming)
         if (not isinstance(result, dict) or not isinstance(result.get('id'), str)
                 or not SHA.fullmatch(result['id']) or result.get('state') not in {'queued', 'running', 'quarantined', 'done', 'failed', 'interrupted', 'cancelled'}):
             raise ValueError(ERROR)
@@ -245,6 +268,10 @@ def public(ui, handler, raw):
                 if len(values) != 1:
                     raise PermissionError(ERROR)
                 headers[key] = values[0]
+            attempts = handler.headers.get_all(ATTEMPT_HEADER, [])
+            if len(attempts) > 1:
+                raise PermissionError(ERROR)
+            headers['attempt'] = attempts[0] if attempts else None
             if (handler.headers.get_all('Transfer-Encoding') or handler.headers.get_all('Content-Encoding')
                     or len(handler.headers.get_all('Content-Length', [])) != 1
                     or handler.headers.get('Content-Length') != str(len(raw or b''))

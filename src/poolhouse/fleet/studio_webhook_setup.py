@@ -14,7 +14,7 @@ from poolhouse.studio.decision_templates import example_record, sample_sets
 from poolhouse.studio.store import Conflict, digest
 
 from . import studio_epoch, tls
-from .studio_webhooks import HEADERS, PREFIX, _frame
+from .studio_webhooks import ATTEMPT_HEADER, HEADERS, PREFIX, _attempt_frame, _frame
 
 PROVIDER = 'local-synthetic'
 UNKNOWN = 'This test webhook has an unresolved outcome. It will not be sent again.'
@@ -214,11 +214,18 @@ class LocalSender:
         context.load_cert_chain(str(identity.certfile), str(identity.keyfile))
         endpoint = f'https://127.0.0.1:{port}' + PREFIX + intent['source']
         raw = intent['raw'].encode()
-        signature = hmac.new(credential['secret'].encode(), _frame(intent['source'], intent['generation'],
-                             intent['event_id'], intent['timestamp'], raw), hashlib.sha256).hexdigest()
+        fields = {'event': intent['event_id'], 'time': intent['timestamp'], 'generation': intent['generation']}
+        if 'attempt' in intent:
+            fields['attempt'] = digest(intent['attempt'])
+            frame = _attempt_frame(intent['source'], fields, raw)
+        else:
+            frame = _frame(intent['source'], intent['generation'], intent['event_id'], intent['timestamp'], raw)
+        signature = hmac.new(credential['secret'].encode(), frame, hashlib.sha256).hexdigest()
         headers = {HEADERS['event']: intent['event_id'], HEADERS['time']: intent['timestamp'],
                    HEADERS['generation']: intent['generation'], HEADERS['signature']: signature,
                    'Content-Type': 'application/json', 'Content-Length': str(len(raw)), 'Authorization': ''}
+        if 'attempt' in fields:
+            headers[ATTEMPT_HEADER] = fields['attempt']
         contacted = False
         def guard(url):
             nonlocal contacted
