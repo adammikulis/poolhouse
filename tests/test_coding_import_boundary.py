@@ -31,8 +31,11 @@ def hostile(tmp_path, monkeypatch):
     return project, marker
 
 
-def test_actual_generated_hook_ignores_repository_package_and_python_environment(hostile):
+@pytest.mark.parametrize("invalid_python_home", [False, True])
+def test_actual_generated_hook_ignores_repository_package_and_python_environment(hostile, monkeypatch, invalid_python_home):
     project, marker = hostile
+    if not invalid_python_home:
+        monkeypatch.delenv("PYTHONHOME")
     command = harnessing.hook_command("pre", policy=coding_policy.Policy("read-only"),
                                      agent="isolated-worker", root=project, protect=[])
     done = subprocess.run(shlex.split(command), input=json.dumps({"tool_name": "Read", "tool_input": {"path": "safe.txt"},
