@@ -333,7 +333,7 @@ impl Node {
 
     fn enter(&mut self, board: &str, parent_token: Option<&str>, native: Native, peer: &Peer, person: bool) -> Result<Value> {
         let Native { model, harness, session } = native;
-        let (model, harness) = (identity::clean(model)?, identity::clean(harness)?);
+        let (model, harness) = (identity::clean_model(model)?, identity::clean(harness)?);
         if !valid_name(board) {
             return Err(Error::Invalid("a board id is a short lower-case word".into()));
         }

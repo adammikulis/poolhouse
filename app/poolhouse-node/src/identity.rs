@@ -94,6 +94,16 @@ pub fn clean(text: &str) -> Result<String> {
     Ok(text.trim().chars().take(MOST_WORD).map(|c| if c.is_ascii_alphanumeric() || "._/-".contains(c) { c } else { '-' }).collect())
 }
 
+/// A model id as it is kept: the trimmed claim when it is 1 to 80 characters of letters, digits and `._:/+@-` starting with a letter
+/// or digit, with `:`, `+` and `@` as hyphens and at most `MOST_WORD` characters; anything else is no model, so no sentence a session
+/// writes reaches a reader through it.
+pub fn clean_model(text: &str) -> Result<String> {
+    let text = text.trim();
+    let first = text.chars().next().is_some_and(|c| c.is_ascii_alphanumeric());
+    let id = first && text.len() <= 80 && text.chars().all(|c| c.is_ascii_alphanumeric() || "._:/+@-".contains(c));
+    Ok(if id { clean(text)? } else { String::new() })
+}
+
 /// The names of one board.
 pub struct Registry {
     path: PathBuf,
@@ -177,7 +187,7 @@ impl Registry {
     /// Record what a session says it runs on; a verified model is never lowered to a claim. The person's session keeps the harness and
     /// model the node gave it, and no other session takes that harness.
     pub fn claim_model(&mut self, name: &str, model: &str, harness: &str) -> Result<bool> {
-        let (model, harness) = (clean(model)?, clean(harness)?);
+        let (model, harness) = (clean_model(model)?, clean(harness)?);
         let ident = self.names.get_mut(name).ok_or_else(|| Error::Denied("no such session".into()))?;
         if ident.person {
             if (!model.is_empty() && model != ident.model) || (!harness.is_empty() && harness != ident.harness) {
@@ -203,7 +213,7 @@ impl Registry {
 
     /// Record that the node checked ``name`` runs ``model``; only the node's own checks call this.
     pub fn verify_model(&mut self, name: &str, model: &str) -> Result<()> {
-        let model = clean(model)?;
+        let model = clean_model(model)?;
         let ident = self.names.get_mut(name).ok_or_else(|| Error::Denied("no such session".into()))?;
         (ident.model, ident.model_state) = (model, ModelState::Verified);
         self.save()
@@ -287,7 +297,7 @@ impl Registry {
             return Err(Error::Denied("a session name needs the native harness and session id".into()));
         }
         let (full, word) = (digest(harness, session), family_word(model));
-        let model = clean(model)?;
+        let model = clean_model(model)?;
         let known = self.names.iter().find(|(_, i)| i.digest == full).map(|(n, _)| n.clone());
         if let Some(name) = known {
             self.admit(&name, (parent, lineage, proven), now_ms)?;

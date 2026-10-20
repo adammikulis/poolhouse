@@ -287,9 +287,9 @@ def test_unshared_workspace_is_selected_and_team_messages_render(chat_browser, t
 
 
 def existing_dm_directory(team):
-    """43 sessions on the board, one of which has a room and a conversation with the person: the sessions, that one's name and how the page names it."""
-    helpers = [helper(team, f'helper-{number}') for number in range(43)]
-    worker, session = helpers[0]
+    """43 sessions on the board (one main session and 42 subagents of it, as the board allows at most 16 main sessions), one of which has a room and a conversation with the person: the sessions, that one's name and how the page names it."""
+    worker, session = helper(team, 'helper-0')
+    helpers = [(worker, session)] + [helper(team, f'helper-{number}', parent=worker) for number in range(1, 43)]
     session.room('create', '#experiments')
     session.post(team.me.name, 'note', 'Existing experiment discussion.')
     return helpers, worker.name, display_name(session, worker.name)

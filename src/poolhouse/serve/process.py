@@ -142,6 +142,15 @@ def started_at(pid: int | None) -> float | None:
         return None
 
 
+def owns_connection(pid: int, local: tuple, remote: tuple) -> bool:
+    """Whether this process owns the exact client connection, without trusting its claim."""
+    try:
+        return any(tuple(row.laddr) == local and tuple(row.raddr) == remote
+                   for row in psutil.Process(pid).net_connections(kind="tcp"))
+    except (psutil.Error, OSError):
+        return False
+
+
 def cmdline_digest(pid: int | None) -> str | None:
     """A digest of ``pid``'s command line, or None when it is not running or will not say."""
     if not pid_exists(pid):

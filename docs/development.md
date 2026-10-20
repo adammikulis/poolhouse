@@ -69,6 +69,9 @@ branch from the development branch. `poolhouse.harnesshook pre` applies the same
 and local-model sessions the launchers start (add a `[[hooks.PreToolUse]]` entry running it to a
 Codex config the launchers did not write), and `scripts/hooks/primary-only` refuses a commit by an
 agent in the primary checkout or on the development branch. Tests: `tests/test_worktree_rules.py`.
+`claude-wrap-up` (PostToolUse) counts each subagent's tool calls in an append-only file under the hook state
+directory, injects a wrap-up instruction as additional context at 120 calls and again at 140, and
+`claude-subagent-stop` clears the count. Tests: `tests/test_wrap_up_hook.py`.
 
 The paths an agent never writes, and the shell forms that write them, are in `src/poolhouse/protectedwrites.py`,
 which `worktreerules` loads for both guards and for the local-model harness. The guards, `.claude/settings*.json`,

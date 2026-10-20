@@ -120,7 +120,8 @@ Measured in this project: workers that ran 600 to 900 tool calls consumed 0.5 to
 
 - One slice per worker: a brief that names one deliverable with a stop condition. A worker that has made about 150 tool calls
   without reporting is stopped by the lead, its commits kept, and the rest is a new worker with a fresh context and a one-line
-  summary of state (a continuation is cheaper than a longer life).
+  summary of state (a continuation is cheaper than a longer life). The PostToolUse hook `scripts/hooks/claude-wrap-up`
+  tells a subagent at 120 and again at 140 tool calls to commit, push, clean up and report before its `maxTurns` cap of 150.
 - Split by deliverable, not by phase: design, code, review and fixes are separate workers; a reviewer reads, runs a few
   targeted checks and reports, with its tool calls capped near 40.
 - A reviewer is started once per batch of related changes, not once per commit, and a failure to register or to record an accept
