@@ -1,7 +1,7 @@
 {
- "surfaces": 888,
+ "surfaces": 893,
  "by_status": {
-  "covered": 570,
+  "covered": 575,
   "partial": 193,
   "uncovered": 52,
   "n/a": 73,
@@ -37,7 +37,7 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 56,
+   "covered": 58,
    "partial": 46,
    "uncovered": 0,
    "n/a": 1,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 87,
+   "covered": 89,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 100,
+   "covered": 101,
    "partial": 58,
    "uncovered": 0,
    "n/a": 4,
@@ -1995,6 +1995,46 @@
     "tests/test_onboard_transfer.py"
    ],
    "note": ""
+  },
+  {
+   "id": "egress:fleet/producer_client.py:ProducerClient._control",
+   "kind": "egress",
+   "source": "src/poolhouse/fleet/producer_client.py",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_sdk.py::test_public_metadata_publish_and_receipt_use_authenticated_status",
+    "tests/test_producer_sdk.py::test_wrong_data_process_receives_zero_record_bytes",
+    "tests/test_producer_sdk.py::test_changed_bridge_generation_or_mismatched_offer_cannot_be_adopted",
+    "tests/test_producer_sdk.py::test_anchor_stands_after_bootstrap_expiry_but_pool_change_refuses",
+    "tests/test_producer_sdk.py::test_event_identity_contract_is_ascii_and_bounded_before_data",
+    "tests/test_producer_sdk.py::test_records_are_finite_objects_before_data",
+    "tests/test_producer_sdk.py::test_fork_invalidates_client_and_closes_inherited_owned_socket",
+    "tests/test_producer_sdk.py::test_wrong_control_certificate_refuses_before_metadata_application",
+    "tests/test_producer_sdk.py::test_socket_path_replacement_cannot_receive_record"
+   ],
+   "note": "The original SDK process retains one authenticated daemon anchor and offer-specific bridge generation. Fresh control and DATA connections verify actual kernel endpoint processes before application bytes, with exact control TLS certificate checks and bounded fixed schemas. Wrong or replaced endpoints receive no record bytes; inherited clients fail after fork. There is no automatic uncertain resend. These isolated transport tests do not establish complete provider enrollment, current source authorization or durable event admission; deliberate forwarding by an already authorized connector remains outside kernel connector proof."
+  },
+  {
+   "id": "egress:fleet/producer_client.py:ProducerClient._data",
+   "kind": "egress",
+   "source": "src/poolhouse/fleet/producer_client.py",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_sdk.py::test_public_metadata_publish_and_receipt_use_authenticated_status",
+    "tests/test_producer_sdk.py::test_wrong_data_process_receives_zero_record_bytes",
+    "tests/test_producer_sdk.py::test_changed_bridge_generation_or_mismatched_offer_cannot_be_adopted",
+    "tests/test_producer_sdk.py::test_anchor_stands_after_bootstrap_expiry_but_pool_change_refuses",
+    "tests/test_producer_sdk.py::test_event_identity_contract_is_ascii_and_bounded_before_data",
+    "tests/test_producer_sdk.py::test_records_are_finite_objects_before_data",
+    "tests/test_producer_sdk.py::test_fork_invalidates_client_and_closes_inherited_owned_socket",
+    "tests/test_producer_sdk.py::test_wrong_control_certificate_refuses_before_metadata_application",
+    "tests/test_producer_sdk.py::test_socket_path_replacement_cannot_receive_record"
+   ],
+   "note": "The original SDK process retains one authenticated daemon anchor and offer-specific bridge generation. Fresh control and DATA connections verify actual kernel endpoint processes before application bytes, with exact control TLS certificate checks and bounded fixed schemas. Wrong or replaced endpoints receive no record bytes; inherited clients fail after fork. There is no automatic uncertain resend. These isolated transport tests do not establish complete provider enrollment, current source authorization or durable event admission; deliberate forwarding by an already authorized connector remains outside kernel connector proof."
   },
   {
    "id": "egress:fleet/project_client.py:read",
@@ -5963,6 +6003,26 @@
    "note": "Private bridge requests bind the full immutable source context, exact finite JSON bytes, action and nonce under a domain-separated MAC. Activation requires the persisted binding digest; explicit revocation is sticky and replay is refused. Callback-based tests exercise retained-child/current-source requirements, not complete process custody or owner authorization. The fixed factory must supply both checks; bounded RAM nonce tracking supplements the durable source/event ledger and cannot itself promise durable replay prevention. No listener, source enrollment or publication transport is provided by this primitive."
   },
   {
+   "id": "parser:fleet/producer_client.py",
+   "kind": "parser",
+   "source": "src/poolhouse/fleet/producer_client.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_sdk.py::test_public_metadata_publish_and_receipt_use_authenticated_status",
+    "tests/test_producer_sdk.py::test_wrong_data_process_receives_zero_record_bytes",
+    "tests/test_producer_sdk.py::test_changed_bridge_generation_or_mismatched_offer_cannot_be_adopted",
+    "tests/test_producer_sdk.py::test_anchor_stands_after_bootstrap_expiry_but_pool_change_refuses",
+    "tests/test_producer_sdk.py::test_event_identity_contract_is_ascii_and_bounded_before_data",
+    "tests/test_producer_sdk.py::test_records_are_finite_objects_before_data",
+    "tests/test_producer_sdk.py::test_fork_invalidates_client_and_closes_inherited_owned_socket",
+    "tests/test_producer_sdk.py::test_wrong_control_certificate_refuses_before_metadata_application",
+    "tests/test_producer_sdk.py::test_socket_path_replacement_cannot_receive_record"
+   ],
+   "note": "The original SDK process retains one authenticated daemon anchor and offer-specific bridge generation. Fresh control and DATA connections verify actual kernel endpoint processes before application bytes, with exact control TLS certificate checks and bounded fixed schemas. Wrong or replaced endpoints receive no record bytes; inherited clients fail after fork. There is no automatic uncertain resend. These isolated transport tests do not establish complete provider enrollment, current source authorization or durable event admission; deliberate forwarding by an already authorized connector remains outside kernel connector proof."
+  },
+  {
    "id": "parser:fleet/producer_control.py",
    "kind": "parser",
    "source": "src/poolhouse/fleet/producer_control.py",
@@ -5977,6 +6037,22 @@
     "tests/test_producer_control.py::test_control_envelope_is_exact_before_fixed_dispatch"
    ],
    "note": "Length-prefixed metadata and admitted bridge frames have separate bounds. Duplicate keys, nonfinite values, wrong operation fields, plaintext control, partial frames and oversized or unread responses fail within the original connection deadline. The codec exports no credentials and cannot select code, roots or authority."
+  },
+  {
+   "id": "parser:fleet/producer_holder.py",
+   "kind": "parser",
+   "source": "src/poolhouse/fleet/producer_holder.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_sdk.py::test_holder_production_gate_runs_before_root_or_secret",
+    "tests/test_producer_sdk.py::test_locator_links_and_public_permissions_are_refused",
+    "tests/test_producer_sdk.py::test_runtime_location_override_refuses_before_selection",
+    "tests/test_producer_sdk.py::test_real_owned_holder_nonce_ack_returns_only_public_anchor",
+    "tests/test_producer_sdk.py::test_actual_holder_forgery_partial_or_lost_ack_refuses_and_reaps"
+   ],
+   "note": "Only the installed helper passes the real-machine gate before reading its fixed account root and existing private locator. Descriptor checks reject symlinks and public permissions; nonce and exact private acknowledgement schemas are checked. Only a public authenticated daemon anchor crosses to the SDK. The existing software installation-secret compromise boundary remains; no hardware clone resistance or source authority is conferred."
   },
   {
    "id": "parser:fleet/request_fields.py",
@@ -11121,6 +11197,22 @@
     "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
    ],
    "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+  },
+  {
+   "id": "spawn:fleet/producer_holder.py:_launch",
+   "kind": "spawn",
+   "source": "src/poolhouse/fleet/producer_holder.py",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_sdk.py::test_real_owned_holder_nonce_ack_returns_only_public_anchor",
+    "tests/test_producer_sdk.py::test_actual_holder_forgery_partial_or_lost_ack_refuses_and_reaps",
+    "tests/test_producer_sdk.py::test_missing_initial_birth_proof_still_reaps_retained_owned_child",
+    "tests/test_producer_sdk.py::test_fork_during_holder_construction_closes_private_channels",
+    "tests/test_producer_sdk.py::test_production_launcher_uses_only_fixed_verified_runtime_entry"
+   ],
+   "note": "The SDK launches one fixed verified installed isolated interpreter entry through the maintained process launcher. An inherited private channel binds a fresh nonce, retained child process generation and acknowledgement; forged or incomplete replies fail and retained children are reaped even when initial birth inspection fails. Forked children close bootstrap descriptors. Tests use isolated real Mac child processes, not the real installation secret."
   },
   {
    "id": "spawn:fleet/projects.py:local_root",

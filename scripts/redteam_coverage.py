@@ -457,6 +457,11 @@ def discover() -> dict[str, Surface]:
         ("parser", "fleet/producer_bridge.py", "src/poolhouse/fleet/producer_bridge.py"),
         ("handler", "fleet/producer_bridge.py:BridgeCapability.activate", "src/poolhouse/fleet/producer_bridge.py"),
         ("handler", "fleet/producer_bridge.py:BridgeCapability.verify", "src/poolhouse/fleet/producer_bridge.py"),
+        ("spawn", "fleet/producer_holder.py:_launch", "src/poolhouse/fleet/producer_holder.py"),
+        ("parser", "fleet/producer_holder.py", "src/poolhouse/fleet/producer_holder.py"),
+        ("parser", "fleet/producer_client.py", "src/poolhouse/fleet/producer_client.py"),
+        ("egress", "fleet/producer_client.py:ProducerClient._control", "src/poolhouse/fleet/producer_client.py"),
+        ("egress", "fleet/producer_client.py:ProducerClient._data", "src/poolhouse/fleet/producer_client.py"),
     ):
         if (ROOT / source).is_file():
             add(found, kind, name, source)
