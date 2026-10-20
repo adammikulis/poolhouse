@@ -220,7 +220,7 @@ Nothing is stored as a row, and the answer is not an input to any decision.
 the answering device decides what it gives, which the asker cannot argue with. The answering side checks, on every request:
 
 1. the asker is an active member (`Standing::Active`, rechecked each request, so a removed device is refused at its next ask);
-2. the board is one both devices hold. In one pool every member holds the project board, so this stops only a member that shares
+2. the board is one both devices hold. In one pool every member holds the board of the project, so this stops only a member that shares
    another board; the level and its scope in 3 carry the defence against a member that scrapes;
 3. the level for this asker and topic: `off`, `summary` or `detail`. The default is `summary` for every asker. `detail` is the grant
    `expose_state`, scoped like `land_trust` (`Scope::on`) to the answering device and the asker's certificate fingerprint, signed
@@ -453,7 +453,7 @@ Each case says the attack and what stops it; the table after the cases names the
   decides on an answer: not a claim, a lease, a landing, a push, an admission, a dispatch or a test run. Size, rows, field set and
   the grammar of every string are fixed; an answer outside them is dropped whole.
 - **A malicious member reading local state it should not.** The answering device decides: member, shared board, topic list, and
-  the level for that asker's certificate fingerprint. Members of one pool all hold the project board, so the board check stops
+  the level for that asker's certificate fingerprint. Members of one pool all hold the board of the project, so the board check stops
   only a cross-board ask; the per-asker level is the defence. Every asker gets `summary` (counts) until a person signs
   `expose_state` for it. A member that does not hold the board gets
   nothing about it. An answer never carries a token, a full path, a title, an outcome or a string outside the closed grammar.
