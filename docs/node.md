@@ -839,7 +839,9 @@ pool, through admin keys; a device never does, and the one thing a member device
   `sensitive`: admit a device, remove a member; `governance`: admins, thresholds, holds, floors, delegate, recovery key). By default
   the routine floor is the lowest level among the founding admin keys above `weak` and the sensitive and governance floors the
   highest. A key counts toward a class only at or above its floor; a key below it is listed and counts for nothing, and a `weak`
-  key may end a delegate and nothing else. A floor is never `weak`, and a floor no listed key holds is refused. The `recovery` role
+  key may end a delegate and nothing else. In a pool the sensitive floor holds for approvals too: a key below it approves no request for an
+  action that is sensitive or cannot be undone, and an irreversible data act (`file_delete`, `shard_consent`) that a key at `computer` or below
+  approves starts a day later, so a person key can revoke it first. A floor is never `weak`, and a floor no listed key holds is refused. The `recovery` role
   counts toward no immediate act.
   Thresholds count distinct people (`unit: person`) or keys: `routine` (cancel, end a delegate) 1 by default, `sensitive`
   (remove, admit, and for governance acts the admin changes, thresholds, holds, floors, a delegate) 1 while one person holds a key

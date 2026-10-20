@@ -216,7 +216,7 @@ fn computer_only_file_delete_waits_a_cancel_window() {
     assert_eq!(data_act_wait_ms("file_delete", &[Level::Computer, Level::Phone]), 0);
     assert_eq!(data_act_wait_ms("file_delete", &[Level::Native]), 0);
     assert_eq!(data_act_wait_ms("sync_now", &[Level::Computer]), 0, "a reversible act never waits");
-    assert_eq!(data_act_wait_ms("file_delete", &[Level::Weak]), 0, "a typed yes is the developer's path and is not held");
+    assert_eq!(data_act_wait_ms("file_delete", &[Level::Weak]), DAY, "a typed yes is no stronger than a computer's key: it waits too");
     assert_eq!(data_act_wait_ms("file_delete", &[Level::Weak, Level::Computer]), DAY);
     assert_eq!(data_act_wait_ms("file_delete", &[]), 0);
 }

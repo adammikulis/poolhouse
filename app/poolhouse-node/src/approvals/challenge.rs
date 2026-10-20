@@ -99,6 +99,7 @@ pub fn check_entry(map: &Map<String, Value>, issue: &Issue) -> Result<()> {
     if !same || !to_ok {
         return bad("the grant is not the ask the approval names");
     }
+    // The approving key's level is not in the signed text, so every irreversible ask may start up to a day late; later is never wider.
     let slack = if crate::gov::charter::IRREVERSIBLE_DATA_ACTS.contains(&issue.action.as_str()) { crate::gov::DATA_WINDOW_MS as u64 } else { 0 };
     if issue.at_ms < created || issue.at_ms > expires.saturating_add(slack) {
         return bad("the grant starts outside the life of the request that approved it");

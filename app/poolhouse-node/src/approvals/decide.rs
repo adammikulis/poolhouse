@@ -2,6 +2,7 @@
 
 use serde_json::{json, Map, Value};
 
+use crate::approvals::content::ROUTINE;
 use crate::approvals::fatigue::{kind_of, requester, Cause, Outcome, Requester};
 use crate::approvals::{challenge, summary, Approval, APPROVED, CANCELLED, DENIED, EXPIRED, FAILED, GRANTS, HELD, HOLD, PENDING, PHONE_ADD, PHONE_REMOVE};
 use crate::error::{Error, Result};
@@ -169,6 +170,17 @@ fn picked(a: &Approval, decision: &str, pick: &str) -> Result<bool> {
     Ok(pick == a.pick_code)
 }
 
+/// What a pool says to the key ``key`` when it approves or signs a grant of the ``risk`` class (`routine`, `sensitive` or `irreversible`)
+/// and sits below the pool's sensitive floor; none for a routine grant, for a node in no pool and for a key at the floor.
+pub(crate) fn below_floor(node: &Node, key: &str, risk: &str) -> Option<String> {
+    if risk == ROUTINE {
+        return None;
+    }
+    let floor = node.members.gov()?.state().chain.latest().charter.floors.sensitive;
+    let level = node.persons.get(key).map_or(Level::Weak, |k| k.assurance);
+    (level < floor).then(|| format!("This pool needs a key approved from {} for that, and this key is approved from {}, so nothing was approved.", floor.shown(), level.shown()))
+}
+
 /// Decide a request with the signature ``d`` carries. The state changes once, and is on disk before anything is done with it.
 pub fn decide(node: &mut Node, d: &Decision) -> Result<Value> {
     sweep(node)?;
@@ -186,6 +198,9 @@ pub fn decide(node: &mut Node, d: &Decision) -> Result<Value> {
     let bytes = challenge::bytes(&challenge::object(&a, &node.cert.fingerprint()), d.decision, d.key);
     if !node.persons.signed(d.key, &bytes, d.sig) {
         return denied(if d.decision.starts_with("approve") { "That signature does not match this request, so nothing was approved." } else { "That signature does not match this request, so nothing changed." });
+    }
+    if let Some(why) = d.decision.starts_with("approve").then(|| below_floor(node, d.key, &a.risk)).flatten() {
+        return denied(&why);
     }
     let matched = picked(&a, d.decision, d.pick)?;
     let now = node.now_ms();
@@ -249,7 +264,7 @@ fn declined(node: &mut Node, a: &Approval, decision: &str, now: u64) -> Result<(
     Ok(())
 }
 
-/// Move the start of the grant ``body`` for an irreversible data act that only a computer-level key approved a day on, so that a person key
+/// Move the start of the grant ``body`` for an irreversible data act that no key above `Computer` approved a day on, so that a person key
 /// can revoke it first; the milliseconds it moved.
 fn delay_irreversible(body: &mut Map<String, Value>, level: Level) -> u64 {
     let wait = body.get("action").and_then(Value::as_str).map_or(0, |action| data_act_wait_ms(action, &[level])) as u64;
@@ -291,7 +306,7 @@ fn approved(node: &mut Node, a: &Approval, d: &Decision, now: u64) -> Result<()>
             let actions: Vec<&str> = asks.iter().map(|k| k["action"].as_str().unwrap_or("")).collect();
             node.fatigue.approved(&who, &kind_of(&actions))?;
             if waited > 0 {
-                audit(node, "approval.waiting", a, &format!("a computer key approved an act that cannot be undone; it starts in {} hours unless a key revokes it", waited / 3_600_000));
+                audit(node, "approval.waiting", a, &format!("a computer's key or a typed yes approved an act that cannot be undone; it starts in {} hours unless a key revokes it", waited / 3_600_000));
             }
             node.approvals.update(&a.id, |x| {
                 x.grants = written;

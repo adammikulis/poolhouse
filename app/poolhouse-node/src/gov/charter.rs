@@ -52,10 +52,9 @@ pub fn floor_class(kind: &str) -> Option<Class> {
 pub const IRREVERSIBLE_DATA_ACTS: [&str; 2] = ["file_delete", "shard_consent"];
 
 /// How long the data act ``action``, approved by keys at ``levels``, waits for a key to cancel it: a day when it cannot be undone and the
-/// highest level that approved it is `Computer`, none otherwise (a typed yes is the developer's terminal path and a `Native` or `Phone` key
-/// is above the computer).
+/// highest level that approved it is `Computer` or `Weak`, none otherwise (a `Native` or `Phone` key is above the computer).
 pub fn data_act_wait_ms(action: &str, levels: &[Level]) -> i64 {
-    if IRREVERSIBLE_DATA_ACTS.contains(&action) && levels.iter().max() == Some(&Level::Computer) { DATA_WINDOW_MS } else { 0 }
+    if IRREVERSIBLE_DATA_ACTS.contains(&action) && levels.iter().max().is_some_and(|top| *top <= Level::Computer) { DATA_WINDOW_MS } else { 0 }
 }
 
 /// The lowest level at which an admin key counts for each class of act. A floor is never `Weak`.
