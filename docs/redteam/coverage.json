@@ -1,7 +1,7 @@
 {
- "surfaces": 847,
+ "surfaces": 848,
  "by_status": {
-  "covered": 534,
+  "covered": 535,
   "partial": 193,
   "uncovered": 52,
   "n/a": 68,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 96,
+   "covered": 97,
    "partial": 58,
    "uncovered": 0,
    "n/a": 4,
@@ -1190,7 +1190,8 @@
    "attacker": "attacker text reaches a dialog, notification or shell command",
    "status": "covered",
    "tests": [
-    "tests/test_redteam_desktop_capabilities.py"
+    "tests/test_redteam_desktop_capabilities.py",
+    "tests/test_studio_native_picker.py"
    ],
    "note": "compiled Tauri authority grants only the daemon's own origin and port, rejects foreign origins, ports and windows, shell execution and filesystem reads; the window stays on its own origin; the daemon is recognised only by a proof from a secret its user alone can read"
   },
@@ -11556,6 +11557,21 @@
     "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
    ],
    "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+  },
+  {
+   "id": "spawn:serve/python_runtime.py:command",
+   "kind": "spawn",
+   "source": "serve/python_runtime.py:command",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_serve_python_runtime.py::test_unready_managed_runtime_never_falls_back",
+    "tests/test_serve_python_runtime.py::test_installed_or_forged_source_shape_cannot_downgrade",
+    "tests/test_serve_python_runtime.py::test_isolated_module_probe_executes_without_model_import",
+    "tests/test_serve_python_runtime.py::test_server_environment_preserves_only_explicit_hub_credential"
+   ],
+   "note": "The dependency probe uses a fixed isolated module check and the verified managed interpreter. Missing or changed runtime proofs refuse dispatch; installed source shapes cannot select an editable interpreter, and inherited Python and loader injection variables are removed."
   },
   {
    "id": "spawn:serve/wired.py:current_mb",

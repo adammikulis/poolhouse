@@ -15,6 +15,13 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["spawn:serve/python_runtime.py:command"]
+status = "covered"
+count = 1
+tests = ["tests/test_serve_python_runtime.py::test_unready_managed_runtime_never_falls_back", "tests/test_serve_python_runtime.py::test_installed_or_forged_source_shape_cannot_downgrade", "tests/test_serve_python_runtime.py::test_isolated_module_probe_executes_without_model_import", "tests/test_serve_python_runtime.py::test_server_environment_preserves_only_explicit_hub_credential"]
+note = "The dependency probe uses a fixed isolated module check and the verified managed interpreter. Missing or changed runtime proofs refuse dispatch; installed source shapes cannot select an editable interpreter, and inherited Python and loader injection variables are removed."
+
+[[group]]
 match = ["route:fleet/studio_device_routes.py:/studio/v1/executions/*", "route:fleet/studio_device_routes.py:/studio/v1/resources/*"]
 status = "covered"
 count = 2
@@ -628,7 +635,7 @@ note = "actual subprocess receives hostile arguments only inside JSON and closes
 match = ["desktop:app/src-tauri/capabilities/main.json"]
 status = "covered"
 count = 1
-tests = ["tests/test_redteam_desktop_capabilities.py"]
+tests = ["tests/test_redteam_desktop_capabilities.py", "tests/test_studio_native_picker.py"]
 note = "compiled Tauri authority grants only the daemon's own origin and port, rejects foreign origins, ports and windows, shell execution and filesystem reads; the window stays on its own origin; the daemon is recognised only by a proof from a secret its user alone can read"
 
 [[group]]
