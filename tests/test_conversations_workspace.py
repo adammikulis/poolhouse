@@ -127,7 +127,7 @@ def test_shared_sidebar_routes_channels_dms_threads_and_saved_model_chats(chat_b
     expect(board.get_by_role('button', name='Send', exact=True)).to_be_in_viewport()
 
     worker_id = worker.name
-    member = sidebar.locator(f'button[title="{worker_id}"]')
+    member = sidebar.locator(f'#conversation-direct button[title="{worker_id}"]')
     expect(member).to_contain_text(display_name(session, worker_id))
     expect(member).to_have_attribute('title', worker_id)
     member.click()
@@ -176,10 +176,7 @@ def test_new_dm_from_model_chat_opens_a_subagent_conversation_and_survives_reloa
     served, page = chat_browser
     page.goto(f'http://127.0.0.1:{served.port}/ui#chat')
     page.get_by_label('Workspace', exact=True).select_option('local')
-    direct = page.locator('#conversation-direct')
-    direct.locator('summary').get_by_text('+ New direct message', exact=True).click()
-    direct.get_by_label('Message an agent', exact=True).select_option(identity)
-    direct.get_by_role('button', name='Open', exact=True).click()
+    page.locator(f'#conversation-directory button[title="{identity}"]').click()
     expect(page.locator('#conversation-team')).to_be_visible()
     expect(page.locator('#conversation-model')).to_be_hidden()
     board = page.locator('chat-view ml-board')
@@ -321,12 +318,10 @@ def test_sidebar_keeps_agent_directory_in_new_dm_and_searches_existing_conversat
     expect(direct.locator(':scope > button')).to_have_count(1)
     expect(page.locator('#conversation-channels > button')).to_have_count(0)
     search.fill('')
-    direct.locator('summary').click()
-    directory = direct.get_by_label('Message an agent', exact=True)
-    assert directory.locator('option').count() >= 44
+    directory = page.locator('#conversation-directory')
+    assert directory.locator('button').count() >= 43
     selected_id = helpers[-1][0].name
-    directory.select_option(selected_id)
-    direct.get_by_role('button', name='Open', exact=True).click()
+    directory.locator(f'button[title="{selected_id}"]').click()
     board = page.locator('chat-view ml-board')
     expect(page.locator('#conversation-team')).to_be_visible()
     assert board.evaluate('node => node.target().to') == selected_id
@@ -367,7 +362,16 @@ def test_channel_history_scrolls_with_composer_visible_at_all_viewport_sizes(cha
         geometry = board.evaluate('node => ({history:node.feed.scrollHeight, visible:node.feed.clientHeight, height:node.getBoundingClientRect().height})')
         assert 0 < geometry['visible'] < geometry['history']
         assert geometry['height'] <= height
-        assert page.evaluate('document.documentElement.scrollHeight <= innerHeight')
+        assert page.evaluate('document.documentElement.scrollHeight <= innerHeight'), page.evaluate('''() => ({width:innerWidth,height:innerHeight,scroll:document.documentElement.scrollHeight,rail:document.querySelector('.workspace-rail').getBoundingClientRect().bottom,workspace:document.querySelector('#workspace').getBoundingClientRect().bottom,chat:document.querySelector('#chat').getBoundingClientRect().bottom,team:document.querySelector('#conversation-team').getBoundingClientRect().bottom})''')
+        if height == 420:
+            links = page.get_by_role('navigation', name='Main navigation').get_by_role('link')
+            links.first.focus()
+            for _ in range(links.count() + page.locator('.rail-tools button').count()):
+                page.keyboard.press('Tab')
+            settings = page.get_by_role('link', name='Settings', exact=True)
+            expect(settings).to_be_focused()
+            expect(settings).to_be_in_viewport()
+            assert page.evaluate('document.documentElement.scrollHeight <= innerHeight')
         board.evaluate('node => { node.feed.scrollTop = node.feed.scrollHeight; }')
         expect(board.locator('.msg pre').last).to_be_in_viewport()
         expect(composer).to_be_in_viewport()

@@ -138,7 +138,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       this.chat = chat;
       chat.search.placeholder = 'Search chats & channels';
       chat.search.setAttribute('aria-label', 'Search conversations and channels');
-      chat.search.title = 'Search model chats, channels, and direct messages';
+      chat.search.title = 'Search conversations, channels, direct messages, and workspace agents';
       chat.search.addEventListener('input', () => { if (this.navigationData) this.navigation(this.navigationData); });
       this.mobile = chat.querySelector('#conversation-mobile-nav');
       this.mobile.onclick = () => {
@@ -158,6 +158,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       this.model = chat.querySelector('#conversation-model');
       this.channels = chat.querySelector('#conversation-channels');
       this.direct = chat.querySelector('#conversation-direct');
+      this.directory = chat.querySelector('#conversation-directory');
       this.live = chat.querySelector('#conversation-models');
 
       chat.querySelector('#conversation-details').onclick = event => {
@@ -211,9 +212,12 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
     selectProject() {
       const id = this.project.value, selection = this.projectSelection = (this.projectSelection || 0) + 1;
       this.board?.remove();
+      this.team.replaceChildren(); this.teamHeading = null;
       this.board = null;
       this.navigationData = null;
       this.direct.replaceChildren();
+      this.directory.replaceChildren();
+      this.scope();
       if (!id) { this.channels.textContent = 'Choose a workspace to see its channels.'; return; }
       if (id !== 'local' && this.projectRows?.get(id)?.available !== true) {
         this.team.replaceChildren();
@@ -230,14 +234,18 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
         board.setActive(this.visible);
       });
       board.addEventListener('ml-board-open', () => { if (current()) M.go('board'); });
-      this.team.replaceChildren(board);
+      this.teamHeading = M.el('header', {id:'conversation-team-heading', class:'conversation-team-heading'});
+      this.team.replaceChildren(this.teamHeading, board);
       try { localStorage.setItem('poolhouse.conversations.project', id); } catch {}
     }
     navigation(data) {
       this.navigationData = data;
+      this.scope(data);
+      const board = this.board, selection = this.projectSelection;
       const button = (label, current, view, identity = '') => M.el('button', {title:identity,
         type:'button', 'aria-current':String(this.active && current), onclick:() => {
-          M.go('board'); this.board.open(view);
+          if (board !== this.board || selection !== this.projectSelection || this.navigationData !== data || !this.visible) return;
+          M.go('board'); board.open(view);
         }}, label);
       const query = this.chat.search.value.trim().toLowerCase();
       const matches = text => String(text).toLowerCase().includes(query);
@@ -264,15 +272,50 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
         const label = agents.get(id) || id;
         if (!members.has(id) && matches(`${label} ${id}`)) members.set(id, {id, label, view:{kind:'dm', a:data.view.a, b:data.view.b}});
       }
-      const newMessage = data.me ? M.el('details', {}, M.el('summary', {}, '+ New direct message'), this.board.newDm()) : null;
       const shown = [...members.values()].slice(0, M.LIST_MAX);
-      this.direct.replaceChildren(...(newMessage ? [newMessage] : []), ...shown.map(row => {
+      this.direct.replaceChildren(...shown.map(row => {
         const node = button(row.label, data.view.kind === 'dm' && [data.view.a,data.view.b].includes(row.id), row.view, row.id);
         if (row.unread) node.append(M.el('span', {'aria-label':`${row.unread} unread messages`}, ` · ${row.unread}`));
         return node;
       }));
       if (members.size > shown.length) this.direct.append(M.el('p', {class:'hint'}, `Showing ${shown.length} of ${members.size}; search to narrow.`));
       if (!members.size) this.direct.append(M.el('p', {class:'hint'}, query ? 'No direct messages match your search.' : 'No direct messages yet.'));
+      this.agents(data, matches, button);
+    }
+    scope(data = null) {
+      const id = this.project.value, local = id === 'local', row = this.projectRows?.get(id);
+      const name = local ? 'Device-local board' : row?.name || 'Choose a workspace';
+      const status = !id ? 'Workspace activity' : !local && row?.available !== true ? 'Workspace unavailable' :
+        data?.personSetupRequired ? 'Workspace access needed' : data?.error ? 'Connection unavailable' :
+        data?.me ? (local ? 'Only on this device' : 'Shared workspace') : 'Connecting to workspace…';
+      this.chat.querySelector('#conversation-workspace-name').textContent = name;
+      this.chat.querySelector('#conversation-workspace-status').textContent = status;
+      this.chat.querySelector('#conversation-directory-label').textContent = local ? 'Device agents' : 'Workspace agents';
+      if (this.teamHeading && data) {
+        const view = data.view, recipient = view.kind === 'dm' ?
+          (view.a === data.me ? view.b : view.a) : view.board || view.name || 'Channels';
+        this.teamHeading.replaceChildren(M.el('strong', {}, name), M.el('span', {}, `${recipient} · ${status}`));
+      }
+    }
+    agents(data, matches, button) {
+      const focused = this.directory.contains(document.activeElement) ? document.activeElement.title : null;
+      const available = data.me ? data.agents.filter(row => row.role === 'agent' && row.id !== data.me) : [];
+      const found = available.filter(row => matches(`${row.display_name || row.display_label || row.id} ${row.id}`));
+      const shown = found.slice(0, M.LIST_MAX);
+      this.directory.replaceChildren(...shown.map(row => {
+        const node = button(row.display_name || row.display_label || row.id, false,
+          {kind:'dm', a:data.me, b:row.id}, row.id);
+        node.setAttribute('aria-description', `Agent identity ${row.id}`);
+        node.append(M.el('small', {}, 'Agent'));
+        return node;
+      }));
+      if (focused) {
+        const replacement = [...this.directory.querySelectorAll('button')].find(node => node.title === focused);
+        if (replacement?.getClientRects().length) replacement.focus({preventScroll:true});
+      }
+      if (!shown.length) this.directory.append(M.el('p', {class:'hint'}, available.length ?
+        'No agents match your search.' : data.error || 'No agents are available in this workspace.'));
+      if (found.length > shown.length) this.directory.append(M.el('p', {class:'hint'}, `Showing ${shown.length} of ${found.length}; search to narrow.`));
     }
     models(rows) {
       this.live.replaceChildren(...rows.map(row => M.el('button', {type:'button', onclick:() => {
