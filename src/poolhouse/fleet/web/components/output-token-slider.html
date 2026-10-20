@@ -16,9 +16,14 @@ output-token-slider { display:block; min-width:0; }
         this.slider = M.ui("ml-slider", {step:1});
         this.append(this.slider);
         this.slider.addEventListener("input", event => {
-          if (!Number.isFinite(event.detail?.value)) return;
+          if (!Number.isFinite(event.detail?.value)) { event.stopPropagation(); return; }
           this.raw = this.options.nullable && event.detail.value === 0 ? "" : String(event.detail.value);
           this.paint();
+        });
+        this.slider.addEventListener("change", event => event.stopPropagation());
+        this.slider.addEventListener("commit", event => {
+          event.stopPropagation();
+          this.dispatchEvent(new Event("change", {bubbles:true}));
         });
       }
       window.addEventListener("fleet-preferences", this.refresh);
