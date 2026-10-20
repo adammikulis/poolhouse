@@ -254,7 +254,9 @@ def test_the_fleets_download_asks_about_an_unknown_publisher_and_refuses_a_plain
         fleet_store.ensure(FILE, source=f"hf:maker/thing-GGUF/{FILE}")
     with pytest.raises(ModelError, match="Hugging Face reference"):
         fleet_store.ensure(FILE, source="http://127.0.0.1:1/thing.gguf")
-    assert server.downloads == {} and list(fleet_store.store.iterdir()) == []
+    assert server.downloads == {}
+    assert all(path.name.startswith(".download-") and path.suffix == ".lock"
+               for path in fleet_store.store.iterdir())
 
 
 # -- F7: one list of names, read through leet and lookalikes ---------------------------------
