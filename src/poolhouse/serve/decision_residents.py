@@ -285,6 +285,23 @@ class DecisionResidents:
                 self.broker.table.release(resident["lease"])
                 self.residents.pop(key, None)
 
+    def drain_idle(self) -> bool:
+        """Try owned cache eviction while retirement holds broker admission closed.
+
+        Never wait for the request lock or GPU: active requests and uncertain
+        compute retain ownership until their ordinary cleanup reconciles them.
+        """
+        if not self.lock.acquire(blocking=False):
+            return False
+        try:
+            if any(resident.get('compute_held') for resident in self.residents.values()):
+                return False
+            for key in list(self.residents):
+                self._evict(key, wait=False)
+            return not self.residents
+        finally:
+            self.lock.release()
+
     def upkeep(self) -> None:
         for resident in list(self.residents.values()):
             if resident["process"].alive():

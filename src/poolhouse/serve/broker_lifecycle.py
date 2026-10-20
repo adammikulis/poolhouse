@@ -44,16 +44,22 @@ def admitted(method):
 
 
 def retire(broker) -> bool:
-    """Permanently seal an empty broker; a busy or uninspectable one stays open."""
-    with broker._cond:
+    """Drain idle owned caches, then seal; busy or uncertain work stays owned.
+
+    Run under updater intent before its exclusive turn. The accounting reader
+    lets nested normal GPU admission finish while new work is excluded.
+    """
+    with maintenance.read(existing=True), broker._cond:
         if broker._retiring:
             return True
+        if _busy(broker):
+            return False
+        if broker._decision_hosts is not None and not broker._decision_hosts.drain_idle():
+            return False
         broker._retiring = True
         sealed = False
         try:
-            if (broker._active_calls or broker.servers or broker.queue or broker.claims
-                    or broker.claim_waiters or broker.cores
-                    or (broker._decision_hosts is not None and broker._decision_hosts.residents)):
+            if _busy(broker):
                 return False
             listing = broker.table.listing()
             # Compute, serving and uninspectable rows matter, even on another board.
@@ -67,3 +73,8 @@ def retire(broker) -> bool:
             if not sealed:
                 broker._retiring = False
                 broker._cond.notify_all()
+
+
+def _busy(broker) -> bool:
+    return bool(broker._active_calls or broker.servers or broker.queue or broker.claims
+                or broker.claim_waiters or broker.cores)
