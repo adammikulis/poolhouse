@@ -26,7 +26,7 @@ else:
     replace = os.replace
 
 __all__ = ["UNVERSIONED", "CrossDevice", "promote", "prune_orphans", "read_json", "reading", "records_in",
-           "sha256_file", "version_of", "versioned", "write_json", "write_text", "writing"]
+           "sha256_file", "stat_signature", "version_of", "versioned", "write_json", "write_text", "writing"]
 
 #: A record with no version key.
 UNVERSIONED = 0
@@ -34,6 +34,12 @@ UNVERSIONED = 0
 
 class CrossDevice(OSError):
     """The source and the target are on different filesystems."""
+
+
+def stat_signature(row):
+    return (row.st_dev, row.st_ino, row.st_mode, row.st_uid, row.st_nlink,
+            row.st_size, row.st_mtime_ns, row.st_ctime_ns)
+
 
 
 def promote(source: Path | str, target: Path | str, *, directory_fd: int | None = None) -> Path:
