@@ -219,9 +219,9 @@ def _validate_expanded(graph: dict, capabilities: set[str] | None, authorize: Ca
     for identifier, node in nodes.items():
         try:
             spec = node_spec(node.get("type", ""), node.get("version", 1))
-            specs[identifier] = spec
             node["version"] = spec["version"]
             node["parameters"] = _parameters(node.get("parameters", {}), spec["parameters"])
+            specs[identifier] = spec
             if capabilities is not None and set(spec["capabilities"]) - capabilities:
                 error(identifier, "dependency", "Required capabilities are unavailable")
             bindings = node.get("bindings", {})

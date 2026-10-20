@@ -186,3 +186,12 @@ def test_native_checkpoint_generation_keeps_role_separation_and_single_compute_h
     assert [message['role'] for message in messages] == ['system', 'user']
     assert json.loads(messages[1]['content']) == SAMPLE and result['report']['source_semantics'] == 'provided_sources'
     assert held == []
+
+
+@pytest.mark.parametrize('node_id', ['direct', 'indirect', 'answer'])
+@pytest.mark.parametrize('parameters', [None, [], True])
+def test_invalid_parameter_containers_return_validation_errors(node_id, parameters):
+    graph = bound_graph()
+    next(node for node in graph['nodes'] if node['id'] == node_id)['parameters'] = parameters
+    result = validate_graph(graph)
+    assert not result['valid'] and result['errors']

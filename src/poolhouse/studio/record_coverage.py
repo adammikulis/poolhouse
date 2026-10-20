@@ -4,6 +4,13 @@ from __future__ import annotations
 from .record_context import generation_parameters, literal_fields
 
 
+def _parameters(node: dict) -> dict:
+    values = node.get('parameters', {})
+    if not isinstance(values, dict):
+        raise ValueError('Parameters must be an object')
+    return values
+
+
 def _origin(node_id: str, nodes: dict, incoming: dict) -> tuple[str, str]:
     seen = set()
     while node_id not in seen:
@@ -25,13 +32,13 @@ def coverage_errors(graph: dict) -> list[dict]:
     for node in nodes.values():
         if node['type'] == 'guard.injection':
             try:
-                literal_fields(node.get('parameters', {}).get('input_fields', '[]'))
+                literal_fields(_parameters(node).get('input_fields', '[]'))
             except (ValueError, TypeError) as error:
                 errors.append({'node': node['id'], 'code': 'parameter', 'message': str(error)})
         if node['type'] != 'generate.record':
             continue
         try:
-            controls = generation_parameters(node.get('parameters', {}))
+            controls = generation_parameters(_parameters(node))
             origin = _origin(node['id'], nodes, incoming)
             modes, guards, seen_controls = set(), set(), set()
             for connection in graph.get('controls', []):
@@ -45,7 +52,7 @@ def coverage_errors(graph: dict) -> list[dict]:
                 if identity in seen_controls:
                     raise ValueError('A guard control is duplicated')
                 seen_controls.add(identity)
-                values = guard.get('parameters', {})
+                values = _parameters(guard)
                 mode = values.get('mode', 'indirect')
                 expected = controls['question_field'] if mode == 'direct' else controls['sources_field']
                 fields = literal_fields(values.get('input_fields', '[]'))
