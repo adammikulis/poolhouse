@@ -4,17 +4,18 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
+from native_cargo import communicate, testnode
+
+from poolhouse.platform import start_process
 
 pytestmark = pytest.mark.redteam
 ROOT = Path(__file__).resolve().parents[1]
-RUSTUP_HOME = os.environ.get("RUSTUP_HOME", str(Path.home() / ".rustup"))
-CARGO_HOME = os.environ.get("CARGO_HOME", str(Path.home() / ".cargo"))
 
 
 def test_desktop_grants_only_window_and_close_commands():
@@ -24,6 +25,7 @@ def test_desktop_grants_only_window_and_close_commands():
     assert capability["local"] is False
     assert set(capability["permissions"]) == {
         "core:default", "window-state:default", "allow-close-choice", "allow-on-closing", "allow-reopen-page",
+        "allow-choose-studio-watch-source",
     }
 
 
@@ -32,26 +34,16 @@ def test_desktop_grants_only_window_and_close_commands():
 def test_native_capability_authority_rejects_hostile_origins_and_commands(tmp_path, selector):
     if sys.platform != "darwin":
         pytest.skip("native desktop capability enforcement runs on macOS")
-    cargo = shutil.which("cargo")
-    assert cargo, "Cargo is required to verify desktop capabilities"
-    project = tmp_path / "desktop"
-    shutil.copytree(ROOT / "app", project,
-                    ignore=shutil.ignore_patterns("target", "binaries", "gen", "node_modules", "android"))
-    native_env = {**os.environ, "RUSTUP_HOME": RUSTUP_HOME, "CARGO_HOME": CARGO_HOME}
-    host = subprocess.run(["rustc", "-vV"], env=native_env,
-                          capture_output=True, text=True, check=True)
-    target = next(line.removeprefix("host: ") for line in host.stdout.splitlines()
-                  if line.startswith("host: "))
-    binaries = project / "src-tauri" / "binaries"
-    binaries.mkdir()
-    (binaries / f"poolhouse-headless-{target}").write_bytes(b"")
-    done = subprocess.run(
-        [cargo, "test", "--manifest-path", str(project / "src-tauri" / "Cargo.toml"),
-         "--offline", selector, "--", "--nocapture"],
-        env={**native_env, "CARGO_TARGET_DIR": os.environ.get(
-            "POOLHOUSE_TAURI_TEST_TARGET", str(tmp_path / "target"))},
-        capture_output=True, text=True, timeout=600,
-    )
-    assert done.returncode == 0, done.stdout + done.stderr
-    assert "test result: ok" in done.stdout and " 0 failed" in done.stdout
-    assert "running 0 tests" not in done.stdout
+    binary = Path(os.environ["DEV_TEST_APP_TESTS"])
+    assert binary.is_file() and not binary.is_symlink()
+    isolated = tmp_path / "home"
+    isolated.mkdir()
+    native_env = {**os.environ, "HOME": str(isolated), "TMPDIR": str(tmp_path),
+                  "POOLHOUSE_HOME": str(tmp_path / "state")}
+    child = start_process([str(binary), selector, "--nocapture", "--test-threads=1"],
+                          cwd=tmp_path, env=native_env, stdin=subprocess.DEVNULL,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    stdout, stderr = communicate(child, time.monotonic() + testnode.BUILD_TIMEOUT_S)
+    assert child.returncode == 0, stdout + stderr
+    assert "test result: ok" in stdout and " 0 failed" in stdout
+    assert "running 0 tests" not in stdout
