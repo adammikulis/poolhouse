@@ -5,7 +5,7 @@
   class ChatCoding {
     constructor(chat) {
       this.chat = chat;
-      this.mode = chat.querySelector("#chat-mode");
+      this.tools = chat.querySelector("#chat-tools");
       this.project = chat.querySelector("#chat-project");
       this.harness = chat.querySelector("#chat-harness");
       this.role = chat.querySelector("#chat-role");
@@ -13,42 +13,54 @@
       this.draft = chat.querySelector("#chat-draft");
       this.activity = chat.querySelector("#chat-activity");
       this.output = chat.querySelector("#chat-activity-output");
-      this.mode.onchange = async () => {
-        await this.catalogue();
-        this.render(this.active ? this.data?.default_model || "" : "");
+      this.tools.onchange = async () => {
+        if (chat.loadingConversation) return;
+        const epoch = chat.loadEpoch, open = chat.open, capability = this.capability = (this.capability || 0) + 1;
+        if (this.active) await this.catalogue();
+        if (epoch !== chat.loadEpoch || open !== chat.open || capability !== this.capability) return;
+        this.render();
+        chat.updateReadiness();
         chat.saveSettings();
       };
       for (const field of [this.project, this.harness, this.role, this.context, this.draft]) {
-        field.onchange = () => { this.readiness(); chat.saveSettings(); };
+        field.onchange = () => { if (chat.loadingConversation) return; this.readiness(); chat.saveSettings(); };
       }
     }
-    get active() { return this.mode.value === "coding"; }
+    get active() { return this.tools.checked; }
     settings() {
       const defaults = this.chat.defaultSettings;
-      return { mode: this.mode.value || defaults.mode, project: this.project.value,
-        harness: this.harness.value || defaults.harness, role: this.role.value || defaults.role,
+      return { project: this.project.value,
+        harness: this.active ? this.harness.value : "", role: this.role.value,
         context: Number(this.context.value || defaults.context), draft: this.draft.value.trim() || defaults.draft };
     }
     async catalogue() {
       if (this.data) return;
+      const epoch = this.chat.loadEpoch, open = this.chat.open, capability = this.capability;
       const data = await M.api("/ui/coding/catalogue");
+      if (epoch !== this.chat.loadEpoch || open !== this.chat.open || capability !== this.capability) return;
       if (!data.ok) {
         if (this.active) this.chat.showError(data.error || "The Coding service is unavailable.");
         return;
       }
       this.data = data;
-      this.harness.replaceChildren(...data.harnesses.map((one) => el("option", { value: one.name,
+      this.harness.replaceChildren(el("option", {value:""}, "Choose a tool runtime"), ...data.harnesses.map((one) => el("option", { value: one.name,
         ...(one.available ? {} : { disabled: "" }) }, one.name === "claude" ? "Claude Code" : one.name === "pi" ? "Pi" : "Codex")));
-      this.role.replaceChildren(...data.roles.map((one) => el("option", { value: one.name, title: one.summary },
+      this.role.replaceChildren(el("option", {value:""}, "Choose permissions"), ...data.roles.map((one) => el("option", { value: one.name, title: one.summary },
         ({ "read-only": "Read only", "approve-first": "Ask before changes", "plan-and-go": "Follow approved plan" })[one.name] || one.name)));
     }
     async restore(settings, model) {
+      const epoch = this.chat.loadEpoch, open = this.chat.open, capability = this.capability = (this.capability || 0) + 1;
       const defaults = this.chat.defaultSettings;
-      this.mode.value = settings.mode || defaults.mode;
+      this.tools.checked = !!settings.harness;
       if (this.active) await this.catalogue();
+      if (epoch !== this.chat.loadEpoch || open !== this.chat.open || capability !== this.capability) return;
       this.project.value = settings.project || "";
-      this.harness.value = settings.harness || defaults.harness;
-      this.role.value = settings.role || this.data?.default_role || defaults.role;
+      this.harness.value = settings.harness || "";
+      if (settings.harness && this.harness.value !== settings.harness) {
+        this.harness.append(el("option", {value:settings.harness, disabled:""}, settings.harness + " — unavailable"));
+        this.harness.value = settings.harness;
+      }
+      this.role.value = settings.role || "";
       this.context.value = settings.context ?? defaults.context;
       this.draft.value = settings.draft || defaults.draft;
       this.render(model);
@@ -57,26 +69,26 @@
       const chat = this.chat;
       chat.querySelectorAll("[data-coding]").forEach((node) => { node.hidden = !this.active; });
       chat.querySelectorAll("[data-chat]").forEach((node) => { node.hidden = this.active; });
-      chat.querySelector("#chat-status").textContent = this.active ? "Coding" : "Chat";
-      const models = this.active ? this.data?.models || [] : chat.chatModels || [];
+      chat.querySelector("#chat-status").textContent = this.active ? "Tools enabled" : "Chat";
+      const models = chat.chatModels || [];
       const selected = model === undefined ? chat.picker.value : model;
-      chat.picker.replaceChildren(...models.map((one) => el("option", { value: this.active ? one.ref : one.model },
+      chat.picker.replaceChildren(...models.map((one) => el("option", { value: one.model },
         one.name || (one.local ? one.model : `${one.model} — on ${one.member}`))));
       if (selected && ![...chat.picker.options].some((option) => option.value === selected)) {
         chat.picker.append(el("option", { value: selected, disabled: "" }, `${selected} — unavailable`));
       }
       if (selected) chat.picker.value = selected;
-      else if (this.active) {
-        chat.picker.prepend(el("option", { value: "" }, "Choose a coding model…"));
+      else {
+        chat.picker.prepend(el("option", { value: "" }, "Choose a model…"));
         chat.picker.value = "";
       }
       chat.pickrow.hidden = false;
       chat.askrow.hidden = !models.length && !selected;
       chat.options.hidden = false;
       chat.none.hidden = !!models.length;
-      chat.none.replaceChildren(document.createTextNode(this.active ? this.data?.model_problem || "Choose a downloaded model to start Coding. " : "No model is running. "),
+      chat.none.replaceChildren(document.createTextNode("No model is running. "),
         el("a", {href:"#models"}, "Open Models"), document.createTextNode(" to prepare a model, then return here."));
-      chat.input.placeholder = this.active ? "Ask the coding agent to work in your project…" : "Message your model…";
+      chat.input.placeholder = "Message your model…";
       chat.modelPicker?.render();
       this.readiness();
     }
@@ -84,11 +96,11 @@
       if (!this.active) return;
       const chat = this.chat;
       const available = !!this.data?.harnesses.find((one) => one.name === this.harness.value)?.available;
-      chat.send.disabled = !chat.picker.value || chat.picker.selectedOptions[0]?.disabled || !this.project.value.trim() || !available || !this.context.checkValidity();
+      chat.send.disabled = !!chat.loadingConversation || !chat.picker.value || chat.picker.selectedOptions[0]?.disabled || !this.project.value.trim() || !this.role.value || !available || !this.context.checkValidity();
       chat.send.title = !this.project.value.trim() ? "Enter a project directory to start Coding." : !available ? "Choose an installed coding agent." : "";
     }
     busy(value) {
-      for (const field of [this.mode, this.project, this.harness, this.role, this.context, this.draft]) field.disabled = value;
+      for (const field of [this.tools, this.project, this.harness, this.role, this.context, this.draft]) field.disabled = value;
       this.chat.modelPicker?.render();
     }
     async stop() {

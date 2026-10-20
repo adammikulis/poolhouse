@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from poolhouse import coding, platform, roles
+from poolhouse import coding, harnessing, platform, roles
 from poolhouse.board import person
 from poolhouse.fleet import conversation_graph as graph
 from poolhouse.fleet.conversation_types import safe
@@ -85,12 +85,16 @@ class Manager:
         if not safe(cid) or not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 200000:
             raise ValueError("a turn needs an existing conversation and a nonempty message under 200000 characters")
         conversation = self.store.get(cid)
-        if conversation is None or conversation.settings["mode"] != "coding":
-            raise ValueError("select a Coding conversation first")
+        if conversation is None:
+            raise ValueError("choose an existing conversation first")
         settings = conversation.settings
         if settings["harness"] not in coding.HARNESSES:
             raise ValueError("unsupported coding harness")
-        roles.get(settings["role"] or roles.DEFAULT)
+        if not settings["role"]:
+            raise ValueError("choose tool permissions first")
+        roles.get(settings["role"])
+        if not harnessing.binary_for(settings["harness"]):
+            raise ValueError("the selected tool runtime is not installed")
         folder = Path(settings["project"]).expanduser().resolve()
         if not settings["project"] or not folder.is_dir():
             raise ValueError("choose an existing project directory")
@@ -191,7 +195,7 @@ class Manager:
                 launch_options["max_output_tokens"] = settings["max_output_tokens"]
                 launch_options["effort"] = (localeffort.pick_for(prompt, settings["max_effort"])
                     if settings["effort"] == "auto" else localeffort.clamp(settings["effort"], settings["max_effort"]))
-            result = coding.launch_coding_agent(conversation.model, settings["role"] or roles.DEFAULT,
+            result = coding.launch_coding_agent(conversation.model, settings["role"],
                 settings["project"], harness=harness, context=settings["context"], draft=settings.get("draft", "auto"), name=f"chat-{conversation.id}",
                 parent=self._parent(settings["project"]),
                 harness_args=args, say=lambda text: turn.emit({"status": text}),

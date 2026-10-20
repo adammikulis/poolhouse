@@ -21,7 +21,7 @@ def conversation_api(tmp_path):
 def test_settings_update_preserves_title_and_messages(conversation_api):
     served = conversation_api
     status, made, _ = served.call("/ui/conversations", method="POST", body={"title": "Code review", "model": "small",
-                                 "settings": {"mode": "coding", "project": "/tmp/example", "effort": "low"}})
+                                 "settings": {"project": "/tmp/example", "effort": "low"}})
     assert status == 201
     served.ui.conversations.append(made["id"], "user", "Review this code")
     status, updated, _ = served.call(f"/ui/conversations/{made['id']}", method="POST",
@@ -38,7 +38,7 @@ def test_defaults_endpoint_exposes_the_persisted_settings_source(conversation_ap
     served = conversation_api
     status, response, _ = served.call("/ui/conversations/defaults")
     assert status == 200
-    assert response["settings"]["harness"] == "pi"
+    assert response["settings"]["harness"] == ""
     assert response["settings"]["context"] == 0
     assert served.call("/ui/conversations/defaults", ui_header=False)[0] == 403
     assert served.call("/ui/conversations/defaults", headers={"Origin": "https://foreign.invalid"})[0] == 403
@@ -87,3 +87,14 @@ def test_new_conversations_use_central_output_defaults_and_keep_snapshots(conver
     _, explicit, _ = served.call("/ui/conversations", method="POST", body={"settings": {"max_output_tokens": 123, "effort": "high"}})
     assert explicit["settings"]["max_output_tokens"] == 123
     assert explicit["settings"]["effort"] == "high"
+
+
+@pytest.mark.parametrize("mode", ["chat", "coding"])
+def test_removed_mode_is_refused_without_rewriting_saved_state(conversation_api, mode):
+    served = conversation_api
+    made = served.ui.conversations.start(model="fixed-model")
+    status, response, _ = served.call(f"/ui/conversations/{made.id}", method="POST", body={"settings": {"mode": mode}})
+    assert status == 400 and response["error"]
+    current = served.ui.conversations.get(made.id)
+    assert current.model == "fixed-model" and current.settings["harness"] == ""
+    assert "mode" not in current.settings and current.messages == []

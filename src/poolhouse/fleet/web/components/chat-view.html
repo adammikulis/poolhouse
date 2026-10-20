@@ -16,7 +16,7 @@
     <div id="conversation-team" hidden></div>
     <div class="talk" id="conversation-model">
       <header class="chat-toolbar"><div class="conversation-title"><span class="conversation-avatar" aria-hidden="true">✦</span><div><h1 id="chat-title">New conversation</h1><span class="chat-status" id="chat-status">Model chat</span></div></div>
-        <div class="conversation-actions"><label class="sr" for="chat-mode">Conversation mode</label><select id="chat-mode"><option value="chat">Chat</option><option value="coding">Coding agent</option></select><button class="ghost" id="conversation-details" aria-expanded="false" aria-controls="chat-options">Options</button></div></header>
+        <div class="conversation-actions"><label for="chat-tools"><input type="checkbox" id="chat-tools"> Tools</label><button class="ghost" id="conversation-details" aria-expanded="false" aria-controls="chat-options">Options</button></div></header>
       <div class="pickrow" id="chat-pickrow" hidden>
         <span>Model</span><button class="ghost chat-model-current" id="chat-model-button" aria-haspopup="dialog">Choose a model</button>
         <select id="model" aria-label="Selected model" hidden></select>
@@ -26,7 +26,7 @@
       </div>
       <div class="chat-coding-fields" data-coding hidden>
         <label for="chat-project">Project directory</label><input id="chat-project" placeholder="/path/to/project">
-        <div class="chat-coding-pair"><div><label for="chat-harness">Coding agent</label><select id="chat-harness"></select></div>
+        <div class="chat-coding-pair"><div><label for="chat-harness">Tool runtime</label><select id="chat-harness"></select></div>
           <div><label for="chat-role">Tool permissions</label><select id="chat-role"></select></div></div>
         <p class="hint">The selected agent works in this directory using your model and the permissions above.</p>
       </div>
@@ -56,8 +56,8 @@
     </div>
   </main>
   <dialog id="chat-model-dialog" aria-labelledby="chat-model-heading">
-    <h2 id="chat-model-heading">Choose a model</h2>
-    <label for="chat-model-search">Search models</label><input type="search" id="chat-model-search" placeholder="Name, family, or quantization…">
+    <h2 id="chat-model-heading">Choose a model or workspace agent</h2>
+    <label for="chat-model-search">Search models and workspace agents</label><input type="search" id="chat-model-search" placeholder="Name, family, or quantization…">
     <div id="chat-model-list"></div><button class="ghost" id="chat-model-close">Close</button>
   </dialog>
   <dialog id="chat-manage" aria-labelledby="chat-manage-title">
@@ -112,7 +112,7 @@
       this.searchEpoch = 0;
       this.loadEpoch = 0;
       this.askrow.addEventListener("composer-send", () => this.ask());
-      this.picker.onchange = () => { this.updateReadiness(); this.modelPicker.render(); this.saveSettings(); };
+      this.picker.onchange = () => { if (this.loadingConversation) return; this.updateReadiness(); this.modelPicker.render(); this.saveSettings(); };
       this.temperature.onchange = () => this.saveSettings();
       this.outputTokens = this.querySelector("#chat-output-tokens");
       this.outputTokens.onchange = () => this.saveSettings();
@@ -125,12 +125,16 @@
         localStorage.removeItem("poolhouse.chat.selected");
         this.heading.textContent = "New conversation";
         this.loadEpoch++;
+        this.loadingConversation = false;
+        this.coding.busy(false);
+        this.temperature.disabled = this.outputTokens.disabled = false;
         this.input.value = "";
         this.messages = [];
         this.savedSettings = { ...this.defaultSettings };
         this.temperature.value = "";
         this.outputTokens.value = this.savedSettings.max_output_tokens ?? "";
         this.coding.restore(this.savedSettings);
+        this.updateReadiness();
         this.welcome();
         this.note.replaceChildren();
         this.paintList();
@@ -192,7 +196,7 @@
     }
 
     async draw() {
-      this.coding.mode.disabled = true;
+      this.coding.tools.disabled = true;
       try {
         const defaults = await api("/ui/conversations/defaults");
         if (M.refused(defaults)) return;
@@ -227,7 +231,7 @@
           this.modelPicker.render(); this.updateReadiness(); this.saveSettings();
         }
       } catch (error) { this.showError(error.message); }
-      finally { this.coding.mode.disabled = !!this.request; }
+      finally { this.coding.tools.disabled = !!this.request; }
     }
 
     settings() {
@@ -235,6 +239,7 @@
     }
 
     saveSettings() {
+      if (this.loadingConversation) return;
       if (!this.outputTokens.checkValidity()) { this.showError("Maximum output tokens must be a positive integer."); return; }
       if (!this.temperature.checkValidity()) { this.showError("Temperature must be between 0 and 2."); return; }
       this.savedSettings = this.settings();
@@ -253,6 +258,7 @@
       this.send.disabled = (!this.coding.active && this.runtimeReady === false) || !this.picker.value || !!this.picker.selectedOptions[0]?.disabled;
       if (!this.coding.active) M.agentRuntimeAlert(this);
       this.coding.readiness();
+      if (this.loadingConversation) this.send.disabled = true;
     }
 
     showError(message) {
@@ -330,6 +336,10 @@
     async load(id) {
       if (this.request) return;
       const epoch = ++this.loadEpoch;
+      this.loadingConversation = true;
+      this.coding.busy(true);
+      this.temperature.disabled = this.outputTokens.disabled = true;
+      this.updateReadiness();
       try {
         await this.savePending;
         if (epoch !== this.loadEpoch) return;
@@ -354,6 +364,7 @@
         this.temperature.value = this.savedSettings.temperature ?? "";
         this.outputTokens.value = this.savedSettings.max_output_tokens ?? "";
         await this.coding.restore(this.savedSettings, one.model);
+        if (epoch !== this.loadEpoch || id !== this.open) return;
         this.list.replaceChildren();
         for (const m of this.messages) this.say(m.role, m.content, m.reasoning || "");
         if (!this.messages.length) this.welcome();
@@ -367,10 +378,19 @@
         this.updateReadiness();
         this.modelPicker.render();
         this.coding.reattach();
-      } catch (error) { this.showError(error.message); }
+      } catch (error) { if (epoch === this.loadEpoch) this.showError(error.message); }
+      finally {
+        if (epoch === this.loadEpoch) {
+          this.loadingConversation = false;
+          this.coding.busy(!!this.request);
+          this.temperature.disabled = this.outputTokens.disabled = !!this.request;
+          this.updateReadiness();
+        }
+      }
     }
 
     async ask() {
+      if (this.loadingConversation) return;
       const text = this.input.value.trim();
       if (!this.outputTokens.checkValidity()) { this.showError("Maximum output tokens must be a positive integer."); return; }
       if (!this.temperature.checkValidity()) { this.showError("Temperature must be between 0 and 2."); return; }
