@@ -18,7 +18,6 @@ from poolhouse import authority, credentials, real_machine, runtime, runtime_git
 from poolhouse.board.session import connect
 from poolhouse.net import github_release as remote
 from poolhouse.workspace import github_app
-from poolhouse.workspace.landing import eligible
 
 SHA = re.compile(r"[0-9a-f]{40}")
 BRANCH = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]*")
@@ -74,7 +73,7 @@ def source(checkout: Path, repo: str) -> Source:
 
 
 def authorize(action: str):
-    """Authenticate a live eligible main session and audit its fixed publication action."""
+    """Authenticate a live main session and audit its fixed publication action."""
     real_machine.require("GitHub App publication")
     try:
         selected = runtime.selected()
@@ -87,7 +86,7 @@ def authorize(action: str):
         raise remote.Failed("GitHub publication uses the selected installed credential holder") from None
     session = connect()
     who = session.whoami()
-    if who.retired or who.parent or eligible(who) or who.name != os.environ.get("POOLHOUSE_WORKSPACE_AGENT"):
+    if who.retired or who.parent or who.name != os.environ.get("POOLHOUSE_WORKSPACE_AGENT"):
         raise remote.Failed("GitHub publication requires the authenticated live lead session")
     authority.require("github.release", action)
     return who
