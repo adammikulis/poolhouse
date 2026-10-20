@@ -111,6 +111,13 @@ tests = ["tests/test_onboard_join_code.py::test_a_request_nobody_accepted_cannot
 note = "Join exchanges require accepted requests over the protected transport; malformed and oversized bodies, replayed confirmations and replacement members are refused."
 
 [[group]]
+match = ["route:fleet/studio_routes.py:/ui/studio/destinations*", "route:fleet/studio_routes.py:/ui/studio/deliveries*"]
+status = "covered"
+count = 2
+tests = ["tests/test_studio_delivery_service.py::test_actual_http_outbound_receipt_settles_and_retry_never_resends", "tests/test_studio_delivery_service.py::test_current_destination_change_blocks_send_and_record_body_mutation_refuses", "tests/test_studio_delivery_service.py::test_revoked_service_history_owner_attestation_settles_without_sending", "tests/test_studio_delivery_service.py::test_stale_selected_revision_never_creates_a_subscription", "tests/test_studio_delivery_browser.py::test_concurrent_destination_revision_change_rejects_stream_creation"]
+note = "Authenticated delivery routes bind explicit output projections to a selected destination revision. Current authority and body integrity are rechecked before sending; historical owner attestation settles a recorded uncertain outcome without sending again. Stale destination selection cannot create a subscription."
+
+[[group]]
 match = ["route:fleet/studio_routes.py:/ui/studio/*"]
 status = "covered"
 count = 18
