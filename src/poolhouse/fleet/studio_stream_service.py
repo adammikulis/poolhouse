@@ -116,6 +116,8 @@ def resources_current(ui, saved, grant: dict, node, inputs) -> bool:
         if sub.get('grant') != grant['id'] or sub['state'] == 'cancelled':
             return False
     source = grant['manifest']['source']
+    if ui.studio.store.get('source', source['id'], grant['scope']) != source:
+        return False
     if source.get('selection_epoch') and studio_epoch.generation(key_path(ui.pool_key_path).parent, grant['pool']) != source['selection_epoch']:
         return False
     registry = getattr(ui, 'studio_destinations', None)
