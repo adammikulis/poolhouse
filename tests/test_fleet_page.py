@@ -18,7 +18,7 @@ pw = pytest.importorskip("playwright.sync_api", reason="poolhouse[scrape]")
 pytestmark = pytest.mark.slow
 
 from launch_support import sign_in  # noqa: E402
-from test_fleet_ui import WORDS, Serving  # noqa: E402
+from test_fleet_ui import WORDS, Serving, nobody_else_is_on_the_network  # noqa: E402, F401
 
 #: where each screen is reached from the workspace rail
 RAIL = {"Chat": "#nav-tabs a[data-workspace='conversations']", "Studio": "#nav-tabs a[data-workspace='studio']",
