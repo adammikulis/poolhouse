@@ -7,6 +7,7 @@ from poolhouse.studio.catalog import node_catalog
 from poolhouse.studio.contracts import validate_graph
 from poolhouse.studio.decision_inventory import inventory as decision_inventory
 from poolhouse.studio.library import LocalLibrary
+from poolhouse.studio.n8n import preview as preview_n8n
 from poolhouse.studio.packages import export_package, import_package
 from poolhouse.studio.store import Conflict, digest
 from poolhouse.studio.templates import templates
@@ -87,6 +88,9 @@ class StudioRoutes:
             raise PermissionError("Sign in again to use Studio.")
         if (self.path.startswith(("/ui/studio/sources", "/ui/studio/subscriptions", "/ui/studio/destinations", "/ui/studio/deliveries"))
                 and stream_route(self, self.ui.studio_streams, principal)):
+            return True
+        if self.path == "/ui/studio/import/n8n/preview" and self.method == "POST":
+            self.send(200, preview_n8n(field(object_body(self), "json", str, "")))
             return True
         if self.path == "/ui/studio/devices" and self.method == "GET":
             self.send(200, {"devices": engine.dispatcher.devices()})

@@ -176,7 +176,7 @@
           this.loadContext++;
           this.host.hidden = route !== "studio";
           if (route === "studio") this.perform(() => this.load());
-          else { clearTimeout(this.poll); this.stopLive(); }
+          else { this.n8nDialog?.close(); clearTimeout(this.poll); this.stopLive(); }
         });
       }
       async perform(fn) {
@@ -435,6 +435,7 @@
     S.installBranches(StudioView.prototype);
     S.installGroups(StudioView.prototype);
     S.installRuns(StudioView.prototype);
+    S.installN8n(StudioView.prototype);
     S.installSharing(StudioView.prototype);
     window.StudioView = StudioView;
     customElements.define("studio-view", StudioView);
