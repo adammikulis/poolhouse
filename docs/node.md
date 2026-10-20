@@ -622,7 +622,7 @@ used to be admitted six ways: the GPU, CPU slots, memory, named claims, served m
 `src/lease/` (`types`, `policy`, `table`, `live`, `merge`, `rpc`). Config is `lease-config.json`
 (optional; every field has a default): `cpu_slots` (cores), `memory_mb` (0 = no budget),
 `max_wait_s` 600, `background_share_percent` 50, `unknown_background_s` 180, `queue_patience_s` 60,
-`default_ttl_s` 300, `max_ttl_s` 86400, `max_leases_per_holder` 512, `max_leases_per_lineage` 1024, `max_leases` 4096. The file is read again whenever its bytes change (at the next lease call), so a
+`default_ttl_s` 300, `max_ttl_s` 86400, `max_leases_per_holder` 512, `max_leases_per_lineage` 1024, `max_leases` 4096, `max_worktree_records` 1024. The file is read again whenever its bytes change (at the next lease call), so a
 budget a program writes there applies at once; a file that does not parse changes nothing (and neither does one that is not a
 JSON object, whose `max_ttl_s` is under 1 or whose `background_share_percent` is over 100), and a deleted one sets the defaults.
 
@@ -687,7 +687,7 @@ worktree, an area, a port, a server or an install (`lease::types::DEVICE_CLAIMS`
 (a path of its disk, a port or server of its network, an area spelled under the path of its repository), so no other device can hold
 or ask for it: the device's table keeps it (`leases.json`) and the board is not told. A lease that holds only such claims is
 not mirrored (`Lease::on_board`); a lease that holds a branch or a task claim with them is. The sessions that held a worktree
-claim are kept in `worktree-holders.json` (`lease/holders.rs`, `MOST_HOLDERS` records), which the landing reviews read to leave
+claim are kept in `worktree-holders.json` (`lease/holders.rs`: at most `max_worktree_records` for one process tree and `MOST_HOLDERS` in all, kept 90 days, a new path past either refused, never one dropped to make room), which the landing reviews read to leave
 a branch's creator out of its reviewers. The holder of an expired device-only claim is still told by a notice.
 
 ## Sync

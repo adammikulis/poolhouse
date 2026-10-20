@@ -87,7 +87,9 @@ pub fn mirror(node: &mut Node, events: &[Event]) -> Result<()> {
     }
     for event in events {
         if let Event::Granted(l) = event {
-            node.leases.holders.note(l)?;
+            let tree = node.boards.get(&l.board).map(|h| h.names.tree(&l.name)).unwrap_or_default();
+            let now = node.leases.now();
+            node.leases.holders.note(l, &tree, now)?;
         }
     }
     let mut drafts: BTreeMap<String, Vec<(Kind, String, Value)>> = BTreeMap::new();
@@ -168,6 +170,9 @@ fn acquire(node: &mut Node, board: &str, who: &str, p: &Map<String, Value>) -> R
         return Err(Error::Invalid("a remote holder has no local pid; its lease lives by expiry".into()));
     }
     let also: &[&str] = if req.resources.iter().any(Resource::pool_wide) { &[board] } else { &[] };
+    let (tree_key, now) = (node.boards.get(board).map(|h| h.names.tree(who)).unwrap_or_default(), node.leases.now());
+    let per_tree = node.leases.cfg.max_worktree_records;
+    node.leases.holders.room_for(&req, (&tree_key, per_tree), now)?;
     tick(node, also)?;
     let (now, id) = (node.leases.now(), format!("l{}", random_hex(8)?));
     let tree = node.tree_leases(board, who);

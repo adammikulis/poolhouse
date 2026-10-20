@@ -173,3 +173,25 @@ fn an_area_is_held_per_device_and_a_branch_per_pool() {
     ok(req(&mut b, "claim", "demo", &tb, json!({"kind": "area", "key": "/repo/src", "ttl_s": 600})));
     assert_eq!(code(&req(&mut b, "claim", "demo", &tb, json!({"kind": "branch", "key": "feat"}))), "denied");
 }
+
+/// A session cannot push its own record of worktree claims out by claiming more paths: the tree that has made as many records as it may
+/// is refused the next new path, the paths on record are still claimed, and the first record is still there.
+#[test]
+fn claiming_more_worktrees_cannot_push_a_record_out() {
+    let dir = tempdir().unwrap();
+    std::fs::write(dir.path().join("lease-config.json"), json!({"max_worktree_records": 16}).to_string()).unwrap();
+    let mut n = node(dir.path());
+    let (name, token) = session(&mut n, "demo", "a");
+    for i in 0..16 {
+        let key = format!("/w/{i}");
+        ok(req(&mut n, "claim", "demo", &token, json!({"kind": "worktree", "key": key, "ttl_s": 600})));
+        ok(req(&mut n, "release", "demo", &token, json!({"kind": "worktree", "key": key})));
+    }
+    let refused = req(&mut n, "claim", "demo", &token, json!({"kind": "worktree", "key": "/w/one-more", "ttl_s": 600}));
+    assert_eq!(code(&refused), "quota", "{refused}");
+    assert!(refused["error"]["message"].as_str().unwrap().contains("max_worktree_records"), "{refused}");
+    ok(req(&mut n, "claim", "demo", &token, json!({"kind": "worktree", "key": "/w/0", "ttl_s": 600})));
+    let (_, lander) = session(&mut n, "demo", "lander");
+    let found = ok(req(&mut n, "land_accepts", "demo", &lander, json!({"branch": "feat", "sha": "b".repeat(40), "worktree": "/w/0"})));
+    assert_eq!(found["creators"], json!([name]), "{found}");
+}
