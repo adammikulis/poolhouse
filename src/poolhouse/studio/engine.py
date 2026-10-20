@@ -10,7 +10,8 @@ from typing import Any
 
 from .catalog import is_model_type, node_spec
 from .contracts import validate_graph
-from .resources import model_fingerprint
+from .model_lineage import bind_model_base
+from .resources import base_fingerprint, model_fingerprint
 from .store import StudioStore, digest
 
 TERMINAL = frozenset({"done", "failed", "cancelled", "blocked", "interrupted"})
@@ -38,6 +39,12 @@ def artifact_fingerprints(value: Any) -> dict[str, str]:
             else:
                 entries.append([str(child.relative_to(root)), "directory"])
         found[str(path)] = digest(entries)
+        if value.get("kind") == "model" and "base" in value:
+            base = value["base"]
+            checksum = model_fingerprint(base) if base.get("id") else base_fingerprint(base)
+            if checksum != value.get("base_digest"):
+                raise ValueError("The checkpoint base content changed after training.")
+            found[base["path"]] = checksum
     return found
 
 
@@ -259,6 +266,8 @@ class WorkflowEngine:
                            command.get("env"), job_id=job_id)
 
     def _completed(self, run: dict, node: dict, state: dict, inputs: dict) -> None:
+        output_dir = self.runner.files_root / "studio" / run["id"] / hashlib.sha256(node["id"].encode()).hexdigest()[:24]
+        bind_model_base(node, state["outputs"], inputs, output_dir)
         state["output_digest"] = digest(state["outputs"])
         expected = {port["name"] for port in node_spec(node["type"], node.get("version", 1))["outputs"]}
         if node.get("parameters", {}).get("mode") == "smoke":

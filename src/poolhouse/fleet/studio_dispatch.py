@@ -167,9 +167,11 @@ class DeviceDispatch:
             for node in run["graph"]["nodes"]:
                 execution = run["nodes"][node["id"]].get("execution", {})
                 if execution.get("id") == request.get("dispatch_id") and execution.get("machine") == target:
+                    inputs = {edge["target"]["port"]: run["nodes"][edge["source"]["node"]]["outputs"].get(edge["source"]["port"])
+                              for edge in run["graph"]["edges"] if edge["target"]["node"] == node["id"]}
                     return (execution.get("certificate") == certificate and execution.get("pool") == pool
                             and request.get("spec_digest", execution["digest"]) == execution["digest"]
-                            and self.authorize(run["principal"], node, {}))
+                            and self.authorize(run["principal"], node, inputs))
         return False
 
     def close(self) -> None:

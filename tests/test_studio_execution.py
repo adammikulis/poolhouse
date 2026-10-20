@@ -3,6 +3,7 @@
 import json
 import sys
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -10,6 +11,8 @@ import pytest
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.studio_execution import DeviceExecutions, checked_node
 from poolhouse.fleet.studio_references import validate_models
+from poolhouse.fleet.studio_transfer import manifest
+from poolhouse.studio.resources import base_fingerprint
 from poolhouse.studio.store import Conflict, digest
 
 
@@ -184,4 +187,48 @@ def test_model_port_cannot_bypass_reference_validation_with_another_resource_kin
     payload["inputs"] = {"model": {"kind": kind, "resource": "a" * 64}, "prompt": "example"}
     with pytest.raises(ValueError, match="kind must match"):
         service.submit("source", payload)
+    assert runner.jobs == {}
+
+
+def stage_fixture(service, path, dispatch):
+    resource = manifest(path, "model")
+    service.transfer.begin("source", dispatch, resource)
+    for entry in resource["files"]:
+        service.transfer.put("source", dispatch, resource["id"], name=entry["name"], offset=0,
+                             data=(path / entry["name"]).read_bytes())
+    service.transfer.finish("source", dispatch, resource["id"])
+    return resource
+
+
+def test_target_prepares_explicit_base_checkpoint_without_serialized_authority(target, tmp_path):
+    service, runner, _ = target
+    base, model = tmp_path / "base", tmp_path / "checkpoint"
+    base.mkdir()
+    model.mkdir()
+    (base / "model.safetensors").write_bytes(b"frozen")
+    (base / "config.json").write_text('{"model_type":"fixture"}')
+    fingerprint = base_fingerprint({"path": str(base)})
+    (model / "model.safetensors").write_bytes(b"adapter")
+    (model / "state.json").write_text(json.dumps({"step": 1, "config": {
+        "recipe": "tool-calls", "framework": "torch", "base": "/private/never-authorized",
+        "trust_remote_code": True}}))
+    (model / "studio-model.json").write_text(json.dumps({"version": 1, "base_digest": fingerprint}))
+    dispatch = "f" * 64
+    resources = [stage_fixture(service, path, dispatch) for path in (model, base)]
+    raw = {"model": {"kind": "model", "resource": resources[0]["id"],
+                     "base_resource": resources[1]["id"], "base_digest": fingerprint}, "prompt": "example"}
+    node = {"id": "generate", "type": "generate", "version": 1, "parameters": {}}
+    hydrated = service._inputs("source", dispatch, {"inputs": raw, "resources": resources}, node)
+    prepared = hydrated["model"]
+    assert prepared["recipe"] == "tool-calls"
+    assert prepared["base_digest"] == fingerprint
+    config = json.loads((Path(prepared["path"]) / "state.json").read_text())["config"]
+    assert "base" not in config and "trust_remote_code" not in config
+    context = service._context("source", dispatch, hydrated)
+    assert service._resolved_model(prepared, context) == prepared
+    with pytest.raises(PermissionError):
+        service._resolved_model({**prepared, "path": str(base)}, context)
+    raw["model"]["base_digest"] = "0" * 64
+    with pytest.raises(ValueError, match="content identity"):
+        service._inputs("source", dispatch, {"inputs": raw, "resources": resources}, node)
     assert runner.jobs == {}
