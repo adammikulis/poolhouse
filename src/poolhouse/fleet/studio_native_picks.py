@@ -1,28 +1,17 @@
 """One-use native selections; resource authority belongs to the injected source registry."""
 from __future__ import annotations
 
-import json
 import re
 
-from poolhouse.json_objects import unique_object
 from poolhouse.studio.store import Conflict
 
 from . import invite_routes
 from .launch_secret import HEADER
+from .request_fields import exact_body
 
 NATIVE = '/ui/studio/native-picks/'
 ERROR = 'This file selection ended. Choose the source again in Studio.'
 
-
-
-def _body(context, keys):
-    length = int(context.header('Content-Length', '0') or 0)
-    if not 0 <= length <= 64 * 1024:
-        raise ValueError('Invalid selection request size')
-    body = json.loads(context.handler.rfile.read(length) or b'{}', object_pairs_hook=unique_object)
-    if not isinstance(body, dict) or set(body) != set(keys):
-        raise ValueError('Invalid selection fields')
-    return body
 
 
 class NativePickRoutes:
@@ -50,7 +39,7 @@ class NativePickRoutes:
         ident, action = match.groups()
         keys = {'begin': ('nonce',), 'cancel': ('nonce', 'claim'), 'complete': ('nonce', 'claim', 'path')}[action]
         try:
-            request = _body(self, keys)
+            request = exact_body(self, keys)
             response = getattr(picks, action)(ident, **request)
             self.send(200, response, {'Cache-Control': 'no-store'})
         except PermissionError:
@@ -73,7 +62,7 @@ class NativePickRoutes:
             engine, principal = self._service()
             if not engine.authorize(principal, None, {}):
                 raise PermissionError(ERROR)
-            request = _body(self, ('mode', 'request_key'))
+            request = exact_body(self, ('mode', 'request_key'))
             self.send(200, picks.request(principal, **request), {'Cache-Control': 'no-store'})
         except PermissionError:
             self.send(403, {'error': ERROR})

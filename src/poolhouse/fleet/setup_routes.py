@@ -1,7 +1,7 @@
 """First-run preferences, membership and preparation route ownership."""
 from __future__ import annotations
 
-from . import lan_pools
+from . import lan_pools, setup_project_routes
 from .discovery import DiscoveryError, in_pool, require_name
 from .onboard.joining import JoinOptions
 from .onboard.pools import known_pools
@@ -16,6 +16,8 @@ class SetupRoutes:
                                  self.header("X-Poolhouse-Setup", ""))
 
     def public_route(self) -> bool:
+        if setup_project_routes.public(self):
+            return True
         if self.path == "/ui/setup" and self.method == "GET":
             self.send(200, self.ui.state())
             return True
@@ -44,6 +46,11 @@ class SetupRoutes:
             self.send(200, {"members": self.ui.members(force=True)})
             return True
         return super().public_route()
+
+    def route(self) -> bool:
+        if setup_project_routes.route(self):
+            return True
+        return super().route()
 
     def _join(self) -> bool:
         ui = self.ui
