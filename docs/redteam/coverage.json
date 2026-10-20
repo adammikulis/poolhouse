@@ -1,7 +1,7 @@
 {
- "surfaces": 920,
+ "surfaces": 921,
  "by_status": {
-  "covered": 603,
+  "covered": 604,
   "partial": 193,
   "uncovered": 52,
   "n/a": 72,
@@ -86,7 +86,7 @@
    "unmapped": 0
   },
   "route": {
-   "covered": 132,
+   "covered": 133,
    "partial": 58,
    "uncovered": 0,
    "n/a": 0,
@@ -9999,6 +9999,20 @@
     "tests/test_studio_contracts.py"
    ],
    "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/import/n8n/preview",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._studio",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_n8n_browser.py::test_preview_endpoint_requires_authenticated_current_session",
+    "tests/test_studio_n8n.py",
+    "tests/test_studio_n8n_browser.py"
+   ],
+   "note": "The inert preview requires a current authenticated UI session. Strict bounded parsing and allowlisted translation omit credentials and executable parameters; unsupported nodes remain blocked, and preview/import neither dispatches work nor grants resources."
   },
   {
    "id": "route:fleet/studio_routes.py:/ui/studio/nodes",

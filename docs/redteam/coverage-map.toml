@@ -301,6 +301,13 @@ tests = ["tests/test_studio_delivery_service.py::test_actual_http_outbound_recei
 note = "Authenticated delivery routes bind explicit output projections to a selected destination revision. Current authority and body integrity are rechecked before sending; historical owner attestation settles a recorded uncertain outcome without sending again. Stale destination selection cannot create a subscription."
 
 [[group]]
+match = ["route:fleet/studio_routes.py:/ui/studio/import/n8n/preview"]
+status = "covered"
+count = 1
+tests = ["tests/test_studio_n8n_browser.py::test_preview_endpoint_requires_authenticated_current_session", "tests/test_studio_n8n.py", "tests/test_studio_n8n_browser.py"]
+note = "The inert preview requires a current authenticated UI session. Strict bounded parsing and allowlisted translation omit credentials and executable parameters; unsupported nodes remain blocked, and preview/import neither dispatches work nor grants resources."
+
+[[group]]
 match = ["route:fleet/studio_routes.py:/ui/studio/*"]
 status = "covered"
 count = 18
