@@ -31,6 +31,8 @@ def node_catalog() -> list[dict[str, Any]]:
     """Return the fixed node catalogue with training fields from recipe contracts."""
     text = {"type": "string", "default": ""}
     catalog = [
+        _node("stream.record", "Record", "Inputs", {}, {"record": "json"},
+              properties={"sample": {"type": "string", "default": "{}"}}),
         _node("dataset", "Dataset", "Inputs", {}, {"dataset": "dataset"}),
         _node("model", "Model", "Inputs", {}, {"model": "model"}),
         _node("data.validate", "Validate data", "Data", {"dataset": "dataset"}, {"dataset": "dataset", "report": "report"}),
@@ -69,6 +71,28 @@ def node_catalog() -> list[dict[str, Any]]:
               capabilities=["training"], side_effects=True),
         _node("evaluate.decision", "Evaluate decision model", "Evaluation", {"model": "model", "dataset": "dataset"},
               {"metrics": "metrics", "report": "report"}, capabilities=["evaluation"]),
+    ])
+    decision_properties = {
+        "question": {"type": "string", "default": "Which option best describes this record?"},
+        "options": {"type": "string", "default": '["accept","review"]'},
+        "abstain_below": {"type": "number", "default": 0.8, "minimum": 0, "maximum": 1},
+        "min_margin": {"type": "number", "default": 0.2, "minimum": 0, "maximum": 1},
+    }
+    catalog.extend([
+        _node("decision.predict", "Decide on a record", "Inference", {"record": "json", "model": "decision-model"},
+              {"decision": "decision", "record": "json", "report": "report"}, properties=decision_properties,
+              capabilities=["inference"]),
+        _node("decision.route", "Route a decision", "Inference", {"decision": "decision"},
+              {"allow": "gate", "review": "gate", "block": "gate", "report": "report"},
+              properties={"label": {"type": "string", "default": "accept"}}),
+        _node("guard.injection", "Assess prompt injection", "Inference", {"record": "json", "model": "decision-model"},
+              {"signal": "json", "record": "json", "report": "report", "allow": "gate", "review": "gate", "block": "gate"},
+              properties={"mode": {"type": "string", "enum": ["direct", "indirect"], "default": "indirect"},
+                          "trusted_task": {"type": "string", "default": ""},
+                          "allow_threshold": {"type": "number", "default": 0.8, "minimum": 0.5, "maximum": 1},
+                          "block_threshold": {"type": "number", "default": 0.8, "minimum": 0.5, "maximum": 1},
+                          "min_margin": {"type": "number", "default": 0.2, "minimum": 0, "maximum": 1}},
+              capabilities=["inference"]),
     ])
     for recipe in recipes():
         fields: dict[str, Any] = {}
@@ -112,7 +136,8 @@ def _model_ports(catalog: list[dict]) -> None:
     outputs = {"train.classify-text": "classifier-model", "train.text-lm": "language-model",
                "train.tool-calls": "language-model", "train.decision": "decision-model", "gym.train": "gym-policy"}
     accepted = {"evaluate": ["model", "language-model", "classifier-model"],
-                "evaluate.decision": ["model", "decision-model"], "gym.evaluate": ["model", "gym-policy"],
+                "evaluate.decision": ["model", "decision-model"],
+                "decision.predict": ["model", "decision-model"], "guard.injection": ["model", "decision-model"], "gym.evaluate": ["model", "gym-policy"],
                 "export": ["model", "language-model", "classifier-model"]}
     for spec in catalog:
         for port in spec["outputs"]:
