@@ -1,7 +1,7 @@
 # Library-owned agent policy
 
 Design note. Nothing here is implemented. It builds on `docs/person-delegation.md` (statements,
-`consume`, the human floor) and `docs/session-liveness.md` (tier table, coordinator eligibility);
+`consume`, the human floor) and `docs/session-liveness.md` (coordinator eligibility);
 both define rules this note moves into a registry that code enforces.
 
 Problem: the working rules are prose in this repository's `AGENTS.md` and `CLAUDE.md`, and the
@@ -29,35 +29,34 @@ specified in a note, not built.
 | 3 | Managed workers get no extra permissions; a spawned subagent is its own identity under its parent | code (`identity`, `agent_display`) | a | stays code, registry row with test refs |
 | 4 | Subagent prompt carries the workspace line | `onboard.BRIEF` text | c | generated from registry |
 | 5 | Main session coordinates; subagents never elect themselves | prose; design (`session-liveness` 4-5) | a | coordinator lease code |
-| 6 | Lowest model tier never coordinates; unknown model ineligible | design | a (table: d) | `model_tiers` loader hard; table content is the project's |
-| 7 | announce lines, 200-char lines, 6 per 10 min | code (`limits`) | a | code |
-| 8 | Read the inbox first | `claude-session-start` | b | `poolhouse-policy hook session-start` |
-| 9 | Claims before mutating; no stealing a live claim | code (`claims`, harness reserve) | a | code; hard |
-| 10 | Named-file staging, no `git add -A`/`commit -a` | `claude-bash-guard` | b | packaged bash guard |
-| 11 | No commit by an agent in the primary checkout; worktrees beside, not inside | `primary-only`, `worktreerules` | b | packaged guard; dev branch derived |
-| 12 | No editable install of a live runtime | `worktreerules.INSTALL`, `doctor` | a/b | guard + doctor |
-| 13 | `main`, tags, force, ref deletion are the owner's; opener is the owner's | bash guard + `pre-push` | b, **hard** | packaged `pre-push` and bash guard |
-| 14 | Agents push the dev branch themselves; fetch before and after | `pre-push`, prose | b/e | `pre-push` plus block text |
-| 15 | Landing queue: <10 commits/branch, <=20 behind, ~10 worktrees, finish before starting | prose | b (numbers d) | `policy check landing` (reads git; tighten-only numbers) |
-| 16 | Merged worktree removed; cleanup checks | `pushed` hook, `worktree_lifecycle` | b | packaged |
-| 17 | Hook failures are incidents; installed-hook smoke after cutover | `hook_diagnostics`, `doctor hooks`, prose | a/e | code + `policy selftest` |
-| 18 | Scoped tests through the broker; workers run no full or shared suite | `scripts/test`, `testslots`; worker rule is prose | b | shipped runner; worker-tier refusal is new |
-| 19 | Shared gates once per batch, scaled to the diff | prose | e/b | tree-hash gate record (test-reuse branch) |
-| 20 | No live API/net test without the person's env; no real keystore in tests | `conftest`, markers | b, **hard** | shipped pytest plugin |
-| 21 | A budget only falls; `--allow-increase` refused for agents | `budgets-only-fall`, `test_budgets`, `scripts/budgets` | b, **hard** | packaged ratchet hook, generalised |
-| 22 | Hard size gates 900 / 500 lines | `deep_files`, `deep_components`, edit guard | b | packaged; numbers d, tighten-only |
-| 23 | Duplicate bodies, mutation survivors, ruff/pyright budgets | `scripts/gates`, `mutate` | b | gate framework shipped; project adds its own |
-| 24 | Layer and wiring tests | `tests/test_layers.py`, `test_wiring.py` | d (framework b) | project layer map; checker shipped |
-| 25 | Edit guard: duplicate function, raw HTTP, docstring >12, params >8 | `claude-edit-guard` | b | packaged; `OWNED` table d |
-| 26 | One compute job per device; no server by hand; leases only from the broker | `serve.grant`, bash guard, `server-starts` gate, test | a, **hard** | code |
-| 27 | Do not drive a model at an edited checkout; own Chromium, never the person's | prose; `Window` code | b/e | add `claude-in-chrome` tool matcher refusal |
-| 28 | Default models, decider, MTP, llama.cpp head | prose | d | project config; library default in code |
-| 29 | Comments say what, not why | edit guard (docstring length only) | b partial, e | lint advisory; rest judgment |
-| 30 | Commit subject `feat:`/`fix:`/`chore:`; banned phrases | prose (commit-msg checks names only) | b (set d) | packaged `commit-msg` |
-| 31 | Judgment: delegation, commit before mutate, graph default, user-facing text, HANDOFF, reporting, saying it works, library vs app, root causes | prose | e | one-line pointers in the block |
-| 32 | An agent is never a human; no flag | code + red-team tests | a, **hard** | code; no registry parameter |
-| 33 | Authority gates; keystore, sudoers, OS prompt are a person's | `authority.py`, `sentinel/human.py` | a, **hard** | code |
-| 34 | Authorization only from the harness's statement record | design (`person-delegation`) | a, **hard** | code |
+| 6 | announce lines, 200-char lines, 6 per 10 min | code (`limits`) | a | code |
+| 7 | Read the inbox first | `claude-session-start` | b | `poolhouse-policy hook session-start` |
+| 8 | Claims before mutating; no stealing a live claim | code (`claims`, harness reserve) | a | code; hard |
+| 9 | Named-file staging, no `git add -A`/`commit -a` | `claude-bash-guard` | b | packaged bash guard |
+| 10 | No commit by an agent in the primary checkout; worktrees beside, not inside | `primary-only`, `worktreerules` | b | packaged guard; dev branch derived |
+| 11 | No editable install of a live runtime | `worktreerules.INSTALL`, `doctor` | a/b | guard + doctor |
+| 12 | `main`, tags, force, ref deletion are the owner's; opener is the owner's | bash guard + `pre-push` | b, **hard** | packaged `pre-push` and bash guard |
+| 13 | Agents push the dev branch themselves; fetch before and after | `pre-push`, prose | b/e | `pre-push` plus block text |
+| 14 | Landing queue: <10 commits/branch, <=20 behind, ~10 worktrees, finish before starting | prose | b (numbers d) | `policy check landing` (reads git; tighten-only numbers) |
+| 15 | Merged worktree removed; cleanup checks | `pushed` hook, `worktree_lifecycle` | b | packaged |
+| 16 | Hook failures are incidents; installed-hook smoke after cutover | `hook_diagnostics`, `doctor hooks`, prose | a/e | code + `policy selftest` |
+| 17 | Scoped tests through the broker; workers run no full or shared suite | `scripts/test`, `testslots`; worker rule is prose | b | shipped runner; worker-tier refusal is new |
+| 18 | Shared gates once per batch, scaled to the diff | prose | e/b | tree-hash gate record (test-reuse branch) |
+| 19 | No live API/net test without the person's env; no real keystore in tests | `conftest`, markers | b, **hard** | shipped pytest plugin |
+| 20 | A budget only falls; `--allow-increase` refused for agents | `budgets-only-fall`, `test_budgets`, `scripts/budgets` | b, **hard** | packaged ratchet hook, generalised |
+| 21 | Hard size gates 900 / 500 lines | `deep_files`, `deep_components`, edit guard | b | packaged; numbers d, tighten-only |
+| 22 | Duplicate bodies, mutation survivors, ruff/pyright budgets | `scripts/gates`, `mutate` | b | gate framework shipped; project adds its own |
+| 23 | Layer and wiring tests | `tests/test_layers.py`, `test_wiring.py` | d (framework b) | project layer map; checker shipped |
+| 24 | Edit guard: duplicate function, raw HTTP, docstring >12, params >8 | `claude-edit-guard` | b | packaged; `OWNED` table d |
+| 25 | One compute job per device; no server by hand; leases only from the broker | `serve.grant`, bash guard, `server-starts` gate, test | a, **hard** | code |
+| 26 | Do not drive a model at an edited checkout; own Chromium, never the person's | prose; `Window` code | b/e | add `claude-in-chrome` tool matcher refusal |
+| 27 | Default models, decider, MTP, llama.cpp head | prose | d | project config; library default in code |
+| 28 | Comments say what, not why | edit guard (docstring length only) | b partial, e | lint advisory; rest judgment |
+| 29 | Commit subject `feat:`/`fix:`/`chore:`; banned phrases | prose (commit-msg checks names only) | b (set d) | packaged `commit-msg` |
+| 30 | Judgment: delegation, commit before mutate, graph default, user-facing text, HANDOFF, reporting, saying it works, library vs app, root causes | prose | e | one-line pointers in the block |
+| 31 | An agent is never a human; no flag | code + red-team tests | a, **hard** | code; no registry parameter |
+| 32 | Authority gates; keystore, sudoers, OS prompt are a person's | `authority.py`, `sentinel/human.py` | a, **hard** | code |
+| 33 | Authorization only from the harness's statement record | design (`person-delegation`) | a, **hard** | code |
 | 35 | Never a real person in the tree or a commit message | `no-real-names`, `commit-msg`, `redact` | b, **hard** | packaged; name sources and fixtures d |
 | 36 | Project stance (no users but the owner, nothing cemented), harness names, model order, trailer | prose | d | project policy file |
 | 37 | Pre-commit chain; `.claude/settings.json` wiring | `install-hooks.*`, hand-edited JSON | b | `poolhouse-policy install` |
@@ -144,7 +143,6 @@ at import of the policy package).
 | `git.main-is-the-owners` | main, tags, force, deletion not pushed by an agent | `pre-push`, bash guard |
 | `ratchet.only-falls` | A number in a ratchet file is not raised by an agent | `ratchet` hook |
 | `claims.no-steal` | A live claim is not taken; recovery is verified | `claims.py` |
-| `coordination.lowest-tier-never` | Lowest tier and unknown models never coordinate | `model_tiers` (design) |
 | `serve.broker-only` | Compute is leased from the broker; no server by hand | `serve.grant`, bash guard |
 | `test.no-live-no-keystore` | Tests do not call paid/public endpoints or the real keystore | pytest plugin |
 | `runtime.immutable` | No editable install behind a live runtime | guard, doctor |
@@ -171,9 +169,6 @@ commit_prefixes    = ["feat", "fix", "chore"]   # subset of the library's list
 [params]
 "size.python-lines"  = 600             # tighter than 900: accepted
 "edit.max-parameters" = 6
-
-[models]
-tiers = ".poolhouse/model_tiers.json"   # project-owned table (rule 8)
 
 [[local]]                              # a project rule; ids must start with "local."
 id = "local.no-print"
@@ -401,9 +396,9 @@ kept to preserve an old path: tests move with the code in the same commit.
   scratch consumer repository with its own `AGENTS.md` and policy file.
 - 5: gate framework (`scripts/gates` importable), broker-admitted runner, pytest plugin, `policy
   check landing` ship as library features; project checkers stay project code.
-- 6: `policy.sync` authority gate; `person.statement-only` and `coordination.lowest-tier-never`
-  get real `enforced_by` refs when `person-delegation` slice 1 and `session-liveness` slice 4
-  land (until then they read `design` and `check` prints them as unenforced).
+- 6: `policy.sync` authority gate; `person.statement-only`
+  gets a real `enforced_by` ref when `person-delegation` slice 1 lands (until then it reads `design`
+  and `check` prints it as unenforced).
 
 ### Red-team tests (real child processes, `CLAUDECODE=1`, fresh state, no mocks)
 

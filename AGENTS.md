@@ -162,7 +162,7 @@ request answer) changes only through a named gate in one registry, `poolhouse.au
 Repository App setup and publication are the scoped exception for software-owned credentials: on the owner's explicit
 instruction for that operation, the installed `agent-identity setup`, `publish-release` and `push-development` holder may
 prepare and use repository GitHub App credentials under `github.release`. Agent use requires an authenticated live
-eligible main session; agent setup is bound to the installed repository policy and recorded primary source. The key and
+main session; agent setup is bound to the installed repository policy and recorded primary source. The key and
 short-lived token stay inside the holder and its fixed Git transport. GitHub account consent, OS keystore unlocking and
 token export remain person-only; release authorization, main promotion and permission checks remain separate. This permits
 no personal credential, arbitrary command or permission expansion.
@@ -396,8 +396,8 @@ human").
   another agent's or person's token. No protocol flag, header or field overrides the sender, parent or name; the token
   decides, and the host refuses a call that carries such an override or names an identity other than the caller's. Main
   sessions retain central coordination by default; subagents disclose their authenticated parent and task, stay bounded
-  helpers, hand ready work back and do not elect themselves coordinator (an authorized handoff may nominate an eligible
-  main session); readable labels never add permissions or alter device workspace authority.
+  helpers, hand ready work back and do not elect themselves coordinator (an authorized handoff may nominate a main
+  session); readable labels never add permissions or alter device workspace authority.
 - **Native identity and credential selection.** The harness task name, actual native session ID and node-assigned
   workspace name identify the same agent. An authenticated parent registers an actual child through the maintained
   registration API only after verifying native parentage; it never invents an alternate identity. A subagent's required
@@ -409,12 +409,9 @@ human").
   person's right. Other devices of the pool hold the same board, so there is no invitation to one. Private person
   credentials are never read or minted through an agent flow and approval is never bypassed; person-only provisioning
   and system settings remain person-only (section 1).
-- **The lowest tier never coordinates.** The lowest model tier a vendor offers (Haiku, Luna and the like), and any model
-  missing from the tier table, is never a coordinator or eligible for promotion. With only lowest-tier agents present,
-  one spawns a subagent at a suitable level (Sonnet 5.5 is acceptable) to coordinate, which hands coordination back when
-  a higher-tier main session joins. Tier is read from the exact model identifier in the registry through a maintained
-  table, never from a display name or label. A lead joining passes its own model id (`--model <id>`); the model is a
-  label, never a right.
+- **The model is a label.** No model identifier decides who may coordinate, be promoted, land or review; a subagent is
+  not a main session and a main session may coordinate by default, both structural facts. A lead joining passes its own
+  model id (`--model <id>`), recorded as a claim; the model is a label, never a right.
 
 ### Shared ownership before mutation
 
@@ -614,9 +611,8 @@ docs/development.md, "Hook failures and runtime cutover checks".
 owner's tokens stop paying for routine review: a local or cheap model reads first and a person or a landing-level agent
 reads only what it flags.
 
-- **A report is advice.** Qwen3.8-27B and Qwen3.8-Flash-Next, in any quantisation, are listed above the lowest tier and
-  may review like any listed id, on the same claimed-id trust (the node verifies no model); the smaller Qwens are the
-  lowest tier, and an unlisted model cannot run `land-review`. A report from `scripts/review-backlog` changes no gate,
+- **A report is advice.** Any model may review and post `land-review`: the node verifies no model, and the id a reviewer
+  claims is a label, never a right. A report from `scripts/review-backlog` changes no gate,
   budget or authorization, and no push waits for one (section 1, "Review scope"). **The owner never reviews code.** A
   reviewer told to break a change posts `land-review` accept or reject; a reject goes back to the worker.
 - **Three rounds at most.** A branch gets one review pass and at most two fix-and-recheck rounds; a finding that

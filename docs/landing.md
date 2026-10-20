@@ -10,7 +10,7 @@ import) are byte for byte those of `origin/<dev>` (a branch's own lander never d
 ## What it does, in order
 
 0. **Preconditions.** The primary checkout is on the development branch; the branch has a clean worktree with no merge or
-   rebase in progress; the repository has an `origin`; the board answers and the session is above the lowest model tier.
+   rebase in progress; the repository has an `origin`; the board answers and this session is known to it.
    A lock of the branch (`<git-common-dir>/land/branch-<hash>.lock`) is taken without waiting for the whole run, so a second
    lander of the same branch is refused naming the first. Steps 1 to 3 hold no repository lock and no claim: any number of
    branches sync and run their checks at once (the test broker queues the CPU).
