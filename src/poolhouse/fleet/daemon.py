@@ -511,9 +511,7 @@ class DaemonRuntime:
 
     code_update_admission = managed_alignment.code_update_admission
 
-    def background_busy(self) -> bool:
-        return (bool(self.web and self.initial_setup and not self.settings.setup_done) or bool(self.runner.status()["busy"]) or any(row.state == "getting" for row in self.downloads.active())
-                or bool(self.interface and self.interface.setup_jobs and self.interface.setup_jobs.active()))
+    background_busy = managed_alignment.background_busy
 
     may_start = managed_alignment.may_start
 

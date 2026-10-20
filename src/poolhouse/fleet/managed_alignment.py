@@ -270,3 +270,8 @@ def may_start(daemon):
     if daemon.bench_host and daemon.bench_host.measuring():
         return (False, 'a benchmark is measuring on this machine')
     return daemon.schedule.may_start()
+
+
+def background_busy(daemon) -> bool:
+    return (bool(daemon.web and daemon.initial_setup and not daemon.settings.setup_done) or bool(daemon.runner.status()["busy"]) or any(row.state == "getting" for row in daemon.downloads.active())
+            or bool(daemon.interface and daemon.interface.setup_jobs and daemon.interface.setup_jobs.active()))
