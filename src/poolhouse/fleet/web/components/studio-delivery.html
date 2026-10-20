@@ -124,7 +124,7 @@
       const outputs = [...this.deliveryProjection].map((key) => { const [node, port] = JSON.parse(key); return {node, port}; });
       if (!outputs.length || outputs.some((output) => !this.deliveryChoices.some((choice) => choice.node === output.node && choice.port === output.port)))
         throw Error('Choose the exact current output ports to send.');
-      return [{kind: 'live'}, {kind: 'webhook', id: target.id, outputs}];
+      return [{kind: 'live'}, {kind: 'webhook', id: target.id, revision: target.revision, outputs}];
     },
     resetDeliveryDraft() {
       if (!this.deliveryEnabled) return;

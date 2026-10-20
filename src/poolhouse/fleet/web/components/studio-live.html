@@ -128,6 +128,8 @@
           if (path.startsWith('/destinations')) {
             await this.refreshDestinations();
             error.message = 'This destination changed elsewhere. Review its current revision, then choose the action again.';
+          } else if (path === '/subscriptions' && body.destinations?.some((item) => item.kind === 'webhook')) {
+            await this.refreshDestinations();
           } else {
             if (this.liveSub) this.liveSub = (await S.api('/subscriptions/' + encodeURIComponent(this.liveSub.id))).subscription;
             error.message = 'This stream changed elsewhere. Review its current state, then choose the action again.';

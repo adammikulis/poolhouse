@@ -73,6 +73,7 @@ def delivery_page(tmp_path, request, monkeypatch):
     member = mint_pool('delivery-example-pool', app.keyfile)
     Roster(member.key).enrol(identity.beacon, 'delivery-device', 'test')
     session = app.ui.sessions.open('owner-session', 'launch-ticket')
+    app.cookie = 'poolhouse_ui=' + session.sid
     open_page = request.getfixturevalue('studio_browser')
     try:
         with open_page() as page:
@@ -137,7 +138,8 @@ def test_live_default_is_local_and_exact_signal_projection_reaches_receiver(deli
     submitted = [body for url, _, body in state['posts'] if url.endswith('/subscriptions')][-1]
     assert submitted['destinations'][0] == {'kind': 'live'}
     assert submitted['destinations'][1]['outputs'] == [{'node': 'assess', 'port': 'signal'}]
-    assert set(submitted['destinations'][1]) == {'kind', 'id', 'outputs'}
+    assert set(submitted['destinations'][1]) == {'kind', 'id', 'revision', 'outputs'}
+    assert submitted['destinations'][1]['revision'] == 1
     start_sample(page)
     expect(page.get_by_label('Live decisions')).to_contain_text('Event 1 · done', timeout=10000)
     assert state['model_calls'] == ['assess'] and len(state['sends']) == 1
@@ -265,3 +267,27 @@ def test_late_destination_save_does_not_replace_newer_editor_state(delivery_page
     expect(page.get_by_label('Destination URL (HTTPS)', exact=True)).to_have_value('https://other.invalid/newer')
     expect(page.get_by_role('button', name='Register destination', exact=True)).to_be_enabled()
     assert not errors
+
+
+def test_concurrent_destination_revision_change_rejects_stream_creation(delivery_page):
+    page, app, state, errors = delivery_page
+    register_destination(page)
+    page.get_by_label('Send selected outputs to a registered destination', exact=True).check()
+    page.get_by_label('Delivery destination', exact=True).select_option(index=1)
+    page.get_by_label('assess · signal (json)', exact=True).check()
+    changed = []
+    def change_before_create(route):
+        target = route.request.post_data_json['destinations'][1]
+        status, result, _ = app.call('/ui/studio/destinations/' + target['id'], method='PUT', cookie=app.cookie,
+            body={'label': 'Changed receiver', 'url': 'https://other.invalid/new', 'revision': 1, 'idempotency_key': 'concurrent-update'})
+        assert status == 200 and result['destination']['revision'] == 2
+        changed.append(target)
+        route.continue_()
+    page.route('**/ui/studio/subscriptions', change_before_create)
+    page.get_by_role('button', name='Create paused stream', exact=True).click()
+    expect(page.locator('.studio-live [role="status"]')).to_contain_text('changed', ignore_case=True)
+    assert changed[0]['revision'] == 1
+    expect(page.get_by_label('Delivery destination', exact=True)).to_have_value(re.compile(':1$'))
+    expect(page.get_by_label('Delivery destination', exact=True).locator('option:checked')).to_have_attribute('disabled', '')
+    assert app.ui.studio_streams.store.active() == []
+    assert not state['sends'] and not state['model_calls'] and not errors
