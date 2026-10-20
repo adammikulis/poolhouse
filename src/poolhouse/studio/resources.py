@@ -86,7 +86,9 @@ def model_files(handle: dict) -> list[dict]:
                         or canonical != shared / digest[:2] / digest
                         or canonical.is_symlink()):
                     raise ValueError('A shared cache blob link must name its content digest')
-                shared_digest = digest
+                if not hfstore.DIGEST.fullmatch(target.name):
+                    raise ValueError('A repository blob must have a valid content digest')
+                shared_digest = target.name
             if canonical.resolve(strict=True) != canonical:
                 raise ValueError('A cached model blob cannot contain directory links')
         else:
@@ -100,7 +102,7 @@ def model_files(handle: dict) -> list[dict]:
             raise ValueError('A model member directory cannot be a symbolic link')
         relative = path.relative_to(root).as_posix() if root.is_dir() else path.name
         members.append({'relative': relative, 'path': str(canonical), 'size': info.st_size,
-                        'identity': _identity(info), **({'sha256': shared_digest} if shared_digest else {})})
+                        'identity': _identity(info), **({'blob_digest': shared_digest} if shared_digest else {})})
     if not members:
         raise ValueError('The installed model has no regular files')
     return members
@@ -122,12 +124,12 @@ def open_model_file(member: dict):
     with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), 'rb') as source:
         if _identity(os.fstat(source.fileno())) != member['identity']:
             raise ValueError('The model member changed while opening')
-        if member.get('sha256'):
-            checked = _ContentReader(source)
+        if member.get('blob_digest'):
+            checked = _ContentReader(source, member['blob_digest'], member['size'])
             yield checked
             while checked.read(1024 * 1024):
                 pass
-            if checked.checksum.hexdigest() != member['sha256']:
+            if checked.checksum.hexdigest() != member['blob_digest']:
                 raise ValueError('The shared model blob does not match its content digest')
         else:
             yield source
@@ -138,9 +140,11 @@ def open_model_file(member: dict):
 class _ContentReader:
     """Hash sequential reads without a second pass over native model weights."""
 
-    def __init__(self, source):
+    def __init__(self, source, digest, size):
         self.source = source
-        self.checksum = hashlib.sha256()
+        self.checksum = hashlib.sha1(usedforsecurity=False) if len(digest) == 40 else hashlib.sha256()
+        if len(digest) == 40:
+            self.checksum.update(f'blob {size}\0'.encode())
 
     def seek(self, offset, whence=0):
         current = self.source.tell()

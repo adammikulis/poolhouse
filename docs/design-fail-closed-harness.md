@@ -351,7 +351,7 @@ touches and prunes `HANDOFF.md`. Order is by what is correct, not by ease. `fix/
 A tripwire channel for bubblewrap (watched decoy paths, or the kernel's audit for Landlock) is not scheduled; the owner decides
 later whether it becomes a slice (D3).
 
-Activation for every slice: the next `poolhouse runtime ensure` build, then the real tier on the owner's Mac and the linux
+Update for every slice: the next `poolhouse runtime ensure` build, then the real tier on the owner's Mac and the linux
 tier on WSL, repeating the original failure (a refusal of a path of each length, a flood, a detached child) as a person
 would run it through the shell tool. A green fast tier, a green real tier and the kill rule are the evidence a slice reports;
 a Mac result is not a Linux result, and a macOS runner other than the owner's Mac is a different kernel build.
