@@ -10508,9 +10508,9 @@
    "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
   },
   {
-   "id": "spawn:fleet/jobs.py:JobRunner._launch",
+   "id": "spawn:fleet/jobs.py:JobRunner._launch_process",
    "kind": "spawn",
-   "source": "fleet/jobs.py:JobRunner._launch",
+   "source": "fleet/jobs.py:JobRunner._launch_process",
    "trust": "arguments built from model output, member messages or file names",
    "attacker": "attacker text becomes a command line, environment or working directory",
    "status": "partial",
