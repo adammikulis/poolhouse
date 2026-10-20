@@ -1,10 +1,10 @@
 {
- "surfaces": 853,
+ "surfaces": 858,
  "by_status": {
-  "covered": 540,
+  "covered": 544,
   "partial": 193,
   "uncovered": 52,
-  "n/a": 68,
+  "n/a": 69,
   "unmapped": 0
  },
  "by_kind": {
@@ -37,7 +37,7 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 51,
+   "covered": 55,
    "partial": 46,
    "uncovered": 0,
    "n/a": 0,
@@ -68,7 +68,7 @@
    "covered": 4,
    "partial": 5,
    "uncovered": 0,
-   "n/a": 14,
+   "n/a": 15,
    "unmapped": 0
   },
   "mcp-tool": {
@@ -2682,6 +2682,74 @@
    "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
   },
   {
+   "id": "egress:studio/stream_delivery.py:_prepare",
+   "kind": "egress",
+   "source": "studio/stream_delivery.py:_prepare",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_stream_delivery.py::test_any_private_dns_answer_refuses_even_with_ambient_allowlist",
+    "tests/test_studio_stream_delivery.py::test_possible_send_failure_never_tries_second_dns_address",
+    "tests/test_studio_stream_delivery.py::test_forged_or_malformed_receipt_does_not_complete",
+    "tests/test_studio_stream_delivery.py::test_maintained_socket_connects_pinned_ip_with_original_tls_sni_and_host",
+    "tests/test_studio_stream_delivery.py::test_ambiguous_duplicate_receipt_fields_remain_uncertain",
+    "tests/test_studio_stream_delivery.py::test_revocation_before_and_after_possible_send"
+   ],
+   "note": "Registered HTTPS deliveries reject every private DNS answer, pin the actual socket to one public address with the original TLS name, refuse redirects and ambient credentials, and send once. Malformed or ambiguous receipts and possible-send failures remain interrupted, with current authorization checked across the attempt."
+  },
+  {
+   "id": "egress:studio/stream_delivery.py:deliver",
+   "kind": "egress",
+   "source": "studio/stream_delivery.py:deliver",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_stream_delivery.py::test_any_private_dns_answer_refuses_even_with_ambient_allowlist",
+    "tests/test_studio_stream_delivery.py::test_possible_send_failure_never_tries_second_dns_address",
+    "tests/test_studio_stream_delivery.py::test_forged_or_malformed_receipt_does_not_complete",
+    "tests/test_studio_stream_delivery.py::test_maintained_socket_connects_pinned_ip_with_original_tls_sni_and_host",
+    "tests/test_studio_stream_delivery.py::test_ambiguous_duplicate_receipt_fields_remain_uncertain",
+    "tests/test_studio_stream_delivery.py::test_revocation_before_and_after_possible_send"
+   ],
+   "note": "Registered HTTPS deliveries reject every private DNS answer, pin the actual socket to one public address with the original TLS name, refuse redirects and ambient credentials, and send once. Malformed or ambiguous receipts and possible-send failures remain interrupted, with current authorization checked across the attempt."
+  },
+  {
+   "id": "egress:studio/stream_delivery.py:deliver.exact",
+   "kind": "egress",
+   "source": "studio/stream_delivery.py:deliver.exact",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_stream_delivery.py::test_any_private_dns_answer_refuses_even_with_ambient_allowlist",
+    "tests/test_studio_stream_delivery.py::test_possible_send_failure_never_tries_second_dns_address",
+    "tests/test_studio_stream_delivery.py::test_forged_or_malformed_receipt_does_not_complete",
+    "tests/test_studio_stream_delivery.py::test_maintained_socket_connects_pinned_ip_with_original_tls_sni_and_host",
+    "tests/test_studio_stream_delivery.py::test_ambiguous_duplicate_receipt_fields_remain_uncertain",
+    "tests/test_studio_stream_delivery.py::test_revocation_before_and_after_possible_send"
+   ],
+   "note": "Registered HTTPS deliveries reject every private DNS answer, pin the actual socket to one public address with the original TLS name, refuse redirects and ambient credentials, and send once. Malformed or ambiguous receipts and possible-send failures remain interrupted, with current authorization checked across the attempt."
+  },
+  {
+   "id": "egress:studio/stream_delivery.py:deliver.pinned",
+   "kind": "egress",
+   "source": "studio/stream_delivery.py:deliver.pinned",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_stream_delivery.py::test_any_private_dns_answer_refuses_even_with_ambient_allowlist",
+    "tests/test_studio_stream_delivery.py::test_possible_send_failure_never_tries_second_dns_address",
+    "tests/test_studio_stream_delivery.py::test_forged_or_malformed_receipt_does_not_complete",
+    "tests/test_studio_stream_delivery.py::test_maintained_socket_connects_pinned_ip_with_original_tls_sni_and_host",
+    "tests/test_studio_stream_delivery.py::test_ambiguous_duplicate_receipt_fields_remain_uncertain",
+    "tests/test_studio_stream_delivery.py::test_revocation_before_and_after_possible_send"
+   ],
+   "note": "Registered HTTPS deliveries reject every private DNS answer, pin the actual socket to one public address with the original TLS name, refuse redirects and ambient credentials, and send once. Malformed or ambiguous receipts and possible-send failures remain interrupted, with current authorization checked across the attempt."
+  },
+  {
    "id": "egress:web.py:_rendered",
    "kind": "egress",
    "source": "web.py:_rendered",
@@ -4348,6 +4416,16 @@
     "tests/test_onboard_tailnet.py"
    ],
    "note": "the daemon handler is attacked; forged UDP beacons are attacked in tests/test_fleet_discovery.py only for the signature"
+  },
+  {
+   "id": "listener:fleet/studio_watch_registry.py:create_native_picks.create_watch",
+   "kind": "listener",
+   "source": "fleet/studio_watch_registry.py:create_native_picks.create_watch",
+   "trust": "anything that can connect to the address",
+   "attacker": "an unauthenticated or cross-origin client reaches the port",
+   "status": "n/a",
+   "tests": [],
+   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
   },
   {
    "id": "listener:fleet/wsl.py:_gateway",

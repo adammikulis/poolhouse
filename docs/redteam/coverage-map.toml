@@ -15,6 +15,13 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["egress:studio/stream_delivery.py:*"]
+status = "covered"
+count = 4
+tests = ["tests/test_studio_stream_delivery.py::test_any_private_dns_answer_refuses_even_with_ambient_allowlist", "tests/test_studio_stream_delivery.py::test_possible_send_failure_never_tries_second_dns_address", "tests/test_studio_stream_delivery.py::test_forged_or_malformed_receipt_does_not_complete", "tests/test_studio_stream_delivery.py::test_maintained_socket_connects_pinned_ip_with_original_tls_sni_and_host", "tests/test_studio_stream_delivery.py::test_ambiguous_duplicate_receipt_fields_remain_uncertain", "tests/test_studio_stream_delivery.py::test_revocation_before_and_after_possible_send"]
+note = "Registered HTTPS deliveries reject every private DNS answer, pin the actual socket to one public address with the original TLS name, refuse redirects and ambient credentials, and send once. Malformed or ambiguous receipts and possible-send failures remain interrupted, with current authorization checked across the attempt."
+
+[[group]]
 match = ["spawn:serve/decision_process.py:DecisionProcess.start", "spawn:serve/decision_launch.py:OwnedBroker.start"]
 status = "covered"
 count = 2
