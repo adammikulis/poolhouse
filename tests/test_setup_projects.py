@@ -1,13 +1,15 @@
 """First-run coding folders remain local and require an explicit creation action."""
 import pytest
 
+from poolhouse import home
 from poolhouse.fleet.projects import ProjectRegistry
 from poolhouse.fleet.setup_projects import Projects
 from poolhouse.net import git
 
 
 @pytest.fixture
-def prepared(tmp_path):
+def prepared(tmp_path, monkeypatch):
+    monkeypatch.setattr(home, 'user_home', lambda: tmp_path.resolve())
     root = tmp_path.resolve() / 'state'
     root.mkdir(mode=0o700)
     registry = ProjectRegistry(root, 'fixture-device')
@@ -21,7 +23,7 @@ def test_default_creates_one_private_unshared_registered_project(prepared):
     project = prepared.registry.get(first['id'])
     assert not project.shared
     assert not prepared.registry.list()
-    path = prepared.root.parent / 'Poolhouse Projects' / 'Workspace'
+    path = home.user_home() / 'Poolhouse Projects' / 'Workspace'
     assert project.root == str(path)
     assert path.stat().st_mode & 0o077 == 0
     assert git.run(['ls-files'], cwd=path).stdout == ''
@@ -61,18 +63,18 @@ def test_replaced_selected_directory_is_refused(prepared, tmp_path):
 def test_redirected_default_and_revoked_setup_cannot_create(prepared, tmp_path):
     outside = tmp_path.resolve() / 'outside'
     outside.mkdir()
-    (prepared.root.parent / 'Poolhouse Projects').symlink_to(outside, target_is_directory=True)
+    (home.user_home() / 'Poolhouse Projects').symlink_to(outside, target_is_directory=True)
     with pytest.raises(ValueError):
         prepared.default(current=lambda: True)
     assert not list(outside.iterdir())
-    (prepared.root.parent / 'Poolhouse Projects').unlink()
+    (home.user_home() / 'Poolhouse Projects').unlink()
     with pytest.raises(PermissionError):
         prepared.default(current=lambda: False)
-    assert not (prepared.root.parent / 'Poolhouse Projects').exists()
+    assert not (home.user_home() / 'Poolhouse Projects').exists()
 
 
 def test_existing_default_content_is_never_adopted_or_overwritten(prepared):
-    path = prepared.root.parent / 'Poolhouse Projects' / 'Workspace'
+    path = home.user_home() / 'Poolhouse Projects' / 'Workspace'
     path.mkdir(mode=0o700, parents=True)
     (path / 'notes.txt').write_text('Keep this')
     with pytest.raises(ValueError, match='already contains'):
@@ -144,7 +146,8 @@ def test_cancelled_native_selection_cannot_create_and_replay_does_not_reopen(pre
 
 
 @pytest.fixture
-def project_app(tmp_path):
+def project_app(tmp_path, monkeypatch):
+    monkeypatch.setattr(home, 'user_home', lambda: tmp_path.resolve())
     from test_fleet_ui import Serving
     app = Serving(tmp_path)
     app.ui.root = app.files.parent
@@ -188,7 +191,7 @@ def test_real_default_requires_local_credentialed_explicit_choice(project_app):
     from launch_support import browser, sign_in
     app = project_app
     cookie = sign_in(app)
-    target = app.ui.root.parent / 'Poolhouse Projects' / 'Workspace'
+    target = home.user_home() / 'Poolhouse Projects' / 'Workspace'
     assert app.call('/ui/setup/projects/default', headers=browser(app), cookie=cookie)[0] == 405
     assert app.call('/ui/setup/projects/default', method='POST', body={})[0] == 403
     assert not target.exists()
@@ -209,7 +212,7 @@ def test_interrupted_owned_creation_reconciles_exact_receipt_once(prepared, tmp_
     if use_default:
         def create():
             return prepared.default(current=lambda: True)
-        path = prepared.root.parent / 'Poolhouse Projects' / 'Workspace'
+        path = home.user_home() / 'Poolhouse Projects' / 'Workspace'
     else:
         path = tmp_path.resolve() / 'selected'
         path.mkdir()
@@ -246,7 +249,7 @@ def test_interrupted_owned_creation_reconciles_exact_receipt_once(prepared, tmp_
 
 
 def test_other_writable_default_parent_is_not_mutated(prepared):
-    parent = prepared.root.parent / 'Poolhouse Projects'
+    parent = home.user_home() / 'Poolhouse Projects'
     parent.mkdir(mode=0o777)
     parent.chmod(0o777)
     with pytest.raises(ValueError):
@@ -295,7 +298,7 @@ def test_foreign_git_directory_is_never_replaced_during_promotion(prepared, monk
     monkeypatch.setattr(module, 'promote_new_directory', promote)
     with pytest.raises(FileExistsError):
         prepared.default(current=lambda: True)
-    target = prepared.root.parent / 'Poolhouse Projects' / 'Workspace' / '.git' / 'foreign.txt'
+    target = home.user_home() / 'Poolhouse Projects' / 'Workspace' / '.git' / 'foreign.txt'
     assert target.read_text() == 'Preserve foreign content'
     assert not prepared.registry.boards()
 
@@ -378,3 +381,20 @@ def test_default_operation_keys_are_scoped_to_the_actual_session(project_app):
     status, result, _ = app.call('/ui/setup/projects/default', method='POST', headers=browser(app),
                                  cookie=cookies[0], body={'operation_id':'a' * 32})
     assert status == 200 and result['selected'] is False
+
+
+def test_default_uses_account_home_outside_the_actual_daemon_state_shape(tmp_path, monkeypatch):
+    account = tmp_path.resolve() / 'account'
+    account.mkdir(mode=0o700)
+    state = account / '.poolhouse'
+    root = state / 'traind'
+    root.mkdir(parents=True, mode=0o700)
+    monkeypatch.setattr(home, 'user_home', lambda: account)
+    monkeypatch.setenv(home.ROOT_ENV, str(state))
+    projects = Projects(root, ProjectRegistry(root, 'fixture-device'))
+    first = projects.default(current=lambda: True)
+    assert projects.default(current=lambda: True) == first
+    selected = projects.registry.resolve_coding_project(first['id'], current=lambda: True)
+    assert selected.root == str(account / 'Poolhouse Projects' / 'Workspace')
+    assert not (state / 'Poolhouse Projects').exists()
+    assert not selected.shared

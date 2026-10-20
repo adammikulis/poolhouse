@@ -9,6 +9,7 @@ import tempfile
 import threading
 from pathlib import Path
 
+from poolhouse import home
 from poolhouse.activity import source_snapshot
 from poolhouse.files import promote_new_directory
 from poolhouse.graph.store import GraphStore
@@ -223,7 +224,7 @@ class Projects:
         with self.lock:
             self._check(current)
             directory(self.root)
-            parent = self.root.parent / 'Poolhouse Projects'
+            parent = home.user_home() / 'Poolhouse Projects'
             parent.mkdir(mode=0o700, exist_ok=True)
             directory(parent)
             path = parent / 'Workspace'
