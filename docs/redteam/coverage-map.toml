@@ -15,6 +15,13 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["parser:fleet/producer_host.py", "handler:fleet/producer_host.py:ProducerHost.prepare", "handler:fleet/producer_host.py:ProducerHost.activate", "handler:fleet/producer_host.py:ProducerHost.status", "handler:fleet/producer_host.py:ProducerHost.revoke", "handler:fleet/producer_host.py:ProducerHost.accepts", "handler:fleet/producer_host.py:ProducerHost.bridge", "egress:fleet/producer_host.py:ProducerHost._authorization", "egress:fleet/producer_host.py:ProducerHost.bridge"]
+status = "covered"
+count = 9
+tests = ["tests/test_producer_host.py::test_durable_duplicate_prepare_attaches_one_inert_child", "tests/test_producer_host.py::test_restart_cannot_adopt_or_repeat_durable_possible_launch", "tests/test_producer_host.py::test_actual_owner_custody_binding_precedes_activation_and_data", "tests/test_producer_host.py::test_sibling_process_cannot_use_valid_capability_bytes", "tests/test_producer_host.py::test_revoke_or_late_activation_ack_never_revives_capability", "tests/test_producer_host.py::test_receiver_revoked_after_child_ack_stops_exact_child", "tests/test_producer_host.py::test_withdrawn_offer_or_sdk_exit_denies_future_data", "tests/test_producer_host.py::test_changed_owner_generation_under_same_command_conflicts", "tests/test_producer_host.py::test_context_change_during_authorization_cannot_spawn", "tests/test_producer_host.py::test_dead_owned_child_is_never_reported_available", "tests/test_producer_host.py::test_offer_context_must_match_actual_control_daemon_before_spawn", "tests/test_producer_host.py::test_prepare_replay_after_owner_custody_and_active_attaches_same_child", "tests/test_producer_host.py::test_replayed_prepare_and_active_ack_recheck_receiver_revocation", "tests/test_producer_host.py::test_inspect_cannot_attach_changed_actual_child_binding"]
+note = "Real isolated storage and offer-registry tests at controlled child and member-transport boundaries verify durable launch intent before prepare, retained process identity, current receiver custody before and after activation, receipt-only replay, sticky revocation and authorization around forwarding. Actual process launch, sealed transport and full factory wiring are exercised separately; these composition tests do not claim their callbacks authenticate real devices."
+
+[[group]]
 match = ["parser:fleet/producer_member.py", "handler:fleet/producer_member.py:answer"]
 status = "covered"
 count = 2

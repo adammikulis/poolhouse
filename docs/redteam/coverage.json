@@ -1,7 +1,7 @@
 {
- "surfaces": 907,
+ "surfaces": 916,
  "by_status": {
-  "covered": 589,
+  "covered": 598,
   "partial": 193,
   "uncovered": 52,
   "n/a": 73,
@@ -37,14 +37,14 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 58,
+   "covered": 60,
    "partial": 46,
    "uncovered": 0,
    "n/a": 1,
    "unmapped": 0
   },
   "handler": {
-   "covered": 19,
+   "covered": 25,
    "partial": 2,
    "uncovered": 0,
    "n/a": 0,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 92,
+   "covered": 93,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -2043,6 +2043,56 @@
    "note": "The original SDK process retains one authenticated daemon anchor and offer-specific bridge generation. Fresh control and DATA connections verify actual kernel endpoint processes before application bytes, with exact control TLS certificate checks and bounded fixed schemas. Wrong or replaced endpoints receive no record bytes; inherited clients fail after fork. An explicit retry carries its stable command key without replacement data; there is no automatic uncertain resend. These isolated transport tests do not establish complete provider enrollment, current source authorization or durable event admission; deliberate forwarding by an already authorized connector remains outside kernel connector proof."
   },
   {
+   "id": "egress:fleet/producer_host.py:ProducerHost._authorization",
+   "kind": "egress",
+   "source": "src/poolhouse/fleet/producer_host.py",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_host.py::test_durable_duplicate_prepare_attaches_one_inert_child",
+    "tests/test_producer_host.py::test_restart_cannot_adopt_or_repeat_durable_possible_launch",
+    "tests/test_producer_host.py::test_actual_owner_custody_binding_precedes_activation_and_data",
+    "tests/test_producer_host.py::test_sibling_process_cannot_use_valid_capability_bytes",
+    "tests/test_producer_host.py::test_revoke_or_late_activation_ack_never_revives_capability",
+    "tests/test_producer_host.py::test_receiver_revoked_after_child_ack_stops_exact_child",
+    "tests/test_producer_host.py::test_withdrawn_offer_or_sdk_exit_denies_future_data",
+    "tests/test_producer_host.py::test_changed_owner_generation_under_same_command_conflicts",
+    "tests/test_producer_host.py::test_context_change_during_authorization_cannot_spawn",
+    "tests/test_producer_host.py::test_dead_owned_child_is_never_reported_available",
+    "tests/test_producer_host.py::test_offer_context_must_match_actual_control_daemon_before_spawn",
+    "tests/test_producer_host.py::test_prepare_replay_after_owner_custody_and_active_attaches_same_child",
+    "tests/test_producer_host.py::test_replayed_prepare_and_active_ack_recheck_receiver_revocation",
+    "tests/test_producer_host.py::test_inspect_cannot_attach_changed_actual_child_binding"
+   ],
+   "note": "Real isolated storage and offer-registry tests at controlled child and member-transport boundaries verify durable launch intent before prepare, retained process identity, current receiver custody before and after activation, receipt-only replay, sticky revocation and authorization around forwarding. Actual process launch, sealed transport and full factory wiring are exercised separately; these composition tests do not claim their callbacks authenticate real devices."
+  },
+  {
+   "id": "egress:fleet/producer_host.py:ProducerHost.bridge",
+   "kind": "egress",
+   "source": "src/poolhouse/fleet/producer_host.py",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_host.py::test_durable_duplicate_prepare_attaches_one_inert_child",
+    "tests/test_producer_host.py::test_restart_cannot_adopt_or_repeat_durable_possible_launch",
+    "tests/test_producer_host.py::test_actual_owner_custody_binding_precedes_activation_and_data",
+    "tests/test_producer_host.py::test_sibling_process_cannot_use_valid_capability_bytes",
+    "tests/test_producer_host.py::test_revoke_or_late_activation_ack_never_revives_capability",
+    "tests/test_producer_host.py::test_receiver_revoked_after_child_ack_stops_exact_child",
+    "tests/test_producer_host.py::test_withdrawn_offer_or_sdk_exit_denies_future_data",
+    "tests/test_producer_host.py::test_changed_owner_generation_under_same_command_conflicts",
+    "tests/test_producer_host.py::test_context_change_during_authorization_cannot_spawn",
+    "tests/test_producer_host.py::test_dead_owned_child_is_never_reported_available",
+    "tests/test_producer_host.py::test_offer_context_must_match_actual_control_daemon_before_spawn",
+    "tests/test_producer_host.py::test_prepare_replay_after_owner_custody_and_active_attaches_same_child",
+    "tests/test_producer_host.py::test_replayed_prepare_and_active_ack_recheck_receiver_revocation",
+    "tests/test_producer_host.py::test_inspect_cannot_attach_changed_actual_child_binding"
+   ],
+   "note": "Real isolated storage and offer-registry tests at controlled child and member-transport boundaries verify durable launch intent before prepare, retained process identity, current receiver custody before and after activation, receipt-only replay, sticky revocation and authorization around forwarding. Actual process launch, sealed transport and full factory wiring are exercised separately; these composition tests do not claim their callbacks authenticate real devices."
+  },
+  {
    "id": "egress:fleet/producer_process.py:_forward",
    "kind": "egress",
    "source": "src/poolhouse/fleet/producer_process.py",
@@ -3185,6 +3235,156 @@
     "tests/test_producer_control.py::test_retention_error_never_appends_second_response"
    ],
    "note": "Each connection dispatches one fixed operation after current daemon and actual process checks. Ordinary clients cannot choose private bridge operations; current bridge admission is independently rechecked. Post-dispatch revocation suppresses a reply without repeating the callback. Response retention preserves endpoint verification within the original deadline and cannot append a second response. The fixed factory must separately authorize source capabilities and bound its callbacks; complete producer admission is not claimed by this primitive."
+  },
+  {
+   "id": "handler:fleet/producer_host.py:ProducerHost.accepts",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_host.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_host.py::test_durable_duplicate_prepare_attaches_one_inert_child",
+    "tests/test_producer_host.py::test_restart_cannot_adopt_or_repeat_durable_possible_launch",
+    "tests/test_producer_host.py::test_actual_owner_custody_binding_precedes_activation_and_data",
+    "tests/test_producer_host.py::test_sibling_process_cannot_use_valid_capability_bytes",
+    "tests/test_producer_host.py::test_revoke_or_late_activation_ack_never_revives_capability",
+    "tests/test_producer_host.py::test_receiver_revoked_after_child_ack_stops_exact_child",
+    "tests/test_producer_host.py::test_withdrawn_offer_or_sdk_exit_denies_future_data",
+    "tests/test_producer_host.py::test_changed_owner_generation_under_same_command_conflicts",
+    "tests/test_producer_host.py::test_context_change_during_authorization_cannot_spawn",
+    "tests/test_producer_host.py::test_dead_owned_child_is_never_reported_available",
+    "tests/test_producer_host.py::test_offer_context_must_match_actual_control_daemon_before_spawn",
+    "tests/test_producer_host.py::test_prepare_replay_after_owner_custody_and_active_attaches_same_child",
+    "tests/test_producer_host.py::test_replayed_prepare_and_active_ack_recheck_receiver_revocation",
+    "tests/test_producer_host.py::test_inspect_cannot_attach_changed_actual_child_binding"
+   ],
+   "note": "Real isolated storage and offer-registry tests at controlled child and member-transport boundaries verify durable launch intent before prepare, retained process identity, current receiver custody before and after activation, receipt-only replay, sticky revocation and authorization around forwarding. Actual process launch, sealed transport and full factory wiring are exercised separately; these composition tests do not claim their callbacks authenticate real devices."
+  },
+  {
+   "id": "handler:fleet/producer_host.py:ProducerHost.activate",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_host.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_host.py::test_durable_duplicate_prepare_attaches_one_inert_child",
+    "tests/test_producer_host.py::test_restart_cannot_adopt_or_repeat_durable_possible_launch",
+    "tests/test_producer_host.py::test_actual_owner_custody_binding_precedes_activation_and_data",
+    "tests/test_producer_host.py::test_sibling_process_cannot_use_valid_capability_bytes",
+    "tests/test_producer_host.py::test_revoke_or_late_activation_ack_never_revives_capability",
+    "tests/test_producer_host.py::test_receiver_revoked_after_child_ack_stops_exact_child",
+    "tests/test_producer_host.py::test_withdrawn_offer_or_sdk_exit_denies_future_data",
+    "tests/test_producer_host.py::test_changed_owner_generation_under_same_command_conflicts",
+    "tests/test_producer_host.py::test_context_change_during_authorization_cannot_spawn",
+    "tests/test_producer_host.py::test_dead_owned_child_is_never_reported_available",
+    "tests/test_producer_host.py::test_offer_context_must_match_actual_control_daemon_before_spawn",
+    "tests/test_producer_host.py::test_prepare_replay_after_owner_custody_and_active_attaches_same_child",
+    "tests/test_producer_host.py::test_replayed_prepare_and_active_ack_recheck_receiver_revocation",
+    "tests/test_producer_host.py::test_inspect_cannot_attach_changed_actual_child_binding"
+   ],
+   "note": "Real isolated storage and offer-registry tests at controlled child and member-transport boundaries verify durable launch intent before prepare, retained process identity, current receiver custody before and after activation, receipt-only replay, sticky revocation and authorization around forwarding. Actual process launch, sealed transport and full factory wiring are exercised separately; these composition tests do not claim their callbacks authenticate real devices."
+  },
+  {
+   "id": "handler:fleet/producer_host.py:ProducerHost.bridge",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_host.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_host.py::test_durable_duplicate_prepare_attaches_one_inert_child",
+    "tests/test_producer_host.py::test_restart_cannot_adopt_or_repeat_durable_possible_launch",
+    "tests/test_producer_host.py::test_actual_owner_custody_binding_precedes_activation_and_data",
+    "tests/test_producer_host.py::test_sibling_process_cannot_use_valid_capability_bytes",
+    "tests/test_producer_host.py::test_revoke_or_late_activation_ack_never_revives_capability",
+    "tests/test_producer_host.py::test_receiver_revoked_after_child_ack_stops_exact_child",
+    "tests/test_producer_host.py::test_withdrawn_offer_or_sdk_exit_denies_future_data",
+    "tests/test_producer_host.py::test_changed_owner_generation_under_same_command_conflicts",
+    "tests/test_producer_host.py::test_context_change_during_authorization_cannot_spawn",
+    "tests/test_producer_host.py::test_dead_owned_child_is_never_reported_available",
+    "tests/test_producer_host.py::test_offer_context_must_match_actual_control_daemon_before_spawn",
+    "tests/test_producer_host.py::test_prepare_replay_after_owner_custody_and_active_attaches_same_child",
+    "tests/test_producer_host.py::test_replayed_prepare_and_active_ack_recheck_receiver_revocation",
+    "tests/test_producer_host.py::test_inspect_cannot_attach_changed_actual_child_binding"
+   ],
+   "note": "Real isolated storage and offer-registry tests at controlled child and member-transport boundaries verify durable launch intent before prepare, retained process identity, current receiver custody before and after activation, receipt-only replay, sticky revocation and authorization around forwarding. Actual process launch, sealed transport and full factory wiring are exercised separately; these composition tests do not claim their callbacks authenticate real devices."
+  },
+  {
+   "id": "handler:fleet/producer_host.py:ProducerHost.prepare",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_host.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_host.py::test_durable_duplicate_prepare_attaches_one_inert_child",
+    "tests/test_producer_host.py::test_restart_cannot_adopt_or_repeat_durable_possible_launch",
+    "tests/test_producer_host.py::test_actual_owner_custody_binding_precedes_activation_and_data",
+    "tests/test_producer_host.py::test_sibling_process_cannot_use_valid_capability_bytes",
+    "tests/test_producer_host.py::test_revoke_or_late_activation_ack_never_revives_capability",
+    "tests/test_producer_host.py::test_receiver_revoked_after_child_ack_stops_exact_child",
+    "tests/test_producer_host.py::test_withdrawn_offer_or_sdk_exit_denies_future_data",
+    "tests/test_producer_host.py::test_changed_owner_generation_under_same_command_conflicts",
+    "tests/test_producer_host.py::test_context_change_during_authorization_cannot_spawn",
+    "tests/test_producer_host.py::test_dead_owned_child_is_never_reported_available",
+    "tests/test_producer_host.py::test_offer_context_must_match_actual_control_daemon_before_spawn",
+    "tests/test_producer_host.py::test_prepare_replay_after_owner_custody_and_active_attaches_same_child",
+    "tests/test_producer_host.py::test_replayed_prepare_and_active_ack_recheck_receiver_revocation",
+    "tests/test_producer_host.py::test_inspect_cannot_attach_changed_actual_child_binding"
+   ],
+   "note": "Real isolated storage and offer-registry tests at controlled child and member-transport boundaries verify durable launch intent before prepare, retained process identity, current receiver custody before and after activation, receipt-only replay, sticky revocation and authorization around forwarding. Actual process launch, sealed transport and full factory wiring are exercised separately; these composition tests do not claim their callbacks authenticate real devices."
+  },
+  {
+   "id": "handler:fleet/producer_host.py:ProducerHost.revoke",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_host.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_host.py::test_durable_duplicate_prepare_attaches_one_inert_child",
+    "tests/test_producer_host.py::test_restart_cannot_adopt_or_repeat_durable_possible_launch",
+    "tests/test_producer_host.py::test_actual_owner_custody_binding_precedes_activation_and_data",
+    "tests/test_producer_host.py::test_sibling_process_cannot_use_valid_capability_bytes",
+    "tests/test_producer_host.py::test_revoke_or_late_activation_ack_never_revives_capability",
+    "tests/test_producer_host.py::test_receiver_revoked_after_child_ack_stops_exact_child",
+    "tests/test_producer_host.py::test_withdrawn_offer_or_sdk_exit_denies_future_data",
+    "tests/test_producer_host.py::test_changed_owner_generation_under_same_command_conflicts",
+    "tests/test_producer_host.py::test_context_change_during_authorization_cannot_spawn",
+    "tests/test_producer_host.py::test_dead_owned_child_is_never_reported_available",
+    "tests/test_producer_host.py::test_offer_context_must_match_actual_control_daemon_before_spawn",
+    "tests/test_producer_host.py::test_prepare_replay_after_owner_custody_and_active_attaches_same_child",
+    "tests/test_producer_host.py::test_replayed_prepare_and_active_ack_recheck_receiver_revocation",
+    "tests/test_producer_host.py::test_inspect_cannot_attach_changed_actual_child_binding"
+   ],
+   "note": "Real isolated storage and offer-registry tests at controlled child and member-transport boundaries verify durable launch intent before prepare, retained process identity, current receiver custody before and after activation, receipt-only replay, sticky revocation and authorization around forwarding. Actual process launch, sealed transport and full factory wiring are exercised separately; these composition tests do not claim their callbacks authenticate real devices."
+  },
+  {
+   "id": "handler:fleet/producer_host.py:ProducerHost.status",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_host.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_host.py::test_durable_duplicate_prepare_attaches_one_inert_child",
+    "tests/test_producer_host.py::test_restart_cannot_adopt_or_repeat_durable_possible_launch",
+    "tests/test_producer_host.py::test_actual_owner_custody_binding_precedes_activation_and_data",
+    "tests/test_producer_host.py::test_sibling_process_cannot_use_valid_capability_bytes",
+    "tests/test_producer_host.py::test_revoke_or_late_activation_ack_never_revives_capability",
+    "tests/test_producer_host.py::test_receiver_revoked_after_child_ack_stops_exact_child",
+    "tests/test_producer_host.py::test_withdrawn_offer_or_sdk_exit_denies_future_data",
+    "tests/test_producer_host.py::test_changed_owner_generation_under_same_command_conflicts",
+    "tests/test_producer_host.py::test_context_change_during_authorization_cannot_spawn",
+    "tests/test_producer_host.py::test_dead_owned_child_is_never_reported_available",
+    "tests/test_producer_host.py::test_offer_context_must_match_actual_control_daemon_before_spawn",
+    "tests/test_producer_host.py::test_prepare_replay_after_owner_custody_and_active_attaches_same_child",
+    "tests/test_producer_host.py::test_replayed_prepare_and_active_ack_recheck_receiver_revocation",
+    "tests/test_producer_host.py::test_inspect_cannot_attach_changed_actual_child_binding"
+   ],
+   "note": "Real isolated storage and offer-registry tests at controlled child and member-transport boundaries verify durable launch intent before prepare, retained process identity, current receiver custody before and after activation, receipt-only replay, sticky revocation and authorization around forwarding. Actual process launch, sealed transport and full factory wiring are exercised separately; these composition tests do not claim their callbacks authenticate real devices."
   },
   {
    "id": "handler:fleet/producer_member.py:answer",
@@ -6320,6 +6520,31 @@
     "tests/test_producer_sdk.py::test_actual_holder_forgery_partial_or_lost_ack_refuses_and_reaps"
    ],
    "note": "Only the installed helper passes the real-machine gate before reading its fixed account root and existing private locator. Descriptor checks reject symlinks and public permissions; nonce and exact private acknowledgement schemas are checked. Only a public authenticated daemon anchor crosses to the SDK. The existing software installation-secret compromise boundary remains; no hardware clone resistance or source authority is conferred."
+  },
+  {
+   "id": "parser:fleet/producer_host.py",
+   "kind": "parser",
+   "source": "src/poolhouse/fleet/producer_host.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_host.py::test_durable_duplicate_prepare_attaches_one_inert_child",
+    "tests/test_producer_host.py::test_restart_cannot_adopt_or_repeat_durable_possible_launch",
+    "tests/test_producer_host.py::test_actual_owner_custody_binding_precedes_activation_and_data",
+    "tests/test_producer_host.py::test_sibling_process_cannot_use_valid_capability_bytes",
+    "tests/test_producer_host.py::test_revoke_or_late_activation_ack_never_revives_capability",
+    "tests/test_producer_host.py::test_receiver_revoked_after_child_ack_stops_exact_child",
+    "tests/test_producer_host.py::test_withdrawn_offer_or_sdk_exit_denies_future_data",
+    "tests/test_producer_host.py::test_changed_owner_generation_under_same_command_conflicts",
+    "tests/test_producer_host.py::test_context_change_during_authorization_cannot_spawn",
+    "tests/test_producer_host.py::test_dead_owned_child_is_never_reported_available",
+    "tests/test_producer_host.py::test_offer_context_must_match_actual_control_daemon_before_spawn",
+    "tests/test_producer_host.py::test_prepare_replay_after_owner_custody_and_active_attaches_same_child",
+    "tests/test_producer_host.py::test_replayed_prepare_and_active_ack_recheck_receiver_revocation",
+    "tests/test_producer_host.py::test_inspect_cannot_attach_changed_actual_child_binding"
+   ],
+   "note": "Real isolated storage and offer-registry tests at controlled child and member-transport boundaries verify durable launch intent before prepare, retained process identity, current receiver custody before and after activation, receipt-only replay, sticky revocation and authorization around forwarding. Actual process launch, sealed transport and full factory wiring are exercised separately; these composition tests do not claim their callbacks authenticate real devices."
   },
   {
    "id": "parser:fleet/producer_member.py",
