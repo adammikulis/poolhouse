@@ -65,6 +65,17 @@ class Reporter:
             completion = {'response_digest': response_digest, 'status': 'accepted' if accepted else 'refused'}
         return self.jobs._probe(self.row, phase, request_digest, completion, self.current)
 
+    def serving(self, receipt):
+        """Retain only fixed identifiers from an independently checked native startup."""
+        if (not isinstance(receipt, dict) or set(receipt) != {
+                'startup_id', 'artifact_digest', 'runtime_digest', 'parser', 'port', 'context'}
+                or any(not isinstance(receipt[key], str) or re.fullmatch(r'[a-f0-9]{64}', receipt[key]) is None
+                       for key in ('startup_id', 'artifact_digest', 'runtime_digest', 'parser'))
+                or type(receipt['port']) is not int or not 0 < receipt['port'] < 65536
+                or type(receipt['context']) is not int or not 0 < receipt['context'] < 2**31):
+            raise ValueError('Invalid preparation serving receipt.')
+        return self.jobs._serving(self.row, dict(receipt), self.current)
+
 
 class Jobs:
     def __init__(self, root):
@@ -218,6 +229,8 @@ class Jobs:
             if (latest['kind'] != PREPARATION or latest['state'] != 'installing'
                     or latest['cancel_requested'] or current() is not True):
                 raise PreparationStopped('Preparation stopped before probe receipt.')
+            if not latest.get('serving_receipt'):
+                raise ValueError('A checked serving receipt is required before probing.')
             receipts = latest.setdefault('probes', {})
             old = receipts.get(phase)
             fresh = old is None
@@ -228,7 +241,8 @@ class Jobs:
                 if previous >= 0 and receipts.get(PROBES[previous], {}).get('status') != 'accepted':
                     raise ValueError('The previous fixed probe has not succeeded.')
                 old = {'id': hashlib.sha256(f'setup-probe/v1:{row["id"]}:{phase}'.encode()).hexdigest(),
-                       'request_digest': request_digest, 'status': 'intent'}
+                       'request_digest': request_digest, 'startup_id': latest['serving_receipt']['startup_id'],
+                       'status': 'intent'}
                 receipts[phase] = old
             elif old['request_digest'] != request_digest:
                 raise ValueError('This fixed probe already has a different request.')
@@ -242,6 +256,22 @@ class Jobs:
             result = {**old, 'fresh': fresh}
         row.update(latest)
         return result
+
+    def _serving(self, row, receipt, current):
+        with self._mutex, only_one(self.root / "setup-jobs.lock"), self._store() as graph, graph.transaction():
+            latest = next(node['attrs'] for node in graph.nodes('setup-job') if node['id'] == row['id'])
+            if (latest['kind'] != PREPARATION or latest['state'] != 'installing'
+                    or latest['cancel_requested'] or current() is not True):
+                raise PreparationStopped('Preparation stopped before serving receipt.')
+            old = latest.get('serving_receipt')
+            if old is not None and old != receipt:
+                raise ValueError('Preparation already has a different serving receipt.')
+            latest['serving_receipt'] = dict(receipt)
+            self._save(graph, latest)
+            if current() is not True:
+                raise PreparationStopped('Preparation stopped before serving receipt.')
+        row.update(latest)
+        return dict(receipt)
 
     def _run(self):
         with ThreadPoolExecutor(max_workers=1, thread_name_prefix="setup-operation") as executor:

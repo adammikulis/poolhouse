@@ -14,6 +14,11 @@ def request(key='a' * 32):
             'selection': {'model_id': 'model', 'download': False}}
 
 
+def serving_receipt():
+    return {'startup_id': '1' * 64, 'artifact_digest': '2' * 64, 'runtime_digest': '3' * 64,
+            'parser': '4' * 64, 'port': 12345, 'context': 4096}
+
+
 def finished(jobs, ident):
     until = time.monotonic() + 5
     while time.monotonic() < until:
@@ -28,6 +33,7 @@ def test_fixed_probe_intents_are_durable_once_and_receipts_are_immutable(tmp_pat
     jobs = setup_jobs.Jobs(tmp_path)
 
     def operation(progress):
+        progress.serving(serving_receipt())
         progress.stage('probe')
         for phase in setup_jobs.PROBES:
             first = progress.probe(phase, 'b' * 64)
@@ -56,6 +62,7 @@ def test_uncertain_probe_intent_never_replays_after_reopen(tmp_path):
     effects = []
 
     def operation(progress):
+        progress.serving(serving_receipt())
         progress.stage('probe')
         assert progress.probe('chat', 'b' * 64)['fresh'] is True
         effects.append('request with lost response')
@@ -73,6 +80,7 @@ def test_probe_phase_and_receipt_require_fixed_successful_predecessor(tmp_path):
     jobs = setup_jobs.Jobs(tmp_path)
 
     def operation(progress):
+        progress.serving(serving_receipt())
         with pytest.raises(ValueError, match='intent'):
             progress.probe('chat', 'b' * 64)
         progress.stage('probe')
@@ -101,6 +109,7 @@ def test_probe_current_revocation_after_save_rolls_back_before_fresh_claim(tmp_p
     active, effects = [True], []
 
     def operation(progress):
+        progress.serving(serving_receipt())
         progress.stage('probe')
         save = jobs._save
 
@@ -126,6 +135,7 @@ def test_cancelled_preparation_cannot_claim_a_probe(tmp_path):
     effects = []
 
     def operation(progress):
+        progress.serving(serving_receipt())
         progress.stage('probe')
         entered.set()
         assert release.wait(5)
@@ -143,6 +153,55 @@ def test_cancelled_preparation_cannot_claim_a_probe(tmp_path):
         assert effects == []
     finally:
         release.set()
+
+
+def test_serving_receipt_is_exact_immutable_and_required_before_probe(tmp_path):
+    jobs = setup_jobs.Jobs(tmp_path)
+
+    def operation(progress):
+        progress.stage('probe')
+        with pytest.raises(ValueError, match='serving receipt'):
+            progress.probe('chat', 'b' * 64)
+        receipt = serving_receipt()
+        assert progress.serving(receipt) == receipt
+        assert progress.serving(dict(receipt)) == receipt
+        receipt['startup_id'] = '5' * 64
+        with pytest.raises(ValueError, match='different serving'):
+            progress.serving(receipt)
+        for invalid in ({**receipt, 'extra': 'inert'}, {**receipt, 'port': True},
+                        {**receipt, 'parser': 'invalid'}, {**receipt, 'context': 0}):
+            with pytest.raises(ValueError, match='Invalid'):
+                progress.serving(invalid)
+        claim = progress.probe('chat', 'b' * 64)
+        assert claim['startup_id'] == serving_receipt()['startup_id']
+        return {}
+
+    row = jobs.prepare(request(), operation, current=lambda: True)
+    result = finished(jobs, row['id'])
+    assert result['state'] == 'done' and result['serving_receipt'] == serving_receipt()
+
+
+def test_serving_receipt_current_revocation_after_save_rolls_back(tmp_path, monkeypatch):
+    jobs = setup_jobs.Jobs(tmp_path)
+    active, effects = [True], []
+
+    def operation(progress):
+        save = jobs._save
+
+        def revoke(graph, row):
+            save(graph, row)
+            if row.get('serving_receipt'):
+                active[0] = False
+
+        monkeypatch.setattr(jobs, '_save', revoke)
+        progress.serving(serving_receipt())
+        effects.append('forbidden probe')
+        return {}
+
+    row = jobs.prepare(request(), operation, current=lambda: active[0])
+    result = finished(jobs, row['id'])
+    assert result['state'] == 'interrupted' and 'serving_receipt' not in result
+    assert effects == []
 
 
 def test_concurrent_repeat_and_terminal_reopen_attach_one_operation(tmp_path):
