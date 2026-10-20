@@ -7,6 +7,8 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
 (function () {
   const M = window.fleetModel = {};
   let sessionEpoch = 0, nativeAttempt = -1, nativePending = null, nativeSignedOut = false;
+  let sessionInvalid = false, manualPending = null, signoutPending = null, nativeWaiting = null;
+  M.sessionContext = () => sessionEpoch;
   const responseEpoch = new WeakMap();
   const H = M.headers = { "X-Poolhouse-UI": "1", "Content-Type": "application/json" };
 
@@ -48,10 +50,31 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
       if (aborted) signal.removeEventListener("abort", aborted);
     }
     signal?.throwIfAborted();
+    if (path === "/ui/session" && opts.method?.toUpperCase() === "POST") return establishSession(opts);
     const epoch = sessionEpoch, result = await request(path, opts);
     responseEpoch.set(result, epoch);
     return result;
   };
+
+  function establishSession(opts) {
+    const busy = () => ({ok:false, status:409, error:"The local connection is already being established."});
+    if (nativePending || signoutPending) return Promise.resolve(busy());
+    if (manualPending) return manualPending.key === opts.body ? manualPending.promise : Promise.resolve(busy());
+    const epoch = sessionEpoch, operation = {key:opts.body, promise:null};
+    manualPending = operation;
+    operation.promise = (async () => {
+      try {
+        const result = await request("/ui/session", opts);
+        if (result.ok && result.signed_in === true) {
+          if (epoch !== sessionEpoch) return {ok:false, status:409, error:"The local connection changed. Try signing in again."};
+          sessionEpoch++; sessionInvalid = false; nativeSignedOut = false;
+        }
+        responseEpoch.set(result, result.ok && result.signed_in === true ? sessionEpoch : epoch);
+        return result;
+      } finally { if (manualPending === operation) manualPending = null; }
+    })();
+    return operation.promise;
+  }
 
   /** One element, its attributes and its children. */
   M.el = function (tag, attrs = {}, ...kids) {
@@ -256,25 +279,47 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
   M.refused = function (r) {
     if (r && r.status === 401) {
       if (responseEpoch.has(r) && responseEpoch.get(r) !== sessionEpoch) return true;
+      if (!sessionInvalid) { sessionEpoch++; sessionInvalid = true; }
       if (M.route !== "first-run") M.signIn();
       return true;
     }
     return false;
   };
 
-  M.signOut = async function (e) {
+  M.signOut = function (e) {
     if (e) e.preventDefault();
-    nativeSignedOut = true; sessionEpoch++;
-    if (nativePending) await nativePending;
-    await M.api("/ui/session", { method: "DELETE" });
+    if (signoutPending) return signoutPending;
+    nativeSignedOut = true; sessionInvalid = true; sessionEpoch++;
     M.signIn();
+    signoutPending = (async () => {
+      try {
+        if (nativePending) await nativePending;
+        if (manualPending) await Promise.allSettled([manualPending.promise]);
+        await M.api("/ui/session", { method: "DELETE" });
+      } finally { signoutPending = null; }
+    })();
+    return signoutPending;
   };
+
+  function afterNative(prior, epoch) {
+    if (nativeWaiting?.epoch === epoch) return nativeWaiting.promise;
+    const operation = {epoch, promise:null};
+    nativeWaiting = operation;
+    operation.promise = prior.then(() => {
+      if (nativeWaiting !== operation || sessionEpoch !== epoch || !sessionInvalid || nativeSignedOut ||
+          signoutPending || manualPending || M.route !== "launch-needed" || nativeAttempt === epoch) return false;
+      return M.renewNativeSession(false);
+    }).finally(() => { if (nativeWaiting === operation) nativeWaiting = null; });
+    return operation.promise;
+  }
 
   /** Renew only the native window's local connection; never replay a failed operation. */
   M.renewNativeSession = function (explicit = false) {
     const invoke = window.__TAURI__?.core?.invoke;
-    if (!invoke || !M.launchOnly || location.hostname !== "127.0.0.1") return Promise.resolve(false);
-    if (nativePending) return nativePending;
+    if (!invoke || !M.launchOnly || location.hostname !== "127.0.0.1" || signoutPending) return Promise.resolve(false);
+    if (nativePending) return sessionInvalid && nativeAttempt !== sessionEpoch
+      ? afterNative(nativePending, sessionEpoch) : nativePending;
+    if (manualPending) return Promise.resolve(false);
     if (!explicit && (nativeSignedOut || nativeAttempt === sessionEpoch)) return Promise.resolve(false);
     if (explicit) nativeSignedOut = false;
     const epoch = sessionEpoch, origin = location.origin;
@@ -288,7 +333,7 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
         if (!redeemed.ok || !current()) return false;
         const confirmed = await request("/ui/session");
         if (!confirmed.ok || confirmed.signed_in !== true || !current()) return false;
-        sessionEpoch++;
+        sessionEpoch++; sessionInvalid = false;
         await M.boot(() => sessionEpoch === epoch + 1 && !nativeSignedOut && location.origin === origin && M.route === "launch-needed");
         return sessionEpoch === epoch + 1 && !nativeSignedOut && location.origin === origin;
       } catch { return false; }
@@ -298,11 +343,14 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
   };
 
   M.reopenNative = async function () {
-    if (nativePending) return nativePending;
+    if (signoutPending) return false;
+    if (nativePending) return M.renewNativeSession(true);
+    if (manualPending) return false;
     const epoch = sessionEpoch, origin = location.origin;
     const session = await request("/ui/session");
-    if (sessionEpoch !== epoch || location.origin !== origin || nativePending) return false;
+    if (sessionEpoch !== epoch || location.origin !== origin || nativePending || manualPending || signoutPending) return false;
     if (session.ok && session.signed_in === true) return true;
+    if (!sessionInvalid) { sessionEpoch++; sessionInvalid = true; }
     M.signIn();
     return M.renewNativeSession(true);
   };

@@ -12,6 +12,7 @@ from poolhouse.studio.resources import model_resource
 from poolhouse.studio.saved_models import PREFIX as SAVED_MODEL_PREFIX, SavedModels
 from poolhouse.studio.store import StudioStore, digest
 
+from .dataset_imports import create as create_datasets
 from .discovery import load_pool_key
 from .files import safe_relpath
 from .managed_compute import process_environment
@@ -80,6 +81,9 @@ def _create(ui):
         if not authorize_resources(principal, node, inputs):
             return False
         try:
+            datasets = getattr(ui, 'studio_datasets', None)
+            if datasets:
+                datasets.check_resources(principal, node)
             if principal.get('kind') == 'studio_subscription':
                 for value in inputs.values():
                     if (isinstance(value, dict) and 'studio_reference' in value
@@ -101,6 +105,7 @@ def _create(ui):
     ui.runner.studio_initializing = True
     ui.studio = WorkflowEngine(store, ui.runner, adapters, authorize, dispatcher)
     streams = create_streams(ui, ui.studio, saved, scope)
+    create_datasets(ui, ui.studio)
     decisions = create_decisions(ui, ui.studio)
     ui.studio.on_close = lambda: (decisions.close(), streams.webhook_setup.close(), streams.close())
     ui.studio.on_closed = ui.studio_authority.close

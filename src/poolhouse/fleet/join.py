@@ -663,7 +663,7 @@ def cmd_join(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_pools(args: argparse.Namespace) -> int:
+def cmd_list(args: argparse.Namespace) -> int:
     me = already_running(args.port) or {}
     found = known_pools(args.pool_key, timeout_s=args.timeout,
                            self_names=(str(me.get("name") or ""),))
@@ -802,12 +802,12 @@ def main(argv: list[str] | None = None) -> int:
     status_p.add_argument("--timeout", type=float, default=2.0)
     status_p.add_argument("--json", action="store_true")
 
-    pools_p = sub.add_parser("pools", help="the pools this machine is in and the ones "
+    list_p = sub.add_parser("list", help="the pools this machine is in and the ones "
                                                  "other machines on the network offer, with "
                                                  "who holds each")
-    pools_p.add_argument("--timeout", type=float, default=2.0,
+    list_p.add_argument("--timeout", type=float, default=2.0,
                             help="seconds to listen for members (default: 2)")
-    pools_p.add_argument("--json", action="store_true")
+    list_p.add_argument("--json", action="store_true")
 
     plan_p = sub.add_parser("plan", help="which model each member serves, and how many "
                                          "slots, for a number of users at one context; "
@@ -860,7 +860,7 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, SystemExit) as exc:
             warn(f"error: {exc}")
             return 2
-    fn = {"join": cmd_join, "status": cmd_status, "pools": cmd_pools, "plan": cmd_plan,
+    fn = {"join": cmd_join, "status": cmd_status, "list": cmd_list, "plan": cmd_plan,
           "pause": cmd_pause, "resume": cmd_pause, "leave": cmd_leave,
           "passphrase": recovery.run, "recovery": recovery.run}[args.cmd]
     try:

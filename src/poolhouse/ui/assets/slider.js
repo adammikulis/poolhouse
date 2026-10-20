@@ -29,6 +29,7 @@ class MlSlider extends FieldElement {
 
   build() {
     this.control = h("input", { type: "range", id: "c", oninput: () => this.moved() });
+    this.control.onchange = () => this.dispatchEvent(new Event("commit", {bubbles:true}));
     this.out = h("output", { for: "c" });
     this.ticks = h("div", { class: "ticks", "aria-hidden": "true" });
     this.chrome(h("div", {}, this.control, this.ticks));

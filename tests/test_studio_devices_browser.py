@@ -6,6 +6,7 @@ import json
 
 import pytest
 from browser_expect import expect
+from studio_commands import studio_command
 from test_fleet_ui import Serving
 from test_studio_canvas_browser import studio_browser  # noqa: F401
 
@@ -56,12 +57,14 @@ def test_device_selection_saves_and_is_excluded_from_package(device_page):
     page.keyboard.press('Enter')
     expect(page.get_by_label('Execution device', exact=True)).to_have_value('remote-device')
     expect(page.locator('.studio-node[aria-label="Generate"]')).to_contain_text('Device: Pool worker')
-    page.get_by_role('button', name='Share', exact=True).click()
+    studio_command(page, 'Share').click()
     page.get_by_label('Package content').select_option('selection')
     with page.expect_download() as download:
         page.get_by_role('button', name='Export file', exact=True).click()
     package = json.loads(download.value.path().read_text())
-    assert package['kind'] == 'node'
+    assert package['kind'] == 'group'
+    assert {node['type'] for node in package['graph']['nodes']} == {'model', 'prompt', 'generate'}
+    assert len(package['graph']['edges']) == 2
     assert all('execution' not in node for node in package['graph']['nodes'])
     assert not errors
 

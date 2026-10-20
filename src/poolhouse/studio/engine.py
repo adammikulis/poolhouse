@@ -363,7 +363,7 @@ class WorkflowEngine:
                 state.update(state="done", outputs=cache["outputs"], reused_from=cache["run"])
                 self._completed(run, node, state, inputs)
                 return
-        immediate = self.adapters.immediate(node, inputs, context) if node["type"] in {"dataset", "model", "prompt", "stream.record", "decision.route", "record.map", "record.if"} else None
+        immediate = self.adapters.immediate(node, inputs, context) if node["type"] in {"dataset", "model", "prompt", "stream.record", "decision.route", "record.map", "record.if", "data.hf-preview"} else None
         if immediate is not None:
             if spec.get("side_effects"):
                 raise ValueError("Side effects require a durable child job.")
@@ -429,6 +429,10 @@ class WorkflowEngine:
             for port in node_spec(node["type"], node.get("version", 1))["outputs"]:
                 if is_model_type(port["type"]) and port["name"] in state["outputs"]:
                     completed(run, node, port["name"])
+        dataset_completed = getattr(self.runner, 'studio_dataset_completed', None)
+        if dataset_completed and node['type'] == 'data.hf-preview':
+            self.store.put('run', run)
+            dataset_completed(run, node, state, inputs)
         if (not state.get("execution") and not node_spec(node["type"], node.get("version", 1)).get("side_effects")
                 and self._cacheable(node, state["outputs"])):
             with self.store.lock:

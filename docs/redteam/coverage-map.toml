@@ -304,8 +304,8 @@ note = "Authenticated delivery routes bind explicit output projections to a sele
 match = ["route:fleet/dataset_routes.py:/ui/workspace/datasets/*"]
 status = "covered"
 count = 1
-tests = ["tests/test_dataset_routes.py", "tests/test_dataset_catalogue.py", "tests/test_dataset_preview.py"]
-note = "Fixed read-only catalogue and confined local-preview routes require a current authenticated session before and after work, reject extra or duplicate query fields, redact transport errors and never create resources or import authority. Catalogue payload tests use fixtures; this is not live Hugging Face or installed UI evidence."
+tests = ["tests/test_dataset_routes.py", "tests/test_dataset_catalogue.py", "tests/test_dataset_preview.py", "tests/test_dataset_imports.py", "tests/test_dataset_assets.py", "tests/test_dataset_samples.py"]
+note = "Catalogue and confined previews require current session checks and reject duplicate or extra query fields. Explicit preview-row import binds one durable request to its run, scope and authorization epoch; typed resources recheck current ownership and reserve raw workspace and producer-artifact namespaces. Tests attack duplicate submission, revocation, copied bindings, atomic artifact promotion and aliases. Catalogue fixtures and HTTP/engine checks do not prove live Hugging Face or installed import UI."
 
 [[group]]
 match = ["route:fleet/studio_routes.py:/ui/studio/import/n8n/preview"]
@@ -1100,6 +1100,13 @@ tests = ["tests/test_fleet_android.py::test_android_device_controls_reject_forei
          "tests/test_fleet_android.py::test_owner_controls_android_enrollment_and_revocation"]
 note = "Foreign source/host, machine-token browser authority, oversized bodies, wrong methods and unauthenticated revocation are refused while the existing phone session remains valid"
 # -- HTTP routes and handlers --------------------------------------------------------------
+[[group]]
+match = ["route:fleet/serving_routes.py:*"]
+status = "covered"
+count = 1
+tests = ["tests/test_fleet_serve_context.py", "tests/test_fleet_serving.py", "tests/test_bonsai_provider.py"]
+note = "Serving validates installed model identity and context, fences the current session and artifact fingerprint around admission, reports the actual broker lease, and preserves owned lease cleanup. Fixed format-provider preparation is tested against tampering and filesystem substitution. These isolated tests do not prove installed model loading or generation."
+
 [[group]]
 match = ["route:fleet/gym_routes.py:*", "route:fleet/gym_recording_routes.py:*", "route:fleet/workspace_routes.py:*"]
 status = "covered"

@@ -9,6 +9,7 @@ from contextlib import contextmanager
 
 import pytest
 from browser_expect import expect
+from studio_commands import studio_command, workflow_picker
 from test_fleet_ui import Serving
 
 from poolhouse.fleet import studio_service
@@ -151,7 +152,7 @@ def test_keyboard_copy_group_nested_edit_and_outline(studio_page):
     add(page, 'Prompt template')
     page.locator('.studio-node').focus()
     page.keyboard.press('Control+a')
-    page.get_by_role('button', name='Group selection', exact=True).click()
+    studio_command(page, 'Group selection').click()
     expect(page.locator('.studio-node')).to_have_count(1)
     page.get_by_role('button', name='Open group', exact=True).first.click()
     expect(page.get_by_label('Group name')).to_be_visible()
@@ -162,10 +163,10 @@ def test_keyboard_copy_group_nested_edit_and_outline(studio_page):
     page.locator('.studio-viewport').focus()
     page.keyboard.press('Escape')
     expect(page.get_by_label('Group name')).to_have_count(0)
-    page.get_by_role('button', name='Copy', exact=True).click()
-    page.get_by_role('button', name='Paste', exact=True).click()
+    studio_command(page, 'Copy').click()
+    studio_command(page, 'Paste').click()
     expect(page.locator('.studio-node')).to_have_count(2)
-    page.get_by_role('button', name='Outline', exact=True).click()
+    studio_command(page, 'Outline').click()
     expect(page.locator('.studio-outline')).to_be_visible()
     page.set_viewport_size({'width': 390, 'height': 844})
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
@@ -178,7 +179,7 @@ def test_node_labels_and_prompt_text_remain_inert(studio_page):
     value = '<img src=x onerror="window.studioInjected=true">'
     page.locator('.studio-inspector').get_by_label('Prompt text', exact=True).fill(value)
     page.locator('.studio-inspector').get_by_label('Prompt text', exact=True).press('Tab')
-    page.get_by_role('button', name='Share', exact=True).click()
+    studio_command(page, 'Share').click()
     expect(page.locator('#studio-portable')).to_contain_text(value)
     assert page.locator('#studio-portable img').count() == 0
     assert not page.evaluate('Boolean(window.studioInjected)')
@@ -188,10 +189,10 @@ def test_node_labels_and_prompt_text_remain_inert(studio_page):
 def test_nested_group_copies_and_exposed_parameter_undo(studio_page):
     page, _state, errors = studio_page
     add(page, 'Prompt template')
-    page.get_by_role('button', name='Group selection', exact=True).click()
-    page.get_by_role('button', name='Group selection', exact=True).click()
-    page.get_by_role('button', name='Copy', exact=True).click()
-    page.get_by_role('button', name='Paste', exact=True).click()
+    studio_command(page, 'Group selection').click()
+    studio_command(page, 'Group selection').click()
+    studio_command(page, 'Copy').click()
+    studio_command(page, 'Paste').click()
     expect(page.locator('.studio-node')).to_have_count(2)
     page.locator('.studio-node').first.get_by_role('button', name='Open group').click()
     page.locator('.studio-node').get_by_role('button', name='Open group').click()
@@ -200,11 +201,11 @@ def test_nested_group_copies_and_exposed_parameter_undo(studio_page):
     field = page.get_by_label('Expose parameter template')
     field.fill('shared_prompt')
     field.press('Tab')
-    page.get_by_role('button', name='Undo', exact=True).click()
+    studio_command(page, 'Undo').click()
     page.locator('.studio-node').focus()
     page.keyboard.press('Enter')
     expect(page.get_by_label('Expose parameter template')).to_have_value('')
-    page.get_by_role('button', name='Redo', exact=True).click()
+    studio_command(page, 'Redo').click()
     page.locator('.studio-node').focus()
     page.keyboard.press('Enter')
     expect(page.get_by_label('Expose parameter template')).to_have_value('shared_prompt')
@@ -236,7 +237,7 @@ def make_prompt_group(page):
     add(page, 'Prompt template')
     page.locator('.studio-inspector').get_by_label('template', exact=True).fill('Reusable prompt')
     page.locator('.studio-inspector').get_by_label('template', exact=True).press('Tab')
-    page.get_by_role('button', name='Group selection', exact=True).click()
+    studio_command(page, 'Group selection').click()
     page.locator('.studio-node').get_by_role('button', name='Open group').click()
     page.locator('.studio-node').focus()
     page.keyboard.press('Enter')
@@ -270,13 +271,13 @@ def test_actual_catalogue_template_run_and_package_round_trip(tmp_path, studio_b
             expect(page.locator('#studio-runs')).to_contain_text('done', timeout=10000)
             page.get_by_role('button', name='Run workflow', exact=True).click()
             expect(page.locator('.studio-run-row')).to_have_count(2)
-            page.get_by_role('button', name='Share', exact=True).click()
+            studio_command(page, 'Share').click()
             page.get_by_label('Package content').select_option('selection')
             page.locator('#studio-portable input[type=checkbox]').check()
             with page.expect_download() as download:
                 page.get_by_role('button', name='Export file', exact=True).click()
             package_path = download.value.path()
-            page.get_by_role('button', name='Import', exact=True).click()
+            studio_command(page, 'Import').click()
             page.locator('#studio-import-file').set_input_files(package_path)
             expect(page.locator('#studio-import-preview')).to_contain_text('Import adds configuration only')
             page.get_by_role('button', name='Import configuration', exact=True).click()
@@ -337,7 +338,7 @@ def test_actual_conflict_keeps_copy_and_edits_made_during_save(tmp_path, studio_
             expect(other.locator('#studio-workflows option')).to_have_count(3)
             selected = other.get_by_label('Saved workflows').input_value()
             other.reload()
-            other.get_by_label('Saved workflows').select_option(selected)
+            workflow_picker(other).select_option(selected)
             other.locator('.studio-node').focus()
             other.keyboard.press('Enter')
             expect(other.locator('.studio-inspector').get_by_label('template', exact=True)).to_have_value('Local newer')
@@ -376,7 +377,7 @@ def test_actual_new_waits_for_pending_workflow_save(tmp_path, studio_browser):
             page.get_by_role('button', name='Save', exact=True).click()
             expect(page.locator('.studio-status')).to_contain_text('Saved')
             assert page.get_by_label('Saved workflows').input_value() != original
-            page.get_by_label('Saved workflows').select_option(original)
+            workflow_picker(page).select_option(original)
             page.locator('.studio-node').focus()
             page.keyboard.press('Enter')
             expect(page.locator('.studio-inspector').get_by_label('template', exact=True)).to_have_value('Original pending edit')

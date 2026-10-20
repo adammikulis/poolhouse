@@ -6,6 +6,7 @@ import re
 
 import pytest
 from browser_expect import expect
+from studio_commands import studio_command
 from test_fleet_ui import Serving
 from test_studio_canvas_browser import studio_browser  # noqa: F401
 
@@ -37,7 +38,7 @@ def live_page(tmp_path, request):
             page.on('pageerror', lambda error: errors.append(str(error)))
             page.on('request', lambda req: posts.append((req.url, req.post_data_json)) if req.method == 'POST' and '/ui/studio/' in req.url else None)
             page.goto(f'http://127.0.0.1:{app.port}/ui/#studio')
-            expect(page.get_by_role('button', name='Live sources', exact=True)).to_be_enabled()
+            expect(page.locator('#studio-live')).to_be_enabled()
             page.get_by_label('Search nodes, templates and groups').fill('Record')
             page.locator('.studio-library').get_by_role('button', name=re.compile('^Add Record')).focus()
             page.keyboard.press('Enter')
@@ -60,7 +61,7 @@ def live_page(tmp_path, request):
 
 
 def open_live(page):
-    page.get_by_role('button', name='Live sources', exact=True).click()
+    studio_command(page, 'Live sources').click()
     expect(page.get_by_label('Live source', exact=True)).to_be_visible()
     expect(page.get_by_label('Live source', exact=True).locator('option')).not_to_have_count(0)
 
@@ -170,7 +171,7 @@ def test_missing_model_blocks_stream_without_install_or_start(live_page):
 def test_narrow_keyboard_controls_start_only_once(live_page):
     page, _app, errors, posts = live_page
     page.set_viewport_size({'width': 390, 'height': 844})
-    toggle = page.get_by_role('button', name='Live sources', exact=True)
+    toggle = studio_command(page, 'Live sources')
     toggle.focus()
     page.keyboard.press('Enter')
     expect(toggle).to_have_attribute('aria-expanded', 'true')

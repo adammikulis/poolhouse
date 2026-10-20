@@ -2,6 +2,7 @@
 import pytest
 import test_studio_placement_browser
 from browser_expect import expect
+from studio_commands import studio_command
 from test_studio_canvas_browser import add, studio_browser  # noqa: F401
 from test_studio_placement_browser import graph
 
@@ -30,7 +31,7 @@ def test_dragged_port_suggestion_uses_release_position_and_atomic_undo(placement
     report = next(n for n in current['nodes'] if n['type'] == 'report')
     assert current['layout']['nodes'][report['id']] == pytest.approx({'x': 100, 'y': 400}, abs=2)
     assert len(current['edges']) == 1
-    page.get_by_role('button', name='Undo', exact=True).click()
+    studio_command(page, 'Undo').click()
     assert graph(page) == before
     assert not errors
 
@@ -50,7 +51,7 @@ def test_context_placement_uses_transformed_world_coordinates(placement_page):
 def test_context_layer_change_closes_stale_menu(placement_page):
     page, _state, errors = placement_page
     add(page, 'Prompt template')
-    page.get_by_role('button', name='Group selection', exact=True).click()
+    studio_command(page, 'Group selection').click()
     page.locator('.studio-viewport').click(button='right', position={'x': 30, 'y': 30})
     expect(page.get_by_role('dialog')).to_be_visible()
     page.get_by_role('button', name='Open group', exact=True).first.click()
@@ -62,7 +63,7 @@ def test_context_layer_change_closes_stale_menu(placement_page):
 def test_changed_group_output_rejects_stale_port_suggestion(placement_page):
     page, _state, errors = placement_page
     add(page, 'Prompt template')
-    page.get_by_role('button', name='Group selection', exact=True).click()
+    studio_command(page, 'Group selection').click()
     page.get_by_role('button', name='Open group', exact=True).first.click()
     page.locator('.studio-node').focus()
     page.keyboard.press('Enter')

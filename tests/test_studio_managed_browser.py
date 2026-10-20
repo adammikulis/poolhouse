@@ -11,7 +11,7 @@ pytestmark = pytest.mark.slow
 
 
 def upload_default(page, app):
-    page.get_by_role('navigation', name='Workspace pages').get_by_role('link', name='Data', exact=True).click()
+    page.get_by_role('navigation', name='Workspace pages').get_by_role('link', name='Datasets', exact=True).click()
     page.get_by_role('button', name='+ Add dataset', exact=True).click()
     page.get_by_role('button', name='Choose a file', exact=True).click()
     page.get_by_label('Choose a text / JSONL file', exact=True).set_input_files({
@@ -162,7 +162,7 @@ def test_live_sources_wait_for_successful_current_workflow_load(live_page, statu
     checked = []
     def resources(route):
         response = route.fetch()
-        expect(page.get_by_role('button', name='Live sources', exact=True)).to_be_disabled()
+        expect(page.locator('#studio-live')).to_be_disabled()
         checked.append(True)
         if status == 200:
             route.fulfill(response=response)
@@ -175,7 +175,7 @@ def test_live_sources_wait_for_successful_current_workflow_load(live_page, statu
         expect(page.get_by_label('Live record input')).not_to_have_value('')
     else:
         expect(page.locator('.studio-status')).to_contain_text('Resources unavailable')
-        expect(page.get_by_role('button', name='Live sources', exact=True)).to_be_disabled()
+        expect(page.locator('#studio-live')).to_be_disabled()
     assert checked
     assert not any(url.endswith('/sources') or url.endswith('/start') for url, _ in posts)
     assert not errors
@@ -190,7 +190,7 @@ def test_late_workflow_load_cannot_enable_live_on_another_page(live_page):
             return
         response = route.fetch()
         held.append(True)
-        page.get_by_role('navigation', name='Workspace pages').get_by_role('link', name='Data', exact=True).click()
+        page.get_by_role('navigation', name='Workspace pages').get_by_role('link', name='Datasets', exact=True).click()
         route.fulfill(response=response)
     page.route('**/ui/studio/resources', resources)
     page.reload()

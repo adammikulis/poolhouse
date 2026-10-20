@@ -160,8 +160,8 @@ def test_model_picker_groups_and_searches_loaded_and_installed_models(chat_brows
     page.locator("chat-view #chat-model-button").click()
     expect(page.get_by_role("heading", name="Qwen", exact=True)).to_be_visible()
     expect(page.get_by_role("heading", name="Gemma", exact=True)).to_be_visible()
-    expect(page.locator("chat-view #chat-model-list")).to_contain_text("Loaded · Q4_K_XL")
-    expect(page.locator("chat-view #chat-model-list")).to_contain_text("Installed · Q8_0")
+    expect(page.locator("chat-view #chat-model-list")).to_contain_text("Running · Q4_K_XL")
+    expect(page.locator("chat-view #chat-model-list")).to_contain_text("Available · Q8_0")
     page.locator("chat-view").get_by_label("Search models and workspace agents", exact=True).fill("Qwen")
     expect(page.locator("chat-view .chat-model-choice")).to_have_count(1)
     page.locator("chat-view").get_by_label("Search models and workspace agents", exact=True).press("Enter")
@@ -170,7 +170,7 @@ def test_model_picker_groups_and_searches_loaded_and_installed_models(chat_brows
     page.locator("chat-view #chat-model-button").click()
     page.locator("chat-view").get_by_label("Search models and workspace agents", exact=True).fill("no matches")
     expect(page.locator("chat-view #chat-model-list p")).to_have_text("No models match your search.")
-    expect(page.locator("chat-view #chat-model-list").get_by_role("button", name="Browse model library")).to_be_visible()
+    expect(page.locator("chat-view #chat-model-list").get_by_role("button", name="Add New Model (Model Library)")).to_be_visible()
     page.locator("chat-view").get_by_label("Search models and workspace agents", exact=True).press("Escape")
     expect(page.locator("chat-view #chat-model-dialog")).not_to_be_visible()
     assert page.locator("chat-view textarea:visible").count() == 1
@@ -201,10 +201,11 @@ def test_picker_excludes_known_non_chat_and_keeps_unknown_models(chat_browser):
     expect(choices).to_contain_text('Chat decoder')
     expect(choices).not_to_contain_text('Embedding model')
     expect(choices).not_to_contain_text('Speech model')
-    expect(choices.get_by_role('button', name='Unknown loaded decoder Loaded · Chat capability unverified', exact=True)).to_be_visible()
-    expect(choices.get_by_role('button', name='Known loaded decoder Loaded', exact=True)).to_be_visible()
+    expect(choices.get_by_role('button', name='Unknown loaded decoder Running · Chat capability unverified', exact=True)).to_be_visible()
+    expect(choices.get_by_role('button', name='Known loaded decoder Running', exact=True)).to_be_visible()
     assert len(page.locator('chat-view').evaluate('node => node.modelPicker.library')) == 4
-    choices.get_by_role('button', name='Future decoder Installed · Chat capability unverified Configure in Models →', exact=True).click()
+    expect(choices.get_by_role('button', name='Future decoder Available · Chat capability unverified Start in Chat', exact=True)).to_be_visible()
+    choices.get_by_role('button', name='Add New Model (Model Library)', exact=True).click()
     expect(page.locator('models-view #models')).to_be_visible()
 
 
@@ -218,8 +219,9 @@ def test_installed_model_picker_remains_visible_with_no_loaded_server(chat_brows
         {"path": "/models/qwen.gguf", "name": "Qwen3.8-27B", "family": "Qwen", "servable": True}]}))
     _open(served, page)
     page.locator("chat-view #chat-model-button").click()
-    expect(page.get_by_role("button", name="Qwen3.8-27B Installed Configure in Models →", exact=True)).to_be_visible()
-    expect(page.locator("chat-view #chat-askrow")).to_be_hidden()
+    expect(page.get_by_role("button", name="Qwen3.8-27B Available Start in Chat", exact=True)).to_be_visible()
+    expect(page.locator("chat-view #chat-askrow")).to_be_visible()
+    expect(page.locator("chat-view #chat-send")).to_be_disabled()
 
 
 def test_learning_prompts_preserve_draft_and_team_channels_are_connected(chat_browser, tmp_path):
@@ -276,7 +278,7 @@ def test_output_token_control_uses_backend_defaults_and_accepts_no_cap(chat_brow
     assert page.locator("chat-view").evaluate("node => node.settings().max_output_tokens") is None
 
 
-def test_installed_model_selection_hands_off_the_selected_model(chat_browser):
+def test_only_explicit_add_model_option_opens_the_library(chat_browser):
     from playwright.sync_api import expect
 
     served, page = chat_browser
@@ -285,9 +287,10 @@ def test_installed_model_selection_hands_off_the_selected_model(chat_browser):
     page.add_init_script("window.addEventListener('fleet-select-model', e => { window.modelHandoff = e.detail; });")
     _open(served, page)
     page.locator("chat-view #chat-model-button").click()
-    page.get_by_role("button", name="Installed model Installed Configure in Models →", exact=True).click()
+    expect(page.get_by_role("button", name="Installed model Available Start in Chat", exact=True)).to_be_visible()
+    page.get_by_role("button", name="Add New Model (Model Library)", exact=True).click()
     expect(page).to_have_url(f"http://127.0.0.1:{served.port}/ui#models")
-    assert page.evaluate("window.modelHandoff") == {"path": "/models/installed.gguf", "name": "Installed model", "from": "chat"}
+    assert page.evaluate("window.modelHandoff === undefined")
 
 
 def test_token_slider_keeps_existing_conversation_selections(chat_browser):

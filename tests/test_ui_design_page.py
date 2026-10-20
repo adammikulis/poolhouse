@@ -27,6 +27,10 @@ def route(request, state):
     elif path == "/ui/models":
         body = {"free_gb": 120, "here": [{"name": "quill-27B.gguf", "size": 1000},
                  {"name": "quill-27B.draft.gguf", "size": 50}],
+                "library": [{"id":"quill", "path":"/models/quill-27B.gguf", "name":"quill-27B.gguf",
+                             "size_bytes":1000, "mtime":1, "family":"Fixture", "format":"gguf",
+                             "kind":"text", "status":"installed", "servable":True,
+                             "shards":1, "is_complete":True, "files":[]}],
                 "elsewhere": [{"name": "marrow-9B.gguf", "members": ["remote-test"]}],
                 "getting": [{"id": "download-a", "name": "another.gguf", "state": "getting",
                              "done": state["done"], "total": 100, "rate_bps": 10, "eta_seconds": 9}]}
@@ -34,6 +38,7 @@ def route(request, state):
         if method == "POST":
             if state["delay_serve"]:
                 state["pending"] = request
+                request.request.frame.page.locator("body").evaluate("node => node.dataset.serveHeld = 'true'")
                 return
             if state["serve_error"]:
                 body = {"error": state["serve_error"]}
@@ -147,18 +152,18 @@ def test_run_shows_loading_and_blocks_duplicate_posts_across_poll(app, failed):
     discover(page)
     state["delay_serve"] = True
     row = page.locator("[data-model='quill-27B.gguf']")
-    row.get_by_role("button", name="Run", exact=True).click()
+    row.get_by_role("button", name="Start model", exact=True).click()
     row.get_by_role("button", name="Loading…", exact=True).wait_for()
     assert row.get_by_role("button", name="Loading…", exact=True).is_disabled()
     page.evaluate("document.querySelector('models-view').draw()")
-    page.evaluate("document.querySelector('models-view').serve('quill-27B.gguf')")
+    page.evaluate("document.querySelector('models-view').serve('/models/quill-27B.gguf')")
     assert len([path for path, _ in state["posts"] if path == "/ui/serving"]) == 1
     pending = state["pending"]
     assert pending is not None
     if failed:
         pending.fulfill(body=json.dumps({"error": "Not enough memory"}), content_type="application/json")
         page.get_by_text("Not enough memory", exact=True).wait_for()
-        assert row.get_by_role("button", name="Run", exact=True).is_enabled()
+        assert row.get_by_role("button", name="Start model", exact=True).is_enabled()
     else:
         state["running"] = [{"models": ["quill-27B.gguf"], "port": 9999}]
         pending.fulfill(body=json.dumps({"ok": True}), content_type="application/json")
@@ -204,7 +209,8 @@ def test_benchmark_has_labelled_selection_and_preserves_form_across_poll(app):
 def test_settings_schedule_and_chat_remain_reachable(app):
     page, _, errors = app
     page.get_by_role("link", name="Conversations", exact=True).click()
-    page.locator("#chat-none:not([hidden])").wait_for()
+    page.locator("#chat-model-button").wait_for()
+    assert page.locator("#chat-send").is_disabled()
     page.get_by_role("link", name="Settings", exact=True).click()
     page.locator("#settings-sub:not(:empty)").wait_for()
     assert page.get_by_role("button", name="Save preferences", exact=True).is_visible()
@@ -348,4 +354,22 @@ def test_stream_cancel_error_and_empty_response_restore_send(app, end):
     page.locator("#chat-note").get_by_text(text, exact=True).wait_for()
     assert page.get_by_role("button", name="Send", exact=True).is_enabled()
     assert page.get_by_role("button", name="Stop", exact=True).is_hidden()
+    assert not errors
+
+
+@pytest.mark.parametrize('action', ['route', 'signout'])
+def test_failed_model_start_cannot_publish_error_after_context_changes(app, action):
+    page, state, errors = app
+    discover(page)
+    state['delay_serve'] = True
+    page.locator("[data-model='quill-27B.gguf']").get_by_role('button', name='Start model', exact=True).click()
+    page.get_by_role('button', name='Loading…', exact=True).wait_for()
+    page.locator('body[data-serve-held=true]').wait_for()
+    if action == 'route':
+        page.evaluate("fleetModel.go('pool')")
+    else:
+        page.evaluate('fleetModel.signOut()')
+    state['pending'].abort('failed')
+    page.wait_for_function('() => !document.querySelector("models-view").starting.size')
+    assert 'Could not start' not in page.locator('#models-note').text_content()
     assert not errors

@@ -59,6 +59,8 @@ def test_model_names_and_statuses_have_contrast_and_keyboard_selection(model_cho
     search.fill('Cedar')
     expect(choices).to_have_count(1)
     search.press('Tab')
+    expect(page.get_by_role('button', name='Add New Model (Model Library)', exact=True)).to_be_focused()
+    page.keyboard.press('Tab')
     expect(choices.first).to_be_focused()
     choices.first.press('Enter')
     expect(page.locator('#chat-model-dialog')).not_to_be_visible()

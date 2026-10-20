@@ -39,6 +39,9 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       this.search = chat.querySelector("#chat-model-search");
       this.list = chat.querySelector("#chat-model-list");
       this.library = [];
+      this.selectionEpoch = 0;
+      this.unconfirmed = new Set();
+      M.onRoute(() => this.selectionEpoch++);
       this.button.onclick = () => {
         if (chat.request || chat.loadingConversation) return;
         this.search.value = "";
@@ -51,7 +54,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       this.search.onkeydown = (event) => {
         if (event.key === "Escape") { event.preventDefault(); this.dialog.close(); return; }
         if (event.key === "Enter") {
-          const first = this.list.querySelector("button:not(:disabled)");
+          const first = this.list.querySelector("[data-picker-kind]:not(:disabled)");
           if (first) { event.preventDefault(); first.click(); }
         }
       };
@@ -69,17 +72,18 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
           one.model === option.textContent || one.model === option.value.split("/").pop());
         const installed = this.library.find((one) => one.path === option.value || one.name === option.textContent ||
           [one.name, one.path].includes(live?.model) || one.path === live?.path);
-        return { value: option.value, name: installed?.name || option.textContent,
-          family: installed?.family || "Other models", status: live ? "Loaded" : installed ? "Installed" :
-          option.disabled ? "Unavailable" : "Loaded",
-          quant: installed?.quantization || "", disabled: option.disabled, installed,
+        const needsLoad = !!installed?.servable && !live;
+        return { value: needsLoad ? installed.path : option.value, needsLoad, name: installed?.name || option.textContent,
+          family: installed?.family || "Other models", status: live ? "Running" : installed ? "Available" :
+          option.disabled ? "Unavailable" : "Running",
+          quant: installed?.quantization || "", disabled: needsLoad ? false : option.disabled, installed,
           capabilities: live?.capabilities || installed?.capabilities };
       }).filter((one) => one.capabilities?.chat !== false);
       {
         for (const installed of this.library.filter((one) => one.servable && one.capabilities?.chat !== false)) {
           if (rows.some((one) => one.installed?.path === installed.path || one.name === installed.name)) continue;
           rows.push({ value: installed.path, name: installed.name, family: installed.family || "Other models",
-            status: "Installed", quant: installed.quantization || "", installed, needsLoad: true,
+            status: "Available", quant: installed.quantization || "", installed, needsLoad: true,
             capabilities: installed.capabilities });
         }
       }
@@ -88,7 +92,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
     render() {
       const chat = this.chat;
       this.button.textContent = chat.picker.selectedOptions[0]?.textContent || "Choose a model";
-      this.button.disabled = !!chat.request || !!chat.loadingConversation;
+      this.button.disabled = !!chat.request || !!chat.loadingConversation || !!this.startPending;
       const query = this.search.value.trim().toLowerCase();
       const rows = this.rows().filter((one) => `${one.name} ${one.family} ${one.quant} ${one.status}`.toLowerCase().includes(query));
       const groups = new Map();
@@ -96,23 +100,25 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
         if (!groups.has(row.family)) groups.set(row.family, []);
         groups.get(row.family).push(row);
       }
-      this.list.replaceChildren();
+      this.list.replaceChildren(M.el("button", {type:"button", class:"ghost", onclick:() => {
+        this.dialog.close(); M.go("models");
+      }}, "Add New Model (Model Library)"));
+      if (this.startMessage) this.list.append(M.el("p", {role:"status", class:"hint"}, this.startMessage));
       for (const [family, models] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
         const group = M.el("section", { class: "chat-model-family" }, M.el("h3", {}, family));
-        for (const row of models.sort((a, b) => Number(b.status === "Loaded") - Number(a.status === "Loaded") || a.name.localeCompare(b.name))) {
+        for (const row of models.sort((a, b) => Number(b.status === "Running") - Number(a.status === "Running") || a.name.localeCompare(b.name))) {
           group.append(M.el("button", { type: "button", class: "chat-model-choice",
-            ...(row.disabled ? { disabled: "" } : {}),
+            ...((row.disabled || this.startPending) ? { disabled: "" } : {}),
             "data-picker-kind":"model", "aria-pressed": String(chat.picker.value === row.value), onclick: () => this.choose(row) },
           M.el("span", {}, row.name), M.el("small", {}, [row.status, row.quant,
             row.capabilities?.chat === null ? "Chat capability unverified" : ""].filter(Boolean).join(" · ")),
-          row.needsLoad ? M.el("small", {class:"chat-model-action"}, "Configure in Models →") : null));
+          row.needsLoad ? M.el("small", {class:"chat-model-action"}, "Start in Chat") : null));
         }
         this.list.append(group);
       }
       this.renderAgents(query);
       if (!rows.length) this.list.append(M.el("p", { class: "hint" }, this.problem ||
-        (query ? "No models match your search." : "No installed or running models are available.")),
-        M.el('button', {type:'button', onclick:() => { this.dialog.close(); M.go('models'); }}, 'Browse model library'));
+        (query ? "No models match your search." : "No chat models are available yet.")));
     }
     renderAgents(query) {
       const workspace = this.chat.workspace, data = workspace?.navigationData;
@@ -122,23 +128,74 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
         `${row.display_name || row.display_label || row.id} ${row.id}`.toLowerCase().includes(query));
       const section = M.el('section', {class:'chat-model-family'}, M.el('h3', {}, 'Workspace agents'));
       for (const row of agents) section.append(M.el('button', {type:'button', class:'chat-model-choice',
-        'data-picker-kind':'agent', 'data-agent-id':row.id, title:row.id, onclick:() => {
-          if (this.chat.request || this.chat.loadingConversation || board !== workspace.board || selection !== workspace.projectSelection ||
+        'data-picker-kind':'agent', 'data-agent-id':row.id, title:row.id, disabled:!!this.startPending, onclick:() => {
+          if (this.chat.request || this.chat.loadingConversation || this.startPending || board !== workspace.board || selection !== workspace.projectSelection ||
               data !== workspace.navigationData || !workspace.visible) return;
           this.dialog.close(); M.go('board'); board.open({kind:'dm', a:data.me, b:row.id});
         }}, M.el('span', {}, row.display_name || row.display_label || row.id), M.el('small', {}, 'Agent · scoped direct message')));
       if (!agents.length) section.append(M.el('p', {class:'hint'}, query ? 'No workspace agents match your search.' : 'No agents available in this workspace.'));
       this.list.append(section);
     }
+    currentStart(operation) {
+      const chat = this.chat;
+      return this.startPending === operation && this.selectionEpoch === operation.epoch && M.sessionContext() === operation.session &&
+        chat.loadEpoch === operation.load && chat.open === operation.cid && M.route === "chat" && location.hash === "#chat";
+    }
+    startInstalled(row) {
+      const chat = this.chat, operation = {epoch:this.selectionEpoch, load:chat.loadEpoch, cid:chat.open, session:M.sessionContext()};
+      this.startPending = operation;
+      this.startMessage = `Starting ${row.name}…`;
+      this.render();
+      operation.promise = this.prepareInstalled(row, operation).finally(() => {
+        if (this.startPending !== operation) return;
+        if (!this.currentStart(operation)) this.startMessage = "";
+        this.startPending = null;
+        this.render();
+      });
+      return operation.promise;
+    }
+    async prepareInstalled(row, operation) {
+      const chat = this.chat, path = row.installed.path;
+      const current = () => this.currentStart(operation);
+      try {
+        const inventory = await M.api('/ui/models');
+        if (!current() || M.refused(inventory)) return;
+        if (!inventory.ok) throw Error(inventory.error || 'Could not read available models.');
+        const selected = (inventory.library || []).find(model => model.path === path && model.servable === true && model.capabilities?.chat !== false);
+        if (!selected) throw Error('This chat model is no longer available.');
+        let started = null;
+        if (!this.unconfirmed.has(path)) {
+          this.unconfirmed.add(path);
+          started = await M.api('/ui/serving', {method:'POST', body:JSON.stringify({path})});
+          if (!current()) return;
+          if (M.refused(started)) return;
+          if (!started.ok) throw Error(started.error || "Could not start this model.");
+        }
+        const available = await M.api('/ui/chat');
+        if (!current() || M.refused(available)) return;
+        if (!available.ok) throw Error(available.error || 'Could not confirm model readiness.');
+        const matches = (available.models || []).filter(model => model.local === true && model.capabilities?.chat !== false &&
+          (model.path === path || (!model.path && started?.models?.includes(model.model))) &&
+          (!started || started.models?.includes(model.model)));
+        if (matches.length !== 1) throw Error('Model readiness is not confirmed. Select it again to check; it will not be started twice.');
+        this.unconfirmed.delete(path);
+        chat.chatModels = available.models || [];
+        this.library = inventory.library || [];
+        chat.picker.replaceChildren(...chat.chatModels.map(model => M.el('option', {value:model.model}, model.local ? model.model : `${model.model} — on ${model.member}`)));
+        chat.picker.value = matches[0].model;
+        chat.picker.dispatchEvent(new Event('change'));
+        chat.coding.render(matches[0].model);
+        this.startMessage = '';
+        this.dialog.close();
+      } catch (error) {
+        if (current()) { this.startMessage = error.message; chat.showError(error.message); }
+      }
+    }
     async choose(row) {
       if (this.chat.request || this.chat.loadingConversation || row.disabled) return;
-      if (row.needsLoad) {
-        this.dialog.close();
-        window.dispatchEvent(new CustomEvent("fleet-select-model", {detail:{path:row.installed.path, name:row.installed.name, from:"chat"}}));
-        M.go("models");
-        this.chat.note.textContent = "Load the installed model on the Models screen, then return to Model chats.";
-        return;
-      }
+      if (this.startPending) return this.startPending.promise;
+      this.selectionEpoch++;
+      if (row.needsLoad) return this.startInstalled(row);
       this.chat.picker.value = row.value;
       this.chat.picker.dispatchEvent(new Event("change"));
       this.dialog.close();
@@ -183,7 +240,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
         event.currentTarget.setAttribute('aria-expanded', String(chat.options.open));
       };
       chat.options.addEventListener('toggle', () => chat.querySelector('#conversation-details').setAttribute('aria-expanded', String(chat.options.open)));
-      chat.querySelector('.conversation-choose').onclick = () => chat.modelPicker.button.click();
+      chat.querySelector("#conversation-choose-model").onclick = () => chat.modelPicker.button.click();
     }
     route(route) {
       this.active = route === 'board';

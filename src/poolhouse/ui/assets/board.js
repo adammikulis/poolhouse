@@ -5,10 +5,10 @@ import { MlElement, define, h } from "./base.js";
 import { loadPage, messageRoute, pageControls, renderFeed } from "./board-pages.js";
 import { INTEGRATED_STYLES } from "./board-styles.js";
 import "./composer.js";
+import { NAV_MAX, bindFocus, focusControls, pinnedChannels, visibleMessages } from "./board-focus.js";
 
 const HIDDEN = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/g;
 const BODY_MAX = 4000;
-const NAV_MAX = 100; // every node costs a frame: a list is cut before it is drawn, never after
 const LINE_MAX = 200;
 const POLL_MIN = 3000;
 const POLL_MAX = 60000;
@@ -68,6 +68,9 @@ main h2 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
 .msg .who { font-weight: 600; font-size: 13px; }
 .msg pre { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 .cut { color: var(--ml-yellow-ink); font-size: 12px; }
+.focus-controls { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:10px 0; font-size:12px; }
+.focus-controls label { display:flex; align-items:center; gap:5px; }
+.focus-controls input { width:auto; }
 .channel-tabs { display:flex; gap:8px; margin:0 0 12px; }
 .channel-tabs button { background:var(--ml-sunken); border:1px solid var(--ml-line); border-radius:6px; padding:5px 12px; cursor:pointer; }
 .channel-tabs button[aria-pressed=true] { color:var(--ml-accent-ink); border-color:var(--ml-accent); }
@@ -233,7 +236,7 @@ class MlBoard extends MlElement {
 
   clearAuthorization(error) {
     if (![401, 403].includes(error.status)) return;
-    this.me = ""; this.boards = []; this.dms = []; this.agents = []; this.items = [];
+    this.me = ""; bindFocus(this, null); this.boards = []; this.dms = []; this.agents = []; this.items = [];
     this.view = {kind:"none"}; this.page = null; this.loading = false;
     this.viewRevision++; this.draft = {body:"", subject:"", error:""};
     this.personSetupRequired = error.personSetupRequired === true;
@@ -247,6 +250,7 @@ class MlBoard extends MlElement {
       this.seq = Math.max(this.seq, Number(h.seq) || 0);
       this.me = line(b.me ?? "", 48);
       this.boards = b.boards ?? [];
+      bindFocus(this, b.view_scope);
       this.dms = d.conversations ?? [];
       try { this.agents = (await this.get("agents")).agents || []; } catch (error) {
         if ([401, 403].includes(error.status)) throw error;
@@ -315,7 +319,7 @@ class MlBoard extends MlElement {
   update() {
     if (!this.nav) return;
     const navigation = {boards:this.boards, dms:this.dms, agents:this.agents,
-      me:this.me, view:this.view, personSetupRequired:this.personSetupRequired === true, error:this.error || ""};
+      me:this.me, view:this.view, pinnedChannels:pinnedChannels(this), personSetupRequired:this.personSetupRequired === true, error:this.error || ""};
     const navigationKey = JSON.stringify(navigation);
     if (navigationKey !== this.navigationKey) {
       this.navigationKey = navigationKey; this.emit("board-navigation", navigation);
@@ -335,7 +339,8 @@ class MlBoard extends MlElement {
       ...(this.agents.length ? [h("h3", {}, "Agents"), ...this.agents.slice(0, NAV_MAX).map(agent =>
         item(agent.display_name || agent.id, 0, this.view.kind === "dm" && [this.view.a, this.view.b].includes(agent.id),
           () => this.open({kind:"dm", a:this.me, b:agent.id}), `${agent.id} · ${agent.device?.verification || "unknown"}`))] : []));
-    renderFeed(this, this.pane());
+    const pane = this.pane();
+    renderFeed(this, [focusControls(this), ...pane].filter(Boolean));
     const controls = pageControls(this);
     this.history.replaceChildren(...(controls ? [controls] : []));
     // the draft a conversation was opened with decides the composer too: one built before it was read is stale
@@ -456,7 +461,9 @@ class MlBoard extends MlElement {
 
   messages(first) {
     if (!this.items.length) return [h("p", { class: "state" }, "No messages.")];
-    return this.items.map((m) => h("article", { class: `msg${first && m.from === first ? " sent" : ""}`, "data-seq":String(m.seq) },
+    const shown = visibleMessages(this);
+    if (!shown.length) return [h("p", {class:"state"}, "No messages match this focus. Show all messages or load another page.")];
+    return shown.map((m) => h("article", { class: `msg${first && m.from === first ? " sent" : ""}`, "data-seq":String(m.seq) },
       h("div", { class: "who", title:m.from }, `${line(m.display_name || m.from, 160)}`,
         m.role === "human" ? null : h("span", { class: "meta" }, ` (${m.model ? `${line(m.model, 80)}, ${line(m.model_state, 12)}` : "model unknown"})`),
         h("span", { class: "meta" }, `  ${line(m.type, 16)}, ${when(m.ts)}${m.held ? ", held in quarantine" : ""}`)),

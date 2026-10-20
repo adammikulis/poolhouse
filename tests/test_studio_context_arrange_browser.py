@@ -32,7 +32,7 @@ def test_arrange_nodes_stays_outside_search_and_is_one_keyboard_undo(placement_p
     action = menu.get_by_role('button', name='Arrange nodes', exact=True)
     expect(action).to_be_visible()
     assert action.evaluate('(e) => getComputedStyle(e).backgroundColor') == 'rgba(0, 0, 0, 0)'
-    assert menu.evaluate('(e) => getComputedStyle(e).backgroundColor') == page.get_by_role('button', name='Arrange', exact=True).evaluate('(e) => getComputedStyle(e).backgroundColor')
+    assert menu.evaluate('(e) => getComputedStyle(e).backgroundColor') == page.locator('#studio-layout').evaluate('(e) => getComputedStyle(e).backgroundColor')
     search.press('Shift+Tab')
     expect(action).to_be_focused()
     action.press('Enter')
