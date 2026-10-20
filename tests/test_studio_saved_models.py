@@ -12,15 +12,20 @@ from poolhouse.studio.store import digest
 class MemoryStore:
     def __init__(self, row):
         self.rows = {row['id']: row}
+        self.references = {}
 
     def records(self, kind, scope):
         return [copy.deepcopy(row) for row in self.rows.values() if row['scope'] == scope]
 
     def get(self, kind, ident, scope):
-        row = self.rows[ident]
+        row = (self.references if kind == 'model-reference' else self.rows)[ident]
         if row['scope'] != scope:
             raise KeyError(ident)
         return copy.deepcopy(row)
+
+    def put(self, kind, row):
+        assert kind == 'model-reference'
+        self.references[row['id']] = copy.deepcopy(row)
 
 
 @pytest.fixture
@@ -40,6 +45,7 @@ def saved(tmp_path):
     store = MemoryStore(row)
     allowed = {'value': True}
     registry = SavedModels(store, tmp_path, lambda principal, node, inputs: allowed['value'])
+    registry.register(row, node, 'model')
     return registry, store, principal, node, root, allowed
 
 
@@ -112,7 +118,7 @@ def test_cached_checkpoint_requires_exact_authorized_original_lineage(saved):
     duplicate['id'] = 'b' * 32
     duplicate['nodes']['trainer']['reused_from'] = row['id']
     store.rows[duplicate['id']] = duplicate
-    ident = registry.reference(duplicate, duplicate['graph']['nodes'][0], 'model')
+    ident = registry.register(duplicate, duplicate['graph']['nodes'][0], 'model')
     assert registry.resolve(principal, ident)['path'] == row['nodes']['trainer']['outputs']['model']['path']
     row['nodes']['trainer']['reused_from'] = duplicate['id']
     with pytest.raises(ValueError, match='cycle'):
@@ -179,3 +185,109 @@ def test_adapter_uses_current_principal_resolver_and_checks_checkpoint_subtype(s
     graph['nodes'][1]['type'] = 'evaluate'
     assert adapter.validate_resources(graph, {'principal': principal}) == []
     assert calls == [principal, principal]
+
+
+def test_granted_resolve_uses_direct_keys_and_current_proof_without_owner(saved):
+    registry, store, owner, node, _, _ = saved
+    proof = registry.pin(owner, registry.reference(store.rows['a' * 32], node, 'model'))
+    service = {'id': 'studio-grant:fixed', 'scope': owner['scope'], 'kind': 'studio_subscription'}
+    calls = []
+    def authorize(principal, exact_proof, producer, inputs):
+        assert principal == service and 'owner' not in principal
+        assert exact_proof == proof and producer in (None, node) and inputs == {}
+        calls.append(principal)
+        return True
+    store.records = lambda *_: pytest.fail('Service resolution must not scan history')
+    registry.authorize = lambda *_: pytest.fail('Service must not impersonate an interactive session')
+    assert registry.resolve_granted(service, proof, authorize=authorize) == proof['handle']
+    assert len(calls) >= 2
+
+
+@pytest.mark.parametrize('change', ['proof', 'state', 'node', 'bytes', 'source', 'revoked', 'truthy', 'post_revoke'])
+def test_pinned_service_resource_changes_fail_closed(saved, change):
+    registry, store, principal, node, root, _ = saved
+    proof = registry.pin(principal, registry.reference(store.rows['a' * 32], node, 'model'))
+    row = store.rows['a' * 32]
+    if change == 'proof':
+        proof['handle']['path'] = '/private/forged'
+    elif change == 'state':
+        row['nodes']['trainer']['state'] = 'interrupted'
+    elif change == 'node':
+        row['graph']['nodes'][0]['parameters']['steps'] = 99
+    elif change == 'bytes':
+        (root / 'model.safetensors').write_bytes(b'changed')
+    elif change == 'source':
+        proof['source']['run'] = 'b' * 32
+        proof['digest'] = digest({k: v for k, v in proof.items() if k != 'digest'})
+    count = 0
+    def authorize(*_):
+        nonlocal count
+        count += 1
+        return False if change == 'revoked' or (change == 'post_revoke' and count > 1) else (1 if change == 'truthy' else True)
+    with pytest.raises((ValueError, PermissionError, KeyError)):
+        registry.resolve_granted({'id': 'service', 'scope': 'pool'}, proof, authorize=authorize)
+
+
+def test_missing_or_corrupt_index_never_scans_or_falls_back(saved):
+    registry, store, principal, node, _, _ = saved
+    ident = registry.reference(store.rows['a' * 32], node, 'model')
+    store.records = lambda *_: pytest.fail('Direct lookup must not scan history')
+    store.references.clear()
+    with pytest.raises(ValueError, match='unavailable'):
+        registry.resolve(principal, ident)
+    store.references[ident] = {'scope': 'pool', 'source': {'run': 'a' * 32, 'node': 'trainer', 'port': 'checkpoint'}}
+    with pytest.raises(ValueError):
+        registry.resolve(principal, ident)
+
+
+def test_nested_saved_inputs_are_pinned_and_independently_rechecked(saved, tmp_path):
+    registry, store, principal, node, _, _ = saved
+    original = store.rows['a' * 32]
+    base = registry.resolve(principal, registry.reference(original, node, 'model'))
+    derived = copy.deepcopy(original)
+    derived['id'] = 'b' * 32
+    derived_node = derived['graph']['nodes'][0]
+    derived_node['type'] = 'train.tool-calls'
+    checkpoint = tmp_path / 'studio' / derived['id'] / hashlib.sha256(b'trainer').hexdigest()[:24] / 'checkpoint'
+    checkpoint.mkdir(parents=True)
+    (checkpoint / 'state.json').write_text('{}')
+    (checkpoint / 'model.safetensors').write_bytes(b'adapter')
+    from poolhouse.studio.resources import base_fingerprint
+    outputs = {'model': {'kind': 'model', 'path': str(checkpoint), 'base': base,
+                         'base_digest': base_fingerprint(base)}}
+    derived['nodes']['trainer'].update(outputs=outputs, output_digest=digest(outputs),
+                                      artifacts=_artifacts(derived_node, outputs, 'outputs'))
+    derived['graph']['nodes'].append({'id': 'base', 'type': 'model', 'version': 1})
+    derived['graph']['edges'] = [{'source': {'node': 'base', 'port': 'model'},
+                                 'target': {'node': 'trainer', 'port': 'model'}}]
+    derived['nodes']['base'] = {'state': 'done', 'outputs': {'model': base}}
+    store.rows[derived['id']] = derived
+    ident = registry.register(derived, derived_node, 'model')
+    proof = registry.pin(principal, ident)
+    dependency = proof['dependencies'][0]
+    assert dependency['id'] == base['studio_reference']
+    service = {'id': 'service', 'scope': 'pool'}
+    seen = set()
+    def authorize(_principal, current, _node, _inputs):
+        seen.add(current['id'])
+        return current in [proof, dependency]
+    store.records = lambda *_: pytest.fail('No history scans during service dispatch')
+    assert registry.resolve_granted(service, proof, authorize=authorize) == proof['handle']
+    assert seen == {proof['id'], dependency['id']}
+    with pytest.raises(PermissionError):
+        registry.resolve_granted(service, proof, authorize=lambda _p, current, _n, _i: current == proof)
+    original['nodes']['trainer']['state'] = 'failed'
+    with pytest.raises(ValueError):
+        registry.resolve_granted(service, proof, authorize=authorize)
+
+
+def test_pinned_reuse_chain_cannot_be_removed_without_invalidating_proof(saved):
+    registry, store, principal, node, _, _ = saved
+    duplicate = copy.deepcopy(store.rows['a' * 32])
+    duplicate['id'] = 'b' * 32
+    duplicate['nodes']['trainer']['reused_from'] = 'a' * 32
+    store.rows[duplicate['id']] = duplicate
+    proof = registry.pin(principal, registry.register(duplicate, node, 'model'))
+    duplicate['nodes']['trainer'].pop('reused_from')
+    with pytest.raises(ValueError, match='lineage changed'):
+        registry.resolve_granted({'id': 'service', 'scope': 'pool'}, proof, authorize=lambda *_: True)
