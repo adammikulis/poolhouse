@@ -113,7 +113,7 @@ def synthetic_model(monkeypatch):
         if node['type'] == 'stream.record':
             return {'record': parse_record(node['parameters']['sample'])}
         if node['type'] == 'guard.injection':
-            return assess(node['type'], node['parameters'], inputs['record'], lambda *args: {'scores': {'yes': 0.98, 'no': 0.02}}, model_digest='test-model')
+            return assess(node['type'], node['parameters'], inputs['record'], lambda *args: {'scores': {'yes': 0.98, 'no': 0.02}}, identity={'model_digest': 'test-model', 'calibration_digest': 'unverified'})
         if node['type'] == 'decision.route':
             return route(node['parameters'], inputs['decision'])
         if node['type'] == 'report':
