@@ -1,0 +1,92 @@
+<script>
+(() => {
+  const S = window.studioModel, M = window.fleetModel, E = M.el;
+  S.n8nSpec = node => {
+    const fields = node.parameters || {}, reason = typeof fields.reason === 'string' ? fields.reason.slice(0, 512) : 'Replace this unsupported imported node.';
+    const ports = side => (Array.isArray(fields[side]) ? fields[side] : []).slice(0,128)
+      .filter(name => typeof name === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}_\d{1,3}$/.test(name))
+      .map(name => ({name, type:name.startsWith('ai_languageModel_') ? 'model' : 'json'}));
+    return {title:node.name || 'Unsupported n8n node', family:'Imported · blocked',
+      description:typeof fields.source_type === 'string' ? fields.source_type.slice(0,160) : 'Unsupported n8n node',
+      inputs:ports('inputs'), outputs:ports('outputs'), parameters:{properties:{}},
+      requirements:[reason], available:false, missing:['a supported Poolhouse replacement']};
+  };
+  S.installN8n = proto => Object.assign(proto, {
+    importN8n() {
+      if (this.context.length) { this.message('Return to the outer workflow before importing n8n JSON.'); return; }
+      this.n8nDialog?.close();
+      const dialog = this.n8nDialog = E('dialog', {class:'studio-dialog', 'aria-label':'Import n8n workflow'}),
+        text = E('textarea', {'aria-label':'n8n workflow JSON', rows:10, spellcheck:false}),
+        file = E('input', {type:'file', accept:'application/json,.json', 'aria-label':'Choose n8n JSON file'}),
+        note = E('p', {role:'status'}), rows = E('div'),
+        preview = E('button', {type:'button'}, 'Preview translation'),
+        apply = E('button', {type:'button', disabled:true}, 'Import draft into canvas');
+      let sequence = 0, result, approved;
+      const capture = () => ({root:this.rootGraph(), graph:this.graph, workflow:this.workflowId,
+        edit:this.editSerial, intent:this.selectionIntent, load:this.loadContext, live:this.liveGeneration,
+        groups:this.context.map(item => item.node.id).join('/'), json:text.value,
+        snapshot:JSON.stringify(this.rootGraph())});
+      const current = held => dialog.open && dialog.isConnected && this.isConnected && !this.host.hidden
+        && M.route === 'studio' && location.hash === '#studio' && this.n8nDialog === dialog
+        && held.root === this.rootGraph() && held.graph === this.graph && held.workflow === this.workflowId
+        && held.edit === this.editSerial && held.intent === this.selectionIntent && held.load === this.loadContext
+        && held.live === this.liveGeneration && held.groups === this.context.map(item => item.node.id).join('/')
+        && held.json === text.value && held.snapshot === JSON.stringify(this.rootGraph());
+      const reset = () => { sequence++; result = approved = null; apply.disabled = true; rows.replaceChildren(); note.textContent = ''; };
+      text.oninput = reset;
+      file.onchange = async () => {
+        reset();
+        const chosen = file.files?.[0], held = capture(), token = sequence;
+        if (!chosen) return;
+        if (chosen.size > 2000000) { note.textContent = 'Choose n8n JSON smaller than 2 MB.'; return; }
+        try {
+          const value = await chosen.text();
+          if (token !== sequence || !current(held)) return;
+          text.value = value; note.textContent = 'File loaded. Preview the translation before importing.';
+        } catch { if (token === sequence && current(held)) note.textContent = 'The JSON file could not be read.'; }
+      };
+      preview.onclick = async () => {
+        reset();
+        const held = capture(), token = sequence;
+        if (new TextEncoder().encode(text.value).length > 2000000) { note.textContent = 'Choose n8n JSON smaller than 2 MB.'; return; }
+        note.textContent = 'Preparing an inert preview…';
+        try {
+          const response = await M.api('/ui/studio/import/n8n/preview', {method:'POST', body:JSON.stringify({json:text.value})});
+          if (token !== sequence || !current(held)) return;
+          if (M.refused(response)) return;
+          if (!response.ok) throw Error(response.error || 'The n8n workflow could not be translated.');
+          result = response; approved = held;
+          rows.replaceChildren(E('h3', {}, response.title),
+            ...response.warnings.map(message => E('p', {}, message)),
+            ...response.nodes.map(node => E('p', {}, E('strong', {}, node.name + ' · ' + node.status), ' — ' + node.message)));
+          const blocked = response.nodes.filter(node => node.status === 'blocked').length;
+          note.textContent = blocked ? `${blocked} blocked node(s). Replace them before running any part of this workflow.` : 'Preview ready. Choose current Poolhouse resource bindings before running.';
+          apply.disabled = false;
+        } catch (error) { if (token === sequence && current(held)) note.textContent = error.message || 'The n8n JSON could not be read.'; }
+      };
+      apply.onclick = () => {
+        if (!result || !approved || !current(approved)) { apply.disabled = true; note.textContent = 'The canvas changed. Preview this JSON again.'; return; }
+        if (this.graph.nodes.length + result.graph.nodes.length > 1000) {
+          note.textContent = 'The combined canvas exceeds 1,000 nodes. Import into an empty workflow instead.'; return;
+        }
+        this.checkpoint();
+        this.graph.nodes.push(...S.clone(result.graph.nodes));
+        this.graph.edges.push(...S.clone(result.graph.edges));
+        Object.assign(this.graph.layout.nodes, S.clone(result.graph.layout.nodes));
+        if (this.graph.nodes.length === result.graph.nodes.length) this.querySelector('#studio-title').value = result.title;
+        this.selected = new Set(result.graph.nodes.map(node => node.id));
+        clearTimeout(this.autosave);
+        this.editSerial++; this.dirty = true;
+        this.canvas.fit(false); this.recordHistory(); this.render();
+        dialog.close();
+        this.message('Imported an unsaved draft. Replace blocked nodes, choose resources, then save.');
+      };
+      dialog.onclose = () => { sequence++; text.value = ''; file.value = ''; result = approved = null; dialog.remove(); };
+      dialog.append(E('h2', {}, 'Import n8n workflow'), E('p', {}, 'Paste an exported workflow or choose a JSON file. Import adds nodes to this canvas as an unsaved draft; it never runs or connects sources.'),
+        E('label', {}, 'Paste n8n JSON', text), file, preview, note, rows, apply,
+        E('button', {type:'button', onclick:() => dialog.close()}, 'Cancel'));
+      this.host.append(dialog); dialog.showModal(); text.focus();
+    },
+  });
+})();
+</script>
