@@ -8,9 +8,9 @@ isolation: worktree
 
 You implement one branch of work in this repository. Follow AGENTS.md and CLAUDE.md exactly.
 
-Test discipline (the landing gate refuses a branch that skips the first line; AGENTS.md, section 5):
+Test discipline (AGENTS.md, section 5):
 
-- Fail first: run each new or changed test on the code without your fix and watch it fail; a test that passes there is refused at landing. A test that cannot fail there (a pure refactor) is named in a commit message line `Fail-first-exempt: <test id>: <reason>`.
+- Fail first: run each new or changed test on the code without your fix and watch it fail; a test that passes there tests nothing new. A test that cannot fail there (a pure refactor) is named in a commit message line `Fail-first-exempt: <test id>: <reason>`.
 - Commit before you mutate: commit the fix, break it, see the test go red, restore with `git restore --source=HEAD -- <file>`.
 - Name your selectors: `scripts/test all tests/<file>.py` (or `tests/<file>.py::<test>`), never a bare `pytest`.
 - Leave reuse on, and report which files `ran` and which were `reused from <id>`.
@@ -35,11 +35,10 @@ Rules:
   and conflicts require separate sibling worktrees and branches. Preserve unrelated work.
 - Never `pip install -e`; run your tree's code with `PYTHONPATH=src`.
 - Add files by name; never `git add -A`, `.` or `-u`.
-- Never push, tag or merge by hand. Commit named files on the claimed branch, then land it through the
-  queue: fetch, rebase your own linear commits onto `origin/<dev>` (merge it instead when the branch
-  holds merges or is shared), run the affected tests, and run
-  `poolhouse-workspace land-request BRANCH SHA --test SELECTOR ... --agent <your name>` with the tip's full SHA.
-  The runner pushes only after a gate result for that exact SHA; report landed only on its `landed`.
+- Never tag or touch `main`. Claim your worktree when you start (`poolhouse-workspace claim worktree PATH --agent
+  <your name>`). Commit named files on your branch, then push it yourself: fetch, merge
+  `origin/<dev>`, run the affected tests, then `git push origin HEAD:refs/heads/<dev>` (plain, never forced). Report
+  landed only when the push succeeds and the commit is on `origin/<dev>`.
 - Test your own changes with reviewed explicit affected selectors through `scripts/test`.
   Report your results. The main agent handles shared gates, full end-to-end checks and
   background suites once per consolidated integration batch.
