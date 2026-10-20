@@ -4,6 +4,7 @@ import hmac
 import io
 import json
 import os
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -131,14 +132,38 @@ def test_bootstrap_checks_actual_parent_and_bounded_private_frame(monkeypatch):
         launch.bootstrap(b" " * (launch.LIMIT + 1) + b"\n")
 
 
-def test_start_uses_fixed_managed_entrypoint_and_attaches(monkeypatch):
+def test_start_uses_fixed_managed_entrypoint_and_attaches(tmp_path, monkeypatch):
+    import subprocess
+    import venv
+
+    virtual = tmp_path / "compute"
+    venv.EnvBuilder().create(virtual)
+    python = virtual / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    site = subprocess.check_output([str(python), "-I", "-c",
+                                    "import sysconfig; print(sysconfig.get_path('purelib'))"], text=True).strip()
+    package = Path(site) / "poolhouse"
+    for name in ("__init__.py", "serve/__init__.py", "graph/__init__.py",
+                 "graph/loaded.py", "serve/cli.py"):
+        target = package / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("import poolhouse.graph.loaded\n" if name == "serve/cli.py" else "")
     owner = launch.OwnedBroker(selected())
     process = Process()
     checks, writes, starts = [], [], []
-    environment = SimpleNamespace(python="/managed/python", require_current_runtime=lambda: checks.append("runtime"),
+    real_read = os.read
+    environment = SimpleNamespace(python=python, require_current_runtime=lambda: checks.append("runtime"),
                                   require_compute=lambda: checks.append("compute"))
     monkeypatch.setattr(launch, "Environment", lambda root: environment)
-    monkeypatch.setattr(launch, "start_process", lambda argv, **kwargs: starts.append((argv, kwargs)) or process)
+    def start(argv, **kwargs):
+        starts.append((argv, kwargs))
+        # Execute the exact fixed launch argv against an isolated CPU-only installed fixture.
+        with monkeypatch.context() as child:
+            child.setattr(os, "read", real_read)
+            subprocess.run(argv, env=kwargs["env"], check=True,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        assert not list(package.rglob("*.pyc"))
+        return process
+    monkeypatch.setattr(launch, "start_process", start)
     monkeypatch.setattr(launch, "started_at", lambda pid: 12.0)
     monkeypatch.setattr(launch, "pid_exists", lambda pid: True)
     monkeypatch.setattr(launch.select, "select", lambda *args: ([process.stdout], [], []))
@@ -148,7 +173,7 @@ def test_start_uses_fixed_managed_entrypoint_and_attaches(monkeypatch):
     assert owner.start() == owner.start()
     assert checks == ["runtime", "compute"]
     assert len(starts) == 1
-    assert starts[0][0] == ["/managed/python", "-I", "-m", "poolhouse.serve.cli", "broker-owned"]
+    assert starts[0][0] == [str(python), "-B", "-I", "-m", "poolhouse.serve.cli", "broker-owned"]
     assert owner.secret.hex() not in repr(starts)
     assert writes[0]["secret"] == owner.secret.hex()
     assert writes[1] == {"accept": owner.instance}

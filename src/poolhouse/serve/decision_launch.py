@@ -199,7 +199,7 @@ class OwnedBroker:
         environment.require_compute()
         _idle_boundary()
         self.process = start_process(
-            [str(environment.python), "-I", "-m", "poolhouse.serve.cli", "broker-owned"],
+            [str(environment.python), "-B", "-I", "-m", "poolhouse.serve.cli", "broker-owned"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             env=process_environment())
         try:
