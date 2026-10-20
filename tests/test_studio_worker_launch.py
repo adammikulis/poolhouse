@@ -14,12 +14,12 @@ import pytest
 from poolhouse.fleet import job_exit
 from poolhouse.fleet.job_records import process_started
 from poolhouse.fleet.jobs import JobRunner
-from poolhouse.fleet.studio_worker_launch import (
+from poolhouse.fleet.studio_worker_launch import LaunchProof
+from poolhouse.studio_launch import (
     FD_ENV,
     LaunchInterrupted,
-    LaunchProof,
-    _receive,
-    _send,
+    receive_frame,
+    send_frame,
     worker_context,
 )
 
@@ -46,7 +46,7 @@ def wait_for(check):
 def child_command(output, release):
     return [sys.executable, '-c',
             f'import sys;sys.path.insert(0,{SRC!r});'
-            'from poolhouse.fleet.studio_worker_launch import worker_context;'
+            'from poolhouse.studio_launch import worker_context;'
             'import json,os,time;'
             'context=worker_context();'
             f'open({str(output)!r},"w").write(json.dumps({{"pid":os.getpid(),"context":context}}));'
@@ -156,8 +156,8 @@ def test_worker_refuses_offer_without_final_ack(monkeypatch):
     monkeypatch.setenv(FD_ENV, str(worker.detach()))
     def offer():
         with server:
-            _send(server, {'challenge': 'c' * 43, 'job_id': 'job', 'context': context()})
-            assert _receive(server) == {'challenge': 'c' * 43, 'pid': os.getpid()}
+            send_frame(server, {'challenge': 'c' * 43, 'job_id': 'job', 'context': context()})
+            assert receive_frame(server) == {'challenge': 'c' * 43, 'pid': os.getpid()}
     thread = threading.Thread(target=offer)
     thread.start()
     try:
@@ -182,7 +182,7 @@ def test_wrapper_deadline_and_ignoring_term_child_cleanup_are_bounded(tmp_path, 
                                    pass_fds=proof.descriptors, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         proof.wrapper.close()
         proof.worker.close()
-        child_pid = _receive(proof.report)['pid']
+        child_pid = receive_frame(proof.report)['pid']
         wait_for(ready.exists)
         if partial:
             proof.report.sendall(b'\x00\x00')  # Open channel stalls in the middle of a frame.

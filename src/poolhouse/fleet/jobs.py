@@ -16,11 +16,12 @@ from typing import Any
 from poolhouse.credentials import child_environment
 from poolhouse.log import say
 from poolhouse.platform import process_group_kwargs, stop_gently, stop_pid
+from poolhouse.studio_launch import FD_ENV, LaunchInterrupted
 
 from . import job_exit
 from .environment import Environment
 from .job_records import Records, ownership, owns, process_started
-from .studio_worker_launch import FD_ENV, LaunchInterrupted, LaunchProof
+from .studio_worker_launch import LaunchProof
 
 
 class DaemonError(RuntimeError):
