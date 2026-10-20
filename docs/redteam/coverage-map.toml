@@ -15,6 +15,20 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["context:studio/record_context.py", "parser:studio/record_context.py"]
+status = "covered"
+count = 2
+tests = ["tests/test_studio_record_generation.py::test_invalid_field_selectors_never_fall_back_to_whole_record", "tests/test_studio_record_generation.py::test_guard_views_are_scoped_but_output_record_and_original_identity_are_preserved", "tests/test_studio_record_generation.py::test_missing_or_wrong_selected_data_reviews_without_model_or_generation", "tests/test_studio_record_generation.py::test_oversize_and_nonfinite_generation_refuse_without_truncation", "tests/test_studio_record_generation.py::test_literal_field_names_are_data_keys_not_paths_or_expressions", "tests/test_studio_record_generation.py::test_broker_generation_uses_separate_system_and_user_and_returns_tool_requests_as_data", "tests/test_studio_record_generation.py::test_native_checkpoint_generation_keeps_role_separation_and_single_compute_hold"]
+note = "Literal field selection preserves the original record identity and fails on missing, malformed, oversized or nonfinite data. Generation keeps the configured task in a system message and only selected question/source data in a user message, through both broker and native checkpoint adapters. Tool requests remain data. These structural tests do not establish model resistance to injection or protect against a compromised executor fabricating outputs; guard assessments remain advisory."
+
+[[group]]
+match = ["parser:studio/record_coverage.py"]
+status = "covered"
+count = 1
+tests = ["tests/test_studio_record_generation.py::test_ready_template_has_complete_server_validated_coverage_and_selected_dependencies", "tests/test_studio_record_generation.py::test_editing_guard_coverage_is_rejected_before_dispatch", "tests/test_studio_record_generation.py::test_whole_record_guards_are_an_explicit_valid_coverage_feature", "tests/test_studio_record_generation.py::test_invalid_parameter_containers_return_validation_errors"]
+note = "Expanded graph validation requires distinct direct and indirect actual guard Allow controls for the same original record, configured task and selected fields. Forged signals, duplicate controls, mismatched origins and malformed parameter containers are refused before dispatch; selected-output and reusable-group expansion retain required controls. Whole-record assessment is an explicit supported configuration, never a malformed-selector fallback."
+
+[[group]]
 match = ["listener:fleet/producer_control.py:_Location.bind", "listener:fleet/producer_control.py:ControlServer.__init__"]
 status = "covered"
 count = 2

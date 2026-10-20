@@ -450,6 +450,8 @@ def discover() -> dict[str, Surface]:
         ("parser", "studio/producer_log.py", "src/poolhouse/studio/producer_log.py"),
         ("parser", "fleet/producer_control.py", "src/poolhouse/fleet/producer_control.py"),
         ("handler", "fleet/producer_control.py:ControlServer._answer", "src/poolhouse/fleet/producer_control.py"),
+        ("parser", "studio/record_context.py", "src/poolhouse/studio/record_context.py"),
+        ("parser", "studio/record_coverage.py", "src/poolhouse/studio/record_coverage.py"),
     ):
         if (ROOT / source).is_file():
             add(found, kind, name, source)

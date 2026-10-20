@@ -1,7 +1,7 @@
 {
- "surfaces": 880,
+ "surfaces": 883,
  "by_status": {
-  "covered": 562,
+  "covered": 565,
   "partial": 193,
   "uncovered": 52,
   "n/a": 73,
@@ -23,7 +23,7 @@
    "unmapped": 0
   },
   "context": {
-   "covered": 8,
+   "covered": 9,
    "partial": 0,
    "uncovered": 4,
    "n/a": 18,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 84,
+   "covered": 86,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -1095,6 +1095,24 @@
    "status": "n/a",
    "tests": [],
    "note": "prompts built from the person's own benchmark questions, canaries and fixed smoke checks"
+  },
+  {
+   "id": "context:studio/record_context.py",
+   "kind": "context",
+   "source": "studio/record_context.py",
+   "trust": "tool results, pages, files, members, stored facts",
+   "attacker": "text from outside is read by a model as an instruction",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_record_generation.py::test_invalid_field_selectors_never_fall_back_to_whole_record",
+    "tests/test_studio_record_generation.py::test_guard_views_are_scoped_but_output_record_and_original_identity_are_preserved",
+    "tests/test_studio_record_generation.py::test_missing_or_wrong_selected_data_reviews_without_model_or_generation",
+    "tests/test_studio_record_generation.py::test_oversize_and_nonfinite_generation_refuse_without_truncation",
+    "tests/test_studio_record_generation.py::test_literal_field_names_are_data_keys_not_paths_or_expressions",
+    "tests/test_studio_record_generation.py::test_broker_generation_uses_separate_system_and_user_and_returns_tool_requests_as_data",
+    "tests/test_studio_record_generation.py::test_native_checkpoint_generation_keeps_role_separation_and_single_compute_hold"
+   ],
+   "note": "Literal field selection preserves the original record identity and fails on missing, malformed, oversized or nonfinite data. Generation keeps the configured task in a system message and only selected question/source data in a user message, through both broker and native checkpoint adapters. Tool requests remain data. These structural tests do not establish model resistance to injection or protect against a compromised executor fabricating outputs; guard assessments remain advisory."
   },
   {
    "id": "context:studio/worker.py",
@@ -6842,6 +6860,39 @@
     "tests/test_producer_log.py::test_missing_or_mismatched_pending_index_never_issues_send_authority"
    ],
    "note": "Private daemon persistence pins exact finite JSON bytes before parsing, source-wide event identity and the original binding. Current authorization and exact pending-index checks precede a single send claim; transaction races roll back. Unknown attempts require exact trusted inbox evidence and never resend across restart or replacement. Explicit current-owner discard applies only to provably unattempted records and retains their immutable identity. Reads and receipt access require independent factory authorization; this primitive provides no publisher-facing endpoint, credential or source capability."
+  },
+  {
+   "id": "parser:studio/record_context.py",
+   "kind": "parser",
+   "source": "src/poolhouse/studio/record_context.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_record_generation.py::test_invalid_field_selectors_never_fall_back_to_whole_record",
+    "tests/test_studio_record_generation.py::test_guard_views_are_scoped_but_output_record_and_original_identity_are_preserved",
+    "tests/test_studio_record_generation.py::test_missing_or_wrong_selected_data_reviews_without_model_or_generation",
+    "tests/test_studio_record_generation.py::test_oversize_and_nonfinite_generation_refuse_without_truncation",
+    "tests/test_studio_record_generation.py::test_literal_field_names_are_data_keys_not_paths_or_expressions",
+    "tests/test_studio_record_generation.py::test_broker_generation_uses_separate_system_and_user_and_returns_tool_requests_as_data",
+    "tests/test_studio_record_generation.py::test_native_checkpoint_generation_keeps_role_separation_and_single_compute_hold"
+   ],
+   "note": "Literal field selection preserves the original record identity and fails on missing, malformed, oversized or nonfinite data. Generation keeps the configured task in a system message and only selected question/source data in a user message, through both broker and native checkpoint adapters. Tool requests remain data. These structural tests do not establish model resistance to injection or protect against a compromised executor fabricating outputs; guard assessments remain advisory."
+  },
+  {
+   "id": "parser:studio/record_coverage.py",
+   "kind": "parser",
+   "source": "src/poolhouse/studio/record_coverage.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_record_generation.py::test_ready_template_has_complete_server_validated_coverage_and_selected_dependencies",
+    "tests/test_studio_record_generation.py::test_editing_guard_coverage_is_rejected_before_dispatch",
+    "tests/test_studio_record_generation.py::test_whole_record_guards_are_an_explicit_valid_coverage_feature",
+    "tests/test_studio_record_generation.py::test_invalid_parameter_containers_return_validation_errors"
+   ],
+   "note": "Expanded graph validation requires distinct direct and indirect actual guard Allow controls for the same original record, configured task and selected fields. Forged signals, duplicate controls, mismatched origins and malformed parameter containers are refused before dispatch; selected-output and reusable-group expansion retain required controls. Whole-record assessment is an explicit supported configuration, never a malformed-selector fallback."
   },
   {
    "id": "parser:taint/extract.py",
