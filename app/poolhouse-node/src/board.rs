@@ -51,6 +51,8 @@ pub struct Board {
     groups: BTreeMap<String, String>,
     /// The percent of the rows or bytes at which this device starts a new segment of its log; 0 starts none.
     rotate_percent: usize,
+    /// Rows of a new segment of a copy that restarts at a base, held until the segment is whole.
+    staged: BTreeMap<String, Vec<Row>>,
 }
 
 /// Rows built to follow the log but not written yet, and what they come to for the log, their authors and their groups.
@@ -114,7 +116,7 @@ impl Board {
                 logs.insert(origin.clone(), Log::open(&path, id, &origin)?);
             }
         }
-        let mut board = Board { id: id.into(), dir: dir.into(), pool: pool.into(), key, origin: origin.clone(), logs, state, clock, removed: BTreeSet::new(), bounds, authors: BTreeMap::new(), lineages: BTreeMap::new(), groups: BTreeMap::new(), rotate_percent: 0 };
+        let mut board = Board { id: id.into(), dir: dir.into(), pool: pool.into(), key, origin: origin.clone(), logs, state, clock, removed: BTreeSet::new(), bounds, authors: BTreeMap::new(), lineages: BTreeMap::new(), groups: BTreeMap::new(), rotate_percent: 0, staged: BTreeMap::new() };
         for origin in board.origins() {
             board.apply_segment(&origin)?;
         }
@@ -187,7 +189,14 @@ impl Board {
     /// For each held origin, the tip of its log.
     pub fn vector(&self) -> BTreeMap<String, Tip> {
         let tip = |l: &Log| l.rows().last().map(|r| Tip { seq: r.seq, hash: r.hash.clone() });
-        self.logs.iter().filter_map(|(o, l)| tip(l).map(|t| (o.clone(), t))).collect()
+        let mut out: BTreeMap<String, Tip> = self.logs.iter().filter_map(|(o, l)| tip(l).map(|t| (o.clone(), t))).collect();
+        out.extend(self.staged_tips());
+        out
+    }
+
+    /// The tip of each segment a copy holds apart until it is whole.
+    fn staged_tips(&self) -> Vec<(String, Tip)> {
+        self.staged.iter().filter_map(|(o, rows)| rows.last().map(|r| (o.clone(), Tip { seq: r.seq, hash: r.hash.clone() }))).collect()
     }
 
     /// The rows of ``origin`` through its last head: the part a peer may be given.
@@ -200,7 +209,9 @@ impl Board {
     /// Like `vector`, over the trusted rows only.
     pub fn trusted_vector(&self) -> BTreeMap<String, Tip> {
         let tip = |r: &[Row]| r.last().map(|r| Tip { seq: r.seq, hash: r.hash.clone() });
-        self.logs.keys().filter_map(|o| tip(self.trusted(o)).map(|t| (o.clone(), t))).collect()
+        let mut out: BTreeMap<String, Tip> = self.logs.keys().filter_map(|o| tip(self.trusted(o)).map(|t| (o.clone(), t))).collect();
+        out.extend(self.staged_tips());
+        out
     }
 
     pub fn damaged(&self) -> &BTreeMap<String, String> {
@@ -426,10 +437,12 @@ impl Board {
         let (dropped, incoming) = (kept.len() < incoming.len(), kept);
         let mut held: Vec<Row> = self.chain(origin).to_vec();
         let (board, pool) = (self.id.clone(), self.pool.clone());
-        let (mut took, pin) = match rules::accept(&board, origin, &held, &incoming, key_of(&pin), &pool) {
+        let staged = self.staged.get(origin).cloned().unwrap_or_default();
+        let (mut took, pin) = match rules::accept(&board, origin, if staged.is_empty() { &held } else { &staged }, &incoming, key_of(&pin), &pool) {
             Ok(t) => (t, pin),
             Err(Error::Damaged(_)) if authoritative && pin.as_ref().is_some_and(|p| !p.bound) => {
                 self.reset(origin)?;
+                self.staged.remove(origin);
                 held.clear();
                 (rules::accept(&board, origin, &[], &incoming, None, &pool)?, None)
             }
@@ -446,16 +459,22 @@ impl Board {
                 return Err(Error::Invalid("that log does not pass through the point the removal of its device named".into()));
             }
         }
-        self.check_bases(&held, &took)?;
-        let (held, incoming) = self.segment_sizes(origin, &took);
-        self.bounds.admit_copy(held, incoming)?;
+        let restarting = took.restart && !held.is_empty();
+        if restarting && !authoritative {
+            return Err(Error::Gap("these rows start at a base past the rows held, which only the device that wrote them may send".into()));
+        }
+        self.check_bases(if staged.is_empty() { &held } else { &staged }, &took)?;
+        let (held_size, incoming) = self.segment_sizes(origin, &took);
+        self.bounds.admit_copy(held_size, incoming)?;
         if took.rows.is_empty() {
             return if blocked { Err(Error::Invalid("the device that wrote that log was removed from the pool".into())) } else { Ok(0) };
         }
         let count = took.rows.len();
         self.observe(&took.rows);
         let archive = self.archive_dir();
-        if took.restart {
+        if restarting || !staged.is_empty() {
+            self.hold_segment(origin, (took.restart, &held), took.rows)?;
+        } else if took.restart {
             self.log_mut(origin)?.replace(usize::MAX, took.rows, &archive)?;
         } else {
             self.log_mut(origin)?.extend(took.rows)?;

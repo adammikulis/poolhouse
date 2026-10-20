@@ -3,93 +3,13 @@
 
 mod kit;
 
-use ed25519_dalek::{Signer, SigningKey};
+use kit::rotation::*;
 use kit::*;
 use poolhouse_node::board::Board;
-use poolhouse_node::error::Error;
-use poolhouse_node::fsutil::hex;
-use poolhouse_node::logbounds::Bounds;
 use poolhouse_node::row::{Kind, Row, GENESIS, MAX_SEQ};
-use poolhouse_node::rules::head_message;
 use poolhouse_node::sync::exchange;
-use serde_json::{json, Value};
-use std::path::PathBuf;
+use serde_json::json;
 use tempfile::{tempdir, TempDir};
-
-fn small() -> Bounds {
-    Bounds { rows: 40, bytes: 1 << 24, reserved_rows: 4, reserved_bytes: 1 << 10, last_rows: 1, last_bytes: 1 << 8, author_percent: 100, lineage_percent: 100 }
-}
-
-fn rotating(dir: &TempDir, seed: u8) -> Board {
-    Board::open_rotating(&dir.path().join("log"), "demo", "", key(seed), small(), 75).unwrap()
-}
-
-fn plain(dir: &TempDir, seed: u8) -> Board {
-    Board::open_bounded(&dir.path().join("log"), "demo", "", key(seed), small()).unwrap()
-}
-
-fn archive(dir: &TempDir) -> PathBuf {
-    dir.path().join("log").join("archive")
-}
-
-fn note(board: &mut Board, title: &str, body: &str, supersedes: &[&str]) -> Row {
-    let fields = json!({"nkind": "fact", "title": title, "body": body, "author": "writer", "supersedes": supersedes});
-    board.append(Kind::Note, "writer", fields, "").unwrap()
-}
-
-fn grant(board: &mut Board, gid: &str) -> Row {
-    board.append(Kind::Grant, "node", json!({"op": "issue", "gid": gid, "to": "writer", "action": "source_add"}), "").unwrap()
-}
-
-fn kinds(rows: &[Row]) -> Vec<Kind> {
-    rows.iter().map(|r| r.kind).collect()
-}
-
-fn say_until_new_segment(board: &mut Board) {
-    let origin = board.origin().to_string();
-    for i in 0..100 {
-        if board.first_seq(&origin) > 1 {
-            return;
-        }
-        say(board, "writer", &format!("message {i}"));
-    }
-    panic!("no segment started");
-}
-
-fn view(board: &Board, origin: &str) -> Vec<Row> {
-    board.rows(origin).to_vec()
-}
-
-/// A row of the log of ``origin``, as a hostile writer could build it.
-fn forged(origin: &str, seq: u64, prev: &str, (kind, actor): (Kind, &str), body: Value) -> Row {
-    let row = Row { v: 1, board: "demo".into(), origin: origin.into(), seq, prev: prev.into(), hlc: (4_000_000_000_000 + seq, 0, origin.into()), kind, actor: actor.into(), idem: String::new(), body, hash: String::new() };
-    rehash(row)
-}
-
-fn signed_head(signer: &SigningKey, last: &Row) -> Row {
-    let signature = signer.sign(&head_message("", "demo", &last.origin, last.seq, &last.hash));
-    let body = json!({"head": last.seq, "hash": last.hash, "public": hex(&signer.verifying_key().to_bytes()), "sig": hex(&signature.to_bytes())});
-    forged(&last.origin, last.seq + 1, &last.hash, (Kind::Head, ""), body)
-}
-
-/// A base after ``tip``, then ``more`` rows, then a head signed by ``signer``.
-fn base_after(signer: &SigningKey, tip: &Row, counts: Value, more: Vec<(Kind, &str, Value)>) -> Vec<Row> {
-    let mut rows = vec![forged(&tip.origin, tip.seq + 1, &tip.hash, (Kind::Base, ""), counts)];
-    for (kind, actor, body) in more {
-        let last = rows.last().unwrap().clone();
-        rows.push(forged(&tip.origin, last.seq + 1, &last.hash, (kind, actor), body));
-    }
-    let head = signed_head(signer, rows.last().unwrap());
-    rows.push(head);
-    rows
-}
-
-fn is_damaged<T: std::fmt::Debug>(result: Result<T, Error>, saying: &str) {
-    match result {
-        Err(Error::Damaged(why)) => assert!(why.contains(saying), "{why}"),
-        other => panic!("expected a damaged log saying {saying:?}, got {other:?}"),
-    }
-}
 
 #[test]
 fn a_log_starts_a_new_segment_at_three_quarters_of_its_rows_and_the_chain_goes_on() {
@@ -306,13 +226,13 @@ fn a_base_is_refused_when_it_cannot_be_what_a_device_writes() {
     for i in 0..12 {
         say(&mut a, "writer", &format!("more {i}"));
     }
-    let kept = grant(&mut a, "g1");
+    let kept = a.append(Kind::Grant, "node", json!({"op": "revoke", "gid": "g1", "reason": "done"}), "").unwrap();
     exchange(&mut a, &mut b).unwrap();
     let tip = b.chain(&origin).last().unwrap().clone();
     let leaves_out = base_after(&writer, &tip, json!({"carried": 0, "left": 0}), vec![]);
-    is_damaged(b.ingest(&origin, &leaves_out, false), "leaves out a grant");
+    is_damaged(b.ingest(&origin, &leaves_out, false), "grant revocation");
     let restates = base_after(&writer, &tip, json!({"carried": 1, "left": 0}), vec![(Kind::Grant, "node", kept.body.clone())]);
-    assert_eq!(b.ingest(&origin, &restates, false).unwrap(), 3, "a base that restates the grant is taken");
+    assert_eq!(b.ingest(&origin, &restates, false).unwrap(), 3, "a base that restates the revocation is taken");
     assert_eq!(kinds(b.rows(&origin)), vec![Kind::Base, Kind::Grant, Kind::Head]);
 }
 

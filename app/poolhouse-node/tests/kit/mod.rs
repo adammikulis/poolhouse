@@ -10,6 +10,7 @@ pub mod phone;
 pub mod screen;
 #[cfg(unix)]
 pub mod procs;
+pub mod rotation;
 
 use ed25519_dalek::SigningKey;
 use poolhouse_node::board::Board;

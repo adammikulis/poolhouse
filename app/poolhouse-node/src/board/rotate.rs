@@ -16,13 +16,31 @@ use crate::rules::Accepted;
 
 const DAY_MS: u64 = 24 * 3600 * 1000;
 
+/// The `op` of a grant row.
+fn op(row: &Row) -> &str {
+    row.body.get("op").and_then(|v| v.as_str()).unwrap_or("")
+}
+
 fn size_of(rows: &[&Row]) -> Held {
     Held { rows: rows.len(), bytes: rows.iter().map(|r| r.size() as u64 + 1).sum() }
 }
 
-/// The rows of ``rows`` of kind grant, each as the text that identifies it: its actor, its key and its body.
-fn grants(rows: &[&Row]) -> BTreeSet<String> {
-    rows.iter().filter(|r| r.kind == Kind::Grant).map(|r| format!("{}|{}|{}", r.actor, r.idem, canonical(&r.body))).collect()
+/// The revocation rows among ``rows``, each as the text that identifies it (its actor, its key and its body) and how many there are.
+fn revokes(rows: &[&Row]) -> BTreeMap<String, usize> {
+    let mut found = BTreeMap::new();
+    for r in rows.iter().filter(|r| r.kind == Kind::Grant && op(r) == "revoke") {
+        *found.entry(format!("{}|{}|{}", r.actor, r.idem, canonical(&r.body))).or_default() += 1;
+    }
+    found
+}
+
+/// Whether every revocation of ``old`` is among ``new`` as often as it was.
+fn revokes_kept(old: &[&Row], new: &[&Row]) -> Result<()> {
+    let now = revokes(new);
+    match revokes(old).into_iter().find(|(key, n)| now.get(key).copied().unwrap_or(0) < *n) {
+        Some(_) => Err(Error::Damaged("a new segment leaves out a grant revocation that was held".into())),
+        None => Ok(()),
+    }
 }
 
 impl Board {
@@ -105,7 +123,12 @@ impl Board {
         let now = self.now_ms();
         let superseded: BTreeSet<&str> = self.logs.values().flat_map(|l| l.view()).filter(|r| r.kind == Kind::Note)
             .flat_map(|r| r.body.get("supersedes").and_then(|v| v.as_array()).into_iter().flatten().filter_map(|v| v.as_str())).collect();
+        let grant_rows = self.logs.values().flat_map(|l| l.view()).filter(|r| r.kind == Kind::Grant);
+        let gid = |r: &Row| r.body.get("gid").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let limited: BTreeSet<String> = grant_rows.clone().filter(|r| op(r) == "issue" && r.body.get("uses").is_some()).map(gid).collect();
+        let revoked: BTreeSet<String> = grant_rows.filter(|r| op(r) == "revoke").map(gid).collect();
         let live = |r: &Row| match r.kind {
+            Kind::Grant if op(r) == "use" => limited.contains(&gid(r)) && !revoked.contains(&gid(r)),
             Kind::Grant | Kind::Room | Kind::Task => true,
             Kind::Note => {
                 let ttl = r.body.get("ttl_days").and_then(|v| v.as_u64()).unwrap_or(0);
@@ -177,7 +200,7 @@ impl Board {
         match took.rows.iter().rposition(|r| r.kind == Kind::Base) {
             Some(at) => (Held::default(), size(&took.rows[at..])),
             None if took.restart => (Held::default(), size(&took.rows)),
-            None => (held, size(&took.rows)),
+            None => (self.staged.get(origin).map_or(held, |s| size_of(&s.iter().collect::<Vec<_>>())), size(&took.rows)),
         }
     }
 
@@ -186,8 +209,14 @@ impl Board {
     pub(super) fn check_bases(&self, held: &[Row], took: &Accepted) -> Result<()> {
         let all: Vec<&Row> = held.iter().chain(&took.rows).collect();
         let damaged = |why: String| Err(Error::Damaged(why));
-        let mut start = 0;
+        let (mut start, newest) = (0, all.iter().rposition(|r| r.kind == Kind::Base));
         for (at, row) in all.iter().enumerate().filter(|(_, r)| r.kind == Kind::Base) {
+            if at >= held.len() || (newest == Some(at) && at > 0) {
+                let restated = all[at + 1..].iter().filter(|r| r.kind != Kind::Head).take(carried(row) as usize);
+                if restated.into_iter().any(|r| !matches!(r.kind, Kind::Grant | Kind::Note | Kind::Room | Kind::Task)) {
+                    return damaged(format!("base at row {} is followed by rows that are not the durable rows it says it restates", row.seq));
+                }
+            }
             if at >= held.len() {
                 if carried(row) > self.bounds.rows as u64 / 2 {
                     return damaged(format!("base at row {} restates more rows than a segment may", row.seq));
@@ -200,10 +229,26 @@ impl Board {
         }
         let Some(at) = all.iter().rposition(|r| r.kind == Kind::Base).filter(|at| *at > 0) else { return Ok(()) };
         let seen = all[at + 1..].iter().filter(|r| !matches!(r.kind, Kind::Head | Kind::Base)).count() as u64;
-        if seen >= carried(all[at]) && !grants(&all[..at]).is_subset(&grants(&all[at + 1..])) {
-            return damaged(format!("base at row {} leaves out a grant row that was held", all[at].seq));
+        if seen >= carried(all[at]) {
+            revokes_kept(&all[..at], &all[at + 1..])?;
         }
         Ok(())
+    }
+
+    /// Hold ``rows`` of a segment of ``origin`` that restarts the copy held (``held`` if this device holds rows of it) until the base, every
+    /// restated row and a head are here, then check that no revocation of the rows held is left out and replace the log.
+    pub(super) fn hold_segment(&mut self, origin: &str, (restart, held): (bool, &[Row]), rows: Vec<Row>) -> Result<()> {
+        let mut next = if restart { Vec::new() } else { self.staged.remove(origin).unwrap_or_default() };
+        next.extend(rows);
+        let seen = next.iter().skip(1).filter(|r| !matches!(r.kind, Kind::Head | Kind::Base)).count() as u64;
+        if !next.first().is_some_and(|b| b.kind == Kind::Base && seen >= carried(b)) {
+            self.staged.insert(origin.into(), next);
+            return Ok(());
+        }
+        self.staged.remove(origin);
+        revokes_kept(&held.iter().collect::<Vec<_>>(), &next.iter().collect::<Vec<_>>())?;
+        let archive = self.archive_dir();
+        self.log_mut(origin)?.replace(usize::MAX, next, &archive)
     }
 
     /// Replace the log of ``origin`` by its newest segment once the base, its restated rows and a head are held.
@@ -225,11 +270,20 @@ impl Board {
         }
         for (origin, files) in by_origin {
             let excess = files.len().saturating_sub(MOST_ARCHIVES);
+            let mut room = self.bounds.bytes;
+            let mut too_big = BTreeSet::new();
+            for (_, _, path) in files.iter().rev() {
+                let size = std::fs::metadata(path).map_or(0, |m| m.len());
+                if size > room {
+                    too_big.insert(path.clone());
+                }
+                room = room.saturating_sub(size);
+            }
             for (n, (_, last, path)) in files.into_iter().enumerate() {
                 let modified = std::fs::metadata(&path).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(now, |d| d.as_millis() as u64);
                 let age = now.saturating_sub(modified);
                 let acked = origin != self.origin || self.state.t.peers.keys().all(|f| self.state.t.acks.get(f).copied().unwrap_or(0) > last);
-                if n < excess || age >= ARCHIVE_MAX_MS || (age >= ARCHIVE_MIN_MS && acked) {
+                if n < excess || too_big.contains(&path) || age >= ARCHIVE_MAX_MS || (age >= ARCHIVE_MIN_MS && acked) {
                     std::fs::remove_file(&path)?;
                 }
             }

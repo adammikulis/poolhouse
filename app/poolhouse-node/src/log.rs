@@ -43,6 +43,8 @@ pub struct Log {
     pub torn_bytes: u64,
     /// A base row after the first one held, at this index, whose restated rows have not all arrived: the rows still to come.
     pending: Option<(usize, u64)>,
+    /// The file could not be opened again after a new segment replaced it: nothing more is appended.
+    poisoned: bool,
 }
 
 impl Log {
@@ -71,7 +73,7 @@ impl Log {
         }
         check_chain(&rows, board, origin, None)?;
         let pending = pending_of(&rows);
-        Ok(Log { path: path.to_path_buf(), file, rows, bytes: good as u64, torn_bytes, pending })
+        Ok(Log { path: path.to_path_buf(), file, rows, bytes: good as u64, torn_bytes, pending, poisoned: false })
     }
 
     /// Every row held, including those of a segment whose restated rows have not all arrived.
@@ -131,6 +133,9 @@ impl Log {
 
     /// Add rows in one write and one fsync. On a failed write the file is cut back.
     pub fn extend(&mut self, rows: Vec<Row>) -> Result<()> {
+        if self.poisoned {
+            return Err(Error::Damaged("the log could not be opened again after a new segment".into()));
+        }
         let buf = lines(&rows)?;
         let before = self.file.metadata()?.len();
         let written = self.file.seek(SeekFrom::End(0)).and_then(|_| self.file.write_all(&buf)).and_then(|_| self.file.sync_data());
@@ -180,7 +185,13 @@ impl Log {
         rows.extend(extra);
         let buf = lines(&rows)?;
         write_atomic(&self.path, &buf)?;
-        self.file = crate::sys::open_log(&self.path)?;
+        match crate::sys::open_log(&self.path) {
+            Ok(file) => self.file = file,
+            Err(e) => {
+                self.poisoned = true;
+                return Err(e);
+            }
+        }
         self.bytes = buf.len() as u64;
         self.pending = pending_of(&rows);
         self.rows = rows;

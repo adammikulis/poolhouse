@@ -42,7 +42,7 @@ pub fn rows_since(board: &Board, since: &BTreeMap<String, u64>) -> BTreeMap<Stri
         let early = if have > 0 && have + 1 < first { board.archived_from(&origin, have, MAX_ROWS) } else { Vec::new() };
         let live = &trusted[usize::try_from(have.saturating_sub(first)).unwrap_or(usize::MAX).min(trusted.len())..];
         let reaches = early.last().is_some_and(|r| r.seq + 1 == first);
-        let served: Vec<&Row> = match (early.is_empty(), reaches) {
+        let served: Vec<&Row> = match (early.iter().all(|r| r.seq <= have), reaches) {
             (true, _) => live.iter().collect(),
             (false, true) => early.iter().chain(trusted).collect(),
             (false, false) => early.iter().collect(),
