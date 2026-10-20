@@ -424,7 +424,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
         else { this.chat.picker.value = row.model; this.chat.picker.dispatchEvent(new Event('change')); }
         this.chat.input.focus();
       }}, `● ${row.model.split('/').pop()}`)));
-      if (!rows.length) this.live.append(M.el('p', {class:'hint'}, 'No models running. Choose one from the library.'));
+      if (!rows.length) this.live.append(M.el('p', {class:'hint'}, 'No models running. Choose a model to start Chat.'));
     }
   }
   window.ConversationsWorkspace = ConversationsWorkspace;

@@ -61,6 +61,7 @@ def test_available_model_starts_in_chat_without_library_navigation_and_preserves
     app, page, model, starts, _current, _inventory = inline_models
     open_picker(app, page)
     expect(page.locator('#chat-model-list button').first).to_have_text('Add New Model (Model Library)')
+    expect(page.locator('#conversation-models')).to_contain_text('No models running. Choose a model to start Chat.')
     expect(page.locator('#chat-model-list')).not_to_contain_text('Encoder')
     page.get_by_role('button', name='Close', exact=True).click()
     expect(page.locator('#ask')).to_be_visible()
