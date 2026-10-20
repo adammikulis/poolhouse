@@ -33,7 +33,6 @@ EXTRA_FILES = (
     'poolhouse/ingest/gold.py',
     'poolhouse/ingest/imports.py',
     'poolhouse/ingest/judge.py',
-    'poolhouse/ingest/migrate.py',
     'poolhouse/ingest/progress.py',
     'poolhouse/ingest/reads.py',
     'poolhouse/ingest/run.py',

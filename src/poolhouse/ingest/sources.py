@@ -11,7 +11,14 @@ from typing import Any
 from poolhouse.hub.naming import pretty_name
 from poolhouse.ingest.fold import fold_source
 from poolhouse.ingest.progress import GIVE_UP, Progress
-from poolhouse.ingest.reads import _read_json, reads_beside, reads_path, tokens_of, units_of
+from poolhouse.ingest.reads import (
+    Damaged,
+    _read_json,
+    reads_beside,
+    reads_path,
+    tokens_of,
+    units_of,
+)
 from poolhouse.log import say
 
 __all__ = ["Source", "Sources", "run_attrs", "show", "sources"]
@@ -72,6 +79,20 @@ class Sources:
     def __init__(self, out: str | Path) -> None:
         self.out = Path(out).expanduser()
         self.progress = Progress(Progress.beside(self.out))
+
+    def validate(self) -> None:
+        """Validate every persisted extraction before folding any source into the store."""
+        for slug in self._slugs():
+            held = _read_json(reads_path(self.out, slug))
+            if not isinstance(held, dict):
+                raise Damaged("Unsupported ingest reads; start a fresh current store.")
+            for key, row in held.items():
+                if (not isinstance(row, dict) or row.get("unit") != key or not key
+                        or row.get("source") != slug
+                        or not isinstance(row.get("extracted"), dict)
+                        or not isinstance(row.get("pages"), list)
+                        or any(type(page) is not int for page in row["pages"])):
+                    raise Damaged("Unsupported ingest reads; start a fresh current store.")
 
     def sources(self) -> list[Source]:
         """Every source with reads or progress, by slug."""
