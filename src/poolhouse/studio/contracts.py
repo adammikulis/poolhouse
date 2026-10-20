@@ -9,6 +9,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from typing import Any
 
+from poolhouse.studio import record_ops
 from poolhouse.studio.catalog import node_spec
 from poolhouse.studio.record_coverage import coverage_errors
 
@@ -27,7 +28,8 @@ def _finite(value: Any) -> bool:
     return value is None or isinstance(value, (str, int, bool))
 
 
-def _parameters(values: Any, schema: dict) -> dict:
+def _parameters(values: Any, spec: dict) -> dict:
+    schema = spec["parameters"]
     if not isinstance(values, dict):
         raise ValueError("Parameters must be an object")
     fields = schema.get("properties", {})
@@ -36,7 +38,7 @@ def _parameters(values: Any, schema: dict) -> dict:
     if set(values) - set(fields):
         raise ValueError(f"Unknown parameter: {sorted(set(values) - set(fields))[0]}")
     result = {}
-    types = {"string": str, "number": (int, float), "integer": int, "boolean": bool}
+    types = {"string": str, "number": (int, float), "integer": int, "boolean": bool, "object": dict}
     for key, field in fields.items():
         value = deepcopy(values.get(key, field.get("default")))
         if not isinstance(value, types[field["type"]]) or (field["type"] in ("number", "integer") and isinstance(value, bool)):
@@ -48,6 +50,8 @@ def _parameters(values: Any, schema: dict) -> dict:
             if bound in field and fails(value, field[bound]):
                 raise ValueError(f"Parameter outside range: {key}")
         result[key] = value
+    if spec['type'] in {'record.map', 'record.if'}:
+        record_ops.parameters(spec['type'], result['controls'])
     return result
 
 
@@ -220,7 +224,7 @@ def _validate_expanded(graph: dict, capabilities: set[str] | None, authorize: Ca
         try:
             spec = node_spec(node.get("type", ""), node.get("version", 1))
             node["version"] = spec["version"]
-            node["parameters"] = _parameters(node.get("parameters", {}), spec["parameters"])
+            node["parameters"] = _parameters(node.get("parameters", {}), spec)
             specs[identifier] = spec
             if capabilities is not None and set(spec["capabilities"]) - capabilities:
                 error(identifier, "dependency", "Required capabilities are unavailable")

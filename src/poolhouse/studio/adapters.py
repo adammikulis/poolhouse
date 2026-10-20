@@ -12,6 +12,7 @@ from poolhouse.files import write_json
 from poolhouse.home import machine_id
 from poolhouse.serve.python_requirements import missing_mlx
 
+from . import record_ops
 from .catalog import node_spec
 from .decision_models import source as decision_source
 from .decisions import parameters as decision_parameters, parse_record, route
@@ -75,6 +76,32 @@ def governed_tool(name: str, arguments: dict, context: dict) -> Any:
             mcp.checked(function, arguments)
             return function(**arguments)
     raise ValueError('The selected tool is not installed')
+
+
+def _parameter_errors(nodes: list[dict]) -> list[dict]:
+    schema_errors = []
+    for node in nodes:
+        if node['type'] in {'record.map', 'record.if'}:
+            try:
+                record_ops.parameters(node['type'], node.get('parameters', {}).get('controls'))
+            except (ValueError, TypeError) as error:
+                schema_errors.append({'node': node['id'], 'code': 'parameter', 'message': str(error)})
+        if node['type'] in ('decision.predict', 'guard.injection', 'decision.route'):
+            try:
+                decision_parameters(node['type'], node.get('parameters', {}))
+            except (ValueError, TypeError, AttributeError) as error:
+                schema_errors.append({'node': node['id'], 'code': 'parameter', 'message': str(error)})
+        if node['type'] == 'generate.record':
+            try:
+                generation_parameters(node.get('parameters', {}))
+            except (ValueError, TypeError) as error:
+                schema_errors.append({'node': node['id'], 'code': 'parameter', 'message': str(error)})
+        if node['type'] == 'generate.structured':
+            try:
+                response_schema(node.get('parameters', {}).get('json_schema'))
+            except (ValueError, TypeError, AttributeError) as error:
+                schema_errors.append({'node': node['id'], 'code': 'parameter', 'message': str(error)})
+    return schema_errors
 
 
 class Adapters:
@@ -199,24 +226,8 @@ class Adapters:
         return errors
 
     def validate(self, nodes: list[dict]) -> list[dict]:
-        schema_errors = []
-        for node in nodes:
-            if node['type'] in ('decision.predict', 'guard.injection', 'decision.route'):
-                try:
-                    decision_parameters(node['type'], node.get('parameters', {}))
-                except (ValueError, TypeError, AttributeError) as error:
-                    schema_errors.append({'node': node['id'], 'code': 'parameter', 'message': str(error)})
-            if node['type'] == 'generate.record':
-                try:
-                    generation_parameters(node.get('parameters', {}))
-                except (ValueError, TypeError) as error:
-                    schema_errors.append({'node': node['id'], 'code': 'parameter', 'message': str(error)})
-            if node['type'] == 'generate.structured':
-                try:
-                    response_schema(node.get('parameters', {}).get('json_schema'))
-                except (ValueError, TypeError, AttributeError) as error:
-                    schema_errors.append({'node': node['id'], 'code': 'parameter', 'message': str(error)})
-        workers = [node for node in nodes if node['type'] not in ('dataset', 'model', 'prompt', 'tools.call', 'stream.record', 'decision.route')]
+        schema_errors = _parameter_errors(nodes)
+        workers = [node for node in nodes if node['type'] not in ('dataset', 'model', 'prompt', 'tools.call', 'stream.record', 'decision.route', 'record.map', 'record.if')]
         if not workers:
             return schema_errors
         environment = self.runner.environment
@@ -258,6 +269,8 @@ class Adapters:
 
     def immediate(self, node: dict, inputs: dict, context: dict) -> dict | None:
         kind = node['type']
+        if kind in {'record.map', 'record.if'}:
+            return record_ops.execute(kind, node['parameters']['controls'], inputs['record'])
         if kind == 'decision.route':
             return route(node.get('parameters', {}), inputs['decision'])
         if kind == 'stream.record':

@@ -65,9 +65,19 @@ def _artifacts(node: dict, values: dict, direction: str) -> dict:
     return result
 
 
-def _valid_gate(value: Any) -> bool:
-    return (isinstance(value, dict) and set(value) == {"allow", "reason"}
-            and type(value["allow"]) is bool and isinstance(value["reason"], str) and value["reason"] in {"allow", "review", "block"})
+def _gate_names(node: dict) -> list[str]:
+    return [port['name'] for port in node_spec(node['type'], node.get('version', 1))['outputs'] if port['type'] == 'gate']
+
+
+def _valid_gates(node: dict, outputs: dict) -> bool:
+    names = _gate_names(node)
+    values = [outputs.get(name) for name in names]
+    valid = all(isinstance(value, dict) and set(value) == {'allow', 'reason'}
+                and type(value['allow']) is bool and isinstance(value['reason'], str)
+                and value['reason'] in names for value in values)
+    return (bool(names) and valid and sum(value['allow'] for value in values) == 1
+            and len({value['reason'] for value in values}) == 1
+            and all(value['allow'] == (name == value['reason']) for name, value in zip(names, values, strict=True)))
 
 
 class WorkflowEngine:
@@ -268,8 +278,9 @@ class WorkflowEngine:
             if not self._control_authorized(run, control["source"]["node"]):
                 state.update(state="blocked", error="A control resource is no longer authorized.")
                 return False
+            source_node = next(node for node in run['graph']['nodes'] if node['id'] == control['source']['node'])
             gate = source["outputs"].get(control["source"]["port"])
-            if not _valid_gate(gate):
+            if control['source']['port'] not in _gate_names(source_node) or not _valid_gates(source_node, source['outputs']):
                 state.update(state="blocked", error="A control gate is invalid.")
                 return False
             if not gate["allow"]:
@@ -352,7 +363,7 @@ class WorkflowEngine:
                 state.update(state="done", outputs=cache["outputs"], reused_from=cache["run"])
                 self._completed(run, node, state, inputs)
                 return
-        immediate = self.adapters.immediate(node, inputs, context) if node["type"] in {"dataset", "model", "prompt", "stream.record", "decision.route"} else None
+        immediate = self.adapters.immediate(node, inputs, context) if node["type"] in {"dataset", "model", "prompt", "stream.record", "decision.route", "record.map", "record.if"} else None
         if immediate is not None:
             if spec.get("side_effects"):
                 raise ValueError("Side effects require a durable child job.")
@@ -407,14 +418,8 @@ class WorkflowEngine:
             expected -= {"model", "checkpoint"}
         if not expected <= state["outputs"].keys():
             raise ValueError("The worker omitted a declared output.")
-        gates = [p["name"] for p in node_spec(node["type"], node.get("version", 1))["outputs"] if p["type"] == "gate"]
-        if gates:
-            values = [state["outputs"].get(name) for name in gates]
-            if (not all(_valid_gate(value) for value in values)
-                    or sum(value["allow"] for value in values) != 1
-                    or len({value["reason"] for value in values}) != 1
-                    or any(value["allow"] != (name == value["reason"]) for name, value in zip(gates, values, strict=True))):
-                raise ValueError("The worker returned invalid or ambiguous control gates.")
+        if _gate_names(node) and not _valid_gates(node, state['outputs']):
+            raise ValueError("The worker returned invalid or ambiguous control gates.")
         state["artifacts"] = _artifacts(node, state["outputs"], "outputs")
         state["lineage"] = {"run": run["id"], "node": node["id"], "inputs": digest(inputs),
                             "implementation": node_spec(node["type"], node.get("version", 1))["implementation"]}
