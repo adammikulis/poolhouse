@@ -275,7 +275,10 @@
     .studio-heading .studio-command-bar { order: 2; width: 100%; flex-wrap: wrap !important; }
     .studio-command summary { padding-inline: 6px; font-size: 12px; }
     .studio-location-row { flex-wrap: wrap; gap: 6px; }
-    .studio-group-path { flex-basis: 100%; }
+    .studio-group-path { flex-basis: 100%; overflow: hidden !important; }
+    .studio-group-path > button:not(.studio-group-back) { max-width: 96px; flex-shrink: 1; }
+    .studio-group-path > :nth-child(n+3):not([aria-current]) { display: none; }
+    .studio-group-path [aria-current] { flex: 1; min-width: 64px; }
     .studio-workspace { gap: 6px; }
     .studio-toolbar {
       gap: 6px;

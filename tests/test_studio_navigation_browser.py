@@ -89,6 +89,8 @@ def test_group_navigation_is_compact_and_interface_controls_stay_in_inspector(st
     named_group(page, 'Reusable validation')
     nav = page.get_by_role('navigation', name='Canvas location', exact=True)
     expect(nav.get_by_role('button', name='Back to Untitled experiment', exact=True)).to_be_in_viewport()
+    expect(nav.locator('[aria-current="location"]')).to_be_in_viewport()
+    assert nav.locator('[aria-current="location"]').bounding_box()['width'] >= 64
     assert nav.get_by_role('textbox').count() == 0
     expect(page.locator('.studio-inspector').get_by_label('Group name', exact=True)).to_be_visible()
     for summary in page.locator('.studio-command > summary').all():
