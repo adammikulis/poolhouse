@@ -29,6 +29,7 @@ from poolhouse.platform import on_quit, private_file
 from poolhouse.serve import broker_runtime, guarded, provenance
 from poolhouse.serve.backend import LlamaServerBackend, ServerFailed, ServerInfo, ServerSpec
 from poolhouse.serve.broker import IDLE_S, Ask, Broker, BrokerError, Grant, who
+from poolhouse.serve.broker_lifecycle import retire
 from poolhouse.serve.events import Caller, Growth
 from poolhouse.serve.leases import lease_file
 from poolhouse.serve.ports import DEFAULT_HOST
@@ -111,6 +112,17 @@ class _Server(socketserver.ThreadingTCPServer):
             body["options"].pop("iq", None)
         if op == "ping":
             return {"ok": True, "pid": os.getpid(), "runtime": self.runtime}
+        if op == "idle-retire":
+            if connected is None or not connected():
+                raise PermissionError("Only a connected process may request idle broker retirement.")
+            with self.broker._cond:
+                if not retire(self.broker):
+                    return {"ok": True, "retiring": False}
+                self.closing.set()
+            threading.Thread(target=self.shutdown, daemon=True).start()
+            return {"ok": True, "retiring": True}
+        if self.closing.is_set() and op != "status":
+            raise RuntimeError("The broker is retiring; reconnect to its replacement.")
         if op == "lease":
             ask = Ask.from_json(body)
             return {"ok": True, **self.broker.lease(ask, timeout=float(body["wait_s"])).as_dict()}
