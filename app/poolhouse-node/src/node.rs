@@ -183,6 +183,10 @@ impl Node {
                 }
             }
         }
+        for lease in node.leases.table.leases.clone() {
+            let tree = node.boards.get(&lease.board).map(|host| host.names.tree(&lease.name)).unwrap_or_default();
+            node.leases.holders.note(&lease, &tree, node.leases.now())?;
+        }
         node.enrol_self();
         Ok(node)
     }
@@ -462,12 +466,16 @@ impl Node {
         Ok(())
     }
 
-    /// Write the state of the session ``name`` that just ended to its board as an identity entry the node writes for itself: held to the
-    /// log less its last stretch, and not to a share, since the session's registration was.
-    pub fn write_ended(&mut self, board: &str, name: &str) -> Result<()> {
+    /// Write the state of the session ``name`` that just ended to its board as an identity entry the node writes for itself, carrying who
+    /// ended it (``by``) and what that released (``detail``): held to the log less its last stretch, and not to a share, since the
+    /// session's registration was.
+    pub fn write_ended(&mut self, board: &str, name: &str, (by, detail): (&str, &str)) -> Result<()> {
         let hosted = self.hosted(board)?;
         let ident = hosted.names.get(name).cloned().ok_or_else(|| Error::Denied("no such session".into()))?;
-        hosted.board.append_node(Kind::Identity, name, identity_body(name, &ident)?, "")?;
+        let mut body = identity_body(name, &ident)?;
+        body["retired_by"] = json!(by);
+        body["detail"] = json!(detail.chars().filter(|c| !c.is_control()).take(300).collect::<String>());
+        hosted.board.append_node(Kind::Identity, name, body, "")?;
         Ok(())
     }
 

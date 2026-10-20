@@ -56,8 +56,8 @@ fn a_session_that_ends_loses_its_token_and_its_subagents_and_retires_nobody_else
     let state = |who: &str| all.iter().find(|a| a["name"] == who).map(|a| (a["retired"].clone(), a["retired_reason"].clone())).unwrap();
     assert_eq!((state(&lead), state(&kid_name)), ((json!(true), json!("done")), (json!(true), json!("done"))));
     assert_eq!(code(&req(&mut n, "retire", "demo", &lt, json!({}))), "denied", "a retired token retires nothing");
-    let audit = ok(req(&mut n, "read", "demo", &ot, json!({"kind": "audit"})));
-    assert!(audit["entries"].as_array().unwrap().iter().any(|e| e["fields"]["event"] == "retire" && e["fields"]["subject"] == lead.as_str()));
+    let identities = ok(req(&mut n, "read", "demo", &ot, json!({"kind": "identity"})));
+    assert!(identities["entries"].as_array().unwrap().iter().any(|e| e["fields"]["retired"] == true && e["fields"]["name"] == lead.as_str() && e["fields"]["retired_by"] == lead.as_str()));
 }
 
 #[test]
@@ -127,8 +127,8 @@ fn idle_sessions_are_marked_and_are_retired_after_a_day() {
     assert_eq!((find(&stale)["retired"].clone(), find(&stale)["retired_reason"].clone()), (json!(true), json!("idle")), "idle for a day: retired by the node");
     let me = me();
     ok(start(&mut n, &me, "claude-code", "newcomer"));
-    let audit = ok(req(&mut n, "read", "demo", &busy_token, json!({"kind": "audit"})));
-    assert!(audit["entries"].as_array().unwrap().iter().any(|e| e["fields"]["event"] == "retire" && e["fields"]["subject"] == stale.as_str()), "the node says it retired it");
+    let identities = ok(req(&mut n, "read", "demo", &busy_token, json!({"kind": "identity"})));
+    assert!(identities["entries"].as_array().unwrap().iter().any(|e| e["fields"]["retired"] == true && e["fields"]["name"] == stale.as_str() && e["fields"]["retired_reason"] == "idle"), "the node says it retired it");
 }
 
 #[test]

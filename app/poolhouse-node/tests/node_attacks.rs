@@ -77,8 +77,9 @@ fn one_session_ending_and_registering_again_is_stopped_at_its_share_and_the_log_
     assert_eq!(n.host("demo").unwrap().names.get(&name).map(|i| i.retired), Some(true), "a registration the log refused leaves the session as it was: ended");
     let all = rows_of(&mut n, "demo");
     assert!(all.len() <= 20, "the cycling took a quarter of the log at most: {} rows", all.len());
-    let audits = all.iter().filter(|r| r.kind == Kind::Audit && r.body["event"] == "retire" && r.body["subject"] == json!(name)).count();
-    assert_eq!(audits, 1, "a session's ending is audited once however often it ends");
+    let endings = all.iter().filter(|r| r.kind == Kind::Identity && r.body["name"] == json!(name) && r.body["retired"] == json!(true) && r.body["retired_by"] == json!(name)).count();
+    assert!(endings >= 1, "a session's ending is an identity entry that names who ended it");
+    assert!(all.iter().all(|r| !(r.kind == Kind::Audit && r.body["event"] == "retire")), "and no audit entry besides it");
     ok(post(&mut n, "demo", &honest, "still here"));
     assert!(n.host("demo").unwrap().board.seal().is_ok(), "the log can still be signed");
     ok(req_from(&mut n, &me(), "retire", "demo", &honest, json!({"target": "", "reason": "done"})));

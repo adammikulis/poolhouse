@@ -11,6 +11,10 @@ pub const LOCAL: &str = "local";
 pub const CLAIM_KINDS: [&str; 7] = ["worktree", "branch", "area", "port", "server", "install", "task"];
 /// Claim kinds named by an absolute path; two of them conflict when one path contains the other, whatever their kinds.
 pub const PATH_CLAIMS: [&str; 3] = ["worktree", "install", "area"];
+/// Claim kinds of things that exist on one device only (a path of its disk, a port or a server of its network, an area spelled under
+/// its repository's path): the device's table holds them and no board entry says so. `branch` is a name any device can claim and
+/// `task` is read by the other devices of the pool, so both are entries.
+pub const DEVICE_CLAIMS: [&str; 5] = ["worktree", "area", "port", "server", "install"];
 pub const MAX_RESOURCES: usize = 8;
 /// The longest tag a request names itself with.
 pub const MAX_TAG: usize = 64;
@@ -66,9 +70,14 @@ impl Resource {
         !matches!(self, Resource::CpuSlots { .. } | Resource::MemoryMb { .. })
     }
 
-    /// Claims of these kinds are about the pool's shared repository, not one device's disk.
+    /// Claims of this kind are about the pool's shared repository, not one device's disk.
     pub fn pool_wide(&self) -> bool {
-        matches!(self, Resource::Claim { kind, .. } if kind == "branch" || kind == "area")
+        matches!(self, Resource::Claim { kind, .. } if kind == "branch")
+    }
+
+    /// Whether this is a claim of a thing that exists on one device only (`DEVICE_CLAIMS`).
+    pub fn device_only(&self) -> bool {
+        matches!(self, Resource::Claim { kind, .. } if DEVICE_CLAIMS.contains(&kind.as_str()))
     }
 
     /// The name that identifies the contended thing: two resources with equal keys conflict
@@ -229,6 +238,11 @@ impl Lease {
     pub fn party(&self) -> (&str, &str) {
         (&self.holder, &self.tag)
     }
+
+    /// Whether the board is told when this lease is granted or ends: not a quiet one, and not one that holds device-only claims alone.
+    pub fn on_board(&self) -> bool {
+        !self.quiet && !self.resources.iter().all(Resource::device_only)
+    }
 }
 
 /// What admission decides, in one place so it is configuration, not code.
@@ -255,6 +269,8 @@ pub struct Config {
     pub max_leases: usize,
     /// Leases, held or queued, the sessions of one process tree keep together.
     pub max_leases_per_lineage: usize,
+    /// Worktree claims, by distinct path and holder, the sessions of one process tree have on record at once (`holders::Holders`).
+    pub max_worktree_records: usize,
 }
 
 impl Default for Config {
@@ -262,7 +278,7 @@ impl Default for Config {
         let cores = std::thread::available_parallelism().map_or(1, |n| n.get() as u32);
         Config {
             cpu_slots: cores, memory_mb: 0, max_wait_s: 600, background_share_percent: 50, unknown_background_s: 180,
-            queue_patience_s: 60, default_ttl_s: 300, max_ttl_s: 86_400, max_leases_per_holder: 512, max_leases: 4096, max_leases_per_lineage: 1024,
+            queue_patience_s: 60, default_ttl_s: 300, max_ttl_s: 86_400, max_leases_per_holder: 512, max_leases: 4096, max_leases_per_lineage: 1024, max_worktree_records: 1024,
         }
     }
 }
@@ -273,7 +289,7 @@ impl Config {
     pub fn parse(bytes: &[u8]) -> Option<Config> {
         let doc: serde_json::Value = serde_json::from_slice(bytes).ok()?;
         let cfg: Config = doc.is_object().then(|| serde_json::from_value(doc).ok()).flatten()?;
-        (cfg.max_ttl_s >= 1 && cfg.background_share_percent <= 100 && cfg.max_leases_per_holder >= 1 && cfg.max_leases >= 1 && cfg.max_leases_per_lineage >= 1).then_some(cfg)
+        (cfg.max_ttl_s >= 1 && cfg.background_share_percent <= 100 && cfg.max_leases_per_holder >= 1 && cfg.max_leases >= 1 && cfg.max_leases_per_lineage >= 1 && cfg.max_worktree_records >= 1).then_some(cfg)
     }
 }
 
