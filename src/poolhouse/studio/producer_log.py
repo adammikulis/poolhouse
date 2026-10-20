@@ -1,4 +1,4 @@
-"""One-attempt input publication, with deduplication across producer replacements."""
+"""Attempt-bound input publication, with deduplication across producer replacements."""
 from __future__ import annotations
 
 import copy
@@ -42,9 +42,9 @@ class ProducerLog:
     SDK. The receipt callback independently authorizes and verifies the original inbox tuple.
     """
 
-    def __init__(self, store, *, current, receipt):
+    def __init__(self, store, *, current, receipt, negative):
         self.store, self.graph, self.lock = store, store.graph, store.lock
-        self.current, self.receipt = current, receipt
+        self.current, self.receipt, self.negative = current, receipt, negative
         self.instance = secrets.token_hex(32)
 
     def _allowed(self, binding):
@@ -83,7 +83,8 @@ class ProducerLog:
             pointer = self.graph.get_doc(pending)
             if pointer:
                 raise Conflict('An earlier producer publication must be reconciled before another event.')
-            row = {**fixed, 'state': 'queued', 'timestamp': str(int(time.time())), 'not_sent': True}
+            row = {**fixed, 'state': 'queued', 'timestamp': str(int(time.time())), 'not_sent': True,
+                   'revision': 0, 'command': None, 'command_not_attempted': True}
             self._put(key, row)
             self.graph.put_doc(pending, {'key': key, 'binding': copy.deepcopy(binding)})
             self._allowed(binding)
@@ -101,24 +102,31 @@ class ProducerLog:
                 raise PermissionError('The publication bytes no longer match its intent.')
             return copy.deepcopy(row)
 
-    def claim(self, binding, event_id):
+    def claim(self, binding, event_id, *, retry_key=None):
         """Return send permission once; nonqueued rows require the caller's existing read authority."""
         key, pending = self._keys(binding, event_id)
         with self.lock, self.graph.transaction():
             row = self.get(binding, event_id)
-            if row['state'] != 'queued':
+            if row['state'] != 'queued' or row.get('command') != retry_key:
+                return row, False
+            if retry_key is not None:
+                command = self.graph.get_doc(self._command_key(binding, event_id, retry_key))
+                if not self._same_command(command, row):
+                    return row, False
+            elif row.get('revision') != 0:
                 return row, False
             if self.graph.get_doc(pending) != {'key': key, 'binding': binding}:
                 raise PermissionError('The pending publication identity changed.')
-            if row.get('not_sent') is not True or 'attempt' in row:
+            if (row.get('command_not_attempted') is not True or 'attempt' in row
+                    or (retry_key is None and row.get('not_sent') is not True)):
                 row.update(state='interrupted', not_sent=False, reason='Publication attempt evidence requires reconciliation.')
                 return self._put(key, row), False
             try:
                 self._allowed(binding)
             except (PermissionError, OSError, ValueError):
-                row.update(state='blocked', not_sent=True, reason='Publication authority is unavailable.')
+                row.update(state='blocked', reason='Publication authority is unavailable.')
                 return self._put(key, row), False
-            row.update(state='intent', not_sent=False,
+            row.update(state='intent', not_sent=False, command_not_attempted=False,
                        attempt={'instance': self.instance, 'token': secrets.token_hex(32)})
             self._put(key, row)
             # A revocation race rolls back the intent; it cannot leave an exposed claim.
@@ -145,23 +153,24 @@ class ProducerLog:
                 if authorize(copy.deepcopy(row)) is not True:
                     raise PermissionError('Source-owner authorization changed.')
                 return row
-            if row['state'] not in {'queued', 'blocked'} or row.get('not_sent') is not True or 'attempt' in row:
+            retry_command = (row.get('command') is not None and self._same_command(
+                self.graph.get_doc(self._command_key(binding, event_id, row['command'])), row))
+            if (row['state'] not in {'queued', 'blocked'} or 'attempt' in row
+                    or row.get('command_not_attempted') is not True
+                    or (row.get('not_sent') is not True and not retry_command)):
                 raise Conflict('An attempted publication cannot be discarded as unsent.')
             if self.graph.get_doc(pending) != {'key': key, 'binding': binding}:
                 raise PermissionError('The pending publication identity changed.')
-            row.update(state='discarded', reason='The source owner abandoned this unattempted publication.')
+            row.update(state='discarded', command_not_attempted=False,
+                       cancelled_command={'key': row['command'], 'revision': row['revision']},
+                       reason='The source owner abandoned this unattempted command.')
             self._put(key, row)
             self.graph.delete_doc(pending)
             if authorize(copy.deepcopy(row)) is not True:
                 raise PermissionError('Source-owner authorization changed.')
             return copy.deepcopy(row)
 
-    def reconcile(self, binding, event_id):
-        """Only actual exact inbox evidence can settle an attempted publication."""
-        key, pending = self._keys(binding, event_id)
-        row = self.get(binding, event_id)
-        if row['state'] not in {'intent', 'interrupted'}:
-            return row
+    def _settle(self, binding, event_id, row):
         proof = self.receipt(copy.deepcopy(row))
         expected = {'source': binding['source'], 'generation': binding['generation'],
                     'event_id': event_id, 'wire_digest': row['wire_digest']}
@@ -169,18 +178,110 @@ class ProducerLog:
                 or any(proof.get(name) != value for name, value in expected.items())
                 or not isinstance(proof['id'], str) or not re.fullmatch('[0-9a-f]{64}', proof['id'])
                 or proof['status'] not in {'queued', 'running', 'done', 'failed', 'interrupted', 'cancelled', 'quarantined'}):
-            return self.interrupt(binding, event_id, row.get('attempt'))
-        with self.lock, self.graph.transaction():
-            actual = self.get(binding, event_id)
-            if actual != row:
-                return actual
-            actual.update(state='done', receipt=copy.deepcopy(proof))
-            self._put(key, actual)
-            pointer = self.graph.get_doc(pending)
-            if pointer != {'key': key, 'binding': binding}:
-                raise PermissionError('The pending publication identity changed.')
+            return None
+        key, pending = self._keys(binding, event_id)
+        row.update(state='done', receipt=copy.deepcopy(proof), command_not_attempted=False)
+        self._put(key, row)
+        if self.graph.get_doc(pending) == {'key': key, 'binding': binding}:
             self.graph.delete_doc(pending)
-            return copy.deepcopy(actual)
+        return copy.deepcopy(row)
+
+    def reconcile(self, binding, event_id):
+        """Actual inbox evidence wins even after a definitive rejection or queued retry."""
+        with self.lock, self.graph.transaction():
+            row = self.get(binding, event_id)
+            if row['state'] in {'done', 'discarded'} or row.get('not_sent') is True:
+                return row
+            settled = self._settle(binding, event_id, row)
+            return settled if settled is not None else self.interrupt(binding, event_id, row.get('attempt'))
+
+    def _negative(self, row):
+        expected = {'source': row['binding']['source'], 'generation': row['binding']['generation'],
+                    'event_id': row['event_id'], 'wire_digest': row['wire_digest'],
+                    'binding_digest': digest(row['binding']), 'attempt': row.get('attempt'),
+                    'status': 'not_admitted'}
+        actual = self.negative(copy.deepcopy(row))
+        attempt = expected['attempt']
+        if (not isinstance(attempt, dict) or set(attempt) != {'instance', 'token'}
+                or any(not isinstance(value, str) or not re.fullmatch('[0-9a-f]{64}', value)
+                       for value in attempt.values())
+                or actual != expected or not isinstance(actual, dict)):
+            raise Conflict('Definitive receiver evidence for this exact attempt is required.')
+        return copy.deepcopy(actual)
+
+    def reject(self, binding, event_id, attempt):
+        """The trusted receiver checks its marker and absence of inbox in this same transaction."""
+        key, pending = self._keys(binding, event_id)
+        with self.lock, self.graph.transaction():
+            row = self.get(binding, event_id)
+            settled = self._settle(binding, event_id, row)
+            if settled is not None:
+                return settled
+            if row['state'] == 'rejected' and row.get('attempt') == attempt:
+                self._negative(row)
+                return row
+            if row['state'] not in {'intent', 'interrupted'} or row.get('attempt') != attempt:
+                raise Conflict('The publication attempt changed.')
+            if self.graph.get_doc(pending) != {'key': key, 'binding': binding}:
+                raise PermissionError('The pending publication identity changed.')
+            evidence = self._negative(row)
+            row.update(state='rejected', not_sent=False, rejection=evidence)
+            self._put(key, row)
+            self.graph.delete_doc(pending)
+            self._negative(row)
+            return copy.deepcopy(row)
+
+    @staticmethod
+    def _command_key(binding, event_id, retry_key):
+        if not isinstance(retry_key, str) or not re.fullmatch('[0-9a-f]{32}', retry_key):
+            raise ValueError('A stable retry command identity is required.')
+        return 'studio.producer-retry:' + digest({'source': binding['source'], 'event': event_id, 'retry': retry_key})
+
+    @staticmethod
+    def _same_command(command, row):
+        if not isinstance(command, dict) or set(command) != {'row'} or not isinstance(command['row'], dict):
+            return False
+        original = command['row']
+        fields = ('binding', 'event_id', 'raw', 'wire_digest', 'revision', 'command', 'history')
+        return (original.get('state') == 'queued' and original.get('not_sent') is False
+                and original.get('command_not_attempted') is True
+                and all(original.get(name) == row.get(name) for name in fields))
+
+    def retry(self, binding, event_id, retry_key):
+        """Queue an explicit command; repeated keys return its original snapshot, never send authority."""
+        key, pending = self._keys(binding, event_id)
+        command_key = self._command_key(binding, event_id, retry_key)
+        with self.lock, self.graph.transaction():
+            self._allowed(binding)
+            row = self.get(binding, event_id)
+            previous = self.graph.get_doc(command_key)
+            if previous:
+                if previous['row']['binding'] != binding:
+                    raise Conflict('This retry command belongs to another binding.')
+                self._allowed(binding)
+                return copy.deepcopy(previous['row'])
+            settled = self._settle(binding, event_id, row)
+            if settled is not None:
+                self._allowed(binding)
+                return settled
+            if row['state'] != 'rejected':
+                raise Conflict('Only a definitively rejected publication can be retried.')
+            original = copy.deepcopy(row)
+            evidence = self._negative(original)
+            if self.graph.get_doc(pending):
+                raise Conflict('An earlier producer publication must be reconciled first.')
+            history = [*row.get('history', []), {'attempt': row['attempt'], 'rejection': evidence,
+                                                 'revision': row['revision'], 'command': row['command']}]
+            row.pop('attempt')
+            row.pop('rejection')
+            row.update(state='queued', revision=row['revision'] + 1, command=retry_key,
+                       command_not_attempted=True, history=history, timestamp=str(int(time.time())))
+            self._put(key, row)
+            self.graph.put_doc(command_key, {'row': row})
+            self.graph.put_doc(pending, {'key': key, 'binding': copy.deepcopy(binding)})
+            self._negative(original)
+            self._allowed(binding)
+            return copy.deepcopy(row)
 
     def recover(self, binding, event_id):
         """Recovery addresses an exact indexed publication and never resubmits it."""
