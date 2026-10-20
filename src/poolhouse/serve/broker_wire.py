@@ -22,7 +22,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, jobs, optional
+from poolhouse import home, jobs, maintenance, optional
 from poolhouse.files import read_json, write_json
 from poolhouse.lock import Busy, only_one
 from poolhouse.log import say as say_out
@@ -417,14 +417,18 @@ def _reach(*, start: bool) -> dict[str, Any]:
         return record
     if not start:
         raise BrokerError("no broker is running on this machine")
-    jobs.detach("poolhouse.serve.cli", ["broker"], log=log_path())
-    deadline = time.monotonic() + START_WAIT_S
-    while time.monotonic() < deadline:
+    with maintenance.read():
         record = _answering()
         if record is not None:
             return record
-        time.sleep(0.2)
-    raise BrokerError(f"the broker did not come up within {START_WAIT_S:.0f}s; see {log_path()}")
+        jobs.detach("poolhouse.serve.cli", ["broker"], log=log_path())
+        deadline = time.monotonic() + START_WAIT_S
+        while time.monotonic() < deadline:
+            record = _answering()
+            if record is not None:
+                return record
+            time.sleep(0.2)
+        raise BrokerError(f"the broker did not come up within {START_WAIT_S:.0f}s; see {log_path()}")
 
 
 def running() -> int | None:

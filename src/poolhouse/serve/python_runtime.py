@@ -4,6 +4,7 @@ from __future__ import annotations
 import subprocess
 import sys
 
+from poolhouse import maintenance
 from poolhouse.fleet.environment import Environment
 from poolhouse.fleet.managed_compute import process_environment
 from poolhouse.fleet.runtime_paths import default_root
@@ -23,6 +24,7 @@ if sys.argv[2]=='mlx-tree':
 """
 
 
+@maintenance.reading
 def command(engine: str) -> list[str]:
     """Return the fixed engine module under its verified compute interpreter."""
     import json

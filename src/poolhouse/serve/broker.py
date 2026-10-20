@@ -680,6 +680,7 @@ class Broker(BrokerHolds):
         return {"stopped": True, "port": port, "model": held.model}
 
     # ------------------------------------------------------------------ upkeep
+    @admitted
     def reap(self) -> list[Held]:
         """Drop every lease, wait and claim whose pid has ended, forget servers that have
         died, and stop the idle ones of ours. Returns the servers stopped."""

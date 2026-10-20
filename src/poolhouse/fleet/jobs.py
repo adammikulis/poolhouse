@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from poolhouse import maintenance
 from poolhouse.credentials import child_environment
 from poolhouse.log import say
 from poolhouse.platform import process_group_kwargs, stop_gently, stop_pid
@@ -460,6 +461,7 @@ class JobRunner:
                 proof.close()
         return proc
 
+    @maintenance.reading
     def _run_one(self, job: Job) -> None:
         log = self.log_path(job.id)
         log.parent.mkdir(parents=True, exist_ok=True)

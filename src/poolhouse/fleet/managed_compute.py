@@ -5,6 +5,7 @@ import subprocess
 import threading
 import time
 
+from poolhouse import maintenance
 from poolhouse.credentials import child_environment
 
 _LOCK = threading.Lock()
@@ -32,6 +33,7 @@ def process_environment():
     return child
 
 
+@maintenance.reading
 def report(environment):
     """Return cached capabilities verified by the managed job interpreter."""
     if not environment.exists:

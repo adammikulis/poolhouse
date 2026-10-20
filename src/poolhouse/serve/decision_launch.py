@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
-from poolhouse import home
+from poolhouse import home, maintenance
 from poolhouse.fleet.environment import Environment
 from poolhouse.fleet.managed_compute import process_environment
 from poolhouse.log import warn
@@ -184,6 +184,7 @@ class OwnedBroker:
         self.ready = None
         self.admission_possible = False
 
+    @maintenance.reading
     def start(self) -> dict:
         if self.process is not None:
             if self.alive() and self.ready is not None:

@@ -323,6 +323,8 @@ class WorkflowEngine:
                 state.update(state="failed" if job.state == "failed" else "cancelled",
                              error=f"Child job {job.state}.")
             return
+        if getattr(self.runner, "managed_alignment_pending", False):
+            return
         context["output_dir"].mkdir(parents=True, exist_ok=True)
         spec = node_spec(node["type"], node.get("version", 1))
         dependency = getattr(self.adapters, "dependency_fingerprint", lambda node: "")(node)

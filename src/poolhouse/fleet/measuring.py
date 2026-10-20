@@ -28,7 +28,7 @@ from importlib.metadata import PackageNotFoundError, distribution, version
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, optional
+from poolhouse import home, maintenance, optional
 from poolhouse.home import machine_id
 from poolhouse.hub import room as machine_room
 from poolhouse.lock import held_by
@@ -280,6 +280,7 @@ def bench_python(environment: Environment | None) -> Path:
     return environment.python
 
 
+@maintenance.reading
 def _measures(environment: Environment) -> bool:
     """Whether ``environment``'s own interpreter imports the bench and its runs store."""
     if not environment.exists:
@@ -293,6 +294,7 @@ def _measures(environment: Environment) -> bool:
     return done.returncode == 0
 
 
+@maintenance.reading
 def detach_bench(line: Sequence[str], home: Path, python: Path) -> tuple[int, Path]:
     """Start ``python -m poolhouse.bench <line> --no-queue --detach`` and return the child's
     pid and log. ``--detach`` re-runs the command in its own session with its output in a

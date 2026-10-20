@@ -3,10 +3,15 @@ from __future__ import annotations
 
 from functools import wraps
 
+from poolhouse import maintenance
+
 
 def admitted(method):
     """Count whole calls, including native waits and background or nested callers."""
     @wraps(method)
+    def entered(broker, *args, **kwargs):
+        with maintenance.read(existing=method.__name__ in {'adopt', 'keep_leases', 'detach', 'reap'}):
+            return guarded(broker, *args, **kwargs)
     def guarded(broker, *args, **kwargs):
         with broker._cond:
             if broker._retiring:
@@ -18,7 +23,7 @@ def admitted(method):
             with broker._cond:
                 broker._active_calls -= 1
                 broker._cond.notify_all()
-    return guarded
+    return entered
 
 
 def retire(broker) -> bool:
