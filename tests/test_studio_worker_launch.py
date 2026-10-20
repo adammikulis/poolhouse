@@ -28,7 +28,7 @@ SRC = str(Path(__file__).resolve().parents[1] / 'src')
 
 def context():
     return {'permit_id': 'permit', 'request_id': 'request', 'run_id': 'run', 'node_id': 'node',
-            'request_digest': 'a' * 64, 'model_digest': 'b' * 64,
+            'request_digest': 'a' * 64, 'model_digest': 'b' * 64, 'calibration_digest': 'c' * 64,
             'broker': {'pid': os.getpid(), 'started': process_started(os.getpid()),
                        'instance': 'broker-instance', 'port': 12345}}
 
@@ -71,6 +71,8 @@ def test_real_owned_worker_receives_protected_context_and_live_proof(tmp_path):
                         (pid, started, 'other', 'request'), (pid, started, 'permit', 'other')]:
             assert runner.verify_studio_worker(job.id, *changes) is False
         current['value'] = {**expected, 'model_digest': 'c' * 64}
+        assert runner.verify_studio_worker(job.id, pid, started, 'permit', 'request') is False
+        current['value'] = {**expected, 'calibration_digest': 'd' * 64}
         assert runner.verify_studio_worker(job.id, pid, started, 'permit', 'request') is False
         current['value'] = expected
         public = json.dumps(runner.snapshot())
@@ -193,3 +195,15 @@ def test_wrapper_deadline_and_ignoring_term_child_cleanup_are_bounded(tmp_path, 
         if process is not None and process.poll() is None:
             process.kill()
             process.wait(timeout=3)
+
+
+
+@pytest.mark.parametrize('calibration', [None, '', 'g' * 64, 'c' * 63, 17])
+def test_calibration_identity_is_required_in_private_context(calibration):
+    value = context()
+    if calibration is None:
+        value.pop('calibration_digest')
+    else:
+        value['calibration_digest'] = calibration
+    with pytest.raises(LaunchInterrupted):
+        LaunchProof('job', value)

@@ -56,13 +56,13 @@ def _receive(channel):
 
 
 def _context(value):
-    fields = {'permit_id', 'request_id', 'run_id', 'node_id', 'request_digest', 'model_digest', 'broker'}
+    fields = {'permit_id', 'request_id', 'run_id', 'node_id', 'request_digest', 'model_digest', 'calibration_digest', 'broker'}
     if not isinstance(value, dict) or set(value) != fields:
         raise LaunchInterrupted('Studio launch context is unavailable')
     for key in fields - {'broker'}:
         if not isinstance(value[key], str) or not value[key] or len(value[key]) > 256:
             raise LaunchInterrupted('Invalid Studio launch identity')
-    for key in ('request_digest', 'model_digest'):
+    for key in ('request_digest', 'model_digest', 'calibration_digest'):
         if len(value[key]) != 64 or any(char not in '0123456789abcdef' for char in value[key]):
             raise LaunchInterrupted('Invalid Studio launch content identity')
     broker = value['broker']
