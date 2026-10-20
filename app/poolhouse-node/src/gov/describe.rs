@@ -5,8 +5,8 @@ use serde::Serialize;
 
 use super::act::Act;
 use super::body::{self, Body};
-use super::charter::Charter;
-use super::keys::{fingerprint_of, AdminKey, Role, Strength};
+use super::charter::{floor_class, Charter, Class};
+use super::keys::{fingerprint_of, AdminKey, Level, Role};
 use super::pool::GovPool;
 
 /// ``name`` as one line a person reads: at most 40 characters, no control character, in quotes.
@@ -33,10 +33,21 @@ fn device(g: &GovPool, fingerprint: &str) -> String {
     }
 }
 
+fn level_words(level: Level) -> &'static str {
+    match level {
+        Level::Weak => "weak, which ends a delegate and nothing else",
+        other => other.name(),
+    }
+}
+
 fn key_line(k: &AdminKey) -> String {
-    let strength = if k.strength == Strength::Strong { "strong" } else { "weak, which ends a delegate and nothing else" };
     let role = if k.role == Role::Recovery { "the recovery key" } else { "an admin" };
-    format!("{} (person {}, {strength}, {}) as {role}", quoted(&k.label), quoted(&k.person), short(&k.fingerprint()))
+    format!("{} (person {}, {}, {}) as {role}", quoted(&k.label), quoted(&k.person), level_words(k.assurance), short(&k.fingerprint()))
+}
+
+fn floors_line(f: &body::Floors) -> String {
+    let parts: Vec<String> = [("routine", f.routine), ("sensitive", f.sensitive), ("governance", f.governance)].into_iter().filter_map(|(name, level)| level.map(|l| format!("{name} acts from {}", l.shown()))).collect();
+    format!("Change which keys count: {}.", parts.join(", "))
 }
 
 fn listed_key(g: &GovPool, public: &str) -> String {
@@ -68,12 +79,32 @@ fn threshold_line(t: &body::Thresholds) -> String {
 /// The sentence a person is asked to accept a charter under: the pool and the computer it starts with.
 pub fn founding_line(c: &Charter) -> String {
     let fingerprint = c.first.device().map(|(_, f)| short(&f)).unwrap_or_default();
-    format!("Make the pool {} and put the computer {} (certificate {fingerprint}) in it.", quoted(&c.name), quoted(&c.first.name))
+    format!("Make the pool {} and put the computer {} (certificate {fingerprint}) in it. It is approved from {}.", quoted(&c.name), quoted(&c.first.name), c.floors.sensitive.shown())
 }
 
-/// The sentence a person is asked to sign ``act`` under, as this pool reads it now: at most 300 characters.
+/// The `LEVEL:` line of ``act``: where this pool's floor for the kind of act puts the approval, and what that does not stop.
+fn level_line(act: &Act, g: &GovPool) -> String {
+    let c = &g.state().chain.latest().charter;
+    let class = floor_class(&act.kind).unwrap_or(Class::Routine);
+    let floor = c.floors.of(class);
+    let how = match floor {
+        Level::Phone => "from your phone.",
+        Level::Native => "from this computer, protected. Only root on this computer could approve it without asking.",
+        Level::Computer | Level::Weak => "from this computer. A program running as you could approve it without asking; a phone would stop that.",
+    };
+    let wait = if class == Class::Governance && floor <= Level::Computer { " Signed by computer keys alone it waits 7 days, and a key can cancel it." } else { "" };
+    format!("LEVEL: This change is approved {how}{wait}")
+}
+
+/// What a person is asked to sign ``act`` under, as this pool reads it now: a sentence of at most 300 characters, then the `LEVEL:` line,
+/// which the cut never reaches.
 pub fn describe(act: &Act, g: &GovPool) -> String {
-    sentence(act, g, true).chars().take(300).collect()
+    compose(&sentence(act, g, true), &level_line(act, g))
+}
+
+/// ``said`` cut at 300 characters, then ``level`` on a line of its own: the cut never reaches the line.
+pub fn compose(said: &str, level: &str) -> String {
+    format!("{}\n{level}", said.chars().take(300).collect::<String>())
 }
 
 fn sentence(act: &Act, g: &GovPool, deep: bool) -> String {
@@ -93,6 +124,8 @@ fn sentence(act: &Act, g: &GovPool, deep: bool) -> String {
         Body::SetThreshold(t) => threshold_line(&t),
         Body::SetHolds(h) => holds_line(&h),
         Body::SetMode(m) => format!("Change who may name admins to {}.", word(&m.mode)),
+        Body::SetFloors(f) => floors_line(&f),
+        Body::RecoveryReplace(a) => format!("Replace the recovery key with {}. The old recovery key can cancel this for 7 days.", key_line(&a.entry)),
         Body::Delegate(d) => format!("Let {} admit devices for 30 days.", device(g, &d.fingerprint)),
         Body::DelegateEnd(d) => format!("End {}'s power to admit devices.", device(g, &d.fingerprint)),
         Body::Cancel(t) | Body::Veto(t) => {

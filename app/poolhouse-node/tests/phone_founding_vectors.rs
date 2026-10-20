@@ -5,7 +5,7 @@ use kit::gov::{ident, public};
 use kit::p256::PhoneKey;
 use poolhouse_node::fsutil::{hex, unhex};
 use poolhouse_node::gov::charter::{Charter, First};
-use poolhouse_node::gov::keys::{AdminKey, Alg, Role, Strength};
+use poolhouse_node::gov::keys::{AdminKey, Alg, Role, Level};
 use poolhouse_node::membership::Policy;
 use poolhouse_node::row::canonical;
 use serde_json::{json, Value};
@@ -36,13 +36,13 @@ fn low_twin(high: &[u8]) -> Vec<u8> {
 #[ignore = "writes a new reference fixture"]
 fn generate_reference() {
     let phone = PhoneKey::new();
-    let entry = |key: String, alg, role, strength, person: &str, label: &str| AdminKey {
-        key, alg, role, strength, person: person.into(), label: label.into(), since: 1, acceptance: String::new(),
+    let entry = |key: String, alg, role, assurance, person: &str, label: &str| AdminKey {
+        key, alg, role, assurance, person: person.into(), label: label.into(), since: 1, acceptance: String::new(),
     };
     let mut charter = Charter::new("lab", Policy::Secure, "0123456789abcdef", vec![
-        entry(phone.public.clone(), Alg::P256, Role::Admin, Strength::Strong, "person-a", "phone \"A\"\\key"),
-        entry(public(2), Alg::Ed25519, Role::Admin, Strength::Weak, "person-b", "spare"),
-        entry(public(3), Alg::Ed25519, Role::Recovery, Strength::Strong, "person-c", "recovery"),
+        entry(phone.public.clone(), Alg::P256, Role::Admin, Level::Phone, "person-a", "phone \"A\"\\key"),
+        entry(public(2), Alg::Ed25519, Role::Admin, Level::Weak, "person-b", "spare"),
+        entry(public(3), Alg::Ed25519, Role::Recovery, Level::Phone, "person-c", "recovery"),
     ], First::of(&ident(250).der, "first device"), 1700000000123);
     charter.thresholds.sensitive = 1;
     charter.holds.admin_add_h = 48;

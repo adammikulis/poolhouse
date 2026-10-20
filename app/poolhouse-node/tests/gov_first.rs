@@ -48,7 +48,7 @@ fn ecdsa_cert() -> Vec<u8> {
 
 /// The founding act of a charter of ann's key that puts ``first`` in the pool first.
 fn act_naming(first: First) -> Value {
-    serde_json::to_value(found_act(&charter_of(&[strong(ANN, "ann")], Policy::Secure, Unit::Person, wall_ms(), first))).unwrap()
+    serde_json::to_value(found_act(&charter_of(&[phone_admin(ANN, "ann")], Policy::Secure, Unit::Person, wall_ms(), first))).unwrap()
 }
 
 fn refusal(reply: &Value) -> String {
@@ -85,7 +85,7 @@ impl Signer for Counting {
 
 #[test]
 fn the_first_device_is_a_member_of_the_pool_its_charter_makes_with_no_act_held() {
-    let (_d, g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let first = ident(FIRST);
     let held = g.devices().get(&first.fingerprint()).cloned().expect("the charter's first device is in the roster");
     assert_eq!((held.status, held.by.as_str(), held.name.as_str()), (Status::Active, "found", "first"));
@@ -140,7 +140,7 @@ fn a_drafted_charter_names_this_device_first_and_the_card_says_so() {
 
 #[test]
 fn the_first_device_is_part_of_the_anchor_and_of_what_each_key_accepted() {
-    let one = charter_of(&[strong(A, "ann")], Policy::Secure, Unit::Person, 1_000_000, first_of(&ident(FIRST).der));
+    let one = charter_of(&[phone_admin(A, "ann")], Policy::Secure, Unit::Person, 1_000_000, first_of(&ident(FIRST).der));
     let mut other = one.clone();
     other.first = first_of(&ident(11).der);
     assert_ne!(one.pool_id(), other.pool_id(), "another first device is another pool");
@@ -157,7 +157,7 @@ fn the_first_device_is_part_of_the_anchor_and_of_what_each_key_accepted() {
 #[test]
 fn a_first_device_that_is_not_the_certificate_of_an_ed25519_device_is_no_charter() {
     let own = ident(FIRST).der;
-    let with = |first: First| charter_of(&[strong(A, "ann")], Policy::Secure, Unit::Person, wall_ms(), first).check_founding().unwrap_err().to_string();
+    let with = |first: First| charter_of(&[phone_admin(A, "ann")], Policy::Secure, Unit::Person, wall_ms(), first).check_founding().unwrap_err().to_string();
     assert!(with(First { cert: "zz".into(), name: "x".into() }).contains("first device"), "not hex");
     assert!(with(First { cert: hex(&own[..own.len() - 1]), name: "x".into() }).contains("first device"), "a cut certificate");
     assert!(with(First { cert: hex(&ecdsa_cert()), name: "x".into() }).contains("Ed25519"), "a certificate of another kind of key");
@@ -165,7 +165,7 @@ fn a_first_device_that_is_not_the_certificate_of_an_ed25519_device_is_no_charter
     assert!(with(First { cert: hex(&own), name: String::new() }).contains("name"), "no name");
     assert!(with(First { cert: hex(&own), name: "n".repeat(41) }).contains("name"), "a long name");
     assert!(with(First { cert: hex(&own), name: "a\nb".into() }).contains("name"), "a control character");
-    assert!(charter_of(&[strong(A, "ann")], Policy::Secure, Unit::Person, wall_ms(), first_of(&own)).check_founding().is_ok());
+    assert!(charter_of(&[phone_admin(A, "ann")], Policy::Secure, Unit::Person, wall_ms(), first_of(&own)).check_founding().is_ok());
 }
 
 // -- a node founds only the charter that names it -----------------------------------------------------------------------------------
@@ -229,14 +229,14 @@ fn an_agents_own_software_key_founds_no_pool_whatever_the_charter_names() {
     let agent = Counting::of(0x55);
     a.node.lock().unwrap().set_signer(agent.clone());
     let made = a.call("pool_create", "", &a.token, json!({"title": "home", "policy": "secure", "project": ""}));
-    assert!(refusal(&made).contains("presence"), "{made}");
+    assert!(refusal(&made).contains("approved from a computer or a phone"), "{made}");
     assert_eq!(agent.asked.load(Ordering::SeqCst), 0, "nobody was asked to sign");
-    for (said_of_it, k) in [("weak", weak(0x55, "agent")), ("strong", strong(0x55, "agent"))] {
+    for (said_of_it, k) in [("weak", weak(0x55, "agent")), ("phone", phone_admin(0x55, "agent")), ("computer", computer_admin(0x55, "agent"))] {
         let c = charter_of(&[k], Policy::Secure, Unit::Person, wall_ms(), first_of(&own(&a)));
         let said = refusal(&a.call("pool_found", "", &a.token, json!({"act": found_act(&c)})));
-        assert!(said.contains("strong key") || said.contains("not a phone's key"), "a key it calls {said_of_it}: {said}");
+        assert!(said.contains("approved from a computer or a phone") || said.contains("stronger than this device"), "a key it calls {said_of_it}: {said}");
     }
-    assert_eq!(a.status()["governance"]["mode"], "unfounded", "a key the node did not enrol as a phone's founds nothing, with this device named first or not");
+    assert_eq!(a.status()["governance"]["mode"], "unfounded", "a key the node did not enrol at a level founds nothing, with this device named first or not");
     assert!(a.node.lock().unwrap().members.get(&a.fp()).is_some_and(|d| d.by == "self"), "this device is the pool of one it was");
 }
 
@@ -254,7 +254,7 @@ fn version_two(c: &Charter) -> Value {
 fn a_charter_of_version_two_founds_nothing_and_says_it_is_another_version() {
     let a = device();
     enrol_phone_key(&a, ANN);
-    let c = charter_of(&[strong(ANN, "ann")], Policy::Secure, Unit::Person, wall_ms(), first_of(&own(&a)));
+    let c = charter_of(&[phone_admin(ANN, "ann")], Policy::Secure, Unit::Person, wall_ms(), first_of(&own(&a)));
     let old = version_two(&c);
     for (how, params) in [("as an act", json!({"act": old})), ("as a charter", json!({"charter": old["body"]}))] {
         let said = refusal(&a.call("pool_found", "", &a.token, params));
@@ -266,7 +266,7 @@ fn a_charter_of_version_two_founds_nothing_and_says_it_is_another_version() {
 #[test]
 fn a_pool_of_charter_version_two_on_disk_is_set_aside_and_a_new_pool_may_be_founded() {
     let dir = tempfile::tempdir().unwrap();
-    let c = charter(&[strong(A, "ann")], Policy::Secure, Unit::Person);
+    let c = charter(&[phone_admin(A, "ann")], Policy::Secure, Unit::Person);
     let id = c.pool_id();
     GovPool::create(dir.path(), found_act(&c)).unwrap();
     let held = dir.path().join("pools").join(&id);
@@ -284,7 +284,7 @@ fn a_pool_of_charter_version_two_on_disk_is_set_aside_and_a_new_pool_may_be_foun
 
 #[test]
 fn the_first_device_leaves_by_its_own_signature_is_admitted_again_and_is_removed_for_good() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let first = ident(FIRST);
     let status = |g: &GovPool| g.devices().get(&first.fingerprint()).map(|d| d.status);
     let mut leave = g.new_act("leave", json!({"fingerprint": first.fingerprint()}), wall_ms()).unwrap();
@@ -303,7 +303,7 @@ fn the_first_device_leaves_by_its_own_signature_is_admitted_again_and_is_removed
 
 #[test]
 fn a_device_the_first_device_does_not_admit_is_no_member_because_of_it() {
-    let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(A, "ann")], Policy::Secure);
     let (laptop, first) = (ident(10), ident(FIRST));
     let mut act = admit(&g, &laptop, &[]);
     device_sign(&mut act, FIRST);

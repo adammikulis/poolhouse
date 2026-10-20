@@ -1,7 +1,7 @@
-//! An admin key: a public key a charter names (an Ed25519 key, or a phone's P-256 key), with the role and strength its holder
+//! An admin key: a public key a charter names (an Ed25519 key, or a phone's P-256 key), with the role and assurance level its holder
 //! declared and its own acceptance.
 //!
-//! The acceptance is the key's signature over the pool it joins, the charter it follows, its algorithm, role, strength and the person it
+//! The acceptance is the key's signature over the pool it joins, the charter it follows, its algorithm, role, assurance and the person it
 //! belongs to, so a key is listed only by its holder: adding a key needs the added key's signature as well as the admins'.
 
 use ed25519_dalek::VerifyingKey;
@@ -13,7 +13,7 @@ use crate::fsutil::{sha256_hex, unhex};
 use crate::grants::person::{self, ED25519, P256};
 use crate::row::canonical;
 
-const ACCEPT_DOMAIN: &str = "poolhouse/pool-accept/v2\n";
+const ACCEPT_DOMAIN: &str = "poolhouse/pool-accept/v3\n";
 /// The longest label and person name a key carries.
 pub const MOST_LABEL: usize = 40;
 const MOST_PERSON: usize = 64;
@@ -23,13 +23,39 @@ const HALF_ORDER: [u8; 32] = [
     0x92, 0xa8,
 ];
 
-/// Whether the key's every signature needs a presence the signing process cannot supply for itself (`Strong`) or any process of the
-/// account can use it (`Weak`).
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+/// How much stands between a program of the account and a key's signature, lowest first: `Weak` (a typed yes: a process of the account can
+/// use the key), `Computer` (the computer's own prompt raised the key), `Native` (a protected helper under another operating-system
+/// identity) and `Phone` (a phone's hardware keystore and its biometric). A charter's floors name the lowest level that counts for a class of
+/// act; `Weak` is below every floor.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[serde(rename_all = "lowercase")]
-pub enum Strength {
-    Strong,
+pub enum Level {
     Weak,
+    Computer,
+    Native,
+    Phone,
+}
+
+impl Level {
+    /// The level as the charter and `pool_status` spell it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Level::Weak => "weak",
+            Level::Computer => "computer",
+            Level::Native => "native",
+            Level::Phone => "phone",
+        }
+    }
+
+    /// The level in the words a person is shown.
+    pub fn shown(self) -> &'static str {
+        match self {
+            Level::Weak => "a typed yes",
+            Level::Computer => "this computer",
+            Level::Native => "this computer, protected",
+            Level::Phone => "your phone",
+        }
+    }
 }
 
 /// What a key signs: `Admin` signs and counts; `Recovery` counts toward no immediate threshold.
@@ -130,7 +156,7 @@ pub struct AdminKey {
     pub key: String,
     pub alg: Alg,
     pub role: Role,
-    pub strength: Strength,
+    pub assurance: Level,
     /// The person the key belongs to; two keys with one person count once under `unit: person`.
     pub person: String,
     /// The epoch this key was listed at.
@@ -164,7 +190,7 @@ impl AdminKey {
     /// acceptances for the first epoch, the pool id after) and ``prev`` the hash of the charter the listing follows (empty for the first).
     pub fn acceptance_message(&self, anchor: &str, prev: &str) -> Vec<u8> {
         let body = json!({
-            "v": 2, "key": self.key, "alg": self.alg, "role": self.role, "strength": self.strength, "person": self.person, "since": self.since,
+            "v": 3, "key": self.key, "alg": self.alg, "role": self.role, "assurance": self.assurance, "person": self.person, "since": self.since,
             "anchor": anchor, "prev": prev,
         });
         format!("{ACCEPT_DOMAIN}{}", canonical(&body)).into_bytes()

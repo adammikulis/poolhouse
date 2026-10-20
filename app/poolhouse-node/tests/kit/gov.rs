@@ -6,8 +6,8 @@ use std::sync::Arc;
 use poolhouse_node::cert::{self, Identity};
 use poolhouse_node::fsutil::hex;
 use poolhouse_node::gov::act::{Act, ActSig, SigKind};
-use poolhouse_node::gov::charter::{Charter, First, Unit};
-use poolhouse_node::gov::keys::{AdminKey, Alg, Role, Strength};
+use poolhouse_node::gov::charter::{Charter, Floors, First, Unit};
+use poolhouse_node::gov::keys::{AdminKey, Alg, Role, Level};
 use poolhouse_node::gov::pool::{GovPool, Ingest};
 use poolhouse_node::gov::signer::RigSigner;
 use poolhouse_node::membership::Policy;
@@ -18,21 +18,26 @@ use tempfile::TempDir;
 pub const HOUR: i64 = 3_600_000;
 pub const DAY: i64 = 24 * HOUR;
 
-/// A key of the pool: the seed it is made from, the person it belongs to, its role and strength.
+/// A key of the pool: the seed it is made from, the person it belongs to, its role and assurance level.
 #[derive(Clone, Copy)]
-pub struct K(pub u8, pub &'static str, pub Role, pub Strength);
+pub struct K(pub u8, pub &'static str, pub Role, pub Level);
 
-/// A strong admin key of ``person``.
-pub fn strong(seed: u8, person: &'static str) -> K {
-    K(seed, person, Role::Admin, Strength::Strong)
+/// An admin key of ``person`` at the `phone` level.
+pub fn phone_admin(seed: u8, person: &'static str) -> K {
+    K(seed, person, Role::Admin, Level::Phone)
+}
+
+/// An admin key of ``person`` at the `computer` level.
+pub fn computer_admin(seed: u8, person: &'static str) -> K {
+    K(seed, person, Role::Admin, Level::Computer)
 }
 
 pub fn weak(seed: u8, person: &'static str) -> K {
-    K(seed, person, Role::Admin, Strength::Weak)
+    K(seed, person, Role::Admin, Level::Weak)
 }
 
 pub fn recovery(seed: u8, person: &'static str) -> K {
-    K(seed, person, Role::Recovery, Strength::Strong)
+    K(seed, person, Role::Recovery, Level::Phone)
 }
 
 pub fn public(seed: u8) -> String {
@@ -41,7 +46,7 @@ pub fn public(seed: u8) -> String {
 
 /// The listing of the key ``k`` at epoch ``since``, accepted against ``anchor`` and the charter ``prev`` it follows (empty at epoch 1).
 pub fn entry_on(k: K, since: u64, anchor: &str, prev: &str) -> AdminKey {
-    let mut e = AdminKey { key: public(k.0), alg: Alg::Ed25519, role: k.2, strength: k.3, person: k.1.into(), since, acceptance: String::new(), label: format!("{}'s key", k.1) };
+    let mut e = AdminKey { key: public(k.0), alg: Alg::Ed25519, role: k.2, assurance: k.3, person: k.1.into(), since, acceptance: String::new(), label: format!("{}'s key", k.1) };
     e.acceptance = RigSigner::sign_as(k.0, &e.acceptance_message(anchor, prev));
     e
 }
@@ -79,6 +84,17 @@ pub fn charter_of(keys: &[K], policy: Policy, unit: Unit, at_ms: u64, first: Fir
     let bare: Vec<AdminKey> = keys.iter().map(|k| entry(*k, 1, "")).collect();
     let mut c = Charter::new("home", policy, "", bare, first, at_ms);
     c.thresholds.unit = unit;
+    let anchor = c.anchor();
+    c.admins = keys.iter().map(|k| entry(*k, 1, &anchor)).collect();
+    c.admins.sort_by(|a, b| a.key.cmp(&b.key));
+    c
+}
+
+/// An epoch-1 charter of the keys whose floors are ``floors`` in place of the defaults, each key accepting it.
+pub fn charter_floored(keys: &[K], policy: Policy, floors: Floors) -> Charter {
+    let bare: Vec<AdminKey> = keys.iter().map(|k| entry(*k, 1, "")).collect();
+    let mut c = Charter::new("home", policy, "", bare, first_of(&ident(FIRST).der), wall_ms());
+    c.floors = floors;
     let anchor = c.anchor();
     c.admins = keys.iter().map(|k| entry(*k, 1, &anchor)).collect();
     c.admins.sort_by(|a, b| a.key.cmp(&b.key));

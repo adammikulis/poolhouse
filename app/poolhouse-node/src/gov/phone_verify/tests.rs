@@ -1,7 +1,7 @@
 use super::*;
 use crate::gov::act::{ActSig, SigKind};
 use crate::gov::charter::{Charter, First};
-use crate::gov::keys::{AdminKey, Alg, Role, Strength};
+use crate::gov::keys::{AdminKey, Alg, Role, Level};
 use crate::gov::signer::RigSigner;
 use crate::membership::Policy;
 use serde_json::json;
@@ -12,7 +12,7 @@ fn setup() -> (tempfile::TempDir, Charter, Binding) {
     let root = tempfile::tempdir().unwrap();
     let certificate = tempfile::tempdir().unwrap();
     let identity = crate::cert::load_or_create(certificate.path(), &ed25519_dalek::SigningKey::from_bytes(&[91; 32])).unwrap();
-    let mut admin = AdminKey { key: RigSigner::public(1), alg: Alg::Ed25519, role: Role::Admin, strength: Strength::Strong,
+    let mut admin = AdminKey { key: RigSigner::public(1), alg: Alg::Ed25519, role: Role::Admin, assurance: Level::Phone,
         person: "person-a".into(), since: 1, acceptance: String::new(), label: "admin key".into() };
     let mut charter = Charter::new("test pool", Policy::Secure, "", vec![admin.clone()], First::of(&identity.der, "first computer"), NOW);
     admin.acceptance = RigSigner::sign_as(1, &admin.acceptance_message(&charter.anchor(), ""));
@@ -34,7 +34,7 @@ fn bootstrap(engine: &mut Engine, charter: &Charter) {
     let verified = engine.review(Proof { found: charter.found_act(), acts: vec![] }, request, NOW).unwrap();
     assert!(verified.card().contains("Current pool terms"));
     let binding = &engine.checkpoint.binding;
-    assert!(verified.card().contains(&format!("Signing with: {}; Ed25519; strong admin", crate::gov::keys::fingerprint_of(&binding.public))));
+    assert!(verified.card().contains(&format!("Signing with: {}; Ed25519; phone admin", crate::gov::keys::fingerprint_of(&binding.public))));
     assert!(verified.card().contains(&binding.anchor) && verified.card().contains(&charter.hash()));
 }
 

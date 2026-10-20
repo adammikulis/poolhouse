@@ -109,7 +109,7 @@ fn a_removed_device_that_starts_another_log_gets_no_entry_of_it_taken_from_any_r
 
 #[test]
 fn removing_a_device_removes_the_devices_it_admitted_and_an_admin_can_admit_one_again() {
-    let (_d, mut g) = pool(&[strong(1, "ann")], poolhouse_node::membership::Policy::Open);
+    let (_d, mut g) = pool(&[phone_admin(1, "ann")], poolhouse_node::membership::Policy::Open);
     let (admitter, guest) = (ident(20), ident(30));
     put_admit(&mut g, &admitter, &[1]);
     let mut act = g.new_act("admit", admit_body(&guest, "guest", "open", "segment"), poolhouse_node::poolops::wall_ms()).unwrap();
@@ -165,7 +165,7 @@ fn a_cut_holds_for_a_log_even_when_this_device_does_not_know_which_key_was_remov
 
 #[test]
 fn two_removals_of_one_device_that_name_different_points_stand_at_the_least() {
-    let (_d, mut g) = pool(&[strong(1, "ann")], poolhouse_node::membership::Policy::Secure);
+    let (_d, mut g) = pool(&[phone_admin(1, "ann")], poolhouse_node::membership::Policy::Secure);
     let victim = ident(40);
     put_admit(&mut g, &victim, &[1]);
     let (origin, hash) = ("ab".repeat(16), "cd".repeat(32));
@@ -276,7 +276,7 @@ fn a_cut_nothing_in_the_pool_supports_any_more_is_lifted_and_the_log_is_fetched_
 
 #[test]
 fn the_members_of_an_open_pool_together_may_admit_only_so_many_devices_an_hour_and_an_admin_always_may() {
-    let (_d, mut g) = pool(&[strong(1, "ann")], poolhouse_node::membership::Policy::Open);
+    let (_d, mut g) = pool(&[phone_admin(1, "ann")], poolhouse_node::membership::Policy::Open);
     let members: Vec<u8> = vec![20, 21, 22];
     for m in &members {
         put_admit(&mut g, &ident(*m), &[1]);

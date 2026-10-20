@@ -14,7 +14,7 @@ use super::act::Act;
 use super::body::{self, Admit, Body};
 use super::chain::{Chain, Seen};
 use super::charter::Class;
-use super::{DAY_MS, DELEGATE_DAYS, DELEGATE_PER_DAY, DELEGATE_PER_HOUR, HOUR_MS, OPEN_PER_HOUR, OPEN_POOL_PER_HOUR, SETTLED};
+use super::{COMPUTER_HOLD_MS, DAY_MS, DELEGATE_DAYS, DELEGATE_PER_DAY, DELEGATE_PER_HOUR, HOUR_MS, OPEN_PER_HOUR, OPEN_POOL_PER_HOUR, SETTLED};
 
 /// A device an admin act lets sign `admit`.
 #[derive(Clone, Debug)]
@@ -54,19 +54,20 @@ fn refs(v: &[String]) -> Vec<&str> {
     v.iter().map(String::as_str).collect()
 }
 
-/// Whether ``act`` carries the admin signatures its class needs (one strong admin when ``class`` is None) against the charter it
-/// names, and against the charter now.
+/// Whether ``act`` carries the admin signatures its class needs (one key at the sensitive floor when ``class`` is None) against the
+/// charter it names, and against the charter now. ``weak_ok``: any listed admin key counts, whatever its level.
 pub fn verdict(id: &str, act: &Act, class: Option<Class>, chain: &Chain, weak_ok: bool) -> Verdict {
     let Some(e) = chain.state_for(act) else { return Verdict::Void("it names a charter this pool never had".into()) };
-    let held: Vec<String> = chain.signers(id, act).into_iter().filter(|k| if weak_ok { e.charter.admin(k).is_some_and(|x| x.role == super::keys::Role::Admin) } else { e.charter.is_strong(k) }).collect();
-    let count = |c: &super::charter::Charter, keys: &[String]| if weak_ok { c.count_any(&refs(keys)) } else { c.count(&refs(keys)) };
+    let floor = class.unwrap_or(Class::Sensitive);
+    let held: Vec<String> = chain.signers(id, act).into_iter().filter(|k| if weak_ok { e.charter.admin(k).is_some_and(|x| x.role == super::keys::Role::Admin) } else { e.charter.counts_key(k, floor) }).collect();
+    let count = |c: &super::charter::Charter, keys: &[String]| if weak_ok { c.count_any(&refs(keys)) } else { c.count(floor, &refs(keys)) };
     let need = class.map_or(1, |c| e.charter.needed(c));
     if count(&e.charter, &held) < need {
         return Verdict::Short(count(&e.charter, &held), need, format!("it needs {need} signers and has {}", count(&e.charter, &held)));
     }
     let latest = chain.latest();
     if e.n < latest.n {
-        let still: Vec<String> = held.iter().filter(|k| latest.charter.is_strong(k) || chain.cuts.contains_key(*k) || (weak_ok && latest.charter.admin(k).is_some())).cloned().collect();
+        let still: Vec<String> = held.iter().filter(|k| latest.charter.counts_key(k, floor) || chain.cuts.contains_key(*k) || (weak_ok && latest.charter.admin(k).is_some())).cloned().collect();
         let need_now = class.map_or(1, |c| latest.charter.needed(c));
         if count(&e.charter, &still) < need_now {
             return Verdict::Short(count(&e.charter, &still), need_now, "the pool's charter has moved on and its signers no longer meet it".into());
@@ -93,7 +94,7 @@ fn removals(chain: &Chain, acts: &BTreeMap<String, Act>, out: &mut Roster) -> BT
     let mut removed = BTreeMap::new();
     for (id, a) in acts.iter().filter(|(_, a)| a.kind == "remove") {
         let Ok(Body::Remove(d)) = body::parse(a) else { continue };
-        match verdict(id, a, Some(Class::Routine), chain, false) {
+        match verdict(id, a, Some(Class::Sensitive), chain, false) {
             Verdict::Ok => {
                 for c in d.cut {
                     let tip = (c.seq, c.hash);
@@ -108,13 +109,23 @@ fn removals(chain: &Chain, acts: &BTreeMap<String, Act>, out: &mut Roster) -> BT
     removed
 }
 
+/// How long a `delegate` act waits before the device may admit: seven days when only `computer` keys signed it.
+fn delegate_hold(chain: &Chain, id: &str, act: &Act) -> i64 {
+    let Some(e) = chain.state_for(act) else { return 0 };
+    let counted: Vec<String> = chain.signers(id, act).into_iter().filter(|k| e.charter.counts_key(k, Class::Governance)).collect();
+    if super::chain::above_computer(&e.charter, &counted) { 0 } else { COMPUTER_HOLD_MS }
+}
+
 fn delegates(chain: &Chain, acts: &BTreeMap<String, Act>, seen: &Seen, now: i64, out: &mut Roster) {
     let mut ops: Vec<(i64, u64, &String, &Act)> = acts.iter().filter(|(_, a)| matches!(a.kind.as_str(), "delegate" | "delegate_end")).map(|(id, a)| (seen.get(id).copied().unwrap_or(now), a.at_ms, id, a)).collect();
     ops.sort_by_key(|(first, at, id, _)| (*first, *at, (*id).clone()));
     for (at, _, id, a) in ops {
         match (body::parse(a), a.kind.as_str()) {
-            (Ok(Body::Delegate(d)), _) => match verdict(id, a, Some(Class::Sensitive), chain, false) {
-                Verdict::Ok => out.windows.entry(d.fingerprint).or_default().push((at, at.saturating_add(DELEGATE_DAYS * DAY_MS))),
+            (Ok(Body::Delegate(d)), _) => match verdict(id, a, Some(Class::Governance), chain, false) {
+                Verdict::Ok => {
+                    let from = at.saturating_add(delegate_hold(chain, id, a));
+                    out.windows.entry(d.fingerprint).or_default().push((from, from.saturating_add(DELEGATE_DAYS * DAY_MS)));
+                }
                 Verdict::Short(h, n, why) => drop(out.short.insert(id.clone(), (h, n, why))),
                 Verdict::Void(why) => drop(out.void.insert(id.clone(), why)),
             },
