@@ -13,6 +13,8 @@ import pytest
 from poolhouse import pi_tools
 from poolhouse.activity.source_snapshot import git_output
 from poolhouse.coding_workspace import Workspace
+from poolhouse.fleet import conversation_graph
+from poolhouse.fleet.conversations import Conversations
 
 pytest_plugins = ["tests.sandbox_kit"]
 
@@ -25,7 +27,7 @@ def private_snapshot_storage(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def workspace(tmp_path):
+def workspace(tmp_path, private_snapshot_storage):
     root = tmp_path / "selected-repository"
     root.mkdir()
     git_output(["init", "--quiet", str(root)], cwd=tmp_path)
@@ -44,6 +46,15 @@ def binding(tmp_path, seatbelt):
     worker = tmp_path / "worker.mjs"
     worker.write_text(pi_tools.WORKER)
     return {**selected, "worker": str(worker), "write": True}
+
+
+@pytest.fixture
+def coding_owner(workspace, tmp_path):
+    store = Conversations(tmp_path / "coding-state")
+    conversation = store.start("local-model", settings={"harness": "pi", "project_id": "a" * 32})
+    with conversation_graph.opened(store.root) as graph, graph.transaction():
+        graph.put_doc(f"coding:{conversation.id}", {"version": 1, "workspace": workspace.receipt()})
+    return store, store.coding_state(conversation.id)
 
 
 def permitted(_capture, _revision):
@@ -69,7 +80,8 @@ def test_stock_tools_publish_private_manifest_without_editing_selected_repo(work
     assert "after" in json.dumps(answer)
 
 
-def test_old_detached_writer_cannot_change_capture_master_or_next_stage(workspace, binding):
+@pytest.mark.parametrize("reopen", [False, True])
+def test_old_detached_writer_cannot_change_capture_master_or_next_stage(workspace, binding, coding_owner, reopen):
     stages = []
     def execute(stage):
         stages.append(stage)
@@ -81,9 +93,14 @@ def test_old_detached_writer_cannot_change_capture_master_or_next_stage(workspac
         return pi_tools.execute(config, {"tool": "bash", "input": {"command": command}})
     try:
         workspace.run(execute, permitted, writable=True)
-        captured = workspace.last
         old = stages[0]
-        call(workspace, binding, "read", {"path": "code.txt"}, writable=False)
+        owner, expected = coding_owner
+        with conversation_graph.opened(owner.root) as graph, graph.transaction():
+            graph.put_doc(f"coding:{expected.conversation}", {"version": 1, "workspace": workspace.receipt()})
+        with (Workspace.reopened(workspace.source, owner, expected, current=lambda: True)
+              if reopen else nullcontext(workspace)) as current:
+            captured = current.last
+            call(current, binding, "read", {"path": "code.txt"}, writable=False)
     finally:
         if stages:
             (stages[0].physical / "release").write_text("")
@@ -92,7 +109,7 @@ def test_old_detached_writer_cannot_change_capture_master_or_next_stage(workspac
         time.sleep(.01)
     assert (old.physical / "finished").exists()
     assert (old.physical / "late-write").read_text() == "late"
-    assert not (workspace.master / "late-write").exists()
+    assert not (current.master / "late-write").exists()
     assert not (captured.directory / "late-write").exists()
     assert not (workspace.alias / "cross-epoch").exists()
     assert not (workspace.source / "late-write").exists()

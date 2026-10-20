@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from poolhouse import coding_policy, executable_libraries, sandbox
-from poolhouse.coding_workspace import CONTROL_PREFIXES
+from poolhouse.coding_workspace_state import CONTROL_PREFIXES
 from poolhouse.sandbox import policies
 
 MAX_FRAME = 4 * 1024 * 1024

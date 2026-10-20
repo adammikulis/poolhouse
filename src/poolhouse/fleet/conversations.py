@@ -5,6 +5,7 @@ import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
+from poolhouse import coding_workspace_state
 from poolhouse.fleet import conversation_graph as graph
 from poolhouse.fleet.conversation_settings import checked
 from poolhouse.fleet.conversation_types import (
@@ -18,6 +19,15 @@ from poolhouse.fleet.conversation_types import (
 )
 
 __all__ = ["Conversation", "Conversations", "Message"]
+
+
+def _coding_current(store, expected: CodingState) -> None:
+    if (not isinstance(expected, CodingState) or not safe(expected.conversation)
+            or type(expected.revision) is not int or expected.revision < 0):
+        raise ValueError("invalid coding session policy")
+    found = graph.record(store, expected.conversation)
+    if found is None or CodingState.from_conversation(found) != expected:
+        raise ValueError("The coding session changed; reload its current settings")
 
 
 class Conversations:
@@ -54,24 +64,51 @@ class Conversations:
             return CodingState.from_conversation(found)
 
     @contextmanager
-    def coding_guard(self, expected: CodingState, *, current):
+    def policy_guard(self, expected: CodingState, *, current):
         """Hold current policy only around a bounded parent-owned publication.
 
         Resource resolution, captures and tool execution precede this guard. The
         trusted current callback checks retained resource and execution identity
         locally, without subprocesses, network calls or acquiring registry locks.
         """
-        if (not isinstance(expected, CodingState) or not safe(expected.conversation)
-                or type(expected.revision) is not int or expected.revision < 0):
-            raise ValueError("invalid coding session policy")
         with graph.opened(self.root) as store, store.transaction():
-            found = graph.record(store, expected.conversation)
-            if found is None or CodingState.from_conversation(found) != expected or current() is not True:
+            _coding_current(store, expected)
+            if current() is not True:
                 raise ValueError("The coding session changed; reload its current settings")
             yield store
-            found = graph.record(store, expected.conversation)
-            if found is None or CodingState.from_conversation(found) != expected or current() is not True:
+            _coding_current(store, expected)
+            if current() is not True:
                 raise ValueError("The coding session changed before publishing its result")
+
+    def workspace_state(self, expected: CodingState) -> dict:
+        """Read existing coding snapshots only for the exact current session policy."""
+        with graph.opened(self.root) as store:
+            _coding_current(store, expected)
+            saved = store.get_doc(f"coding:{expected.conversation}", {})
+            if not isinstance(saved.get("workspace"), dict):
+                raise ValueError("The coding workspace receipt is missing; this session stays interrupted")
+            return saved["workspace"]
+
+    @contextmanager
+    def coding_guard(self, expected: CodingState, previous: dict, replacement: dict, *, current):
+        """Publish exactly one workspace epoch while retaining current authority."""
+        if current() is not True:
+            raise ValueError("The coding session changed before publishing its result")
+        with graph.opened(self.root) as store:
+            _coding_current(store, expected)
+        coding_workspace_state.transition(previous, replacement)
+        key = f"coding:{expected.conversation}"
+        with self.policy_guard(expected, current=current) as store:
+            saved = store.get_doc(key, {})
+            if saved.get("workspace") != previous:
+                raise ValueError("The coding workspace changed before publishing its result")
+            yield store
+            saved = store.get_doc(key, {})
+            if saved.get("workspace") != previous:
+                raise ValueError("The coding workspace changed during publication")
+            store.put_doc(key, {**saved, "workspace": replacement})
+            if current() is not True:
+                raise ValueError("The coding session changed before committing its result")
 
     def append(self, cid: str, role: str, content: str, *,
                reasoning: str = "", status: str = "complete") -> Conversation:
