@@ -55,8 +55,9 @@ def test_shared_composer_saves_coding_settings_and_resumes_native_session(coding
     page.get_by_role("button", name="Options", exact=True).click()
     output_tokens = page.get_by_label("Maximum output tokens", exact=True)
     expect(output_tokens).to_be_visible()
-    expect(output_tokens).to_have_value("13579")
-    output_tokens.fill("23456")
+    expect(output_tokens).to_have_value("8192")
+    expect(page.locator("#chat-output-tokens output")).to_have_text("13,579 tokens")
+    output_tokens.press("End")
     output_tokens.press("Tab")
     page.get_by_role("button", name="Options", exact=True).click()
     composer = page.get_by_role("textbox", name="Message", exact=True)
@@ -72,13 +73,13 @@ def test_shared_composer_saves_coding_settings_and_resumes_native_session(coding
     assert saved.settings["project"] == str(project)
     assert saved.settings["harness"] == "codex"
     assert saved.settings["role"] == "read-only"
-    assert saved.settings["max_output_tokens"] == 23456
+    assert saved.settings["max_output_tokens"] == 8192
     page.reload()
     expect(page.get_by_label("Conversation mode", exact=True)).to_have_value("coding")
     expect(page.get_by_label("Project directory", exact=True)).to_have_value(str(project))
     page.get_by_role("button", name="Options", exact=True).click()
     expect(output_tokens).to_be_visible()
-    expect(output_tokens).to_have_value("23456")
+    expect(output_tokens).to_have_value("8192")
     page.get_by_role("button", name="Options", exact=True).click()
     composer.fill("inspect the sensors")
     composer.press("Enter")

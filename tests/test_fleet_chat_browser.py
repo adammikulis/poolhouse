@@ -268,8 +268,10 @@ def test_output_token_control_uses_backend_defaults_and_accepts_no_cap(chat_brow
     _open(served, page)
     page.locator("chat-view #conversation-details").click()
     cap = page.get_by_label("Maximum output tokens", exact=True)
-    expect(cap).to_have_value("13579")
-    cap.fill("")
+    expect(cap).to_have_value("8192")
+    expect(page.locator("#chat-output-tokens output")).to_have_text("13,579 tokens")
+    assert page.locator("chat-view").evaluate("node => node.settings().max_output_tokens") == 13579
+    cap.press("Home")
     cap.press("Tab")
     assert page.locator("chat-view").evaluate("node => node.settings().max_output_tokens") is None
 
@@ -286,3 +288,29 @@ def test_installed_model_selection_hands_off_the_selected_model(chat_browser):
     page.get_by_role("button", name="Installed model Installed Configure in Models →", exact=True).click()
     expect(page).to_have_url(f"http://127.0.0.1:{served.port}/ui#models")
     assert page.evaluate("window.modelHandoff") == {"path": "/models/installed.gguf", "name": "Installed model", "from": "chat"}
+
+
+def test_token_slider_keeps_existing_conversation_selections(chat_browser):
+    from playwright.sync_api import expect
+
+    served, page = chat_browser
+    first = served.ui.conversations.start(model='model-a', title='Long output',
+                                         settings={'max_output_tokens': 12000})
+    second = served.ui.conversations.start(model='model-a', title='Automatic output',
+                                          settings={'max_output_tokens': None})
+    _open(served, page)
+    page.locator('chat-view #conversation-details').click()
+    page.get_by_role('link', name='Long output', exact=True).click()
+    cap = page.get_by_role('slider', name='Maximum output tokens', exact=True)
+    expect(page.locator('#chat-output-tokens output')).to_have_text('12,000 tokens')
+    page.evaluate('fleetModel.setPreferences({context:4096})')
+    expect(cap).to_have_attribute('max', '4096')
+    expect(cap).to_have_value('4096')
+    assert page.locator('chat-view').evaluate('node => node.settings().max_output_tokens') == 12000
+    page.get_by_role('link', name='Automatic output', exact=True).click()
+    expect(cap).to_have_value('0')
+    expect(page.locator('#chat-output-tokens output')).to_have_text('No user cap')
+    page.get_by_role('link', name='Long output', exact=True).click()
+    expect(page.locator('#chat-output-tokens output')).to_have_text('12,000 tokens')
+    assert served.ui.conversations.get(first.id).settings['max_output_tokens'] == 12000
+    assert served.ui.conversations.get(second.id).settings['max_output_tokens'] is None
