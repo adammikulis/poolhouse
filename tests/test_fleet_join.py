@@ -589,7 +589,13 @@ class TestThePage:
         from test_fleet_ui import Serving
 
         from poolhouse.fleet.availability import Availability
+        from poolhouse.fleet.launch import wait_for_health
 
+        def no_daemon_of_its_own(*_args, **_kwargs):
+            raise AssertionError("the page's daemon is the one under test; a join must not start another")
+
+        monkeypatch.setattr(joining, "start_daemon", no_daemon_of_its_own)
+        monkeypatch.setattr(joining, "already_running", lambda port: wait_for_health(port, seconds=60))
         monkeypatch.setenv("POOLHOUSE_BENCH_HOME", str(tmp_path / "bench"))
         s = Serving(tmp_path, name="studio", schedule=Availability())
         s.ui.member_port = s.port
