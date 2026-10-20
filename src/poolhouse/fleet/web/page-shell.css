@@ -1,0 +1,22 @@
+:root {
+  --page-gutter:clamp(16px, 2vw, 28px);
+  --page-gap:20px;
+  --page-panel-radius:12px;
+  --page-content-width:1500px;
+}
+.app:has(.page-shell:not([hidden])) #workspace { padding:0; margin:0; max-width:none; }
+.app .page-shell {
+  box-sizing:border-box; width:100%; max-width:var(--page-content-width);
+  margin:0 auto; padding:var(--page-gutter); min-width:0;
+}
+.page-shell :is(.workspace-card, .panel, .member, .pool-control, .history-controls) {
+  border-radius:var(--page-panel-radius);
+}
+.app:has(fleet-nav) .page-shell .page-heading { margin:0; gap:var(--page-gap); }
+.app:has(fleet-nav) .page-shell .page-heading h1 {
+  position:absolute; width:1px; height:1px; margin:-1px; padding:0;
+  overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0;
+}
+.app:has(fleet-nav) .page-shell .page-heading p:not(:empty) { margin:0 0 var(--page-gap); }
+.page-shell .status:empty { display:none; }
+.page-shell :is(.project-layout, .workspace-grid, .knowledge-grid, .pool-layout) { gap:var(--page-gap); }
