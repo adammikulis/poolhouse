@@ -102,7 +102,7 @@ def _create(ui):
     ui.studio = WorkflowEngine(store, ui.runner, adapters, authorize, dispatcher)
     streams = create_streams(ui, ui.studio, saved, scope)
     decisions = create_decisions(ui, ui.studio)
-    ui.studio.on_close = lambda: (decisions.close(), streams.close())
+    ui.studio.on_close = lambda: (decisions.close(), streams.webhook_setup.close(), streams.close())
     ui.studio.on_closed = ui.studio_authority.close
     ui.runner.studio_initializing = False
     streams.start_scheduler()

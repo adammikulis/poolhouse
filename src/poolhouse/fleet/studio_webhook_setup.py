@@ -31,7 +31,6 @@ class LocalSender:
     def __init__(self, ui, service):
         self.ui, self.service, self.holder = ui, service, ui.studio_webhooks
         self.holder.provider_current = self.current
-        service.webhook_setup = self
 
     def endpoint(self):
         context = self.service.authority._context()

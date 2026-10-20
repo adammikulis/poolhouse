@@ -141,6 +141,9 @@ def route(handler, service, principal) -> bool:
     path = urllib.parse.urlsplit(handler.path).path
     if destination_routes(handler, service, principal):
         return True
+    source_prefix = '/ui/studio/sources/'
+    if path.startswith(source_prefix):
+        return handler.ui.studio_webhook_setup.route(handler, service, principal, path[len(source_prefix):].split('/'))
     if path == '/ui/studio/sources':
         return sources(handler, service, principal)
     prefix = '/ui/studio/subscriptions'
