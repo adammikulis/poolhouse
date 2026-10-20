@@ -1,16 +1,21 @@
 """Exact first-run choices and independently authorized historical job inspection."""
 import copy
 import re
+import threading
+import time
+from dataclasses import replace
 from pathlib import Path
 
 from poolhouse.files import stat_signature
 from poolhouse.hub.probe import machine_memory
+from poolhouse.serve.broker import BrokerError
 from poolhouse.serve.estimate import Setup, estimate
 from poolhouse.serve.process import every_server
 from poolhouse.studio.store import digest
 
-from . import model_components, setup_jobs, startup_models
+from . import llama, model_components, setup_jobs, setup_probe, startup_models
 from .catalogue import SUGGESTED
+from .models import ModelTransfer
 
 
 class Preparation:
@@ -23,6 +28,164 @@ class Preparation:
 
     def __init__(self, ui):
         self.ui = ui
+        self._mutex = threading.RLock()
+        self._controls = {}
+
+    def start(self, body, *, binding, current):
+        self._check(binding, current)
+        selection = self._selection(body)
+        jobs = setup_jobs.jobs(self.ui)
+        request = {'idempotency_key': body['idempotency_key'], 'binding': dict(binding), 'selection': selection}
+        for row in jobs.all():
+            original = row.get('request', {})
+            if (row['kind'] == setup_jobs.PREPARATION and original.get('binding') == binding
+                    and original.get('idempotency_key') == body['idempotency_key']):
+                if original != request:
+                    raise ValueError('This preparation key already identifies a different selection.')
+                return self.status(row['id'], binding=binding, current=current)
+        model, _ = selected_model(self.ui, selection['model_id'])
+        if model is None and not selection['download']:
+            raise ValueError('Allow the selected model download before preparing it.')
+        self._project(selection, current)
+        self._check(binding, current)
+        row = jobs.prepare(request, lambda progress: self._execute(selection, progress), current=current)
+        return self.status(row['id'], binding=binding, current=current)
+
+    @staticmethod
+    def _selection(body):
+        if (not isinstance(body, dict) or not {'idempotency_key', 'model_id', 'download'} <= set(body)
+                or set(body) - {'idempotency_key', 'model_id', 'download', 'project_id'}
+                or not isinstance(body['idempotency_key'], str)
+                or re.fullmatch(r'[a-f0-9]{32}', body['idempotency_key']) is None
+                or not isinstance(body['model_id'], str) or not 0 < len(body['model_id']) <= 512
+                or type(body['download']) is not bool
+                or ('project_id' in body and (not isinstance(body['project_id'], str)
+                    or re.fullmatch(r'[a-f0-9]{32}', body['project_id']) is None))):
+            raise ValueError('Invalid preparation selection.')
+        return {key: body[key] for key in ('model_id', 'download', 'project_id') if key in body}
+
+    def _project(self, selection, current):
+        if 'project_id' in selection:
+            self.ui.projects.resolve_coding_project(selection['project_id'], current=current)
+
+    def _execute(self, selection, progress):
+        control = setup_probe.Control(progress.local_check)
+        with self._mutex:
+            self._controls[progress.row['id']] = control
+        try:
+            progress.local_check()
+            model = selected_model(self.ui, selection['model_id'])[0] if selection['model_id'].startswith('installed:') else None
+            self._project(selection, progress.local_check)
+            progress.stage('runtime')
+            target = self._resident(model, progress) if model is not None else None
+            transfer = {'owner': 'setup-job', 'id': progress.row['id'], 'done': 0, 'total': 0}
+            if target is None:
+                progress.check()
+                # Installation is indivisible/shared; cancellation never undoes it.
+                llama.ensure_server(self.ui.root, on_progress=lambda _: progress.local_check(),
+                                    sources=self.ui.settings.download_sources if self.ui.settings else 'both')
+                progress.check()
+                progress.stage('transfer')
+                model, transfer = self._obtain(selection, progress)
+                progress.stage('verify')
+                path = model_components.effective(model.path).resolve(strict=True)
+                fingerprint = self.ui.models.digest(replace(model, path=path), check=progress.local_check)
+                reference = model.verified_reference
+                if not selection['model_id'].startswith('installed:') and (
+                        reference is None or reference.sha256 != fingerprint):
+                    raise ValueError('The selected model changed from its verified reference.')
+                progress.check()
+                self._project(selection, progress.local_check)
+                progress.stage('serve')
+                served = self.ui.start_serving(model, context=self._context(model), current=progress.local_check)
+                progress.check()
+                if type(served.context) is not int or served.context <= 0:
+                    raise setup_jobs.PreparationStopped('The current server context could not be verified.')
+                target = {'model': str(path), 'artifact_digest': fingerprint,
+                          'port': served.port, 'context': served.context}
+            observed = setup_probe.observe(target, progress, control)
+            if observed['chat_ready'] is True:
+                progress.stage('ready')
+            return {**observed, 'model_id': selection['model_id'], 'artifact_digest': target['artifact_digest'],
+                    'serving': {'port': target['port'], 'context': target['context']}, 'transfer': transfer}
+        finally:
+            control.set()
+            with self._mutex:
+                self._controls.pop(progress.row['id'], None)
+
+    def _resident(self, model, progress):
+        if getattr(self.ui, 'serving', None) is None:
+            return None
+        path = model_components.effective(model.path).resolve(strict=True)
+        fingerprint = self.ui.models.digest(replace(model, path=path), check=progress.local_check)
+        progress.check()
+        for served in self.ui.serving.live(force=True):
+            if (type(served.port) is not int or not 0 < served.port < 65536
+                    or type(served.context) is not int or served.context <= 0):
+                continue
+            target = {'model': str(path), 'artifact_digest': fingerprint,
+                      'port': served.port, 'context': served.context}
+            progress.check()
+            try:
+                receipt = setup_probe.checked_startup(target)
+            except (BrokerError, OSError):
+                progress.check()
+                continue
+            progress.check()
+            if receipt is not None:
+                return target
+        return None
+
+    def _context(self, model):
+        row = next((row for row in self.ui.models.library() if row['path'] == str(model.path)), None)
+        if row is None:
+            raise ValueError('The selected installed model changed before starting.')
+        maximum = row.get('context_length')
+        default = int(getattr(self.ui.settings, 'context', 0) or startup_models.CONTEXT)
+        return min(default, maximum) if type(maximum) is int and maximum > 0 else None
+
+    def _obtain(self, selection, progress):
+        if selection['model_id'].startswith('installed:'):
+            model, _ = selected_model(self.ui, selection['model_id'])
+            return model, {'owner': 'setup-job', 'id': progress.row['id'], 'done': 0, 'total': 0}
+        pick = next(pick for pick in SUGGESTED if pick.file == selection['model_id'])
+        if not selection['download']:
+            raise ValueError('The selected model download was not authorized.')
+        getting = self.ui.downloads.active() if self.ui.downloads is not None else []
+        shared = next((row for row in getting if row.name == pick.file and row.state == 'getting'), None)
+        if shared is not None and (shared.source != pick.ref or shared.components):
+            raise ValueError('The selected model has a different download in progress.')
+        last = [0.0, 0, 0]
+
+        def report(done, total):
+            progress.local_check()
+            now = time.monotonic()
+            last[1:] = done, total
+            if now - last[0] >= 1 or (total and done == total):
+                progress.stage('transfer', done=done, total=total)
+                last[0] = now
+
+        while shared is not None and shared.state == 'getting':
+            report(shared.done, shared.total)
+            time.sleep(.1)
+        progress.check()
+        if shared is not None and shared.state != 'done':
+            raise ValueError('The shared model download did not complete.')
+        model = self.ui.models.ensure(pick.file, source=pick.ref, key=None,
+            transfer=ModelTransfer(progress=report, current=progress.local_check), autodownload=True)
+        progress.check()
+        # A concurrent ordinary download may have finished under the same target lock.
+        found = [row for row in _installed(self.ui) if Path(row['path']).name == pick.file]
+        if len(found) != 1 or Path(found[0]['path']).resolve() != model.path.resolve():
+            raise ValueError('The downloaded model is not a complete current library selection.')
+        reference = model.verified_reference
+        if reference is None or reference.source != pick.ref:
+            raise ValueError('The selected model has no verified source reference.')
+        model = self.ui.models.library_model(found[0]['path'])
+        if model is None:
+            raise ValueError('The selected model is no longer a complete current library selection.')
+        return replace(model, verified_reference=reference), {'owner': 'shared-download' if shared else 'setup-job',
+                       'id': shared.id if shared else progress.row['id'], 'done': last[1], 'total': last[2]}
 
     @staticmethod
     def _check(binding, current):
@@ -78,6 +241,7 @@ class Preparation:
     def status(self, ident, *, binding, current):
         row = self._row(ident, binding, current)
         result = self._public(row, binding=binding)
+        self._ready(row, result, current)
         self._check(binding, current)
         return result
 
@@ -86,9 +250,46 @@ class Preparation:
         if row['request']['binding'] != binding:
             raise PermissionError('Only the original current setup session may cancel preparation.')
         row = setup_jobs.jobs(self.ui).cancel_preparation(ident, binding=binding, current=current)
+        with self._mutex:
+            control = self._controls.get(ident)
+        if control is not None:
+            control.set()
         result = self._public(row, binding=binding)
         self._check(binding, current)
         return result
+
+    def _ready(self, row, public, current):
+        proof = row.get('serving_receipt')
+        probes = row.get('probes', {})
+        if (not proof or row['cancel_requested'] or row['state'] not in ('done', 'interrupted')
+                or probes.get('chat', {}).get('status') != 'accepted'
+                or probes['chat'].get('startup_id') != proof['startup_id']):
+            return
+        models = _installed(self.ui)
+        for model in models:
+            path = str(model_components.effective(Path(model['path'])).resolve())
+            if current() is not True:
+                raise PermissionError('Current setup access is required.')
+            try:
+                observed = setup_probe.checked_startup({'port': proof['port'], 'context': proof['context'],
+                    'model': path, 'artifact_digest': proof['artifact_digest']})
+            except (BrokerError, OSError):
+                if current() is not True:
+                    raise PermissionError('Current setup access is required.') from None
+                return
+            if current() is not True:
+                raise PermissionError('Current setup access is required.')
+            if (observed is None or observed['id'] != proof['startup_id']
+                    or observed['runtime']['binary']['sha256'] != proof['runtime_digest']
+                    or observed['runtime']['parser'] != proof['parser']):
+                continue
+            if current() is not True:
+                raise PermissionError('Current setup access is required.')
+            public['result'].update(model=model['path'], chat_ready=True, historical=False,
+                tools_ready=all(probes.get(phase, {}).get('status') == 'accepted'
+                                and probes[phase].get('startup_id') == proof['startup_id']
+                                for phase in setup_jobs.PROBES))
+            return
 
 
 def _installed(ui):
@@ -183,3 +384,11 @@ def selected_model(ui, model_id):
     if not any(row['model_id'] == model_id for row in offered['models']):
         raise ValueError('This setup model is not available for this device.')
     return None, pick
+
+
+def service(ui):
+    """One preparation owner per actual UI, without work during construction."""
+    with ui._setup_jobs_lock:
+        if getattr(ui, '_setup_preparation', None) is None:
+            ui._setup_preparation = Preparation(ui)
+        return ui._setup_preparation

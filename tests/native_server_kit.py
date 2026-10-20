@@ -73,13 +73,13 @@ int main(int argc, char **argv) {
 
 
 @contextmanager
-def compiled(factory, *, structured=False):
+def compiled(factory, *, structured=False, refused=False):
     if sys.platform != 'darwin' or not shutil.which('cc'):
         pytest.skip('native Mach-O receipt fixture requires the macOS compiler')
     root = factory.mktemp('native-protocol')
     try:
         source = SOURCE
-        for name, value in {'HEALTH_BODY': HEALTH, 'CHAT_BODY': CHAT, 'CALL_BODY': CALL,
+        for name, value in {'HEALTH_BODY': HEALTH, 'CHAT_BODY': _body('') if refused else CHAT, 'CALL_BODY': CALL,
                             'RESULT_BODY': RESULT}.items():
             source = source.replace(name, json.dumps(value))
         source = source.replace('STRUCTURED', '1' if structured else '0')
@@ -100,6 +100,6 @@ def native_executable(tmp_path_factory):
 
 
 @pytest.fixture(scope='module')
-def probe_executable(tmp_path_factory):
-    with compiled(tmp_path_factory, structured=True) as binary:
+def probe_executable(tmp_path_factory, request):
+    with compiled(tmp_path_factory, structured=True, refused=getattr(request, 'param', False)) as binary:
         yield binary

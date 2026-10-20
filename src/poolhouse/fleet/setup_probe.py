@@ -67,6 +67,22 @@ def _accepted(phase, reply):
     return bool(reply.content.strip()) if phase == 'chat' else reply.content.strip() == '5'
 
 
+def checked_startup(target):
+    """Read-only retained proof for a server-derived target; never start or lease."""
+    receipt = broker_wire.startup(target['port'])
+    if (not isinstance(receipt, dict) or receipt.get('port') != target['port']
+            or receipt.get('settings', {}).get('context') != target['context']
+            or receipt.get('runtime', {}).get('parser') != startup.parser_identity()
+            or not isinstance(receipt.get('id'), str)
+            or re.fullmatch(r'[a-f0-9]{64}', receipt['id']) is None):
+        return None
+    parts = receipt.get('artifacts', {}).get('model')
+    expected = {'path': target['model'], 'sha256': target['artifact_digest']}
+    if not isinstance(parts, list) or sum(part == expected for part in parts) != 1:
+        return None
+    return receipt
+
+
 class _Probe:
     def __init__(self, target, progress, control):
         if (not isinstance(target, dict) or set(target) != {'model', 'artifact_digest', 'port', 'context'}
@@ -84,23 +100,9 @@ class _Probe:
         self.receipt = None
         self.ticket, self.device, self.parsers = '', '', {}
 
-    def _startup(self):
-        receipt = broker_wire.startup(self.target['port'])
-        if (not isinstance(receipt, dict) or receipt.get('port') != self.target['port']
-                or receipt.get('settings', {}).get('context') != self.target['context']
-                or receipt.get('runtime', {}).get('parser') != startup.parser_identity()
-                or not isinstance(receipt.get('id'), str)
-                or re.fullmatch(r'[a-f0-9]{64}', receipt['id']) is None):
-            return None
-        parts = receipt.get('artifacts', {}).get('model')
-        expected = {'path': self.target['model'], 'sha256': self.target['artifact_digest']}
-        if not isinstance(parts, list) or sum(part == expected for part in parts) != 1:
-            return None
-        return receipt
-
     def _check(self):
         self.progress.check()
-        if self.control.is_set() or self._startup() != self.receipt:
+        if self.control.is_set() or checked_startup(self.target) != self.receipt:
             raise PreparationStopped('The observed setup server changed.')
         held = gate.snapshot().get(self.device, [])
         if not any(row['ticket'] == self.ticket and row['pid'] == os.getpid()
@@ -127,7 +129,7 @@ class _Probe:
 
     def run(self):
         self.progress.check()
-        self.receipt = self._startup()
+        self.receipt = checked_startup(self.target)
         if self.receipt is None:
             return {'chat_ready': False, 'tools_ready': False, 'reason': 'Current loaded model evidence is unavailable.'}
         self.progress.serving({'startup_id': self.receipt['id'],
