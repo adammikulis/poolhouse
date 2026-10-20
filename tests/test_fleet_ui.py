@@ -688,6 +688,24 @@ class TestPreferences:
         assert joined.ui.name == "quillhaven"
         assert Settings.load(tmp_path / "named.json").name == "quillhaven"
 
+    def test_repeated_wizard_hours_preserve_one_window_and_unrelated_availability(self, joined, tmp_path):
+        from poolhouse.fleet.availability import Availability, parse_window
+        old = parse_window("sat 10:00-12:00 # Existing reservation")
+        joined.ui.schedule = Availability(windows=[old])
+        joined.ui.schedule_path = tmp_path / "availability.json"
+        status, result, headers = joined.call("/ui/session", method="POST", body={"passphrase":WORDS})
+        assert status == 200, result
+        cookie = headers["Set-Cookie"].split(";")[0]
+        for spec in ["mon-fri 09:00-17:00", "mon-fri 09:00-17:00", "mon,tue,wed,thu,fri 09:00-17:00"]:
+            status, result, _ = joined.call("/ui/setup/prefs", method="POST", cookie=cookie,
+                                            body={"work_hours":True, "work_hours_spec":spec})
+            assert status == 200 and not result.get("error"), result
+        expected = [old, parse_window("mon-fri 09:00-17:00")]
+        assert joined.ui.schedule.windows == expected
+        assert Availability.load(joined.ui.schedule_path).windows == expected
+        joined.call("/ui/setup/prefs", method="POST", cookie=cookie, body={"work_hours":False})
+        assert joined.ui.schedule.windows == expected
+
     def test_a_blank_name_leaves_the_machine_called_what_it_was(self, joined):
         _, _, headers = joined.call("/ui/session", method="POST",
                                     body={"passphrase": WORDS})

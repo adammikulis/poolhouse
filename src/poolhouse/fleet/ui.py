@@ -329,7 +329,9 @@ class UI:
             spec = str(req.get("work_hours_spec") or "mon-fri 09:00-17:00")
             from .availability import parse_window
             try:
-                self.schedule.windows.append(parse_window(spec))
+                window = parse_window(spec)
+                if window not in self.schedule.windows:
+                    self.schedule.windows.append(window)
                 out["applied"].append(f"not taking work {spec}")
             except ValueError as exc:
                 out["error"] = str(exc)
