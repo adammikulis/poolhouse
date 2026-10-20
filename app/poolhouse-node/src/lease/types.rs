@@ -11,6 +11,10 @@ pub const LOCAL: &str = "local";
 pub const CLAIM_KINDS: [&str; 7] = ["worktree", "branch", "area", "port", "server", "install", "task"];
 /// Claim kinds named by an absolute path; two of them conflict when one path contains the other, whatever their kinds.
 pub const PATH_CLAIMS: [&str; 3] = ["worktree", "install", "area"];
+/// Claim kinds of things that exist on one device only (a path of its disk, a port or a server of its network, an area spelled under
+/// its repository's path): the device's table holds them and no board entry says so. `branch` is a name any device can claim and
+/// `task` is read by the other devices of the pool, so both are entries.
+pub const DEVICE_CLAIMS: [&str; 5] = ["worktree", "area", "port", "server", "install"];
 pub const MAX_RESOURCES: usize = 8;
 /// The longest tag a request names itself with.
 pub const MAX_TAG: usize = 64;
@@ -66,9 +70,14 @@ impl Resource {
         !matches!(self, Resource::CpuSlots { .. } | Resource::MemoryMb { .. })
     }
 
-    /// Claims of these kinds are about the pool's shared repository, not one device's disk.
+    /// Claims of this kind are about the pool's shared repository, not one device's disk.
     pub fn pool_wide(&self) -> bool {
-        matches!(self, Resource::Claim { kind, .. } if kind == "branch" || kind == "area")
+        matches!(self, Resource::Claim { kind, .. } if kind == "branch")
+    }
+
+    /// Whether this is a claim of a thing that exists on one device only (`DEVICE_CLAIMS`).
+    pub fn device_only(&self) -> bool {
+        matches!(self, Resource::Claim { kind, .. } if DEVICE_CLAIMS.contains(&kind.as_str()))
     }
 
     /// The name that identifies the contended thing: two resources with equal keys conflict
@@ -228,6 +237,11 @@ impl Lease {
     /// Who is asking in the eyes of the conflict rules: the holder and the tag of the request.
     pub fn party(&self) -> (&str, &str) {
         (&self.holder, &self.tag)
+    }
+
+    /// Whether the board is told when this lease is granted or ends: not a quiet one, and not one that holds device-only claims alone.
+    pub fn on_board(&self) -> bool {
+        !self.quiet && !self.resources.iter().all(Resource::device_only)
     }
 }
 

@@ -71,11 +71,11 @@ fn lines(l: &Lease) -> Vec<String> {
     l.resources.iter().map(Resource::line).collect()
 }
 
-/// Whether the lease an event is about asked to leave no board entry.
-fn quiet(event: &Event) -> bool {
+/// Whether the board is told of an event: not when the lease it is about is quiet or holds claims of things on this device alone.
+fn on_board(event: &Event) -> bool {
     match event {
-        Event::Granted(l) | Event::Ended(l, _) => l.quiet,
-        Event::Takeover { to, .. } => to.quiet,
+        Event::Granted(l) | Event::Ended(l, _) => l.on_board(),
+        Event::Takeover { to, .. } => to.on_board(),
     }
 }
 
@@ -85,8 +85,13 @@ pub fn mirror(node: &mut Node, events: &[Event]) -> Result<()> {
     if node.leases.hold(events) {
         return Ok(());
     }
+    for event in events {
+        if let Event::Granted(l) = event {
+            node.leases.holders.note(l)?;
+        }
+    }
     let mut drafts: BTreeMap<String, Vec<(Kind, String, Value)>> = BTreeMap::new();
-    for event in events.iter().filter(|e| !quiet(e)) {
+    for event in events.iter().filter(|e| on_board(e)) {
         let (l, kind, body) = match event {
             Event::Granted(l) => (l, Kind::Lease, json!({"lease": l.id, "action": "acquire", "resources": lines(l)})),
             Event::Ended(l, why) if l.state == State::Held => (l, Kind::Lease, json!({"lease": l.id, "action": why.word(), "resources": lines(l)})),
@@ -101,8 +106,11 @@ pub fn mirror(node: &mut Node, events: &[Event]) -> Result<()> {
     for (board, rows) in drafts {
         node.host(&board)?.board.append_many(rows)?;
     }
-    for event in events.iter().filter(|e| !quiet(e)) {
+    for event in events {
         if let Event::Ended(l, Why::Expired) = event {
+            if l.quiet {
+                continue;
+            }
             for (kind, key) in crate::claims::held_by(l) {
                 let said = format!("Your claim {kind} {key} expired: its time ran out before it was renewed. Take it again with: \
                                     poolhouse-workspace claim {kind} {key} (renew what you hold with: poolhouse-workspace heartbeat)");

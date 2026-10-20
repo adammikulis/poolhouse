@@ -39,14 +39,13 @@ impl Node {
     }
 
     /// Whether the board ``id`` may be removed at ``now``: a registration made it, every session on it ended and none for cause, its
-    /// log is this device's own and holds only identities, heads and the audits of endings, no other device ever synced it, no link or
+    /// log is this device's own and holds only identities and heads, no other device ever synced it, no link or
     /// lease names it, it holds no file and no flagged entry, and its last row is older than `board_grace_ms`.
     fn reapable(&self, id: &str, now: u64) -> bool {
         let Some(hosted) = self.boards.get(id) else { return false };
         let (board, own) = (&hosted.board, hosted.board.origin());
         let only_endings = board.rows(own).iter().all(|r| match r.kind {
             Kind::Identity | Kind::Head => true,
-            Kind::Audit => r.body["event"] == "retire",
             _ => false,
         });
         hosted.made_by.is_some()

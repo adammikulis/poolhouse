@@ -107,8 +107,12 @@ fn whoami(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
         if access.holder.board != board {
             return Err(Error::Denied("a model is claimed on the session's own board".into()));
         }
+        let before = node.host(board)?.names.get(&access.actor).map(|i| (i.model.clone(), i.harness.clone()));
         if node.host(board)?.names.claim_model(&access.actor, model, harness)? {
-            node.write_identity(board, &access.actor)?;
+            let after = node.host(board)?.names.get(&access.actor).map(|i| (i.model.clone(), i.harness.clone()));
+            if before != after {
+                node.write_identity(board, &access.actor)?;
+            }
         }
     }
     let mut out = json!({"name": access.actor, "board": access.holder.board, "target": board});
@@ -165,8 +169,9 @@ fn retire(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
               "subagents_retired": below}))
 }
 
-/// End ``target`` and say so on the board: its tokens, its leases, its subscriptions and its name; how many of each of the first two there were.
-/// The board's entries about the ending are skipped when the log has no room for them: the registry is the record of a session.
+/// End ``target`` and say so on the board with one identity entry that names who ended it and what that released: its tokens, its leases,
+/// its subscriptions and its name; how many of each of the first two there were. The entry is skipped when the log has no room for it: the
+/// registry is the record of a session.
 pub fn end(node: &mut Node, board: &str, target: &str, by: &str, reason: &str) -> Result<(usize, usize)> {
     let freed = release_leases(node, board, target)?;
     let revoked = node.tokens.revoke_name(board, target)?;
@@ -174,9 +179,7 @@ pub fn end(node: &mut Node, board: &str, target: &str, by: &str, reason: &str) -
     node.host(board)?.names.retire(target, reason)?;
     node.host(board)?.subs.drop_for(target)?;
     let detail = format!("retired by {by} ({reason}): {revoked} tokens revoked, {freed} leases released");
-    let audit = json!({"event": "retire", "subject": target, "detail": detail});
-    let written = node.write_ended(board, target).and_then(|()| node.host(board)?.board.append_node(Kind::Audit, by, audit, &format!("retire:{target}")).map(drop));
-    match written {
+    match node.write_ended(board, target, (by, &detail)) {
         Ok(()) | Err(Error::Quota(_)) => {}
         Err(e) => return Err(e),
     }

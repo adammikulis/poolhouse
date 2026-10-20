@@ -2,9 +2,11 @@
 //! claims and served-model slots, with a queue, dead-holder detection and takeover.
 //!
 //! The device's own table is authoritative for the device's resources and lives in
-//! `<state>/leases.json`. Every grant and end is also written to the holder's board as a
-//! `lease` entry, so peers see it; `merge` reads those entries back.
+//! `<state>/leases.json`. Every grant and end of a lease that holds something other devices can name
+//! is also written to the holder's board as a `lease` entry, so peers see it; `merge` reads those entries back. A lease that holds
+//! claims of things on this device alone (`types::DEVICE_CLAIMS`) writes nothing.
 
+pub mod holders;
 pub mod live;
 pub mod merge;
 pub mod policy;
@@ -32,6 +34,8 @@ fn wall_ms() -> u64 {
 pub struct Leases {
     pub cfg: Config,
     pub table: Table,
+    /// Who held a claim on a worktree of this device.
+    pub holders: holders::Holders,
     path: PathBuf,
     config_path: PathBuf,
     /// The bytes of the configuration file the settings came from; None when there was none.
@@ -63,7 +67,7 @@ impl Leases {
         };
         table.next_seq = table.next_seq.max(table.leases.iter().map(|l| l.seq).max().map_or(0, |s| s + 1));
         let saved = serde_json::to_vec(&table.leases)?;
-        Ok(Leases { cfg, table, path: dir.join(TABLE_FILE), config_path: dir.join(CONFIG_FILE), config_raw, saved, clock: Box::new(wall_ms), deferred: false, pending: Vec::new() })
+        Ok(Leases { cfg, table, holders: holders::Holders::open(dir), path: dir.join(TABLE_FILE), config_path: dir.join(CONFIG_FILE), config_raw, saved, clock: Box::new(wall_ms), deferred: false, pending: Vec::new() })
     }
 
     /// Take the settings from the configuration file again when its bytes are not the ones they came from: a file that is gone

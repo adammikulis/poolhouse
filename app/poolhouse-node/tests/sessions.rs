@@ -132,11 +132,12 @@ fn a_retired_subagent_loses_its_token_its_leases_and_its_name() {
     assert_eq!(code(&again), "denied", "the retired session cannot register itself back");
     let listed = |n: &mut poolhouse_node::node::Node, all: bool| ok(req(n, "agents", "demo", &lt, json!({"retired": all})))["agents"].as_array().unwrap().len();
     assert_eq!((listed(&mut n, false), listed(&mut n, true)), (1, 2));
-    let audit = ok(req(&mut n, "read", "demo", &lt, json!({"kind": "audit"})));
-    let event = audit["entries"].as_array().unwrap().iter().find(|e| e["fields"]["event"] == "retire").expect("retire is audited");
-    assert_eq!(event["fields"]["subject"], child.as_str());
     let identity = ok(req(&mut n, "read", "demo", &lt, json!({"kind": "identity"})));
-    assert_eq!(identity["entries"].as_array().unwrap().last().unwrap()["fields"]["retired"], true);
+    let ended = identity["entries"].as_array().unwrap().last().unwrap()["fields"].clone();
+    assert_eq!((ended["name"].clone(), ended["retired"].clone(), ended["retired_by"].clone()), (json!(child), json!(true), json!(child)), "the ending names who ended it");
+    assert!(ended["detail"].as_str().unwrap().contains("2 leases released"), "{ended}");
+    let audit = ok(req(&mut n, "read", "demo", &lt, json!({"kind": "audit"})));
+    assert!(audit["entries"].as_array().unwrap().iter().all(|e| e["fields"]["event"] != "retire"), "the ending is one identity entry, not a second audit entry");
 }
 
 #[test]

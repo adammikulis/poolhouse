@@ -3,9 +3,9 @@
 //! Merge rules. Entries come in the board's total order (hybrid clock, then origin). For an
 //! exclusive resource the earliest acquire in that order holds it until its own release, expiry
 //! or death entry; a later acquire of the same resource loses. A device-scoped resource
-//! (gpu, model slot, worktree, port, server, install, and the counted cpu and memory) is
+//! (gpu, model slot, and the counted cpu and memory; the claims of things on one device are not written) is
 //! scoped to the origin that wrote the entry: a device's table decides its own resources and
-//! other devices only read them. Branch and area claims are about the shared repository, so
+//! other devices only read them. Branch claims are about the shared repository, so
 //! they are scoped to the whole pool and the earliest acquire from any device wins.
 
 use std::collections::BTreeMap;
@@ -35,7 +35,7 @@ pub struct View {
 }
 
 fn pool_wide(key: &str) -> bool {
-    key.starts_with("claim:branch:") || key.starts_with("claim:area:")
+    key.starts_with("claim:branch:")
 }
 
 /// The (key, amount) a resource line names; None for a line that is not one.
