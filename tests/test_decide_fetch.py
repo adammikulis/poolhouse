@@ -126,3 +126,10 @@ def test_the_injection_classifier_comes_through_the_pipeline_with_the_hubs_own_h
         assert classifier.cached(tmp_path) is None
     finally:
         site.close()
+
+
+def test_fixed_endpoint_overrides_environment_without_changing_content_pins(hub, monkeypatch):
+    monkeypatch.setenv('HF_ENDPOINT', 'http://127.0.0.1:1/poisoned')
+    got = locate(pin(), download=True, endpoint=hub.base)
+    assert got.read_bytes() == BODY
+    assert len(hub.hits) == 1

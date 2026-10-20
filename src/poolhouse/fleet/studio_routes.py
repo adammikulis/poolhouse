@@ -26,6 +26,7 @@ from .managed_compute import process_environment
 from .request_fields import field, object_body
 from .session import parse_cookie
 from .studio_artifacts import artifact_files, open_artifact, stream_artifact
+from .studio_decision_setup import configure as configure_decision
 from .studio_dispatch import DeviceDispatch
 from .studio_library import provider as pool_library
 
@@ -147,6 +148,10 @@ class StudioRoutes:
             raise PermissionError("Sign in again to use Studio.")
         if self.path == "/ui/studio/devices" and self.method == "GET":
             self.send(200, {"devices": engine.dispatcher.devices()})
+            return True
+        if self.path == "/ui/studio/resources/decision/install" and self.method == "POST":
+            status, payload = configure_decision(self, engine, principal)
+            self.send(status, payload)
             return True
         if self.path == "/ui/studio/resources" and self.method == "GET":
             root = self.ui.runner.files_root
