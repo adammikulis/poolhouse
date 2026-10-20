@@ -129,3 +129,24 @@ def test_truthy_authorization_is_not_current_authority(served, monkeypatch):
     assert app.call('/ui/workspace/datasets/search', cookie=cookie)[0] == 200
     monkeypatch.setattr(app.ui.studio, 'authorize', lambda *_: 1)
     assert app.call('/ui/workspace/datasets/search', cookie=cookie)[0] == 403
+
+
+def test_real_nested_managed_file_preview(served, monkeypatch):
+    app, cookie, _ = served
+    path = app.runner.files_root / 'datasets' / 'sample.jsonl'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text('{"text":"first"}\n{"text":"second"}\n')
+    monkeypatch.setattr(dataset_routes.dataset_catalogue, 'preview', lambda *_: pytest.fail('local preview reached HF'))
+    status, body, _ = app.call('/ui/workspace/datasets/local-preview?path=datasets%2Fsample.jsonl', cookie=cookie)
+    assert status == 200, body
+    assert body['path'] == 'datasets/sample.jsonl'
+    assert body['rows'] == [{'text': 'first'}, {'text': 'second'}]
+    assert body['sampled'] is True
+
+
+@pytest.mark.parametrize('query', ['path=/tmp/private.jsonl', 'path=../private.jsonl',
+                                  'path=datasets/a.jsonl&path=datasets/b.jsonl', 'path=&url=https://private.invalid'])
+def test_local_preview_cannot_select_machine_or_extra_paths(served, query):
+    app, cookie, _ = served
+    status, _, _ = app.call('/ui/workspace/datasets/local-preview?' + query, cookie=cookie)
+    assert status == 400
