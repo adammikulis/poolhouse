@@ -161,13 +161,22 @@ def test_the_live_route_answers_the_moment_a_message_arrives_and_times_out_quiet
     got = json.loads(route(f"/board/wait?after={seq}&timeout=1")[2])
     assert got["seq"] == seq and 0.8 < time.monotonic() - began < 5
     alice.room("create", "#ops")
-    threading.Timer(0.4, lambda: alice.post("#ops", "note", "pushed")).start()
+    seq = json.loads(route("/board/head")[2])["seq"]
+    pushed = threading.Timer(0.4, lambda: alice.post("#ops", "note", "pushed"))
+    pushed.start()
     began = time.monotonic()
-    woke = json.loads(route(f"/board/wait?after={seq}&timeout=20")[2])
+    try:
+        woke = json.loads(route(f"/board/wait?after={seq}&timeout=20")[2])
+    finally:
+        pushed.join()
     assert woke["seq"] > seq and time.monotonic() - began < 3
-    threading.Timer(0.3, lambda: alice.post(team.bob.name, "note", "a private join")).start()
+    posted = threading.Timer(0.3, lambda: alice.post(team.bob.name, "note", "a private join"))
+    posted.start()
     began = time.monotonic()
-    join = json.loads(route(f"/board/wait?after={woke['seq']}&timeout=20")[2])
+    try:
+        join = json.loads(route(f"/board/wait?after={woke['seq']}&timeout=20")[2])
+    finally:
+        posted.join()
     assert join["seq"] > woke["seq"] and time.monotonic() - began < 3
 
 
