@@ -4,6 +4,7 @@ import contextlib
 import json
 import os
 import socket
+import ssl
 import threading
 import time
 
@@ -71,6 +72,41 @@ def test_a_daemon_makes_a_certificate_once_and_keeps_it(tmp_path):
             assert windows_problem(path) == ""
         else:
             assert path.stat().st_mode & 0o077 == 0
+
+
+def test_public_certificate_context_never_loads_a_client_identity(tmp_path, monkeypatch):
+    ident = tls.identity(tmp_path / "tls", "box")
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('Public certificate verification must not access a private identity')
+
+    class PublicContext(ssl.SSLContext):
+        load_cert_chain = forbidden
+
+    monkeypatch.setattr(tls, 'local', forbidden)
+    monkeypatch.setattr(tls, 'identity', forbidden)
+    for _ in range(2):
+        context = tls.certificate_context(ident.beacon, context_type=PublicContext)
+        assert isinstance(context, PublicContext)
+        assert context.minimum_version == ssl.TLSVersion.TLSv1_3
+        assert context.verify_mode == ssl.CERT_REQUIRED
+        assert context.check_hostname is False
+        assert len(context.get_ca_certs(binary_form=True)) == 1
+
+
+def test_member_context_retains_explicit_private_identity_after_public_context(tmp_path, monkeypatch):
+    ident = tls.identity(tmp_path / "tls", "box")
+    loaded = []
+
+    class MemberContext(ssl.SSLContext):
+        def load_cert_chain(self, certfile, keyfile):
+            loaded.append((certfile, keyfile))
+            super().load_cert_chain(certfile, keyfile)
+
+    monkeypatch.setattr(tls, 'local', lambda: pytest.fail('An explicit identity must not resolve another'))
+    context = tls.pinned_context(ident.beacon, who=ident, context_type=MemberContext)
+    assert isinstance(context, MemberContext)
+    assert loaded == [(str(ident.certfile), str(ident.keyfile))]
 
 
 @pytest.mark.skipif(os.name != "nt", reason="native Windows access control")
