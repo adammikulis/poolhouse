@@ -10,7 +10,7 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from poolhouse import coding_policy, roles
+from poolhouse import coding_policy, roles, runtime
 from poolhouse.board.session import Session
 from poolhouse.chatpolicy import READ_ONLY
 from poolhouse.client import families
@@ -21,7 +21,6 @@ from poolhouse.workspace import (
     localagent as la,
     localeffort,
     localloop,
-    task_caps,
     work_reputation,
 )
 from poolhouse.workspace.coding_turns import Manager, Turn
@@ -71,6 +70,9 @@ class TaskManager(Manager):
                     self.checkpoint({'summary': 'Native tool returned successfully',
                                      'progress': str(block.get('tool_use_id', ''))})
 
+    def _protected_paths(self, home: Path) -> tuple[str, ...]:
+        return (str(home),)
+
     def _max_turns(self):
         return localloop.caps_of(self.agent).rounds
 
@@ -90,17 +92,19 @@ class TaskManager(Manager):
         setting_index = command.index('--settings') + 1
         settings = json.loads(Path(command[setting_index]).read_text(encoding='utf-8'))
         hooks = settings.setdefault('hooks', {}).setdefault('PreToolUse', [])
+        prefix = runtime.module_argv("poolhouse.harnesshook", Path(context[3]), "pre")
         protected = False
         for entry in hooks:
             for hook in entry.get('hooks', []):
                 words = shlex.split(hook.get('command', ''))
-                if 'poolhouse.harnesshook' in words and 'pre' in words:
-                    hook['command'] = shlex.join([*words, '--protect', str(context[0])])
+                tail = words[len(prefix):]
+                options = list(zip(tail[::2], tail[1::2], strict=True)) if len(tail) % 2 == 0 else []
+                if words[:len(prefix)] == prefix and ('--protect', str(context[0])) in options:
                     protected = True
         if not protected:
-            raise ValueError('native task settings require the maintained classifier hook')
+            raise ValueError('native task settings require the maintained classifier hook and protected task home')
         hooks.append({'matcher': '*', 'hooks': [{'type': 'command', 'timeout': 10,
-                      'command': shlex.join([sys.executable, '-m', task_caps.__name__, str(counter)])}]})
+                      'command': shlex.join(runtime.module_argv("poolhouse.workspace.task_caps", Path(context[3]), str(counter)))}]})
         task_settings = context[0] / 'task-settings.json'
         if task_settings.exists():
             task_settings.chmod(0o600)

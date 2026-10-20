@@ -12,6 +12,8 @@ def test_pi_launch_is_offline_and_uses_the_policy_extension(monkeypatch, tmp_pat
     seen = {}
     binary = tmp_path / "pi"
     binary.touch()
+    project = tmp_path / "project"
+    project.mkdir()
     config = tmp_path / "pi-config"
     config.mkdir()
 
@@ -26,7 +28,7 @@ def test_pi_launch_is_offline_and_uses_the_policy_extension(monkeypatch, tmp_pat
         def lock(self):
             seen["locked"] = True
 
-    run = SimpleNamespace(files=Files(), cwd=tmp_path, brief="trusted role brief",
+    run = SimpleNamespace(files=Files(), cwd=project, brief="trusted role brief",
                           session=SimpleNamespace(name="coding-test"))
 
     @contextmanager
@@ -37,7 +39,7 @@ def test_pi_launch_is_offline_and_uses_the_policy_extension(monkeypatch, tmp_pat
     monkeypatch.setattr(pi, "alias_of", lambda *_: "local-model")
     monkeypatch.setattr(pi.harnessing, "window_of", lambda _: 49152)
     monkeypatch.setattr(pi.harnessing, "opened", opened)
-    monkeypatch.setattr(pi.harnessing, "protected_paths", lambda _: [str(config)])
+    monkeypatch.setattr(pi.harnessing, "protected_paths", lambda _files, extra=(): [str(config), *extra])
     def prepared(files, binary, root, role):
         return files.write("tool-worker.json", '{"module":"/fixed/installed-pi.js"}')
     monkeypatch.setattr(pi.pi_tools, "prepared", prepared)
@@ -46,7 +48,7 @@ def test_pi_launch_is_offline_and_uses_the_policy_extension(monkeypatch, tmp_pat
         seen["command"], seen["env"] = command, env
         return 0
 
-    assert pi.launch(["--on", "http://127.0.0.1:8080", "--project", str(tmp_path)],
+    assert pi.launch(["--on", "http://127.0.0.1:8080", "--project", str(project)],
                      say=lambda _: None, run_pi=run_pi) == 0
     assert seen["command"][:5] == [str(binary), "--provider", "poolhouse", "--model", "local-model"]
     assert seen["command"][seen["command"].index("--thinking") + 1] == "off"
@@ -75,7 +77,6 @@ def test_pi_extension_denies_writes_and_reports_exhausted_turns(tmp_path):
     import json
     import shutil
     import subprocess
-    import sys
 
     import pytest
 
@@ -83,7 +84,7 @@ def test_pi_extension_denies_writes_and_reports_exhausted_turns(tmp_path):
     if not node:
         pytest.skip("Node is required by Pi")
     hook = tmp_path / "policy.mjs"
-    hook.write_text(pi.extension({"python": sys.executable, "permissions": "read-only", "executionMode": "execute",
+    hook.write_text(pi.extension({"permissions": "read-only", "executionMode": "execute",
         "agent": "isolated-pi", "root": str(tmp_path), "protected": [], "maxTurns": 1}))
     driver = tmp_path / "driver.mjs"
     driver.write_text(
@@ -101,7 +102,8 @@ def test_pi_extension_denies_writes_and_reports_exhausted_turns(tmp_path):
     assert not (tmp_path / "output.py").exists()
 
 
-def test_pi_post_checkpoint_failure_stops_the_session(tmp_path):
+def test_pi_post_checkpoint_failure_stops_the_session(tmp_path, monkeypatch):
+    monkeypatch.setattr(pi.runtime, "module_argv", lambda *args: ["/usr/bin/false"])
     import json
     import shutil
     import subprocess
@@ -112,7 +114,7 @@ def test_pi_post_checkpoint_failure_stops_the_session(tmp_path):
     if not node:
         pytest.skip("Node is required by Pi")
     hook = tmp_path / "policy.mjs"
-    hook.write_text(pi.extension({"python": "/usr/bin/false", "permissions": "ask-dangerous", "executionMode": "execute",
+    hook.write_text(pi.extension({"permissions": "ask-dangerous", "executionMode": "execute",
         "agent": "missing-checkpoint-identity", "root": str(tmp_path), "protected": []}))
     driver = tmp_path / "driver.mjs"
     driver.write_text(
@@ -137,7 +139,7 @@ def test_pi_provider_payload_preserves_explicit_output_budget(tmp_path):
     if not node:
         pytest.skip("Node is required by Pi")
     hook = tmp_path / "budget.mjs"
-    hook.write_text(pi.extension({"maxOutputTokens": 32000,
+    hook.write_text(pi.extension({"root": str(tmp_path), "maxOutputTokens": 32000,
                                  "thinking": {"enable_thinking": False}}))
     driver = tmp_path / "driver.mjs"
     driver.write_text(
@@ -215,7 +217,7 @@ def test_pi_unlimited_payload_and_turns(tmp_path):
     node = shutil.which('node')
     if not node:
         pytest.skip('Node is required by Pi')
-    (tmp_path / 'budget.mjs').write_text(pi.extension({'maxOutputTokens': None, 'maxTurns': None}))
+    (tmp_path / 'budget.mjs').write_text(pi.extension({'root': str(tmp_path), 'maxOutputTokens': None, 'maxTurns': None}))
     driver = tmp_path / 'driver.mjs'
     driver.write_text(
         'import extension from "./budget.mjs";\n'

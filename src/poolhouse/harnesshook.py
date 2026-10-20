@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO, Any
 
-from poolhouse import coding_policy, hook_bootstrap, hook_diagnostics, safetext
+from poolhouse import coding_policy, hook_bootstrap, hook_diagnostics, runtime, safetext
 
 if __name__ == "__main__":
     sys.excepthook = hook_bootstrap.block
@@ -186,8 +186,8 @@ def nudge(agent: str, rail: Rail | None = None, *, board=None) -> str:
     """Return unread metadata and redacted advisory failure references."""
     try:
         timeout = min(NUDGE_S, max(0.05, hook_bootstrap.remaining() - CLEANUP_RESERVE_S))
-        done = _reader_run([sys.executable, "-m", NOTIFIER, agent,
-                            str(rail.roots[0] if rail and rail.roots else Path.cwd())], capture_output=True, text=True,
+        done = _reader_run(runtime.module_argv(NOTIFIER, Path(rail.roots[0]) if rail and rail.roots else Path.cwd(), agent,
+                            str(rail.roots[0] if rail and rail.roots else Path.cwd())), capture_output=True, text=True,
                            timeout=timeout, check=False, stdin=subprocess.DEVNULL)
     except subprocess.TimeoutExpired as error:
         partial = error.stdout or ""

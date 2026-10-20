@@ -3,10 +3,12 @@
 import json
 import threading
 from dataclasses import replace
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from poolhouse import coding_policy, harnessing
 from poolhouse.workspace import localagent, task_coding
 
 
@@ -16,10 +18,16 @@ def owning_session(identity="bound-worker"):
 
 @pytest.fixture
 def native(tmp_path):
-    settings = tmp_path / 'settings.json'
+    project, home = tmp_path / 'project', tmp_path / 'harness'
+    project.mkdir()
+    home.mkdir()
+    settings = home / 'settings.json'
+    command = harnessing.hook_command('pre', policy=coding_policy.Policy('read-only'),
+                                     agent='bound-worker', root=project, protect=[str(home)])
     settings.write_text(json.dumps({'hooks': {'PreToolUse': [{'matcher': '*', 'hooks': [
-        {'type': 'command', 'command': 'python -m poolhouse.harnesshook pre --role read-only'}]}]}}))
-    return ['claude', '--settings', str(settings)], (tmp_path, 'claude', 'prompt', None)
+        {'type': 'command', 'command': command}]}]}}))
+    return ['claude', '--settings', str(settings)], (home, 'claude', 'prompt', str(project))
+
 
 
 @pytest.mark.redteam
@@ -181,6 +189,9 @@ def test_pi_launcher_receives_independent_budget_and_clamped_effort(tmp_path, mo
     assert seen['max_output_tokens'] == 32000
     assert seen['effort'] == 'low'
     assert seen['max_turns'] is None
+    protected, = seen['protected_paths']
+    assert Path(protected).is_dir()
+    assert Path(protected).parent == store.root / 'harness' / conversation.id
 
 
 def test_unlimited_native_tool_counter_preserves_parser_bounds(tmp_path):
@@ -242,3 +253,19 @@ def test_task_parent_does_not_fall_back_after_authentication_refusal():
     agent = localagent.Agent('worker', 'qwen', identity='bound-worker')
     with pytest.raises(PermissionError, match='scratch session refused'):
         task_coding.TaskManager(None, session, None, agent)
+
+
+def test_task_launch_refuses_classifier_substitution_before_native_process(native, monkeypatch):
+    import shlex
+    import sys
+
+    command, context = native
+    settings = json.loads(context[0].joinpath('settings.json').read_text())
+    settings['hooks']['PreToolUse'][0]['hooks'][0]['command'] = shlex.join([
+        sys.executable, '-c', "print('poolhouse.harnesshook pre')", '--protect', str(context[0])])
+    context[0].joinpath('settings.json').write_text(json.dumps(settings))
+    monkeypatch.setattr(task_coding.Manager, '_process', lambda *_args: pytest.fail('native launched'))
+    manager = task_coding.TaskManager(None, owning_session(), None,
+                                    localagent.Agent('worker', 'qwen', identity='bound-worker'))
+    with pytest.raises(ValueError, match='maintained classifier hook'):
+        manager._process(None, command, {}, context)

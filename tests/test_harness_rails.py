@@ -26,6 +26,7 @@ from poolhouse import (
     harnessing,
     private_path,
     requests,
+    runtime,
 )
 from poolhouse.board import credentials, person, session as board_session
 from poolhouse.board.client import Denied as NodeDenied
@@ -356,10 +357,11 @@ class TestWorkspaceCommands:
             seen.append((command, kwargs))
             return subprocess.CompletedProcess(command, 0, 'nudge text', '')
         monkeypatch.setattr(harnesshook, '_reader_run', run)
+        monkeypatch.chdir(tmp_path)
         assert harnesshook.nudge(hostile) == "nudge text"
         command, options = seen[0]
-        assert command == [sys.executable, '-m', 'poolhouse.workspace.notification_reader',
-                           hostile, str(Path.cwd())]
+        assert command == runtime.module_argv('poolhouse.workspace.notification_reader', tmp_path,
+                                               hostile, str(Path.cwd()))
         assert options.get('shell', False) is False
         assert options['timeout'] == harnesshook.NUDGE_S
 

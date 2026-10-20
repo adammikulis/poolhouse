@@ -187,7 +187,7 @@ class Manager:
                 args = ["--print", "--verbose", "--output-format", "stream-json", "--include-partial-messages"]
                 if turn.session:
                     args += ["--resume", turn.session]
-            launch_options = {}
+            launch_options = {"protected_paths": self._protected_paths(home)}
             if harness == "pi":
                 launch_options["max_turns"] = self._max_turns()
                 launch_options["max_output_tokens"] = settings["max_output_tokens"]
@@ -213,6 +213,9 @@ class Manager:
                 store.put_doc(f"coding:{conversation.id}", {"version": 1, "session": turn.session,
                     "fingerprint": fingerprint, "state": turn.state, "updated": time.time()})
             turn.emit({"state": turn.state, "done": True})
+
+    def _protected_paths(self, _home: Path) -> tuple[str, ...]:
+        return ()
 
     def _parent(self, project):
         return person.session(project).name

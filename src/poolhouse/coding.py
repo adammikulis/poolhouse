@@ -32,6 +32,8 @@ def launch_coding_agent(model: str, policy: coding_policy.Policy, project: str |
         say(f"error: no harness {harness!r}: the harnesses are {', '.join(HARNESSES)}")
         return 2
     argv = [model or harnessing.DEFAULT_MODEL, "--permissions", policy.permissions, "--execution-mode", policy.execution_mode, "--project", str(project)]
+    for path in options.pop("protected_paths", ()):
+        argv += ["--protect", str(path)]
     if context := options.pop("context", 0):
         argv += ["--ctx", str(context)]
     if harness == "pi" and (max_turns := options.pop("max_turns", 0)):

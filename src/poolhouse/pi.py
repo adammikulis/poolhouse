@@ -9,9 +9,10 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Any
 
-from poolhouse import coding_policy, harnessing, pi_tools
+from poolhouse import coding_policy, harnessing, pi_tools, runtime
 from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of
 from poolhouse.client import families
 from poolhouse.log import say
@@ -31,13 +32,14 @@ def models(base_url: str, alias: str, window: int, max_output_tokens: int | None
 
 def extension(settings: dict[str, Any]) -> str:
     """Pi extension applying poolhouse's tool classifier and turn limit."""
-    config = json.dumps(settings)
+    config = json.dumps({**settings, "hookCommand": runtime.module_argv("poolhouse.harnesshook", Path(settings["root"])),
+                         "toolCommand": runtime.module_argv("poolhouse.pi_tools", Path(settings["root"]))})
     return f'''import {{ spawnSync }} from "node:child_process";
 import {{ pathToFileURL }} from "node:url";
 const cfg = {config};
 const names = {{bash:"Bash",powershell:"PowerShell",read:"Read",edit:"Edit",write:"Write",grep:"Grep",find:"Glob",ls:"LS"}};
 function call(args, payload) {{
-  const result = spawnSync(cfg.python, ["-m", "poolhouse.harnesshook", ...args], {{input:JSON.stringify(payload),encoding:"utf8",timeout:310000}});
+  const result = spawnSync(cfg.hookCommand[0], [...cfg.hookCommand.slice(1), ...args], {{input:JSON.stringify(payload),encoding:"utf8",timeout:310000}});
   if (result.error || result.status !== 0) return {{failed:true}};
   try {{ return JSON.parse(result.stdout || "{{}}") }} catch {{ return {{failed:true}} }}
 }}
@@ -84,7 +86,7 @@ export default function (pi) {{
     for (const factory of factories) {{
       const definition = factory(cfg.root);
       pi.registerTool({{...definition, execute: async (_id,input) => {{
-        const result = spawnSync(cfg.python,["-m","poolhouse.pi_tools",cfg.toolConfig],
+        const result = spawnSync(cfg.toolCommand[0],[...cfg.toolCommand.slice(1),cfg.toolConfig],
           {{input:JSON.stringify({{tool:definition.name,input}}),encoding:"utf8",timeout:130000,maxBuffer:4194304}});
         if (result.error || result.status !== 0) throw Error("poolhouse: isolated tool worker failed");
         return JSON.parse(result.stdout);
@@ -126,7 +128,8 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
         return 2
     try:
         coding_policy.Policy(args.permissions, args.execution_mode)
-    except ValueError as why:
+        args.project = str(harnessing.check_project(args.project))
+    except (OSError, RuntimeError, ValueError) as why:
         say(f"error: {why}")
         return 2
     if args.max_turns is None or args.max_output_tokens is None:
@@ -160,9 +163,8 @@ def _run(args, command, served, say, runner):
             (config_dir / "models.json").write_text(models(base_url,alias,window,args.max_output_tokens),encoding="utf-8")
             tool_config = pi_tools.prepared(run.files, binary, run.cwd, coding_policy.Policy(args.permissions, args.execution_mode))
             tool_module = json.loads(tool_config.read_text())["module"]
-            protected = harnessing.protected_paths(run.files)
-            hook = run.files.write("poolhouse.ts", extension({"python": sys.executable,
-                "permissions": args.permissions, "executionMode": args.execution_mode, "agent": run.session.name, "root": str(run.cwd),
+            protected = harnessing.protected_paths(run.files, args.protect)
+            hook = run.files.write("poolhouse.ts", extension({"permissions": args.permissions, "executionMode": args.execution_mode, "agent": run.session.name, "root": str(run.cwd),
                 "toolConfig": str(tool_config), "toolModule": tool_module,
                 "protected": protected, "maxTurns": args.max_turns, "maxOutputTokens": args.max_output_tokens,
                 "thinking": families.for_model_id(alias).think_kwargs(args.effort != "off")}))

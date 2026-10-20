@@ -18,10 +18,11 @@ import shutil
 import stat
 import sys
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 
-from poolhouse import coding_policy, harnessid, home, hub
+from poolhouse import coding_policy, harnessid, home, hub, runtime
+from poolhouse.activity.source_snapshot import protected_roots, validate_storage
 from poolhouse.briefing import REQUIRED_BRIEFING
 from poolhouse.errors import Denied
 from poolhouse.harnesshook import WAIT_S
@@ -41,6 +42,7 @@ __all__ = [
     "admitted",
     "agent_name_for",
     "binary_for",
+    "check_project",
     "config_for",
     "hook_command",
     "parser",
@@ -78,6 +80,7 @@ def parser(name: str, what: str, port: int, slots: int) -> argparse.ArgumentPars
                     help="coding changes allowed in the selected repository (default: %(default)s)")
     ap.add_argument("--execution-mode", choices=coding_policy.EXECUTION_MODES, default=coding_policy.EXECUTE,
                     help="plan inspects without applying changes; execute uses the selected permissions")
+    ap.add_argument("--protect", action="append", default=[], help="additional launcher-owned paths tools cannot access")
     ap.add_argument("--name", default="", help="the workspace name to ask for (default: local-<model>)")
     ap.add_argument("--as", dest="parent", default=PARENT,
                     help="the workspace session this one is a subagent of (default: the session of the command's environment; a launch with neither is refused)")
@@ -264,8 +267,8 @@ def session_files(cwd: Path) -> SessionFiles:
 
 def hook_command(event: str, *, policy: coding_policy.Policy, agent: str, root: Path, protect: list[str]) -> str:
     """The shell line a harness runs for a hook: absolute interpreter, role and paths fixed."""
-    words = [sys.executable, "-m", "poolhouse.harnesshook", event, "--permissions", policy.permissions, "--execution-mode", policy.execution_mode, "--agent", agent,
-             "--root", str(root), "--wait", str(int(WAIT_S))]
+    words = runtime.module_argv("poolhouse.harnesshook", root, event, "--permissions", policy.permissions, "--execution-mode", policy.execution_mode, "--agent", agent,
+             "--root", str(root), "--wait", str(int(WAIT_S)))
     for each in protect:
         words += ["--protect", each]
     if os.name == "nt":
@@ -275,9 +278,19 @@ def hook_command(event: str, *, policy: coding_policy.Policy, agent: str, root: 
     return shlex.join(words)
 
 
-def protected_paths(files: SessionFiles) -> list[str]:
+def check_project(project: str) -> Path:
+    """Check the real coding root before admitting any model workload."""
+    root = Path(project or Path.cwd()).resolve(strict=True)
+    if not root.is_dir():
+        raise ValueError("Choose an existing project directory")
+    root = validate_storage(root, protected_roots(dict(os.environ)))
+    runtime.module_argv("poolhouse.harnesshook", root)
+    return root
+
+
+def protected_paths(files: SessionFiles, extra: Sequence[str] = ()) -> list[str]:
     """Paths no tool call may name: the session directory and the state root."""
-    return [str(files.path), str(home.home())]
+    return [str(files.path), str(home.home()), *extra]
 
 
 
@@ -310,7 +323,7 @@ def opened(args: argparse.Namespace, harness: str, served: tuple[str, str, int],
             identity, cwd, args.parent, say, claim=(alias, harness))
         if not session.record_model(alias, harness, base_url):
             say(f"the model of {session.name} ({alias}, {harness}) is not recorded: the serving endpoint and session identity must verify")
-        pre = hook_command("pre", policy=coding_policy.Policy(args.permissions, args.execution_mode), agent=session.name, root=cwd, protect=protected_paths(files))
+        pre = hook_command("pre", policy=coding_policy.Policy(args.permissions, args.execution_mode), agent=session.name, root=cwd, protect=protected_paths(files, args.protect))
         post = hook_command("post", policy=coding_policy.Policy(args.permissions, args.execution_mode), agent=session.name, root=cwd, protect=[])
         starter = getattr(session, "parent", None)
         owner = starter.name if starter else args.parent

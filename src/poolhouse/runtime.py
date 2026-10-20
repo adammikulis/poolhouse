@@ -191,6 +191,33 @@ def python() -> Path:
     return Path(sys.executable)
 
 
+ISOLATED_MODULES = frozenset({"poolhouse.harnesshook", "poolhouse.pi_tools", "poolhouse.workspace.notification_reader",
+                               "poolhouse.workspace.task_caps"})
+
+
+def module_argv(module: str, selected_root: Path, *arguments: str) -> list[str]:
+    """Pin maintained worker imports outside the selected repository's ancestry."""
+    if module not in ISOLATED_MODULES:
+        raise ValueError("Unsupported isolated Poolhouse worker")
+    project = selected_root.resolve()
+    if getattr(sys, "frozen", False):
+        chosen = available()
+        if chosen is None:
+            raise OSError("A verified standalone runtime is required before starting coding tools")
+        trusted = (chosen.prefix.resolve(strict=True),)
+        command = [str(chosen.python), "-I", "-m", module]
+    else:
+        package = Path(__file__).resolve(strict=True).parent.parent
+        trusted = (package, Path(sys.prefix).resolve(strict=True))
+        script = ("import runpy,sys\n"
+                  f"sys.path.insert(0,{str(package)!r})\n"
+                  f"runpy.run_module({module!r},run_name='__main__',alter_sys=True)\n")
+        command = [sys.executable, "-I", "-c", script]
+    if any(project.is_relative_to(path) or path.is_relative_to(project) for path in trusted):
+        raise ValueError("The coding repository and trusted application runtime must not overlap")
+    return [*command, *arguments]
+
+
 def forward(module: str, argv: list[str]) -> bool:
     """Replace a launcher with the selected runtime when its prefix differs."""
     if not getattr(sys, "frozen", False) and Path(sys.prefix) == selection_prefix():

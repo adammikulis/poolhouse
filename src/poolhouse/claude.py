@@ -106,7 +106,8 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
         return 2
     try:
         coding_policy.Policy(args.permissions, args.execution_mode)
-    except ValueError as why:
+        args.project = str(harnessing.check_project(args.project))
+    except (OSError, RuntimeError, ValueError) as why:
         say(f"error: {why}")
         return 2
     runner = run_claude or (lambda cmd, env: subprocess.call(cmd, env=env, cwd=args.project or None))
