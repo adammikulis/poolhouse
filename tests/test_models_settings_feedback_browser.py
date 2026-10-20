@@ -115,12 +115,10 @@ def test_settings_responsive_tabs_and_drafts_survive_navigation(feedback_page, t
     appearance.press('ArrowDown' if width == 390 else 'ArrowRight')
     expect(tabs.get_by_role('tab', name='Models & providers', exact=True)).to_be_focused()
     page.keyboard.press('Tab')
-    expect(page.locator('#settings-chatting output-token-slider input')).to_be_focused()
-    page.keyboard.press('Tab')
     expect(page.locator('#download_sources-both')).to_be_focused()
-    page.keyboard.press('Tab')
-    last = page.locator('#settings-chatting #ctx').get_by_role('slider')
-    expect(last).to_be_focused()
+    appearance.click()
+    last = page.locator('#settings-tokens output-token-slider').get_by_role('slider')
+    last.focus()
     page.evaluate('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
     field, footer = last.bounding_box(), page.locator('.settings-footer').bounding_box()
     assert field['y'] >= 0 and field['y'] + field['height'] <= footer['y']
@@ -184,30 +182,28 @@ def test_settings_failed_save_preserves_dirty_draft_for_explicit_retry(feedback_
 
 def test_settings_discard_restores_radios_context_and_uncapped_output(feedback_page):
     served, page, errors = feedback_page
-    served.ui.settings.labels = ['train', 'prep']
     served.ui.settings.context = 16384
     served.ui.settings.chat_max_output_tokens = None
     open_preferences(served, page)
     page.get_by_role('tab', name='Compute & device', exact=True).click()
-    both = page.locator('#settings-left').get_by_role('radio', name='Both', exact=True)
-    expect(both).to_be_checked()
-    page.locator('#settings-left').get_by_role('radio', name='Train models', exact=True).check()
     page.get_by_role('radio', name='Quit', exact=False).check()
     page.get_by_role('tab', name='Models & providers', exact=True).click()
     page.locator('#download_sources-internet').check()
-    context = page.locator('#settings-chatting #ctx')
+    page.get_by_role('tab', name='Appearance & advanced', exact=True).click()
+    context = page.locator('#settings-tokens #ctx')
     context.get_by_role('slider').focus()
     context.get_by_role('slider').press('ArrowRight')
-    output = page.locator('#settings-chatting output-token-slider')
+    output = page.locator('#settings-tokens output-token-slider')
     output.get_by_role('slider').focus()
     output.get_by_role('slider').press('ArrowRight')
     expect(page.locator('#settings-dirty')).to_have_text('Unsaved preferences')
     page.get_by_role('button', name='Discard preferences', exact=True).click()
+    page.get_by_role('tab', name='Models & providers', exact=True).click()
     expect(page.locator('#download_sources-both')).to_be_checked()
+    page.get_by_role('tab', name='Appearance & advanced', exact=True).click()
     expect(context.locator('output')).to_have_text('16,384 tokens')
     assert output.evaluate('node => node.value') == ''
     page.get_by_role('tab', name='Compute & device', exact=True).click()
-    expect(both).to_be_checked()
     expect(page.locator('input[name=on_close][value=""]')).to_be_checked()
     expect(page.locator('#settings-dirty')).to_have_text('No unsaved preferences')
     assert not errors
@@ -236,4 +232,49 @@ def test_settings_auth_loss_rejects_old_save_completion(feedback_page):
     assert page.evaluate("document.querySelector('settings-view').savedPick") is None
     assert page.evaluate('fleetModel.preferences.studio_undo_steps') == 32
     expect(page.locator('#settings-save')).to_have_text('Save preferences')
+    assert not errors
+
+
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+@pytest.mark.parametrize('width', [1440, 390])
+def test_settings_token_controls_share_chrome_and_lead_preferences(feedback_page, theme, width):
+    served, page, errors = feedback_page
+    page.set_viewport_size({'width': width, 'height': 1000})
+    open_preferences(served, page)
+    page.evaluate('theme => fleetModel.setPreferences({...fleetModel.preferences,resolved_theme:theme})', PRESETS[theme])
+    context = page.get_by_role('slider', name='Context length', exact=True)
+    output = page.get_by_role('slider', name='Default maximum output tokens', exact=True)
+    expect(context).to_be_visible()
+    expect(output).to_be_visible()
+    positions = page.locator('#settings-tokens').evaluate("""node => {
+      const context = node.querySelector('#ctx'), output = node.querySelector('output-token-slider ml-slider');
+      const chrome = slider => {
+        const input = slider.shadowRoot.querySelector('input');
+        const css = getComputedStyle(input);
+        return {height:css.height,accent:css.accentColor,margin:css.margin, label:!!slider.shadowRoot.querySelector('.top label'), value:!!slider.shadowRoot.querySelector('.top output')};
+      };
+      return {first:node.parentElement.firstElementChild===node,context:context.getBoundingClientRect().top,
+        output:output.getBoundingClientRect().top,theme:node.parentElement.querySelector('theme-editor').getBoundingClientRect().top,
+        contextChrome:chrome(context),outputChrome:chrome(output)};
+    }""")
+    assert positions['first']
+    assert positions['context'] < positions['output'] < positions['theme']
+    assert positions['contextChrome'] == positions['outputChrome']
+    context.press('ArrowRight')
+    expect(output).to_have_attribute('max', '16384')
+    output.press('End')
+    expect(output).to_have_attribute('aria-valuetext', '16,384 tokens')
+    submitted = []
+    page.on('request', lambda request: submitted.append(request.post_data_json)
+            if request.method == 'POST' and request.url.endswith('/ui/settings') else None)
+    page.get_by_role('button', name='Save preferences', exact=True).click()
+    expect(page.locator('#settings-note .ok')).to_be_visible()
+    assert served.ui.settings.context == 16384
+    assert served.ui.settings.chat_max_output_tokens == 16384
+    assert len(submitted) == 1 and 'labels' not in submitted[0]
+    page.get_by_role('tab', name='Compute & device', exact=True).click()
+    expect(page.get_by_text('What this device does', exact=True)).to_have_count(0)
+    expect(page.locator('input[name=labels]')).to_have_count(0)
+    assert page.locator('settings-view').evaluate('node => !("labels" in node.pick)')
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     assert not errors

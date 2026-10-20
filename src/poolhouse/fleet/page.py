@@ -13,7 +13,7 @@ WEB = Path(__file__).parent / "web"
 COMPONENTS_DIR = WEB / "components"
 #: the page, in the order the elements wire themselves up
 COMPONENTS = ("fleet-model", "vocabulary-model", "fleet-nav", "sign-in", "launch-needed", "startup-models", "pool-actions", "first-run", "fleet-benchmark", "pool-view",
-              "chat-stream", "chat-markdown", "chat-view", "board-view", "projects-view", "wired-memory", "feature-flags", "models-library", "model-browser", "models-view", "theme-editor", "vocabulary-settings", "settings-view", "fit-model", "fit-view",
+              "output-token-slider", "chat-stream", "chat-markdown", "chat-view", "board-view", "projects-view", "wired-memory", "feature-flags", "models-library", "model-browser", "models-view", "theme-editor", "vocabulary-settings", "settings-view", "fit-model", "fit-view",
               "fit-charts", "rates-view", "telemetry-view",
               "workspace-jobs", "history-view", "tasks-view", "data-discover", "data-view", "knowledge-view",
               "studio-styles", "studio-model", "studio-persistence", "studio-bindings", "studio-editor", "studio-sweeps", "studio-targets", "studio-setup", "studio-managed", "studio-live", "studio-delivery", "studio-webhook", "studio-producer", "studio-records", "studio-branches", "studio-groups", "studio-runs", "studio-sharing", "studio-nodes", "studio-insertion", "studio-placement", "studio-canvas", "studio-view", "training-view", "tools-view", "benchmarks-view", "gym-scene-controls",
@@ -25,7 +25,6 @@ MODULES = {"studio-header": frozenset({"studio-view"}),
            "data-preview": frozenset({"data-discover", "data-view"}),
            "data-studio": frozenset({"data-view"}),
            "studio-n8n": frozenset({"studio-editor", "studio-view"}),
-           "output-token-slider": frozenset({"chat-view", "settings-view", "studio-model"}),
            "task-publishing": frozenset({"tasks-view"}),
            "task-review-quality": frozenset({"tasks-view"}),
            "gym-drone-geometry": frozenset({"gym-scene"}),

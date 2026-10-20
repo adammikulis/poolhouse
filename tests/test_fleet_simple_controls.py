@@ -14,7 +14,7 @@ pytestmark = pytest.mark.slow
 
 def test_context_length_uses_tokens_and_saves_the_chosen_limit(joined, open_page):
     page, errors = open_page(joined, cookie=joined.cookie, path='/ui/#settings')
-    page.get_by_role('tab', name='Models & providers').click()
+    page.get_by_role('tab', name='Appearance & advanced').click()
     slider = page.get_by_role('slider', name='Context length')
     slider.wait_for()
     assert slider.get_attribute('aria-valuetext') == '8,192 tokens'
@@ -28,7 +28,7 @@ def test_context_length_uses_tokens_and_saves_the_chosen_limit(joined, open_page
     assert not page.locator('#settings-removal button.danger').is_visible()
     page.get_by_role('tab', name='Maintenance', exact=True).click()
     page.locator('#settings-removal button.danger').wait_for()
-    page.get_by_role('tab', name='Models & providers').click()
+    page.get_by_role('tab', name='Appearance & advanced').click()
     slider.focus()
     slider.press('End')
     assert slider.get_attribute('aria-valuetext') == '1,048,576 tokens'
@@ -179,7 +179,7 @@ def test_central_output_default_saves_and_survives_reloading(joined, open_page):
     from playwright.sync_api import expect
 
     page, errors = open_page(joined, cookie=joined.cookie, path='/ui/#settings')
-    page.get_by_role('tab', name='Models & providers').click()
+    page.get_by_role('tab', name='Appearance & advanced').click()
     output = page.get_by_label('Default maximum output tokens', exact=True)
     expect(output).to_have_value('8192')
     output.press('End')
@@ -189,7 +189,7 @@ def test_central_output_default_saves_and_survives_reloading(joined, open_page):
     _, defaults, _ = joined.call('/ui/conversations/defaults', cookie=joined.cookie)
     assert defaults['settings']['max_output_tokens'] == 8191
     page.reload()
-    page.get_by_role('tab', name='Models & providers').click()
+    page.get_by_role('tab', name='Appearance & advanced').click()
     expect(output).to_have_value('8191')
     output.press('Home')
     page.locator('#settings-save').click()
@@ -197,7 +197,7 @@ def test_central_output_default_saves_and_survives_reloading(joined, open_page):
     _, defaults, _ = joined.call('/ui/conversations/defaults', cookie=joined.cookie)
     assert defaults['settings']['max_output_tokens'] is None
     page.reload()
-    page.get_by_role('tab', name='Models & providers').click()
+    page.get_by_role('tab', name='Appearance & advanced').click()
     expect(output).to_have_value('0')
     assert not errors
 
@@ -233,19 +233,19 @@ def test_settings_switch_sections_without_losing_unsaved_values(joined, open_pag
     }""")
     assert sizing['after']['padding'] == pytest.approx(sizing['before']['padding'] * .8)
     assert sizing['after']['font'] == pytest.approx(sizing['before']['font'] * 20 / sizing['before']['rootFont'], abs=.03)
-    page.get_by_role('tab', name='Models & providers').click()
+    page.get_by_role('tab', name='Appearance & advanced').click()
     output = page.get_by_label('Default maximum output tokens', exact=True)
     output.press('End')
     output.press('ArrowLeft')
     page.get_by_role('tab', name='Compute & device').click()
     expect(panels).to_have_count(1)
     expect(panels).to_have_attribute('data-pane', 'compute')
-    page.get_by_role('tab', name='Models & providers').click()
+    page.get_by_role('tab', name='Appearance & advanced').click()
     expect(output).to_have_value('8191')
     page.get_by_role('button', name='Save preferences', exact=True).click()
     expect(page.locator('#settings-note .ok')).to_contain_text('Preferences saved')
     page.reload()
-    page.get_by_role('tab', name='Models & providers').click()
+    page.get_by_role('tab', name='Appearance & advanced').click()
     expect(output).to_have_value('8191')
     page.get_by_role('tab', name='Maintenance', exact=True).click()
     expect(page.locator('#settings-removal button.danger')).to_be_visible()

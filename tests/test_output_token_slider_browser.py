@@ -2,6 +2,7 @@
 import pytest
 import test_fleet_simple_controls as controls
 from browser_expect import expect
+from test_models_settings_feedback_browser import feedback_page  # noqa: F401
 from test_studio_canvas_browser import studio_browser, studio_page  # noqa: F401
 
 browser = controls.browser
@@ -17,7 +18,6 @@ def test_context_reduction_preserves_saved_output_until_slider_changes(joined, o
     joined.call('/ui/settings', cookie=joined.cookie, method='POST',
                 body={'context': 16384, 'chat_max_output_tokens': 12000})
     page, errors = open_page(joined, cookie=joined.cookie, path='/ui/#settings')
-    page.get_by_role('tab', name='Models & providers').click()
     cap = page.get_by_role('slider', name='Default maximum output tokens', exact=True)
     expect(cap).to_have_value('12000')
     context = page.get_by_role('slider', name='Context length', exact=True)
@@ -97,4 +97,41 @@ def test_generation_node_uses_slider_in_inspector_and_canvas(generation_page):
     cap.press('Home')
     assert page.locator('studio-view').evaluate('editor => editor.graph.nodes[0].parameters.max_tokens') == 1
     expect(page.locator('.studio-inspector output')).to_have_text('1 token')
+    assert not errors
+
+
+def test_chat_output_drag_saves_once_on_release(feedback_page, tmp_path):  # noqa: F811
+    from poolhouse.fleet.conversations import Conversations
+
+    served, page, errors = feedback_page
+    served.ui.conversations = Conversations(tmp_path / "chats")
+    status, made, _ = served.call('/ui/conversations', method='POST',
+                                 body={'title': 'Token drag check', 'model': 'offline-model'})
+    assert status == 201
+    page.goto(f'http://127.0.0.1:{served.port}/ui/#chat')
+    page.get_by_role('link', name='Token drag check', exact=True).click()
+    page.locator('#conversation-details').click()
+    cap = page.locator('#chat-output-tokens').get_by_role('slider')
+    expect(cap).to_be_visible()
+    saved = []
+    page.on('request', lambda request: saved.append(request.post_data_json)
+            if request.method == 'POST' and request.url.endswith(f"/ui/conversations/{made['id']}") else None)
+    page.locator('#chat-output-tokens').evaluate('''node => {
+      window.tokenEvents = {input:0, change:0};
+      node.addEventListener('input', () => tokenEvents.input++);
+      node.addEventListener('change', () => tokenEvents.change++);
+    }''')
+    box = cap.bounding_box()
+    page.mouse.move(box['x'] + box['width'] * .7, box['y'] + box['height'] / 2)
+    page.mouse.down()
+    for fraction in [.6, .5, .4]:
+        page.mouse.move(box['x'] + box['width'] * fraction, box['y'] + box['height'] / 2)
+    assert page.evaluate('tokenEvents.input') >= 3
+    assert page.evaluate('tokenEvents.change') == 0
+    assert not saved
+    page.mouse.up()
+    page.wait_for_function('tokenEvents.change === 1')
+    page.locator('chat-view').evaluate('async node => await node.savePending')
+    assert len(saved) == 1
+    assert saved[0]['settings']['max_output_tokens'] == int(cap.input_value())
     assert not errors
