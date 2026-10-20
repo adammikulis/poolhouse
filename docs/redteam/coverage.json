@@ -1,7 +1,7 @@
 {
- "surfaces": 893,
+ "surfaces": 898,
  "by_status": {
-  "covered": 575,
+  "covered": 580,
   "partial": 193,
   "uncovered": 52,
   "n/a": 73,
@@ -44,7 +44,7 @@
    "unmapped": 0
   },
   "handler": {
-   "covered": 10,
+   "covered": 12,
    "partial": 2,
    "uncovered": 0,
    "n/a": 0,
@@ -65,7 +65,7 @@
    "unmapped": 0
   },
   "listener": {
-   "covered": 6,
+   "covered": 7,
    "partial": 5,
    "uncovered": 0,
    "n/a": 17,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 89,
+   "covered": 90,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 101,
+   "covered": 102,
    "partial": 58,
    "uncovered": 0,
    "n/a": 4,
@@ -2037,6 +2037,25 @@
    "note": "The original SDK process retains one authenticated daemon anchor and offer-specific bridge generation. Fresh control and DATA connections verify actual kernel endpoint processes before application bytes, with exact control TLS certificate checks and bounded fixed schemas. Wrong or replaced endpoints receive no record bytes; inherited clients fail after fork. There is no automatic uncertain resend. These isolated transport tests do not establish complete provider enrollment, current source authorization or durable event admission; deliberate forwarding by an already authorized connector remains outside kernel connector proof."
   },
   {
+   "id": "egress:fleet/producer_process.py:_forward",
+   "kind": "egress",
+   "source": "src/poolhouse/fleet/producer_process.py",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_process.py::test_real_generic_json_and_receipt_use_exact_owned_bridge",
+    "tests/test_producer_process.py::test_fresh_sibling_process_cannot_use_the_sdk_data_channel",
+    "tests/test_producer_process.py::test_revocation_unblocks_partial_frame_and_ends_exact_child",
+    "tests/test_producer_process.py::test_parent_private_eof_stops_the_original_child",
+    "tests/test_producer_process.py::test_data_connection_cannot_dispatch_a_second_frame",
+    "tests/test_producer_process.py::test_replaced_data_inode_is_not_unlinked_or_used",
+    "tests/test_producer_process.py::test_blocked_data_writer_rechecks_revocation_without_extending_deadline",
+    "tests/test_producer_process.py::test_control_binding_rejects_missing_and_nonfinite_generation"
+   ],
+   "note": "A private owned Unix listener accepts fresh original SDK process connections and forwards fixed generic JSON publication or receipt requests under the inherited source capability to the exact daemon TLS/control process. Complete binding validation, original listener inode, one-frame dispatch, parent death and cancellation-aware partial reads/writes are exercised under the original deadline. No source HMAC or device secret is exposed to the SDK. Isolated forwarding tests do not establish complete receiver admission, current source authorization, durable delivery or an installed producer journey; those remain factory obligations."
+  },
+  {
    "id": "egress:fleet/project_client.py:read",
    "kind": "egress",
    "source": "fleet/project_client.py:read",
@@ -2138,23 +2157,6 @@
    "note": "Current enrolled pool discovery pins encrypted devices. Exact destination guards refuse redirects, bounded sealed responses reject malformed packages and nonmonotonic pages, and bounded error bodies prevent a malicious device exhausting memory. Immutable versions and safe offline warnings preserve local publication."
   },
   {
-   "id": "egress:fleet/studio_transport.py:MemberExecution.__init__",
-   "kind": "egress",
-   "source": "fleet/studio_transport.py:MemberExecution.__init__",
-   "trust": "addresses and redirects named by pages, repositories and members",
-   "attacker": "a redirect or address sends the request somewhere the person did not choose",
-   "status": "covered",
-   "tests": [
-    "tests/test_studio_transport.py::test_only_discovered_https_enrolled_member_is_accepted",
-    "tests/test_studio_transport.py::test_plaintext_oversized_redirect_and_error_responses_are_refused",
-    "tests/test_studio_transport.py::test_revocation_is_checked_before_each_request",
-    "tests/test_studio_transport.py::test_selected_device_identity_cannot_change_after_binding",
-    "tests/test_studio_transport.py::test_response_must_be_bound_to_its_sealed_request",
-    "tests/test_studio_transport.py::test_collect_rejects_another_dispatch_before_fetching"
-   ],
-   "note": "Fixed Studio endpoints require the selected enrolled device certificate, current authorization and request-bound sealed responses; redirects, oversized or plaintext responses, changed identities and another dispatch's artifacts are refused"
-  },
-  {
    "id": "egress:fleet/studio_transport.py:MemberExecution._wire",
    "kind": "egress",
    "source": "fleet/studio_transport.py:MemberExecution._wire",
@@ -2163,13 +2165,16 @@
    "status": "covered",
    "tests": [
     "tests/test_studio_transport.py::test_only_discovered_https_enrolled_member_is_accepted",
+    "tests/test_studio_device_http.py::test_member_tls_redirects_never_contact_a_second_endpoint",
+    "tests/test_studio_device_http.py::test_member_exact_leaf_survives_global_pin_replacement",
+    "tests/test_http.py::test_explicit_no_redirect_contacts_once_for_hostnames_and_loopback",
     "tests/test_studio_transport.py::test_plaintext_oversized_redirect_and_error_responses_are_refused",
     "tests/test_studio_transport.py::test_revocation_is_checked_before_each_request",
     "tests/test_studio_transport.py::test_selected_device_identity_cannot_change_after_binding",
     "tests/test_studio_transport.py::test_response_must_be_bound_to_its_sealed_request",
     "tests/test_studio_transport.py::test_collect_rejects_another_dispatch_before_fetching"
    ],
-   "note": "Fixed Studio endpoints require the selected enrolled device certificate, current authorization and request-bound sealed responses; redirects, oversized or plaintext responses, changed identities and another dispatch's artifacts are refused"
+   "note": "Fixed Studio endpoints require an exact selected enrolled device certificate in a request-owned TLS context, strict current authorization and request-bound sealed responses. Global pin replacement cannot substitute another certificate, even a different leaf signed by the same CA. Numeric and hostname redirects, including back to the same URL, cannot send a second request in normal or cancellable HTTP paths. Oversized or plaintext responses, changed identities and another dispatch's artifacts are refused. Constructor-only context creation no longer registers a global network pin; network contact occurs in _wire."
   },
   {
    "id": "egress:fleet/studio_webhook_setup.py:LocalSender._send",
@@ -3054,6 +3059,25 @@
    "note": "RAM-only observational offers bind transport-supplied process generations, implementation and exact current receiver context. Tests replace liveness/current callbacks to attack stale identities, receiver substitution, withdrawn offers and revision checks. No listener or grant exists here: fixed daemon callers must obtain actual kernel identity and independently authorize owner enrollment before inspecting private evidence. Labels are informational, not authority."
   },
   {
+   "id": "handler:fleet/producer_process.py:OwnedProducer.activate",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_process.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_process.py::test_inert_listener_does_not_dispatch_before_activation",
+    "tests/test_producer_process.py::test_activation_cannot_substitute_actual_launch_binding",
+    "tests/test_producer_process.py::test_lost_activation_ack_never_reactivates_or_relaunches",
+    "tests/test_producer_process.py::test_current_callback_cannot_revive_reentrantly_closed_owner",
+    "tests/test_producer_process.py::test_original_sdk_death_invalidates_inert_prepared_process",
+    "tests/test_producer_process.py::test_managed_reader_is_retained_until_actual_child_exit",
+    "tests/test_producer_process.py::test_writer_blocks_prepare_before_runtime_verification_and_spawn",
+    "tests/test_producer_process.py::test_runtime_verification_precedes_fixed_child_command"
+   ],
+   "note": "One retained child is launched from a fixed verified managed runtime, with maintained reader admission spanning verification, launch and child lifetime. The listener is inert before exact private binding/capability activation; lost acknowledgement, changed binding and reentrant stop cannot adopt, relaunch or revive it. Tests use actual isolated CPU child processes. The factory must retain this owner before preparation and independently establish durable owner intent plus receiver acknowledgement before activation; this lifecycle primitive grants neither."
+  },
+  {
    "id": "handler:fleet/ui.py:_Loopback",
    "kind": "handler",
    "source": "fleet/ui.py:_Loopback",
@@ -3095,6 +3119,31 @@
     "tests/test_pdf_engine.py"
    ],
    "note": ""
+  },
+  {
+   "id": "handler:studio/producer_log.py:ProducerLog.retry",
+   "kind": "handler",
+   "source": "src/poolhouse/studio/producer_log.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_log.py::test_definitive_rejection_keeps_attempted_tombstone_and_releases_pending",
+    "tests/test_producer_log.py::test_rejection_requires_exact_receiver_negative_evidence",
+    "tests/test_producer_log.py::test_positive_receipt_always_wins_over_negative_and_keeps_other_pending",
+    "tests/test_producer_log.py::test_retry_is_explicit_idempotent_and_attempt_nonce_changes_same_second",
+    "tests/test_producer_log.py::test_unknown_cannot_retry_or_bypass_with_new_id",
+    "tests/test_producer_log.py::test_retry_rechecks_negative_and_current_authority_with_rollback",
+    "tests/test_producer_log.py::test_retry_refuses_changed_binding_or_intervening_pending",
+    "tests/test_producer_log.py::test_concurrent_retry_commands_have_one_winner",
+    "tests/test_producer_log.py::test_stale_reject_cannot_release_new_retry_pending",
+    "tests/test_producer_log.py::test_owner_can_cancel_only_unattempted_retry_retaining_history",
+    "tests/test_producer_log.py::test_owner_cancel_retry_revocation_rolls_back_and_claim_race_has_one_winner",
+    "tests/test_producer_log.py::test_accepted_receipt_beats_429_negative_under_shared_receiver_transaction",
+    "tests/test_producer_log.py::test_restart_retains_exact_retry_command_and_never_reclaims_initial",
+    "tests/test_producer_log.py::test_old_retry_snapshot_after_done_is_not_current_status_or_send_authority"
+   ],
+   "note": "The private retry transition requires current original-binding authority and definitive receiver evidence, then persists an idempotent immutable command revision. Stale commands, changed bindings, unknown outcomes, concurrent commands and receipt/rejection races cannot obtain another send claim. Tests supply trusted receiver callbacks over isolated storage; actual ingress negative markers and attempt-bound wire enforcement remain separate factory obligations."
   },
   {
    "id": "human:activity/cli.py:_export",
@@ -4665,6 +4714,25 @@
    "note": "The factory creates two private Unix listeners in an owned directory: nonce-only bootstrap and TLS control. Kernel process generation, private directory and original socket identities are checked throughout. Connection slots and deadlines bound owned threads; repeated or concurrent cleanup invalidates raw descriptor ownership once and never adopts replacement socket inodes, including partial binding failures. These are local transport surfaces, not source grants."
   },
   {
+   "id": "listener:fleet/producer_process.py:_Data.__init__",
+   "kind": "listener",
+   "source": "fleet/producer_process.py:_Data.__init__",
+   "trust": "anything that can connect to the address",
+   "attacker": "an unauthenticated or cross-origin client reaches the port",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_process.py::test_real_generic_json_and_receipt_use_exact_owned_bridge",
+    "tests/test_producer_process.py::test_fresh_sibling_process_cannot_use_the_sdk_data_channel",
+    "tests/test_producer_process.py::test_revocation_unblocks_partial_frame_and_ends_exact_child",
+    "tests/test_producer_process.py::test_parent_private_eof_stops_the_original_child",
+    "tests/test_producer_process.py::test_data_connection_cannot_dispatch_a_second_frame",
+    "tests/test_producer_process.py::test_replaced_data_inode_is_not_unlinked_or_used",
+    "tests/test_producer_process.py::test_blocked_data_writer_rechecks_revocation_without_extending_deadline",
+    "tests/test_producer_process.py::test_control_binding_rejects_missing_and_nonfinite_generation"
+   ],
+   "note": "A private owned Unix listener accepts fresh original SDK process connections and forwards fixed generic JSON publication or receipt requests under the inherited source capability to the exact daemon TLS/control process. Complete binding validation, original listener inode, one-frame dispatch, parent death and cancellation-aware partial reads/writes are exercised under the original deadline. No source HMAC or device secret is exposed to the SDK. Isolated forwarding tests do not establish complete receiver admission, current source authorization, durable delivery or an installed producer journey; those remain factory obligations."
+  },
+  {
    "id": "listener:fleet/studio_stream_routes.py:sources",
    "kind": "listener",
    "source": "fleet/studio_stream_routes.py:sources",
@@ -6055,6 +6123,25 @@
    "note": "Only the installed helper passes the real-machine gate before reading its fixed account root and existing private locator. Descriptor checks reject symlinks and public permissions; nonce and exact private acknowledgement schemas are checked. Only a public authenticated daemon anchor crosses to the SDK. The existing software installation-secret compromise boundary remains; no hardware clone resistance or source authority is conferred."
   },
   {
+   "id": "parser:fleet/producer_process.py",
+   "kind": "parser",
+   "source": "src/poolhouse/fleet/producer_process.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_process.py::test_real_generic_json_and_receipt_use_exact_owned_bridge",
+    "tests/test_producer_process.py::test_fresh_sibling_process_cannot_use_the_sdk_data_channel",
+    "tests/test_producer_process.py::test_revocation_unblocks_partial_frame_and_ends_exact_child",
+    "tests/test_producer_process.py::test_parent_private_eof_stops_the_original_child",
+    "tests/test_producer_process.py::test_data_connection_cannot_dispatch_a_second_frame",
+    "tests/test_producer_process.py::test_replaced_data_inode_is_not_unlinked_or_used",
+    "tests/test_producer_process.py::test_blocked_data_writer_rechecks_revocation_without_extending_deadline",
+    "tests/test_producer_process.py::test_control_binding_rejects_missing_and_nonfinite_generation"
+   ],
+   "note": "A private owned Unix listener accepts fresh original SDK process connections and forwards fixed generic JSON publication or receipt requests under the inherited source capability to the exact daemon TLS/control process. Complete binding validation, original listener inode, one-frame dispatch, parent death and cancellation-aware partial reads/writes are exercised under the original deadline. No source HMAC or device secret is exposed to the SDK. Isolated forwarding tests do not establish complete receiver admission, current source authorization, durable delivery or an installed producer journey; those remain factory obligations."
+  },
+  {
    "id": "parser:fleet/request_fields.py",
    "kind": "parser",
    "source": "fleet/request_fields.py",
@@ -7042,7 +7129,7 @@
     "tests/test_producer_log.py::test_attempted_or_unknown_event_cannot_be_discarded",
     "tests/test_producer_log.py::test_missing_or_mismatched_pending_index_never_issues_send_authority"
    ],
-   "note": "Private daemon persistence pins exact finite JSON bytes before parsing, source-wide event identity and the original binding. Current authorization and exact pending-index checks precede a single send claim; transaction races roll back. Unknown attempts require exact trusted inbox evidence and never resend across restart or replacement. Explicit current-owner discard applies only to provably unattempted records and retains their immutable identity. Reads and receipt access require independent factory authorization; this primitive provides no publisher-facing endpoint, credential or source capability."
+   "note": "Private persistence pins finite exact JSON bytes, source-wide event identity and the original binding. A command gets one send claim after current authorization and exact pending-index checks. Unknown outcomes never resend across restart or replacement. A deliberate retry requires exact receiver-owned attempt-bound non-admission evidence; accepted inbox evidence wins. Immutable command snapshots and claim keys cannot send a later revision, and historical attempted bytes never become not_sent. Owner discard applies only to a provably unattempted command and preserves event/history tombstones. The factory must authorize reads and supply negative evidence checked atomically against the receiver inbox in this same transaction; neither an HTTP 429 nor a client assertion is such proof. This primitive provides no publisher endpoint or capability."
   },
   {
    "id": "parser:studio/record_context.py",
@@ -11213,6 +11300,25 @@
     "tests/test_producer_sdk.py::test_production_launcher_uses_only_fixed_verified_runtime_entry"
    ],
    "note": "The SDK launches one fixed verified installed isolated interpreter entry through the maintained process launcher. An inherited private channel binds a fresh nonce, retained child process generation and acknowledgement; forged or incomplete replies fail and retained children are reaped even when initial birth inspection fails. Forked children close bootstrap descriptors. Tests use isolated real Mac child processes, not the real installation secret."
+  },
+  {
+   "id": "spawn:fleet/producer_process.py:OwnedProducer._spawn",
+   "kind": "spawn",
+   "source": "src/poolhouse/fleet/producer_process.py",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_process.py::test_inert_listener_does_not_dispatch_before_activation",
+    "tests/test_producer_process.py::test_activation_cannot_substitute_actual_launch_binding",
+    "tests/test_producer_process.py::test_lost_activation_ack_never_reactivates_or_relaunches",
+    "tests/test_producer_process.py::test_current_callback_cannot_revive_reentrantly_closed_owner",
+    "tests/test_producer_process.py::test_original_sdk_death_invalidates_inert_prepared_process",
+    "tests/test_producer_process.py::test_managed_reader_is_retained_until_actual_child_exit",
+    "tests/test_producer_process.py::test_writer_blocks_prepare_before_runtime_verification_and_spawn",
+    "tests/test_producer_process.py::test_runtime_verification_precedes_fixed_child_command"
+   ],
+   "note": "One retained child is launched from a fixed verified managed runtime, with maintained reader admission spanning verification, launch and child lifetime. The listener is inert before exact private binding/capability activation; lost acknowledgement, changed binding and reentrant stop cannot adopt, relaunch or revive it. Tests use actual isolated CPU child processes. The factory must retain this owner before preparation and independently establish durable owner intent plus receiver acknowledgement before activation; this lifecycle primitive grants neither."
   },
   {
    "id": "spawn:fleet/projects.py:local_root",
