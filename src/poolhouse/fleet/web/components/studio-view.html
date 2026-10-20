@@ -41,7 +41,11 @@
     </div>
     <div class="studio-group-path" id="studio-group-path"></div>
     <p class="studio-status" role="status" aria-live="polite"></p>
-    <div class="studio-shell">
+    <div class="studio-workspace-tabs" role="tablist" aria-label="Studio workspace">
+      <button id="studio-tab-canvas" role="tab" aria-selected="true" aria-controls="studio-panel-canvas">Canvas</button>
+      <button id="studio-tab-results" role="tab" aria-selected="false" aria-controls="studio-panel-results" tabindex="-1">Runs and Results</button>
+    </div>
+    <div class="studio-shell" id="studio-panel-canvas" role="tabpanel" aria-labelledby="studio-tab-canvas">
       <aside class="studio-library" aria-label="Node library">
         <input
           id="studio-search"
@@ -58,6 +62,7 @@
         <p>Select a node to configure it.</p>
       </aside>
     </div>
+    <section class="studio-results-panel" id="studio-panel-results" role="tabpanel" aria-labelledby="studio-tab-results" hidden>
     <section class="studio-dock" aria-label="Runs and results">
       <header>
         <h2>Runs and results</h2>
@@ -67,6 +72,7 @@
       </header>
       <div id="studio-runs"></div>
       <div id="studio-run-detail"></div>
+    </section>
     </section>
     <dialog class="studio-dialog" id="studio-share-dialog">
       <h2>Share a workflow</h2>
@@ -100,6 +106,34 @@
       S = window.studioModel,
       E = M.el;
     class StudioView extends HTMLElement {
+      selectWorkspaceTab(name) {
+        for (const tab of this.workspaceTabs) {
+          const on = tab.id === "studio-tab-" + name;
+          tab.setAttribute("aria-selected", String(on)); tab.tabIndex = on ? 0 : -1;
+          this.querySelector("#" + tab.getAttribute("aria-controls")).hidden = !on;
+        }
+        if (name === "canvas") requestAnimationFrame(() => this.canvas.connections());
+      }
+      setupWorkspaceTabs() {
+        this.workspaceTabs = [...this.querySelectorAll('[role="tablist"][aria-label="Studio workspace"] [role="tab"]')];
+        for (const [index, tab] of this.workspaceTabs.entries()) {
+          tab.onclick = () => this.selectWorkspaceTab(index ? "results" : "canvas");
+          tab.onkeydown = event => {
+            if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+            event.preventDefault();
+            const next = event.key === "Home" ? 0 : event.key === "End" ? 1 : 1 - index;
+            this.workspaceTabs[next].click(); this.workspaceTabs[next].focus();
+          };
+        }
+        const live = this.querySelector("#studio-live"), showLive = live.onclick;
+        live.onclick = () => { this.selectWorkspaceTab("results"); showLive(); };
+        const validate = this.validateEditorControls;
+        this.validateEditorControls = () => {
+          if (this.sweepDrafts?.size || this.recordDrafts?.size || this.querySelector(":invalid"))
+            this.selectWorkspaceTab("canvas");
+          return validate.call(this);
+        };
+      }
       connectedCallback() {
         if (this.wired) return;
         this.wired = true;
@@ -172,6 +206,7 @@
         this.addEventListener("keydown", (e) => this.key(e));
         this.setupSharing();
         this.setupLive();
+        this.setupWorkspaceTabs();
         M.onRoute((route) => {
           this.loadContext++;
           this.host.hidden = route !== "studio";

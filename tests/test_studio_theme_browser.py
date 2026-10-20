@@ -84,6 +84,7 @@ def test_studio_neutral_controls_canvas_and_run_dock(studio_page, tmp_path, them
     node_id = state['saved'][-1]['graph']['nodes'][0]['id']
     state['runs'][0]['nodes'] = {node_id: {'state': 'done', 'outputs': {}}}
     page.route('**/ui/studio/runs/run-1/logs?*', lambda route: route.fulfill(json={'log': 'Fixture worker finished.'}))
+    page.get_by_role('tab', name='Runs and Results', exact=True).click()
     page.get_by_role('button', name='run-1', exact=True).click()
     logs = page.get_by_role('button', name='View logs · Prompt template', exact=True)
     expect(logs).to_be_visible()
