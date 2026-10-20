@@ -9,6 +9,7 @@ from poolhouse.studio.stream_sources import bind
 
 from .files import safe_relpath
 from .request_fields import object_body
+from .studio_destinations import delivery_view, route as destination_routes
 from .studio_webhook_service import register as register_webhook
 
 
@@ -18,7 +19,7 @@ def public_source(row: dict) -> dict:
 
 
 def public_subscription(row: dict, service) -> dict:
-    return {key: row[key] for key in ('id', 'revision', 'state', 'reason', 'source_id', 'input_node', 'output_nodes') if key in row} | {
+    return {key: row[key] for key in ('id', 'revision', 'state', 'reason', 'source_id', 'input_node', 'output_nodes', 'destinations') if key in row} | {
         'workflow_id': row['workflow']['id'], 'workflow_revision': row['workflow']['revision'],
         'counts': row.get('counts', {}), 'cursor': row['next_sequence'] - 1,
         'has_grant': bool(row.get('grant')), 'can_resume': can_resume(row, service)}
@@ -97,6 +98,8 @@ def subscriptions(handler, service, principal, parts: list[str]) -> bool:
         row = operation(principal, sub['id'], body)
         handler.send(200, {'subscription': public_subscription(row, service)})
         return True
+    if action == 'deliveries' and handler.method == 'GET':
+        return delivery_list(handler, service, principal, sub)
     if action == 'preview' and handler.method == 'GET':
         return preview(handler, service, principal, sub)
     if action == 'events':
@@ -121,11 +124,13 @@ def subscriptions(handler, service, principal, parts: list[str]) -> bool:
 
 
 def public_event(row: dict) -> dict:
-    return {key: value for key, value in row.items() if key in {'id', 'sequence', 'state', 'run_id', 'result', 'error', 'received_at'}}
+    return {key: value for key, value in row.items() if key in {'id', 'sequence', 'state', 'run_id', 'result', 'error', 'received_at', 'delivery_states'}}
 
 
 def route(handler, service, principal) -> bool:
     path = urllib.parse.urlsplit(handler.path).path
+    if destination_routes(handler, service, principal):
+        return True
     if path == '/ui/studio/sources':
         return sources(handler, service, principal)
     prefix = '/ui/studio/subscriptions'
@@ -139,4 +144,17 @@ def preview(handler, service, principal, sub) -> bool:
     if source['kind'] != 'examples':
         raise ValueError('Preview is available for registered synthetic samples.')
     handler.send(200, {'record': example_record(source['template_id'], handler.asked('sample_id', 'sample'))})
+    return True
+
+
+def delivery_list(handler, service, principal, sub):
+    rows = []
+    if sub.get('inflight'):
+        event = service.store.get('stream-event', sub['inflight'], sub['scope'])
+        if event['subscription'] != sub['id']:
+            raise PermissionError('The historical delivery event changed.')
+        for ident in event.get('deliveries', []):
+            row = service.store.get('delivery', ident, sub['scope'])
+            rows.append(delivery_view(service, principal, row))
+    handler.send(200, {'deliveries': rows})
     return True

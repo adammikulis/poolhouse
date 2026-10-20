@@ -110,8 +110,9 @@ class StreamStore:
                 envelope = checked_event({'id': event_id, 'subscription': sub['id'], 'sequence': sequence,
                                           'source': sub['source_id'], 'generation': incoming['generation'],
                                           'payload': incoming['payload'], 'digest': body_digest,
-                                          'input_node': sub['input_node'], 'output_nodes': sub['output_nodes']})
+                                          'input_node': sub['input_node'], 'output_nodes': sub['execution_output_nodes']})
                 row['envelope'] = envelope
+                row['live_output_nodes'] = copy.deepcopy(sub['output_nodes'])
                 sub['inflight'] = event_id
             sub.update(next_sequence=sequence + 1, cursor=copy.deepcopy(incoming.get('cursor', sub.get('cursor'))))
             self.store.put('stream-event', row)

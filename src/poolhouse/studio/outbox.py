@@ -37,7 +37,7 @@ class Outbox:
 
     def _put(self, row: dict) -> dict:
         self.store.put('delivery', row)
-        if row['state'] == 'done':
+        if row['state'] in {'done', 'skipped'}:
             self.graph.query('MATCH (a:StudioOutboxActive {id:$id}) DELETE a', {'id': row['id']})
         else:
             self.graph.query('MERGE (a:StudioOutboxActive {id:$id}) SET a.scope=$scope, a.state=$state',
@@ -64,12 +64,14 @@ class Outbox:
                 row.update(state='interrupted', reason='An earlier delivery outcome is unconfirmed.')
                 self._put(row)
 
-    def stage(self, event: dict, destination: dict, body: dict) -> dict:
+    def stage(self, event: dict, destination: dict, body: dict, *, skipped: bool = False) -> dict:
+        if type(skipped) is not bool:
+            raise ValueError('A delivery skip must come from its actual workflow state.')
         checksum = body_digest(body)
         ident = digest({'event': event['id'], 'subscription': event['subscription'],
                         'destination': destination['id'], 'revision': destination['revision']})
         fixed = {'id': ident, 'scope': event['scope'], 'event': event['id'], 'subscription': event['subscription'],
-                 'principal': event['principal'], 'destination': destination,
+                 'principal': event['principal'], 'destination': destination, 'skipped': skipped,
                  'envelope': {'delivery_id': ident, 'request_digest': checksum, 'body': body}}
         with self.lock, self.graph.transaction():
             previous = self.graph.get_doc('studio.delivery:' + ident)
@@ -77,7 +79,7 @@ class Outbox:
                 if any(previous.get(key) != value for key, value in fixed.items()):
                     raise Conflict('This delivery identity already names different content.')
                 return copy.deepcopy(previous)
-            row = {**copy.deepcopy(fixed), 'state': 'queued', 'attempt': None, 'not_sent': True}
+            row = {**copy.deepcopy(fixed), 'state': 'skipped' if skipped else 'queued', 'attempt': None, 'not_sent': True}
             return self._put(row)
 
     def _allowed(self, row: dict) -> bool:
@@ -115,6 +117,21 @@ class Outbox:
                 return current
             current.update(state=result['state'], outcome=copy.deepcopy(result), not_sent=result['state'] == 'blocked')
             return self._put(current)
+
+    def cancel_event(self, event: dict) -> list[dict]:
+        """Stop admission; a send intent remains unknown even when cancellation is requested."""
+        with self.lock, self.graph.transaction():
+            rows = []
+            for ident in event.get('deliveries', []):
+                row = self.store.get('delivery', ident, event['scope'])
+                if row['event'] != event['id'] or row['principal'] != event['principal']:
+                    raise PermissionError('The event delivery identity changed.')
+                if row['state'] == 'queued':
+                    row.update(state='blocked', not_sent=True, reason='Delivery cancelled before dispatch.')
+                elif row['state'] == 'intent':
+                    row.update(state='interrupted', not_sent=False, reason='A cancelled delivery outcome is unconfirmed.')
+                rows.append(self._put(row))
+            return rows
 
     def retry(self, principal: dict, ident: str, request: dict, *, owner) -> dict:
         with self.lock, self.graph.transaction():

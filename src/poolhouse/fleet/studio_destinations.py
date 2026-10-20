@@ -182,7 +182,7 @@ def _delivery_owner(service, principal, row):
     return True
 
 
-def _delivery_public(row):
+def public_delivery(row):
     # Output bodies, principal/grant records and transport internals never leave this adapter.
     result = {key: copy.deepcopy(row[key]) for key in ('id', 'event', 'subscription', 'state', 'not_sent') if key in row}
     result['destination'] = {key: row['destination'][key] for key in ('id', 'revision', 'url')}
@@ -190,6 +190,22 @@ def _delivery_public(row):
     if 'reconciliation' in row:
         result['reconciliation'] = {key: row['reconciliation'][key] for key in (
             'evidence', 'outcome', 'actor', 'weaker_than_receiver_receipt') if key in row['reconciliation']}
+    return result
+
+
+def delivery_view(service, principal, row):
+    _delivery_owner(service, principal, row)
+    result = public_delivery(row)
+    result['can_reconcile'] = row['state'] == 'interrupted'
+    try:
+        result['can_retry'] = row['state'] == 'blocked' and row.get('not_sent') is True and service.delivery_current(row) is True
+    except (ValueError, OSError, RuntimeError, KeyError):
+        result['can_retry'] = False
+    result['reason'] = ('Confirm the receiver outcome before retrying.' if result['can_reconcile'] else
+                        'Ready for an explicit retry.' if result['can_retry'] else
+                        'The original permission or destination must remain current.' if row['state'] == 'blocked' else
+                        'Skipped by the workflow condition; nothing was sent.' if row['state'] == 'skipped' else
+                        'Delivery is complete.' if row['state'] == 'done' else 'Waiting for delivery confirmation.')
     return result
 
 
@@ -230,7 +246,7 @@ def route(handler, service, principal):
     row = service.store.get('delivery', parts[1], principal['scope'])
     _delivery_owner(service, principal, row)
     if len(parts) == 2 and handler.method == 'GET':
-        handler.send(200, {'delivery': _delivery_public(row)})
+        handler.send(200, {'delivery': delivery_view(service, principal, row)})
     elif len(parts) == 3 and handler.method == 'POST' and parts[2] in {'retry', 'reconcile'}:
         def owner(caller, value):
             return _delivery_owner(service, caller, value)
@@ -240,7 +256,8 @@ def route(handler, service, principal):
             row = service.outbox.retry(principal, row['id'], _delivery_request(handler, parts[2]), owner=owner)
         else:
             row = service.outbox.reconcile(principal, row['id'], _delivery_request(handler, parts[2]), owner=owner)
-        handler.send(202 if parts[2] == 'retry' else 200, {'delivery': _delivery_public(row)})
+        service.delivery_settled(principal, row)
+        handler.send(202 if parts[2] == 'retry' else 200, {'delivery': delivery_view(service, principal, row)})
     else:
         return False
     return True

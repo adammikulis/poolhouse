@@ -14,7 +14,7 @@ def setup(tmp_path):
     base = StudioStore(tmp_path / 'studio.ladybug')
     store = StreamStore(base)
     source = store.create('source', P, {'kind': 'examples', 'label': 'Examples'}, 'source')
-    sub = store.create('subscription', P, {'source_id': source['id'], 'input_node': 'record', 'output_nodes': ['record']}, 'sub')
+    sub = store.create('subscription', P, {'source_id': source['id'], 'input_node': 'record', 'output_nodes': ['record'], 'execution_output_nodes': ['record']}, 'sub')
     sub.update(state='active', grant='grant', service_principal=S)
     store.put_subscription(sub)
     yield store, sub
@@ -174,7 +174,7 @@ def configure_delivery(service, store, delivery):
     if delivery:
         from poolhouse.studio.outbox import Outbox
         destination = {'id': 'registered', 'revision': 1, 'url': 'https://receiver.invalid/events'}
-        service.destinations = lambda principal, selected: [{'kind': 'webhook', 'destination': destination}]
+        service.destinations = lambda principal, selected: [{'kind': 'webhook', 'destination': destination, 'outputs': [{'node': 'record', 'port': 'record'}]}]
         def send(destination, envelope, *, authorize):
             sends.append(envelope)
             return {'state': delivery}

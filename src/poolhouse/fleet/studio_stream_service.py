@@ -18,6 +18,7 @@ from . import studio_epoch, tls
 from .discovery import key_path, load_pool_key
 from .pool_roster import Pool
 from .studio_authority import StudioAuthority
+from .studio_delivery_service import create as create_delivery
 from .studio_watch_registry import create_native_picks
 from .studio_webhook_service import create as create_webhooks
 
@@ -47,6 +48,7 @@ def create(ui, engine, saved, scope):
                       resources=lambda principal, graph: pin_resources(saved, principal, graph))
     ui.studio_authority, ui.studio_streams = authority, service
     create_webhooks(ui, service)
+    create_delivery(ui, service)
 
     def selection_epoch(principal, create=False):
         return authority.selection_epoch(principal, create=create)
@@ -116,6 +118,11 @@ def resources_current(ui, saved, grant: dict, node, inputs) -> bool:
     source = grant['manifest']['source']
     if source.get('selection_epoch') and studio_epoch.generation(key_path(ui.pool_key_path).parent, grant['pool']) != source['selection_epoch']:
         return False
+    registry = getattr(ui, 'studio_destinations', None)
+    for destination in grant['manifest']['destinations']:
+        if destination.get('kind') == 'webhook' and (registry is None or not registry.current(
+                {'scope': grant['scope']}, destination['destination'])):
+            return False
     proofs = grant['manifest']['resources']
     for proof in proofs:
         if proof['kind'] == 'installed_model':

@@ -152,3 +152,41 @@ def test_corrupt_pointer_isolated_and_completed_history_not_polled(setup, monkey
         assert outbox._indexed('queued') == []
     assert 'studio.delivery:' + row['id'] not in calls
     assert store.graph.get_doc('studio.outbox-index-error:missing')
+
+
+def test_cancel_during_send_preserves_unknown_and_late_ack_cannot_complete(setup):
+    outbox, _, state = setup
+    row = stage(outbox)
+    entered, release = threading.Event(), threading.Event()
+    def send(*args, **kwargs):
+        entered.set()
+        assert release.wait(5)
+        return {'state': 'done'}
+    outbox.send = send
+    thread = threading.Thread(target=outbox.attempt, args=(row['id'], 'scope'))
+    thread.start()
+    try:
+        assert entered.wait(5)
+        event = {**EVENT, 'deliveries': [row['id']]}
+        assert outbox.cancel_event(event)[0]['state'] == 'interrupted'
+        assert outbox.cancel_event(event)[0]['not_sent'] is False
+    finally:
+        release.set()
+        thread.join()
+    assert outbox.attempt(row['id'], 'scope')['state'] == 'interrupted'
+    assert not state['calls']
+
+
+def test_skipped_projection_is_durable_terminal_unsent_and_never_retried(setup):
+    outbox, store, state = setup
+    body = {'event_id': EVENT['id'], 'outcome': 'skipped', 'outputs': [{'node': 'gated', 'port': 'response', 'state': 'skipped'}]}
+    row = outbox.stage(EVENT, DESTINATION, body, skipped=True)
+    assert row['state'] == 'skipped' and row['not_sent']
+    assert outbox.stage(EVENT, DESTINATION, body, skipped=True) == row
+    assert outbox.attempt(row['id'], 'scope') == row and not state['calls']
+    with store.lock:
+        assert outbox._indexed('skipped') == []
+    with pytest.raises(Conflict):
+        outbox.stage(EVENT, DESTINATION, body, skipped=False)
+    with pytest.raises(PermissionError):
+        outbox.retry(PRINCIPAL, row['id'], request(row), owner=lambda *args: True)

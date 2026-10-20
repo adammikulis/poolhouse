@@ -4,7 +4,7 @@ from __future__ import annotations
 import copy
 import threading
 
-from .catalog import node_spec
+from .contracts import resolve_output_ports, validate_graph
 from .store import Conflict, digest
 from .stream_store import StreamStore
 
@@ -24,6 +24,8 @@ class Streams:
         self.destinations = None
 
     def start_scheduler(self) -> None:
+        if self.outbox:
+            self.outbox.start()
         if self._thread is None:
             self._thread = threading.Thread(target=self._loop, name='studio-streams', daemon=True)
             self._thread.start()
@@ -46,7 +48,18 @@ class Streams:
         elif configuration['destinations'] != [{'kind': 'live'}]:
             raise ValueError('Select local live output.')
         workflow = configuration['workflow']
-        self.engine.prepare(principal, workflow, configuration['output_nodes'])
+        checked = validate_graph(workflow['graph'])
+        if not checked['valid']:
+            raise ValueError(checked['errors'])
+        graph = checked['graph']
+        for item in configuration['destinations']:
+            if item.get('kind') == 'webhook':
+                item['outputs'] = resolve_output_ports(workflow['graph'], graph, item['outputs'])
+        live = configuration['output_nodes']
+        execution = list(dict.fromkeys([*live, *(port['node'] for item in configuration['destinations']
+                                                if item.get('kind') == 'webhook' for port in item['outputs'])])) if live else []
+        self.engine.prepare(principal, workflow, execution)
+        configuration['execution_output_nodes'] = execution
         source = self.store.get('source', configuration['source_id'], principal['scope'])
         if source['owner'] != principal['id'] and not principal.get('owner'):
             raise PermissionError('This source belongs to another session.')
@@ -65,13 +78,17 @@ class Streams:
                 raise ValueError('A cancelled subscription cannot be restarted.')
             if sub.get('inflight'):
                 raise ValueError('Resolve the admitted event before changing execution authority.')
-            graph = self.engine.prepare(principal, sub['workflow'], sub['output_nodes'])
+            graph = self.engine.prepare(principal, sub['workflow'], sub['execution_output_nodes'])
             names = graph.get('variants', {}).get(sub['input_node'], [sub['input_node']])
             inputs = [node for node in graph['nodes'] if node['id'] in names and node['type'] == 'stream.record']
             if len(inputs) != len(names):
                 raise ValueError('Select a stream record input in this workflow.')
+            for item in sub['destinations']:
+                if item.get('kind') == 'webhook' and resolve_output_ports(sub['workflow']['graph'], graph, item['outputs']) != item['outputs']:
+                    raise ValueError('The selected delivery interface changed. Create a new subscription.')
             source = self.store.get('source', sub['source_id'], principal['scope'])
-            manifest = {'workflow': {**sub['workflow'], 'graph': graph}, 'source': source,
+            manifest = {'workflow': {**sub['workflow'], 'graph': graph,
+                                     'studio_outputs': {'live': sub['output_nodes'], 'execution': sub['execution_output_nodes']}}, 'source': source,
                         'destinations': sub['destinations'], 'resources': self.resources(principal, graph)}
             grant = self.authority.mint(principal, ident, manifest, request['idempotency_key'])
             sub.update(grant=grant['id'], service_principal=self.authority.principal(grant),
@@ -97,6 +114,8 @@ class Streams:
         grant = self.authority.get(principal)
         return (self.authority.authorize(principal, None, {}) and grant['subscription'] == sub['id'] and grant['id'] == sub.get('grant')
                 and grant['manifest']['workflow'] == sub['resolved_workflow']
+                and grant['manifest']['workflow']['studio_outputs'] == {
+                    'live': sub['output_nodes'], 'execution': sub['execution_output_nodes']}
                 and grant['manifest']['source'] == self.store.get('source', sub['source_id'], sub['scope'])
                 and grant['manifest']['destinations'] == sub['destinations'])
 
@@ -151,6 +170,16 @@ class Streams:
             self.authority.revoke(principal, sub['grant'])
         if sub.get('inflight'):
             event = self.store.get('stream-event', sub['inflight'], sub['scope'])
+            if event.get('deliveries') and self.outbox:
+                with self.store.lock, self.store.graph.transaction():
+                    rows = self.outbox.cancel_event(event)
+                    event['delivery_states'] = [{'id': row['id'], 'state': row['state']} for row in rows]
+                    event['state'] = 'done' if all(row['state'] in {'done', 'skipped'} for row in rows) else 'interrupted'
+                    if event['state'] == 'done':
+                        sub['inflight'] = None
+                    self.store.store.put('stream-event', event)
+                    self.store.put_subscription(sub)
+                return sub
             if not event.get('run_id'):
                 key = 'stream:' + sub['id'] + ':' + event['id']
                 identity = 'studio.submission:' + digest({'principal': event['principal'], 'key': key})
@@ -242,18 +271,21 @@ class Streams:
                 raise PermissionError('Event run identity requires reconciliation.')
             if run['state'] in TERMINAL | {'interrupted'}:
                 event['state'] = run['state']
-                event['result'] = {'outputs': [{'node': node, 'port': port, 'value': copy.deepcopy(value)}
-                                                for node, state in run['nodes'].items() if state['state'] == 'done'
-                                                for port, value in state['outputs'].items()
-                                                if self._output_selected(run, sub['output_nodes'], node)]}
+                event['result'] = self._run_result(run, event['live_output_nodes'])
                 with self.store.lock, self.store.graph.transaction():
                     if not self.authorized(sub, principal):
                         raise PermissionError('Output authority changed.')
                     if run['state'] == 'done' and self.outbox:
                         destinations = [item for item in sub['destinations'] if item.get('kind') == 'webhook']
                         if destinations:
-                            body = self._delivery_body(run, event)
-                            event['deliveries'] = [self.outbox.stage(event, item['destination'], body)['id'] for item in destinations]
+                            event['deliveries'], event['delivery_targets'], event['delivery_states'] = [], {}, []
+                            for item in destinations:
+                                body = self._delivery_body(run, event, item['outputs'])
+                                delivery = self.outbox.stage(event, item['destination'], body, skipped=body.get('outcome') == 'skipped')
+                                ident = delivery['id']
+                                event['deliveries'].append(ident)
+                                event['delivery_states'].append({'id': ident, 'state': delivery['state']})
+                                event['delivery_targets'][ident] = copy.deepcopy(item)
                             event['state'] = 'running'
                     self.store.store.put('stream-event', event)
                     current = self.store.get('subscription', sub['id'], sub['scope'])
@@ -276,7 +308,7 @@ class Streams:
             if any(row['event'] != event['id'] or row['principal'] != principal for row in rows):
                 raise PermissionError('Delivery identity changed.')
             event['delivery_states'] = [{'id': row['id'], 'state': row['state']} for row in rows]
-            if all(row['state'] == 'done' for row in rows):
+            if all(row['state'] in {'done', 'skipped'} for row in rows):
                 event['state'] = 'done'
                 current['inflight'] = None
                 if current['state'] == 'blocked':
@@ -287,17 +319,25 @@ class Streams:
             self.store.store.put('stream-event', event)
             self.store.put_subscription(current)
 
+    @classmethod
+    def _run_result(cls, run, selected):
+        return {'outputs': [{'node': node, 'port': port, 'value': copy.deepcopy(value)}
+                            for node, state in run['nodes'].items() if state['state'] == 'done'
+                            for port, value in state['outputs'].items()
+                            if cls._output_selected(run, selected, node)]}
+
     @staticmethod
-    def _delivery_body(run, event):
-        # Only declared value ports cross to a receiver; artifact/resource paths remain private.
-        nodes = {node['id']: node for node in run['graph']['nodes']}
-        allowed = {'json', 'text', 'decision', 'metrics', 'gate'}
-        outputs = [item for item in event['result']['outputs']
-                   if any(port['name'] == item['port'] and port['type'] in allowed
-                          for port in node_spec(nodes[item['node']]['type'], nodes[item['node']].get('version', 1))['outputs'])]
-        if not outputs:
-            raise ValueError('Select a JSON, decision, metrics or text output for webhook delivery.')
-        return {'event_id': event['id'], 'sequence': event['sequence'], 'outputs': copy.deepcopy(outputs)}
+    def _delivery_body(run, event, selected):
+        # Only explicitly pinned declared value ports cross to a receiver.
+        states = [run['nodes'].get(endpoint['node'], {}) for endpoint in selected]
+        if any(state.get('state') not in {'done', 'skipped'} for state in states):
+            raise ValueError('A selected delivery output did not complete.')
+        if any(state['state'] == 'skipped' for state in states):
+            return {'event_id': event['id'], 'sequence': event['sequence'], 'outcome': 'skipped',
+                    'outputs': [{**endpoint, 'state': state['state']} for endpoint, state in zip(selected, states, strict=True)]}
+        outputs = [{**endpoint, 'value': copy.deepcopy(state['outputs'][endpoint['port']])}
+                   for endpoint, state in zip(selected, states, strict=True)]
+        return {'event_id': event['id'], 'sequence': event['sequence'], 'outputs': outputs}
 
     @staticmethod
     def _output_selected(run: dict, selected: list[str], node: str) -> bool:

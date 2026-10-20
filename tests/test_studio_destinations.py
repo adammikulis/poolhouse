@@ -42,6 +42,7 @@ def registry(tmp_path, monkeypatch):
         state['sends'].append(envelope['delivery_id'])
         return {'state': 'interrupted', 'reason': 'Unconfirmed receiver receipt'}
     service.delivery_owner, service.delivery_current = delivery_owner, current
+    service.delivery_settled = lambda *args: None
     service.outbox = Outbox(store, authorize=current, send=send)
     try:
         yield destinations, service, principal, state

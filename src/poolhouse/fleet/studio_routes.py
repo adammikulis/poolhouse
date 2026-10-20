@@ -85,7 +85,7 @@ class StudioRoutes:
         store, scope = engine.store, principal["scope"]
         if not engine.authorize(principal, None, {}):
             raise PermissionError("Sign in again to use Studio.")
-        if (self.path.startswith(("/ui/studio/sources", "/ui/studio/subscriptions"))
+        if (self.path.startswith(("/ui/studio/sources", "/ui/studio/subscriptions", "/ui/studio/destinations", "/ui/studio/deliveries"))
                 and stream_route(self, self.ui.studio_streams, principal)):
             return True
         if self.path == "/ui/studio/devices" and self.method == "GET":

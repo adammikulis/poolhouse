@@ -360,3 +360,32 @@ def validate_graph(graph: Any, *, capabilities: set[str] | None = None,
         return {"valid": not errors, "errors": errors, "graph": expanded}
     except (ValueError, TypeError, KeyError, RecursionError) as exc:
         return {"valid": False, "errors": [{"node": "", "code": "graph", "message": str(exc)}], "graph": None}
+
+
+def resolve_output_ports(raw: dict, expanded: dict, selected: list) -> list[dict]:
+    """Resolve explicit value ports through existing group interfaces and sweep variants."""
+    if not isinstance(selected, list) or not selected:
+        raise ValueError('Select at least one declared value output for this destination')
+    base = _expand(raw, raw.get('groups', {}))
+    original = {node['id'] for node in base['nodes']}
+    nodes = {node['id']: node for node in expanded['nodes']}
+    result = []
+    for item in selected:
+        if not isinstance(item, dict) or set(item) != {'node', 'port'}:
+            raise ValueError('Delivery outputs must name declared node ports')
+        endpoint = _endpoint(item)
+        if endpoint['node'] not in original and endpoint['node'] not in nodes:
+            endpoint = base['resolve'](endpoint, 'outputs')
+        for identifier in expanded.get('variants', {}).get(endpoint['node'], [endpoint['node']]):
+            node = nodes.get(identifier)
+            if node is None:
+                raise ValueError('A selected delivery output is unavailable')
+            spec = node_spec(node['type'], node.get('version', 1))
+            port = next((port for port in spec['outputs'] if port['name'] == endpoint['port']), None)
+            if port is None or port['type'] not in {'json', 'text', 'decision', 'metrics', 'gate'}:
+                raise ValueError('Select a declared JSON, decision, metrics or text output; resources stay private')
+            resolved = {'node': identifier, 'port': endpoint['port']}
+            if resolved in result:
+                raise ValueError('Select each delivery output only once')
+            result.append(resolved)
+    return result
