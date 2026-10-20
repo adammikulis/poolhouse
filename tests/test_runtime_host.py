@@ -1,8 +1,8 @@
 """`poolhouse runtime restart-host`: the running host is replaced by the selected runtime, gracefully or not at all.
 
-The host is a real HTTP server answering `/health` the way the daemon does; the runtime is a real selected tree from the
-deploy tests' fake builder. The only seam is the detached process that would run the replacement: it records its command
-instead of replacing anything, and flips the server's commit the way a finished replacement would.
+Host branch tests use the verified Runtime descriptor seam and real loopback HTTP health.
+One replacement integration retains real immutable runtime building, verification and selection;
+the deployment suite separately drives build, smoke, recovery and rollback.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ class Host:
 
         self.server = Server(("127.0.0.1", 0), Handler)
         self.port = self.server.server_address[1]
-        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        threading.Thread(target=lambda: self.server.serve_forever(poll_interval=0.01), daemon=True).start()
 
     def stop(self) -> None:
         self.server.shutdown()
@@ -70,11 +70,24 @@ def host():
 
 
 @pytest.fixture
-def deployed(world):  # noqa: F811
+def installed_runtime(world):  # noqa: F811
     repo, launchers, _ = world
     head = commit(repo, "a")
-    runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
-    return head
+    outcome = runtime_deploy.ensure(plan_for(repo, launchers), builder=builder())
+    assert outcome.action == "switched"
+    chosen = runtime.available()
+    assert chosen is not None and chosen.commit == head and chosen.python.is_file()
+    return chosen
+
+
+@pytest.fixture
+def selected_runtime(tmp_path, monkeypatch):
+    """Supply the verified descriptor consumed by restart, without rebuilding a wheel."""
+    prefix = tmp_path / "selected-runtime"
+    prefix.mkdir()
+    chosen = runtime.Runtime(prefix, "1" * 40, "0.1.0", runtime.identity())
+    monkeypatch.setattr(runtime, "available", lambda: chosen)
+    return chosen
 
 
 class Spawner:
@@ -88,52 +101,55 @@ class Spawner:
             self.serving.say["launcher_control"] = "b" * 32
 
 
-def test_no_selected_runtime_means_nothing_to_restart_onto(world, host):  # noqa: F811
+def test_no_selected_runtime_means_nothing_to_restart_onto(host, monkeypatch):
+    monkeypatch.setattr(runtime, "available", lambda: None)
     spawn = Spawner()
     out = runtime_host.restart(host().port, Path("/r"), seams=runtime_host.Seams(spawn=spawn))
     assert out.action == "failed" and "no verified runtime" in out.detail and not spawn.calls
 
 
-def test_a_host_that_is_not_running_is_left_for_the_next_start_to_pick_the_runtime(deployed):
+def test_a_host_that_is_not_running_is_left_for_the_next_start_to_pick_the_runtime(selected_runtime):
     spawn = Spawner()
     free = Host(OLD)
     port = free.port
     free.stop()
     out = runtime_host.restart(port, Path("/r"), seams=runtime_host.Seams(spawn=spawn))
-    assert (out.action, out.commit) == ("not-running", deployed) and not spawn.calls
+    assert (out.action, out.commit) == ("not-running", selected_runtime.commit) and not spawn.calls
 
 
-def test_a_host_already_on_the_selected_runtime_is_not_restarted_unless_forced(deployed, host):
-    running, spawn = host(deployed), Spawner()
+def test_a_host_already_on_the_selected_runtime_is_not_restarted_unless_forced(selected_runtime, host):
+    running, spawn = host(selected_runtime.commit), Spawner()
     assert runtime_host.restart(running.port, Path("/r"), seams=runtime_host.Seams(spawn=spawn)).action == "current" and not spawn.calls
     assert runtime_host.restart(running.port, Path("/r"), seams=runtime_host.Seams(spawn=spawn), force=True, wait_s=0).action == "restarting"
     assert len(spawn.calls) == 1
 
 
-def test_a_host_with_no_launcher_control_is_refused_and_never_signalled(deployed, host):
+def test_a_host_with_no_launcher_control_is_refused_and_never_signalled(selected_runtime, host):
     running, spawn = host(control=""), Spawner()
     out = runtime_host.restart(running.port, Path("/r"), seams=runtime_host.Seams(spawn=spawn))
     assert out.action == "failed" and "predates" in out.detail and "Poolhouse" in out.detail and not spawn.calls
 
 
-def test_a_behind_host_is_replaced_through_the_job_preserving_restart_on_its_port_and_root(deployed, host):
+def test_a_behind_host_is_replaced_through_the_job_preserving_restart_on_its_port_and_root(installed_runtime, host):
+    assert runtime.available() == installed_runtime
     running = host()
-    spawn = Spawner(serving=running, becomes=deployed)
+    spawn = Spawner(serving=running, becomes=installed_runtime.commit)
     out = runtime_host.restart(running.port, Path("/the/root"), seams=runtime_host.Seams(spawn=spawn), wait_s=10)
-    assert (out.action, out.commit) == ("restarted", deployed)
+    assert (out.action, out.commit) == ("restarted", installed_runtime.commit)
     [(module, argv, log)] = spawn.calls
     assert module == "poolhouse.fleet.launch"
     assert argv == ["--restart", "--no-browser", "--port", str(running.port), "--root", "/the/root"]
     assert log == runtime.directory() / "restart.log"
 
+    assert runtime.available() == installed_runtime
 
-def test_a_replacement_that_does_not_show_up_is_reported_not_forced(deployed, host):
+def test_a_replacement_that_does_not_show_up_is_reported_not_forced(selected_runtime, host):
     running, spawn = host(), Spawner()
     out = runtime_host.restart(running.port, Path("/r"), seams=runtime_host.Seams(spawn=spawn), wait_s=1)
     assert out.action == "failed" and "still runs" in out.detail and len(spawn.calls) == 1
 
 
-def test_a_held_port_that_missed_the_health_probe_is_not_called_not_running(deployed):
+def test_a_held_port_that_missed_the_health_probe_is_not_called_not_running(selected_runtime):
     import socket
     spawn = Spawner()
     with socket.socket() as silent:
@@ -144,10 +160,10 @@ def test_a_held_port_that_missed_the_health_probe_is_not_called_not_running(depl
     assert out.action == "failed" and "holds port" in out.detail and not spawn.calls
 
 
-def test_forced_same_commit_restart_waits_for_new_generation_and_selected_prefix(deployed, host, monkeypatch):
+def test_forced_same_commit_restart_waits_for_new_generation_and_selected_prefix(selected_runtime, host, monkeypatch):
     chosen = runtime.available()
     selected = hashlib.sha256(str(chosen.prefix.resolve()).encode()).hexdigest()
-    old = {"commit": deployed, "launcher_control": "a" * 32, "runtime_prefix_digest": selected}
+    old = {"commit": selected_runtime.commit, "launcher_control": "a" * 32, "runtime_prefix_digest": selected}
     replacement = {**old, "launcher_control": "b" * 32}
     replies = iter([old, old, None, replacement])
     seen = []
