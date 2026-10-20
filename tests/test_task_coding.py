@@ -160,7 +160,7 @@ def test_pi_launcher_receives_independent_budget_and_clamped_effort(tmp_path, mo
     project.mkdir()
     store = Conversations(tmp_path / 'chats')
     conversation = store.start(model='qwen', settings={
-        'mode': 'coding', 'harness': 'pi', 'project': str(project),
+        'harness': 'pi', 'project': str(project),
         'effort': 'high', 'max_effort': 'low', 'max_output_tokens': 32000})
     seen = {}
     def launch(model, role, project, **options):
@@ -195,6 +195,32 @@ def test_unlimited_native_tool_counter_preserves_parser_bounds(tmp_path):
     path.write_text(json.dumps({'version': 1, 'calls': True, 'limit': None}))
     with pytest.raises(ValueError):
         task_caps.admit(path)
+
+
+def test_task_turn_creates_current_saved_conversation_before_dispatch(tmp_path, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(task_coding.git, 'head', lambda _: 'a' * 40)
+    monkeypatch.setattr(task_coding.work_reputation, 'brief_on', lambda *_: 'Recorded reputation data')
+
+    def run(manager, turn, conversation, prompt):
+        saved = manager.store.get(conversation.id)
+        assert saved is not None
+        assert 'mode' not in saved.settings
+        assert saved.settings['harness'] == 'pi'
+        assert saved.settings['project'] == str(tmp_path)
+        assert saved.settings['max_output_tokens'] == 32000
+        seen['conversation'] = saved.id
+        turn.text = 'Reviewed task result'
+
+    monkeypatch.setattr(task_coding.TaskManager, '_run', run)
+    monkeypatch.setattr(task_coding, '_proposal', lambda *args: {'summary': args[3].text})
+    task = {'id': 'task:' + 'b' * 32, 'title': 'Inspect queue', 'description': 'Inspect the queue',
+            'acceptance': ['Returns a report']}
+    agent = localagent.Agent('worker', 'qwen', identity='bound-worker', harness='pi', max_output_tokens=32000)
+    result = task_coding.perform(owning_session(), tmp_path / 'state', agent, task,
+                                task_coding.Run(tmp_path, lambda: False, lambda _: None))
+    assert seen['conversation']
+    assert result == {'summary': 'Reviewed task result'}
 
 
 @pytest.mark.parametrize('authenticated', ['', None, 'other-worker'])

@@ -137,7 +137,7 @@ def perform(s: Session, base: Path, agent, task, run: Run):
     la.Status(base, agent.name).update(reputation=reputation)
     store = Conversations(la.folder(base) / f'{agent.name}-chats')
     conversation = store.start(model=agent.model, title=task['title'], settings={
-        'mode': 'coding', 'harness': agent.harness, 'role': agent.role,
+        'harness': agent.harness, 'role': agent.role,
         'project': str(project), 'context': agent.ctx, 'draft': 'auto',
         'effort': agent.effort, 'max_effort': agent.max_effort, 'max_output_tokens': agent.max_output_tokens})
     turn, done = Turn(conversation.id), threading.Event()
