@@ -10,8 +10,9 @@ from contextlib import suppress
 from pathlib import Path
 
 from poolhouse import home, lock, platform, real_machine
+from poolhouse.files import stat_signature
 
-from .producer_bootstrap import _signature, read_existing
+from .producer_bootstrap import read_existing
 from .studio_epoch import directory
 
 LOCATOR = 'producer-control.json'
@@ -144,7 +145,7 @@ class Location:
                 info = os.stat(LOCATOR, dir_fd=self._fd, follow_symlinks=False)
                 _private(info)
                 if (value != self._path or endpoint != self._endpoint
-                        or _signature(info) != self._published):
+                        or stat_signature(info) != self._published):
                     raise PermissionError('Producer discovery metadata changed')
                 return self.root / LOCATOR
             name = LOCATOR + '.' + secrets.token_hex(16) + '.part'
@@ -176,7 +177,7 @@ class Location:
                 if self._socket(value)[1] != endpoint:
                     raise PermissionError('Bootstrap socket changed')
                 self._endpoint = endpoint
-                self._published = _signature(info)
+                self._published = stat_signature(info)
                 self._path = value
                 published = True
                 return self.root / LOCATOR

@@ -15,6 +15,7 @@ import time
 from pathlib import Path
 
 from poolhouse import home, maintenance, real_machine, runtime
+from poolhouse.files import stat_signature
 from poolhouse.json_objects import unique_object
 from poolhouse.platform import start_process
 
@@ -70,7 +71,7 @@ def _location(root):
         for name in path.parts[1:]:
             child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=at)
             descriptors.append(child)
-            anchors.append((at, name, child, bootstrap._signature(os.fstat(child))[:4]))
+            anchors.append((at, name, child, stat_signature(os.fstat(child))[:4]))
             at = child
         directory = os.fstat(at)
         if directory.st_uid != os.geteuid() or stat.S_IMODE(directory.st_mode) != 0o700:
@@ -87,16 +88,16 @@ def _location(root):
         ):
             raise bootstrap.BootstrapUnavailable("The software connection locator is unavailable.")
         data = os.read(fd, 4097)
-        if bootstrap._signature(os.fstat(fd)) != bootstrap._signature(
+        if stat_signature(os.fstat(fd)) != stat_signature(
             before
-        ) or bootstrap._signature(
+        ) or stat_signature(
             os.stat(LOCATOR, dir_fd=at, follow_symlinks=False)
-        ) != bootstrap._signature(before):
+        ) != stat_signature(before):
             raise bootstrap.BootstrapUnavailable("The software connection locator changed.")
         for parent, name, child, original in anchors:
             if (
-                bootstrap._signature(os.fstat(child))[:4] != original
-                or bootstrap._signature(os.stat(name, dir_fd=parent, follow_symlinks=False))[:4]
+                stat_signature(os.fstat(child))[:4] != original
+                or stat_signature(os.stat(name, dir_fd=parent, follow_symlinks=False))[:4]
                 != original
             ):
                 raise bootstrap.BootstrapUnavailable("The software connection directory changed.")

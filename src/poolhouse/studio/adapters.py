@@ -154,6 +154,8 @@ class Adapters:
         return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
     def cacheable_outputs(self, node: dict, outputs: dict) -> bool:
+        if node['type'] == 'data.hf-preview':
+            return False
         return node['type'] != 'guard.injection' or outputs.get('signal', {}).get('coverage') == 'complete'
 
     def availability(self, specs: list[dict]) -> dict[str, list[str]]:
@@ -227,7 +229,7 @@ class Adapters:
 
     def validate(self, nodes: list[dict]) -> list[dict]:
         schema_errors = _parameter_errors(nodes)
-        workers = [node for node in nodes if node['type'] not in ('dataset', 'model', 'prompt', 'tools.call', 'stream.record', 'decision.route', 'record.map', 'record.if')]
+        workers = [node for node in nodes if node['type'] not in ('dataset', 'model', 'prompt', 'tools.call', 'stream.record', 'decision.route', 'record.map', 'record.if', 'data.hf-preview')]
         if not workers:
             return schema_errors
         environment = self.runner.environment
@@ -275,6 +277,11 @@ class Adapters:
             return route(node.get('parameters', {}), inputs['decision'])
         if kind == 'stream.record':
             return {'record': inputs['record'] if 'record' in inputs else parse_record(node.get('parameters', {}).get('sample', '{}'))}
+        if kind == 'data.hf-preview':
+            importer = getattr(self.runner, 'studio_dataset_import', None)
+            if importer is None:
+                raise ValueError('Dataset imports are unavailable')
+            return importer(node, context)
         if kind in ('dataset', 'model'):
             binding = context['bindings'].get(kind, {})
             if binding.get('kind') != kind or not binding.get('id'):
@@ -282,12 +289,20 @@ class Adapters:
             if kind == 'model':
                 return {'model': self.model_resolver(binding, context)}
             else:
-                path = confined(Path(context['files_root']), binding['id'])
-            resource = {'kind': kind, 'path': str(path), 'id': binding['id']}
-            return {kind: resource}
+                return {'dataset': self._dataset_resource(binding, context)}
         if kind == 'prompt':
             return {'prompt': node.get('parameters', {}).get('template', '')}
         return None
+
+    def _dataset_resource(self, binding, context):
+        resolver = getattr(self.runner, 'studio_dataset_resource', None)
+        resource = resolver(binding, context) if resolver else None
+        if resource is not None:
+            return resource
+        if binding.get('id', '').startswith('datasets/huggingface/'):
+            raise ValueError('This imported dataset is unavailable')
+        path = confined(Path(context['files_root']), binding['id'])
+        return {'kind': 'dataset', 'path': str(path), 'id': binding['id']}
 
     def supports_authorized(self, node: dict) -> bool:
         return node['type'] == 'tools.call'
@@ -319,8 +334,7 @@ class Adapters:
             inputs['model'] = current
         for port, binding in context.get('bindings', {}).items():
             if port not in inputs and binding.get('kind') == 'dataset':
-                path = confined(Path(context['files_root']), binding['id'])
-                inputs[port] = {'kind': 'dataset', 'path': str(path)}
+                inputs[port] = self._dataset_resource(binding, context)
         out = Path(context['output_dir'])
         out.mkdir(parents=True, exist_ok=True)
         request = out / 'request.json'
