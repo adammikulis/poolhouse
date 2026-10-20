@@ -76,6 +76,9 @@ def _excluded_tree(path: str) -> None:
     def check(info: os.stat_result) -> None:
         if stat.S_ISLNK(info.st_mode) or (stat.S_ISREG(info.st_mode) and info.st_nlink > 1):
             raise PolicyError("exclusion: protected files must not have symlink or hardlink aliases")
+        if ((stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode))
+                and (info.st_uid not in (0, os.getuid()) or info.st_mode & 0o022)):
+            raise PolicyError("exclusion: protected trees must not be writable by other users")
 
     try:
         info = os.lstat(path)
