@@ -290,7 +290,8 @@ def test_trained_mlx_generation_holds_compute_and_quantizes_cache(tmp_path, monk
     generated = []
 
     @contextmanager
-    def hold(purpose):
+    def hold(purpose, *, wait_s):
+        assert wait_s is None
         held.append(True)
         yield
         held.pop()
