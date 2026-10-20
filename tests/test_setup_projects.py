@@ -123,7 +123,8 @@ def test_native_folder_flow_has_fixed_purpose_no_private_fields_and_no_implicit_
     result = picker.create(principal, request['request_id'])
     assert result['status'] == 'complete'
     assert result == picker.create(principal, request['request_id'])
-    assert picker.complete(request['request_id'], request['nonce'], claim['claim'], str(path)) == result
+    assert picker.complete(request['request_id'], request['nonce'], claim['claim'], str(path)) == {
+        key: value for key, value in result.items() if key != 'selected'}
     current[0] = False
     with pytest.raises(PermissionError):
         picker.complete(request['request_id'], request['nonce'], claim['claim'], str(path))
@@ -195,7 +196,7 @@ def test_real_default_requires_local_credentialed_explicit_choice(project_app):
                     body={'path': '/untrusted'})[0] == 409
     assert not target.exists()
     for _ in range(2):
-        status, result, _ = app.call('/ui/setup/projects/default', method='POST', headers=browser(app), cookie=cookie, body={})
+        status, result, _ = app.call('/ui/setup/projects/default', method='POST', headers=browser(app), cookie=cookie, body={'operation_id':'f' * 32})
         assert status == 200 and result['ok'] is True, result
         assert str(target) not in str(result)
     assert len(app.ui.projects.boards()) == 1
@@ -336,3 +337,44 @@ def test_generated_workspace_commit_uses_fixed_software_identity(prepared, monke
     path = Path(prepared.registry.get(project['id']).root)
     assert git.run(['log', '-1', '--format=%an|%ae|%cn|%ce'], cwd=path).stdout.strip() == (
         'Poolhouse setup agent|setup@agents.invalid|Poolhouse setup agent|setup@agents.invalid')
+
+
+def test_default_receipt_and_race_never_replace_a_newer_native_selection(project_app, tmp_path, monkeypatch):
+    from launch_support import browser, sign_in
+    app = project_app
+    cookie = sign_in(app)
+    def choose(operation):
+        return app.call('/ui/setup/projects/default', method='POST', headers=browser(app),
+                        cookie=cookie, body={'operation_id': operation})[0]
+    assert choose('a' * 32) == 200
+    instance = app.ui.setup_projects
+    folder = tmp_path.resolve() / 'native-choice'
+    folder.mkdir(mode=0o700)
+    instance.projects.select(folder, 'b' * 32, current=lambda: True)
+    native = instance.projects.create('b' * 32, current=lambda: True)
+    app.ui.projects.select_coding(native['id'], 'c' * 32, 1, current=lambda: True)
+    assert choose('a' * 32) == 200
+    assert app.call('/ui/setup/projects/default', method='POST', headers=browser(app), cookie=cookie,
+                    body={'operation_id':'a' * 32})[1]['selected'] is False
+    assert app.ui.projects.coding_project(current=lambda: True).id == native['id']
+    original = instance.projects.default
+    def race(**kwargs):
+        app.ui.projects.select_coding(native['id'], 'd' * 32, 2, current=lambda: True)
+        return original(**kwargs)
+    monkeypatch.setattr(instance.projects, 'default', race)
+    assert choose('e' * 32) == 403
+    assert app.ui.projects.coding_project(current=lambda: True).id == native['id']
+
+
+def test_default_operation_keys_are_scoped_to_the_actual_session(project_app):
+    from launch_support import browser, sign_in
+    app = project_app
+    cookies = [sign_in(app), sign_in(app)]
+    for cookie in cookies:
+        status, result, _ = app.call('/ui/setup/projects/default', method='POST', headers=browser(app),
+                                     cookie=cookie, body={'operation_id':'a' * 32})
+        assert status == 200 and result['selected'] is True
+    assert app.ui.projects.coding_revision(current=lambda: True) == 2
+    status, result, _ = app.call('/ui/setup/projects/default', method='POST', headers=browser(app),
+                                 cookie=cookies[0], body={'operation_id':'a' * 32})
+    assert status == 200 and result['selected'] is False

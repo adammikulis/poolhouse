@@ -9,6 +9,7 @@ import tempfile
 import threading
 from pathlib import Path
 
+from poolhouse.activity import source_snapshot
 from poolhouse.files import promote_new_directory
 from poolhouse.graph.store import GraphStore
 from poolhouse.lock import only_one
@@ -79,6 +80,7 @@ class Projects:
         with self.lock:
             self._check(current)
             stamp = directory(path)
+            source_snapshot.validate_storage(path, source_snapshot.protected_roots(dict(os.environ)))
             try:
                 top = Path(git.run(['rev-parse', '--show-toplevel'], cwd=path).stdout.strip())
             except git.GitFailed:
@@ -104,6 +106,7 @@ class Projects:
             if row is None:
                 raise ValueError(ERROR)
             path = Path(row['path'])
+            source_snapshot.validate_storage(path, source_snapshot.protected_roots(dict(os.environ)))
             if directory(path) != (row['device'], row['inode']):
                 raise ValueError(ERROR)
             if row['state'] == 'complete':
@@ -113,7 +116,7 @@ class Projects:
             if row['state'] == 'initializing':
                 if not (path / '.git' / 'config').exists():
                     git.run(['init', '--initial-branch=workspace', '--template='], cwd=path, protocols='')
-                self._verify_git(path, committed=False)
+                self._verify_git(path, candidate, committed=False)
                 row['state'] = 'committing'
                 self._write(candidate, row)
             self._check(current)
@@ -124,10 +127,10 @@ class Projects:
                     git.run(['rev-parse', '--verify', 'HEAD'], cwd=path, protocols='')
                 except git.GitFailed:
                     git.commit_empty(path, ('Poolhouse setup agent', 'setup@agents.invalid'),
-                                     'Create private coding workspace')
-                row.update(state='registering', commit=self._verify_git(path, committed=True))
+                                     self._initial_message(candidate))
+                row.update(state='registering', commit=self._verify_git(path, candidate, committed=True))
                 self._write(candidate, row)
-            if self._verify_git(path, committed=True) != row['commit']:
+            if self._verify_git(path, candidate, committed=True) != row['commit']:
                 raise ValueError('This folder changed. Choose it again.')
             result = self._register(path, current)
             row.update(state='complete', project=result)
@@ -193,7 +196,13 @@ class Projects:
             os.close(descriptor)
 
     @staticmethod
-    def _verify_git(path, *, committed):
+    def _initial_message(candidate):
+        if not isinstance(candidate, str) or len(candidate) != 32 or any(c not in '0123456789abcdef' for c in candidate):
+            raise ValueError(ERROR)
+        return 'Create private coding workspace\n\nPoolhouse project: ' + candidate
+
+    @staticmethod
+    def _verify_git(path, candidate, *, committed):
         """Reconcile only our fixed, empty initial repository; foreign content is refused."""
         def read(*args):
             return git.run(list(args), cwd=path, protocols='').stdout.strip()
@@ -204,7 +213,7 @@ class Projects:
         if not committed:
             return ''
         if (read('rev-list', '--count', 'HEAD') != '1'
-                or read('show', '-s', '--format=%s', 'HEAD') != 'Create private coding workspace'
+                or read('show', '-s', '--format=%B', 'HEAD') != Projects._initial_message(candidate)
                 or read('ls-tree', '-r', '--name-only', 'HEAD')):
             raise ValueError('This folder changed. Choose it again.')
         return read('rev-parse', 'HEAD')

@@ -35,6 +35,29 @@ class Service:
                                                          and session.credentialed and scope(ui) == bound)
         return principal
 
+    def default(self, principal, operation):
+        """Retain the first request revision independently of the reusable project identity."""
+        def current():
+            return self.current(principal, principal['scope'])
+        with self.projects.lock:
+            key = 'default:' + principal['id'] + ':' + operation
+            row = self.projects._read(key)
+            if row is None:
+                row = {'principal': principal, 'revision': self.ui.projects.coding_revision(current=current)}
+                self.projects._write(key, row)
+            if row['principal'] != principal:
+                raise PermissionError(ERROR)
+            registry_operation = digest({'principal': principal, 'request': operation})[:32]
+            receipt = self.ui.projects.coding_operation(registry_operation, current=current)
+            if receipt is not None:
+                project = self.ui.projects.get(receipt['id'])
+                return {'project':{'id':project.id, 'title':project.name}, 'selected':receipt['current']}
+            def selection_current():
+                return self.ui.projects.coding_operation_current(registry_operation, row['revision'], current=current)
+            project = self.projects.default(current=selection_current)
+            selected = self.ui.projects.select_coding(project['id'], registry_operation, row['revision'], current=current)
+            return {'project': project, 'selected':selected['current']}
+
     def current(self, principal, epoch):
         callback = self.bindings.get((principal['id'], principal['scope']))
         return principal['scope'] == epoch and callback is not None and callback() is True
@@ -92,11 +115,15 @@ def route(context):
     try:
         instance = service(context.ui)
         principal = instance.bind(context)
-        body = exact_body(context, ('candidate_id',) if context.path.endswith('/create') else ())
+        fields = {'/create': ('candidate_id',), '/default': ('operation_id',), '/pick': ()}
+        body = exact_body(context, fields[context.path.removeprefix(PREFIX)])
         if context.path.endswith('/pick'):
             response = instance.picker.request(principal)
         elif context.path.endswith('/default'):
-            response = {'project': instance.projects.default(current=lambda: instance.current(principal, principal['scope']))}
+            operation = body['operation_id']
+            if not isinstance(operation, str) or not re.fullmatch(r'[a-f0-9]{32}', operation):
+                raise ValueError(ERROR)
+            response = instance.default(principal, operation)
         else:
             candidate = body['candidate_id']
             if not isinstance(candidate, str) or not re.fullmatch(r'[a-f0-9]{32}', candidate):
