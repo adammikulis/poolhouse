@@ -1,10 +1,12 @@
 """Connect native selection proofs to the current authoritative resource registry."""
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from poolhouse.studio import stream_sources
 from poolhouse.studio.store import digest
 
-from .studio_native_picks import NativePicks
+from .native_picks import NativePicks
 
 
 def create_native_picks(store, *, selection_epoch, interactive_current, create_source):
@@ -53,4 +55,6 @@ def create_native_picks(store, *, selection_epoch, interactive_current, create_s
             source = create_source(principal, binding, request_id, expected)
             return {'id': source['id'], 'title': source['title']}
 
-    return NativePicks(store, epoch=epoch, current=current, create_watch=create_watch)
+    records = SimpleNamespace(purpose='studio-source', lock=store.lock, read=lambda ident: store.graph.get_doc('studio.native-pick:' + ident),
+                              write=lambda row: store.put('native-pick', row))
+    return NativePicks(records, epoch=epoch, current=current, create_resource=create_watch)
