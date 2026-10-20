@@ -8,10 +8,12 @@ caller starts it by hand.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import json
 import os
 import secrets
+import select
 import socket
 import socketserver
 import threading
@@ -30,7 +32,7 @@ from poolhouse.serve.broker import IDLE_S, Ask, Broker, BrokerError, Grant, who
 from poolhouse.serve.events import Caller, Growth
 from poolhouse.serve.leases import lease_file
 from poolhouse.serve.ports import DEFAULT_HOST
-from poolhouse.serve.process import pid_exists, started_at
+from poolhouse.serve.process import owns_connection, pid_exists, started_at
 
 __all__ = ["call", "claim", "cores", "give_back_cores", "lease", "record_path", "release",
            "serve", "status", "stop", "unclaim"]
@@ -59,11 +61,21 @@ class _Handler(socketserver.StreamRequestHandler):
 
     def handle(self) -> None:
         try:
-            reply = self.server.answer(json.loads(self.rfile.readline()))
+            body = json.loads(self.rfile.readline())
+            reply = self.server.answer(body, connected=lambda: _connected(self.connection, int(body.get("pid") or 0)))
         except (BrokerError, ServerFailed, ValueError, TypeError, KeyError, OSError,
                 RuntimeError) as exc:
             reply = {"ok": False, "error": str(exc), "kind": type(exc).__name__}
-        self.wfile.write((json.dumps(reply) + "\n").encode("utf-8"))
+        with contextlib.suppress(BrokenPipeError, ConnectionResetError):
+            self.wfile.write((json.dumps(reply) + "\n").encode("utf-8"))
+
+
+def _connected(connection: socket.socket, pid: int) -> bool:
+    try:
+        return (not select.select([connection], [], [], 0)[0]
+                and owns_connection(pid, connection.getpeername(), connection.getsockname()))
+    except (OSError, ValueError):
+        return False
 
 
 class _Server(socketserver.ThreadingTCPServer):
@@ -72,10 +84,24 @@ class _Server(socketserver.ThreadingTCPServer):
     def __init__(self, broker: Broker) -> None:
         super().__init__((DEFAULT_HOST, 0), _Handler)
         self.broker = broker
+        self.closing = threading.Event()
         self.runtime = broker_runtime.snapshot()
         self.token = secrets.token_hex(16)
 
-    def answer(self, body: dict[str, Any]) -> dict[str, Any]:
+    def shutdown(self) -> None:
+        self._cancel_waiters()
+        super().shutdown()
+
+    def server_close(self) -> None:
+        self._cancel_waiters()
+        super().server_close()
+
+    def _cancel_waiters(self) -> None:
+        self.closing.set()
+        with self.broker._cond:
+            self.broker._cond.notify_all()
+
+    def answer(self, body: dict[str, Any], *, connected: Any = None) -> dict[str, Any]:
         if body.get("token") != self.token:
             return {"ok": False, "error": "wrong broker token"}
         op, pid = body.get("op"), int(body.get("pid") or 0)
@@ -112,9 +138,13 @@ class _Server(socketserver.ThreadingTCPServer):
             return {"ok": True, **self.broker.snapshot(), "runtime": self.runtime}
         if op == "stop":
             return {"ok": True, **self.broker.stop(int(body["port"]), force=bool(body.get("force")))}
+        if op in {"claim", "unclaim"} and (self.closing.is_set() or (connected is not None and not connected())):
+            raise RuntimeError("The broker request is not owned by a connected process.")
         if op == "claim":
+            wait = body.get("wait_s", 0.0)
             return {"ok": True, **self.broker.claim(str(body["name"]), pid, body.get("info") or {},
-                                                    timeout=float(body.get("wait_s") or 0.0))}
+                                                    timeout=None if wait is None else float(wait),
+                                                    connected=lambda: not self.closing.is_set() and (connected is None or connected()))}
         if op == "cores":
             return {"ok": True, **self.broker.take_cores(pid, int(body["want"]))}
         if op == "give_back_cores":
@@ -403,9 +433,9 @@ def stop(port: int, *, force: bool = False) -> dict[str, Any]:
     return call("stop", start=False, port=port, force=force)
 
 
-def claim(name: str, info: dict[str, Any], *, timeout: float = 0.0) -> dict[str, Any]:
+def claim(name: str, info: dict[str, Any], *, timeout: float | None = 0.0) -> dict[str, Any]:
     """Hold ``name`` for this process, or learn who holds it (``granted`` says which)."""
-    return call("claim", timeout=timeout + 30.0, name=name, info=info, wait_s=timeout)
+    return call("claim", timeout=None if timeout is None else timeout + 30.0, name=name, info=info, wait_s=timeout)
 
 
 def cores(want: int) -> dict[str, Any]:

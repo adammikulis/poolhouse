@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import math
 import threading
 import time
 import uuid
@@ -13,6 +14,7 @@ from poolhouse import leasetable
 from poolhouse.node_health import Refused
 from poolhouse.serve import admission
 from poolhouse.serve.leases import recorded_servers
+from poolhouse.serve.process import started_at
 
 __all__ = ["MODEL_START", "POLL_S", "BrokerHolds"]
 
@@ -27,6 +29,7 @@ class BrokerHolds:
     if TYPE_CHECKING:
         _cond: threading.Condition
         claims: dict[str, dict[str, Any]]
+        claim_waiters: dict[str, dict[str, Any]]
         cores: dict[str, tuple[int, int, float]]
         cpus: int
         servers: dict[int, Any]
@@ -39,34 +42,70 @@ class BrokerHolds:
         def _held_said(held: Any) -> str: ...
 
     def claim(self, name: str, pid: int, info: Mapping[str, Any], *,
-              timeout: float = 0.0) -> dict[str, Any]:
-        """Hold ``name`` for ``pid``, or say who holds it. Waits up to ``timeout`` for it. ``gpu-training`` is the device's GPU in
-        the node's lease table, bound to ``pid``, so a request for a model server waits behind it."""
-        deadline = time.monotonic() + timeout
+              timeout: float | None = 0.0, connected: Callable[[], bool] | None = None) -> dict[str, Any]:
+        """Claim for this process generation; None waits until admission or cancellation."""
+        if timeout is not None and not math.isfinite(timeout):
+            raise ValueError("A claim wait must be finite or explicitly unbounded.")
+        waiter = {"name": name, "pid": pid, "started": started_at(pid), "info": dict(info), "since": time.time()}
+        if not self._waiter_alive(waiter, connected):
+            raise RuntimeError("The compute requester is no longer connected or cannot prove its process identity.")
         if name == "gpu-training":
             self.adopt()
+        deadline = None if timeout is None else time.monotonic() + timeout
+        ticket = uuid.uuid4().hex
         with self._cond:
-            while True:
-                held = self.claims.get(name)
-                busy = next((server for server in self.servers.values()
-                             if server.loading or server.unmanaged or server.holders), None) if name == "gpu-training" else None
-                starting = next((value for key, value in self.claims.items()
-                                 if key.startswith(MODEL_START) and self.alive(value["pid"])), None) if name == "gpu-training" else None
-                if busy is None and starting is None and (held is None or held["pid"] == pid or not self.alive(held["pid"])):
-                    lease = self._gpu_for(name, pid)
-                    if lease is not None:
-                        self.claims[name] = {"pid": pid, "info": dict(info), "since": time.time(), "lease": lease}
-                        return {"granted": True, **self.claims[name]}
-                    held = {"pid": 0, "info": {"purpose": "a request or another claim holds the GPU"}, "since": time.time()}
-                if busy is not None:
-                    holder = next(iter(busy.holders.values()), (busy.pid or 0, "loading model"))
-                    held = {"pid": holder[0], "info": {"purpose": self._held_said(busy)}, "since": time.time()}
-                elif starting is not None:
-                    held = starting
-                left = deadline - time.monotonic()
-                if left <= 0:
-                    return {"granted": False, **held}
-                self._cond.wait(min(left, POLL_S))
+            self.claim_waiters[ticket] = waiter
+            try:
+                return self._await_claim(ticket, deadline, connected)
+            finally:
+                self.claim_waiters.pop(ticket, None)
+                self._cond.notify_all()
+
+    def _claim_alive(self, held: Mapping[str, Any]) -> bool:
+        return bool(held.get("started") is not None and self.alive(held["pid"])
+                    and started_at(held["pid"]) == held["started"])
+
+    def _waiter_alive(self, waiter: Mapping[str, Any], connected: Callable[[], bool] | None) -> bool:
+        try:
+            return self._claim_alive(waiter) and (connected is None or connected())
+        except OSError:
+            return False
+
+    def _await_claim(self, ticket: str, deadline: float | None, connected: Callable[[], bool] | None) -> dict:
+        waiter = self.claim_waiters[ticket]
+        name, pid = waiter["name"], waiter["pid"]
+        while True:
+            if not self._waiter_alive(waiter, connected):
+                raise RuntimeError("The queued compute request was cancelled or its process identity changed.")
+            held = self.claims.get(name)
+            if held and held["pid"] == pid and self._claim_alive(held):
+                if held["info"] != waiter["info"]:
+                    raise ValueError("This process already holds that claim for different work.")
+                return {"granted": True, **held}
+            busy = next((server for server in self.servers.values()
+                         if server.loading or server.unmanaged or server.holders), None) if name == "gpu-training" else None
+            starting = next((value for key, value in self.claims.items()
+                             if key.startswith(MODEL_START) and self.alive(value["pid"])), None) if name == "gpu-training" else None
+            first = next(key for key, value in self.claim_waiters.items() if value["name"] == name)
+            if first == ticket and busy is None and starting is None and (held is None or not self._claim_alive(held)):
+                lease = self._gpu_for(name, pid)
+                if lease is not None:
+                    if not self._waiter_alive(waiter, connected):
+                        if lease:
+                            self.table.release(lease)
+                        raise RuntimeError("The compute requester disappeared before admission.")
+                    self.claims[name] = {**{key: waiter[key] for key in ("pid", "started", "info", "since")}, "lease": lease}
+                    return {"granted": True, **self.claims[name]}
+                held = {"pid": 0, "info": {"purpose": "a request or another claim holds the GPU"}, "since": time.time()}
+            if busy is not None:
+                holder = next(iter(busy.holders.values()), (busy.pid or 0, "loading model"))
+                held = {"pid": holder[0], "info": {"purpose": self._held_said(busy)}, "since": time.time()}
+            elif starting is not None:
+                held = starting
+            left = None if deadline is None else deadline - time.monotonic()
+            if left is not None and left <= 0:
+                return {"granted": False, **(held or {"pid": 0, "info": {"purpose": "an earlier claim is queued"}})}
+            self._cond.wait(POLL_S if left is None else min(left, POLL_S))
 
     def _gpu_for(self, name: str, pid: int) -> str | None:
         """The id of the node's lease of the GPU for the claim ``name`` of ``pid`` ("" for a claim that holds nothing of the node's),
@@ -80,7 +119,7 @@ class BrokerHolds:
         """Let go of ``name`` if ``pid`` holds it."""
         with self._cond:
             held = self.claims.get(name)
-            if held is None or held["pid"] != pid:
+            if held is None or held["pid"] != pid or (not name.startswith(MODEL_START) and not self._claim_alive(held)):
                 return False
             del self.claims[name]
             self._cond.notify_all()
