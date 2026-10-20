@@ -29,8 +29,23 @@ from poolhouse.safenames import safe_filename, safe_join
 COMMIT = re.compile(r"[a-f0-9]{40}")
 DIGEST = re.compile(r"[a-f0-9]{40}|[a-f0-9]{64}")
 
-__all__ = ["COMMIT", "DIGEST", "blob_name", "cache_problem", "digest_of", "git_blob_sha1", "identify",
-           "into_blobs", "link", "main_commit", "point_ref", "repo_root", "same_bytes", "tidy", "volume"]
+__all__ = [
+    "COMMIT",
+    "DIGEST",
+    "Placement",
+    "blob_name",
+    "cache_problem",
+    "digest_of",
+    "git_blob_sha1",
+    "identify",
+    "link",
+    "main_commit",
+    "point_ref",
+    "repo_root",
+    "same_bytes",
+    "tidy",
+    "volume",
+]
 
 
 def repo_root(repo: str) -> Path:
@@ -126,19 +141,25 @@ def digest_of(path: Path, name: str) -> str:
     return files.sha256_file(path) if len(name) == 64 else git_blob_sha1(path, path.stat().st_size)
 
 
-class _Placement:
+class Placement:
     """One descriptor-anchored publication and its owned temporary names."""
 
-    def __init__(self, path, blob, name, current):
+    def __init__(self, path, blob, name, *, current=None):
+        if not DIGEST.fullmatch(name):
+            raise ValueError(f"{name!r} is not a digest a blob can be named by")
         self.path, self.blob, self.name, self.current = Path(path).absolute(), Path(blob), name, current
         self.stack = ExitStack()
         self.parts = {}
         self.published = None
         self.complete = False
+        self.closed = False
+        self.anchors = []
+        self.result = None
 
     def __enter__(self):
         entered = False
         try:
+            self.check()
             self.parent = self.blob.parent.absolute()
             if '..' in self.parent.parts:
                 raise PermissionError('Model publication cannot traverse parent directories')
@@ -163,9 +184,13 @@ class _Placement:
             return self
         finally:
             if not entered:
+                self.closed = True
                 self.stack.close()
 
     def __exit__(self, *_error):
+        if self.closed:
+            return
+        self.closed = True
         with ExitStack() as cleanup:
             cleanup.callback(self.stack.close)
             for name, identity in self.parts.items():
@@ -179,6 +204,8 @@ class _Placement:
             raise PermissionError('Model publication requires an owned regular file')
 
     def check(self):
+        if self.closed:
+            raise PermissionError("The model publication is closed")
         if self.current is not None and self.current() is not True:
             raise PermissionError('Current access is required to finish the model download')
         for parent, name, child, original in self.anchors:
@@ -220,6 +247,7 @@ class _Placement:
             if files.stat_signature(os.stat(self.blob.name, dir_fd=self.directory, follow_symlinks=False)) != original:
                 raise PermissionError('The model publication target changed')
             self.target_stamp = original
+            self.target_info = os.fstat(handle)
             return answer
         finally:
             os.close(handle)
@@ -249,7 +277,7 @@ class _Placement:
         os.link(part, self.blob.name, src_dir_fd=self.directory, dst_dir_fd=self.directory, follow_symlinks=False)
         return identity
 
-    def publish(self, copy):
+    def _publish(self, copy):
         self.check()
         try:
             os.stat(self.blob.name, dir_fd=self.directory, follow_symlinks=False)
@@ -283,22 +311,34 @@ class _Placement:
         os.fsync(self.directory)
         if files.stat_signature(os.stat(self.blob.name, dir_fd=self.directory, follow_symlinks=False)) != self.target_stamp:
             raise PermissionError('The model publication target changed')
-        self.complete = True
         return 'new'
 
 
-def into_blobs(path: Path, blob: Path, name: str, *, copy: bool = True, current=None) -> str:
-    """Publish checked bytes without replacing another file; only own names are cleaned.
+    def publish(self, *, copy: bool = True) -> str:
+        """Validate and retain a publication; it remains owned until explicit commit."""
+        self.check()
+        if self.result is None:
+            self.result = self._publish(copy)
+        elif self.result in ('new', 'have') and self._target(self.published) != self.name:
+            raise PermissionError('The model publication changed')
+        return self.result
 
-    ``current`` is a trusted local authorization/cancellation check, never a wire field.
-    Calls returning ``have`` discover matching data and confer no resource authority.
-    """
-    if not DIGEST.fullmatch(name):
-        raise ValueError(f"{name!r} is not a digest a blob can be named by")
-    if current is not None and current() is not True:
-        raise PermissionError('Current access is required to download the model')
-    with _Placement(path, blob, name, current) as placement:
-        return placement.publish(copy)
+    def commit(self):
+        """Verify original bytes and current access after caller work, then keep them."""
+        self.check()
+        if self.result not in ('new', 'have'):
+            raise ValueError('No verified model publication is ready to commit')
+        for name, identity in list(self.parts.items()):
+            self._unlink(name, identity)
+            del self.parts[name]
+        if self._target(self.published) != self.name:
+            raise PermissionError('The published model bytes changed')
+        self.check()
+        os.fsync(self.directory)
+        if files.stat_signature(os.stat(self.blob.name, dir_fd=self.directory, follow_symlinks=False)) != self.target_stamp:
+            raise PermissionError('The model publication target changed')
+        self.complete = True
+        return self.target_info
 
 
 def volume(path: Path) -> Path:
