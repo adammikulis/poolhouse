@@ -132,8 +132,12 @@
               });
           for (const [name, resource] of Object.entries(spec.bindings || {})) {
             if (!resource.kind) continue;
-            const kind = resource.kind,
-              choices =
+            const kind = resource.kind;
+            if (kind === "dataset") {
+              box.append(S.datasetBinding(this, node, name));
+              continue;
+            }
+            const choices =
                 this.resources?.[kind + "s"] ||
                 (kind === "model"
                   ? this.resources?.models

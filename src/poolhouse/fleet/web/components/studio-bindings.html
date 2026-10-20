@@ -1,0 +1,92 @@
+<script>
+(function () {
+  const S = window.studioModel, M = window.fleetModel, E = M.el;
+  S.datasetBinding = (editor, node, name) => {
+    const box = E('div', {class: 'studio-dataset-binding'}),
+      note = E('p', {'aria-live': 'polite'}),
+      selected = E('p', {}, node.bindings?.[name]?.id ? 'Selected: ' + node.bindings[name].id : 'No dataset selected.'),
+      crumbs = E('nav', {class: 'studio-toolbar', 'aria-label': name + ' folder navigation'}),
+      picker = E('select', {'aria-label': 'Choose ' + name}),
+      open = E('button', {type: 'button'}, 'Open selected ' + name + ' folder'),
+      refresh = E('button', {type: 'button'}, 'Refresh ' + name + ' files'),
+      clear = E('button', {type: 'button'}, 'Clear ' + name);
+    let request = 0, folder = '', rows = [], context;
+    const binding = () => JSON.stringify(node.bindings?.[name] ?? null);
+    const capture = () => ({workflow: editor.workflowId, root: editor.rootGraph(), graph: editor.graph,
+      group: (editor.context || []).map(item => item.node.id).join('/'), edit: editor.editSerial,
+      generation: editor.liveGeneration, nodeId: node.id, value: binding()});
+    const current = held => held && box.isConnected && M.route === 'studio' && location.hash === '#studio'
+      && !editor.host.closest('[hidden]')
+      && held.workflow === editor.workflowId && held.root === editor.rootGraph() && held.graph === editor.graph
+      && held.group === (editor.context || []).map(item => item.node.id).join('/')
+      && held.edit === editor.editSerial && held.generation === editor.liveGeneration
+      && held.value === binding() && held.nodeId === node.id && editor.graph.nodes.includes(node)
+      && editor.selected.size === 1 && editor.selected.has(node.id);
+    const owner = capture();
+    const chosen = () => current(context) && rows.find(row => row.path === picker.value);
+    const controls = () => {
+      const row = chosen();
+      open.disabled = !row || row.directory !== true;
+      clear.disabled = !current(owner) || !node.bindings?.[name];
+    };
+    const commit = (value, held = context) => {
+      if (!current(held)) return;
+      editor.checkpoint();
+      node.bindings ||= {};
+      if (value) node.bindings[name] = {kind: 'dataset', id: value};
+      else delete node.bindings[name];
+      editor.changed();
+    };
+    async function browse(path) {
+      if (!current(owner)) return;
+      const token = ++request, held = capture();
+      context = null; rows = []; picker.replaceChildren(E('option', {value: ''}, 'Choose ' + name));
+      picker.disabled = true; open.disabled = true; clear.disabled = !current(owner) || !node.bindings?.[name];
+      note.textContent = 'Opening uploaded folder…';
+      try {
+        const result = await M.api('/ui/workspace/files?path=' + encodeURIComponent(path));
+        if (token !== request || !current(held)) return;
+        if (!result.ok) {
+          M.refused(result);
+          throw Error(result.error || 'Uploaded datasets are unavailable.');
+        }
+        if (result.path !== path || !Array.isArray(result.files)) throw Error('Uploaded folder is unavailable.');
+        const prefix = path ? path + '/' : '';
+        rows = result.files.filter(row => typeof row.name === 'string' && row.name && !row.name.startsWith('.')
+          && !/[\\/\x00-\x1f\x7f]/.test(row.name) && !row.name.includes('%')
+          && row.path === prefix + row.name && (path || !['jobs', 'studio', 'studio-device-resources'].includes(row.name))
+          && (row.directory === true || (row.directory === false && /\.jsonl$/i.test(row.name))));
+        folder = path; context = held;
+        picker.replaceChildren(E('option', {value: ''}, 'Choose ' + name),
+          ...rows.map(row => E('option', {value: row.path}, (row.directory ? 'Folder · ' : '') + row.name)));
+        picker.disabled = false;
+        picker.value = rows.some(row => !row.directory && row.path === node.bindings?.[name]?.id) ? node.bindings[name].id : '';
+        const buttons = [E('button', {type: 'button', onclick: () => { if (current(held)) browse(''); }}, 'Uploaded files')];
+        let parent = '';
+        for (const segment of path.split('/').filter(Boolean)) {
+          parent += (parent ? '/' : '') + segment;
+          const target = parent;
+          buttons.push(E('span', {}, '/'), E('button', {type: 'button', onclick: () => { if (current(held)) browse(target); }}, segment));
+        }
+        crumbs.replaceChildren(...buttons);
+        note.textContent = 'Choose one JSONL dataset. Open folders to see their files.';
+        controls(); picker.focus();
+      } catch (error) {
+        if (token === request && current(held)) note.textContent = error.message || 'Uploaded datasets are unavailable.';
+      }
+    }
+    picker.onchange = () => {
+      const row = chosen();
+      if (row?.directory === false) commit(row.path);
+      else controls();
+    };
+    open.onclick = () => { const row = chosen(); if (row?.directory === true) browse(row.path); };
+    refresh.onclick = () => { if (current(owner)) browse(folder); };
+    clear.onclick = () => commit(null, owner);
+    box.append(selected, crumbs, E('label', {}, 'Choose ' + name, picker),
+      E('div', {class: 'studio-toolbar'}, open, refresh, clear), note);
+    queueMicrotask(() => { if (current(owner)) browse(''); });
+    return box;
+  };
+})();
+</script>
