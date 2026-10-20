@@ -111,9 +111,8 @@ def subscriptions(handler, service, principal, parts: list[str]) -> bool:
                                         'payload': example_record(source['template_id'], body['sample_id'])})
             handler.send(202, {'event': public_event(event)})
         elif handler.method == 'GET':
-            query = urllib.parse.parse_qs(urllib.parse.urlsplit(handler.path).query)
-            page = service.read_events(sub, int(query.get('after', ['0'])[0]),
-                                      limit=int(query.get('limit', ['50'])[0]), tail=query.get('tail') == ['1'])
+            page = service.read_events(sub, int(handler.asked('after', '0')),
+                                       limit=int(handler.asked('limit', '50')), tail=handler.asked('tail') == '1')
             handler.send(200, {'events': [public_event(row) for row in page['events']], 'next_cursor': page['next_cursor']})
         else:
             return False
@@ -139,6 +138,5 @@ def preview(handler, service, principal, sub) -> bool:
     source = service.store.get('source', sub['source_id'], principal['scope'])
     if source['kind'] != 'examples':
         raise ValueError('Preview is available for registered synthetic samples.')
-    query = urllib.parse.parse_qs(urllib.parse.urlsplit(handler.path).query)
-    handler.send(200, {'record': example_record(source['template_id'], query.get('sample_id', ['sample'])[0])})
+    handler.send(200, {'record': example_record(source['template_id'], handler.asked('sample_id', 'sample'))})
     return True

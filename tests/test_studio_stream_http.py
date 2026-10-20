@@ -290,3 +290,44 @@ def test_actual_hmac_ingress_uses_only_source_authority_and_atomic_backpressure(
     assert send(b'{"record":2}', event='sender-two')[0] == 429
     current = service.store.get('subscription', sub['id'], scope)
     assert current['next_sequence'] == 2
+
+
+def test_actual_router_tail_after_and_preview_queries_are_not_discarded(served):
+    app, cookie, _ = served
+    sub = create(app, cookie)
+    path = '/ui/studio/subscriptions/' + sub['id']
+    status, body, _ = app.call(path + '/start', method='POST', cookie=cookie,
+                               body={'revision': 1, 'idempotency_key': 'start'})
+    assert status == 200, body
+    service = app.ui.studio_streams
+    service.close()
+    scope = app.ui.studio_authority._context()['scope']
+    for number in range(60):
+        current = service.store.get('subscription', sub['id'], scope)
+        service.ingest(current, {'id': 'history-' + str(number), 'generation': 'examples-v1', 'error': 'invalid record'})
+    status, body, _ = app.call(path + '/events?tail=1&limit=2', cookie=cookie)
+    assert status == 200, body
+    assert [event['sequence'] for event in body['events']] == [59, 60]
+    assert body['next_cursor'] == 60
+    status, body, _ = app.call(path + '/events?after=55&limit=2', cookie=cookie)
+    assert status == 200, body
+    assert [event['sequence'] for event in body['events']] == [56, 57]
+    assert body['next_cursor'] == 57
+    status, _, _ = app.call(path + '/preview?sample_id=unregistered', cookie=cookie)
+    assert status == 404
+
+
+@pytest.mark.parametrize('mode', ['file', 'folder'])
+def test_original_source_labels_expose_only_selected_basename(served, mode):
+    app, cookie, _ = served
+    create(app, cookie)
+    selected = app.files / ('incoming.jsonl' if mode == 'file' else 'incoming-folder')
+    if mode == 'file':
+        selected.write_text('{"record":1}\n')
+    else:
+        selected.mkdir()
+    status, body, _ = app.call('/ui/studio/sources', method='POST', cookie=cookie,
+                               body={'kind': 'watched_file', 'resource_id': selected.name, 'idempotency_key': 'select'})
+    assert status == 201, body
+    assert body['source']['label'] == selected.name
+    assert 'binding' not in body['source'] and str(selected) not in str(body)
