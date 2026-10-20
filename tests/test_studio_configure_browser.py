@@ -107,3 +107,18 @@ def test_failed_setup_shows_error_without_automatic_retry(configure_page):
     expect(page.locator('.studio-inspector')).to_contain_text('Decision model ready.', timeout=10000)
     assert state['installs'] == 2 and state['posts'] == [{}, {}]
     assert not errors
+
+
+def test_narrow_screen_configure_is_keyboard_accessible(configure_page):
+    page, state, _started, release, errors, _served = configure_page
+    page.set_viewport_size({'width': 390, 'height': 844})
+    button = page.locator('.studio-inspector').get_by_role('button', name='Configure decision model', exact=True)
+    expect(button).to_be_visible()
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    release.set()
+    button.focus()
+    page.keyboard.press('Enter')
+    expect(page.locator('.studio-inspector')).to_contain_text('Decision model ready.', timeout=10000)
+    assert state['posts'] == [{}]
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    assert not errors
