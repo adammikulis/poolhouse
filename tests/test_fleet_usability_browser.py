@@ -184,15 +184,18 @@ def test_settings_queued_install_keeps_navigation_usable_until_ready(usability_p
     from playwright.sync_api import expect
     served, page, errors = usability_page
     installed = False
+    posts = []
     job = {'id': 'setup-core', 'state': 'queued', 'note': 'Waiting to install', 'result': {}}
     def libraries(route):
         if route.request.method == 'POST':
+            posts.append(route.request.post_data_json)
             route.fulfill(status=202, json={'ok': True, 'job': job})
         else:
             route.fulfill(json={'libraries': [{'name': 'core', 'title': 'Training essentials', 'blurb': 'Training tools', 'installed': installed, 'size_mb': 40}]})
     page.route('**/ui/libraries', libraries)
     page.route('**/ui/setup/jobs', lambda route: route.fulfill(json={'jobs': [job]}))
     page.goto(f'http://127.0.0.1:{served.port}/ui/#settings')
+    page.get_by_label('Studio undo steps', exact=True).fill('44')
     page.get_by_role('tab', name='Libraries & simulators', exact=True).click()
     page.locator('#lib-core').check()
     apply = page.get_by_role('button', name='Apply library changes', exact=True)
@@ -204,13 +207,70 @@ def test_settings_queued_install_keeps_navigation_usable_until_ready(usability_p
     job.update(state='installing', note='Downloading training tools')
     page.evaluate("location.hash = '#settings'")
     page.get_by_role('tab', name='Libraries & simulators', exact=True).click()
-    expect(page.locator('#lib-core')).not_to_be_checked()
+    expect(page.locator('#lib-core')).to_be_checked()
+    expect(page.locator('#lib-core')).to_be_disabled()
+    expect(page.locator('#settings-libs')).to_contain_text('Queued to install')
+    apply.click()
+    apply.focus()
+    page.keyboard.press('Enter')
+    assert posts == [{'install': ['core'], 'remove': []}]
+    page.get_by_role('tab', name='Appearance & advanced', exact=True).click()
+    expect(page.get_by_label('Studio undo steps', exact=True)).to_have_value('44')
+    expect(page.locator('#settings-dirty')).to_have_text('Unsaved preferences')
+    page.get_by_role('tab', name='Libraries & simulators', exact=True).click()
     installed = True
     job.update(state='done', result={'changed': {'core': {'ok': True}}})
     expect(page.locator('#lib-core')).to_be_checked(timeout=5000)
     expect(page.locator('#settings-libs')).to_contain_text('Library changes applied')
+    expect(page.locator('#lib-core')).to_be_enabled()
+    assert posts == [{'install': ['core'], 'remove': []}]
     assert not errors
 
+
+
+def test_settings_library_failure_preserves_explicit_retry_and_ignores_old_ack(usability_page):
+    from playwright.sync_api import expect
+
+    served, page, errors = usability_page
+    job = {'id': 'setup-core', 'state': 'queued', 'note': 'Waiting to install', 'result': {}}
+    posts, held = [], []
+
+    def libraries(route):
+        if route.request.method == 'POST':
+            posts.append(route.request.post_data_json)
+            if len(posts) == 2:
+                held.append(route)
+            else:
+                route.fulfill(status=202, json={'ok': True, 'job': job})
+        else:
+            route.fulfill(json={'libraries': [{'name': 'core', 'title': 'Training essentials',
+                'blurb': 'Training tools', 'installed': False, 'size_mb': 40}]})
+
+    page.route('**/ui/libraries', libraries)
+    page.route('**/ui/setup/jobs', lambda route: route.fulfill(json={'jobs': [job]}))
+    page.goto(f'http://127.0.0.1:{served.port}/ui/#settings')
+    page.get_by_role('tab', name='Libraries & simulators', exact=True).click()
+    page.locator('#lib-core').check()
+    apply = page.get_by_role('button', name='Apply library changes', exact=True)
+    apply.click()
+    expect(page.locator('#lib-core')).to_be_disabled()
+    job.update(state='failed', error='Download unavailable')
+    expect(page.locator('#settings-libs')).to_contain_text('Download unavailable')
+    expect(page.locator('#lib-core')).to_be_enabled()
+    expect(page.locator('#lib-core')).to_be_checked()
+    expect(page.locator('#settings-libs .library-kind')).to_have_text('Available to install')
+    assert posts == [{'install': ['core'], 'remove': []}]
+    apply.focus()
+    page.keyboard.press('Enter')
+    expect(page.get_by_role('button', name='Installing libraries…', exact=True)).to_be_disabled()
+    page.get_by_role('button', name='Sign out', exact=True).click()
+    page.wait_for_function("() => ['sign-in','launch-needed'].includes(fleetModel.route)")
+    assert len(held) == 1
+    held[0].fulfill(status=202, json={'ok': True, 'job': {'id': 'setup-retry', 'state': 'done', 'result': {}}})
+    page.evaluate('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+    assert page.locator('settings-view').evaluate('e => e.savedPick') is None
+    assert posts == [{'install': ['core'], 'remove': []}] * 2
+    assert not errors
 
 def test_named_workspace_tools_stay_with_main_navigation_at_all_sizes(usability_page):
     from playwright.sync_api import expect

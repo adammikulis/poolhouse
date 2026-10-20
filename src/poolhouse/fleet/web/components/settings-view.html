@@ -257,12 +257,14 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
     }
 
     async drawLibraries() {
+      const epoch = this.settingsEpoch, current = () => epoch === this.settingsEpoch;
       const libs = this.querySelector("#settings-libs");
       libs.hidden = false;
       libs.replaceChildren(
         el("h2", {}, "Libraries & simulators"),
         el("div", { class: "hint" }, el("span", { class: "spin" }), " Looking…"));
       const L = await api("/ui/libraries");
+      if (!current()) return;
       if (!L.ok) {
         libs.replaceChildren(el("h2", {}, "Libraries & simulators"),
           el("div", {class:"err", role:"status"}, L.error || "Could not load installed libraries."),
@@ -287,9 +289,12 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
               + (lib.python_version ? ` · Python ${lib.python_version}` : ""))));
       });
 
+      let pending = false;
+      const inputs = boxes.map(box => box.querySelector("input"));
       const apply = el("button", { class: "ghost" }, "Apply library changes");
       const out = el("div", {role:"status", "aria-live":"polite"});
       apply.onclick = async () => {
+        if (pending || !current()) return;
         const before = new Set((L.libraries || []).filter((x) => x.installed).map((x) => x.name));
         const install = [...want].filter((n) => !before.has(n));
         const remove = [...before].filter((n) => !want.has(n));
@@ -297,26 +302,48 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
           out.replaceChildren(el("div", { class: "hint" }, "Nothing to change."));
           return;
         }
+        pending = true;
         apply.disabled = true;
         apply.textContent = "Installing libraries…";
         for (const box of libs.querySelectorAll("input")) box.disabled = true;
         try {
           const result = await api("/ui/libraries", {method:"POST", body:JSON.stringify({install, remove})});
+          if (!current()) return;
           if (!result.ok) throw Error(result.error || "Could not change installed libraries.");
+          for (const [index, lib] of (L.libraries || []).entries()) {
+            if (install.includes(lib.name) || remove.includes(lib.name))
+              boxes[index].querySelector(".library-kind").textContent = install.includes(lib.name) ? "Queued to install" : "Queued to remove";
+          }
           const watch = async () => {
             const changed = await M.followSetupJob(result.job, job => {
+              if (!current()) throw Error("This settings session ended.");
               out.replaceChildren(el("div", {class:"hint", role:"status"}, `${job.state}: ${job.note}`));
             });
+            if (!current()) return;
             const failed = Object.entries(changed.changed || {}).filter(([, value]) => !value.ok);
             if (failed.length) throw Error(failed.map(([name, value]) => `${name}: ${value.error}`).join("; "));
             await this.drawLibraries();
+            if (!current()) return;
             libs.append(el("div", {class:"ok", role:"status"}, "Library changes applied. Installed simulators are ready to reopen."));
           };
-          watch().catch(error => out.replaceChildren(el("div", {class:"err", role:"status"}, error.message)));
-        } catch (error) { out.replaceChildren(el("div", {class:"err"}, error.message)); }
-        finally {
-          apply.disabled = false; apply.textContent = "Apply library changes";
-          for (const box of libs.querySelectorAll("input")) box.disabled = false;
+          watch().catch(error => {
+            if (current()) {
+              for (const [index, lib] of (L.libraries || []).entries())
+                boxes[index].querySelector(".library-kind").textContent = lib.installed ? "Installed" : "Available to install";
+              out.replaceChildren(el("div", {class:"err", role:"status"}, error.message));
+            }
+          }).finally(() => {
+            if (!current()) return;
+            pending = false;
+            for (const input of inputs) input.disabled = false;
+          });
+        } catch (error) {
+          if (current()) { pending = false; out.replaceChildren(el("div", {class:"err"}, error.message)); }
+        } finally {
+          if (current()) {
+            apply.disabled = false; apply.textContent = "Apply library changes";
+            for (const input of inputs) input.disabled = pending;
+          }
         }
       };
 
