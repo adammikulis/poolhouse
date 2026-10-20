@@ -20,7 +20,11 @@ the development branch `scripts/hooks/pushed` runs these checks on the commits t
 - `scripts/hooks/no-data-files --range` finds no data or weights file;
 - no added commit has a standing reject: `poolhouse-workspace land-review BRANCH SHA --verdict reject` by a live session of this
   board above the lowest model tier (not retired as revoked or forged) stops a push that carries that exact commit, and the same
-  reviewer's later accept of it lifts the reject. A board that cannot be asked is a warning on stderr and the push goes on.
+  reviewer's later accept of it lifts the reject. A commit on top of a rejected commit leaves it in the push; replacing the
+  commit (an amend or a rebase gives it a new id) clears it. The node is asked without being started and at most 10 seconds a
+  call. A push with no session to ask as, a node that is not running or does not answer, and a reply that cannot be read are each a
+  warning on stderr and the push goes on; an error on one commit leaves the rejects found on the others, and a node that stops
+  answering ends the questions.
 
 A merged worktree whose branch has nothing outside the pushed tip is named as a warning. After a good push the hook starts the CI
 watcher and the primary checkout sync, both detached.

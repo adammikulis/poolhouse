@@ -6,14 +6,20 @@ import ast
 import importlib.machinery
 import importlib.util
 import os
+import shutil
+import socket
 import subprocess
+import tempfile
+import threading
+import time
 from pathlib import Path
 
 import pytest
 import sealed_git
 from git_world import AGENT_PUSH, DEV, ROOT, World
 
-from poolhouse.board import session
+from poolhouse import node_launch
+from poolhouse.board import client, place, session
 from poolhouse.workspace import landing
 
 pytest_plugins = ["node_kit"]
@@ -131,10 +137,16 @@ def test_an_accept_a_review_of_another_commit_and_no_review_never_stop_a_push(wo
     assert world.proj.origin_head() == sha
 
 
-def test_a_board_that_cannot_be_asked_is_a_warning_and_the_push_goes_on(world, monkeypatch, capsys):
+@pytest.fixture
+def hook():
+    """The push hook's module, loaded from its file."""
     loader = importlib.machinery.SourceFileLoader("pushed_hook", str(ROOT / "scripts/hooks/pushed"))
-    hook = importlib.util.module_from_spec(importlib.util.spec_from_loader("pushed_hook", loader))
-    loader.exec_module(hook)
+    loaded = importlib.util.module_from_spec(importlib.util.spec_from_loader("pushed_hook", loader))
+    loader.exec_module(loaded)
+    return loaded
+
+
+def test_a_board_that_cannot_be_asked_is_a_warning_and_the_push_goes_on(world, hook, monkeypatch, capsys):
     tree, sha = world.start("quiet", {"docs/a.md": "changed\n"})
     reject(world, "quiet", sha)
     monkeypatch.chdir(tree)
@@ -145,3 +157,128 @@ def test_a_board_that_cannot_be_asked_is_a_warning_and_the_push_goes_on(world, m
     monkeypatch.setattr(session, "connect", refuse)
     assert hook.rejected(sha) == []
     assert "the board could not be asked for reviews (no node)" in capsys.readouterr().err
+
+
+def as_pusher(world, monkeypatch) -> None:
+    """Run this process as the pusher of ``world``: its node, its board and its name."""
+    monkeypatch.delenv(session.SUBAGENT_ENV, raising=False)
+    monkeypatch.delenv(session.TOKEN_ENV, raising=False)
+    for name, value in world.env(world.pusher).items():
+        if name in {"POOLHOUSE_HOME", place.BOARD_ENV, session.AGENT_ENV}:
+            monkeypatch.setenv(name, value)
+
+
+def series(world, monkeypatch) -> tuple[str, str, str]:
+    """Three commits on a branch, run as the pusher inside the checkout; the commits oldest first."""
+    as_pusher(world, monkeypatch)
+    tree, first = world.start("series3", {"docs/a.md": "first\n"})
+    world.proj.write(tree, "docs/b.md", "second\n")
+    second = world.proj.commit(tree, "feat: second")
+    world.proj.write(tree, "docs/c.md", "third\n")
+    third = world.proj.commit(tree, "feat: third")
+    monkeypatch.chdir(tree)
+    return first, second, third
+
+
+def test_an_error_on_one_commit_keeps_the_rejects_found_on_the_others(world, hook, monkeypatch, capsys):
+    first, second, third = series(world, monkeypatch)
+    reject(world, "series3", third)
+    reject(world, "series3", first)
+    real = landing.accepts
+
+    def accepts(asked, sha):
+        if sha == second:
+            raise ValueError("the node sent something odd")
+        return real(asked, sha)
+
+    monkeypatch.setattr(landing, "accepts", accepts)
+    assert sorted(hook.rejected(third)) == sorted([first, third])
+    assert f"{second[:12]}" in capsys.readouterr().err
+
+
+def test_a_node_that_goes_away_mid_list_stops_the_questions_and_keeps_the_rejects_found(world, hook, monkeypatch, capsys):
+    first, second, third = series(world, monkeypatch)
+    reject(world, "series3", third)
+    reject(world, "series3", first)
+    real, asked_about = landing.accepts, []
+
+    def accepts(asked, sha):
+        asked_about.append(sha)
+        if sha == second:
+            raise OSError("the node went away")
+        return real(asked, sha)
+
+    monkeypatch.setattr(landing, "accepts", accepts)
+    assert hook.rejected(third) == [third]
+    assert asked_about == [third, second]
+    assert "the node went away" in capsys.readouterr().err
+
+
+class HungNode:
+    """A listener on a node's socket that takes every connection and never answers."""
+
+    def __init__(self) -> None:
+        self.state = Path(tempfile.mkdtemp(prefix="hn"))
+        self.listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.listener.bind(str(self.state / "node.sock"))
+        self.listener.listen(8)
+        self.held: list[socket.socket] = []
+        threading.Thread(target=self.take, daemon=True).start()
+
+    def take(self) -> None:
+        while True:
+            try:
+                self.held.append(self.listener.accept()[0])
+            except OSError:
+                return
+
+    def close(self) -> None:
+        self.listener.close()
+        for connection in self.held:
+            connection.close()
+        shutil.rmtree(self.state, ignore_errors=True)
+
+
+def test_a_node_that_does_not_answer_holds_the_push_check_for_its_timeout_and_starts_no_node(world, hook, monkeypatch, capsys):
+    hung, started, result = HungNode(), [], []
+    monkeypatch.setattr(node_launch, "default_state", lambda: hung.state)
+    monkeypatch.delenv(session.SUBAGENT_ENV, raising=False)
+    monkeypatch.delenv(session.AGENT_ENV, raising=False)
+    monkeypatch.setenv(session.TOKEN_ENV, "a-token-the-hung-node-never-reads")
+    monkeypatch.setenv(place.BOARD_ENV, "demo")
+    monkeypatch.setattr(node_launch, "ensure_node", lambda *args, **kwargs: started.append(args))
+    monkeypatch.setattr(hook, "ASK_TIMEOUT_S", 1.0, raising=False)
+    tree, sha = world.start("hung", {"docs/a.md": "changed\n"})
+    monkeypatch.chdir(tree)
+    asking = threading.Thread(target=lambda: result.append(hook.rejected(sha)), daemon=True)
+    began = time.monotonic()
+    try:
+        asking.start()
+        asking.join(15)
+        assert not asking.is_alive(), "the push check is still waiting for a node that does not answer"
+    finally:
+        hung.close()
+    assert time.monotonic() - began < 15 and result == [[]]
+    assert started == [], "the push check started a node"
+    assert "did not answer" in capsys.readouterr().err
+
+
+def test_a_push_with_no_session_to_ask_as_says_so_on_stderr_and_goes_on(world, hook, monkeypatch, capsys):
+    tree, sha = world.start("nobody", {"docs/a.md": "changed\n"})
+    monkeypatch.chdir(tree)
+
+    def refuse(**_):
+        raise client.Denied("denied", "no token")
+
+    monkeypatch.setattr(session, "connect", refuse)
+    assert hook.rejected(sha) == []
+    assert "the board could not be asked for reviews (no token)" in capsys.readouterr().err
+
+
+def test_the_message_for_a_standing_reject_says_how_to_clear_it(world):
+    world.install_hook()
+    tree, sha = world.start("worded", {"docs/a.md": "changed\n"})
+    reject(world, "worded", sha)
+    refused = push(world, tree, sha, {})
+    assert refused.returncode != 0 and "replace that commit" in refused.stderr and "new id" in refused.stderr, refused.stderr
+    assert "Fix it in a new commit" not in refused.stderr, refused.stderr
