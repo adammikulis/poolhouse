@@ -4,7 +4,7 @@ chat-view dialog::backdrop { background:color-mix(in srgb,var(--poolhouse-navy,v
 chat-view #chat-model-dialog { width:min(600px,90vw); max-height:85vh; }
 chat-view #chat-model-list { overflow-y:auto; max-height:55vh; margin:calc(16px * var(--ui-density,1)) 0; }
 chat-view .chat-model-family h3 { color:var(--muted); font-size:0.7857rem; letter-spacing:.06em; text-transform:uppercase; margin:calc(18px * var(--ui-density,1)) 0 calc(8px * var(--ui-density,1)); }
-chat-view .chat-model-choice { display:flex; justify-content:space-between; gap:calc(12px * var(--ui-density,1)); width:100%; text-align:left; margin:calc(6px * var(--ui-density,1)) 0; background:var(--bg); border:1px solid var(--line); }
+chat-view .chat-model-choice { display:flex; justify-content:space-between; gap:calc(12px * var(--ui-density,1)); width:100%; text-align:left; margin:calc(6px * var(--ui-density,1)) 0; background:var(--bg); color:var(--text); border:1px solid var(--line); }
 chat-view .chat-model-choice small { color:var(--muted); }
 chat-view .chat-model-choice[aria-pressed=true] { border-color:var(--poolhouse-pink); background:color-mix(in srgb,var(--poolhouse-pink) 10%,var(--bg-raised)); }
 chat-view .chat-model-action { color:var(--accent-ink,var(--text)); }

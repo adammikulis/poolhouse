@@ -1,6 +1,7 @@
 """The actual Start route preflights software availability outside durable admission."""
 import socket
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -111,3 +112,52 @@ def test_runtime_retains_actual_control_and_sdk_offer_without_grant_or_child(run
     assert locator.exists()
     app.ui.studio_webhook_setup.close()
     assert not locator.exists()
+
+
+@pytest.mark.parametrize('operation', ['current', 'control'])
+def test_runtime_reentrant_close_refuses_inflight_authority(runtime_app, monkeypatch, operation):
+    app, _, runtime = runtime_app
+    identity = runtime.loaded_identity
+
+    def closing_identity():
+        runtime.close()
+        return identity
+
+    monkeypatch.setattr(app.ui, 'studio_identity', closing_identity)
+    with pytest.raises(PermissionError):
+        runtime._current() if operation == 'current' else runtime.control()
+    assert runtime.closed
+    runtime.close()
+
+
+def test_runtime_close_during_current_check_keeps_owned_references(runtime_app, monkeypatch):
+    app, _, runtime = runtime_app
+    entered, released = threading.Event(), threading.Event()
+    identity = runtime.loaded_identity
+    original = (runtime.host, runtime.server, runtime.location)
+    results = []
+
+    def held_identity():
+        entered.set()
+        assert released.wait(5)
+        return identity
+
+    def inspect():
+        try:
+            runtime._current()
+        except PermissionError:
+            results.append('closed')
+
+    monkeypatch.setattr(app.ui, 'studio_identity', held_identity)
+    worker = threading.Thread(target=inspect)
+    worker.start()
+    try:
+        assert entered.wait(5)
+        runtime.close()
+    finally:
+        released.set()
+        worker.join(5)
+    assert not worker.is_alive()
+    assert results == ['closed']
+    assert (runtime.host, runtime.server, runtime.location) == original
+    runtime.close()
