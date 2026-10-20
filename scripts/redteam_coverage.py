@@ -437,6 +437,8 @@ def discover() -> dict[str, Surface]:
     for kind, name, source in (
         ("desktop", "app/src-tauri/capabilities/main.json", "app/src-tauri/capabilities/main.json"),
         ("spawn", "scripts/test-on-linux", "scripts/test-on-linux"),
+        ("spawn", "serve/decision_process.py:DecisionProcess.start", "src/poolhouse/serve/decision_process.py"),
+        ("spawn", "serve/decision_launch.py:OwnedBroker.start", "src/poolhouse/serve/decision_launch.py"),
         ("spawn", "gym/transport.py:Process.start", "src/poolhouse/gym/transport.py"),
         ("spawn", "gym/decision_process.py:DecisionProcess.__init__", "src/poolhouse/gym/decision_process.py"),
         ("context", "gym/vision_process.py:image_request", "src/poolhouse/gym/vision_process.py"),

@@ -15,6 +15,20 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["spawn:serve/decision_process.py:DecisionProcess.start", "spawn:serve/decision_launch.py:OwnedBroker.start"]
+status = "covered"
+count = 2
+tests = ["tests/test_decision_residents.py::test_managed_host_cannot_be_created_without_broker_grant", "tests/test_decision_residents.py::test_owner_transfer_failure_keeps_uncertain_child_and_memory_tracked", "tests/test_decision_residents.py::test_nonreading_host_pipe_remains_cancellable", "tests/test_decision_launch.py::test_start_uses_fixed_managed_entrypoint_and_attaches", "tests/test_decision_launch.py::test_lost_parent_ack_keeps_possible_admitted_child_tracked", "tests/test_decision_launch.py::test_partial_ack_with_open_writer_is_bounded_and_never_admits"]
+note = "Fixed managed child launches require current compute integrity and broker admission. Daemon-owned launches bind the actual parent and child generations through private bounded frames; lost acknowledgement retains ownership, and partial frames cannot hang admission. Host cleanup retains compute and memory until exit is proven."
+
+[[group]]
+match = ["route:fleet/studio_routes.py:/ui/studio/resources/decision/install"]
+status = "covered"
+count = 1
+tests = ["tests/test_studio_decision_setup.py::test_configure_cannot_select_download_or_execution", "tests/test_studio_decision_setup.py::test_download_policy_and_current_setup_access_are_required", "tests/test_studio_decision_setup.py::test_revocation_between_libraries_and_model_fetch_stops_new_downloads", "tests/test_studio_decision_setup.py::test_duplicate_click_attaches_pending_install"]
+note = "Explicit authenticated setup accepts an empty body and only the fixed dependency extra and compiled official model pins. Current resource and download policy are rechecked, while duplicate clicks attach to the durable setup job."
+
+[[group]]
 match = ["route:fleet/studio_native_picks.py:/ui/studio/native-picks/*", "route:fleet/studio_native_picks.py:/ui/studio/sources/pick"]
 status = "covered"
 count = 2

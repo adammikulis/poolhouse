@@ -1,7 +1,7 @@
 {
- "surfaces": 850,
+ "surfaces": 853,
  "by_status": {
-  "covered": 537,
+  "covered": 540,
   "partial": 193,
   "uncovered": 52,
   "n/a": 68,
@@ -86,7 +86,7 @@
    "unmapped": 0
   },
   "route": {
-   "covered": 122,
+   "covered": 123,
    "partial": 58,
    "uncovered": 0,
    "n/a": 0,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 97,
+   "covered": 99,
    "partial": 58,
    "uncovered": 0,
    "n/a": 4,
@@ -8900,6 +8900,21 @@
    "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
   },
   {
+   "id": "route:fleet/studio_routes.py:/ui/studio/resources/decision/install",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._studio",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_decision_setup.py::test_configure_cannot_select_download_or_execution",
+    "tests/test_studio_decision_setup.py::test_download_policy_and_current_setup_access_are_required",
+    "tests/test_studio_decision_setup.py::test_revocation_between_libraries_and_model_fetch_stops_new_downloads",
+    "tests/test_studio_decision_setup.py::test_duplicate_click_attaches_pending_install"
+   ],
+   "note": "Explicit authenticated setup accepts an empty body and only the fixed dependency extra and compiled official model pins. Current resource and download policy are rechecked, while duplicate clicks attach to the durable setup job."
+  },
+  {
    "id": "route:fleet/studio_routes.py:/ui/studio/runs",
    "kind": "route",
    "source": "fleet/studio_routes.py:StudioRoutes._runs",
@@ -11579,6 +11594,40 @@
     "tests/test_redteam_spawn.py::test_no_process_is_started_through_a_shell_except_the_confirmed_fix_line"
    ],
    "note": "the AST gate shows no spawn goes through a shell; what each argv carries (member names in fleet/jobs.py, repo paths in doctor.py and updates.py, file names in speech/) is not attacked individually"
+  },
+  {
+   "id": "spawn:serve/decision_launch.py:OwnedBroker.start",
+   "kind": "spawn",
+   "source": "src/poolhouse/serve/decision_launch.py",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_decision_residents.py::test_managed_host_cannot_be_created_without_broker_grant",
+    "tests/test_decision_residents.py::test_owner_transfer_failure_keeps_uncertain_child_and_memory_tracked",
+    "tests/test_decision_residents.py::test_nonreading_host_pipe_remains_cancellable",
+    "tests/test_decision_launch.py::test_start_uses_fixed_managed_entrypoint_and_attaches",
+    "tests/test_decision_launch.py::test_lost_parent_ack_keeps_possible_admitted_child_tracked",
+    "tests/test_decision_launch.py::test_partial_ack_with_open_writer_is_bounded_and_never_admits"
+   ],
+   "note": "Fixed managed child launches require current compute integrity and broker admission. Daemon-owned launches bind the actual parent and child generations through private bounded frames; lost acknowledgement retains ownership, and partial frames cannot hang admission. Host cleanup retains compute and memory until exit is proven."
+  },
+  {
+   "id": "spawn:serve/decision_process.py:DecisionProcess.start",
+   "kind": "spawn",
+   "source": "src/poolhouse/serve/decision_process.py",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_decision_residents.py::test_managed_host_cannot_be_created_without_broker_grant",
+    "tests/test_decision_residents.py::test_owner_transfer_failure_keeps_uncertain_child_and_memory_tracked",
+    "tests/test_decision_residents.py::test_nonreading_host_pipe_remains_cancellable",
+    "tests/test_decision_launch.py::test_start_uses_fixed_managed_entrypoint_and_attaches",
+    "tests/test_decision_launch.py::test_lost_parent_ack_keeps_possible_admitted_child_tracked",
+    "tests/test_decision_launch.py::test_partial_ack_with_open_writer_is_bounded_and_never_admits"
+   ],
+   "note": "Fixed managed child launches require current compute integrity and broker admission. Daemon-owned launches bind the actual parent and child generations through private bounded frames; lost acknowledgement retains ownership, and partial frames cannot hang admission. Host cleanup retains compute and memory until exit is proven."
   },
   {
    "id": "spawn:serve/llamacpp_compile.py:_xcode",
