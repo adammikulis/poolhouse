@@ -64,7 +64,15 @@ fn shape(row: &Row, board: &str, origin: &str) -> Result<()> {
     if row.hlc.2 != origin {
         return Err(Error::Damaged("row carries no clock value".into()));
     }
-    if check_body(&row.body).is_err() {
+    if row.kind == Kind::Carry {
+        let original = row.operation()?;
+        if !matches!(original.kind, Kind::Note | Kind::Room | Kind::Task | Kind::Grant)
+            || original.seq == 0 || original.seq >= row.seq || original.hlc > row.hlc
+            || original.hash != original.digest() || row.actor != original.actor || row.idem != original.idem {
+            return Err(Error::Damaged("a carry changes its original durable operation identity".into()));
+        }
+        shape(&original, board, origin)?;
+    } else if check_body(&row.body).is_err() {
         return Err(Error::Damaged("row body is not allowed".into()));
     }
     if row.seq > MAX_SEQ {
@@ -76,6 +84,47 @@ fn shape(row: &Row, board: &str, origin: &str) -> Result<()> {
         if !counts || !hash || row.seq < 2 {
             return Err(Error::Damaged(format!("base at row {} is malformed", row.seq)));
         }
+    }
+    Ok(())
+}
+
+/// Validate every carry prefix before exposing its original operations, including persisted logs on reopen.
+pub fn check_carries(rows: &[Row], initial_complete: bool) -> Result<()> {
+    let mut known = std::collections::BTreeMap::new();
+    let (mut base, mut remaining, mut previous) = (None, 0, 0);
+    let mut first_complete = rows.first().is_none_or(|row| row.kind != Kind::Base);
+    for row in rows {
+        if row.kind == Kind::Base {
+            if remaining > 0 {
+                return Err(Error::Damaged("a base interrupts an incomplete carry prefix".into()));
+            }
+            base = Some(row);
+            remaining = row.body["carried"].as_u64().unwrap_or(0);
+            previous = 0;
+        } else if row.kind == Kind::Head {
+            if remaining == 0 {
+                first_complete = true;
+            }
+        } else if remaining > 0 {
+            let original = row.operation()?;
+            let anchor = base.expect("a carry prefix has a base");
+            if row.kind != Kind::Carry || original.seq >= anchor.seq || original.seq <= previous || original.hlc > anchor.hlc {
+                return Err(Error::Damaged("a base has an invalid durable carry prefix".into()));
+            }
+            if known.get(&original.id()).is_some_and(|held| held != &original) {
+                return Err(Error::Damaged("a carry changes a known original operation".into()));
+            }
+            previous = original.seq;
+            known.insert(original.id(), original);
+            remaining -= 1;
+        } else if row.kind == Kind::Carry {
+            return Err(Error::Damaged("a carry is outside its declared base prefix".into()));
+        } else {
+            known.insert(row.id(), row.clone());
+        }
+    }
+    if initial_complete && !first_complete {
+        return Err(Error::Damaged("an initial base has no complete signed carry prefix".into()));
     }
     Ok(())
 }

@@ -70,11 +70,13 @@ pub fn signed_head(signer: &SigningKey, last: &Row) -> Row {
 }
 
 /// A base after ``tip``, then ``more`` rows, then a head signed by ``signer``.
-pub fn base_after(signer: &SigningKey, tip: &Row, counts: Value, more: Vec<(Kind, &str, Value)>) -> Vec<Row> {
+pub fn base_after(signer: &SigningKey, tip: &Row, counts: Value, more: Vec<Row>) -> Vec<Row> {
     let mut rows = vec![forged(&tip.origin, tip.seq + 1, &tip.hash, (Kind::Base, ""), counts)];
-    for (kind, actor, body) in more {
+    for original in more {
         let last = rows.last().unwrap().clone();
-        rows.push(forged(&tip.origin, last.seq + 1, &last.hash, (kind, actor), body));
+        let mut row = forged(&tip.origin, last.seq + 1, &last.hash, (Kind::Carry, &original.actor), json!({"original": original}));
+        row.idem = original.idem;
+        rows.push(rehash(row));
     }
     let head = signed_head(signer, rows.last().unwrap());
     rows.push(head);

@@ -11,7 +11,7 @@ use super::{Board, HEAD_EVERY_BYTES, HEAD_EVERY_ROWS};
 use crate::error::{Error, Result};
 use crate::log::carried;
 use crate::logbounds::{Held, ARCHIVE_MAX_MS, ARCHIVE_MIN_MS, MIN_SEGMENT_PERCENT, MOST_ARCHIVES};
-use crate::row::{canonical, Kind, Row};
+use crate::row::{Kind, Row, MAX_ROW_BYTES};
 use crate::rules::Accepted;
 
 const DAY_MS: u64 = 24 * 3600 * 1000;
@@ -25,19 +25,20 @@ fn size_of(rows: &[&Row]) -> Held {
     Held { rows: rows.len(), bytes: rows.iter().map(|r| r.size() as u64 + 1).sum() }
 }
 
-/// The revocation rows among ``rows``, each as the text that identifies it (its actor, its key and its body) and how many there are.
-fn revokes(rows: &[&Row]) -> BTreeMap<String, usize> {
+/// Count revocations by exact original logical operation ID and hash.
+fn revokes(rows: &[&Row]) -> Result<BTreeMap<String, usize>> {
     let mut found = BTreeMap::new();
-    for r in rows.iter().filter(|r| r.kind == Kind::Grant && op(r) == "revoke") {
-        *found.entry(format!("{}|{}|{}", r.actor, r.idem, canonical(&r.body))).or_default() += 1;
+    let operations = rows.iter().map(|r| r.operation()).collect::<Result<Vec<_>>>()?;
+    for r in operations.iter().filter(|r| r.kind == Kind::Grant && op(r) == "revoke") {
+        *found.entry(format!("{}|{}", r.id(), r.hash)).or_default() += 1;
     }
-    found
+    Ok(found)
 }
 
 /// Whether every revocation of ``old`` is among ``new`` as often as it was.
 fn revokes_kept(old: &[&Row], new: &[&Row]) -> Result<()> {
-    let now = revokes(new);
-    match revokes(old).into_iter().find(|(key, n)| now.get(key).copied().unwrap_or(0) < *n) {
+    let now = revokes(new)?;
+    match revokes(old)?.into_iter().find(|(key, n)| now.get(key).copied().unwrap_or(0) < *n) {
         Some(_) => Err(Error::Damaged("a new segment leaves out a grant revocation that was held".into())),
         None => Ok(()),
     }
@@ -111,7 +112,7 @@ impl Board {
         let old = self.rows(&origin).to_vec();
         let Some(last) = old.last().cloned() else { return Ok(()) };
         let (kept, left) = self.restated(&old)?;
-        let tail = self.tail(&last, &kept, left);
+        let tail = self.tail(&last, &kept, left)?;
         let archive = self.archive_dir();
         self.log_mut(&origin)?.replace(usize::MAX, tail, &archive)?;
         self.recount();
@@ -158,11 +159,14 @@ impl Board {
     }
 
     /// The rows of a new segment after ``last``: the base, ``kept`` restated with a head as often as the log signs, and a last head.
-    fn tail(&self, last: &Row, kept: &[Row], left: u64) -> Vec<Row> {
+    fn tail(&self, last: &Row, kept: &[Row], left: u64) -> Result<Vec<Row>> {
         let mut out = vec![self.next_row(Some(last), (Kind::Base, "", ""), json!({"carried": kept.len(), "left": left}))];
         let (mut rows, mut bytes) = (1, out[0].size());
         for r in kept {
-            let row = self.next_row(out.last(), (r.kind, &r.actor, &r.idem), r.body.clone());
+            let row = self.next_row(out.last(), (Kind::Carry, &r.actor, &r.idem), json!({"original": r}));
+            if row.size() > MAX_ROW_BYTES {
+                return Err(Error::Invalid("an original operation cannot fit its carry envelope".into()));
+            }
             (rows, bytes) = (rows + 1, bytes + row.size());
             out.push(row);
             if rows >= HEAD_EVERY_ROWS || bytes >= HEAD_EVERY_BYTES {
@@ -173,7 +177,11 @@ impl Board {
         if out.last().is_some_and(|r| r.kind != Kind::Head) {
             out.push(self.head_after(&out));
         }
-        out
+        let actual = size_of(&out.iter().collect::<Vec<_>>());
+        if actual.rows > self.bounds.rows / 2 || actual.bytes > self.bounds.bytes / 2 {
+            return Err(Error::Invalid("the serialized carry segment exceeds its transport bound".into()));
+        }
+        Ok(out)
     }
 
     /// A head that signs the last of ``rows``.
@@ -186,7 +194,7 @@ impl Board {
     fn recount(&mut self) {
         self.authors.clear();
         self.lineages.clear();
-        let rows: Vec<(String, u64)> = self.rows(&self.origin).iter().filter(|r| !matches!(r.kind, Kind::Head | Kind::Base)).map(|r| (r.actor.clone(), r.size() as u64 + 1)).collect();
+        let rows: Vec<(String, u64)> = self.chain(&self.origin).iter().filter(|r| !matches!(r.kind, Kind::Head | Kind::Base)).map(|r| (r.actor.clone(), r.size() as u64 + 1)).collect();
         for (actor, bytes) in rows {
             self.authors.entry(actor.clone()).or_default().add(bytes);
             self.lineages.entry(self.group_of(&actor)).or_default().add(bytes);
@@ -205,15 +213,17 @@ impl Board {
     }
 
     /// Refuse the bases among ``took``: one that restates more than a segment may, one that ends a segment holding under
-    /// `MIN_SEGMENT_PERCENT` of what a log keeps, and one whose restated rows leave out a grant row of the rows ``held``.
+    /// `MIN_SEGMENT_PERCENT` of what a log keeps, and one whose restated rows leave out a grant revocation of the rows ``held``.
     pub(super) fn check_bases(&self, held: &[Row], took: &Accepted) -> Result<()> {
-        let all: Vec<&Row> = held.iter().chain(&took.rows).collect();
+        let combined: Vec<Row> = held.iter().chain(&took.rows).cloned().collect();
+        crate::rules::check_carries(&combined, false)?;
+        let all: Vec<&Row> = combined.iter().collect();
         let damaged = |why: String| Err(Error::Damaged(why));
         let (mut start, newest) = (0, all.iter().rposition(|r| r.kind == Kind::Base));
         for (at, row) in all.iter().enumerate().filter(|(_, r)| r.kind == Kind::Base) {
             if at >= held.len() || (newest == Some(at) && at > 0) {
                 let restated = all[at + 1..].iter().filter(|r| r.kind != Kind::Head).take(carried(row) as usize);
-                if restated.into_iter().any(|r| !matches!(r.kind, Kind::Grant | Kind::Note | Kind::Room | Kind::Task)) {
+                if restated.into_iter().any(|r| r.kind != Kind::Carry) {
                     return damaged(format!("base at row {} is followed by rows that are not the durable rows it says it restates", row.seq));
                 }
             }
@@ -241,14 +251,18 @@ impl Board {
         let mut next = if restart { Vec::new() } else { self.staged.remove(origin).unwrap_or_default() };
         next.extend(rows);
         let seen = next.iter().skip(1).filter(|r| !matches!(r.kind, Kind::Head | Kind::Base)).count() as u64;
-        if !next.first().is_some_and(|b| b.kind == Kind::Base && seen >= carried(b)) {
+        if !next.first().is_some_and(|b| b.kind == Kind::Base && seen >= carried(b))
+            || !next.last().is_some_and(|row| row.kind == Kind::Head) {
             self.staged.insert(origin.into(), next);
             return Ok(());
         }
+        let complete: Vec<Row> = held.iter().chain(&next).cloned().collect();
+        crate::rules::check_carries(&complete, true)?;
         self.staged.remove(origin);
         revokes_kept(&held.iter().collect::<Vec<_>>(), &next.iter().collect::<Vec<_>>())?;
         let archive = self.archive_dir();
-        self.log_mut(origin)?.replace(usize::MAX, next, &archive)
+        self.log_mut(origin)?.replace(usize::MAX, next, &archive)?;
+        self.prune_archives()
     }
 
     /// Replace the log of ``origin`` by its newest segment once the base, its restated rows and a head are held.

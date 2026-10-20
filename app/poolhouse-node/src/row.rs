@@ -41,6 +41,8 @@ pub enum Kind {
     Head,
     /// The first row of a segment: the rows of the old segment are archived and the durable ones follow it, restated.
     Base,
+    /// A signed transport envelope retaining one complete original durable operation.
+    Carry,
 }
 
 /// One entry of one origin's log on one board.
@@ -96,6 +98,18 @@ impl Row {
     /// The key rows are merged by: wall clock, counter, origin, sequence number.
     pub fn order(&self) -> (u64, u64, &str, u64) {
         (self.hlc.0, self.hlc.1, self.origin.as_str(), self.seq)
+    }
+
+    /// The logical operation of a shape-validated transport row. It has its original id and clock.
+    pub fn operation(&self) -> Result<Row> {
+        if self.kind != Kind::Carry {
+            return Ok(self.clone());
+        }
+        if !self.body.as_object().is_some_and(|body| body.len() == 1 && body.contains_key("original")) {
+            return Err(Error::Damaged("a carry needs exactly one original operation".into()));
+        }
+        serde_json::from_value(self.body["original"].clone())
+            .map_err(|_| Error::Damaged("a carry has an unreadable original operation".into()))
     }
 
     /// The serialized size of the row.

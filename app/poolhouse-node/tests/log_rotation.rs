@@ -68,7 +68,7 @@ fn the_durable_rows_are_restated_and_the_history_is_left_in_the_archive() {
     assert_eq!(rows[0].body, json!({"carried": 3, "left": 0}));
     assert_eq!((&rows[1].body, &rows[2].body), (&keep.body, &g.body), "a restated row has the body it had");
     assert_eq!((rows[2].actor.as_str(), rows[1].actor.as_str()), ("node", "writer"));
-    assert_ne!(rows[1].id(), keep.id(), "and a new id");
+    assert_eq!(rows[1].id(), keep.id(), "and its original logical id");
 }
 
 #[test]
@@ -174,7 +174,7 @@ fn a_member_applies_a_segment_only_when_every_restated_row_has_arrived() {
     assert_eq!(b.rows(&origin).len(), old.len(), "the restated rows are not all here: the view is still the old rows");
     assert_eq!(b.chain(&origin).len(), old.len() + first_head + 1, "though the chain holds what arrived");
     b.ingest(&origin, &tail[first_head + 1..], true).unwrap();
-    assert!(view(&b, &origin) == tail, "once the last one is here the segment is the view");
+    assert!(view(&b, &origin) == tail.iter().map(|row| row.operation().unwrap()).collect::<Vec<_>>(), "the complete signed segment exposes its original operations");
     assert_eq!(b.first_seq(&origin), a.first_seq(&origin));
 }
 
@@ -231,7 +231,7 @@ fn a_base_is_refused_when_it_cannot_be_what_a_device_writes() {
     let tip = b.chain(&origin).last().unwrap().clone();
     let leaves_out = base_after(&writer, &tip, json!({"carried": 0, "left": 0}), vec![]);
     is_damaged(b.ingest(&origin, &leaves_out, false), "grant revocation");
-    let restates = base_after(&writer, &tip, json!({"carried": 1, "left": 0}), vec![(Kind::Grant, "node", kept.body.clone())]);
+    let restates = base_after(&writer, &tip, json!({"carried": 1, "left": 0}), vec![kept.clone()]);
     assert_eq!(b.ingest(&origin, &restates, false).unwrap(), 3, "a base that restates the revocation is taken");
     assert_eq!(kinds(b.rows(&origin)), vec![Kind::Base, Kind::Grant, Kind::Head]);
 }

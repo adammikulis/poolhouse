@@ -249,7 +249,7 @@ impl Board {
     }
 
     fn write(&mut self, class: Class, kind: Kind, actor: &str, body: Value, idem: &str) -> Result<Row> {
-        if kind == Kind::Head || !(actor.is_empty() || valid_actor(actor)) || idem.len() > 128 || !is_line(idem) {
+        if matches!(kind, Kind::Head | Kind::Base | Kind::Carry) || !(actor.is_empty() || valid_actor(actor)) || idem.len() > 128 || !is_line(idem) {
             return Err(Error::Invalid("a row needs a real kind, a usable actor and a clean key".into()));
         }
         check_body(&body)?;
@@ -285,7 +285,7 @@ impl Board {
     /// a run longer than a batch would otherwise never arrive.
     fn seal_when_due(&mut self) -> Result<()> {
         let (mut rows, mut bytes) = (0, 0);
-        for r in self.rows(&self.origin).iter().rev().take_while(|r| r.kind != Kind::Head) {
+        for r in self.chain(&self.origin).iter().rev().take_while(|r| r.kind != Kind::Head) {
             rows += 1;
             bytes += r.size();
         }
@@ -308,7 +308,7 @@ impl Board {
     pub fn append_many(&mut self, drafts: Vec<(Kind, String, Value)>) -> Result<usize> {
         let mut staged = Staged::default();
         for (kind, actor, body) in drafts {
-            if kind == Kind::Head || !valid_actor(&actor) {
+            if matches!(kind, Kind::Head | Kind::Base | Kind::Carry) || !valid_actor(&actor) {
                 return Err(Error::Invalid("a row needs a real kind and a usable actor".into()));
             }
             check_body(&body)?;
@@ -359,7 +359,7 @@ impl Board {
     /// The row that follows the rows the log holds and the ``staged`` ones after them, when the bounds admit it.
     fn stage(&mut self, class: Class, (kind, actor, idem): (Kind, &str, &str), body: Value, staged: &Staged) -> Result<Row> {
         let origin = self.origin.clone();
-        let last = staged.rows.last().or_else(|| self.rows(&origin).last()).cloned();
+        let last = staged.rows.last().or_else(|| self.chain(&origin).last()).cloned();
         let row = self.next_row(last.as_ref(), (kind, actor, idem), body);
         let bytes = row.size() as u64;
         if bytes as usize > MAX_ROW_BYTES {
@@ -378,7 +378,7 @@ impl Board {
 
     /// Sign the last row of this device's log with a head row; None when already covered.
     pub fn seal(&mut self) -> Result<Option<Row>> {
-        let Some(tip) = self.rows(&self.origin.clone()).last().cloned() else { return Ok(None) };
+        let Some(tip) = self.chain(&self.origin.clone()).last().cloned() else { return Ok(None) };
         if tip.kind == Kind::Head {
             return Ok(None);
         }
@@ -405,7 +405,8 @@ impl Board {
         if let Some(why) = self.state.t.damaged.get(origin) {
             return Err(Error::Damaged(format!("log {origin} was refused: {why}")));
         }
-        if !self.logs.contains_key(origin) && self.logs.len() >= MAX_ORIGINS {
+        let origins: BTreeSet<_> = self.logs.keys().chain(self.staged.keys()).collect();
+        if !origins.contains(&origin.to_string()) && origins.len() >= MAX_ORIGINS {
             return Err(crate::limits::refuse("this device holds as many logs as it may", MAX_ORIGINS, "MAX_ORIGINS", "board.rs"));
         }
         match self.store(origin, incoming, authoritative) {
@@ -471,11 +472,8 @@ impl Board {
         }
         let count = took.rows.len();
         self.observe(&took.rows);
-        let archive = self.archive_dir();
-        if restarting || !staged.is_empty() {
+        if took.restart || !staged.is_empty() {
             self.hold_segment(origin, (took.restart, &held), took.rows)?;
-        } else if took.restart {
-            self.log_mut(origin)?.replace(usize::MAX, took.rows, &archive)?;
         } else {
             self.log_mut(origin)?.extend(took.rows)?;
         }
@@ -489,6 +487,7 @@ impl Board {
     }
 
     fn reset(&mut self, origin: &str) -> Result<()> {
+        self.staged.remove(origin);
         if let Some(log) = self.logs.remove(origin) {
             log.remove()?;
         }
