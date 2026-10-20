@@ -257,6 +257,11 @@ class TestReadingWhatAModelIs:
         ("gpt-oss-20b", "GPT-OSS"),
         ("LFM2.5-2.6B", "LFM"),
         ("Bonsai-27B-gguf", "Bonsai"),
+        ("sentence-transformers/all-MiniLM-L6-v2", "MiniLM"),
+        ("all-MiniLM-L12-v2", "MiniLM"),
+        ("paraphrase-multilingual-MiniLM-L12-v2", "MiniLM"),
+        ("sentence-transformers/all-mpnet-base-v2", "MPNet"),
+        ("paraphrase-multilingual-mpnet-base-v2", "MPNet"),
     ])
     def test_the_family_is_read_off_the_name(self, name, family):
         from poolhouse.fleet.catalogue import family_of
