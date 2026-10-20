@@ -19,6 +19,8 @@
   --warn:#9b5a00; --busy:#bc7200; --bad:var(--ml-red); --good:var(--ml-green);
   --nvidia:#527f00; --amd:#c02635; --apple:#555c70; --cpu:#3068b0;
   --radius:14px; --gap:calc(20px * var(--ui-density)); --mono:var(--ml-mono); --sans:var(--ml-font); --shadow:var(--ml-shadow);
+  --version-footer-height:calc(1.7143rem + env(safe-area-inset-bottom, 0px));
+  --app-height:calc(100dvh - var(--version-footer-height));
   --ui-font-size:14px; --ui-density:1; --rail-width:76px; --header-height:48px;
 }
 * { box-sizing:border-box; }
@@ -111,7 +113,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:3px solid
 @keyframes breathe { 0%,100% { opacity: 1; transform: scale(1); }
                      50% { opacity: .45; transform: scale(.82); } }
 
-.centre { display: grid; place-items: center; min-height: 100vh; padding: 24px; }
+.centre { display: grid; place-items: center; min-height: var(--app-height, 100dvh); padding: 24px; }
 .card {
   background: var(--bg-raised); border: 1px solid var(--line); border-radius: 14px;
   padding: 30px 32px; width: 100%; max-width: 480px; box-shadow: var(--shadow);
@@ -274,3 +276,13 @@ input[type="range"] {
   width: 100%; margin: 8px 0 4px; accent-color: var(--accent);
   background: transparent;
 }
+
+body { padding-bottom:var(--version-footer-height); }
+.version-footer { position:fixed; z-index:30; inset:auto 0 0; height:var(--version-footer-height); display:flex; justify-content:flex-end; align-items:center; padding:0 max(12px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px); background:var(--bg-raised); color:var(--muted); font-size:.7857rem; line-height:1.4; }
+
+.version-footer span { min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+gym-view .gym-stage:fullscreen { padding-bottom:var(--version-footer-height); }
+#root gym-view .gym-stage:fullscreen > gym-scene,#root gym-view .gym-stage:fullscreen > img { height:var(--app-height,100dvh); }
+
+.calculation-notice { margin:24px auto; max-width:760px; width:calc(100% - 48px); }

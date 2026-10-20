@@ -1,0 +1,94 @@
+<template>
+  <div class="centre" id="experimental-notice" hidden>
+    <section class="card" aria-labelledby="experimental-title">
+      <h1 id="experimental-title">__EXPERIMENTAL_TITLE__</h1>
+      __EXPERIMENTAL_COPY__
+      <p class="error" role="status" id="experimental-error"></p>
+      <div class="experimental-actions">
+        <button type="button" id="experimental-accept">Accept and continue</button>
+        <button type="button" class="ghost" role="link" id="experimental-issues">Report bugs on GitHub</button>
+      </div>
+    </section>
+  </div>
+</template>
+<style>
+experimental-notice .card { max-width:600px; width:100%; }
+experimental-notice p { line-height:1.65; }
+experimental-notice .error:not(:empty) { color:var(--bad); }
+experimental-notice .experimental-actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:20px; }
+</style>
+<script>
+(() => {
+  const M = window.fleetModel;
+  customElements.define('experimental-notice', class extends HTMLElement {
+    connectedCallback() {
+      this.fullscreen = () => this.placeFooter();
+      document.addEventListener("fullscreenchange", this.fullscreen);
+      if (this.wired) return;
+      this.wired = true;
+      this.box = this.querySelector('#experimental-notice');
+      this.note = this.querySelector('#experimental-error');
+      this.accept = this.querySelector('#experimental-accept');
+      this.issues = this.querySelector('#experimental-issues');
+      this.operation = 0;
+      this.accept.onclick = () => this.perform('accept');
+      this.issues.onclick = () => this.perform('issues');
+      M.onRoute(route => {
+        this.operation++;
+        this.box.hidden = route !== 'experimental-notice';
+        this.accept.disabled = this.issues.disabled = false;
+        if (!this.box.hidden) requestAnimationFrame(() => {
+          if (M.route === 'experimental-notice' && this.isConnected) this.accept.focus();
+        });
+      });
+    }
+    disconnectedCallback() {
+      document.removeEventListener("fullscreenchange", this.fullscreen);
+      this.restoreFooter();
+    }
+    restoreFooter() {
+      if (!this.footerHome) return;
+      const {footer, parent, next} = this.footerHome;
+      parent.insertBefore(footer, next?.parentNode === parent ? next : null);
+      this.footerHome = null;
+    }
+    placeFooter() {
+      this.restoreFooter();
+      const gym = document.querySelector("gym-view");
+      const stage = gym?.querySelector(".gym-stage");
+      if (!stage || document.fullscreenElement !== stage) return;
+      const footer = document.querySelector(".version-footer");
+      if (!footer) return;
+      this.footerHome = {footer, parent:footer.parentNode, next:footer.nextSibling};
+      stage.append(footer);
+    }
+    async perform(action) {
+      if (this.box.hidden || this.accept.disabled || M.route !== 'experimental-notice') return;
+      const operation = ++this.operation, session = M.sessionContext();
+      const current = () => this.isConnected && M.route === 'experimental-notice'
+        && operation === this.operation && session === M.sessionContext();
+      this.accept.disabled = this.issues.disabled = true;
+      this.note.textContent = '';
+      const failure = action === 'accept' ? 'Your acceptance could not be saved. Please try again.' : 'The bug-report page could not be opened. Please try again.';
+      try {
+        const response = await M.api('/ui/notice/' + action, {method:'POST', body:JSON.stringify(action === 'accept' ? {accepted:true} : {})});
+        if (!current()) return;
+        if (M.refused(response)) return;
+        if (!response.ok) {
+          this.note.textContent = response.status === 403 ? response.error : failure;
+          if (response.status === 403) M.signIn(this.note.textContent);
+          return;
+        }
+        if (action === 'accept' && response.accepted === true) {
+          M.noticeAccepted = true;
+          await M.boot(current);
+        }
+      } catch {
+        if (current()) this.note.textContent = failure;
+      } finally {
+        if (current()) this.accept.disabled = this.issues.disabled = false;
+      }
+    }
+  });
+})();
+</script>
