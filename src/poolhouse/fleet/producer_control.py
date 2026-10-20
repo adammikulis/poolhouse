@@ -31,7 +31,7 @@ from .job_records import process_started
 
 METADATA_BYTES = 64 * 1024
 BRIDGE_BYTES = MAX_BODY * 2 + METADATA_BYTES
-_ACTIONS = {"receivers", "offer", "offer-status", "withdraw", "bridge-publish", "bridge-receipt"}
+_ACTIONS = {"receivers", "offer", "offer-status", "withdraw", "bridge-publish", "bridge-receipt", "bridge-retry"}
 _HEX32 = re.compile("[0-9a-f]{32}")
 _HEX64 = re.compile("[0-9a-f]{64}")
 

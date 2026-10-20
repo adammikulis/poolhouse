@@ -472,3 +472,31 @@ def test_production_launcher_uses_only_fixed_verified_runtime_entry(monkeypatch,
     assert commands == [[str(chosen.python), "-I", "-B", "-c", holder.ENTRY]]
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "untrusted"))
     assert holder.installed_root() == fixed / "traind"
+
+
+def test_explicit_retry_uses_fresh_authenticated_data_and_preserves_command(setup):
+    _root, _server, data, state, _binding = setup
+    client = sdk.ProducerClient()
+    assert client.retry(OFFER, 'event-1', '5' * 32)['event_id'] == 'event-1'
+    assert client.retry(OFFER, 'event-1', '5' * 32)['event_id'] == 'event-1'
+    assert data.received == [{'action': 'retry', 'event_id': 'event-1', 'retry_key': '5' * 32}] * 2
+    assert len([item for item in state['calls'] if item[0] == 'offer-status']) == 2
+
+
+@pytest.mark.parametrize('key', [None, True, '', '5' * 31, 'Z' * 32, {'record': {}}])
+def test_invalid_retry_never_opens_control_or_data(setup, key):
+    _root, _server, data, state, _binding = setup
+    with pytest.raises(ValueError):
+        sdk.ProducerClient().retry(OFFER, 'event-1', key)
+    assert not state['calls'] and not data.received
+
+
+def test_retry_wrong_data_process_gets_zero_application_bytes(setup):
+    _root, _server, data, state, _binding = setup
+    state['channel']['process']['started'] += 1
+    with pytest.raises(sdk.ProducerUnavailable):
+        sdk.ProducerClient().retry(OFFER, 'event-1', '5' * 32)
+    deadline = time.monotonic() + 2
+    while not data.raw and time.monotonic() < deadline:
+        time.sleep(0.005)
+    assert data.raw == [b''] and not data.received
