@@ -184,7 +184,7 @@ def test_attach_restores_map_from_world_definition(gym_page):
     assert not errors
 
 
-def test_models_apply_to_live_world_without_reset_or_extra_click(gym_page):
+def test_model_and_controller_changes_wait_for_explicit_apply(gym_page):
     page, errors = gym_page
     result = page.evaluate("""async () => {
       const g=document.querySelector('gym-view');g.session='persistent';const calls=[];
@@ -194,11 +194,12 @@ def test_models_apply_to_live_world_without_reset_or_extra_click(gym_page):
       g.controller.value='decider';g.modelOptions.decision.value='trained';
       g.modelOptions.decision.dispatchEvent(new Event('change'));await new Promise(resolve=>setTimeout(resolve,10));
       g.controller.value='native-idm';g.controller.dispatchEvent(new Event('change'));
-      await new Promise(resolve=>setTimeout(resolve,10));g.session=null;return calls;
+      await new Promise(resolve=>setTimeout(resolve,10));const before=calls.length;await g.apply();g.session=null;return {before,calls};
     }""")
-    assert [call['command'] for call in result] == ['controller', 'controller']
-    assert result[0]['payload']['decision_checkpoint'] == '/models/trained'
-    assert result[1]['payload']['controller'] == 'native-idm'
+    assert result['before'] == 0
+    assert [call['command'] for call in result['calls']] == ['controller']
+    assert result['calls'][0]['payload']['decision_checkpoint'] == '/models/trained'
+    assert result['calls'][0]['payload']['controller'] == 'native-idm'
     assert not errors
 
 

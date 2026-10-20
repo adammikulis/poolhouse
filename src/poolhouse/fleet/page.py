@@ -20,6 +20,7 @@ COMPONENTS = ("fleet-model", "vocabulary-model", "fleet-nav", "sign-in", "launch
               "gym-drone-camera", "gym-scene", "gym-recordings",
               "gym-world-options", "gym-model-options", "gym-view", "close-sheet")
 MODULES = {"studio-header": frozenset({"studio-view"}),
+           "gym-controller": frozenset({"gym-view"}),
            "studio-record-fields": frozenset({"studio-model"}),
            "settings-state": frozenset({"settings-view"}),
            "data-preview": frozenset({"data-discover", "data-view"}),
