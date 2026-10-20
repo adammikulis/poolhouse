@@ -1,4 +1,4 @@
-"""Reuse existing compute/metadata checks only while their complete evidence is unchanged."""
+"""Verified compute and fixed-site distribution versions; startup hooks do not select metadata."""
 from __future__ import annotations
 
 import copy
@@ -9,22 +9,26 @@ import stat
 import subprocess
 import threading
 from dataclasses import dataclass
+from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
+from packaging.utils import canonicalize_name
+from packaging.version import Version
+
 from poolhouse import private_path
+from poolhouse.graph.guard import MAX_BODY
 
 from . import compute_artifact
 from .managed_compute import process_environment
 
 _LOCKS = {}
 _LOCK = threading.Lock()
-_LAYOUT = """import json,sys,sysconfig,os,site
-print(json.dumps({'prefix':sys.prefix,'executable':sys.executable,
- 'roots':sorted(set(sysconfig.get_paths()[key] for key in ('purelib','platlib'))),
- 'abi':sys.implementation.cache_tag,'paths':sys.path,'user_site':site.ENABLE_USER_SITE,
- 'standard':[sysconfig.get_path('stdlib'),sysconfig.get_path('platstdlib'),
- os.path.join(sysconfig.get_path('stdlib'),'lib-dynload'),
- os.path.join(sys.base_prefix,'lib',f'python{sys.version_info.major}{sys.version_info.minor}.zip')]}))
+_LAYOUT = """import json,sys,sysconfig,os
+prefix=os.path.dirname(os.path.dirname(sys.executable))
+paths=sysconfig.get_paths(vars={'base':prefix,'platbase':prefix})
+print(json.dumps({'prefix':prefix,'executable':sys.executable,
+ 'roots':sorted(set(paths[key] for key in ('purelib','platlib'))),
+ 'abi':sys.implementation.cache_tag}))
 """
 
 
@@ -44,6 +48,10 @@ def _identity(path, *, links=False):
     owners = {0, os.getuid()} if hasattr(os, 'getuid') else {value.st_uid}
     if value.st_uid not in owners:
         raise OSError('Managed dependency evidence belongs to another account')
+    return _stat_identity(value)
+
+
+def _stat_identity(value):
     return (value.st_dev, value.st_ino, value.st_mode, value.st_uid, value.st_gid,
             value.st_nlink, value.st_size, value.st_mtime_ns, value.st_ctime_ns)
 
@@ -99,56 +107,23 @@ def _context(environment):
 
 
 def _layout(environment):
-    result = subprocess.run([str(environment.python), '-B', '-I', '-c', _LAYOUT],
+    result = subprocess.run([str(environment.python), '-B', '-I', '-S', '-c', _LAYOUT],
                             capture_output=True, text=True, timeout=20, env=process_environment())
     if result.returncode:
         raise OSError('The managed dependency layout could not be verified')
     value = json.loads(result.stdout)
     prefix = environment.path.absolute()
-    if (not isinstance(value, dict) or set(value) != {'prefix', 'executable', 'roots', 'abi', 'paths', 'standard', 'user_site'}
-            or value['prefix'] != str(prefix)
-            or value['executable'] != str(environment.python.absolute()) or not isinstance(value['roots'], list)
-            or not value['roots'] or not isinstance(value['abi'], str) or (value['user_site'] is not None and type(value['user_site']) is not bool)
-            or any(not isinstance(value[field], list) or not all(isinstance(item, str) for item in value[field])
-                   for field in ('roots', 'paths', 'standard'))):
+    if (not isinstance(value, dict) or set(value) != {'prefix', 'executable', 'roots', 'abi'}
+            or value['prefix'] != str(prefix) or value['executable'] != str(environment.python.absolute())
+            or not isinstance(value['roots'], list) or not value['roots'] or not isinstance(value['abi'], str)
+            or not all(isinstance(item, str) for item in value['roots'])):
         raise OSError('The managed dependency layout belongs to another interpreter')
     roots = tuple(Path(name) for name in value['roots'])
-    if any(not root.is_absolute() or not root.is_relative_to(prefix) or root.name != 'site-packages' for root in roots):
+    if (len(set(roots)) != len(roots)
+            or any(not root.is_absolute() or '..' in root.parts or not root.is_relative_to(prefix)
+                   or root.name != 'site-packages' for root in roots)):
         raise OSError('Managed dependency metadata must remain inside its interpreter')
-    standard = tuple(Path(name) for name in value['standard'])
-    if any(not path.is_absolute() for path in standard):
-        raise OSError('The managed standard library layout is invalid')
-    return (value['abi'], roots, standard, tuple(value['paths']), value['user_site'])
-
-
-def _cacheable(layout):
-    selectors = {'PYTHONHOME', 'PYTHONPATH', 'PYTHONUSERBASE', 'PYTHONPLATLIBDIR',
-                 'PYTHONCASEOK', 'PYTHONEXECUTABLE', '__PYVENV_LAUNCHER__', 'PYTHON_PRESITE'}
-    if layout[4] is not False or any(os.environ.get(name) for name in selectors):
-        return False
-    locations = (*layout[1], *layout[2], Path.cwd())
-    if any((root / name).exists() or (root / name).is_symlink() for root in locations
-           for name in ('sitecustomize.py', 'sitecustomize.pyc', 'sitecustomize',
-                        'usercustomize.py', 'usercustomize.pyc', 'usercustomize')):
-        return False
-    if any(Path.cwd().glob('*.dist-info')) or any(Path.cwd().glob('*.egg-info')):
-        return False
-    if any((Path.cwd() / name).exists() for name in ('pip.py', 'pip.pyc', 'pip')):
-        return False
-    allowed = {str(path) for path in (*layout[1], *layout[2])}
-    if any(name not in allowed for name in layout[3]):
-        return False
-    for root in layout[1]:
-        for path in root.glob('*.pth'):
-            if _file(path)[6] > 65536:
-                return False
-            for line in path.read_text().splitlines():
-                line = line.strip()
-                if not line or line.startswith('#'):
-                    continue
-                if line.startswith(('import ', 'import\t')) or str(root / line) not in allowed:
-                    return False
-    return True
+    return (value['abi'], roots)
 
 
 def _signature(layout, expected):
@@ -201,14 +176,6 @@ def _signature(layout, expected):
                 walk(folder)
         manifest = root / 'poolhouse/fleet/compute-artifact.json'
         add(manifest, _file(manifest))
-    for root in layout[2]:
-        if root.exists() or root.is_symlink():
-            parents(root)
-            add(root)
-            if root.is_dir():
-                for entry in root.iterdir():
-                    if entry.name.endswith(('.dist-info', '.egg-info')):
-                        walk(entry)
     return _restat(rows)
 
 
@@ -234,14 +201,11 @@ def read(environment):
         key, expected = _context(environment)
         cached = environment._cache.get('dependency_proof')
         layout = cached.layout if isinstance(cached, Evidence) and cached.key == key else _layout(environment)
-        if not _cacheable(layout):
-            environment._cache.pop('dependency_proof', None)
-            return _verified(environment)
         before = _signature(layout, expected)
         if isinstance(cached, Evidence) and cached.key == key and cached.signature == before and key == _context(environment)[0]:
             return json.loads(cached.payload)
         environment._cache.pop('dependency_proof', None)
-        result = _verified(environment)
+        result = _verified(environment, layout, dict(before))
         error, companion, packages = result['error'], result['companion'], result['packages']
         after = _signature(layout, expected)
         if key != _context(environment)[0] or before != after:
@@ -253,10 +217,48 @@ def read(environment):
         return copy.deepcopy(result)
 
 
-def _verified(environment):
+def _verified(environment, layout, observed):
     error, companion = None, None
     try:
         companion = environment.require_compute()
     except OSError as failure:
         error = str(failure)
-    return {'companion': companion, 'error': error, 'packages': environment.installed()}
+    return {'companion': companion, 'error': error, 'packages': _versions(layout, observed)}
+
+
+def _metadata(path, expected):
+    _parents(path)
+    if _file(path) != expected:
+        raise OSError('Managed distribution metadata changed before reading')
+    flags = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0)
+    with os.fdopen(os.open(path, flags), 'rb') as stream:
+        if _stat_identity(os.fstat(stream.fileno())) != expected:
+            raise OSError('Managed distribution metadata changed before reading')
+        data = stream.read(MAX_BODY + 1)
+        if (_stat_identity(os.fstat(stream.fileno())) != expected or _file(path) != expected):
+            raise OSError('Managed distribution metadata changed while reading')
+    if len(data) > MAX_BODY:
+        raise OSError('Managed distribution metadata exceeds the metadata limit')
+    message = BytesParser().parsebytes(data, headersonly=True)
+    if (message.defects or any(len(message.get_all(name, [])) != 1 for name in ('Name', 'Version'))
+            or any(not isinstance(message[name], str) for name in ('Name', 'Version'))):
+        raise OSError('Managed distribution metadata needs one project name and version')
+    return canonicalize_name(message['Name'].strip(), validate=True), str(Version(message['Version'].strip()))
+
+
+def _versions(layout, observed):
+    """Declared installed versions in fixed managed sites, never dynamic importability."""
+    versions = {}
+    for root in layout[1]:
+        for entry in sorted(root.iterdir()):
+            if entry.name.endswith(('.dist-info', '.egg-info')):
+                name = 'METADATA' if entry.name.endswith('.dist-info') else 'PKG-INFO'
+                path = entry / name
+                expected = observed.get(str(path))
+                if expected is None:
+                    raise OSError('Managed distribution metadata is missing or changed')
+                project, version = _metadata(path, expected)
+                if project in versions:
+                    raise OSError('Managed distribution metadata has duplicate project names')
+                versions[project] = version
+    return versions

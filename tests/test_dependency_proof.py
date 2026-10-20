@@ -1,9 +1,11 @@
 """Warm dependency evidence skips subprocesses without hiding code or metadata changes."""
 import json
 import os
+import shutil
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from importlib.metadata import distribution
 
 import pytest
 
@@ -69,10 +71,10 @@ def test_actual_cold_checks_are_coalesced_and_warm_calls_launch_no_subprocesses(
     with ThreadPoolExecutor(max_workers=4) as workers:
         values = list(workers.map(lambda _: environment.dependency_metadata(), range(8)))
     assert all(value['error'] is None for value in values)
-    assert counters == {'compute': 1, 'inspect': 1, 'layout': 1}
+    assert counters == {'compute': 1, 'inspect': 0, 'layout': 1}
     values[0]['packages']['poolhouse'] = 'forged'
     assert environment.dependency_metadata()['packages']['poolhouse'] == '0.1.0'
-    assert counters == {'compute': 1, 'inspect': 1, 'layout': 1}
+    assert counters == {'compute': 1, 'inspect': 0, 'layout': 1}
 
 
 @pytest.mark.parametrize('change', ['source', 'unexpected', 'base-file', 'source-link', 'metadata-link', 'ownership', 'replacement'])
@@ -108,7 +110,7 @@ def test_changed_or_unfamiliar_evidence_is_never_reused(managed, change):
         assert result['error'] is None and counters['compute'] == 2
     else:
         assert result['error'] is not None
-    assert counters['inspect'] >= 2
+    assert counters['inspect'] == 0
 
 
 def test_distribution_versions_and_top_level_changes_invalidate_metadata(managed):
@@ -119,13 +121,13 @@ def test_distribution_versions_and_top_level_changes_invalidate_metadata(managed
     (info / 'METADATA').write_text('Name: invented-dependency\nVersion: 1.0\n')
     result = environment.dependency_metadata()
     assert result['packages']['invented-dependency'] == '1.0'
-    assert counters['compute'] == counters['inspect'] == 2
+    assert counters['compute'] == 2 and counters['inspect'] == 0
     (info / 'METADATA').write_text('Name: invented-dependency\nVersion: 2.0\n')
     assert environment.dependency_metadata()['packages']['invented-dependency'] == '2.0'
-    assert counters['compute'] == counters['inspect'] == 3
+    assert counters['compute'] == 3 and counters['inspect'] == 0
     (site / 'empty.pth').write_text('# inert test file\n')
     assert environment.dependency_metadata()['error'] is None
-    assert counters['compute'] == counters['inspect'] == 4
+    assert counters['compute'] == 4 and counters['inspect'] == 0
 
 
 def test_writer_repair_and_app_manifest_changes_do_not_reuse_old_proof(managed):
@@ -136,7 +138,7 @@ def test_writer_repair_and_app_manifest_changes_do_not_reuse_old_proof(managed):
         source.write_text(source.read_text())
         environment._cache.clear()
     assert environment.dependency_metadata()['error'] is None
-    assert counters == {'compute': 2, 'inspect': 2, 'layout': 2}
+    assert counters == {'compute': 2, 'inspect': 0, 'layout': 2}
     manifest = app / 'compute-artifact.json'
     value = json.loads(manifest.read_text())
     value['source'] = 'b' * 40
@@ -166,7 +168,7 @@ def test_unrelated_sibling_activity_does_not_invalidate_unchanged_dependency_roo
     assert environment.dependency_metadata()['error'] is None
     (app.parent / 'unrelated-work').write_text('independent task')
     assert environment.dependency_metadata()['error'] is None
-    assert counters == {'compute': 1, 'inspect': 1, 'layout': 1}
+    assert counters == {'compute': 1, 'inspect': 0, 'layout': 1}
 
 
 def test_warm_snapshot_detects_replacement_after_its_first_stat(managed, monkeypatch):
@@ -195,14 +197,14 @@ def test_interpreter_configuration_and_process_identity_reverify(managed, monkey
     configuration = environment.path / 'pyvenv.cfg'
     configuration.write_text(configuration.read_text() + '\n# rewritten configuration\n')
     assert environment.dependency_metadata()['error'] is None
-    assert counters == {'compute': 2, 'inspect': 2, 'layout': 2}
+    assert counters == {'compute': 2, 'inspect': 0, 'layout': 2}
     current = os.getpid()
     monkeypatch.setattr(proof.os, 'getpid', lambda: current + 1)
     assert environment.dependency_metadata()['error'] is None
-    assert counters == {'compute': 3, 'inspect': 3, 'layout': 3}
+    assert counters == {'compute': 3, 'inspect': 0, 'layout': 3}
 
 
-def test_external_pth_metadata_uses_uncached_existing_contract(managed):
+def test_external_editable_metadata_is_not_an_installed_fixed_site_version(managed):
     environment, site, _, counters = managed
     external = environment.path / 'external-metadata'
     info = external / 'outside_package-1.0.dist-info'
@@ -210,20 +212,28 @@ def test_external_pth_metadata_uses_uncached_existing_contract(managed):
     metadata = info / 'METADATA'
     metadata.write_text('Name: outside-package\nVersion: 1.0\n')
     (site / 'external.pth').write_text(str(external) + '\n')
-    assert environment.dependency_metadata()['packages']['outside-package'] == '1.0'
+    assert 'outside-package' not in environment.dependency_metadata()['packages']
     metadata.write_text('Name: outside-package\nVersion: 2.0\n')
-    assert environment.dependency_metadata()['packages']['outside-package'] == '2.0'
-    assert counters['compute'] == counters['inspect'] == 2
-    assert 'dependency_proof' not in environment._cache
+    assert 'outside-package' not in environment.dependency_metadata()['packages']
+    assert counters == {'compute': 1, 'inspect': 0, 'layout': 1}
+    assert 'dependency_proof' in environment._cache
 
 
-def test_executable_pth_preserves_supported_uncached_verification(managed):
+def test_actual_setuptools_distutils_hook_does_not_repeat_cold_verification(managed):
     environment, site, _, counters = managed
-    (site / 'hook.pth').write_text('import sys\n')
-    assert environment.dependency_metadata()['error'] is None
-    assert environment.dependency_metadata()['error'] is None
-    assert counters['compute'] == counters['inspect'] == 2
-    assert 'dependency_proof' not in environment._cache
+    setuptools = distribution('setuptools')
+    hook = setuptools.locate_file('distutils-precedence.pth').read_bytes()
+    assert b'_distutils_hack' in hook
+    (site / 'distutils-precedence.pth').write_bytes(hook)
+    shutil.copytree(setuptools.locate_file('_distutils_hack'), site / '_distutils_hack',
+                    ignore=shutil.ignore_patterns('__pycache__'))
+    info = site / f'setuptools-{setuptools.version}.dist-info'
+    info.mkdir()
+    (info / 'METADATA').write_text(f'Name: setuptools\nVersion: {setuptools.version}\n')
+    first = environment.dependency_metadata()
+    assert first['error'] is None and first['packages']['setuptools'] == setuptools.version
+    assert environment.dependency_metadata() == first
+    assert counters == {'compute': 1, 'inspect': 0, 'layout': 1}
 
 
 def test_actual_layout_ignores_hostile_pythonpath(managed, monkeypatch):
@@ -242,28 +252,89 @@ def test_malformed_layout_is_a_controlled_proof_failure(tmp_path, monkeypatch, v
     from types import SimpleNamespace
     if isinstance(value, dict):
         value = {'prefix': str(tmp_path), 'executable': str(tmp_path / 'bin/python'),
-                 'roots': [str(tmp_path / 'site-packages')], 'standard': [], 'paths': [],
-                 'abi': 'fixture', 'user_site': False, **value}
+                 'roots': [str(tmp_path / 'site-packages')], 'abi': 'fixture', **value}
     monkeypatch.setattr(proof.subprocess, 'run', lambda *args, **kwargs:
                         SimpleNamespace(returncode=0, stdout=json.dumps(value)))
     with pytest.raises(OSError, match='another interpreter'):
         proof._layout(SimpleNamespace(path=tmp_path, python=tmp_path / 'bin/python'))
 
 
-@pytest.mark.parametrize('selector', ['PYTHONPATH', 'PYTHONHOME', 'PYTHONUSERBASE'])
-def test_python_startup_selectors_cannot_bless_cached_inspection(tmp_path, monkeypatch, selector):
-    for name in ('PYTHONHOME', 'PYTHONPATH', 'PYTHONUSERBASE'):
-        monkeypatch.delenv(name, raising=False)
-    assert proof._cacheable(('abi', (tmp_path,), (), (str(tmp_path),), False))
-    monkeypatch.setenv(selector, str(tmp_path / 'outside'))
-    assert not proof._cacheable(('abi', (tmp_path,), (), (str(tmp_path),), False))
+def test_site_hooks_and_customization_are_not_metadata_discovery(managed):
+    environment, site, app, _ = managed
+    marker = app / 'executed'
+    source = f'from pathlib import Path\nPath({str(marker)!r}).touch()\n'
+    (site / 'sitecustomize.py').write_text(source)
+    (site / 'injected_hook.py').write_text(source)
+    (site / 'injected.pth').write_text('import injected_hook\n')
+    layout = proof._layout(environment)
+    assert proof._versions(layout, dict(proof._signature(layout, artifact.expected())))['poolhouse'] == '0.1.0'
+    assert not marker.exists()
 
 
-@pytest.mark.parametrize('customization', ['sitecustomize.py', 'sitecustomize', 'usercustomize.py'])
-def test_startup_customization_requires_uncached_inspection(tmp_path, monkeypatch, customization):
-    for name in ('PYTHONHOME', 'PYTHONPATH', 'PYTHONUSERBASE'):
-        monkeypatch.delenv(name, raising=False)
-    assert proof._cacheable(('abi', (tmp_path,), (), (str(tmp_path),), False))
-    path = tmp_path / customization
-    path.mkdir() if '.' not in customization else path.write_text('# harmless fixture\n')
-    assert not proof._cacheable(('abi', (tmp_path,), (), (str(tmp_path),), False))
+@pytest.mark.parametrize('raw', [b'Name: first\nName: second\nVersion: 1\n',
+                                 b'Name: first\nVersion: 1\nVersion: 2\n',
+                                 b'Name: ../escape\nVersion: 1\n',
+                                 b'Name: valid\nVersion: invalid-version\n', b'Name: missing-version\n',
+                                 b'Name: \xff\nVersion: 1\n'])
+def test_ambiguous_or_invalid_declared_versions_are_refused(tmp_path, raw):
+    metadata = tmp_path / 'METADATA'
+    metadata.write_bytes(raw)
+    with pytest.raises((OSError, ValueError)):
+        proof._metadata(metadata, proof._file(metadata))
+
+
+def test_duplicate_normalized_projects_and_metadata_links_are_refused(tmp_path):
+    for folder, name in (('one.dist-info', 'Invented_Name'), ('two.dist-info', 'invented-name')):
+        info = tmp_path / folder
+        info.mkdir()
+        (info / 'METADATA').write_text(f'Name: {name}\nVersion: 1\n')
+    with pytest.raises(OSError, match='duplicate project'):
+        observed = {str(path): proof._file(path) for path in tmp_path.glob('*/METADATA')}
+        proof._versions(('abi', (tmp_path,)), observed)
+    link = tmp_path / 'linked'
+    link.symlink_to(tmp_path / 'one.dist-info/METADATA')
+    with pytest.raises(OSError, match='linked'):
+        proof._metadata(link, proof._file(link))
+
+
+def test_metadata_read_uses_existing_body_bound(tmp_path):
+    metadata = tmp_path / 'METADATA'
+    metadata.write_bytes(b'x' * (proof.MAX_BODY + 1))
+    with pytest.raises(OSError, match='metadata limit'):
+        proof._metadata(metadata, proof._file(metadata))
+
+
+def test_directory_egg_info_is_declared_metadata_and_standalone_file_is_refused(tmp_path):
+    directory = tmp_path / 'declared.egg-info'
+    directory.mkdir()
+    metadata = directory / 'PKG-INFO'
+    metadata.write_text('Name: Invented_Project\nVersion: 01.0\nHome-page: https://example.invalid/inert\n')
+    observed = {str(metadata): proof._file(metadata)}
+    assert proof._versions(('abi', (tmp_path,)), observed) == {'invented-project': '1.0'}
+    standalone = tmp_path / 'standalone.egg-info'
+    standalone.write_text('Name: standalone\nVersion: 1\n')
+    observed[str(standalone)] = proof._file(standalone)
+    with pytest.raises(OSError, match='missing or changed'):
+        proof._versions(('abi', (tmp_path,)), observed)
+
+
+def test_metadata_replacement_cannot_substitute_the_snapshot(tmp_path):
+    metadata = tmp_path / 'METADATA'
+    metadata.write_text('Name: original\nVersion: 1\n')
+    expected = proof._file(metadata)
+    replacement = tmp_path / 'replacement'
+    replacement.write_text('Name: substituted\nVersion: 2\n')
+    replacement.replace(metadata)
+    with pytest.raises(OSError, match='changed before reading'):
+        proof._metadata(metadata, expected)
+
+
+@pytest.mark.parametrize('kind', ['traversal', 'duplicate'])
+def test_layout_roots_must_be_confined_without_aliases(tmp_path, monkeypatch, kind):
+    from types import SimpleNamespace
+    roots = [str(tmp_path / 'site-packages')] * 2 if kind == 'duplicate' else [str(tmp_path / '../outside/site-packages')]
+    value = {'prefix': str(tmp_path), 'executable': str(tmp_path / 'bin/python'), 'roots': roots, 'abi': 'fixture'}
+    monkeypatch.setattr(proof.subprocess, 'run', lambda *args, **kwargs:
+                        SimpleNamespace(returncode=0, stdout=json.dumps(value)))
+    with pytest.raises(OSError, match='inside its interpreter'):
+        proof._layout(SimpleNamespace(path=tmp_path, python=tmp_path / 'bin/python'))
