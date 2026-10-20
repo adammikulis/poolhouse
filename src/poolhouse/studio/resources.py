@@ -1,13 +1,11 @@
 """Server-owned installed model resolution for Studio execution."""
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import re
 import shutil
 import stat
-from contextlib import contextmanager
 from pathlib import Path
 
 from poolhouse import hub, optional
@@ -15,10 +13,24 @@ from poolhouse.contracts import recipes
 from poolhouse.files import writing
 from poolhouse.hub import hfstore
 
+from .decision_inventory import (
+    RESOURCE_ID,
+    members as decision_members,
+    resource as decision_resource,
+)
+from .model_content import (
+    _fingerprint,
+    _identity,
+    base_fingerprint as base_fingerprint,
+    open_model_file as open_model_file,
+)
+
 
 def model_resource(binding: dict, installed: list | None = None) -> dict:
     """Resolve only the exact identifiers offered by the installed model library."""
     ident = binding.get('id') if binding.get('kind') == 'model' else None
+    if ident == RESOURCE_ID:
+        return decision_resource()
     entries = hub.discover() if installed is None else installed
     entry = next((entry for entry in entries if entry.id == ident), None)
     if entry is None or not entry.is_complete or not entry.verified:
@@ -52,9 +64,10 @@ def training_base(resource: dict, parameters: dict) -> Path:
     return path
 
 
-
 def model_files(handle: dict) -> list[dict]:
     """Enumerate exact library content, including native same-repository cache blobs."""
+    if handle.get('id') == RESOURCE_ID:
+        return decision_members(handle)
     current = model_resource(handle)
     root = Path(current['path'])
     if str(root) != handle.get('path'):
@@ -108,94 +121,9 @@ def model_files(handle: dict) -> list[dict]:
     return members
 
 
-def _identity(info: os.stat_result) -> list[int]:
-    return [info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
-
-
-@contextmanager
-def open_model_file(member: dict):
-    """Open an enumerated member without following a replaced link or changed file."""
-    path = Path(member['path'])
-    if any(parent.is_symlink() for parent in path.parents):
-        raise ValueError('The model member directory changed')
-    before = path.lstat()
-    if not stat.S_ISREG(before.st_mode) or _identity(before) != member['identity']:
-        raise ValueError('The model member changed before reading')
-    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), 'rb') as source:
-        if _identity(os.fstat(source.fileno())) != member['identity']:
-            raise ValueError('The model member changed while opening')
-        if member.get('blob_digest'):
-            checked = _ContentReader(source, member['blob_digest'], member['size'])
-            yield checked
-            while checked.read(1024 * 1024):
-                pass
-            if checked.checksum.hexdigest() != member['blob_digest']:
-                raise ValueError('The shared model blob does not match its content digest')
-        else:
-            yield source
-        if _identity(os.fstat(source.fileno())) != member['identity'] or _identity(path.lstat()) != member['identity']:
-            raise ValueError('The model member changed while reading')
-
-
-class _ContentReader:
-    """Hash sequential reads without a second pass over native model weights."""
-
-    def __init__(self, source, digest, size):
-        self.source = source
-        self.checksum = hashlib.sha1(usedforsecurity=False) if len(digest) == 40 else hashlib.sha256()
-        if len(digest) == 40:
-            self.checksum.update(f'blob {size}\0'.encode())
-
-    def seek(self, offset, whence=0):
-        current = self.source.tell()
-        if whence != 0 or offset < current:
-            raise ValueError('A verified model stream only supports forward absolute seeks')
-        while current < offset:
-            chunk = self.read(min(1024 * 1024, offset - current))
-            if not chunk:
-                raise ValueError('A model resume offset exceeds its declared content')
-            current += len(chunk)
-        return current
-
-    def read(self, size=-1):
-        data = self.source.read(size)
-        self.checksum.update(data)
-        return data
-
-
 def model_fingerprint(handle: dict) -> str:
     """Bind a model identity to every approved member's relative name and bytes."""
     return _fingerprint(model_files(handle))
-
-
-def base_fingerprint(handle: dict) -> str:
-    """Hash an explicitly authorized staged base; this function grants no authority."""
-    root = Path(handle['path'])
-    if not root.is_dir() or any(path.is_symlink() for path in (root, *root.parents)):
-        raise ValueError('A staged base must be a regular owned directory')
-    members = []
-    for path in sorted(root.rglob('*')):
-        info = path.lstat()
-        if stat.S_ISDIR(info.st_mode):
-            continue
-        if not stat.S_ISREG(info.st_mode):
-            raise ValueError('A staged base cannot contain symbolic links or special files')
-        members.append({'relative': path.relative_to(root).as_posix(), 'path': str(path),
-                        'size': info.st_size, 'identity': _identity(info)})
-    if not members:
-        raise ValueError('A staged base has no regular files')
-    return _fingerprint(members)
-
-
-def _fingerprint(members: list[dict]) -> str:
-    rows = []
-    for member in members:
-        checksum = hashlib.sha256()
-        with open_model_file(member) as source:
-            for chunk in iter(lambda: source.read(1024 * 1024), b''):
-                checksum.update(chunk)
-        rows.append([member['relative'], member['size'], checksum.hexdigest()])
-    return hashlib.sha256(json.dumps(rows, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
 ADAPTER_FILES = frozenset({'adapter_config.json', 'adapter_model.safetensors', 'adapters.safetensors', 'config.json'})

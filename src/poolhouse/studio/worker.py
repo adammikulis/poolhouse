@@ -16,6 +16,8 @@ from poolhouse.files import write_json
 from poolhouse.kvtype import DEFAULT_KV_BITS
 from poolhouse.serve import broker_wire, gpu
 from poolhouse.studio.adapters import response_schema
+from poolhouse.studio.decision_models import source as decision_source
+from poolhouse.studio.decisions import assess, parse_record, route
 from poolhouse.studio.resources import (
     ADAPTER_FILES,
     checkpoint_base,
@@ -61,6 +63,14 @@ def _decision(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
     accuracy = sum(answer.choice == case.label for answer, case in zip(decisions, cases, strict=True)) / len(cases)
     metrics = {'accuracy': accuracy, 'examples': len(cases)}
     return {'metrics': metrics, 'report': metrics}
+
+
+def _predict_record(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
+    resolved, identity = decision_source(inputs['model'], out)
+    def predict(question, state, options):
+        with gpu.hold('Studio record decision', wait_s=None):
+            return PointerDecider(resolved, download=False).decide(question, state, options)
+    return assess(kind, parameters, inputs['record'], predict, model_digest=identity['model_digest'])
 
 
 def _train(kind: str, parameters: dict, inputs: dict, out: Path) -> dict:
@@ -263,6 +273,12 @@ def _export(model: dict, format: str, out: Path) -> dict:
 def execute(node: dict, inputs: dict, out: Path) -> dict[str, Any]:
     kind = node['type']
     parameters = node.get('parameters', {})
+    if kind == 'decision.route':
+        return route(parameters, inputs['decision'])
+    if kind == 'stream.record':
+        return {'record': inputs['record'] if 'record' in inputs else parse_record(parameters.get('sample', '{}'))}
+    if kind in ('decision.predict', 'guard.injection'):
+        return _predict_record(kind, parameters, inputs, out)
     if kind in ('train.decision', 'evaluate.decision'):
         return _decision(kind, parameters, inputs, out)
     if kind.startswith('train.'):

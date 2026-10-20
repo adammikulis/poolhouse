@@ -11,6 +11,7 @@ from poolhouse.home import machine_id
 from poolhouse.studio.adapters import Adapters
 from poolhouse.studio.catalog import node_catalog
 from poolhouse.studio.contracts import validate_graph
+from poolhouse.studio.decision_inventory import inventory as decision_inventory
 from poolhouse.studio.engine import WorkflowEngine
 from poolhouse.studio.library import LocalLibrary
 from poolhouse.studio.packages import export_package, import_package
@@ -153,7 +154,7 @@ class StudioRoutes:
                         if path.name not in {"jobs", "studio", "studio-device-resources"} and not path.name.startswith(".")
                         and path.resolve().is_relative_to(root.resolve())] if root.exists() else []
             self.send(200, {"datasets": datasets, "models": [{"id": entry.id, "title": entry.id} for entry in hub.discover()]
-                       + self.ui.studio_saved_models.list(principal)})
+                       + self.ui.studio_saved_models.list(principal) + decision_inventory()})
             return True
         if self.path.startswith("/ui/studio/workflows"):
             return self._workflows(store, scope)

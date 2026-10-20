@@ -11,12 +11,14 @@ from poolhouse.credentials import child_environment
 from poolhouse.files import write_json
 
 from .catalog import node_spec
+from .decision_models import source as decision_source
+from .decisions import parameters as decision_parameters, parse_record, route
 from .resources import model_resource, training_base
 
 
 def needs_compute(node: dict) -> bool:
     kind = node["type"]
-    return (kind.startswith(("train.", "gym.")) or kind in {"data.synthesize", "data.harvest"}
+    return (kind.startswith(("train.", "gym.")) or kind in {"data.synthesize", "data.harvest", "decision.predict", "guard.injection"}
             or (kind == "evaluate" and node.get("parameters", {}).get("suite", "holdout") == "holdout")
 )
 
@@ -112,7 +114,7 @@ class Adapters:
                 required_names |= {'mlx-lm'} if framework == 'mlx' else {'transformers'}
             if kind == 'train.decision':
                 required_names = {'torch', 'transformers', 'peft'}
-        elif kind == 'evaluate.decision':
+        elif kind in ('evaluate.decision', 'decision.predict', 'guard.injection'):
             required_names = {'torch', 'transformers', 'peft'}
         elif kind.startswith('gym.'):
             required_names = {'gymnasium', 'stable-baselines3'}
@@ -122,6 +124,9 @@ class Adapters:
         payload = {'companion': companion,
                    'versions': {name: packages.get(name) or 'unavailable' for name in sorted(names)}}
         return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
+    def cacheable_outputs(self, node: dict, outputs: dict) -> bool:
+        return node['type'] != 'guard.injection' or outputs.get('signal', {}).get('coverage') == 'complete'
 
     def availability(self, specs: list[dict]) -> dict[str, list[str]]:
         nodes = [{'id': spec['type'], 'type': spec['type'], 'parameters': {}}
@@ -159,17 +164,42 @@ class Adapters:
                 training_base(resources[source], node.get('parameters', {}))
             except (ValueError, OSError) as error:
                 errors.append({'node': node['id'], 'code': 'resource', 'message': str(error)})
+        for node in graph['nodes']:
+            if node['type'] in ('decision.predict', 'guard.injection'):
+                producer = next((edge['source']['node'] for edge in graph['edges']
+                                 if edge['target'] == {'node': node['id'], 'port': 'model'}), None)
+                if producer in resources:
+                    try:
+                        decision_source(resources[producer], None)
+                    except (ValueError, OSError, TypeError, KeyError) as error:
+                        errors.append({'node': node['id'], 'code': 'resource', 'message': str(error)})
+            if node['type'] == 'decision.route':
+                producer = next((edge['source']['node'] for edge in graph['edges']
+                                 if edge['target'] == {'node': node['id'], 'port': 'decision'}), None)
+                prediction = next((item for item in graph['nodes'] if item['id'] == producer and item['type'] == 'decision.predict'), None)
+                if prediction:
+                    try:
+                        options = decision_parameters('decision.predict', prediction.get('parameters', {}))['options']
+                        if decision_parameters('decision.route', node.get('parameters', {}))['label'] not in options:
+                            raise ValueError('Select a label declared by the decision')
+                    except (ValueError, TypeError) as error:
+                        errors.append({'node': node['id'], 'code': 'parameter', 'message': str(error)})
         return errors
 
     def validate(self, nodes: list[dict]) -> list[dict]:
         schema_errors = []
         for node in nodes:
+            if node['type'] in ('decision.predict', 'guard.injection', 'decision.route'):
+                try:
+                    decision_parameters(node['type'], node.get('parameters', {}))
+                except (ValueError, TypeError, AttributeError) as error:
+                    schema_errors.append({'node': node['id'], 'code': 'parameter', 'message': str(error)})
             if node['type'] == 'generate.structured':
                 try:
                     response_schema(node.get('parameters', {}).get('json_schema'))
                 except (ValueError, TypeError, AttributeError) as error:
                     schema_errors.append({'node': node['id'], 'code': 'parameter', 'message': str(error)})
-        workers = [node for node in nodes if node['type'] not in ('dataset', 'model', 'prompt', 'tools.call')]
+        workers = [node for node in nodes if node['type'] not in ('dataset', 'model', 'prompt', 'tools.call', 'stream.record', 'decision.route')]
         if not workers:
             return schema_errors
         environment = self.runner.environment
@@ -194,7 +224,7 @@ class Adapters:
             required = set()
             if kind.startswith('gym.'):
                 required = {'gymnasium', 'stable-baselines3'}
-            elif kind in ('train.decision', 'evaluate.decision'):
+            elif kind in ('train.decision', 'evaluate.decision', 'decision.predict', 'guard.injection'):
                 required = {'torch', 'transformers', 'peft'}
             elif kind.startswith('train.'):
                 framework = parameters.get('framework') or ('mlx' if 'mlx' in packages else 'torch')
@@ -211,6 +241,10 @@ class Adapters:
 
     def immediate(self, node: dict, inputs: dict, context: dict) -> dict | None:
         kind = node['type']
+        if kind == 'decision.route':
+            return route(node.get('parameters', {}), inputs['decision'])
+        if kind == 'stream.record':
+            return {'record': inputs['record'] if 'record' in inputs else parse_record(node.get('parameters', {}).get('sample', '{}'))}
         if kind in ('dataset', 'model'):
             binding = context['bindings'].get(kind, {})
             if binding.get('kind') != kind or not binding.get('id'):

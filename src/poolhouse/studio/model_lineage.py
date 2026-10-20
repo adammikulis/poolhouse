@@ -12,7 +12,7 @@ from .resources import base_fingerprint, model_fingerprint
 
 def bind_model_base(node: dict, outputs: dict, inputs: dict, output_dir: Path) -> None:
     """Replace worker metadata with the exact explicitly authorized training base."""
-    if node["type"] != "train.tool-calls" or "model" not in outputs:
+    if node["type"] not in ("train.tool-calls", "train.decision") or "model" not in outputs:
         return
     base = inputs.get("model")
     if not isinstance(base, dict) or base.get("kind") != "model":

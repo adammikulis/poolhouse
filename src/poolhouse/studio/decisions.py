@@ -44,6 +44,8 @@ def parameters(kind: str, values: dict) -> dict:
             raise ValueError('Enter a decision question within the supported text size')
         raw = found.get('options', '["accept","review"]')
         choices = json.loads(raw) if isinstance(raw, str) else raw
+        if not isinstance(choices, (list, dict)) or (isinstance(choices, list) and any(not isinstance(choice, str) for choice in choices)) or (isinstance(choices, dict) and any(not isinstance(key, str) or not isinstance(value, str) for key, value in choices.items())):
+            raise ValueError('Decision options must be a JSON list of names or an object of descriptions')
         opts = optional.module('poolhouse.decide.types').options_of(choices)
         if any(len(option.description) > MAX_TEXT for option in opts):
             raise ValueError('Decision option descriptions exceed the supported text size')
@@ -137,7 +139,7 @@ def assess(kind: str, values: dict, record: dict, predict: Any, *, model_digest:
                     outcome = 'allow'
             if outcome == 'review':
                 reasons.append('uncertain_assessment')
-        except (ValueError, TypeError, RuntimeError, OSError, ArithmeticError):
+        except (ValueError, TypeError, RuntimeError, OSError, ArithmeticError, LookupError, AttributeError, ImportError):
             reasons.append('assessment_unavailable')
         markers = optional.module('poolhouse.guard.untrusted').injection_markers(text)
         if markers:

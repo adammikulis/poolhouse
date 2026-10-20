@@ -66,9 +66,10 @@ def test_guard_preserves_source_and_separates_configured_task():
     assert 'instruction_markers' in result['signal']['reason_codes']
 
 
-def test_model_failure_is_review_and_has_no_private_error_message():
+@pytest.mark.parametrize('failure', [OSError, KeyError, AttributeError, ImportError])
+def test_model_failure_is_review_and_has_no_private_error_message(failure):
     def failed(*_):
-        raise OSError('/private/credential/path')
+        raise failure('/private/credential/path')
     result = assess('guard.injection', {'mode': 'direct'}, {'text': 'hello'}, failed, model_digest='sealed')
     assert result['signal']['outcome'] == 'review'
     assert '/private' not in json.dumps(result)
@@ -102,3 +103,9 @@ def test_stream_record_is_data_and_cannot_spoof_typed_decision():
     result = validate_graph({'nodes': [{'id': 'raw', 'type': 'stream.record'}, {'id': 'route', 'type': 'decision.route'}],
                              'edges': [{'source': {'node': 'raw', 'port': 'record'}, 'target': {'node': 'route', 'port': 'decision'}}]})
     assert not result['valid']
+
+
+@pytest.mark.parametrize('options', ['"ab"', '7', 'null', '[1,2]', '{"accept":7}'])
+def test_malformed_option_shape_rejected_before_compute(options):
+    with pytest.raises(ValueError, match='JSON list'):
+        parameters('decision.predict', {'options': options})
