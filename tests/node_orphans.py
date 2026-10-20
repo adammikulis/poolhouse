@@ -1,9 +1,4 @@
-"""Test nodes left running by a pytest that was killed.
-
-A kit that starts a node on a temporary root writes the pid of its pytest process into the root (`claim`). The next session finds
-every such root whose pytest is gone, stops the node under it and removes the root (`reap`), so a killed run does not leave a node
-holding ports, memory and a state directory for days.
-"""
+"""Reap recorded test nodes inside a caller-owned directory."""
 
 from __future__ import annotations
 
@@ -37,7 +32,7 @@ def answers_as_recorded(state: Path) -> bool:
     return said is not None and isinstance(pid := node_supervise.running(state).get("pid"), int) and said.get("pid") == pid
 
 
-def reap(base: Path = Path("/tmp")) -> list[Path]:
+def reap(base: Path) -> list[Path]:
     """Stop the node under, and remove, every root in ``base`` whose recorded owner is no longer running; the roots reaped."""
     reaped = []
     for root in sorted(base.glob(f"{PREFIX}*")):
