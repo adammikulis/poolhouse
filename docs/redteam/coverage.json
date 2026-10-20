@@ -1,7 +1,7 @@
 {
- "surfaces": 871,
+ "surfaces": 872,
  "by_status": {
-  "covered": 553,
+  "covered": 554,
   "partial": 193,
   "uncovered": 52,
   "n/a": 73,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 99,
+   "covered": 100,
    "partial": 58,
    "uncovered": 0,
    "n/a": 4,
@@ -10593,6 +10593,21 @@
     "tests/test_compute_artifact.py::test_probe_ignores_hostile_python_environment_and_refuses_unlisted_code"
    ],
    "note": "The isolated interpreter ignores injected Python startup and manifest environment values, rejects unexpected source and compiled bytecode plus changed revisions, and uses fixed argv with trusted JSON stdin and no shell, retry or fallback"
+  },
+  {
+   "id": "spawn:fleet/dependency_proof.py:_layout",
+   "kind": "spawn",
+   "source": "fleet/dependency_proof.py:_layout",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_dependency_proof.py::test_actual_layout_ignores_hostile_pythonpath",
+    "tests/test_dependency_proof.py::test_malformed_layout_is_a_controlled_proof_failure",
+    "tests/test_dependency_proof.py::test_actual_cold_checks_are_coalesced_and_warm_calls_launch_no_subprocesses",
+    "tests/test_dependency_proof.py::test_python_startup_selectors_cannot_bless_cached_inspection"
+   ],
+   "note": "Fixed isolated managed-interpreter layout discovery accepts no caller code or model selection. Hostile startup paths cannot alter the isolated layout, malformed replies are refused, and unsupported startup environments retain uncached verification. Cached proofs require fresh matching package and file evidence."
   },
   {
    "id": "spawn:fleet/device.py:_ram_used_gb",

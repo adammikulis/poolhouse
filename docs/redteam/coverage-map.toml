@@ -15,6 +15,13 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["spawn:fleet/dependency_proof.py:_layout"]
+status = "covered"
+count = 1
+tests = ["tests/test_dependency_proof.py::test_actual_layout_ignores_hostile_pythonpath", "tests/test_dependency_proof.py::test_malformed_layout_is_a_controlled_proof_failure", "tests/test_dependency_proof.py::test_actual_cold_checks_are_coalesced_and_warm_calls_launch_no_subprocesses", "tests/test_dependency_proof.py::test_python_startup_selectors_cannot_bless_cached_inspection"]
+note = "Fixed isolated managed-interpreter layout discovery accepts no caller code or model selection. Hostile startup paths cannot alter the isolated layout, malformed replies are refused, and unsupported startup environments retain uncached verification. Cached proofs require fresh matching package and file evidence."
+
+[[group]]
 match = ["egress:fleet/studio_destinations.py:_configuration"]
 status = "n/a"
 tests = ["tests/test_studio_destinations.py::test_crud_is_revision_checked_idempotent_and_never_contacts_endpoint", "tests/test_studio_destinations.py::test_unsafe_endpoint_rejected_without_echoing_input"]
