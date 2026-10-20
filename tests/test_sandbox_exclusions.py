@@ -33,6 +33,42 @@ def test_exclusions_reject_replaceable_ancestors(tmp_path):
         sandbox.Policy(deny_write=(str(unsafe / "config"),)).validated()
 
 
+@pytest.mark.parametrize("kind", ["root", "directory", "file"])
+def test_protected_tree_refuses_foreign_writable_entries(tmp_path, kind):
+    protected = tmp_path / "control"
+    protected.mkdir()
+    target = protected
+    if kind == "directory":
+        target = protected / "nested"
+        target.mkdir()
+    elif kind == "file":
+        target = protected / "config"
+        target.write_text("protected")
+    target.chmod(0o777)
+    with pytest.raises(sandbox.PolicyError, match="writable by other users"):
+        sandbox.Policy(deny_write=(str(protected),)).validated()
+
+
+def test_protected_file_refuses_foreign_owner(tmp_path, monkeypatch):
+    from poolhouse.sandbox import policy
+
+    target = tmp_path / "config"
+    target.write_text("protected")
+    original = policy.os.lstat
+
+    def foreign(path, *args, **kwargs):
+        info = original(path, *args, **kwargs)
+        if os.fspath(path) == str(target):
+            values = list(info)
+            values[4] = os.getuid() + 1
+            return os.stat_result(values)
+        return info
+
+    monkeypatch.setattr(policy.os, "lstat", foreign)
+    with pytest.raises(sandbox.PolicyError, match="writable by other users"):
+        sandbox.Policy(deny_write=(str(target),)).validated()
+
+
 @pytest.mark.parametrize("kind", ["hardlink", "symlink"])
 def test_preexisting_aliases_in_protected_tree_are_refused(tmp_path, kind):
     protected = tmp_path / "hooks"
