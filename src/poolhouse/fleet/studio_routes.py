@@ -2,41 +2,23 @@
 
 from __future__ import annotations
 
-import hashlib
-import threading
-from pathlib import Path
-
 from poolhouse import hub
-from poolhouse.home import machine_id
-from poolhouse.studio.adapters import Adapters
 from poolhouse.studio.catalog import node_catalog
 from poolhouse.studio.contracts import validate_graph
 from poolhouse.studio.decision_inventory import inventory as decision_inventory
-from poolhouse.studio.engine import WorkflowEngine
 from poolhouse.studio.library import LocalLibrary
 from poolhouse.studio.packages import export_package, import_package
-from poolhouse.studio.resources import model_resource
-from poolhouse.studio.saved_models import PREFIX as SAVED_MODEL_PREFIX, SavedModels
-from poolhouse.studio.store import Conflict, StudioStore, digest
+from poolhouse.studio.store import Conflict, digest
 from poolhouse.studio.templates import templates
 
 from .discovery import load_pool_key
-from .files import safe_relpath
-from .managed_compute import process_environment
 from .request_fields import field, object_body
 from .session import parse_cookie
 from .studio_artifacts import artifact_files, open_artifact, stream_artifact
 from .studio_decision_setup import configure as configure_decision
-from .studio_dispatch import DeviceDispatch
 from .studio_library import provider as pool_library
-
-_INITIALIZE = threading.Lock()
-
-
-def _binding(ui) -> str:
-    key = load_pool_key(ui.pool_key_path)
-    return digest({"pool": hashlib.sha256(key).hexdigest() if key else "local",
-                   "device": machine_id(), "board": str(Path(ui.root).resolve())})
+from .studio_service import initialize, scope as _binding
+from .studio_stream_routes import route as stream_route
 
 
 class StudioRoutes:
@@ -61,51 +43,7 @@ class StudioRoutes:
         ui = self.ui
         if ui.runner is None or not ui.root:
             raise ValueError("Start the daemon job queue to use Studio.")
-        with _INITIALIZE:
-            if not hasattr(ui, "studio"):
-                store = StudioStore(Path(ui.root) / "studio.ladybug")
-                ui._studio_principals = {}
-
-                def authorize_resources(principal, node, inputs):
-                    if principal.get("scope") != _binding(ui):
-                        return False
-                    checker = ui._studio_principals.get(principal.get("id"))
-                    if checker is None or not checker():
-                        return False
-                    for binding in (node or {}).get("bindings", {}).values():
-                        if not isinstance(binding, dict) or binding.get("kind") not in {"dataset", "model", "recordings", "traces"}:
-                            return False
-                        if binding["kind"] != "model":
-                            try:
-                                safe_relpath(ui.runner.files_root, binding.get("id", ""))
-                            except (ValueError, RuntimeError):
-                                return False
-                    additional = getattr(ui, "studio_authorize", None)
-                    return bool(additional(principal, node, inputs)) if additional else True
-
-                saved = SavedModels(store, ui.runner.files_root, authorize_resources)
-
-                def resolve_model(binding, context):
-                    if binding.get('id', '').startswith(SAVED_MODEL_PREFIX):
-                        return saved.resolve(context['principal'], binding['id'])
-                    return model_resource(binding)
-
-                def authorize(principal, node, inputs):
-                    if not authorize_resources(principal, node, inputs):
-                        return False
-                    try:
-                        saved.check_inputs(principal, inputs)
-                        binding = (node or {}).get('bindings', {}).get('model', {})
-                        if binding.get('id', '').startswith(SAVED_MODEL_PREFIX):
-                            saved.resolve(principal, binding['id'])
-                    except (ValueError, PermissionError, OSError, KeyError):
-                        return False
-                    return True
-
-                ui.studio_saved_models = saved
-                dispatcher = DeviceDispatch(ui, store, authorize)
-                adapters = Adapters(ui.runner, process_environment=process_environment, model_resolver=resolve_model)
-                ui.studio = WorkflowEngine(store, ui.runner, adapters, authorize, dispatcher)
+        initialize(ui)
         sid = parse_cookie(self.cookie)
         session = ui.sessions.get(sid)
         if sid and session is None:
@@ -113,6 +51,7 @@ class StudioRoutes:
         if session:
             principal = {"id": digest({"session": sid}), "scope": _binding(ui), "owner": session.credentialed}
             ui._studio_principals[principal["id"]] = lambda: ui.sessions.get(sid) is not None
+            ui._studio_origins[principal["id"]] = lambda: (ui.sessions.get(sid).origin if ui.sessions.get(sid) else "")
         else:
             principal = {"id": digest({"local": self.client_ip, "scope": _binding(ui)}), "scope": _binding(ui), "owner": True}
             ip, host, token = self.client_ip, self.host_header, self.header("X-Poolhouse-Setup", "")
@@ -146,6 +85,9 @@ class StudioRoutes:
         store, scope = engine.store, principal["scope"]
         if not engine.authorize(principal, None, {}):
             raise PermissionError("Sign in again to use Studio.")
+        if (self.path.startswith(("/ui/studio/sources", "/ui/studio/subscriptions"))
+                and stream_route(self, self.ui.studio_streams, principal)):
+            return True
         if self.path == "/ui/studio/devices" and self.method == "GET":
             self.send(200, {"devices": engine.dispatcher.devices()})
             return True

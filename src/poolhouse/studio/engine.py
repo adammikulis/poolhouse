@@ -72,6 +72,8 @@ class WorkflowEngine:
     def __init__(self, store: StudioStore, runner: Any, adapters: Any, authorize: Any, dispatcher: Any = None) -> None:
         self.store, self.runner, self.adapters, self.authorize = store, runner, adapters, authorize
         self.dispatcher = dispatcher
+        self.on_close = None
+        self.on_closed = None
         self.lock = threading.RLock()
         source = Path(__file__).parent.parent
         self.implementation = digest({str(p.relative_to(source)): hashlib.sha256(p.read_bytes()).hexdigest()
@@ -120,10 +122,10 @@ class WorkflowEngine:
         if requirements:
             raise ValueError(requirements)
         for node in graph["nodes"]:
-            if not self.authorize(principal, node, {}):
-                raise PermissionError("A workflow resource is no longer authorized.")
             if node in remote:
                 node["execution"] = self.dispatcher.identity(node)
+            if not self.authorize(principal, node, {}):
+                raise PermissionError("A workflow resource is no longer authorized.")
         return graph
 
     def submit(self, principal: dict, workflow: dict, output_nodes: list[str], key: str) -> dict:
@@ -138,8 +140,9 @@ class WorkflowEngine:
         if principal.get("kind") != "studio_subscription":
             raise PermissionError("Only a scoped subscription can inject an event.")
         graph = self.prepare(principal, workflow, event["output_nodes"])
-        source = next((node for node in graph["nodes"] if node["id"] == event["input_node"]), None)
-        if source is None or source["type"] != "stream.record":
+        sources = graph.get("variants", {}).get(event["input_node"], [event["input_node"]])
+        found = [node for node in graph["nodes"] if node["id"] in sources]
+        if len(found) != len(sources) or any(node["type"] != "stream.record" for node in found):
             raise ValueError("Choose the workflow's record input node.")
         with self.lock:
             run, _ = self.store.submit(principal, workflow, graph, {"outputs": event["output_nodes"],
@@ -177,6 +180,8 @@ class WorkflowEngine:
         while not self._stop.is_set():
             self._wake.wait(0.25)
             self._wake.clear()
+            if getattr(self.runner, "studio_initializing", False):
+                continue
             with self.lock:
                 for run in self._all_runs():
                     if run["state"] in {"queued", "running"}:
@@ -214,7 +219,8 @@ class WorkflowEngine:
                 continue
             inputs = {e["target"]["port"]: run["nodes"][e["source"]["node"]]["outputs"][e["source"]["port"]]
                       for e in edges}
-            if node["type"] == "stream.record" and run.get("event", {}).get("input_node") == ident:
+            event_input = run.get("event", {}).get("input_node")
+            if node["type"] == "stream.record" and ident in graph.get("variants", {}).get(event_input, [event_input]):
                 inputs["record"] = run["event"]["payload"]
             context = {"run_id": run["id"], "node_id": ident, "files_root": self.runner.files_root,
                        "output_dir": self.runner.files_root / "studio" / run["id"] / hashlib.sha256(ident.encode()).hexdigest()[:24],
@@ -384,6 +390,12 @@ class WorkflowEngine:
         state["artifacts"] = _artifacts(node, state["outputs"], "outputs")
         state["lineage"] = {"run": run["id"], "node": node["id"], "inputs": digest(inputs),
                             "implementation": node_spec(node["type"], node.get("version", 1))["implementation"]}
+        completed = getattr(self.runner, "studio_model_completed", None)
+        if completed:
+            self.store.put("run", run)
+            for port in node_spec(node["type"], node.get("version", 1))["outputs"]:
+                if is_model_type(port["type"]) and port["name"] in state["outputs"]:
+                    completed(run, node, port["name"])
         if (not state.get("execution") and not node_spec(node["type"], node.get("version", 1)).get("side_effects")
                 and self._cacheable(node, state["outputs"])):
             with self.store.lock:
@@ -456,11 +468,17 @@ class WorkflowEngine:
             return run
 
     def close(self) -> None:
+        callback, self.on_close = self.on_close, None
+        if callback:
+            callback()
         self._stop.set()
         self._wake.set()
         self._thread.join()
         if self.dispatcher is not None:
             self.dispatcher.close()
+        callback, self.on_closed = self.on_closed, None
+        if callback:
+            callback()
 
     def _remote(self, node: dict) -> bool:
         target = node.get("execution", {}).get("machine")

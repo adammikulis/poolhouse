@@ -73,6 +73,7 @@ from .projects import ProjectRegistry, lan_host, local_candidates
 from .runtime_paths import announce_token, configure as configure_runtime_paths, default_root
 from .serving import Hosting, Serving
 from .settings import Settings
+from .studio_service import initialize as initialize_studio
 from .ui import UI
 
 DEFAULT_PORT = 8770
@@ -374,6 +375,9 @@ class DaemonRuntime:
             self.interface.root = self.root
             self.interface.projects = self.projects
             self.interface.display_url = lan_host(self.port)
+            self.interface.studio_identity = lambda: self.cert
+            if (self.root / "studio.ladybug").exists():
+                initialize_studio(self.interface)
 
     def report_startup(self) -> None:
         if self.announce:
