@@ -157,7 +157,7 @@ def revoke_grant(args: argparse.Namespace, ctx: Ctx) -> Any:
 
 def _leads(ctx: Ctx) -> dict[str, Any]:
     """The live main sessions of the board, by name: what each said it runs on is a claim."""
-    return {a.name: a for a in sorted(ctx.carrier.agents(), key=lambda a: a.name) if not a.parent and a.harness not in (person_session.HARNESS, place.PLACER)}
+    return {a.name: a for a in sorted(ctx.carrier.agents(), key=lambda a: a.name) if not a.parent and not a.person and a.harness != place.PLACER}
 
 
 def _chosen(args: argparse.Namespace, main: dict[str, Any]) -> list[str]:

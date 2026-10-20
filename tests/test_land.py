@@ -381,6 +381,15 @@ def test_a_conflict_with_origin_stops_and_leaves_the_branch_as_it_was(world):
     assert git(tree, "rev-parse", "HEAD") == sha and git(tree, "status", "--porcelain") == ""
 
 
+def test_a_retired_session_cannot_open_a_landing(world):
+    tree, sha = world.start("retired-lander", {"docs/a.md": "retired\n"})
+    world.accept("retired-lander", sha)
+    world.node.session(world.lander).retire()
+    code, out = world.land(tree, who=world.lander)
+    assert code == 5 and "does not know this session" in out, out
+    assert world.proj.origin_head() != sha and tree.exists()
+
+
 def test_main_is_never_landed(world):
     tree, sha = world.start("towards-main", {"docs/a.md": "x\n"})
     code, out = world.land(tree, "main")

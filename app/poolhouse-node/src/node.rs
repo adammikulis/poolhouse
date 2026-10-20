@@ -315,8 +315,23 @@ impl Node {
     /// the new session a subagent of the token's owner. A main session that is already registered gets a token only from
     /// the lineage it was registered from. A node hosts a bounded number of boards, and one process tree makes a bounded number
     /// of them. The identity entry of a new or returning session is written for it, to its share of the log, and a registration
-    /// the log refuses leaves the registry as it was. Returns name, token, whether new.
+    /// the log refuses leaves the registry as it was. Returns name, token, whether new. The harness of the person's own session is
+    /// not registered here (`register_person`).
     pub fn register(&mut self, board: &str, parent_token: Option<&str>, native: Native, peer: &Peer) -> Result<Value> {
+        if identity::is_person_harness(&identity::clean(native.harness)?) {
+            return Err(Error::Denied(format!("the harness {} is the person's own session, which only the person's own call registers", identity::PERSON_HARNESS)));
+        }
+        self.enter(board, parent_token, native, peer, false)
+    }
+
+    /// Register the person's own session of the native id ``session`` on ``board``: a main session of the harness and model the person's
+    /// UI uses, which the node marks as the person's. A token given must be this session's own; a session of any other is no parent for it.
+    pub fn register_person(&mut self, board: &str, own_token: Option<&str>, session: &str, peer: &Peer) -> Result<Value> {
+        let native = Native { model: identity::PERSON_MODEL, harness: identity::PERSON_HARNESS, session };
+        self.enter(board, own_token, native, peer, true)
+    }
+
+    fn enter(&mut self, board: &str, parent_token: Option<&str>, native: Native, peer: &Peer, person: bool) -> Result<Value> {
         let Native { model, harness, session } = native;
         let (model, harness) = (identity::clean_model(model)?, identity::clean(harness)?);
         if !valid_name(board) {
@@ -331,6 +346,9 @@ impl Node {
             self.make_room_for_a_board(&lineage)?;
         }
         let (parent, proven, bound) = self.parent_of(board, parent_token, (&harness, session), &lineage)?;
+        if person && !parent.is_empty() {
+            return Err(Error::Denied("the person's session has no parent: it is registered with no token, or with its own".into()));
+        }
         if parent.is_empty() {
             crate::idle::sweep(self, board)?;
         }
@@ -349,6 +367,9 @@ impl Node {
         let now = hosted.board.now_ms();
         let (name, created) = hosted.names.assign(Who { harness: &harness, session, parent: &parent }, &model, state, now, &lineage, proven)?;
         hosted.board.group(&name, &hosted.names.tree(&name));
+        if person {
+            hosted.names.mark_person(&name)?;
+        }
         if created || revived {
             if let Err(refused) = self.write_identity(board, &name) {
                 self.host(board)?.names.restore(&name, before.map(|(_, i)| i))?;
