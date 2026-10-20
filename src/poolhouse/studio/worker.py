@@ -17,6 +17,7 @@ from poolhouse.files import write_json
 from poolhouse.kvtype import DEFAULT_KV_BITS
 from poolhouse.serve import broker_wire, gpu
 from poolhouse.serve.decision_residents import fingerprint
+from poolhouse.studio import record_ops
 from poolhouse.studio.adapters import response_schema
 from poolhouse.studio.catalog import node_spec
 from poolhouse.studio.decision_models import source as decision_source
@@ -285,6 +286,8 @@ def execute(node: dict, inputs: dict, out: Path) -> dict[str, Any]:
     parameters = node.get('parameters', {})
     if kind == 'generate.record':
         parameters = generation_parameters(parameters)
+    if kind in {'record.map', 'record.if'}:
+        return record_ops.execute(kind, parameters['controls'], inputs['record'])
     if kind == 'decision.route':
         return route(parameters, inputs['decision'])
     if kind == 'stream.record':

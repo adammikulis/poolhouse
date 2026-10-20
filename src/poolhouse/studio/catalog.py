@@ -33,6 +33,13 @@ def node_catalog() -> list[dict[str, Any]]:
     catalog = [
         _node("stream.record", "Record", "Inputs", {}, {"record": "json"},
               properties={"sample": {"type": "string", "default": "{}"}}),
+        _node("record.map", "Map record fields", "Data", {"record": "json"}, {"record": "json"},
+              properties={"controls": {"type": "object", "format": "record-map",
+                                       "default": {"keep_other": True, "assignments": []}}}),
+        _node("record.if", "If record matches", "Control", {"record": "json"},
+              {"record": "json", "true": "gate", "false": "gate"},
+              properties={"controls": {"type": "object", "format": "record-condition",
+                                       "default": {"field": "value", "operator": "exists"}}}),
         _node("dataset", "Dataset", "Inputs", {}, {"dataset": "dataset"}),
         _node("model", "Model", "Inputs", {}, {"model": "model"}),
         _node("data.validate", "Validate data", "Data", {"dataset": "dataset"}, {"dataset": "dataset", "report": "report"}),
