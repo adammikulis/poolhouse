@@ -1,7 +1,7 @@
 {
- "surfaces": 898,
+ "surfaces": 901,
  "by_status": {
-  "covered": 580,
+  "covered": 583,
   "partial": 193,
   "uncovered": 52,
   "n/a": 73,
@@ -44,7 +44,7 @@
    "unmapped": 0
   },
   "handler": {
-   "covered": 12,
+   "covered": 15,
    "partial": 2,
    "uncovered": 0,
    "n/a": 0,
@@ -3032,6 +3032,71 @@
     "tests/test_producer_bridge.py::test_retry_requires_exact_command_identity"
    ],
    "note": "Private bridge requests bind the full immutable source context, exact finite JSON bytes, action, nonce and required action-specific retry key under the v2 domain-separated MAC. Old versions and missing keys are refused; receipt/retry cannot supply replacement bytes. Activation requires the persisted binding digest; explicit revocation is sticky and replay is refused. Callback-based tests exercise retained-child/current-source requirements, not complete process custody or owner authorization. The fixed factory must supply both checks; bounded RAM nonce tracking supplements the durable source/event ledger and cannot itself promise durable replay prevention. No listener, source enrollment or publication transport is provided by this primitive."
+  },
+  {
+   "id": "handler:fleet/producer_connections.py:Connections.authorize",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_connections.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_connections.py::test_alternate_member_cannot_read_owner_intent",
+    "tests/test_producer_connections.py::test_old_stage_or_wrong_binding_never_authorizes",
+    "tests/test_producer_connections.py::test_authorization_challenge_has_strict_exact_schema",
+    "tests/test_producer_connections.py::test_revocation_after_prepare_prevents_activation"
+   ],
+   "note": "A fixed private authorization challenge requires the current original producer certificate/pool, exact owner command, current source generation/epoch, allowed phase and binding digest. Wrong members, stale stages, substituted bindings and malformed fields are refused. The network handler must derive the producer identity from actual current authenticated transport; caller-supplied identity data is not authority. This predicate alone does not authenticate a network request or issue an execution grant."
+  },
+  {
+   "id": "handler:fleet/producer_connections.py:Connections.check",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_connections.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_connections.py::test_source_stays_paused_and_activation_follows_custody_owner_cas",
+    "tests/test_producer_connections.py::test_repeated_create_inspects_original_process_without_provisioning_again",
+    "tests/test_producer_connections.py::test_reused_key_with_changed_producer_or_label_conflicts",
+    "tests/test_producer_connections.py::test_weak_owner_cannot_inspect_offer_or_mint_intent",
+    "tests/test_producer_connections.py::test_offer_for_another_receiver_or_pool_never_mints_source",
+    "tests/test_producer_connections.py::test_revocation_after_prepare_prevents_activation",
+    "tests/test_producer_connections.py::test_owner_session_loss_or_receiver_change_after_prepare_never_activates",
+    "tests/test_producer_connections.py::test_custody_requires_exact_true_before_activation",
+    "tests/test_producer_connections.py::test_lost_prepare_ack_recovers_exact_inert_process_without_respawn",
+    "tests/test_producer_connections.py::test_lost_activation_ack_only_checks_and_never_repeats_activation",
+    "tests/test_producer_connections.py::test_unknown_inactive_activation_never_repeats_or_starts_another_process",
+    "tests/test_producer_connections.py::test_pre_cas_active_response_is_not_adopted",
+    "tests/test_producer_connections.py::test_check_requires_original_request_and_source_revision",
+    "tests/test_producer_connections.py::test_offer_response_bool_revision_is_not_an_owner_cas"
+   ],
+   "note": "Durable owner intent precedes producer contact; exact receiver credential custody and a fresh current-owner CAS precede activation. Callback-based tests exercise weak origins, changed context/receiver, strict revisions, uncertain acknowledgements and idempotent status-only recovery over real isolated storage. No subscription starts and no stored person session is reconstructed. Transport callbacks are isolated substitutes: actual enrolled-member authentication, HMAC custody, process activation and per-node source authorization require the assembled factory and remain separate obligations."
+  },
+  {
+   "id": "handler:fleet/producer_connections.py:Connections.register",
+   "kind": "handler",
+   "source": "src/poolhouse/fleet/producer_connections.py",
+   "trust": "network member or local browser",
+   "attacker": "malformed, oversized or unauthenticated requests",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_connections.py::test_source_stays_paused_and_activation_follows_custody_owner_cas",
+    "tests/test_producer_connections.py::test_repeated_create_inspects_original_process_without_provisioning_again",
+    "tests/test_producer_connections.py::test_reused_key_with_changed_producer_or_label_conflicts",
+    "tests/test_producer_connections.py::test_weak_owner_cannot_inspect_offer_or_mint_intent",
+    "tests/test_producer_connections.py::test_offer_for_another_receiver_or_pool_never_mints_source",
+    "tests/test_producer_connections.py::test_revocation_after_prepare_prevents_activation",
+    "tests/test_producer_connections.py::test_owner_session_loss_or_receiver_change_after_prepare_never_activates",
+    "tests/test_producer_connections.py::test_custody_requires_exact_true_before_activation",
+    "tests/test_producer_connections.py::test_lost_prepare_ack_recovers_exact_inert_process_without_respawn",
+    "tests/test_producer_connections.py::test_lost_activation_ack_only_checks_and_never_repeats_activation",
+    "tests/test_producer_connections.py::test_unknown_inactive_activation_never_repeats_or_starts_another_process",
+    "tests/test_producer_connections.py::test_pre_cas_active_response_is_not_adopted",
+    "tests/test_producer_connections.py::test_check_requires_original_request_and_source_revision",
+    "tests/test_producer_connections.py::test_offer_response_bool_revision_is_not_an_owner_cas"
+   ],
+   "note": "Durable owner intent precedes producer contact; exact receiver credential custody and a fresh current-owner CAS precede activation. Callback-based tests exercise weak origins, changed context/receiver, strict revisions, uncertain acknowledgements and idempotent status-only recovery over real isolated storage. No subscription starts and no stored person session is reconstructed. Transport callbacks are isolated substitutes: actual enrolled-member authentication, HMAC custody, process activation and per-node source authorization require the assembled factory and remain separate obligations."
   },
   {
    "id": "handler:fleet/producer_control.py:ControlServer._answer",
