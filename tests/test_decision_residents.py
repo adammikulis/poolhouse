@@ -7,13 +7,17 @@ from types import SimpleNamespace
 
 import pytest
 
+from poolhouse import leasetable
 from poolhouse.serve.decision_residents import (
     DecisionModel,
     DecisionOwner,
     DecisionResidents,
+    fingerprint,
     peak_estimate,
 )
 from poolhouse.serve.process import started_at
+
+pytest_plugins = ['node_kit']
 
 RECORD = {"question": "Is this allowed?", "state": "A harmless record", "options": {"yes": "Allowed", "no": "Refused"}}
 
@@ -135,6 +139,34 @@ def test_warm_records_reuse_host_but_take_compute_each_time(kit):
     assert len(kit.claims) == 3
     assert kit.residents.snapshot()[0]["reserved_bytes"] == kit.model.memory_bytes
     assert kit.table.held
+
+
+def test_full_model_identities_get_distinct_native_contract_sized_memory_tags(kit, workspace_node):
+    """The actual native parser admits production tags; all model work stays fake."""
+    native = leasetable.Table(workspace_node.state)
+    acquire = kit.table.acquire
+    leases = {}
+    def admitted(resources, terms):
+        held = native.acquire([leasetable.memory(1)], terms)
+        assert held['state'] == 'held'
+        leases[terms.tag] = held['id']
+        assert native.acquire([leasetable.memory(1)], terms)['id'] == held['id']
+        return acquire(resources, terms)
+    kit.table.acquire = admitted
+    try:
+        for suffix in ('0', '1'):
+            kit.model = replace(kit.model, identity='a' * 63 + suffix)
+            call(kit, 'request-' + suffix)
+        identities = set(kit.residents.residents)
+        assert len(identities) == 2 and all(len(identity) == 64 for identity in identities)
+        assert set(leases) == {fingerprint({'lease': 'decision.resident', 'model': identity})
+                               for identity in identities}
+        assert all(len(tag) == 64 and set(tag) <= set('0123456789abcdef') for tag in leases)
+        assert {row['tag'] for row in native.listing()['leases']} == set(leases)
+        assert all(outcome['state'] == 'done' for outcome in kit.ledger.docs.values())
+    finally:
+        for identity in leases.values():
+            native.release(identity)
 
 
 def test_duplicate_attaches_and_changed_record_conflicts(kit):
