@@ -237,7 +237,7 @@ def test_context_keyboard_preserves_text_editing_and_traps_menu_focus(placement_
     expect(menu).to_be_visible()
     search = page.get_by_label('Search nodes to place', exact=True)
     search.press('Shift+Tab')
-    expect(menu.get_by_role('button', name='Cancel', exact=True)).to_be_focused()
+    expect(menu.get_by_role('button', name='Arrange nodes', exact=True)).to_be_focused()
     page.keyboard.press('Tab')
     expect(search).to_be_focused()
     search.press('Escape')
