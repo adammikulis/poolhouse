@@ -21,11 +21,17 @@ from launch_support import sign_in  # noqa: E402
 from test_fleet_ui import WORDS, Serving  # noqa: E402
 
 #: where each screen is reached from the workspace rail
-RAIL = {"Chat": "#nav-tabs a[data-workspace='conversations']", "Models": "#nav-tabs a[data-workspace='studio']",
+RAIL = {"Chat": "#nav-tabs a[data-workspace='conversations']", "Studio": "#nav-tabs a[data-workspace='studio']",
         "Settings": "#nav-settings", "Pool": "#nav-tabs a[data-workspace='pool']"}
 
 GIB = 1024 ** 3
 ROOM = 96 * GIB
+
+
+def open_models(page):
+    """Enter Studio, then choose its Models page from the visible subnavigation."""
+    page.click(RAIL["Studio"])
+    page.get_by_role("navigation", name="Workspace pages").get_by_role("link", name="Models", exact=True).click()
 
 
 def sample_fits():
@@ -430,7 +436,7 @@ class TestTheModelsView:
     def test_a_model_on_this_machine_is_listed_with_its_size(self, joined, open_page):
         (joined.files / "thornfield-8B-Q4_K_M.gguf").write_bytes(b"x" * (2 << 20))
         page, errors = open_page(joined, cookie=joined.cookie)
-        page.click(RAIL["Models"])
+        open_models(page)
         installed = page.locator("models-view")
         pw.expect(installed).to_contain_text("thornfield-8B (Q4_K_M)")
         pw.expect(installed).to_contain_text("2 MB")
@@ -439,7 +445,7 @@ class TestTheModelsView:
 
     def test_with_no_hub_the_search_box_still_takes_a_query(self, joined, open_page):
         page, errors = open_page(joined, cookie=joined.cookie)
-        page.click(RAIL["Models"])
+        open_models(page)
         page.get_by_text("Add from your Pool or Hugging Face").click()
         page.get_by_role("button", name="Hugging Face", exact=True).click()
         page.wait_for_selector("#browser-source")
@@ -481,7 +487,10 @@ class TestTheSettingsView:
                            ("Models", "models-view h1"),
                            ("Settings", "#settings-save"),
                            ("Pool", "#pool-cards")):
-            page.click(RAIL[tab])
+            if tab == "Models":
+                open_models(page)
+            else:
+                page.click(RAIL[tab])
             page.wait_for_selector(ready)
             shown = page.locator("#root").inner_text()
             assert "\nnull" not in shown and not shown.startswith("null"), tab
