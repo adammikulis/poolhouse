@@ -445,6 +445,8 @@ def discover() -> dict[str, Surface]:
         ("spawn", "sandbox/bubblewrap.py:_probe", "src/poolhouse/sandbox/bubblewrap.py"),
         ("route", "fleet/gym_recording_routes.py:/ui/gym/recordings*", "src/poolhouse/fleet/gym_recording_routes.py"),
         ("route", "fleet/studio_stream_routes.py:/ui/studio/subscriptions*", "src/poolhouse/fleet/studio_stream_routes.py"),
+        ("parser", "unix_socket.py", "src/poolhouse/unix_socket.py"),
+        ("parser", "fleet/producer_bootstrap.py", "src/poolhouse/fleet/producer_bootstrap.py"),
     ):
         if (ROOT / source).is_file():
             add(found, kind, name, source)
