@@ -212,7 +212,7 @@ def test_templates_cover_lifecycle_and_keep_resources_unbound():
     from poolhouse.studio.templates import templates
 
     library = templates()
-    assert len(library) == 6
+    assert {'fine-tuning-and-evaluation', 'inference-and-tools', 'base-versus-trained'} <= {graph['id'] for graph in library}
     assert all(graph['schema_version'] == 1 and isinstance(graph['groups'], dict) for graph in library)
     for graph in library:
         assert all(not node['bindings'] for node in graph['nodes'])

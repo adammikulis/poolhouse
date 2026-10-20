@@ -12,11 +12,16 @@ from poolhouse.fleet.runtime_paths import default_root
 from poolhouse.serve.backend import ServerFailed
 
 _MODULES = {
-    'mlx-tree': ('poolhouse.serve.mlx_tree_server', ('mlx', 'mlx_lm')),
+    'mlx-tree': ('poolhouse.serve.mlx_tree_server', ('mlx', 'mlx_lm', 'mlx_vlm')),
     'vllm': ('vllm.entrypoints.openai.api_server', ('vllm',)),
     'sglang': ('sglang.launch_server', ('sglang',)),
 }
-_PROBE = "import importlib.util,json,sys; assert all(importlib.util.find_spec(n) is not None for n in json.loads(sys.argv[1]))"
+_PROBE = """import importlib.util,json,sys
+assert all(importlib.util.find_spec(n) is not None for n in json.loads(sys.argv[1]))
+if sys.argv[2]=='mlx-tree':
+ from poolhouse.serve.python_requirements import installed_mlx
+ assert installed_mlx(), 'MLX serving dependency versions differ'
+"""
 
 
 def _checkout() -> bool:
@@ -42,10 +47,11 @@ def command(engine: str) -> list[str]:
             raise OSError('Install Training essentials in Libraries before starting a model')
         environment.require_current_runtime()
         environment.require_compute()
-        done = subprocess.run([str(environment.python), '-I', '-c', _PROBE, json.dumps(required)],
+        done = subprocess.run([str(environment.python), '-I', '-c', _PROBE, json.dumps(required), engine],
                               capture_output=True, text=True, timeout=20, env=environment_for_child())
         if done.returncode:
-            raise OSError(f'Install the {engine} libraries in Libraries before starting this model')
+            raise OSError('Install MLX model serving in Libraries before starting this model' if engine == 'mlx-tree'
+                          else f'Install the {engine} libraries in Libraries before starting this model')
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         raise ServerFailed(str(exc)) from exc
     return [str(environment.python), '-I', '-m', module]

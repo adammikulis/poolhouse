@@ -37,7 +37,7 @@ def test_frozen_report_probes_the_job_interpreter_and_keeps_provenance(environme
     monkeypatch.setenv("LD_LIBRARY_PATH", "/frozen-libraries")
     monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "/installed-libraries")
     result = device.device_report(environment=environment)
-    assert result == {"cpus": 16, **expected}
+    assert result == {"cpus": 16, "serving_backends": [], **expected}
     assert device.device_report(environment=environment) == result
     assert len(calls) == 1
     argv, kwargs = calls[0]
@@ -62,7 +62,7 @@ def test_managed_compute_does_not_advertise_unverified_capabilities(environment,
     assert managed_compute.report(environment) == {}
 
 
-def test_missing_environment_and_unfrozen_daemon_do_not_spawn_probe(environment, monkeypatch):
+def test_missing_environment_and_unfrozen_daemon_report_managed_serving(environment, monkeypatch):
     def forbidden(*args, **kwargs):
         pytest.fail("unexpected managed capability probe")
 
@@ -73,7 +73,8 @@ def test_missing_environment_and_unfrozen_daemon_do_not_spawn_probe(environment,
     monkeypatch.setattr(device.sys, "frozen", False, raising=False)
     monkeypatch.setattr(device, "stdlib_device_report", lambda: {"backends": ["torch"]})
     monkeypatch.setattr(device, "registered_reports", lambda: [])
-    assert device.device_report(environment=environment) == {"backends": ["torch"]}
+    monkeypatch.setattr(managed_compute, 'report', lambda environment: {'serving_backends': ['mlx-tree']})
+    assert device.device_report(environment=environment) == {"backends": ["torch"], 'serving_backends': ['mlx-tree']}
 
 
 def test_stale_runtime_does_not_advertise_compute_or_start_jobs(environment, monkeypatch, tmp_path):

@@ -9,6 +9,8 @@ from typing import Any
 from poolhouse import hub, optional
 from poolhouse.credentials import child_environment
 from poolhouse.files import write_json
+from poolhouse.home import machine_id
+from poolhouse.serve.python_requirements import missing_mlx
 
 from .catalog import node_spec
 from .decision_models import source as decision_source
@@ -102,7 +104,7 @@ class Adapters:
             companion = 'unavailable'
         packages = environment.installed()
         names = {'numpy', 'safetensors', 'mlx', 'mlx-lm', 'torch', 'transformers',
-                 'tokenizers', 'peft', 'huggingface-hub'}
+                 'tokenizers', 'peft', 'huggingface-hub', 'mlx-vlm'}
         if kind.startswith('gym.'):
             names |= {'gymnasium', 'stable-baselines3', 'metadrive-simulator', 'rware', 'sumo-rl', 'pyflyt'}
         parameters = node.get('parameters', {})
@@ -153,6 +155,17 @@ class Adapters:
             if resource['studio_type'] not in port.get('accepted_types', [port['type']]):
                 errors.append({'node': target['id'], 'code': 'resource',
                                'message': 'The selected checkpoint type is incompatible with this model input'})
+        for node in graph['nodes']:
+            producer = next((edge['source']['node'] for edge in graph['edges']
+                             if edge['target'] == {'node': node['id'], 'port': 'model'}), None)
+            if (producer in resources and _mlx_serving(node, resources[producer])
+                    and not node.get('execution', {}).get('certificate')
+                    and node.get('execution', {}).get('machine', machine_id()) == machine_id()):
+                environment = self.runner.environment
+                missing = missing_mlx(environment.installed()) if environment and environment.exists else ['managed runtime']
+                if missing:
+                    errors.append({'node': node['id'], 'code': 'dependency',
+                                   'message': 'Install MLX model serving in Libraries: ' + ', '.join(missing)})
         for node in graph['nodes']:
             if node['type'] != 'train.tool-calls':
                 continue
@@ -272,6 +285,10 @@ class Adapters:
         if environment is None or not environment.exists:
             raise ValueError("Install the managed compute runtime before running this node")
         environment.require_current_runtime()
+        if _mlx_serving(node, inputs.get('model', {})):
+            missing = missing_mlx(environment.installed())
+            if missing:
+                raise ValueError('Install MLX model serving in Libraries: ' + ', '.join(missing))
         if needs_compute(node) or inputs.get("model", {}).get("recipe"):
             environment.require_compute()
         inputs = dict(inputs)
@@ -300,3 +317,10 @@ class Adapters:
         if not isinstance(value, dict) or not isinstance(value.get('outputs'), dict):
             raise ValueError('Invalid worker result')
         return value['outputs']
+
+
+def _mlx_serving(node: dict, model: dict) -> bool:
+    if model.get('format') != 'mlx' or model.get('recipe'):
+        return False
+    return node['type'] in {'generate', 'generate.structured', 'data.synthesize'} or (
+        node['type'] == 'evaluate' and node.get('parameters', {}).get('suite', 'holdout') != 'holdout')
