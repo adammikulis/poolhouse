@@ -204,6 +204,28 @@ def test_serving_receipt_current_revocation_after_save_rolls_back(tmp_path, monk
     assert effects == []
 
 
+def test_probe_cannot_reuse_a_different_or_missing_startup_binding(tmp_path):
+    jobs = setup_jobs.Jobs(tmp_path)
+
+    def operation(progress):
+        progress.serving(serving_receipt())
+        progress.stage('probe')
+        first = progress.probe('chat', 'b' * 64)
+        for startup_id in ('5' * 64, None):
+            changed = {key: value for key, value in first.items() if key not in ('fresh', 'startup_id')}
+            if startup_id is not None:
+                changed['startup_id'] = startup_id
+            jobs._update(progress.row, probes={'chat': changed})
+            with pytest.raises(ValueError, match='different request'):
+                progress.probe('chat', 'b' * 64)
+            with pytest.raises(ValueError, match='different request'):
+                progress.probe('chat', 'b' * 64, response_digest='c' * 64, accepted=True)
+        return {}
+
+    row = jobs.prepare(request(), operation, current=lambda: True)
+    assert finished(jobs, row['id'])['state'] == 'done'
+
+
 def test_concurrent_repeat_and_terminal_reopen_attach_one_operation(tmp_path):
     jobs = setup_jobs.Jobs(tmp_path)
     enter, release = threading.Event(), threading.Event()

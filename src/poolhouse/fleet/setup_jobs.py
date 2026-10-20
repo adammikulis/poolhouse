@@ -244,7 +244,8 @@ class Jobs:
                        'request_digest': request_digest, 'startup_id': latest['serving_receipt']['startup_id'],
                        'status': 'intent'}
                 receipts[phase] = old
-            elif old['request_digest'] != request_digest:
+            elif (old['request_digest'] != request_digest
+                  or old.get('startup_id') != latest['serving_receipt']['startup_id']):
                 raise ValueError('This fixed probe already has a different request.')
             if completion is not None:
                 if old['status'] != 'intent' and any(old.get(key) != value for key, value in completion.items()):
