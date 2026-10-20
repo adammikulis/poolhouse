@@ -5,6 +5,7 @@ only live OS locks matter, and process exit releases them without stale-marker r
 """
 from __future__ import annotations
 
+import json
 import os
 import stat
 import sys
@@ -15,6 +16,8 @@ from dataclasses import dataclass, field
 from functools import wraps
 
 from poolhouse import home, lock, maintenance_windows, private_path
+from poolhouse.files import writing
+from poolhouse.json_objects import unique_object
 
 
 @dataclass
@@ -84,6 +87,8 @@ def _enter(folder, state, thread, existing):
                 os.close(intent_fd)
                 intent_fd = None
                 return False
+        if (folder / "unverified.json").exists() or (folder / "unverified.json").is_symlink():
+            raise OSError("Managed runtime repair is pending; new compute remains paused")
         with state.mutex:
             if state.descriptor is None:
                 fd = _open(folder / 'content.lock')
@@ -216,3 +221,45 @@ def intent():
         if taken:
             _release(fd)
         os.close(fd)
+
+
+def _record_path():
+    folder, state = _place()
+    if state.writer != threading.get_ident():
+        raise RuntimeError('Only exclusive managed code maintenance can change its transaction record')
+    return folder / 'unverified.json'
+
+
+def transaction_record():
+    """Read a bounded private DENIAL record; it cannot select code or grant execution."""
+    path = _record_path()
+    if not path.exists() and not path.is_symlink():
+        return None
+    fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))
+    try:
+        _same(fd, path)
+        if os.fstat(fd).st_size > 4096:
+            raise ValueError('Managed maintenance transaction record exceeds its fixed size')
+        return json.loads(os.read(fd, 4097), object_pairs_hook=unique_object)
+    finally:
+        os.close(fd)
+
+
+def mark_unverified(record):
+    """Persist denial BEFORE package writes, surviving even a killed updater."""
+    path = _record_path()
+    if path.exists() or path.is_symlink():
+        transaction_record()  # Refuse linked, malformed or redirected existing denial state.
+    data = json.dumps(record, sort_keys=True)
+    if len(data.encode()) > 4096:
+        raise ValueError('Managed maintenance transaction record exceeds its fixed size')
+    with writing(path) as temporary:
+        temporary.write_text(data)
+
+
+def mark_verified():
+    """Remove denial only from the exclusive, strictly verified repair path."""
+    path = _record_path()
+    if path.exists() or path.is_symlink():
+        transaction_record()
+        path.unlink()

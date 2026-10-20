@@ -295,14 +295,17 @@ def running_within(path: Path) -> list[int]:
                    for word in [info.get("exe") or "", info.get("cwd") or "", *(info.get("cmdline") or [])])]
 
 
-def readable(attrs: list[str]) -> list[tuple[Any, dict]]:
-    """Every process whose ``attrs`` could be read, as (process, values); one that exits mid-read is skipped."""
+def readable(attrs: list[str], *, uncertain: bool = False) -> list[tuple[Any, dict]]:
+    """Read process attributes; retain unknown entries when an idle proof requires them."""
     found = []
     for proc in psutil.process_iter():
         try:
             found.append((proc, proc.as_dict(attrs)))
-        except (psutil.Error, OSError, SystemError):
+        except psutil.NoSuchProcess:
             continue
+        except (psutil.Error, OSError, SystemError):
+            if uncertain:
+                found.append((proc, dict.fromkeys(attrs)))
     return found
 
 

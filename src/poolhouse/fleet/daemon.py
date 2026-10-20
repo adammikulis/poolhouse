@@ -38,6 +38,7 @@ from . import (
     autostart_guard,
     invite_client,
     invite_routes,
+    managed_alignment,
     pool_modes,
     runtime_repair,
     tls,
@@ -234,6 +235,7 @@ class DaemonRuntime:
 
     def services(self) -> None:
         self.environment = Environment(self.root)
+        self.managed_alignment = managed_alignment.Alignment(self.environment)
         self.serving = Serving(self.root / "serving.json")
         self.hosting = Hosting(self.root, self.serving)
         self.models = Models(
@@ -329,7 +331,8 @@ class DaemonRuntime:
             measuring=lambda: bool(self.bench_host.measuring()),
             leases=lambda: bool(self.serving.live()),
         )
-        updating.follow_runtime(idle=self.nothing_running, admission=self.update_admission)
+        self.managed_alignment.start(self.runner, self.nothing_running, self.update_admission)
+        updating.follow_runtime(idle=self.nothing_running, admission=self.code_update_admission)
         self.control = create_control(self)
         self.tracked = str(getattr(self.settings, "track_branch", "") or "").strip()
         self.tracked_from = str(getattr(self.settings, "track_repo", "") or "") or updating.GIT_URL
@@ -339,7 +342,7 @@ class DaemonRuntime:
             updating.track(
                 updating.TrackedBranch(self.tracked_from, self.tracked, self.checkout),
                 idle=self.nothing_running,
-                runtime=updating.UpdateRuntime(admission=self.update_admission),
+                runtime=updating.UpdateRuntime(admission=self.code_update_admission),
             )
         else:
             if self.tracked:
@@ -349,7 +352,7 @@ class DaemonRuntime:
             updating.watch(
                 wanted=lambda: bool(getattr(self.settings, "auto_update", False)),
                 idle=self.nothing_running,
-                admission=self.update_admission,
+                admission=self.code_update_admission,
             )
 
     def announcements(self) -> None:
@@ -487,6 +490,7 @@ class DaemonRuntime:
                     self.control.close()
 
     def _shutdown_jobs(self):
+        self.managed_alignment.close()
         studio = getattr(self.interface, "studio", None)
         if studio is not None:
             studio.close()
@@ -505,15 +509,13 @@ class DaemonRuntime:
     def update_admission(self):
         return only_one(self.root / "runtime-install.lock", wait=False)
 
+    code_update_admission = managed_alignment.code_update_admission
+
     def background_busy(self) -> bool:
         return (bool(self.web and self.initial_setup and not self.settings.setup_done) or bool(self.runner.status()["busy"]) or any(row.state == "getting" for row in self.downloads.active())
                 or bool(self.interface and self.interface.setup_jobs and self.interface.setup_jobs.active()))
 
-    def may_start(self) -> tuple[bool, str]:
-        """A measurement holds the GPU and blocks new work."""
-        if self.bench_host and self.bench_host.measuring():
-            return (False, "a benchmark is measuring on this machine")
-        return self.schedule.may_start()
+    may_start = managed_alignment.may_start
 
     def probe_speech(self) -> None:
         self.heard[:] = speech.working()

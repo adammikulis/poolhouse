@@ -1,3 +1,4 @@
+import contextlib
 import threading
 from types import SimpleNamespace
 
@@ -101,6 +102,9 @@ def test_daemon_wires_shared_update_admission(tmp_path, monkeypatch, tracked):
     daemon.initial_setup = True
     daemon.bench_host = SimpleNamespace(measuring=lambda: False)
     daemon.serving = SimpleNamespace(live=lambda: [])
+    daemon.environment = SimpleNamespace()
+    daemon.managed_alignment = SimpleNamespace(start=lambda *a: None)
+    monkeypatch.setattr("poolhouse.fleet.managed_alignment.idle", lambda *a: contextlib.nullcontext())
     monkeypatch.setattr(updates, 'checkout_here', lambda: tmp_path)
     captured = {}
     monkeypatch.setattr(updates, 'track', lambda source, **kwargs: captured.update(kwargs))

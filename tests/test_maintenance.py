@@ -169,3 +169,33 @@ def test_writer_to_child_spawn_handoff_has_no_import_window(barrier):
     assert finished.wait(5)
     thread.join(5)
     assert not thread.is_alive()
+
+
+def test_denial_survives_updater_process_death_without_becoming_a_grant(barrier):
+    source = Path(maintenance.__file__).parents[1]
+    script = (f"import sys;sys.path.insert(0,{str(source)!r});from pathlib import Path;"
+              "from poolhouse import home,maintenance;"
+              f"home.state=lambda *parts:Path({str(barrier)!r}).joinpath(*parts);"
+              "intent=maintenance.intent();writer=intent.__enter__();"
+              "exclusive=writer.exclusive();exclusive.__enter__();"
+              "maintenance.mark_unverified({'version':1});import os;os._exit(0)")
+    subprocess.run([sys.executable, '-B', '-I', '-c', script], check=True)
+    with pytest.raises(OSError, match='repair is pending'), maintenance.read():
+        pytest.fail('A killed updater must not expose unverified managed code')
+    with pytest.raises(RuntimeError, match='exclusive'):
+        maintenance.mark_verified()
+    with maintenance.intent() as writer, writer.exclusive():
+        assert maintenance.transaction_record() == {'version': 1}
+        maintenance.mark_verified()
+    with maintenance.read():
+        pass
+
+
+def test_nonregular_denial_record_cannot_block_the_repair_reader(barrier):
+    if not hasattr(os, 'mkfifo'):
+        pytest.skip('FIFO proof requires POSIX')
+    with maintenance.intent() as writer, writer.exclusive():
+        folder, _ = maintenance._place()
+        os.mkfifo(folder / 'unverified.json', 0o600)
+        with pytest.raises(PermissionError, match='regular'):
+            maintenance.transaction_record()
