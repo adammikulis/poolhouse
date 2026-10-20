@@ -34,6 +34,7 @@
         this.addEventListener("keydown", event => {
           const menu = event.target.closest(".studio-command");
           if (event.key !== "Escape") return;
+          if (event.target.closest("dialog")) { event.stopPropagation(); return; }
           if (menu?.open) { event.preventDefault(); event.stopPropagation(); close(menu); }
           else if (tools.getAttribute("aria-expanded") === "true") { event.preventDefault(); event.stopPropagation(); toggle(false, true); }
         }, true);

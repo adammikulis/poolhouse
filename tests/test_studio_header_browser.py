@@ -94,7 +94,7 @@ def test_pending_run_keeps_primary_busy_state_and_menus_do_not_submit(studio_pag
     assert not errors
 
 
-def test_header_commands_preserve_invalid_draft_and_canvas_selection(studio_page):  # noqa: F811
+def test_header_commands_preserve_invalid_draft_and_canvas_selection(studio_page, tmp_path):  # noqa: F811
     page, state, errors = studio_page
     add(page, 'Report')
     page.get_by_text('Sweep parameters', exact=True).click()
@@ -108,6 +108,7 @@ def test_header_commands_preserve_invalid_draft_and_canvas_selection(studio_page
     page.get_by_role('button', name='Save', exact=True).click()
     expect(page.get_by_label('Sweep iterations', exact=True)).to_be_focused()
     expect(page.get_by_label('Sweep iterations', exact=True)).to_have_value('invalid integer')
+    page.screenshot(path=tmp_path / 'invalid-draft.png')
     assert state['saved'] == [] and state['submissions'] == []
     menu(page, 'Open workflow').locator('summary').click()
     page.get_by_label('Saved workflows', exact=True).select_option('')
@@ -116,9 +117,11 @@ def test_header_commands_preserve_invalid_draft_and_canvas_selection(studio_page
     assert not errors
 
 
-def test_mobile_tools_keep_primary_actions_and_return_keyboard_focus(studio_page, tmp_path):  # noqa: F811
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+def test_mobile_tools_keep_primary_actions_and_return_keyboard_focus(studio_page, tmp_path, theme):  # noqa: F811
     page, _state, errors = studio_page
     page.set_viewport_size({'width': 390, 'height': 600})
+    page.evaluate('theme=>fleetModel.setPreferences({...fleetModel.preferences,resolved_theme:theme})', PRESETS[theme])
     tools = page.get_by_role('button', name='Workflow tools', exact=True)
     expect(tools).to_be_visible()
     expect(tools).to_have_attribute('aria-expanded', 'false')
@@ -135,6 +138,13 @@ def test_mobile_tools_keep_primary_actions_and_return_keyboard_focus(studio_page
     menu(page, 'Share and import').locator('summary').click()
     page.get_by_role('button', name='Share', exact=True).click()
     page.screenshot(path=tmp_path / 'mobile-share-dialog.png')
+    expect(page.get_by_role('button', name='Close', exact=True)).to_be_in_viewport()
+    expect(page.get_by_role('button', name='Export file', exact=True)).to_be_in_viewport()
+    page.locator('#studio-share-dialog').evaluate('dialog=>dialog.style.fontSize="200%"')
+    page.get_by_label('Licence', exact=True).focus()
+    expect(page.get_by_label('Licence', exact=True)).to_be_in_viewport()
+    expect(page.get_by_role('button', name='Close', exact=True)).to_be_in_viewport()
+    page.screenshot(path=tmp_path / 'mobile-share-expanded-text.png')
     page.get_by_role('button', name='Close', exact=True).click()
     expect(menu(page, 'Share and import').locator('summary')).to_be_focused()
     page.get_by_label('Workflow title', exact=True).click()
@@ -156,4 +166,37 @@ def test_open_workflow_menu_stays_open_when_initial_inventory_arrives(delayed_pa
     expect(select).to_be_visible()
     select.select_option(old['id'])
     expect(page.get_by_label('Workflow title', exact=True)).to_have_value(old['title'])
+    assert not errors
+
+
+def test_share_escape_closes_dialog_without_changing_underlying_canvas(studio_page):  # noqa: F811
+    page, _state, errors = studio_page
+    page.set_viewport_size({'width': 390, 'height': 600})
+    add(page, 'Prompt template')
+    before = page.locator('studio-view').evaluate('e=>({selected:[...e.selected],serial:e.editSerial})')
+    share = menu(page, 'Share and import')
+    share.locator('summary').click()
+    page.get_by_role('button', name='Share', exact=True).click()
+    page.keyboard.press('Escape')
+    expect(page.locator('#studio-share-dialog')).to_be_hidden()
+    expect(share.locator('summary')).to_be_focused()
+    assert page.locator('studio-view').evaluate('e=>({selected:[...e.selected],serial:e.editSerial})') == before
+    assert not errors
+
+
+def test_long_share_content_scrolls_inside_modal_with_actions_visible(studio_page, tmp_path):  # noqa: F811
+    page, _state, errors = studio_page
+    page.set_viewport_size({'width': 390, 'height': 600})
+    add(page, 'Prompt template')
+    prompt = page.locator('.studio-inspector').get_by_label('Prompt text', exact=True)
+    prompt.fill('evidence' * 500)
+    prompt.press('Tab')
+    menu(page, 'Share and import').locator('summary').click()
+    page.get_by_role('button', name='Share', exact=True).click()
+    expect(page.locator('.studio-dialog-content #studio-portable')).to_have_count(1)
+    expect(page.get_by_role('button', name='Close', exact=True)).to_be_in_viewport()
+    page.locator('#studio-portable input').focus()
+    expect(page.locator('#studio-portable input')).to_be_in_viewport()
+    expect(page.get_by_role('button', name='Export file', exact=True)).to_be_in_viewport()
+    page.screenshot(path=tmp_path / 'mobile-share-long-content.png')
     assert not errors

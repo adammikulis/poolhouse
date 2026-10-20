@@ -90,12 +90,7 @@
               { id: "studio-portable" },
               E("legend", {}, "Include text parameters"),
             );
-            this.querySelector("#studio-share-dialog").insertBefore(
-              content,
-              this.querySelector("#studio-share-dialog").querySelector(
-                ".studio-toolbar",
-              ),
-            );
+            this.querySelector("#studio-share-dialog .studio-dialog-content").append(content);
           }
           content.replaceChildren(
             E("legend", {}, "Include text parameters"),
