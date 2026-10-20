@@ -10,6 +10,7 @@ from poolhouse import hub, optional
 from poolhouse.credentials import child_environment
 from poolhouse.files import write_json
 
+from .catalog import node_spec
 from .resources import model_resource, training_base
 
 
@@ -78,7 +79,7 @@ class Adapters:
         self.runner = runner
         self.process_environment = process_environment
         self.tool_call = tool_call
-        self.model_resolver = model_resolver or (lambda binding, context: model_resource(binding))
+        self.model_resolver = model_resolver or (lambda binding, context: model_resource(binding, hub.discover()))
 
     def dependency_fingerprint(self, node: dict) -> str:
         kind = node['type']
@@ -129,15 +130,24 @@ class Adapters:
         return {node['type']: [issue['message'] for issue in issues if issue['node'] == node['id']]
                 for node in nodes}
 
-    def validate_resources(self, graph: dict) -> list[dict]:
+    def validate_resources(self, graph: dict, context: dict | None = None) -> list[dict]:
         errors, resources = [], {}
-        installed = hub.discover() if any(node['type'] == 'model' for node in graph['nodes']) else []
         for node in graph['nodes']:
             if node['type'] == 'model':
                 try:
-                    resources[node['id']] = model_resource(node.get('bindings', {}).get('model', {}), installed)
+                    resources[node['id']] = self.model_resolver(node.get('bindings', {}).get('model', {}), context or {})
                 except (ValueError, OSError) as error:
                     errors.append({'node': node['id'], 'code': 'resource', 'message': str(error)})
+        for edge in graph['edges']:
+            resource = resources.get(edge['source']['node'])
+            if not resource or 'studio_type' not in resource:
+                continue
+            target = next(node for node in graph['nodes'] if node['id'] == edge['target']['node'])
+            port = next(port for port in node_spec(target['type'], target.get('version', 1))['inputs']
+                        if port['name'] == edge['target']['port'])
+            if resource['studio_type'] not in port.get('accepted_types', [port['type']]):
+                errors.append({'node': target['id'], 'code': 'resource',
+                               'message': 'The selected checkpoint type is incompatible with this model input'})
         for node in graph['nodes']:
             if node['type'] != 'train.tool-calls':
                 continue

@@ -231,7 +231,7 @@ def test_typed_model_output_fingerprint_changes_invalidate_reuse(tmp_path, kind)
 def test_resource_preflight_rejects_before_creating_run_or_job(setup):
     store, engine, runner = setup
     errors = [{"node": "prompt", "code": "resource", "message": "Select a verified model."}]
-    engine.adapters.validate_resources = lambda selected: errors
+    engine.adapters.validate_resources = lambda selected, context: errors
     workflow = store.save_workflow(PRINCIPAL["scope"], "Example", graph())
     for _ in range(2):
         with pytest.raises(ValueError) as raised:
