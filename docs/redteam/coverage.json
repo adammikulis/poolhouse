@@ -1,10 +1,10 @@
 {
- "surfaces": 866,
+ "surfaces": 869,
  "by_status": {
-  "covered": 550,
+  "covered": 551,
   "partial": 193,
   "uncovered": 52,
-  "n/a": 71,
+  "n/a": 73,
   "unmapped": 0
  },
  "by_kind": {
@@ -40,7 +40,7 @@
    "covered": 55,
    "partial": 46,
    "uncovered": 0,
-   "n/a": 0,
+   "n/a": 1,
    "unmapped": 0
   },
   "handler": {
@@ -54,7 +54,7 @@
    "covered": 77,
    "partial": 0,
    "uncovered": 0,
-   "n/a": 0,
+   "n/a": 1,
    "unmapped": 0
   },
   "keystore": {
@@ -86,7 +86,7 @@
    "unmapped": 0
   },
   "route": {
-   "covered": 129,
+   "covered": 130,
    "partial": 58,
    "uncovered": 0,
    "n/a": 0,
@@ -2041,6 +2041,19 @@
    "note": "loopback and LAN calls to servers the person configured; the net-no-bypass scan keeps public hosts out, answers from a hostile server (oversized, slow, malformed JSON) are not sent"
   },
   {
+   "id": "egress:fleet/studio_destinations.py:_configuration",
+   "kind": "egress",
+   "source": "fleet/studio_destinations.py:_configuration",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "n/a",
+   "tests": [
+    "tests/test_studio_destinations.py::test_crud_is_revision_checked_idempotent_and_never_contacts_endpoint",
+    "tests/test_studio_destinations.py::test_unsafe_endpoint_rejected_without_echoing_input"
+   ],
+   "note": "URL syntax configuration only: no address resolution or socket; fixed delivery transport has separate network coverage"
+  },
+  {
    "id": "egress:fleet/studio_library.py:MemberLibrary._response",
    "kind": "egress",
    "source": "fleet/studio_library.py:MemberLibrary._response",
@@ -3940,6 +3953,20 @@
     "tests/test_workspace_model.py::test_a_claimed_model_changes_no_right"
    ],
    "note": "grant minting, release and purge, signing keys, host approval, vault rekey, workspace human tokens"
+  },
+  {
+   "id": "human:studio/engine.py:WorkflowEngine._dispatch",
+   "kind": "human",
+   "source": "studio/engine.py:WorkflowEngine._dispatch",
+   "trust": "an agent process or a member",
+   "attacker": "an agent or a forged grant takes an action only a person may take",
+   "status": "n/a",
+   "tests": [
+    "tests/test_studio_resident_service.py::test_resident_mint_observes_persisted_intent_before_prepare",
+    "tests/test_studio_resident_service.py::test_only_named_presubmit_busy_is_pending",
+    "tests/test_studio_resident_service.py::test_guard_preflight_never_turns_resource_denial_into_review"
+   ],
+   "note": "Internal resident execution permit under the authorized principal and private worker proof; no person authority, signing permission or human grant is minted"
   },
   {
    "id": "human:workspace/approval_cli.py:_decide",
@@ -8772,6 +8799,21 @@
     "tests/test_fleet_named_lan.py::test_authenticated_pake_answer_must_contain_selected_name_and_valid_key"
    ],
    "note": "LAN hints are bounded nonce-matching metadata; local setup or a signed-in person selects a named recovery file, validates its bounded shape, and authenticates a native encrypted protocol-3 beacon before any membership write; scans and recovery joins never access the keystore"
+  },
+  {
+   "id": "route:fleet/studio_destinations.py:/ui/studio/*",
+   "kind": "route",
+   "source": "fleet/studio_destinations.py:route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_destinations.py::test_actual_origin_scope_and_membership_not_owner_flag_authorize",
+    "tests/test_studio_destinations.py::test_route_rejects_unknown_fields_duplicate_json_and_boolean_revision",
+    "tests/test_studio_destinations.py::test_historical_attestation_never_restores_execution_or_chooses_new_endpoint",
+    "tests/test_studio_destinations.py::test_resource_or_interactive_revocation_blocks_delivery_reads_and_actions"
+   ],
+   "note": "Direct adapter tests exercise current owner origin/scope, revoked resources, bounded hostile JSON and historical actions without restoring authority; these do not claim full factory HTTP coverage"
   },
   {
    "id": "route:fleet/studio_device_routes.py:/studio/v1/executions/*",

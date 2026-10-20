@@ -15,6 +15,25 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["egress:fleet/studio_destinations.py:_configuration"]
+status = "n/a"
+tests = ["tests/test_studio_destinations.py::test_crud_is_revision_checked_idempotent_and_never_contacts_endpoint", "tests/test_studio_destinations.py::test_unsafe_endpoint_rejected_without_echoing_input"]
+note = "URL syntax configuration only: no address resolution or socket; fixed delivery transport has separate network coverage"
+
+[[group]]
+match = ["route:fleet/studio_destinations.py:/ui/studio/*"]
+status = "covered"
+tests = ["tests/test_studio_destinations.py::test_actual_origin_scope_and_membership_not_owner_flag_authorize", "tests/test_studio_destinations.py::test_route_rejects_unknown_fields_duplicate_json_and_boolean_revision", "tests/test_studio_destinations.py::test_historical_attestation_never_restores_execution_or_chooses_new_endpoint", "tests/test_studio_destinations.py::test_resource_or_interactive_revocation_blocks_delivery_reads_and_actions"]
+note = "Direct adapter tests exercise current owner origin/scope, revoked resources, bounded hostile JSON and historical actions without restoring authority; these do not claim full factory HTTP coverage"
+
+[[group]]
+match = ["human:studio/engine.py:WorkflowEngine._dispatch"]
+status = "n/a"
+tests = ["tests/test_studio_resident_service.py::test_resident_mint_observes_persisted_intent_before_prepare", "tests/test_studio_resident_service.py::test_only_named_presubmit_busy_is_pending", "tests/test_studio_resident_service.py::test_guard_preflight_never_turns_resource_denial_into_review"]
+note = "Internal resident execution permit under the authorized principal and private worker proof; no person authority, signing permission or human grant is minted"
+
+
+[[group]]
 match = ["route:fleet/studio_webhooks.py:/studio/ingest/*", "route:fleet/api.py:/studio/ingest/*"]
 status = "covered"
 count = 2
