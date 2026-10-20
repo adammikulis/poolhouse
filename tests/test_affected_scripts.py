@@ -13,6 +13,8 @@ import re
 import subprocess
 import sys
 import tokenize
+from collections import Counter
+from dataclasses import FrozenInstanceError
 from pathlib import Path
 
 import pytest
@@ -110,6 +112,55 @@ def test_tests_that_enumerate_scripts_follow_any_script_change(toy) -> None:
 def test_a_script_selects_nothing_it_cannot_reach(toy) -> None:
     got = chosen(toy, "scripts/runner")
     assert not got & {"tests/test_import.py", "tests/test_unrelated.py", "tests/test_doc.py"}
+
+
+def test_reference_index_reuses_exact_matches_across_changed_scripts(toy, monkeypatch):
+    files = rules.corpus(toy)
+    expected = {rel: rules.script_tests(files, rel)
+                for rel in ("scripts/runner", "scripts/alpha.py", "scripts/beta.py")}
+    matched = Counter()
+    original = rules.refers
+
+    def counted(source, target):
+        matched[(source.rel, target.rel)] += 1
+        return original(source, target)
+
+    monkeypatch.setattr(rules, "refers", counted)
+    prepared = rules.ReferenceIndex(files)
+    for _ in range(2):
+        for rel, result in expected.items():
+            assert prepared.script_tests(rel) == result
+    assert matched and max(matched.values()) == 1
+
+
+def test_reference_index_owns_an_immutable_source_snapshot(toy):
+    files = rules.corpus(toy)
+    prepared = rules.ReferenceIndex(files)
+    previous = prepared.script_tests("scripts/runner")
+    del files["tests/test_string.py"]
+    files["tests/test_added.py"] = rules.parse("tests/test_added.py", "RUNNER = 'scripts/runner'")
+    files["tests/test_helper.py"] = rules.parse("tests/test_helper.py", "VALUE = 0")
+    assert prepared.script_tests("scripts/runner") == previous
+    fresh, _, _ = rules.script_tests(files, "scripts/runner")
+    assert "tests/test_string.py" not in fresh
+    assert "tests/test_helper.py" not in fresh
+    assert "tests/test_added.py" in fresh
+    with pytest.raises(FrozenInstanceError):
+        files["tests/test_added.py"].text = "VALUE = 0"
+
+
+def test_multiple_changed_scripts_share_one_selection_snapshot(toy, monkeypatch):
+    scanned = []
+    original = rules.corpus
+
+    def counted(root):
+        scanned.append(root)
+        return original(root)
+
+    monkeypatch.setattr(rules, "corpus", counted)
+    got = chosen(toy, "scripts/runner", "scripts/alpha.py")
+    assert {"tests/test_subprocess.py", "tests/test_import.py", "tests/test_chain.py"} <= got
+    assert scanned == [toy]
 
 
 def test_a_script_no_test_reaches_is_unmapped_unless_it_is_python(toy) -> None:
@@ -279,10 +330,11 @@ def test_every_test_a_plain_search_finds_for_a_recently_changed_script_is_select
     scripts = recent_scripts(30)
     assert len(scripts) >= 5
     files = rules.corpus(REPO)
+    references = rules.ReferenceIndex(files)
     sources = oracle_sources(REPO)
     missed = {}
     for script in scripts:
-        why, _, shared = rules.script_tests(files, script)
+        why, _, shared = references.script_tests(script)
         if not shared and (gap := plain_oracle(script, sources) - set(why)):
             missed[script] = sorted(gap)
     assert not missed

@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import node_orphans
 import pytest
@@ -17,10 +18,33 @@ from poolhouse import node_binary as node_binary_module, node_launch, node_super
 pytest_plugins = ["node_kit"]
 
 
+def test_node_binary_fixture_does_not_reap_shared_state(tmp_path, monkeypatch):
+    kit = sys.modules["node_kit"]
+    binary = tmp_path / "source-node"
+    binary.write_bytes(b"fixture binary")
+    copied = tmp_path / "copy"
+    copied.mkdir()
+
+    def refuse_reap(*_args):
+        pytest.fail("node binary setup must not scan shared orphan roots")
+
+    monkeypatch.setattr(node_orphans, "reap", refuse_reap)
+    monkeypatch.setattr(kit, "runner_binary", lambda: binary)
+    factory = SimpleNamespace(mktemp=lambda _prefix: copied)
+    found = kit.node_binary.__wrapped__(factory)
+    assert found.read_bytes() == binary.read_bytes()
+
+
 @pytest.fixture
-def running(node_binary):
+def orphan_base():
+    with tempfile.TemporaryDirectory(prefix="orphan-", dir="/tmp") as name:
+        yield Path(name)
+
+
+@pytest.fixture
+def running(node_binary, orphan_base):
     """A node on a short temporary root, as the kits start one."""
-    root = Path(tempfile.mkdtemp(prefix=node_orphans.PREFIX, dir="/tmp"))
+    root = Path(tempfile.mkdtemp(prefix=node_orphans.PREFIX, dir=orphan_base))
     state = root / "node"
     state.mkdir(mode=0o700)
     node_supervise.point(state, node_binary, node_binary_module.sha256(node_binary))
@@ -45,9 +69,9 @@ def test_a_node_whose_pytest_was_killed_is_stopped_and_its_root_removed(running)
     assert not root.exists()
 
 
-def test_a_recorded_pid_that_is_another_live_process_is_not_signalled(tmp_path):
+def test_a_recorded_pid_that_is_another_live_process_is_not_signalled(orphan_base):
     bystander = subprocess.Popen(["sleep", "60"])
-    root = Path(tempfile.mkdtemp(prefix=node_orphans.PREFIX, dir="/tmp"))
+    root = Path(tempfile.mkdtemp(prefix=node_orphans.PREFIX, dir=orphan_base))
     try:
         (root / node_orphans.OWNER).write_text(str(dead_pid()))
         (root / "node").mkdir(mode=0o700)
@@ -76,3 +100,15 @@ def test_a_root_that_records_no_owner_is_left_alone(running):
 
 def test_a_kit_records_the_pid_of_its_pytest(workspace_node):
     assert node_orphans.owner_of(workspace_node.state.parent) == os.getpid()
+
+
+def test_reaping_an_owned_base_leaves_other_roots_untouched(tmp_path):
+    owned = tmp_path / "owned"
+    owned.mkdir()
+    mine = owned / "ml-owned"
+    outside = tmp_path / "ml-outside"
+    for root in (mine, outside):
+        root.mkdir()
+        (root / node_orphans.OWNER).write_text(str(dead_pid()))
+    assert node_orphans.reap(owned) == [mine]
+    assert outside.is_dir()
