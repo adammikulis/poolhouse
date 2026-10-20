@@ -1,12 +1,13 @@
-# Worktrees: landed or work
+# Worktrees: landed, new or work
 
-Nothing is recorded about a worktree. Git is asked each time, and a tree is one of two things.
+Nothing is recorded about a worktree. Git is asked each time, and a tree is one of three things.
 The development branch is the branch the primary checkout is on, and the primary checkout is never a row.
 Code: `src/poolhouse/trees.py`, `src/poolhouse/gitstate.py` and `scripts/worktrees`.
 
 | state | meaning |
 | --- | --- |
 | landed | clean, and every commit is in the development branch: `git cherry` shows no patch the branch lacks and no merge commit is outside it |
+| new | clean, and its branch (HEAD when detached) has no history beyond its creation: a tree nobody has committed in yet |
 | work | anything else: a commit development lacks, a changed or untracked file, an ignored file that is not rebuildable, an edit the index hides, a merge or rebase in progress, a tree git cannot read |
 
 Clean means `git status --porcelain --ignored` (submodule edits included, whatever `submodule.*.ignore` says) shows
@@ -23,7 +24,9 @@ does not show the file. `gitstate.hidden` is the one place that decides this; th
 the commit's own content and does not count.
 
 A work tree is never removed automatically. A landed tree is removed by `sweep` once nothing in it has changed for
-ten minutes (its directory, HEAD, index or HEAD log) and no process has its working directory inside it. `sweep`
+ten minutes (its directory, HEAD, index or HEAD log) and no process has its working directory inside it. A new tree,
+and a tree a live agent holds (a live worktree or branch claim on the board, or the `agent-ID` tree of a registered subagent
+that has not retired), is removed only after a day untouched, whatever `--min-age` says. `sweep`
 deletes the branch too, unless the branch was created less than a day ago, when the tree goes and the branch stays.
 `sweep` ends with `scripts/primary_sync.py`, which fast-forwards the primary checkout to `origin/<dev>` (docs/landing.md,
 "The primary checkout follows origin").
