@@ -253,6 +253,8 @@ def _hop(url: str, method: str, data: bytes | None, headers: dict[str, str],
     tls = (limits.context or ssl.create_default_context()) if parts.scheme == "https" else None
     last: OSError | None = None
     for address in addresses:
+        if limits.vet is not None:
+            limits.vet(url)
         conn = _Pinned(host, port, address, min(limits.timeout, trip.left()), tls)
         try:
             target = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
