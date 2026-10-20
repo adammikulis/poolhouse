@@ -138,6 +138,35 @@ def test_malformed_unhashable_action_is_controlled_invalid_request(setup):
         capability.verify(PROCESS, {**request(capability), 'action': []})
 
 
+@pytest.mark.parametrize('method', ['activate', 'verify', 'result_current'])
+@pytest.mark.parametrize('callback', ['owned', 'current'])
+def test_reentrant_revocation_from_final_callback_never_returns_authority(setup, method, callback):
+    capability, _ = setup
+    if method != 'activate':
+        activate(capability)
+    original = getattr(capability, callback)
+    calls = []
+    final = 1 if method == 'result_current' else 2
+
+    def revoking(value):
+        calls.append(value)
+        result = original(value)
+        if len(calls) == final:
+            capability.revoke()
+        return result
+
+    setattr(capability, callback, revoking)
+    with pytest.raises(PermissionError):
+        if method == 'activate':
+            activate(capability)
+        elif method == 'verify':
+            capability.verify(PROCESS, request(capability))
+        else:
+            capability.result_current(PROCESS)
+    assert capability.revoked and not capability.active
+    assert not capability.nonces
+
+
 def test_changed_raw_bytes_or_mac_or_unknown_fields_never_verify(setup):
     capability, _ = setup
     activate(capability)
