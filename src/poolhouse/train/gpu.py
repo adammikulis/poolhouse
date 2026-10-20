@@ -13,7 +13,7 @@ __all__ = ["CLAIM", "hold"]
 
 
 @contextlib.contextmanager
-def hold(purpose: str, *, wait_s: float = 0.0, wire: Any = broker_wire) -> Iterator[None]:
+def hold(purpose: str, *, wait_s: float | None = 0.0, wire: Any = broker_wire) -> Iterator[None]:
     """Preserve training's typed errors around the maintained broker claim."""
     try:
         with gpu_hold(purpose, wait_s=wait_s, wire=wire):
