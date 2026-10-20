@@ -29,6 +29,7 @@ from poolhouse.serve import (
     exit_guard,
     guarded,
     kvcache,
+    llamacpp_provider,
     mtp,
     provenance,
     quant_guard,
@@ -177,6 +178,7 @@ class ServerManager(Admitting):
         self.iq = ""
         self.backend = backend or LlamaServerBackend()
         self.tree: ServerBackend = MlxTreeBackend()
+        self._format_backends: dict[str, ServerBackend] = {}
         self.state_file = state_file or lease_file()
         self.say: Callable[[str], None] | None = None
         self._broker = broker
@@ -197,7 +199,9 @@ class ServerManager(Admitting):
                 raise ServerFailed(f"no serving engine {spec.engine!r}; there are "
                                    f"{', '.join(sorted(ENGINES))}")
             return ENGINES[spec.engine]
-        return self.tree if is_mlx(spec.model) else self.backend
+        if is_mlx(spec.model):
+            return self.tree
+        return llamacpp_provider.for_model(self.backend, spec.model, self._format_backends)
 
     # ------------------------------------------------------------------ leasing
 
@@ -345,7 +349,8 @@ class ServerManager(Admitting):
         """The IQ quantisation ``spec`` is when it was warned about; `BlockedQuant` in strict
         mode. llama.cpp specs only. The mode is the lease's own, else this process's; a
         lease from the broker wire carries none."""
-        if self.backend_for(spec) is not self.backend:
+        selected = self.backend_for(spec)
+        if selected is not self.backend and not isinstance(selected, llamacpp_provider.PrismBackend):
             return None
         return quant_guard.enforce(spec.model, gpu_layers=spec.n_gpu_layers,
                                    asked=how.iq,
