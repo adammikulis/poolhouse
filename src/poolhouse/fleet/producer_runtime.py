@@ -49,18 +49,30 @@ class Runtime:
                 self.close()
 
     def _current(self):
-        if (self.closed or self.service.authority._context() != self.context
-                or self.service.engine.implementation != self.runtime
-                or self.ui.studio_identity() is not self.loaded_identity
-                or self.location.check() is not True):
-            raise PermissionError('The original software producer daemon changed.')
+        with self.lock:
+            if self.closed:
+                raise PermissionError('The original software producer daemon changed.')
+            location = self.location
+        valid = (self.service.authority._context() == self.context
+                 and self.service.engine.implementation == self.runtime
+                 and self.ui.studio_identity() is self.loaded_identity
+                 and location.check() is True)
+        with self.lock:
+            if not valid or self.closed or self.location is not location:
+                raise PermissionError('The original software producer daemon changed.')
         return {'pool': self.context['pool'], 'runtime': self.runtime}
 
     def control(self):
         self._current()
-        if self.server is None:
-            raise PermissionError('The software producer control service is unavailable.')
-        return self.server._binding()
+        with self.lock:
+            server = self.server
+            if self.closed or server is None:
+                raise PermissionError('The software producer control service is unavailable.')
+        binding = server._binding()
+        with self.lock:
+            if self.closed or self.server is not server:
+                raise PermissionError('The original software producer daemon changed.')
+        return binding
 
     def close(self):
         with self.lock:
@@ -68,7 +80,6 @@ class Runtime:
                 return
             self.closed = True
             host, server, location = self.host, self.server, self.location
-            self.host = self.server = self.location = None
         try:
             if host is not None:
                 host.close()
