@@ -7,13 +7,14 @@ leaving a pool takes its devices out of the answer at once.
 
 from __future__ import annotations
 
+import hashlib
 import socket
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from . import tls
-from .discovery import Membership, memberships, pools_path
+from . import studio_epoch, tls
+from .discovery import Membership, key_path, memberships, pools_path
 from .membership import Device, Roster, fingerprint_of
 from .tls import Identity
 
@@ -63,6 +64,8 @@ class Pool:
         done = []
         for member, roster in self.rosters():
             if group in (None, member.group) and roster.get(fingerprint) is not None:
+                if roster.is_active(fingerprint):
+                    studio_epoch.invalidate(key_path(self.path).parent, [hashlib.sha256(member.key).hexdigest()], "member-revoked")
                 roster.revoke(fingerprint, by)
                 done.append(member.group)
         return done

@@ -314,6 +314,7 @@ class DaemonRuntime:
                 lambda: memberships(self.pool_key_path),
                 lambda: (lan_host(self.port), self.fingerprint()),
                 enrol=lambda group, cert, name: admit(self.members, group, cert, name),
+                authority_root=key_path(self.pool_key_path).parent,
             )
             self.interface.join_invitation = lambda code: invite_routes.joined(
                 self.interface, invite_client.redeem(code, self.name)

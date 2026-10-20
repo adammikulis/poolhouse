@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import os
 from collections.abc import Callable
@@ -16,6 +17,7 @@ from poolhouse.log import say, warn
 from poolhouse.platform import private_file
 from poolhouse.sentinel import human
 
+from . import studio_epoch
 from .discovery import (
     DEFAULT_POOL,
     DiscoveryError,
@@ -77,6 +79,9 @@ def recall(group: str = "", path: Path | str | None = None) -> str | None:
 def forget(group: str, path: Path | str | None = None) -> None:
     """Drop the stored passphrase for ``group``; a file another command holds, or one that cannot be
     locked, is reported and left as it was."""
+    leaving = [hashlib.sha256(member.key).hexdigest() for member in memberships(path) if member.group == group]
+    if leaving:
+        studio_epoch.invalidate(pools_path(path).parent, leaving, "forget")
     try:
         with lock.rewriting(passphrases_path(path)):
             rows = _held(path)
