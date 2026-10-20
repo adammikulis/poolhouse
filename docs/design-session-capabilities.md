@@ -86,7 +86,7 @@ process (`ENFORCED` is false) and records nothing. It is used for:
 | Rooms a tree made (`MOST_ROOMS_PER_LINEAGE`, 16) | `rooms::made_by_tree` | any shared process |
 | Leases a tree holds (`max_leases_per_lineage`, 1024) | `Node::tree_leases` | the same `tree:` key |
 | Waits a tree holds (`MOST_WAITERS_PER_LINEAGE`, 16) | `lease::rpc::Waiting` | top process of the *connecting process*, not of the session |
-| A person's signature covers one terminal | `rebind`, `person_enroll`, `person_unenroll`: the signed `anchor` must be in `peer.lineage()` | the terminal's shell |
+| A person's signature covers one terminal | `rebind`, `person_enroll`, `person_unenroll`: the signed `anchor` must be in the caller's chain | the terminal's shell |
 
 `rebind` (`sessions.rs`) is the one way back for a main session whose harness starts elsewhere: an enrolled person key signs the
 board, the name, the device, a nonce, the time and the terminal's `{pid, start}` after a typed yes; the node makes the caller's
@@ -273,7 +273,7 @@ without a new bound existing.
   main session.
 
 **Windows.** The capability model has no platform part: bounds work from slice S2, vouchers from S3, tickets from S4. `process` custody
-needs the connecting process's id on a named pipe (`GetNamedPipeClientProcessId`); `sys::peer_pid` returns nothing there today,
+needs the connecting process's id on a named pipe (`GetNamedPipeClientProcessId`); the read of the connecting process in `sys/mod.rs` returns nothing there today,
 and `lease::live::inspect` already reads a start time on Windows. Until slice S3 provides it, Windows sessions use `hook` and
 `file` custody, which is what a Windows session has now (nothing). Custody files take the `restrict` ACL as token files do.
 
@@ -303,8 +303,8 @@ None, and no code reads the old shapes (AGENTS.md section 2, "Never hold up code
 presents an old token is told the token is unknown and registers again, and a main session that ended comes back as it does
 today. `names.json` loses `lineage`, a field its reader ignores. Deleted:
 
-- Rust: `lineage.rs` (`of`, `MOST_ANCHORS`, `tree_of`, `shares`, `Anchor`, `Peer::lineage`, `ENFORCED`; `Peer` keeps only the
-  process id and moves to `caller.rs`); `Ident.lineage`, `Held.lineage`, `Registry::admit_from`, `Registry::rebind`,
+- Rust: `lineage.rs` (`of`, `MOST_ANCHORS`, `tree_of`, `shares`, `Anchor`, the chain read on the request's caller, `ENFORCED`; the
+  struct that holds the connecting process id keeps only that id and moves to `caller.rs`); `Ident.lineage`, `Held.lineage`, `Registry::admit_from`, `Registry::rebind`,
   `Registry::tree`, `Tokens::bound`, `Tokens::lineage_of`; `grants::lineage_allows` and `Asking.lineage_refused`;
   `sessions::rebind`, `api` method `lineage`; `grants::calls::in_terminal` and `Anchor::signed`; the tests in `lineage.rs`.
 - Python: `board/terminal.py`; `credentials.store/load` by name; `session._named`, `_subagent`, `_native` and the `--agent`
@@ -326,7 +326,7 @@ touches authentication gets a written break-it pass by a non-author before it is
 |---|---|---|---|
 | S1 | **Hook credential.** The node makes `hook.key`; `register` of a main session needs it; the Python client, the app, the hooks and launchers present it. Pid lineage untouched. | `register_without_the_hook_credential_is_refused`, `the_credential_file_is_0600_and_never_in_status`, `a_wrong_credential_is_refused_and_counted`, `the_library_registers_with_it` | none |
 | S2 | **Root and capability record.** `caps.json`, `Ident.root`, cap ids; every bound of section 3 re-keyed to the root; `MOST_LIVE_PER_ROOT`, `MAX_ROOTS`; `maker.json` holds a root id; glossary words. Pid walk still guards re-registration and grants. | `a_main_session_registered_40_levels_deep_has_the_budget_of_one_registered_shallow`, `every_descendant_counts_toward_its_roots_log_share`, `a_child_with_a_cap_cannot_pass_it_and_counts_to_every_ancestor`, `a_child_cannot_be_given_a_cap_above_its_parents`, `a_root_over_the_live_sessions_bound_is_refused_naming_it`, `the_maker_of_a_board_is_a_root_id` | S1 |
-| S3 | **Spawn, redeem, `process` custody.** `spawn`, `redeem`, vouchers; launchers pass the voucher on a descriptor; `localagent.session_of` and `harnessid.invite` hold the token in memory; Windows `peer_pid`. | `a_voucher_redeems_once`, `a_second_redeem_retires_the_child_forged_and_tells_the_parent`, `a_process_bound_token_is_refused_from_another_process`, `a_pid_reused_after_exit_does_not_match_the_start_time`, `a_child_cannot_have_rights_the_parent_lacks`, `a_launched_worker_never_leaves_its_secret_in_a_file` | S2 |
+| S3 | **Spawn, redeem, `process` custody.** `spawn`, `redeem`, vouchers; launchers pass the voucher on a descriptor; `localagent.session_of` and `harnessid.invite` hold the token in memory; the connecting process id on Windows. | `a_voucher_redeems_once`, `a_second_redeem_retires_the_child_forged_and_tells_the_parent`, `a_process_bound_token_is_refused_from_another_process`, `a_pid_reused_after_exit_does_not_match_the_start_time`, `a_child_cannot_have_rights_the_parent_lacks`, `a_launched_worker_never_leaves_its_secret_in_a_file` | S2 |
 | S4 | **Tickets and Claude Code custody.** `ticket`; hook custody files; SessionStart/SubagentStart write them; the Bash hook issues a ticket for main and subagent commands; the installer writes the three events for other projects; `--agent` becomes an assertion. | `a_ticket_ends_fifteen_minutes_after_its_last_use`, `a_ticket_cannot_spawn_or_make_a_root`, `a_ticket_is_never_exchanged_for_a_token`, `a_command_with_no_ticket_is_refused_with_one_sentence`, `a_subagent_command_acts_as_the_subagent_whatever_it_exports`, `agent_naming_another_session_is_refused`, `the_hook_stays_under_its_time_bound` | S3, P1, P3 |
 | S5 | **`file` custody: Codex, the person's CLI, programs.** Custody file by harness session variable; person and program sessions by device, not terminal; `terminal.py` deleted. | `a_script_run_twice_is_one_session`, `codex_commands_read_the_session_by_its_native_id`, `custody_file_is_named_on_agents` | S4 |
 | S6 | **Takeover and signed acts.** Idle takeover replaces `rebind`; `person_enroll`, `person_unenroll` and the grant bundle sign the asker's cap id; `compromised-agents.md` 3.5 rewritten for trusted roots. | `a_quiet_main_session_is_taken_back_by_its_harness_and_the_older_token_ends`, `a_live_main_session_is_not_taken`, `a_signature_for_one_capability_is_refused_from_another`, `a_captured_approval_is_used_once` | S5 |
