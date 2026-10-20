@@ -1661,18 +1661,6 @@ tests = ["tests/test_redteam_installed_keystore.py"]
 note = "the module only names keyring and the other extras; listing them finds a module with find_spec and never imports or runs it, so a shadow copy on the path or in the working directory runs nothing and a hostile module name is absent without raising"
 
 [[group]]
-match = ["keystore:fleet/onboard/signing.py:*"]
-status = "covered"
-tests = ["tests/test_keystore.py::test_the_fleet_signing_key_moves_into_a_wrapped_file_and_the_old_item_goes",
-         "tests/test_keystore.py::test_a_signing_key_move_cut_off_after_the_wrap_is_finished_by_the_next_call",
-         "tests/test_keystore.py::test_a_signing_key_move_cut_off_after_the_old_item_went_still_signs",
-         "tests/test_onboard_signing.py",
-         "tests/test_redteam_human_floor.py::test_building_the_signing_keys_never_asks_the_keystore",
-         "tests/test_no_real_keychain.py"]
-note = "the wrapped key unwraps only for its purpose and directory; a refusing keystore leaves the old item and the record unchanged"
-
-# -- text that reaches a model -------------------------------------------------------------
-[[group]]
 match = ["context:chat.py", "context:agent/loop.py", "context:agent/compact.py",
          "context:agent/summarise.py"]
 status = "covered"

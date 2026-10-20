@@ -63,10 +63,6 @@ path = "docs/poolhouse-refactor-plan.md"
 reason = "the rename plan names the words it retires"
 
 [[exclude]]
-path = "docs/*.patch"
-reason = "a patch of the old project's protected files, applied once at cutover"
-
-[[exclude]]
 path = "patches/*"
 reason = "patches against third-party llama.cpp"
 
@@ -118,8 +114,7 @@ reason = "(schema, callable) pairs, name-shaped pairs and similar tuples in tool
 [[allow]]
 path = ["src/poolhouse/do.py", "src/poolhouse/web.py", "src/poolhouse/harnesshook.py", "src/poolhouse/hookcheck.py",
         "src/poolhouse/roles.py", "src/poolhouse/runtime_store.py", "src/poolhouse/tar_libraries.py",
-        "src/poolhouse/migrate.py", "src/poolhouse/migrate_paths.py", "tests/test_migrate_paths.py",
-        "tests/test_migrate_edges.py", "src/poolhouse/testfarm/report.py", "packaging/smoke.py",
+        "src/poolhouse/testfarm/report.py", "packaging/smoke.py",
         "scripts/test_terminal_bank.py", "scripts/test_container_bridge.py", "scripts/gates/_perfile.py",
         "scripts/hooks/*", "scripts/install-hooks.sh", "tests/test_hooks_installed.py",
         "tests/test_hooks_rename_aware.py", "tests/test_git_template.py", "tests/test_gates_duplicates.py", "tests/test_no_real_names.py",
@@ -216,11 +211,6 @@ reason = "the node's wire protocol is the peer protocol: the other end of a conn
 [[token]]
 token = "test_many_renames_are_read_in_one_pass_and_each_is_paired"
 reason = "a test of the commit hooks, which pair each renamed file with its old path; the red-team map names it"
-
-[[allow]]
-path = "docs/cutover.md"
-words = ["pair", "cluster", "journal", "mesh", "peer", "seat", "revoke"]
-reason = "names the old files and commands so a person can find and remove them"
 
 [[allow]]
 path = "docs/person-delegation.md"

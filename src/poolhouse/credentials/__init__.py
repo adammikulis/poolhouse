@@ -35,7 +35,6 @@ __all__ = ["FILE_ENV", "INSECURE_ENV", "CredentialError", "Secret", "child_envir
 logger = logging.getLogger(__name__)
 
 FILE_ENV = "POOLHOUSE_CREDENTIALS_FILE"
-KEYRING_SERVICE = "poolhouse"
 HF_NAMES = ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN")
 KNOWN = ("HF_TOKEN", "ANTHROPIC_API_KEY")
 PURPOSE = "credentials"
@@ -142,7 +141,6 @@ def _keep(name: str, value: str) -> None:
     with _rewriting():
         write_json(wrapped_path(), {"schema_version": 1, "values": {**_wrapped(), name: blob}})
         wrapped_path().chmod(0o600)
-    ks.mark_migrated(KEYRING_SERVICE, name)
 
 
 def _open(name: str) -> str | None:
@@ -157,55 +155,12 @@ def _open(name: str) -> str | None:
         return None
 
 
-_probing_legacy = False
-"""True only while a person's own command runs (`probing_legacy`): library code that merely asks for a
-credential never reads the OS keystore, because most names never had an item there and every
-probe is a real keystore call (a prompt on some machines)."""
-
-
-@contextlib.contextmanager
-def probing_legacy() -> Iterator[None]:
-    """Let credential lookups inside this block look for an item an older version kept in the OS keystore."""
-    global _probing_legacy
-    before, _probing_legacy = _probing_legacy, True
-    try:
-        yield
-    finally:
-        _probing_legacy = before
-
-
-def _migrate(name: str) -> None:
-    """Move an item an older version kept in the OS keystore into the wrapped file, once; the
-    old item is deleted after the wrapped value reads back equal. Only inside `probing_legacy`."""
-    if not _probing_legacy:
-        return
-    ks = keystore.default()
-    if ks.migrated(KEYRING_SERVICE, name):
-        return
-    try:
-        old = ks.legacy_get(KEYRING_SERVICE, name, PURPOSE)
-        if old:
-            if _open(name) != clean(old, "the keychain entry"):
-                _keep(name, old)
-            if _open(name) != clean(old, "the keychain entry"):
-                return
-            ks.legacy_drop(KEYRING_SERVICE, name, PURPOSE)
-        ks.mark_migrated(KEYRING_SERVICE, name)
-    except keystore.KeystoreError as exc:
-        logger.debug("keystore unavailable: %s", type(exc).__name__)
-
-
-def _from_keyring(name: str) -> str | None:
-    _migrate(name)
-    return _open(name)
-
-
 SOURCES: tuple[tuple[str, Callable[[str], str | None]], ...] = (
     ("environment", _from_env),
     ("environment file", _from_named_file),
     ("credentials file", _from_file),
     ("huggingface token file", _from_hf_file),
-    ("keychain", _from_keyring),
+    ("keychain", _open),
 )
 
 
@@ -279,7 +234,6 @@ def unset(name: str, *, keychain: bool = False) -> bool:
     """Remove ``name`` from the credentials file (or the keychain). Whether it was there."""
     valid_name(name)
     if keychain:
-        _migrate(name)
         with _rewriting():
             table = _wrapped()
             if name not in table:

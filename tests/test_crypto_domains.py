@@ -93,3 +93,11 @@ def test_join_secret_uses_poolhouse_namespace_and_pool_binding():
     expected = base64.urlsafe_b64encode(keystore.scrypt_key('passphrase', salt)).decode().rstrip('=')
     assert joining.join_secret('passphrase', 'synthetic-pool') == expected
     assert joining.join_secret('passphrase', 'other-pool') != expected
+
+
+def test_unsupported_signing_storage_never_migrates_or_generates_identity(tmp_path):
+    keys = signing.SigningKeys(tmp_path / 'keys', say=lambda _message: None)
+    for operation in (keys._get, keys._drop):
+        with pytest.raises(signing.KeyStoreError, match='Unsupported'):
+            operation('unsupported')
+    assert not list(tmp_path.rglob('*'))

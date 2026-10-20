@@ -181,7 +181,6 @@ poolhouse-setup = "poolhouse.setup:main"
 poolhouse-doctor = "poolhouse.doctor:main"
 # experimental features: list them, turn one on or off (audited)
 poolhouse-features = "poolhouse.features_cli:main"
-poolhouse-migrate = "poolhouse.migrate:main"
 # tokens and keys: set, list, unset; read from a prompt or stdin, kept in a 0600 file or the keychain
 poolhouse-credentials = "poolhouse.credentials.cli:command"
 # what this machine can hear and say: transcribe a file, say a line, find the speech in it

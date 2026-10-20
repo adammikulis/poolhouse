@@ -207,8 +207,8 @@ messages that name `poolhouse-ingest`. Leaves: `src/poolhouse/ingest/` (19), `so
 they stay in `net` (security) until D5 decides.
 
 **Slice 7: four one-shot scripts.** The old landing machinery is deleted (`docs/notes/landing-deletion.md`). Left from this slice:
-`scripts/rename_to_poolhouse.py`, `commit_types_chart.py`, `compare-harnesses` and `prepare_medmcqa.py`, with their tests
-(`test_rename_to_poolhouse.py`, `test_commit_types_chart.py`, `test_compare_harnesses.py`, `test_prepare_medmcqa.py`).
+`commit_types_chart.py`, `compare-harnesses` and `prepare_medmcqa.py`, with their tests
+(`test_commit_types_chart.py`, `test_compare_harnesses.py`, `test_prepare_medmcqa.py`).
 
 **Slice 8: speech (dropped; D2 keeps it).** Cut: `fleet/api.py` (3), `fleet/daemon.py`, `fleet/remote.py` (2), `mcp.py` (3), `setup.py`
 (1). Leaves: `src/poolhouse/speech/` (8), `poolhouse-speech`, speech routes, `tests/test_speech.py`,

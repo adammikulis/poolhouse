@@ -106,7 +106,7 @@ EXAMPLES: dict[str, tuple[tuple[str, str], ...]] = {
                    ("what is downloaded?", "setup_look()")),
     "doctor": (("is the checkout healthy?", "doctor()"),
                ("check the repos under ~/Documents/repos",
-                'doctor(repos=["~/Documents/repos/ml-stack"])')),
+                'doctor(repos=["~/Documents/repos/poolhouse"])')),
     "bench_compare": (("compare the last three runs",
                        'bench_compare(args=["Qwen3.8-Flash--plain", "Qwen3.8-Flash--nodraft-plain", '
                        '"Qwen3.8-Flash--ollama-plain", "--export", "compare.json"])'),

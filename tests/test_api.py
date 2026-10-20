@@ -186,15 +186,6 @@ def test_help_leads_with_pooling_devices() -> None:
     assert inspect.getdoc(ph).index("ph.pool") < inspect.getdoc(ph).index("ph.board") < inspect.getdoc(ph).index("ph.serve")
 
 
-@pytest.mark.parametrize("old", ["ml_stack", "ml-stack"])
-def test_the_public_docs_use_the_new_name(old: str) -> None:
-    for page in ("api.md", "api-migration.md"):
-        text = (REPO / "docs" / page).read_text(encoding="utf-8")
-        if page == "api-migration.md":
-            text = text.replace("ml_stack", "").replace("ml-stack", "")
-        assert old not in text, f"docs/{page} mentions {old}"
-
-
 def test_client_input_and_reply_types_are_declared_public():
     for name in ('Transport', 'Family', 'Reply'):
         assert name in api.SURFACE['client']

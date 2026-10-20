@@ -35,7 +35,7 @@ class SealedGraph:
         self.prev = self.path.with_name(self.path.name + ".prev")
         self.owner = f"{self.user}|{PROFILE}"
         self.keys = keys or vault.default_keys(self.user, PROFILE, str(self.path.parent.resolve()),
-                                                       (self.path, self.prev), purpose="reputation")
+                                                       purpose="reputation")
         self.status, self.why = "fresh", ""
         self._g: GraphStore | None = None
         self._stamp: tuple[str, str] | None = None

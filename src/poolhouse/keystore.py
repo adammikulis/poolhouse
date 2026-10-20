@@ -30,7 +30,6 @@ from typing import Any, NamedTuple
 from poolhouse import (
     home,
     keystore_guard,
-    legacy,
     person,
     platform,
     private_path,
@@ -190,7 +189,6 @@ class Keystore:
         self._fixed, self._ceiling, self._write_ceiling = directory, ceiling, write_ceiling
         self._clock, self._say, self._bus, self._interactive, self._sleep = wires or Wires()
         self._key: bytearray | None = None
-        self._legacy: dict[tuple[str, str], str | None] = {}
         self._denied = ""
         self._noticed = False
         self.created = False
@@ -428,27 +426,6 @@ class Keystore:
                 self._put_doc("provisioned.json", {"at": self._clock(), "account": self.account})
             return key
 
-    def carry_old_key(self) -> str:
-        """Move the master key an install under the old name left in the keychain to this name: written, read
-        back, and only then deleted from the old name. Run by `poolhouse migrate` alone. Returns ``none`` (no key
-        under either name), ``present`` (only the new name holds one), ``moved``, ``differs`` (both hold a key and
-        they are not the same, so nothing was changed) or ``mismatch`` (the new item read back wrong and was
-        deleted)."""
-        purpose = "migrate"
-        with self._flight(purpose, person=True):
-            new = self._call("read", purpose, lambda r: r.get_password(SERVICE, self.account))
-            old = self._call("read", purpose, lambda r: r.get_password(legacy.KEYCHAIN_SERVICE, self.account))
-            if _parse(old) is None:
-                return "present" if _parse(new) else "none"
-            if _parse(new) is not None and new != old:
-                return "differs"
-            if _parse(new) is None:
-                self._call("create", purpose, lambda r: r.set_password(SERVICE, self.account, old))
-                if self._call("read", purpose, lambda r: r.get_password(SERVICE, self.account)) != old:
-                    self._call("delete", purpose, lambda r: r.delete_password(SERVICE, self.account))
-                    return "mismatch"
-            self._call("delete", purpose, lambda r: r.delete_password(legacy.KEYCHAIN_SERVICE, self.account))
-            return "moved"
 
     def provision(self) -> bool:
         """Make the master key if there is none (for the unlock command, a person present);
@@ -508,37 +485,15 @@ class Keystore:
         self.lock()
         with self._flight("reset", person=True):
             self._call("delete", "reset", lambda r: r.delete_password(SERVICE, self.account))
-        for name in ("provisioned.json", "denied.json", "noticed.json", "legacy.json"):
+        for name in ("provisioned.json", "denied.json", "noticed.json"):
             self._path(name).unlink(missing_ok=True)
         self._denied, self._noticed = "", False
 
-    # -- items older versions kept one per feature --
-    def legacy_get(self, service: str, account: str, purpose: str) -> str | None:
-        """The value of an old per-feature item, read once per process."""
-        item = (service, account)
-        if item not in self._legacy:
-            with self._flight(purpose):
-                self._legacy[item] = self._call("read", purpose, lambda r: r.get_password(service, account))
-        return self._legacy[item]
-
-    def legacy_drop(self, service: str, account: str, purpose: str) -> None:
-        """Delete an old per-feature item."""
-        with self._flight(purpose):
-            self._call("delete", purpose, lambda r: r.delete_password(service, account))
-        self._legacy[(service, account)] = None
-
-    def migrated(self, service: str, account: str) -> bool:
-        """Whether the old item is known to be gone or moved."""
-        return _item(service, account) in self._doc("legacy.json").get("done", [])
-
-    def mark_migrated(self, service: str, account: str) -> None:
-        with self._held("state.lock", STATE_WAIT_S):
-            done = {*self._doc("legacy.json").get("done", []), _item(service, account)}
-            self._put_doc("legacy.json", {"done": sorted(done)})
 
 
-def _item(service: str, account: str) -> str:
-    return hashlib.sha256(f"{service}\0{account}".encode()).hexdigest()[:16]
+
+
+
 
 
 def _refused(wait_s: int | None) -> str:
