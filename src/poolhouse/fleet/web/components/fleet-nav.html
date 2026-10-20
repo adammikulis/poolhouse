@@ -14,7 +14,7 @@
       <nav class="primary-navigation" id="nav-tabs" aria-label="Main navigation"></nav>
       <div class="rail-tools" role="group" aria-label="Workspace tools">
       <button class="rail-link" data-color="yellow" id="nav-guide" type="button" aria-label="Explore Poolhouse" title="Explore Poolhouse"></button>
-      <button class="rail-link" data-color="cyan" id="nav-jobs" type="button" aria-label="Training jobs" title="Training jobs" hidden><span class="jobs-count" hidden></span></button>
+      <button class="rail-link" data-color="cyan" id="nav-jobs" type="button" aria-label="Jobs" title="Jobs" hidden><span class="jobs-count" hidden></span></button>
       </div>
     </div>
     <div class="rail-utilities">
@@ -34,9 +34,9 @@
   const M = window.fleetModel, el = M.el;
   const GROUPS = [
     {id:"conversations", title:"Conversations", color:"pink", icon:"chat", pages:[["Model chats","chat"],["Team channels","board"]]},
-    {id:"studio", title:"Studio", color:"orange", icon:"studio", pages:[["Canvas","studio"],["Fine-tune","training"],["Worlds","gym"],["Evaluate","benchmarks"],["Data","data"]]},
+    {id:"studio", title:"Studio", color:"orange", icon:"studio", pages:[["Canvas","studio"],["Training","training"],["Gym","gym"],["Evaluation","benchmarks"],["Datasets","data"]]},
     {id:"models", title:"Models", color:"orange", icon:"models", pages:[["Models","models"]]},
-    {id:"work", title:"Work", color:"yellow", icon:"work", pages:[["Tasks","tasks"],["Projects","projects"],["Tools","tools"],["Graph","knowledge"],["History","history"]]},
+    {id:"work", title:"Work", color:"yellow", icon:"work", pages:[["Tasks","tasks"],["Projects","projects"],["Tools","tools"],["Graph","knowledge"],["Activity","history"]]},
     {id:"pool", title:"Pool", color:"cyan", icon:"pool", pages:[["Devices","pool"],["Capacity","fit"]]},
   ];
   const ICONS = {
@@ -80,7 +80,7 @@
       this.tabs=this.querySelector("#nav-tabs"); this.context=this.querySelector("#nav-context");
       this.guide=this.querySelector("#nav-demo");
       this.querySelector("#nav-guide").append(icon("explore"),el("span",{},"Explore"));
-      this.querySelector("#nav-jobs").prepend(icon("jobs"),el("span",{},"Training"));
+      this.querySelector("#nav-jobs").prepend(icon("jobs"),el("span",{},"Jobs"));
       this.querySelector("#nav-settings").append(icon("settings"),el("span",{"data-t":"nav.settings"},"Settings"));
       this.querySelector("#nav-signout").append(icon("exit"),el("span",{},"Sign out"));
       this.querySelector("#nav-settings").onclick=e=>{e.preventDefault();M.go("settings");};
@@ -111,7 +111,7 @@
         if(!result.ok){this.jobsUnavailable();return;}
         const jobs=result.jobs||[], running=jobs.filter(j=>j.state==="running").length,
           queued=jobs.filter(j=>j.state==="queued").length;
-        const status=`Training jobs: ${running} running · ${queued} queued`;
+        const status=`Jobs: ${running} running · ${queued} queued`;
         this.jobs.title=status; this.jobs.setAttribute("aria-label",status); this.jobs.hidden=false;
         const count=this.jobs.querySelector(".jobs-count");
         count.textContent=String(running+queued); count.hidden=running+queued===0;
@@ -119,7 +119,7 @@
       finally { this.refreshing=false; }
     }
     jobsUnavailable() {
-      const status="Training jobs: status unavailable";
+      const status="Jobs: status unavailable";
       this.jobs.title=status;this.jobs.setAttribute("aria-label",status);
       this.jobs.querySelector(".jobs-count").hidden=true;
     }
@@ -127,6 +127,10 @@
       const groups=GROUPS.filter(g=>g.pages.some(here));
       const active=groups.find(g=>g.pages.some(([,key])=>key===route));
       if(active)this.remembered[active.id]=route;
+      const key=JSON.stringify([route,this.remembered,groups.map(g=>[g.id,word(g.title),
+        g.pages.filter(here).map(([name,id])=>[word(name),id])])]);
+      if(key===this.navigationKey)return;
+      this.navigationKey=key;
       const app=document.getElementById("app");
       if(app){app.dataset.workspace=active?.id||"settings";app.dataset.color=active?.color||"pink";}
       this.tabs.replaceChildren(...groups.map(g=>{

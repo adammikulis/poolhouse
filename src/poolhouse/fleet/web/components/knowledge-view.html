@@ -1,6 +1,5 @@
 <style>
 knowledge-view { display:contents; }
-knowledge-view .workspace { padding:calc(28px * var(--ui-density,1)) calc(32px * var(--ui-density,1)); }
 knowledge-view .knowledge-heading { display:flex; align-items:center; justify-content:space-between; margin-bottom:22px; }
 knowledge-view .knowledge-heading h1 { margin:0 0 8px; }
 knowledge-view .knowledge-grid { display:grid; grid-template-columns:220px minmax(0,1fr); gap:20px; align-items:start; }
@@ -37,8 +36,8 @@ knowledge-view #counts { font-size:0.857rem; margin:12px 0 0; }
 @media(max-width:850px) { knowledge-view .knowledge-grid,knowledge-view .graph-browser { grid-template-columns:1fr; } knowledge-view .workspace { padding:calc(20px * var(--ui-density,1)); } knowledge-view .graph-node-browser { border-right:0; border-bottom:1px solid var(--line); } knowledge-view .node-list { max-height:200px; } }
 </style>
 <template>
-<section class="workspace" hidden>
-  <header class="knowledge-heading"><div><h1>Graph inspector</h1></div></header>
+<section class="workspace page-shell" hidden>
+  <header class="knowledge-heading page-heading"><div><h1>Graph inspector</h1></div></header>
   <p class="status" role="status" aria-live="polite"></p>
   <div class="knowledge-grid">
     <aside class="workspace-card">
