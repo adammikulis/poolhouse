@@ -136,7 +136,7 @@
           edge.source.node = ids.get(edge.source.node); edge.target.node = ids.get(edge.target.node);
           this.graph.edges.push(edge);
         }
-        if (this.graph.nodes.length === result.graph.nodes.length) this.querySelector('#studio-title').value = result.title;
+        if (!options.anchor && this.graph.nodes.length === result.graph.nodes.length) this.querySelector('#studio-title').value = result.title;
         this.selected = new Set(ids.values());
         clearTimeout(this.autosave);
         this.editSerial++; this.dirty = true;
