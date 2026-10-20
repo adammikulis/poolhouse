@@ -211,28 +211,30 @@ class ProjectRegistry:
             self._coding_current(current)
             return revision
 
-    def _coding_project(self, identifier: str, current) -> Project:
-        self._coding_current(current)
-        project = self.get(identifier)
-        root = Path(project.root)
-        stamp = root.stat()
-        if root.resolve(strict=True) != root:
-            raise source.ProjectError("The coding folder changed. Choose it again.")
-        source_snapshot.validate_storage(root, source_snapshot.protected_roots(dict(os.environ)))
-        top = git.run(["rev-parse", "--show-toplevel"], cwd=root, protocols="").stdout.strip()
-        after = root.stat()
-        if (top != str(root) or identity(root) != identifier
-                or (stamp.st_dev, stamp.st_ino) != (after.st_dev, after.st_ino)):
-            raise source.ProjectError("The coding folder changed. Choose it again.")
-        self._coding_current(current)
-        return project
+    def resolve_coding_project(self, identifier: str, *, current) -> Project:
+        """Validate one registered task binding independently of the default selection."""
+        with self.lock:
+            self._coding_current(current)
+            project = self.get(identifier)
+            root = Path(project.root)
+            stamp = root.stat()
+            if root.resolve(strict=True) != root:
+                raise source.ProjectError("The coding folder changed. Choose it again.")
+            source_snapshot.validate_storage(root, source_snapshot.protected_roots(dict(os.environ)))
+            top = git.run(["rev-parse", "--show-toplevel"], cwd=root, protocols="").stdout.strip()
+            after = root.stat()
+            if (top != str(root) or identity(root) != identifier
+                    or (stamp.st_dev, stamp.st_ino) != (after.st_dev, after.st_ino)):
+                raise source.ProjectError("The coding folder changed. Choose it again.")
+            self._coding_current(current)
+            return project
 
     def coding_project(self, *, current) -> Project | None:
         """Resolve the chosen registered project under current local storage policy."""
         with self.lock:
             self._coding_current(current)
             identifier = self._coding["id"]
-            result = None if identifier is None else self._coding_project(identifier, current)
+            result = None if identifier is None else self.resolve_coding_project(identifier, current=current)
             self._coding_current(current)
             return result
 
@@ -244,7 +246,7 @@ class ProjectRegistry:
             receipt = self._coding_receipts.get(operation)
             if receipt is None:
                 return None
-            self._coding_project(receipt["id"], current)
+            self.resolve_coding_project(receipt["id"], current=current)
             self._coding_current(current)
             return {**receipt, "current": receipt == self._coding}
 
@@ -258,7 +260,7 @@ class ProjectRegistry:
         source.project_id(operation)
         with self.lock:
             self._coding_current(current)
-            self._coding_project(identifier, current)
+            self.resolve_coding_project(identifier, current=current)
             previous = self._coding_receipts.get(operation)
             if previous is not None:
                 if previous["id"] != identifier:

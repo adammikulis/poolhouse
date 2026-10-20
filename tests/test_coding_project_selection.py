@@ -170,3 +170,16 @@ def test_stale_explicit_create_has_no_git_side_effect_and_old_native_receipt_is_
     choices.registry.select_coding(newer['id'], 'c' * 32, 2, current=lambda:True)
     assert picker.complete(next_request['request_id'], next_request['nonce'], next_claim['claim'], path) == {
         'status':'cancelled', 'purpose':'coding-project'}
+
+
+def test_exact_task_project_resolves_independently_of_new_default(choices, tmp_path):
+    first = project(choices, tmp_path, 'a' * 32)
+    second = project(choices, tmp_path, 'b' * 32)
+    registry = choices.registry
+    registry.select_coding(second['id'], 'c' * 32, 0, current=lambda:True)
+    assert registry.resolve_coding_project(first['id'], current=lambda:True).id == first['id']
+    assert registry.coding_project(current=lambda:True).id == second['id']
+    with pytest.raises(PermissionError):
+        registry.resolve_coding_project(first['id'], current=lambda:False)
+    with pytest.raises(ValueError, match='not registered'):
+        registry.resolve_coding_project('d' * 32, current=lambda:True)
