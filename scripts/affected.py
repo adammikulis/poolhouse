@@ -24,7 +24,7 @@ INERT = {"CHANGELOG.md", "HANDOFF.md", "README.md", "LICENSE", "NOTICE", "CLAUDE
 EVERYTHING = {"pyproject.toml", "budgets.json", "tests/conftest.py", "tests/known-fixtures.txt"}
 DEPTH = 1
 GUARDS = ("test_layers.py", "test_wiring.py", "test_conftest_guard.py", "test_isolation_guard.py",
-          "test_one_python.py", "test_suite.py")
+          "test_one_python.py", "test_suite.py", "test_land_review_policy.py")
 
 
 @dataclass
