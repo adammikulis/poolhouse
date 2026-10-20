@@ -301,6 +301,13 @@ tests = ["tests/test_studio_delivery_service.py::test_actual_http_outbound_recei
 note = "Authenticated delivery routes bind explicit output projections to a selected destination revision. Current authority and body integrity are rechecked before sending; historical owner attestation settles a recorded uncertain outcome without sending again. Stale destination selection cannot create a subscription."
 
 [[group]]
+match = ["route:fleet/dataset_routes.py:/ui/workspace/datasets/*"]
+status = "covered"
+count = 1
+tests = ["tests/test_dataset_routes.py", "tests/test_dataset_catalogue.py", "tests/test_dataset_preview.py"]
+note = "Fixed read-only catalogue and confined local-preview routes require a current authenticated session before and after work, reject extra or duplicate query fields, redact transport errors and never create resources or import authority. Catalogue payload tests use fixtures; this is not live Hugging Face or installed UI evidence."
+
+[[group]]
 match = ["route:fleet/studio_routes.py:/ui/studio/import/n8n/preview"]
 status = "covered"
 count = 1

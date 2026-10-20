@@ -1,7 +1,7 @@
 {
- "surfaces": 923,
+ "surfaces": 924,
  "by_status": {
-  "covered": 605,
+  "covered": 606,
   "partial": 193,
   "uncovered": 52,
   "n/a": 73,
@@ -86,7 +86,7 @@
    "unmapped": 0
   },
   "route": {
-   "covered": 133,
+   "covered": 134,
    "partial": 58,
    "uncovered": 0,
    "n/a": 1,
@@ -8658,6 +8658,20 @@
    "status": "n/a",
    "tests": [],
    "note": "This string is the fixed remote Hugging Face path checked by the pagination parser. It does not register a local handler or accept inbound requests."
+  },
+  {
+   "id": "route:fleet/dataset_routes.py:/ui/workspace/datasets/*",
+   "kind": "route",
+   "source": "fleet/dataset_routes.py:route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_dataset_routes.py",
+    "tests/test_dataset_catalogue.py",
+    "tests/test_dataset_preview.py"
+   ],
+   "note": "Fixed read-only catalogue and confined local-preview routes require a current authenticated session before and after work, reject extra or duplicate query fields, redact transport errors and never create resources or import authority. Catalogue payload tests use fixtures; this is not live Hugging Face or installed UI evidence."
   },
   {
    "id": "route:fleet/features_routes.py:/ui/features",
