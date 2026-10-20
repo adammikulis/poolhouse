@@ -15,6 +15,13 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["parser:studio/producer_log.py"]
+status = "covered"
+count = 1
+tests = ["tests/test_producer_log.py::test_exact_wire_bytes_are_pinned_and_repeated_commands_attach", "tests/test_producer_log.py::test_invalid_records_never_create_intents", "tests/test_producer_log.py::test_concurrent_claims_return_one_send_permission", "tests/test_producer_log.py::test_unknown_blocks_new_event_even_after_rotate_or_process_replacement", "tests/test_producer_log.py::test_restart_retains_unknown_and_exact_original_receipt_releases_pending", "tests/test_producer_log.py::test_completed_event_is_not_published_again_after_rotation", "tests/test_producer_log.py::test_mismatched_receipt_never_settles_or_unlocks_another_event", "tests/test_producer_log.py::test_revocation_during_transaction_rolls_back_stage_and_claim", "tests/test_producer_log.py::test_payload_binding_fields_are_data_and_do_not_choose_namespace", "tests/test_producer_log.py::test_owner_discard_retains_tombstone_and_unblocks_other_ids", "tests/test_producer_log.py::test_owner_revoked_during_discard_rolls_back_row_and_pending", "tests/test_producer_log.py::test_attempted_or_unknown_event_cannot_be_discarded", "tests/test_producer_log.py::test_missing_or_mismatched_pending_index_never_issues_send_authority"]
+note = "Private daemon persistence pins exact finite JSON bytes before parsing, source-wide event identity and the original binding. Current authorization and exact pending-index checks precede a single send claim; transaction races roll back. Unknown attempts require exact trusted inbox evidence and never resend across restart or replacement. Explicit current-owner discard applies only to provably unattempted records and retains their immutable identity. Reads and receipt access require independent factory authorization; this primitive provides no publisher-facing endpoint, credential or source capability."
+
+[[group]]
 match = ["parser:unix_socket.py"]
 status = "covered"
 count = 1
