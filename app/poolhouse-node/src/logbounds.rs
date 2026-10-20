@@ -91,10 +91,12 @@ impl Bounds {
             Class::Author => (self.rows.saturating_sub(self.reserved_rows), self.bytes.saturating_sub(self.reserved_bytes)),
         };
         if log.rows >= rows {
-            return Err(crate::limits::refuse("this log has as many rows as a device keeps", self.rows, "MAX_LOG_ROWS", "logbounds.rs"));
+            let value = Self::stretch(kind, rows.to_string(), self.rows.to_string());
+            return Err(crate::limits::refuse("this log has as many rows as a device keeps", value, "MAX_LOG_ROWS", "logbounds.rs"));
         }
         if log.bytes + bytes > size {
-            return Err(crate::limits::refuse("this log holds as many bytes as a device keeps", format!("{} bytes", self.bytes), "MAX_LOG_BYTES", "logbounds.rs"));
+            let value = Self::stretch(kind, format!("{size} bytes"), format!("{} bytes", self.bytes));
+            return Err(crate::limits::refuse("this log holds as many bytes as a device keeps", value, "MAX_LOG_BYTES", "logbounds.rs"));
         }
         if kind == Class::Author {
             let over = |percent: usize, have: Held| have.rows >= self.rows * percent / 100 || have.bytes + bytes > self.bytes * percent as u64 / 100;
@@ -108,6 +110,15 @@ impl Bounds {
             }
         }
         Ok(())
+    }
+
+    /// The limit a row of class ``kind`` meets, ``own`` of the ``all`` the log keeps.
+    fn stretch(kind: Class, own: String, all: String) -> String {
+        match kind {
+            Class::Author => format!("{own} for a session's own rows ({all} in all)"),
+            Class::Node => format!("{own} for the node's own rows ({all} in all)"),
+            Class::Last => all,
+        }
     }
 
     /// Whether ``incoming`` more rows of ``bytes`` bytes in all fit a copy of another device's log that holds ``held``.

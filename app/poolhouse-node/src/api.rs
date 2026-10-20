@@ -165,7 +165,7 @@ fn link(node: &mut Node, token: &str, board: &str, p: &Map<String, Value>, make:
     let event = if make { "link" } else { "unlink" };
     for side in [&done.from, &done.to] {
         let actor = if side == board { access.actor.clone() } else { format!("{}@{board}", access.actor) };
-        node.host(side)?.board.append(Kind::Audit, &actor, json!({"event": event, "subject": done.id, "detail": detail}), "")?;
+        node.writer(side, &actor)?.append(Kind::Audit, &actor, json!({"event": event, "subject": done.id, "detail": detail}), "")?;
     }
     Ok(json!(done))
 }

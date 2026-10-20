@@ -146,6 +146,7 @@ fn another_process_tree_makes_rooms_and_a_board_holds_no_more_than_it_may() {
 fn a_room_holds_no_more_members_than_it_may() {
     let dir = tempdir().unwrap();
     let mut n = node(dir.path());
+    n.writes.live_main_sessions = MEMBERS_PER_ROOM + 2;
     let (_, lead) = session(&mut n, "demo", "lead");
     ok(room(&mut n, &lead, "create", "#crowd", json!({})));
     let mut refused = Value::Null;

@@ -6,7 +6,7 @@
 mod kit;
 
 use kit::phone::{ask, FakePhone, Rig};
-use kit::procs::{done, peer, process};
+use kit::procs::{done, orphan, peer, process};
 use kit::*;
 use poolhouse_node::lineage::Peer;
 use poolhouse_node::logbounds::Bounds;
@@ -296,4 +296,69 @@ fn the_sessions_of_one_tree_that_write_to_a_linked_board_share_the_trees_part_of
     let linked = rows_of(&mut n, "away").iter().filter(|r| r.actor.contains('@')).count();
     assert!(linked <= 20, "the lead and its subagent write a quarter of eighty rows between them to a board they reach by a link, not a quarter each: {linked}");
     assert!(linked >= 10, "and they did write: {linked}");
+}
+
+#[test]
+fn the_sessions_of_one_tree_that_link_a_board_to_another_share_the_trees_part_of_the_log_it_audits_into() {
+    let dir = tempdir().unwrap();
+    let mut n = small(dir.path(), |b| b.author_percent = 15);
+    let owned = register_from(&mut n, &me(), "home", "", "owner");
+    let (owner, owner_token) = (owned["result"]["name"].as_str().unwrap().to_string(), token_of(&owned));
+    allow(&mut n, "home", &owner_token, &owner, &["link_write"]);
+    let made = register_from(&mut n, &me(), "away", "", "lead");
+    let lead_token = token_of(&made);
+    ok(req(&mut n, "link", "home", &owner_token, json!({"to": "away", "channels": [], "mode": "rw"})));
+    for i in 0..12 {
+        ok(post(&mut n, "home", &lead_token, &format!("the lead writes {i}")));
+    }
+    let writer = token_of(&register_from(&mut n, &me(), "away", &lead_token, "writer"));
+    for i in 0..4 {
+        ok(post(&mut n, "home", &writer, &format!("a subagent writes {i}")));
+    }
+    let mut kids = Vec::new();
+    for i in 0..2 {
+        let kid = register_from(&mut n, &me(), "away", &lead_token, &format!("kid{i}"));
+        let (name, token) = (kid["result"]["name"].as_str().unwrap().to_string(), token_of(&kid));
+        allow(&mut n, "away", &token, &name, &["link_write", "link_remove"]);
+        kids.push(token);
+    }
+    for _ in 0..6 {
+        for token in &kids {
+            let made = req(&mut n, "link", "away", token, json!({"to": "home", "channels": [], "mode": "rw"}));
+            if let Some(id) = made["result"]["id"].as_str() {
+                req(&mut n, "unlink", "away", token, json!({"id": id}));
+            }
+        }
+    }
+    let rows = rows_of(&mut n, "home");
+    let written = rows.iter().filter(|r| r.kind == Kind::Message && r.actor.contains('@')).count();
+    let audits = rows.iter().filter(|r| r.kind == Kind::Audit && r.actor.contains('@')).count();
+    assert_eq!(written, 16, "the lead and a subagent wrote messages through the link");
+    assert_eq!(audits, 0, "the tree had written its quarter of eighty rows by then, so the audit of a link a subagent made into the board is refused like any row of the tree's");
+}
+
+#[test]
+fn a_board_holds_a_bounded_number_of_live_main_sessions_however_many_trees_they_come_from_and_an_ending_frees_a_place() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let most = n.writes.live_main_sessions;
+    let daemons: Vec<u32> = (0..most + 2).map(|_| orphan()).collect();
+    let from = |i: usize| Peer { pid: Some(daemons[i]) };
+    let mut tokens = Vec::new();
+    for i in 0..most {
+        tokens.push(token_of(&register_from(&mut n, &from(i), "demo", "", &format!("daemon{i}"))));
+    }
+    let refused = register_from(&mut n, &from(most), "demo", "", "one-more");
+    assert_eq!(code(&refused), "quota", "{refused}");
+    assert!(said(&refused).contains(&format!("the limit is {most}, set by live_main_sessions in write-limits.json")), "{refused}");
+    assert_eq!(n.host("demo").unwrap().names.all().len(), most, "a registration that was refused leaves no session behind");
+    assert_eq!(register_from(&mut n, &from(0), "demo", "", "daemon0")["ok"], true, "a live session registering again is the one it was");
+    let kids: Vec<Value> = (0..40).map(|i| register_from(&mut n, &from(0), "demo", &tokens[0], &format!("kid{i}"))).collect();
+    assert!(kids.iter().all(|k| k["ok"] == true), "subagents are not main sessions and the bound does not count them");
+    ok(req_from(&mut n, &from(1), "retire", "demo", &tokens[1], json!({"target": "", "reason": "done"})));
+    let taken = register_from(&mut n, &from(most), "demo", "", "one-more");
+    assert_eq!(taken["ok"], true, "an ending frees a place: {taken}");
+    let again = register_from(&mut n, &from(1), "demo", "", "daemon1");
+    assert_eq!(code(&again), "quota", "a main session that ended comes back only into a free place: {again}");
+    daemons.into_iter().for_each(kit::kill_hard);
 }

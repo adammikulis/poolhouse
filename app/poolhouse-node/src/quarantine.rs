@@ -60,6 +60,11 @@ impl Quarantine {
         Ok(Quarantine { path: path.into(), items })
     }
 
+    /// Whether no entry is held or released.
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
     fn save(&self) -> Result<()> {
         write_atomic(&self.path, &serde_json::to_vec(&self.items)?)
     }

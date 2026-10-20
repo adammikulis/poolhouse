@@ -28,28 +28,44 @@ abuse by one session is not kept (the owner never asked for one). The security f
   however long it asks.
 - **`write-limits.json`** names only the keys of the rows above. A file that still holds a removed key (`sends`, `child_sends`,
   `subagent_sends`, `window_s`, `announces`, `announce_window_s`) stops the node starting and names the key: delete the key.
-- **Boards, rooms, subscriptions and waiting** (`MOST_BOARDS_PER_LINEAGE`, `BOARD_GRACE_MS`, `MOST_ROOMS_PER_LINEAGE`, `MEMBERS_PER_ROOM`,
+- **Live main sessions** (`live_main_sessions`, 16). A board holds at most sixteen main sessions that have not ended: a tree's share of a
+  log is a quarter (`LINEAGE_SHARE_PERCENT`), so four trees can write all of it, and sixteen is four trees of four terminals each. A
+  registration that would make seventeen, or a main session that ended coming back into a full board, is refused with the limit named; an
+  ending (or the node retiring an idle session) frees a place at once. Subagents are not counted: their tree's share holds them. This is a
+  count of what exists, not a rate: a process that forks twice is its own process tree with a share of its own, and the count keeps more
+  than sixteen of them from writing to a board at once. A board with more terminals than that raises the key in `write-limits.json`.
+- **Boards, rooms, subscriptions and waiting** (`MOST_BOARDS_PER_LINEAGE`, `board_grace_s`, `MOST_ROOMS_PER_LINEAGE`, `MEMBERS_PER_ROOM`,
   `MOST_SUBS`, `MOST_WAITERS_PER_LINEAGE`). They count what is held, not how fast it was made: a board is held by the process tree that
   made it by registering a session on it, for as long as it exists; a room while it exists; a subscription until it is removed or its
   session ends. A new board past `MAX_BOARDS`, or past the share of its tree, first removes the boards that hold nothing but the starts and
-  ends of their sessions, left alone for `BOARD_GRACE_MS`. A board is removed only when no other device ever synced it (a board another
-  device holds a copy of would be refused by that device when it is made again), it holds no message, note, room, grant, task or any other
-  entry, no session of it is live or ended for cause, and no link or lease names it; a removed board is made again, empty, by the next
-  registration. A board with entries, or one another device synced, is never removed: `HANDOFF.md` lists the rest. A new subscription at
-  the bound first drops those to subagents that ended. A `lease_wait` holds a server thread for as long as it waits: a device answers
-  `MOST_WAITERS` at once and the processes of one process tree `MOST_WAITERS_PER_LINEAGE` of them.
+  ends of their sessions, left alone for `board_grace_s` (an hour). A board is removed only when no other device ever synced it (a board
+  another device holds a copy of would be refused by that device when it is made again), it holds no message, note, room, grant, task or any
+  other entry, no file and no flagged entry, no session of it is live or ended for cause, and no link or lease names it; a removed board is
+  made again, empty, by the next registration. A device counts as having synced a board when rows moved between the two (a pull or a push
+  that carried at least one row); a call that moved none, such as asking for a vector, ties nothing. The board is renamed to a trash name
+  before its files are deleted, so a deletion that stops halfway leaves no live board; what is left under a trash name is removed when the
+  node starts and before the next removal. A board with entries, or one another device synced, is never removed: `HANDOFF.md` lists the
+  rest. A new subscription at the bound first drops those to subagents that ended. A `lease_wait` holds a server thread for as long as it
+  waits: a device answers `MOST_WAITERS` at once and the processes of one process tree `MOST_WAITERS_PER_LINEAGE` of them.
 - **Accepted: a process tree is the unit of the per-tree bounds.** The bounds above that say "process tree" (boards, rooms, leases,
   waiters, the share of a log) read the tree from the operating system by the process id of the socket. A process that forks twice and
   is left to the system's first process is its own tree each time, so each one starts with a fresh share; and where the operating system
   does not report the process (Windows) a main session and its subagents are the unit instead. The bounds that hold whatever the tree
-  (`MAX_BOARDS`, `MAX_LOG_ROWS`, `MAX_LOG_BYTES`, `max_leases`, `MOST_WAITERS`, `MAX_IDENTITIES`) are what stop a node, not a tree, from
-  being filled that way. The owner accepts this or asks for a stricter unit.
+  (`MAX_BOARDS`, `MAX_LOG_ROWS`, `MAX_LOG_BYTES`, `max_leases`, `MOST_WAITERS`, `MAX_IDENTITIES`) are what stop a node, not a
+  tree, from being filled that way: `live_main_sessions` holds how many such trees a board has live at once, but a process that ends its
+  session and registers a new one in a fresh tree, one after the other, still writes a share each time until the log is full. The owner
+  accepts this or asks for a stricter unit.
+- **Accepted: a process more than `MOST_ANCHORS` deep shifts its tree.** The tree is read as the processes above the requester up to
+  `MOST_ANCHORS` of them, so a process started more than that many levels below the terminal that began the work is read with a different
+  key than its siblings and counts as a tree of its own. It is the same fresh share as a double fork, bounded by `live_main_sessions` live
+  main sessions per board and by the bounds that hold whatever the tree.
 
 | Name | Value | File and line | What it protects | Who changes it |
 |---|---|---|---|---|
 | `MAX_BOARDS` | 256 | `app/poolhouse-node/src/node.rs:38` | boards a node hosts: memory and open files | the owner, in source |
 | `MOST_BOARDS_PER_LINEAGE` | 32 | `app/poolhouse-node/src/node.rs:40` | boards one process tree made by registering a session on them, that still exist: memory and open files | the owner, in source |
-| `BOARD_GRACE_MS` | 3_600_000 | `app/poolhouse-node/src/node.rs:42` | how long a board that holds nothing but the starts and ends of its sessions is left alone before a new board may remove it | the owner, in source |
+| `live_main_sessions` | 16 | `app/poolhouse-node/src/writes.rs:34` | main sessions a board holds that have not ended: four process trees write a log, each with four terminals | the owner, `<state>/write-limits.json` |
+| `board_grace_s` | 3600 | `app/poolhouse-node/src/writes.rs:32` | seconds a board that holds nothing but the starts and ends of its sessions is left alone before a new board may remove it | the owner, `<state>/write-limits.json` |
 | `MAX_IDENTITIES` | 10_000 | `app/poolhouse-node/src/identity.rs:16` | sessions a board holds: memory | the owner, in source |
 | `SHORT` | 6 | `app/poolhouse-node/src/identity.rs:15` | characters of the shortest name a session is given: when every length is taken no name is left | the owner, in source |
 | `MAX_TOKENS_PER_NAME` | 8 | `app/poolhouse-node/src/identity.rs:17` | tokens one session holds: the ninth ends the oldest | the owner, in source |

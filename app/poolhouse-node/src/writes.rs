@@ -28,12 +28,16 @@ pub struct WriteLimits {
     pub child_beat_s: u64,
     /// Seconds a session may be idle before the node retires it.
     pub idle_retire_s: u64,
+    /// Seconds a board that holds nothing but the starts and ends of its sessions is left alone before a new board may remove it.
+    pub board_grace_s: u64,
+    /// Main sessions one board holds that have not ended.
+    pub live_main_sessions: usize,
 }
 
 impl Default for WriteLimits {
     fn default() -> WriteLimits {
         WriteLimits {
-            inbox_pending: 500, unread_per_sender: 100, notes_per_author: 500, child_beat_s: 1800, idle_retire_s: 86_400,
+            inbox_pending: 500, unread_per_sender: 100, notes_per_author: 500, child_beat_s: 1800, idle_retire_s: 86_400, board_grace_s: 3600, live_main_sessions: 16,
         }
     }
 }

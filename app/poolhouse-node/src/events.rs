@@ -38,6 +38,6 @@ pub fn call(node: &mut Node, _method: &str, board: &str, token: &str, p: &Map<St
         return Err(Error::Invalid(format!("an event is one of {}", EVENTS.join(", "))));
     }
     let body = json!({"event": event, "subject": clip(text(p, "subject")?), "detail": clip(text(p, "detail")?)});
-    node.host(board)?.board.append(Kind::Audit, &access.actor, body, "")?;
+    node.writer(board, &access.actor)?.append(Kind::Audit, &access.actor, body, "")?;
     Ok(json!({"recorded": true}))
 }

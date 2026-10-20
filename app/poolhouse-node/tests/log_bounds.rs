@@ -248,7 +248,7 @@ fn a_session_that_wrote_its_share_is_refused_while_the_others_post_and_claim_and
     ok(req(&mut n, "claim", "demo", &lead, json!({"kind": "port", "key": "9402"})));
     ok(req(&mut n, "release", "demo", &flood_token, json!({"kind": "port", "key": "9401"})));
     let ended = ok(req(&mut n, "retire", "demo", &lead, json!({"target": flood})));
-    assert!(ended.get("retired").is_some() || ended.get("target").is_some() || ended.is_object(), "{ended}");
+    assert_eq!((ended["name"].as_str(), ended["retired"].as_bool()), (Some(flood.as_str()), Some(true)), "{ended}");
     let identities = ok(req(&mut n, "read", "demo", &lead, json!({"kind": "identity"})));
     let retired = identities["entries"].as_array().unwrap().iter().filter(|e| e["fields"]["name"] == json!(flood) && e["fields"]["retired"] == json!(true)).count();
     assert_eq!(retired, 1, "the flood's end is on the board although it had used its share: {identities}");
@@ -270,7 +270,7 @@ fn when_the_log_is_full_sessions_are_refused_with_the_limit_and_a_session_can_st
             }
         }
     }
-    assert!(said.contains("MAX_LOG_ROWS") && said.contains("80"), "the log filled and said which limit it was: {said}");
+    assert!(said.contains("MAX_LOG_ROWS") && said.contains("the limit is 72 for a session's own rows (80 in all)"), "the log filled and said the rows a session may use and the rows in all: {said}");
     ok(req(&mut n, "retire", "demo", &lead, json!({"target": kids[0].0})));
     ok(req(&mut n, "retire", "demo", &lead, json!({"target": kids[1].0})));
     let again = post(&mut n, "demo", &kids[2].1, "one more");

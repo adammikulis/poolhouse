@@ -65,7 +65,7 @@ fn a_lineage_makes_links_as_fast_as_it_likes() {
 }
 
 #[test]
-fn one_process_tree_makes_a_bounded_number_of_boards_and_has_as_many_sessions_as_it_needs() {
+fn one_process_tree_makes_a_bounded_number_of_boards_and_a_board_holds_a_bounded_number_of_live_main_sessions() {
     let state = tempdir().unwrap();
     let mut n = node(state.path());
     let outside = procs::process(true);
@@ -76,10 +76,11 @@ fn one_process_tree_makes_a_bounded_number_of_boards_and_has_as_many_sessions_as
     let refused = register(&mut n, &me(), "one-more", "s");
     assert_eq!(code(&refused), "quota", "{refused}");
     assert!(refused["error"]["message"].as_str().unwrap().contains(&format!("the limit is {MOST_BOARDS_PER_LINEAGE}, set by MOST_BOARDS_PER_LINEAGE in node.rs")), "{refused}");
-    for i in 0..200 {
+    for i in 1..n.writes.live_main_sessions {
         let reply = register(&mut n, &me(), "b0", &format!("s{i}"));
         assert_eq!(reply["ok"], true, "a session of a board the tree made already: {i}: {reply}");
     }
+    assert_eq!(code(&register(&mut n, &me(), "b0", "one-too-many")), "quota", "and a board holds no more live main sessions than it may");
     let elsewhere = register(&mut n, &peer(&outside), "one-more", "s");
     assert_eq!(elsewhere["ok"], true, "another process tree is not held back by the first one's boards: {elsewhere}");
     let ended = register(&mut n, &me(), "b1", "s");
@@ -109,4 +110,26 @@ fn a_node_hosts_no_more_boards_than_it_may_whichever_process_trees_ask() {
     assert_eq!(code(&refused), "quota", "{refused}");
     assert!(refused["error"]["message"].as_str().unwrap().contains(&format!("the limit is {MAX_BOARDS}, set by MAX_BOARDS in node.rs")), "{refused}");
     done(trees);
+}
+
+#[test]
+fn how_long_an_ended_board_is_left_alone_before_it_is_removed_is_set_in_write_limits_json() {
+    let state = tempdir().unwrap();
+    std::fs::write(state.path().join("write-limits.json"), r#"{"board_grace_s": 0}"#).unwrap();
+    let mut n = node(state.path());
+    let mut tokens = Vec::new();
+    for i in 0..MOST_BOARDS_PER_LINEAGE {
+        let reply = ok(register(&mut n, &me(), &format!("g{i}"), "s"));
+        tokens.push(reply["token"].as_str().unwrap().to_string());
+    }
+    ok(req_from(&mut n, &me(), "retire", "g0", &tokens[0], json!({})));
+    let next = register(&mut n, &me(), "next", "s");
+    assert_eq!(next["ok"], true, "with no grace the board whose session ended makes room at once: {next}");
+    assert!(!n.boards.contains_key("g0"));
+
+    let kept = tempdir().unwrap();
+    let mut m = node(kept.path());
+    let tokens: Vec<String> = (0..MOST_BOARDS_PER_LINEAGE).map(|i| ok(register(&mut m, &me(), &format!("h{i}"), "s"))["token"].as_str().unwrap().to_string()).collect();
+    ok(req_from(&mut m, &me(), "retire", "h0", &tokens[0], json!({})));
+    assert_eq!(code(&register(&mut m, &me(), "next", "s")), "quota", "the default leaves it alone for an hour");
 }

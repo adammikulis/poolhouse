@@ -197,7 +197,7 @@ fn delete(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
     all.insert(handle.to_string());
     private_dir(&base)?;
     write_atomic(&base.join("deleted.json"), &serde_json::to_vec(&all)?)?;
-    node.host(board)?.board.append(Kind::Audit, &access.actor, json!({"event": "file.delete", "subject": handle, "detail": format!("{shredded} blobs shredded")}), "")?;
+    node.writer(board, &access.actor)?.append(Kind::Audit, &access.actor, json!({"event": "file.delete", "subject": handle, "detail": format!("{shredded} blobs shredded")}), "")?;
     Ok(json!({"deleted": handle, "shredded": shredded}))
 }
 

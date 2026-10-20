@@ -29,7 +29,7 @@ use crate::membership::{Policy, Standing};
 use crate::net::Net;
 use crate::node::Node;
 use crate::row::{valid_origin, valid_name, Row};
-use crate::sync::{rows_since, seqs, take, Report};
+use crate::sync::{rows_since, seqs, take_from, Report};
 use crate::tls::{self, Secured};
 use crate::wire::{read_frame_max, write_frame_max, MAX_PEER_FRAME};
 
@@ -130,8 +130,8 @@ fn hosted<'a>(node: &'a mut Node, req: &Value, bfp: &str) -> Result<&'a mut crat
         return Err(Error::Invalid("a board and an origin are named".into()));
     }
     let h = node.boards.get_mut(id).ok_or_else(|| Error::Denied("this device does not hold that board".into()))?;
-    if !h.board.bind_peer(bfp, origin)? {
-        return Err(Error::Denied("this device writes a different log than the one it presented before".into()));
+    if !h.board.peer_agrees(bfp, origin) {
+        return Err(Error::Denied(crate::sync::DIFFERENT_LOG.into()));
     }
     Ok(h)
 }
@@ -142,6 +142,9 @@ fn pull(node: &mut Node, bfp: &str, req: &Value) -> Result<Value> {
     h.board.acknowledge(bfp, &vector)?;
     h.board.seal()?;
     let logs = rows_since(&h.board, &seqs(&vector));
+    if logs.values().any(|rows| !rows.is_empty()) && !h.board.has_peer(bfp) {
+        h.board.bind_peer(bfp, text(req, "origin")?)?;
+    }
     Ok(json!({"origin": h.board.origin(), "trusted_vector": h.board.trusted_vector(), "logs": logs}))
 }
 
@@ -155,7 +158,7 @@ fn push(node: &mut Node, bfp: &str, req: &Value) -> Result<Value> {
     let trusted = vector_of(req, "trusted_vector")?;
     let h = hosted(node, req, bfp)?;
     let mut report = Report::default();
-    let stored = take(&mut h.board, &logs, bfp, &mut report)?;
+    let stored = take_from(&mut h.board, &logs, bfp, text(req, "origin")?, &mut report)?;
     h.board.acknowledge(bfp, &trusted)?;
     Ok(json!({"stored": stored, "refused": report.refused}))
 }

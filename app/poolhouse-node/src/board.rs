@@ -503,6 +503,22 @@ impl Board {
         Ok(bound == origin)
     }
 
+    /// Whether the device ``fingerprint`` may be tied to ``origin``: it is tied to no origin yet, or to this one.
+    pub fn peer_agrees(&self, fingerprint: &str, origin: &str) -> bool {
+        self.state.t.peers.get(fingerprint).is_none_or(|o| o == origin)
+    }
+
+    /// Whether the device ``fingerprint`` is tied to an origin.
+    pub fn has_peer(&self, fingerprint: &str) -> bool {
+        self.state.t.peers.contains_key(fingerprint)
+    }
+
+    /// Undo the tie of the device ``fingerprint`` to the origin it writes.
+    pub fn release_peer(&mut self, fingerprint: &str) -> Result<()> {
+        self.state.t.peers.remove(fingerprint);
+        self.state.save()
+    }
+
     /// The fingerprint (hash of the public key) of the device whose key verified the log of ``origin``, if one did.
     pub fn writer_fingerprint(&self, origin: &str) -> Option<String> {
         let public = unhex(&self.state.t.keys.get(origin)?.public)?;
