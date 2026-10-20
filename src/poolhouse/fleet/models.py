@@ -5,13 +5,14 @@ from __future__ import annotations
 import copy
 import hashlib
 import os
+import re
 import secrets
 import shutil
 import stat
 import threading
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -52,11 +53,21 @@ STALE_PART_S = 3600.0
 
 
 @dataclass(frozen=True, slots=True)
+class VerifiedReference:
+    """Observed Hub-pinned bytes, never publication cleanup ownership."""
+
+    source: str
+    object_id: str
+    sha256: str
+
+
+@dataclass(frozen=True, slots=True)
 class Model:
     name: str
     path: Path
     size: int
     modified: float
+    verified_reference: VerifiedReference | None = None
 
     def public(self) -> dict[str, Any]:
         return {"name": self.name, "size": self.size, "modified": self.modified}
@@ -215,10 +226,12 @@ class Models:
             return Model(path.name, path, stat.st_size, stat.st_mtime)
         return None
 
-    def digest(self, model: Model, *, check=None) -> str:
+    def digest(self, model: Model, *, check=None, object_id='') -> str:
         """Hash one retained actual file; reuse only an unchanged full identity."""
         if check is not None:
             check()
+        if (not isinstance(object_id, str) or (object_id and re.fullmatch(r'[a-f0-9]{40}|[a-f0-9]{64}', object_id) is None)):
+            raise ModelError('The expected model object identity is invalid')
         target = model.path.resolve(strict=True)
         with os.fdopen(os.open(target, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), 'rb') as stream:
             info = os.fstat(stream.fileno())
@@ -228,18 +241,25 @@ class Models:
             key = (str(target), identity)
             found = self._digests.get(key)
             digest = hashlib.sha256()
-            if found is None:
+            native = hashlib.sha1(usedforsecurity=False) if len(object_id) == 40 else None
+            if native is not None:
+                native.update(b'blob %d\0' % info.st_size)
+            if found is None or object_id:
                 while block := stream.read(CHUNK):
                     if check is not None:
                         check()
                     digest.update(block)
+                    if native is not None:
+                        native.update(block)
             if check is not None:
                 check()
             if (model.path.resolve(strict=True) != target
                     or files.stat_signature(os.fstat(stream.fileno())) != identity
                     or files.stat_signature(target.stat(follow_symlinks=False)) != identity):
                 raise ModelError('The selected model changed while its bytes were checked')
-            result = found or digest.hexdigest()
+            result = digest.hexdigest() if object_id else found or digest.hexdigest()
+            if object_id and (native.hexdigest() if native is not None else result) != object_id:
+                raise ModelError('The selected model does not match its verified reference')
             if check is not None:
                 check()
             self._digests[key] = result
@@ -310,11 +330,19 @@ class Models:
                 transfer: ModelTransfer, autodownload: bool) -> Model:
         found = self._held_file(name)
         transfer.check()
-        if found:
+        if found and not source:
             return found
         policy = self.sources()
         if policy not in ("internet", "lan", "both"):
             raise ModelError("Choose Internet only, LAN only, or Both before downloading models.")
+        if found:
+            if not autodownload:
+                raise ModelError('The remote model reference is unverified, and automatic downloading is off')
+            if policy == 'lan':
+                raise ModelError('Select the current installed model; its remote reference cannot be verified with LAN only')
+            pulled = self._internet_blob(source, transfer)
+            sha256 = self.digest(found, check=transfer.check, object_id=pulled.name)
+            return replace(found, verified_reference=VerifiedReference(source, pulled.name, sha256))
         if not autodownload:
             raise ModelError(f"{name} is not on this machine, and automatic downloading is off")
         if key is not None and policy != "internet":
@@ -365,25 +393,27 @@ class Models:
             digest = self.digest(model, check=transfer.check)
             return self._publish(staged, self.store / fname, digest, '', transfer)
 
-    def _from_internet(self, name: str, source: str, transfer: ModelTransfer) -> Model:
-        """Use the existing pinned/scanned Hub transfer and no-replace model publication."""
+    def _internet_blob(self, source: str, transfer: ModelTransfer) -> Path:
+        """Resolve and obtain the actual guarded Hub pin once per transfer."""
         transfer.check()
-        self.store.mkdir(parents=True, exist_ok=True)
         try:
             ref = reference(source, check=transfer.check)
             transfer.check()
             pulled = hub.pull(ref, on_progress=lambda got: transfer.progress(got.done_bytes, got.total_bytes),
                               cancel=transfer, members=False, trust=hub.PERSON).resolve()
             transfer.check()
-            target = self.store / safe_filename(name)
+            return pulled
         except PermissionError:
             raise
-        except Unsafe as exc:
-            raise ModelError(f"{name}: {exc}") from None
         except (RemoteError, Refused, OSError, ValueError) as exc:
             transfer.check()
             raise ModelError(str(exc)) from None
-        return self._publish(pulled, target, pulled.name, source, transfer)
+
+    def _from_internet(self, name: str, source: str, transfer: ModelTransfer) -> Model:
+        """Use the existing pinned/scanned Hub transfer and no-replace model publication."""
+        self.store.mkdir(parents=True, exist_ok=True)
+        pulled = self._internet_blob(source, transfer)
+        return self._publish(pulled, self.store / safe_filename(name), pulled.name, source, transfer)
 
     def _publish(self, source: Path, target: Path, digest: str,
                  origin: str, transfer: ModelTransfer) -> Model:
@@ -395,8 +425,12 @@ class Models:
             if origin:
                 model_components.remember(target, origin)
             transfer.check()
+            info = target.stat(follow_symlinks=False)
+            model = Model(target.name, target, info.st_size, info.st_mtime)
+            verified = (VerifiedReference(origin, digest, self.digest(model, check=transfer.check, object_id=digest))
+                        if origin else None)
             info = placement.commit()
-            return Model(target.name, target, info.st_size, info.st_mtime)
+            return Model(target.name, target, info.st_size, info.st_mtime, verified)
 
     def ensure_draft(self, model: Model, source: str, *, key: bytes | None = None,
                      on_progress: Callable[[int, int], None] | None = None) -> Path:

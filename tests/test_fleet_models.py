@@ -144,7 +144,7 @@ class TestSources:
 class TestGetting:
     def test_a_model_already_here_is_not_fetched_again(self, store, tmp_path):
         a_model(tmp_path / "models")
-        got = store.ensure("qwen3-4b-q4.gguf", source="http://127.0.0.1:1/never.gguf")
+        got = store.ensure("qwen3-4b-q4.gguf")
         assert got.name == "qwen3-4b-q4.gguf"
 
     def test_with_automatic_downloading_off_it_refuses(self, store):

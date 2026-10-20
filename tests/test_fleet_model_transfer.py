@@ -188,7 +188,7 @@ def test_exact_installed_companion_is_reused_without_substring_fallback(store, m
     body = gguf_bytes(extra=1 << 20)
     selected = model(store.store / 'mmproj-m.gguf', body)
     monkeypatch.setattr(hub, 'pull', lambda *args, **kwargs: pytest.fail('downloaded existing exact companion'))
-    assert store.ensure('mmproj-m.gguf', source='hf:maker/model/mmproj-m.gguf').path == selected.path
+    assert store.ensure('mmproj-m.gguf').path == selected.path
     with pytest.raises(ModelError, match='exact model weights filename'):
         store.ensure('mmproj', source='hf:maker/model/mmproj-m.gguf')
 
@@ -243,3 +243,92 @@ def test_preparation_reporter_composes_with_exact_true_transfer_check(tmp_path):
         worker.join(5)
         assert not worker.is_alive()
     assert done['state'] == 'done' and done['result'] == {'observed_current': True}
+
+
+@pytest.mark.parametrize('git', [False, True])
+def test_existing_exact_reference_is_verified_by_pinned_bytes_and_returns_sha256(store, tmp_path, monkeypatch, git):
+    body = gguf_bytes(extra=1 << 20)
+    expected = hashlib.sha1(b'blob %d\0' % len(body) + body, usedforsecurity=False).hexdigest() if git else hashlib.sha256(body).hexdigest()
+    blob = tmp_path / expected
+    blob.write_bytes(body)
+    monkeypatch.setattr(hub, 'pull', lambda *args, **kwargs: blob)
+    store.store.mkdir()
+    target = model(store.store / 'm.gguf', body)
+    original = target.path.stat().st_ino
+    got = store.ensure('m.gguf', source='hf:maker/model/m.gguf')
+    assert got.path.stat().st_ino == original
+    assert got.verified_reference == owning.VerifiedReference('hf:maker/model/m.gguf', expected,
+                                                             hashlib.sha256(body).hexdigest())
+    assert 'verified_reference' not in got.public()
+
+
+def test_concurrent_different_source_valid_weights_are_not_adopted(store, tmp_path, monkeypatch):
+    expected, _ = cached(tmp_path, monkeypatch)
+    foreign = gguf_bytes(extra=(1 << 20) + 1)
+    assert foreign != expected
+    store.store.mkdir()
+    target = model(store.store / 'm.gguf', foreign)
+    original = target.path.stat().st_ino
+    with pytest.raises(ModelError, match='verified reference'):
+        store.ensure('m.gguf', source='hf:maker/model/m.gguf')
+    assert target.path.stat().st_ino == original and target.path.read_bytes() == foreign
+
+
+def test_lan_only_never_opens_remote_to_verify_an_existing_reference(store, monkeypatch):
+    store.store.mkdir()
+    model(store.store / 'm.gguf', gguf_bytes(extra=1 << 20))
+    store.sources = lambda: 'lan'
+    monkeypatch.setattr(hub, 'pull', lambda *args, **kwargs: pytest.fail('LAN policy opened remote reference'))
+    with pytest.raises(ModelError, match='LAN only'):
+        store.ensure('m.gguf', source='hf:maker/model/m.gguf')
+
+
+@pytest.mark.parametrize('native', [False, True])
+def test_pin_present_does_not_reuse_unverified_sha_cache(store, tmp_path, native):
+    selected = model(tmp_path / 'm.gguf')
+    store.digest(selected)
+    expected = 'b' * (40 if native else 64)
+    with pytest.raises(ModelError, match='verified reference'):
+        store.digest(selected, object_id=expected)
+
+
+def test_reference_verification_failure_before_commit_cleans_only_own_new_model(store, tmp_path, monkeypatch):
+    cached(tmp_path, monkeypatch)
+    target = store.store / 'm.gguf'
+    denied = PermissionError('current verification refused')
+    monkeypatch.setattr(store, 'digest', lambda *args, **kwargs: (_ for _ in ()).throw(denied))
+    with pytest.raises(PermissionError) as caught:
+        store.ensure('m.gguf', source='hf:maker/model/m.gguf')
+    assert caught.value is denied and not target.exists()
+
+
+def test_equal_byte_replacement_during_reference_verification_preserves_foreign_inode(store, tmp_path, monkeypatch):
+    body, _ = cached(tmp_path, monkeypatch)
+    target = store.store / 'm.gguf'
+    digest = store.digest
+    foreign = []
+
+    def replace_after_hash(selected, **kwargs):
+        value = digest(selected, **kwargs)
+        target.unlink()
+        target.write_bytes(body)
+        foreign.append(target.stat().st_ino)
+        return value
+
+    monkeypatch.setattr(store, 'digest', replace_after_hash)
+    with pytest.raises(PermissionError, match='target changed'):
+        store.ensure('m.gguf', source='hf:maker/model/m.gguf')
+    assert target.stat().st_ino == foreign[0] and target.read_bytes() == body
+
+
+@pytest.mark.parametrize('cache_exists', [False, True])
+def test_existing_unverified_reference_cannot_fetch_when_automatic_downloads_off(store, tmp_path, monkeypatch, cache_exists):
+    body = gguf_bytes(extra=1 << 20)
+    store.store.mkdir()
+    selected = model(store.store / 'm.gguf', body)
+    if cache_exists:
+        (tmp_path / hashlib.sha256(body).hexdigest()).write_bytes(body)
+    monkeypatch.setattr(hub, 'pull', lambda *args, **kwargs: pytest.fail('automatic download was disabled'))
+    with pytest.raises(ModelError, match='automatic downloading is off'):
+        store.ensure('m.gguf', source='hf:maker/model/m.gguf', autodownload=False)
+    assert selected.path.read_bytes() == body
