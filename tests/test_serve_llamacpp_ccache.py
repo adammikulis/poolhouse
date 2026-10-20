@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from poolhouse import home
+from poolhouse import executable_libraries, home
 from poolhouse.sandbox import run
 from poolhouse.serve import llamacpp_ccache, llamacpp_compile
 from poolhouse.serve.build_paths import BuildFailed
@@ -229,7 +229,7 @@ def test_library_listing_survives_a_non_binary_a_symlink_loop_and_an_unreadable_
     locked.chmod(0)
     try:
         for target in (text, loop, locked, tmp_path / "missing", Path("/odd 'name'; \n")):
-            assert isinstance(llamacpp_ccache._libraries(str(target)), list)
+            assert isinstance(executable_libraries.paths(str(target), llamacpp_ccache._spawn), list)
             assert isinstance(llamacpp_ccache._tree(str(target)), str)
             assert isinstance(llamacpp_ccache._link_parent(str(target)), str)
     finally:

@@ -8,15 +8,13 @@ machine the build is exactly what it was, and says so in one line."""
 from __future__ import annotations
 
 import os
-import platform
-import re
 import shutil
 import subprocess
 import threading
 from dataclasses import dataclass
 from pathlib import Path
 
-from poolhouse import home, platform as host
+from poolhouse import executable_libraries, home, platform as host
 
 __all__ = ["ABSENT", "LANGUAGES", "MAX_SIZE", "Ccache", "find"]
 
@@ -67,14 +65,6 @@ def _spawn(argv: list[str], env: dict[str, str] | None = None) -> tuple[int, str
             proc.stdout.close()
     expired = code < 0
     return (-1, "") if flooded or expired else (code, data.decode("utf-8", errors="replace"))
-
-
-def _libraries(exe: str) -> list[str]:
-    """The shared libraries ``exe`` loads from outside the system directories."""
-    query = ["otool", "-L", exe] if platform.system() == "Darwin" else ["ldd", exe]
-    _, out = _spawn(query)
-    paths = re.findall(r"(?:=>\s+|^\s+)(/\S+)", out, re.M)
-    return [p for p in paths if not p.startswith(("/usr/lib", "/System", "/lib"))]
 
 
 def _tree(path: str) -> str:
@@ -157,6 +147,6 @@ def find() -> Ccache | None:
         return None
     directory = cache_dir()
     directory.mkdir(parents=True, exist_ok=True)
-    libs = _libraries(exe)
+    libs = executable_libraries.paths(exe, _spawn)
     trees = {_tree(exe), *(_tree(lib) for lib in libs), *(_link_parent(lib) for lib in libs)} - {""}
     return Ccache(exe, Path(os.path.realpath(directory)), tuple(sorted(trees)))

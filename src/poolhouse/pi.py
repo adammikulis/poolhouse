@@ -11,7 +11,7 @@ import time
 from collections.abc import Callable, Sequence
 from typing import Any
 
-from poolhouse import harnessing
+from poolhouse import harnessing, pi_tools
 from poolhouse.claude import DEFAULT_PORT, DEFAULT_SLOTS, alias_of
 from poolhouse.client import families
 from poolhouse.log import say
@@ -33,6 +33,7 @@ def extension(settings: dict[str, Any]) -> str:
     """Pi extension applying poolhouse's tool classifier and turn limit."""
     config = json.dumps(settings)
     return f'''import {{ spawnSync }} from "node:child_process";
+import {{ pathToFileURL }} from "node:url";
 const cfg = {config};
 const names = {{bash:"Bash",powershell:"PowerShell",read:"Read",edit:"Edit",write:"Write",grep:"Grep",find:"Glob",ls:"LS"}};
 function call(args, payload) {{
@@ -74,6 +75,20 @@ export default function (pi) {{
     if (result.failed) {{
       console.log(JSON.stringify({{type:"error",message:"Pi mutation checkpoint failed"}}));
       ctx.abort(); ctx.shutdown();
+    }}
+  }});
+  if (cfg.toolConfig) return import(pathToFileURL(cfg.toolModule).href).then(api => {{
+    const factories = [api.createReadToolDefinition,api.createBashToolDefinition,
+      api.createEditToolDefinition,api.createWriteToolDefinition,api.createGrepToolDefinition,
+      api.createFindToolDefinition,api.createLsToolDefinition];
+    for (const factory of factories) {{
+      const definition = factory(cfg.root);
+      pi.registerTool({{...definition, execute: async (_id,input) => {{
+        const result = spawnSync(cfg.python,["-m","poolhouse.pi_tools",cfg.toolConfig],
+          {{input:JSON.stringify({{tool:definition.name,input}}),encoding:"utf8",timeout:130000,maxBuffer:4194304}});
+        if (result.error || result.status !== 0) throw Error("poolhouse: isolated tool worker failed");
+        return JSON.parse(result.stdout);
+      }}}});
     }}
   }});
 }}
@@ -143,11 +158,15 @@ def _run(args, command, served, say, runner):
         with harnessing.opened(args,"pi",served,say) as run:
             config_dir = run.files.path
             (config_dir / "models.json").write_text(models(base_url,alias,window,args.max_output_tokens),encoding="utf-8")
+            tool_config = pi_tools.prepared(run.files, binary, run.cwd, args.role)
+            tool_module = json.loads(tool_config.read_text())["module"]
             protected = harnessing.protected_paths(run.files)
             hook = run.files.write("poolhouse.ts", extension({"python": sys.executable,
                 "role": args.role, "agent": run.session.name, "root": str(run.cwd),
+                "toolConfig": str(tool_config), "toolModule": tool_module,
                 "protected": protected, "maxTurns": args.max_turns, "maxOutputTokens": args.max_output_tokens,
                 "thinking": families.for_model_id(alias).think_kwargs(args.effort != "off")}))
+            run.files.lock()
             env = {**os.environ,"PI_CODING_AGENT_DIR":str(config_dir),"PI_OFFLINE":"1",
                    "POOLHOUSE_AGENT":"1","POOLHOUSE_NONINTERACTIVE":"1"}
             argv = [binary,"--provider","poolhouse","--model",alias,"--mode","json","--print","--no-session",

@@ -23,6 +23,9 @@ def test_pi_launch_is_offline_and_uses_the_policy_extension(monkeypatch, tmp_pat
             target.write_text(content, encoding="utf-8")
             return target
 
+        def lock(self):
+            seen["locked"] = True
+
     run = SimpleNamespace(files=Files(), cwd=tmp_path, brief="trusted role brief",
                           session=SimpleNamespace(name="coding-test"))
 
@@ -35,6 +38,9 @@ def test_pi_launch_is_offline_and_uses_the_policy_extension(monkeypatch, tmp_pat
     monkeypatch.setattr(pi.harnessing, "window_of", lambda _: 49152)
     monkeypatch.setattr(pi.harnessing, "opened", opened)
     monkeypatch.setattr(pi.harnessing, "protected_paths", lambda _: [str(config)])
+    def prepared(files, binary, root, role):
+        return files.write("tool-worker.json", '{"module":"/fixed/installed-pi.js"}')
+    monkeypatch.setattr(pi.pi_tools, "prepared", prepared)
 
     def run_pi(command, env):
         seen["command"], seen["env"] = command, env
@@ -49,6 +55,8 @@ def test_pi_launch_is_offline_and_uses_the_policy_extension(monkeypatch, tmp_pat
     assert 'pi.on("tool_call"' in extension and "poolhouse.harnesshook" in extension
     assert seen["env"]["PI_OFFLINE"] == "1"
     assert seen["env"]["PI_CODING_AGENT_DIR"] == str(config)
+    assert seen["locked"]
+    assert '"toolConfig"' in extension and 'pi.registerTool' in extension
 
 
 def test_pi_events_stream_usage_and_fail_closed():
