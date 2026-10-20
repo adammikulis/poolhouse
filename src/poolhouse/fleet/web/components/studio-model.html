@@ -125,6 +125,15 @@
       const id = "studio-" + S.id(),
         label = E("label", { for: id }, schema.title || name);
       let input;
+      if (name === "max_tokens" && schema.type === "integer") {
+        input = E("output-token-slider", {id});
+        input.configure({label:schema.title || name, nullable:false,
+          minimum:schema.minimum ?? 1, maximum:schema.maximum});
+        input.value = value ?? schema.default;
+        input.onchange = () => change(Number(input.value));
+        host.append(label, input);
+        return input;
+      }
       if (schema.enum) {
         input = E(
           "select",

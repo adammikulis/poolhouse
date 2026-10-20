@@ -91,7 +91,8 @@ def test_browser_sends_sdk_chat_and_reloads_saved_answer(tmp_path, sdk_playwrigh
         page = browser.new_page()
         page.goto(f"http://127.0.0.1:{served.port}/ui#chat")
         page.click('#conversation-details')
-        page.locator('#chat-output-tokens').fill('32000')
+        page.get_by_role('slider', name='Maximum output tokens', exact=True).press('End')
+        page.get_by_role('slider', name='Maximum output tokens', exact=True).press('ArrowLeft')
         page.get_by_role("textbox", name="Message", exact=True).fill("Say hello")
         page.get_by_role("textbox", name="Message", exact=True).press("Enter")
         expect(page.locator("chat-view #chat-messages")).to_contain_text("A live ")
@@ -102,7 +103,7 @@ def test_browser_sends_sdk_chat_and_reloads_saved_answer(tmp_path, sdk_playwrigh
         expect(page.locator("chat-view #chat-messages")).to_contain_text("A live SDK answer")
         request = fake.sent_to("/v1/chat/completions")[0]
         assert request["model"] == "qwen-sdk.gguf"
-        assert request["max_tokens"] == 32000 and request["stream"] is True
+        assert request["max_tokens"] == 8191 and request["stream"] is True
     finally:
         browser.close()
         served.close()
@@ -149,7 +150,7 @@ def test_sdk_preserves_reasoning_alongside_the_answer():
 
 
 @pytest.mark.slow
-def test_output_tokens_typed_while_the_chat_page_loads_are_kept(tmp_path, sdk_playwright):
+def test_output_tokens_selected_while_the_chat_page_loads_are_kept(tmp_path, sdk_playwright):
     from test_fleet_ui import Serving
 
     served = Serving(tmp_path)
@@ -161,10 +162,11 @@ def test_output_tokens_typed_while_the_chat_page_loads_are_kept(tmp_path, sdk_pl
         page.route("**/ui/models", lambda route: route.continue_() if held else held.append(route))
         page.goto(f"http://127.0.0.1:{served.port}/ui#chat")
         page.click('#conversation-details')
-        page.locator('#chat-output-tokens').fill('32000')
+        page.get_by_role('slider', name='Maximum output tokens', exact=True).press('End')
+        page.get_by_role('slider', name='Maximum output tokens', exact=True).press('ArrowLeft')
         held[0].continue_()
         page.wait_for_load_state("networkidle")
-        assert page.locator('#chat-output-tokens').input_value() == '32000'
+        assert page.get_by_role('slider', name='Maximum output tokens', exact=True).input_value() == '8191'
     finally:
         browser.close()
         served.close()
