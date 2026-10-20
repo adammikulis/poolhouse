@@ -170,13 +170,19 @@ fn acquire(node: &mut Node, board: &str, who: &str, p: &Map<String, Value>) -> R
         return Err(Error::Invalid("a remote holder has no local pid; its lease lives by expiry".into()));
     }
     let also: &[&str] = if req.resources.iter().any(Resource::pool_wide) { &[board] } else { &[] };
-    let (tree_key, now) = (node.boards.get(board).map(|h| h.names.tree(who)).unwrap_or_default(), node.leases.now());
+    let tree_key = node.boards.get(board).map(|h| h.names.tree(who)).unwrap_or_default();
     let per_tree = node.leases.cfg.max_worktree_records;
-    node.leases.holders.room_for(&req, (&tree_key, per_tree), now)?;
     tick(node, also)?;
     let (now, id) = (node.leases.now(), format!("l{}", random_hex(8)?));
     let tree = node.tree_leases(board, who);
+    let existing: Vec<String> = node.leases.table.leases.iter().map(|lease| lease.id.clone()).collect();
     let id = node.leases.table.enqueue(&node.leases.cfg, now, &req, (id, tree))?;
+    if let Err(error) = node.leases.holders.reserve(&req, (&tree_key, per_tree), now) {
+        if !existing.contains(&id) {
+            node.leases.table.leases.retain(|lease| lease.id != id);
+        }
+        return Err(error);
+    }
     tick(node, also)?;
     node.leases.save()?;
     let table = &node.leases.table;

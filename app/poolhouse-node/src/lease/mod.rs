@@ -67,7 +67,7 @@ impl Leases {
         };
         table.next_seq = table.next_seq.max(table.leases.iter().map(|l| l.seq).max().map_or(0, |s| s + 1));
         let saved = serde_json::to_vec(&table.leases)?;
-        Ok(Leases { cfg, table, holders: holders::Holders::open(dir), path: dir.join(TABLE_FILE), config_path: dir.join(CONFIG_FILE), config_raw, saved, clock: Box::new(wall_ms), deferred: false, pending: Vec::new() })
+        Ok(Leases { cfg, table, holders: holders::Holders::open(dir)?, path: dir.join(TABLE_FILE), config_path: dir.join(CONFIG_FILE), config_raw, saved, clock: Box::new(wall_ms), deferred: false, pending: Vec::new() })
     }
 
     /// Take the settings from the configuration file again when its bytes are not the ones they came from: a file that is gone

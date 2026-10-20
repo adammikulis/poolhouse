@@ -183,6 +183,10 @@ impl Node {
                 }
             }
         }
+        for lease in node.leases.table.leases.clone() {
+            let tree = node.boards.get(&lease.board).map(|host| host.names.tree(&lease.name)).unwrap_or_default();
+            node.leases.holders.note(&lease, &tree, node.leases.now())?;
+        }
         node.enrol_self();
         Ok(node)
     }
