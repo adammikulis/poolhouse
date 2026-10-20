@@ -15,8 +15,9 @@ import time
 from pathlib import Path
 
 import pytest
+from model_approval import approved
 
-from poolhouse import leasetable, limits
+from poolhouse import leasetable, limits, sentinel
 from poolhouse.serve import admission
 from poolhouse.serve.backend import LlamaServerBackend, ServerBackend, ServerInfo, ServerSpec
 from poolhouse.serve.leases import recorded_servers
@@ -26,7 +27,6 @@ from poolhouse.serve.process import pid_exists
 from poolhouse.testing.fakes import FakeLlamaServer, Served, fake_llama_binary
 from poolhouse.testing.registry import record_server
 from poolhouse.ui.verdict import THRESHOLDS
-from tests.model_approval import approved
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -107,6 +107,8 @@ def test_servers_that_fit_run_together_and_a_third_that_does_not_is_refused(
     b = held.lease(spec(second))
     assert a.port != b.port and pid_exists(a.pid) and pid_exists(b.pid)
 
+    approved(third)
+    assert sentinel.default().verify_before_load(third, cached=True)
     began = time.monotonic()
     with pytest.raises(admission.AdmissionRefused) as why:
         held.lease(spec(third))

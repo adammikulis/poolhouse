@@ -285,6 +285,14 @@ which, in one line, at once, and do every part that is not blocked.
 Drive it the way a person does before you say it works: open the interface, click through the screen, type into the box,
 press the button, read what comes back.
 
+**Inspect screenshots at every UI step.** For each changed journey, capture and open actual screenshots after every
+meaningful transition, including initial, loading, selection, configuration, dialog, error, result and return states
+that the journey reaches. Judge whether a first-time user can understand the screen, find the next action and go back;
+check readable text, consistent controls, spacing, clipping and clutter. Fix what the images reveal before continuing.
+Keep the screenshot paths with the journey record and identify fixture-backed browser evidence separately from the
+installed application. Completion includes the same screenshot inspection while driving the installed build on the
+available hardware; passing DOM assertions or merely creating image files does not satisfy this requirement.
+
 - **A request is not a person.** `curl` proves the route answers, not that a button reaches it, that it is on a screen
   anyone can find, that the reply renders or that the next screen follows. The bugs that reach a person are on the side
   of the line `curl` does not cross.

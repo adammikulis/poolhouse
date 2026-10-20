@@ -538,6 +538,9 @@ class LlamaServerBackend(ServerBackend):
         return require_binary("llama-server", explicit=self._explicit,
                               vendor_dir=self._vendor_dir, build=self._build)
 
+    def environment(self, extra=None) -> dict[str, str]:
+        return child_env(self.binary, extra)
+
     def checked(self, argv: list[str]) -> list[str]:
         """``argv`` against this build's own flags, with ``--metrics`` where it has it.
 
@@ -789,7 +792,7 @@ class LlamaServerBackend(ServerBackend):
             # nothing to summarise.
             extra_env["LLAMA_SERVER_SLOTS_DEBUG"] = "1"
 
-        env = child_env(self.binary, extra_env or None)
+        env = self.environment(extra_env or None)
         confined = None
         if confinement.wanted(self.sandboxed):
             confined = confinement.confine(
