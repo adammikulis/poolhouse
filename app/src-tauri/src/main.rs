@@ -7,6 +7,8 @@ mod launch;
 mod origin;
 mod settings;
 mod studio_watch;
+mod coding_project;
+mod native_picker;
 mod window_size;
 #[cfg(test)]
 mod security_tests;
@@ -78,6 +80,16 @@ async fn choose_studio_watch_source(app: AppHandle, state: State<'_, Shell>, req
         .map_err(str::to_string)
 }
 
+/// A fixed folder-only selector for the daemon's one-use coding-project request.
+#[tauri::command]
+async fn choose_coding_project(app: AppHandle, state: State<'_, Shell>, request_id: String, nonce: String) -> Result<serde_json::Value, String> {
+    let root = state.root.clone();
+    let port = state.port;
+    tauri::async_runtime::spawn_blocking(move || coding_project::choose(app, root, port, request_id, nonce))
+        .await.map_err(|_| "The folder selection was interrupted.".to_string())?
+        .map_err(str::to_string)
+}
+
 /// Whether the window may close now, raising the question when nothing is saved.
 #[tauri::command]
 fn on_closing(app: AppHandle, state: State<'_, Shell>) -> bool {
@@ -146,7 +158,7 @@ fn main() {
         .plugin(tauri_plugin_window_state::Builder::default().skip_initial_state("main").build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![close_choice, on_closing, renew_session, choose_studio_watch_source])
+        .invoke_handler(tauri::generate_handler![close_choice, on_closing, renew_session, choose_studio_watch_source, choose_coding_project])
         .setup(|app| {
             let handle = app.handle().clone();
             let home = app.path().home_dir()?;
