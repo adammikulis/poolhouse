@@ -17,7 +17,6 @@ def test_context_reduction_preserves_saved_output_until_slider_changes(joined, o
     joined.call('/ui/settings', cookie=joined.cookie, method='POST',
                 body={'context': 16384, 'chat_max_output_tokens': 12000})
     page, errors = open_page(joined, cookie=joined.cookie, path='/ui/#settings')
-    page.get_by_role('tab', name='Models & providers').click()
     cap = page.get_by_role('slider', name='Default maximum output tokens', exact=True)
     expect(cap).to_have_value('12000')
     context = page.get_by_role('slider', name='Context length', exact=True)
