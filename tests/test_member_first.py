@@ -24,11 +24,11 @@ from test_hub_pull import blob
 from poolhouse import hub, macauth, sentinel
 from poolhouse.fleet import tailnet as tn, tls
 from poolhouse.fleet.onboard import lan, manifest as mf, memberfirst, routes
-from poolhouse.fleet.onboard.human import mint
 from poolhouse.fleet.onboard.members_cli import cmd_members
 from poolhouse.fleet.onboard.requests import Device, Devices
 from poolhouse.fleet.onboard.sharing import Licences
 from poolhouse.hub import members as hub_members, origins, transfer as pulling
+from poolhouse.sentinel.human import mint
 from poolhouse.sentinel.store import Holding
 from poolhouse.testing.fakehub import fake_hub
 

@@ -22,12 +22,12 @@ from typing import Any
 
 from poolhouse import home, macauth
 from poolhouse.log import say, warn
+from poolhouse.sentinel.human import HumanRequired, mint
 from poolhouse.units import parse_duration
 
 from ..discovery import memberships
 from ..tls import TlsUnavailable, identity
 from . import modelstore
-from .human import HumanRequired, mint
 from .join_code import DEFAULT_SHARE_PORT
 from .manifest import SHARING_LEVELS, Entry, Signer, verify
 from .memberfirst import quarantine_veto

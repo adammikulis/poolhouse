@@ -37,7 +37,7 @@ def test_catalogue_preserves_registered_and_unsupported_local_models(monkeypatch
                            mmproj=None, is_complete=True)
     requested = []
     monkeypatch.setattr(models.hub, 'discover', lambda **kwargs: requested.append(kwargs) or [fast, small])
-    monkeypatch.setattr(models.registry, 'listing', lambda: [{'name': 'trained', 'path': str(tmp_path)}])
+    monkeypatch.setattr(models.deciders, 'listing', lambda: [{'name': 'trained', 'path': str(tmp_path)}])
     choices = models.model_choices()
     assert requested == [{'kind': 'vision'}]
     assert choices['decision'][0]['label'] == 'Strands Decider 2B (default)'
