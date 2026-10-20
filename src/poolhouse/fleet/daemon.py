@@ -482,11 +482,14 @@ class DaemonRuntime:
         studio = getattr(self.interface, "studio", None)
         if studio is not None:
             studio.close()
+        executions = getattr(self.interface, "studio_executions", None)
         try:
             self.runner.shutdown()
         finally:
             if studio is not None:
                 studio.store.close()
+            if executions is not None:
+                executions.close()
             pool_store = getattr(self.interface, "_studio_pool_store", None)
             if pool_store is not None:
                 pool_store.close()

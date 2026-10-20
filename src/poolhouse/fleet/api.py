@@ -39,6 +39,7 @@ from . import (
     device_auth,
     invite_routes,
     projects as project_routes,
+    studio_device_routes,
     studio_library,
 )
 from .availability import Availability, parse_window
@@ -429,7 +430,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 return
             if project_routes.answer(self, daemon.projects, parsed):
                 return
-            if studio_library.answer(self, ui, path):
+            if studio_device_routes.answer(self, ui, path) or studio_library.answer(self, ui, path):
                 return
             if path == "/health":
                 status = runner.status()
@@ -619,7 +620,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 return
             if project_routes.register(self, daemon.projects, pool_key_path, body):
                 return
-            if studio_library.answer(self, ui, self.path.split("?")[0], body):
+            if studio_device_routes.answer(self, ui, self.path.split("?")[0], body) or studio_library.answer(self, ui, self.path.split("?")[0], body):
                 return
             try:
                 self._route_post(body or b"{}")
@@ -834,6 +835,8 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             if body is None:
                 return
             parsed = urllib.parse.urlparse(self.path)
+            if studio_device_routes.answer(self, ui, parsed.path, body):
+                return
             if not parsed.path.startswith("/files/"):
                 self._send(404, {"error": "no such route"})
                 return
