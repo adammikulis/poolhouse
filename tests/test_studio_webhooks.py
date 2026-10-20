@@ -80,7 +80,8 @@ def _sender(server, client_context, secret):
 
 @pytest.fixture
 def ingress(tmp_path):
-    active = {'generation': GENERATION, 'scope': 'pool-one', 'subscription': 'subscription-one', 'enabled': True}
+    active = {'generation': GENERATION, 'scope': 'pool-one', 'subscription': 'subscription-one',
+              'enabled': True, 'protocol': studio_webhooks.PROTOCOL}
     calls, records, provisioned = [], {}, []
     allowed = {'value': True}
     def current(source):
@@ -127,6 +128,29 @@ def test_real_tls_replay_attaches_and_different_raw_content_conflicts(ingress):
     assert send(b'{ "text": "example" }')[0] == 409
     assert holder.register(PRINCIPAL, SOURCE, GENERATION) == public
     assert 'secret' not in public and provisioned[0]['secret'] not in json.dumps(first)
+
+
+def test_producer_attempt_is_mandatory_and_mac_bound_over_real_tls(ingress):
+    _, active, _, calls, _, provisioned, _, send, _ = ingress
+    active['protocol'] = studio_webhooks.PRODUCER_PROTOCOL
+    assert send()[0] == 403
+    raw, attempt = b'{"text":"example"}', 'd' * 64
+    frame = ('poolhouse-studio-producer-webhook-v1\nPOST\n/studio/ingest/' + SOURCE
+             + '\n' + str(NOW) + '\nevent-one\n' + hashlib.sha256(raw).hexdigest()
+             + '\n' + GENERATION + '\n' + attempt).encode()
+    signature = hmac.new(provisioned[0]['secret'].encode(), frame, hashlib.sha256).hexdigest()
+    headers = {'X-Poolhouse-Attempt': attempt, 'X-Poolhouse-Signature': signature}
+    assert send(raw, changes={**headers, 'X-Poolhouse-Attempt': 'e' * 64})[0] == 403
+    assert send(raw, changes=headers, duplicates=[('X-Poolhouse-Attempt', attempt)])[0] == 403
+    assert calls == []
+    assert send(raw, changes=headers)[0] == 200
+    assert calls[0]['attempt'] == attempt
+
+
+def test_generic_webhook_cannot_select_producer_attempt_protocol(ingress):
+    *_, calls, _records, _provisioned, _public, send, _ui = ingress
+    assert send(changes={'X-Poolhouse-Attempt': 'd' * 64})[0] == 403
+    assert calls == []
 
 
 @pytest.mark.parametrize('change', ['signature', 'generation', 'timestamp', 'duplicate', 'query', 'source', 'method', 'encoding', 'chunked'])
