@@ -94,6 +94,7 @@ class _Server(socketserver.ThreadingTCPServer):
 
     def server_close(self) -> None:
         self._cancel_waiters()
+        self.broker.close_decisions()
         super().server_close()
 
     def _cancel_waiters(self) -> None:
