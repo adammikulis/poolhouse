@@ -220,7 +220,7 @@
                 "Unpack group",
               ),
             );
-          if (this.context.length) {
+          if (this.context.length && ((spec.inputs?.length || 0) + (spec.outputs?.length || 0) + Object.keys(spec.parameters?.properties || {}).length)) {
             const definition = this.context.at(-1).definition;
             box.append(E("h2", {}, "Group interface"));
             for (const side of ["inputs", "outputs"])

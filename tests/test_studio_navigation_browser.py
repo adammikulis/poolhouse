@@ -136,6 +136,8 @@ def test_group_navigation_is_compact_and_interface_controls_stay_in_inspector(st
     assert nav.get_by_role('textbox').count() == 0
     expect(page.locator('.studio-inspector').get_by_label('Group name', exact=True)).to_be_visible()
     for summary in page.locator('.studio-command > summary').all():
+        if not summary.is_visible():
+            continue
         rect = summary.bounding_box()
         assert rect['x'] >= 0 and rect['x'] + rect['width'] <= width
     page.screenshot(path=tmp_path / 'studio-navigation.png')

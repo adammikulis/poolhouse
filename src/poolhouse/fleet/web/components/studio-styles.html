@@ -40,10 +40,8 @@
   .studio-command button { display: block; width: 100%; text-align: left; margin: 0; }
   .studio-command label { display: block; margin: 0; }
   .studio-command select { max-width: min(280px, 70vw); }
-  .studio-heading h1 {
-    font-size: 24px;
-    margin: 0 auto 0 0;
-  }
+  .studio-heading { position: relative; }
+  #studio-tools-toggle { display: none; }
   .studio-identity { flex: 1; min-width: 180px; }
   .studio-heading input { width: 100%; min-width: 0; max-width: none; }
   .studio-heading > button { flex-shrink: 0; }
@@ -276,7 +274,12 @@
       width: 100%;
     }
     .studio-heading .studio-identity { flex-basis: 100%; }
-    .studio-heading .studio-command-bar { order: 2; width: 100%; flex-wrap: wrap !important; }
+    #studio-tools-toggle { display: block; }
+    .studio-heading > button { padding-inline: 7px; font-size: 12px; }
+    .studio-heading .studio-command-bar { display: none; position: absolute; top: 100%; left: 0; right: 0; flex-wrap: wrap; background: var(--bg-raised); border: 1px solid var(--line); padding: 8px; border-radius: 8px; box-shadow: var(--shadow); }
+    .studio-heading .studio-command-bar[data-expanded="true"] { display: flex; }
+    .studio-command { position: static; }
+    .studio-command > div { left: 0 !important; right: 0 !important; top: 100%; min-width: 0; }
     .studio-command summary { padding-inline: 6px; font-size: 12px; }
     .studio-location-row { flex-wrap: wrap; gap: 6px; }
     .studio-group-path { flex-basis: 100%; overflow: hidden !important; }

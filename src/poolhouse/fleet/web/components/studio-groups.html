@@ -261,13 +261,13 @@
           this.render();
           this.querySelector("#studio-group-path [aria-current]")?.focus();
         },
-        groupPath() {
+        groupPath(settings = true) {
           const box = this.querySelector("#studio-group-path"),
             title = this.querySelector("#studio-title").value || "Untitled experiment";
           box.setAttribute("role", "navigation");
           box.setAttribute("aria-label", "Canvas location");
           box.replaceChildren();
-          this.querySelector(".studio-group-settings")?.remove();
+          if (settings) this.querySelector(".studio-group-settings")?.remove();
           const origin = this.context.at(-1);
           const navigate = (event, depth) => {
             if (event.currentTarget.isConnected && this.context.at(-1) === origin) this.leaveGroup(depth);
@@ -290,9 +290,11 @@
                 ? crumb(current.definition.name, index + 1)
                 : E("span", {"aria-current": "location", tabindex: -1}, current.definition.name));
             }
-            const inspector = this.querySelector(".studio-inspector");
-            if (!this.selected.size) inspector.replaceChildren(this.groupSettings());
-            else inspector.append(this.groupSettings());
+            if (settings) {
+              const inspector = this.querySelector(".studio-inspector");
+              if (!this.selected.size) inspector.replaceChildren(this.groupSettings());
+              else inspector.append(this.groupSettings());
+            }
           } else box.append(E("span", {"aria-current": "location", tabindex: -1}, title));
           this.querySelector("#studio-run").title = this.context.length
             ? "Run the entire workflow, including nodes outside this group" : "Run the entire workflow";
@@ -308,7 +310,8 @@
             this.checkpoint();
             current.definition.name = name.value || "Reusable group";
             this.changed(false);
-            this.groupPath();
+            this.groupPath(false);
+            this.library();
           };
           box.append(E("label", {}, "Group name", name));
           for (const side of ["inputs", "outputs", "parameters"])

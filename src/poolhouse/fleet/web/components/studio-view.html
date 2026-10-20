@@ -10,7 +10,7 @@
         <input id="studio-title" aria-label="Workflow title" value="Untitled experiment" />
         <p class="studio-status" role="status" aria-live="polite"></p>
       </div>
-    <div class="studio-toolbar studio-command-bar" role="toolbar" aria-label="Workflow editing">
+    <div id="studio-command-bar" class="studio-toolbar studio-command-bar" role="toolbar" aria-label="Workflow editing">
       <details class="studio-command"><summary>Open workflow</summary><div>
         <label>Saved workflows<select id="studio-workflows" aria-label="Saved workflows"><option value="">New workflow</option></select></label>
       </div></details>
@@ -33,6 +33,7 @@
       <button id="studio-new" type="button">New</button>
       <button id="studio-save" type="button">Save</button>
       <button id="studio-run" type="button" class="studio-primary">Run workflow</button>
+      <button id="studio-tools-toggle" type="button" aria-label="Workflow tools" aria-expanded="false" aria-controls="studio-command-bar">Tools</button>
     </header>
     <div class="studio-location-row">
       <div class="studio-workspace-tabs" role="tablist" aria-label="Studio workspace">
@@ -194,8 +195,9 @@
         this.querySelector("#studio-search").oninput = () => this.library();
         this.querySelector("#studio-library-category").onchange = () => this.library();
         this.querySelector("#studio-title").oninput = () => this.selectionIntent++;
-        this.querySelector("#studio-title").onchange = () =>
-          this.changed(false);
+        this.querySelector("#studio-title").onchange = () => {
+          this.changed(false); this.groupPath(false);
+        };
         this.querySelector("#studio-workflows").onchange = (e) => {
           this.selectionIntent++;
           this.perform(() =>
