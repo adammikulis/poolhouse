@@ -71,6 +71,8 @@ node never holds it and carries no signer for it. Each governed step is the path
 * **Removing.** A removal is a `remove` act signed by the admin key and submitted to one member; the others learn it by syncing.
 * **Policy.** A pool's join policy is chosen at founding and never changes in place, so no step moves it (`grants-gate` shows the refusal).
 
+The rig plants its key in each node's person keys at the level a step names (`wire.plant_key`; `phone` unless the step says otherwise), so a step shows what the pool does with a key at that level and none shows the level was earned: no phone, protected helper or prompt is behind it (planted, not custody).
+
 What this does not exercise is the custody of a person's real key: the typed `yes` on the terminal device and the operating system's keystore.
 The rig's key signs without being asked, which is exactly what the node cannot tell apart from a person's key; those are the tests of
 `tests/test_board_person_key.py`, not of a pool. No device of the rig is the installed software on the real home (`poolhouse.real_machine`), so no device of a check
@@ -80,7 +82,10 @@ asks the account's Keychain for a key (the updater step's activity log did, and 
 
 | step | what it proves |
 |---|---|
-| `found-by-api` | an agent founds the pool through the library's own founding code, `poolhouse.board.founding`, against the node as shipped: the key the rig's person typed yes for signs the charter, which names this device first, a charter no key accepted founds nothing, this device is the pool's first member and a second call says "already in the pool" |
+| `found-by-api` | an agent founds the pool through the library's own founding code, `poolhouse.board.founding`, against the node as shipped: the key the rig planted in the node's person keys at level phone signs the charter, which names this device first (planted, not custody: no phone and no prompt is behind it), a charter no key accepted founds nothing, this device is the pool's first member and a second call says "already in the pool" |
+| `found-computer-only` | the person's key planted at level computer founds a pool, every device joins it, `pool_status` reports every floor at computer and the level `computer`; a key planted at weak founds nothing and leaves no pool behind (planted, not custody) |
+| `remove-computer-only` | in that pool the first device takes the computer-level key's signed removal of one member and every other member records it (planted, not custody) |
+| `floor-held` | a change to the pool's holds that only a computer-level key signed shows `LEVEL:` and "waits 7 days" on its card and takes effect after seven days; the same change signed by a phone-level key takes effect at once (planted, not custody) |
 | `join-open` | a pool founded `open`: a device on the same network joins with no code, admitted by the host's own key and recorded as joined by `open`; a device only reachable through NAT or loopback is refused with the reason |
 | `join-secure` | the first device founds a secure pool; every device joins with a join code once the person's key has signed its admit, one after another |
 | `join-wrong-code` | a device the person admitted that gives a wrong code is refused, and the right one is refused after three wrong tries (the window is closed) |

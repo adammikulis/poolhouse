@@ -215,7 +215,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `pool_cosign` | token with the grant `admin_manage` | `act` | adds this device's signer's signatures to an act the pool holds |
 | `pool_submit` | | `act` | takes an act a person's key signed elsewhere (the typed-yes path, a phone, another device); the signatures are the authority, so no grant; 120 a minute |
 | `pool_draft` | | `kind`, `body` | `{act, sign_bytes, summary}`: the act this pool would take next, unsigned, the bytes a key signs and what a person is shown, for a key that signs outside the node |
-| `pool_draft_found` | | `title`, `policy`, `project`, `keys` (each `{key, person, label}`; `key` is an Ed25519 key of 64 hex digits or a phone's P-256 point of 130, and the charter says which as `alg`; a key that names its strength is refused) | `{charter, anchor, accept, summary}`: the charter with this device as its `first` device and blank acceptances, each key `strong` only when a phone enrolled it on this device and `weak` otherwise, and for each key its `alg` and the bytes it signs to accept it; the rig or person signs them (a P-256 key in strict DER with `s` in the lower half of the group) and hands the charter back to `pool_found` |
+| `pool_draft_found` | | `title`, `policy`, `project`, `keys` (each `{key, person, label}`; `key` is an Ed25519 key of 64 hex digits or a phone's P-256 point of 130, and the charter says which as `alg`; a key that names its level is refused) | `{charter, anchor, accept, summary}`: the charter with this device as its `first` device and blank acceptances, each key at the `assurance` level this device recorded for it when the key was enrolled (`phone` when a phone enrolled it, `weak` for a typed yes) and the `floors` that follow from the levels present, and for each key its `alg` and the bytes it signs to accept it; the rig or person signs them (a P-256 key in strict DER with `s` in the lower half of the group) and hands the charter back to `pool_found` |
 | `pool_found` | token with the grant `pool_create` | `act` (a founding act whose keys accepted it), or `charter` (the drafted one with the acceptances filled; the node makes the act) | `{pool, name, policy, epoch}`: founds the pool of an act signed elsewhere; the charter must name this device as its `first`, which is then the pool's first member with no admit |
 | `add_device` | token with the grant `add_device` | `passphrase` (else a six-digit code is made), `ttl_s`, `presigned` (true: open the window with no signer on this node, for a device an admin already signed an admit for and submitted here; the window admits no other) | `{code, expires_in_s, port, fingerprint}` |
 | `join_pool` | token with the grant `join_pool` | `host, port, passphrase`; without a passphrase `fingerprint` (join under `open`) | `{pool, peer}` |
@@ -464,8 +464,8 @@ without a password (or `pkexec` set up to allow the action to anyone) lets the p
 the person who runs such a rule has already given that power to every program of the account.
 
 **Accepted residual: `persons.json` is a plain file.** The OS user can edit it with the node stopped (documented at `src/grants/person.rs`), so
-a program that can stop the node and write its state directory can plant a key, including one marked `phone: true`, which a pool's charter
-then lists as strong; the operating-system sandbox of agents (slice S0 of
+a program that can stop the node and write its state directory can plant a key, including one recorded at `assurance: phone`, which a pool's charter
+then lists at that level; the operating-system sandbox of agents (slice S0 of
 `docs/compromised-agents.md`) is what closes it, not the node.
 
 **A phone is a person key too.** An ECDSA P-256 key made in a phone's Keystore is enrolled in `persons.json` with `alg: p256` and `phone: true` (its fingerprint is the SHA-256 of its 65-byte
@@ -825,7 +825,7 @@ the fix for the first that fails.
 pool, through admin keys; a device never does, and the one thing a member device does alone is leave.
 
 - **The charter** (`gov/charter.rs`): the pool's name, join policy (`open` or `secure`, fixed for the pool's life), first device,
-  admin keys, thresholds, holds; version 3 (a charter of another version is not read). The first device is the founding computer's
+  admin keys, thresholds, holds, floors; version 4 (a charter of another version is not read). The first device is the founding computer's
   certificate (lower-case hex of an Ed25519 device certificate) and name (at most 40 characters, the computer's own word, shown quoted
   beside the certificate's fingerprint), part of the anchor, so the keys that accept the charter
   accept that computer as the pool's first member and no admit follows; the roster folds it as an admit with `how: found`, ahead of
@@ -838,13 +838,20 @@ pool, through admin keys; a device never does, and the one thing a member device
 - **Admin keys** (`gov/keys.rs`): an Ed25519 public key (64 hex digits, signatures of 64 bytes) or a phone's ECDSA P-256 public
   point (130 hex digits, signatures in strict DER with no padding and `s` in the lower half of the group, the one form a pool
   takes), each listed with its `alg` and its own acceptance (its signature over the pool, the charter it follows, its algorithm,
-  role, strength and person), so a key is listed only by its holder and an acceptance holds for the one charter it names. An
+  role, assurance level and person), so a key is listed only by its holder and an acceptance holds for the one charter it names. An
   algorithm this build does not know, a key whose length does not match its `alg` and a signature of the wrong form for its key are
-  refused; the verifier picks the algorithm from the key. `strong` keys (a presence the signing process
-  cannot supply) are the only ones that count toward a threshold, a removal or a cancel; a `weak` key may end a delegate and
-  nothing else. The `recovery` role counts toward no immediate act and leaves the admin set only with its own signature.
-  Thresholds count distinct people (`unit: person`) or keys: `routine` (remove, cancel, end a delegate) 1 by default, `sensitive`
-  (admin changes, thresholds, holds, a delegate) 1 while one person is listed and 2 once two are.
+  refused; the verifier picks the algorithm from the key. Each key has an **assurance level**, lowest first: `weak` (a typed yes), `computer`
+  (the computer's own prompt), `native` (a protected helper), `phone` (a phone's hardware key). The node derives a level from how
+  the key was enrolled on this device and a caller never names one; a charter lists a key at no level above what the founding device
+  recorded. The charter's **floors** name the lowest level that counts for each class of act (`routine`: cancel, end a delegate;
+  `sensitive`: admit a device, remove a member; `governance`: admins, thresholds, holds, floors, delegate, recovery key). By default
+  the routine floor is the lowest level among the founding admin keys above `weak` and the sensitive and governance floors the
+  highest. A key counts toward a class only at or above its floor; a key below it is listed and counts for nothing, and a `weak`
+  key may end a delegate and nothing else. A floor is never `weak`, and a floor no listed key holds is refused. The `recovery` role
+  counts toward no immediate act.
+  Thresholds count distinct people (`unit: person`) or keys: `routine` (cancel, end a delegate) 1 by default, `sensitive`
+  (remove, admit, and for governance acts the admin changes, thresholds, holds, floors, a delegate) 1 while one person holds a key
+  at the floor and 2 once two do.
 - **Acts** (`gov/act.rs`, `gov/body.rs`): `{v, pool, epoch, kind, body, at_ms, not_after, nonce, prev, signatures}` (version 2) signed over
   `poolhouse/pool-act/v2`, a line break and the canonical JSON without the signatures; the id of an act is the hash of those bytes,
   so co-signers sign the same bytes and the signature sets of two copies merge. `prev` is the hash of the charter the signer knew.
@@ -855,7 +862,7 @@ pool, through admin keys; a device never does, and the one thing a member device
   `known`, never refused for its age. A charter is founded (`pool_create`, `pool_found`) only within an hour of its `at_ms`, which
   every key accepted, and never when it is dated ahead.
   Kinds: `found`, `admit`, `remove`, `leave`, `admin_add`, `admin_remove`, `veto`, `cancel`, `set_threshold`, `set_holds`,
-  `set_mode`, `delegate`, `delegate_end`. A body field nobody defined, an act over 16 KiB, more than eight signatures, one signer
+  `set_mode`, `set_floors`, `recovery_replace`, `delegate`, `delegate_end`. A body field nobody defined, an act over 16 KiB, more than eight signatures, one signer
   named twice, a kind this build does not know, an act for another pool, one dated more than five minutes ahead and one whose
   signature does not verify are refused, and each refusal is recorded with its reason (`pools/<id>/refused.json`, the last 256).
   An admin act for a charter the pool has left behind, and an act signed only by admins that are no longer listed (unless the cut
@@ -863,17 +870,21 @@ pool, through admin keys; a device never does, and the one thing a member device
 - **Time** (`gov/clock.rs`): every hold, window and expiry is measured in the awake time of this device (its monotonic clock, saved
   at checkpoints, not running while it sleeps) from the first moment it had the act with every signature the act needs. The wall
   clock and the signer's `at_ms` are never read for a delay.
-- **The chain** (`gov/chain.rs`): `admin_add`, `admin_remove`, `set_threshold`, `set_holds` and `set_mode` that follow one charter
-  form one step and take the pool to the next epoch after the longest hold among them (24 hours to add or remove an admin; a
-  weakening, 24 hours; a strengthening, none) with no valid `cancel` seen first. Removals of one step all apply, unless together they
-  would leave fewer strong admins than the sensitive threshold needs: then none applies and a dispute opens; one removal that alone
-  would is void. An add or a threshold change counts only if its signers survive the step's removals. Two that cannot both hold are
-  settled by the number of distinct strong signers, then by the lower signer fingerprints; a tie that remains opens a dispute and
+- **The chain** (`gov/chain.rs`): `admin_add`, `admin_remove`, `set_threshold`, `set_holds`, `set_mode`, `set_floors` and
+  `recovery_replace` that follow one charter form one step and take the pool to the next epoch after the longest hold among them
+  (24 hours to add or remove an admin; a weakening, which includes lowering a floor, 24 hours; a strengthening, none) with no valid
+  `cancel` seen first. When every key that signed an act is at level `computer`, the hold is seven days whatever the act; listing the
+  first recovery key, replacing the recovery key and removing it are held seven days whoever signed them, and the recovery key can
+  cancel a `recovery_replace` or the removal of itself. A change that lowers a floor needs signers at the old floor; a change that
+  raises one to a level no listed key holds is void. A key is listed (`admin_add`, `recovery_replace`) at no level above the highest level among the keys that signed its listing, so a computer's word cannot list a phone key. A cancel counts at the governance floor. Removals of one step all apply, unless together they
+  would leave fewer admins at the governance floor than the sensitive threshold needs, or no key at a floor: then none applies and a
+  dispute opens; one removal that alone would is void. An add or a threshold change counts only if its signers survive the step's
+  removals. Two that cannot both hold are settled by the number of distinct signers at the floor, then by the lower signer fingerprints; a tie that remains opens a dispute and
   applies neither. A `veto` by the key a removal names ends the removal and opens a dispute. A dispute (seven days) pauses the chain.
   A key that is removed loses every signature of its that is not in the cut its removal carried. An act that is complete on this
   device only after the first act of its step has run its hold is too late to join or contest the step.
-- **The roster** (`gov/roster.rs`): built from scratch from the acts and the chain, never from a row a member sent. `admit` by a
-  strong admin; by a live delegate (a device an admin act lets sign `admit` for 30 days, at most 3 an hour and 10 a day by the order
+- **The roster** (`gov/roster.rs`): built from scratch from the acts and the chain, never from a row a member sent. `admit` and `remove` by
+  a key at the sensitive floor; a `delegate` act is a governance act, so a delegate that only `computer` keys granted starts seven days later; by a live delegate (a device an admin act lets sign `admit` for 30 days, at most 3 an hour and 10 a day by the order
   this device first saw the admits); in an open pool by any member's own device key with `via: segment`, at most 5 an hour. A device
   signature is taken only on the device's own `leave` (and alone) and on an `admit` from such a device; when an act is relayed with
   a signature its signer may not give, that signature is refused, and the roster credits an admit to the first of its signers that
@@ -907,13 +918,15 @@ pool, through admin keys; a device never does, and the one thing a member device
   `Signer` (the phone approval, when it exists, and a rig's in-memory key for tests); the typed-yes person key path signs outside the
   node: `pool_draft` makes the act and the bytes to sign, `pool_found` and `pool_submit` take the signed act back. A no from the
   person is respected for ten minutes for that kind of act, and a person is asked at most twelve times in ten minutes. The sentence
-  a person signs an act under (`gov/describe.rs`, at most 300 characters) names the key with its person, strength and fingerprint, the
-  device with its certificate, and the numbers of a threshold or a hold, never only a label the proposer wrote. A charter is accepted
-  under one sentence, "Make the pool 'home' and put the computer 'name' (certificate ...) in it.", so founding is one signature per
+  a person signs an act under (`gov/describe.rs`, at most 300 characters) names the key with its person, level and fingerprint, the
+  device with its certificate, and the numbers of a threshold or a hold, never only a label the proposer wrote. A `LEVEL:` line follows the
+  sentence on a line of its own, written from the charter's floor for the kind of act, so the 300-character cut never reaches it: where
+  the act is approved from and what that does not stop, and that a governance act signed by computer keys alone waits seven days. A charter is accepted
+  under one sentence, "Make the pool 'home' and put the computer 'name' (certificate ...) in it. It is approved from this computer.", so founding is one signature per
   key and no second prompt. `pool_found` is
-  granted by the name of the pool the act founds and refuses a charter with no strong admin key, which nobody could admit a device
-  under, and, once the grant is held (a session without it is told only that the grant is missing), a charter that calls a key strong that no phone enrolled on this device (the strength is this node's to derive, from the `phone`
-  mark of the key in `persons.json`, and is never read from a caller).
+  granted by the name of the pool the act founds and refuses a charter with no admin key above `weak`, which nobody could admit a device
+  under, and, once the grant is held (a session without it is told only that the grant is missing), a charter that lists a key above the level this node recorded for it (the level is this node's to derive, from the `assurance`
+  of the key in `persons.json`, and is never read from a caller). `pool_status.governance` carries `levels` (the levels held, highest first), `floors` and `approved_from`.
   `POOLHOUSE_STEP_LEDGER` names a file that every step asked of a person is written to, one JSON line each.
 - **The unfounded pool of one.** A fresh device (no `pools/<id>/`) is its own only member: `pool_status` says `governance.mode:
   unfounded` with an empty `pool`, nothing is written, it needs no signer to exist and it admits nobody (`add_device` answers "This
@@ -1033,7 +1046,7 @@ sessions is fenced as untrusted data on the way out and a credential in outgoing
 `found(session, admin, name, policy)` drafts the charter (which names this device as the pool's first member), has the person's key sign its acceptance and submits it,
 after the grant `pool_create` came from the phone's card (`with_card` asks the card for any missing grant and sends the call again after the
 tap) or from the first key. It answers "already in the pool X" for a device that is founded, and refuses a key the node does not derive as
-strong before the person is asked (the node's draft of the charter says which keys it derives as strong). `ph.pool.found`, `ph.pool.status` (`governance`, `name`, `missing`) and `ph.pool.join` (a code, or an open pool's fingerprint)
+above `weak` before the person is asked (the node's draft of the charter says the level it derives for each key). `ph.pool.found`, `ph.pool.status` (`governance`, `name`, `missing`) and `ph.pool.join` (a code, or an open pool's fingerprint)
 wrap it, and `poolhouse-workspace pool found` is the agent's command; docs/pools-and-serving.md, 1.17, says what is built and what remains.
 
 ## The person's session (the UI)

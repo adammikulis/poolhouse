@@ -25,7 +25,7 @@ __all__ = ["Admin", "Founded", "Refusal", "Terms", "default_admin", "found", "fo
 POOL_GRANT_LASTS = "10m"
 CARD_WAIT_S = 120.0
 POLICIES = ("open", "secure")
-STRONG = "strong"
+WEAK = "weak"
 NEEDS_PHONE = "A pool needs a key that asks for you each time it signs, which is your phone; link your phone in the Poolhouse app and tell me again."
 
 
@@ -136,14 +136,14 @@ def _allowed(session: Session, admin: Admin, name: str, wait_s: float, voice: pr
 
 
 def _draft(session: Session, admin: Admin, name: str, policy: str) -> dict[str, Any]:
-    """The node's draft of the charter of the admin key: the strength of the key is what the node derives."""
+    """The node's draft of the charter of the admin key: the level of the key is what the node derives."""
     key = {"key": admin.key.public.hex(), "person": admin.person, "label": admin.label}
     return dict(session.client.call("pool_draft_found", "", session.token, title=name, policy=policy, project="", keys=[key]))
 
 
-def _strong(draft: dict[str, Any]) -> bool:
-    """Whether the node's draft lists an admin key it derives as strong."""
-    return any(k["role"] == "admin" and k["strength"] == STRONG for k in draft["charter"]["admins"])
+def _counts(draft: dict[str, Any]) -> bool:
+    """Whether the node's draft lists an admin key it derives at a level above weak."""
+    return any(k["role"] == "admin" and k["assurance"] != WEAK for k in draft["charter"]["admins"])
 
 
 def _charter(admin: Admin, draft: dict[str, Any]) -> dict[str, Any]:
@@ -188,7 +188,7 @@ def found(session: Session, admin: Admin, name: str, policy: str = "secure", ter
         draft = _draft(session, admin, name, policy)
     except NodeError as err:
         raise _refused(err, needs="none") from None
-    if not _strong(draft):
+    if not _counts(draft):
         raise Refusal(NEEDS_PHONE, needs="device", where="the Poolhouse app on your phone")
     _allowed(session, admin, name, terms.wait_s, terms.voice)
     try:

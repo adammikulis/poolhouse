@@ -111,8 +111,6 @@ def _missing(gov: dict) -> str:
         return str(gov.get("say") or "This device is in no pool yet; ask me to make one or to join one.")
     if gov.get("dispute"):
         return str(gov["dispute"]["say"])
-    if gov.get("weak_keys_only"):
-        return founding.NEEDS_PHONE
     if gov.get("waiting_for_signers"):
         return "A change to this pool is waiting for a signature from your phone."
     return ""

@@ -18,6 +18,7 @@ from pool_check import (
     dock,
     steps_build,
     steps_grants,
+    steps_levels,
     steps_members,
     steps_nat,
     steps_phone,
@@ -35,6 +36,9 @@ SLOW_ENV = "POOLHOUSE_POOL_CHECK"
 PLATFORMS = ("docker", "native", "windows-wsl")
 STEPS = [
     ("found-by-api", steps_pool.found_by_api),
+    ("found-computer-only", steps_levels.founds_computer_only),
+    ("remove-computer-only", steps_levels.removes_computer_only),
+    ("floor-held", steps_levels.a_floor_holds_what_a_computer_alone_signed),
     ("join-open", steps_pool.join_open),
     ("join-secure", steps_pool.join_secure),
     ("join-wrong-code", steps_pool.a_wrong_code_is_refused),

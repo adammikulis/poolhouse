@@ -33,9 +33,12 @@ Poolhouse pools devices. Devices join a pool, the pool's compute is pooled, and 
 | **peer** | Only in network-protocol text: the other end of a connection, which may not yet be a member. Everywhere else, say member or device. |
 | **admin** | A person key that governs a pool: it is named in the pool's charter, with its own acceptance, and signs the acts that change the pool. A device is never an admin. |
 | **charter** | The signed document that names a pool's admins, thresholds, holds and join policy, or a shared board's pools. The pool id is the hash of the first one. |
-| **strong key**, **weak key** | A person key whose every signature needs a presence the signing process cannot supply (a phone's biometric, a hardware key's touch), or one that does not (a key a process of the account can use). Only strong keys count toward a removal or a change of admins. |
+| **assurance level**, **level** | How much stands between a program on the computer and a key's signature, lowest first: `weak` (a typed yes), `computer` (the computer's own prompt), `native` (a protected helper), `phone` (a phone's hardware key and biometric). The node derives it from how the key was enrolled; a charter records it for each key and a caller never names one. |
+| **floor** | The lowest level at which a key counts for a class of act (routine, sensitive or governance); the charter names the three, and a floor is never `weak`. A key below the floor is listed and counts for nothing. Raising a floor takes effect at once; lowering one is held and needs keys at the old floor. |
+| **governance act** | An act that changes who governs a pool: its admins, thresholds, holds, floors, delegate or recovery key. It is held seven days when only `computer` keys signed it. |
+| **weak key** | A person key at level `weak`: one a process of the account can use with no prompt of the computer's own (a typed yes). It counts toward nothing but ending a delegate. |
 | **check words** | Three words made from a fingerprint or a key exchange, for a person to compare on two screens. |
-| **hold** | The delay before a risky act takes effect, counted on each device from the first moment it had the whole act, in which any strong admin cancels it. |
+| **hold** | The delay before a risky act takes effect, counted on each device from the first moment it had the whole act, in which any admin key at the floor cancels it. |
 | **dispute** | The pause of the acts that change who runs a pool when two admins' acts conflict. |
 | **delegate** | A device an admin lets sign `admit` for a time, at a limited rate; it exists only where its key is held by the keystore. |
 | **backup** | A second admin key, so that losing one phone does not lock the pool. |

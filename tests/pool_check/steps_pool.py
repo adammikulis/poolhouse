@@ -61,7 +61,7 @@ def a_wrong_code_is_refused(world: World) -> None:
 
 
 def found_by_api(world: World) -> str:
-    """An agent founds the pool through the library's own founding code, as the shipped API runs it: the admin key the node holds as a phone's signs the charter that names this device first, the node takes it, this device is the first member, a second try says it is there and a charter no key accepted founds nothing."""
+    """An agent founds the pool through the library's own founding code, as the shipped API runs it: the admin key the rig planted in the node's person keys at level phone (planted, not custody) signs the charter that names this device first, the node takes it, this device is the first member, a second try says it is there and a charter no key accepted founds nothing."""
     world.fresh()
     first = world.first
     session, admin = RigSession(first), founding.Admin(world.person.admin)
@@ -75,7 +75,7 @@ def found_by_api(world: World) -> str:
     assert [m["status"] for m in first.members() if m.get("self")] == ["active"], "this device is the pool's first member"
     again = founding.found(session, admin, "api pool", "secure")
     assert again.already and again.pool == made.pool and "already in the pool api pool" in again.say()
-    return f"{first.name} founded {made.name} ({made.pool[:8]}) by the library's founding path; the second call said it was there"
+    return f"{first.name} founded {made.name} ({made.pool[:8]}) by the library's founding path; the second call said it was there; the key was planted at level phone, not custody"
 
 
 def _admin(device) -> str:

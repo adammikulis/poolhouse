@@ -46,7 +46,7 @@ def test_an_agent_founds_a_pool_of_a_key_a_phone_enrolled_and_a_second_try_says_
     made = founding.found(session, admin, "home", "secure")
     assert (made.name, made.policy, made.epoch, made.already) == ("home", "secure", 1, False)
     gov = governance(workspace_node)
-    assert gov["mode"] == "governed" and gov["name"] == "home" and gov["admins"][0]["strength"] == "strong"
+    assert gov["mode"] == "governed" and gov["name"] == "home" and gov["admins"][0]["assurance"] == "phone"
     members = workspace_node.client.call("pool_status")["members"]
     assert [m["status"] for m in members if m["self"]] == ["active"], "this device is the pool's first member"
     again = founding.found(session, admin, "home", "secure")
@@ -77,7 +77,7 @@ def test_founding_asks_the_persons_key_for_the_charter_once_and_for_nothing_afte
     session = pool_session(workspace_node)
     founding.found(session, Admin(key), "home", "secure")
     about_the_pool = [data.split(b"\n", 1)[0] for data in key.asked if data.startswith(b"poolhouse/pool-")]
-    assert about_the_pool == [b"poolhouse/pool-accept/v2"], "the acceptance of the charter is the only signature about the pool"
+    assert about_the_pool == [b"poolhouse/pool-accept/v3"], "the acceptance of the charter is the only signature about the pool"
     me = next(m for m in workspace_node.client.call("pool_status")["members"] if m["self"])
     assert (me["status"], me["by"]) == ("active", "found"), "this device is a member by the charter, not by an admit"
 
@@ -120,13 +120,13 @@ def test_a_key_the_person_typed_yes_for_is_not_strong_whatever_the_agent_says(wo
     with pytest.raises(Refusal) as refused:
         founding.found(session, admin, "home")
     assert "your phone" in refused.value.say and governance(workspace_node)["mode"] == "unfounded"
-    key = [{"key": admin.key.public.hex(), "person": "owner", "strength": "strong", "label": "the owner's key"}]
+    key = [{"key": admin.key.public.hex(), "person": "owner", "assurance": "phone", "label": "the owner's key"}]
     with pytest.raises(Invalid):
         workspace_node.client.call("pool_draft_found", "", session.token, title="home", policy="secure", project="", keys=key)
     plain = dict(key[0])
-    del plain["strength"]
+    del plain["assurance"]
     drafted = workspace_node.client.call("pool_draft_found", "", session.token, title="home", policy="secure", project="", keys=[plain])
-    assert [k["strength"] for k in drafted["charter"]["admins"]] == ["weak"]
+    assert [k["assurance"] for k in drafted["charter"]["admins"]] == ["weak"]
 
 
 def test_a_charter_the_agent_made_without_the_persons_key_founds_nothing(workspace_node):
