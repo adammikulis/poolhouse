@@ -16,9 +16,9 @@
       const managed = E('select', {'aria-label': 'Uploaded file or folder'});
       this.liveManaged = managed;
       box.append(E('h2', {}, 'Live sources and decisions'),
-        E('p', {}, 'Each record runs the saved workflow with your configured model. Results stay here; no external actions are sent.'),
+        E('p', {}, 'Each record runs the saved workflow. Live output is local unless you explicitly configure a registered destination.'),
         E('label', {}, 'Source', this.liveSource), this.liveSourceInfo,
-        E('label', {}, 'Record input', this.liveInput),
+        E('label', {}, 'Record input', this.liveInput), this.setupDeliveries(),
         button('Create paused stream', () => this.createLive()),
         E('details', {}, E('summary', {}, 'Watch a file or folder'),
           E('p', {}, 'Uploaded files watch the managed copy. In the installed app, choose an original file or folder to watch it directly.'),
@@ -45,7 +45,7 @@
       this.liveBusy = true;
       try { await fn(); }
       catch (error) { this.liveError(error); }
-      finally { this.liveBusy = false; this.liveRenderActions(); }
+      finally { this.liveBusy = false; this.liveRenderActions(); this.renderDelivery(); }
     },
     liveError(error) {
       if (error.response?.errors?.length) {
@@ -58,14 +58,15 @@
         this.liveSource.replaceChildren(); this.liveSubscriptions.replaceChildren();
         this.liveResults.replaceChildren(); this.livePreview.hidden = true;
         this.liveManaged.replaceChildren(); this.livePending?.clear(); this.livePickKeys?.clear();
-        this.liveRenderActions();
+        this.liveRenderActions(); this.clearDeliveries();
       }
     },
     async loadLive() {
       this.stopLive();
       const generation = this.liveGeneration;
-      const [sources, subscriptions] = await Promise.all([S.api('/sources'), S.api('/subscriptions')]);
+      const [sources, subscriptions, destinations] = await Promise.all([S.api('/sources'), S.api('/subscriptions'), S.api('/destinations')]);
       if (generation !== this.liveGeneration || this.liveBox.hidden || this.host.hidden) return;
+      this.updateDestinations(destinations.destinations);
       const sourceId = this.liveSource.value;
       this.liveSources = sources.sources || [];
       this.liveSource.replaceChildren(E('option', {value: ''}, 'Choose a source…'),
@@ -103,6 +104,7 @@
       walk(root);
       this.liveInput.replaceChildren(E('option', {value: ''}, 'Choose a record input…'), ...inputs.map((n) => E('option', {value: n.id}, n.title)));
       this.liveInput.value = inputs.some((n) => n.id === old) ? old : inputs[0]?.id || '';
+      this.deliveryOutputOptions();
     },
     liveSourceDetails() {
       const source = this.liveSources?.find((s) => s.id === this.liveSource.value);
@@ -112,19 +114,24 @@
         source.origin === 'native' ? 'Watches the original selected file or folder.' : source.origin === 'managed' ? 'Watches the uploaded managed copy.' : source.kind === 'examples' ? 'Registered synthetic records; send one explicitly after starting.' : 'Source provider: ' + source.kind));
       if (source.requirements?.length && source.available !== false) this.liveSourceInfo.append(E('p', {}, source.requirements.join('; ')));
     },
-    async liveMutation(path, body) {
-      const signature = JSON.stringify([path, body]);
+    async liveMutation(path, body, method = 'POST') {
+      const signature = JSON.stringify([method, path, body]);
       this.livePending ||= new Map();
       if (!this.livePending.has(signature)) this.livePending.set(signature, {...body, idempotency_key: S.id()});
       try {
-        const result = await S.api(path, this.livePending.get(signature));
+        const result = await S.api(path, this.livePending.get(signature), method);
         this.livePending.delete(signature);
         return result;
       } catch (error) {
         if (error.response?.status === 409) {
           this.livePending.delete(signature);
-          if (this.liveSub) this.liveSub = (await S.api('/subscriptions/' + encodeURIComponent(this.liveSub.id))).subscription;
-          error.message = 'This stream changed elsewhere. Review its current state, then choose the action again.';
+          if (path.startsWith('/destinations')) {
+            await this.refreshDestinations();
+            error.message = 'This destination changed elsewhere. Review its current revision, then choose the action again.';
+          } else {
+            if (this.liveSub) this.liveSub = (await S.api('/subscriptions/' + encodeURIComponent(this.liveSub.id))).subscription;
+            error.message = 'This stream changed elsewhere. Review its current state, then choose the action again.';
+          }
         }
         throw error;
       }
@@ -134,7 +141,7 @@
       const source = this.liveSources?.find((s) => s.id === this.liveSource.value);
       if (!source || source.available === false || !this.liveInput.value) throw Error('Choose an available source and a record input.');
       const result = await this.liveMutation('/subscriptions', {workflow_id: this.workflowId, revision: this.revision,
-        source_id: source.id, input_node: this.liveInput.value, output_nodes: [], destinations: [{kind: 'live'}]});
+        source_id: source.id, input_node: this.liveInput.value, output_nodes: [], destinations: this.selectedDestinations()});
       this.liveSub = result.subscription;
       await this.loadLive();
       this.liveNote.textContent = 'Stream created paused. Start explicitly when the source and model are ready.';
@@ -165,7 +172,8 @@
       this.stopLive(); this.liveSub = this.liveList?.find((s) => s.id === id) || null;
       this.liveSubscriptions.value = this.liveSub?.id || '';
       this.liveRows = []; this.liveCursor = null; this.livePreview.hidden = true;
-      this.liveResults.replaceChildren(); this.liveRenderActions();
+      this.liveResults.replaceChildren(); this.deliveryView = null; this.deliveryDetails.hidden = true; this.deliveryDiscovery.replaceChildren(); this.liveRenderActions();
+      if (this.liveSub) this.discoverDeliveries().catch((error) => this.liveError(error));
       if (this.liveSub && this.liveSub.state !== 'cancelled') this.pollLive(true);
     },
     liveRenderActions() {
@@ -178,6 +186,7 @@
       const sub = this.liveSub;
       if (!sub) return;
       const source = this.liveSources?.find((s) => s.id === sub.source_id);
+      this.deliveryManifest(this.liveActions, sub);
       this.liveActions.append(E('p', {}, 'Saved revision ' + sub.workflow_revision + ' · editor revision ' + this.revision + ' · ' + sub.state + (sub.reason ? ' · ' + sub.reason : '') + ' · source: ' + (source?.label || 'Unavailable source')));
       this.liveActions.append(E('p', {}, 'Start continues in the daemon after you close this tab. Pause stops new intake and dispatch; admitted runs finish. Edits apply to future streams.'));
       const action = (label, fn, disabled = false) => this.liveActions.append(E('button', {type: 'button', disabled: this.liveBusy || disabled, 'data-live-action': label, onclick: () => this.livePerform(fn)}, label));
@@ -238,7 +247,7 @@
           (value.reason_codes?.length ? ' · ' + value.reason_codes.join(', ') : '')));
       }
       return E('article', {class: 'studio-live-event'},
-        E('h3', {}, 'Event ' + row.sequence + ' · ' + row.state), ...summaries,
+        E('h3', {}, 'Event ' + row.sequence + ' · ' + row.state), ...summaries, ...this.deliveryLinks(row),
         ...(row.error ? [E('p', {}, typeof row.error === 'string' ? row.error : JSON.stringify(row.error))] : []),
         E('details', {}, E('summary', {}, 'Typed outputs and original record'), E('pre', {}, JSON.stringify(row.result || {}, null, 2))));
     },
@@ -269,6 +278,8 @@
           ...(gaps.length ? [E('p', {}, 'Events ' + gaps.join(', ') + ' are outside this live window.')] : []),
           ...this.liveRows.map((row) => this.liveEvent(row)));
         this.liveRenderActions();
+        const deliveryState = this.liveRows.flatMap((row) => row.delivery_states || []).find((row) => row.id === this.deliveryView?.id);
+        if (deliveryState && deliveryState.state !== this.deliveryView.state) await this.openDelivery(deliveryState.id);
       } catch (error) {
         if (generation !== this.liveGeneration || request !== this.liveRequest) return;
         this.liveError(error); return;

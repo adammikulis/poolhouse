@@ -1,0 +1,189 @@
+<script>
+(function () {
+  const S = window.studioModel, E = window.fleetModel.el;
+  const VALUE_TYPES = new Set(['json', 'text', 'decision', 'metrics', 'gate']);
+  S.installDelivery = (proto) => Object.assign(proto, {
+    setupDeliveries() {
+      const button = (name, fn) => E('button', {type: 'button', onclick: () => this.livePerform(fn)}, name);
+      this.deliveryEnabled = E('input', {type: 'checkbox', 'aria-label': 'Send selected outputs to a registered destination'});
+      this.deliveryTarget = E('select', {'aria-label': 'Delivery destination'});
+      this.deliveryFields = E('div', {role: 'group', 'aria-label': 'Outputs to send'});
+      this.deliveryProjection = new Set();
+      this.deliverySelection = E('div', {hidden: true},
+        E('label', {}, 'Registered destination', this.deliveryTarget),
+        E('p', {}, 'Choose individual outputs. Only the checked outputs are sent; original records are included only if you choose their record port.'), this.deliveryFields,
+        button('Clear selected outputs', () => { this.deliveryProjection.clear(); this.deliveryOutputOptions(); }));
+      this.deliveryEnabled.onchange = () => { this.deliverySelection.hidden = !this.deliveryEnabled.checked; this.deliveryOutputOptions(); };
+      this.destinationEditor = E('select', {'aria-label': 'Registered destination to edit', onchange: () => this.editDestination()});
+      this.destinationName = E('input', {'aria-label': 'Destination name', maxlength: 200, autocomplete: 'off'});
+      this.destinationURL = E('input', {'aria-label': 'Destination URL (HTTPS)', inputmode: 'url', maxlength: 4096, autocomplete: 'off', spellcheck: 'false'});
+      this.destinationName.oninput = this.destinationURL.oninput = () => { this.destinationDirty = true; };
+      this.destinationRevision = E('p', {});
+      this.destinationSave = button('Register destination', () => this.saveDestination());
+      this.destinationRevoke = button('Revoke destination', () => this.revokeDestination());
+      this.deliveryDetails = E('section', {'aria-label': 'Delivery details', hidden: true});
+      this.deliveryDiscovery = E('div', {'aria-label': 'Pending deliveries'});
+      return E('details', {}, E('summary', {}, 'Destinations and selected outputs'),
+        E('p', {}, 'Live results stay here. Sending to another service is optional and starts only when you explicitly start a configured stream.'),
+        E('label', {}, this.deliveryEnabled, 'Send selected outputs to a registered destination'), this.deliverySelection,
+        E('details', {}, E('summary', {}, 'Manage registered destinations'),
+          E('label', {}, 'Destination', this.destinationEditor),
+          E('label', {}, 'Name', this.destinationName), E('label', {}, 'HTTPS URL', this.destinationURL),
+          E('p', {}, 'Registration saves the endpoint without contacting it. Do not enter credentials or API keys.'),
+          this.destinationRevision, this.destinationSave, this.destinationRevoke),
+        this.deliveryDiscovery, this.deliveryDetails);
+    },
+    updateDestinations(rows) {
+      const selected = this.deliveryTarget.value, editing = this.destinationEditor.value;
+      const draft = this.destinationDirty ? {label: this.destinationName.value, url: this.destinationURL.value} : null;
+      this.destinations = rows || [];
+      this.deliveryTarget.replaceChildren(E('option', {value: ''}, 'Choose a registered destination…'),
+        ...this.destinations.filter((row) => row.enabled).map((row) => E('option', {value: row.id + ':' + row.revision}, row.label + ' · revision ' + row.revision + ' · ' + row.url)));
+      if (selected && ![...this.deliveryTarget.options].some((option) => option.value === selected))
+        this.deliveryTarget.append(E('option', {value: selected, disabled: true}, 'Previous destination revision is unavailable. Choose its current revision.'));
+      this.deliveryTarget.value = selected;
+      this.destinationEditor.replaceChildren(E('option', {value: ''}, 'Register a new destination…'),
+        ...this.destinations.map((row) => E('option', {value: row.id}, row.label + (row.enabled ? '' : ' · revoked'))));
+      if (this.destinations.some((row) => row.id === editing)) this.destinationEditor.value = editing;
+      this.editDestination();
+      if (draft) { this.destinationName.value = draft.label; this.destinationURL.value = draft.url; this.destinationDirty = true; }
+    },
+    editDestination() {
+      this.destinationDirty = false;
+      const row = this.destinations?.find((row) => row.id === this.destinationEditor.value);
+      this.destinationDraft = row ? {id: row.id, revision: row.revision} : null;
+      this.destinationName.value = row?.label || ''; this.destinationURL.value = row?.url || '';
+      this.destinationName.disabled = this.destinationURL.disabled = row?.enabled === false;
+      this.destinationSave.disabled = row?.enabled === false;
+      this.destinationRevoke.disabled = !row?.enabled;
+      this.destinationSave.textContent = row ? 'Save destination' : 'Register destination';
+      this.destinationRevision.textContent = row ? 'Registered endpoint: ' + row.url + ' · revision ' + row.revision + (row.enabled ? '' : ' · revoked. Register a new destination to use another endpoint.') : '';
+    },
+    async refreshDestinations() {
+      const generation = this.liveGeneration;
+      const result = await S.api('/destinations');
+      if (generation === this.liveGeneration) this.updateDestinations(result.destinations);
+    },
+    destinationSnapshot() {
+      return {generation: this.liveGeneration, epoch: this.deliveryDraftEpoch, workflow: this.workflowId,
+        selected: this.destinationEditor.value, label: this.destinationName.value, url: this.destinationURL.value};
+    },
+    sameDestinationDraft(snapshot) {
+      return JSON.stringify(snapshot) === JSON.stringify(this.destinationSnapshot());
+    },
+    async saveDestination() {
+      const snapshot = this.destinationSnapshot(), draft = this.destinationDraft;
+      const body = {label: this.destinationName.value, url: this.destinationURL.value, ...(draft ? {revision: draft.revision} : {})};
+      if (!body.label.trim() || !body.url.startsWith('https://')) throw Error('Enter a name and an HTTPS endpoint without credentials.');
+      const result = await this.liveMutation('/destinations' + (draft ? '/' + encodeURIComponent(draft.id) : ''), body, draft ? 'PUT' : 'POST');
+      if (!this.sameDestinationDraft(snapshot)) return;
+      await this.refreshDestinations();
+      if (!this.sameDestinationDraft(snapshot)) return;
+      this.destinationDirty = false;
+      this.destinationEditor.value = result.destination.id; this.editDestination();
+      this.liveNote.textContent = 'Destination saved at revision ' + result.destination.revision + '. Select this revision explicitly before creating a stream.';
+    },
+    async revokeDestination() {
+      const snapshot = this.destinationSnapshot(), row = this.destinationDraft;
+      if (!row) return;
+      await this.liveMutation('/destinations/' + encodeURIComponent(row.id), {revision: row.revision}, 'DELETE');
+      if (!this.sameDestinationDraft(snapshot)) return;
+      await this.refreshDestinations();
+      if (!this.sameDestinationDraft(snapshot)) return;
+      this.destinationDirty = false;
+      this.liveNote.textContent = 'Destination revoked. Existing streams cannot send to this revision.';
+    },
+    deliveryOutputOptions() {
+      if (!this.deliveryFields) return;
+      const root = this.rootGraph(), choices = [];
+      const walk = (graph, prefix = '', seen = []) => {
+        for (const node of graph.nodes || []) {
+          const path = prefix + node.id;
+          if (node.type === 'group') {
+            if (!seen.includes(node.group) && root.groups[node.group]) walk(root.groups[node.group], path + '/', [...seen, node.group]);
+          } else {
+            const spec = S.spec(this, node);
+            for (const port of spec.outputs || []) if (VALUE_TYPES.has(port.type))
+              choices.push({node: path, port: port.name, title: (node.name || path) + ' · ' + port.name + ' (' + port.type + ')'});
+          }
+        }
+      };
+      walk(root); this.deliveryChoices = choices;
+      this.deliveryFields.replaceChildren(...choices.map((choice) => {
+        const key = JSON.stringify([choice.node, choice.port]);
+        return E('label', {}, E('input', {type: 'checkbox', checked: this.deliveryProjection.has(key), 'aria-label': choice.title,
+          onchange: (event) => event.target.checked ? this.deliveryProjection.add(key) : this.deliveryProjection.delete(key)}), choice.title);
+      }));
+      if (!choices.length) this.deliveryFields.append(E('p', {}, 'Add a declared JSON, decision, metrics, gate or text output before configuring delivery.'));
+    },
+    selectedDestinations() {
+      if (!this.deliveryEnabled.checked) return [{kind: 'live'}];
+      const target = this.destinations?.find((row) => row.enabled && row.id + ':' + row.revision === this.deliveryTarget.value);
+      if (!target) throw Error('Choose a current registered destination revision.');
+      this.deliveryOutputOptions();
+      const outputs = [...this.deliveryProjection].map((key) => { const [node, port] = JSON.parse(key); return {node, port}; });
+      if (!outputs.length || outputs.some((output) => !this.deliveryChoices.some((choice) => choice.node === output.node && choice.port === output.port)))
+        throw Error('Choose the exact current output ports to send.');
+      return [{kind: 'live'}, {kind: 'webhook', id: target.id, outputs}];
+    },
+    resetDeliveryDraft() {
+      if (!this.deliveryEnabled) return;
+      this.deliveryDraftEpoch = (this.deliveryDraftEpoch || 0) + 1;
+      this.deliveryEnabled.checked = false; this.deliverySelection.hidden = true;
+      this.deliveryProjection.clear(); this.deliveryTarget.value = ''; this.deliveryOutputOptions();
+    },
+    clearDeliveries() {
+      this.destinations = []; this.deliveryProjection?.clear(); this.deliveryEnabled.checked = false;
+      this.deliverySelection.hidden = true; this.deliveryTarget.replaceChildren(); this.destinationEditor.replaceChildren();
+      this.destinationDraft = null; this.destinationName.value = ''; this.destinationURL.value = '';
+      this.deliveryView = null; this.deliveryDetails.hidden = true; this.deliveryDetails.replaceChildren(); this.deliveryDiscovery.replaceChildren();
+    },
+    deliveryManifest(host, sub) {
+      for (const item of sub.destinations || []) if (item.kind === 'webhook')
+        host.append(E('p', {}, 'Pinned destination: ' + item.destination.url + ' · revision ' + item.destination.revision + ' · outputs: ' + (item.outputs || []).map((output) => output.node + '.' + output.port).join(', ')));
+    },
+    deliveryLinks(row) {
+      return (row.delivery_states || []).map((delivery) => E('button', {type: 'button', onclick: () => this.livePerform(() => this.openDelivery(delivery.id))}, 'Delivery ' + delivery.id.slice(0, 8) + ' · ' + delivery.state));
+    },
+    async discoverDeliveries() {
+      const sub = this.liveSub, generation = this.liveGeneration;
+      if (!sub) return;
+      const result = await S.api('/subscriptions/' + encodeURIComponent(sub.id) + '/deliveries');
+      if (generation !== this.liveGeneration || this.liveSub?.id !== sub.id) return;
+      this.deliveryDiscovery.replaceChildren(...(result.deliveries || []).map((row) => E('button', {type: 'button', onclick: () => this.livePerform(() => this.openDelivery(row.id))}, 'Pending delivery ' + row.id.slice(0, 8) + ' · ' + row.state)));
+    },
+    async openDelivery(id) {
+      const generation = this.liveGeneration, request = this.deliveryRequest = (this.deliveryRequest || 0) + 1;
+      const result = await S.api('/deliveries/' + encodeURIComponent(id));
+      if (generation !== this.liveGeneration || request !== this.deliveryRequest) return;
+      this.deliveryView = result.delivery; this.renderDelivery();
+    },
+    renderDelivery() {
+      const row = this.deliveryView;
+      this.deliveryDetails.hidden = !row;
+      if (!row) return;
+      const button = (label, action) => E('button', {type: 'button', disabled: this.liveBusy, onclick: () => this.livePerform(action)}, label);
+      const content = [E('h3', {}, 'Delivery · ' + row.state), button('Refresh delivery', () => this.openDelivery(row.id)),
+        E('p', {}, 'Destination: ' + row.destination.url + ' · revision ' + row.destination.revision),
+        E('p', {}, 'Delivery ID: ' + row.id), E('p', {}, 'Request digest: ' + row.request_digest)];
+      if (row.reconciliation) content.push(E('p', {}, 'Owner attestation: ' + row.reconciliation.outcome + '. This is weaker evidence than a receiver receipt.'));
+      if (row.can_reconcile) content.push(E('p', {}, 'The receiver may already have processed this delivery. Check that receiver before recording an outcome. Recording an outcome never sends or retries it.'),
+        button('Attest delivered', () => this.deliveryAction('reconcile', 'delivered')),
+        button('Attest not delivered', () => this.deliveryAction('reconcile', 'not_delivered')));
+      if (row.can_retry) content.push(button('Retry this exact delivery', () => this.deliveryAction('retry')));
+      else if (row.reason) content.push(E('p', {}, row.reason));
+      this.deliveryDetails.replaceChildren(...content);
+    },
+    async deliveryAction(action, outcome) {
+      const row = this.deliveryView, generation = this.liveGeneration;
+      const body = {delivery_id: row.id, request_digest: row.request_digest, destination_revision: row.destination.revision,
+        ...(action === 'reconcile' ? {outcome, evidence: 'owner_attestation'} : {})};
+      const result = await this.liveMutation('/deliveries/' + encodeURIComponent(row.id) + '/' + action, body);
+      if (generation !== this.liveGeneration || this.deliveryView?.id !== row.id) return;
+      this.deliveryView = result.delivery; this.renderDelivery();
+      this.liveNote.textContent = action === 'retry' ? 'The same delivery was queued explicitly.' : 'Outcome recorded as an owner attestation. No delivery was sent.';
+      await this.discoverDeliveries();
+    },
+  });
+})();
+</script>
