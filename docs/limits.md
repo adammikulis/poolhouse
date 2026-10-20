@@ -18,9 +18,17 @@ abuse by one session is not kept (the owner never asked for one). The security f
   what that released, skipped when there is no room: the registry is the record of an ending); the last `LAST_ROWS` rows (and
   `LAST_BYTES` bytes) are for a head, so the log is still signed and synced, and for the rows a person's decision makes (a grant they
   signed or approved on the phone, a session they moved). A lease entry or a notice a full log refuses is skipped: the lease table is the
-  record of a lease. A copy of another device's log that would pass the rows or the bytes is refused whole. A log that reaches the end
-  of the last stretch takes nothing more and does not recover: it has no rotation or compaction, which `HANDOFF.md` lists as its own
-  item.
+  record of a lease. A copy of another device's log that would pass the rows or the bytes is refused whole. Every count above is of
+  the live segment: a log starts a new segment when it holds `ROTATE_PERCENT` of the rows or of the bytes. The segment is a base row, a
+  carry envelope retaining the original operation identity, order and time of the device's own notes (not superseded, not expired), rooms, tasks and grants (grants always; the others up to
+  `CARRY_PERCENT` of the rows and of the bytes, newest first, and the base says how many were left) and a head; the rows before the base
+  go to `archive/` beside the log, and the shares, the reserve and the last stretch start again on the new segment. A copy takes a base
+  only after a segment of at least `MIN_SEGMENT_PERCENT` of the rows or of the bytes (when it holds that segment), applies the segment
+  once every restated row has arrived (a copy behind the base restarts at it only when the device that wrote the log sends it), and
+  refuses a base that leaves out a grant revocation it holds. An archive is kept `ARCHIVE_MIN_MS` at
+  least and `ARCHIVE_MAX_MS` at most, until every device that synced the board has acknowledged past it, and `MOST_ARCHIVES` of an origin and
+  `MAX_LOG_BYTES` of them at most; a device behind the base is served from the archive while it exists and otherwise starts at the base. Messages, audit,
+  landing, lease, identity and verify rows are not restated: they leave the view with the segment (`docs/notes/2026-10-19-log-rotation.md`).
 - **Leases** (`max_leases_per_holder`, `max_leases_per_lineage`, `max_leases`, `max_worktree_records`). A request past any of the first three is refused with the
   limit; a reserve naming more resources than a session may hold is refused whole before any is looked at, and a reserve writes its
   lease entries to the board in one write, so it holds the node for a fraction of a second whatever its size. The leases of one
@@ -80,6 +88,12 @@ abuse by one session is not kept (the owner never asked for one). The security f
 | `LAST_BYTES` | 2 * 1024 * 1024 | `app/poolhouse-node/src/logbounds.rs:18` | bytes at the very end of the log only a head and a person's decisions use | the owner, in source |
 | `AUTHOR_SHARE_PERCENT` | 10 | `app/poolhouse-node/src/logbounds.rs:20` | the share of the rows and of the bytes one session writes: one session cannot fill the log for the others | the owner, in source |
 | `LINEAGE_SHARE_PERCENT` | 25 | `app/poolhouse-node/src/logbounds.rs:22` | the share of the rows and of the bytes the sessions of one process tree write together: a lead with its subagents cannot fill the log for other trees | the owner, in source |
+| `ROTATE_PERCENT` | 75 | `app/poolhouse-node/src/logbounds.rs:24` | the share of the rows or of the bytes of a log at which the device starts a new segment: a full log takes nothing and would never recover | the owner, in source |
+| `MIN_SEGMENT_PERCENT` | 50 | `app/poolhouse-node/src/logbounds.rs:26` | the least a copy holds of a segment before it takes a base that ends it: a member cannot make every copy rewrite its files on each row | the owner, in source |
+| `CARRY_PERCENT` | 25 | `app/poolhouse-node/src/logbounds.rs:28` | the share of the rows and of the bytes of a log the restated notes, rooms and tasks of a new segment may use, and the base a copy takes may restate half the rows at most | the owner, in source |
+| `MOST_ARCHIVES` | 8 | `app/poolhouse-node/src/logbounds.rs:30` | archived segments one origin keeps: disk | the owner, in source |
+| `ARCHIVE_MIN_MS` | 7 * 24 * 3600 * 1000 | `app/poolhouse-node/src/logbounds.rs:32` | how long an archived segment is kept at least, so a device behind the base can be served from it | the owner, in source |
+| `ARCHIVE_MAX_MS` | 30 * 24 * 3600 * 1000 | `app/poolhouse-node/src/logbounds.rs:34` | how long an archived segment is kept at most, whoever has not acknowledged past it: disk | the owner, in source |
 | `MAX_ORIGINS` | 64 | `app/poolhouse-node/src/board.rs:19` | logs a device holds for one board: memory | the owner, in source |
 | `MAX_REJECTED` | 200 | `app/poolhouse-node/src/board.rs:20` | refused foreign rows kept for `status`: memory | the owner, in source |
 | `MAX_ROW_BYTES` | 128 * 1024 | `app/poolhouse-node/src/row.rs:14` | the size of one signed row | the owner, in source |

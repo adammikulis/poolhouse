@@ -6,7 +6,7 @@ use ed25519_dalek::{Signature, VerifyingKey};
 
 use crate::error::{Error, Result};
 use crate::fsutil::unhex;
-use crate::row::{check_body, valid_name, valid_origin, Kind, Row, GENESIS, MAX_ROW_BYTES, VERSION};
+use crate::row::{check_body, valid_name, valid_origin, Kind, Row, GENESIS, MAX_ROW_BYTES, MAX_SEQ, VERSION};
 
 /// How far ahead of the local clock a foreign row may be before it is held back.
 pub const SKEW_MAX_MS: u64 = 300_000;
@@ -15,6 +15,8 @@ pub const SKEW_MAX_MS: u64 = 300_000;
 pub struct Accepted {
     pub rows: Vec<Row>,
     pub public: Option<[u8; 32]>,
+    /// The rows start a new segment at a base: the copy held is set aside and the rows are stored in its place.
+    pub restart: bool,
 }
 
 /// The next clock value after ``previous``, the wall clock and ``seen``.
@@ -35,10 +37,10 @@ pub fn head_message(pool: &str, board: &str, origin: &str, seq: u64, digest: &st
     format!("poolhouse-board-head-v1|{pool}|{board}|{origin}|{seq}|{digest}").into_bytes()
 }
 
-/// Every log's rows in one total order: heads dropped, a row delivered twice kept once, and a
+/// Every log's rows in one total order: heads and bases dropped, a row delivered twice kept once, and a
 /// repeated idempotency key of one actor on one origin kept only at its first row.
 pub fn merge(logs: &[&[Row]]) -> Vec<Row> {
-    let mut rows: Vec<&Row> = logs.iter().flat_map(|l| l.iter()).filter(|r| r.kind != Kind::Head).collect();
+    let mut rows: Vec<&Row> = logs.iter().flat_map(|l| l.iter()).filter(|r| !matches!(r.kind, Kind::Head | Kind::Base)).collect();
     rows.sort_by(|a, b| a.order().cmp(&b.order()));
     let mut ids = BTreeSet::new();
     let mut keys = BTreeSet::new();
@@ -62,15 +64,80 @@ fn shape(row: &Row, board: &str, origin: &str) -> Result<()> {
     if row.hlc.2 != origin {
         return Err(Error::Damaged("row carries no clock value".into()));
     }
-    if check_body(&row.body).is_err() {
+    if row.kind == Kind::Carry {
+        let original = row.operation()?;
+        if !matches!(original.kind, Kind::Note | Kind::Room | Kind::Task | Kind::Grant)
+            || original.seq == 0 || original.seq >= row.seq || original.hlc > row.hlc
+            || original.hash != original.digest() || row.actor != original.actor || row.idem != original.idem {
+            return Err(Error::Damaged("a carry changes its original durable operation identity".into()));
+        }
+        shape(&original, board, origin)?;
+    } else if check_body(&row.body).is_err() {
         return Err(Error::Damaged("row body is not allowed".into()));
+    }
+    if row.seq > MAX_SEQ {
+        return Err(Error::Damaged(format!("row {} is past the highest sequence number", row.seq)));
+    }
+    if row.kind == Kind::Base {
+        let counts = ["carried", "left"].iter().all(|k| row.body.get(*k).is_some_and(|v| v.is_u64()));
+        let hash = row.prev.len() == 64 && row.prev.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+        if !counts || !hash || row.seq < 2 {
+            return Err(Error::Damaged(format!("base at row {} is malformed", row.seq)));
+        }
     }
     Ok(())
 }
 
-/// Check ``rows`` follow one another (and ``tip``) by sequence, hash and clock.
+/// Validate every carry prefix before exposing its original operations, including persisted logs on reopen.
+pub fn check_carries(rows: &[Row], initial_complete: bool) -> Result<()> {
+    let mut known = std::collections::BTreeMap::new();
+    let (mut base, mut remaining, mut previous) = (None, 0, 0);
+    let mut first_complete = rows.first().is_none_or(|row| row.kind != Kind::Base);
+    for row in rows {
+        if row.kind == Kind::Base {
+            if remaining > 0 {
+                return Err(Error::Damaged("a base interrupts an incomplete carry prefix".into()));
+            }
+            base = Some(row);
+            remaining = row.body["carried"].as_u64().unwrap_or(0);
+            previous = 0;
+        } else if row.kind == Kind::Head {
+            if remaining == 0 {
+                first_complete = true;
+            }
+        } else if remaining > 0 {
+            let original = row.operation()?;
+            let anchor = base.expect("a carry prefix has a base");
+            if row.kind != Kind::Carry || original.seq >= anchor.seq || original.seq <= previous || original.hlc > anchor.hlc {
+                return Err(Error::Damaged("a base has an invalid durable carry prefix".into()));
+            }
+            if known.get(&original.id()).is_some_and(|held| held != &original) {
+                return Err(Error::Damaged("a carry changes a known original operation".into()));
+            }
+            previous = original.seq;
+            known.insert(original.id(), original);
+            remaining -= 1;
+        } else if row.kind == Kind::Carry {
+            return Err(Error::Damaged("a carry is outside its declared base prefix".into()));
+        } else {
+            known.insert(row.id(), row.clone());
+        }
+    }
+    if initial_complete && !first_complete {
+        return Err(Error::Damaged("an initial base has no complete signed carry prefix".into()));
+    }
+    Ok(())
+}
+
+/// Check ``rows`` follow one another (and ``tip``) by sequence, hash and clock. With no ``tip`` the first row is seq 1 or a base.
 pub fn check_chain(rows: &[Row], board: &str, origin: &str, tip: Option<&Row>) -> Result<()> {
-    let (mut prev, mut seq, mut wall) = tip.map_or((GENESIS.to_string(), 0, 0), |t| (t.hash.clone(), t.seq, t.hlc.0));
+    let from_base = rows.first().filter(|r| tip.is_none() && r.kind == Kind::Base && r.seq >= 2);
+    let start = match (tip, from_base) {
+        (Some(t), _) => (t.hash.clone(), t.seq, t.hlc.0),
+        (None, Some(b)) => (b.prev.clone(), b.seq - 1, 0),
+        (None, None) => (GENESIS.to_string(), 0, 0),
+    };
+    let (mut prev, mut seq, mut wall) = start;
     for row in rows {
         shape(row, board, origin)?;
         if row.seq != seq + 1 || row.prev != prev {
@@ -120,8 +187,9 @@ fn check_heads(new: &[Row], tops: &std::collections::BTreeMap<u64, String>, pinn
 
 /// The rows of ``incoming`` to append to the ``held`` copy of ``origin``'s log: those past
 /// what is held, through the last row a verified head covers. `Damaged` for a fork, a broken
-/// chain or a forged head; `Gap` when the rows start after the held end; `Invalid` for a row
-/// that is oversized or of a bad origin (never evidence against the origin).
+/// chain or a forged head; `Gap` when the rows start after the held end and do not start at a base;
+/// `Invalid` for a row that is oversized or of a bad origin (never evidence against the origin). Rows
+/// that start at a base past the held end restart the copy; rows before the first row held are skipped.
 pub fn accept(board: &str, origin: &str, held: &[Row], incoming: &[Row], pinned: Option<[u8; 32]>, pool: &str)
     -> Result<Accepted> {
     if !valid_origin(origin) || !valid_name(board) {
@@ -130,26 +198,34 @@ pub fn accept(board: &str, origin: &str, held: &[Row], incoming: &[Row], pinned:
     if incoming.iter().any(|r| r.size() > MAX_ROW_BYTES) {
         return Err(Error::Invalid("a row exceeds its size bound".into()));
     }
-    let Some(first) = incoming.first().map(|r| r.seq) else {
-        return Ok(Accepted { rows: vec![], public: pinned });
-    };
+    let held_first = held.first().map_or(1, |r| r.seq);
+    let skipped = incoming.iter().position(|r| r.seq >= held_first).unwrap_or(incoming.len());
+    let incoming = &incoming[skipped..];
+    let none = Accepted { rows: vec![], public: pinned, restart: false };
+    let Some(first) = incoming.first().map(|r| r.seq) else { return Ok(none) };
     if first < 1 {
         return Err(Error::Damaged("rows carry no sequence number".into()));
     }
-    if first as usize > held.len() + 1 {
-        return Err(Error::Gap(format!("rows start at {first} but {} are held", held.len())));
+    let tip = held.last().map_or(0, |r| r.seq);
+    let restart = first > tip + 1;
+    if restart && incoming[0].kind != Kind::Base {
+        return Err(Error::Gap(format!("rows start at {first} but {tip} is the last held")));
     }
-    let start = first as usize - 1;
-    let overlap = &held[start..held.len().min(start + incoming.len())];
-    if let Some((mine, _)) = overlap.iter().zip(incoming).find(|(m, t)| m.hash != t.hash) {
-        return Err(Error::Damaged(format!("row {} differs from the held copy", mine.seq)));
-    }
-    let new = &incoming[overlap.len()..];
+    let (kept, new): (&[Row], &[Row]) = if restart {
+        (&[], incoming)
+    } else {
+        let start = (first - held_first) as usize;
+        let overlap = &held[start..held.len().min(start + incoming.len())];
+        if let Some((mine, _)) = overlap.iter().zip(incoming).find(|(m, t)| m.hash != t.hash) {
+            return Err(Error::Damaged(format!("row {} differs from the held copy", mine.seq)));
+        }
+        (held, &incoming[overlap.len()..])
+    };
     if new.is_empty() {
-        return Ok(Accepted { rows: vec![], public: pinned });
+        return Ok(none);
     }
-    check_chain(new, board, origin, held.last())?;
-    let tops = held.iter().chain(new).map(|r| (r.seq, r.hash.clone())).collect();
+    check_chain(new, board, origin, kept.last())?;
+    let tops = kept.iter().chain(new).map(|r| (r.seq, r.hash.clone())).collect();
     let (public, last) = check_heads(new, &tops, pinned, pool)?;
-    Ok(Accepted { rows: new.iter().filter(|r| r.seq <= last).cloned().collect(), public })
+    Ok(Accepted { rows: new.iter().filter(|r| r.seq <= last).cloned().collect(), public, restart })
 }

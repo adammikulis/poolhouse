@@ -113,7 +113,7 @@ def _assert_workspace_pages(page, primary, expect):
                 'Data': ('data-view', 'Datasets'), 'Projects': ('projects-view', 'Projects'),
                 'Tools': ('tools-view', 'Tools'), 'Graph': ('knowledge-view', 'Graph inspector'),
                 'History': ('history-view', 'Activity'), 'Devices': ('pool-view', 'Devices')}
-    for group, titles in [('Studio', ['Models', 'Fine-tune', 'Worlds', 'Evaluate', 'Data']),
+    for group, titles in [('Studio', ['Canvas', 'Fine-tune', 'Worlds', 'Evaluate', 'Data']),
                           ('Work', ['Tasks', 'Projects', 'Tools', 'Graph', 'History']),
                           ('Pool', ['Devices', 'Capacity'])]:
         primary.get_by_role('link', name=group, exact=True).click()
@@ -130,16 +130,17 @@ def _assert_workspace_pages(page, primary, expect):
         assert primary.evaluate('(nav)=>nav.scrollHeight <= nav.clientHeight')
 
 
-def test_four_workspaces_context_pages_and_theme_navigation(usability_page):
+def test_primary_workspaces_context_pages_and_theme_navigation(usability_page):
     from playwright.sync_api import expect
     served, page, errors = usability_page
     page.goto(f'http://127.0.0.1:{served.port}/ui/')
-    expect(page.locator('#app')).to_have_attribute('data-workspace', 'conversations')
+    expect(page.locator('#app')).to_have_attribute('data-workspace', 'studio')
     assert page.locator('fleet-nav header').count() == 0
     assert page.locator('#nav-title, #nav-section, #nav-group').count() == 0
-    assert page.locator('#workspace').bounding_box()['y'] == 0
+    context_box = page.locator('#nav-context').bounding_box()
+    assert page.locator('#workspace').bounding_box()['y'] == context_box['y'] + context_box['height']
     primary = page.get_by_role('navigation', name='Main navigation')
-    expect(primary.locator('a')).to_have_count(4)
+    expect(primary.locator('a')).to_have_count(5)
     assert page.get_by_role('searchbox', name='Find a page').count() == 0
     _assert_workspace_pages(page, primary, expect)
     page.get_by_role('link', name='Settings', exact=True).click()
@@ -174,7 +175,7 @@ def test_four_workspaces_context_pages_and_theme_navigation(usability_page):
     assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--poolhouse-yellow-ink').trim()") == '#1b1f3a'
     page.set_viewport_size({'width': 390, 'height': 844})
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
-    expect(primary.locator('a')).to_have_count(4)
+    expect(primary.locator('a')).to_have_count(5)
     page.screenshot(path='/private/tmp/poolhouse-rebuild-shell-narrow.png', full_page=True)
     assert not errors
 

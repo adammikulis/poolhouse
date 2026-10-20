@@ -34,11 +34,20 @@ pub fn rows_since(board: &Board, since: &BTreeMap<String, u64>) -> BTreeMap<Stri
     let (mut out, mut count, mut bytes) = (BTreeMap::new(), 0, 0);
     for origin in board.origins() {
         let trusted = board.trusted(&origin);
-        let have = since.get(&origin).copied().unwrap_or(0) as usize;
-        if board.damaged().contains_key(&origin) || have >= trusted.len() {
+        let (first, last) = (trusted.first().map_or(1, |r| r.seq), trusted.last().map_or(0, |r| r.seq));
+        let have = since.get(&origin).copied().unwrap_or(0);
+        if board.damaged().contains_key(&origin) || have >= last {
             continue;
         }
-        for row in &trusted[have.saturating_sub(1)..] {
+        let early = if have > 0 && have + 1 < first { board.archived_from(&origin, have, MAX_ROWS) } else { Vec::new() };
+        let live = &trusted[usize::try_from(have.saturating_sub(first)).unwrap_or(usize::MAX).min(trusted.len())..];
+        let reaches = early.last().is_some_and(|r| r.seq + 1 == first);
+        let served: Vec<&Row> = match (early.iter().all(|r| r.seq <= have), reaches) {
+            (true, _) => live.iter().collect(),
+            (false, true) => early.iter().chain(trusted).collect(),
+            (false, false) => early.iter().collect(),
+        };
+        for row in served {
             bytes += row.size();
             if count >= MAX_ROWS || (bytes > MAX_BATCH_BYTES && count > 0) {
                 return out;

@@ -29,9 +29,8 @@ ROOM = 96 * GIB
 
 
 def open_models(page):
-    """Enter Studio, then choose its Models page from the visible subnavigation."""
-    page.click(RAIL["Studio"])
-    page.get_by_role("navigation", name="Workspace pages").get_by_role("link", name="Models", exact=True).click()
+    """Open Models directly from the primary ribbon."""
+    page.get_by_role("navigation", name="Main navigation").get_by_role("link", name="Models", exact=True).click()
 
 
 def sample_fits():
