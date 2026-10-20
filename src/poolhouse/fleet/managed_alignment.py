@@ -118,10 +118,13 @@ def idle(environment, quiet):
     """Never hold intent while waiting for an existing child's first broker request."""
     if not quiet():
         raise Busy('Existing work is still using its runtime')
-    with maintenance.intent() as writer, writer.exclusive():
+    with maintenance.intent() as writer:
         if not quiet() or managed_busy(targets(environment)) or not broker_idle():
             raise Busy('Existing managed work is still using its runtime')
-        yield
+        with writer.exclusive():
+            if not quiet() or managed_busy(targets(environment)):
+                raise Busy('Existing managed work is still using its runtime')
+            yield
 
 
 def _bundle(environment):

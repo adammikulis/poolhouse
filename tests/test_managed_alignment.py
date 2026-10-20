@@ -310,3 +310,51 @@ def test_transaction_record_never_creates_target_or_installs_without_surviving_e
             alignment.synchronize(environment)
     with pytest.raises(OSError, match='repair is pending'), maintenance.read():
         pytest.fail('Unverified state must remain denied')
+
+
+def accounting_child(root, body):
+    source = Path(maintenance.__file__).parents[1]
+    return (f"import sys;sys.path.insert(0,{str(source)!r});from pathlib import Path;"
+            "from poolhouse import home,maintenance;"
+            f"home.state=lambda *parts:Path({str(root)!r}).joinpath(*parts);\n"
+            "with maintenance.read(existing=True):\n" + body)
+
+
+def test_broker_drain_can_take_real_crossprocess_reader_before_exclusive(tmp_path, monkeypatch):
+    environment = Environment(tmp_path)
+    monkeypatch.setattr(alignment, 'managed_busy', lambda targets: False)
+    completed = []
+    def drain():
+        script = accounting_child(tmp_path / 'state', " print('accounted',flush=True)\n")
+        child = subprocess.run([sys.executable, '-B', '-I', '-c', script],
+                               capture_output=True, text=True, check=True, timeout=5)
+        completed.append(child.stdout.strip())
+        return True
+    monkeypatch.setattr(alignment, 'broker_idle', drain)
+    with alignment.idle(environment, lambda: True):
+        assert completed == ['accounted']
+        assert maintenance.transaction_record() is None  # Exclusive ownership begins after drain.
+
+
+def test_crossprocess_accounting_reader_racing_drain_prevents_mutation(tmp_path, monkeypatch):
+    environment = Environment(tmp_path)
+    monkeypatch.setattr(alignment, 'managed_busy', lambda targets: False)
+    children = []
+    def drain():
+        script = accounting_child(tmp_path / 'state', " print('held',flush=True)\n sys.stdin.readline()\n")
+        child = subprocess.Popen([sys.executable, '-B', '-I', '-c', script],
+                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        children.append(child)
+        assert child.stdout.readline().strip() == 'held'
+        return True
+    monkeypatch.setattr(alignment, 'broker_idle', drain)
+    try:
+        with pytest.raises(Busy), alignment.idle(environment, lambda: True):
+            pytest.fail('A racing reader must prevent managed code mutation')
+        with maintenance.read():
+            pass  # Intent was released despite the still-running accounting reader.
+    finally:
+        for child in children:
+            child.stdin.close()
+            child.wait(timeout=5)
+            child.stdout.close()
