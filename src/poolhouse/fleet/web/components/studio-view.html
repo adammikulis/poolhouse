@@ -49,6 +49,7 @@
           aria-label="Search nodes, templates and groups"
           placeholder="Search nodes…"
         />
+        <select id="studio-library-category" aria-label="Library category"><option value="">All</option></select>
         <div id="studio-library-items"></div>
       </aside>
       <studio-canvas></studio-canvas>
@@ -191,6 +192,7 @@
           );
         });
         this.querySelector("#studio-search").oninput = () => this.library();
+        this.querySelector("#studio-library-category").onchange = () => this.library();
         this.querySelector("#studio-title").oninput = () => this.selectionIntent++;
         this.querySelector("#studio-title").onchange = () =>
           this.changed(false);

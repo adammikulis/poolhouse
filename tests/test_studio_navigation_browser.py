@@ -9,15 +9,18 @@ from poolhouse.fleet.themes import PRESETS
 pytestmark = pytest.mark.slow
 
 
-def named_group(page, name):
+def named_group(page, name, proof=None):
     studio_command(page, 'Group selection').click()
-    page.locator('.studio-inspector').get_by_role('button', name='Open group', exact=True).click()
+    if proof:
+        page.screenshot(path=proof / 'group-ready.png')
+    opener = page.locator('.studio-node').get_by_role('button', name='Open group', exact=True)
+    (opener if opener.is_visible() else page.locator('.studio-inspector').get_by_role('button', name='Open group', exact=True)).click()
     field = page.get_by_label('Group name', exact=True)
     field.fill(name)
     field.press('Tab')
 
 
-def test_nested_group_breadcrumb_returns_to_root_without_losing_edits(studio_page):  # noqa: F811
+def test_nested_group_breadcrumb_returns_to_root_without_losing_edits(studio_page, tmp_path):  # noqa: F811
     page, state, errors = studio_page
     title = page.get_by_label('Workflow title', exact=True)
     title.fill('Fraud review')
@@ -25,9 +28,12 @@ def test_nested_group_breadcrumb_returns_to_root_without_losing_edits(studio_pag
     add(page, 'Prompt template')
     page.get_by_role('button', name='Zoom in', exact=True).click()
     root_view = page.locator('studio-view').evaluate('e=>structuredClone(e.graph.layout.viewport)')
-    named_group(page, 'Prepare evidence')
+    page.screenshot(path=tmp_path / 'root-entry.png')
+    named_group(page, 'Prepare evidence', tmp_path)
+    page.screenshot(path=tmp_path / 'group-open.png')
     page.locator('.studio-node header').click()
     named_group(page, 'Check prompt')
+    page.screenshot(path=tmp_path / 'nested-open.png')
     nav = page.get_by_role('navigation', name='Canvas location', exact=True)
     expect(nav.get_by_role('button', name='Back to Prepare evidence', exact=True)).to_be_visible()
     expect(nav.locator('[aria-current="location"]')).to_have_text('Check prompt')
@@ -35,10 +41,12 @@ def test_nested_group_breadcrumb_returns_to_root_without_losing_edits(studio_pag
     prompt = page.locator('.studio-inspector').get_by_label('Prompt text', exact=True)
     prompt.fill('Retain this nested edit')
     prompt.press('Tab')
+    page.screenshot(path=tmp_path / 'nested-edited.png')
     before = page.locator('studio-view').evaluate('e=>({serial:e.editSerial,undo:e.undoStack.length})')
     root = nav.get_by_role('button', name='Workflow: Fraud review', exact=True)
     root.focus()
     root.press('Enter')
+    page.screenshot(path=tmp_path / 'root-return.png')
     expect(nav.locator('[aria-current="location"]')).to_have_text('Fraud review')
     assert page.locator('studio-view').evaluate('e=>e.context.length') == 0
     assert page.locator('studio-view').evaluate('e=>e.graph.layout.viewport') == root_view
@@ -52,6 +60,7 @@ def test_nested_group_breadcrumb_returns_to_root_without_losing_edits(studio_pag
     page.keyboard.press('Escape')
     expect(nav.locator('[aria-current="location"]')).to_have_text('Prepare evidence')
     expect(nav.get_by_role('button', name='Back to Fraud review', exact=True)).to_be_visible()
+    page.screenshot(path=tmp_path / 'back-to-parent.png')
     assert not state['submissions'] and not errors
 
 
@@ -76,6 +85,39 @@ def test_detached_group_controls_cannot_mutate_a_different_canvas(studio_page): 
     }''')
     assert page.locator('studio-view').evaluate('e=>({graph:structuredClone(e.rootGraph()),serial:e.editSerial})') == before
     assert page.locator('studio-view').evaluate('e=>e.context.length') == 0
+    assert not errors
+
+
+def test_library_filters_preserve_graph_focus_and_selected_inspector(studio_page, tmp_path):  # noqa: F811
+    page, _state, errors = studio_page
+    expect(page.locator('.studio-inspector')).to_be_hidden()
+    page.screenshot(path=tmp_path / 'empty-root.png')
+    add(page, 'Prompt template')
+    expect(page.locator('.studio-inspector')).to_be_visible()
+    editor = page.locator('studio-view')
+    before = editor.evaluate('e=>({graph:structuredClone(e.rootGraph()),selected:[...e.selected],serial:e.editSerial,undo:e.undoStack.length})')
+    category = page.get_by_label('Library category', exact=True)
+    category.focus()
+    category.select_option(label='Results')
+    page.screenshot(path=tmp_path / 'category-filtered.png')
+    expect(page.locator('.studio-library-node[data-node-type="prompt"]')).to_have_count(0)
+    expect(page.locator('.studio-inspector').get_by_label('Prompt text', exact=True)).to_be_visible()
+    editor.evaluate('e=>e.render()')
+    expect(category).to_be_focused()
+    assert editor.evaluate('e=>({graph:structuredClone(e.rootGraph()),selected:[...e.selected],serial:e.editSerial,undo:e.undoStack.length})') == before
+    category.select_option(label='All')
+    button = page.get_by_role('button', name='Add Report', exact=True)
+    button.focus()
+    editor.evaluate('e=>e.render()')
+    expect(button).to_be_focused()
+    button.press('Enter')
+    page.screenshot(path=tmp_path / 'keyboard-added.png')
+    expect(page.locator('.studio-inspector').get_by_role('heading', name='Report', exact=True)).to_be_visible()
+    viewport = editor.evaluate('e=>structuredClone(e.graph.layout.viewport)')
+    page.locator('.studio-viewport').focus()
+    page.keyboard.press('Escape')
+    expect(page.locator('.studio-inspector')).to_be_hidden()
+    assert editor.evaluate('e=>e.graph.layout.viewport') == viewport
     assert not errors
 
 
