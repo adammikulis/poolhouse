@@ -254,6 +254,18 @@ class DatasetImports:
                        'source': 'huggingface-preview', 'preview_digest': row['body']['expected_preview_digest']}
         return {'run': self.public_run(run), 'dataset': dataset}
 
+    def lookup(self, principal, key):
+        if not isinstance(key, str) or not key.strip() or len(key) > 256:
+            raise ValueError('Choose the existing dataset import command.')
+        self.authority._owner(principal)
+        if self.engine.authorize(principal, None, {}) is not True:
+            raise PermissionError('Sign in again to inspect this dataset import.')
+        ident = digest({'principal': principal, 'key': key, 'kind': KIND})
+        row = self._request(principal, ident)
+        result = self.status(principal, row['run_id'])
+        self._current(principal, row)
+        return result
+
     def cancel(self, principal, ident):
         self._from_run(principal, ident)
         return {'run': self.public_run(self.engine.cancel(principal, ident))}

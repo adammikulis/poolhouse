@@ -32,7 +32,7 @@ def route(handler):
     if not handler.path.startswith(PREFIX):
         return False
     action = handler.path[len(PREFIX):]
-    if action == 'preview-imports' or action.startswith('imports/'):
+    if action in {'preview-imports', 'imports'} or action.startswith('imports/'):
         try:
             return _imports(handler, action)
         except PermissionError:
@@ -97,6 +97,12 @@ def _imports(handler, action):
     engine, principal = handler._service()
     _current(engine, principal)
     service = handler.ui.studio_datasets
+    if action == 'imports' and handler.method == 'GET':
+        entries = parse_qsl(urlsplit(handler.handler.path).query, keep_blank_values=True, errors='strict', max_num_fields=1)
+        if len(entries) != 1 or entries[0][0] != 'key':
+            raise ValueError('Choose one existing dataset import command.')
+        handler.send(200, service.lookup(principal, entries[0][1]))
+        return True
     if handler.query:
         raise ValueError('Dataset import commands do not accept query fields.')
     if action == 'preview-imports' and handler.method == 'POST':
