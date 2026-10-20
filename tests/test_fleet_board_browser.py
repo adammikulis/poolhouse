@@ -20,11 +20,7 @@ def open_device_board(page, server):
 
 def open_direct(page, agent):
     """Start (or reopen) a direct conversation from the sidebar's agent directory."""
-    direct = page.locator('#conversation-direct')
-    if not direct.get_by_label('Message an agent', exact=True).is_visible():
-        direct.locator('summary').click()
-    direct.get_by_label('Message an agent', exact=True).select_option(agent)
-    direct.get_by_role('button', name='Open', exact=True).click()
+    page.locator('#conversation-directory').get_by_title(agent, exact=True).click()
 
 
 def test_person_channel_thread_dm_drafts_and_live_reply(board, playwright):  # noqa: F811
@@ -39,6 +35,7 @@ def test_person_channel_thread_dm_drafts_and_live_reply(board, playwright):  # n
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
         viewer = open_device_board(page, server)
+        viewer.get_by_role('button', name='Show all messages', exact=True).click()
         expect(viewer.get_by_text('<img src=x> Native sensors are ready.', exact=True)).to_be_visible()
         assert viewer.locator('img').count() == 0
         viewer.get_by_role('button', name='Reply in thread', exact=True).click()
