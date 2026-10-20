@@ -39,6 +39,7 @@ def decision_page(tmp_path, request):
 
 def choose_template(page, title):
     page.locator('.studio-library').get_by_role('button', name=title, exact=False).click()
+    expect(page.get_by_label('Workflow title')).to_have_value(title)
 
 
 def focus_node(page, node_id):
@@ -88,13 +89,26 @@ def synthetic_model(monkeypatch):
     monkeypatch.setattr(hub, 'discover', lambda **kwargs: [] if kwargs else [SimpleNamespace(id='test-decision-model')])
     monkeypatch.setattr(Adapters, 'availability', lambda self, nodes: {})
     monkeypatch.setattr(Adapters, 'validate', lambda self, nodes: [])
-    monkeypatch.setattr(Adapters, 'validate_resources', lambda self, graph: [])
+    principals = []
+    def allow_current_resource(self, graph, context):
+        assert set(context) == {'principal'}
+        principal = context['principal']
+        assert principal['owner'] is True
+        assert re.fullmatch('[0-9a-f]{64}', principal['id'])
+        assert re.fullmatch('[0-9a-f]{64}', principal['scope'])
+        assert all(node['bindings']['model']['id'] == 'test-decision-model' for node in graph['nodes'] if node['type'] == 'model')
+        if principals:
+            assert principal == principals[-1]
+        principals.append(principal)
+        return []
+    monkeypatch.setattr(Adapters, 'validate_resources', allow_current_resource)
     monkeypatch.setattr(Adapters, 'dependency_fingerprint', lambda self, node: '')
     previous = Adapters.immediate
     monkeypatch.setattr(Adapters, 'immediate', lambda self, node, inputs, context: {'model': {'kind': 'model', 'id': 'test-decision-model'}} if node['type'] == 'model' else previous(self, node, inputs, context))
     monkeypatch.setattr(Adapters, 'supports_authorized', lambda self, node: True)
     calls = []
     def execute(self, node, inputs, context):
+        assert context['principal'] == principals[-1]
         calls.append(node['id'])
         if node['type'] == 'stream.record':
             return {'record': parse_record(node['parameters']['sample'])}
@@ -139,6 +153,14 @@ def test_guard_blocks_branch_and_partial_copy_export_keeps_gate(synthetic_model,
     assert package['graph']['controls'] == copied['controls']
     assert {node['id'] for node in package['graph']['nodes']} == {'record', 'model', 'assess', 'block'}
     assert all(not node['bindings'] for node in package['graph']['nodes'])
+    focus_node(page, 'assess')
+    page.get_by_role('button', name='Delete', exact=True).click()
+    focus_node(page, 'block')
+    page.get_by_role('button', name='Share', exact=True).click()
+    page.get_by_label('Package content').select_option('selection')
+    unresolved = page.locator('studio-view').evaluate('editor => editor.sharingGraph()')
+    assert unresolved['controls'] == copied['controls']
+    assert not validate_graph(unresolved)['valid']
     assert not errors
 
 
@@ -157,6 +179,9 @@ def test_group_required_control_survives_nested_edit_copy_and_export(synthetic_m
     # A blanket condition cannot replace the required precise condition.
     page.get_by_label('Required branch block', exact=True).select_option('')
     expect(group).to_contain_text('Connect required branch block')
+    page.get_by_role('button', name='Unpack group', exact=True).click()
+    expect(page.locator('.studio-status')).to_contain_text('before unpacking this group')
+    expect(group).to_have_count(1)
     page.get_by_label('Run whole group only when', exact=True).select_option('{"node":"assess","port":"block"}')
     page.get_by_role('button', name='Run workflow', exact=True).click()
     expect(page.locator('.studio-status')).to_contain_text('required group control block')

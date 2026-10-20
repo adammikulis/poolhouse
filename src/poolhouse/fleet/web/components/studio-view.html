@@ -261,6 +261,7 @@
         this.changed();
       }
       copy() {
+        this.flushGroup();
         const context = S.selectionContext(this),
           graph = context.graph,
           ids = S.selectionDependencies(graph, context.selected);

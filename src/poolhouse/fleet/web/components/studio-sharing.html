@@ -77,9 +77,7 @@
               ),
             ),
             controls: S.clone(
-              (graph.controls || []).filter(
-                (e) => ids.has(e.source.node) && ids.has(e.target.node),
-              ),
+              (graph.controls || []).filter((e) => ids.has(e.target.node)),
             ),
             groups,
           };

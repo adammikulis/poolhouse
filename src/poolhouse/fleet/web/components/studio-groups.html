@@ -339,6 +339,26 @@
         unpackGroup(node) {
           const group = this.graph.groups[node.group];
           if (!group) return;
+          const missing = Object.keys(group.control_inputs || {}).filter(
+            (name) =>
+              !(this.graph.controls || []).some(
+                (edge) =>
+                  edge.target.node === node.id && edge.target.port === name,
+              ) &&
+              !Object.values(this.graph.control_inputs || {})
+                .flat()
+                .some(
+                  (target) => target.node === node.id && target.port === name,
+                ),
+          );
+          if (missing.length) {
+            this.message(
+              "Connect required branch " +
+                missing.join(", ") +
+                " before unpacking this group.",
+            );
+            return;
+          }
           this.checkpoint();
           const ids = new Map(group.nodes.map((n) => [n.id, S.id()])),
             offset = S.position(this, node.id);

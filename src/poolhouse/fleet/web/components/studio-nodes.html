@@ -101,7 +101,7 @@
                   type: "button",
                   "data-port": port.name,
                   "data-side": side,
-                  "aria-label": `${spec.title} ${side === "inputs" ? "input" : "output"} ${port.name}, ${port.type}`,
+                  "aria-label": `${spec.title} ${side === "outputs" ? "output" : "input"} ${port.name}, ${port.type}`,
                   "aria-pressed": String(!!pending),
                 },
                 (side === "inputs" ? "◉ " : "") +
