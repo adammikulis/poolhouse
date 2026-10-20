@@ -123,7 +123,7 @@ def kit(tmp_path, monkeypatch):
 
 
 def call(kit, identity="first", **options):
-    return kit.residents.request(RECORD, identity, kit.owner, options.get("resolve", lambda: kit.model),
+    return kit.residents.request(RECORD, identity, kit.owner, options.get("resolve", lambda _stage: kit.model),
                                  options.get("connected", lambda: True))
 
 
@@ -142,7 +142,22 @@ def test_duplicate_attaches_and_changed_record_conflicts(kit):
     assert call(kit) == result
     assert kit.processes[0].commands == ["load", "decide"]
     with pytest.raises(ValueError, match="different work"):
-        kit.residents.request({**RECORD, "state": "changed"}, "first", kit.owner, lambda: kit.model, lambda: True)
+        kit.residents.request({**RECORD, "state": "changed"}, "first", kit.owner, lambda _stage: kit.model, lambda: True)
+
+
+def test_current_authority_knows_queue_load_compute_and_result_stages(kit):
+    seen = []
+    def resolve(stage):
+        seen.append(stage)
+        return kit.model
+    call(kit, resolve=resolve)
+    assert set(seen) == {"queue", "load", "compute", "result"}
+    seen.clear()
+    call(kit, "warm", resolve=resolve)
+    assert set(seen) == {"queue", "compute", "result"}
+    seen.clear()
+    call(kit, "warm", resolve=resolve)
+    assert seen == ["queue", "result"]
 
 
 def test_changed_host_implementation_or_calibration_does_not_reuse_old_model(kit):
@@ -150,7 +165,7 @@ def test_changed_host_implementation_or_calibration_does_not_reuse_old_model(kit
     kit.residents.implementation = "new-installed-implementation"
     call(kit, "new-code")
     calibrated = replace(kit.model, calibration={"temperature": 2})
-    call(kit, "new-calibration", resolve=lambda: calibrated)
+    call(kit, "new-calibration", resolve=lambda _stage: calibrated)
     assert len(kit.processes) == 3
     assert all(process.commands == ["load", "decide"] for process in kit.processes)
 
@@ -181,7 +196,7 @@ def test_queued_memory_revocation_releases_request_without_spawning(kit):
         allowed[0] = False
         return {"state": "queued", "id": identity}
 
-    def resolve():
+    def resolve(_stage):
         if not allowed[0]:
             raise PermissionError("revoked")
         return kit.model
@@ -281,24 +296,24 @@ def test_source_and_owner_authorization_required_even_for_cached_outcome(kit):
     with pytest.raises(InterruptedError):
         call(kit, connected=lambda: False)
     with pytest.raises(PermissionError):
-        call(kit, resolve=lambda: None)
+        call(kit, resolve=lambda _stage: None)
     owner = DecisionOwner(kit.owner.scope, kit.owner.pid, kit.owner.started - 1)
     with pytest.raises(InterruptedError, match="process identity"):
-        kit.residents.request(RECORD, "new", owner, lambda: kit.model, lambda: True)
+        kit.residents.request(RECORD, "new", owner, lambda _stage: kit.model, lambda: True)
 
 
 @pytest.mark.parametrize("pid,started", [(0, None), (-1, 1), (True, 1), (1, None), (1, float("nan")), (1, 0)])
 def test_missing_or_invalid_owner_process_proof_never_loads(kit, pid, started):
     owner = DecisionOwner(kit.owner.scope, pid, started)
     with pytest.raises(PermissionError):
-        kit.residents.request(RECORD, "invalid-owner", owner, lambda: kit.model, lambda: True)
+        kit.residents.request(RECORD, "invalid-owner", owner, lambda _stage: kit.model, lambda: True)
     assert not kit.processes
 
 
 def test_revocation_after_load_withholds_result_and_evicts(kit):
     calls = []
 
-    def resolve():
+    def resolve(_stage):
         calls.append(True)
         if kit.processes and "decide" in kit.processes[0].commands:
             raise PermissionError("revoked")
@@ -349,7 +364,7 @@ def test_busy_registry_renews_every_resident_beyond_a_memory_lease_lifetime(kit)
 
     call(kit)
     second = replace(kit.model, identity="second-model")
-    call(kit, "second", resolve=lambda: second)
+    call(kit, "second", resolve=lambda _stage: second)
     clock = [0]
     expires = dict.fromkeys(kit.table.held, admission.KEEP_S)
 
@@ -427,5 +442,5 @@ def test_actual_token_limit_refuses_before_any_model_forward(monkeypatch):
                                   {**RECORD, "abstain_below": float("nan")}, {**RECORD, "state": "x" * 200001}])
 def test_invalid_records_never_load_model(kit, record):
     with pytest.raises(ValueError):
-        kit.residents.request(record, "invalid", kit.owner, lambda: kit.model, lambda: True)
+        kit.residents.request(record, "invalid", kit.owner, lambda _stage: kit.model, lambda: True)
     assert not kit.processes
