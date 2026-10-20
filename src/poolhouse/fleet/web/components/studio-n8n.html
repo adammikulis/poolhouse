@@ -39,8 +39,9 @@
         if (!event.composedPath().includes(this.canvas) || this.n8nEditing(event) || event.defaultPrevented || this.host.hidden ||
             M.route !== 'studio' || location.hash !== '#studio' || this.n8nDialog?.open) return;
         const text = event.clipboardData?.getData('text/plain') || '';
+        const oversized = text.length > 2000000 || new TextEncoder().encode(text).length > 2000000;
         let recognized = false;
-        if (text.length <= 2000000) {
+        if (!oversized) {
           try {
             const value = JSON.parse(text);
             recognized = value && Array.isArray(value.nodes) && value.connections &&
@@ -49,7 +50,7 @@
         } else recognized = /"nodes"\s*:/.test(text.slice(0,4096));
         if (recognized) {
           event.preventDefault();
-          if (text.length > 2000000 || new TextEncoder().encode(text).length > 2000000) {
+          if (oversized) {
             this.message('Choose n8n JSON smaller than 2 MB.'); return;
           }
           const box = this.canvas.view.getBoundingClientRect(), pointer = this.n8nPointer;

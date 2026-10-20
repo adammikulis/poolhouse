@@ -116,6 +116,9 @@ def test_malformed_oversized_and_stale_preview_never_insert(import_page):  # noq
     clipboard(page, '{"nodes":[' + ' ' * 2000000)
     expect(page.locator('.studio-status')).to_contain_text('smaller than 2 MB')
     expect(page.get_by_role('dialog')).to_have_count(0)
+    clipboard(page, '{"nodes":[],"connections":{},"name":"' + 'あ' * 700000 + '"}')
+    expect(page.locator('.studio-status')).to_contain_text('smaller than 2 MB')
+    expect(page.get_by_role('dialog')).to_have_count(0)
     held = []
     page.route('**/ui/studio/import/n8n/preview', lambda route: held.append(route))
     clipboard(page, json.dumps(workflow()))
