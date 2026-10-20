@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from poolhouse.studio.store import digest
 
+from .studio_webhook_setup import LocalSender
 from .studio_webhooks import WebhookSources
 
 
@@ -16,6 +17,8 @@ def create(ui, service):
 
     def current(ident):
         source = source_row(ident)
+        if source.get('provider') and not ui.studio_webhook_setup.ready(ident, source['generation']):
+            raise PermissionError('This software sender is no longer authorized.')
         with service.store.lock:
             binding = service.store.graph.get_doc('studio.webhook-subscription:' + ident)
             if not binding:
@@ -44,6 +47,8 @@ def create(ui, service):
             return result
 
     ui.studio_webhooks = WebhookSources(service.authority.root, current=current, admit=admit, configure=configure)
+    ui.studio_webhook_setup = LocalSender(ui, service)
+    service.sources.webhook_current = ui.studio_webhook_setup.ready
     return ui.studio_webhooks
 
 

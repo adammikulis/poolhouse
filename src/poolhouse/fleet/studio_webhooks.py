@@ -70,6 +70,7 @@ class WebhookSources:
     def __init__(self, root, *, current, admit, configure, clock=time.time):
         self.root = Path(root).absolute()
         self.current, self.admit, self.configure, self.clock = current, admit, configure, clock
+        self.provider_current = lambda source, generation: False
         with self._directory():
             pass
 
@@ -170,6 +171,18 @@ class WebhookSources:
         if self.configure(principal, source, generation) is not True:
             raise PermissionError(ERROR)
         return {'key_id': row['key_id'], 'generation': generation}
+
+    def provision_registered(self, source, generation, deliver, *, scope):
+        """A fixed daemon registry proves software delegation, never a stored owner session."""
+        source, generation = _identity(source), _identity(generation)
+        if self.provider_current(source, generation) is not True:
+            raise PermissionError(ERROR)
+        with self._directory() as descriptor:
+            row = self._read(descriptor, source)
+        if row['scope'] != scope or row['generation'] != generation or deliver({key: row[key] for key in ('source', 'generation', 'secret')}) is not True:
+            raise PermissionError(ERROR)
+        if self.provider_current(source, generation) is not True:
+            raise PermissionError(ERROR)
 
     def _active(self, source, generation):
         current = self.current(source)

@@ -153,6 +153,8 @@ class Sources:
         source = self.store.get('source', sub['source_id'], sub['scope'])
         if source['kind'] != 'webhook':
             return
+        if source.get('provider') and not self.webhook_current(source['id'], source['generation']):
+            raise PermissionError('This software sender is unavailable.')
         key = 'studio.webhook-subscription:' + source['id']
         previous = self.store.graph.get_doc(key)
         if previous and previous['subscription'] != sub['id']:
