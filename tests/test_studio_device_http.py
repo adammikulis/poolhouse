@@ -22,6 +22,69 @@ from poolhouse.studio.catalog import node_spec
 from poolhouse.studio.store import digest
 
 
+@pytest.mark.parametrize('hostname', ['127.0.0.1', 'localhost'])
+@pytest.mark.parametrize('same_url', [False, True])
+def test_member_tls_redirects_never_contact_a_second_endpoint(devices, monkeypatch, hostname, same_url):
+    opened, _ = devices
+    client, _, _, server, _ = opened[0]
+    beacon = Beacon('device-a', host=hostname, port=server.server_port, machine='device-a', cert=client.certificate)
+    client = MemberExecution(Member(beacon.base_url, client.member.token, beacon=beacon), lambda: True)
+    hits = []
+
+    def redirect(handler):
+        handler.rfile.read(int(handler.headers.get('Content-Length', '0')))
+        hits.append(handler.path)
+        handler.send_response(301)
+        handler.send_header('Location', client.base_url + (handler.path if same_url else '/elsewhere'))
+        handler.send_header('Content-Length', '0')
+        handler.end_headers()
+
+    monkeypatch.setattr(server.RequestHandlerClass, 'do_POST', redirect)
+    monkeypatch.setattr(server.RequestHandlerClass, 'do_GET', lambda handler: hits.append('unexpected GET'))
+    with pytest.raises(ValueError):
+        client.request('validate', {})
+    assert hits == ['/studio/v1/executions/validate']
+
+
+def test_member_exact_leaf_survives_global_pin_replacement(devices, tmp_path, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    from poolhouse.fleet import studio_transport
+
+    opened, _ = devices
+    client, service, _, server, _ = opened[0]
+    identity = tls.identity(service.ui.root / 'tls', 'device-a')
+    parent = x509.load_pem_x509_certificate(identity.certfile.read_bytes())
+    signer = serialization.load_pem_private_key(identity.keyfile.read_bytes(), password=None)
+    key = ec.generate_private_key(ec.SECP256R1())
+    now = datetime.now(UTC)
+    child = (x509.CertificateBuilder().subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, 'synthetic-child')]))
+             .issuer_name(parent.subject).public_key(key.public_key()).serial_number(x509.random_serial_number())
+             .not_valid_before(now - timedelta(minutes=1)).not_valid_after(now + timedelta(hours=1))
+             .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True).sign(signer, hashes.SHA256()))
+    certfile, keyfile = tmp_path / 'child.pem', tmp_path / 'child-key.pem'
+    certfile.write_bytes(child.public_bytes(serialization.Encoding.PEM) + identity.certfile.read_bytes())
+    keyfile.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
+    server.context().load_cert_chain(str(certfile), str(keyfile))
+    original = studio_transport.open_stream
+
+    def clobber(url, **kwargs):
+        http.pin(url.split('/')[2], tls.pinned_context(identity.beacon))
+        return original(url, **kwargs)
+
+    monkeypatch.setattr(studio_transport, 'open_stream', clobber)
+    hits = []
+    monkeypatch.setattr(server.RequestHandlerClass, 'do_POST', lambda handler: hits.append(handler.path))
+    with pytest.raises(studio_transport.MemberUncertain):
+        client.request('validate', {})
+    assert hits == []
+
+
 class NativeWork:
     def validate(self, nodes):
         return []

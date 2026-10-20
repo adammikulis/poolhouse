@@ -1,6 +1,7 @@
 """Sealed Studio execution requests and explicit resource exchange with one enrolled device."""
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
@@ -10,7 +11,7 @@ from http.client import IncompleteRead
 from pathlib import Path
 from urllib.parse import quote, urlencode, urlsplit
 
-from poolhouse import http, macauth, sealing
+from poolhouse import macauth, sealing
 from poolhouse.http import ONCE, Options, Sealed, ServerError, open_stream
 from poolhouse.studio.catalog import is_model_type
 from poolhouse.studio.resources import model_files, open_model_file
@@ -74,19 +75,22 @@ class MemberExecution:
         if identity is not None:
             if not isinstance(identity, tls.Identity):
                 raise TypeError("A resident issuer requires its existing local TLS identity.")
-            context = tls.pinned_context(beacon.cert, who=identity)
+            context = tls.pinned_context(beacon.cert, who=identity, context_type=tls.ExactContext)
             # Unlike general discovery, this client must present its existing key.
             # Do not inherit pinned_context's optional-client failure suppression.
             context.load_cert_chain(str(identity.certfile), str(identity.keyfile))
         else:
-            context = tls.pinned_context(beacon.cert)
-        http.pin(parts.netloc, context)
+            context = tls.pinned_context(beacon.cert, context_type=tls.ExactContext)
+        if not isinstance(context, tls.ExactContext):
+            raise TypeError('Studio device requests require an exact enrolled certificate context.')
+        context.expected_der = base64.b64decode(beacon.cert, validate=True)
+        self.context = context
 
     def _allowed(self):
         if (self.member.base_url != self.base_url or self.member.beacon.machine != self.machine
                 or self.member.beacon.cert != self.certificate):
             raise PermissionError("The selected execution device identity changed.")
-        if self.authorize() is False:
+        if self.authorize() is not True:
             raise PermissionError("This device execution is no longer authorized.")
 
     def _wire(self, method: str, path: str, raw: bytes | None, limit: int) -> bytes:
@@ -99,7 +103,8 @@ class MemberExecution:
             return url
         options = Options(token=self.member.token, headers={sealing.HEADER: "2", "Content-Type": "application/json"},
                           retry=ONCE, timeout=min(self.member.timeout, 30), guard=guard,
-                          error_body_limit=MAX_REPLY + sealing.NONCE_BYTES + 16)
+                          error_body_limit=MAX_REPLY + sealing.NONCE_BYTES + 16,
+                          tls_context=self.context, follow_redirects=False)
         try:
             with open_stream(endpoint, method=method, data=raw, options=options) as response:
                 if response.headers.get(sealing.HEADER) != "1":
