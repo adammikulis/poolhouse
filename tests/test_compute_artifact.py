@@ -277,3 +277,43 @@ def test_installer_does_not_clean_untrusted_bytecode_or_changed_source(bundle, t
         artifact.install(environment.python, base.parent, environment=dict(os.environ))
     assert cache.exists()
     assert outside.read_bytes() == b'outside bytes'
+
+
+def test_actual_resident_child_preserves_strict_compute_inventory(bundle, tmp_path, monkeypatch):
+    import os
+    import select
+    import subprocess
+    import sys
+    from types import SimpleNamespace
+
+    from poolhouse.fleet.wheel_provenance import stamp
+    from poolhouse.serve import decision_process, grant
+
+    source, base, _, _ = bundle
+    files = artifact.contents(base)
+    files['poolhouse/serve/__init__.py'] = b''
+    files['poolhouse/serve/decision_host.py'] = (
+        b'import poolhouse.graph.payloads\nprint("ready",flush=True)\ninput()\n')
+    write_wheel(base, files)
+    companion = artifact.build(source, base, REVISION)
+    manifest = artifact.from_wheel(base)
+    stamp(base, REVISION, source)
+    prefix = tmp_path / 'managed'
+    subprocess.run([sys.executable, '-m', 'venv', str(prefix)], check=True, capture_output=True)
+    python = prefix / 'bin/python'
+    subprocess.run([str(python), '-m', 'pip', 'install', '--no-deps', '--no-index', '--no-compile', str(base), str(companion)],
+                   check=True, capture_output=True)
+    monkeypatch.setattr(artifact, 'expected', lambda: manifest)
+    monkeypatch.setattr(decision_process, 'Environment', lambda _root: SimpleNamespace(
+        python=python, require_current_runtime=lambda: None,
+        require_compute=lambda: artifact.probe(python, environment=dict(os.environ))))
+    with grant.broker_grant():
+        resident = decision_process.DecisionProcess()
+        try:
+            resident.start()
+            assert select.select([resident.process.stdout], [], [], 5)[0]
+            assert resident.process.stdout.readline() == b'ready\n'
+            assert artifact.probe(python, environment=dict(os.environ)) == manifest['sha256']
+            assert artifact.probe(python, environment=dict(os.environ)) == manifest['sha256']
+        finally:
+            resident.close()

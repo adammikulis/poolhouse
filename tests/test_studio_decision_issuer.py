@@ -356,3 +356,125 @@ def test_actual_launch_channel_accepts_the_real_issuer_calibration_context(curre
         assert context['model_digest'] == fingerprint(asdict(current.state['model']))
     finally:
         runner.shutdown()
+
+
+@pytest.fixture
+def resident_listener(current, tmp_path):
+
+    from poolhouse import home, http
+    from poolhouse.fleet import tls
+    from poolhouse.fleet.api import Daemon, make_handler
+    from poolhouse.fleet.discovery import derive_token, mint_pool
+    from poolhouse.fleet.framing import LimitedServer
+    from poolhouse.fleet.jobs import JobRunner
+    from poolhouse.fleet.pool_roster import Pool
+
+    identity = tls.identity(tls.device_directory(), 'resident-test')
+    home.state('machine-id').write_text('resident-test')
+    membership = mint_pool('resident-pool', home.state('pool.key'))
+    pool = Pool(home.state('pool.key'))
+    pool.enrol(membership.group, identity.beacon, 'resident-test', 'test')
+    runner = JobRunner(tmp_path / 'runner')
+    current.engine.runner = runner
+    current.issuer.worker_proof = runner.verify_studio_worker
+    ui = SimpleNamespace(pool_key_path=home.state('pool.key'), studio_decision_issuer=current.issuer)
+    daemon = Daemon(runner, runner.files_root, derive_token(membership.key), name='resident-test',
+                    pool_key_path=home.state('pool.key'), members=pool, ui=ui)
+    replies = []
+    handler = make_handler(daemon)
+    class Recorded(handler):
+        def _send(self, status, payload, **kwargs):
+            if status >= 400:
+                replies.append((status, payload))
+            return super()._send(status, payload, **kwargs)
+    server = LimitedServer(('127.0.0.1', 0), Recorded, tls=tls.member_context(identity, pool))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    current.owned.issuer.update(endpoint=f'https://127.0.0.1:{server.server_port}', certificate=identity.beacon,
+                                machine='resident-test', pool=hashlib.sha256(membership.key).hexdigest())
+    try:
+        yield runner, server, replies
+    finally:
+        runner.stop_running(grace_s=1)
+        runner.shutdown()
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+        http._PINNED.clear()
+
+
+@pytest.fixture
+def sealed_resident(current, tmp_path, resident_listener):
+    import os
+    import time
+    from pathlib import Path
+
+    runner, server, replies = resident_listener
+    src = str(Path(__file__).resolve().parents[1] / 'src')
+    script = '''import sys,json,os
+sys.path.insert(0,sys.argv[1])
+from poolhouse.serve.decision_launch import bootstrap
+from poolhouse.serve.decision_authority import DecisionAuthorization
+owned=bootstrap(sys.stdin.buffer.readline())
+for line in sys.stdin:
+    value=json.loads(line)
+    try:
+        model=DecisionAuthorization(owned,value['request'],value['worker'])(value['stage'])
+        print(json.dumps({'identity':model.identity}),flush=True)
+    except Exception as exc:
+        print(json.dumps({'error':type(exc).__name__,'message':str(exc)}),flush=True)
+'''
+    broker = subprocess.Popen([sys.executable, '-B', '-I', '-c', script, src],
+                              stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    release, output = tmp_path / 'release', tmp_path / 'worker.json'
+    try:
+        current.owned.process, current.owned.started = broker, started_at(broker.pid)
+        current.owned.ready = {'pid': broker.pid, 'started': current.owned.started,
+                               'instance': current.owned.instance, 'port': server.server_port}
+        broker.stdin.write(json.dumps({'parent': {'pid': os.getpid(), 'started': started_at(os.getpid())},
+                                       'instance': current.owned.instance, 'secret': current.owned.secret.hex(),
+                                       'issuer': current.owned.issuer}) + '\n')
+        broker.stdin.flush()
+        request = mint(current)
+        runner.studio_launch_context = current.issuer.launch_context
+        runner.studio_gate = lambda job: bool(current.issuer._snapshot(current.run_id, current.node_id, job.id))
+        worker = (f'import sys;sys.path.insert(0,{src!r});'
+                  'from poolhouse.studio_launch import worker_context;'
+                  'from poolhouse.serve.process import started_at;'
+                  'import os,json,time;worker_context();'
+                  f'open({str(output)!r},"w").write(json.dumps({{"pid":os.getpid(),"started":started_at(os.getpid())}}));'
+                  f'\nwhile not os.path.exists({str(release)!r}): time.sleep(.01)')
+        job = runner.submit('decision.predict', [sys.executable, '-B', '-I', '-c', worker], str(tmp_path),
+                            job_id=current.job_id)
+        until = time.monotonic() + 5
+        while not output.exists() and time.monotonic() < until:
+            assert job.state not in {'failed', 'interrupted'}, job.public()
+            time.sleep(.01)
+        assert output.exists(), job.public()
+        proof = json.loads(output.read_text())
+        yield current, broker, request, proof, replies
+    finally:
+        release.touch()
+        broker.stdin.close()
+        if broker.poll() is None:
+            broker.terminate()
+        broker.wait(timeout=5)
+        broker.stdout.close()
+
+
+def test_actual_sealed_resident_authority_composes_with_private_worker_launch(sealed_resident):
+    import select
+
+    current, broker, request, proof, replies = sealed_resident
+    for stage in ('queue', 'load', 'compute', 'result'):
+        broker.stdin.write(json.dumps({'request': request, 'worker': proof, 'stage': stage}) + '\n')
+        broker.stdin.flush()
+        assert select.select([broker.stdout], [], [], 5)[0], replies
+        assert json.loads(broker.stdout.readline()) == {'identity': current.state['model'].identity}, replies
+    assert not replies
+    current.state['allowed'] = False
+    broker.stdin.write(json.dumps({'request': request, 'worker': proof, 'stage': 'compute'}) + '\n')
+    broker.stdin.flush()
+    assert select.select([broker.stdout], [], [], 5)[0]
+    assert 'error' in json.loads(broker.stdout.readline())
+    assert replies[-1][0] == 403

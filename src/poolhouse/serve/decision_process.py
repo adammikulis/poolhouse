@@ -38,7 +38,7 @@ class DecisionProcess:
         if self.process is not None:
             raise RuntimeError("The decision process was already started.")
         self.process = start_process(
-            [self.executable, "-I", "-m", "poolhouse.serve.decision_host"],
+            [self.executable, "-B", "-I", "-m", "poolhouse.serve.decision_host"],
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
             env={**process_environment(), "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1"})
         self.pid = self.process.pid
