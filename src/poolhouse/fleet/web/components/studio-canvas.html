@@ -184,11 +184,10 @@
           this.connections();
         };
         this.track(e, move, (event) => {
+          const eligible = event.type !== "pointercancel" && editor.selected.size === 1 && Math.hypot(event.clientX - e.clientX, event.clientY - e.clientY) > 5;
+          const edge = eligible ? this.placementEdge(event, node.id) : null;
           editor.changed();
-          if (event.type !== "pointercancel" && editor.selected.size === 1 && Math.hypot(event.clientX - e.clientX, event.clientY - e.clientY) > 5) {
-            const edge = this.placementEdge(event);
-            if (edge !== null) this.placeEntry(null, S.position(editor, node.id), edge, node);
-          }
+          if (edge !== null) this.placeEntry(null, S.position(editor, node.id), edge, node);
         });
       }
       background(e) {

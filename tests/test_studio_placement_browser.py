@@ -40,6 +40,7 @@ def connected(page):
 
 
 def wire_point(page):
+    page.evaluate('() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done)))')
     return page.locator('.studio-connections path[data-edge-index]').first.evaluate('''path => {
       const p = path.getPointAtLength(path.getTotalLength() / 2).matrixTransform(path.getScreenCTM());
       return {x:p.x,y:p.y}; }''')
