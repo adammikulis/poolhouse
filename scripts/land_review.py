@@ -37,7 +37,7 @@ SRC_SENSITIVE = frozenset({
     "runtime.py", "runtime_await.py", "runtime_board.py", "runtime_bridges.py", "runtime_cli.py", "runtime_coalesce.py",
     "runtime_deploy.py", "runtime_git.py", "runtime_host.py", "runtime_launchers.py", "runtime_source.py", "runtime_stale.py", "runtime_store.py",
     "runtime_trust.py", "runtime_unmerged.py", "safenames.py", "safetext.py", "sandbox", "scrape", "sealing.py",
-    "secretpaths.py", "sentinel", "serve", "serverkeys.py", "setup.py", "taint", "tar_libraries.py", "testfarm", "trees.py",
+    "secretpaths.py", "sentinel", "serve", "serverkeys.py", "setup.py", "studio", "taint", "tar_libraries.py", "testfarm", "trees.py",
     "web.py", "win32.py", "windows_private.py", "workspace", "worktreerules.py"})
 SRC_SENSITIVE_UNDER = ("cli/daemon.py", "cli/wsl_daemon.py", "data/profiles.json", "testing/canary.py", "testing/fakegithub.py",
                        "testing/injection_corpus.py", "testing/live.py")
