@@ -59,13 +59,21 @@ class Conversations:
                 graph.save(store, found)
         return found
 
-    def update(self, cid: str, *, model: str | None = None, settings: dict | None = None, title: str | None = None) -> Conversation | None:
+    def update(self, cid: str, *, expected_revision: int | None = None, **changes) -> Conversation | None:
+        if set(changes) - {"model", "settings", "title"}:
+            raise ValueError("unknown conversation field")
+        model, settings, title = (changes.get(key) for key in ("model", "settings", "title"))
         if not safe(cid):
             return None
         with graph.opened(self.root) as store, store.transaction():
             found = graph.get(store, cid)
             if found is None:
                 return None
+            original = found.model, found.settings
+            coding = bool(found.settings["harness"] or (isinstance(settings, dict) and settings.get("harness")))
+            if (coding and (model is not None or settings is not None)
+                    and (type(expected_revision) is not int or expected_revision != found.policy_revision)):
+                raise ValueError("The coding session changed; reload its current settings")
             if settings is not None:
                 if not isinstance(settings, dict):
                     raise ValueError("conversation settings must be an object")
@@ -78,6 +86,8 @@ class Conversations:
                 if not isinstance(title, str):
                     raise ValueError("title must be text")
                 found.title = title.strip()[:TITLE_CHARS]
+            if (found.model, found.settings) != original:
+                found.policy_revision += 1
             graph.save(store, found)
         return found
 

@@ -29,12 +29,13 @@ class Conversation:
     title: str = ""
     model: str = ""
     created: float = field(default_factory=time.time)
+    policy_revision: int = 0
     messages: list[Message] = field(default_factory=list)
     settings: dict[str, Any] = field(default_factory=checked)
 
     def public(self, *, full: bool = True) -> dict[str, Any]:
         out: dict[str, Any] = {"version": 1, "id": self.id, "title": self.title,
-                               "settings": dict(self.settings),
+                               "settings": dict(self.settings), "policy_revision": self.policy_revision,
                                "model": self.model, "created": self.created,
                                "count": len(self.messages)}
         if full:

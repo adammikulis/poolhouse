@@ -32,6 +32,9 @@ def get(graph: GraphStore, cid: str) -> Conversation | None:
     if not rows:
         return None
     attrs = column(rows[0]["attrs"], cid)
+    revision = attrs.get("policy_revision")
+    if attrs.get("version") != 2 or type(revision) is not int or revision < 0:
+        raise ValueError("This conversation format is unsupported; start a new conversation")
     messages = []
     found = graph.query("MATCH (c:Node {id:$id})-[:Edge {rel:'contains'}]->(m:Node) "
                         "RETURN m.label AS content, m.attrs AS attrs", {"id": node_id(cid)})
@@ -40,7 +43,7 @@ def get(graph: GraphStore, cid: str) -> Conversation | None:
         messages.append(Message(role=info["role"], content=content, at=info["at"],
                                 reasoning=info.get("reasoning", ""), status=info.get("status", "complete")))
     return Conversation(id=cid, title=rows[0]["title"], model=attrs.get("model", ""),
-                        created=attrs["created"], messages=messages, settings=checked(attrs.get("settings")))
+                        created=attrs["created"], policy_revision=revision, messages=messages, settings=checked(attrs.get("settings")))
 
 
 def all_ids(graph: GraphStore) -> list[str]:
@@ -51,7 +54,8 @@ def all_ids(graph: GraphStore) -> list[str]:
 def save(graph: GraphStore, conversation: Conversation) -> None:
     source = node_id(conversation.id)
     graph.upsert_node({"id": source, "kind": CONVERSATION, "label": conversation.title,
-                       "attrs": {"version": 1, "created": conversation.created, "model": conversation.model,
+                       "attrs": {"version": 2, "created": conversation.created, "model": conversation.model,
+                                 "policy_revision": conversation.policy_revision,
                                  "settings": conversation.settings}})
     _relation(graph, source, "uses-model", "model", conversation.model)
     _relation(graph, source, "in-project", "project", conversation.settings["project"])

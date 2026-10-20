@@ -22,11 +22,14 @@ class ConversationRoutes:
         request = self.body()
         if not isinstance(request, dict):
             raise ValueError("conversation request must be an object")
-        if set(request) - {"model", "title", "settings"}:
+        if set(request) - {"model", "title", "settings", "expected_revision"}:
             raise ValueError("unknown conversation field")
         for field in ("model", "title"):
             if field in request and not isinstance(request[field], str):
                 raise ValueError(f"{field} must be text")
+        if "expected_revision" in request and (type(request["expected_revision"]) is not int
+                or request["expected_revision"] < 0):
+            raise ValueError("expected revision must be a nonnegative integer")
         if "settings" in request and not isinstance(request["settings"], dict):
             raise ValueError("conversation settings must be an object")
         return request
@@ -72,7 +75,7 @@ class ConversationRoutes:
         if self.method == "POST":
             request = self._body()
             changed = store.update(cid, model=request.get("model"), title=request.get("title"),
-                                   settings=request.get("settings"))
+                                   settings=request.get("settings"), expected_revision=request.get("expected_revision"))
             if changed is None:
                 self.send(404, {"error": "no such chat"})
             else:
