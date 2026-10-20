@@ -4,6 +4,7 @@
       E = window.fleetModel.el;
     S.installPersistence = (proto) =>
       Object.assign(proto, {
+        workflowContext: 0,
         workflowList() {
           const select = this.querySelector("#studio-workflows");
           select.replaceChildren(
@@ -15,6 +16,8 @@
           select.value = this.workflowId || "";
         },
         async open(workflow) {
+          this.workflowContext++;
+          this.dispatchEvent(new CustomEvent("studio-selection"));
           if (
             this.dirty ||
             this.saving ||

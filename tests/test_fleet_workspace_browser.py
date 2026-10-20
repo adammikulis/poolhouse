@@ -12,6 +12,7 @@ pytestmark = pytest.mark.slow
 def test_dataset_upload_preview_and_specialist_help(tmp_path, monkeypatch, playwright):
     pw = pytest.importorskip('playwright.sync_api')
     served = Serving(tmp_path)
+    served.ui.root = tmp_path / "traind"
     served.ui.settings.setup_done = True
     try:
         browser = playwright.chromium.launch(headless=True)
@@ -21,12 +22,12 @@ def test_dataset_upload_preview_and_specialist_help(tmp_path, monkeypatch, playw
         page.goto(f'http://127.0.0.1:{served.port}/ui')
         reach(page, 'data')
         page.get_by_role('button', name='+ Add dataset').click()
-        page.get_by_label('Destination relative to files root').fill('datasets/demo.jsonl')
+        page.get_by_label('Dataset name', exact=True).fill('demo')
         page.get_by_label('Or paste dataset content').fill('{"label":"stop"}\n')
         page.get_by_role('button', name='Upload', exact=True).click()
         page.get_by_role('button', name='demo.jsonl').click()
         pw.expect(page.locator('data-view #preview')).to_contain_text('"label":"stop"')
-        page.get_by_role('button', name='Use for training', exact=True).click()
+        page.get_by_role('button', name='Choose training recipe', exact=True).click()
         assert page.get_by_label('Dataset path (relative to files root)').input_value() == 'datasets/demo.jsonl'
         reach(page, 'tools')
         page.get_by_role('tab', name='Command library', exact=True).click()
@@ -62,7 +63,12 @@ def test_dataset_upload_preview_and_specialist_help(tmp_path, monkeypatch, playw
         assert not errors
         browser.close()
     finally:
-        served.close()
+        try:
+            if engine := getattr(served.ui, "studio", None):
+                engine.close()
+                engine.store.close()
+        finally:
+            served.close()
 
 
 def check_training_controls(page, pw):
@@ -90,6 +96,7 @@ def check_training_controls(page, pw):
 
 def test_short_views_start_below_context_navigation(tmp_path, playwright):
     served = Serving(tmp_path)
+    served.ui.root = tmp_path / "traind"
     served.ui.settings.setup_done = True
     try:
         browser = playwright.chromium.launch(headless=True)
@@ -104,11 +111,17 @@ def test_short_views_start_below_context_navigation(tmp_path, playwright):
             assert abs(workspace['y'] - header['y'] - header['height']) < 2
         browser.close()
     finally:
-        served.close()
+        try:
+            if engine := getattr(served.ui, "studio", None):
+                engine.close()
+                engine.store.close()
+        finally:
+            served.close()
 
 
 def test_screen_asked_for_while_the_page_boots_is_the_one_opened(tmp_path, playwright):
     served = Serving(tmp_path)
+    served.ui.root = tmp_path / "traind"
     served.ui.settings.setup_done = True
     held = []
     try:
@@ -116,11 +129,16 @@ def test_screen_asked_for_while_the_page_boots_is_the_one_opened(tmp_path, playw
         page = browser.new_page()
         page.route('**/ui/setup', lambda route: route.continue_() if held else held.append(route))
         page.goto(f'http://127.0.0.1:{served.port}/ui')
-        page.wait_for_function("() => window.fleetModel.requestedRoute === 'chat'")
+        page.wait_for_function("() => window.fleetModel.requestedRoute === 'studio'")
         page.evaluate("() => { location.hash = 'knowledge'; }")
         page.wait_for_function("() => window.fleetModel.requestedRoute === 'knowledge'")
         held[0].continue_()
         page.wait_for_function("() => window.fleetModel.route === 'knowledge'")
         browser.close()
     finally:
-        served.close()
+        try:
+            if engine := getattr(served.ui, "studio", None):
+                engine.close()
+                engine.store.close()
+        finally:
+            served.close()
