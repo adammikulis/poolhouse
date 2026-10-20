@@ -18,7 +18,7 @@
       </button>
     </header>
     <div class="studio-toolbar" role="toolbar" aria-label="Workflow editing">
-      <button id="studio-live" type="button" aria-expanded="false">Live sources</button
+      <button id="studio-live" type="button" aria-expanded="false" disabled>Live sources</button
       ><button id="studio-new" type="button">New</button
       ><button id="studio-undo" type="button">Undo</button
       ><button id="studio-redo" type="button">Redo</button
@@ -182,6 +182,9 @@
       async load() {
         if (this.loading) return;
         this.loading = true;
+        const request = this.loadRequest = Symbol(), live = this.querySelector('#studio-live');
+        live.disabled = true;
+        let ready = false;
         try {
           const [nodes, templates, workflows, devices] = await Promise.all([
             S.api("/nodes"),
@@ -209,15 +212,19 @@
           this.workflows = workflows.workflows || [];
           this.workflowList();
           if (!this.loaded) {
+            await this.open(this.workflows[0] || null);
             this.loaded = true;
-            this.open(this.workflows[0] || null);
           }
           this.library();
           this.render();
           await this.refreshRuns();
           if (!this.liveBox.hidden) await this.loadLive();
+          ready = true;
         } finally {
-          this.loading = false;
+          if (request === this.loadRequest) {
+            this.loading = false;
+            live.disabled = !ready || this.host.hidden;
+          }
         }
       }
       add(spec, position) {
@@ -245,6 +252,7 @@
         this.render();
       }
       render() {
+        this.managedControls();
         this.canvas.paint?.();
         this.inspector();
         this.outlineView();
@@ -394,6 +402,7 @@
     S.installSweeps(StudioView.prototype);
     S.installTargets(StudioView.prototype);
     S.installSetup(StudioView.prototype);
+    S.installManaged(StudioView.prototype);
     S.installLive(StudioView.prototype);
     S.installDelivery(StudioView.prototype);
     S.installRecords(StudioView.prototype);

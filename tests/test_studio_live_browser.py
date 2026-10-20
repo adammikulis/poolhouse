@@ -37,11 +37,16 @@ def live_page(tmp_path, request):
             page.on('pageerror', lambda error: errors.append(str(error)))
             page.on('request', lambda req: posts.append((req.url, req.post_data_json)) if req.method == 'POST' and '/ui/studio/' in req.url else None)
             page.goto(f'http://127.0.0.1:{app.port}/ui/#studio')
+            expect(page.get_by_role('button', name='Live sources', exact=True)).to_be_enabled()
             page.get_by_label('Search nodes, templates and groups').fill('Record')
             page.locator('.studio-library').get_by_role('button', name=re.compile('^Record')).click()
             page.get_by_label('Workflow title').fill('Live example')
             page.get_by_label('Workflow title').press('Tab')
             expect(page.locator('.studio-status')).to_contain_text('Saved')
+            page.get_by_role('button', name='Save', exact=True).click()
+            page.wait_for_function('''() => { const editor = document.querySelector('studio-view');
+                return editor.workflowId && !editor.dirty && !editor.saving
+                  && editor.rootGraph().nodes.some(node => node.type === 'stream.record'); }''')
             yield page, app, errors, posts
     finally:
         app.close()
@@ -105,6 +110,7 @@ def test_managed_copy_watch_is_explicit_and_records_stay_inert(live_page):
     page.get_by_role('button', name='Watch uploaded copy', exact=True).click()
     expect(page.locator('.studio-live')).to_contain_text('Watches the uploaded managed copy.')
     page.get_by_role('button', name='Create paused stream', exact=True).click()
+    expect(page.get_by_role('button', name='Start stream', exact=True)).to_be_enabled()
     page.get_by_role('button', name='Start stream', exact=True).click()
     expect(page.get_by_label('Live decisions')).to_contain_text('Event 1 · done', timeout=10000)
     expect(page.get_by_label('Live decisions')).to_contain_text('<img src=x')

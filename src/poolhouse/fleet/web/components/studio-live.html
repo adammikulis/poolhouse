@@ -5,7 +5,7 @@
     setupLive() {
       const box = E('section', {class: 'studio-dock studio-live', hidden: true, 'aria-label': 'Live sources and decisions'});
       const button = (text, fn) => E('button', {type: 'button', onclick: () => this.livePerform(fn)}, text);
-      this.liveSource = E('select', {'aria-label': 'Live source', onchange: () => this.liveSourceDetails()});
+      this.liveSource = E('select', {'aria-label': 'Live source', onchange: () => { this.liveSourceSerial = (this.liveSourceSerial || 0) + 1; this.liveSourceDetails(); }});
       this.liveInput = E('select', {'aria-label': 'Live record input'});
       this.liveSubscriptions = E('select', {'aria-label': 'Saved streams', onchange: () => this.selectLive(this.liveSubscriptions.value)});
       this.liveNote = E('p', {role: 'status', 'aria-live': 'polite'});
@@ -13,8 +13,6 @@
       this.liveActions = E('div', {class: 'studio-toolbar'});
       this.liveResults = E('div', {'aria-label': 'Live decisions'});
       this.livePreview = E('pre', {'aria-label': 'Synthetic sample preview', hidden: true});
-      const managed = E('select', {'aria-label': 'Uploaded file or folder'});
-      this.liveManaged = managed;
       box.append(E('h2', {}, 'Live sources and decisions'),
         E('p', {}, 'Each record runs the saved workflow. Live output is local unless you explicitly configure a registered destination.'),
         E('label', {}, 'Source', this.liveSource), this.liveSourceInfo,
@@ -22,8 +20,7 @@
         button('Create paused stream', () => this.createLive()),
         E('details', {}, E('summary', {}, 'Watch a file or folder'),
           E('p', {}, 'Uploaded files watch the managed copy. In the installed app, choose an original file or folder to watch it directly.'),
-          E('label', {}, 'Uploaded file or folder', managed),
-          button('Watch uploaded copy', () => this.createManagedSource()),
+          this.setupManaged(),
           ...(window.__TAURI__?.core?.invoke ? [
             button('Choose original file', () => this.pickLiveSource('file')),
             button('Choose original folder', () => this.pickLiveSource('folder'))] : [])),
@@ -39,7 +36,7 @@
         else { await this.loadLive(); box.scrollIntoView({block: 'nearest'}); this.liveSource.focus(); }
       });
     },
-    stopLive() { clearTimeout(this.livePoll); this.liveGeneration = (this.liveGeneration || 0) + 1; },
+    stopLive() { clearTimeout(this.livePoll); this.liveGeneration = (this.liveGeneration || 0) + 1; this.invalidateManaged(); },
     async livePerform(fn) {
       if (this.liveBusy) return;
       this.liveBusy = true;
@@ -57,7 +54,7 @@
         this.stopLive(); this.liveSub = null; this.liveSources = []; this.liveRows = [];
         this.liveSource.replaceChildren(); this.liveSubscriptions.replaceChildren();
         this.liveResults.replaceChildren(); this.livePreview.hidden = true;
-        this.liveManaged.replaceChildren(); this.livePending?.clear(); this.livePickKeys?.clear();
+        this.invalidateManaged(true); this.liveManaged.replaceChildren(); this.livePending?.clear(); this.livePickKeys?.clear();
         this.liveRenderActions(); this.clearDeliveries();
       }
     },
@@ -76,11 +73,9 @@
       else {
         const title = this.querySelector('#studio-title').value;
         const template = this.templates.find((t) => t.title === title);
-        this.liveSource.value = this.liveSources.find((s) => s.template_id === template?.id)?.id || '';
+        this.liveSource.value = this.liveSources.find((s) => template && s.template_id === template.id)?.id || '';
       }
       this.liveSourceDetails(); this.liveInputOptions();
-      this.liveManaged.replaceChildren(E('option', {value: ''}, 'Choose an uploaded file or folder…'),
-        ...(this.resources?.datasets || []).map((r) => E('option', {value: r.id}, r.title || r.id)));
       this.liveList = subscriptions.subscriptions || [];
       const id = this.liveSub?.id;
       this.liveSubscriptions.replaceChildren(E('option', {value: ''}, 'Choose a saved stream…'),
@@ -88,6 +83,7 @@
           (this.workflows.find((w) => w.id === s.workflow_id)?.title || 'Workflow') + ' · revision ' + s.workflow_revision + ' · ' + s.state + ' · ' + s.id.slice(0, 8))));
       const next = this.liveList.find((s) => s.id === id) || this.liveList.find((s) => s.workflow_id === this.workflowId);
       this.selectLive(next?.id || '');
+      return this.browseManaged(this.managedPath);
     },
     liveInputOptions() {
       const old = this.liveInput.value, inputs = [], root = this.rootGraph();
@@ -114,7 +110,7 @@
         source.origin === 'native' ? 'Watches the original selected file or folder.' : source.origin === 'managed' ? 'Watches the uploaded managed copy.' : source.kind === 'examples' ? 'Registered synthetic records; send one explicitly after starting.' : 'Source provider: ' + source.kind));
       if (source.requirements?.length && source.available !== false) this.liveSourceInfo.append(E('p', {}, source.requirements.join('; ')));
     },
-    async liveMutation(path, body, method = 'POST') {
+    async liveMutation(path, body, method = 'POST', current = () => true) {
       const signature = JSON.stringify([method, path, body]);
       this.livePending ||= new Map();
       if (!this.livePending.has(signature)) this.livePending.set(signature, {...body, idempotency_key: S.id()});
@@ -123,6 +119,7 @@
         this.livePending.delete(signature);
         return result;
       } catch (error) {
+        if (!current()) throw error;
         if (error.response?.status === 409) {
           this.livePending.delete(signature);
           if (path.startsWith('/destinations')) {
@@ -149,9 +146,25 @@
       this.liveNote.textContent = 'Stream created paused. Start explicitly when the source and model are ready.';
     },
     async createManagedSource() {
-      if (!this.liveManaged.value) throw Error('Choose an uploaded file or folder.');
-      const r = await this.liveMutation('/sources', {kind: 'watched_file', resource_id: this.liveManaged.value});
-      await this.loadLive(); this.liveSource.value = r.source.id; this.liveSourceDetails();
+      const selected = this.managedSelection(), context = this.managedContext;
+      const source = this.liveSource.value, serial = this.liveSourceSerial;
+      const current = () => this.managedCurrent(context) && this.liveManaged.value === selected.path
+        && this.liveSource.value === source && this.liveSourceSerial === serial;
+      let result;
+      try { result = await this.liveMutation('/sources', {kind: 'watched_file', resource_id: selected.path}, 'POST', current); }
+      catch (error) { if (current()) throw error; return; }
+      if (!current()) return;
+      const refresh = this.loadLive(), generation = this.liveGeneration, request = this.managedRequest;
+      let refreshed;
+      try { refreshed = await refresh; }
+      catch (error) {
+        if (this.managedEditorCurrent(context) && this.liveSourceSerial === serial
+          && generation === this.liveGeneration && request === this.managedRequest) throw error;
+        return;
+      }
+      if (!this.managedEditorCurrent(context) || this.liveSourceSerial !== serial
+        || !refreshed || !this.managedCurrent(refreshed)) return;
+      this.liveSource.value = result.source.id; this.liveSourceDetails();
     },
     async pickLiveSource(mode) {
       this.liveSource.value = ''; this.liveSourceDetails();
