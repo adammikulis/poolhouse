@@ -376,9 +376,12 @@ def _connect(port: int):
     return socket.create_connection((DEFAULT_HOST, port), timeout=5.0)
 
 
-def _send(record: dict[str, Any], body: dict[str, Any], *, timeout: float | None) -> dict[str, Any]:
+def _send(record: dict[str, Any], body: dict[str, Any], *, timeout: float | None,
+          expected: dict | None = None) -> dict[str, Any]:
     with _connect(int(record["port"])) as sock:
         sock.settimeout(timeout)
+        if expected is not None:
+            _decision_socket(sock, expected, wait=True)
         sock.sendall((json.dumps({**body, "token": record.get("token")}) + "\n").encode("utf-8"))
         with sock.makefile("rb") as reply:
             line = reply.readline()

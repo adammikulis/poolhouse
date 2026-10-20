@@ -65,6 +65,16 @@ def test_locator_cannot_replace_expected_process_or_port(broker_socket, monkeypa
     assert calls == []
 
 
+def test_idle_transport_can_bind_existing_process_without_adopting_authority(broker_socket):
+    server, expected, calls = broker_socket
+    record = {"port": expected["port"], "token": server.token}
+    proof = {"pid": expected["pid"], "started": expected["started"]}
+    assert wire._send(record, {"op": "ping"}, timeout=5, expected=proof)["pid"] == os.getpid()
+    with pytest.raises(PermissionError, match="generation changed"):
+        wire._send(record, {"op": "ping"}, timeout=5, expected={**proof, "started": proof["started"] + 1})
+    assert calls == []
+
+
 def test_socket_owner_is_verified_before_any_request_is_sent(broker_socket, monkeypatch):
     _server, expected, calls = broker_socket
     monkeypatch.setattr(wire, "owns_connection", lambda *_args: False)

@@ -218,3 +218,63 @@ def test_private_frame_checks_parent_generation_and_refuses_extra_data():
         writer.write(b'{}\n{}\n')
         with pytest.raises(ValueError, match="extra frame"):
             launch._frame(reader, lambda: True)
+
+
+@pytest.fixture
+def current_broker(monkeypatch):
+    state = {"live": True, "reply": {"ok": True, "retiring": True}, "calls": []}
+    record = {"pid": 83, "pid_started": 13.0, "port": 7443, "token": "local-token"}
+    monkeypatch.setattr(launch.broker_wire, "_record", lambda: dict(record))
+    monkeypatch.setattr(launch.broker_wire, "_answering", lambda: dict(record))
+    monkeypatch.setattr(launch, "pid_exists", lambda _pid: state["live"])
+    monkeypatch.setattr(launch, "started_at", lambda _pid: 13.0 if state["live"] else None)
+    def send(found, request, *, timeout, expected):
+        assert expected == {"pid": 83, "started": 13.0}
+        state["calls"].append((found, request, timeout))
+        if state["reply"] == {"ok": True, "retiring": True}:
+            state["live"] = False
+        return state["reply"]
+    monkeypatch.setattr(launch.broker_wire, "_send", send)
+    return state, record
+
+
+def test_existing_idle_broker_retires_itself_before_owned_launch(current_broker):
+    state, record = current_broker
+    launch._idle_boundary()
+    assert not state["live"]
+    assert state["calls"] == [(record, {"op": "idle-retire", "pid": launch.os.getpid()}, 5)]
+
+
+@pytest.mark.parametrize("reply", [{"ok": True, "retiring": False}, {"ok": False}, {"retiring": True}])
+def test_busy_or_uncertain_broker_is_never_replaced(current_broker, reply):
+    state, _record = current_broker
+    state["reply"] = reply
+    with pytest.raises((BlockingIOError, InterruptedError)):
+        launch._idle_boundary()
+    assert state["live"]
+
+
+def test_live_unanswering_broker_or_unknown_generation_is_preserved(current_broker, monkeypatch):
+    state, record = current_broker
+    monkeypatch.setattr(launch.broker_wire, "_answering", lambda: None)
+    with pytest.raises(InterruptedError, match="not answering"):
+        launch._idle_boundary()
+    assert not state["calls"] and state["live"]
+    record.pop("pid_started")
+    with pytest.raises(InterruptedError, match="generation"):
+        launch._idle_boundary()
+    assert not state["calls"]
+
+
+def test_managed_runtime_verified_before_touching_any_existing_broker(monkeypatch):
+    calls = []
+    def missing():
+        calls.append("runtime")
+        raise OSError("managed runtime incomplete")
+    monkeypatch.setattr(launch, "Environment", lambda _root: SimpleNamespace(
+        require_current_runtime=missing, require_compute=lambda: calls.append("compute")))
+    monkeypatch.setattr(launch, "_idle_boundary", lambda: calls.append("retire"))
+    owner = launch.OwnedBroker(selected())
+    with pytest.raises(OSError, match="incomplete"):
+        owner.start()
+    assert calls == ["runtime"] and owner.process is None
