@@ -18,8 +18,13 @@ chat-view .chatrow { display:flex; align-items:center; border-radius:7px; margin
 chat-view .chatrow a { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 chat-view .chat-row-menu { padding-right:7px; }
 chat-view .conversation-coordination { margin-top:auto; padding:calc(10px * var(--ui-density,1)); font-size:0.8571rem; }
-chat-view #conversation-team { min-width:0; min-height:0; overflow:hidden; height:100%; background:var(--bg-raised); }
-chat-view #conversation-team ml-board { height:100%; min-height:0; }
+chat-view #conversation-team { display:flex; flex-direction:column; min-width:0; min-height:0; overflow:hidden; height:100%; background:var(--bg-raised); }
+chat-view #conversation-team ml-board { flex:1; height:auto; min-height:0; }
+chat-view .conversation-team-heading { flex:none; display:flex; flex-direction:column; gap:4px; padding:16px 24px; border-bottom:1px solid var(--line); overflow-wrap:anywhere; }
+chat-view .conversation-team-heading span, chat-view #conversation-directory small { color:var(--muted); font-size:0.7857rem; }
+chat-view #conversation-directory small { display:block; }
+chat-view #conversation-directory { max-height:min(128px,18dvh); overflow-y:auto; overscroll-behavior:contain; }
+chat-view .conversation-space > div { min-width:0; overflow-wrap:anywhere; }
 chat-view .chatmain .talk { width:100%; max-width:none; margin:0; gap:0; display:flex; flex-direction:column; min-height:0; min-width:0; background:var(--bg-raised); }
 chat-view .chat-toolbar { display:flex; justify-content:space-between; align-items:center; flex:none; padding:calc(16px * var(--ui-density,1)) calc(28px * var(--ui-density,1)); min-height:77px; border-bottom:1px solid var(--line); gap:calc(12px * var(--ui-density,1)); }
 chat-view .conversation-title { display:flex; align-items:center; gap:calc(12px * var(--ui-density,1)); min-width:0; }

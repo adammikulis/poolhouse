@@ -2,13 +2,14 @@
   <main class="chatmain" id="chat" hidden>
     <button class="conversation-mobile-nav ghost" id="conversation-mobile-nav" aria-expanded="false" aria-controls="conversation-sidebar">Channels and model chats ▾</button>
     <aside class="chats" id="conversation-sidebar" aria-label="Conversations">
-      <div class="conversation-space"><span class="conversation-space-mark" aria-hidden="true">✦</span><div><strong>Poolhouse</strong></div></div>
+      <div class="conversation-space"><span class="conversation-space-mark" aria-hidden="true">✦</span><div><strong id="conversation-workspace-name">Choose a workspace</strong><small id="conversation-workspace-status">Workspace activity</small></div></div>
       <label class="conversation-project-label" for="conversation-project">Workspace</label><select id="conversation-project"><option value="">Loading projects…</option></select>
       <button id="chat-new" class="conversation-new">＋ New conversation</button>
       <label class="conversation-search" for="chat-search"><input type="search" id="chat-search" placeholder="Search model chats…" aria-label="Search conversations"></label>
       <section class="conversation-group"><h2>Team channels</h2><div id="conversation-channels" role="status">Connecting to workspace…</div></section>
       <section class="conversation-group"><h2>Direct messages</h2><div id="conversation-direct"></div></section>
-      <section class="conversation-group"><h2>Model chats</h2><div id="chat-list"></div></section>
+      <section class="conversation-group"><h2 id="conversation-directory-label">Workspace agents</h2><div id="conversation-directory" aria-labelledby="conversation-directory-label"></div></section>
+      <section class="conversation-group"><h2>Device-local conversations</h2><div id="chat-list"></div></section>
       <section class="conversation-group"><h2>Running models</h2><div id="conversation-models"></div><a class="conversation-library" href="#models">Browse model library →</a></section>
       <details class="conversation-coordination" id="conversation-local-agents" data-advanced><summary>Device agents</summary><div id="conversation-agents"></div></details>
     </aside>
