@@ -93,7 +93,7 @@ model-browser #browser-pages{display:flex;gap:12px;align-items:center;margin-top
     }
 
     setInventory(inventory, run) {
-      const changed = JSON.stringify([inventory.here, inventory.elsewhere, run.running, run.can_serve]);
+      const changed = JSON.stringify([inventory.library, inventory.elsewhere, run.running, run.can_serve]);
       this.inventory = inventory;
       this.run = run;
       if (changed === this.inventoryKey) return;
@@ -122,10 +122,11 @@ model-browser #browser-pages{display:flex;gap:12px;align-items:center;margin-top
     }
 
     paintNetwork() {
-      const local = new Set((this.inventory.here || []).map((x) => x.name));
+      const installed = (this.inventory.library || []).filter(row => row.servable);
+      const local = new Set(installed.map(row => row.name));
       const running = new Map((this.run.running || []).flatMap((r) =>
         (r.models || []).map((name) => [name, r.port])));
-      const rows = [...(this.inventory.here || []).map((x) => ({ ...x, local: true })),
+      const rows = [...installed.map((x) => ({ ...x, size:x.size_bytes, local: true })),
         ...(this.inventory.elsewhere || []).filter((x) => !local.has(x.name))]
         .filter((x) => isWeight(x.name) && x.name.toLowerCase().includes(this.search.typed.toLowerCase()));
       this.description.textContent = "Models already on this machine and authenticated machines in your Pool. No internet search.";
@@ -176,7 +177,7 @@ model-browser #browser-pages{display:flex;gap:12px;align-items:center;margin-top
         const name = chosen.file || chosen.name;
         this.selected.set(key, name);
         card.dataset.model = name;
-        const loading = this.pending.has(name);
+        const loading = this.pending.has(chosen.local ? chosen.path : name);
         const active = running.has(name);
         const weightsGB = chosen.download_gb ?? (chosen.gb === undefined ? NaN : chosen.gb * 2**30 / 1e9);
         const draftGB = chosen.draft_download_gb ?? (chosen.draft_gb === undefined ? NaN : chosen.draft_gb * 2**30 / 1e9);
@@ -193,7 +194,7 @@ model-browser #browser-pages{display:flex;gap:12px;align-items:center;margin-top
           ? el("button", { class: "ghost small", onclick: () => this.owner.get(name, chosen.ref, !!(chosen.draft_ref || chosen.mtp_ref)) }, "Download")
           : chosen.local ? (this.run.can_serve
             ? el("button", { class: active ? "ghost small" : "small", onclick: () => active
-                ? this.owner.halt(running.get(name)) : this.owner.serve(name) }, active ? "Stop" : "Run")
+                ? this.owner.halt(running.get(name)) : this.owner.serve(chosen.path, chosen.name) }, active ? "Stop" : "Start model")
             : el("span", { class: "label" }, "Installed"))
             : el("button", { class: "ghost small", onclick: () => this.owner.get(name, "") }, "Copy here");
         if (loading) { button.disabled = true; button.replaceChildren(el("span", { class: "spin" }), "Loading…"); }
