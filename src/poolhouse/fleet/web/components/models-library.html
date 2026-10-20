@@ -35,8 +35,8 @@ models-library .library-empty h3{font-size:20px;margin:0 0 8px}
 (function(){const M=window.fleetModel,E=M.el;
 class ModelsLibrary extends HTMLElement{
  connectedCallback(){
-  if(this.wired)return;this.wired=true;this.filters={};
-  this.append(E('div',{class:'library-heading'},E('div',{},E('h2',{},'Installed models'),E('p',{},'Ready when you are. Serve locally, then open a conversation.'))));
+  if(this.wired)return;this.wired=true;this.filters={};this.startOptions=new Map();
+  this.append(E('div',{class:'library-heading'},E('div',{},E('h2',{},'Installed models'),E('p',{},'Choose Start model, then open a conversation. Context length is optional.'))));
   const controls=E('div',{class:'searchrow'});this.append(controls);
   this.search=E('input',{type:'search',placeholder:'Search installed models','aria-label':'Search installed models',oninput:()=>this.draw()});controls.append(this.search);
   for(const field of ['family','format','quantization','kind','status']){
@@ -69,6 +69,7 @@ class ModelsLibrary extends HTMLElement{
   this.rows.replaceChildren(...[...families].map(([family,models])=>E('section',{'data-family':family,class:'model-family'},E('h3',{},family),E('div',{class:'model-grid'},...models.map(row=>this.entry(row))))));
   if(!rows.length)this.rows.append(E('div',{class:'library-empty'},E('h3',{},this.models.length?'No matches':'Start your model library'),E('p',{class:'hint'},this.models.length?'No installed models match these filters.':'Add a model from Hugging Face or copy one from a device in your Pool.'),...(this.models.length?[]:[E('button',{onclick:()=>this.closest('models-view').querySelector('#add-model').click()},'Add your first model')])));
  }
+ optionsFor(row){if(!this.startOptions.has(row.path))this.startOptions.set(row.path,new M.ModelStartOptions(row));const options=this.startOptions.get(row.path);options.update(row);return options;}
  entry(row){
   const server=this.server(row),status=server?'running':row.status;
   const selected=this.target&&(this.target.path===row.path||this.target.id===row.id||this.target.name===row.name);
@@ -99,12 +100,13 @@ class ModelsLibrary extends HTMLElement{
   if(row.copies?.length)details.append(E('p',{},'Other copies: '+row.copies.join(', ')));
   const invoke=async(button,fn)=>{if(button.disabled)return;button.disabled=true;try{await fn();}catch(error){button.closest('article').append(E('p',{class:'err',role:'status'},error.message));}finally{button.disabled=false;}};
   const action=server?E('button',{class:'ghost small',onclick:event=>invoke(event.currentTarget,()=>this.halt(server.port))},'Stop server'):
-   E('button',{class:'small',...(!row.servable||!this.run.can_serve?{disabled:'true'}:{}),onclick:event=>invoke(event.currentTarget,()=>this.serve(row.path,row.name))},'Serve model');
+   E('button',{class:'small',...(!row.servable||!this.run.can_serve?{disabled:'true'}:{}),onclick:event=>invoke(event.currentTarget,()=>this.serve(row.path,row.name,this.optionsFor(row).snapshot()))},'Start model');
   const owner=this.closest('models-view');
   const chat=E('button',{class:'small',onclick:()=>owner.openChat((server.models||[]).find(name=>[row.path,row.path.split(/[\\/]/).pop()].includes(name)))},'Open chat');
   const heading=E('div',{class:'model-card-heading'},E('div',{class:'model-avatar','aria-hidden':'true'},(row.family||'M').slice(0,2).toUpperCase()),E('div',{},E('b',{},row.name),E('small',{},row.repo||row.architecture||row.family)));
   const chips=E('div',{class:'model-chips'},...[row.format.toUpperCase(),row.quantization,row.kind,M.fileSize(row.size_bytes)].filter(Boolean).map(value=>E('span',{},value)),E('span',{class:server?'model-running':''},server?'● Running':status));
-  return E('article',{'data-model':row.id,'data-selected':String(!!selected),...(selected?{tabindex:'-1','aria-label':'Selected model '+row.name}:{})},heading,chips,E('div',{class:'model-card-actions'},...(server?[chat,action]:[action])),...(!row.servable?[E('p',{class:'hint'},'This model needs a compatible runtime before it can be served.')]:[]),details);
+  const options=this.optionsFor(row).element;
+  return E('article',{'data-model':row.id,'data-selected':String(!!selected),...(selected?{tabindex:'-1','aria-label':'Selected model '+row.name}:{})},heading,chips,E('div',{class:'model-card-actions'},...(server?[chat,action]:[action])),...(row.servable?[options]:[]),...(!row.servable?[E('p',{class:'hint'},'This model needs a compatible runtime before it can be served.')]:[]),details);
  }
 }customElements.define('models-library',ModelsLibrary);})();
 </script>

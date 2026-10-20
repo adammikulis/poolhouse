@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from browser_expect import expect
+from conftest import write_gguf
 from test_fleet_ui import Serving
 from test_studio_canvas_browser import studio_browser  # noqa: F401
 
@@ -23,9 +24,11 @@ def inline_models(tmp_path, monkeypatch, studio_browser):  # noqa: F811
     weights = tmp_path / 'models'
     weights.mkdir()
     model = weights / 'chat-decoder.gguf'
-    model.touch()
+    write_gguf(model, {'general.architecture': 'llama', 'llama.context_length': 16384})
     inventory = [{'path': str(model), 'name': model.name, 'family': 'Fixture', 'servable': True,
-                  'size_bytes': 0, 'mtime': 1, 'capabilities': {'chat': True}},
+                  'id': 'chat-decoder', 'format': 'gguf', 'kind': 'text', 'status': 'installed',
+                  'shards': 1, 'is_complete': True, 'files': [],
+                  'size_bytes': 0, 'mtime': 1, 'context_length': 16384, 'capabilities': {'chat': True}},
                  {'path': str(weights / 'encoder.gguf'), 'name': 'Encoder', 'family': 'Fixture',
                   'servable': True, 'size_bytes': 0, 'mtime': 1, 'capabilities': {'chat': False}}]
     app.ui.models = Models([weights], weights)

@@ -40,7 +40,10 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       this.list = chat.querySelector("#chat-model-list");
       this.library = [];
       this.selectionEpoch = 0;
+      this.parameterEpoch = 0;
+      chat.outputTokens.addEventListener("input", () => this.parameterEpoch++);
       this.unconfirmed = new Set();
+      this.startOptions = new Map();
       M.onRoute(() => this.selectionEpoch++);
       this.button.onclick = () => {
         if (chat.request || chat.loadingConversation) return;
@@ -107,12 +110,17 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       for (const [family, models] of [...groups].sort(([a], [b]) => a.localeCompare(b))) {
         const group = M.el("section", { class: "chat-model-family" }, M.el("h3", {}, family));
         for (const row of models.sort((a, b) => Number(b.status === "Running") - Number(a.status === "Running") || a.name.localeCompare(b.name))) {
-          group.append(M.el("button", { type: "button", class: "chat-model-choice",
+          const button = M.el("button", { type: "button", class: "chat-model-choice",
             ...((row.disabled || this.startPending) ? { disabled: "" } : {}),
             "data-picker-kind":"model", "aria-pressed": String(chat.picker.value === row.value), onclick: () => this.choose(row) },
           M.el("span", {}, row.name), M.el("small", {}, [row.status, row.quant,
             row.capabilities?.chat === null ? "Chat capability unverified" : ""].filter(Boolean).join(" · ")),
-          row.needsLoad ? M.el("small", {class:"chat-model-action"}, "Start in Chat") : null));
+          row.needsLoad ? M.el("small", {class:"chat-model-action"}, "Start in Chat") : null);
+          group.append(button);
+          if (row.needsLoad) {
+            const options = this.optionsFor(row); options.disabled = !!this.startPending;
+            group.append(options.element);
+          }
         }
         this.list.append(group);
       }
@@ -136,13 +144,22 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       if (!agents.length) section.append(M.el('p', {class:'hint'}, query ? 'No workspace agents match your search.' : 'No agents available in this workspace.'));
       this.list.append(section);
     }
+    optionsFor(row) {
+      const context = JSON.stringify([M.sessionContext(), this.chat.loadEpoch, this.chat.open]);
+      if (context !== this.optionsContext) { this.startOptions.clear(); this.optionsContext = context; }
+      if (!this.startOptions.has(row.installed.path)) this.startOptions.set(row.installed.path,
+        new M.ModelStartOptions(row.installed, this.chat.outputTokens.value));
+      const options = this.startOptions.get(row.installed.path);
+      options.update(row.installed);
+      return options;
+    }
     currentStart(operation) {
       const chat = this.chat;
-      return this.startPending === operation && this.selectionEpoch === operation.epoch && M.sessionContext() === operation.session &&
+      return this.startPending === operation && this.selectionEpoch === operation.epoch && this.parameterEpoch === operation.parameters && M.sessionContext() === operation.session &&
         chat.loadEpoch === operation.load && chat.open === operation.cid && M.route === "chat" && location.hash === "#chat";
     }
     startInstalled(row) {
-      const chat = this.chat, operation = {epoch:this.selectionEpoch, load:chat.loadEpoch, cid:chat.open, session:M.sessionContext()};
+      const chat = this.chat, operation = {epoch:this.selectionEpoch, load:chat.loadEpoch, cid:chat.open, session:M.sessionContext(), parameters:this.parameterEpoch, options:this.optionsFor(row).snapshot()};
       this.startPending = operation;
       this.startMessage = `Starting ${row.name}…`;
       this.render();
@@ -166,7 +183,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
         let started = null;
         if (!this.unconfirmed.has(path)) {
           this.unconfirmed.add(path);
-          started = await M.api('/ui/serving', {method:'POST', body:JSON.stringify({path})});
+          started = await M.api('/ui/serving', {method:'POST', body:JSON.stringify({path, context:operation.options.context})});
           if (!current()) return;
           if (M.refused(started)) return;
           if (!started.ok) throw Error(started.error || "Could not start this model.");
@@ -182,10 +199,15 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
         chat.chatModels = available.models || [];
         this.library = inventory.library || [];
         chat.picker.replaceChildren(...chat.chatModels.map(model => M.el('option', {value:model.model}, model.local ? model.model : `${model.model} — on ${model.member}`)));
+        chat.outputTokens.value = operation.options.output;
         chat.picker.value = matches[0].model;
         chat.picker.dispatchEvent(new Event('change'));
         chat.coding.render(matches[0].model);
         this.startMessage = '';
+        const actual = started?.slot_context ?? started?.context;
+        chat.note.replaceChildren(M.el('p', {class:'hint', role:'status'},
+          `Requested context: ${operation.options.context.toLocaleString()} tokens. ` +
+          (Number.isSafeInteger(actual) ? `Running context: ${actual.toLocaleString()} tokens.` : 'Running context has not been reported.')));
         this.dialog.close();
       } catch (error) {
         if (current()) { this.startMessage = error.message; chat.showError(error.message); }
@@ -195,7 +217,10 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       if (this.chat.request || this.chat.loadingConversation || row.disabled) return;
       if (this.startPending) return this.startPending.promise;
       this.selectionEpoch++;
-      if (row.needsLoad) return this.startInstalled(row);
+      if (row.needsLoad) {
+        try { return this.startInstalled(row); }
+        catch (error) { this.chat.showError(error.message); return; }
+      }
       this.chat.picker.value = row.value;
       this.chat.picker.dispatchEvent(new Event("change"));
       this.dialog.close();
