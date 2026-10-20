@@ -1,7 +1,8 @@
 # Log rotation for a board's entry log
 
-Status: design with its attack-first pass, written by the author. AGENTS.md section 1 ("Attack first") needs a non-author to break
-the pass in section 5 before the code lands; the code is on branch `feat/log-rotation` and is not pushed.
+Status: design with its attack-first pass, written by the author and then broken once by a non-author reviewer (section 7). AGENTS.md
+section 1 ("Attack first") needs the revised pass in section 5 broken again before the code lands; the code is on branch
+`feat/log-rotation` and is not pushed.
 
 ## 1. The problem and the measured rate
 
@@ -57,7 +58,7 @@ limit). `message`, `audit`, `landing`, `lease`, `verify` and `identity` rows are
 view (the registry in `names.json` holds the identity state; `#leases` rows are the retired claim record). The new segment is the base,
 then a verbatim restatement of this origin's durable rows of the old segment (same kind, actor, idem and body, new seq, hash and
 clock), with a head every 64 rows or 512 KiB, then a head. A note named by a `supersedes` of any held note, or past its `ttl_days`, is
-not restated. Grants are always restated in full; the other durable rows are restated oldest first until `CARRY_PERCENT` (25) of the
+not restated. Grant rows are restated (not the `use` rows of a grant with no limit or a revoked one, which no status reads); the other durable rows are restated newest first until `CARRY_PERCENT` (25) of the
 cap is used, and the base says how many were left (`left`). Messages unread at the base, and a note's id, are lost to the view: a
 restated row has a new id.
 
@@ -68,21 +69,25 @@ log; after it, the new one. There is no state in between.
 **A member that holds the origin.** It stores the base and the restated rows as ordinary rows (chain, heads, key). It applies the new
 segment to its view once the base, its `n` restated rows and a head are held: until then the view of the origin is the old rows
 only. Applying means writing the old rows to its archive and replacing its live file with the segment, as the writer did.
-Before applying, a member that holds old rows checks that every `grant` row of the old rows it holds is among the restated rows (same
-actor, idem and body); a base that leaves one out marks the origin damaged, so a writer cannot retract a revocation by starting a
-segment.
+Before applying, a member that holds old rows checks that every grant revocation row of the old rows it holds is among the restated
+rows as often as it was held (same actor, idem and body); a base that leaves one out marks the origin damaged, so a writer cannot
+retract a revocation by starting a segment. Other grant rows are not checked: an issue left out closes a grant, and a use row is the
+writer's own count of its own uses. The rows right after a base, as many as it says it carries, must be durable rows; a base followed
+by anything else is refused.
 
 **A member that holds nothing of the origin.** Its first rows may start at a base: seq at least 2 and at most 2^48, `carried` at most
 half the rows of the cap, a head covering it under the key that is then pinned. It starts the chain there.
 
-**A member behind the base.** It holds rows up to seq t, the base is at seq b and b > t+1. The writer serves it from its archive
-(from t, in the same batches of 400 rows) while the archive holds t, so nothing between is missed; when the archive is gone the writer
-serves the base and the member starts a new segment at it, if the head covering the base verifies under the key pinned for the
-origin and b > t. The old rows it held go to its archive.
+**A member behind the base.** It holds rows up to seq t, the base is at seq b and b > t+1. A device that holds the old rows (the
+writer, or a copy that kept them in its archive) serves them from the archive in batches of 400 rows, so nothing between is missed.
+When no archive has the next row, the base is served, and the member restarts at it only if the device that wrote the log sent it
+(`authoritative`): a relay cannot move a copy past rows. A restart is held apart (`Board.staged`, in memory, reported in the member's
+vector so the sender goes on) and the old rows stay the member's view until the base, every restated row and a head are held; then the
+revocation check runs and the old rows go to its archive.
 
 **What a base may not do.** A member refuses a base (the origin is damaged when the writer sent it directly, as for any bad row) when:
-`carried` or `left` is over the bounds; the segment before it, as the copy holds it, has under `MIN_SEGMENT_PERCENT` (50) of the rows and of the bytes of
-the cap (a copy that starts at the base, or jumps to it, holds no such segment and does not check this); its `seq` is not above the held tip; it names a seq a held row has with another hash (a fork); or it leaves out a held grant.
+`carried` is over half the rows of the cap; the segment before it, as the copy holds it, has under `MIN_SEGMENT_PERCENT` (50) of the rows and of the bytes of
+the cap (a copy that starts at the base, or jumps to it, holds no such segment and does not check this); its `seq` is not above the held tip; it names a seq a held row has with another hash (a fork); or it leaves out a held revocation.
 A base needs no new kind of trust: nothing but the pinned key's head makes any row storable.
 
 **Serving.** `rows_since` serves a member that holds nothing of an origin from the start of the live segment (the base, for a rotated
@@ -92,6 +97,8 @@ log), a member at or past the segment start from its tip, and a member behind th
 base (the base's `prev`) or in an archive. An archive is removed when it is older than 7 days (`ARCHIVE_MIN_MS`) and every device
 that synced this board has acknowledged past its last row, or when it is older than 30 days (`ARCHIVE_MAX_MS`), or when more than 8
 archives (`MOST_ARCHIVES`) of one origin exist. A removed archive is gone; a device that needed it starts at the base.
+
+**Archive bytes.** The archives of one origin are held to the bytes a log keeps, newest first, whatever their age.
 
 **Cuts.** A removal names a cut as (seq, hash). Seqs continue across segments, so a cut is a seq; a copy is truncated by seq. A cut
 that falls before the live segment resets the copy (the rows it names are in the archive, not in the view), and rows past a cut are
@@ -128,8 +135,9 @@ For each case: the attack, what stops it, what is left.
   restated rows that do not follow it, or a count that does not match is refused. A forged base at a lower seq than a held tip is a
   fork (the hash at that seq differs) or ignored (the same hash).
 - **A member withholding rows.** Withholding the restated rows leaves the view of the origin on its old rows until the segment is
-  complete (nothing half-applied). Withholding the newest rows is staleness, as today. A relay cannot skip rows of the chain; the
-  prev links and the heads force every row between. The writer withholding the archive makes a member behind the base start at the
+  complete (nothing half-applied), also when the copy restarts at the base. Withholding the newest rows is staleness, as today. A relay
+  cannot skip rows of the chain (the prev links and the heads force every row between) and cannot move a copy past rows that the writer
+  or an archive still serves (`authoritative`). The writer withholding the archive makes a member behind the base start at the
   base; that member then misses the rows between its tip and the base. Accepted: it is the writer's own log.
 - **Replay of an old segment.** Old rows replayed to a member that has applied a segment are before its segment start and are dropped
   without effect; an old base at a lower seq cannot rewind (its hash differs from the held row's, a fork, or it is the same row and
@@ -186,3 +194,22 @@ one behind after the archive is gone); a crash before the rename; a base with a 
 below `MIN_SEGMENT_PERCENT`, and leaving out a held grant; replay of an old segment; a head from another key; a cut across a segment
 start; durable rows carried and history left; archive removal rules. `tests/log_bounds.rs` and `tests/node_attacks.rs` run unchanged
 (the test kit sets `log_rotate_percent` to 0).
+
+## 7. The non-author review and what changed
+
+A reviewer (Sonnet 5.5, not the author) wrote seven attack tests; all seven broke the first version. Each is fixed and has a test
+in `tests/log_rotation_review.rs` that goes red when the fix is removed:
+
+1. A restart at a base ran no revocation check, so the writer or a relay retracted a held revocation: a restart is staged and checked
+   when the segment is whole.
+2. A relay that served part of a segment removed the grants a copy held: the old rows stay the view until the segment is whole.
+3. A relay moved a copy past rows the writer would serve from its archive: a restart over held rows needs the writer (`authoritative`).
+4. A copy at the end of a relay's archive never advanced: when the archive has no row past what the member holds, the base is served.
+5. Grant rows past half the cap stopped rotation for good: `use` rows of a grant with no limit or a revoked one are not restated.
+6. Three identical revocations collapsed to one in a set: revocations are compared as a multiset.
+7. A base could lie about `carried` and freeze a copy's view: the rows after a base must be the durable rows it counts.
+
+Also changed from the review: a log that cannot be opened again after a new segment takes no more rows, and archives are held to the
+bytes a log keeps. Left as the reviewer named them: an archive file is read whole for each batch served from it; a restart is not
+compared with the chain a copy held (the jump is the writer's word about rows between); a hostile writer costs a copy at most
+8 archives and a live segment on disk per origin (the bytes bound holds the archives to one log's worth).

@@ -24,9 +24,10 @@ abuse by one session is not kept (the owner never asked for one). The security f
   `CARRY_PERCENT` of the rows and of the bytes, newest first, and the base says how many were left) and a head; the rows before the base
   go to `archive/` beside the log, and the shares, the reserve and the last stretch start again on the new segment. A copy takes a base
   only after a segment of at least `MIN_SEGMENT_PERCENT` of the rows or of the bytes (when it holds that segment), applies the segment
-  once every restated row has arrived, and refuses a base that leaves out a grant row it holds. An archive is kept `ARCHIVE_MIN_MS` at
-  least and `ARCHIVE_MAX_MS` at most, until every device that synced the board has acknowledged past it, and `MOST_ARCHIVES` of an origin
-  at most; a device behind the base is served from the archive while it exists and otherwise starts at the base. Messages, audit,
+  once every restated row has arrived (a copy behind the base restarts at it only when the device that wrote the log sends it), and
+  refuses a base that leaves out a grant revocation it holds. An archive is kept `ARCHIVE_MIN_MS` at
+  least and `ARCHIVE_MAX_MS` at most, until every device that synced the board has acknowledged past it, and `MOST_ARCHIVES` of an origin and
+  `MAX_LOG_BYTES` of them at most; a device behind the base is served from the archive while it exists and otherwise starts at the base. Messages, audit,
   landing, lease, identity and verify rows are not restated: they leave the view with the segment (`docs/notes/2026-10-19-log-rotation.md`).
 - **Leases** (`max_leases_per_holder`, `max_leases_per_lineage`, `max_leases`). A request past any of the three is refused with the
   limit; a reserve naming more resources than a session may hold is refused whole before any is looked at, and a reserve writes its
