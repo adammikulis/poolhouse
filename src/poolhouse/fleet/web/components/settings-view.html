@@ -21,7 +21,8 @@ settings-view .settings-pane h3 { font-size:1.071rem; margin:22px 0 12px; }
 settings-view .settings-pane .opt { padding:calc(12px * var(--ui-density,1)); border:1px solid var(--line); border-radius:10px; margin-bottom:8px; }
 settings-view .settings-toolbar { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin:16px 0; }
 settings-view .settings-toolbar button { width:auto; margin:0; }
-settings-view .settings-footer { display:flex; align-items:center; gap:18px; margin-top:20px; }
+settings-view .settings-footer { position:sticky; bottom:0; z-index:2; margin-top:20px; padding:12px 0; background:var(--bg); border-top:1px solid var(--line); }
+settings-view .settings-footer .settings-toolbar { margin:0; }
 settings-view #settings-save { width:auto; min-width:150px; margin:0; background:var(--poolhouse-pink); color:var(--poolhouse-pink-ink,var(--poolhouse-navy)); }
 settings-view #settings-note { min-height:24px; }
 settings-view .library-kind { display:inline-block; font-size:0.786rem; border:1px solid var(--line); border-radius:20px; padding:calc(2px * var(--ui-density,1)) calc(8px * var(--ui-density,1)); margin:4px 8px; }
@@ -50,7 +51,7 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
         <section class="settings-pane" data-pane="credentials" role="tabpanel" hidden><header><h2>Provider credentials</h2><p class="hint">Connect services using locally stored tokens and API keys.</p></header><div class="group" id="settings-credentials"></div></section>
         <section class="settings-pane" data-pane="maintenance" role="tabpanel" hidden><header><h2>Maintenance</h2><p class="hint">Updates, device setup, and storage management.</p></header><div class="group" id="settings-updates"></div><div class="group" id="settings-again"></div><details data-advanced><summary>Experimental features</summary><feature-flags></feature-flags></details><details data-advanced><summary>Runtime tools</summary><div class="group" id="settings-agent-runtime"></div></details><div class="group" id="settings-removal"></div></section>
         <section class="settings-pane" data-pane="developer" role="tabpanel" hidden><vocabulary-settings></vocabulary-settings></section>
-        <footer class="settings-footer"><button id="settings-save">Save preferences</button><div id="settings-note" role="status" aria-live="polite"></div></footer>
+        <footer class="settings-footer"><div class="settings-toolbar"><button id="settings-save">Save preferences</button><button id="settings-discard" class="ghost" disabled>Discard preferences</button><span id="settings-dirty" role="status" aria-live="polite"></span></div><p class="hint">Theme, library and credential controls save separately.</p><div id="settings-note" role="status" aria-live="polite"></div></footer>
       </div>
     </div>
   </main>
@@ -64,55 +65,16 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
 
   class SettingsView extends HTMLElement {
     connectedCallback() {
-      if (this.wired) return;
+      if (this.wired) { this.settingsWidth?.addEventListener('change', this.settingsAxis); this.settingsAxis?.(); return; }
       this.wired = true;
-      this.box = this.querySelector("#settings");
-      this.note = this.querySelector("#settings-note");
-      this.save = this.querySelector("#settings-save");
-      this.save.onclick = () => this.apply();
-      const tabs = [...this.querySelectorAll("[data-section]")];
-      for (const [index, button] of tabs.entries()) {
-        const pane = this.querySelector(`[data-pane="${button.dataset.section}"]`);
-        button.id = `settings-tab-${button.dataset.section}`;
-        button.setAttribute("aria-controls", `settings-pane-${button.dataset.section}`);
-        button.tabIndex = index ? -1 : 0;
-        pane.id = `settings-pane-${button.dataset.section}`;
-        pane.setAttribute("aria-labelledby", button.id);
-        button.onclick = () => this.selectSection(button.dataset.section);
-        button.onkeydown = event => {
-          if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
-          event.preventDefault();
-          const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1
-            : (index + (event.key === "ArrowDown" ? 1 : -1) + tabs.length) % tabs.length;
-          tabs[next].click(); tabs[next].focus();
-        };
-      }
-      M.onRoute((route) => {
-        const on = route === "settings";
-        this.box.hidden = !on;
-        if (on) this.loadSettings();
-      });
+      this.connectSettingsState();
     }
 
-    selectSection(section) {
-      for (const pane of this.querySelectorAll("[data-pane]")) pane.hidden = pane.dataset.pane !== section;
-      for (const button of this.querySelectorAll("[data-section]")) {
-        button.setAttribute("aria-selected", String(button.dataset.section === section));
-        button.tabIndex = button.dataset.section === section ? 0 : -1;
-      }
-      this.save.hidden = !["appearance", "models", "compute", "maintenance"].includes(section);
-    }
-
-    loadSettings() {
-      this.draw().catch(error => {
-        this.note.replaceChildren(el("div", {class:"err"}, error.message),
-          el("button", {class:"ghost small", onclick:() => this.loadSettings()}, "Retry loading settings"));
-      });
-    }
+    disconnectedCallback() { this.settingsWidth?.removeEventListener('change', this.settingsAxis); }
 
     radio(group, value, label, why) {
       const id = `${group}-${value}`;
-      const input = el("input", { type: "radio", name: group, id,
+      const input = el("input", { type: "radio", name: group, id, value,
                                   ...(this.pick[group] === value ? { checked: "1" } : {}) });
       input.onchange = () => { this.pick[group] = value; };
       return el("label", { class: "opt", for: id }, input, M.row(label, why));
@@ -125,10 +87,11 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
       return el("label", { class: "opt", for: key }, input, M.row(label, why));
     }
 
-    async draw() {
+    async draw(request) {
       this.save.disabled = true;
       this.note.textContent = "Loading preferences…";
       const s = await api("/ui/settings");
+      if (request !== this.settingsLoad || !this.isConnected) return;
       if (M.refused(s)) return;
       if (!s.ok) throw Error(s.error || "Could not load preferences.");
       const cur = s.settings || {};
@@ -230,7 +193,8 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
 
       M.agentRuntimeMaintenance(this.querySelector("#settings-agent-runtime"));
       M.applyAdvanced(this);
-      this.save.disabled = false;
+      this.savedPick = structuredClone(this.pick);
+      this.updatePreferencesUI();
       this.note.replaceChildren();
       this.drawLibraries().catch(error => this.libraryError(error));
       this.drawCredentials().catch(error => {
@@ -284,27 +248,6 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
         el("div", {class:"hint"}, "Save multiple named tokens or API keys for Hugging Face, Claude, Codex, and other providers. Values are stored locally and never displayed."),
         listed, el("label", {}, "Credential name", name), el("label", {}, "Token or API key", value),
         el("div", {class:"settings-toolbar"}, save, remove), note);
-    }
-
-    async apply() {
-      this.save.disabled = true;
-      this.save.textContent = "Saving…";
-      this.box.setAttribute("aria-busy", "true");
-      try {
-        const result = await api("/ui/settings", {method:"POST", body:JSON.stringify({
-          ...this.pick, labels:this.pick.labels ? this.pick.labels.split(",") : []})});
-        if (!result.ok || result.error) throw Error(result.error || "Could not save preferences.");
-        M.setPreferences({...M.preferences, ...this.pick});
-        this.note.replaceChildren(result.manual
-          ? el("div", {}, el("div", {class:"err"}, result.manual_why || "Needs permission."),
-              el("pre", {class:"cmd"}, result.manual))
-          : el("div", {class:"ok"}, "Preferences saved."));
-      } catch (error) { this.note.replaceChildren(el("div", {class:"err"}, error.message)); }
-      finally {
-        this.save.disabled = false;
-        this.save.textContent = "Save preferences";
-        this.box.setAttribute("aria-busy", "false");
-      }
     }
 
     libraryError(error) {
@@ -473,6 +416,7 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
         ...boxes, go, out);
     }
   }
+  Object.assign(SettingsView.prototype, window.SettingsState);
   customElements.define("settings-view", SettingsView);
 })();
 </script>

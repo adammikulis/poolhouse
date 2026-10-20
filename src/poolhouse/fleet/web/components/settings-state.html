@@ -1,0 +1,141 @@
+<script>
+(() => {
+  const M = window.fleetModel, el = M.el;
+  const copy = value => structuredClone(value);
+  window.SettingsState = {
+    connectSettingsState() {
+      this.box = this.querySelector('#settings');
+      this.note = this.querySelector('#settings-note');
+      this.save = this.querySelector('#settings-save');
+      this.discard = this.querySelector('#settings-discard');
+      this.dirtyNote = this.querySelector('#settings-dirty');
+      this.settingsEpoch = 0; this.settingsLoad = 0;
+      this.save.onclick = () => this.apply();
+      this.discard.onclick = () => this.discardPreferences();
+      this.box.addEventListener('input', () => this.updatePreferencesUI());
+      this.box.addEventListener('change', () => this.updatePreferencesUI());
+      this.box.addEventListener('focusin', event => this.revealPreference(event));
+      const tabs = this.tabs = [...this.querySelectorAll('[data-section]')];
+      this.settingsWidth = matchMedia('(max-width:760px)');
+      this.settingsAxis = () => this.querySelector('[role=tablist]').setAttribute('aria-orientation',
+        this.settingsWidth.matches ? 'horizontal' : 'vertical');
+      this.settingsWidth.addEventListener('change', this.settingsAxis); this.settingsAxis();
+      for (const [index, button] of tabs.entries()) {
+        const pane = this.querySelector(`[data-pane="${button.dataset.section}"]`);
+        button.id = `settings-tab-${button.dataset.section}`;
+        button.setAttribute('aria-controls', `settings-pane-${button.dataset.section}`);
+        button.tabIndex = index ? -1 : 0;
+        pane.id = `settings-pane-${button.dataset.section}`; pane.setAttribute('aria-labelledby', button.id);
+        button.onclick = () => this.selectSection(button.dataset.section);
+        button.onkeydown = event => {
+          const previous = this.settingsWidth.matches ? 'ArrowLeft' : 'ArrowUp';
+          const next = this.settingsWidth.matches ? 'ArrowRight' : 'ArrowDown';
+          if (![previous, next, 'Home', 'End'].includes(event.key)) return;
+          event.preventDefault();
+          const selected = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+            : (tabs.indexOf(button) + (event.key === next ? 1 : -1) + tabs.length) % tabs.length;
+          tabs[selected].click(); tabs[selected].focus();
+        };
+      }
+      M.onRoute(route => {
+        if (!this.isConnected) return;
+        this.box.hidden = route !== 'settings';
+        if (['sign-in', 'launch-needed', 'first-run'].includes(route)) this.clearPreferences();
+        if (route === 'settings') this.loadSettings();
+      });
+    },
+    revealPreference(event) {
+      if (!event.target.closest('.settings-pane')) return;
+      const control = event.composedPath()[0], focused = event.target;
+      requestAnimationFrame(() => {
+        if (!this.isConnected || document.activeElement !== focused) return;
+        const field = control.getBoundingClientRect(), footer = this.querySelector('.settings-footer').getBoundingClientRect();
+        if (field.bottom > footer.top - 12) window.scrollBy(0, field.bottom - footer.top + 12);
+      });
+    },
+    clearPreferences() {
+      this.settingsEpoch++; this.settingsLoad++;
+      this.pick = {}; this.savedPick = null; this.savingPreferences = false; this.loadingPreferences = false;
+      this.save.textContent = 'Save preferences'; this.box.setAttribute('aria-busy', 'false');
+      this.note.replaceChildren(); this.updatePreferencesUI();
+    },
+    selectSection(section) {
+      for (const pane of this.querySelectorAll('[data-pane]')) pane.hidden = pane.dataset.pane !== section;
+      for (const button of this.tabs) {
+        button.setAttribute('aria-selected', String(button.dataset.section === section));
+        button.tabIndex = button.dataset.section === section ? 0 : -1;
+      }
+    },
+    loadSettings() {
+      if (this.savedPick || this.loadingPreferences) return;
+      const request = ++this.settingsLoad;
+      this.loadingPreferences = true;
+      this.draw(request).catch(error => {
+        if (request !== this.settingsLoad) return;
+        this.note.replaceChildren(el('div', {class:'err'}, error.message),
+          el('button', {class:'ghost small', onclick:() => this.loadSettings()}, 'Retry loading settings'));
+      }).finally(() => {
+        if (request !== this.settingsLoad) return;
+        this.loadingPreferences = false; this.updatePreferencesUI();
+      });
+    },
+    updatePreferencesUI() {
+      this.settingsDirty = !!this.savedPick && JSON.stringify(this.pick) !== JSON.stringify(this.savedPick);
+      const text = this.savedPick ? this.settingsDirty ? 'Unsaved preferences' : 'No unsaved preferences' : '';
+      if (this.dirtyNote.textContent !== text) this.dirtyNote.textContent = text;
+      this.save.disabled = !!this.savingPreferences || !!this.loadingPreferences || !this.savedPick;
+      this.discard.disabled = this.save.disabled || !this.settingsDirty;
+    },
+    discardPreferences() {
+      if (!this.savedPick || this.savingPreferences) return;
+      this.pick = copy(this.savedPick);
+      for (const input of this.querySelectorAll('input[type=radio]')) {
+        if (input.name in this.pick) input.checked = input.value === this.pick[input.name];
+      }
+      for (const input of this.querySelectorAll('input[type=checkbox]')) {
+        if (input.id in this.pick) input.checked = this.pick[input.id];
+      }
+      this.querySelector('[aria-label="Studio undo steps"]').value = this.pick.studio_undo_steps;
+      const context = this.querySelector('#settings-chatting #ctx');
+      context.value = this.pick.context;
+      context.dispatchEvent(new CustomEvent('input', {bubbles:true, detail:{value:this.pick.context}}));
+      this.querySelector('output-token-slider').value = this.pick.chat_max_output_tokens;
+      this.note.textContent = 'Preference changes discarded.';
+      this.updatePreferencesUI(); this.tabs.find(tab => tab.getAttribute('aria-selected') === 'true')?.focus();
+    },
+    async apply() {
+      if (!this.savedPick || this.savingPreferences || this.loadingPreferences) return;
+      const undo = this.querySelector('[aria-label="Studio undo steps"]');
+      if (!undo.checkValidity()) { this.selectSection('appearance'); undo.reportValidity(); return; }
+      const snapshot = copy(this.pick), epoch = this.settingsEpoch;
+      this.savingPreferences = true; this.save.textContent = 'Saving…'; this.note.textContent = 'Saving preferences…'; this.updatePreferencesUI();
+      this.box.setAttribute('aria-busy', 'true');
+      try {
+        const result = await M.api('/ui/settings', {method:'POST', body:JSON.stringify({
+          ...snapshot, labels:snapshot.labels ? snapshot.labels.split(',') : []})});
+        if (epoch !== this.settingsEpoch) return;
+        if ([401,403].includes(result.status)) {
+          this.clearPreferences(); M.refused(result);
+          if (result.status === 403) this.note.replaceChildren(el('div', {class:'err'}, result.error || 'Preferences are unavailable.'),
+            el('button', {class:'ghost small', onclick:() => this.loadSettings()}, 'Reload preferences'));
+          return;
+        }
+        if (!result.ok || result.error) throw Error(result.error || 'Could not save preferences.');
+        this.savedPick = snapshot;
+        M.setPreferences({...M.preferences, ...snapshot, labels:snapshot.labels ? snapshot.labels.split(',') : []});
+        this.updatePreferencesUI();
+        this.note.replaceChildren(result.manual
+          ? el('div', {}, el('div', {class:'err'}, result.manual_why || 'Needs permission.'), el('pre', {class:'cmd'}, result.manual))
+          : el('div', {class:'ok'}, this.settingsDirty ? 'Preferences saved. Newer edits remain unsaved.' : 'Preferences saved.'));
+      } catch (error) {
+        if (epoch === this.settingsEpoch) this.note.replaceChildren(el('div', {class:'err'}, error.message));
+      } finally {
+        if (epoch === this.settingsEpoch) {
+          this.savingPreferences = false; this.save.textContent = 'Save preferences';
+          this.box.setAttribute('aria-busy', 'false'); this.updatePreferencesUI();
+        }
+      }
+    }
+  };
+})();
+</script>
