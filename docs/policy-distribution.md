@@ -25,7 +25,7 @@ specified in a note, not built.
 | # | Rule | Today | Class | Should live |
 |---|---|---|---|---|
 | 1 | Read AGENTS.md, then CLAUDE.md; first response names scope and model | prose + `briefing.py` text | c | registry `brief` rules rendered by `briefing.py`/`onboard.brief` |
-| 2 | "If I can't use it, it's not done"; activation owner | prose + `docs/tasks.md` completion gate | e (a for the task gate) | judgment line in block; task gate stays code |
+| 2 | "If I can't use it, it's not done"; update owner | prose + `docs/tasks.md` completion gate | e (a for the task gate) | judgment line in block; task gate stays code |
 | 3 | Managed workers get no extra permissions; a spawned subagent is its own identity under its parent | code (`identity`, `agent_display`) | a | stays code, registry row with test refs |
 | 4 | Subagent prompt carries the workspace line | `onboard.BRIEF` text | c | generated from registry |
 | 5 | Main session coordinates; subagents never elect themselves | prose; design (`session-liveness` 4-5) | a | coordinator lease code |

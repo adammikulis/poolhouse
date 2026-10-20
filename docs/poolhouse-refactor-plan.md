@@ -11,7 +11,7 @@ Status: prework is in progress. Structural refactoring has not started; the prod
 3. Rename the product, package and public vocabulary together, then build, install and exercise
    Poolhouse on each available device.
 
-Source changes, commits and unit tests are checkpoints. A fix is complete when it is activated
+Source changes, commits and unit tests are checkpoints. A fix is complete when it is updated
 and verified in the setup the owner uses. The prework must finish before structural work starts.
 
 ## Prework exit criteria
@@ -28,7 +28,7 @@ and verified in the setup the owner uses. The prework must finish before structu
   only features whose prerequisites are missing remain unavailable.
 - Runtime replacement and forced restart retain jobs, checkpoints and history. Preserve the
   current Qwen model and work; do not evict them to complete unrelated integration.
-- Land and activate reviewed UI, hook, workspace, runtime and transport work. Required affected
+- Land and update to reviewed UI, hook, workspace, runtime and transport work. Required affected
   and combined checks must pass honestly; report unavailable hardware and failed guards.
 - Account for original commits and unique files before removing completed worktrees. Keep
   development synchronized throughout integration, rather than accumulating ready branches.
@@ -68,7 +68,7 @@ configuration, build/install paths, tests, documentation and contracts.
 ## Delivery
 
 Keep one development publisher. Workers own bounded claimed changes; independent reviewers
-review exact batches. Run affected checks and combined gates, publish promptly, then activate
+review exact batches. Run affected checks and combined gates, publish promptly, then update
 and verify on hardware. Full suites run in the background under maintained admission.
 
 Ask relevant agents for information they can supply before asking the owner. Publish major
