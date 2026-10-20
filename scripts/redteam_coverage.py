@@ -447,6 +447,7 @@ def discover() -> dict[str, Surface]:
         ("route", "fleet/studio_stream_routes.py:/ui/studio/subscriptions*", "src/poolhouse/fleet/studio_stream_routes.py"),
         ("parser", "unix_socket.py", "src/poolhouse/unix_socket.py"),
         ("parser", "fleet/producer_bootstrap.py", "src/poolhouse/fleet/producer_bootstrap.py"),
+        ("parser", "studio/producer_log.py", "src/poolhouse/studio/producer_log.py"),
     ):
         if (ROOT / source).is_file():
             add(found, kind, name, source)
