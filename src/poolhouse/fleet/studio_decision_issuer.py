@@ -166,10 +166,11 @@ class DecisionIssuer:
         self._current(permit)
         # Starting or reconciling a broker can wait; hold no issuer/engine/store lock.
         broker = self.owned.start()
-        self._current(permit)
+        model = self._current(permit)
         return {'permit_id': permit['request']['permit_id'], 'request_id': permit['request']['request_id'],
                 'run_id': permit['run_id'], 'node_id': permit['node_id'],
-                'request_digest': permit['request_digest'], 'model_digest': permit['model_digest'], 'broker': broker}
+                'request_digest': permit['request_digest'], 'model_digest': permit['model_digest'],
+                'calibration_digest': digest([model['source']['temperature'], model['source']['details']]), 'broker': broker}
 
     def authorize(self, payload, remote, local):
         """The sealed member route supplies actual accepted socket endpoints."""

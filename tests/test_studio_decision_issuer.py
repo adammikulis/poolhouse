@@ -138,7 +138,7 @@ def test_mint_attaches_exact_request_and_launch_context_is_private(current, monk
         return broker
     monkeypatch.setattr(current.owned, 'start', start)
     context = current.issuer.launch_context(SimpleNamespace(id=current.job_id))
-    assert set(context) == {'permit_id', 'request_id', 'run_id', 'node_id', 'request_digest', 'model_digest', 'broker'}
+    assert set(context) == {'permit_id', 'request_id', 'run_id', 'node_id', 'request_digest', 'model_digest', 'calibration_digest', 'broker'}
     assert context['broker'] == broker
     assert current.issuer.launch_context(SimpleNamespace(id='unrelated')) is None
     assert not current.engine.runner.jobs
@@ -323,3 +323,36 @@ def test_malformed_current_control_never_resolves_a_model(current, mutation):
     with pytest.raises(PermissionError, match='control'):
         mint(current)
     assert current.state['resolves'] == 0
+
+
+
+def test_actual_launch_channel_accepts_the_real_issuer_calibration_context(current, tmp_path, monkeypatch):
+    import sys
+    import time
+    from pathlib import Path
+
+    from poolhouse.fleet.jobs import JobRunner
+
+    runner = JobRunner(tmp_path / 'runner')
+    current.engine.runner = runner
+    monkeypatch.setattr(current.owned, 'start', lambda: {'pid': 42, 'started': 1.0, 'instance': 'a' * 64, 'port': 7444})
+    runner.studio_launch_context = current.issuer.launch_context
+    runner.studio_gate = lambda job: bool(current.issuer._snapshot(current.run_id, current.node_id, job.id))
+    mint(current)
+    result = tmp_path / 'context.json'
+    script = ("import sys,json;sys.path.insert(0," + repr(str(Path(__file__).resolve().parents[1] / 'src')) + ");"
+              "from poolhouse.studio_launch import worker_context;"
+              "open(" + repr(str(result)) + ",'w').write(json.dumps(worker_context()))")
+    try:
+        job = runner.submit('decision.predict', [sys.executable, '-I', '-c', script], str(tmp_path), job_id=current.job_id)
+        until = time.monotonic() + 5
+        while job.state not in {'done', 'failed', 'interrupted'} and time.monotonic() < until:
+            runner.snapshot()
+            time.sleep(.01)
+        assert job.state == 'done', job.public()
+        context = json.loads(result.read_text())
+        assert context['calibration_digest'] == digest([current.state['model'].source['temperature'],
+                                                         current.state['model'].source['details']])
+        assert context['model_digest'] == fingerprint(asdict(current.state['model']))
+    finally:
+        runner.shutdown()
