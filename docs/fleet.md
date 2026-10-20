@@ -174,7 +174,7 @@ passphrase twice and makes the pool. `--group NAME` (or `POOLHOUSE_POOL`) names 
 pool and skips the question, as does a passphrase from `--passphrase` or
 `POOLHOUSE_PASSPHRASE`; a process with no terminal or with `POOLHOUSE_NONINTERACTIVE` set is never
 asked and joins `poolhouse` when no name is given. `poolhouse-members setup` asks the same way.
-`poolhouse-pool pools [--json]` prints the listing without joining. The first-run page and the
+`poolhouse pool list [--json]` prints the listing without joining. The first-run page and the
 Pool view offer the discovered pools in a select beside a field for a new name.
 
 A name is trimmed, 1 to 64 characters, and cannot contain `/`, `\` or control characters.
