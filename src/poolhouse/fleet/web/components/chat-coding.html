@@ -14,6 +14,7 @@
       this.activity = chat.querySelector("#chat-activity");
       this.output = chat.querySelector("#chat-activity-output");
       this.tools.onchange = async () => {
+        if (chat.loadingConversation) return;
         const epoch = chat.loadEpoch, open = chat.open, capability = this.capability = (this.capability || 0) + 1;
         if (this.active) await this.catalogue();
         if (epoch !== chat.loadEpoch || open !== chat.open || capability !== this.capability) return;
@@ -22,7 +23,7 @@
         chat.saveSettings();
       };
       for (const field of [this.project, this.harness, this.role, this.context, this.draft]) {
-        field.onchange = () => { this.readiness(); chat.saveSettings(); };
+        field.onchange = () => { if (chat.loadingConversation) return; this.readiness(); chat.saveSettings(); };
       }
     }
     get active() { return this.tools.checked; }
@@ -95,7 +96,7 @@
       if (!this.active) return;
       const chat = this.chat;
       const available = !!this.data?.harnesses.find((one) => one.name === this.harness.value)?.available;
-      chat.send.disabled = !chat.picker.value || chat.picker.selectedOptions[0]?.disabled || !this.project.value.trim() || !this.role.value || !available || !this.context.checkValidity();
+      chat.send.disabled = !!chat.loadingConversation || !chat.picker.value || chat.picker.selectedOptions[0]?.disabled || !this.project.value.trim() || !this.role.value || !available || !this.context.checkValidity();
       chat.send.title = !this.project.value.trim() ? "Enter a project directory to start Coding." : !available ? "Choose an installed coding agent." : "";
     }
     busy(value) {
