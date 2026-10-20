@@ -1,10 +1,10 @@
 {
- "surfaces": 863,
+ "surfaces": 866,
  "by_status": {
-  "covered": 548,
+  "covered": 550,
   "partial": 193,
   "uncovered": 52,
-  "n/a": 70,
+  "n/a": 71,
   "unmapped": 0
  },
  "by_kind": {
@@ -68,7 +68,7 @@
    "covered": 4,
    "partial": 5,
    "uncovered": 0,
-   "n/a": 16,
+   "n/a": 17,
    "unmapped": 0
   },
   "mcp-tool": {
@@ -86,7 +86,7 @@
    "unmapped": 0
   },
   "route": {
-   "covered": 127,
+   "covered": 129,
    "partial": 58,
    "uncovered": 0,
    "n/a": 0,
@@ -4616,6 +4616,16 @@
    "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
   },
   {
+   "id": "listener:studio/streams.py:Streams.activate",
+   "kind": "listener",
+   "source": "studio/streams.py:Streams.activate",
+   "trust": "anything that can connect to the address",
+   "attacker": "an unauthenticated or cross-origin client reaches the port",
+   "status": "n/a",
+   "tests": [],
+   "note": "This bind call associates an existing software-owned webhook source with a subscription grant. It neither creates a socket nor listens for connections."
+  },
+  {
    "id": "mcp-tool:bench_history",
    "kind": "mcp-tool",
    "source": "mcp.py:bench_history",
@@ -7389,6 +7399,24 @@
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
   {
+   "id": "route:fleet/api.py:/studio/ingest/*",
+   "kind": "route",
+   "source": "fleet/api.py:make_handler.Handler.do_POST",
+   "trust": "member holding the pool key; /health open to anyone",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_stream_http.py::test_actual_hmac_ingress_uses_only_source_authority_and_atomic_backpressure",
+    "tests/test_studio_webhooks.py::test_real_tls_replay_attaches_and_different_raw_content_conflicts",
+    "tests/test_studio_webhooks.py::test_authentication_and_routing_substitution_fails_without_admission",
+    "tests/test_studio_webhooks.py::test_payload_injection_is_data_not_source_or_execution_authority",
+    "tests/test_studio_webhooks.py::test_revoke_copy_rotation_and_missing_wiring_fail_closed",
+    "tests/test_studio_webhooks.py::test_revocation_after_verification_is_rechecked_at_atomic_admission",
+    "tests/test_studio_webhooks.py::test_plain_http_cannot_use_a_valid_source_signature"
+   ],
+   "note": "Actual TLS ingress verifies a current source-scoped HMAC over the exact path, generation, timestamp, event identity and raw body. Forged, replayed with changed content, copied, revoked or plaintext requests cannot admit work; untrusted records cannot choose execution or grants."
+  },
+  {
    "id": "route:fleet/api.py:/ui*",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._ui",
@@ -9209,6 +9237,24 @@
     "tests/test_studio_stream_http.py::test_pause_and_cancel_release_source_scanners"
    ],
    "note": "Actual authenticated HTTP routes require strong current owner authority for source registration and subscription controls. Source epochs are checked atomically at persistence; group and sweep snapshots remain exact, and revoked service authority blocks live results across browser expiry and daemon restart."
+  },
+  {
+   "id": "route:fleet/studio_webhooks.py:/studio/ingest/*",
+   "kind": "route",
+   "source": "fleet/studio_webhooks.py:public",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_stream_http.py::test_actual_hmac_ingress_uses_only_source_authority_and_atomic_backpressure",
+    "tests/test_studio_webhooks.py::test_real_tls_replay_attaches_and_different_raw_content_conflicts",
+    "tests/test_studio_webhooks.py::test_authentication_and_routing_substitution_fails_without_admission",
+    "tests/test_studio_webhooks.py::test_payload_injection_is_data_not_source_or_execution_authority",
+    "tests/test_studio_webhooks.py::test_revoke_copy_rotation_and_missing_wiring_fail_closed",
+    "tests/test_studio_webhooks.py::test_revocation_after_verification_is_rechecked_at_atomic_admission",
+    "tests/test_studio_webhooks.py::test_plain_http_cannot_use_a_valid_source_signature"
+   ],
+   "note": "Actual TLS ingress verifies a current source-scoped HMAC over the exact path, generation, timestamp, event identity and raw body. Forged, replayed with changed content, copied, revoked or plaintext requests cannot admit work; untrusted records cannot choose execution or grants."
   },
   {
    "id": "route:fleet/workspace_routes.py:/ui/workspace/*",

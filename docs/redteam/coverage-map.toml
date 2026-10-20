@@ -15,6 +15,20 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["route:fleet/studio_webhooks.py:/studio/ingest/*", "route:fleet/api.py:/studio/ingest/*"]
+status = "covered"
+count = 2
+tests = ["tests/test_studio_stream_http.py::test_actual_hmac_ingress_uses_only_source_authority_and_atomic_backpressure", "tests/test_studio_webhooks.py::test_real_tls_replay_attaches_and_different_raw_content_conflicts", "tests/test_studio_webhooks.py::test_authentication_and_routing_substitution_fails_without_admission", "tests/test_studio_webhooks.py::test_payload_injection_is_data_not_source_or_execution_authority", "tests/test_studio_webhooks.py::test_revoke_copy_rotation_and_missing_wiring_fail_closed", "tests/test_studio_webhooks.py::test_revocation_after_verification_is_rechecked_at_atomic_admission", "tests/test_studio_webhooks.py::test_plain_http_cannot_use_a_valid_source_signature"]
+note = "Actual TLS ingress verifies a current source-scoped HMAC over the exact path, generation, timestamp, event identity and raw body. Forged, replayed with changed content, copied, revoked or plaintext requests cannot admit work; untrusted records cannot choose execution or grants."
+
+[[group]]
+match = ["listener:studio/streams.py:Streams.activate"]
+status = "n/a"
+count = 1
+tests = []
+note = "This bind call associates an existing software-owned webhook source with a subscription grant. It neither creates a socket nor listens for connections."
+
+[[group]]
 match = ["route:fleet/studio_stream_routes.py:/ui/studio/sources", "route:fleet/studio_stream_routes.py:/ui/studio/subscriptions*", "route:fleet/studio_routes.py:/ui/studio/sources*", "route:fleet/studio_routes.py:/ui/studio/subscriptions*"]
 status = "covered"
 count = 4
