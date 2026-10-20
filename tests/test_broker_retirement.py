@@ -33,6 +33,51 @@ def test_native_work_cannot_be_ignored_or_stopped(broker, state):
     assert retire(broker)
 
 
+@pytest.mark.parametrize('kind', ['branch', 'worktree', 'area', 'install'])
+@pytest.mark.parametrize('state', ['held', 'queued'])
+def test_coordination_only_native_claims_do_not_block_idle_retirement(broker, kind, state):
+    rows = [{'id': 'coordination', 'state': state, 'pid': 0, 'holder': 'other-board',
+             'resources': [{'type': 'claim', 'kind': kind, 'name': 'owned-scope'}]}]
+    broker.table.listing = lambda: {'leases': rows}
+    assert retire(broker) and broker._retiring
+    assert rows[0]['resources'] == [{'type': 'claim', 'kind': kind, 'name': 'owned-scope'}]
+
+
+@pytest.mark.parametrize('resource', [
+    {'type': 'gpu'}, {'type': 'cpu_slots', 'count': 1}, {'type': 'memory_mb', 'mb': 1},
+    {'type': 'model_slot', 'model': 'owned'},
+    {'type': 'claim', 'kind': 'server', 'name': 'line:owned'},
+    {'type': 'claim', 'kind': 'port', 'name': '1234'},
+    {'type': 'claim', 'kind': 'task', 'name': 'owned'},
+    {'type': 'claim', 'kind': 'future', 'name': 'owned'},
+    {'type': 'future'}, None,
+])
+@pytest.mark.parametrize('state', ['held', 'queued'])
+def test_coordination_mixed_with_any_compute_or_unknown_resource_stays_busy(broker, resource, state):
+    coordination = {'type': 'claim', 'kind': 'branch', 'name': 'owned'}
+    rows = [{'id': 'mixed', 'state': state, 'resources': [coordination, resource]}]
+    broker.table.listing = lambda: {'leases': rows}
+    assert not retire(broker) and not broker._retiring
+    assert rows[0]['resources'] == [coordination, resource]
+
+
+@pytest.mark.parametrize('row', [
+    None, [], {}, {'id': 'owned', 'state': 'held', 'resources': []},
+    {'id': 'owned', 'state': 'queued', 'resources': []},
+    {'id': 'owned', 'state': 'held', 'resources': {}},
+    {'state': 'held', 'resources': [{'type': 'claim', 'kind': 'branch', 'name': 'owned'}]},
+    {'id': 'owned', 'state': 'future', 'resources': [{'type': 'claim', 'kind': 'branch', 'name': 'owned'}]},
+    {'id': 'owned', 'state': [], 'resources': [{'type': 'claim', 'kind': 'branch', 'name': 'owned'}]},
+    {'id': 'owned', 'state': 'held', 'resources': [{'type': 'claim', 'kind': 'branch', 'name': ''}]},
+    {'id': 'owned', 'state': 'held', 'resources': [{'type': 'claim', 'kind': 'branch', 'name': '  '}]},
+    {'id': 'owned', 'state': 'held', 'resources': [{'type': 'claim', 'kind': 'branch', 'name': 1}]},
+    {'id': 'owned', 'state': 'held', 'resources': [{'type': 'claim', 'kind': 'branch', 'name': 'owned', 'future': True}]},
+])
+def test_malformed_or_redacted_native_rows_still_block_retirement(broker, row):
+    broker.table.listing = lambda: {'leases': [row]}
+    assert not retire(broker) and not broker._retiring
+
+
 def test_resident_even_without_python_compute_claim_blocks_retirement(broker):
     broker._decision_hosts = SimpleNamespace(residents={"owned": {"pid": 123}})
     assert not retire(broker)
@@ -129,6 +174,9 @@ def test_background_missing_lease_reacquisition_is_inside_admission(broker, monk
 
 def test_wire_retirement_requires_connected_owner_and_never_closes_busy_broker(broker, monkeypatch):
     monkeypatch.setattr(broker_wire.broker_runtime, "snapshot", lambda: {})
+    rows = [{'id': 'coordination', 'state': 'held', 'resources': [
+        {'type': 'claim', 'kind': 'worktree', 'name': 'owned-scope'}]}]
+    broker.table.listing = lambda: {'leases': rows}
     server = broker_wire._Server(broker)
     launched = []
     monkeypatch.setattr(broker_wire.threading, "Thread", lambda **kwargs:
@@ -143,6 +191,7 @@ def test_wire_retirement_requires_connected_owner_and_never_closes_busy_broker(b
         broker.claims.clear()
         assert server.answer(request, connected=lambda: True) == {"ok": True, "retiring": True}
         assert len(launched) == 1 and server.closing.is_set()
+        assert rows[0]['resources'][0]['kind'] == 'worktree'
         with pytest.raises(RuntimeError, match="retiring"):
             server.answer({"token": server.token, "op": "start", "spec": {}}, connected=lambda: True)
     finally:
