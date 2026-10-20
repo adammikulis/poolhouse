@@ -118,3 +118,74 @@ def test_materialized_base_identity_matches_native_snapshot_without_cache_lookup
     (staged / 'injected').symlink_to(private)
     with pytest.raises(ValueError, match='symbolic links'):
         resources.base_fingerprint({'kind': 'model', 'path': str(staged)})
+
+
+@pytest.fixture
+def shared_model(cached_model):
+    handle, _, blobs = cached_model
+    original = next(blobs.iterdir())
+    digest = hashlib.sha256(original.read_bytes()).hexdigest()
+    shared = blobs.parent.parent / 'blobs' / digest[:2] / digest
+    shared.parent.mkdir(parents=True)
+    original.replace(shared)
+    original.symlink_to(Path('../../blobs') / digest[:2] / digest)
+    return handle, original, shared
+
+
+def test_shared_content_addressed_native_blob(shared_model):
+    handle, _, shared = shared_model
+    member = next(m for m in resources.model_files(handle) if m['relative'] == 'model.safetensors')
+    assert member['path'] == str(shared)
+    assert member['sha256'] == shared.name
+    assert resources.model_fingerprint(handle)
+
+
+@pytest.mark.parametrize('attack', ['wrong-shard', 'nonhex', 'extra-hop', 'outside', 'ancestor', 'changed-bytes'])
+def test_shared_blob_boundary(shared_model, tmp_path, attack):
+    handle, original, shared = shared_model
+    if attack == 'changed-bytes':
+        shared.write_bytes(b'forged')
+    elif attack == 'ancestor':
+        shard = shared.parent
+        moved = shard.with_name('moved')
+        shard.rename(moved)
+        shard.symlink_to(moved, target_is_directory=True)
+    else:
+        original.unlink()
+        if attack == 'wrong-shard':
+            target = shared.parent.parent / 'ff' / shared.name
+        elif attack == 'nonhex':
+            target = shared.with_name('invalid')
+        elif attack == 'extra-hop':
+            target = shared
+            shared.unlink()
+            shared.symlink_to(tmp_path / 'private')
+        else:
+            target = tmp_path / 'private'
+        original.symlink_to(target)
+    with pytest.raises((ValueError, FileNotFoundError)):
+        resources.model_fingerprint(handle)
+
+
+def test_shared_blob_replacement_before_open_is_refused(shared_model, tmp_path):
+    handle, _, shared = shared_model
+    member = next(m for m in resources.model_files(handle) if m['relative'] == 'model.safetensors')
+    shared.unlink()
+    shared.symlink_to(tmp_path / 'private')
+    with pytest.raises(ValueError, match='changed'), resources.open_model_file(member):
+        pytest.fail('replaced shared blob must not be read')
+
+
+def test_shared_blob_resume_hashes_skipped_upload_prefix(shared_model):
+    handle, _, _ = shared_model
+    member = next(m for m in resources.model_files(handle) if m['relative'] == 'model.safetensors')
+    with resources.open_model_file(member) as source:
+        assert source.read(2) == b'we'
+        assert source.seek(5) == 5
+        assert source.read() == b'ts'
+    with resources.open_model_file(member) as source:
+        source.read(2)
+        with pytest.raises(ValueError, match='forward'):
+            source.seek(0)
+    with pytest.raises(ValueError, match='exceeds'), resources.open_model_file(member) as source:
+        source.seek(member['size'] + 1)
