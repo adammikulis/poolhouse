@@ -29,11 +29,11 @@ def test_briefings_include_one_shared_required_standard(make):
     assert text.count("If I can't use it, it's not done.") == 1
     owner = 'you until an explicit receiving owner acknowledges the handoff' if 'Your name there is' in text else 'codex'
     assert text.startswith(REQUIRED_BRIEFING.format(owner=owner))
-    assert 'activation owner:' in text
+    assert 'update owner:' in text
     assert 'data' in text and 'permissions' in text
 
 
-def test_managed_worker_keeps_task_only_restrictions_and_parent_activation_owner(monkeypatch, tmp_path):
+def test_managed_worker_keeps_task_only_restrictions_and_parent_update_owner(monkeypatch, tmp_path):
     events = []
     assigned = SimpleNamespace(name='local-qwen', managed_inbox=True, base=None,
                               record_model=lambda *args: True,
@@ -47,7 +47,7 @@ def test_managed_worker_keeps_task_only_restrictions_and_parent_activation_owner
     with harnessing.opened(args, 'codex', ('http://localhost:9000', 'qwen', 32000), lambda text: None) as session:
         _required(session.brief)
         assert session.brief.startswith(REQUIRED_BRIEFING.format(owner='codex'))
-        assert 'activation owner: codex' in session.brief
+        assert 'update owner: codex' in session.brief
         assert 'Perform only that task' in session.brief
         assert 'do not inspect workspace configuration or send workspace messages' in session.brief
         assert 'The parent reports your result' in session.brief
