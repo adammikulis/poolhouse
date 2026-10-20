@@ -57,13 +57,25 @@ class NodeUnits:
         selected, count = CASES[case]
         argv = [testnode.tool("cargo"), "test", "--locked", "--offline", "-p", "poolhouse-node", "--lib",
                 selected, "--", "--test-threads=1"]
+        stdout = self.execute(argv)
+        expected = f"test result: ok. {count} passed; 0 failed;"
+        assert any(line.startswith(expected) for line in stdout.splitlines()), stdout
+        return stdout
+
+    def run_targets(self, targets):
+        argv = [testnode.tool("cargo"), "test", "--locked", "--offline", "-p", "poolhouse-node"]
+        for target in targets:
+            argv.extend(("--test", target))
+        stdout = self.execute([*argv, "--", "--test-threads=1"])
+        assert stdout.count("test result: ok.") == len(targets), stdout
+        return stdout
+
+    def execute(self, argv):
         deadline = time.monotonic() + 600
         process = start_process(argv, cwd=self.staged, env=self.environment, stdin=subprocess.DEVNULL,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         stdout, stderr = communicate(process, deadline)
         assert process.returncode == 0, stdout + stderr
-        expected = f"test result: ok. {count} passed; 0 failed;"
-        assert any(line.startswith(expected) for line in stdout.splitlines()), stdout + stderr
         return stdout
 
 

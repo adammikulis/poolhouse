@@ -80,7 +80,7 @@ Kinds: `message`, `note`, `verify`, `identity`, `lease`, `audit`, `landing`, `ro
   `actor@dN`. Posts target `#general` or `#announcements` (with announcement types only). Notes per
   foreign sender are capped. Refusals are recorded (the latest 200) and shown in `status`.
 - **Quotas.** 64 origins per board, 200,000 rows and 128 MiB per log (one session writes a tenth of each and the sessions of one process tree
-  a quarter between them; the last 2,000 rows and 8 MiB are the node's own: the identity entry and the audit of a session ending, and in
+  a quarter between them; the last 2,000 rows and 8 MiB are the node's own: the identity entry of a session ending, and in
   the last 500 rows and 2 MiB only a head and the rows a person's decision makes; docs/limits.md, "At a bound"), 128 KiB per row, 64 KiB per
   body text.
 - **Damage.** A forged, forked or broken copy is `damaged`. It marks the origin damaged only when
@@ -295,19 +295,20 @@ subagent has none. The node removes a session's expired folders whenever it list
 **Sessions.** `register` records the model id and harness (`model_state` `claimed`; a subagent that names no
 model gets its parent's, `inherited`, and the name's family comes from it; the node itself may mark
 one `verified`, and a claim can never lower a verified one); `whoami` with `model`/`harness`
-changes the claim. Each change is an identity entry. Registering a session that has a parent without
+changes the claim. A change of the model or the harness is an identity entry; a change of only the model state (`inherited` to `claimed`) is not. Registering a session that has a parent without
 that parent's token, or under another parent, is `denied`, and so is registering a retired subagent.
 `retire` revokes every token of the session, ends its leases (written to the board), marks the
-identity retired and writes an `audit` entry. A session retires itself, and a main session takes its subagents with it;
-a parent (any ancestor) retires a descendant; a session retires no other main session. The end has a reason, recorded on the identity and in the
-audit entry: `done` (an ordinary end, such as a worker whose work is finished) or, given only by a parent and never
+identity retired and writes one identity entry that says who ended it (`retired_by`) and what that released (`detail`). A session retires itself, and a main session takes its subagents with it;
+a parent (any ancestor) retires a descendant; a session retires no other main session. The end has a reason, recorded on the identity and in its
+ending entry: `done` (an ordinary end, such as a worker whose work is finished) or, given only by a parent and never
 by a session about itself, `revoked` or `forged` (an end for cause, after which the reviews the session wrote no longer count). The node itself ends a session as `idle` (see below). A main session that ended `done` or
+
 `idle` registers again as the same session, from the lineage it was registered from and on the same terms as before it ended
 (a retired subagent never does); its old tokens stay refused and it is given a new one.
 
 **Idle sessions.** A session is *idle* when it is not retired and has neither made a request within 30 minutes
 (`child_beat_s`) nor holds a lease whose process still runs; `agents` marks it `idle`. No count of live sessions is kept: any number register, from one terminal or many. The node retires a session that has been idle for 24 hours (`idle_retire_s`;
-its tokens end, its leases are released and the board gets an `audit` entry by `node`) whenever it lists sessions or registers one.
+its tokens end, its leases are released and the board gets its ending identity entry) whenever it lists sessions or registers one.
 
 **Claims** are leases of one `claim` resource taken without waiting. `reserve` takes a set of them in one call of the
 node: the set is checked against what others hold before the first is taken, so it is taken whole or refused whole (the
@@ -316,7 +317,7 @@ set refused by a claim another device holds gives back what it took. A branch cl
 board's name, so two boards may claim the same branch name; ports, servers, paths and installs are the
 device's. `claims` lists the claims of the caller's board with the owner. A holder's `pid` and `ttl_s`
 behave as for any lease (dead process or expiry drops it). A claim taken with `local` waits only for this device's
-sessions: a branch or area claim another device holds on the board does not keep it from being granted (the landing
+sessions: a branch claim another device holds on the board does not keep it from being granted (the landing
 runner's claim is one).
 
 **Notes** carry `nkind` (decision, rule, fact, question), `title`, `body`, `source`, `tags`,
@@ -615,7 +616,7 @@ used to be admitted six ways: the GPU, CPU slots, memory, named claims, served m
 `src/lease/` (`types`, `policy`, `table`, `live`, `merge`, `rpc`). Config is `lease-config.json`
 (optional; every field has a default): `cpu_slots` (cores), `memory_mb` (0 = no budget),
 `max_wait_s` 600, `background_share_percent` 50, `unknown_background_s` 180, `queue_patience_s` 60,
-`default_ttl_s` 300, `max_ttl_s` 86400, `max_leases_per_holder` 512, `max_leases_per_lineage` 1024, `max_leases` 4096. The file is read again whenever its bytes change (at the next lease call), so a
+`default_ttl_s` 300, `max_ttl_s` 86400, `max_leases_per_holder` 512, `max_leases_per_lineage` 1024, `max_leases` 4096, `max_worktree_records` 1024. The file is read again whenever its bytes change (at the next lease call), so a
 budget a program writes there applies at once; a file that does not parse changes nothing (and neither does one that is not a
 JSON object, whose `max_ttl_s` is under 1 or whose `background_share_percent` is over 100), and a deleted one sets the defaults.
 
@@ -670,13 +671,18 @@ A lease is `{id, state (queued|held), holder, resources, class, estimate_s, sinc
 expires_ms, ttl_s, pid, remote, position, wait_estimate_s}`. Rust: `node.leases` (`Leases`, with
 `tick`), `lease::table::Table`, `lease::rpc::call` and `serve`, `lease::live::is_alive`.
 
-**On the board.** Every grant and end is a `lease` entry (`#leases`) written under the holder's
+**On the board.** Every grant and end of a lease that holds something another device can name is a `lease` entry (`#leases`) written under the holder's
 name: `{lease, action: acquire|release|expire|dead|abandon, resources: [lines]}`. `lease::merge::view`
 reads them back in the board's total order: the earliest acquire of an exclusive resource holds it
-until its own end entry; counted resources sum. Gpu, model slots and the path, port, server and
-install claims are scoped to the origin that wrote them (a device's table decides its own, others only
-read); branch and area claims are pool-wide, and a local request for one a peer holds on the board
-queues behind it (`merge::foreign_holds`).
+until its own end entry; counted resources sum. Gpu and model slots are scoped to the origin that wrote them (a device's table decides its own, others only
+read); a branch claim is pool-wide, and a local request for one a peer holds on the board
+queues behind it (`merge::foreign_holds`). **Device-only claims write no entry.** A claim of a
+worktree, an area, a port, a server or an install (`lease::types::DEVICE_CLAIMS`) names a thing that exists on one device
+(a path of its disk, a port or server of its network, an area spelled under the path of its repository), so no other device can hold
+or ask for it: the device's table keeps it (`leases.json`) and the board is not told. A lease that holds only such claims is
+not mirrored (`Lease::on_board`); a lease that holds a branch or a task claim with them is. The sessions that held a worktree
+claim are kept in `worktree-holders.json` (`lease/holders.rs`: at most `max_worktree_records` for one process tree and `MOST_HOLDERS` in all, retained without age-out, a new path past either refused, never one dropped to make room), which the landing reviews read to leave
+a branch's creator out of its reviewers. The holder of an expired device-only claim is still told by a notice.
 
 ## Sync
 

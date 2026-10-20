@@ -1,5 +1,5 @@
-"""A runtime deploy writes board rows only for a cutover that happens: install claims are taken for the paths a cutover
-changes, after the build, the smoke and the boundary have all succeeded; a deploy that finds nothing to do writes nothing."""
+"""A runtime deploy writes no board row: install claims are taken for the paths a cutover changes, after the build, the smoke and the
+boundary have all succeeded, and the node keeps them in its own table; a deploy that finds nothing to do takes none."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def test_an_ensure_with_nothing_to_do_writes_no_row(world, workspace_node, agent
     assert rows(me) == before
 
 
-def test_a_cutover_that_finds_the_boundary_held_writes_no_row_and_the_next_one_claims_once(world, workspace_node, agent, monkeypatch):  # noqa: F811
+def test_a_cutover_that_finds_the_boundary_held_claims_nothing_and_the_next_one_claims_once_and_writes_no_row(world, workspace_node, agent, monkeypatch):  # noqa: F811
     repo, launchers, _ = world
     commit(repo, "a")
     me = workspace_node.session(agent)
@@ -55,9 +55,8 @@ def test_a_cutover_that_finds_the_boundary_held_writes_no_row_and_the_next_one_c
     assert rows(me) == before
     asked = claimed_paths(monkeypatch)
     assert runtime_deploy.ensure(plan_for(repo, launchers), builder=builder()).action == "switched"
-    after = rows(me)
-    assert len(asked) == 1 and after["lease"] - before["lease"] == 2 * len(asked[0])
-    assert {kind: n - before[kind] for kind, n in after.items() if kind != "lease"} == {kind: 0 for kind in KINDS if kind != "lease"}
+    assert len(asked) == 1 and len(asked[0]) == 2
+    assert rows(me) == before
 
 
 def test_a_build_that_fails_its_smoke_writes_no_row(world, workspace_node, agent):  # noqa: F811

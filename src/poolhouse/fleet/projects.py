@@ -241,7 +241,14 @@ class ProjectRegistry:
             return [self._board(project) for project in self._projects.values()]
 
     def _board(self, project: Project) -> dict:
-        return {"id": project.id, "name": project.name, "machine": self.machine}
+        root = Path(project.root)
+        try:
+            available = root.is_dir() and identity(root) == project.id
+        except (OSError, git.GitFailed, source.ProjectError):
+            available = False
+        return {"id": project.id, "name": project.name, "machine": self.machine,
+                "available": available,
+                "preferred": available and self._candidates.get(project.id) == root.resolve()}
 
     def catalogue(self) -> dict:
         code = bootstrap()
