@@ -217,7 +217,7 @@ impl Board {
 
     /// Remove the archives that are no longer needed: older than `ARCHIVE_MAX_MS`; older than `ARCHIVE_MIN_MS` with every device that
     /// synced this board past them (own log) or whatever the age (a copy); and all but the newest `MOST_ARCHIVES` of an origin.
-    pub(super) fn prune_archives(&mut self) -> Result<()> {
+    pub fn prune_archives(&mut self) -> Result<()> {
         let now = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
         let mut by_origin: BTreeMap<String, Vec<(u64, u64, PathBuf)>> = BTreeMap::new();
         for origin in self.archive_origins() {
