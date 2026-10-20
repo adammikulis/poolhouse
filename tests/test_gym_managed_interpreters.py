@@ -34,16 +34,29 @@ def test_child_python_markers_do_not_use_host_python():
 def test_drone_install_is_scoped_and_does_not_change_default_packages(monkeypatch, tmp_path):
     environment = Environment(tmp_path)
     drone = next(lib for lib in CATALOG if lib.name == 'gym-drone')
-    made, calls = [], []
+    target = environment.for_library(drone)
+    artifacts = tmp_path / 'compute-artifacts'
+    artifacts.mkdir()
+    made, calls, companions = [], [], []
     monkeypatch.setattr(Environment, 'create', lambda self, **kwargs: made.append((self.path, self.python_version)))
 
     def pip(self, args, **kwargs):
         calls.append((self.path, args))
         return subprocess.CompletedProcess(args, 0, stdout='')
 
+    def wheels(self):
+        assert self.path == target.path
+        return artifacts
+
+    def install_companion(python, directory, *, environment):
+        companions.append((python, directory))
+        return subprocess.CompletedProcess([], 0)
+
     monkeypatch.setattr(Environment, 'pip', pip)
+    monkeypatch.setattr(Environment, 'wheels', wheels)
+    monkeypatch.setattr('poolhouse.fleet.environment.compute_artifact.install', install_companion)
     assert environment.install(['gym-drone']) == {'gym-drone': {'ok': True}}
-    target = environment.for_library(drone)
+    assert companions == [(target.python, artifacts)]
     assert made == [(tmp_path / 'simulators/gym-drone/env', '3.12')]
     assert calls == [(target.path, ['install', 'numpy<2', 'wheel']),
                      (target.path, ['install', '--upgrade', 'PyFlyt==0.29.0', 'poolhouse[gym-drone,gym-rl]'])]
