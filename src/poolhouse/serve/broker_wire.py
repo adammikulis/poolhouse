@@ -81,12 +81,13 @@ def _connected(connection: socket.socket, pid: int) -> bool:
 class _Server(socketserver.ThreadingTCPServer):
     daemon_threads = True
 
-    def __init__(self, broker: Broker) -> None:
+    def __init__(self, broker: Broker, *, owned=None) -> None:
         super().__init__((DEFAULT_HOST, 0), _Handler)
         self.broker = broker
         self.closing = threading.Event()
         self.runtime = broker_runtime.snapshot()
         self.token = secrets.token_hex(16)
+        self.owned = owned
 
     def shutdown(self) -> None:
         self._cancel_waiters()
@@ -255,7 +256,8 @@ def broker_for(manager: Any) -> Any:
     return Broker(manager)
 
 
-def serve(*, idle_s: float = IDLE_S, quiet_s: float = QUIET_S, say=say_out) -> int:
+def serve(*, idle_s: float = IDLE_S, quiet_s: float = QUIET_S, say=say_out,
+          owned=None, ready=None) -> int:
     """Run this machine's broker until a quit signal, until it has had nothing to supervise
     for ``quiet_s``, or until its record is gone. Returns 0, also when one is running."""
     try:
@@ -264,11 +266,13 @@ def serve(*, idle_s: float = IDLE_S, quiet_s: float = QUIET_S, say=say_out) -> i
             broker.say = lambda line: say(line, flush=True)
             scanner = guarded.arm(broker.manager, broker)
             adopted = broker.adopt()
-            server = _Server(broker)
+            server = _Server(broker, owned=owned)
             write_json(record_path(), {"pid": os.getpid(), "port": server.server_address[1],
                                        "token": server.token, "started": time.time(),
                                        "pid_started": server.runtime["pid_started"], "runtime": server.runtime})
             private_file(record_path())
+            if ready is not None:
+                ready(server)
             say(f"broker on {DEFAULT_HOST}:{server.server_address[1]} (pid {os.getpid()}), "
                 f"{len(broker.servers)} of {len(adopted)} running server(s) taken in")
             done = threading.Event()
