@@ -1,7 +1,7 @@
 """First-run preferences, membership and preparation route ownership."""
 from __future__ import annotations
 
-from . import lan_pools, setup_project_routes
+from . import lan_pools, setup_preparation_routes, setup_project_routes
 from .discovery import DiscoveryError, in_pool, require_name
 from .onboard.joining import JoinOptions
 from .onboard.pools import known_pools
@@ -50,6 +50,8 @@ class SetupRoutes:
         return super().public_route()
 
     def route(self) -> bool:
+        if setup_preparation_routes.route(self):
+            return True
         if setup_project_routes.route(self):
             return True
         return super().route()

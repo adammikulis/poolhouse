@@ -36,15 +36,23 @@ class InitialSetupRoutes:
             self.send(400, {"error": str(error)})
         return True
 
-    def _local_browser(self) -> bool:
+    def _local_browser(self, *, read=False) -> bool:
         try:
-            host = urllib.parse.urlsplit("//" + self.host_header).hostname
-        except ValueError:
+            host = urllib.parse.urlsplit("//" + self.host_header)
+            port = 80 if host.port is None else host.port
+            active = self.handler.server.server_address[1]
+        except (ValueError, AttributeError, IndexError, TypeError):
             return False
         session = self.ui.sessions.get(parse_cookie(self.cookie))
         origin = self.header("Origin")
-        return (invite_routes.local(self.client_ip) and host in {"localhost", "127.0.0.1", "::1"}
-                and origin in {"http://" + self.host_header, "https://" + self.host_header}
+        origin_ok = origin in {"http://" + self.host_header, "https://" + self.host_header}
+        if read is True and self.method == "GET" and not origin:
+            origin_ok = True
+        return (invite_routes.local(self.client_ip) and host.hostname in {"localhost", "127.0.0.1", "::1"}
+                and host.username is None and host.password is None
+                and not host.path and not host.query and not host.fragment
+                and type(active) is int and port == active and self.ui.host_ok(self.host_header)
+                and self.header("X-Poolhouse-UI") == "1" and origin_ok
                 and self.header("Sec-Fetch-Site") == "same-origin"
                 and not any(self.header(name) for name in
                             ("Authorization", "X-Poolhouse-Token", "X-Poolhouse-Agent"))

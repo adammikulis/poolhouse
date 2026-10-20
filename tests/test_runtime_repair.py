@@ -14,8 +14,8 @@ from rail import reach
 from poolhouse.fleet import daemon, runtime_repair
 from poolhouse.fleet.initial_setup_routes import InitialSetupRoutes
 from poolhouse.fleet.runtime_repair_routes import RuntimeRepairRoutes
-from poolhouse.fleet.session import Sessions
 from poolhouse.fleet.setup_jobs import Jobs
+from poolhouse.fleet.ui import UI
 
 
 @pytest.mark.slow
@@ -63,16 +63,17 @@ def test_job_updates_merge_newer_worker_state(tmp_path):
 
 class Route(InitialSetupRoutes, RuntimeRepairRoutes):
     def __init__(self, tmp_path):
-        sessions = Sessions()
-        person = sessions.open("setup")
-        self.ui = SimpleNamespace(root=tmp_path, sessions=sessions, setup_jobs=None,
-                                  _setup_jobs_lock=threading.Lock(), member_port=8770)
+        self.ui = UI(pool_key_path=tmp_path / "pool.key")
+        self.ui.root = tmp_path
+        person = self.ui.sessions.open("setup")
         self.cookie = "poolhouse_ui=" + person.sid
+        self.handler = SimpleNamespace(server=SimpleNamespace(server_address=("127.0.0.1", 8770)))
         self.path = "/ui/agent-runtime/install"
         self.method = "POST"
         self.client_ip = "127.0.0.1"
         self.host_header = "127.0.0.1:8770"
-        self.headers = {"Origin": "http://127.0.0.1:8770", "Sec-Fetch-Site": "same-origin", "Content-Length": "2"}
+        self.headers = {"Origin": "http://127.0.0.1:8770", "Sec-Fetch-Site": "same-origin",
+                        "Content-Length": "2", "X-Poolhouse-UI": "1"}
         self.payload = {}
         self.replies = []
 

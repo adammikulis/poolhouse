@@ -5,13 +5,11 @@ import re
 
 from poolhouse.studio.store import digest
 
-from . import invite_routes
+from . import invite_routes, setup_context
 from .launch_secret import HEADER
 from .request_fields import exact_body
-from .session import parse_cookie
 from .setup_project_picker import Picker
 from .setup_projects import Projects
-from .studio_service import scope
 
 PREFIX = '/ui/setup/projects'
 NATIVE = PREFIX + '/native-picks/'
@@ -25,14 +23,10 @@ class Service:
         self.picker = Picker(self.projects, epoch=lambda principal: principal['scope'], current=self.current)
 
     def bind(self, route):
-        ui = self.ui
-        session = ui.sessions.get(parse_cookie(route.cookie))
-        if session is None or not session.credentialed or not route._local_browser():
-            raise PermissionError('Open setup from the Poolhouse window.')
-        bound = scope(ui)
-        principal = {'id': digest({'session': session.sid}), 'scope': bound, 'owner': True}
-        self.bindings[(principal['id'], bound)] = lambda: (ui.sessions.get(session.sid) is session
-                                                         and session.credentialed and scope(ui) == bound)
+        context = setup_context.bind(route)
+        bound = context.binding['scope']
+        principal = {'id': context.binding['principal'], 'scope': bound, 'owner': True}
+        self.bindings[(principal['id'], bound)] = context.current
         return principal
 
     def default(self, principal, operation):
@@ -130,6 +124,8 @@ def route(context):
                 raise ValueError(ERROR)
             response = instance.picker.create(principal, candidate)
         context.send(200, {'ok': True, **response}, {'Cache-Control': 'no-store'})
+    except setup_context.SessionLost as error:
+        context.send(401, {'error': str(error)})
     except PermissionError:
         context.send(403, {'error': ERROR})
     except (ValueError, OSError, KeyError, RuntimeError):

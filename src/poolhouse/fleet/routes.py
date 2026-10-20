@@ -44,9 +44,9 @@ from .runtime_repair_routes import RuntimeRepairRoutes
 from .serving_routes import route as serving_route
 from .session import parse_cookie
 from .setup_jobs import jobs, libraries, provenance, server
+from .setup_preparation import choices_for
 from .setup_recovery_routes import SetupRecoveryRoutes
 from .setup_routes import SetupRoutes
-from .startup_models import choices
 from .studio_native_picks import NativePickRoutes
 from .studio_routes import StudioRoutes
 from .themes import default_appearance, registry, resolve
@@ -376,9 +376,10 @@ class ModelRoutes:
         if component_routes.route(self):
             return True
         if self.path == "/ui/models/startup" and self.method == "GET":
-            ui = self.ui
-            self.send(200, choices(disk_gb=ui.models.free_gb() if ui.models else 0,
-                                   installed=(m.name for m in ui.models.all()) if ui.models else ()))
+            result = choices_for(self.ui)
+            if not self.signed_in():
+                return True
+            self.send(200, result)
             return True
         if self.path == "/ui/models/popular" and self.method == "GET":
             return self._popular()

@@ -22,12 +22,13 @@ def field(request, name, kind, default=None):
     return value
 
 
-def exact_body(context, keys):
+def exact_body(context, keys, *, optional=()):
     length = int(context.header('Content-Length', '0') or 0)
     if not 0 <= length <= 64 * 1024:
         raise ValueError('Invalid selection request size')
     body = json.loads(context.handler.rfile.read(length) or b'{}', object_pairs_hook=unique_object)
-    if not isinstance(body, dict) or set(body) != set(keys):
+    if (not isinstance(body, dict) or not set(keys) <= set(body)
+            or set(body) - set(keys) - set(optional)):
         raise ValueError('Invalid selection fields')
     return body
 

@@ -226,7 +226,8 @@ def test_initial_distinguishes_session_loss_from_forbidden_credentials(device, k
     from poolhouse.fleet.session import parse_cookie
     cookie = ""
     if kind == "forged":
-        cookie = "poolhouse-session=not-a-session"
+        from poolhouse.fleet.session import COOKIE
+        cookie = COOKIE + "=not-a-session"
     elif kind == "expired":
         cookie = sign_in(device)
         device.ui.sessions.get(parse_cookie(cookie)).expires_at = 0
