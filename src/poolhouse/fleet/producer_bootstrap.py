@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 
 from poolhouse import unix_socket
+from poolhouse.files import stat_signature
 
 from .app_identity import PROOF_KEY_FILE
 
@@ -33,11 +34,6 @@ class BootstrapUnavailable(OSError):
     """The existing installation or its live daemon cannot be authenticated."""
 
 
-def _signature(row):
-    return (row.st_dev, row.st_ino, row.st_mode, row.st_uid, row.st_nlink,
-            row.st_size, row.st_mtime_ns, row.st_ctime_ns)
-
-
 def read_existing(root):
     """Read an existing private installation secret without creating or repairing it."""
     path = Path(root)
@@ -50,7 +46,7 @@ def read_existing(root):
         for name in path.parts[1:]:
             child = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=at)
             descriptors.append(child)
-            anchors.append((at, name, child, _signature(os.fstat(child))[:4]))
+            anchors.append((at, name, child, stat_signature(os.fstat(child))[:4]))
             at = child
         directory = os.fstat(at)
         if directory.st_uid != os.geteuid() or stat.S_IMODE(directory.st_mode) & 0o077:
@@ -63,12 +59,12 @@ def read_existing(root):
             raise BootstrapUnavailable('Installation identity is not a private regular file')
         data = os.read(fd, 65)
         if (len(data) != 64 or not _HEX.fullmatch(data.decode('ascii'))
-                or _signature(os.fstat(fd)) != _signature(before)
-                or _signature(os.stat(PROOF_KEY_FILE, dir_fd=at, follow_symlinks=False)) != _signature(before)):
+                or stat_signature(os.fstat(fd)) != stat_signature(before)
+                or stat_signature(os.stat(PROOF_KEY_FILE, dir_fd=at, follow_symlinks=False)) != stat_signature(before)):
             raise BootstrapUnavailable('Installation identity changed or is malformed')
         for parent, name, child, before in anchors:
-            if (_signature(os.stat(name, dir_fd=parent, follow_symlinks=False))[:4] != before
-                    or _signature(os.fstat(child))[:4] != before):
+            if (stat_signature(os.stat(name, dir_fd=parent, follow_symlinks=False))[:4] != before
+                    or stat_signature(os.fstat(child))[:4] != before):
                 raise BootstrapUnavailable('Installation identity directory changed')
         return bytes.fromhex(data.decode('ascii'))
     except (OSError, ValueError, UnicodeError) as exc:
