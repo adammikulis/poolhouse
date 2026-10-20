@@ -3,20 +3,16 @@ when the person asks for it, derived from a passphrase), and the identity a stor
 
 from __future__ import annotations
 
-import base64
-import contextlib
 import getpass
 import hashlib
 import hmac
-import json
 import os
 import re
 import sys
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any, Protocol
 
-from poolhouse import files, keystore, legacy, lock
+from poolhouse import keystore
 
 __all__ = [
     "KEYS_ENV",
@@ -35,7 +31,6 @@ __all__ = [
     "valid_profile",
 ]
 
-SERVICE = legacy.MEMORY_SERVICE
 PURPOSE = "memory"
 KEYS_ENV = "POOLHOUSE_MEMORY_KEYS"
 PASSPHRASE_ENV = "POOLHOUSE_MEMORY_PASSPHRASE"  # noqa: S105 - the name of a variable
@@ -103,9 +98,9 @@ class KeystoreKeys:
 
     mode = "keystore"
 
-    def __init__(self, account: str, *, owner: str = "", files: tuple[Path, ...] = (),
+    def __init__(self, account: str, *, owner: str = "",
                  purpose: str = PURPOSE, ks: keystore.Keystore | None = None) -> None:
-        self.account, self.owner, self.files, self.purpose = account, owner, files, purpose
+        self.account, self.owner, self.purpose = account, owner, purpose
         self._ks = ks
 
     @property
@@ -121,9 +116,8 @@ class KeystoreKeys:
             raise _locked(exc) from exc
 
     def keys(self, salt: bytes, *, create: bool = False) -> list[bytes]:
-        older = self._migrate()
         key = self._derive(salt, create=create)
-        return [*([key] if key else []), *older]
+        return [key] if key else []
 
     def rotate(self, salt: bytes, new: bytes | None = None) -> bytes:
         """The key for the fresh ``salt`` the store chose."""
@@ -132,58 +126,7 @@ class KeystoreKeys:
     def settle(self) -> None:
         return None
 
-    def _migrate(self) -> list[bytes]:
-        """Re-wrap a store kept under the random key an older version left in the keystore,
-        then delete that item once every file reads back under the new key. Returns the old
-        keys while the bytes a caller already holds may still be under them."""
-        ks = self.ks
-        if ks.migrated(SERVICE, self.account) or not self.files:
-            return []
-        try:
-            held = ks.legacy_get(SERVICE, self.account, self.purpose)
-            if held is None:
-                ks.mark_migrated(SERVICE, self.account)
-                return []
-            doc = json.loads(held)
-            old = [base64.b64decode(doc[k]) for k in ("current", "previous") if doc.get(k)]
-            if not all(self._rewrap(path, old) for path in self.files):
-                return old
-            with contextlib.suppress(keystore.KeystoreError):
-                ks.legacy_drop(SERVICE, self.account, self.purpose)
-                ks.mark_migrated(SERVICE, self.account)
-            return old
-        except keystore.KeystoreError as exc:
-            raise _locked(exc) from exc
-        except (ValueError, KeyError, TypeError):
-            return []
 
-    def _rewrap(self, path: Path, old: list[bytes]) -> bool:
-        """Whether ``path`` is absent or now opens under the new key."""
-        with lock.only_one(path.parent / "store.lock", timeout=10, announce=lambda _m: None):
-            try:
-                blob = path.read_bytes()
-            except FileNotFoundError:
-                return True
-            mode, salt = header(blob)
-            if mode != "keystore":
-                return True
-            fresh = self._derive(salt, create=True)
-            try:
-                open_blob(blob, [fresh], owner=self.owner)
-                return True
-            except BadSeal:
-                pass
-            try:
-                plain, _ = open_blob(blob, old, owner=self.owner)
-            except BadSeal:
-                return False
-            with files.writing(path) as tmp:
-                tmp.write_bytes(seal_blob(plain, fresh, mode="keystore", salt=salt, owner=self.owner))
-                tmp.chmod(0o600)
-            try:
-                return open_blob(path.read_bytes(), [fresh], owner=self.owner)[0] == plain
-            except BadSeal:
-                return False
 
 
 class PassphraseKeys:
@@ -216,8 +159,7 @@ def _ask(prompt: str) -> str:
     raise KeyUnavailable(f"the memory store is under a passphrase: set {PASSPHRASE_ENV} or run in a terminal")
 
 
-def default_keys(user: str, profile: str, directory: str, stored: tuple[Path, ...] = (),
-                 purpose: str = PURPOSE) -> Keys:
+def default_keys(user: str, profile: str, directory: str, *, purpose: str = PURPOSE) -> Keys:
     """The keys this process uses: the OS keystore, or a passphrase when ``$POOLHOUSE_MEMORY_KEYS``
     says ``passphrase``."""
     want = os.environ.get(KEYS_ENV, "keystore") or "keystore"
@@ -226,7 +168,7 @@ def default_keys(user: str, profile: str, directory: str, stored: tuple[Path, ..
     if want != "keystore":
         raise KeyUnavailable(f"{KEYS_ENV} is keystore or passphrase")
     where = hashlib.sha256(directory.encode()).hexdigest()[:12]
-    return KeystoreKeys(f"{user}/{profile}/{where}", owner=f"{user}|{profile}", files=tuple(stored),
+    return KeystoreKeys(f"{user}/{profile}/{where}", owner=f"{user}|{profile}",
                         purpose=purpose)
 
 

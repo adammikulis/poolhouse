@@ -16,11 +16,9 @@ from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from keyring.errors import KeyringError
 
-from poolhouse import home, keystore, legacy, memory, sentinel
-from poolhouse.fleet.onboard import manifest as mf
+from poolhouse import home, keystore, memory, sentinel
 from poolhouse.fleet.onboard.signing import SigningKeys
 from poolhouse.keystore import Keystore, Wires
-from poolhouse.memory import vault
 from poolhouse.sentinel import human
 from poolhouse.sentinel.events import Bus, Event, Severity
 from tests import keystore_support
@@ -496,7 +494,7 @@ def test_reset_deletes_the_key_after_the_person_types_the_account(counting, at_a
     assert ks.status()["provisioned"] is False
 
 
-# -- migration ------------------------------------------------------------------------------------
+# -- current memory store ------------------------------------------------------------------------------------
 
 
 def fresh_store(tmp_path) -> memory.Store:
@@ -504,148 +502,6 @@ def fresh_store(tmp_path) -> memory.Store:
     store.add("prefers short answers", "preference")
     store.add("serves 64 slots", "result")
     return store
-
-
-def as_an_older_version_wrote_it(store: memory.Store, ring, *, files=None) -> bytes:
-    """Put the store under a random key kept in a per-feature item, the way it used to be."""
-    old = os.urandom(32)
-    for each in files or (store.path, store.prev):
-        if each.exists():
-            blob = each.read_bytes()
-            _, salt = vault.header(blob)
-            plain, _ = vault.open_blob(blob, store.keys.keys(salt), owner=store.owner)
-            each.write_bytes(vault.seal_blob(plain, old, mode="keystore", salt=salt, owner=store.owner))
-    ring.set_password(vault.SERVICE, store.keys.account, json.dumps({"current": base64.b64encode(old).decode()}))
-    (home.state("keystore") / "legacy.json").unlink(missing_ok=True)
-    keystore._DEFAULTS.clear()
-    return old
-
-
-def test_a_memory_store_under_an_older_key_moves_to_the_master_and_the_old_item_goes(tmp_path, counting):
-    store = fresh_store(tmp_path)
-    store.add("third", "note")
-    old = as_an_older_version_wrote_it(store, counting)
-    assert store.prev.exists()
-    again = memory.Store(tmp_path / "m" / "graph.enc")
-    assert len(again.facts()) == 3 and again.status == "ok"
-    assert (vault.SERVICE, store.keys.account) not in counting.held
-    for each in (store.path, store.prev):
-        blob = each.read_bytes()
-        with pytest.raises(vault.BadSeal):
-            vault.open_blob(blob, [old], owner=store.owner)
-        vault.open_blob(blob, store.keys.keys(vault.header(blob)[1]), owner=store.owner)
-    assert len(memory.Store(tmp_path / "m" / "graph.enc").facts()) == 3
-
-
-def test_the_old_item_is_kept_when_a_file_does_not_verify(tmp_path, counting):
-    store = fresh_store(tmp_path)
-    as_an_older_version_wrote_it(store, counting)
-    store.path.write_bytes(store.path.read_bytes()[:-1])
-    memory.Store(tmp_path / "m" / "graph.enc").facts()
-    assert (vault.SERVICE, store.keys.account) in counting.held
-
-
-def test_a_migration_cut_off_between_the_two_files_finishes_on_the_next_run(tmp_path, counting):
-    store = fresh_store(tmp_path)
-    store.add("third", "note")
-    as_an_older_version_wrote_it(store, counting, files=(store.prev,))
-    old = json.loads(counting.held[(vault.SERVICE, store.keys.account)])
-    assert store.path.exists() and store.prev.exists() and old
-    again = memory.Store(tmp_path / "m" / "graph.enc")
-    assert again.status == "ok" and len(again.facts()) == 3
-    assert (vault.SERVICE, store.keys.account) not in counting.held
-    assert memory.Store(tmp_path / "m" / "graph.enc").status == "ok"
-
-
-def test_a_refused_delete_leaves_verified_data_readable_and_the_item_for_later(tmp_path, counting):
-    clock = Clock()
-    store = fresh_store(tmp_path)
-    as_an_older_version_wrote_it(store, counting)
-    counting.refuse, counting.refuse_ops = KeyringError, {"delete"}
-    again = memory.Store(tmp_path / "m" / "graph.enc")
-    assert len(again.facts()) == 2
-    assert (vault.SERVICE, store.keys.account) in counting.held
-    counting.refuse = None
-    keystore.default()._denied = ""
-    (home.state("keystore") / "denied.json").unlink()
-    assert len(memory.Store(tmp_path / "m" / "graph.enc").facts()) == 2
-    assert (vault.SERVICE, store.keys.account) not in counting.held
-    assert clock()
-
-
-def test_the_fleet_signing_key_moves_into_a_wrapped_file_and_the_old_item_goes(tmp_path, counting):
-    signer = mf.Signer.generate()
-    keys = SigningKeys(tmp_path / "fleet", say=lambda _m: None)
-    keys._write({"store": "keyring", "key_id": signer.key_id, "public": base64.b64encode(signer.public).decode(),
-                 "created": 1.0, "rotations": [], "revoked": [], "confirm": False})
-    counting.set_password(legacy.KEYCHAIN_SERVICE, keys.account, base64.b64encode(signer.private_raw()).decode())
-    mf.verify(keys.sign([], serial=1), signer.public)
-    assert (legacy.KEYCHAIN_SERVICE, keys.account) not in counting.held
-    assert json.loads(keys.meta_path.read_text())["store"] == "keystore" and keys.wrapped_path.exists()
-    assert holds(signer.private_raw(), tmp_path, home.state()) == []
-    mf.verify(keys.sign([], serial=2), signer.public)
-
-
-def test_a_signing_key_move_cut_off_after_the_wrap_is_finished_by_the_next_call(tmp_path, counting):
-    signer = mf.Signer.generate()
-    keys = SigningKeys(tmp_path / "fleet", say=lambda _m: None)
-    keys._write({"store": "keyring", "key_id": signer.key_id, "public": base64.b64encode(signer.public).decode(),
-                 "created": 1.0, "rotations": [], "revoked": [], "confirm": False})
-    counting.set_password(legacy.KEYCHAIN_SERVICE, keys.account, base64.b64encode(signer.private_raw()).decode())
-    counting.refuse, counting.refuse_ops = KeyringError, {"delete"}
-    with pytest.raises(Exception, match="declined"):
-        keys.sign([], serial=1)
-    assert keys.wrapped_path.exists() and (legacy.KEYCHAIN_SERVICE, keys.account) in counting.held
-    assert json.loads(keys.meta_path.read_text())["store"] == "keyring"
-    counting.refuse = None
-    keystore.default()._denied = ""
-    (home.state("keystore") / "denied.json").unlink()
-    mf.verify(keys.sign([], serial=2), signer.public)
-    assert (legacy.KEYCHAIN_SERVICE, keys.account) not in counting.held
-    assert json.loads(keys.meta_path.read_text())["store"] == "keystore"
-
-
-def test_a_signing_key_move_cut_off_after_the_old_item_went_still_signs(tmp_path, counting):
-    signer = mf.Signer.generate()
-    keys = SigningKeys(tmp_path / "fleet", say=lambda _m: None)
-    keys._write({"store": "keyring", "key_id": signer.key_id, "public": base64.b64encode(signer.public).decode(),
-                 "created": 1.0, "rotations": [], "revoked": [], "confirm": False})
-    keys._wrap(signer.private_raw())
-    mf.verify(keys.sign([], serial=1), signer.public)
-    assert json.loads(keys.meta_path.read_text())["store"] == "keystore"
-
-
-def test_the_reputation_ledger_is_keyed_under_its_own_purpose_and_migrates_too(tmp_path, counting):
-    from poolhouse.reputation.sealed import SealedGraph
-
-    ledger = SealedGraph(tmp_path / "r" / "graph.enc")
-    ledger.edit(lambda g: g.upsert_node({"id": "source:a", "kind": "source", "label": "a"}))
-    bus = Bus()
-    ks = keystore.default()
-    ks._bus = bus
-    ks.lock()
-    again = SealedGraph(tmp_path / "r" / "graph.enc")
-    assert again.graph().has("source:a") and again.status == "ok"
-    assert {e.subject for e in bus.recent(kind="keystore")} == {"purpose:reputation"}
-    assert again.keys.keys(b"s" * 16) != vault.default_keys(again.user, "reputation", str((tmp_path / "r").resolve())).keys(b"s" * 16)
-    old = as_an_older_version_wrote_it_files(again, counting)
-    keystore._DEFAULTS.clear()
-    assert SealedGraph(tmp_path / "r" / "graph.enc").graph().has("source:a")
-    assert (vault.SERVICE, again.keys.account) not in counting.held
-    assert old
-
-
-def as_an_older_version_wrote_it_files(ledger, ring) -> bytes:
-    old = os.urandom(32)
-    for each in (ledger.path, ledger.prev):
-        if each.exists():
-            blob = each.read_bytes()
-            _, salt = vault.header(blob)
-            plain, _ = vault.open_blob(blob, ledger.keys.keys(salt), owner=ledger.owner)
-            each.write_bytes(vault.seal_blob(plain, old, mode="keystore", salt=salt, owner=ledger.owner))
-    ring.set_password(vault.SERVICE, ledger.keys.account, json.dumps({"current": base64.b64encode(old).decode()}))
-    (home.state("keystore") / "legacy.json").unlink(missing_ok=True)
-    return old
 
 
 # -- no secret anywhere ---------------------------------------------------------------------------
@@ -677,11 +533,9 @@ def test_every_backend_operation_is_a_sentinel_event_with_a_purpose_and_an_outco
     bus = Bus()
     ks = make(tmp_path, bus=bus)
     ks.subkey("memory", "a")
-    ks.legacy_get("poolhouse-memory", "someone", "memory")
-    ks.legacy_drop("poolhouse-memory", "someone", "memory")
     seen = [(e.kind, e.subject, e.evidence["outcome"]) for e in bus.recent(kind="keystore")]
     assert seen == [("keystore.read", "purpose:memory", "absent"), ("keystore.create", "purpose:memory", "ok"),
-                    ("keystore.read", "purpose:memory", "absent"), ("keystore.delete", "purpose:memory", "absent")]
+                    ]
     counting.refuse = KeyringError
     ks2 = make(tmp_path, bus=bus)
     with pytest.raises(keystore.KeystoreDenied):

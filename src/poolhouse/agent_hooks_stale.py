@@ -1,14 +1,10 @@
-"""Hook entries in a coding agent's settings that can never run again: a command of the old project name
-(``ml-stack-*``, ``ml_stack``, ``poolside-*``) or one whose program is a path that no longer exists.
+"""Remove hook entries whose absolute executable path no longer exists.
 
-An agent runs every hook it finds and shows each failure to the person, so a stale entry is a defect
-until it is removed. `remove` takes them out of Claude Code's JSON and Codex's TOML, keeps a backup of
-the file it changed and writes the new one atomically.
+Changes to agent settings are atomic and keep a backup of the prior file.
 """
 
 from __future__ import annotations
 
-import itertools
 import json
 import re
 import shlex
@@ -20,17 +16,15 @@ from pathlib import Path
 from poolhouse import home
 from poolhouse.files import write_text
 
-__all__ = ["OLD_PREFIXES", "found", "is_stale", "remove"]
+__all__ = ["found", "is_stale", "remove"]
 
-OLD_PREFIXES = ("ml-stack", "ml_stack", "poolside-", "poolside_")
 _HEADER = re.compile(r"(?m)^\[\[?([^\]\n]+)\]\]?[ \t]*(?:#.*)?$")
 _COMMAND = re.compile(r'(?m)^\s*command\s*=\s*"((?:[^"\\]|\\.)*)"')
 _NOTIFY = re.compile(r"(?m)^notify\s*=\s*\[[^\]\n]*\]\s*\n")
 
 
 def is_stale(command_line: str) -> bool:
-    """Whether running ``command_line`` can only fail: its program or ``-m`` module carries an old name,
-    or its program is an absolute path that is not there."""
+    """Whether a hook names an absolute executable path that is no longer present."""
     try:
         words = shlex.split(command_line)
     except ValueError:
@@ -38,11 +32,7 @@ def is_stale(command_line: str) -> bool:
     if not words:
         return False
     program = words[0]
-    if Path(program).name.startswith(OLD_PREFIXES):
-        return True
-    if program.startswith(("/", "~")) and not home.expand(program).exists():
-        return True
-    return any(word == "-m" and nxt.startswith(OLD_PREFIXES) for word, nxt in itertools.pairwise(words))
+    return program.startswith(("/", "~")) and not home.expand(program).exists()
 
 
 def _claude(text: str) -> tuple[str, list[str]]:

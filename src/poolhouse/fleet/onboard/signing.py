@@ -23,7 +23,7 @@ from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
-from poolhouse import keystore, legacy, person
+from poolhouse import keystore, person
 from poolhouse.files import read_json, write_json, writing
 from poolhouse.log import warn
 from poolhouse.platform import private_file
@@ -34,7 +34,6 @@ from .manifest import VALID_S, Carried, Entry, Signer
 
 __all__ = ["UNLOCK_ENV", "ConfirmedKeys", "KeyStoreError", "SigningKeys", "open_file", "seal_file"]
 
-SERVICE = legacy.KEYCHAIN_SERVICE
 PURPOSE = "fleet-signing"
 UNLOCK_ENV = "POOLHOUSE_SIGNING_PASSPHRASE"
 SCHEMA_VERSION = 1
@@ -158,8 +157,6 @@ class SigningKeys:
         return "file"
 
     def _get(self, store: str) -> Signer:
-        if store == "keyring":
-            return self._migrate()
         if store == "keystore":
             try:
                 return Signer.from_raw(self.ks.unwrap(PURPOSE, self.account, self.wrapped_path.read_bytes()))
@@ -167,45 +164,19 @@ class SigningKeys:
                 raise KeyStoreError("the wrapped signing key for this directory is missing") from None
             except keystore.KeystoreError as exc:
                 raise KeyStoreError(str(exc)) from exc
+        if store != "file":
+            raise KeyStoreError("Unsupported signing key storage")
         return Signer.from_raw(open_file(self.file_path, self.passphrase("signing key passphrase: ")))
 
-    def _migrate(self) -> Signer:
-        """Move a key an older version left in the OS keystore into the wrapped file. The old
-        item is deleted once the file unwraps to the key the record names, and the record
-        changes last, so an interrupted move is finished by the next call."""
-        meta = read_json(self.meta_path, {})
-        try:
-            signer = self._wrapped_signer(meta.get("key_id"))
-            if signer is None:
-                held = self.ks.legacy_get(SERVICE, self.account, PURPOSE)
-                if not held:
-                    raise KeyStoreError("the OS keystore has no signing key for this directory")
-                raw = base64.b64decode(held)
-                self._wrap(raw)
-                signer = self._wrapped_signer(Signer.from_raw(raw).key_id)
-                if signer is None:
-                    raise KeyStoreError("the wrapped signing key did not read back")
-            self.ks.legacy_drop(SERVICE, self.account, PURPOSE)
-            self._write({**meta, "store": "keystore"})
-            return signer
-        except keystore.KeystoreError as exc:
-            raise KeyStoreError(str(exc)) from exc
 
-    def _wrapped_signer(self, key_id: object) -> Signer | None:
-        """The wrapped key when the file exists and is the key ``key_id``."""
-        try:
-            signer = Signer.from_raw(self.ks.unwrap(PURPOSE, self.account, self.wrapped_path.read_bytes()))
-        except (FileNotFoundError, ValueError):
-            return None
-        return signer if signer.key_id == key_id else None
 
     def _drop(self, store: str) -> None:
-        if store == "keyring":
-            self.ks.legacy_drop(SERVICE, self.account, PURPOSE)
-        elif store == "keystore":
+        if store == "keystore":
             self.wrapped_path.unlink(missing_ok=True)
         elif store == "file":
             self.file_path.unlink(missing_ok=True)
+        else:
+            raise KeyStoreError("Unsupported signing key storage")
 
     def _create(self) -> dict[str, Any]:
         signer = Signer.generate()

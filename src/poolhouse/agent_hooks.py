@@ -206,7 +206,7 @@ def findings(where: dict[str, Path] | None = None) -> list[Finding]:
             data = (json.loads(path.read_text()) if agent == "claude-code" else tomllib.loads(path.read_text())) \
                 if path.exists() else {}
             problems = _problems(agent, data, events[agent])
-            problems += [f"{command!r} is an old-name or missing program, so it fails on every event"
+            problems += [f"{command!r} is a missing program, so it fails on every event"
                          for command in agent_hooks_stale.found(agent, path)]
         except (OSError, ValueError) as err:
             problems = [f"{path} cannot be read ({err})"]

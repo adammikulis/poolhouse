@@ -9,7 +9,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, legacy
+from poolhouse import home
 from poolhouse.files import CrossDevice, promote, sha256_file
 
 __all__ = ["HELD_DIR", "MoveRefused", "hold", "managed_roots", "purge", "restore"]
@@ -35,13 +35,6 @@ def managed_roots() -> list[Path]:
     return seen
 
 
-def _current(recorded: str) -> Path:
-    """A path recorded before the state directory was renamed, where it is now."""
-    path = Path(recorded)
-    old = home.user_home() / legacy.STATE_DIR
-    if os.path.lexists(path) or not path.is_relative_to(old):
-        return path
-    return home.home() / path.relative_to(old)
 
 
 def _root_of(path: Path, roots: Iterable[Path]) -> Path:
@@ -94,7 +87,7 @@ def hold(path: Path | str, ident: str, *, move: str = "file",
 def restore(action: dict[str, Any]) -> Path:
     """Put a held file back where it was. Refused when its bytes changed while held or when
     something now sits at the original path."""
-    held, original = _current(action["held"]), _current(action["original"])
+    held, original = Path(action["held"]), Path(action["original"])
     if not os.path.lexists(held):
         raise MoveRefused(f"{held} is gone")
     if _digest(held) != action["sha256"]:
@@ -109,7 +102,7 @@ def restore(action: dict[str, Any]) -> Path:
 
 def purge(action: dict[str, Any]) -> None:
     """Delete a held file. Only a person's confirmed purge reaches this."""
-    held = _current(action["held"])
+    held = Path(action["held"])
     held.unlink(missing_ok=True)
     try:
         held.parent.rmdir()
