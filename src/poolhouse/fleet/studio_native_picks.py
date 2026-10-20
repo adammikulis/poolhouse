@@ -10,6 +10,7 @@ import secrets
 import time
 from pathlib import Path
 
+from poolhouse.json_objects import unique_object
 from poolhouse.studio.store import Conflict, digest
 
 from . import invite_routes
@@ -147,20 +148,11 @@ class NativePicks:
             return self._public(row)
 
 
-def _object(entries):
-    value = {}
-    for key, item in entries:
-        if key in value:
-            raise ValueError('Duplicate selection field')
-        value[key] = item
-    return value
-
-
 def _body(context, keys):
     length = int(context.header('Content-Length', '0') or 0)
     if not 0 <= length <= 64 * 1024:
         raise ValueError('Invalid selection request size')
-    body = json.loads(context.handler.rfile.read(length) or b'{}', object_pairs_hook=_object)
+    body = json.loads(context.handler.rfile.read(length) or b'{}', object_pairs_hook=unique_object)
     if not isinstance(body, dict) or set(body) != set(keys):
         raise ValueError('Invalid selection fields')
     return body

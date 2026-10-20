@@ -12,6 +12,7 @@ from contextlib import ExitStack, contextmanager, suppress
 from pathlib import Path, PurePosixPath
 
 from poolhouse.files import promote
+from poolhouse.json_objects import unique_object
 from poolhouse.studio.catalog import node_spec
 
 SHA = re.compile(r"[a-f0-9]{64}")
@@ -81,15 +82,6 @@ def _new_asset(root: Path, name: str):
             os.fsync(stream.fileno())
 
 
-def _object(entries):
-    value = {}
-    for key, item in entries:
-        if key in value:
-            raise ValueError("Checkpoint metadata contains duplicate fields.")
-        value[key] = item
-    return value
-
-
 def _finite(value) -> bool:
     if isinstance(value, float):
         return math.isfinite(value)
@@ -103,7 +95,7 @@ def _finite(value) -> bool:
 def _json(data: bytes) -> dict:
     if len(data) > JSON_LIMIT:
         raise ValueError("Checkpoint metadata exceeds its supported size.")
-    value = json.loads(data, object_pairs_hook=_object)
+    value = json.loads(data, object_pairs_hook=unique_object)
     if not isinstance(value, dict) or not _finite(value):
         raise ValueError("Checkpoint metadata must contain finite object values.")
     return value
