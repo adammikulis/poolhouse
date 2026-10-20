@@ -7,6 +7,7 @@ mod launch;
 mod origin;
 mod settings;
 mod studio_watch;
+mod window_size;
 #[cfg(test)]
 mod security_tests;
 
@@ -18,10 +19,11 @@ use tauri::PhysicalPosition;
 use tauri::webview::NewWindowResponse;
 use tauri::{AppHandle, Manager, RunEvent, State, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 use tauri_plugin_shell::process::CommandChild;
+use tauri_plugin_window_state::{StateFlags, WindowExt};
 
 const TITLE: &str = "Poolhouse";
-const WIDTH: f64 = 1360.0;
-const HEIGHT: f64 = 900.0;
+const WIDTH: f64 = 1600.0;
+const HEIGHT: f64 = 1000.0;
 const MIN_WIDTH: f64 = 760.0;
 const MIN_HEIGHT: f64 = 640.0;
 const BACKGROUND: Color = Color(13, 19, 27, 255);
@@ -141,7 +143,7 @@ fn app_context() -> tauri::Context<tauri::Wry> {
 
 fn main() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_window_state::Builder::default().skip_initial_state("main").build())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![close_choice, on_closing, renew_session, choose_studio_watch_source])
@@ -177,6 +179,8 @@ fn main() {
                 .background_color(BACKGROUND)
                 .center()
                 .build()?;
+            window.restore_state(StateFlags::all())?;
+            window_size::constrain(&window)?;
             if let Some(at) = told_where() {
                 window.set_position(at)?;
             }
