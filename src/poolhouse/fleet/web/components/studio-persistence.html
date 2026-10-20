@@ -48,6 +48,7 @@
         changed(paint = true) {
           this.dirty = true;
           this.editSerial++;
+          this.validationErrors = [];
           this.message("Unsaved changes");
           if (paint) this.render();
           clearTimeout(this.autosave);

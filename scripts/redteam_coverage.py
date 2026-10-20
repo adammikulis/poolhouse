@@ -187,6 +187,32 @@ def string_defaults(tree: ast.Module) -> dict[str, str]:
     return out
 
 
+def route_literal(node: ast.AST, constants: dict[str, str]) -> str | None:
+    """Resolve string literals and fixed constant concatenation without executing code."""
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.Name):
+        return constants.get(node.id)
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add):
+        left = route_literal(node.left, constants)
+        right = route_literal(node.right, constants)
+        if left is not None and right is not None:
+            return left + right
+    return None
+
+
+def route_constants(tree: ast.Module) -> dict[str, str]:
+    """Only unreassigned, module-level literal constants name a fixed route prefix."""
+    stores: dict[str, int] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            stores[node.id] = stores.get(node.id, 0) + 1
+    return {target.id: node.value.value for node in tree.body if isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
+            for target in node.targets if isinstance(target, ast.Name) and target.id.isupper()
+            and stores[target.id] == 1}
+
+
 def route_names(node: ast.Compare | ast.Call, where: str, defaults: dict[str, str] | None = None) -> list[str]:
     """The path constants a comparison or `startswith` tests."""
     names: list[str] = []
@@ -195,10 +221,10 @@ def route_names(node: ast.Compare | ast.Call, where: str, defaults: dict[str, st
         if isinstance(func, ast.Attribute) and func.attr == "startswith" and node.args \
                 and ROUTE_NAME.search(ast.unparse(func.value)):
             arg = node.args[0]
-            if isinstance(arg, ast.Name) and arg.id in (defaults or {}):
-                names.append(defaults[arg.id] + "*")
-            elif isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-                names.append(arg.value + "*")
+            for item in arg.elts if isinstance(arg, ast.Tuple) else [arg]:
+                value = route_literal(item, defaults or {})
+                if value is not None:
+                    names.append(value + "*")
         return [n for n in names if n.startswith("/") and len(n) > 2]
     if not any(isinstance(op, (ast.Eq, ast.NotEq, ast.In, ast.NotIn)) for op in node.ops):
         return []
@@ -231,7 +257,7 @@ def find_routes(found: dict[str, Surface], where: str, tree: ast.Module) -> None
     if not sub.startswith(ROUTE_DIRS) and sub not in ROUTE_FILES:
         return
     table = spans(tree)
-    defaults = string_defaults(tree)
+    defaults = {**string_defaults(tree), **route_constants(tree)}
     trust = next((t for k, t in TRUST_BY_FILE.items() if sub.startswith(k)), "")
     for node in ast.walk(tree):
         if isinstance(node, (ast.Compare, ast.Call)):

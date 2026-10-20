@@ -1,7 +1,7 @@
 {
- "surfaces": 842,
+ "surfaces": 848,
  "by_status": {
-  "covered": 529,
+  "covered": 535,
   "partial": 193,
   "uncovered": 52,
   "n/a": 68,
@@ -86,7 +86,7 @@
    "unmapped": 0
   },
   "route": {
-   "covered": 114,
+   "covered": 120,
    "partial": 58,
    "uncovered": 0,
    "n/a": 0,
@@ -7155,6 +7155,36 @@
    "note": "authentication, traversal, framing, body sealing, the /jobs allowlist and the join handshake are attacked; the JSON bodies of /models/get, /serve, /fetch, /decide, /bench and /availability are not"
   },
   {
+   "id": "route:fleet/api.py:/infer/*",
+   "kind": "route",
+   "source": "fleet/api.py:make_handler.Handler._proxy",
+   "trust": "member holding the pool key; /health open to anyone",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_fleet_serving.py::TestProxy::test_it_needs_the_token",
+    "tests/test_fleet_serving.py::TestProxy::test_a_path_that_is_not_the_model_servers_to_give_is_refused",
+    "tests/test_fleet_serving.py::TestProxy::test_a_path_cannot_name_another_host",
+    "tests/test_fleet_serving.py::TestProxy::test_an_unauthenticated_model_identity_is_not_advertised"
+   ],
+   "note": "Inference proxy requests require the authenticated token, reject paths outside fixed model endpoints and another host, and never advertise an unauthenticated model identity."
+  },
+  {
+   "id": "route:fleet/api.py:/infer?*",
+   "kind": "route",
+   "source": "fleet/api.py:make_handler.Handler._proxy",
+   "trust": "member holding the pool key; /health open to anyone",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_fleet_serving.py::TestProxy::test_it_needs_the_token",
+    "tests/test_fleet_serving.py::TestProxy::test_a_path_that_is_not_the_model_servers_to_give_is_refused",
+    "tests/test_fleet_serving.py::TestProxy::test_a_path_cannot_name_another_host",
+    "tests/test_fleet_serving.py::TestProxy::test_an_unauthenticated_model_identity_is_not_advertised"
+   ],
+   "note": "Inference proxy requests require the authenticated token, reject paths outside fixed model endpoints and another host, and never advertise an unauthenticated model identity."
+  },
+  {
    "id": "route:fleet/api.py:/jobs",
    "kind": "route",
    "source": "fleet/api.py:make_handler.Handler._read_jobs",
@@ -7703,6 +7733,22 @@
     "tests/test_onboard_transfer.py"
    ],
    "note": ""
+  },
+  {
+   "id": "route:fleet/onboard/join_code.py:/onboard/v1/requests/*",
+   "kind": "route",
+   "source": "fleet/onboard/join_code.py:JoinCodeServer._route",
+   "trust": "anyone on the LAN, unauthenticated until the owner accepts",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_onboard_join_code.py::test_a_request_nobody_accepted_cannot_start_an_exchange",
+    "tests/test_onboard_join_code.py::test_a_confirmation_cannot_be_replayed",
+    "tests/test_onboard_join_code.py::test_plain_http_is_refused_even_from_this_machine",
+    "tests/test_onboard_join_code.py::test_oversize_and_malformed_bodies_are_refused",
+    "tests/test_onboard_join_code.py::test_a_member_cannot_be_swapped_for_another_mid_conversation"
+   ],
+   "note": "Join exchanges require accepted requests over the protected transport; malformed and oversized bodies, replayed confirmations and replacement members are refused."
   },
   {
    "id": "route:fleet/onboard/join_code.py:confirm",
@@ -8622,6 +8668,34 @@
    "note": "LAN hints are bounded nonce-matching metadata; local setup or a signed-in person selects a named recovery file, validates its bounded shape, and authenticates a native encrypted protocol-3 beacon before any membership write; scans and recovery joins never access the keystore"
   },
   {
+   "id": "route:fleet/studio_device_routes.py:/studio/v1/executions/*",
+   "kind": "route",
+   "source": "fleet/studio_device_routes.py:answer",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_device_http.py",
+    "tests/test_studio_execution.py",
+    "tests/test_studio_transfer.py"
+   ],
+   "note": "Sealed enrolled-device requests bind dispatches to the current source certificate and pool. Actual TLS tests reject replay and revoked membership; target admission rejects executable fields, unauthorized resources, substituted kinds and external model references. Chunk tests reject traversal, links, byte substitution and cross-dispatch access."
+  },
+  {
+   "id": "route:fleet/studio_device_routes.py:/studio/v1/resources/*",
+   "kind": "route",
+   "source": "fleet/studio_device_routes.py:answer",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_device_http.py",
+    "tests/test_studio_execution.py",
+    "tests/test_studio_transfer.py"
+   ],
+   "note": "Sealed enrolled-device requests bind dispatches to the current source certificate and pool. Actual TLS tests reject replay and revoked membership; target admission rejects executable fields, unauthorized resources, substituted kinds and external model references. Chunk tests reject traversal, links, byte substitution and cross-dispatch access."
+  },
+  {
    "id": "route:fleet/studio_routes.py:/ui/studio/*",
    "kind": "route",
    "source": "fleet/studio_routes.py:StudioRoutes.route",
@@ -8629,6 +8703,27 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
+    "tests/test_studio_devices.py",
+    "tests/test_studio_device_identity.py",
+    "tests/test_studio_device_http.py",
+    "tests/test_studio_security.py",
+    "tests/test_studio_engine.py",
+    "tests/test_studio_artifacts.py",
+    "tests/test_studio_contracts.py"
+   ],
+   "note": "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
+  },
+  {
+   "id": "route:fleet/studio_routes.py:/ui/studio/devices",
+   "kind": "route",
+   "source": "fleet/studio_routes.py:StudioRoutes._studio",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_devices.py",
+    "tests/test_studio_device_identity.py",
+    "tests/test_studio_device_http.py",
     "tests/test_studio_security.py",
     "tests/test_studio_engine.py",
     "tests/test_studio_artifacts.py",
@@ -8644,6 +8739,9 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
+    "tests/test_studio_devices.py",
+    "tests/test_studio_device_identity.py",
+    "tests/test_studio_device_http.py",
     "tests/test_studio_security.py",
     "tests/test_studio_engine.py",
     "tests/test_studio_artifacts.py",
@@ -8659,6 +8757,9 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
+    "tests/test_studio_devices.py",
+    "tests/test_studio_device_identity.py",
+    "tests/test_studio_device_http.py",
     "tests/test_studio_security.py",
     "tests/test_studio_engine.py",
     "tests/test_studio_artifacts.py",
@@ -8674,6 +8775,9 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
+    "tests/test_studio_devices.py",
+    "tests/test_studio_device_identity.py",
+    "tests/test_studio_device_http.py",
     "tests/test_studio_security.py",
     "tests/test_studio_engine.py",
     "tests/test_studio_artifacts.py",
@@ -8689,6 +8793,9 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
+    "tests/test_studio_devices.py",
+    "tests/test_studio_device_identity.py",
+    "tests/test_studio_device_http.py",
     "tests/test_studio_security.py",
     "tests/test_studio_engine.py",
     "tests/test_studio_artifacts.py",
@@ -8704,6 +8811,9 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
+    "tests/test_studio_devices.py",
+    "tests/test_studio_device_identity.py",
+    "tests/test_studio_device_http.py",
     "tests/test_studio_security.py",
     "tests/test_studio_engine.py",
     "tests/test_studio_artifacts.py",
@@ -8719,6 +8829,9 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
+    "tests/test_studio_devices.py",
+    "tests/test_studio_device_identity.py",
+    "tests/test_studio_device_http.py",
     "tests/test_studio_security.py",
     "tests/test_studio_engine.py",
     "tests/test_studio_artifacts.py",
@@ -8734,6 +8847,9 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
+    "tests/test_studio_devices.py",
+    "tests/test_studio_device_identity.py",
+    "tests/test_studio_device_http.py",
     "tests/test_studio_security.py",
     "tests/test_studio_engine.py",
     "tests/test_studio_artifacts.py",
@@ -8749,6 +8865,9 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
+    "tests/test_studio_devices.py",
+    "tests/test_studio_device_identity.py",
+    "tests/test_studio_device_http.py",
     "tests/test_studio_security.py",
     "tests/test_studio_engine.py",
     "tests/test_studio_artifacts.py",
@@ -8764,6 +8883,9 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
+    "tests/test_studio_devices.py",
+    "tests/test_studio_device_identity.py",
+    "tests/test_studio_device_http.py",
     "tests/test_studio_security.py",
     "tests/test_studio_engine.py",
     "tests/test_studio_artifacts.py",
@@ -8779,6 +8901,9 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
+    "tests/test_studio_devices.py",
+    "tests/test_studio_device_identity.py",
+    "tests/test_studio_device_http.py",
     "tests/test_studio_security.py",
     "tests/test_studio_engine.py",
     "tests/test_studio_artifacts.py",
@@ -8794,6 +8919,9 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
+    "tests/test_studio_devices.py",
+    "tests/test_studio_device_identity.py",
+    "tests/test_studio_device_http.py",
     "tests/test_studio_security.py",
     "tests/test_studio_engine.py",
     "tests/test_studio_artifacts.py",
@@ -8809,6 +8937,9 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
+    "tests/test_studio_devices.py",
+    "tests/test_studio_device_identity.py",
+    "tests/test_studio_device_http.py",
     "tests/test_studio_security.py",
     "tests/test_studio_engine.py",
     "tests/test_studio_artifacts.py",
@@ -8824,6 +8955,9 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
+    "tests/test_studio_devices.py",
+    "tests/test_studio_device_identity.py",
+    "tests/test_studio_device_http.py",
     "tests/test_studio_security.py",
     "tests/test_studio_engine.py",
     "tests/test_studio_artifacts.py",
@@ -8839,6 +8973,9 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
+    "tests/test_studio_devices.py",
+    "tests/test_studio_device_identity.py",
+    "tests/test_studio_device_http.py",
     "tests/test_studio_security.py",
     "tests/test_studio_engine.py",
     "tests/test_studio_artifacts.py",
@@ -8854,6 +8991,9 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
+    "tests/test_studio_devices.py",
+    "tests/test_studio_device_identity.py",
+    "tests/test_studio_device_http.py",
     "tests/test_studio_security.py",
     "tests/test_studio_engine.py",
     "tests/test_studio_artifacts.py",
@@ -8869,6 +9009,9 @@
    "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
    "status": "covered",
    "tests": [
+    "tests/test_studio_devices.py",
+    "tests/test_studio_device_identity.py",
+    "tests/test_studio_device_http.py",
     "tests/test_studio_security.py",
     "tests/test_studio_engine.py",
     "tests/test_studio_artifacts.py",
