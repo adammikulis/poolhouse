@@ -285,7 +285,7 @@ def _measures(environment: Environment) -> bool:
     if not environment.exists:
         return False
     try:
-        done = subprocess.run([str(environment.python), "-c",
+        done = subprocess.run([str(environment.python), "-B", "-c",
                                "import poolhouse.bench.member_runs, ladybug"],
                               capture_output=True, timeout=120)
     except (OSError, subprocess.SubprocessError):
@@ -299,7 +299,7 @@ def detach_bench(line: Sequence[str], home: Path, python: Path) -> tuple[int, Pa
     log under ``home/logs`` and writes the pid into ``home/measuring.json``, which is where
     this reads it back; ``--no-queue`` makes a race for the lock a failed job rather than a
     run queued behind another, since the lock was checked before this was called."""
-    done = subprocess.run([str(python), "-m", "poolhouse.bench", *line,
+    done = subprocess.run([str(python), "-B", "-m", "poolhouse.bench", *line,
                            "--no-queue", "--detach"],
                           capture_output=True, text=True, timeout=120,
                           env={**os.environ, "POOLHOUSE_BENCH_HOME": str(home)})

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import poolhouse
 from poolhouse.serve import python_runtime as runtime
 from poolhouse.serve.backend import ServerFailed, ServerSpec
 from poolhouse.serve.mlx_tree import MlxTreeBackend
@@ -19,7 +20,7 @@ def managed(tmp_path, monkeypatch):
     env = SimpleNamespace(exists=True, python=tmp_path / 'managed/bin/python',
                           require_current_runtime=lambda: calls.append('current'),
                           require_compute=lambda: calls.append('compute'))
-    monkeypatch.setattr(runtime, '_checkout', lambda: False)
+    monkeypatch.setattr(runtime, 'source_checkout', lambda: False)
     monkeypatch.setattr(runtime, 'Environment', lambda root: env)
     monkeypatch.setattr(runtime, 'default_root', lambda: tmp_path)
     return env, calls
@@ -71,7 +72,7 @@ def test_installed_or_forged_source_shape_cannot_downgrade(tmp_path, monkeypatch
     package = tmp_path / 'src/poolhouse'
     (package / 'fleet').mkdir(parents=True)
     (tmp_path / '.git').mkdir()
-    monkeypatch.setattr(runtime.poolhouse, '__file__', str(package / '__init__.py'))
+    monkeypatch.setattr(poolhouse, '__file__', str(package / '__init__.py'))
     if marker in {'built-from', 'compute-artifact.json'}:
         (package / 'fleet' / marker).write_text('invalid')
     elif marker == 'linked-marker':
@@ -79,17 +80,17 @@ def test_installed_or_forged_source_shape_cannot_downgrade(tmp_path, monkeypatch
     elif marker == 'frozen':
         monkeypatch.setattr(sys, 'frozen', True, raising=False)
     else:
-        monkeypatch.setattr(runtime.poolhouse, '__file__', str(tmp_path / 'elsewhere/__init__.py'))
-    assert not runtime._checkout()
+        monkeypatch.setattr(poolhouse, '__file__', str(tmp_path / 'elsewhere/__init__.py'))
+    assert not runtime.source_checkout()
 
 
 def test_exact_editable_source_keeps_its_interpreter(tmp_path, monkeypatch):
     package = tmp_path / 'src/poolhouse'
     package.mkdir(parents=True)
     (tmp_path / '.git').mkdir()
-    monkeypatch.setattr(runtime.poolhouse, '__file__', str(package / '__init__.py'))
+    monkeypatch.setattr(poolhouse, '__file__', str(package / '__init__.py'))
     monkeypatch.setattr(runtime, 'Environment', lambda root: pytest.fail('source should not use managed runtime'))
-    assert runtime._checkout()
+    assert runtime.source_checkout()
     assert runtime.command('mlx-tree') == [sys.executable, '-m', 'poolhouse.serve.mlx_tree_server']
 
 

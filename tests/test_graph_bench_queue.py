@@ -279,7 +279,7 @@ def test_the_queue_runs_each_step_as_its_own_bench_so_each_takes_the_lock_itself
 
     monkeypatch.setattr(subprocess, "Popen", fake_popen)
     assert q.run_step(["sweep", "--serve", "raincoat-2b.gguf"]) == 0
-    assert started["command"] == [sys.executable, "-m", "poolhouse.bench",
+    assert started["command"] == [sys.executable, "-B", "-m", "poolhouse.bench",
                                   "sweep", "--serve", "raincoat-2b.gguf"]
     assert started["kw"]["env"]["PYTHONUNBUFFERED"] == "1"
     assert "stdout" not in started["kw"]                     # the queue's log, unredirected
@@ -299,8 +299,8 @@ def test_the_whole_queue_detaches_the_way_a_run_does(tmp_path, monkeypatch, caps
     argv = ["queue", str(where), "--detach", "--yes"]
     assert bench.main(argv) == 0
 
-    assert started["command"][:3] == [sys.executable, "-m", "poolhouse.bench"]
-    assert started["command"][3:] == ["queue", str(where), "--yes"]
+    assert started["command"][:5] == [sys.executable, "-B", "-u", "-m", "poolhouse.bench"]
+    assert started["command"][5:] == ["queue", str(where), "--yes"]
     assert started["kw"]["start_new_session"] is True
     log = pathlib.Path(started["kw"]["stdout"].name)
     assert log.parent == bench.home_dir() / "logs" and "evening.queue" in log.name
@@ -350,7 +350,7 @@ def _bench_swapped_for(monkeypatch, program: str):
     real = subprocess.Popen
 
     def swapped(command, **kw):
-        assert command[:3] == [sys.executable, "-m", "poolhouse.bench"]
+        assert command[:4] == [sys.executable, "-B", "-m", "poolhouse.bench"]
         return real([sys.executable, "-c", program], **kw)
 
     monkeypatch.setattr(subprocess, "Popen", swapped)

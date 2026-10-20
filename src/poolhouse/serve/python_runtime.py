@@ -3,12 +3,11 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from pathlib import Path
 
-import poolhouse
 from poolhouse.fleet.environment import Environment
 from poolhouse.fleet.managed_compute import process_environment
 from poolhouse.fleet.runtime_paths import default_root
+from poolhouse.paths import source_checkout
 from poolhouse.serve.backend import ServerFailed
 
 _MODULES = {
@@ -24,22 +23,12 @@ if sys.argv[2]=='mlx-tree':
 """
 
 
-def _checkout() -> bool:
-    package = Path(poolhouse.__file__).resolve().parent
-    root = package.parent.parent
-    immutable = package / 'fleet'
-    return (not getattr(sys, 'frozen', False)
-            and package == root / 'src' / 'poolhouse' and (root / '.git').exists()
-            and not any((immutable / name).exists() or (immutable / name).is_symlink()
-                        for name in ('built-from', 'compute-artifact.json')))
-
-
 def command(engine: str) -> list[str]:
     """Return the fixed engine module under its verified compute interpreter."""
     import json
 
     module, required = _MODULES[engine]
-    if _checkout():
+    if source_checkout():
         return [sys.executable, '-m', module]
     environment = Environment(default_root())
     try:
