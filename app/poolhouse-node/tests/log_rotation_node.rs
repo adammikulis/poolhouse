@@ -53,7 +53,10 @@ fn the_counters_are_counted_again_from_a_new_segment_longer_than_what_they_had_c
     let mut n = node(dir.path());
     n.log_bounds = Bounds { rows: 80, bytes: 1 << 24, reserved_rows: 8, reserved_bytes: 1 << 10, last_rows: 2, last_bytes: 1 << 9, author_percent: 100, lineage_percent: 100 };
     n.log_rotate_percent = 75;
-    let (name, _token) = session(&mut n, "demo", "agent");
+    let (name, token) = session(&mut n, "demo", "agent");
+    for i in 0..3 {
+        ok(post(&mut n, "demo", &token, &format!("early {i}")));
+    }
     assert_eq!(n.tally("demo").unwrap().notes_by(&name), 0);
     let fields = |title: &str, supersedes: &[String]| json!({"nkind": "fact", "title": title, "body": "x", "author": name, "supersedes": supersedes});
     let board = &mut n.host("demo").unwrap().board;
