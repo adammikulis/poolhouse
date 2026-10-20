@@ -257,12 +257,14 @@ def _binding(value, proof, sdk, control):
 
 def _forward(control, binding, secret, request, deadline):
     action = request.get('action')
-    if (action not in ('publish', 'receipt') or set(request) !=
-            ({'action', 'event_id', 'record'} if action == 'publish' else {'action', 'event_id'})):
+    fields = {'publish': {'action', 'event_id', 'record'},
+              'receipt': {'action', 'event_id'}, 'retry': {'action', 'event_id', 'retry_key'}}
+    if not isinstance(action, str) or action not in fields or set(request) != fields[action]:
         raise ValueError('Invalid publisher data request')
     raw = producer_bridge.record_bytes(request['record']) if action == 'publish' else None
     action = 'bridge-' + action
-    body = producer_bridge.signed_request(secret, binding, action, request['event_id'], raw)
+    payload = request['retry_key'] if action == 'bridge-retry' else raw
+    body = producer_bridge.signed_request(secret, binding, action, request['event_id'], payload)
     process = {key: control['daemon'][key] for key in ('pid', 'started')}
     context = tls.certificate_context(control['certificate'], context_type=tls.ExactContext)
     context.expected_der = base64.b64decode(control['certificate'])

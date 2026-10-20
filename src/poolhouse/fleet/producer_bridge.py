@@ -14,9 +14,9 @@ from poolhouse.studio.store import digest
 
 from .job_records import MAX_RECORDS
 
-DOMAIN = b'poolhouse/producer-bridge/v1\n'
-_ACTIONS = {'bridge-publish', 'bridge-receipt'}
-_FIELDS = {'version', 'action', 'binding', 'event_id', 'raw', 'wire_digest', 'nonce'}
+DOMAIN = b'poolhouse/producer-bridge/v2\n'
+_ACTIONS = {'bridge-publish', 'bridge-receipt', 'bridge-retry'}
+_FIELDS = {'version', 'action', 'binding', 'event_id', 'raw', 'wire_digest', 'nonce', 'retry_key'}
 
 
 def record_bytes(record):
@@ -32,13 +32,20 @@ def _canonical(value):
 
 def _checked(value):
     if (not isinstance(value, dict) or set(value) != _FIELDS
-            or type(value['version']) is not int or value['version'] != 1
+            or type(value['version']) is not int or value['version'] != 2
             or not isinstance(value['action'], str) or value['action'] not in _ACTIONS
             or not isinstance(value['binding'], dict)
             or not isinstance(value['event_id'], str) or not EVENT_ID.fullmatch(value['event_id'])
             or not isinstance(value['nonce'], str) or len(value['nonce']) != 64
             or any(character not in '0123456789abcdef' for character in value['nonce'])):
         raise ValueError('Invalid private producer request.')
+    retry_key = value['retry_key']
+    if value['action'] == 'bridge-retry':
+        if (not isinstance(retry_key, str) or len(retry_key) != 32
+                or any(character not in '0123456789abcdef' for character in retry_key)):
+            raise ValueError('A stable retry command identity is required.')
+    elif retry_key is not None:
+        raise ValueError('Only deliberate retry can supply a retry command identity.')
     if value['action'] == 'bridge-publish':
         if not isinstance(value['raw'], str):
             raise ValueError('Exact publication bytes are required.')
@@ -46,18 +53,23 @@ def _checked(value):
         if value['wire_digest'] != checksum:
             raise ValueError('Publication bytes changed.')
     elif value['raw'] is not None or value['wire_digest'] is not None:
-        raise ValueError('Receipt lookup cannot supply replacement bytes.')
+        raise ValueError('Receipt and retry cannot supply replacement bytes.')
     return copy.deepcopy(value)
 
 
-def signed_request(secret, binding, action, event_id, raw=None):
+def signed_request(secret, binding, action, event_id, payload=None):
     """Called only inside the owned bridge with its inherited private capability."""
     if not isinstance(secret, bytes) or len(secret) != 32:
         raise ValueError('An inherited private bridge capability is required.')
-    value = {'version': 1, 'action': action, 'binding': copy.deepcopy(binding),
+    raw = payload if action == 'bridge-publish' else None
+    retry_key = payload if action == 'bridge-retry' else None
+    if ((action == 'bridge-publish' and not isinstance(raw, bytes))
+            or (action == 'bridge-receipt' and payload is not None)):
+        raise ValueError('Invalid private producer payload.')
+    value = {'version': 2, 'action': action, 'binding': copy.deepcopy(binding),
              'event_id': event_id, 'raw': raw.decode('utf-8') if raw is not None else None,
              'wire_digest': hashlib.sha256(raw).hexdigest() if raw is not None else None,
-             'nonce': secrets.token_hex(32)}
+             'nonce': secrets.token_hex(32), 'retry_key': retry_key}
     value = _checked(value)
     return {**value, 'mac': hmac.new(secret, DOMAIN + _canonical(value), hashlib.sha256).hexdigest()}
 

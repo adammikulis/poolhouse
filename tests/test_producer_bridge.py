@@ -215,3 +215,45 @@ def test_capability_copies_do_not_inherit_activation_or_nonce_authority(setup):
     clone = BridgeCapability(copy.deepcopy(BINDING), owned=lambda process: True, current=lambda binding: True)
     with pytest.raises(PermissionError):
         clone.verify(PROCESS, request(capability))
+
+
+def test_retry_key_is_mac_bound_and_cannot_supply_replacement_bytes(setup):
+    capability, _ = setup
+    activate(capability)
+    value = signed_request(capability.secret, BINDING, 'bridge-retry', 'order-1', '4' * 32)
+    changed = {**value, 'retry_key': '5' * 32}
+    with pytest.raises(PermissionError):
+        capability.verify(PROCESS, changed)
+    checked = capability.verify(PROCESS, value)
+    assert checked['version'] == 2 and checked['retry_key'] == '4' * 32
+    assert checked['raw'] is None and checked['wire_digest'] is None
+    with pytest.raises(PermissionError):
+        capability.verify(PROCESS, value)
+
+
+@pytest.mark.parametrize('action,payload', [('bridge-publish', b'{}'), ('bridge-receipt', None),
+                                          ('bridge-retry', '4' * 32)])
+@pytest.mark.parametrize('change', ['missing', 'version', 'extra', 'replacement', 'wrong-key'])
+def test_retry_schema_has_no_old_version_missing_key_or_replacement_fallback(setup, action, payload, change):
+    capability, _ = setup
+    activate(capability)
+    value = signed_request(capability.secret, BINDING, action, 'order-1', payload)
+    if change == 'missing':
+        value.pop('retry_key')
+    elif change == 'version':
+        value['version'] = 1
+    elif change == 'extra':
+        value['record'] = {}
+    elif change == 'replacement':
+        value['raw'], value['wire_digest'] = '{"changed":true}', '0' * 64
+    else:
+        value['retry_key'] = None if action == 'bridge-retry' else '4' * 32
+    with pytest.raises((PermissionError, ValueError)):
+        capability.verify(PROCESS, value)
+
+
+@pytest.mark.parametrize('key', [None, True, '', '4' * 31, 'G' * 32, b'4' * 32, {}])
+def test_retry_requires_exact_command_identity(setup, key):
+    capability, _ = setup
+    with pytest.raises(ValueError):
+        signed_request(capability.secret, BINDING, 'bridge-retry', 'order-1', key)

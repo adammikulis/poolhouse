@@ -147,6 +147,7 @@ def test_bootstrap_rejects_ambiguous_or_extra_json(factory, raw):
         ("withdraw", {"offer_id": "a" * 32, "extra": 1}),
         ("bridge-publish", {}),
         ("bridge-receipt", {}),
+        ("bridge-retry", {"retry_key": "a" * 32}),
     ],
 )
 def test_ordinary_sdk_cannot_choose_operations_or_private_bridge(factory, action, body):
