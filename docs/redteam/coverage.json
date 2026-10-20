@@ -1,10 +1,10 @@
 {
- "surfaces": 921,
+ "surfaces": 923,
  "by_status": {
-  "covered": 604,
+  "covered": 605,
   "partial": 193,
   "uncovered": 52,
-  "n/a": 72,
+  "n/a": 73,
   "unmapped": 0
  },
  "by_kind": {
@@ -37,7 +37,7 @@
    "unmapped": 0
   },
   "egress": {
-   "covered": 62,
+   "covered": 63,
    "partial": 46,
    "uncovered": 0,
    "n/a": 1,
@@ -89,7 +89,7 @@
    "covered": 133,
    "partial": 58,
    "uncovered": 0,
-   "n/a": 0,
+   "n/a": 1,
    "unmapped": 0
   },
   "slash-command": {
@@ -1819,6 +1819,20 @@
     "tests/test_daemon_control.py::test_launcher_replacement_refuses_forged_acknowledgment"
    ],
    "note": "owned private records bind a fixed loopback instance; redirects cannot move launcher authentication to another endpoint and forged replacement acknowledgments refuse"
+  },
+  {
+   "id": "egress:fleet/dataset_catalogue.py:_json",
+   "kind": "egress",
+   "source": "fleet/dataset_catalogue.py:_json",
+   "trust": "addresses and redirects named by pages, repositories and members",
+   "attacker": "a redirect or address sends the request somewhere the person did not choose",
+   "status": "covered",
+   "tests": [
+    "tests/test_dataset_catalogue.py",
+    "tests/test_httpguard.py",
+    "tests/test_net_untrusted.py"
+   ],
+   "note": "Catalogue fixtures attack origin and cursor substitution, malformed and bounded metadata, media URLs and immutable file selections. The caller uses the maintained guarded network pipeline with an explicit byte bound and no token; transport tests exercise private-address redirects and cross-origin credential removal. No live Hugging Face or dataset import execution is claimed."
   },
   {
    "id": "egress:fleet/discovery.py:_trusted",
@@ -8634,6 +8648,16 @@
     "tests/test_fleet_conversation_settings_routes.py::test_invalid_updates_return_400_without_changing_the_chat"
    ],
    "note": "socket requests reject missing UI authority and foreign origins; invalid settings and unknown fields preserve persisted history"
+  },
+  {
+   "id": "route:fleet/dataset_catalogue.py:/api/datasets",
+   "kind": "route",
+   "source": "fleet/dataset_catalogue.py:_cursor",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "n/a",
+   "tests": [],
+   "note": "This string is the fixed remote Hugging Face path checked by the pagination parser. It does not register a local handler or accept inbound requests."
   },
   {
    "id": "route:fleet/features_routes.py:/ui/features",

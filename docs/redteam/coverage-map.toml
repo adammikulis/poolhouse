@@ -1632,6 +1632,19 @@ tests = ["tests/test_rerank.py::test_a_hostile_reranker_answer_raises_rerank_err
 note = "a real hostile socket server: oversized, slow or dripping replies, non-JSON, wrong shapes, bool, negative, out-of-range or non-int indexes, null, string, NaN or infinite scores all raise RerankError"
 
 [[group]]
+match = ["route:fleet/dataset_catalogue.py:/api/datasets"]
+status = "n/a"
+count = 1
+note = "This string is the fixed remote Hugging Face path checked by the pagination parser. It does not register a local handler or accept inbound requests."
+
+[[group]]
+match = ["egress:fleet/dataset_catalogue.py:_json"]
+status = "covered"
+count = 1
+tests = ["tests/test_dataset_catalogue.py", "tests/test_httpguard.py", "tests/test_net_untrusted.py"]
+note = "Catalogue fixtures attack origin and cursor substitution, malformed and bounded metadata, media URLs and immutable file selections. The caller uses the maintained guarded network pipeline with an explicit byte bound and no token; transport tests exercise private-address redirects and cross-origin credential removal. No live Hugging Face or dataset import execution is claimed."
+
+[[group]]
 match = ["egress:*"]
 status = "partial"
 tests = ["tests/test_net_no_bypass.py"]
