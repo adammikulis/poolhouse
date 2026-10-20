@@ -1,7 +1,7 @@
 {
- "surfaces": 887,
+ "surfaces": 888,
  "by_status": {
-  "covered": 569,
+  "covered": 570,
   "partial": 193,
   "uncovered": 52,
   "n/a": 73,
@@ -23,7 +23,7 @@
    "unmapped": 0
   },
   "context": {
-   "covered": 9,
+   "covered": 10,
    "partial": 0,
    "uncovered": 4,
    "n/a": 18,
@@ -1095,6 +1095,20 @@
    "status": "n/a",
    "tests": [],
    "note": "prompts built from the person's own benchmark questions, canaries and fixed smoke checks"
+  },
+  {
+   "id": "context:studio/decisions.py",
+   "kind": "context",
+   "source": "src/poolhouse/studio/decisions.py",
+   "trust": "tool results, pages, files, members, stored facts",
+   "attacker": "text from outside is read by a model as an instruction",
+   "status": "covered",
+   "tests": [
+    "tests/test_studio_record_generation.py::test_guard_question_explicitly_targets_complete_selected_data_not_trusted_context",
+    "tests/test_studio_record_generation.py::test_guard_views_are_scoped_but_output_record_and_original_identity_are_preserved",
+    "tests/test_studio_record_generation.py::test_missing_or_wrong_selected_data_reviews_without_model_or_generation"
+   ],
+   "note": "The fixed assessment question explicitly classifies only the complete selected untrusted_record JSON, with configured task and server-assigned content role as comparison context. Nested misleading keys and instructions stay data; state, original identity and confidence semantics are retained. Tests verify prompt construction and missing-data refusal, not actual model accuracy or injection resistance."
   },
   {
    "id": "context:studio/record_context.py",

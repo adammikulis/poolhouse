@@ -15,6 +15,13 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["context:studio/decisions.py"]
+status = "covered"
+count = 1
+tests = ["tests/test_studio_record_generation.py::test_guard_question_explicitly_targets_complete_selected_data_not_trusted_context", "tests/test_studio_record_generation.py::test_guard_views_are_scoped_but_output_record_and_original_identity_are_preserved", "tests/test_studio_record_generation.py::test_missing_or_wrong_selected_data_reviews_without_model_or_generation"]
+note = "The fixed assessment question explicitly classifies only the complete selected untrusted_record JSON, with configured task and server-assigned content role as comparison context. Nested misleading keys and instructions stay data; state, original identity and confidence semantics are retained. Tests verify prompt construction and missing-data refusal, not actual model accuracy or injection resistance."
+
+[[group]]
 match = ["handler:fleet/producer_offers.py:OfferRegistry.inspect"]
 status = "covered"
 count = 1
