@@ -20,9 +20,10 @@ GUARD_PATHS = (
     r"scripts/hooks/(claude-user-prompt|person-consume)",
     r"\.git/(hooks(/.*)?|config(\.worktree)?|worktrees/[^/]+/config\.worktree)",
     r"\.gitconfig", r"\.config/git/(config|hooks(/.*)?)", r"\.poolhouse/(authority\.json|authority-audit\.jsonl)")
-REVIEWED = (*GUARD_PATHS, r"scripts/hooks/(pre-commit|commit-msg|pushed|primary-only|no-real-names|no-data-files|budgets"
+REVIEWED = (*GUARD_PATHS, r"scripts/hooks/(pre-commit|commit-msg|pre-push|pushed|primary-only|no-real-names|no-data-files|budgets"
             r"|budgets-only-fall|weakened-assertions|guard_index\.py)", r"AGENTS\.md", r"CLAUDE\.md", r"\.github/.*",
             r"docs/github-protection\.md", r"scripts/github-protection[\w-]*", r"scripts/sealed_git[\w.-]*",
+            r"scripts/(primary_sync|ci_watch)\.py",
             r"src/poolhouse/(protectedwrites|worktreerules|authority|person|real_machine)\.py",
             r"src/poolhouse/board/credentials\.py", r"src/poolhouse/workspace/authority_cli\.py",
             r"scripts/agent_sandbox_profile\.py", r"scripts/affected[\w.-]*", r"scripts/test[\w.-]*", r"scripts/gates/.*",
