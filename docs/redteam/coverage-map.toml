@@ -619,7 +619,7 @@ count = 1
 note = "The loopback ticket request reads the recorded port and secret only from an owner-only, non-symlink record; a daemon that answers with errors, non-JSON or no ticket yields the bare page"
 
 [[group]]
-match = ["human:fleet/members.py:cmd_open"]
+match = ["human:fleet/launch_open.py:_open"]
 status = "covered"
 tests = ["tests/test_redteam_person_session.py::test_the_open_command_hands_an_agent_or_a_pipe_nothing",
          "tests/test_redteam_person_session.py::test_the_open_command_hands_a_person_at_a_terminal_a_one_use_address",

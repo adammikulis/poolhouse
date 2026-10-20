@@ -7,14 +7,12 @@ import getpass
 import json
 import os
 import sys
-import webbrowser
 from typing import Any
 
 from poolhouse import node_pool
 from poolhouse.log import say, warn
-from poolhouse.person import HumanRequired, require_person
 
-from . import launch_open, members_cli, recovery
+from . import members_cli, recovery
 from .discovery import (
     MIN_JOIN_LENGTH,
     DiscoveryError,
@@ -206,22 +204,6 @@ def cmd_resume(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_open(args: argparse.Namespace) -> int:
-    """Open this machine's page in a browser, signed in with a one-shot ticket."""
-    try:
-        require_person("open the poolhouse page")
-        url = launch_open.ticket_url()
-    except (HumanRequired, launch_open.LaunchError) as exc:
-        warn(f"error: {exc}")
-        return 2
-    if args.print:
-        say(url)
-    else:
-        webbrowser.open(url)
-        say(url.partition("?")[0])
-    return 0
-
-
 def cmd_when(args: argparse.Namespace) -> int:
     """What this machine's schedule looks like."""
     member = _member(args)
@@ -267,10 +249,6 @@ def main(argv: list[str] | None = None) -> int:
                        help="leave the pool this machine is in and join another")
     init = sub.add_parser("init", help="mint a random key instead of using a passphrase")
     init.add_argument("--group", required=True, help="pool name")
-    opened = sub.add_parser("open", help="open this machine's page in your browser, signed in "
-                                         "(a person at a terminal)")
-    opened.add_argument("--print", action="store_true",
-                        help="print the one-use page address instead of opening it")
     sub.add_parser("key", help="print the pool key")
     sub.add_parser("token", help="print the traind bearer token this key derives")
     ls = sub.add_parser("ls", help="list daemons on this LAN")
@@ -306,7 +284,7 @@ def main(argv: list[str] | None = None) -> int:
                            for a in (argv if argv is not None else sys.argv))
     fn = {"setup": cmd_setup, "init": cmd_init, "key": cmd_key,
           "token": cmd_token, "ls": cmd_ls, "pause": cmd_pause,
-          "resume": cmd_resume, "when": cmd_when, "busy": cmd_busy, "open": cmd_open,
+          "resume": cmd_resume, "when": cmd_when, "busy": cmd_busy,
           "roster": cmd_ls}[args.cmd]
     if args.cmd == "roster":
         return members_cli.run(args)
