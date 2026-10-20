@@ -219,11 +219,10 @@ def package_dir_modules(rel: str, known: dict[str, str]) -> set[str]:
     return {name for name, path in known.items() if path.startswith(folder)}
 
 
-def add_script_tests(out: Selection, root: Path, rel: str, reverse: dict[str, set[str]],
+def add_script_tests(out: Selection, scripts: rules.ReferenceIndex, rel: str, reverse: dict[str, set[str]],
                      tests: list[str]) -> None:
     """Select the tests that import, run or name the script ``rel``, through helpers too."""
-    files = rules.corpus(root)
-    why, modules, shared = rules.script_tests(files, rel)
+    why, modules, shared = scripts.script_tests(rel)
     if shared:
         out.unmap(rel, shared)
         return
@@ -245,6 +244,7 @@ def select(root: Path, changed: list[str], deleted: frozenset[str] = frozenset()
     known = index(root)
     tests = test_files(root)
     reverse = dependants(graph(root, known))
+    scripts = None
     for rel in changed:
         name = Path(rel).name
         module = module_of(rel)
@@ -268,7 +268,9 @@ def select(root: Path, changed: list[str], deleted: frozenset[str] = frozenset()
             if not checks:
                 out.ignored.append(rel)           # only the gate (--check) reads it
         elif script:
-            add_script_tests(out, root, rel, reverse, tests)
+            if scripts is None:
+                scripts = rules.ReferenceIndex(rules.corpus(root))
+            add_script_tests(out, scripts, rel, reverse, tests)
             if module:
                 for dependant in sorted(reach({module}, reverse, depth)):
                     if dependant.startswith("tests.") and f"tests/{dependant[6:]}.py" in tests:
