@@ -81,10 +81,10 @@ def test_provider_expressions_and_options_are_not_silently_dropped(parameters):
 
 
 @pytest.mark.parametrize('value', [
-    '[]', '{"nodes":[],"connections":{}}', '{"nodes":[],"nodes":[],"connections":{}}',
-    '{"nodes":[],"connections":{},"__proto__":{}}',
-    '{"nodes":[],"connections":{},"nested":{"constructor":{}}}',
-    '{"nodes":[],"connections":{},"value":NaN}',
+    '[]', '{"nodes":[],"connections":{}}', json.dumps(workflow())[:-1] + ',"name":"Duplicate"}',
+    json.dumps(workflow())[:-1] + ',"__proto__":{}}',
+    json.dumps(workflow())[:-1] + ',"nested":{"constructor":{}}}',
+    json.dumps(workflow())[:-1] + ',"value":NaN}',
 ])
 def test_malformed_duplicate_and_hostile_json_is_rejected(value):
     with pytest.raises(ValueError):
