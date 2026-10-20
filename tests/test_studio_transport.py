@@ -10,6 +10,7 @@ from poolhouse import macauth, sealing
 from poolhouse.fleet import studio_transport as transport
 from poolhouse.fleet.studio_transfer import CHUNK_BYTES, TransferStore
 from poolhouse.http import Sealed, ServerError
+from poolhouse.studio import resources as model_resources
 from poolhouse.studio.catalog import node_spec
 
 DISPATCH = 'a' * 64
@@ -210,3 +211,28 @@ def test_collect_rejects_another_dispatch_before_fetching(device, tmp_path):
     with pytest.raises(ValueError, match='another'):
         client.collect(reply, tmp_path / 'out', node_spec('report'), dispatch_id=DISPATCH)
     assert not calls
+
+
+def test_native_library_cache_links_stage_only_verified_repository_blobs(device, tmp_path, monkeypatch):
+    client, store, _, _ = device
+    repository = tmp_path / "repository"
+    snapshot = repository / "snapshots" / ("a" * 40)
+    snapshot.mkdir(parents=True)
+    blobs = repository / "blobs"
+    blobs.mkdir()
+    (blobs / "weights").write_bytes(b"approved model bytes")
+    (snapshot / "model.safetensors").symlink_to("../../blobs/weights")
+    (snapshot / "config.json").write_text('{"model_type":"example"}')
+    handle = {"kind": "model", "id": "hf:example/model", "path": str(snapshot), "repo": "example/model"}
+    monkeypatch.setattr(model_resources, "model_resource", lambda selected: handle if selected == handle else None)
+    monkeypatch.setattr(model_resources.hfstore, "repo_root", lambda repo: repository)
+    staged = client.stage(DISPATCH, {"model": handle}, node_spec("generate"))
+    local = store.inputs(SOURCE, DISPATCH, staged["inputs"])["model"]
+    assert (Path(local["path"]) / "model.safetensors").read_bytes() == b"approved model bytes"
+    assert not (Path(local["path"]) / "model.safetensors").is_symlink()
+    outside = tmp_path / "outside"
+    outside.write_bytes(b"private")
+    (snapshot / "model.safetensors").unlink()
+    (snapshot / "model.safetensors").symlink_to(outside)
+    with pytest.raises(ValueError, match="repository blob"):
+        client.stage(DISPATCH, {"model": handle}, node_spec("generate"))

@@ -15,10 +15,31 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["route:fleet/studio_device_routes.py:/studio/v1/executions/*", "route:fleet/studio_device_routes.py:/studio/v1/resources/*"]
+status = "covered"
+count = 2
+tests = ["tests/test_studio_device_http.py", "tests/test_studio_execution.py", "tests/test_studio_transfer.py"]
+note = "Sealed enrolled-device requests bind dispatches to the current source certificate and pool. Actual TLS tests reject replay and revoked membership; target admission rejects executable fields, unauthorized resources, substituted kinds and external model references. Chunk tests reject traversal, links, byte substitution and cross-dispatch access."
+
+[[group]]
+match = ["route:fleet/api.py:/infer/*", "route:fleet/api.py:/infer[?]*"]
+status = "covered"
+count = 2
+tests = ["tests/test_fleet_serving.py::TestProxy::test_it_needs_the_token", "tests/test_fleet_serving.py::TestProxy::test_a_path_that_is_not_the_model_servers_to_give_is_refused", "tests/test_fleet_serving.py::TestProxy::test_a_path_cannot_name_another_host", "tests/test_fleet_serving.py::TestProxy::test_an_unauthenticated_model_identity_is_not_advertised"]
+note = "Inference proxy requests require the authenticated token, reject paths outside fixed model endpoints and another host, and never advertise an unauthenticated model identity."
+
+[[group]]
+match = ["route:fleet/onboard/join_code.py:/onboard/v1/requests/*"]
+status = "covered"
+count = 1
+tests = ["tests/test_onboard_join_code.py::test_a_request_nobody_accepted_cannot_start_an_exchange", "tests/test_onboard_join_code.py::test_a_confirmation_cannot_be_replayed", "tests/test_onboard_join_code.py::test_plain_http_is_refused_even_from_this_machine", "tests/test_onboard_join_code.py::test_oversize_and_malformed_bodies_are_refused", "tests/test_onboard_join_code.py::test_a_member_cannot_be_swapped_for_another_mid_conversation"]
+note = "Join exchanges require accepted requests over the protected transport; malformed and oversized bodies, replayed confirmations and replacement members are refused."
+
+[[group]]
 match = ["route:fleet/studio_routes.py:/ui/studio/*"]
 status = "covered"
-count = 17
-tests = ["tests/test_studio_security.py", "tests/test_studio_engine.py", "tests/test_studio_artifacts.py", "tests/test_studio_contracts.py"]
+count = 18
+tests = ["tests/test_studio_devices.py", "tests/test_studio_device_identity.py", "tests/test_studio_device_http.py", "tests/test_studio_security.py", "tests/test_studio_engine.py", "tests/test_studio_artifacts.py", "tests/test_studio_contracts.py"]
 note = "UI headers, current session and node resource access protect workflow snapshots, idempotent submissions, run state and artifact downloads; inert package imports reject executable or private content, substituted dependencies and recursive groups. Artifact traversal, symlinks, hardlinks and revoked access are refused."
 
 [[group]]

@@ -52,7 +52,7 @@ def _run(served, cookie, workflow, key="submission-one"):
     return body["run"]
 
 
-@pytest.mark.parametrize("path", ["nodes", "templates", "workflows", "runs", "packages", "resources", "validate"])
+@pytest.mark.parametrize("path", ["nodes", "templates", "workflows", "runs", "packages", "resources", "devices", "validate"])
 def test_studio_requires_ui_header_and_rejects_remote_presence(studio, path):
     status, body, _ = studio.call(f"/ui/studio/{path}", ui_header=False)
     assert status == 403 and "header" in body["error"]

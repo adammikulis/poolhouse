@@ -11,12 +11,14 @@
             state =
               editor.activeRun?.nodes?.[
                 [...editor.context.map((c) => c.node.id), node.id].join("/")
-              ]?.state || "ready",
+              ]?.state ||
+              (editor.nodeIssues(node).length ? "Needs setup" : "ready"),
             status =
               {
                 done: "✓",
                 completed: "✓",
                 failed: "!",
+                "Needs setup": "!",
                 running: "▶",
                 blocked: "⊘",
                 interrupted: "?",
@@ -147,6 +149,10 @@
               },
             );
           card.append(controls);
+          const execution = editor.executionSummary(node);
+          if (execution) card.append(execution);
+          for (const message of editor.nodeIssues(node))
+            card.append(E("p", { class: "studio-node-missing" }, message));
           if (spec.available === false || spec.missing?.length)
             card.append(
               E(
