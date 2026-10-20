@@ -53,7 +53,7 @@ def seal_file(path: Path, raw: bytes, passphrase: str) -> None:
     """Write ``raw`` to ``path`` encrypted under ``passphrase``; never overwrites."""
     from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
     salt, nonce = os.urandom(16), os.urandom(12)
-    box = ChaCha20Poly1305(_kdf(passphrase, salt, SCRYPT_N)).encrypt(nonce, raw, b"ml-stack/v1")
+    box = ChaCha20Poly1305(_kdf(passphrase, salt, SCRYPT_N)).encrypt(nonce, raw, b"poolhouse/signing/v1")
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as out:
@@ -73,7 +73,7 @@ def open_file(path: Path, passphrase: str) -> bytes:
             raise ValueError
         key = _kdf(passphrase, base64.b64decode(doc["salt"]), n)
         return ChaCha20Poly1305(key).decrypt(base64.b64decode(doc["nonce"]),
-                                             base64.b64decode(doc["ciphertext"]), b"ml-stack/v1")
+                                             base64.b64decode(doc["ciphertext"]), b"poolhouse/signing/v1")
     except InvalidTag:
         raise KeyStoreError("wrong passphrase for the signing key file") from None
     except (OSError, ValueError, KeyError, TypeError):
