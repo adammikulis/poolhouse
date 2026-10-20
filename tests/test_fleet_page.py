@@ -167,32 +167,29 @@ def open_capacity(page):
 class TestFirstRun:
     def test_a_machine_in_no_pool_opens_on_the_wizard(self, daemon, open_page):
         page, errors = open_page(daemon)
-        page.wait_for_selector("#first-run:not([hidden])")
-        assert page.locator("#first-run h1").inner_text() == "Set up this machine"
+        page.get_by_role("heading", name="Welcome to Poolhouse", exact=True).wait_for()
+        assert page.locator("#setup-device-name").input_value()
         assert not errors
 
-    def test_naming_it_moves_on_to_the_pools_step(self, daemon, open_page):
+    def test_naming_it_moves_directly_to_model_preparation(self, daemon, open_page):
         page, errors = open_page(daemon)
-        page.wait_for_selector("#first-run:not([hidden])")
-        page.fill("#n", "quillhaven")
-        page.click("#first-run button:has-text('Continue')")
-        page.wait_for_selector("#first-run h1:has-text('Pools')")
-        assert page.locator("#first-run button:has-text('Join manually')").is_visible()
+        page.fill("#setup-device-name", "quillhaven")
+        page.get_by_role("button", name="Continue", exact=True).click()
+        page.get_by_role("heading", name="Make this device ready", exact=True).wait_for()
+        assert page.get_by_role("button", name="Set up models later", exact=True).is_visible()
+        assert daemon.ui.name == "quillhaven"
         assert page.locator("#setup-pool-passphrase").count() == 0
         assert not errors
 
     def test_a_short_passphrase_cannot_be_joined_with(self, daemon, open_page):
         page, errors = open_page(daemon)
-        page.wait_for_selector("#first-run:not([hidden])")
-        page.fill("#n", "quillhaven")
-        page.click("#first-run button:has-text('Continue')")
-        page.click("#first-run button:has-text('Join manually')")
+        page.get_by_text("Join another pool", exact=True).click()
         page.wait_for_selector("#setup-pool-passphrase")
         page.fill("#setup-pool-name", "default")
         page.fill("#setup-pool-passphrase", "abc")
-        assert page.locator("#first-run button:has-text('Join existing pool')").is_disabled()
+        assert page.get_by_role("button", name="Join existing pool", exact=True).is_disabled()
         page.fill("#setup-pool-passphrase", "correct horse battery")
-        assert page.locator("#first-run button:has-text('Join existing pool')").is_enabled()
+        assert page.get_by_role("button", name="Join existing pool", exact=True).is_enabled()
         assert not errors
 
     @pytest.mark.parametrize("accelerator", [False, True])
@@ -200,75 +197,63 @@ class TestFirstRun:
         report = daemon.ui.report
         daemon.ui.report = lambda: {**report(), "accelerator": accelerator}
         page, errors = open_page(daemon)
-        page.wait_for_selector("#first-run:not([hidden])")
-        page.fill("#n", "quillhaven")
-        page.click("#first-run button:has-text('Continue')")
-        page.wait_for_selector("#first-run h1:has-text('Pools')")
-        page.click("#first-run button:has-text('Continue')")
-        page.get_by_role("heading", name="When can this device help?", exact=True).wait_for()
+        page.route("**/ui/models/startup", lambda route: route.fulfill(json={"ok":True, "models":[
+            {"model_id":"fixture-decoder", "file":"fixture.gguf", "name":"Fixture decoder", "gb":1,
+             "installed":True, "recommended":True}], "memory":{}}))
+        page.get_by_role("button", name="Continue", exact=True).click()
+        page.locator("#startup-model-choice").wait_for()
         assert page.locator('#first-run input[name="labels"]').count() == 0
         assert "Train models" not in page.locator("#first-run").inner_text()
         assert "Prepare data" not in page.locator("#first-run").inner_text()
-        page.check("#work_hours")
-        page.click("#first-run button:has-text('Continue')")
-        page.check("#autostart-manual")
-        page.route("**/ui/setup/prefs", lambda route: route.fulfill(json={"ok": True, "applied": []}))
+        page.get_by_text("Coding folder and availability", exact=True).click()
+        page.check("#setup-work-hours")
+        page.route("**/ui/setup/prefs", lambda route: route.fulfill(json={"error":"Fixture stops before preparation"}))
         with page.expect_request(lambda request: request.method == "POST" and request.url.endswith("/ui/setup/prefs")) as sent:
-            page.click("#first-run button:has-text('Continue')")
+            page.get_by_role("button", name="Prepare and continue", exact=True).click()
         body = sent.value.post_data_json
-        assert "labels" not in body
-        assert body["work_hours"] is True and body["on_paused"] == "stop"
-        assert body["autostart"] == "manual"
+        assert "labels" not in body and "autostart" not in body
+        assert body["work_hours"] is True
+        assert daemon.ui.settings.on_paused == "stop" and daemon.ui.settings.autostart == "manual"
         assert not errors
 
-    def test_dev_can_join_manually_and_return_to_automatic(self, daemon, open_page, monkeypatch):
+    def test_manual_pool_connection_stays_available_without_a_separate_step(self, daemon, open_page, monkeypatch):
         from poolhouse.fleet import automatic_pools
         from poolhouse.fleet.discovery import memberships
-
         monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
         page, errors = open_page(daemon)
-        page.wait_for_selector("#device-mode")
-        page.click("#first-run button:has-text('Continue')")
-        page.click("#first-run button:has-text('Join manually')")
+        page.get_by_text("Join another pool", exact=True).click()
         page.select_option("#setup-pool-action", "create")
         page.fill("#setup-pool-name", "private-lab")
         page.fill("#setup-pool-passphrase", WORDS)
-        page.click("#first-run button:has-text('Create new pool')")
+        page.get_by_role("button", name="Create new pool", exact=True).click()
         page.wait_for_selector("#first-run .ok:has-text('Created')")
         assert memberships(daemon.keyfile)[0].selection == "manual"
-        page.click("#first-run button:has-text('Connect automatically')")
-        page.wait_for_function("() => document.querySelector('first-run').setup.selection === 'automatic'")
-        assert memberships(daemon.keyfile)[0].selection == "automatic"
+        assert page.get_by_role("heading", name="Welcome to Poolhouse", exact=True).is_visible()
         assert not errors
 
-    def test_fresh_automatically_joined_device_can_choose_prod(self, daemon, open_page, monkeypatch):
+    def test_fresh_automatic_device_can_require_explicit_invitations(self, daemon, open_page, monkeypatch):
         from poolhouse.fleet import automatic_pools
         from poolhouse.fleet.discovery import memberships
-
         monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
         automatic_pools.ensure(daemon.keyfile, mode="dev")
         page, errors = open_page(daemon)
-        page.wait_for_selector("#device-mode")
-        page.select_option("#device-mode", "prod")
-        page.click("#first-run button:has-text('Continue')")
-        page.wait_for_selector("#first-run h1:has-text('Pools')")
+        page.get_by_text("Connection options", exact=True).click()
+        page.check("#setup-invitation-only")
+        page.get_by_role("button", name="Continue", exact=True).click()
+        page.get_by_role("heading", name="Make this device ready", exact=True).wait_for()
         assert memberships(daemon.keyfile) == []
         assert daemon.ui.settings.pool_mode == "prod"
-        assert page.locator("#setup-pool-passphrase").is_visible()
-        assert page.locator("#first-run button:has-text('Connect automatically')").count() == 0
         assert not errors
 
-    def test_dev_can_return_to_auto_after_leaving_all_pools(self, daemon, open_page, monkeypatch):
+    def test_pool_controls_can_return_to_auto_after_leaving_all_pools(self, daemon, open_page, monkeypatch):
         from poolhouse.fleet import automatic_pools
         from poolhouse.fleet.discovery import memberships
-
         monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
         page, errors = open_page(daemon)
-        page.wait_for_selector("#device-mode")
-        page.click("#first-run button:has-text('Continue')")
-        page.wait_for_selector("#first-run h1:has-text('Pools')")
-        daemon.ui.setup_finished()
-        page.reload()
+        page.get_by_role("button", name="Continue", exact=True).click()
+        page.get_by_role("heading", name="Make this device ready", exact=True).wait_for()
+        page.get_by_role("button", name="Set up models later", exact=True).click()
+        page.wait_for_url("**/#chat")
         page.click(RAIL["Pool"])
         connections(page)
         page.click("#pool-joined button:has-text('Leave')")
@@ -279,13 +264,11 @@ class TestFirstRun:
         assert memberships(daemon.keyfile)[0].selection == "automatic"
         assert not errors
 
-    def test_background_setup_can_finish_while_server_is_downloading(
-            self, daemon, open_page, monkeypatch):
+    def test_deferred_setup_preserves_an_existing_runtime_install(self, daemon, open_page, monkeypatch):
         import threading
 
         from poolhouse.fleet import automatic_pools, llama
-        from poolhouse.fleet.environment import Environment
-
+        from poolhouse.fleet.setup_jobs import jobs, server
         entered, release = threading.Event(), threading.Event()
         def install(root, **options):
             options["on_progress"]("Downloading model server")
@@ -294,39 +277,23 @@ class TestFirstRun:
             return root / "managed-server"
         monkeypatch.setattr(llama, "ensure_server", install)
         monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
-        daemon.ui.environment = Environment(daemon.ui.root)
+        job = jobs(daemon.ui).start("server", {}, lambda progress: server(daemon.ui, progress))
         page, errors = open_page(daemon)
         try:
-            page.wait_for_selector("#device-mode")
-            page.click("#first-run button:has-text('Continue')")
-            page.wait_for_selector("#first-run h1:has-text('Pools')")
-            page.click("#first-run button:has-text('Continue')")
-            page.get_by_role("heading", name="When can this device help?", exact=True).wait_for()
-            page.click("#first-run button:has-text('Continue')")
-            page.wait_for_selector("#autostart-manual")
-            page.check("#autostart-manual")
-            page.click("#first-run button:has-text('Continue')")
-            page.wait_for_selector("#source-internet")
-            page.check("#source-internet")
-            page.click("#first-run button:has-text('Save and continue')")
-            page.wait_for_selector("#setup-chat")
-            for checkbox in page.locator("input[id^=lib_]").all():
-                checkbox.uncheck()
-            page.click("#first-run button:has-text('Install and continue')")
-            page.wait_for_selector("#first-run h1:has-text('When you are not using it')")
             assert entered.wait(5)
-            assert daemon.ui.setup_jobs.all()[0]["state"] == "installing"
-            page.click("#first-run button:has-text('Continue')")
-            page.wait_for_selector("#first-run h1:has-text('Give models more memory?'), #first-run h1:has-text('Joined')")
-            if page.locator("#first-run button:has-text('Skip')").count():
-                page.click("#first-run button:has-text('Skip')")
-            page.wait_for_selector("#first-run h1:has-text('Joined')")
+            page.get_by_role("button", name="Continue", exact=True).click()
+            page.get_by_role("heading", name="Make this device ready", exact=True).wait_for()
+            page.get_by_role("button", name="Set up models later", exact=True).click()
+            page.wait_for_url("**/#chat")
             assert daemon.ui.settings.setup_done is True
-            assert daemon.ui.setup_jobs.all()[0]["state"] == "installing"
+            assert next(row for row in jobs(daemon.ui).all() if row["id"] == job["id"])["state"] == "installing"
             assert not errors
         finally:
+            worker = jobs(daemon.ui)._worker
             release.set()
-
+            if worker:
+                worker.join(5)
+                assert not worker.is_alive()
 
 
 # -- signing in --------------------------------------------------------------------------

@@ -27,17 +27,12 @@ class WalkFailed(RuntimeError):
 
 
 FLEET_STEPS: tuple[tuple[str, str, str], ...] = (
-    ("name", "", "Set up this machine"),
-    ("pools", "Continue", "Pools"),
-    ("job", "Continue", "When can this device help?"),
-    ("start", "Continue", "When should it start?"),
-    ("run", "Continue", "What should it be able to do?"),
-    ("away", "Not now", "When you are not using it"),
-    ("done", "Continue", ""),
+    ("device", "", "Welcome to Poolhouse"),
+    ("model", "Continue", "Make this device ready"),
 )
-"""Each first-run step: its name, the button that reaches it, the heading it lands on."""
+"""Read setup screens; the walk deliberately defers compute instead of preparing a model."""
 
-FLEET_WRITES = "run"
+FLEET_WRITES = "model"
 """The first step reached by a button that saves this machine's preferences."""
 
 FLEET_VIEWS = ("pool", "chat", "models", "settings", "fit")
@@ -220,7 +215,7 @@ class Walker:
 
 def _landing(heading: str) -> str:
     """The selector that says a first-run step has painted."""
-    return f'#first-run h1:text-is("{heading}")' if heading else "#first-run pre.cmd"
+    return f'#first-run h1:text-is("{heading}")'
 
 
 def _press(page: Any, button: str, landing: str) -> None:
@@ -235,7 +230,7 @@ def _unwalked(walker: Walker, steps: Sequence[tuple[str, str, str]], why: str) -
 
 
 def _open_app(page: Any) -> None:
-    page.click("#first-run button:has-text('Open')")
+    page.get_by_role("button", name="Set up models later", exact=True).click()
     page.wait_for_selector("#signin:not([hidden]), #app:not([hidden])")
 
 

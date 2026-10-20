@@ -1,485 +1,310 @@
-<!-- first-run: naming this machine, joining a pool, and when it contributes -->
+<!-- first-run: one-time device, model and private coding workspace preparation -->
 <template>
   <div class="centre" id="first-run" hidden><div class="card" id="first-run-card"></div></div>
 </template>
 <style>
-first-run .centre { align-items: start; padding-top: 5vh; }
-first-run #first-run-card { max-width: 760px; width: 100%; border-radius: 18px; }
-first-run #first-run-card > p { letter-spacing: .04em; font-weight: 600; margin-bottom: 20px; }
-first-run .opt { border: 1px solid var(--border, #343b49); border-radius: 10px; padding: 12px; margin: 8px 0; }
-first-run .opt:has(input:checked) { border-color: var(--accent, #6c92ff); background: color-mix(in srgb, var(--accent, #6c92ff) 10%, transparent); }
-first-run .group { margin: 20px 0; }
-first-run .sub { line-height: 1.65; }
-first-run button { margin-top: 12px; }
+first-run .centre { align-items:start; min-height:var(--app-height,100dvh); padding:var(--page-gutter,24px); overflow:auto; }
+first-run #first-run-card { max-width:760px; width:100%; border-radius:var(--page-panel-radius,12px); }
+first-run .wizard-actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:24px; align-items:center; }
+first-run .wizard-actions button { width:auto; margin:0; }
+first-run .wizard-section { margin-top:24px; }
+first-run .wizard-section summary { cursor:pointer; padding:12px 0; }
+first-run .wizard-progress { line-height:1.6; margin-top:16px; overflow-wrap:anywhere; }
+first-run .opt { display:flex; gap:12px; align-items:start; margin:12px 0; }
+first-run .opt input { width:auto; flex:none; margin-top:4px; }
+first-run .err:empty { display:none; }
+first-run .wizard-step { color:var(--muted); margin-bottom:12px; }
 </style>
 <script>
 (function () {
-  const M = window.fleetModel;
-  const el = M.el;
-  const api = M.api;
-
-  const STAGES = 9;
-  const stageName = (i) => M.t(`wizard.stage.${i}`);
-
+  const M = window.fleetModel, el = M.el;
+  const post = (body) => ({method:'POST', body:JSON.stringify(body)});
+  const key = () => crypto.randomUUID().replaceAll('-', '');
   class FirstRun extends HTMLElement {
     connectedCallback() {
       if (this.wired) return;
-      this.wired = true;
-      this.box = this.querySelector("#first-run");
-      this.card = this.querySelector("#first-run-card");
-      this.stepper = M.ui("ml-stepper", {
-        steps: Array.from({ length: STAGES }, (_, i) => ({ id: String(i), title: stageName(i) })),
-        controls: "none", compact: true });
-      this.summary = el("p", { class: "hint", role: "status", "aria-live": "polite" });
-      this.card.append(this.summary, this.stepper);
-      window.addEventListener("vocabulary-change", () => {
-        this.stepper.steps = Array.from({ length: STAGES }, (_, i) => ({ id: String(i), title: stageName(i) }));
-        this.summary.textContent = M.t("wizard.summary", { at: this.state.step + 1, total: STAGES, name: stageName(this.state.step) });
-      });
-      this.state = { step: 0, name: "", group: "", pass: "", pools: [],
-                     libraries: null, suggest: null, prefs: null, install: null };
-      M.onRoute((route) => {
-        const on = route === "first-run";
-        this.box.hidden = !on;
-        if (on) this.open();
+      this.wired = true; this.epoch = 0; this.step = 0;
+      this.box = this.querySelector('#first-run'); this.card = this.querySelector('#first-run-card');
+      this.kept = {}; this.project = null; this.background = true; this.workHours = false;
+      try { this.intent = JSON.parse(sessionStorage.getItem('poolhouse.setup.intent') || 'null'); } catch {}
+      if (!this.intent || !/^[a-f0-9]{32}$/.test(this.intent.key || '')) this.intent = null;
+      M.onRoute(route => {
+        this.box.hidden = route !== 'first-run';
+        if (route === 'first-run') this.open();
+        else { this.epoch++; this.busy = null; this.finishing = null; clearTimeout(this.timer); }
       });
     }
-
+    current(epoch, session) { return M.route === 'first-run' && this.epoch === epoch && M.sessionContext() === session; }
+    async request(path, options, epoch = this.epoch, session = M.sessionContext()) {
+      const result = await M.api(path, options);
+      if (!this.current(epoch, session)) throw Error('Setup is no longer open.');
+      if (M.refused(result)) {
+        if (M.route === 'first-run') M.signIn('Reconnect this Poolhouse window to continue setup.');
+        throw Error(result.error || 'Open Poolhouse again to continue.');
+      }
+      if (result.error) throw Error(result.error);
+      return result;
+    }
     async open() {
-      this.setup = await api("/ui/setup");
-      this.state.step = 0;
-      this.paint();
+      const epoch = ++this.epoch, session = M.sessionContext();
+      if (this.openSession !== session) {
+        if (this.openSession !== undefined) this.clearProjectOperation();
+        this.project = null; this.pendingProject = null; this.defaultOperation = null; this.kept = {}; this.modelInstall = null;
+        this.invitationOnly = undefined; this.name = undefined; this.systemTheme = null; }
+      this.openSession = session; this.operation = null; this.busy = null; this.finishing = null;
+      this.progress = this.note(); this.controls = this.actions();
+      this.show('Opening setup', 'Checking this device’s current setup…', this.progress, this.controls);
+      try {
+        this.setup = await this.request('/ui/setup', undefined, epoch, session);
+        this.systemTheme = this.setup.needs_setup_theme === true ? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light') : null;
+        this.loadTheme(epoch, session);
+        this.name ||= this.setup.name;
+        this.invitationOnly ??= this.setup.pool_mode === 'prod';
+        if (this.intent?.job) { this.step = 2; this.paint(); this.poll(); }
+        else this.paint();
+      } catch (error) { if (this.current(epoch, session)) this.failure(error); }
     }
-
-    show(...nodes) {
-      const at = this.state.step;
-      this.stepper.current = at;
-      this.summary.textContent = M.t("wizard.summary", { at: at + 1, total: STAGES, name: stageName(at) });
-      this.stepper.replaceChildren(el("div", { slot: `step-${at}` },
-        ...nodes, this.installStatus, this.modelInstall?.status));
-      M.applyAdvanced?.(this.card);
-    }
-
-    go(n) { this.state.step = n; this.paint(); }
-
-    steps(n, back) {
-      return back ? el("button", { class: "back", onclick: back }, "← Back") : null;
-    }
-
-    paint() {
-      const s = this.state.step;
-      if (s === 0) return this.nameStep();
-      if (s === 1) return this.poolsStep();
-      if (s === 2) return this.availabilityStep();
-      if (s === 3) return this.startStep();
-      if (s === 4) return this.sourceStep();
-      if (s === 5) return this.runStep();
-      if (s === 6) return this.awayStep();
-      if (s === 7) return this.wiredStep();
-      return this.doneStep();
-    }
-
-    nameStep() {
-      const st = this.state;
-      st.name = st.name || this.setup.name || "";
-      const name = el("input", { type: "text", value: st.name, id: "n" });
-      const mode = el("select", { id: "device-mode" },
-        el("option", { value: "dev" }, "Dev — automatically connect trusted devices on this network"),
-        el("option", { value: "prod" }, "Prod — connect only to pools you explicitly join"));
-      mode.value = st.mode || this.setup.pool_mode || "dev";
-      const note = el("div", { role: "status" });
-      this.show(
-        this.steps(0),
-        el("h1", { "data-t": "wizard.title" }, "Set up this machine"),
-        el("p", { class: "sub" },
-          "Name your device, connect its compute, and choose its capabilities. Downloads can run in the background. You can change these choices in Settings."),
-        el("label", { for: "n" }, "What should this machine be called?"),
-        name,
-        el("div", { class: "hint" }, "Other machines will show it under this name."),
-        el("label", { for: "device-mode" }, "Connection policy"), mode,
-        el("div", { class: "hint" }, "Dev finds trusted devices nearby. Prod requires an explicit invitation."),
-        el("button", { onclick: async () => {
-          st.name = name.value.trim() || this.setup.name;
-          st.mode = mode.value;
-          const result = await api("/ui/setup/initial", { method: "POST",
-            body: JSON.stringify({ name: st.name, pool_mode: st.mode }) });
-          if (result.error || !result.ok) { note.textContent = result.error || "Could not save setup."; return; }
-          this.setup = result;
-          this.go(1);
-        } }, "Continue"), note);
-    }
-
-    async poolsStep() {
-      const st = this.state;
-      const current = (await api("/ui/pools")).pools || [];
-      const rows = el("div");
-      const draw = (list) => {
-        st.pools = list;
-        rows.replaceChildren(...list.map((c, i) =>
-          el("div", { class: "row" },
-            el("span", {}, el("b", {}, c.group),
-              el("span", { class: "why" }, i === 0 ? "Primary pool" : "Also joined")),
-            el("button", { class: "ghost small", onclick: async () => {
-              const left = await api("/ui/pools", { method: "DELETE",
-                body: JSON.stringify({ group: c.group }) });
-              draw(left.pools || []);
-            } }, "Leave"))));
-      };
-      const manual = el("div");
-      const manualForm = () => manual.replaceChildren(M.poolForm({ endpoint: "/ui/setup/join",
-        poolMode: st.mode, group: current[0]?.group || "default",
-        onComplete: async () => { this.setup = await api("/ui/setup");
-          draw((await api("/ui/pools")).pools || []); } }));
-      const automatic = st.mode === "dev";
-      if (!automatic || this.setup.selection === "manual") manualForm();
-      this.show(this.steps(1, () => this.go(0)), el("h1", { "data-t": "wizard.pool" }, "Pools"),
-        el("p", { class: "sub" }, automatic
-          ? "Automatic connection is the default for trusted devices on this network. You can also join a pool manually."
-          : "Join an explicitly admitted pool with an invitation or its name and passphrase."),
-        rows,
-        automatic ? el("button", { class: "ghost", onclick: async () => {
-          const result = await api("/ui/setup/initial", { method: "POST", body: JSON.stringify({
-            name: st.name, pool_mode: "dev", automatic: true }) });
-          if (result.error) { manual.textContent = result.error; return; }
-          this.setup = result; manual.replaceChildren();
-          draw((await api("/ui/pools")).pools || []);
-        } }, "Connect automatically") : null,
-        automatic ? el("button", { class: "ghost", onclick: manualForm }, "Join manually") : null,
-        manual, el("button", { onclick: () => this.go(2) }, "Continue"));
-      draw(current);
-    }
-
-    async asked() {
-      const st = this.state;
-      if (!st.suggest) st.suggest = await api("/ui/setup/suggest");
-      const r = st.suggest;
-      const s = r.suggest || {};
-      const pick = st.prefs || (st.prefs = {
-        autostart: s.autostart?.value || "manual",
-        work_hours: !!s.work_hours?.value,
-        on_paused: s.on_paused?.value || "stop",
-      });
-      const spec = (label, why) => el("span", {},
-        el("b", {}, label), why ? el("span", { class: "why" }, why) : null);
-      const radio = (group, value, label, why) => {
-        const id = `${group}-${value}`;
-        const input = el("input", { type: "radio", name: group, id,
-                                    ...(pick[group] === value ? { checked: "1" } : {}) });
-        input.onchange = () => { pick[group] = value; };
-        return el("label", { class: "opt", for: id }, input, spec(label, why));
-      };
-      const check = (key, label, why) => {
-        const input = el("input", { type: "checkbox", id: key,
-                                    ...(pick[key] ? { checked: "1" } : {}) });
-        input.onchange = () => { pick[key] = input.checked; };
-        return el("label", { class: "opt", for: key }, input, spec(label, why));
-      };
-      return { s, pick, spec, radio, check };
-    }
-
-    async availabilityStep() {
-      const { s, pick, spec, check } = await this.asked();
-      this.show(
-        this.steps(2, () => this.go(1)),
-        el("h1", {}, "When can this device help?"),
-        el("p", { class: "sub" }, "Poolhouse uses available hardware and installed tools for each task."),
-        el("div", { class: "group" },
-          el("h2", {}, "When I need the machine"),
-          check("work_hours", "Don't take work on weekdays, 9 to 5",
-            pick.work_hours && s.work_hours?.why
-              ? s.work_hours.why : "for a machine somebody works on"),
-          el("label", { class: "opt" },
-            el("input", { type: "checkbox", checked: "1", disabled: "1" }),
-            spec("Pausing stops what is running", s.on_paused?.why))),
-        el("button", { onclick: () => this.go(3) }, "Continue"));
-    }
-
-    async startStep() {
-      const { s, pick, radio } = await this.asked();
-      const go = el("button", {}, "Continue");
-      const outcome = el("div");
-      go.onclick = async () => {
-        go.disabled = true;
-        go.innerHTML = '<span class="spin"></span> Applying…';
-        const res = await api("/ui/setup/prefs", { method: "POST", body: JSON.stringify({
-          ...pick, name: this.state.name }) });
-        if (res.error || (!res.ok && !res.manual)) {
-          go.disabled = false; go.textContent = "Continue";
-          outcome.replaceChildren(el("div", { class: "err", role: "alert" }, res.error || "Could not save startup preferences. Try again."));
-          return;
+    async loadTheme(epoch, session) {
+      try {
+        const result = await M.api('/ui/settings');
+        if (this.current(epoch, session) && result.ok && !result.error) {
+          const initial = this.systemTheme && result.theme_registry?.find(theme => theme.id === this.systemTheme);
+          M.setPreferences({...result.settings, resolved_theme:initial || result.resolved_theme});
         }
-        if (res.manual) {
-          go.disabled = false;
-          go.textContent = "Continue";
-          outcome.replaceChildren(
-            el("div", { class: "err" },
-              res.manual_why || "This part needs administrator rights."),
-            el("pre", { class: "cmd" }, res.manual),
-            el("button", { class: "ghost", onclick: () => this.go(4) },
-              "Skip this — continue"));
-          return;
-        }
-        this.go(4);
-      };
-      this.show(
-        this.steps(3, () => this.go(2)),
-        el("h1", {}, "When should it start?"),
-        el("p", { class: "sub" },
-          "It keeps running after you close the window, so the other machines can still "
-          + "send it work."),
-        radio("autostart", "login", "When I log in",
-          s.autostart?.value === "login" ? s.autostart.why : ""),
-        radio("autostart", "boot", "When the computer starts",
-          "even before anyone logs in — your computer will ask for your password"),
-        radio("autostart", "manual", "Only when I open it", ""),
-        go, outcome);
+      } catch {}
     }
-
-    chosen() {
-      const st = this.state;
-      return st.install || (st.install = {
-        want: [], chat: true, context: 8192, updates: true, getModels: true, onClose: "",
-      });
+    show(title, description, ...content) {
+      this.errorNote = el('div', {class:'err', role:'alert'});
+      const heading = this.heading = el('h1', {tabindex:'-1'}, title);
+      this.description = el('p', {class:'sub'}, description);
+      this.card.replaceChildren(el('p', {class:'wizard-step'}, `Step ${this.step + 1} of 3`), heading,
+        this.description, ...content, this.errorNote);
+      heading.focus({preventScroll:true});
     }
-
-    optBox(id, on, label, why, flip) {
-      const input = el("input", { type: "checkbox", id, ...(on ? { checked: "1" } : {}) });
-      input.onchange = () => flip(input.checked);
-      return el("label", { class: "opt", for: id }, input, M.row(label, why));
+    actions(...buttons) { return el('div', {class:'wizard-actions'}, ...buttons); }
+    button(label, action, secondary = false) { return el('button', {type:'button', class:secondary ? 'ghost' : '', onclick:action}, label); }
+    note() { return el('div', {class:'wizard-progress', role:'status', 'aria-live':'polite'}); }
+    async task(button, note, action) {
+      if (this.busy) return;
+      const operation = {}; this.busy = operation; button.disabled = true; note.textContent = 'Saving…';
+      const epoch = this.epoch, session = M.sessionContext();
+      try { await action(); }
+      catch (error) { if (this.current(epoch, session)) { if (note.isConnected) note.textContent = error.message; else this.failure(error); } }
+      finally { if (this.busy === operation) this.busy = null; if (this.current(epoch, session)) button.disabled = false; }
     }
-
-    sourceStep() {
-      const kept = this.chosen();
-      const note = el("div", { role: "status" });
-      const go = el("button", { disabled: "1" }, "Save and continue");
-      const choices = [["internet", "Internet only", "Download models from their online source."],
-        ["lan", "LAN only", "Copy models and MTP heads from your pool. No Internet fallback."],
-        ["both", "Both", "Try your pool first, then the Internet."]];
-      const rows = choices.map(([value, label, why]) => {
-        const input = el("input", { type: "radio", name: "download-sources", value,
-          id: `source-${value}`, ...(kept.sources === value ? { checked: "1" } : {}) });
-        input.onchange = () => { kept.sources = value; go.disabled = false; };
-        return el("label", { class: "opt", for: input.id }, input, M.row(label, why));
-      });
-      go.disabled = !kept.sources;
-      go.onclick = async () => {
-        go.disabled = true;
-        const r = await api("/ui/setup/prefs", { method: "POST",
-          body: JSON.stringify({ download_sources: kept.sources }) });
-        if (!r.ok || r.error) {
-          note.textContent = r.error || "Could not save download sources.";
-          go.disabled = false;
-          return;
-        }
-        this.go(5);
-      };
-      this.show(this.steps(4, () => this.go(3)), el("h1", {}, "Where should downloads come from?"),
-        el("p", { class: "sub" }, "Choose before installing a model. LAN only also keeps "
-          + "the model server and GPU runtime from downloading from the Internet."), ...rows, go, note);
+    go(step) { this.epoch++; this.busy = null; this.finishing = null; clearTimeout(this.timer); this.step = step; return this.paint(); }
+    paint() { return this.step === 0 ? this.deviceStep() : this.step === 1 ? this.modelStep() : this.preparingStep(); }
+    async saveDevice() {
+      const result = await this.request('/ui/setup/initial', post({name:this.name.trim() || this.setup.name,
+        pool_mode:this.invitationOnly ? 'prod' : 'dev'}));
+      if (!result.ok) throw Error('The device name could not be saved.');
+      this.setup = result;
     }
-
-    async runStep() {
-      const st = this.state;
-      if (!st.libraries) st.libraries = await api("/ui/libraries");
-      const offered = st.libraries.libraries || [];
-      const kept = this.chosen();
-      if (!this.modelInstall) this.modelInstall = await M.startupModels(kept);
-      if (!kept.picked) {
-        kept.picked = true;
-        kept.want = offered.filter((x) => x.default || x.installed).map((x) => x.name);
-      }
-      const want = new Set(kept.want);
-      const note = el("div");
-      const size = el("div", { class: "hint" });
-      const go = el("button", {}, "Install and continue");
-      const later = el("button", { class: "ghost", onclick: () => this.go(6) }, "Not now");
-
-      const paint = () => {
-        const mb = offered.filter((x) => want.has(x.name))
-                          .reduce((a, x) => a + (x.size_mb || 0), 0);
-        size.textContent = mb
-          ? `About ${mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`} to download, `
-            + "in the Poolhouse runtime."
-          : "Installed in the Poolhouse runtime.";
-      };
-
-      go.onclick = async () => {
-        if (go.disabled) return;
-        go.disabled = true; later.disabled = true;
-        const watch = (result, label) => {
-          if (result.error) throw new Error(result.error);
-          if (!result.job) return;
-          if (!this.installStatus) this.installStatus = el("div", { role: "status", "aria-live": "polite" });
-          const row = el("div", { class: "hint" }, `${label}: queued`);
-          this.installStatus.append(row);
-          M.followSetupJob(result.job, (job) => {
-            row.textContent = `${label}: ${job.note || job.state}`;
-          }).catch((error) => { row.className = "err"; row.textContent = `${label}: ${error.message}. Retry in Settings.`; });
-        };
+    deviceStep() {
+      const note = this.note(), input = el('input', {id:'setup-device-name', type:'text', value:this.name || '', autocomplete:'off'});
+      input.oninput = () => { this.name = input.value; };
+      const connect = el('details', {class:'wizard-section'}, el('summary', {}, 'Join another pool'));
+      connect.ontoggle = async () => {
+        if (!connect.open || connect.loaded || this.busy) return;
+        connect.loaded = true;
         try {
-          if (kept.chat) watch(await api("/ui/serving/install", { method: "POST" }), "Model server");
-          const add = [...want];
-          if (add.length) watch(await api("/ui/libraries", { method: "POST",
-            body: JSON.stringify({ install: add }) }), "Libraries");
-          this.modelInstall.start().catch((error) => {
-            this.modelInstall.status.replaceChildren(el("div", { class: "err" }, String(error)));
-          });
-          if (st.step === 5) this.go(6);
-        } catch (error) { note.textContent = String(error); }
-        finally { go.disabled = false; later.disabled = false; }
+          if (!connect.isConnected) return;
+          connect.append(M.poolForm({endpoint:'/ui/setup/join', poolMode:this.invitationOnly ? 'prod' : 'dev',
+            group:'default', onComplete:async () => {
+              this.setup = await this.request('/ui/setup'); note.textContent = 'Pool connected.';
+            }}));
+        } catch (error) { connect.loaded = false; note.textContent = error.message; }
       };
-
-      paint();
-      this.card.className = "card wide";
-      this.show(
-        this.steps(5, () => this.go(4)),
-        el("h1", {}, "What should it be able to do?"),
-        el("p", { class: "sub" },
-          "Ticked from what this machine is. Anything here can be changed later in "
-          + "Settings."),
-        el("div", { class: "cap" }, el("span", {}, "CHATTING")),
-        this.optBox("setup-chat", kept.chat, "Run models and chat with them",
-          "installs the model server and the GPU runtime needed on this machine",
-          (on) => { kept.chat = on; }),
-        this.modelInstall.panel,
-        el("details", { "data-advanced": "", class: "aside" },
-          el("summary", {}, "Advanced model settings"),
-          M.contextPicker(kept.context, (n) => { kept.context = n; })),
-        offered.length ? el("div", { class: "cap" }, el("span", {}, "TRAINING")) : null,
-        ...offered.map((lib) =>
-          this.optBox(`lib_${lib.name}`, want.has(lib.name), lib.title,
-            `${lib.blurb || ""}${lib.size_mb ? ` — about ${lib.size_mb} MB` : ""}`,
-            (on) => {
-              if (on) want.add(lib.name); else want.delete(lib.name);
-              kept.want = [...want];
-              paint();
-            })),
-        size, go, later, note);
+      const strict = el('input', {id:'setup-invitation-only', type:'checkbox'}); strict.checked = !!this.invitationOnly;
+      strict.onchange = () => { this.invitationOnly = strict.checked; };
+      const policy = el('details', {class:'wizard-section'}, el('summary', {}, 'Connection options'),
+        el('label', {class:'opt', for:strict.id}, strict, 'Only connect devices I explicitly invite'));
+      const next = this.button('Continue', () => this.task(next, note, async () => {
+        await this.saveDevice(); await this.go(1);
+      }));
+      this.show('Welcome to Poolhouse', 'Set up this device once, then chat, code and work with your pool from one place.',
+        el('label', {for:input.id}, 'Device name'), input,
+        el('p', {class:'hint'}, this.setup.in_pool ? `Connected to ${this.setup.group || 'your pool'}.`
+          : 'This device starts its own private pool. You can connect other devices later.'), connect,
+        policy, this.actions(next), note);
     }
-
-    awayStep() {
-      const kept = this.chosen();
-      const st = this.state;
-      const note = el("div", { class: "err", role: "alert" });
-      const go = el("button", {}, "Continue");
-      go.onclick = async () => {
-        go.disabled = true;
-        go.innerHTML = '<span class="spin"></span> Saving…';
-        const result = await api("/ui/setup/prefs", { method: "POST", body: JSON.stringify({
-          context: kept.context, auto_update: kept.updates,
-          autodownload_models: kept.getModels, on_close: kept.onClose,
-          autostart: (st.prefs || {}).autostart || "manual" }) });
-        if (!result.ok || result.error) {
-          go.disabled = false; go.textContent = "Continue";
-          note.textContent = result.error || "Could not save background preferences. Try again.";
-          return;
+    async modelStep() {
+      const epoch = this.epoch, session = M.sessionContext(), loading = this.note();
+      this.show('Make this device ready', 'Poolhouse recommends a model for the memory available now. You can change it before preparing.', loading);
+      loading.textContent = 'Checking available models…';
+      try {
+        this.modelInstall = await M.startupModels(this.kept);
+        if (!this.current(epoch, session)) return;
+        const note = this.feedback = this.note(), candidateBox = el('div');
+        const folderNote = el('p', {class:'hint'}, this.project ? `Coding folder: ${this.project.title}` : 'A private coding workspace will be created for you.');
+        const choose = this.button('Choose a coding folder', () => this.task(choose, note, async () => {
+          if (!window.__TAURI__?.core?.invoke) throw Error('Choose a folder from the installed Poolhouse window.');
+          const challenge = await this.request('/ui/setup/projects/pick', post({}));
+          const result = await window.__TAURI__.core.invoke('choose_coding_project', {requestId:challenge.request_id, nonce:challenge.nonce});
+          if (!this.current(epoch, session)) return;
+          if (result?.purpose !== 'coding-project') throw Error('The folder selection ended. Choose it again.');
+          if (result.status === 'cancelled') { note.textContent = 'Folder selection was cancelled.'; return; }
+          if (result.status === 'choosing') { note.textContent = 'The folder chooser is still open.'; return; }
+          if (result.status === 'needs-project') {
+            this.pendingProject = result.project; this.candidate(candidateBox, folderNote, prepare); note.textContent = ''; return;
+          }
+          if (result.status !== 'complete' || !result.project) throw Error('The folder selection is still open.');
+          this.pendingProject = null; candidateBox.replaceChildren(); prepare.disabled = !this.modelInstall.selected;
+          this.project = result.project; folderNote.textContent = `Coding folder: ${this.project.title}`; note.textContent = 'Folder selected. Sharing stays off.';
+        }), true);
+        const background = el('input', {id:'setup-background', type:'checkbox'}); background.checked = this.background;
+        background.onchange = () => { this.background = background.checked; };
+        const hours = el('input', {id:'setup-work-hours', type:'checkbox'}); hours.checked = this.workHours;
+        hours.onchange = () => { this.workHours = hours.checked; };
+        const optional = el('details', {class:'wizard-section'}, el('summary', {}, 'Coding folder and availability'),
+          folderNote, choose, candidateBox,
+          el('label', {class:'opt', for:background.id}, background, 'Keep Poolhouse available when I close its window'),
+          el('label', {class:'opt', for:hours.id}, hours, 'Keep weekdays, 9 to 5, free of pool work'),
+          el('p', {class:'hint'}, 'You can pause pool work at any time. No folder is shared automatically.'));
+        const prepare = this.button('Prepare and continue', () => this.task(prepare, note, async () => this.prepare()));
+        prepare.disabled = !this.modelInstall.selected || !!this.pendingProject;
+        if (this.pendingProject) this.candidate(candidateBox, folderNote, prepare);
+        this.show('Make this device ready', 'Preparing installs what this device needs and checks the selected model before opening chat.',
+          this.modelInstall.panel, optional, this.actions(this.button('Back', () => { this.go(0); }, true), prepare,
+            this.button('Set up models later', () => this.finish(false), true)), note);
+      } catch (error) { if (this.current(epoch, session)) this.show('Choose a model later', error.message,
+        this.actions(this.button('Check models', () => this.modelStep()), this.button('Back', () => { this.go(0); }, true),
+          this.button('Set up models later', () => this.finish(false), true))); }
+    }
+    candidate(box, folderNote, prepare) {
+      const candidate = this.pendingProject;
+      prepare.disabled = true; folderNote.textContent = `Selected folder: ${candidate.title}`;
+      const message = this.note();
+      const create = this.button('Create project here', () => this.task(create, message, async () => {
+        const made = await this.request('/ui/setup/projects/create', post({candidate_id:candidate.id}));
+        if (made.selected !== true) throw Error('A newer coding folder was chosen. Choose your folder again.');
+        this.project = made.project; this.pendingProject = null; box.replaceChildren();
+        folderNote.textContent = `Coding folder: ${this.project.title}`; prepare.disabled = !this.modelInstall.selected;
+      }));
+      const keep = this.button('Use private workspace', () => {
+        if (this.busy) return;
+        this.pendingProject = null; this.project = null; this.clearProjectOperation(); box.replaceChildren();
+        folderNote.textContent = 'A private coding workspace will be created for you.'; prepare.disabled = !this.modelInstall.selected;
+      }, true);
+      box.replaceChildren(el('p', {}, `${candidate.title} needs a project before coding can start.`), this.actions(create, keep), message);
+    }
+    async prepare() {
+      const epoch = this.epoch, session = M.sessionContext();
+      if (this.pendingProject) throw Error('Create the selected project or choose the private workspace first.');
+      const selected = this.modelInstall.selected;
+      if (!selected?.model_id) throw Error('Choose an available model before preparing.');
+      await this.request('/ui/setup/prefs', post({download_sources:'both', autodownload_models:true,
+        on_close:this.background ? 'background' : 'quit', work_hours:this.workHours,
+        ...(this.systemTheme ? {system_theme:this.systemTheme} : {})}), epoch, session);
+      if (!this.project) {
+        const made = await this.request('/ui/setup/projects/default', post({operation_id:this.projectOperation()}), epoch, session);
+        if (made.selected !== true) {
+          this.clearProjectOperation();
+          throw Error('The coding folder choice changed. Prepare again to use the private workspace, or choose a folder.');
         }
-        this.go(7);
-      };
-      this.card.className = "card";
-      this.show(
-        this.steps(6, () => this.go(5)),
-        el("h1", {}, "When you are not using it"),
-        el("p", { class: "sub" },
-          "It keeps itself current, and stays reachable while the window is shut."),
-        el("div", { class: "cap" }, el("span", {}, "KEEPING UP TO DATE")),
-        this.optBox("upd", kept.updates, "Download and install updates automatically",
-          "checked once a day, put on when no job is running, and it restarts itself",
-          (on) => { kept.updates = on; }),
-        this.optBox("getm", kept.getModels, "Get models automatically",
-          "using the download sources you selected",
-          (on) => { kept.getModels = on; }),
-        el("div", { class: "cap" }, el("span", {}, "CLOSING THE WINDOW")),
-        ...[["", "Ask me each time"],
-            ["background", "Keep running so the others can still reach it"],
-            ["quit", "Quit and leave the pool"]].map(([value, label]) => {
-          const id = `close_${value || "ask"}`;
-          const input = el("input", { type: "radio", name: "onclose", id,
-                                      ...(value === kept.onClose ? { checked: "1" } : {}) });
-          input.onchange = () => { if (input.checked) kept.onClose = value; };
-          return el("label", { class: "opt", for: id }, input, M.row(label, ""));
-        }),
-        go, note);
-    }
-
-    async wiredStep() {
-      const r = await api("/ui/room");
-      if (!r.machine || !r.machine.supported) return this.go(8);
-      const next = el("button", {}, "Continue");
-      next.onclick = () => this.go(8);
-      this.show(
-        this.steps(7, () => this.go(6)),
-        el("h1", {}, "Give models more memory?"),
-        el("p", { class: "sub" },
-          "Large models need more of this computer's memory than macOS gives the GPU by default. "
-          + "You can skip this and change it later in Settings."),
-        document.createElement("wired-memory"),
-        el("button", { class: "ghost", onclick: () => this.go(8) }, "Skip"), next);
-    }
-
-    async doneStep() {
-      const st = this.state;
-      const saved = await api("/ui/setup/done", { method: "POST" });
-      if (!saved.ok || saved.error) return this.show(el("div", { class: "err", role: "alert" }, saved.error || "Could not finish setup. Try again."),
-        el("button", { onclick: () => this.doneStep() }, "Retry"));
-      const joined = st.pools[0];
-      const open = el("button", { onclick: () => location.reload() },
-        joined ? "Open the pool" : "Open Poolhouse");
-      const ssh = el("div", { class: "aside" },
-        el("div", { class: "hint" },
-          "A machine with no screen — a server, a Pi — is set up over ssh instead:"),
-        el("pre", { class: "cmd" }, "poolhouse-members setup"));
-
-      if (!joined) {
-        return this.show(
-          this.steps(8),
-          el("h1", {}, `“${st.name}” is ready`),
-          el("p", { class: "sub" },
-            "It is on its own: it will run models and train here, and nothing else on your "
-            + "network can see it."),
-          el("p", { class: "hint" },
-            "Join a pool whenever you like, from the Pool screen."),
-          open, ssh);
+        this.project = made.project;
       }
-
-      const looking = el("div", { class: "watching" },
-        el("span", { class: "spin" }), " Watching for other machines…");
-      const found = el("div");
-      const poll = async () => {
-        const r = await api("/ui/setup/members");
-        const others = (r.members || []).filter((p) => !p.is_self);
-        if (others.length) {
-          looking.remove();
-          open.remove();
-          found.replaceChildren(
-            el("div", { class: "ok" }, `Found ${others.map((p) => p.name).join(", ")}.`),
-            el("button", { onclick: () => location.reload() }, "Open the pool"));
-          return;
-        }
-        setTimeout(poll, 3000);
-      };
-      poll();
-
-      const step = (n, title, body) =>
-        el("li", {}, el("span", { class: "num" }, n),
-          el("div", {}, el("b", {}, title), body ? el("div", { class: "d" }, body) : null));
-
-      this.show(
-        this.steps(8),
-        el("h1", {}, `Joined “${joined.group}”`),
-        el("p", { class: "sub" }, "Now add your other machines. On each one:"),
-        el("ol", { class: "howto" },
-          step(1, "Install Poolhouse", "The same installer you used here."),
-          step(2, "Open it", "It asks the same questions there."),
-          step(3, st.mode === "dev" && this.setup.selection !== "manual"
-            ? "Choose Dev" : "Join the same pool", st.mode === "dev" && this.setup.selection !== "manual"
-            ? "Trusted devices on the same network connect automatically."
-            : "Use its invitation or the same pool name and passphrase.")),
-        el("p", { class: "hint" },
-          "They find each other on their own. Nothing else to configure."),
-        looking, found, ssh, open);
+      const config = {model_id:selected.model_id, download:!selected.installed, project_id:this.project.id};
+      if (!this.intent || JSON.stringify(this.intent.config) !== JSON.stringify(config)) this.intent = {key:key(), config};
+      this.keepIntent(); this.go(2);
+      const dispatchEpoch = this.epoch;
+      try {
+        const operation = await this.request('/ui/setup/prepare', post({...config, idempotency_key:this.intent.key}), dispatchEpoch, session);
+        this.intent.job = operation.id; this.keepIntent(); this.operation = operation; this.drawOperation(); this.poll();
+      } catch (error) { if (this.current(dispatchEpoch, session)) this.failure(error); }
+    }
+    clearProjectOperation() {
+      this.defaultOperation = null;
+      try { sessionStorage.removeItem('poolhouse.setup.project-operation'); } catch {}
+    }
+    projectOperation() {
+      if (!this.defaultOperation) {
+        let saved;
+        try { saved = sessionStorage.getItem('poolhouse.setup.project-operation'); } catch {}
+        this.defaultOperation = /^[a-f0-9]{32}$/.test(saved || '') ? saved : key();
+        try { sessionStorage.setItem('poolhouse.setup.project-operation', this.defaultOperation); } catch {}
+      }
+      return this.defaultOperation;
+    }
+    keepIntent() { try { sessionStorage.setItem('poolhouse.setup.intent', JSON.stringify(this.intent)); } catch {} }
+    preparingStep() {
+      this.progress = this.note(); this.controls = this.actions();
+      this.show('Preparing your device', 'Keep this window open or return later. Reopening setup attaches to the same preparation.', this.progress, this.controls);
+      this.progress.textContent = 'Preparing this device…'; this.drawOperation();
+    }
+    async checkPreparation() {
+      if (this.intent?.job) return this.poll();
+      if (!this.intent || this.busy) return;
+      const pending = {}; this.busy = pending;
+      const epoch = this.epoch, session = M.sessionContext();
+      try {
+        const operation = await this.request('/ui/setup/prepare', post({...this.intent.config, idempotency_key:this.intent.key}));
+        this.intent.job = operation.id; this.keepIntent(); this.operation = operation; this.drawOperation(); this.poll();
+      } catch (error) { if (this.current(epoch, session)) this.failure(error); } finally { if (this.busy === pending) this.busy = null; }
+    }
+    async poll() {
+      clearTimeout(this.timer);
+      if (!this.intent?.job || M.route !== 'first-run') return;
+      const epoch = this.epoch, session = M.sessionContext();
+      try {
+        this.operation = await this.request('/ui/setup/prepare/' + encodeURIComponent(this.intent.job), undefined, epoch, session);
+        this.drawOperation();
+        if (['queued','installing','running'].includes(this.operation.state)) this.timer = setTimeout(() => this.poll(), 750);
+      } catch (error) { if (this.current(epoch, session)) this.failure(error); }
+    }
+    drawOperation() {
+      if (!this.progress || !this.operation) return;
+      const job = this.operation, result = job.result || {};
+      this.progress.textContent = job.error || job.note || 'Preparing this device…';
+      const buttons = [];
+      if (job.state === 'done' && result.chat_ready === true) {
+        this.heading.textContent = 'Ready to chat';
+        this.description.textContent = 'Your selected model has answered successfully on this device.';
+        this.progress.textContent = result.tools_ready === true ? 'Chat and tool use are ready.' : 'Chat is ready. Tool use has not been verified for this model.';
+        buttons.push(this.button('Start chat', () => this.finish(true)));
+      } else if (['queued','installing','running'].includes(job.state)) {
+        const stop = this.button('Stop preparing', () => this.task(stop, this.progress, async () => {
+          this.operation = await this.request('/ui/setup/prepare/' + encodeURIComponent(job.id) + '/cancel', post({})); this.drawOperation(); this.poll();
+        }), true);
+        buttons.push(stop);
+      } else {
+        this.heading.textContent = job.state === 'cancelled' ? 'Preparation stopped' : 'Preparation needs attention';
+        this.description.textContent = 'Check its status or finish setup for now.';
+        if (this.progress.textContent === this.heading.textContent) this.progress.textContent = 'No model is marked ready.';
+        buttons.push(this.button('Check status', () => this.checkPreparation(), true), this.button('Finish setup for now', () => this.finish(false), true));
+      }
+      if (job.stage === 'transfer' && job.progress) this.progress.append(M.ui('ml-progress', {
+        label:'Preparing model', format:'bytes', done:job.progress.done || 0, total:job.progress.total || 0,
+        state:job.state === 'interrupted' ? 'failed' : job.state === 'cancelled' ? 'idle' : 'running', message:job.note || ''}));
+      this.controls.replaceChildren(...buttons);
+    }
+    failure(error) {
+      if (!this.progress?.isConnected) {
+        if (this.errorNote?.isConnected) this.errorNote.textContent = error.message;
+        return;
+      }
+      this.heading.textContent = 'Preparation needs attention';
+      this.description.textContent = 'Check the existing preparation before starting anything else.';
+      this.progress.textContent = error.message;
+      this.controls.replaceChildren(this.button(this.intent ? 'Check status' : 'Try again', () => this.intent ? this.checkPreparation() : this.open(), true),
+        ...(this.setup ? [this.button('Finish setup for now', () => this.finish(false), true)] : []));
+    }
+    async finish(ready) {
+      if (this.finishing) return;
+      const pending = {}; this.finishing = pending;
+      const epoch = this.epoch, session = M.sessionContext();
+      try {
+        const result = this.operation?.result || {};
+        if (ready && result.chat_ready !== true) throw Error('The model is not ready yet.');
+        const saved = await this.request('/ui/setup/done', post(this.systemTheme ? {system_theme:this.systemTheme} : {}));
+        if (saved.ok !== true) throw Error('Setup could not be saved.');
+        try { sessionStorage.removeItem('poolhouse.setup.intent'); } catch {}
+        if (ready) window.dispatchEvent(new CustomEvent('fleet-chat-ready', {detail:{model:result.model}}));
+        M.go('chat');
+      } catch (error) { if (this.current(epoch, session)) this.failure(error); }
+      finally { if (this.finishing === pending) this.finishing = null; }
     }
   }
-  customElements.define("first-run", FirstRun);
+  customElements.define('first-run', FirstRun);
 })();
 </script>
