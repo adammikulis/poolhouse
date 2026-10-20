@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import re
 import secrets
 import time
 
@@ -73,6 +74,12 @@ class StreamStore:
 
     def admit(self, subscription: dict, incoming: dict, principal: dict, authorize) -> dict:
         """Acknowledge only after event, dedupe pointer and source cursor commit."""
+        if (not isinstance(incoming, dict) or set(incoming) - {'id', 'generation', 'payload', 'error', 'cursor', 'digest'}
+                or any(not isinstance(incoming.get(name), str) or not incoming[name] or len(incoming[name]) > 256
+                       for name in ('id', 'generation'))
+                or ('payload' in incoming) == ('error' in incoming)
+                or ('digest' in incoming and not re.fullmatch('[0-9a-f]{64}', str(incoming['digest'])))):
+            raise ValueError('Invalid source event envelope.')
         with self.lock, self.graph.transaction():
             sub = self.get('subscription', subscription['id'], subscription['scope'])
             if sub.get('grant') != principal.get('grant_id') or authorize(sub, principal) is not True:
@@ -82,7 +89,7 @@ class StreamStore:
             prior = self.graph.get_doc(key)
             body_digest = digest(incoming.get('payload', {'error': incoming.get('error')}))
             if prior:
-                if prior['digest'] != body_digest:
+                if prior['digest'] != body_digest or prior.get('wire_digest') != incoming.get('digest'):
                     raise Conflict('This source event identity already names different content.')
                 return self.get('stream-event', prior['event'], sub['scope'])
             if any(sub.get(name) != subscription.get(name) for name in ('revision', 'cursor', 'source_id', 'grant')):
@@ -108,7 +115,7 @@ class StreamStore:
                 sub['inflight'] = event_id
             sub.update(next_sequence=sequence + 1, cursor=copy.deepcopy(incoming.get('cursor', sub.get('cursor'))))
             self.store.put('stream-event', row)
-            self.graph.put_doc(key, {'digest': body_digest, 'event': event_id})
+            self.graph.put_doc(key, {'digest': body_digest, 'wire_digest': incoming.get('digest'), 'event': event_id})
             self.graph.put_doc(sequence_key(sub['id'], sequence), {'id': event_id})
             self.put_subscription(sub)
             return copy.deepcopy(row)

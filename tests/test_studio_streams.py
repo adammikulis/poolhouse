@@ -108,7 +108,7 @@ def test_actual_finite_event_survives_submit_ack_loss_and_delivers_once(tmp_path
     runner = SimpleNamespace(files_root=tmp_path / 'files', jobs={})
     engine = WorkflowEngine(store, runner, Adapters(), lambda p, n, i: authority.authorize(p, n, i) if p.get('kind') else True)
     engine.close()
-    sources = SimpleNamespace(close=lambda: None, poll=lambda *args, **kwargs: None)
+    sources = SimpleNamespace(close=lambda: None, poll=lambda *args, **kwargs: None, bind=lambda *args: None)
     service = Streams(engine, authority, sources=sources, resources=lambda *args: [])
     try:
         source = service.store.create('source', P, {'kind': 'examples'}, 'source')

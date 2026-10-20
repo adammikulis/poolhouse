@@ -68,6 +68,7 @@ class Streams:
                        resolved_workflow=manifest['workflow'], state='active', reason=None,
                        revision=sub['revision'] + 1)
             with self.store.graph.transaction():
+                self.sources.bind(sub, grant)
                 self.store.graph.put_doc(command, {'request': digest(request)})
                 return self.store.put_subscription(sub)
 

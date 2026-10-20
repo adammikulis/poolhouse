@@ -9,6 +9,7 @@ from poolhouse.studio.stream_sources import bind
 
 from .files import safe_relpath
 from .request_fields import object_body
+from .studio_webhook_service import register as register_webhook
 
 
 def public_source(row: dict) -> dict:
@@ -43,6 +44,11 @@ def sources(handler, service, principal) -> bool:
         handler.send(200, {'sources': [public_source(row) for row in service.store.indexed('source', principal['scope'])]})
     elif handler.method == 'POST':
         body = object_body(handler)
+        if body.get('kind') == 'webhook':
+            row = register_webhook(service, principal, body)
+            handler.ui.studio_webhooks.register(principal, row['id'], row['generation'])
+            handler.send(201, {'source': public_source(row)})
+            return True
         if set(body) != {'kind', 'resource_id', 'idempotency_key'} or body['kind'] != 'watched_file':
             raise ValueError('Select an uploaded file or choose an original file in the app.')
         path = safe_relpath(handler.ui.runner.files_root, body['resource_id'])

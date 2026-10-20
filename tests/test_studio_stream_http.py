@@ -231,3 +231,62 @@ def test_duplicate_cancel_finishes_exact_run_after_intent_crash(served, monkeypa
     assert service.store.get('stream-event', event['id'], actual['scope'])['run_id'] == run['id']
     with pytest.raises(PermissionError):
         service.authority.get(actual['service_principal'])
+
+
+def test_actual_hmac_ingress_uses_only_source_authority_and_atomic_backpressure(served):
+    import hashlib
+    import hmac
+    import http.client
+    import ssl
+
+    from poolhouse.fleet.studio_webhooks import _frame
+    from poolhouse.studio.store import digest
+
+    app, cookie, session = served
+    existing = create(app, cookie)
+    status, body, _ = app.call('/ui/studio/sources', method='POST', cookie=cookie,
+                               body={'kind': 'webhook', 'label': 'Software sender', 'idempotency_key': 'webhook'})
+    assert status == 201 and 'secret' not in str(body), body
+    source_id = body['source']['id']
+    service = app.ui.studio_streams
+    scope = app.ui.studio_authority._context()['scope']
+    source = service.store.get('source', source_id, scope)
+    principal = {'id': digest({'session': session.sid}), 'scope': scope, 'owner': True}
+    credentials = {}
+    app.ui.studio_webhooks.configure_sender(principal, source_id, source['generation'],
+                                           lambda value: credentials.update(value) is None)
+    stored = service.store.get('subscription', existing['id'], scope)
+    status, body, _ = app.call('/ui/studio/subscriptions', method='POST', cookie=cookie,
+                               body={'workflow_id': stored['workflow']['id'], 'revision': 1,
+                                     'source_id': source_id, 'input_node': 'record', 'output_nodes': ['record'],
+                                     'destinations': [{'kind': 'live'}], 'idempotency_key': 'webhook-sub'})
+    assert status == 201, body
+    sub = body['subscription']
+    status, body, _ = app.call('/ui/studio/subscriptions/' + sub['id'] + '/start', method='POST', cookie=cookie,
+                               body={'revision': 1, 'idempotency_key': 'start-webhook'})
+    assert status == 200, body
+    service.close()  # Hold the admitted slot to prove bounded intake, without compute.
+    context = ssl.create_default_context(cafile=str(app.ui.studio_identity().certfile))
+    context.check_hostname = False
+    context.minimum_version = ssl.TLSVersion.TLSv1_3
+    def send(raw, event='sender-one'):
+        timestamp = str(int(time.time()))
+        signature = hmac.new(credentials['secret'].encode(), _frame(source_id, source['generation'], event, timestamp, raw), hashlib.sha256).hexdigest()
+        connection = http.client.HTTPSConnection('127.0.0.1', app.port, context=context)
+        try:
+            connection.request('POST', '/studio/ingest/' + source_id, body=raw,
+                               headers={'Content-Type': 'application/json', 'X-Poolhouse-Event-ID': event,
+                                        'X-Poolhouse-Timestamp': timestamp, 'X-Poolhouse-Generation': source['generation'],
+                                        'X-Poolhouse-Signature': signature})
+            response = connection.getresponse()
+            result = response.status, response.read()
+            return result
+        finally:
+            connection.close()
+    first = send(b'{"record":1}')
+    assert first[0] == 200
+    assert send(b'{"record":1}') == first
+    assert send(b'{ "record":1}') [0] == 409
+    assert send(b'{"record":2}', event='sender-two')[0] == 429
+    current = service.store.get('subscription', sub['id'], scope)
+    assert current['next_sequence'] == 2

@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import ssl
 import time
+from pathlib import Path
 
 from poolhouse.graph.guard import MAX_BODY
 from poolhouse.studio.engine import artifact_fingerprints
@@ -18,6 +19,7 @@ from .discovery import load_pool_key
 from .pool_roster import Pool
 from .studio_authority import StudioAuthority
 from .studio_watch_registry import create_native_picks
+from .studio_webhook_service import create as create_webhooks
 
 
 def create(ui, engine, saved, scope):
@@ -44,6 +46,7 @@ def create(ui, engine, saved, scope):
     service = Streams(engine, authority, sources=Sources(engine.store),
                       resources=lambda principal, graph: pin_resources(saved, principal, graph))
     ui.studio_authority, ui.studio_streams = authority, service
+    create_webhooks(ui, service)
 
     def selection_epoch(principal, create=False):
         return authority.selection_epoch(principal, create=create)
@@ -77,7 +80,7 @@ def save_source(authority, service, principal, selection):
         if not anchor or anchor['epoch'] != expected:
             raise PermissionError('Source selection was revoked.')
         row = service.store.create('source', principal, {'kind': 'watched_file', 'origin': selection['origin'],
-                                   'label': binding.get('basename', 'Selected folder'), 'binding': binding,
+                                   'label': Path(binding['path']).name, 'binding': binding,
                                    'selection_epoch': expected, 'generation': binding['id'], 'available': True,
                                    'formats': ['csv', 'jsonl'], 'requirements': []}, selection['key'])
         return {'id': row['id'], 'title': row['label']}
@@ -138,6 +141,17 @@ class Sources:
 
     def __init__(self, store):
         self.store, self.watchers = store, {}
+
+    def bind(self, sub: dict, grant: dict) -> None:
+        source = self.store.get('source', sub['source_id'], sub['scope'])
+        if source['kind'] != 'webhook':
+            return
+        key = 'studio.webhook-subscription:' + source['id']
+        previous = self.store.graph.get_doc(key)
+        if previous and previous['subscription'] != sub['id']:
+            raise ValueError('A webhook source belongs to one subscription.')
+        self.store.graph.put_doc(key, {'scope': sub['scope'], 'subscription': sub['id'],
+                                      'grant': grant['id'], 'generation': source['generation']})
 
     def poll(self, sub: dict, *, authorize):
         source = self.store.get('source', sub['source_id'], sub['scope'])
