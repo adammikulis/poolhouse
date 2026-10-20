@@ -112,7 +112,7 @@
         this.transform();
         this.editor.changed(false);
       }
-      fit() {
+      fit(notify = true) {
         const nodes = this.editor.graph.nodes;
         if (!nodes.length) return;
         const ps = nodes.map((n) => S.position(this.editor, n.id)),
@@ -134,7 +134,7 @@
         v.x = 20 - left * v.zoom;
         v.y = 20 - top * v.zoom;
         this.transform();
-        this.editor.changed(false);
+        if (notify) this.editor.changed(false);
       }
       paint() {
         if (!this.editor || !this.layer) return;
@@ -186,8 +186,8 @@
         this.track(e, move, (event) => {
           const eligible = event.type !== "pointercancel" && editor.selected.size === 1 && Math.hypot(event.clientX - e.clientX, event.clientY - e.clientY) > 5;
           const edge = eligible ? this.placementEdge(event, node.id) : null;
-          editor.changed();
-          if (edge !== null) this.placeEntry(null, S.position(editor, node.id), edge, node);
+          const recorded = editor.changed();
+          if (edge !== null) this.placeEntry(null, S.position(editor, node.id), edge, node, recorded);
         });
       }
       background(e) {

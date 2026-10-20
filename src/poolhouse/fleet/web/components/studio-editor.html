@@ -50,8 +50,8 @@
                         this.graph = S.clone(t.graph);
                         this.normalize();
                         this.querySelector("#studio-title").value = t.title;
+                        this.canvas.fit(false);
                         this.changed();
-                        this.canvas.fit();
                       }),
                   },
                   t.title,

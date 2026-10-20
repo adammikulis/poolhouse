@@ -57,7 +57,7 @@
       return (spec[side] || []).filter(p => p.type !== 'gate' && (side === 'inputs' ? S.compatible(pending, p) : S.compatible(p, pending)))
         .map(p => ({suggestion: true, name: p.name, side, label: p.name + ' (' + p.type + ')'}));
     },
-    placeEntry(entry, point, edge = null, existing = null) {
+    placeEntry(entry, point, edge = null, existing = null, amend = false) {
       const resolved = existing ? {node: existing, spec: S.spec(this.editor, existing)} : this.placementEntry(entry);
       if (!resolved) { this.editor.message('This library node is unavailable. Refresh the node library.'); return; }
       const {node, spec} = resolved, graph = this.editor.graph, stamp = this.placementStamp();
@@ -85,7 +85,7 @@
             {source: {...edge.source}, target: {node: node.id, port: ports.input}},
             {source: {node: node.id, port: ports.output}, target: {...edge.target}});
         }
-        this.editor.selected = new Set([node.id]); this.editor.changed();
+        this.editor.selected = new Set([node.id]); this.editor.changed(true, amend);
         if (edge === false) this.editor.message('Connections overlap here. Node placed without changing either connection.');
         else if (edge && !ports) this.editor.message('Connection unchanged: insertion needs a free compatible input and an acyclic path.');
         else if (ports) this.editor.message(ports.suggestion ? 'Node added and connected.' : 'Node inserted into the connection.');

@@ -128,6 +128,7 @@
             this.submission = value;
         } catch {}
         this.context = [];
+        this.resetHistory();
         this.canvas = this.querySelector("studio-canvas");
         this.canvas.editor = this;
         const bind = (id, fn) =>
@@ -295,15 +296,6 @@
           this.submitting || !this.selected.size;
         this.groupPath();
       }
-      undo(redo = false) {
-        const from = redo ? this.redoStack : this.undoStack,
-          to = redo ? this.undoStack : this.redoStack;
-        if (!from.length) return;
-        to.push(this.snapshot());
-        this.restoreSnapshot(from.pop());
-        this.selected.clear();
-        this.changed();
-      }
       copy() {
         this.flushGroup();
         const context = S.selectionContext(this),
@@ -395,8 +387,8 @@
           };
           rows[d] = (rows[d] || 0) + 1;
         }
+        this.canvas.fit(false);
         this.changed();
-        this.canvas.fit();
       }
       key(e) {
         if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return;
