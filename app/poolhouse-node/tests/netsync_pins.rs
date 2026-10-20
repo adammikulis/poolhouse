@@ -12,7 +12,7 @@ fn reach(from: &Dev, to: &Dev) -> PeerClient {
 }
 
 /// Two members of one pool; each has made `board`, started and ended a session on it, and nothing else.
-fn pair(board: &str) -> (Dev, Dev) {
+fn two_members(board: &str) -> (Dev, Dev) {
     let (a, b) = (device(), device());
     a.join_with_code(&b);
     for d in [&a, &b] {
@@ -33,7 +33,7 @@ fn origin_of(d: &Dev, board: &str) -> String {
 
 #[test]
 fn a_member_that_only_asks_for_the_vector_does_not_tie_itself_to_a_board_or_keep_it_from_being_reaped() {
-    let (a, b) = pair("asked");
+    let (a, b) = two_members("asked");
     let reply = reach(&b, &a).call(&json!({"op": "vector", "board": "asked", "origin": origin_of(&b, "asked")})).unwrap();
     assert!(reply["vector"].is_object(), "{reply}");
     assert_eq!(tied(&a, "asked"), 0, "a vector asked for is not a sync");
@@ -43,7 +43,7 @@ fn a_member_that_only_asks_for_the_vector_does_not_tie_itself_to_a_board_or_keep
 
 #[test]
 fn a_pull_and_a_push_that_move_no_row_tie_nothing() {
-    let (a, b) = pair("empty");
+    let (a, b) = two_members("empty");
     let mut client = reach(&b, &a);
     let origin = origin_of(&b, "empty");
     let current = {
@@ -61,7 +61,7 @@ fn a_pull_and_a_push_that_move_no_row_tie_nothing() {
 
 #[test]
 fn a_push_of_rows_the_board_refuses_for_a_gap_ties_nothing() {
-    let (a, b) = pair("refused");
+    let (a, b) = two_members("refused");
     let origin = origin_of(&b, "refused");
     let rows = b.node.lock().unwrap().boards["refused"].board.rows(&origin).to_vec();
     let gapped = serde_json::to_value(&rows[1..]).unwrap();
@@ -72,7 +72,7 @@ fn a_push_of_rows_the_board_refuses_for_a_gap_ties_nothing() {
 
 #[test]
 fn a_sync_that_moves_rows_ties_both_devices_and_the_board_is_never_reaped() {
-    let (a, b) = pair("synced");
+    let (a, b) = two_members("synced");
     sync_all(&b.node, &mut reach(&b, &a)).unwrap();
     assert_eq!((tied(&a, "synced"), tied(&b, "synced")), (1, 1), "rows moved both ways, so each device knows the other");
     assert_eq!(a.node.lock().unwrap().reap_idle_boards().unwrap(), 0, "a board another device synced is kept");
