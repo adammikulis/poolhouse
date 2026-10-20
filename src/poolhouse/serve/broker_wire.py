@@ -137,10 +137,9 @@ class _Server(socketserver.ThreadingTCPServer):
         if op == "idle-retire":
             if connected is None or not connected():
                 raise PermissionError("Only a connected process may request idle broker retirement.")
-            with self.broker._cond:
-                if not retire(self.broker):
-                    return {"ok": True, "retiring": False}
-                self.closing.set()
+            if not retire(self.broker):
+                return {"ok": True, "retiring": False}
+            self.closing.set()
             threading.Thread(target=self.shutdown, daemon=True).start()
             return {"ok": True, "retiring": True}
         if self.closing.is_set() and op != "status":
