@@ -1,7 +1,7 @@
 {
- "surfaces": 873,
+ "surfaces": 875,
  "by_status": {
-  "covered": 555,
+  "covered": 557,
   "partial": 193,
   "uncovered": 52,
   "n/a": 73,
@@ -79,7 +79,7 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 80,
+   "covered": 82,
    "partial": 0,
    "uncovered": 48,
    "n/a": 0,
@@ -5757,6 +5757,26 @@
    "note": ""
   },
   {
+   "id": "parser:fleet/producer_bootstrap.py",
+   "kind": "parser",
+   "source": "src/poolhouse/fleet/producer_bootstrap.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_producer_bootstrap.py::test_actual_plain_bootstrap_then_pinned_tls_control",
+    "tests/test_producer_bootstrap.py::test_every_binding_field_is_mac_bound",
+    "tests/test_producer_bootstrap.py::test_malformed_stale_or_substituted_proofs_fail",
+    "tests/test_producer_bootstrap.py::test_other_installation_secret_and_old_nonce_cannot_authenticate",
+    "tests/test_producer_bootstrap.py::test_control_der_and_process_must_both_match",
+    "tests/test_producer_bootstrap.py::test_existing_identity_is_never_created_repaired_or_followed",
+    "tests/test_producer_bootstrap.py::test_replaced_file_during_read_and_symlink_ancestor_denied",
+    "tests/test_producer_bootstrap.py::test_valid_mac_still_requires_actual_bootstrap_process",
+    "tests/test_producer_bootstrap.py::test_unmodified_signed_reply_expires"
+   ],
+   "note": "The internal holder reads an existing private installation identity without creation or repair. A domain-separated MAC binds the complete typed, fresh daemon context; actual bootstrap process identity precedes control-path use, then exact TLS DER and control process identity are checked. This authenticates software only and grants no source, owner or compute authority. Copying the existing software installation secret can forge its bootstrap proof; no hardware clone resistance or complete producer transport is claimed."
+  },
+  {
    "id": "parser:fleet/request_fields.py",
    "kind": "parser",
    "source": "fleet/request_fields.py",
@@ -6753,6 +6773,26 @@
     "tests/test_model_capabilities.py::test_hostile_model_metadata_is_refused_without_a_crash"
    ],
    "note": ""
+  },
+  {
+   "id": "parser:unix_socket.py",
+   "kind": "parser",
+   "source": "src/poolhouse/unix_socket.py",
+   "trust": "files, pages and archives from outside",
+   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
+   "status": "covered",
+   "tests": [
+    "tests/test_unix_socket.py::test_actual_kernel_endpoint_and_generation_reject_sibling_and_reused_pid",
+    "tests/test_unix_socket.py::test_client_verifies_actual_server_before_sending_payload",
+    "tests/test_unix_socket.py::test_fork_uses_actual_kernel_identity_without_ancestry_fallback",
+    "tests/test_unix_socket.py::test_non_connected_pathname_streams_deny",
+    "tests/test_unix_socket.py::test_credentials_and_process_generation_rechecked",
+    "tests/test_unix_socket.py::test_process_replacement_between_checks_denies",
+    "tests/test_unix_socket.py::test_foreign_or_unknown_endpoint_denies",
+    "tests/test_unix_socket.py::test_unsupported_platform_denies",
+    "tests/test_unix_socket.py::test_truncated_kernel_credential_rejected"
+   ],
+   "note": "Kernel credentials and live process birth bind a connected pathname stream to an exact same-user process generation; malformed, unstable, unsupported or unrelated endpoints fail closed. Actual Mac process tests include both client and server verification. Linux credential decoding is unit-tested; Linux hardware remains unverified. Socket identity does not prove descriptor custody after an authorized process deliberately delegates a connected descriptor."
   },
   {
    "id": "parser:vision/payloads.py",
