@@ -18,7 +18,8 @@
       </button>
     </header>
     <div class="studio-toolbar" role="toolbar" aria-label="Workflow editing">
-      <button id="studio-new" type="button">New</button
+      <button id="studio-live" type="button">Live sources</button
+      ><button id="studio-new" type="button">New</button
       ><button id="studio-undo" type="button">Undo</button
       ><button id="studio-redo" type="button">Redo</button
       ><button id="studio-copy" type="button">Copy</button
@@ -161,10 +162,11 @@
           );
         this.addEventListener("keydown", (e) => this.key(e));
         this.setupSharing();
+        this.setupLive();
         M.onRoute((route) => {
           this.host.hidden = route !== "studio";
           if (route === "studio") this.perform(() => this.load());
-          else clearTimeout(this.poll);
+          else { clearTimeout(this.poll); this.stopLive(); }
         });
       }
       async perform(fn) {
@@ -213,6 +215,7 @@
           this.library();
           this.render();
           await this.refreshRuns();
+          if (!this.liveBox.hidden) await this.loadLive();
         } finally {
           this.loading = false;
         }
@@ -391,6 +394,7 @@
     S.installSweeps(StudioView.prototype);
     S.installTargets(StudioView.prototype);
     S.installSetup(StudioView.prototype);
+    S.installLive(StudioView.prototype);
     S.installRecords(StudioView.prototype);
     S.installBranches(StudioView.prototype);
     S.installGroups(StudioView.prototype);

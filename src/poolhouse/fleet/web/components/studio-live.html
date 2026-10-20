@@ -1,0 +1,241 @@
+<script>
+(function () {
+  const S = window.studioModel, M = window.fleetModel, E = M.el;
+  S.installLive = (proto) => Object.assign(proto, {
+    setupLive() {
+      const box = E('section', {class: 'studio-dock studio-live', hidden: true, 'aria-label': 'Live sources and decisions'});
+      const button = (text, fn) => E('button', {type: 'button', onclick: () => this.livePerform(fn)}, text);
+      this.liveSource = E('select', {'aria-label': 'Live source', onchange: () => this.liveSourceDetails()});
+      this.liveInput = E('select', {'aria-label': 'Live record input'});
+      this.liveSubscriptions = E('select', {'aria-label': 'Saved streams', onchange: () => this.selectLive(this.liveSubscriptions.value)});
+      this.liveNote = E('p', {role: 'status', 'aria-live': 'polite'});
+      this.liveSourceInfo = E('div', {});
+      this.liveActions = E('div', {class: 'studio-toolbar'});
+      this.liveResults = E('div', {'aria-label': 'Live decisions'});
+      this.livePreview = E('pre', {'aria-label': 'Synthetic sample preview', hidden: true});
+      const managed = E('select', {'aria-label': 'Uploaded file or folder'});
+      this.liveManaged = managed;
+      box.append(E('h2', {}, 'Live sources and decisions'),
+        E('p', {}, 'Each record runs the saved workflow with your configured model. Results stay here; no external actions are sent.'),
+        E('label', {}, 'Source', this.liveSource), this.liveSourceInfo,
+        E('label', {}, 'Record input', this.liveInput),
+        button('Create paused stream', () => this.createLive()),
+        E('details', {}, E('summary', {}, 'Watch a file or folder'),
+          E('p', {}, 'Uploaded files watch the managed copy. In the installed app, choose an original file or folder to watch it directly.'),
+          E('label', {}, 'Uploaded file or folder', managed),
+          button('Watch uploaded copy', () => this.createManagedSource()),
+          ...(window.__TAURI__?.core?.invoke ? [
+            button('Choose original file', () => this.pickLiveSource('file')),
+            button('Choose original folder', () => this.pickLiveSource('folder'))] : [])),
+        E('label', {}, 'Saved streams', this.liveSubscriptions),
+        button('Refresh streams', () => this.loadLive()), this.liveNote,
+        this.liveActions, this.livePreview, this.liveResults);
+      this.querySelector('.studio-dock').before(box);
+      this.liveBox = box;
+      this.querySelector('#studio-live').onclick = () => this.livePerform(async () => {
+        box.hidden = !box.hidden;
+        if (box.hidden) this.stopLive();
+        else { await this.loadLive(); box.scrollIntoView({block: 'nearest'}); }
+      });
+    },
+    stopLive() { clearTimeout(this.livePoll); this.liveGeneration = (this.liveGeneration || 0) + 1; },
+    async livePerform(fn) {
+      if (this.liveBusy) return;
+      this.liveBusy = true;
+      try { await fn(); }
+      catch (error) { this.liveError(error); }
+      finally { this.liveBusy = false; this.liveRenderActions(); }
+    },
+    liveError(error) {
+      if (error.response?.errors?.length) {
+        this.showValidation(error.response.errors);
+        error.message = error.response.errors.map((e) => (e.node ? e.node + ': ' : '') + (e.message || 'Configuration needs attention.')).join(' · ');
+      }
+      this.liveNote.textContent = error.message;
+      if ([401, 403].includes(error.response?.status)) {
+        this.stopLive(); this.liveSub = null; this.liveSources = []; this.liveRows = [];
+        this.liveSource.replaceChildren(); this.liveSubscriptions.replaceChildren();
+        this.liveResults.replaceChildren(); this.livePreview.hidden = true;
+        this.liveManaged.replaceChildren(); this.livePending?.clear(); this.livePickKeys?.clear();
+      }
+    },
+    async loadLive() {
+      this.stopLive();
+      const generation = this.liveGeneration;
+      const [sources, subscriptions] = await Promise.all([S.api('/sources'), S.api('/subscriptions')]);
+      if (generation !== this.liveGeneration || this.liveBox.hidden || this.host.hidden) return;
+      const sourceId = this.liveSource.value;
+      this.liveSources = sources.sources || [];
+      this.liveSource.replaceChildren(E('option', {value: ''}, 'Choose a source…'),
+        ...this.liveSources.map((source) => E('option', {value: source.id},
+          source.label + (source.origin === 'native' ? ' · original' : source.origin === 'managed' ? ' · uploaded copy' : source.kind === 'examples' ? ' · synthetic examples' : ' · ' + source.kind))));
+      if (this.liveSources.some((s) => s.id === sourceId)) this.liveSource.value = sourceId;
+      else {
+        const title = this.querySelector('#studio-title').value;
+        const template = this.templates.find((t) => t.title === title);
+        this.liveSource.value = this.liveSources.find((s) => s.template_id === template?.id)?.id || '';
+      }
+      this.liveSourceDetails(); this.liveInputOptions();
+      this.liveManaged.replaceChildren(E('option', {value: ''}, 'Choose an uploaded file or folder…'),
+        ...(this.resources?.datasets || []).map((r) => E('option', {value: r.id}, r.title || r.id)));
+      this.liveList = subscriptions.subscriptions || [];
+      const id = this.liveSub?.id;
+      this.liveSubscriptions.replaceChildren(E('option', {value: ''}, 'Choose a saved stream…'),
+        ...this.liveList.map((s) => E('option', {value: s.id},
+          (this.workflows.find((w) => w.id === s.workflow_id)?.title || 'Workflow') + ' · revision ' + s.workflow_revision + ' · ' + s.state + ' · ' + s.id.slice(0, 8))));
+      const next = this.liveList.find((s) => s.id === id) || this.liveList.find((s) => s.workflow_id === this.workflowId);
+      this.selectLive(next?.id || '');
+    },
+    liveInputOptions() {
+      const old = this.liveInput.value, inputs = [], root = this.rootGraph();
+      const walk = (graph, prefix = '', seen = []) => {
+        for (const n of graph.nodes || []) {
+          const id = prefix + n.id;
+          if (n.type === 'stream.record') inputs.push({id, title: n.name || id});
+          if (n.type === 'group' && !seen.includes(n.group)) {
+            const group = root.groups[n.group];
+            if (group) walk(group, id + '/', [...seen, n.group]);
+          }
+        }
+      };
+      walk(root);
+      this.liveInput.replaceChildren(E('option', {value: ''}, 'Choose a record input…'), ...inputs.map((n) => E('option', {value: n.id}, n.title)));
+      this.liveInput.value = inputs.some((n) => n.id === old) ? old : inputs[0]?.id || '';
+    },
+    liveSourceDetails() {
+      const source = this.liveSources?.find((s) => s.id === this.liveSource.value);
+      this.liveSourceInfo.replaceChildren();
+      if (!source) return;
+      this.liveSourceInfo.append(E('p', {}, source.available === false ? 'Unavailable: ' + (source.requirements || []).join('; ') :
+        source.origin === 'native' ? 'Watches the original selected file or folder.' : source.origin === 'managed' ? 'Watches the uploaded managed copy.' : source.kind === 'examples' ? 'Registered synthetic records; send one explicitly after starting.' : 'Source provider: ' + source.kind));
+      if (source.requirements?.length && source.available !== false) this.liveSourceInfo.append(E('p', {}, source.requirements.join('; ')));
+    },
+    async liveMutation(path, body) {
+      const signature = JSON.stringify([path, body]);
+      this.livePending ||= new Map();
+      if (!this.livePending.has(signature)) this.livePending.set(signature, {...body, idempotency_key: S.id()});
+      try {
+        const result = await S.api(path, this.livePending.get(signature));
+        this.livePending.delete(signature);
+        return result;
+      } catch (error) {
+        if (error.response?.status === 409) {
+          this.livePending.delete(signature);
+          if (this.liveSub) this.liveSub = (await S.api('/subscriptions/' + encodeURIComponent(this.liveSub.id))).subscription;
+          error.message = 'This stream changed elsewhere. Review its current state, then choose the action again.';
+        }
+        throw error;
+      }
+    },
+    async createLive() {
+      await this.save(); this.liveInputOptions();
+      const source = this.liveSources?.find((s) => s.id === this.liveSource.value);
+      if (!source || source.available === false || !this.liveInput.value) throw Error('Choose an available source and a record input.');
+      const result = await this.liveMutation('/subscriptions', {workflow_id: this.workflowId, revision: this.revision,
+        source_id: source.id, input_node: this.liveInput.value, output_nodes: [], destinations: [{kind: 'live'}]});
+      this.liveSub = result.subscription;
+      await this.loadLive();
+      this.liveNote.textContent = 'Stream created paused. Start explicitly when the source and model are ready.';
+    },
+    async createManagedSource() {
+      if (!this.liveManaged.value) throw Error('Choose an uploaded file or folder.');
+      const r = await this.liveMutation('/sources', {kind: 'watched_file', resource_id: this.liveManaged.value});
+      await this.loadLive(); this.liveSource.value = r.source.id; this.liveSourceDetails();
+    },
+    async pickLiveSource(mode) {
+      this.livePickKeys ||= new Map();
+      if (!this.livePickKeys.has(mode)) this.livePickKeys.set(mode, S.id().replaceAll('-', ''));
+      const r = await S.api('/sources/pick', {mode, request_key: this.livePickKeys.get(mode)});
+      this.livePickKeys.delete(mode);
+      const selected = await window.__TAURI__.core.invoke('choose_studio_watch_source', {requestId: r.request_id, nonce: r.nonce});
+      await this.loadLive();
+      if (selected?.id) { this.liveSource.value = selected.id; this.liveSourceDetails(); }
+    },
+    selectLive(id) {
+      this.stopLive(); this.liveSub = this.liveList?.find((s) => s.id === id) || null;
+      this.liveSubscriptions.value = this.liveSub?.id || '';
+      this.liveRows = []; this.liveCursor = null; this.livePreview.hidden = true;
+      this.liveResults.replaceChildren(); this.liveRenderActions();
+      if (this.liveSub) this.pollLive(true);
+    },
+    liveRenderActions() {
+      if (!this.liveActions) return;
+      this.liveActions.replaceChildren();
+      const sub = this.liveSub;
+      if (!sub) return;
+      const source = this.liveSources?.find((s) => s.id === sub.source_id);
+      this.liveActions.append(E('p', {}, 'Saved revision ' + sub.workflow_revision + ' · editor revision ' + this.revision + ' · ' + sub.state + (sub.reason ? ' · ' + sub.reason : '') + ' · source: ' + (source?.label || 'Unavailable source')));
+      this.liveActions.append(E('p', {}, 'Start continues in the daemon after you close this tab. Pause stops new intake and dispatch; admitted runs finish. Edits apply to future streams.'));
+      const action = (label, fn, disabled = false) => this.liveActions.append(E('button', {type: 'button', disabled: this.liveBusy || disabled, onclick: () => this.livePerform(fn)}, label));
+      if (sub.state === 'active') action('Pause stream', () => this.liveAction('pause'));
+      else if (sub.state !== 'cancelled') {
+        action(sub.can_resume ? 'Resume stream' : 'Start stream', () => this.liveAction(sub.can_resume ? 'resume' : 'start'), !source || source.available === false);
+      }
+      if (sub.state !== 'cancelled') action('Cancel stream', () => this.liveAction('cancel'));
+      if (source?.kind === 'examples') {
+        const sample = E('select', {'aria-label': 'Registered synthetic sample'}, ...(source.samples || []).map((s) => E('option', {value: s.id}, s.label)));
+        this.liveActions.append(sample);
+        action('Preview synthetic sample', async () => {
+          const generation = this.liveGeneration;
+          const result = await S.api('/subscriptions/' + encodeURIComponent(sub.id) + '/preview?sample_id=' + encodeURIComponent(sample.value));
+          if (this.liveSub?.id !== sub.id || generation !== this.liveGeneration) return;
+          this.livePreview.textContent = JSON.stringify(result.record, null, 2); this.livePreview.hidden = false;
+        });
+        action('Send synthetic sample', async () => {
+          await this.liveMutation('/subscriptions/' + encodeURIComponent(sub.id) + '/events', {sample_id: sample.value});
+          await this.pollLive();
+        }, sub.state !== 'active');
+      }
+      const counts = sub.counts || {};
+      this.liveActions.append(E('p', {}, ['queued', 'running', 'done', 'failed', 'interrupted'].map((key) => key + ': ' + (counts[key] || 0)).join(' · ')));
+    },
+    async liveAction(action) {
+      const sub = this.liveSub, generation = this.liveGeneration;
+      const result = await this.liveMutation('/subscriptions/' + encodeURIComponent(sub.id) + '/' + action, {revision: sub.revision});
+      if (this.liveSub?.id !== sub.id || generation !== this.liveGeneration) return;
+      this.liveSub = result.subscription;
+      this.liveNote.textContent = action === 'cancel' ? 'Stream cancelled. Uncertain outcomes remain interrupted; they are not repeated.' : 'Stream ' + this.liveSub.state + '.';
+      await this.pollLive();
+    },
+    liveEvent(row) {
+      const summaries = [];
+      for (const output of row.result?.outputs || []) {
+        if (!['decision', 'signal'].includes(output.port) || !output.value || typeof output.value !== 'object') continue;
+        const value = output.value, decision = output.port === 'signal' ? value.decision : value;
+        summaries.push(E('p', {}, output.node + ' · ' + output.port + ': ' +
+          (value.outcome || decision?.choice || 'review') +
+          (decision?.abstained ? ' · abstained / needs review' : '') +
+          (typeof decision?.confidence === 'number' ? ' · uncalibrated score ' + decision.confidence.toFixed(3) : '') +
+          (value.reason_codes?.length ? ' · ' + value.reason_codes.join(', ') : '')));
+      }
+      return E('article', {class: 'studio-live-event'},
+        E('h3', {}, 'Event ' + row.sequence + ' · ' + row.state), ...summaries,
+        ...(row.error ? [E('p', {}, typeof row.error === 'string' ? row.error : JSON.stringify(row.error))] : []),
+        E('details', {}, E('summary', {}, 'Typed outputs and original record'), E('pre', {}, JSON.stringify(row.result || {}, null, 2))));
+    },
+    async pollLive(tail = false) {
+      clearTimeout(this.livePoll);
+      const sub = this.liveSub, generation = this.liveGeneration, request = this.liveRequest = (this.liveRequest || 0) + 1;
+      if (!sub || this.host.hidden || this.liveBox.hidden) return;
+      const path = '/subscriptions/' + encodeURIComponent(sub.id);
+      try {
+        const [status, page] = await Promise.all([S.api(path), S.api(path + '/events?' + (tail || this.liveCursor === null ? 'tail=1' : 'after=' + encodeURIComponent(this.liveCursor)) + '&limit=50')]);
+        if (generation !== this.liveGeneration || request !== this.liveRequest || this.liveSub?.id !== sub.id) return;
+        this.liveSub = status.subscription;
+        const rows = new Map((this.liveRows || []).map((r) => [r.id, r]));
+        for (const row of page.events || []) rows.set(row.id, row);
+        this.liveRows = [...rows.values()].sort((a, b) => a.sequence - b.sequence).slice(-100);
+        const unfinished = this.liveRows.find((r) => !['done', 'failed', 'cancelled', 'interrupted', 'quarantined'].includes(r.state));
+        this.liveCursor = unfinished ? unfinished.sequence - 1 : page.next_cursor;
+        this.liveResults.replaceChildren(E('p', {}, 'Showing the latest ' + this.liveRows.length + ' events. Reads do not advance the source.'),
+          ...this.liveRows.map((row) => this.liveEvent(row)));
+        this.liveRenderActions();
+      } catch (error) {
+        if (generation !== this.liveGeneration || request !== this.liveRequest) return;
+        this.liveError(error); return;
+      }
+      this.livePoll = setTimeout(() => this.pollLive(), 1200);
+    },
+  });
+})();
+</script>
