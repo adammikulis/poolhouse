@@ -19,7 +19,8 @@ COMPONENTS = ("fleet-model", "vocabulary-model", "fleet-nav", "sign-in", "launch
               "studio-styles", "studio-model", "studio-persistence", "studio-bindings", "studio-editor", "studio-sweeps", "studio-targets", "studio-setup", "studio-managed", "studio-live", "studio-delivery", "studio-webhook", "studio-producer", "studio-records", "studio-branches", "studio-groups", "studio-runs", "studio-sharing", "studio-nodes", "studio-insertion", "studio-placement", "studio-canvas", "studio-view", "training-view", "tools-view", "benchmarks-view", "gym-scene-controls",
               "gym-drone-camera", "gym-scene", "gym-recordings",
               "gym-world-options", "gym-model-options", "gym-view", "close-sheet")
-MODULES = {"settings-state": frozenset({"settings-view"}),
+MODULES = {"studio-header": frozenset({"studio-view"}),
+           "settings-state": frozenset({"settings-view"}),
            "studio-n8n": frozenset({"studio-editor", "studio-view"}),
            "output-token-slider": frozenset({"chat-view", "settings-view", "studio-model"}),
            "task-publishing": frozenset({"tasks-view"}),

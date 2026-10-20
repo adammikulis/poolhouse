@@ -4,40 +4,32 @@
     hidden
     aria-label="Studio experiment workspace"
   >
-    <header class="studio-heading">
-      <h1>Studio</h1>
-      <input
-        id="studio-title"
-        aria-label="Workflow title"
-        value="Untitled experiment"
-      /><select id="studio-workflows" aria-label="Saved workflows">
-        <option value="">New workflow</option></select
-      ><button id="studio-save" type="button">Save</button
-      ><button id="studio-run" type="button" class="studio-primary">
-        Run workflow
-      </button>
+    <h1 class="studio-page-title">Studio</h1>
+    <header class="studio-heading" aria-label="Workflow identity and primary actions">
+      <input id="studio-title" aria-label="Workflow title" value="Untitled experiment" />
+      <button id="studio-new" type="button">New</button>
+      <button id="studio-save" type="button">Save</button>
+      <button id="studio-run" type="button" class="studio-primary">Run workflow</button>
     </header>
-    <div class="studio-toolbar" role="toolbar" aria-label="Workflow editing">
-      <button id="studio-live" type="button" aria-expanded="false" disabled>Live sources</button
-      ><button id="studio-new" type="button">New</button
-      ><button id="studio-undo" type="button">Undo</button
-      ><button id="studio-redo" type="button">Redo</button
-      ><button id="studio-copy" type="button">Copy</button
-      ><button id="studio-paste" type="button">Paste</button
-      ><button id="studio-delete" type="button">Delete</button
-      ><button id="studio-layout" type="button">Arrange</button
-      ><button id="studio-group" type="button">Group selection</button
-      ><button id="studio-outline-toggle" type="button" aria-pressed="false">
-        Outline</button
-      ><button id="studio-share" type="button">Share</button
-      ><button id="studio-import" type="button">Import</button
-      ><button id="studio-package-library" type="button">Pool library</button
-      ><input
-        id="studio-import-file"
-        type="file"
-        accept="application/json,.json"
-        hidden
-      />
+    <div class="studio-toolbar studio-command-bar" role="toolbar" aria-label="Workflow editing">
+      <details class="studio-command"><summary>Open workflow</summary><div>
+        <label>Saved workflows<select id="studio-workflows" aria-label="Saved workflows"><option value="">New workflow</option></select></label>
+      </div></details>
+      <details class="studio-command"><summary>Edit</summary><div>
+        <button id="studio-undo" type="button">Undo</button><button id="studio-redo" type="button">Redo</button>
+        <button id="studio-copy" type="button">Copy</button><button id="studio-paste" type="button">Paste</button>
+        <button id="studio-delete" type="button">Delete</button><button id="studio-group" type="button">Group selection</button>
+      </div></details>
+      <details class="studio-command"><summary>View</summary><div>
+        <button id="studio-layout" type="button">Arrange</button>
+        <button id="studio-outline-toggle" type="button" aria-pressed="false">Outline</button>
+        <button id="studio-live" type="button" aria-expanded="false" disabled>Live sources</button>
+      </div></details>
+      <details class="studio-command"><summary>Share and import</summary><div>
+        <button id="studio-share" type="button">Share</button><button id="studio-import" type="button">Import</button>
+        <button id="studio-package-library" type="button">Pool library</button>
+      </div></details>
+      <input id="studio-import-file" type="file" accept="application/json,.json" hidden />
     </div>
     <div class="studio-group-path" id="studio-group-path"></div>
     <p class="studio-status" role="status" aria-live="polite"></p>
@@ -134,8 +126,9 @@
           return validate.call(this);
         };
       }
+      disconnectedCallback() { document.removeEventListener("click", this.headerOutside); }
       connectedCallback() {
-        if (this.wired) return;
+        if (this.wired) { document.addEventListener("click", this.headerOutside); return; }
         this.wired = true;
         this.host = this.querySelector("section");
         this.note = this.querySelector(".studio-status");
@@ -207,6 +200,7 @@
         this.setupSharing();
         this.setupLive();
         this.setupWorkspaceTabs();
+        this.setupHeaderCommands();
         M.onRoute((route) => {
           this.loadContext++;
           this.host.hidden = route !== "studio";
@@ -473,6 +467,7 @@
     S.installN8n(StudioView.prototype);
     S.installSharing(StudioView.prototype);
     window.StudioView = StudioView;
+    S.installHeader(StudioView.prototype);
     customElements.define("studio-view", StudioView);
   })();
 </script>

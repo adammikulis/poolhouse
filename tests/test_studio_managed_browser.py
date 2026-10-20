@@ -162,7 +162,7 @@ def test_live_sources_wait_for_successful_current_workflow_load(live_page, statu
     checked = []
     def resources(route):
         response = route.fetch()
-        expect(page.get_by_role('button', name='Live sources', exact=True)).to_be_disabled()
+        expect(page.locator('#studio-live')).to_be_disabled()
         checked.append(True)
         if status == 200:
             route.fulfill(response=response)
@@ -175,7 +175,7 @@ def test_live_sources_wait_for_successful_current_workflow_load(live_page, statu
         expect(page.get_by_label('Live record input')).not_to_have_value('')
     else:
         expect(page.locator('.studio-status')).to_contain_text('Resources unavailable')
-        expect(page.get_by_role('button', name='Live sources', exact=True)).to_be_disabled()
+        expect(page.locator('#studio-live')).to_be_disabled()
     assert checked
     assert not any(url.endswith('/sources') or url.endswith('/start') for url, _ in posts)
     assert not errors

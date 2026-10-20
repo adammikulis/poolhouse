@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 from browser_expect import expect
+from studio_commands import studio_command
 from test_fleet_ui import Serving
 from test_studio_canvas_browser import studio_browser  # noqa: F401
 
@@ -136,13 +137,13 @@ def test_guard_blocks_branch_and_partial_copy_export_keeps_gate(synthetic_model,
     assert 'block' in synthetic_model
     assert len(submissions) == 1
     focus_node(page, 'block')
-    page.get_by_role('button', name='Copy', exact=True).click()
-    page.get_by_role('button', name='Paste', exact=True).click()
+    studio_command(page, 'Copy').click()
+    studio_command(page, 'Paste').click()
     copied = page.locator('studio-view').evaluate('editor => editor.clipboard')
     assert {node['id'] for node in copied['nodes']} == {'record', 'model', 'assess', 'block'}
     assert copied['controls'] == [{'source': {'node': 'assess', 'port': 'block'}, 'target': {'node': 'block'}}]
     focus_node(page, 'block')
-    page.get_by_role('button', name='Share', exact=True).click()
+    studio_command(page, 'Share').click()
     page.get_by_label('Package content').select_option('selection')
     exported = page.locator('studio-view').evaluate('editor => editor.sharingGraph()')
     assert {node['id'] for node in exported['nodes']} == {'record', 'model', 'assess', 'block'}
@@ -154,9 +155,9 @@ def test_guard_blocks_branch_and_partial_copy_export_keeps_gate(synthetic_model,
     assert {node['id'] for node in package['graph']['nodes']} == {'record', 'model', 'assess', 'block'}
     assert all(not node['bindings'] for node in package['graph']['nodes'])
     focus_node(page, 'assess')
-    page.get_by_role('button', name='Delete', exact=True).click()
+    studio_command(page, 'Delete').click()
     focus_node(page, 'block')
-    page.get_by_role('button', name='Share', exact=True).click()
+    studio_command(page, 'Share').click()
     page.get_by_label('Package content').select_option('selection')
     unresolved = page.locator('studio-view').evaluate('editor => editor.sharingGraph()')
     assert unresolved['controls'] == copied['controls']
@@ -168,7 +169,7 @@ def test_group_required_control_survives_nested_edit_copy_and_export(synthetic_m
     page, errors, _submissions = decision_page
     choose_template(page, 'Prompt injection check')
     focus_node(page, 'block')
-    page.get_by_role('button', name='Group selection', exact=True).click()
+    studio_command(page, 'Group selection').click()
     group = page.locator('.studio-node').filter(has=page.get_by_role('button', name='Open group'))
     expect(group).to_have_count(1)
     group_id = group.get_attribute('data-node-id')
@@ -189,7 +190,7 @@ def test_group_required_control_survives_nested_edit_copy_and_export(synthetic_m
     page.get_by_role('button', name='Remove branch block', exact=True).first.click()
     group.get_by_role('button', name='Open group').click()
     focus_node(page, 'block')
-    page.get_by_role('button', name='Group selection', exact=True).click()
+    studio_command(page, 'Group selection').click()
     nested = page.locator('.studio-node')
     nested_id = nested.get_attribute('data-node-id')
     nested_definition = page.locator('studio-view').evaluate('editor => editor.graph.groups[editor.graph.nodes[0].group]')
@@ -198,11 +199,11 @@ def test_group_required_control_survives_nested_edit_copy_and_export(synthetic_m
     assert forwarded == {'block': [{'node': nested_id, 'port': 'block'}]}
     nested.get_by_role('button', name='Open group').click()
     focus_node(page, 'block')
-    page.get_by_role('button', name='Copy', exact=True).click()
+    studio_command(page, 'Copy').click()
     copied = page.locator('studio-view').evaluate('editor => editor.clipboard')
     assert {node['id'] for node in copied['nodes']} == {'record', 'model', 'assess', group_id}
     assert any(edge['target'].get('port') == 'block' for edge in copied['controls'])
-    page.get_by_role('button', name='Share', exact=True).click()
+    studio_command(page, 'Share').click()
     page.get_by_label('Package content').select_option('selection')
     expect(page.get_by_label('Package content')).to_contain_text('Containing controlled group')
     payload = page.locator('studio-view').evaluate('editor => editor.sharingGraph()')
@@ -224,7 +225,7 @@ def test_mixed_group_gate_skips_only_intended_target(synthetic_model, decision_p
     focus_node(page, 'allow')
     page.locator('.studio-node[data-node-id="assessment"]').focus()
     page.keyboard.press('Shift+Enter')
-    page.get_by_role('button', name='Group selection', exact=True).click()
+    studio_command(page, 'Group selection').click()
     group = page.locator('.studio-node').filter(has=page.get_by_role('button', name='Open group'))
     group_id = group.get_attribute('data-node-id')
     definition = page.locator('studio-view').evaluate('editor => editor.graph.groups[editor.graph.nodes.find(n => n.type === "group").group]')
