@@ -9,17 +9,20 @@
           return {
             graph: S.clone(this.rootGraph()),
             path: this.context.map((c) => c.node.id),
+            title: this.querySelector("#studio-title").value,
           };
         },
         restoreSnapshot(saved) {
-          this.openContext(saved.graph, saved.path);
+          this.openContext(S.clone(saved.graph), saved.path);
+          this.querySelector("#studio-title").value = saved.title;
         },
         openContext(graph, path) {
           this.graph = graph;
           this.context = [];
           for (const id of path) {
-            const node = this.graph.nodes.find((n) => n.id === id),
-              definition = this.graph.groups[node.group];
+            const node = this.graph.nodes.find((n) => n.id === id);
+            if (!node || !this.graph.groups[node.group]) break;
+            const definition = this.graph.groups[node.group];
             this.context.push({ parent: this.graph, node, definition });
             this.graph = {
               nodes: definition.nodes,
@@ -242,8 +245,7 @@
           };
           this.normalize();
           this.selected.clear();
-          this.undoStack = [];
-          this.redoStack = [];
+          this.historyAnchor();
           this.render();
         },
         leaveGroup() {
@@ -252,8 +254,7 @@
           const left = this.context.pop();
           this.graph = left.parent;
           this.selected = new Set([left.node.id]);
-          this.undoStack = [];
-          this.redoStack = [];
+          this.historyAnchor();
           this.changed();
         },
         groupPath() {

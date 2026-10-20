@@ -143,14 +143,20 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
         download_sources: cur.download_sources || "both",
         context: cur.context || 8192,
         always_show_advanced: cur.always_show_advanced === true,
+        studio_undo_steps: cur.studio_undo_steps ?? 32,
         chat_max_output_tokens: cur.chat_max_output_tokens,
       };
       M.setPreferences({...cur, resolved_theme:s.resolved_theme});
+      const undo = el("input", {type:"number", min:"1", max:"128", step:"1", "aria-label":"Studio undo steps"});
+      undo.value = this.pick.studio_undo_steps;
+      undo.oninput = () => { this.pick.studio_undo_steps = Number(undo.value); };
       this.querySelector("#settings-interface").replaceChildren(
         el("h2", {}, "Interface"),
         this.check("always_show_advanced", "Always show advanced options",
           "Keep detailed model, training, tool, and maintenance settings expanded across the workspace."),
-        el("p", {class:"hint"}, "Start with the essential controls. Open advanced options as you learn, or keep them visible here. Saved on this device."));
+        el("p", {class:"hint"}, "Start with the essential controls. Open advanced options as you learn, or keep them visible here. Saved on this device."),
+        el("label", {}, "Studio undo steps", undo),
+        el("p", {class:"hint"}, "Keep 1–128 editing steps for each undo and redo history (default 32). Reducing this immediately discards older steps. Runs and tool actions cannot be undone."));
       this.querySelector("#settings-sub").textContent =
         `${s.name}${s.machine?.gpu ? " — " + s.machine.gpu : ""}`;
       const nav = document.querySelector("fleet-nav");

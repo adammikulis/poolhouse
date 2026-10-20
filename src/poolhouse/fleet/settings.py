@@ -49,6 +49,8 @@ class Settings:
     download_sources: str = ""
     chat_max_output_tokens: int | None = 8192
     always_show_advanced: bool = False
+    studio_undo_steps: int = 32
+    """The nearest editing states retained independently for Studio undo and redo (1-128)."""
     appearance: dict[str, Any] = field(default_factory=default_appearance)
     context: int = 8192
     """How much of a conversation a model is given to read. Costs memory per token."""
@@ -74,6 +76,9 @@ class Settings:
 
 def _build(raw: dict[str, Any]) -> Settings:
     values = {k: v for k, v in raw.items() if k in Settings.__dataclass_fields__}
+    if "studio_undo_steps" in values and (type(values["studio_undo_steps"]) is not int
+                                          or not 1 <= values["studio_undo_steps"] <= 128):
+        raise ValueError("Studio undo steps must be an integer from 1 to 128.")
     if "appearance" in values:
         values["appearance"] = validate_appearance(values["appearance"])
     if "features" in values:
@@ -162,12 +167,15 @@ def apply_preferences(settings: Settings, request: dict[str, Any]) -> str:
     """Validate and apply interface and conversation defaults."""
     if "always_show_advanced" in request and not isinstance(request["always_show_advanced"], bool):
         return "Always show advanced options must be a boolean."
+    if "studio_undo_steps" in request and (type(request["studio_undo_steps"]) is not int
+                                          or not 1 <= request["studio_undo_steps"] <= 128):
+        return "Studio undo steps must be an integer from 1 to 128."
     limit = request.get("chat_max_output_tokens")
     if limit is not None and (type(limit) is not int or limit < 1):
         return "Default output tokens must be null or a positive integer."
     if "download_sources" in request and request["download_sources"] not in ("internet", "lan", "both"):
         return "Choose Internet only, LAN only, or Both."
-    values = {key: request[key] for key in ("always_show_advanced", "chat_max_output_tokens", "download_sources")
+    values = {key: request[key] for key in ("always_show_advanced", "chat_max_output_tokens", "download_sources", "studio_undo_steps")
               if key in request}
     if "context" in request:
         try:

@@ -54,3 +54,24 @@ def test_invalid_output_default_does_not_apply_other_preferences(tmp_path, limit
     assert "positive integer" in result["error"]
     assert ui.settings.always_show_advanced is False
     assert ui.settings.chat_max_output_tokens == 8192
+
+
+@pytest.mark.parametrize("limit", [1, 32, 128])
+def test_studio_history_limit_is_persisted_and_idempotent(tmp_path, limit):
+    path = tmp_path / "settings.json"
+    ui = UI(name="demo-device")
+    ui.settings, ui.settings_path = Settings(), path
+    assert ui.settings.studio_undo_steps == 32
+    for _ in range(2):
+        assert "error" not in ui.apply_prefs({"studio_undo_steps": limit})
+        assert Settings.load(path).studio_undo_steps == limit
+
+
+@pytest.mark.parametrize("limit", [0, 129, -1, True, False, None, "32", 1.5, [], {}])
+def test_invalid_studio_history_limit_is_atomic(tmp_path, limit):
+    ui = UI(name="demo-device")
+    ui.settings, ui.settings_path = Settings(), tmp_path / "settings.json"
+    result = ui.apply_prefs({"studio_undo_steps": limit, "always_show_advanced": True})
+    assert "1 to 128" in result["error"]
+    assert ui.settings.studio_undo_steps == 32 and not ui.settings.always_show_advanced
+    assert not ui.settings_path.exists()

@@ -32,8 +32,7 @@
           this.querySelector("#studio-title").value =
             workflow?.title || "Untitled experiment";
           this.selected.clear();
-          this.undoStack = [];
-          this.redoStack = [];
+          this.resetHistory();
           this.dirty = false;
           this.workflowList();
           this.resetDeliveryDraft();
@@ -49,11 +48,59 @@
           this.graph.layout.nodes ||= {};
           this.graph.layout.viewport ||= { x: 0, y: 0, zoom: 1 };
         },
-        checkpoint() {
-          this.undoStack.push(this.snapshot());
-          this.redoStack = [];
+        historyLimit() {
+          const value = window.fleetModel.preferences.studio_undo_steps;
+          return Number.isInteger(value) && value >= 1 && value <= 128 ? value : 32;
         },
-        changed(paint = true) {
+        trimHistory() {
+          const limit = this.historyLimit();
+          for (const stack of [this.undoStack, this.redoStack])
+            if (stack.length > limit) stack.splice(0, stack.length - limit);
+        },
+        resetHistory() {
+          this.undoStack = [];
+          this.redoStack = [];
+          this.historyCurrent = this.snapshot();
+          this.historyPending = null;
+          if (!this.historyPreferences) {
+            this.historyPreferences = () => { this.trimHistory(); this.render(); };
+            window.addEventListener("fleet-preferences", this.historyPreferences);
+          }
+        },
+        historyAnchor() {
+          this.historyCurrent = this.snapshot();
+          this.historyPending = null;
+        },
+        checkpoint() {
+          this.historyPending ||= this.snapshot();
+        },
+        recordHistory(amend = false) {
+          const next = this.snapshot(), previous = this.historyPending || this.historyCurrent;
+          const content = value => JSON.stringify({graph:value.graph, title:value.title});
+          const different = !this.historyRestoring && previous && content(previous) !== content(next);
+          if (different) {
+            if (!amend) this.undoStack.push(previous);
+            this.redoStack = [];
+          }
+          this.historyCurrent = next;
+          this.historyPending = null;
+          this.trimHistory();
+          return !!different && !amend;
+        },
+        undo(redo = false) {
+          this.trimHistory();
+          const from = redo ? this.redoStack : this.undoStack,
+            to = redo ? this.undoStack : this.redoStack;
+          if (!from.length) return;
+          to.push(this.snapshot());
+          this.restoreSnapshot(from.pop());
+          this.selected.clear();
+          this.historyPending = null;
+          this.historyRestoring = true;
+          try { this.changed(); } finally { this.historyRestoring = false; }
+        },
+        changed(paint = true, amend = false) {
+          const recorded = this.recordHistory(amend);
           this.dirty = true;
           this.editSerial++;
           this.validationErrors = [];
@@ -64,6 +111,7 @@
             () => this.perform(() => this.save()),
             700,
           );
+          return recorded;
         },
         async save() {
           this.validateEditorControls();
