@@ -99,14 +99,16 @@ and a charter that lists a key at a higher level is refused. A key added later c
 for a class of act only at or above the charter's floor for it** (routine, sensitive, governance; by default the lowest level present for routine and
 the highest for sensitive and governance, so a pool founded by a phone keeps every floor at `phone`). Removing a member is a sensitive act. What only
 `computer` keys sign waits: a governance act is held seven days, and an irreversible data act waits a day for a key to cancel it. A weak key may sign only the end of a delegate (a
-reduction of power); it counts toward nothing else, because it proves less than that a person was there. `pool_status` says "weak keys only" for a pool with no strong admin.
+reduction of power); it counts toward nothing else, because it proves less than that a person was there. `pool_status` carries the `levels` of the listed keys, the `floors` and `approved_from`; a charter that lists no admin key above `weak` founds no pool.
 
 **Roles.** `admin` signs and counts as above. `recovery` is a key kept offline (a phrase the person writes down, or a second phone
 put away). **The recovery key counts toward no immediate threshold, routine or sensitive**: the phrase alone can never sign an
-admin change or a reissue, so its time lock cannot be skipped. It signs exactly three acts: `recover` (time-locked, 1.8),
-`recover_cancel` for its own pending recover and `recovery_replace` (time-locked like a recover). It is removed or replaced only by
-its own signature, or by a reissue, which every device holds for its own person when the admin set changes (R6). A thief holding an
-admin key therefore cannot quietly strip the recovery path.
+admin change or a reissue, so its time lock cannot be skipped. It signs exactly four acts: `recover` (time-locked, 1.8),
+`recover_cancel` for its own pending recover, `recovery_replace` (time-locked like a recover) and a `cancel` of a `recovery_replace` or of
+the removal of itself. It is removed or replaced by an
+`admin_remove` or a `recovery_replace`, each held seven days whoever signs it, and the recovery key's `cancel` ends either; a reissue
+replaces it too, which every device holds for its own person when the admin set changes (R6). A thief holding an admin key therefore
+starts the strip of the recovery path but cannot finish it before the recovery key or a key at the floor has had seven days to cancel it.
 
 **Thresholds** count distinct people, each by a key at or above the floor of the class. Two thresholds (a governance act takes the sensitive one):
 
@@ -516,7 +518,7 @@ Rust, `app/poolhouse-node/tests/governance.rs` and `reissue.rs`. The numbers in 
 * [1] the recovery key alone signs no `admin_add`, `handoff`, `remove` or `admin_remove` at threshold 1; its `recover` takes effect
   only after the delay measured on the device's clock from first sight, whatever `at_ms` says (a backdated `recover`, and a device
   whose wall clock is moved a month forward, do not shorten it); a strong admin's `cancel` and the key's own `recover_cancel` end it;
-  removing the recovery key needs its own signature or a held reissue; an `admin_remove` takes effect only after its hold and the
+  removing the recovery key is an `admin_remove` held seven days that the recovery key's `cancel` ends, or a held reissue; an `admin_remove` takes effect only after its hold and the
   removed key's `veto` cancels it and opens a dispute that pauses admin-set acts;
 * [2] an `admin_add` without the added key's acceptance is refused; a pool cannot list another person's public key; the scope
   `admin:<fp>` matches a pool only where the key accepted;
@@ -582,7 +584,7 @@ reissue**, started only by an explicit call, never by the node on start, and **i
 
 | # | Finding | Fix in one line | Where | Test |
 |---|---|---|---|---|
-| 1 | Recovery key defeats thresholds; delays trust signer time | Recovery key counts for no immediate threshold, is removed only by its own signature, key removals are held and vetoable, every delay is monotonic from first sight | 1.3, 1.5, 1.8 | 1.13 [1] |
+| 1 | Recovery key defeats thresholds; delays trust signer time | Recovery key counts for no immediate threshold, is removed or replaced only by an act held seven days that it can cancel, key removals are held and vetoable, every delay is monotonic from first sight | 1.3, 1.5, 1.8 | 1.13 [1] |
 | 2 | Admin scope spoofing | A key is listed only with its own acceptance; `admin:<fp>` matches only accepted keys; check words, never labels | 1.3, 1.5, 2 | 1.13 [2] |
 | 3 | Agent-reachable admin key | Only strong (per-signature presence) keys count for sensitive acts, removals and cancels; the laptop's key is weak | 1.3 | 1.13 [3] |
 | 4 | Code-execution regression | Per-device shard allow list kept, default the owner's own devices, never granted by `inbound_consent` or the bundle | 1.7, 5 | `serve.rs`, `shard.rs` |

@@ -112,7 +112,7 @@ def _missing(gov: dict) -> str:
     if gov.get("dispute"):
         return str(gov["dispute"]["say"])
     if gov.get("waiting_for_signers"):
-        return "A change to this pool is waiting for a signature from your phone."
+        return "A change to this pool is waiting for more approvals from the keys that govern it."
     return ""
 
 

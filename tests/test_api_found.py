@@ -83,3 +83,12 @@ def test_found_with_a_phone_that_cannot_sign_a_charter_yet_says_so_and_changes_n
 def test_join_without_a_code_or_a_fingerprint_says_what_is_needed(workspace_node):
     with pytest.raises(ph.Error, match=r"code|fingerprint"):
         ph.pool.join("192.168.1.9")
+
+
+def test_a_change_waiting_for_signers_does_not_ask_for_a_phone():
+    from poolhouse.api.pool import _missing
+
+    waiting = [{"act": "a", "have": 1, "need": 2, "why": "it needs 2 signers and has 1"}]
+    said = _missing({"mode": "governed", "waiting_for_signers": waiting})
+    assert "phone" not in said and "approvals from the keys that govern it" in said, said
+    assert _missing({"mode": "governed", "waiting_for_signers": []}) == ""

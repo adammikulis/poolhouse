@@ -1,4 +1,4 @@
-"""Steps about the level of the person's key: a pool a computer's key governs, and what only a computer's key signs waits.
+"""Steps about the level of the person's key: a pool a computer's key governs, what only a computer's key signs waits, and the floors.
 
 The key is planted in each node's person keys at the level a step names, the way `wire.plant_key` writes it: the level is recorded, and
 nothing behind it is a phone, a protected helper or the computer's own prompt. These steps prove what the pool does with a key at that
@@ -12,6 +12,7 @@ from pool_check.world import World, eventually
 
 PLANTED = "the person's key was planted at level {level}, not custody"
 SEVEN_DAYS_S = 7 * 24 * 3600
+ONE_DAY_S = 24 * 3600
 
 
 def founds_computer_only(world: World) -> str:
@@ -45,7 +46,7 @@ def removes_computer_only(world: World) -> str:
     return f"{victim.name} was removed by a computer-level key and {len(rest)} members record it; " + PLANTED.format(level="computer")
 
 
-def a_floor_holds_what_a_computer_alone_signed(world: World) -> str:
+def a_hold_waits_what_a_computer_alone_signed(world: World) -> str:
     """A change to the pool's holds that only a computer-level key signed waits seven days and says so on its card; the same change signed by a phone-level key takes effect at once."""
     world.fresh(level="computer")
     first = world.first
@@ -65,3 +66,30 @@ def a_floor_holds_what_a_computer_alone_signed(world: World) -> str:
     gov = first.pool()["governance"]
     assert (gov["epoch"], gov["pending"], gov["holds"]["admin_add_h"]) == (2, None, 48), f"a change signed by a phone-level key was held: {gov}"
     return f"seven days ({wait} s left) for a computer alone, none for a phone; " + PLANTED.format(level="computer and phone")
+
+
+def a_floor_is_held_when_lowered_and_never_a_typed_yes(world: World) -> str:
+    """In a pool a phone-level key governs, a floor of a typed yes is refused, lowering the governance floor waits a day and the same key cancels it, and the floor stays."""
+    world.fresh(level="phone")
+    first = world.first
+    world.found(first)
+    phone = {"routine": "phone", "sensitive": "phone", "governance": "phone"}
+    assert first.pool()["governance"]["floors"] == phone, f"a pool a phone-level key founded has other floors: {first.pool()['governance']}"
+    try:
+        first.admin("pool_submit", act=world.person.signed(first.admin("pool_draft", kind="set_floors", body={"routine": "weak"})))
+    except Refused as refused:
+        assert "never a typed yes" in str(refused), f"a floor of a typed yes was refused for another reason: {refused}"
+    else:
+        raise AssertionError("a floor of a typed yes was taken")
+    draft = first.admin("pool_draft", kind="set_floors", body={"governance": "computer"})
+    assert "LEVEL: " in draft["summary"], f"the card does not say who approves it: {draft['summary']}"
+    first.admin("pool_submit", act=world.person.signed(draft))
+    gov = first.pool()["governance"]
+    pending = gov["pending"] or {}
+    wait = pending.get("takes_effect_in_s", 0)
+    assert ONE_DAY_S - 600 < wait <= ONE_DAY_S and gov["floors"] == phone, f"lowering a floor is not waiting a day: {gov}"
+    cancel = first.admin("pool_draft", kind="cancel", body={"act": pending["acts"][0]})
+    first.admin("pool_submit", act=world.person.signed(cancel))
+    gov = first.pool()["governance"]
+    assert gov["pending"] is None and gov["floors"] == phone, f"a cancelled lowering left a change behind: {gov}"
+    return f"a floor of a typed yes is refused; lowering a floor waits a day ({wait} s left) and its cancel leaves every floor at phone; " + PLANTED.format(level="phone")
