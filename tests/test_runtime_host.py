@@ -7,10 +7,12 @@ instead of replacing anything, and flips the server's commit the way a finished 
 
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from test_runtime_deploy import builder, commit, plan_for, world  # noqa: F401
@@ -27,7 +29,10 @@ class Host:
     """A stand-in daemon: answers /health with the commit it runs and, when it has one, its launcher-control instance."""
 
     def __init__(self, commit_id: str, control: str = "a" * 32) -> None:
-        self.say = {"commit": commit_id, "name": "host", **({"launcher_control": control} if control else {})}
+        chosen = runtime.available()
+        prefix = chosen.prefix if chosen else Path("/unselected")
+        self.say = {"commit": commit_id, "name": "host", **({"launcher_control": control} if control else {}),
+                    "runtime_prefix_digest": hashlib.sha256(str(prefix.resolve()).encode()).hexdigest()}
         outer = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -80,6 +85,7 @@ class Spawner:
         self.calls.append((module, list(argv), Path(log)))
         if self.serving is not None and self.becomes:
             self.serving.say["commit"] = self.becomes
+            self.serving.say["launcher_control"] = "b" * 32
 
 
 def test_no_selected_runtime_means_nothing_to_restart_onto(world, host):  # noqa: F811
@@ -136,3 +142,51 @@ def test_a_held_port_that_missed_the_health_probe_is_not_called_not_running(depl
         seams = runtime_host.Seams(spawn=spawn, health=lambda _port: None)
         out = runtime_host.restart(silent.getsockname()[1], Path("/r"), seams=seams)
     assert out.action == "failed" and "holds port" in out.detail and not spawn.calls
+
+
+def test_forced_same_commit_restart_waits_for_new_generation_and_selected_prefix(deployed, host, monkeypatch):
+    chosen = runtime.available()
+    selected = hashlib.sha256(str(chosen.prefix.resolve()).encode()).hexdigest()
+    old = {"commit": deployed, "launcher_control": "a" * 32, "runtime_prefix_digest": selected}
+    replacement = {**old, "launcher_control": "b" * 32}
+    replies = iter([old, old, None, replacement])
+    seen = []
+    def health(_port):
+        value = next(replies)
+        seen.append(value)
+        return value
+    clock = [0.0]
+    monkeypatch.setattr(runtime_host, "time", SimpleNamespace(monotonic=lambda: clock[0], sleep=lambda seconds: clock.__setitem__(0, clock[0] + seconds)))
+    spawn = Spawner()
+    result = runtime_host.restart(12345, Path("/r"), seams=runtime_host.Seams(spawn=spawn, health=health), force=True, wait_s=2)
+    assert result.action == "restarted"
+    assert seen == [old, old, None, replacement]
+    assert len(spawn.calls) == 1
+
+
+@pytest.mark.parametrize('change', [
+    {'launcher_control': 'a' * 32}, {'launcher_control': None}, {'launcher_control': 'not-a-generation'},
+    {'runtime_prefix_digest': None}, {'runtime_prefix_digest': 'e' * 64},
+    {'commit': 'e' * 40}, {'commit': 'f' * 8}, {'commit': 'f' * 40 + ' (dirty)'},
+])
+def test_wait_never_accepts_stale_or_unproven_replacement(change, monkeypatch):
+    target = runtime_host._Target('f' * 40, 'd' * 64, 'a' * 32)
+    replacement = {'commit': 'f' * 40, 'runtime_prefix_digest': 'd' * 64, 'launcher_control': 'b' * 32, **change}
+    clock = [0.0]
+    monkeypatch.setattr(runtime_host, 'time', SimpleNamespace(monotonic=lambda: clock[0], sleep=lambda seconds: clock.__setitem__(0, clock[0] + seconds)))
+    assert not runtime_host._waited(12345, target, 0.5, lambda _port: replacement)
+    assert clock[0] == 0.5
+
+
+def test_daemon_health_proves_its_actual_interpreter_prefix_without_exposing_path(monkeypatch):
+    import sys
+
+    from poolhouse.fleet import daemon
+
+    state = SimpleNamespace(base_report=lambda: {}, labels=[], bench_host=SimpleNamespace(report=lambda: {}),
+                            control=SimpleNamespace(instance='a' * 32), heard=[])
+    monkeypatch.setattr(daemon.updating, 'state', lambda: {})
+    monkeypatch.setattr(daemon.autostart_check, 'state_word', lambda: 'off')
+    health = daemon.DaemonRuntime.report(state)
+    assert health['runtime_prefix_digest'] == hashlib.sha256(str(Path(sys.prefix).resolve()).encode()).hexdigest()
+    assert str(Path(sys.prefix)) not in json.dumps(health)

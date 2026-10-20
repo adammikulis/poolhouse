@@ -10,6 +10,7 @@ import json
 import os
 import secrets
 import socket
+import sys
 import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -523,6 +524,7 @@ class DaemonRuntime:
             **updating.state(),
             "autostart": autostart_check.state_word(),
             "launcher_control": self.control.instance if hasattr(self, "control") else "",
+            "runtime_prefix_digest": hashlib.sha256(str(Path(sys.prefix).resolve()).encode()).hexdigest(),
             "speech": list(self.heard),
         }
 
