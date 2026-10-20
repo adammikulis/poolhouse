@@ -15,6 +15,13 @@ uncovered = 52
 partial = 193
 
 [[group]]
+match = ["route:fleet/studio_stream_routes.py:/ui/studio/sources", "route:fleet/studio_stream_routes.py:/ui/studio/subscriptions*", "route:fleet/studio_routes.py:/ui/studio/sources", "route:fleet/studio_routes.py:/ui/studio/subscriptions*"]
+status = "covered"
+count = 4
+tests = ["tests/test_studio_stream_http.py::test_weak_session_cannot_delegate_and_revocation_blocks_output", "tests/test_studio_stream_http.py::test_managed_source_revoke_between_bind_and_persist_creates_nothing", "tests/test_studio_stream_http.py::test_expanded_group_or_sweep_manifest_remains_exact", "tests/test_studio_stream_http.py::test_restart_resumes_delegation_without_any_browser_identity", "tests/test_studio_stream_http.py::test_pause_and_cancel_release_source_scanners"]
+note = "Actual authenticated HTTP routes require strong current owner authority for source registration and subscription controls. Source epochs are checked atomically at persistence; group and sweep snapshots remain exact, and revoked service authority blocks live results across browser expiry and daemon restart."
+
+[[group]]
 match = ["egress:studio/stream_delivery.py:*"]
 status = "covered"
 count = 4
@@ -439,7 +446,7 @@ tests = ["tests/test_fleet_environment.py::test_runtime_revision_probe_rejects_s
 note = "Real interpreter paths containing shell punctuation remain literal argv; unstamped and mismatched revisions cannot start work, and probing has an explicit timeout and no shell"
 
 [[group]]
-match = ["spawn:fleet/compute_artifact.py:probe"]
+match = ["spawn:fleet/compute_artifact.py:_checked"]
 status = "covered"
 count = 1
 tests = ["tests/test_compute_artifact.py::test_probe_uses_fixed_isolated_argv_and_refuses_hostile_result",

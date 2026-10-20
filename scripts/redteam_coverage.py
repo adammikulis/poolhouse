@@ -444,6 +444,7 @@ def discover() -> dict[str, Surface]:
         ("context", "gym/vision_process.py:image_request", "src/poolhouse/gym/vision_process.py"),
         ("spawn", "sandbox/bubblewrap.py:_probe", "src/poolhouse/sandbox/bubblewrap.py"),
         ("route", "fleet/gym_recording_routes.py:/ui/gym/recordings*", "src/poolhouse/fleet/gym_recording_routes.py"),
+        ("route", "fleet/studio_stream_routes.py:/ui/studio/subscriptions*", "src/poolhouse/fleet/studio_stream_routes.py"),
     ):
         if (ROOT / source).is_file():
             add(found, kind, name, source)
