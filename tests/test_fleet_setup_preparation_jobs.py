@@ -24,6 +24,127 @@ def finished(jobs, ident):
     raise AssertionError(jobs.get(ident))
 
 
+def test_fixed_probe_intents_are_durable_once_and_receipts_are_immutable(tmp_path):
+    jobs = setup_jobs.Jobs(tmp_path)
+
+    def operation(progress):
+        progress.stage('probe')
+        for phase in setup_jobs.PROBES:
+            first = progress.probe(phase, 'b' * 64)
+            assert first['fresh'] is True and first['status'] == 'intent'
+            stored = jobs.get(progress.row['id'])['probes'][phase]
+            assert stored == {key: value for key, value in first.items() if key != 'fresh'}
+            assert progress.probe(phase, 'b' * 64) == {**first, 'fresh': False}
+            with pytest.raises(ValueError, match='different request'):
+                progress.probe(phase, 'c' * 64)
+            receipt = progress.probe(phase, 'b' * 64, response_digest='d' * 64, accepted=True)
+            assert receipt['fresh'] is False and receipt['status'] == 'accepted'
+            assert progress.probe(phase, 'b' * 64, response_digest='d' * 64, accepted=True) == receipt
+            with pytest.raises(ValueError, match='different receipt'):
+                progress.probe(phase, 'b' * 64, response_digest='e' * 64, accepted=True)
+        return {}
+
+    row = jobs.prepare(request(), operation, current=lambda: True)
+    result = finished(jobs, row['id'])
+    assert result['state'] == 'done'
+    assert set(result['probes']) == set(setup_jobs.PROBES)
+    assert len({receipt['id'] for receipt in result['probes'].values()}) == 3
+
+
+def test_uncertain_probe_intent_never_replays_after_reopen(tmp_path):
+    jobs = setup_jobs.Jobs(tmp_path)
+    effects = []
+
+    def operation(progress):
+        progress.stage('probe')
+        assert progress.probe('chat', 'b' * 64)['fresh'] is True
+        effects.append('request with lost response')
+        raise OSError('isolated unknown response')
+
+    row = jobs.prepare(request(), operation, current=lambda: True)
+    result = finished(jobs, row['id'])
+    assert result['state'] == 'interrupted' and result['probes']['chat']['status'] == 'intent'
+    reopened = setup_jobs.Jobs(tmp_path)
+    assert reopened.prepare(request(), operation, current=lambda: True)['id'] == row['id']
+    assert effects == ['request with lost response']
+
+
+def test_probe_phase_and_receipt_require_fixed_successful_predecessor(tmp_path):
+    jobs = setup_jobs.Jobs(tmp_path)
+
+    def operation(progress):
+        with pytest.raises(ValueError, match='intent'):
+            progress.probe('chat', 'b' * 64)
+        progress.stage('probe')
+        for phase in ('tool-call', 'tool-result'):
+            with pytest.raises(ValueError, match='previous'):
+                progress.probe(phase, 'b' * 64)
+        with pytest.raises(ValueError, match='intent'):
+            progress.probe('chat', 'b' * 64, response_digest='c' * 64, accepted=True)
+        progress.probe('chat', 'b' * 64)
+        progress.probe('chat', 'b' * 64, response_digest='c' * 64, accepted=False)
+        with pytest.raises(ValueError, match='previous'):
+            progress.probe('tool-call', 'b' * 64)
+        for phase, fingerprint in (('unknown', 'b' * 64), ('chat', True), ('chat', 'x' * 64)):
+            with pytest.raises(ValueError):
+                progress.probe(phase, fingerprint)
+        with pytest.raises(ValueError):
+            progress.probe('chat', 'b' * 64, response_digest='c' * 64, accepted=1)
+        return {}
+
+    row = jobs.prepare(request(), operation, current=lambda: True)
+    assert finished(jobs, row['id'])['state'] == 'done'
+
+
+def test_probe_current_revocation_after_save_rolls_back_before_fresh_claim(tmp_path, monkeypatch):
+    jobs = setup_jobs.Jobs(tmp_path)
+    active, effects = [True], []
+
+    def operation(progress):
+        progress.stage('probe')
+        save = jobs._save
+
+        def revoke(graph, row):
+            save(graph, row)
+            if row.get('probes'):
+                active[0] = False
+
+        monkeypatch.setattr(jobs, '_save', revoke)
+        progress.probe('chat', 'b' * 64)
+        effects.append('forbidden request')
+        return {}
+
+    row = jobs.prepare(request(), operation, current=lambda: active[0])
+    result = finished(jobs, row['id'])
+    assert result['state'] == 'interrupted' and 'probes' not in result
+    assert effects == []
+
+
+def test_cancelled_preparation_cannot_claim_a_probe(tmp_path):
+    jobs = setup_jobs.Jobs(tmp_path)
+    entered, release = threading.Event(), threading.Event()
+    effects = []
+
+    def operation(progress):
+        progress.stage('probe')
+        entered.set()
+        assert release.wait(5)
+        progress.probe('chat', 'b' * 64)
+        effects.append('forbidden request')
+        return {}
+
+    row = jobs.prepare(request(), operation, current=lambda: True)
+    try:
+        assert entered.wait(5)
+        jobs.cancel_preparation(row['id'], binding=request()['binding'], current=lambda: True)
+        release.set()
+        result = finished(jobs, row['id'])
+        assert result['state'] == 'cancelled' and 'probes' not in result
+        assert effects == []
+    finally:
+        release.set()
+
+
 def test_concurrent_repeat_and_terminal_reopen_attach_one_operation(tmp_path):
     jobs = setup_jobs.Jobs(tmp_path)
     enter, release = threading.Event(), threading.Event()

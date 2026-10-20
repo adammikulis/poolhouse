@@ -1,4 +1,5 @@
 """Bounded, durable background installation jobs for the local UI."""
+import hashlib
 import json
 import logging
 import os
@@ -21,6 +22,7 @@ PENDING = ACTIVE | {"waiting"}
 LIMIT = 32
 PREPARATION = "first-run-prepare"
 STAGES = frozenset({"runtime", "transfer", "verify", "serve", "probe", "ready"})
+PROBES = ('chat', 'tool-call', 'tool-result')
 
 
 class PreparationStopped(RuntimeError):
@@ -49,6 +51,19 @@ class Reporter:
         self.check()
         self.jobs._update(self.row, stage=stage, progress={"done": done, "total": total})
         self.check()
+
+    def probe(self, phase, request_digest, *, response_digest=None, accepted=None):
+        """Claim one fixed request once; an existing intent never permits a resend."""
+        if (phase not in PROBES or not isinstance(request_digest, str)
+                or re.fullmatch(r'[a-f0-9]{64}', request_digest) is None):
+            raise ValueError('Invalid preparation probe.')
+        completion = None
+        if response_digest is not None or accepted is not None:
+            if (not isinstance(response_digest, str) or re.fullmatch(r'[a-f0-9]{64}', response_digest) is None
+                    or type(accepted) is not bool):
+                raise ValueError('Invalid preparation probe receipt.')
+            completion = {'response_digest': response_digest, 'status': 'accepted' if accepted else 'refused'}
+        return self.jobs._probe(self.row, phase, request_digest, completion, self.current)
 
 
 class Jobs:
@@ -196,6 +211,37 @@ class Jobs:
             if current() is not True:
                 raise PreparationStopped("Preparation stopped before completion.")
             row.update(latest)
+
+    def _probe(self, row, phase, request_digest, completion, current):
+        with self._mutex, only_one(self.root / "setup-jobs.lock"), self._store() as graph, graph.transaction():
+            latest = next(node['attrs'] for node in graph.nodes('setup-job') if node['id'] == row['id'])
+            if (latest['kind'] != PREPARATION or latest['state'] != 'installing'
+                    or latest['cancel_requested'] or current() is not True):
+                raise PreparationStopped('Preparation stopped before probe receipt.')
+            receipts = latest.setdefault('probes', {})
+            old = receipts.get(phase)
+            fresh = old is None
+            if old is None:
+                if completion is not None or latest.get('stage') != 'probe':
+                    raise ValueError('A probe intent is required before its receipt.')
+                previous = PROBES.index(phase) - 1
+                if previous >= 0 and receipts.get(PROBES[previous], {}).get('status') != 'accepted':
+                    raise ValueError('The previous fixed probe has not succeeded.')
+                old = {'id': hashlib.sha256(f'setup-probe/v1:{row["id"]}:{phase}'.encode()).hexdigest(),
+                       'request_digest': request_digest, 'status': 'intent'}
+                receipts[phase] = old
+            elif old['request_digest'] != request_digest:
+                raise ValueError('This fixed probe already has a different request.')
+            if completion is not None:
+                if old['status'] != 'intent' and any(old.get(key) != value for key, value in completion.items()):
+                    raise ValueError('This fixed probe already has a different receipt.')
+                old.update(completion)
+            self._save(graph, latest)
+            if current() is not True:
+                raise PreparationStopped('Preparation stopped before probe receipt.')
+            result = {**old, 'fresh': fresh}
+        row.update(latest)
+        return result
 
     def _run(self):
         with ThreadPoolExecutor(max_workers=1, thread_name_prefix="setup-operation") as executor:
