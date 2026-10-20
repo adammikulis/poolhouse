@@ -10,6 +10,7 @@ output-token-slider { display:block; min-width:0; }
       this.raw = "";
       this.options = {nullable:true, minimum:1};
       this.refresh = () => this.paint();
+      this.resize = new ResizeObserver(this.refresh);
     }
     connectedCallback() {
       if (!this.slider) {
@@ -26,10 +27,11 @@ output-token-slider { display:block; min-width:0; }
           this.dispatchEvent(new Event("change", {bubbles:true}));
         });
       }
+      this.resize.observe(this);
       window.addEventListener("fleet-preferences", this.refresh);
       this.paint();
     }
-    disconnectedCallback() { window.removeEventListener("fleet-preferences", this.refresh); }
+    disconnectedCallback() { this.resize.disconnect(); window.removeEventListener("fleet-preferences", this.refresh); }
     configure(options) { Object.assign(this.options, options); this.paint(); return this; }
     get value() { return this.raw; }
     set value(value) { this.raw = value == null ? "" : String(value); this.paint(); }
@@ -45,16 +47,28 @@ output-token-slider { display:block; min-width:0; }
       const maximum = Math.min(valid(context) ? context : 8192,
         valid(this.options.maximum) ? this.options.maximum : Infinity);
       const minimum = this.options.nullable ? 0 : this.options.minimum;
-      this.slider.min = minimum;
-      this.slider.max = maximum;
+      const stops = [minimum];
+      for (let tick = 512; tick <= maximum; tick *= 2) if (tick > minimum) stops.push(tick);
+      if (maximum >= minimum && !stops.includes(maximum)) stops.push(maximum);
+      const raw = Number(this.raw || minimum);
+      const nearest = stops.reduce((best, value) => Math.abs(value - raw) < Math.abs(best - raw) ? value : best);
+      const active = stops.indexOf(nearest);
+      const width = this.clientWidth || 1000, last = stops.length - 1;
+      const stride = Math.max(1, Math.ceil(last * 34 / width));
+      this.slider.stops = stops;
+      this.slider.marks = stops.map((value, index) => ({value,
+        label:index === active || (Math.abs(index - active) >= stride
+          && (index === 0 || index === last || (index % stride === 0 && last - index >= stride)))
+          ? value === 0 ? "0" : value >= 1024 && value % 1024 === 0 ? `${value / 1024}k` : String(value) : ""}));
       this.slider.disabled = this.busy || maximum < minimum;
       this.slider.label = this.options.label || "Maximum output tokens";
-      this.slider.value = Number(this.raw || minimum);
+      this.slider.value = nearest;
       const words = this.raw === "" ? "No user cap" : `${Number(this.raw).toLocaleString()} ${Number(this.raw) === 1 ? "token" : "tokens"}`;
-      this.slider.valueText = words;
+      const custom = this.raw !== "" && !stops.includes(raw);
+      this.slider.valueText = custom ? `Custom · ${words}` : words;
       this.slider.hint = Number(this.raw) > maximum
         ? `Saved limit exceeds the current ${maximum.toLocaleString()} token slider limit. Move the slider to choose a new limit.`
-        : this.options.nullable ? "Select 0 for no user cap." : "";
+        : custom ? "Saved custom limit. Choose a tick to replace it." : this.options.nullable ? "Select 0 for no user cap." : "";
     }
   }
   customElements.define("output-token-slider", OutputTokenSlider);
