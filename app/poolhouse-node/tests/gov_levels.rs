@@ -141,6 +141,26 @@ fn a_key_added_below_the_floor_counts_nothing() {
 }
 
 #[test]
+fn a_key_is_listed_at_no_level_above_the_keys_that_listed_it() {
+    let (_d, mut g) = pool(&[computer_admin(A, "ann")], Policy::Secure);
+    let claim = add(&g, phone_admin(B, "bob"), &[A]);
+    assert_eq!(take(&mut g, claim.clone()), Ingest::Accepted);
+    assert!(matches!(g.status(&claim.id()), ActStatus::Void(w) if w.contains("no level above")), "{:?}", g.status(&claim.id()));
+    advance(&mut g, 8 * DAY);
+    assert!(!admins(&g).contains(&public(B)), "a computer key cannot list a phone key");
+    let same = add(&g, computer_admin(B, "bob"), &[A]);
+    take(&mut g, same);
+    advance(&mut g, 8 * DAY);
+    assert!(admins(&g).contains(&public(B)), "it can list a computer key");
+
+    let (_d2, mut by_phone) = pool(&[phone_admin(A, "ann")], Policy::Secure);
+    let listing = add(&by_phone, phone_admin(B, "bob"), &[A]);
+    take(&mut by_phone, listing);
+    advance(&mut by_phone, 25 * HOUR);
+    assert!(admins(&by_phone).contains(&public(B)), "a phone key lists a phone key");
+}
+
+#[test]
 fn a_floor_is_never_weak() {
     let weak_floor = charter_floored(&[phone_admin(A, "ann")], Policy::Secure, Floors { routine: Level::Weak, sensitive: Level::Phone, governance: Level::Phone });
     let why = poolhouse_node::gov::pool::founding(&weak_floor.found_act()).unwrap_err().to_string();

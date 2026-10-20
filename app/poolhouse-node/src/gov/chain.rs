@@ -299,6 +299,12 @@ fn check(act: &Act, signed: &[String], body: &Body, s: &EpochState, pool: &str) 
         }
         _ => return Check::Void(format!("a {} act is not a step of the admin chain", act.kind)),
     }
+    if let Body::AdminAdd(add) | Body::RecoveryReplace(add) = body {
+        let top = counted.iter().filter_map(|k| c.admin(k)).map(|k| k.assurance).max();
+        if add.entry.role == Role::Admin && top.is_some_and(|top| add.entry.assurance > top) {
+            return Check::Void("a key is listed at no level above the keys that listed it".into());
+        }
+    }
     let (have, need) = (c.count(Class::Governance, &counted.iter().map(String::as_str).collect::<Vec<_>>()), c.needed(Class::Governance));
     if have < need {
         return Check::Short(have, need, format!("it needs {need} signers and has {have}"));
