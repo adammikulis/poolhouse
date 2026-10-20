@@ -13,10 +13,14 @@ REVISION = 'a' * 40
 @pytest.fixture
 def bundle(tmp_path):
     source = tmp_path / 'source'
-    for name in ('train', 'bench', 'gym', 'world'):
+    for name in ('backend', 'train', 'bench', 'gym', 'world'):
         package = source / 'src/poolhouse' / name
         package.mkdir(parents=True)
         (package / '__init__.py').write_text('VALUE = 42\n')
+    for name in artifact.EXTRA_FILES:
+        path = source / 'src' / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('VALUE = 42\n')
     base = tmp_path / 'poolhouse-0.1.0-py3-none-any.whl'
     write_wheel(base, {'poolhouse/__init__.py': b'', 'poolhouse-0.1.0.dist-info/METADATA':
                       b'Name: poolhouse\nVersion: 0.1.0\n', 'poolhouse-0.1.0.dist-info/WHEEL':
@@ -190,3 +194,11 @@ def test_probe_ignores_hostile_python_environment_and_refuses_unlisted_code(bund
     with pytest.raises(OSError, match='verified compute'):
         artifact.probe(python, environment=environment)
     assert not marker.exists()
+
+
+@pytest.mark.parametrize('name', ['poolhouse/train/injected.py', 'poolhouse/graph/community.py'])
+def test_shared_base_ownership_refuses_outside_or_overlapping_files(bundle, name):
+    _, _, companion, manifest = bundle
+    manifest['base_files'] = {name: 'a' * 64}
+    with pytest.raises(ValueError, match='base ownership'):
+        artifact.verify(companion, manifest, REVISION)

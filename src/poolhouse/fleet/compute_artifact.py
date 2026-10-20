@@ -13,12 +13,12 @@ from pathlib import Path, PurePosixPath
 from packaging.version import Version
 
 from poolhouse.files import writing
+from poolhouse.fleet.compute_members import EXTRA_FILES, OWNED_ROOTS, PREFIXES
 from poolhouse.fleet.wheel_provenance import write_wheel
 from poolhouse.net import packages
 
 MANIFEST = 'poolhouse/fleet/compute-artifact.json'
 DISTRIBUTION = 'poolhouse-studio-compute'
-PREFIXES = tuple(f'poolhouse/{name}/' for name in ('train', 'bench', 'gym', 'world'))
 ROLE = 'studio-compute'
 
 
@@ -70,6 +70,14 @@ def build(source: Path, wheel: Path, commit: str) -> Path:
                 if name in base:
                     raise ValueError('Compute artifact overlaps the base wheel')
                 files[name] = path.read_bytes()
+    for name in EXTRA_FILES:
+        path = source / 'src' / name
+        if (not path.is_file() or path.is_symlink()
+                or any(parent.is_symlink() for parent in path.parents if parent.is_relative_to(source))):
+            raise ValueError('Committed source is missing a regular compute dependency')
+        if name in base:
+            raise ValueError('Compute artifact overlaps the base wheel')
+        files[name] = path.read_bytes()
     info = f'poolhouse_studio_compute-{version}.dist-info'
     origin = {'source': commit, 'role': ROLE, 'files': {name: hashlib.sha256(value).hexdigest() for name, value in files.items()}}
     files[f'{info}/METADATA'] = (f'Metadata-Version: 2.1\nName: {DISTRIBUTION}\nVersion: {version}\nRequires-Dist: poolhouse=={version}\n').encode()
@@ -80,6 +88,8 @@ def build(source: Path, wheel: Path, commit: str) -> Path:
     write_wheel(companion, files)
     manifest = {'source': commit, 'role': ROLE, 'distribution': DISTRIBUTION, 'version': version,
                 'filename': companion.name, 'sha256': hashlib.sha256(companion.read_bytes()).hexdigest(),
+                'base_files': {name: hashlib.sha256(value).hexdigest() for name, value in base.items()
+                               if name.startswith('poolhouse/graph/')},
                 'files': {name: hashlib.sha256(value).hexdigest() for name, value in contents(companion).items()
                           if not name.endswith('.dist-info/RECORD')}}
     base[MANIFEST] = json.dumps(manifest, sort_keys=True).encode()
@@ -95,19 +105,26 @@ def verify(wheel: Path, manifest: dict, commit: str) -> None:
     if wheel.name != manifest.get('filename') or hashlib.sha256(wheel.read_bytes()).hexdigest() != manifest.get('sha256'):
         raise ValueError('Compute artifact integrity check failed')
     files = contents(wheel)
+    base_files = manifest.get('base_files', {})
+    if (not isinstance(base_files, dict)
+            or any(not name.startswith('poolhouse/graph/') or name in files
+                   or not re.fullmatch('[0-9a-f]{64}', value) for name, value in base_files.items())):
+        raise ValueError('Compute artifact base ownership does not match')
+    if not set(EXTRA_FILES).issubset(files):
+        raise ValueError('Compute artifact is missing a fixed dependency')
     expected = manifest.get('files', {})
     actual = {name: hashlib.sha256(value).hexdigest() for name, value in files.items() if not name.endswith('.dist-info/RECORD')}
     if actual != expected:
         raise ValueError('Compute artifact file inventory does not match')
     info = f"poolhouse_studio_compute-{manifest['version']}.dist-info/"
-    if any(not name.startswith((*PREFIXES, info)) for name in files):
+    if any(not name.startswith((*PREFIXES, info)) and name not in EXTRA_FILES for name in files):
         raise ValueError('Compute artifact contains files outside its fixed packages')
     allowed_info = {info + name for name in ('METADATA', 'WHEEL', 'RECORD', 'compute-origin.json')}
     if any(name.startswith(info) and name not in allowed_info for name in files):
         raise ValueError('Compute artifact contains unexpected distribution files')
     metadata = BytesParser().parsebytes(files[info + 'METADATA'])
     origin = json.loads(files[info + 'compute-origin.json'])
-    package_files = {name: hashlib.sha256(value).hexdigest() for name, value in files.items() if name.startswith(PREFIXES)}
+    package_files = {name: hashlib.sha256(value).hexdigest() for name, value in files.items() if name.startswith(PREFIXES) or name in EXTRA_FILES}
     if origin.get('files') != package_files:
         raise ValueError('Compute artifact source inventory does not match')
     if metadata['Name'] != DISTRIBUTION or metadata['Version'] != manifest['version'] or origin.get('source') != commit or origin.get('role') != ROLE:
@@ -145,17 +162,17 @@ assert Path(base.locate_file('poolhouse/fleet/built-from')).read_text().strip()=
 d=distribution('poolhouse-studio-compute')
 site=Path(d.locate_file(''))
 assert d.version==m['version'], 'Managed compute version differs'
-for name,digest in m['files'].items():
+for name,digest in (m['base_files'] | m['files']).items():
  p=Path(d.locate_file(name))
  assert not p.is_symlink() and p.is_file(), 'Managed compute file is missing or linked'
  assert all(not ancestor.is_symlink() for ancestor in p.parents if ancestor!=site and ancestor.is_relative_to(site)), 'Managed compute directory is linked'
  assert hashlib.sha256(p.read_bytes()).hexdigest()==digest, 'Managed compute file changed'
-for prefix in ('train','bench','gym','world'):
- root=Path(d.locate_file('poolhouse/'+prefix))
+for prefix in OWNED_NAMESPACE_ROOTS:
+ root=Path(d.locate_file(prefix))
  for p in root.rglob('*'):
   assert not p.is_symlink(), 'Managed compute contains a linked file'
   if p.is_file():
-   assert 'poolhouse/'+prefix+'/'+p.relative_to(root).as_posix() in m['files'], 'Managed compute contains an unexpected file'
+   assert prefix+p.relative_to(root).as_posix() in m['files'] or prefix+p.relative_to(root).as_posix() in m['base_files'], 'Managed compute contains an unexpected file'
 info=next(name.split('/')[0] for name in m['files'] if name.endswith('.dist-info/METADATA'))
 for p in Path(d.locate_file(info)).rglob('*'):
  assert not p.is_symlink(), 'Managed compute metadata is linked'
@@ -163,7 +180,7 @@ for p in Path(d.locate_file(info)).rglob('*'):
   name=info+'/'+p.name
   assert name in m['files'] or p.name in ('RECORD','INSTALLER','REQUESTED','direct_url.json'), 'Unexpected compute metadata'
 print(m['sha256'])
-'''
+'''.replace('OWNED_NAMESPACE_ROOTS', repr(OWNED_ROOTS))
 
 
 def probe(python: Path, *, environment: dict) -> str:

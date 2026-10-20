@@ -39,11 +39,11 @@ def test_bundled_backend_uses_verified_managed_interpreter(managed, tmp_path, mo
     monkeypatch.setattr(runtime.subprocess, 'run', lambda argv, **kw:
                         observed.append((argv, kw)) or SimpleNamespace(returncode=0))
     argv = backend().command(ServerSpec(model=tmp_path))
-    assert argv[:4] == [str(env.python), '-I', '-m', module]
+    assert argv[:5] == [str(env.python), '-B', '-I', '-m', module]
     assert calls == ['current', 'compute']
     probe, options = observed[0]
-    assert probe[:4] == [str(env.python), '-I', '-c', runtime._PROBE]
-    assert json.loads(probe[4]) == list(runtime._MODULES[backend.name][1])
+    assert probe[:5] == [str(env.python), '-B', '-I', '-c', runtime._PROBE]
+    assert json.loads(probe[5]) == list(runtime._MODULES[backend.name][1])
     assert 'PYTHONPATH' not in options['env'] and 'LD_PRELOAD' not in options['env']
     assert options['capture_output'] is True
 
@@ -101,7 +101,7 @@ def test_isolated_module_probe_executes_without_model_import(managed, monkeypatc
     (poison / 'json.py').write_text('raise RuntimeError("injected")')
     monkeypatch.setenv('PYTHONPATH', str(poison))
     monkeypatch.setattr(runtime, '_MODULES', {'probe': ('fixed.server', ('json', 'pathlib'))})
-    assert runtime.command('probe') == [sys.executable, '-I', '-m', 'fixed.server']
+    assert runtime.command('probe') == [sys.executable, '-B', '-I', '-m', 'fixed.server']
     monkeypatch.setattr(runtime, '_MODULES', {'probe': ('fixed.server', ('poolhouse_missing_dependency_xyz',))})
     with pytest.raises(ServerFailed, match='libraries'):
         runtime.command('probe')

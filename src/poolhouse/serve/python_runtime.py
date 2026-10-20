@@ -47,14 +47,14 @@ def command(engine: str) -> list[str]:
             raise OSError('Install Training essentials in Libraries before starting a model')
         environment.require_current_runtime()
         environment.require_compute()
-        done = subprocess.run([str(environment.python), '-I', '-c', _PROBE, json.dumps(required), engine],
+        done = subprocess.run([str(environment.python), '-B', '-I', '-c', _PROBE, json.dumps(required), engine],
                               capture_output=True, text=True, timeout=20, env=environment_for_child())
         if done.returncode:
             raise OSError('Install MLX model serving in Libraries before starting this model' if engine == 'mlx-tree'
                           else f'Install the {engine} libraries in Libraries before starting this model')
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
         raise ServerFailed(str(exc)) from exc
-    return [str(environment.python), '-I', '-m', module]
+    return [str(environment.python), '-B', '-I', '-m', module]
 
 
 def environment_for_child(extra: dict[str, str] | None = None) -> dict[str, str]:
