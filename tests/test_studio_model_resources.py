@@ -124,7 +124,7 @@ def test_materialized_base_identity_matches_native_snapshot_without_cache_lookup
 def shared_model(cached_model):
     handle, _, blobs = cached_model
     original = next(blobs.iterdir())
-    digest = hashlib.sha256(original.read_bytes()).hexdigest()
+    digest = 'b' * 64  # Shared storage locators are independent of repository content digests.
     shared = blobs.parent.parent / 'blobs' / digest[:2] / digest
     shared.parent.mkdir(parents=True)
     original.replace(shared)
@@ -136,7 +136,8 @@ def test_shared_content_addressed_native_blob(shared_model):
     handle, _, shared = shared_model
     member = next(m for m in resources.model_files(handle) if m['relative'] == 'model.safetensors')
     assert member['path'] == str(shared)
-    assert member['sha256'] == shared.name
+    assert member['blob_digest'] == hashlib.sha256(b'weights').hexdigest()
+    assert member['blob_digest'] != shared.name
     assert resources.model_fingerprint(handle)
 
 
@@ -189,3 +190,32 @@ def test_shared_blob_resume_hashes_skipped_upload_prefix(shared_model):
             source.seek(0)
     with pytest.raises(ValueError, match='exceeds'), resources.open_model_file(member) as source:
         source.seek(member['size'] + 1)
+
+
+@pytest.mark.parametrize('changed', [False, True])
+def test_shared_blob_uses_repository_git_object_digest(shared_model, changed):
+    handle, original, shared = shared_model
+    snapshot = Path(handle['path'])
+    oid = hashlib.sha1(b'blob 7\0weights', usedforsecurity=False).hexdigest()
+    git_blob = original.with_name(oid)
+    original.rename(git_blob)
+    link = snapshot / 'model.safetensors'
+    link.unlink()
+    link.symlink_to(Path('../../blobs') / oid)
+    if changed:
+        shared.write_bytes(b'forged!')
+        with pytest.raises(ValueError, match='content digest'):
+            resources.model_fingerprint(handle)
+    else:
+        assert resources.model_fingerprint(handle)
+
+
+def test_shared_blob_requires_valid_repository_content_digest(shared_model):
+    handle, original, _ = shared_model
+    invalid = original.with_name('not-a-content-digest')
+    original.rename(invalid)
+    link = Path(handle['path']) / 'model.safetensors'
+    link.unlink()
+    link.symlink_to(Path('../../blobs') / invalid.name)
+    with pytest.raises(ValueError, match='valid content digest'):
+        resources.model_files(handle)
