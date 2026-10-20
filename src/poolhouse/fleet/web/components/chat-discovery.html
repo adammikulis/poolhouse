@@ -1,0 +1,66 @@
+<script>
+(() => {
+  const M = window.fleetModel;
+  M.chatDiscovery = {
+    async draw() {
+      const picker = this.modelPicker;
+      if (this.loadingConversation && this.loadingSession !== M.sessionContext()) {
+        this.loadEpoch++; this.loadingConversation = false;
+        this.coding.busy(!!this.request);
+        this.temperature.disabled = this.outputTokens.disabled = !!this.request;
+      }
+      if (picker.pendingHandoff && !picker.handoffCurrent(picker.pendingHandoff)) picker.pendingHandoff = null;
+      const handoff = picker.pendingHandoff;
+      const state = {epoch:this.drawEpoch = (this.drawEpoch || 0) + 1, session:M.sessionContext(),
+        load:this.loadEpoch, cid:this.open, choice:picker.choiceEpoch, parameters:picker.parameterEpoch, route:M.route};
+      const owned = () => state.epoch === this.drawEpoch && state.session === M.sessionContext() &&
+        state.route === M.route && location.hash === `#${state.route}` && !this.box.hidden;
+      const current = () => owned() && state.load === this.loadEpoch && state.cid === this.open &&
+        state.choice === picker.choiceEpoch && state.parameters === picker.parameterEpoch && picker.pendingHandoff === handoff;
+      const preserveEmpty = !!picker.startPending || !!handoff;
+      this.coding.tools.disabled = true;
+      try {
+        const defaults = await M.api('/ui/conversations/defaults');
+        if (!current() || M.refused(defaults)) return;
+        if (!defaults.ok) throw Error(defaults.error || 'Could not read conversation settings.');
+        this.defaultSettings = defaults.settings || {};
+        if (!Object.keys(this.savedSettings).length) this.savedSettings = {...this.defaultSettings};
+        const where = await M.api('/ui/chat');
+        if (!current() || M.refused(where)) return;
+        if (!where.ok) throw Error(where.error || 'Could not read the serving models.');
+        this.runtimeReady = where.runtime_ready !== false;
+        this.runtimeError = where.runtime_error || 'The agent runtime is not installed.';
+        const available = this.chatModels = where.models || [];
+        const selected = this.picker.value || (!preserveEmpty && available[0] ? M.chatTargetKey(available[0]) : '');
+        this.coding.render(selected);
+        await picker.catalogue(current);
+        if (!current()) return;
+        this.workspace.models(available);
+        if (!this.outputTokens.contains(document.activeElement)) this.outputTokens.value = this.savedSettings.max_output_tokens ?? '';
+        await this.coding.restore(this.savedSettings, selected, current);
+        if (!current()) return;
+        this.updateReadiness();
+        await this.paintList();
+        if (!current()) return;
+        const selectedChat = this.open || localStorage.getItem('poolhouse.chat.selected');
+        if (!handoff && selectedChat) {
+          state.load = this.loadEpoch + 1; state.cid = selectedChat;
+          await this.load(selectedChat);
+          if (!current()) return;
+        }
+        if (handoff && picker.handoffCurrent(handoff)) {
+          const target = M.chatTarget(available, handoff.key, handoff.localOnly);
+          picker.pendingHandoff = null;
+          if (!target) { this.showError('That model is not ready in Chat. Choose a model.'); return; }
+          this.picker.value = M.chatTargetKey(target);
+          this.picker.dispatchEvent(new Event('change'));
+        }
+      } catch (error) { if (current()) this.showError(error.message); }
+      finally {
+        if (handoff && picker.pendingHandoff === handoff && !picker.handoffCurrent(handoff)) picker.pendingHandoff = null;
+        if (owned()) this.coding.tools.disabled = !!this.request || !!this.loadingConversation;
+      }
+    }
+  };
+})();
+</script>

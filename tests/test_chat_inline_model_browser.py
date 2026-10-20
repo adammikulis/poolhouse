@@ -70,7 +70,7 @@ def test_available_model_starts_in_chat_without_library_navigation_and_preserves
     page.locator('#chat-model-button').click()
     page.get_by_role('button', name=f'{model.name} Available Start in Chat', exact=True).click()
     expect(page.locator('#chat-model-dialog')).not_to_be_visible()
-    expect(page.locator('#model')).to_have_value(model.name)
+    expect(page.locator('#model')).to_have_value(str(model))
     expect(page).to_have_url(f'http://127.0.0.1:{app.port}/ui#chat')
     expect(page.locator('#ask')).to_have_value('Keep this unsent draft')
     assert starts == [str(model)]
@@ -102,7 +102,7 @@ def test_lost_start_ack_reconciles_read_only_without_second_start(inline_models)
     expect(page.locator('#chat-note')).to_contain_text('Failed to fetch')
     choice.click()
     expect(page.locator('#chat-model-dialog')).not_to_be_visible()
-    expect(page.locator('#model')).to_have_value(model.name)
+    expect(page.locator('#model')).to_have_value(str(model))
     assert starts == [str(model)]
 
 
@@ -177,7 +177,7 @@ def test_start_then_error_reconciles_without_second_start(inline_models):
     expect(page.locator('#chat-note')).to_contain_text('acknowledgement unavailable')
     choice.click()
     expect(page.locator('#chat-model-dialog')).not_to_be_visible()
-    expect(page.locator('#model')).to_have_value(model.name)
+    expect(page.locator('#model')).to_have_value(str(model))
     assert starts == [str(model)]
 
 

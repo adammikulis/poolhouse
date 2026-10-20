@@ -31,6 +31,12 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
 <script>
 (function () {
   const M = window.fleetModel;
+  M.chatTargetKey = row => row.local === true && typeof row.path === 'string' && row.path ? row.path : row.model;
+  M.chatTarget = (rows, key, localOnly = false) => {
+    const found = rows.filter(row => row.model === key || (row.local === true && row.path === key));
+    return found.length === 1 && found[0].capabilities?.chat !== false &&
+      (!localOnly || found[0].local === true) ? found[0] : null;
+  };
   class ChatModelPicker {
     constructor(chat) {
       this.chat = chat;
@@ -40,11 +46,18 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       this.list = chat.querySelector("#chat-model-list");
       this.library = [];
       this.selectionEpoch = 0;
+      this.choiceEpoch = 0;
       this.parameterEpoch = 0;
       chat.outputTokens.addEventListener("input", () => this.parameterEpoch++);
       this.unconfirmed = new Set();
       this.startOptions = new Map();
-      M.onRoute(() => this.selectionEpoch++);
+      M.onRoute(route => {
+        this.selectionEpoch++;
+        if (!this.pendingHandoff) return;
+        if (!this.pendingHandoff.entered && route === 'chat') {
+          this.pendingHandoff.entered = true; this.pendingHandoff.route = this.selectionEpoch;
+        } else this.pendingHandoff = null;
+      });
       this.button.onclick = () => {
         if (chat.request || chat.loadingConversation) return;
         this.search.value = "";
@@ -62,19 +75,19 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
         }
       };
     }
-    async catalogue() {
+    async catalogue(current = () => true) {
+      const session = M.sessionContext(), load = this.chat.loadEpoch, cid = this.chat.open;
       const data = await M.api("/ui/models");
-      if (M.refused(data)) return;
+      if (session !== M.sessionContext() || load !== this.chat.loadEpoch || cid !== this.chat.open || !current() || M.refused(data)) return;
       this.problem = data.ok ? '' : data.error || 'Could not read the model library.';
       if (data.ok) this.library = data.library || [];
     }
     rows() {
       const chat = this.chat;
       const rows = [...chat.picker.options].filter((one) => one.value).map((option) => {
-        const live = (chat.chatModels || []).find((one) => [one.model, one.path].includes(option.value) ||
-          one.model === option.textContent || one.model === option.value.split("/").pop());
-        const installed = this.library.find((one) => one.path === option.value || one.name === option.textContent ||
-          [one.name, one.path].includes(live?.model) || one.path === live?.path);
+        const live = M.chatTarget(chat.chatModels || [], option.value);
+        const installed = this.library.find(one => one.path === option.value ||
+          (live?.local === true && one.path === live.path));
         const needsLoad = !!installed?.servable && !live;
         return { value: needsLoad ? installed.path : option.value, needsLoad, name: installed?.name || option.textContent,
           family: installed?.family || "Other models", status: live ? "Running" : installed ? "Available" :
@@ -84,7 +97,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       }).filter((one) => one.capabilities?.chat !== false);
       {
         for (const installed of this.library.filter((one) => one.servable && one.capabilities?.chat !== false)) {
-          if (rows.some((one) => one.installed?.path === installed.path || one.name === installed.name)) continue;
+          if (rows.some((one) => one.installed?.path === installed.path)) continue;
           rows.push({ value: installed.path, name: installed.name, family: installed.family || "Other models",
             status: "Available", quant: installed.quantization || "", installed, needsLoad: true,
             capabilities: installed.capabilities });
@@ -144,6 +157,18 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       if (!agents.length) section.append(M.el('p', {class:'hint'}, query ? 'No workspace agents match your search.' : 'No agents available in this workspace.'));
       this.list.append(section);
     }
+    selectIntent() { this.selectionEpoch++; this.choiceEpoch++; this.pendingHandoff = null; }
+    requestHandoff(key, localOnly = true) {
+      if (typeof key !== 'string' || !key) return;
+      this.selectIntent();
+      this.pendingHandoff = {key, localOnly, session:M.sessionContext(), choice:this.choiceEpoch,
+        load:this.chat.loadEpoch, cid:this.chat.open, parameters:this.parameterEpoch, entered:false};
+    }
+    handoffCurrent(one) {
+      return !!one && one === this.pendingHandoff && one.entered && one.route === this.selectionEpoch &&
+        one.session === M.sessionContext() && one.choice === this.choiceEpoch && one.load === this.chat.loadEpoch &&
+        one.cid === this.chat.open && one.parameters === this.parameterEpoch;
+    }
     optionsFor(row) {
       const context = JSON.stringify([M.sessionContext(), this.chat.loadEpoch, this.chat.open]);
       if (context !== this.optionsContext) { this.startOptions.clear(); this.optionsContext = context; }
@@ -198,11 +223,11 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
         this.unconfirmed.delete(path);
         chat.chatModels = available.models || [];
         this.library = inventory.library || [];
-        chat.picker.replaceChildren(...chat.chatModels.map(model => M.el('option', {value:model.model}, model.local ? model.model : `${model.model} — on ${model.member}`)));
+        chat.picker.replaceChildren(...chat.chatModels.map(model => M.el('option', {value:M.chatTargetKey(model)}, model.local ? model.model : `${model.model} — on ${model.member}`)));
         chat.outputTokens.value = operation.options.output;
-        chat.picker.value = matches[0].model;
+        chat.picker.value = M.chatTargetKey(matches[0]);
         chat.picker.dispatchEvent(new Event('change'));
-        chat.coding.render(matches[0].model);
+        chat.coding.render(M.chatTargetKey(matches[0]));
         this.startMessage = '';
         const actual = started?.slot_context ?? started?.context;
         chat.note.replaceChildren(M.el('p', {class:'hint', role:'status'},
@@ -216,7 +241,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
     async choose(row) {
       if (this.chat.request || this.chat.loadingConversation || row.disabled) return;
       if (this.startPending) return this.startPending.promise;
-      this.selectionEpoch++;
+      this.selectIntent();
       if (row.needsLoad) {
         try { return this.startInstalled(row); }
         catch (error) { this.chat.showError(error.message); return; }
@@ -420,10 +445,10 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
     models(rows) {
       this.live.replaceChildren(...rows.map(row => M.el('button', {type:'button', onclick:() => {
         if (this.chat.loadingConversation) return;
-        if (M.route !== 'chat') { this.chat.pendingModel = row.model; M.go('chat'); }
-        else { this.chat.picker.value = row.model; this.chat.picker.dispatchEvent(new Event('change')); }
+        if (M.route !== 'chat') { this.chat.modelPicker.requestHandoff(M.chatTargetKey(row), false); M.go('chat'); }
+        else { this.chat.picker.value = M.chatTargetKey(row); this.chat.picker.dispatchEvent(new Event('change')); }
         this.chat.input.focus();
-      }}, `● ${row.model.split('/').pop()}`)));
+      }}, `● ${row.model}`)));
       if (!rows.length) this.live.append(M.el('p', {class:'hint'}, 'No models running. Choose a model to start Chat.'));
     }
   }

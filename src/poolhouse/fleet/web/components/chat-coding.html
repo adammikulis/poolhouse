@@ -15,9 +15,9 @@
       this.output = chat.querySelector("#chat-activity-output");
       this.tools.onchange = async () => {
         if (chat.loadingConversation) return;
-        const epoch = chat.loadEpoch, open = chat.open, capability = this.capability = (this.capability || 0) + 1;
+        const session = M.sessionContext(), epoch = chat.loadEpoch, open = chat.open, capability = this.capability = (this.capability || 0) + 1;
         if (this.active) await this.catalogue();
-        if (epoch !== chat.loadEpoch || open !== chat.open || capability !== this.capability) return;
+        if (session !== M.sessionContext() || epoch !== chat.loadEpoch || open !== chat.open || capability !== this.capability) return;
         this.render();
         chat.updateReadiness();
         chat.saveSettings();
@@ -33,27 +33,28 @@
         harness: this.active ? this.harness.value : "", role: this.role.value,
         context: Number(this.context.value || defaults.context), draft: this.draft.value.trim() || defaults.draft };
     }
-    async catalogue() {
-      if (this.data) return;
+    async catalogue(current = () => true) {
+      const session = M.sessionContext();
+      if (this.data && this.dataSession === session) return;
       const epoch = this.chat.loadEpoch, open = this.chat.open, capability = this.capability;
       const data = await M.api("/ui/coding/catalogue");
-      if (epoch !== this.chat.loadEpoch || open !== this.chat.open || capability !== this.capability) return;
+      if (session !== M.sessionContext() || !current() || epoch !== this.chat.loadEpoch || open !== this.chat.open || capability !== this.capability) return;
       if (!data.ok) {
         if (this.active) this.chat.showError(data.error || "The Coding service is unavailable.");
         return;
       }
-      this.data = data;
+      this.data = data; this.dataSession = session;
       this.harness.replaceChildren(el("option", {value:""}, "Choose a tool runtime"), ...data.harnesses.map((one) => el("option", { value: one.name,
         ...(one.available ? {} : { disabled: "" }) }, one.name === "claude" ? "Claude Code" : one.name === "pi" ? "Pi" : "Codex")));
       this.role.replaceChildren(el("option", {value:""}, "Choose permissions"), ...data.roles.map((one) => el("option", { value: one.name, title: one.summary },
         ({ "read-only": "Read only", "approve-first": "Ask before changes", "plan-and-go": "Follow approved plan" })[one.name] || one.name)));
     }
-    async restore(settings, model) {
-      const epoch = this.chat.loadEpoch, open = this.chat.open, capability = this.capability = (this.capability || 0) + 1;
+    async restore(settings, model, current = () => true) {
+      const session = M.sessionContext(), epoch = this.chat.loadEpoch, open = this.chat.open, capability = this.capability = (this.capability || 0) + 1;
       const defaults = this.chat.defaultSettings;
       this.tools.checked = !!settings.harness;
-      if (this.active) await this.catalogue();
-      if (epoch !== this.chat.loadEpoch || open !== this.chat.open || capability !== this.capability) return;
+      if (this.active) await this.catalogue(current);
+      if (session !== M.sessionContext() || epoch !== this.chat.loadEpoch || open !== this.chat.open || capability !== this.capability || !current()) return;
       this.project.value = settings.project || "";
       this.harness.value = settings.harness || "";
       if (settings.harness && this.harness.value !== settings.harness) {
@@ -72,10 +73,10 @@
       chat.querySelector("#chat-status").textContent = this.active ? "Tools enabled" : "Chat";
       const models = chat.chatModels || [];
       const selected = model === undefined ? chat.picker.value : model;
-      chat.picker.replaceChildren(...models.map((one) => el("option", { value: one.model },
+      chat.picker.replaceChildren(...models.map((one) => el("option", { value: M.chatTargetKey(one) },
         one.name || (one.local ? one.model : `${one.model} — on ${one.member}`))));
       if (selected && ![...chat.picker.options].some((option) => option.value === selected)) {
-        chat.picker.append(el("option", { value: selected, disabled: "" }, `${selected} — unavailable`));
+        chat.picker.append(el("option", { value: selected, disabled: "" }, "Selected model — unavailable"));
       }
       if (selected) chat.picker.value = selected;
       else {
