@@ -102,8 +102,17 @@ fn put(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Res
     if upload.len() < 8 || upload.len() > 64 || !upload.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()) {
         return Err(Error::Invalid("an upload is named by 8 to 64 lower-case letters and digits".into()));
     }
-    if total == 0 || total > MAX_BLOB || data.is_empty() || data.len() > CHUNK || offset + data.len() > total {
-        return Err(Error::Quota(format!("a file is up to {MAX_BLOB} bytes, sent in chunks of up to {CHUNK}")));
+    if total == 0 || data.is_empty() {
+        return Err(Error::Invalid("a file and each chunk of it hold at least one byte".into()));
+    }
+    if total > MAX_BLOB {
+        return Err(crate::limits::refuse("the file is larger than a file on a board may be", format!("{MAX_BLOB} bytes"), "MAX_BLOB", "files.rs"));
+    }
+    if data.len() > CHUNK {
+        return Err(crate::limits::refuse("a chunk of an upload is larger than a chunk may be", format!("{CHUNK}"), "CHUNK", "files.rs"));
+    }
+    if offset + data.len() > total {
+        return Err(Error::Invalid(format!("the chunk ends at {} bytes, past the size of {total} the upload announced", offset + data.len())));
     }
     let base = dir(node, board);
     let staging = base.join("staging");
@@ -116,7 +125,7 @@ fn put(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Res
         return Err(Error::Invalid(format!("the upload holds {have} bytes; the next chunk starts there")));
     }
     if offset == 0 && std::fs::read_dir(&staging)?.count() >= MAX_STAGED {
-        return Err(Error::Quota("too many uploads are waiting; finish or wait for them".into()));
+        return Err(crate::limits::refuse("too many uploads are waiting; finish or wait for them", MAX_STAGED, "MAX_STAGED", "files.rs"));
     }
     let mut bytes = std::fs::read(&part).unwrap_or_default();
     bytes.extend_from_slice(&data);
@@ -188,7 +197,7 @@ fn delete(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
     all.insert(handle.to_string());
     private_dir(&base)?;
     write_atomic(&base.join("deleted.json"), &serde_json::to_vec(&all)?)?;
-    node.host(board)?.board.append(Kind::Audit, &access.actor, json!({"event": "file.delete", "subject": handle, "detail": format!("{shredded} blobs shredded")}), "")?;
+    node.writer(board, &access.actor)?.append(Kind::Audit, &access.actor, json!({"event": "file.delete", "subject": handle, "detail": format!("{shredded} blobs shredded")}), "")?;
     Ok(json!({"deleted": handle, "shredded": shredded}))
 }
 

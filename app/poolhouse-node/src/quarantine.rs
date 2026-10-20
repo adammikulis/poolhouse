@@ -60,6 +60,11 @@ impl Quarantine {
         Ok(Quarantine { path: path.into(), items })
     }
 
+    /// Whether no entry is held or released.
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
     fn save(&self) -> Result<()> {
         write_atomic(&self.path, &serde_json::to_vec(&self.items)?)
     }
@@ -68,7 +73,7 @@ impl Quarantine {
     fn hold(&mut self, entry: &str, flags: Vec<String>, now: u64) -> Result<&Item> {
         if !self.items.contains_key(entry) {
             if self.items.len() >= MAX_ITEMS {
-                return Err(Error::Quota("this device already holds as many flagged entries as it keeps".into()));
+                return Err(crate::limits::refuse("this device already holds as many flagged entries as it keeps", MAX_ITEMS, "MAX_ITEMS", "quarantine.rs"));
             }
             let qid = format!("q{}", self.items.len() + 1);
             self.items.insert(entry.into(), Item { qid, entry: entry.into(), flags, held_ms: now, released_ms: 0, released_by: String::new() });
@@ -138,15 +143,17 @@ fn release(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) ->
     let entries = node.view(board)?;
     let hosted = node.host(board)?;
     let now = hosted.board.now_ms();
-    let item = hosted.quarantine.items.values_mut().find(|i| i.qid == qid).ok_or_else(|| Error::Invalid(format!("nothing is held as {qid}")))?;
+    let found = hosted.quarantine.items.values().find(|i| i.qid == qid).cloned().ok_or_else(|| Error::Invalid(format!("nothing is held as {qid}")))?;
+    let e = entries.iter().find(|e| e.id == found.entry).ok_or_else(|| Error::Invalid("the held entry is no longer on the board".into()))?;
+    let audit = json!({"event": "quarantine.release", "subject": found.entry, "detail": found.qid});
+    hosted.board.append_node(Kind::Audit, &access.actor, audit, &format!("quarantine.release:{qid}"))?;
+    let item = hosted.quarantine.items.get_mut(&found.entry).ok_or_else(|| Error::Invalid(format!("nothing is held as {qid}")))?;
     if item.released_ms == 0 {
         item.released_ms = now.max(1);
         item.released_by = access.actor.clone();
     }
     let done = item.clone();
     hosted.quarantine.save()?;
-    let e = entries.iter().find(|e| e.id == done.entry).ok_or_else(|| Error::Invalid("the held entry is no longer on the board".into()))?;
-    hosted.board.append(Kind::Audit, &access.actor, json!({"event": "quarantine.release", "subject": done.entry, "detail": done.qid}), "")?;
     Ok(json!({"item": shown(&done, e)}))
 }
 

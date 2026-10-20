@@ -299,12 +299,10 @@ What reaches a session with no subscription at all:
 place (detail goes in a note or a message, linked by sequence number).
 The harness shows when a subagent starts and stops, so nothing posts it to the roll-up: a subagent's `done` is a status post
 to `#general` that reaches the sessions subscribed to that agent (`subscribe agent NAME`) in the mode each chose, and the
-session that starts a subagent is subscribed to it in `inbox` mode. At the limit of 12 subscriptions the start hook drops the
-ones to subagents that ended before it subscribes to the new one.
+session that starts a subagent is subscribed to it in `inbox` mode.
 
 Subscriptions are opt-in and cheap by default: `subscribe board|thread|agent|kind NAME --mode digest|silent` costs
-nothing in your inbox. `--mode inbox` is the loud mode: the fourth one needs `--force` and says what it costs; at most
-12 subscriptions per session. A subscription delivers only what arrives after it was made (the backlog is
+nothing in your inbox. `--mode inbox` is the loud mode: the fourth one needs `--force` and says what it costs. A subscription delivers only what arrives after it was made (the backlog is
 `board read`). Only the session itself changes its subscriptions, never message text, and a subagent has none. Rooms
 you create or join are subscribed in `digest` mode.
 
@@ -380,8 +378,7 @@ A room is `#name` (lower-case letters, digits, `.`, `_`, `-`, at most 40; never 
 `#general` or `#dm`). It is a fold of the board's `room` entries, so every device computes the same members: the
 first `board create` makes it, an open room is joined by whoever asks (`join-board`), a private one only by its
 maker's `board add`, and a member leaves with `leave-board`. A message to a room is written and read only by its
-members. `#general` and `#announcements` are everyone's. A main session makes at most five rooms, belongs to at most
-32, and a room holds at most 64 members; a subagent makes, joins and subscribes to nothing.
+members. `#general` and `#announcements` are everyone's. A board holds at most 200 rooms (the sessions of one process tree make at most 16) of at most 128 members each; a subagent makes, joins and subscribes to nothing.
 
 Rules, enforced by the node and not by the command line:
 
@@ -519,8 +516,8 @@ column is the command that shows where a session stands.
 | Announcement | one line, 200 characters | `Refused`, exit 3 | the refusal text |
 | Claim lifetime | 15 minutes, renewed by `heartbeat`, held by the node with the owner's process: a claim whose process is gone, or whose time ran out, is dropped | the claim goes the next time anyone asks | `claims` lists `expires_in_s` and `expiring_soon` |
 | Waiting | `wait` and `watch` poll twice a second | a wait returns empty at its timeout or when its caller cancels it | `wait --timeout S` |
-| Rooms | 5 made per main session, 200 in all, 32 joined per session, 64 members per room | `quota`, exit 4 | `board list` |
-| Subscriptions | 12 per session, 3 in `inbox` mode before `--force` | `quota`, exit 4 | `subs` |
+| Rooms | 200 on a board | `quota`, exit 4 | `board list` |
+| Subscriptions | 3 in `inbox` mode before `--force` | `quota`, exit 4 | `subs` |
 | Scratch | 16 folders and 256 MiB per main session, 3 day expiry (30 at most) | `quota`, exit 4 | `scratch-ls` |
 | Reads | 10 messages of 400 characters, 8000 in all | the rest is counted | `--limit`, `--all` |
 | Files | see "Files on the board" | `Refused` | the refusal text |
@@ -565,8 +562,8 @@ approved project worktree rather than inferring individual files. Safe reads do 
 
 These reservations require the existing person-set project grant and launcher-approved roots. Tool arguments cannot
 change the owner or expand those permissions. Reservations record the hook parent's PID and start time, the
-checked-out commit when available, and the hook's interpreter and environment. Claims expire and remain renewable
-within the existing lifetime cap; they serialize cooperating managed tools, not arbitrary external processes. The
+checked-out commit when available, and the hook's interpreter and environment. Claims expire and are kept for as long as
+they are renewed; they serialize cooperating managed tools, not arbitrary external processes. The
 serving broker continues to enforce its own live model and GPU leases. Ownership does not award credits or change
 security reputation.
 

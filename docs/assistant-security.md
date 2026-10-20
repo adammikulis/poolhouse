@@ -88,8 +88,7 @@ starts the subagent), and only that. Nobody mints a token and nothing creates a 
 the subagent, records the registering session as its parent and gives it its own token, and the registration needs the
 parent's token. The subagent holds a grant only when a person signed one that names it, or names its parent with
 `--with-subagents`; it makes no room, subscribes to nothing and has no scratch folder, and it is never
-coordinator-eligible. Registering is rate-limited per terminal
-lineage, a session ends with `retire` (its tokens stop working and its claims are released), and a parent ends a
+coordinator-eligible. A session ends with `retire` (its tokens stop working and its claims are released), and a parent ends a
 descendant. Nothing the agent read can register one: the chat assistant has no tool for it. There is no invitation to
 a workspace: every device of the pool holds the board, and a person widens what a session may do by signing a grant
 (`grants-setup`, `grant`), each with its own typed yes. Signing grants, enrolling or removing the person's key, and

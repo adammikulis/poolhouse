@@ -27,7 +27,6 @@ fn start(state: &Path) -> Child {
 impl Proc {
     fn new() -> Proc {
         let state = tempfile::tempdir().unwrap();
-        std::fs::write(state.path().join(poolhouse_node::writes::LIMITS_FILE), r#"{"sends": 100000}"#).unwrap();
         kit::govnode::plant_phone_person(state.path());
         let child = start(state.path());
         Proc { state, child }

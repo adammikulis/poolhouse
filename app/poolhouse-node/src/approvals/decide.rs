@@ -262,7 +262,7 @@ fn approved(node: &mut Node, a: &Approval, d: &Decision, now: u64) -> Result<()>
             }
             let mut written = Vec::new();
             for (gid, body) in entries {
-                if let Err(e) = node.host(&a.board).and_then(|h| h.board.append(Kind::Grant, "node", body, "").map(drop)) {
+                if let Err(e) = node.host(&a.board).and_then(|h| h.board.append_person(Kind::Grant, "node", body).map(drop)) {
                     // A write that fails part-way (the disk) leaves the asks already written live; the request names them.
                     let _ = node.approvals.update(&a.id, |x| x.grants = written.clone());
                     return Err(e);

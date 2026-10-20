@@ -93,9 +93,10 @@ fn rebind(node: &mut Node, board: &str, p: &Map<String, Value>, peer: &Peer) -> 
         return Err(Error::Denied("that approval was used already".into()));
     }
     node.host(board)?.names.rebind(&name, &lineage)?;
+    node.regroup(board)?;
     let ended = node.tokens.revoke_name(board, &name)?;
     let detail = format!("moved by the person key {}: {ended} tokens ended", by.chars().take(16).collect::<String>());
-    node.host(board)?.board.append(Kind::Audit, "node", json!({"event": "rebind", "subject": name, "detail": detail}), "")?;
+    node.host(board)?.board.append_person(Kind::Audit, "node", json!({"event": "rebind", "subject": name, "detail": detail}))?;
     Ok(json!({"name": name, "moved": true, "tokens_ended": ended}))
 }
 
@@ -164,15 +165,21 @@ fn retire(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
               "subagents_retired": below}))
 }
 
-/// End ``target`` and say so on the board: its tokens, its leases and its name; how many of each of the first two there were.
+/// End ``target`` and say so on the board: its tokens, its leases, its subscriptions and its name; how many of each of the first two there were.
+/// The board's entries about the ending are skipped when the log has no room for them: the registry is the record of a session.
 pub fn end(node: &mut Node, board: &str, target: &str, by: &str, reason: &str) -> Result<(usize, usize)> {
     let freed = release_leases(node, board, target)?;
     let revoked = node.tokens.revoke_name(board, target)?;
     let parent = node.host(board)?.names.get(target).map(|i| i.parent.clone()).unwrap_or_default();
     node.host(board)?.names.retire(target, reason)?;
-    node.write_identity(board, target)?;
+    node.host(board)?.subs.drop_for(target)?;
     let detail = format!("retired by {by} ({reason}): {revoked} tokens revoked, {freed} leases released");
-    node.host(board)?.board.append(Kind::Audit, by, json!({"event": "retire", "subject": target, "detail": detail}), "")?;
+    let audit = json!({"event": "retire", "subject": target, "detail": detail});
+    let written = node.write_ended(board, target).and_then(|()| node.host(board)?.board.append_node(Kind::Audit, by, audit, &format!("retire:{target}")).map(drop));
+    match written {
+        Ok(()) | Err(Error::Quota(_)) => {}
+        Err(e) => return Err(e),
+    }
     if reason == "idle" && !parent.is_empty() {
         let said = format!("{target} was retired for idleness: it held no lease and the node heard nothing from it for {} hours. \
                             Its token no longer works; if its work is not finished, start it again.", node.writes.idle_retire_s / 3600);

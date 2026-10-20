@@ -133,7 +133,7 @@ def test_a_subagent_handed_back_with_work_unlanded_says_no_done(scene):
     assert [m for m in said(scene, scene.lead, "inbox") if "subject: done" in m["text"]] == []
 
 
-def test_a_parent_at_its_subscription_limit_drops_the_ones_to_ended_subagents_for_a_new_child(scene):
+def test_a_parent_keeps_its_subscriptions_to_ended_subagents_while_it_has_room_for_a_new_child(scene):
     ended = [scene.node.member(f"old{n}") for n in range(11)]
     for old in ended:
         said(scene, scene.lead, "subscribe", "agent", old.name, "--mode", "digest")
@@ -141,5 +141,5 @@ def test_a_parent_at_its_subscription_limit_drops_the_ones_to_ended_subagents_fo
     scene.event = {**scene.event, "agent_id": "fedcba98765"}
     scene.start()
     held = {(row["type"], row["target"]) for row in said(scene, scene.lead, "subs")}
-    assert ("agent", scene.child.name) in held and not any(("agent", old.name) in held for old in ended)
-    assert len(held) == 2
+    assert ("agent", scene.child.name) in held and all(("agent", old.name) in held for old in ended)
+    assert len(held) == 13

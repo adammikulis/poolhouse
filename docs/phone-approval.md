@@ -308,7 +308,7 @@ Each refusal is one sentence the agent can pass to its person.
 | An ask for a floor (`grant_issue`, `push_main`...) | "`grant_issue` is a floor: no grant, from anyone, covers it." |
 | An agent's `expect_policy` that is not the node's | "The pool is secure, not open as you wrote; ask again with what is true." |
 | Text with other than printable ASCII | "That text must be plain English letters, digits and punctuation." |
-| A request beyond the limits | "6 requests in ten minutes is the most one session may make; try again later." |
+| A request beyond the limits | "One session has made as many requests as it may; try again later (the limit is 6 in ten minutes, set by MOST_REQUESTS in approvals/mod.rs)." |
 | A code a session made, used to add the first phone | "A code made through the node cannot add the first phone: a person at the computer adds it with `poolhouse-workspace phone add`." |
 | The first key or phone asked of a node that has no way to ask the person (started with no `--presence`) | "This node was started with no way to ask the person, so the first key or phone cannot be added through it." |
 | The first key or phone on Windows | "The first key and phone cannot be added on Windows yet: it has no prompt the node can ask with." |

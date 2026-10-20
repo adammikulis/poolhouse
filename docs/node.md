@@ -31,7 +31,7 @@ built and tested alone. The shipping section below puts it in every runtime and 
   project names; a place that is not a git repository (`folder`, `gdrive`, `onedrive`) also needs the
   grant `source_add` on the project, as every further place does, which a person gives with
   `poolhouse-workspace grant source_add --to NAME --scope PROJECT`; the grant is spent once the project
-  was added. A lineage takes ten projects a minute, counted when one was added, and a node holds 256
+  was added. A node holds 256 projects
   ("Limits"). The first session in a repository registers a session on the board the repository names
   (harness `poolhouse-place`) and adds the project with it (`board.place.resolve`). A person's approval
   of a git project is not asked: it would have to work before any session exists, and a prompt for the
@@ -46,8 +46,7 @@ built and tested alone. The shipping section below puts it in every runtime and 
   `#leases` (claims), `#identity`, `#audit`, `#grants`. Messages to one session are on `#dm`, which a link never
   shares (see "Direct messages"). A linked session writes as `name@its-board`. `unlink {id}` revokes it at once. A link of any
   mode needs a grant on `FROM>TO`: `link_read` for `ro`, `link_write` for `rw`, and ending one needs `link_remove`. A board has at most
-  64 links open, a session makes six a minute, and making or ending a link writes one audit entry on both boards, so the
-  other board's log takes at most that from a session that was granted it. Links are node-local.
+  64 links open, and making or ending a link writes one audit entry on both boards. Links are node-local.
 - Unknown board, a token of another board without a link, and a write over a read-only link are all
   `denied`.
 
@@ -80,7 +79,10 @@ Kinds: `message`, `note`, `verify`, `identity`, `lease`, `audit`, `landing`, `ro
   refused), must be a usable name and must not be a local session's name, and is shown as
   `actor@dN`. Posts target `#general` or `#announcements` (with announcement types only). Notes per
   foreign sender are capped. Refusals are recorded (the latest 200) and shown in `status`.
-- **Quotas.** 64 origins per board, 200,000 rows per log, 128 KiB per row, 64 KiB per body text.
+- **Quotas.** 64 origins per board, 200,000 rows and 128 MiB per log (one session writes a tenth of each and the sessions of one process tree
+  a quarter between them; the last 2,000 rows and 8 MiB are the node's own: the identity entry and the audit of a session ending, and in
+  the last 500 rows and 2 MiB only a head and the rows a person's decision makes; docs/limits.md, "At a bound"), 128 KiB per row, 64 KiB per
+  body text.
 - **Damage.** A forged, forked or broken copy is `damaged`. It marks the origin damaged only when
   it came from the device that owns the origin (`authoritative`); a relay's bad copy never does.
   Oversized or malformed requests are `invalid`, never evidence against an origin.
@@ -197,8 +199,8 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `quarantine_hold` | board, token | `entries` (`[{id, flags}]`: entries a reading client matched an injection pattern in) | `{items}`: one record per entry on this device, with `qid`, `state` (`quarantined` or `released`) and `flags`, never the text |
 | `quarantine_list` | board, token | | `{items}` of the entries the caller may read |
 | `quarantine_release` | token with the grant `quarantine_release` | `qid` | `{item}`; writes an audit entry |
-| `claim`, `reserve`, `release`, `claims` | board, token | `kind, key, ttl_s, pid, local` / `resources` (`[{kind, key}]`, one to 128), `ttl_s, pid, local` / `kind, key, held_by` (a spawned subagent of the caller whose claim to give up) / `kind` | `{changed, claim}` / `{claims: [{changed, claim}]}` / `{kind, key, released}` / `{claims}` |
-| `audit_event` | board, token | `event` (`agent.effort` or `authority.set_denied`), `subject`, `detail` (one clean line each, at most 300 characters) | `{recorded}`; writes an audit entry under the caller's name and counts as one of its sends; any other event is `invalid` |
+| `claim`, `reserve`, `release`, `claims` | board, token | `kind, key, ttl_s, pid, local` / `resources` (`[{kind, key}]`, at least one), `ttl_s, pid, local` / `kind, key, held_by` (a spawned subagent of the caller whose claim to give up) / `kind` | `{changed, claim}` / `{claims: [{changed, claim}]}` / `{kind, key, released}` / `{claims}` |
+| `audit_event` | board, token | `event` (`agent.effort` or `authority.set_denied`), `subject`, `detail` (one clean line each, at most 300 characters) | `{recorded}`; writes an audit entry under the caller's name; any other event is `invalid` |
 | `notes` | board, token | `ref, query, kind, all, limit` | `{notes}` |
 | `note_verify` | board, token | `note, exit, out_sha` | `{notes: [the note]}` |
 | `link`, `unlink`, `links` | board, token with the grant `link_read` or `link_write` (make), `link_remove` (end) | `to, channels, mode` / `id` | the link |
@@ -213,7 +215,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `pool_leave` | token with the grant `pool_leave` | | the `leave` act this device signed with its own key |
 | `pool_propose` | token with the grant `admin_manage` | `kind`, `body` | `{act, status, have, need, why}`: makes the act and signs it with the keys this device's signer holds that count |
 | `pool_cosign` | token with the grant `admin_manage` | `act` | adds this device's signer's signatures to an act the pool holds |
-| `pool_submit` | | `act` | takes an act a person's key signed elsewhere (the typed-yes path, a phone, another device); the signatures are the authority, so no grant; 120 a minute |
+| `pool_submit` | | `act` | takes an act a person's key signed elsewhere (the typed-yes path, a phone, another device); the signatures are the authority, so no grant |
 | `pool_draft` | | `kind`, `body` | `{act, sign_bytes, summary}`: the act this pool would take next, unsigned, the bytes a key signs and what a person is shown, for a key that signs outside the node |
 | `pool_draft_found` | | `title`, `policy`, `project`, `keys` (each `{key, person, label}`; `key` is an Ed25519 key of 64 hex digits or a phone's P-256 point of 130, and the charter says which as `alg`; a key that names its strength is refused) | `{charter, anchor, accept, summary}`: the charter with this device as its `first` device and blank acceptances, each key `strong` only when a phone enrolled it on this device and `weak` otherwise, and for each key its `alg` and the bytes it signs to accept it; the rig or person signs them (a P-256 key in strict DER with `s` in the lower half of the group) and hands the charter back to `pool_found` |
 | `pool_found` | token with the grant `pool_create` | `act` (a founding act whose keys accepted it), or `charter` (the drafted one with the acceptances filled; the node makes the act) | `{pool, name, policy, epoch}`: founds the pool of an act signed elsewhere; the charter must name this device as its `first`, which is then the pool's first member with no admit |
@@ -268,9 +270,9 @@ a fixed channel such as `#general` or `#dm`). It is a fold of the board's `room`
 same members: the first `create` makes it, an open room is joined by whoever asks, a private one only by its maker's
 `add`, and a member leaves. Members are the names in the writers' own logs. A message to a room is written and read
 only by its members (`read` hides it from anyone else whatever the filters), a reply must stay in the room of the
-message it answers, and a main session makes at most five rooms, belongs to at most 32 and a room holds at most 64.
+message it answers, and a board holds at most 200 rooms (the sessions of one process tree made at most 16 of them) of at most 128 members.
 A spawned subagent makes, joins and subscribes to nothing. Subscriptions are kept on this device beside the board
-(`subs.json`, never synced): each delivers only what arrived after it was made, a session has at most twelve and three
+(`subs.json`, never synced): each delivers only what arrived after it was made, a session has at most 256 and three
 in `inbox` mode before it must say `force`. With none, a mention (`@name` naming the session) reaches the inbox and
 `#announcements` the digest. A thread subscription wins over a mention, then a subscribed room, a followed sender and
 a subscribed kind.
@@ -569,29 +571,25 @@ process of the same operating-system user that starts itself from the lead's ter
 or on Windows, where lineages are not read yet. A class grant holds for whatever claims the family, which is why it asks for
 `--i-understand-registration-is-open`. `--account` and `--verified` name a verified model, no session is verified yet, and the listing
 says such a grant matches nobody. A project is added by a session of its own board, with the grant `source_add` for a place that is not
-a git repository, ten a minute per lineage and 256 to a node, never in or around another project's place, never the user's home or a
+a git repository, 256 to a node, never in or around another project's place, never the user's home or a
 directory around it, and a person's approval of a git project is not asked ("Boards, projects, links"; "Limits"). The trust ledger (levels from outcomes, suspension on forgery signals, credit to a
 model-and-version account) is not built; a grant is the only thing that widens what a session may do.
 
 ## Limits
 
-What a node and a lineage may do is bounded, so no process fills the node's memory or disk or keeps another from working. A lineage is
-the shell of a terminal or the app at the top of a process tree ("Identity"); a limit that names one is kept per lineage, so a flood of
-fresh sessions from one terminal shares one limit and another terminal has its own. A count is kept in memory (a restart clears it) in a
-table of at most 1,024 lineage-and-use keys; a new key past the bound drops the key used longest ago, so no key is refused for the
-others'. A use is counted when it was made: a refused or failed attempt counts for nothing.
+What a node holds is bounded, so no process fills the node's memory or disk. A rate is kept in memory (a restart clears it) in a
+table of at most 1,024 keys; a new key past the bound drops the key used longest ago, so no key is refused for the others'. A use is
+counted when it was made: a refused or failed attempt counts for nothing. The rates are the ones that guard a person's approval, a join, a
+phone and a pool's asks. `docs/limits.md` lists every limit with its value, file, what it protects and who changes it.
 
 | what | limit | refused as |
 |---|---|---|
 | sessions a board holds | 10,000 | `quota` |
 | tokens a name holds | 8 (a ninth ends the oldest but the first) | the oldest ends |
 | tokens a node holds | 2,048; when full, the tokens of sessions idle for 30 days end | `quota` |
-| boards a node hosts | 256 | `quota` |
-| boards a lineage creates | 16 an hour | `quota` |
+| boards a node hosts; boards one process tree made | 256; 32 (a board that holds only the ends of its sessions is removed to make room, once it has been quiet for an hour) | `quota` |
 | links a board has open | 64 | `quota` |
-| links a lineage makes | 6 a minute | `quota` |
 | projects a node holds | 256 | `quota` |
-| projects a lineage adds | 10 a minute | `quota` |
 | person keys a node holds, phones included | 8 | `quota` |
 | requests waiting on a node; waiting from one session; requests one session makes | 64; 8; 6 in ten minutes | `quota` |
 | a request's asks, its text, its note | 8, 6000 bytes, 160 characters | `invalid` |
@@ -599,18 +597,15 @@ others'. A use is counted when it was made: a refused or failed attempt counts f
 | connections the phone endpoint holds; a request body | 48; 64 KiB | the connection closes |
 | used signature nonces remembered | 256, each for ten minutes, across restarts | `denied` |
 | a frame | 1 MiB | the connection closes |
-| messages, notes and claims one session writes | 30 a minute; a subagent as many (`child_sends`, never below `sends`), and what its subagents write together is held to 120 a minute of their own (`subagent_sends`, never below `sends`), which is none of the parent's 30 | `quota` |
-| announcements one session writes | 6 in ten minutes; past that, or past the minute's sends, the post is written, the board gets an `announce_over_quota` audit entry and the reply carries `over_quota` (the `announce` command prints it as a `warning`) | none |
 | direct messages unread in a session's inbox | 500, and 100 from one sender | `quota` |
 | notes an author keeps on a board | 500 | `quota` |
 | idle time before the node retires a session | 24 hours (no lease held, not heard from) | none |
 
 The constants are in `node.rs`, `identity.rs`, `links.rs`, `registry.rs`, `grants/person.rs` and `api.rs`; the limits on what a
-session writes are in `writes.rs`, and `<state>/write-limits.json` (optional) sets any of `sends`, `child_sends`, `subagent_sends`,
-`window_s`, `announces`, `announce_window_s`, `inbox_pending`, `unread_per_sender`, `notes_per_author`, `child_beat_s` and `idle_retire_s`. A message
+session writes are in `writes.rs`, and `<state>/write-limits.json` (optional) sets any of `inbox_pending`, `unread_per_sender`,
+`notes_per_author`, `child_beat_s` and `idle_retire_s`. A message
 is unread until its recipient reads its inbox with a `since` cursor past it: the node keeps the furthest cursor each session presented
-on an inbox read (`inbox_read` in `names.json`), and a recipient on another device is not counted. A claim sent through `claim`
-counts as a send, and the `reserve` of a harness hook does not. The unread messages of each recipient and the notes of each author are counted by `tally.rs` as rows arrive (counted again from
+on an inbox read (`inbox_read` in `names.json`), and a recipient on another device is not counted. The unread messages of each recipient and the notes of each author are counted by `tally.rs` as rows arrive (counted again from
 the log when the node starts), so a post is checked without folding the board.
 
 The node writes a few direct messages of its own, as `node` (a name no session can hold): to the holder of a claim whose time ran
@@ -624,7 +619,7 @@ used to be admitted six ways: the GPU, CPU slots, memory, named claims, served m
 `src/lease/` (`types`, `policy`, `table`, `live`, `merge`, `rpc`). Config is `lease-config.json`
 (optional; every field has a default): `cpu_slots` (cores), `memory_mb` (0 = no budget),
 `max_wait_s` 600, `background_share_percent` 50, `unknown_background_s` 180, `queue_patience_s` 60,
-`default_ttl_s` 300, `max_ttl_s` 86400. The file is read again whenever its bytes change (at the next lease call), so a
+`default_ttl_s` 300, `max_ttl_s` 86400, `max_leases_per_holder` 512, `max_leases_per_lineage` 1024, `max_leases` 4096. The file is read again whenever its bytes change (at the next lease call), so a
 budget a program writes there applies at once; a file that does not parse changes nothing (and neither does one that is not a
 JSON object, whose `max_ttl_s` is under 1 or whose `background_share_percent` is over 100), and a deleted one sets the defaults.
 
@@ -654,7 +649,7 @@ different parties and wait for each other, the same tag for the same resources i
 party of its own. A program that serves many callers (the serve broker, one generation at a time per request) holds
 them all under one session by giving each its own tag. A **quiet** lease (`quiet: true`, only for the GPU and a
 `server` claim, which a request takes and gives back many times a second) is granted and ended without a board
-entry, lasts at most ten minutes between renewals, is kept in memory (a table that changed only by one is not written to `leases.json`, and
+entry, is kept in memory (a table that changed only by one is not written to `leases.json`, and
 none outlives the node), and is not refused while the device is catching up: it only orders a request to a server already running here.
 `lease_list` on the device shows it; no other device does, so a program that keeps renewing one keeps the device's GPU until it
 gives it up or its process ends, as with any other holder, and only this device's listing shows who. A holder may pass `pid`: the node records the
@@ -662,10 +657,7 @@ process start time and drops the lease when the process is gone, a zombie, or st
 moment (a reused pid). A `remote` holder has no pid and lives by expiry. Every lease expires
 `ttl_s` after the last renewal; a queued request not polled for `queue_patience_s` is dropped. The
 sweep runs on every lease call, and at the first one after a restart, so a stale holder is dropped
-and a live one kept. A lease that holds a claim (not the node's own `task` claim) is renewed to at most eight hours after it was
-granted: a renewal that would reach past that is held to it and the lease shows `capped`, and once the eight hours are over a
-renewal (`lease_renew`) is `denied` as a lifetime over, and a claim or reserve of the same name by its holder gives the old claim up and takes it
-anew, with a lifetime that starts then; another session's claim of it is refused until the old one ends.
+and a live one kept. A lease is kept for as long as its holder renews it, and the longest one renewal may keep it is the configuration's `max_ttl_s`.
 
 **Takeover.** When a request is granted resources a dead or expired holder had, the node writes an
 audit entry (`event lease_takeover`, `subject` the new lease, `detail` naming the old holder and why).
@@ -679,7 +671,7 @@ audit entry (`event lease_takeover`, `subject` the new lease, `detail` naming th
 | `lease_wait` | `id, timeout_ms` | the lease once `held`, or still `queued` at the timeout (at most 10 minutes; the node's lock is not held while it waits) |
 
 A lease is `{id, state (queued|held), holder, resources, class, estimate_s, since_ms, granted_ms,
-expires_ms, ttl_s, capped, pid, remote, position, wait_estimate_s}`. Rust: `node.leases` (`Leases`, with
+expires_ms, ttl_s, pid, remote, position, wait_estimate_s}`. Rust: `node.leases` (`Leases`, with
 `tick`), `lease::table::Table`, `lease::rpc::call` and `serve`, `lease::live::is_alive`.
 
 **On the board.** Every grant and end is a `lease` entry (`#leases`) written under the holder's

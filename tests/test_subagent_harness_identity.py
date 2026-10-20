@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 from git_world import DEV, World
-from node_kit import SRC, WRITE_LIMITS
+from node_kit import SRC
 
 from poolhouse import authority
 from poolhouse.board import session as board_session
@@ -19,7 +19,6 @@ from poolhouse.sentinel.human import HumanRequired
 
 pytest_plugins = ["node_kit"]
 ROOT = Path(__file__).resolve().parents[1]
-NODE_WRITE_LIMITS = WRITE_LIMITS
 
 
 class Scene:

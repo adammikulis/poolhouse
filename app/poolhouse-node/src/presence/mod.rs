@@ -307,10 +307,10 @@ impl Firsts {
             return Ok(());
         }
         if self.asking.is_some() {
-            return Err(Error::Quota("The person is being asked something already: answer that first.".into()));
+            return Err(crate::limits::floor("The person is being asked something already: answer that first."));
         }
         if now < self.quiet_until_ms {
-            return Err(Error::Quota("The person was asked a moment ago and did not say yes; wait a few minutes before asking again.".into()));
+            return Err(crate::limits::floor("The person was asked a moment ago and did not say yes; wait a few minutes before asking again."));
         }
         let key = match (purpose, bound) {
             (Purpose::Key, "") => return Err(Error::Invalid("The first key is asked for with its public key, so the yes is for that key.".into())),
