@@ -1,5 +1,6 @@
 <style>
 
+  .app[data-workspace="studio"] #workspace { padding: 0; margin: 0; max-width: none; }
   studio-view {
     display: contents;
   }
@@ -7,7 +8,21 @@
     padding: 18px;
     max-width: none;
     min-width: 0;
+    height: calc(100dvh - var(--header-height));
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: hidden;
   }
+  .studio-workspace[hidden], .studio-workspace [role="tabpanel"][hidden] { display: none; }
+  .studio-workspace > .studio-toolbar { flex-wrap: nowrap; overflow-x: auto; flex-shrink: 0; margin: 0; }
+  .studio-workspace > .studio-toolbar button { flex-shrink: 0; }
+  .studio-workspace-tabs { display: flex; gap: 8px; flex-shrink: 0; }
+  .studio-workspace-tabs [aria-selected="true"] { border-color: var(--accent-ink); font-weight: 750; }
+  .studio-results-panel { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+  .studio-workspace .studio-status { margin: 0; flex-shrink: 0; }
+  .studio-workspace .studio-group-path { flex-shrink: 0; overflow-x: auto; }
+
   .studio-heading,
   .studio-toolbar {
     display: flex;
@@ -48,14 +63,15 @@
     border-radius: 16px;
     overflow: hidden;
     background: var(--bg-raised);
-    min-height: 540px;
+    min-height: 0;
+    flex: 1;
   }
   .studio-library,
   .studio-inspector {
     padding: 14px;
     min-width: 0;
     overflow: auto;
-    max-height: 650px;
+    min-height: 0;
   }
   .studio-library {
     border-right: 1px solid var(--line);
@@ -100,6 +116,8 @@
   }
   .studio-outline {
     display: none;
+    min-height: 0;
+    overflow: auto;
   }
   .studio-outline button {
     display: block;
@@ -166,12 +184,13 @@
   @media (max-width: 1100px) {
     .studio-shell {
       grid-template-columns: 170px minmax(0, 1fr);
+      grid-template-rows: minmax(0, 1fr) minmax(0, .6fr);
     }
     .studio-inspector {
       grid-column: 1 / -1;
       border-left: 0;
       border-top: 1px solid var(--line);
-      max-height: 300px;
+      min-height: 0;
       display: flex;
       flex-wrap: wrap;
       gap: 10px;
@@ -195,11 +214,12 @@
     .studio-shell {
       grid-template-columns: 1fr;
       min-height: 0;
+      grid-template-rows: minmax(0, .5fr) minmax(0, .6fr) minmax(0, 1fr);
     }
     .studio-library {
       border: 0;
       border-bottom: 1px solid var(--line);
-      max-height: 240px;
+      min-height: 0;
     }
     .studio-library #studio-library-items {
       display: flex;
@@ -215,6 +235,8 @@
     .studio-outline {
       display: block;
       padding: 14px;
+      min-height: 0;
+      overflow: auto;
     }
     .studio-inspector {
       display: block;
@@ -237,7 +259,7 @@
     display: block;
     position: relative;
     min-width: 0;
-    min-height: 540px;
+    min-height: 0;
     background: var(--bg-raised);
     overflow: hidden;
     touch-action: none;

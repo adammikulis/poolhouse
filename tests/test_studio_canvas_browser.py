@@ -474,6 +474,7 @@ def test_actual_run_logs_and_declared_artifact_download(tmp_path, studio_browser
                 page.get_by_role('button', name='Run workflow', exact=True).click()
             source_id = submitted.value.json()['run']['id']
             expect(page.locator('#studio-runs')).to_contain_text('done')
+            page.get_by_role('tab', name='Runs and Results', exact=True).click()
             seed_report_artifact(served, source_id)
             page.get_by_role('button', name='Refresh', exact=True).click()
             page.get_by_role('button', name='Report artifact', exact=True).click()
