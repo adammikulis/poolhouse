@@ -1,7 +1,7 @@
 <template><div
     class="studio-viewport"
     tabindex="0"
-    aria-label="Workflow canvas. Drag the background to pan, use wheel to zoom, press slash to search nodes."
+    aria-label="Workflow canvas. Drag the background to pan, use wheel to zoom, right-click to add, Shift F10 for the node menu."
   >
     <div class="studio-world">
       <svg class="studio-connections" aria-label="Workflow connections"></svg>
@@ -10,7 +10,7 @@
     <div class="studio-selection-box" hidden></div>
   </div>
   <span class="studio-canvas-help"
-    >Drag to pan · Shift drag to select · / to add</span
+    >Drag library nodes · Right-click to add · Shift drag to select</span
   >
   <div class="studio-canvas-tools">
     <button type="button" data-zoom="out" aria-label="Zoom out">−</button
@@ -38,6 +38,7 @@
         this.world = this.querySelector(".studio-world");
         this.layer = this.querySelector(".studio-node-layer");
         this.svg = this.querySelector(".studio-connections");
+        this.setupPlacement();
         this.view.onpointerdown = (e) => this.background(e);
         this.view.addEventListener("pointerup", (e) => {
           const start = this.portStart;
@@ -49,6 +50,7 @@
           )
             return;
           this.pending = S.portReference(start.node, start.port, start.side);
+          this.pendingPosition = this.point(e);
           this.editor.message("Choose a compatible node to connect.");
           this.editor.library();
           this.editor.querySelector("#studio-search").focus();
@@ -78,6 +80,7 @@
       }
       disconnectedCallback() {
         this.resize?.disconnect();
+        this.closePlacement(false);
       }
       viewport() {
         return this.editor.graph.layout.viewport;
@@ -135,6 +138,7 @@
       }
       paint() {
         if (!this.editor || !this.layer) return;
+        if (this.placementPopup && this.placementPopup.graph !== this.editor.graph) this.closePlacement(false);
         const focused = document.activeElement;
         const focusedNode = focused?.matches(".studio-node") && this.layer.contains(focused)
           ? focused.dataset.nodeId : null;
@@ -179,7 +183,12 @@
           }
           this.connections();
         };
-        this.track(e, move, () => editor.changed());
+        this.track(e, move, (event) => {
+          const eligible = event.type !== "pointercancel" && editor.selected.size === 1 && Math.hypot(event.clientX - e.clientX, event.clientY - e.clientY) > 5;
+          const edge = eligible ? this.placementEdge(event, node.id) : null;
+          editor.changed();
+          if (edge !== null) this.placeEntry(null, S.position(editor, node.id), edge, node);
+        });
       }
       background(e) {
         if (
@@ -282,6 +291,7 @@
             "d",
             `M${x1},${y1} C${x1 + 80},${y1} ${x2 - 80},${y2} ${x2},${y2}`,
           );
+          path.dataset.edgeIndex = index;
           path.setAttribute("tabindex", "0");
           path.setAttribute("role", "button");
           path.setAttribute(
@@ -323,6 +333,8 @@
       }
     }
     S.installCanvasNodes(StudioCanvas.prototype);
+    S.installInsertion(StudioCanvas.prototype);
+    S.installPlacement(StudioCanvas.prototype);
     customElements.define("studio-canvas", StudioCanvas);
   })();
 </script>

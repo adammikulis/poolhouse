@@ -1,0 +1,94 @@
+<script>
+(function () {
+  const S = window.studioModel, E = window.fleetModel.el, MIME = 'application/x-poolhouse-studio-node';
+  S.installPlacement = proto => Object.assign(proto, {
+    setupPlacement() {
+      this.view.ondragover = event => {
+        if ([...event.dataTransfer.types].includes(MIME)) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; }
+      };
+      this.view.ondrop = event => {
+        event.preventDefault();
+        const value = event.dataTransfer.getData(MIME);
+        if (!value || value.length > 500) return;
+        let entry;
+        try { entry = JSON.parse(value); } catch { return; }
+        this.placeEntry(entry, this.point(event), this.placementEdge(event));
+      };
+      this.view.oncontextmenu = event => {
+        if (event.target.closest('.studio-node, input, select, textarea')) return;
+        event.preventDefault(); this.openPlacement(event);
+      };
+      this.view.addEventListener('keydown', event => {
+        if (event.target.closest('input, select, textarea, [contenteditable=true]')) return;
+        if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+          event.preventDefault(); this.openPlacement();
+        }
+      });
+    },
+    placementCenter() {
+      const box = this.view.getBoundingClientRect();
+      const center = box.width ? this.point({clientX: box.left + box.width / 2, clientY: box.top + box.height / 2}) : {x: 205, y: 170};
+      const origin = {x: center.x - 125, y: center.y - 90};
+      for (let row = 0; ; row++) for (const column of [0, -1, 1]) {
+        const point = {x: origin.x + column * 280, y: origin.y + row * 240};
+        if (!this.editor.graph.nodes.some(n => { const p = S.position(this.editor, n.id); return Math.abs(p.x - point.x) < 260 && Math.abs(p.y - point.y) < 220; })) return point;
+      }
+    },
+    libraryPlacement(entry, title, detail, pending) {
+      const card = E('div', {class: 'studio-library-node', draggable: true, 'data-node-type': entry.type || 'group'},
+        E('span', {}, title), E('small', {}, detail || 'Workflow'));
+      card.ondragstart = event => {
+        event.dataTransfer.setData(MIME, JSON.stringify(entry)); event.dataTransfer.effectAllowed = 'copy';
+      };
+      const add = E('button', {type: 'button', 'aria-label': 'Add ' + title, onclick: () => {
+        this.placeEntry(entry, pending && this.pendingPosition ? {...this.pendingPosition} : this.placementCenter());
+      }}, 'Add');
+      card.append(add); return card;
+    },
+    openPlacement(event) {
+      const point = event ? this.point(event) : this.placementCenter(), edge = event ? this.placementEdge(event) : null;
+      const graph = this.editor.graph, stamp = this.placementStamp();
+      const entries = this.editor.specs.map(spec => ({title: spec.title || spec.type, detail: spec.family,
+        entry: {kind: 'node', type: spec.type, version: spec.version}}));
+      for (const [id, definition] of Object.entries(graph.groups)) entries.push({title: definition.name || 'Group', detail: 'Independent group copy', entry: {kind: 'group', group: id}});
+      this.placementMenu(edge ? 'Insert node into connection' : 'Add node here', entries.map(row => ({...row, choose: () => {
+        if (graph !== this.editor.graph || stamp !== this.placementStamp()) { this.editor.message('The workflow changed. Open the node menu again.'); return; }
+        this.placeEntry(row.entry, point, edge);
+      }})), event);
+    },
+    placementMenu(title, choices, event) {
+      this.closePlacement();
+      const active = document.activeElement, origin = !active?.isConnected || active === document.body ? this.view : active;
+      const menu = E('div', {class: 'studio-placement-menu', role: 'dialog', 'aria-label': title});
+      const search = E('input', {type: 'search', 'aria-label': 'Search nodes to place', placeholder: 'Search nodes…'});
+      const list = E('div', {class: 'studio-placement-choices'});
+      const draw = () => list.replaceChildren(...choices.filter(c => (c.title + ' ' + (c.detail || '')).toLowerCase().includes(search.value.toLowerCase())).map(c =>
+        E('button', {type: 'button', onclick: () => { this.closePlacement(false); c.choose(); }}, c.title, ...(c.detail ? [E('small', {}, c.detail)] : []))));
+      search.oninput = draw;
+      menu.append(E('strong', {}, title), search, list, E('button', {type: 'button', onclick: () => this.closePlacement()}, 'Cancel'));
+      this.editor.append(menu); this.placementPopup = {menu, origin, graph: this.editor.graph};
+      const box = this.view.getBoundingClientRect();
+      menu.style.left = Math.max(8, Math.min(event?.clientX ?? box.left + box.width / 2, innerWidth - 300)) + 'px';
+      menu.style.top = Math.max(8, Math.min(event?.clientY ?? box.top + 60, innerHeight - 400)) + 'px';
+      menu.onkeydown = e => {
+        if (e.key === 'Tab') {
+          const controls = [...menu.querySelectorAll('input, button:not(:disabled)')], first = controls[0], last = controls.at(-1);
+          if (e.shiftKey && e.target === first) { e.preventDefault(); last.focus(); }
+          else if (!e.shiftKey && e.target === last) { e.preventDefault(); first.focus(); }
+        }
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); this.closePlacement(); }
+        if (e.key === 'Enter' && e.target === search) { e.preventDefault(); list.querySelector('button')?.focus(); }
+      };
+      this.placementOutside = e => { if (!menu.contains(e.target)) this.closePlacement(false); };
+      document.addEventListener('pointerdown', this.placementOutside, true);
+      draw(); search.focus();
+    },
+    closePlacement(restore = true) {
+      document.removeEventListener('pointerdown', this.placementOutside, true);
+      const popup = this.placementPopup;
+      popup?.menu.remove(); this.placementPopup = null;
+      if (restore && popup) (popup.origin?.isConnected ? popup.origin : this.view).focus({preventScroll: true});
+    },
+  });
+})();
+</script>

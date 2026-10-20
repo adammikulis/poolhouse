@@ -117,7 +117,10 @@ def studio_page(tmp_path, studio_browser):
 
 
 def add(page, title):
-    page.locator('.studio-library').get_by_role('button', name=title).click()
+    name = title if isinstance(title, re.Pattern) else 'Add ' + title
+    button = page.locator('.studio-library').get_by_role('button', name=name, exact=isinstance(name, str))
+    button.focus()
+    button.press('Enter')
 
 
 def test_build_connect_configure_run_and_snapshot(studio_page):

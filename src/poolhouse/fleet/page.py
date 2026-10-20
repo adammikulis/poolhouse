@@ -16,7 +16,7 @@ COMPONENTS = ("fleet-model", "vocabulary-model", "fleet-nav", "sign-in", "launch
               "chat-stream", "chat-markdown", "chat-view", "board-view", "projects-view", "wired-memory", "feature-flags", "models-library", "model-browser", "models-view", "theme-editor", "vocabulary-settings", "settings-view", "fit-model", "fit-view",
               "fit-charts", "rates-view", "telemetry-view",
               "workspace-jobs", "history-view", "tasks-view", "data-view", "knowledge-view",
-              "studio-styles", "studio-model", "studio-persistence", "studio-bindings", "studio-editor", "studio-sweeps", "studio-targets", "studio-setup", "studio-managed", "studio-live", "studio-delivery", "studio-webhook", "studio-producer", "studio-records", "studio-branches", "studio-groups", "studio-runs", "studio-sharing", "studio-nodes", "studio-canvas", "studio-view", "training-view", "tools-view", "benchmarks-view", "gym-scene-controls",
+              "studio-styles", "studio-model", "studio-persistence", "studio-bindings", "studio-editor", "studio-sweeps", "studio-targets", "studio-setup", "studio-managed", "studio-live", "studio-delivery", "studio-webhook", "studio-producer", "studio-records", "studio-branches", "studio-groups", "studio-runs", "studio-sharing", "studio-nodes", "studio-insertion", "studio-placement", "studio-canvas", "studio-view", "training-view", "tools-view", "benchmarks-view", "gym-scene-controls",
               "gym-drone-camera", "gym-scene", "gym-recordings",
               "gym-world-options", "gym-model-options", "gym-view", "close-sheet")
 MODULES = {"task-publishing": frozenset({"tasks-view"}),
@@ -26,7 +26,7 @@ MODULES = {"task-publishing": frozenset({"tasks-view"}),
            "chat-model-picker": frozenset({"chat-view"}),
            "chat-runtime": frozenset({"chat-view", "settings-view"}),
            "chat-coding": frozenset({"chat-view"}), "workspace-model": frozenset({
-    "workspace-jobs", "history-view", "tasks-view", "data-view", "knowledge-view", "studio-styles", "studio-model", "studio-persistence", "studio-bindings", "studio-editor", "studio-sweeps", "studio-targets", "studio-setup", "studio-managed", "studio-live", "studio-delivery", "studio-webhook", "studio-producer", "studio-records", "studio-branches", "studio-groups", "studio-runs", "studio-sharing", "studio-nodes", "studio-canvas", "studio-view", "training-view", "tools-view", "benchmarks-view",
+    "workspace-jobs", "history-view", "tasks-view", "data-view", "knowledge-view", "studio-styles", "studio-model", "studio-persistence", "studio-bindings", "studio-editor", "studio-sweeps", "studio-targets", "studio-setup", "studio-managed", "studio-live", "studio-delivery", "studio-webhook", "studio-producer", "studio-records", "studio-branches", "studio-groups", "studio-runs", "studio-sharing", "studio-nodes", "studio-insertion", "studio-placement", "studio-canvas", "studio-view", "training-view", "tools-view", "benchmarks-view",
     "gym-world-options", "gym-recordings", "gym-model-options", "gym-view",
 })}
 #: components from the experimental layer; a build without their files leaves them out

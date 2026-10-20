@@ -106,6 +106,7 @@
         this.host = this.querySelector("section");
         this.note = this.querySelector(".studio-status");
         this.graph = S.empty();
+        this.startupGraph = this.graph;
         this.specs = [];
         this.templates = [];
         this.selected = new Set();
@@ -113,6 +114,8 @@
         this.redoStack = [];
         this.revision = 0;
         this.editSerial = 0;
+        this.selectionIntent = 0;
+        this.loadContext = 0;
         try {
           const value = JSON.parse(
             sessionStorage.getItem("poolhouse-studio-submission") || "null",
@@ -128,8 +131,10 @@
         this.canvas = this.querySelector("studio-canvas");
         this.canvas.editor = this;
         const bind = (id, fn) =>
-          (this.querySelector("#studio-" + id).onclick = () =>
-            this.perform(fn));
+          (this.querySelector("#studio-" + id).onclick = () => {
+            if (["new", "save"].includes(id)) this.selectionIntent++;
+            this.perform(fn);
+          });
         bind("new", () => this.open(null));
         bind("save", () => this.save());
         bind("undo", () => this.undo());
@@ -154,16 +159,20 @@
           );
         });
         this.querySelector("#studio-search").oninput = () => this.library();
+        this.querySelector("#studio-title").oninput = () => this.selectionIntent++;
         this.querySelector("#studio-title").onchange = () =>
           this.changed(false);
-        this.querySelector("#studio-workflows").onchange = (e) =>
+        this.querySelector("#studio-workflows").onchange = (e) => {
+          this.selectionIntent++;
           this.perform(() =>
             this.open(this.workflows.find((w) => w.id === e.target.value)),
           );
+        };
         this.addEventListener("keydown", (e) => this.key(e));
         this.setupSharing();
         this.setupLive();
         M.onRoute((route) => {
+          this.loadContext++;
           this.host.hidden = route !== "studio";
           if (route === "studio") this.perform(() => this.load());
           else { clearTimeout(this.poll); this.stopLive(); }
@@ -183,6 +192,11 @@
         if (this.loading) return;
         this.loading = true;
         const request = this.loadRequest = Symbol(), live = this.querySelector('#studio-live');
+        const initial = {graph: this.graph, serial: this.editSerial, intent: this.selectionIntent,
+          context: this.loadContext, workflows: this.workflows};
+        const current = () => request === this.loadRequest && initial.context === this.loadContext && this.isConnected &&
+          M.route === "studio" && !this.host.hidden && (!location.hash || location.hash === "#studio");
+
         live.disabled = true;
         let ready = false;
         try {
@@ -192,6 +206,7 @@
             S.api("/workflows"),
             S.api("/devices"),
           ]);
+          if (!current()) return;
           this.specs = nodes.nodes || [];
           this.devices = devices.devices || [];
           this.templates = (templates.templates || []).map((t) => ({
@@ -207,23 +222,40 @@
               layout: t.layout || {},
             },
           }));
-          this.resources = await S.api("/resources");
+          const resources = await S.api("/resources");
+          if (!current()) return;
+          this.resources = resources;
           this.perform(() => this.attachDecisionSetup());
-          this.workflows = workflows.workflows || [];
+          const inventory = workflows.workflows || [];
+          const saved = !this.loaded && initial.workflows !== this.workflows ? (this.workflows || []) : [];
+          this.workflows = [...inventory];
+          for (const local of saved) {
+            const index = this.workflows.findIndex(w => w.id === local.id);
+            if (index < 0) this.workflows.push(local);
+            else if (local.revision > this.workflows[index].revision) this.workflows[index] = local;
+          }
           this.workflowList();
           if (!this.loaded) {
-            await this.open(this.workflows[0] || null);
+            if (initial.graph === this.graph && this.graph === this.startupGraph &&
+                initial.serial === this.editSerial && this.editSerial === 0 &&
+                initial.intent === this.selectionIntent && this.selectionIntent === 0 &&
+                !this.workflowId && this.revision === 0 && !this.dirty && !this.saving)
+              await this.open(inventory[0] || null);
             this.loaded = true;
           }
           this.library();
           this.render();
           await this.refreshRuns();
+          if (!current()) return;
           if (!this.liveBox.hidden) await this.loadLive();
+          if (!current()) return;
           ready = true;
         } finally {
           if (request === this.loadRequest) {
             this.loading = false;
             live.disabled = !ready || this.host.hidden;
+            if (initial.context !== this.loadContext && this.isConnected && !this.host.hidden)
+              this.perform(() => this.load());
           }
         }
       }
