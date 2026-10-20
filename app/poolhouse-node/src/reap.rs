@@ -45,7 +45,7 @@ impl Node {
         let Some(hosted) = self.boards.get(id) else { return false };
         let (board, own) = (&hosted.board, hosted.board.origin());
         let only_endings = board.rows(own).iter().all(|r| match r.kind {
-            Kind::Identity | Kind::Head => true,
+            Kind::Identity | Kind::Head | Kind::Base => true,
             Kind::Audit => r.body["event"] == "retire",
             _ => false,
         });

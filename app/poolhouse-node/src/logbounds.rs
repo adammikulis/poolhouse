@@ -16,6 +16,18 @@ pub const RESERVED_BYTES: u64 = 8 * 1024 * 1024;
 pub const LAST_ROWS: usize = 500;
 /// Bytes at the very end of `MAX_LOG_BYTES` that only a head and the rows a person's decision makes use.
 pub const LAST_BYTES: u64 = 2 * 1024 * 1024;
+/// The share of the rows or of the bytes of a log at which the device starts a new segment, in percent.
+pub const ROTATE_PERCENT: usize = 75;
+/// The least a segment holds, in percent of the rows or of the bytes, before a copy takes a base that ends it.
+pub const MIN_SEGMENT_PERCENT: usize = 50;
+/// The share of the rows and of the bytes the restated rows of a new segment may use, in percent; grants are restated whatever it is.
+pub const CARRY_PERCENT: usize = 25;
+/// Archived segments one origin keeps.
+pub const MOST_ARCHIVES: usize = 8;
+/// How long an archived segment is kept at least, in milliseconds.
+pub const ARCHIVE_MIN_MS: u64 = 7 * 24 * 3600 * 1000;
+/// How long an archived segment is kept at most, in milliseconds, whoever has not yet acknowledged past it.
+pub const ARCHIVE_MAX_MS: u64 = 30 * 24 * 3600 * 1000;
 /// The share of the rows and of the bytes one session writes, in percent; its process tree's share (`LINEAGE_SHARE_PERCENT`) holds it.
 pub const AUTHOR_SHARE_PERCENT: usize = 10;
 /// The share of the rows and of the bytes the sessions of one process tree write together, in percent.
@@ -119,6 +131,16 @@ impl Bounds {
             Class::Node => format!("{own} for the node's own rows ({all} in all)"),
             Class::Last => all,
         }
+    }
+
+    /// Whether a segment that holds ``held`` is at ``percent`` of the rows or of the bytes a log keeps.
+    pub fn segment_at(&self, held: Held, percent: usize) -> bool {
+        held.rows * 100 >= self.rows * percent || held.bytes * 100 >= self.bytes * percent as u64
+    }
+
+    /// What the restated rows of a new segment may use.
+    pub fn carry(&self) -> Held {
+        Held { rows: self.rows * CARRY_PERCENT / 100, bytes: self.bytes * CARRY_PERCENT as u64 / 100 }
     }
 
     /// Whether ``incoming`` more rows of ``bytes`` bytes in all fit a copy of another device's log that holds ``held``.

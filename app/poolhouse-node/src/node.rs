@@ -101,6 +101,8 @@ pub struct Node {
     pub writes: crate::writes::WriteLimits,
     /// The bounds a board opened from now on holds its own log to (`logbounds`).
     pub log_bounds: crate::logbounds::Bounds,
+    /// The percent of `log_bounds` at which a board starts a new segment of its log; 0 starts none.
+    pub log_rotate_percent: usize,
     /// Milliseconds a board that holds nothing but the ends of its sessions is left alone before it may be removed.
     pub board_grace_ms: u64,
     /// Who is asking, while a request is answered (`lineage::Asking`).
@@ -169,7 +171,7 @@ impl Node {
             evidence: Box::new(crate::approvals::context::Unrecorded), phones: crate::phone::Phones::open(&dir.join("phones.json"))?,
             phone_cert: crate::phone::cert::load_or_create(dir)?, phone_port: 0, local_server: Weak::new(), firsts: crate::presence::Firsts::new(crate::presence::default_presence()), offer: None, pusher: Box::new(crate::phone::push::NoPusher), land_trust: LandTrust::open(&dir.join("land_trust.json"))?, facts, key, custody, boards: BTreeMap::new(),
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
-            projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), board_grace_ms: writes.board_grace_s * 1000, writes, log_bounds: crate::logbounds::Bounds::default(), asking: Asking::default(),
+            projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), board_grace_ms: writes.board_grace_s * 1000, writes, log_bounds: crate::logbounds::Bounds::default(), log_rotate_percent: crate::logbounds::ROTATE_PERCENT, asking: Asking::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(), folds: 0,
             build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, key_binding: KeyBinding::File, declined: BTreeMap::new(),
         };
@@ -199,7 +201,7 @@ impl Node {
             }
             let dir = self.dir.join("boards").join(id);
             private_dir(&dir)?;
-            let mut board = Board::open_bounded(&dir.join("log"), id, &self.pool, self.key.clone(), self.log_bounds)?;
+            let mut board = Board::open_rotating(&dir.join("log"), id, &self.pool, self.key.clone(), self.log_bounds, self.log_rotate_percent)?;
             let names = Registry::open(&dir.join("names.json"))?;
             let quarantine = Quarantine::open(&dir.join("quarantine.json"))?;
             let subs = Subs::open(&dir.join("subs.json"))?;

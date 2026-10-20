@@ -12,6 +12,8 @@ pub const VERSION: u32 = 1;
 pub const GENESIS: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 /// The most bytes one serialized row may take.
 pub const MAX_ROW_BYTES: usize = 128 * 1024;
+/// The highest sequence number a row may carry, so a count of rows never overflows.
+pub const MAX_SEQ: u64 = 1 << 48;
 const MAX_DEPTH: usize = 16;
 
 /// What an entry is. Only message, note, verify, identity, lease, audit, landing, room, task and grant are folded so far; the others
@@ -37,6 +39,8 @@ pub enum Kind {
     Grant,
     /// A signature over the row before it; part of the log, never of the view.
     Head,
+    /// The first row of a segment: the rows of the old segment are archived and the durable ones follow it, restated.
+    Base,
 }
 
 /// One entry of one origin's log on one board.
