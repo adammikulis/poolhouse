@@ -7,8 +7,8 @@ data-import .dataset-import-feedback {display:grid;grid-template-columns:minmax(
 data-import .dataset-import-feedback .dataset-import-progress,data-import .dataset-import-feedback .dataset-import-actions {min-height:0;overflow:auto;overscroll-behavior:contain}
 data-import .dataset-import-feedback .dataset-import-actions {flex-direction:column;flex-wrap:nowrap;margin:0;gap:6px;padding:2px;scroll-padding-block:2px}
 data-import .dataset-import-feedback button {flex-shrink:0;width:100%;white-space:normal;font-size:12px;line-height:18px;padding:6px 8px}
-data-import .dataset-import-feedback h3 {font-size:14px;margin:0}
-data-import .dataset-import-feedback p {font-size:12px;margin:6px 0}
+data-import .dataset-import-feedback h3 {font-size:14px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+data-import .dataset-import-feedback p {font-size:12px;line-height:18px;margin:6px 0}
 data-import .dataset-import-progress:focus-visible {outline:2px solid var(--accent-ink);outline-offset:-2px}
 data-import .dataset-import-fields {display:flex;gap:12px;flex-wrap:wrap;align-items:end}
 data-import fieldset {min-width:0}data-import input {min-width:0;max-width:100%}data-import .dataset-import-column span {overflow-wrap:anywhere}
@@ -146,7 +146,7 @@ data-import .dataset-import-progress {overflow-wrap:anywhere}
    const actions=E('div');
    if(!this.owns(op)){this.invalidate();return;}
    const state=op.run?.state||op.state;
-   this.note.append(E('h3',{},op.body.name),E('p',{},'Preview-row import · '+state));
+   this.note.append(E('h3',{title:op.body.name},op.body.name),E('p',{},'Preview-row import · '+state));
    if(op.run&&op.run.state!=='done')for(const node of Object.values(op.run.nodes||{}))this.note.append(E('p',{},'Dataset step: '+node.state));
    if(op.error||op.run?.error)this.note.append(E('p',{},op.error||op.run.error));
    if(op.state==='unknown'&&!op.run){const check=E('button',{type:'button',disabled:!!op.querying},op.querying?'Checking import…':'Check this import');check.onclick=()=>this.lookup(op);actions.append(check);}

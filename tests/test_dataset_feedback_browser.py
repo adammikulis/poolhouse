@@ -29,9 +29,14 @@ def feedback_page(served, remote, studio_browser, theme):  # noqa: F811
 def test_completed_import_reveals_result_and_preview_without_an_extra_scroll(feedback_page, tmp_path, width, height):
     page, _ = feedback_page
     page.set_viewport_size({'width': width, 'height': height})
+    long_name = 'Observed records with a long descriptive import name'
+    page.get_by_label('Imported dataset name', exact=True).fill(long_name)
     page.get_by_role('button', name='Import selected preview rows', exact=True).click()
     status = page.locator('data-import .dataset-import-progress')
     expect(status).to_contain_text('2 imported rows')
+    expect(status.locator('h3')).to_have_text(long_name)
+    expect(status.locator('h3')).to_have_attribute('title', long_name)
+    expect(status.locator('p').filter(has_text='Preview-row import · done')).to_be_in_viewport(ratio=1)
     page.screenshot(path=tmp_path / 'data-import-completed.png')
     assert_control_contained(page.get_by_role('button', name='Preview imported dataset', exact=True), page.locator('.dataset-import-feedback'))
     expect(status).to_be_in_viewport()
