@@ -89,10 +89,24 @@ def test_editable_paste_dismiss_and_native_clipboard_remain_ordinary(import_page
     page.get_by_role('button', name='Cancel', exact=True).click()
     expect(page.locator('.studio-node')).to_have_count(0)
     expect(title).to_have_value('Keep workflow')
+    page.get_by_role('button', name='Save', exact=True).click()
+    expect(page.locator('.studio-status')).to_contain_text('Saved · revision')
+    identity = page.locator('studio-view').evaluate('editor => editor.workflowId')
     clipboard(page, text)
     insert(page)
+    expect(title).to_have_value('Keep workflow')
+    assert page.locator('studio-view').evaluate('editor => editor.workflowId') == identity
+    studio_command(page, 'Undo').click()
+    expect(page.locator('.studio-node')).to_have_count(0)
+    expect(title).to_have_value('Keep workflow')
+    studio_command(page, 'Redo').click()
+    page.locator('.studio-node').focus()
+    page.keyboard.press('Enter')
+    assert page.locator('studio-view').evaluate('editor => editor.selected.size') == 1
     page.locator('.studio-viewport').focus()
     page.keyboard.press('ControlOrMeta+c')
+    assert page.locator('studio-view').evaluate('editor => editor.clipboard.nodes.length') == 1
+    assert page.evaluate('navigator.clipboard.readText()') == 'poolhouse-studio-selection'
     page.keyboard.press('ControlOrMeta+v')
     expect(page.locator('.studio-node')).to_have_count(2)
     clipboard(page, 'ordinary text')
@@ -114,6 +128,9 @@ def test_malformed_oversized_and_stale_preview_never_insert(import_page):  # noq
     expect(dialog.get_by_role('button', name='Import draft into canvas')).to_be_disabled()
     dialog.get_by_role('button', name='Cancel', exact=True).click()
     clipboard(page, '{"nodes":[' + ' ' * 2000000)
+    expect(page.locator('.studio-status')).to_contain_text('smaller than 2 MB')
+    expect(page.get_by_role('dialog')).to_have_count(0)
+    clipboard(page, '{"nodes":[],"connections":{},"name":"' + 'あ' * 700000 + '"}')
     expect(page.locator('.studio-status')).to_contain_text('smaller than 2 MB')
     expect(page.get_by_role('dialog')).to_have_count(0)
     held = []
