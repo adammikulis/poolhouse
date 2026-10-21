@@ -1,4 +1,4 @@
-"""Shared composer Coding lifecycle through real routes and native subprocesses."""
+"""Coding controls preserve conversations when native isolation is unavailable."""
 from __future__ import annotations
 
 import pytest
@@ -43,7 +43,18 @@ def coding_browser(tmp_path, monkeypatch, browser_owner, workspace_node):  # noq
             served.close()
 
 
-def test_shared_composer_saves_coding_settings_and_resumes_native_session(coding_browser):
+
+def refused(page, composer, prompt):
+    from playwright.sync_api import expect
+
+    composer.fill(prompt)
+    composer.press("Enter")
+    expect(page.locator("#chat-note")).to_contain_text("This coding runtime cannot enforce isolated session permissions")
+    expect(composer).to_have_value(prompt)
+    expect(page.get_by_role("button", name="Stop", exact=True)).to_be_hidden()
+
+
+def test_coding_settings_persist_without_recording_a_refused_turn(coding_browser):
     from playwright.sync_api import expect
 
     served, page, project = coding_browser
@@ -55,68 +66,60 @@ def test_shared_composer_saves_coding_settings_and_resumes_native_session(coding
     page.get_by_label("Project directory", exact=True).press("Tab")
     expect(page.locator("chat-view #model")).to_have_value("test-model")
     page.get_by_role("button", name="Options", exact=True).click()
-    output_tokens = page.get_by_label("Maximum output tokens", exact=True)
-    expect(output_tokens).to_be_visible()
-    expect(output_tokens).to_have_value("8192")
-    expect(page.locator("#chat-output-tokens output")).to_have_text("13,579 tokens")
-    output_tokens.press("End")
+    output_tokens = page.get_by_role("slider", name="Maximum output tokens", exact=True)
+    expect(output_tokens).to_have_attribute("aria-valuetext", "Custom · 13,579 tokens")
+    output_tokens.press("Home")
+    output_tokens.press("ArrowRight")
     output_tokens.press("Tab")
+    expect(output_tokens).to_have_attribute("aria-valuetext", "512 tokens")
     page.get_by_role("button", name="Options", exact=True).click()
     composer = page.get_by_role("textbox", name="Message", exact=True)
-    composer.fill("inspect the brakes")
-    composer.press("Enter")
-    expect(page.locator("chat-view #chat-messages")).to_contain_text("Inspected: inspect the brakes")
-    expect(page.get_by_role("button", name="Stop", exact=True)).to_be_hidden()
-    assert page.locator("chat-view textarea").count() == 1
-    assert not page.locator("chat-view #chat-options").evaluate("node => node.open")
-    cid = page.locator("chat-view").evaluate("node => node.open")
+    refused(page, composer, "inspect the brakes")
+    cid = page.locator("chat-view").evaluate("chat => chat.open")
     saved = served.ui.conversations.get(cid)
-    assert "mode" not in saved.settings
     assert saved.settings["project"] == str(project)
     assert saved.settings["harness"] == "codex"
     assert saved.settings["role"] == "read-only"
-    assert saved.settings["max_output_tokens"] == 8192
+    assert saved.settings["max_output_tokens"] == 512
+    assert "mode" not in saved.settings
+    assert saved.messages == []
+    assert served.ui.coding_turns.turns == {}
     page.reload()
     expect(page.get_by_label("Tools", exact=True)).to_be_checked()
     expect(page.get_by_label("Project directory", exact=True)).to_have_value(str(project))
+    expect(page.get_by_label("Tool runtime", exact=True)).to_have_value("codex")
+    expect(page.get_by_label("Tool permissions", exact=True)).to_have_value("read-only")
     page.get_by_role("button", name="Options", exact=True).click()
-    expect(output_tokens).to_be_visible()
-    expect(output_tokens).to_have_value("8192")
+    expect(page.get_by_role("slider", name="Maximum output tokens", exact=True)).to_have_attribute("aria-valuetext", "512 tokens")
     page.get_by_role("button", name="Options", exact=True).click()
-    composer.fill("inspect the sensors")
-    composer.press("Enter")
-    expect(page.locator("chat-view #chat-messages")).to_contain_text("Inspected: inspect the sensors")
-    expect(page.get_by_role("button", name="Stop", exact=True)).to_be_hidden()
-    assert len(served.ui.conversations.get(cid).messages) == 4
+    assert served.ui.conversations.get(cid).settings == saved.settings
+    refused(page, page.get_by_role("textbox", name="Message", exact=True), "inspect the sensors")
+    assert served.ui.conversations.get(cid).messages == []
 
 
-def test_reload_reattaches_running_coding_turn_and_stop_keeps_the_conversation(coding_browser):
+def test_reload_of_refused_turn_preserves_existing_conversation(coding_browser):
     from playwright.sync_api import expect
 
     served, page, project = coding_browser
-    saved = served.ui.conversations.start(model="test-model", title="Live coding", settings={
+    saved = served.ui.conversations.start(model="test-model", title="Coding history", settings={
         "project": str(project), "role": "read-only", "harness": "codex"})
+    served.ui.conversations.append(saved.id, "user", "Existing request")
+    served.ui.conversations.append(saved.id, "assistant", "Existing response")
+    before = served.ui.conversations.get(saved.id).messages
     page.goto(f"http://127.0.0.1:{served.port}/ui#chat")
-    page.get_by_role("link", name="Live coding", exact=True).click()
+    page.get_by_role("link", name=saved.title, exact=True).click()
     expect(page.get_by_label("Tools", exact=True)).to_be_checked()
-    expect(page.get_by_label("Project directory", exact=True)).to_have_value(str(project))
-    expect(page.locator("chat-view #model")).to_have_value("test-model")
-    expect(page.locator("chat-view #chat-send")).to_be_enabled()
-    composer = page.get_by_role("textbox", name="Message", exact=True)
-    composer.fill("wait until cancelled")
-    composer.press("Enter")
-    expect(page.locator("chat-view #chat-status")).to_contain_text("running")
+    refused(page, page.get_by_role("textbox", name="Message", exact=True), "wait until cancelled")
+    assert served.ui.conversations.get(saved.id).messages == before
+    assert served.ui.coding_turns.turns == {}
     page.reload()
-    expect(page.get_by_role("button", name="Stop", exact=True)).to_be_visible()
-    page.get_by_role("button", name="Stop", exact=True).click()
     expect(page.get_by_role("button", name="Stop", exact=True)).to_be_hidden()
-    assert served.ui.coding_turns.status(saved.id)["state"] == "cancelled"
-    composer.fill("continue inspection")
-    composer.press("Enter")
-    expect(page.locator("chat-view #chat-messages")).to_contain_text("Inspected: continue inspection")
+    expect(page.locator("#chat-messages")).to_contain_text("Existing response")
+    refused(page, page.get_by_role("textbox", name="Message", exact=True), "continue inspection")
+    assert served.ui.conversations.get(saved.id).messages == before
 
 
-def test_enter_preserves_draft_until_coding_prerequisites_are_ready(coding_browser):
+def test_enter_preserves_draft_until_project_and_isolated_runtime_are_ready(coding_browser):
     from playwright.sync_api import expect
 
     served, page, project = coding_browser
@@ -133,11 +136,12 @@ def test_enter_preserves_draft_until_coding_prerequisites_are_ready(coding_brows
     page.get_by_label("Project directory", exact=True).fill(str(project))
     page.get_by_label("Project directory", exact=True).press("Tab")
     expect(page.locator("chat-view #chat-send")).to_be_enabled()
-    composer.press("Enter")
-    expect(page.locator("chat-view #chat-messages")).to_contain_text("Inspected: inspect project")
+    refused(page, composer, "inspect project")
+    assert all(conversation.messages == [] for conversation in served.ui.conversations.all())
+    assert served.ui.coding_turns.turns == {}
 
 
-def test_coding_uses_its_runtime_when_chat_runtime_is_unavailable(coding_browser):
+def test_missing_chat_runtime_does_not_bypass_coding_isolation(coding_browser):
     from playwright.sync_api import expect
 
     served, page, project = coding_browser
@@ -150,7 +154,6 @@ def test_coding_uses_its_runtime_when_chat_runtime_is_unavailable(coding_browser
     page.get_by_label("Project directory", exact=True).fill(str(project))
     page.get_by_label("Project directory", exact=True).press("Tab")
     expect(page.locator("chat-view #chat-send")).to_be_enabled()
-    composer = page.get_by_role("textbox", name="Message", exact=True)
-    composer.fill("inspect without chat runtime")
-    composer.press("Enter")
-    expect(page.locator("chat-view #chat-messages")).to_contain_text("Inspected: inspect without chat runtime")
+    refused(page, page.get_by_role("textbox", name="Message", exact=True), "inspect without chat runtime")
+    assert all(conversation.messages == [] for conversation in served.ui.conversations.all())
+    assert served.ui.coding_turns.turns == {}
