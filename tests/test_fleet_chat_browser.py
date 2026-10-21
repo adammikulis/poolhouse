@@ -12,17 +12,15 @@ pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
-def chat_browser(tmp_path, playwright):
+def chat_browser(tmp_path, browser_owner):
     served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
-    served.ui.conversations = Conversations(tmp_path / "chats")
-    browser = playwright.chromium.launch(headless=True)
-    page = browser.new_page()
-    page.route("**/ui/chat", lambda route: route.fulfill(json={"models": [{"model": "model-a", "local": True}]}))
     try:
-        yield served, page
+        served.ui.settings.setup_done = True
+        served.ui.conversations = Conversations(tmp_path / "chats")
+        with browser_owner.pages() as page:
+            page.route("**/ui/chat", lambda route: route.fulfill(json={"models": [{"model": "model-a", "local": True}]}))
+            yield served, page
     finally:
-        browser.close()
         served.close()
 
 
