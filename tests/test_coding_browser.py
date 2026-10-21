@@ -14,33 +14,33 @@ pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
-def coding_browser(tmp_path, monkeypatch, playwright, workspace_node):  # noqa: F811
+def coding_browser(tmp_path, monkeypatch, browser_owner, workspace_node):  # noqa: F811
     monkeypatch.setenv("POOLHOUSE_WORKSPACE_HOME", str(tmp_path / "workspace"))
     monkeypatch.setattr(coding_turns, "worker", fixture_worker)
     monkeypatch.setattr(coding_turns.harnessing, "binary_for", lambda name: "fixture-cli" if name == "codex" else "")
     served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
-    served.ui.conversations = Conversations(tmp_path / "chats")
-    project = tmp_path / "project"
-    project.mkdir()
-    browser = playwright.chromium.launch(headless=True)
-    page = browser.new_page()
-    page.route("**/ui/conversations/defaults", lambda route: route.fulfill(json={"settings": {**DEFAULTS, "max_output_tokens": 13579}}))
-    page.route("**/ui/chat", lambda route: route.fulfill(json={"models": [{"model": "test-model", "local": True}]}))
-    page.route("**/ui/coding/catalogue", lambda route: route.fulfill(json={
-        "ok": True, "harnesses": [{"name": "pi", "available": True}, {"name": "codex", "available": True}],
-        "roles": [{"name": "read-only", "summary": "Inspect without editing"}],
-        "default_role": "read-only", "context": 262144,
-        "default_model": "test-model", "models": [{"name": "Fixture coding model", "ref": "test-model"}]}))
     try:
-        yield served, page, project
+        served.ui.settings.setup_done = True
+        served.ui.conversations = Conversations(tmp_path / "chats")
+        project = tmp_path / "project"
+        project.mkdir()
+        with browser_owner.pages() as page:
+            page.route("**/ui/conversations/defaults", lambda route: route.fulfill(json={"settings": {**DEFAULTS, "max_output_tokens": 13579}}))
+            page.route("**/ui/chat", lambda route: route.fulfill(json={"models": [{"model": "test-model", "local": True}]}))
+            page.route("**/ui/coding/catalogue", lambda route: route.fulfill(json={
+                "ok": True, "harnesses": [{"name": "pi", "available": True}, {"name": "codex", "available": True}],
+                "roles": [{"name": "read-only", "summary": "Inspect without editing"}],
+                "default_role": "read-only", "context": 262144,
+                "default_model": "test-model", "models": [{"name": "Fixture coding model", "ref": "test-model"}]}))
+            yield served, page, project
     finally:
-        if hasattr(served.ui, "coding_turns"):
-            for turn in served.ui.coding_turns.turns.values():
-                if turn.state in ("starting", "running", "cancelling"):
-                    turn.cancel()
-        browser.close()
-        served.close()
+        try:
+            if hasattr(served.ui, "coding_turns"):
+                for turn in served.ui.coding_turns.turns.values():
+                    if turn.state in ("starting", "running", "cancelling"):
+                        turn.cancel()
+        finally:
+            served.close()
 
 
 def test_shared_composer_saves_coding_settings_and_resumes_native_session(coding_browser):
