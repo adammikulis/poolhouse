@@ -43,3 +43,34 @@ def test_locking_imports_and_module_escapes_are_refused(tmp_path, source):
 def test_aliased_windows_locking_call_is_identified(tmp_path):
     findings = _find(tmp_path, "from msvcrt import locking as lock\nlock(fd, mode, count)\n")
     assert any(finding.detail == "msvcrt.locking" for finding in findings)
+
+
+@pytest.mark.parametrize("source", [
+    "import fcntl\nfcntl.fcntl(fd, fcntl.F_GETFL)\n",
+    "import fcntl as flags\nflags.fcntl(fd, flags.F_GETFD) & flags.FD_CLOEXEC\n",
+    "import fcntl\nimport termios\nfcntl.ioctl(fd, termios.FIONREAD, buffer, True)\n",
+    "import fcntl as flags\nimport termios as terminal\nflags.ioctl(fd, terminal.FIONREAD, buffer, True)\n",
+])
+def test_descriptor_metadata_inspection_is_not_a_file_lock(tmp_path, source):
+    assert not _find(tmp_path, source)
+
+
+@pytest.mark.parametrize("operation", [
+    "fcntl.fcntl(fd, fcntl.F_SETLK)", "fcntl.flock(fd, mode)", "fcntl.lockf(fd, mode)",
+    "fcntl.fcntl(fd, operation)", "fcntl.fcntl(fd, fcntl.F_GETFD, extra)",
+    "fcntl.fcntl(fd, fcntl.F_GETFD, extra=True)", "inspect = fcntl.fcntl", "consume(fcntl)",
+    "fcntl.fcntl = replacement", "fcntl = replacement", "del fcntl.fcntl", "del fcntl",
+    "getattr(fcntl, operation)(fd)", "fcntl.unknown(fd)", "import other as fcntl",
+    "def fcntl(): pass", "def inspect(fcntl): pass", "from other import fcntl",
+    "match value:\n case fcntl: pass", "match value:\n case {**fcntl}: pass",
+    "fcntl.ioctl(fd, termios.FIONREAD, buffer, False)", "fcntl.ioctl(fd, termios.FIONREAD, buffer)",
+    "fcntl.ioctl(fd, termios.FIONREAD, buffer, True, extra)",
+    "fcntl.ioctl(fd, termios.FIONREAD, buffer, True, extra=True)",
+    "termios.FIONREAD = replacement\nfcntl.ioctl(fd, termios.FIONREAD, buffer, True)",
+    "termios = replacement\nfcntl.ioctl(fd, termios.FIONREAD, buffer, True)",
+    "import other as termios\nfcntl.ioctl(fd, termios.FIONREAD, buffer, True)",
+    "inspect = termios.FIONREAD\nfcntl.ioctl(fd, termios.FIONREAD, buffer, True)",
+])
+def test_metadata_allowance_refuses_uncertain_and_mutating_module_uses(tmp_path, operation):
+    source = "import fcntl\nimport termios\nfcntl.fcntl(fd, fcntl.F_GETFL)\n" + operation + "\n"
+    assert _find(tmp_path, source)
