@@ -28,4 +28,13 @@ export const INTEGRATED_STYLES = `
 :host([integrated]) .history-controls button { font:inherit; color:var(--poolhouse-ui-text); background:var(--poolhouse-ui-surface); border:1px solid var(--poolhouse-ui-line); border-radius:6px; padding:5px 10px; }
 :host([integrated]) .history-controls button:disabled { opacity:.5; }
 :host([integrated]) .state { padding:calc(30px * var(--ui-density,1)) calc(10px * var(--ui-density,1)); }
+@media (max-height:600px) {
+  :host([integrated]) main header { position:static; min-height:48px; padding-top:8px; padding-bottom:8px; margin-bottom:8px; }
+  :host([integrated]) main > div:first-child { padding-bottom:8px; }
+  :host([integrated]) .composer { grid-template-columns:minmax(0,1fr) auto; gap:4px; padding:8px; margin-bottom:8px; }
+  :host([integrated]) .composer .composer-recipient, :host([integrated]) .composer input,
+  :host([integrated]) .composer .composer-hint, :host([integrated]) .composer .err { grid-column:1 / -1; }
+  :host([integrated]) .composer textarea { min-height:48px; height:48px; }
+  :host([integrated]) .composer button { align-self:end; }
+}
 `;

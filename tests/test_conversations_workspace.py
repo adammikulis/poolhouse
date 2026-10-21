@@ -28,6 +28,40 @@ def team(workspace_node, monkeypatch):
     return workspace_node
 
 
+def capture(page, tmp_path, name):
+    page.screenshot(path=str(tmp_path / f'{name}.png'), full_page=True)
+
+
+def short_history_states(page, board, composer, tmp_path):
+    from playwright.sync_api import expect
+
+    composer.fill('First draft line\nSecond draft line')
+    page.route('**/board/post', lambda route: route.fulfill(status=503, json={'error': 'Send temporarily unavailable'}))
+    board.get_by_role('button', name='Send', exact=True).click()
+    expect(board.get_by_role('alert')).to_contain_text('Send temporarily unavailable')
+    expect(composer).to_have_value('First draft line\nSecond draft line')
+    expect(composer).to_be_in_viewport()
+    expect(board.get_by_role('button', name='Send', exact=True)).to_be_in_viewport()
+    capture(page, tmp_path, 'short-history-send-error')
+    page.unroute('**/board/post')
+    board.get_by_role('button', name='Reply in thread').last.click()
+    expect(board.get_by_role('button', name='Back to #general')).to_be_visible()
+    expect(composer).to_be_in_viewport()
+    capture(page, tmp_path, 'short-history-thread')
+    board.get_by_role('button', name='Back to #general').click()
+    expect(composer).to_have_value('First draft line\nSecond draft line')
+    capture(page, tmp_path, 'short-history-thread-return')
+
+
+def reveal_agent_history(page, board, tmp_path):
+    from playwright.sync_api import expect
+
+    expect(board.get_by_label('Hide agent chatter', exact=True)).to_be_checked()
+    board.get_by_role('button', name='Show all messages', exact=True).click()
+    expect(board.locator('.msg').first).to_be_visible()
+    capture(page, tmp_path, 'history-retry-revealed')
+
+
 def helper(node, native_id, parent=None):
     """A session of its own on the board, and its typed session."""
     member = node.member(native_id, parent=parent)
@@ -44,7 +78,7 @@ def display_name(session, name):
     return describe(next(agent for agent in session.agents() if agent.name == name))['display_name']
 
 
-def test_team_composer_survives_history_failure_and_retries_authenticated_send(chat_browser, team):
+def test_team_composer_survives_history_failure_and_retries_authenticated_send(chat_browser, team, tmp_path):
     from playwright.sync_api import expect
 
     _, session = helper(team, 'research-helper')
@@ -58,6 +92,7 @@ def test_team_composer_survives_history_failure_and_retries_authenticated_send(c
     board = page.locator('chat-view poolhouse-board')
     editor = board.get_by_role('textbox', name='Message', exact=True)
     expect(editor).to_be_visible()
+    capture(page, tmp_path, 'history-filtered')
     editor.fill('Keep this research draft')
     editor.evaluate('(node) => { window.retainedTeamEditor = node; }')
     observed = []
@@ -70,12 +105,13 @@ def test_team_composer_survives_history_failure_and_retries_authenticated_send(c
     page.route('**/board/messages?**', fail_history)
     board.get_by_role('button', name='Messages', exact=True).click()
     expect(board.get_by_role('alert')).to_be_visible()
+    capture(page, tmp_path, 'history-error')
     expect(editor).to_have_value('Keep this research draft')
     assert observed == [True, True]
     assert editor.evaluate('(node) => node === window.retainedTeamEditor')
     page.unroute('**/board/messages?**', fail_history)
     board.get_by_role('button', name='Retry', exact=True).click()
-    expect(board.locator('.msg').first).to_be_visible()
+    reveal_agent_history(page, board, tmp_path)
 
     def fail_send(route):
         route.fulfill(status=503, content_type='application/json', body='{"error":"Send temporarily unavailable"}')
@@ -83,20 +119,23 @@ def test_team_composer_survives_history_failure_and_retries_authenticated_send(c
     page.route('**/board/post', fail_send)
     board.get_by_role('button', name='Send', exact=True).click()
     expect(board.get_by_role('alert')).to_contain_text('Send temporarily unavailable')
+    capture(page, tmp_path, 'send-error-draft')
     expect(editor).to_have_value('Keep this research draft')
     page.unroute('**/board/post', fail_send)
     board.get_by_role('button', name='Send', exact=True).click()
     expect(editor).to_have_value('')
     expect(board.locator('.msg pre').last).to_contain_text('Keep this research draft')
     assert bodies(team, '#research')[-1] == 'Keep this research draft'
+    capture(page, tmp_path, 'send-retried')
     board.get_by_role('button', name='Reply in thread').last.click()
     editor.fill('Authenticated thread reply')
     board.get_by_role('button', name='Send', exact=True).click()
     expect(board.locator('.msg pre').last).to_contain_text('Authenticated thread reply')
     assert 'Authenticated thread reply' in bodies(team, '#research')
+    capture(page, tmp_path, 'thread-replied')
 
 
-def test_shared_sidebar_routes_channels_dms_threads_and_saved_model_chats(chat_browser, team):
+def test_shared_sidebar_routes_channels_dms_threads_and_saved_model_chats(chat_browser, team, tmp_path):
     from playwright.sync_api import expect
 
     worker, session = helper(team, 'research-helper')
@@ -114,7 +153,12 @@ def test_shared_sidebar_routes_channels_dms_threads_and_saved_model_chats(chat_b
     expect(page.locator('#conversation-team')).to_be_visible()
     expect(page.locator('#conversation-model')).to_be_hidden()
     board = page.locator('chat-view poolhouse-board')
+    expect(board.get_by_role('region', name='Message focus').get_by_role('status')).to_have_text('1 agent message hidden on this loaded page.')
+    expect(board.locator('.msg pre')).to_have_count(0)
+    capture(page, tmp_path, 'channel-default-filter')
+    reveal_agent_history(page, board, tmp_path)
     expect(board.locator('.msg pre')).to_contain_text('The evaluation is ready.')
+    capture(page, tmp_path, 'channel-revealed')
     expect(board.locator('nav')).to_be_hidden()
     editor = board.get_by_role('textbox', name='Message', exact=True)
     editor.fill('Use the held-out dataset.')
@@ -123,6 +167,7 @@ def test_shared_sidebar_routes_channels_dms_threads_and_saved_model_chats(chat_b
     assert 'Use the held-out dataset.' in bodies(team, '#experiments')
     board.get_by_role('button', name='Reply in thread').first.click()
     expect(board.get_by_role('button', name='Back to #experiments')).to_be_visible()
+    capture(page, tmp_path, 'thread-open')
     expect(editor).to_be_in_viewport()
     expect(board.get_by_role('button', name='Send', exact=True)).to_be_in_viewport()
 
@@ -133,6 +178,7 @@ def test_shared_sidebar_routes_channels_dms_threads_and_saved_model_chats(chat_b
     member.click()
     assert board.evaluate('(node) => node.target().to') == worker_id
     expect(board.locator('.msg pre')).to_contain_text('Review the experiment criteria.')
+    capture(page, tmp_path, 'direct-message')
     expect(editor).to_be_in_viewport()
     expect(board.get_by_role('button', name='Send', exact=True)).to_be_in_viewport()
     sidebar.get_by_role('link', name='Experiment plan', exact=True).click()
@@ -277,7 +323,14 @@ def test_unshared_workspace_is_selected_and_team_messages_render(chat_browser, t
     board = page.locator('chat-view poolhouse-board')
     assert board.get_attribute('endpoint') == f'/ui/projects/{project}/board'
     expect(page.locator('#conversation-direct').get_by_text('No direct messages yet.', exact=True)).to_be_visible()
+    page.locator('#conversation-channels').get_by_role('button', name='#general', exact=False).click()
+    expect(board.get_by_label('Hide agent chatter', exact=True)).to_be_checked()
+    expect(board.get_by_role('region', name='Message focus').get_by_role('status')).to_have_text('1 agent message hidden on this loaded page.')
+    expect(board.locator('.msg pre')).to_have_count(0)
+    capture(page, tmp_path, 'channel-default-filter')
+    reveal_agent_history(page, board, tmp_path)
     expect(board.locator('.msg pre')).to_contain_text('The team experiment is ready.')
+    capture(page, tmp_path, 'unshared-workspace-revealed')
     assert registry.get(project).shared is False
     assert registry.list() == []
     assert not (tmp_path / 'registry' / 'project-bundles').exists()
@@ -340,7 +393,7 @@ def test_sidebar_keeps_agent_directory_in_new_dm_and_searches_existing_conversat
     expect(board.locator('.msg pre')).to_contain_text('Existing experiment discussion.')
 
 
-def test_channel_history_scrolls_with_composer_visible_at_all_viewport_sizes(chat_browser, team):
+def test_channel_history_scrolls_with_composer_visible_at_all_viewport_sizes(chat_browser, team, tmp_path):
     from playwright.sync_api import expect
 
     _, session = helper(team, 'history-helper')
@@ -351,6 +404,8 @@ def test_channel_history_scrolls_with_composer_visible_at_all_viewport_sizes(cha
     page.get_by_label('Workspace', exact=True).select_option('local')
     page.locator('#conversation-channels').get_by_role('button', name='#general', exact=False).click()
     board = page.locator('chat-view poolhouse-board')
+    expect(board.get_by_label('Hide agent chatter', exact=True)).to_be_checked()
+    board.get_by_role('button', name='Show all messages', exact=True).click()
     expect(board.locator('.msg pre')).to_have_count(24)
     composer = board.get_by_role('textbox', name='Message', exact=True)
     for width, height in [(1360, 900), (1360, 640), (1360, 420), (390, 844)]:
@@ -366,15 +421,20 @@ def test_channel_history_scrolls_with_composer_visible_at_all_viewport_sizes(cha
         if height == 420:
             links = page.get_by_role('navigation', name='Main navigation').get_by_role('link')
             links.first.focus()
-            for _ in range(links.count() + page.locator('.rail-tools button').count()):
+            for _ in range(page.locator('.workspace-rail a, .workspace-rail button').count()):
+                if page.get_by_role('link', name='Settings', exact=True).evaluate('node => node === document.activeElement'):
+                    break
                 page.keyboard.press('Tab')
             settings = page.get_by_role('link', name='Settings', exact=True)
             expect(settings).to_be_focused()
             expect(settings).to_be_in_viewport()
             assert page.evaluate('document.documentElement.scrollHeight <= innerHeight')
         board.evaluate('node => { node.feed.scrollTop = node.feed.scrollHeight; }')
+        capture(page, tmp_path, f'history-bottom-{width}-{height}')
         expect(board.locator('.msg pre').last).to_be_in_viewport()
         expect(composer).to_be_in_viewport()
+        if height == 420:
+            short_history_states(page, board, composer, tmp_path)
         composer.fill('Unsent channel draft')
         page.screenshot(path=f'/private/tmp/poolhouse-channel-fixed-{width}-{height}.png')
         composer.fill('')
