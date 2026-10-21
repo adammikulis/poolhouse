@@ -339,7 +339,7 @@ class TestThePoolView:
         member = page.locator("#pool-cards .member").first
         # the meters draw inside their shadow roots, which inner_text does not enter
         card = member.inner_text() + " " + member.evaluate(
-            "n => [...n.querySelectorAll('ml-meter')].map(m => m.shadowRoot.textContent).join(' ')")
+            "n => [...n.querySelectorAll('poolhouse-meter')].map(m => m.shadowRoot.textContent).join(' ')")
         assert "greenhollow" in card
         assert "NVIDIA · CUDA" in card and "Marrowgate 5000" in card
         assert "3 running of 4" in card and "2 waiting" in card

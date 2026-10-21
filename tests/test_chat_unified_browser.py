@@ -61,7 +61,7 @@ def test_unified_picker_agent_is_a_scoped_dm_not_a_model_or_tool_choice(activity
     expect(choice).to_contain_text('Agent · scoped direct message')
     choice.focus()
     choice.press('Enter')
-    board = page.locator('chat-view ml-board')
+    board = page.locator('chat-view poolhouse-board')
     expect(board.get_by_role('textbox', name='Message', exact=True)).to_be_visible()
     assert board.evaluate('board => board.target().to') == member.name
     assert page.locator('chat-view').evaluate('chat => ({model:chat.picker.value, settings:chat.settings(), cid:chat.open})') == before

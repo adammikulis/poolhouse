@@ -145,9 +145,9 @@ def respond(base: Path, session: Callable[[], Session], req: Request, body: byte
 
 AGENTS_PAGE = """<!doctype html><meta charset="utf-8"><title>Agents</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="/ui/ml-ui/ml-ui.css">
-<body style="margin:0;background:var(--ml-bg);padding:16px"><ml-agents endpoint="/agents"></ml-agents>
-<script type="module" src="/ui/ml-ui/ml-ui.js"></script>"""
+<link rel="stylesheet" href="/ui/poolhouse-ui/poolhouse-ui.css">
+<body style="margin:0;background:var(--poolhouse-ui-bg);padding:16px"><poolhouse-agents endpoint="/agents"></poolhouse-agents>
+<script type="module" src="/ui/poolhouse-ui/poolhouse-ui.js"></script>"""
 
 
 class _Route(boardroute._Route):

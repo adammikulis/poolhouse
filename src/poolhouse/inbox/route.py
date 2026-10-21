@@ -30,7 +30,7 @@ from poolhouse.ui import assets_dir
 
 __all__ = ["ASSETS", "COOKIE", "CSRF_HEADER", "MAX_BODY", "Reply", "RequestsApp", "Session"]
 
-COOKIE = "ml_requests"
+COOKIE = "poolhouse_requests"
 CSRF_HEADER = "x-requests-csrf"
 MAX_BODY = 4096
 MAX_SESSIONS = 8
@@ -38,16 +38,16 @@ MOST_BULK = 50
 ANSWERS_PER_WINDOW = 20
 WINDOW_S = 10.0
 BULK_CHOICES = frozenset({"allow-once", "approve", "deny"})
-ASSETS = ("base.js", "ml-requests.js", "ml-ui.css")
-"""The files the page loads, served from ml-ui's assets and nothing else."""
+ASSETS = ("base.js", "poolhouse-requests.js", "poolhouse-ui.css")
+"""The files the page loads, served from poolhouse-ui's assets and nothing else."""
 CSP = ("default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; "
        "base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 HEADERS = {"Content-Security-Policy": CSP, "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
            "Cache-Control": "no-store", "X-Frame-Options": "DENY", "Cross-Origin-Resource-Policy": "same-origin"}
 PAGE = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Requests</title>'
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
-        '<meta name="ml-requests-csrf" content="{csrf}"><link rel="stylesheet" href="/requests/assets/ml-ui.css">'
-        '</head><body><ml-requests></ml-requests><script type="module" src="/requests/assets/ml-requests.js">'
+        '<meta name="poolhouse-requests-csrf" content="{csrf}"><link rel="stylesheet" href="/requests/assets/poolhouse-ui.css">'
+        '</head><body><poolhouse-requests></poolhouse-requests><script type="module" src="/requests/assets/poolhouse-requests.js">'
         '</script></body></html>')
 ASSET_TYPES = {".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8"}
 
@@ -127,7 +127,7 @@ class RequestsApp:
 
     def meta(self, session: Session) -> str:
         """The ``<meta>`` tag a shell puts in its own page so the element can answer for ``session``."""
-        return f'<meta name="ml-requests-csrf" content="{session.csrf}">'
+        return f'<meta name="poolhouse-requests-csrf" content="{session.csrf}">'
 
     # -- routing ---------------------------------------------------------------
     def dispatch(self, method: str, path: str, headers: Mapping[str, str], body: bytes = b"") -> Reply:
