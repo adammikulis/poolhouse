@@ -5,7 +5,7 @@
       setupHeaderCommands() {
         const menus = [...this.querySelectorAll(".studio-command")];
         const tools = this.querySelector("#studio-tools-toggle"), bar = this.querySelector("#studio-command-bar"),
-          narrow = matchMedia("(max-width:700px)"), current = () => this.isConnected && !this.host.hidden;
+          narrow = matchMedia("(max-width:1100px)"), current = () => this.isConnected && !this.host.hidden;
         const focus = menu => { if (current()) (narrow.matches && tools.getAttribute("aria-expanded") === "false" ? tools : menu.querySelector("summary")).focus(); };
         const close = (menu, restore = true) => { menu.open = false; if (restore) focus(menu); };
         const toggle = (open, restore = false) => {
