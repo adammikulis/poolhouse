@@ -131,4 +131,3 @@ class SetupRoutes:
             return True
         self.send(200, ui.apply_prefs(self.body()))
         return True
-

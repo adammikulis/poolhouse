@@ -80,4 +80,3 @@ pub(crate) fn request(root: &Path, port: u16, kind: Kind, id: &str, action: &str
     }
     response(&bytes)
 }
-

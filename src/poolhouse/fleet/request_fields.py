@@ -31,4 +31,3 @@ def exact_body(context, keys, *, optional=()):
             or set(body) - set(keys) - set(optional)):
         raise ValueError('Invalid selection fields')
     return body
-

@@ -146,5 +146,3 @@ class NativePicks:
                 row['state'] = 'cancelled'
                 self.records.write(row)
             return self._public(row)
-
-
