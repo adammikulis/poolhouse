@@ -7,18 +7,16 @@ pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
-def usability_page(tmp_path, playwright):
+def usability_page(tmp_path, browser_owner):
     served = Serving(tmp_path)
     served.ui.root = tmp_path / "traind"
     served.ui.settings.setup_done = True
-    browser = playwright.chromium.launch(headless=True)
-    page = browser.new_page(viewport={'width': 1280, 'height': 900})
     errors = []
-    page.on('pageerror', lambda error: errors.append(str(error)))
     try:
-        yield served, page, errors
+        with browser_owner.pages(viewport={'width': 1280, 'height': 900}) as page:
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            yield served, page, errors
     finally:
-        browser.close()
         try:
             if engine := getattr(served.ui, "studio", None):
                 engine.close()
