@@ -312,7 +312,7 @@ def test_token_slider_keeps_existing_conversation_selections(chat_browser):
     assert page.locator('chat-view').evaluate('node => node.settings().max_output_tokens') == 12000
     page.get_by_role('link', name='Automatic output', exact=True).click()
     expect(cap).to_have_value('0')
-    expect(page.locator('#chat-output-tokens output')).to_have_text('No user cap')
+    expect(page.locator('#chat-output-tokens output')).to_have_text('No output cap')
     page.get_by_role('link', name='Long output', exact=True).click()
     expect(page.locator('#chat-output-tokens output')).to_have_text('Custom · 12,000 tokens')
     assert served.ui.conversations.get(first.id).settings['max_output_tokens'] == 12000

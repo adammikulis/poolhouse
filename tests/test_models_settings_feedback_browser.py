@@ -24,47 +24,50 @@ def feedback_page(tmp_path, studio_browser):  # noqa: F811
 
 @pytest.mark.parametrize('theme', ['light', 'dark'])
 @pytest.mark.parametrize('width', [1440, 390])
-def test_models_count_chat_capability_and_show_known_storage(feedback_page, theme, width):
+def test_models_count_running_models_and_show_known_storage(feedback_page, theme, width):
     served, page, errors = feedback_page
-    state = {'free_gb': None, 'runtime_ready': True, 'available': True}
-    models = [
-        {'model': 'Harbor', 'path': '/fixture/harbor', 'capabilities': {'chat': True}},
-        {'model': 'Harbor', 'path': '/fixture/harbor', 'capabilities': {'chat': True}},
-        {'model': 'Cedar', 'capabilities': {'chat': True}},
-        {'model': 'Harbor', 'member': 'fixture-device', 'capabilities': {'chat': True}},
-        {'model': 'Embedding', 'capabilities': {'chat': False}},
-        {'model': 'Unverified', 'capabilities': {'chat': None}}]
+    served.ui.settings.appearance = {'active_theme': theme, 'saved_themes': []}
+    state = {'free_gb': None, 'available': True, 'serving': True}
     page.route('**/ui/models', lambda route: route.fulfill(status=200 if state['available'] else 503,
         json={'library': [], 'free_gb': state['free_gb']} if state['available'] else {'error': 'Inventory unavailable'}))
-    page.route('**/ui/chat', lambda route: route.fulfill(status=200 if state['available'] else 503,
-        json={'models': models, 'runtime_ready': state['runtime_ready']}))
-    page.route('**/ui/serving', lambda route: route.fulfill(json={'running': [
-        {'models': ['Embedding'], 'capabilities': {'chat': False}},
-        {'models': ['Guard'], 'capabilities': {'chat': False}},
-        {'models': ['Harbor', 'Cedar'], 'capabilities': {'chat': True}},
-        {'models': ['Unverified'], 'capabilities': {'chat': None}}]}))
+    page.route('**/ui/chat', lambda route: route.fulfill(json={'models': [], 'runtime_ready': False}))
+    page.route('**/ui/serving', lambda route: route.fulfill(status=200 if state['serving'] else 503,
+        json={'running': [{'models': ['Embedding'], 'capabilities': {'chat': False}},
+                          {'models': ['Guard'], 'capabilities': {'chat': False}},
+                          {'models': ['Harbor', 'Cedar'], 'capabilities': {'chat': True}},
+                          {'models': ['Harbor'], 'capabilities': {'chat': True}},
+                          {'models': ['Unverified'], 'capabilities': {'chat': None}}]}
+        if state['serving'] else {'error': 'Serving status unavailable'}))
     page.route('**/ui/fleet', lambda route: route.fulfill(json={'members': [
         {'name': 'fixture-device', 'is_self': True, 'device': {}, 'slots': 1, 'free': 1}]}))
     page.set_viewport_size({'width': width, 'height': 1000})
     page.goto(f'http://127.0.0.1:{served.port}/ui/#models')
-    page.wait_for_function('() => !!fleetModel.preferences.resolved_theme')
-    page.evaluate('theme => fleetModel.setPreferences({...fleetModel.preferences,resolved_theme:theme})', PRESETS[theme])
-    expect(page.locator('#models-running')).to_have_text('3')
+    expect(page.locator('html')).to_have_attribute('data-theme', theme)
+    expect(page.locator('.models-overview')).to_contain_text('Running models')
+    expect(page.locator('.models-overview')).not_to_contain_text('Chat-ready')
+    expect(page.locator('#models-running')).to_have_text('5')
     expect(page.locator('#models-free')).to_have_text('Unavailable')
+    page.screenshot(path=f'/private/tmp/poolhouse-model-summary-{theme}-{width}-running.png')
     primary = page.get_by_role('navigation', name='Main navigation')
     primary.get_by_role('link', name='Pool', exact=True).click()
     action = page.locator('.loaded-models').get_by_role('button', name='Open Models', exact=True)
     expect(action).to_be_visible()
-    state['free_gb'], state['runtime_ready'] = 0, False
+    state['free_gb'] = 0
     action.click()
-    expect(page.locator('#models-running')).to_have_text('0')
+    expect(page.locator('#models-running')).to_have_text('5')
     expect(page.locator('#models-free')).to_have_text('0 GiB')
     state['available'] = False
     primary.get_by_role('link', name='Pool', exact=True).click()
-    page.locator('.loaded-models').get_by_role('button', name='Open Models', exact=True).click()
+    action.click()
     expect(page.locator('#models-count')).to_have_text('Unavailable')
-    expect(page.locator('#models-running')).to_have_text('Unavailable')
+    expect(page.locator('#models-running')).to_have_text('5')
     expect(page.locator('#models-free')).to_have_text('Unavailable')
+    page.screenshot(path=f'/private/tmp/poolhouse-model-summary-{theme}-{width}-inventory-unavailable.png')
+    state['serving'] = False
+    primary.get_by_role('link', name='Pool', exact=True).click()
+    action.click()
+    expect(page.locator('#models-running')).to_have_text('Unavailable')
+    page.screenshot(path=f'/private/tmp/poolhouse-model-summary-{theme}-{width}-serving-unavailable.png')
     assert not errors
 
 

@@ -33,7 +33,7 @@ def test_chat_token_control_has_one_label_and_one_zero_hint(feedback_page,tmp_pa
     page.evaluate('theme => fleetModel.setPreferences({...fleetModel.preferences,resolved_theme:theme})',PRESETS[theme])
     snapshot(page,f'{theme}-chat-single-label.png')
     expect(page.locator('#chat-options').get_by_text('Maximum output tokens',exact=True)).to_have_count(1)
-    expect(page.locator('#chat-options').get_by_text('Select 0 for no user cap.',exact=False)).to_have_count(1)
+    expect(page.locator('#chat-options').get_by_text('Select 0 for no output cap.',exact=False)).to_have_count(1)
     assert not errors
 
 
@@ -46,4 +46,23 @@ def test_studio_token_control_has_one_label_in_both_hosts(generation_page,theme)
     for host in [page.locator('.studio-node'),page.locator('.studio-inspector')]:
         expect(host.get_by_role('slider',name='max_tokens',exact=True)).to_be_visible()
         expect(host.get_by_text('max_tokens',exact=True)).to_have_count(1)
+    assert not errors
+
+
+@pytest.mark.parametrize('theme',['light','dark'])
+def test_settings_output_has_one_output_cap_hint(feedback_page,theme):  # noqa: F811
+    served,page,errors=feedback_page
+    served.ui.settings.appearance={'active_theme':theme,'saved_themes':[]}
+    page.set_viewport_size({'width':960,'height':1000})
+    page.goto(f'http://127.0.0.1:{served.port}/ui/#settings')
+    cap=page.get_by_role('slider',name='Default maximum output tokens',exact=True)
+    expect(cap).to_be_enabled()
+    expect(page.locator('html')).to_have_attribute('data-theme',theme)
+    panel=page.locator('#settings-tokens')
+    expect(panel.get_by_text('Select 0 for no output cap.',exact=False)).to_have_count(1)
+    expect(panel).not_to_contain_text('user cap')
+    cap.focus()
+    cap.press('Home')
+    expect(panel.get_by_text('No output cap',exact=True)).to_have_count(1)
+    snapshot(page,f'{theme}-settings-single-output-hint.png')
     assert not errors
