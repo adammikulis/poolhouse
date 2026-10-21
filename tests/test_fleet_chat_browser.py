@@ -15,6 +15,7 @@ pytestmark = pytest.mark.slow
 def chat_browser(tmp_path, playwright):
     served = Serving(tmp_path)
     served.ui.settings.setup_done = True
+    served.ui.root = tmp_path
     served.ui.conversations = Conversations(tmp_path / "chats")
     browser = playwright.chromium.launch(headless=True)
     page = browser.new_page()
@@ -116,6 +117,7 @@ def test_shared_composer_cancel_and_failed_send_keep_the_next_draft(chat_browser
     composer.fill("First request")
     page.locator("chat-view #chat-send").click()
     expect(page.locator("chat-view #chat-cancel")).to_be_visible()
+    page.wait_for_function("() => typeof window.failComposerSend === 'function'")
     composer.fill("Next draft")
     page.locator("chat-view #chat-cancel").click()
     expect(page.locator("chat-view #chat-note")).to_have_text("Generation stopped.")

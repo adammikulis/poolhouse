@@ -2,8 +2,16 @@
 (() => {
   const M = window.fleetModel;
   M.chatDiscovery = {
+    idle() {
+      if (this.request) return;
+      this.list.removeAttribute('aria-busy'); this.send.hidden = false; this.stop.hidden = true;
+      this.newChat.disabled = this.picker.disabled = false;
+      this.temperature.disabled = this.outputTokens.disabled = !!this.loadingConversation;
+      this.coding.busy(!!this.loadingConversation); this.updateReadiness();
+    },
     async draw() {
       const picker = this.modelPicker;
+      this.idle();
       if (this.loadingConversation && this.loadingSession !== M.sessionContext()) {
         this.loadEpoch++; this.loadingConversation = false;
         this.coding.busy(!!this.request);
