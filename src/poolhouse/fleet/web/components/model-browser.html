@@ -1,12 +1,16 @@
 <style>
-model-browser .model-browser{padding:0}
-model-browser .section-heading h2{font-size:21px;margin:0 0 8px}
-model-browser .browser-toolbar{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:20px 0}
+model-browser{display:flex;min-height:0;flex:1}
+model-browser .model-browser{padding:0;display:flex;flex-direction:column;gap:12px;min-height:0;width:100%;overflow:hidden}
+model-browser .section-heading h2{font-size:17px;margin:0 0 4px}
+model-browser .browser-toolbar{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:0;flex-shrink:0}
 model-browser .segmented button{background:var(--bg-sunken);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 14px}
 model-browser .segmented button[aria-pressed=true]{background:var(--poolhouse-orange,#ff8a3d);color:var(--poolhouse-orange-ink,var(--poolhouse-navy,#1b1f3a));border-color:transparent;font-weight:750}
 model-browser .search-field{flex:1;min-width:180px}
 model-browser .search-field input{width:100%;box-sizing:border-box}
-model-browser #browser-results{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:16px}
+model-browser #browser-results{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:16px;min-height:0;flex:1;overflow:auto;align-content:start;overscroll-behavior:contain;padding:2px}
+model-browser #browser-results:focus-visible{outline:2px solid var(--accent-ink);outline-offset:-2px}
+model-browser details.aside{max-height:25%;overflow:auto;flex-shrink:0;margin:0}
+model-browser .section-heading .hint,model-browser #browser-source{margin:0}
 model-browser .model-row{display:flex;flex-direction:column;align-items:stretch;gap:16px;background:var(--bg-raised);padding:20px;border:1px solid var(--line);border-radius:16px;min-width:0;margin:0}
 model-browser .model-info{min-width:0;overflow-wrap:anywhere}
 model-browser .model-info>b{font-size:16px}
@@ -14,7 +18,7 @@ model-browser .variant-choice{display:block;font-size:12px;margin:16px 0}
 model-browser .variant-choice select{display:block;max-width:100%;margin-top:8px}
 model-browser .model-actions{margin-top:auto}
 model-browser .model-actions button{background:var(--poolhouse-cyan);color:var(--poolhouse-cyan-ink,var(--poolhouse-navy,#1b1f3a));border:0;border-radius:10px;font-weight:700}
-model-browser #browser-pages{display:flex;gap:12px;align-items:center;margin-top:20px}
+model-browser #browser-pages{display:flex;gap:12px;align-items:center;margin-top:0;flex-shrink:0}
 </style>
 <template>
   <section class="model-browser" aria-label="Model library">
@@ -37,10 +41,10 @@ model-browser #browser-pages{display:flex;gap:12px;align-items:center;margin-top
         <option value="">All families</option><option value="UD">UD</option><option value="GSQ/RCO">GSQ / RCO</option><option value="Standard">Standard</option>
       </select></label>
     </div>
+    <div id="browser-filters" hidden></div>
     </details>
     <p class="hint" id="browser-source"></p>
-    <div id="browser-filters" hidden></div>
-    <div id="browser-results" aria-live="polite"></div>
+    <div id="browser-results" role="region" aria-label="Model discovery results" tabindex="0" aria-live="polite"></div>
     <div id="browser-pages"></div>
   </section>
 </template>
@@ -64,8 +68,8 @@ model-browser #browser-pages{display:flex;gap:12px;align-items:center;margin-top
       this.bits = this.querySelector("#quant-bits");
       this.quantFamily = this.querySelector("#quant-family");
       const refilter = () => this.source === "network" ? this.paintNetwork() : this.hub && this.paintHub();
-      this.bits.onchange = refilter;
-      this.quantFamily.onchange = refilter;
+      this.bits.onchange = () => {refilter();this.filterSummary();};
+      this.quantFamily.onchange = () => {refilter();this.filterSummary();};
       this.inventory = { here: [], elsewhere: [] };
       this.run = {};
       this.pending = new Set();
@@ -207,6 +211,11 @@ model-browser #browser-pages{display:flex;gap:12px;align-items:center;margin-top
       return card;
     }
 
+    filterSummary() {
+      const labels=[this.bits.value ? this.bits.value+'-bit' : '',this.quantFamily.value];
+      if(this.source==='hub'&&this.hub){const all=this.hub.families||[];if(this.search.families?.size!==all.length)labels.push(this.search.families?.size+' families');if(this.search.rude)labels.push('uncensored included');}
+      this.querySelector('details.aside summary').textContent='Advanced model filters'+(labels.filter(Boolean).length?' · '+labels.filter(Boolean).join(', '):'');
+    }
     key() { return JSON.stringify([this.search.typed, this.search.page, this.search.rude]); }
 
     async loadHub() {
@@ -252,6 +261,7 @@ model-browser #browser-pages{display:flex;gap:12px;align-items:center;margin-top
           box.onchange = () => { if (box.checked) s.families.add(family); else s.families.delete(family); this.paintHub(); };
           return el("label", { class: "opt inline" }, box, family);
         })), el("label", { class: "opt inline" }, uncensored, "Include uncensored builds"));
+      this.filterSummary();
       const rows = (response.models || []).filter((x) => s.families.has(x.family));
       const groups = this.grouped(rows);
       this.results.replaceChildren(...(groups.length ? groups.map((group) => this.variantRow(group))
