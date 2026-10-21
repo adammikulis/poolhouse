@@ -53,7 +53,7 @@ def test_task_refuses_before_status_conversation_or_native_launch(monkeypatch, t
     monkeypatch.setattr(coding, "launch_coding_agent", forbidden)
     for _ in range(2):
         with pytest.raises(ValueError, match="cannot enforce isolated session permissions"):
-            task_coding.perform(None, tmp_path, None, None, None)
+            task_coding.perform(None, tmp_path, None, None, task_coding.Run(tmp_path, lambda: False, forbidden))
     assert list(tmp_path.iterdir()) == []
 
 
