@@ -274,7 +274,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
       this.project.onchange = () => this.selectProject();
       chat.querySelector('#conversation-local-agents').ontoggle = event => {
         if (event.target.open && !this.localAgents) {
-          this.localAgents = M.el('ml-agents', {endpoint:'/ui/agents'});
+          this.localAgents = M.el('poolhouse-agents', {endpoint:'/ui/agents'});
           chat.querySelector('#conversation-agents').append(this.localAgents);
         }
       };
@@ -350,7 +350,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
         return;
       }
       this.channels.textContent = 'Connecting to workspace…';
-      const board = this.board = M.el('ml-board', {endpoint:id === 'local' ? '/ui/board' : `/ui/projects/${id}/board`,
+      const board = this.board = M.el('poolhouse-board', {endpoint:id === 'local' ? '/ui/board' : `/ui/projects/${id}/board`,
         'channel-feed':'', integrated:''});
       const current = () => board === this.board && selection === this.projectSelection && id === this.project.value;
       board.addEventListener('board-navigation', event => {
@@ -358,7 +358,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
         if (event.detail.me || event.detail.error || event.detail.personSetupRequired) this.navigation(event.detail);
         board.setActive(this.visible);
       });
-      board.addEventListener('ml-board-open', () => { if (current()) M.go('board'); });
+      board.addEventListener('poolhouse-board-open', () => { if (current()) M.go('board'); });
       this.teamHeading = M.el('header', {id:'conversation-team-heading', class:'conversation-team-heading'});
       this.team.replaceChildren(this.teamHeading, board);
       try { localStorage.setItem('poolhouse.conversations.project', id); } catch {}

@@ -14,7 +14,7 @@
       this.element = M.el('details', {class:'model-start-options'}, M.el('summary', {},
         output === undefined ? 'Context length' : 'Context length and output'));
       this.contextPicker = M.contextPicker(this.context, value => { this.context = value; this.paint(); }, {maximum:this.maximum});
-      this.slider = this.contextPicker.querySelector('ml-slider');
+      this.slider = this.contextPicker.querySelector('poolhouse-slider');
       this.slider.removeAttribute('id');
       this.element.append(this.contextPicker);
       this.note = M.el('p', {class:'hint'}); this.element.append(this.note);

@@ -55,7 +55,7 @@ def test_team_composer_survives_history_failure_and_retries_authenticated_send(c
     page.goto(f'http://127.0.0.1:{served.port}/ui#board')
     page.get_by_label('Workspace', exact=True).select_option('local')
     page.locator('#conversation-channels').get_by_role('button', name='#research').click()
-    board = page.locator('chat-view ml-board')
+    board = page.locator('chat-view poolhouse-board')
     editor = board.get_by_role('textbox', name='Message', exact=True)
     expect(editor).to_be_visible()
     editor.fill('Keep this research draft')
@@ -113,7 +113,7 @@ def test_shared_sidebar_routes_channels_dms_threads_and_saved_model_chats(chat_b
     sidebar.get_by_role('button', name='#experiments').click()
     expect(page.locator('#conversation-team')).to_be_visible()
     expect(page.locator('#conversation-model')).to_be_hidden()
-    board = page.locator('chat-view ml-board')
+    board = page.locator('chat-view poolhouse-board')
     expect(board.locator('.msg pre')).to_contain_text('The evaluation is ready.')
     expect(board.locator('nav')).to_be_hidden()
     editor = board.get_by_role('textbox', name='Message', exact=True)
@@ -162,7 +162,7 @@ def test_project_selection_never_falls_back_to_local_board(chat_browser):
     expect(page.get_by_label('Workspace', exact=True)).to_have_value(project)
     expect(page.locator('#conversation-channels')).to_contain_text('Board identity is unavailable')
     assert seen and all(f'/ui/projects/{project}/board/' in url for url in seen)
-    assert page.locator('chat-view ml-board').get_attribute('endpoint') == f'/ui/projects/{project}/board'
+    assert page.locator('chat-view poolhouse-board').get_attribute('endpoint') == f'/ui/projects/{project}/board'
     assert page.get_by_label('Workspace', exact=True).input_value() != 'local'
 
 
@@ -179,7 +179,7 @@ def test_new_dm_from_model_chat_opens_a_subagent_conversation_and_survives_reloa
     page.locator(f'#conversation-directory button[title="{identity}"]').click()
     expect(page.locator('#conversation-team')).to_be_visible()
     expect(page.locator('#conversation-model')).to_be_hidden()
-    board = page.locator('chat-view ml-board')
+    board = page.locator('chat-view poolhouse-board')
     expect(board.locator('.msg pre')).to_contain_text('Ready to review this experiment.')
     assert board.evaluate("node => [...node.feed.childNodes].filter(child => child.nodeType === Node.TEXT_NODE).map(child => child.textContent.trim()).filter(Boolean)") == []
     assert board.evaluate('node => node.view.b') == identity
@@ -212,10 +212,10 @@ def test_conversation_surfaces_consume_resolved_theme_tokens(chat_browser, team,
       root.style.fontSize = '18px';
       for (const [key,value] of Object.entries(settings.tokens)) root.style.setProperty(key,value);
     }''', {'theme': theme, 'tokens': {
-        '--ml-bg': surface, '--ml-surface': surface, '--ml-sunken': surface,
-        '--ml-text': ink, '--ml-muted': ink, '--ml-accent': pink, '--ml-accent-ink': ink,
-        '--ml-on-accent': pink_ink, '--poolhouse-pink': pink, '--poolhouse-cyan': '#2de2e6',
-        '--poolhouse-pink-ink': pink_ink, '--ui-density': str(density), '--ml-font': 'Georgia, serif',
+        '--poolhouse-ui-bg': surface, '--poolhouse-ui-surface': surface, '--poolhouse-ui-sunken': surface,
+        '--poolhouse-ui-text': ink, '--poolhouse-ui-muted': ink, '--poolhouse-ui-accent': pink, '--poolhouse-ui-accent-ink': ink,
+        '--poolhouse-ui-on-accent': pink_ink, '--poolhouse-pink': pink, '--poolhouse-cyan': '#2de2e6',
+        '--poolhouse-pink-ink': pink_ink, '--ui-density': str(density), '--poolhouse-ui-font': 'Georgia, serif',
     }})
     expected = page.evaluate('''values => {
       const sample = document.createElement('span'); document.body.append(sample);
@@ -240,7 +240,7 @@ def test_conversation_surfaces_consume_resolved_theme_tokens(chat_browser, team,
     page.get_by_role('button', name='Close', exact=True).click()
     page.get_by_label('Workspace', exact=True).select_option('local')
     page.locator('#conversation-channels').get_by_role('button', name='#theme', exact=True).click()
-    board = page.locator('chat-view ml-board')
+    board = page.locator('chat-view poolhouse-board')
     expect(board.get_by_label('Message', exact=True)).to_be_visible()
     assert board.locator('main header').evaluate('node => getComputedStyle(node).backgroundColor') == expected[0]
     assert board.locator('.composer').evaluate('node => getComputedStyle(node).backgroundColor') == expected[0]
@@ -274,7 +274,7 @@ def test_unshared_workspace_is_selected_and_team_messages_render(chat_browser, t
     assert registry.list() == []
     page.goto(f'http://127.0.0.1:{served.port}/ui#chat')
     expect(page.get_by_label('Workspace', exact=True)).to_have_value(project)
-    board = page.locator('chat-view ml-board')
+    board = page.locator('chat-view poolhouse-board')
     assert board.get_attribute('endpoint') == f'/ui/projects/{project}/board'
     expect(page.locator('#conversation-direct').get_by_text('No direct messages yet.', exact=True)).to_be_visible()
     expect(board.locator('.msg pre')).to_contain_text('The team experiment is ready.')
@@ -322,7 +322,7 @@ def test_sidebar_keeps_agent_directory_in_new_dm_and_searches_existing_conversat
     assert directory.locator('button').count() >= 43
     selected_id = helpers[-1][0].name
     directory.locator(f'button[title="{selected_id}"]').click()
-    board = page.locator('chat-view ml-board')
+    board = page.locator('chat-view poolhouse-board')
     expect(page.locator('#conversation-team')).to_be_visible()
     assert board.evaluate('node => node.target().to') == selected_id
     expect(direct.locator(':scope > button')).to_have_count(2)
@@ -350,7 +350,7 @@ def test_channel_history_scrolls_with_composer_visible_at_all_viewport_sizes(cha
     page.goto(f'http://127.0.0.1:{served.port}/ui#chat')
     page.get_by_label('Workspace', exact=True).select_option('local')
     page.locator('#conversation-channels').get_by_role('button', name='#general', exact=False).click()
-    board = page.locator('chat-view ml-board')
+    board = page.locator('chat-view poolhouse-board')
     expect(board.locator('.msg pre')).to_have_count(24)
     composer = board.get_by_role('textbox', name='Message', exact=True)
     for width, height in [(1360, 900), (1360, 640), (1360, 420), (390, 844)]:
@@ -409,7 +409,7 @@ def test_bounded_history_navigation_keeps_message_nodes_scroll_and_draft(chat_br
     browser.goto(f'http://127.0.0.1:{served.port}/ui#chat')
     browser.get_by_label('Workspace', exact=True).select_option('local')
     browser.locator('#conversation-channels').get_by_role('button', name='#general').click()
-    board = browser.locator('chat-view ml-board')
+    board = browser.locator('chat-view poolhouse-board')
     expect(board.locator('.msg')).to_have_count(100)
     editor = board.get_by_role('textbox', name='Message', exact=True)
     editor.fill('Keep this draft while reading history.')

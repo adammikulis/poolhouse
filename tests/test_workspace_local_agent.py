@@ -573,13 +573,13 @@ def test_the_page_start_list_and_stop_round_trip_with_hostile_input_refused(serv
     assert post(served, "stop", {"name": "local-r"})[0] == 200
     assert json.loads(request(served.port, "GET", "/agents/list")[1])["agents"][0]["state"] == "stopped"
     status, page = request(served.port, "GET", f"/agents?session={served.session}")
-    assert status == 200 and b"<ml-agents" in page
+    assert status == 200 and b"<poolhouse-agents" in page
 
 
-def test_the_element_builds_nothing_from_markup_and_is_loaded_by_ml_ui():
+def test_the_element_builds_nothing_from_markup_and_is_loaded_by_poolhouse_ui():
     from poolhouse.ui import assets_dir
     src = (assets_dir() / "agents.js").read_text(encoding="utf-8")
-    assert 'import "./agents.js"' in (assets_dir() / "ml-ui.js").read_text(encoding="utf-8")
+    assert 'import "./agents.js"' in (assets_dir() / "poolhouse-ui.js").read_text(encoding="utf-8")
     for banned in ("innerHTML", "outerHTML", "insertAdjacentHTML", "eval(", "new Function",
                    "document.write", "localStorage", "window.open", "target="):
         assert banned not in src, banned

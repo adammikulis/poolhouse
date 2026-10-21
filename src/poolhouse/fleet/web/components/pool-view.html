@@ -77,21 +77,21 @@ pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere
 
     if (d.ram_gb) {
       const used = d.ram_used_gb;
-      meters.push(M.ui("ml-meter", {
+      meters.push(M.ui("poolhouse-meter", {
         label: "memory", capacity: d.ram_gb, unit: "GB", compact: true,
         ...(used === undefined ? { caption: `${gb(d.ram_gb)} total` }
           : { value: Math.max(0, used), caption: `${gb(used)} of ${gb(d.ram_gb)} in use` }) }));
     }
 
     if (d.cpu_pct !== undefined) {
-      meters.push(M.ui("ml-meter", {
+      meters.push(M.ui("poolhouse-meter", {
         label: "processors", capacity: 100, value: Math.min(100, d.cpu_pct), compact: true,
         caption: `${Math.round(d.cpu_pct)}% busy` }));
     }
 
     if (d.vram_total_gb && !d.unified_memory && d.vendor !== "apple") {
       const used = d.vram_total_gb - (d.vram_free_gb ?? d.vram_total_gb);
-      meters.push(M.ui("ml-meter", {
+      meters.push(M.ui("poolhouse-meter", {
         label: "video memory",
         capacity: d.vram_total_gb, value: Math.max(0, used), compact: true,
         caption: `${gb(d.vram_free_gb)} free of ${gb(d.vram_total_gb)}` }));
@@ -108,7 +108,7 @@ pool-view .url,pool-view .name,pool-view .loaded-models { overflow-wrap:anywhere
     if (chips.length) meters.push(el("div", { class: "chips" }, chips));
 
     if (d.gpu_util_pct !== undefined) {
-      meters.push(M.ui("ml-meter", {
+      meters.push(M.ui("poolhouse-meter", {
         label: "gpu", capacity: 100, value: Math.min(100, d.gpu_util_pct), compact: true,
         caption: `${Math.round(d.gpu_util_pct)}% busy` }));
     }

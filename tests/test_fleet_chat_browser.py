@@ -92,7 +92,7 @@ def test_one_composer_enter_sends_and_shift_enter_keeps_the_draft(chat_browser):
     expect(page.locator("chat-view #chat-messages")).to_contain_text("Saved answer")
     assert calls[0]["messages"][-1]["content"] == "First line\nSecond line"
     assert page.locator("chat-view textarea:visible").count() == 1
-    expect(page.locator("chat-view ml-composer .composer-recipient")).to_have_text("Message model-a")
+    expect(page.locator("chat-view poolhouse-composer .composer-recipient")).to_have_text("Message model-a")
     assert not page.locator("chat-view #chat-options").evaluate("node => node.open")
     page.reload()
     expect(page.locator("chat-view #chat-messages")).to_contain_text("Saved answer")
