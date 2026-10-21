@@ -1,7 +1,6 @@
 """Native coding uses bounded turns and cancels its owned process."""
 
 import json
-import threading
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -97,27 +96,21 @@ def test_invalid_native_extra_body_does_not_launch(monkeypatch, native, body):
         manager._process(None, command, {'CLAUDE_CODE_EXTRA_BODY': body}, context)
 
 
-def test_stop_cancels_native_turn(tmp_path, monkeypatch):
-    stop = threading.Event()
-    cancelled = []
-    conversation = SimpleNamespace(id='conversation')
-    monkeypatch.setattr(task_coding, 'Conversations', lambda *_: SimpleNamespace(start=lambda **_: conversation))
-    monkeypatch.setattr(task_coding.git, 'head', lambda _: 'a' * 40)
-    monkeypatch.setattr(task_coding.la, 'folder', lambda _: tmp_path)
-    monkeypatch.setattr(task_coding.work_reputation, 'brief_on', lambda *_: 'Recorded reputation data')
-    monkeypatch.setattr(task_coding.Turn, 'cancel', lambda self: (cancelled.append(True), self.cancelled.set()))
-    def run(self, turn, conversation, prompt):
-        assert 'calling done' not in prompt
-        assert 'Linux testing is on hold' in prompt
-        assert 'Recorded reputation data' not in prompt
-        stop.set()
-        assert turn.cancelled.wait(1)
-    monkeypatch.setattr(task_coding.TaskManager, '_run', run)
-    task = {'id': 'task:' + 'a' * 32, 'title': 'Fix queue', 'description': 'Fix the queue', 'acceptance': ['Fails correctly']}
-    with pytest.raises(RuntimeError, match='cancelled'):
-        task_coding.perform(owning_session(), tmp_path, localagent.Agent('worker', 'qwen', identity='bound-worker'),
-                            task, task_coding.Run(tmp_path, stop.is_set, lambda _: None))
-    assert cancelled == [True]
+@pytest.mark.parametrize('stopped', [False, True])
+def test_task_refuses_before_conversation_or_cancellation_work(tmp_path, monkeypatch, stopped):
+    def forbidden(*args, **kwargs):
+        pytest.fail('Closed task dispatch reached a side effect')
+    for owner, name in ((task_coding, 'Conversations'), (task_coding.la, 'Status'),
+                        (task_coding.work_reputation, 'brief_on'), (task_coding.Turn, 'cancel')):
+        monkeypatch.setattr(owner, name, forbidden)
+    task = {'id': 'task:' + 'a' * 32, 'title': 'Fix queue', 'description': 'Fix the queue',
+            'acceptance': ['Fails correctly']}
+    for _ in range(2):
+        with pytest.raises(ValueError, match='cannot enforce isolated session permissions'):
+            task_coding.perform(owning_session(), tmp_path,
+                                localagent.Agent('worker', 'qwen', identity='bound-worker'), task,
+                                task_coding.Run(tmp_path, lambda: stopped, forbidden))
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_proposal_binds_committed_files_and_deletions(tmp_path):
@@ -152,7 +145,7 @@ def test_proposal_binds_committed_files_and_deletions(tmp_path):
         task_coding._proposal(localagent.Agent('worker', 'qwen'), task, project, turn, 'python')
 
 
-def test_pi_launcher_receives_independent_budget_and_clamped_effort(tmp_path, monkeypatch):
+def test_saved_task_settings_keep_independent_budget_without_opening_dispatch(tmp_path, monkeypatch):
     from poolhouse import coding
     from poolhouse.fleet.conversations import Conversations
 
@@ -160,27 +153,31 @@ def test_pi_launcher_receives_independent_budget_and_clamped_effort(tmp_path, mo
     project.mkdir()
     store = Conversations(tmp_path / 'chats')
     conversation = store.start(model='qwen', settings={
-        'mode': 'coding', 'harness': 'pi', 'project': str(project),
+        'harness': 'pi', 'project': str(project),
         'effort': 'high', 'max_effort': 'low', 'max_output_tokens': 32000})
-    seen = {}
-    def launch(model, role, project, **options):
-        seen.update(options, model=model, role=role, project=project)
-        return 0
-    monkeypatch.setattr(coding, 'launch_coding_agent', launch)
+    saved = store.get(conversation.id)
+    assert saved.settings['harness'] == 'pi'
+    assert saved.settings['project'] == str(project)
+    assert saved.settings['max_output_tokens'] == 32000
+    assert saved.settings['effort'] == 'high' and saved.settings['max_effort'] == 'low'
+    assert 'mode' not in saved.settings
+    with pytest.raises(ValueError, match='unknown conversation setting'):
+        store.start(model='qwen', settings={'mode': 'coding'})
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('Closed task dispatch reached a native or person operation')
+    monkeypatch.setattr(coding, 'launch_coding_agent', forbidden)
+    from poolhouse.workspace import coding_turns
+    monkeypatch.setattr(coding_turns.person, 'session', forbidden)
     agent = localagent.Agent('worker', 'qwen', identity='bound-worker', profile='coding', harness='pi', max_output_tokens=32000)
     manager = task_coding.TaskManager(store, owning_session(), None, agent)
-    from poolhouse.workspace import coding_turns
-    monkeypatch.setattr(coding_turns.person, 'session', lambda *_: pytest.fail('agent cannot borrow a person session'))
     turn = task_coding.Turn(conversation.id)
-    manager._run(turn, conversation, 'Implement a queue')
-    assert turn.state == 'completed' and not turn.error
-    assert seen['parent'] == agent.identity == 'bound-worker'
-    assert seen['model'] == 'qwen' and seen['project'] == str(project)
-    assert seen['name'] != agent.identity
-    assert 'session_factory' not in seen
-    assert seen['max_output_tokens'] == 32000
-    assert seen['effort'] == 'low'
-    assert seen['max_turns'] is None
+    for _ in range(2):
+        with pytest.raises(ValueError, match='cannot enforce isolated session permissions'):
+            manager._run(turn, conversation, 'Implement a queue')
+    assert store.get(conversation.id).settings == saved.settings
+    assert store.get(conversation.id).messages == []
+    assert list(project.iterdir()) == []
 
 
 def test_unlimited_native_tool_counter_preserves_parser_bounds(tmp_path):
@@ -195,6 +192,23 @@ def test_unlimited_native_tool_counter_preserves_parser_bounds(tmp_path):
     path.write_text(json.dumps({'version': 1, 'calls': True, 'limit': None}))
     with pytest.raises(ValueError):
         task_caps.admit(path)
+
+
+def test_task_turn_refuses_before_creating_saved_state_or_dispatch(tmp_path, monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail('Closed task turn reached saved state or dispatch')
+    monkeypatch.setattr(task_coding.la, 'Status', forbidden)
+    monkeypatch.setattr(task_coding, 'Conversations', forbidden)
+    monkeypatch.setattr(task_coding.TaskManager, '_run', forbidden)
+    monkeypatch.setattr(task_coding, '_proposal', forbidden)
+    task = {'id': 'task:' + 'b' * 32, 'title': 'Inspect queue', 'description': 'Inspect the queue',
+            'acceptance': ['Returns a report']}
+    agent = localagent.Agent('worker', 'qwen', identity='bound-worker', harness='pi', max_output_tokens=32000)
+    for _ in range(2):
+        with pytest.raises(ValueError, match='cannot enforce isolated session permissions'):
+            task_coding.perform(owning_session(), tmp_path / 'state', agent, task,
+                                task_coding.Run(tmp_path, lambda: False, forbidden))
+    assert list(tmp_path.iterdir()) == []
 
 
 @pytest.mark.parametrize('authenticated', ['', None, 'other-worker'])
