@@ -81,7 +81,7 @@ wired-memory .room-actions { display: flex; gap: 8px; margin: 10px 0; }
     draw() {
       const { machine: m, plan } = this.data;
       if (!m.supported) { this.replaceChildren(); return; }
-      const slider = M.ui("ml-slider", {
+      const slider = M.ui("poolhouse-slider", {
         label: "Memory models may use", min: m.default_mb, max: m.max_mb, step: 1024,
         value: Math.min(Math.max(this.value, m.default_mb), m.max_mb),
         marks: this.marks(m, plan),

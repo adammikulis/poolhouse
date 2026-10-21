@@ -55,7 +55,7 @@ class Live:
         status, headers, page = self.call("GET", f"/requests?k={self.app.launch_key}")
         assert status == 200
         self.cookie = headers["Set-Cookie"].split(";")[0]
-        self.csrf = re.search(rb'name="ml-requests-csrf" content="([^"]+)"', page).group(1).decode()
+        self.csrf = re.search(rb'name="poolhouse-requests-csrf" content="([^"]+)"', page).group(1).decode()
 
     def post(self, data, *, drop: tuple[str, ...] = (), **headers):
         base = {"Cookie": self.cookie, "Content-Type": "application/json", "X-Requests-CSRF": self.csrf,
@@ -116,8 +116,18 @@ def test_every_api_route_needs_the_session_and_ignores_a_bearer_token(live):
     handle = raised(live)
     for path in ("/requests/api/list", f"/requests/api/show/{handle.id}", "/requests/api/feed"):
         assert live.call("GET", path)[0] == 401
-        assert live.call("GET", path, headers={"Authorization": "Bearer mlsk1.anything"})[0] == 401
+        assert live.call("GET", path, headers={"Authorization": "Bearer foreign-token"})[0] == 401
         assert live.get(path)[0] == 200
+
+
+def test_only_the_current_cookie_name_authenticates(live):
+    secret = live.cookie.partition("=")[2]
+    foreign = f"foreign_cookie={secret}"
+    path = "/requests/api/list"
+    assert live.cookie.startswith("poolhouse_requests=")
+    assert live.call("GET", path, headers={"Cookie": foreign})[0] == 401
+    for cookie in (live.cookie, f"{foreign}; {live.cookie}", f"{live.cookie}; {foreign}"):
+        assert live.call("GET", path, headers={"Cookie": cookie})[0] == 200
 
 
 def test_the_csrf_token_and_the_cookie_never_appear_in_any_api_answer(live):
@@ -132,10 +142,10 @@ def test_the_page_has_no_inline_script_a_strict_policy_and_serves_only_its_own_f
     _status, headers, page = live.call("GET", "/requests", headers={"Cookie": live.cookie})
     text = page.decode()
     assert "default-src 'none'" in headers["Content-Security-Policy"] and "script-src 'self'" in headers["Content-Security-Policy"]
-    assert re.findall(r"<script[^>]*>", text, re.I) == ['<script type="module" src="/requests/assets/ml-requests.js">']
+    assert re.findall(r"<script[^>]*>", text, re.I) == ['<script type="module" src="/requests/assets/poolhouse-requests.js">']
     assert "</script>" in text and text.count("<script") == 1 and "onclick" not in text
-    assert live.call("GET", "/requests/assets/ml-requests.js")[0] == 200
-    for name in ("../../graph/guard.py", "ml-ui.js", "gallery.html", "..%2f..%2fcli.py"):
+    assert live.call("GET", "/requests/assets/poolhouse-requests.js")[0] == 200
+    for name in ("../../graph/guard.py", "poolhouse-ui.js", "gallery.html", "..%2f..%2fcli.py"):
         assert live.call("GET", f"/requests/assets/{name}")[0] == 404
 
 
@@ -166,7 +176,7 @@ def test_a_post_that_breaks_any_one_rule_is_refused_and_changes_nothing(live, wh
         "csrf-missing": lambda: live.post(data, drop=("X-Requests-CSRF",)),
         "csrf-wrong": lambda: live.post(data, **{"X-Requests-CSRF": "x" * len(live.csrf)}),
         "cookie-missing": lambda: live.post(data, drop=("Cookie",)),
-        "cookie-wrong": lambda: live.post(data, Cookie="ml_requests=guess"),
+        "cookie-wrong": lambda: live.post(data, Cookie="poolhouse_requests=guess"),
     }
     status = tries[what]()[0]
     assert status in (400, 401, 403, 421), (what, status)
@@ -265,7 +275,7 @@ def test_approve_all_covers_only_what_is_listed_and_never_a_destructive_or_human
 
 def test_hostile_text_travels_as_json_data_and_the_element_never_builds_markup():
     hostile = "<img src=x onerror=alert(1)>"
-    source = (assets_dir() / "ml-requests.js").read_text()
+    source = (assets_dir() / "poolhouse-requests.js").read_text()
     for banned in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function", "href", ".src"):
         assert banned not in source, banned
     assert hostile not in source
@@ -282,7 +292,7 @@ def test_the_element_escapes_control_and_bidi_characters_and_bounds_length():
     const out = [plain("a\\u001b[31m\\u202eb\\nc"), plain("z".repeat(500), 50), plain("<b>x</b>")];
     console.log(JSON.stringify(out));
     """
-    done = subprocess.run([node, "--input-type=module", "-e", probe, str(assets_dir() / "ml-requests.js")],
+    done = subprocess.run([node, "--input-type=module", "-e", probe, str(assets_dir() / "poolhouse-requests.js")],
                           capture_output=True, text=True, timeout=60, check=False)
     got = json.loads(done.stdout)
     assert "\x1b" not in got[0] and "‮" not in got[0] and "\\x1b" in got[0] and "\\u202e" in got[0]

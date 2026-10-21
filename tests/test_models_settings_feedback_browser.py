@@ -253,7 +253,7 @@ def test_settings_token_controls_share_chrome_and_lead_preferences(feedback_page
     expect(context).to_be_visible()
     expect(output).to_be_visible()
     positions = page.locator('#settings-tokens').evaluate("""node => {
-      const context = node.querySelector('#ctx'), output = node.querySelector('output-token-slider ml-slider');
+      const context = node.querySelector('#ctx'), output = node.querySelector('output-token-slider poolhouse-slider');
       const chrome = slider => {
         const input = slider.shadowRoot.querySelector('input');
         const css = getComputedStyle(input);

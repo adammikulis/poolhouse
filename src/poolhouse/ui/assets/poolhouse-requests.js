@@ -1,6 +1,6 @@
-/* <ml-requests>: every request that waits for a person, grouped by agent and project, with the
+/* <poolhouse-requests>: every request that waits for a person, grouped by agent and project, with the
    buttons that answer it. Everything the server sends is put on the page as text. */
-import { MlElement, define, h } from "./base.js";
+import { PoolhouseElement, define, h } from "./base.js";
 
 const STYLES = `
 :host { display: block; max-width: 960px; }
@@ -8,23 +8,23 @@ const STYLES = `
 .bar select, .bar label { font-size: 13px; }
 .count { font-weight: 600; }
 .group { margin: 0 0 18px; }
-.group > h3 { margin: 0 0 6px; font-size: 14px; color: var(--ml-muted); overflow-wrap: anywhere; }
-.card { border: 1px solid var(--ml-line-strong); border-radius: 10px; background: var(--ml-surface);
+.group > h3 { margin: 0 0 6px; font-size: 14px; color: var(--poolhouse-ui-muted); overflow-wrap: anywhere; }
+.card { border: 1px solid var(--poolhouse-ui-line-strong); border-radius: 10px; background: var(--poolhouse-ui-surface);
   padding: 10px 12px; margin: 0 0 8px; }
 .card.done { opacity: .75; }
-.kind { font-size: 12px; font-weight: 600; color: var(--ml-muted); }
-.subject { font-family: var(--ml-mono, monospace); font-size: 13px; overflow-wrap: anywhere; white-space: pre-wrap; margin: 4px 0; }
+.kind { font-size: 12px; font-weight: 600; color: var(--poolhouse-ui-muted); }
+.subject { font-family: var(--poolhouse-ui-mono, monospace); font-size: 13px; overflow-wrap: anywhere; white-space: pre-wrap; margin: 4px 0; }
 .reason { font-size: 13px; overflow-wrap: anywhere; margin: 4px 0 8px; }
 .choices { display: flex; flex-wrap: wrap; gap: 6px; }
 .choice { display: flex; flex-direction: column; align-items: flex-start; }
-.choice small { color: var(--ml-muted); font-size: 11.5px; max-width: 26ch; }
-button { background: var(--ml-sunken); border: 1px solid var(--ml-line-strong); border-radius: 7px; padding: 4px 11px; cursor: pointer; }
-button.approving { border-color: var(--ml-green); }
+.choice small { color: var(--poolhouse-ui-muted); font-size: 11.5px; max-width: 26ch; }
+button { background: var(--poolhouse-ui-sunken); border: 1px solid var(--poolhouse-ui-line-strong); border-radius: 7px; padding: 4px 11px; cursor: pointer; }
+button.approving { border-color: var(--poolhouse-ui-green); }
 button[disabled] { opacity: .5; cursor: default; }
-.note { font-size: 12.5px; color: var(--ml-muted); margin-top: 6px; overflow-wrap: anywhere; }
-.bulk { border: 1px dashed var(--ml-line-strong); border-radius: 8px; padding: 8px 10px; margin: 0 0 8px; }
+.note { font-size: 12.5px; color: var(--poolhouse-ui-muted); margin-top: 6px; overflow-wrap: anywhere; }
+.bulk { border: 1px dashed var(--poolhouse-ui-line-strong); border-radius: 8px; padding: 8px 10px; margin: 0 0 8px; }
 .bulk ul { margin: 4px 0 8px 18px; padding: 0; font-size: 12.5px; overflow-wrap: anywhere; }
-.empty { color: var(--ml-muted); }
+.empty { color: var(--poolhouse-ui-muted); }
 `;
 
 const HIDDEN = [[0x00, 0x1f], [0x7f, 0x9f], [0xad, 0xad], [0x61c, 0x61c], [0x180e, 0x180e], [0x200b, 0x200f],
@@ -43,7 +43,7 @@ export function plain(value, most = 300) {
 
 const BULK = ["allow-once", "approve", "deny"];
 
-class MlRequests extends MlElement {
+class PoolhouseRequests extends PoolhouseElement {
   static props = { api: "string", csrf: "string", agent: "string", project: "string", kind: "string", history: "bool" };
   static styles = STYLES;
   rows = [];
@@ -64,7 +64,7 @@ class MlRequests extends MlElement {
   get base() { return this.api || "/requests/api"; }
 
   get token() {
-    return this.csrf || document.querySelector('meta[name="ml-requests-csrf"]')?.content || "";
+    return this.csrf || document.querySelector('meta[name="poolhouse-requests-csrf"]')?.content || "";
   }
 
   async get(path) {
@@ -86,7 +86,7 @@ class MlRequests extends MlElement {
     try {
       const feed = await this.get("/feed");
       if (feed.rev !== this.rev || this.rev === "") { this.rev = feed.rev; await this.load(); }
-      this.emit("ml-requests-count", { pending: feed.pending });
+      this.emit("poolhouse-requests-count", { pending: feed.pending });
     } catch (err) {
       this.list.replaceChildren(h("p", { class: "empty" }, "The Requests page is not connected."));
     }
@@ -181,4 +181,4 @@ class MlRequests extends MlElement {
     await this.load();
   }
 }
-define("ml-requests", MlRequests);
+define("poolhouse-requests", PoolhouseRequests);

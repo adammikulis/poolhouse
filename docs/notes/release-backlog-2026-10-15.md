@@ -161,7 +161,7 @@ What the 2026-10 hardening pass left open; `docs/security.md` has the model and 
   approve-host` (`net/cli.py`, refusals in `net/policy.py`), the reputation notice
   (`reputation/notice.py`, its own dialog), keystore unlock, hold windows and rule suggestions keep
   their own prompts; the kinds exist in `poolhouse.requests.model.KINDS`.
-- [ ] **Requests page in the shell.** The element (`ui/assets/ml-requests.js`) and
+- [ ] **Requests page in the shell.** The element (`ui/assets/poolhouse-requests.js`) and
   `inbox.route.RequestsApp.dispatch` are not mounted in the workspace shell yet, and the page has
   only had DOM-level tests (a probe of `plain()` under node), no browser run.
 - [ ] **Always allow answered in the UI saves no rule.** The call runs once; a rule is saved only from

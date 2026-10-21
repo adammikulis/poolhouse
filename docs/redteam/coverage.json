@@ -9565,21 +9565,6 @@
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
   {
-   "id": "route:fleet/routes.py:/ui/ml-ui/*",
-   "kind": "route",
-   "source": "fleet/routes.py:PageRoutes.open_route",
-   "trust": "browser session on this machine behind the UI header",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "partial",
-   "tests": [
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
-   ],
-   "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
-  },
-  {
    "id": "route:fleet/routes.py:/ui/models",
    "kind": "route",
    "source": "fleet/routes.py:ModelRoutes.route",
@@ -9620,6 +9605,21 @@
     "tests/test_startup_models.py::StartupModelTests::test_startup_route_refuses_untrusted_requests_and_ignores_query_paths"
    ],
    "note": ""
+  },
+  {
+   "id": "route:fleet/routes.py:/ui/poolhouse-ui/*",
+   "kind": "route",
+   "source": "fleet/routes.py:PageRoutes.open_route",
+   "trust": "browser session on this machine behind the UI header",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "partial",
+   "tests": [
+    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
+    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
+    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
+    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
+   ],
+   "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
   {
    "id": "route:fleet/routes.py:/ui/pools",

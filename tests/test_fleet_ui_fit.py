@@ -200,8 +200,8 @@ class TestTheSplitBetweenTheFitComponents:
             page.goto(f'http://127.0.0.1:{served.port}/ui/')
             assert page.locator('html').get_attribute('lang') == 'en'
             expect(page.locator('html')).to_have_attribute('data-theme', 'dark')
-            assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--ml-bg').trim()") == '#141518'
-            assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--ml-accent').trim()") == '#ff5fa2'
+            assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--poolhouse-ui-bg').trim()") == '#141518'
+            assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--poolhouse-ui-accent').trim()") == '#ff5fa2'
             page.get_by_role('navigation', name='Main navigation').get_by_role('link', name='Pool', exact=True).click()
             nav = page.get_by_role('navigation', name='Workspace pages')
             nav.locator('a[href="#fit"]').click()

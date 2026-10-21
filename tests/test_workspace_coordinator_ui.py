@@ -24,7 +24,7 @@ def test_mobile_shared_coordinator_status_hides_local_board_and_escapes_labels(t
             expect(view.get_by_role('link', name='Open coordinator Board')).to_have_attribute(
                 'href', 'https://coordinator.example:8770/ui/#board')
             expect(page.locator('#board-agents')).to_be_hidden()
-            assert page.locator('board-view ml-board').count() == 0
+            assert page.locator('board-view poolhouse-board').count() == 0
             expect(view.locator('details')).not_to_have_attribute('open', '')
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     finally:
