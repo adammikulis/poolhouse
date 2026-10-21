@@ -61,6 +61,7 @@ def test_settings_output_has_one_output_cap_hint(feedback_page,theme):  # noqa: 
     panel=page.locator('#settings-tokens')
     expect(panel.get_by_text('Select 0 for no output cap.',exact=False)).to_have_count(1)
     expect(panel).not_to_contain_text('user cap')
+    snapshot(page,f'{theme}-settings-initial-output-hint.png')
     cap.focus()
     cap.press('Home')
     expect(panel.get_by_text('No output cap',exact=True)).to_have_count(1)

@@ -36,7 +36,10 @@ def test_models_count_running_models_and_show_known_storage(feedback_page, theme
                           {'models': ['Guard'], 'capabilities': {'chat': False}},
                           {'models': ['Harbor', 'Cedar'], 'capabilities': {'chat': True}},
                           {'models': ['Harbor'], 'capabilities': {'chat': True}},
-                          {'models': ['Unverified'], 'capabilities': {'chat': None}}]}
+                          {'models': ['Unverified'], 'capabilities': {'chat': None}},
+                          {'models': ['same.gguf'], 'aliases': ['/fixture/one/same.gguf']},
+                          {'models': ['same.gguf'], 'aliases': ['/fixture/two/same.gguf']},
+                          {'models': ['same.gguf'], 'aliases': ['/fixture/one/same.gguf']}]}
         if state['serving'] else {'error': 'Serving status unavailable'}))
     page.route('**/ui/fleet', lambda route: route.fulfill(json={'members': [
         {'name': 'fixture-device', 'is_self': True, 'device': {}, 'slots': 1, 'free': 1}]}))
@@ -45,7 +48,7 @@ def test_models_count_running_models_and_show_known_storage(feedback_page, theme
     expect(page.locator('html')).to_have_attribute('data-theme', theme)
     expect(page.locator('.models-overview')).to_contain_text('Running models')
     expect(page.locator('.models-overview')).not_to_contain_text('Chat-ready')
-    expect(page.locator('#models-running')).to_have_text('5')
+    expect(page.locator('#models-running')).to_have_text('7')
     expect(page.locator('#models-free')).to_have_text('Unavailable')
     page.screenshot(path=f'/private/tmp/poolhouse-model-summary-{theme}-{width}-running.png')
     primary = page.get_by_role('navigation', name='Main navigation')
@@ -54,13 +57,13 @@ def test_models_count_running_models_and_show_known_storage(feedback_page, theme
     expect(action).to_be_visible()
     state['free_gb'] = 0
     action.click()
-    expect(page.locator('#models-running')).to_have_text('5')
+    expect(page.locator('#models-running')).to_have_text('7')
     expect(page.locator('#models-free')).to_have_text('0 GiB')
     state['available'] = False
     primary.get_by_role('link', name='Pool', exact=True).click()
     action.click()
     expect(page.locator('#models-count')).to_have_text('Unavailable')
-    expect(page.locator('#models-running')).to_have_text('5')
+    expect(page.locator('#models-running')).to_have_text('7')
     expect(page.locator('#models-free')).to_have_text('Unavailable')
     page.screenshot(path=f'/private/tmp/poolhouse-model-summary-{theme}-{width}-inventory-unavailable.png')
     state['serving'] = False

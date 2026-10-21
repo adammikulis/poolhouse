@@ -78,7 +78,7 @@ models-view .model-loading{padding:28px;border-radius:16px;background:var(--bg-r
         this.querySelector("#models-free").textContent = m.ok && Number.isFinite(m.free_gb) && m.free_gb >= 0 ? `${m.free_gb} GiB` : "Unavailable";
         this.querySelector('#models-count').textContent = m.ok ? String((m.library || []).length) : "Unavailable";
         this.querySelector('#models-running').textContent = run.ok
-          ? String(new Set((run.running || []).flatMap(server => server.models || [])).size) : "Unavailable";
+          ? String(new Set((run.running || []).flatMap(server => (server.models || []).map((model, index) => server.aliases?.[index] || model))).size) : "Unavailable";
         this.browser.setInventory(m, run);
         this.querySelector("models-library").update(m.library || [], run,
           (path, name) => this.serve(path, name), (port) => this.halt(port));
