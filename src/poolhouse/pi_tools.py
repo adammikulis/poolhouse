@@ -8,19 +8,17 @@ import subprocess
 import sys
 from pathlib import Path
 
-from poolhouse import coding_policy, executable_libraries, sandbox
+from poolhouse import coding_actions, coding_policy, executable_libraries, sandbox
 from poolhouse.coding_workspace_state import CONTROL_PREFIXES
 from poolhouse.sandbox import policies
 
-MAX_FRAME = 4 * 1024 * 1024
-TOOLS = ("read", "bash", "edit", "write", "grep", "find", "ls")
 CONTROL_PATHS = (".git/config", ".git/config.worktree", ".git/hooks", *CONTROL_PREFIXES)
 
 
 def _inspect(command: list[str]) -> tuple[int, str]:
     done = subprocess.run(command, env=policies.system_env(HOME="/var/empty"), cwd="/",
                           capture_output=True, timeout=10, text=True, check=False)
-    if len(done.stdout.encode()) > MAX_FRAME:
+    if len(done.stdout.encode()) > coding_actions.MAX_FRAME:
         raise ValueError("The executable library report exceeds its limit")
     return done.returncode, done.stdout
 
@@ -59,7 +57,7 @@ def runtime(binary: str) -> dict:
     env = policies.system_env(HOME="/var/empty")
     reported = subprocess.run([node, "-e", "process.stdout.write(JSON.stringify(process.report.getReport().sharedObjects))"],
                               env=env, cwd="/", capture_output=True, check=True, timeout=10)
-    if len(reported.stdout) > MAX_FRAME:
+    if len(reported.stdout) > coding_actions.MAX_FRAME:
         raise ValueError("The Node runtime library report exceeds its limit")
     libraries = json.loads(reported.stdout)
     if not isinstance(libraries, list) or not all(isinstance(path, str) and Path(path).is_absolute() for path in libraries):
@@ -99,10 +97,10 @@ def prepared(files, binary: str, root: Path, policy: coding_policy.Policy) -> Pa
 
 def execute(configuration: dict, frame: dict) -> dict:
     """Execute a built-in tool with only its repository and scratch grants."""
-    if set(frame) != {"tool", "input"} or frame["tool"] not in TOOLS or not isinstance(frame["input"], dict):
+    if set(frame) != {"tool", "input"} or frame["tool"] not in coding_actions.TOOLS or not isinstance(frame["input"], dict):
         raise ValueError("Invalid coding tool request")
-    payload = json.dumps(frame).encode()
-    if len(payload) > MAX_FRAME:
+    payload = coding_actions.canonical(frame, limit=coding_actions.MAX_FRAME).encode()
+    if len(payload) > coding_actions.MAX_FRAME:
         raise ValueError("The coding tool request exceeds its limit")
     root = sandbox.checked_path(configuration["root"], what="coding repository")
     node = sandbox.checked_path(configuration["node"], what="Node runtime")
@@ -117,7 +115,7 @@ def execute(configuration: dict, frame: dict) -> dict:
             deny_write=tuple(controls),
             read_metadata=(*configuration["metadata"], configuration["tool_root"]),
             env=policies.system_env(HOME=scratch, TMPDIR=scratch, PI_CODING_AGENT_DIR=scratch, OPENSSL_CONF=os.devnull),
-            limits=sandbox.Limits(wall_seconds=120, output_bytes=MAX_FRAME))
+            limits=sandbox.Limits(wall_seconds=120, output_bytes=coding_actions.MAX_FRAME))
         result = sandbox.run([node, configuration["worker"], configuration["module"], configuration["tool_root"]], policy,
                              cwd=root, stdin=payload)
         if result.truncated or result.timed_out or not result.ok:
@@ -133,10 +131,10 @@ def run() -> int:
         if len(sys.argv) != 2:
             raise ValueError("A launcher-owned tool configuration is required")
         configuration = json.loads(Path(sys.argv[1]).read_text())
-        raw = sys.stdin.buffer.read(MAX_FRAME + 1)
-        if len(raw) > MAX_FRAME:
+        raw = sys.stdin.buffer.read(coding_actions.MAX_FRAME + 1)
+        if len(raw) > coding_actions.MAX_FRAME:
             raise ValueError("The coding tool request exceeds its limit")
-        answer = execute(configuration, json.loads(raw))
+        answer = execute(configuration, coding_actions.parsed(raw))
     except (OSError, ValueError, sandbox.SandboxUnavailable) as error:
         answer = {"isError": True, "content": [{"type": "text", "text": "poolhouse: " + str(error)}]}
     sys.stdout.write(json.dumps(answer) + "\n")

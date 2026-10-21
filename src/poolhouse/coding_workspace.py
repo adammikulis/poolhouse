@@ -188,14 +188,14 @@ class Workspace:
 
     def finish(self, stage: Stage, guard: Callable[[Capture, int], AbstractContextManager], *, writable: bool) -> tuple[Change, ...]:
         """Publish verified bytes into the parent master under the current policy guard."""
-        if not writable:
-            return ()
         for prefix in state.CONTROL_PREFIXES:
             if os.path.lexists(stage.physical / prefix):
                 raise ValueError("The tool created a trusted control path")
         captured = self._capture(stage.physical, "result")
         if captured.excluded != stage.before.excluded:
             raise ValueError("The tool created a protected or credential path")
+        if not writable and state.manifest(captured) != state.manifest(stage.before):
+            raise ValueError("A read-only coding tool changed its input snapshot")
         changes = _changes(stage.before, captured)
         current = self._capture(self.master, "current")
         if current.tree_hash != stage.before.tree_hash or current.entries != stage.before.entries:
