@@ -85,8 +85,21 @@ def test_project_wheel_rebuild_preserves_owned_and_dependency_wheels(builder, mo
     dependencies.mkdir()
     dependency = dependencies / 'dependency-1.0-py3-none-any.whl'
     dependency.write_bytes(b'dependency fixture')
-    monkeypatch.setattr(builder, 'run', lambda *args, **kwargs: None)
-    assert builder.wheels() == [owned]
+    from poolhouse.fleet import compute_artifact
+
+    built = builder.DIST / 'poolhouse-0.0.0-py3-none-any.whl'
+
+    def run(argv, **kwargs):
+        if argv[:2] == ['git', 'archive']:
+            subprocess.run(argv, cwd=builder.ROOT, check=True)
+        else:
+            with zipfile.ZipFile(built, 'w'):
+                pass
+
+    monkeypatch.setattr(builder, 'run', run)
+    monkeypatch.setattr(builder, 'STAMP', lambda *args: None)
+    monkeypatch.setattr(compute_artifact, 'build', lambda *args: None)
+    assert builder.wheels() == [owned, built]
     assert not previous.exists() and owned.exists() and dependency.exists()
 
 
@@ -98,3 +111,67 @@ def test_explicit_source_option_is_used_before_dependency_wheelhouse(builder, mo
     monkeypatch.setattr(builder, 'wheelhouse', lambda path: calls.append(('house', path)) or [])
     assert builder.main(['--metal-smi-source', str(source), '--wheelhouse']) == 0
     assert calls == [('source', source), ('house', builder.DIST / 'wheels')]
+
+
+@pytest.fixture
+def daemon_requirement(builder, monkeypatch, tmp_path):
+    root = tmp_path / 'build root'
+    (root / '.build-venv').mkdir(parents=True)
+    monkeypatch.setattr(builder, 'ROOT', root)
+    monkeypatch.setattr(builder, 'built_from', lambda python: None)
+    builder.DIST.joinpath('bundle').mkdir(parents=True)
+    made = builder.DIST / 'bundle' / ('poolhouse-headless.exe' if sys.platform == 'win32' else 'poolhouse-headless')
+    made.write_bytes(b'fixture frozen output')
+    calls = []
+    original_run = builder.run
+    monkeypatch.setattr(builder, 'run', lambda argv, **kwargs: calls.append(argv))
+    assert builder.daemon() == made
+    monkeypatch.setattr(builder, 'run', original_run)
+    install, = [argv for argv in calls if any(arg.startswith('poolhouse[') for arg in argv)]
+    assert install[1:3] == ['install', '-q']
+    assert install[install.index('--find-links') + 1] == str(builder.DIST)
+    return install[-1]
+
+
+def test_daemon_installs_declared_telemetry_before_freezing(daemon_requirement):
+    from packaging.requirements import Requirement
+
+    assert Requirement(daemon_requirement).extras == {'agents', 'hub', 'fleet-onboard', 'coordinator', 'telemetry'}
+
+
+def test_telemetry_dependency_retains_platform_marker():
+    import tomllib
+
+    from packaging.requirements import Requirement
+
+    project = Path(__file__).resolve().parents[1] / 'pyproject.toml'
+    requirement, = tomllib.loads(project.read_text())['project']['optional-dependencies']['telemetry']
+    parsed = Requirement(requirement)
+    assert parsed.name == 'metal-smi' and parsed.specifier.contains('1.1.0')
+    assert parsed.marker.evaluate({'sys_platform': 'darwin'})
+    for platform in ('linux', 'win32'):
+        assert not parsed.marker.evaluate({'sys_platform': platform})
+
+
+@pytest.mark.slow
+def test_fresh_daemon_requirement_installs_owned_module_offline(builder, source, daemon_requirement, tmp_path):
+    from packaging.requirements import Requirement
+
+    builder.owned_telemetry(source)
+    base = builder.DIST / 'poolhouse-0.0.0-py3-none-any.whl'
+    prefix = 'poolhouse-0.0.0.dist-info/'
+    with zipfile.ZipFile(base, 'w') as wheel:
+        extras = ''.join(f'Provides-Extra: {extra}\n' for extra in Requirement(daemon_requirement).extras)
+        wheel.writestr(prefix + 'METADATA', 'Metadata-Version: 2.1\nName: poolhouse\nVersion: 0.0.0\n' + extras
+                       + 'Requires-Dist: metal-smi>=1.1.0; extra == "telemetry"\n')
+        wheel.writestr(prefix + 'WHEEL', 'Wheel-Version: 1.0\nGenerator: fixture\nRoot-Is-Purelib: true\nTag: py3-none-any\n')
+        wheel.writestr(prefix + 'RECORD', '')
+    target = tmp_path / 'fresh frozen dependencies'
+    done = subprocess.run([sys.executable, '-m', 'pip', 'install', '--no-index', '--find-links', str(builder.DIST),
+                           '--target', str(target), daemon_requirement], capture_output=True, text=True)
+    assert done.returncode == 0, done.stderr
+    assert (target / 'metal_smi' / '__init__.py').is_file()
+    probe = subprocess.run([sys.executable, '-I', '-B', '-c',
+                            'import sys;sys.path.insert(0,sys.argv[1]);import metal_smi;assert metal_smi.__version__=="1.1.0"',
+                            str(target)], capture_output=True, text=True)
+    assert probe.returncode == 0, probe.stderr
