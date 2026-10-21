@@ -11,7 +11,7 @@ from pathlib import Path
 
 from poolhouse import home
 from poolhouse.activity import source_snapshot
-from poolhouse.files import promote_new_directory
+from poolhouse.files import promote_new
 from poolhouse.graph.store import GraphStore
 from poolhouse.lock import only_one
 from poolhouse.net import git
@@ -158,7 +158,7 @@ class Projects:
                     raise ValueError(ERROR)
                 self._receipt(stage, row['receipt'], current, write=True)
                 self._check(current)
-                promote_new_directory(stage, gitdir)
+                promote_new(stage, gitdir)
             if directory(gitdir) != (row['stage_device'], row['stage_inode']):
                 raise ValueError(ERROR)
             row['state'] = 'initializing'
