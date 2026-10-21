@@ -66,7 +66,6 @@ def test_real_descriptor_manifest_invalidates_metadata_and_content(project, open
     path, fd = opened
     with observing(monkeypatch, project) as seen:
         plugin._probe_fstat(FSTAT)(fd)
-        # Construct the dynamic manifest independently of the still-present static ban.
         manifest = keys.build_manifest(project, FILE, seen, keys.Closures(project))
     assert not manifest["unobserved"]
     assert not keys.manifest_holds(project, manifest, keys.Closures(project))
