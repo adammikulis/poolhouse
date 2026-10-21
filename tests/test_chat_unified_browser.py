@@ -1,6 +1,4 @@
 """One conversation retains its model while tool capabilities change."""
-import re
-
 import pytest
 from browser_expect import expect
 from test_chat_workspace_discovery_browser import activity_workspace, chat_browser, team
@@ -11,7 +9,7 @@ pytest_plugins = ['node_kit']
 pytestmark = pytest.mark.slow
 
 
-def test_tools_are_explicit_and_do_not_replay_or_switch_conversation(coding_browser):
+def test_tools_are_explicit_and_unisolated_runtime_does_not_replay_or_switch_conversation(coding_browser, tmp_path):
     served, page, project = coding_browser
     saved = served.ui.conversations.start(model='test-model', title='One conversation')
     served.ui.conversations.append(saved.id, 'user', 'Prior direct question')
@@ -35,8 +33,11 @@ def test_tools_are_explicit_and_do_not_replay_or_switch_conversation(coding_brow
     assert len(served.ui.conversations.get(saved.id).messages) == 2
     composer = page.get_by_role('textbox', name='Message', exact=True)
     composer.fill('A single new tool request')
+    page.screenshot(path=str(tmp_path / 'tool-request-configured.png'))
     composer.press('Enter')
-    expect(page.locator('#chat-messages .message-body').last).to_contain_text(re.compile(r'New request:\s*A single new tool request'))
+    expect(page.locator('#chat-note')).to_contain_text('This coding runtime cannot enforce isolated session permissions')
+    expect(composer).to_have_value('A single new tool request')
+    page.screenshot(path=str(tmp_path / 'tool-request-isolation-refusal.png'))
     expect(page.get_by_role('button', name='Stop', exact=True)).to_be_hidden()
     page.get_by_label('Tools', exact=True).uncheck()
     page.locator('chat-view').evaluate('async chat => { await chat.savePending; }')
@@ -44,7 +45,9 @@ def test_tools_are_explicit_and_do_not_replay_or_switch_conversation(coding_brow
     expect(page.locator('chat-view #model')).to_have_value('test-model')
     current = served.ui.conversations.get(saved.id)
     assert current.settings['harness'] == '' and 'mode' not in current.settings
-    assert len(current.messages) == 4 and len(starts) == 1
+    assert len(current.messages) == 2 and len(starts) == 1
+    expect(page.locator('#chat-messages .message-body').last).to_contain_text('Prior direct response')
+    page.screenshot(path=str(tmp_path / 'tool-request-return-to-chat.png'))
 
 
 def test_unified_picker_agent_is_a_scoped_dm_not_a_model_or_tool_choice(activity_workspace):
