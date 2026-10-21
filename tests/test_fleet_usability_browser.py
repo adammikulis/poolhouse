@@ -7,24 +7,28 @@ pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
-def usability_page(tmp_path, playwright):
+def usability_page(tmp_path, browser_owner):
     served = Serving(tmp_path)
     served.ui.root = tmp_path / "traind"
     served.ui.settings.setup_done = True
-    browser = playwright.chromium.launch(headless=True)
-    page = browser.new_page(viewport={'width': 1280, 'height': 900})
+    context = None
     errors = []
-    page.on('pageerror', lambda error: errors.append(str(error)))
     try:
+        context = browser_owner.new_context(viewport={'width': 1280, 'height': 900})
+        page = context.new_page()
+        page.on('pageerror', lambda error: errors.append(str(error)))
         yield served, page, errors
     finally:
-        browser.close()
         try:
-            if engine := getattr(served.ui, "studio", None):
-                engine.close()
-                engine.store.close()
+            if context is not None:
+                context.close()
         finally:
-            served.close()
+            try:
+                if engine := getattr(served.ui, "studio", None):
+                    engine.close()
+                    engine.store.close()
+            finally:
+                served.close()
 
 
 def test_training_environment_catalogue_drafts_and_pending_submission(usability_page):

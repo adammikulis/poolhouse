@@ -13,7 +13,6 @@ from studio_commands import studio_command, workflow_picker
 from test_fleet_ui import Serving
 
 from poolhouse.fleet import studio_service
-from poolhouse.scrape.browser import Window, browser
 
 pytestmark = pytest.mark.slow
 
@@ -41,25 +40,19 @@ SPECS.extend([
 
 
 @pytest.fixture(scope='module')
-def studio_browser(tmp_path_factory):
-    """Keep one managed process per worker, with a fresh context for every journey."""
-    pytest.importorskip('playwright.sync_api')
-    profile = tmp_path_factory.mktemp('studio-managed-browser')
-    with browser(Window(profile=profile, headless=True)) as managed_page:
-        managed_browser = managed_page.context.browser
-        assert managed_browser is not None
-
-        @contextmanager
-        def isolated_page():
-            context = managed_browser.new_context(
-                viewport={'width': 1440, 'height': 1000}, accept_downloads=True)
+def studio_browser(browser_owner):
+    """Fresh isolated pages on the worker's managed browser."""
+    @contextmanager
+    def isolated_page():
+        context = browser_owner.new_context(
+            viewport={'width': 1440, 'height': 1000}, accept_downloads=True)
+        try:
             context.set_default_timeout(60_000)
-            try:
-                yield context.new_page()
-            finally:
-                context.close()
+            yield context.new_page()
+        finally:
+            context.close()
 
-        yield isolated_page
+    return isolated_page
 
 
 @pytest.fixture
