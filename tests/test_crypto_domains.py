@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives.ciphers.aead import ChaCha20Poly1305
 
 from poolhouse import keystore, sealing
 from poolhouse.activity.log import ActivityLog, Unreadable
+from poolhouse.fleet import discovery
 from poolhouse.fleet.onboard import joining, signing
 from poolhouse.memory import vault
 from poolhouse.requests.store import Ask, Inbox, Unavailable, build
@@ -47,10 +48,12 @@ def test_memory_key_identifier_has_current_domain_and_authenticates_header(monke
             vault.open_blob(altered, [KEY], owner='owner')
 
 
-def test_foreign_request_file_cannot_be_read_or_overwritten(tmp_path):
-    inbox = Inbox(tmp_path, key=lambda: KEY)
+@pytest.mark.parametrize("tag,aad", [(b"PHR1", FOREIGN), (b"F0R1", b"poolhouse/requests/v1")])
+def test_foreign_request_file_cannot_be_read_or_overwritten(tmp_path, tag, aad):
+    accessed = []
+    inbox = Inbox(tmp_path, key=lambda: accessed.append(True) or KEY)
     nonce = bytes(range(12))
-    original = b'MLR1' + nonce + keystore.aead(KEY).encrypt(nonce, b'{"rows":[]}', FOREIGN)
+    original = tag + nonce + keystore.aead(KEY).encrypt(nonce, b'{"rows":[]}', aad)
     inbox.path.write_bytes(original)
     with pytest.raises(Unavailable):
         inbox.list()
@@ -58,6 +61,7 @@ def test_foreign_request_file_cannot_be_read_or_overwritten(tmp_path):
         inbox.add(build(Ask('tool_call', 'synthetic operation', 'reversible local operation',
                             ('allow-once', 'deny')), 1800000000.0), 'synthetic-secret')
     assert inbox.path.read_bytes() == original
+    assert accessed == ([True] if tag == b"PHR1" else [])
 
 
 def test_activity_reports_foreign_ciphertext_in_place(tmp_path):
@@ -101,3 +105,41 @@ def test_unsupported_signing_storage_never_migrates_or_generates_identity(tmp_pa
         with pytest.raises(signing.KeyStoreError, match='Unsupported'):
             operation('unsupported')
     assert not list(tmp_path.rglob('*'))
+
+
+def test_current_request_file_tag_roundtrips_across_reopen(tmp_path):
+    request = build(Ask('tool_call', 'synthetic operation', 'reversible local operation',
+                        ('allow-once', 'deny')), 1800000000.0)
+    inbox = Inbox(tmp_path, key=lambda: KEY, clock=lambda: 1800000000.0)
+    inbox.add(request, 'synthetic-secret')
+    assert inbox.path.read_bytes().startswith(b'PHR1')
+    reopened = Inbox(tmp_path, key=lambda: KEY, clock=lambda: 1800000000.0)
+    assert reopened.get(request.id) == request
+    assert reopened.get(request.id) == request
+    assert reopened.list() == [request]
+
+
+def test_current_memory_file_tag_roundtrips_and_foreign_tag_never_decrypts(tmp_path, monkeypatch):
+    blob = vault.seal_blob(b'private data', KEY, mode='passphrase', salt=bytes(16), owner='owner')
+    assert blob.startswith(b'PHM1')
+    assert vault.open_blob(blob, [KEY], owner='owner')[0] == b'private data'
+    assert vault.open_blob(blob, [KEY], owner='owner')[0] == b'private data'
+    path = tmp_path / 'memory.enc'
+    foreign = b'F0M1' + blob[4:]
+    path.write_bytes(foreign)
+    monkeypatch.setattr(vault, '_aead', lambda *_: pytest.fail('foreign tag reached the cipher'))
+    with pytest.raises(vault.BadSeal):
+        vault.open_blob(path.read_bytes(), [KEY], owner='owner')
+    assert path.read_bytes() == foreign
+
+
+def test_current_discovery_tag_roundtrips_and_foreign_tag_never_derives_a_key(tmp_path, monkeypatch):
+    monkeypatch.setattr(discovery.time, 'time', lambda: 1800000000.0)
+    payload = {'v':3, 'kind':'query', 't':1800000000.0, 'nonce':'synthetic-nonce'}
+    raw = discovery._pack(KEY, payload)
+    assert raw.startswith(b'PHD3')
+    assert discovery._verify(KEY, raw, kind='query', nonce='synthetic-nonce') == payload
+    assert discovery._verify(KEY, raw, kind='query', nonce='synthetic-nonce') == payload
+    monkeypatch.setattr(discovery, '_box_key', lambda *_: pytest.fail('foreign tag derived a key'))
+    assert discovery._verify(KEY, b'F0D3' + raw[4:], kind='query') is None
+    assert not discovery.memberships(tmp_path / 'pool.key')

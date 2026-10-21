@@ -15,7 +15,7 @@ pytestmark = pytest.mark.slow
 def test_download_component_choices_and_installed_component_action(joined, open_page, monkeypatch):
     from playwright.sync_api import expect
 
-    from poolhouse.fleet import catalogue, model_components, routes
+    from poolhouse.fleet import catalogue, model_components
     from poolhouse.fleet.models import Getting
 
     pick = catalogue.Suggestion("Qwen Example 2B", "hf:publisher/example/Example-Q4_K_M.gguf", 1,
@@ -23,7 +23,6 @@ def test_download_component_choices_and_installed_component_action(joined, open_
     monkeypatch.setattr(catalogue, "popular", lambda *args, **kwargs: [pick])
     monkeypatch.setattr(catalogue, "families", lambda *args, **kwargs: [pick.family])
     monkeypatch.setattr(catalogue, "how_many", lambda *args, **kwargs: 1)
-    monkeypatch.setattr(routes, "choices", lambda **kwargs: {"ok": True, "models": []})
     offers = [{"kind": "mtp", "status": "available", "packaging": "separate", "name": "mtp-Example.gguf",
                "ref": pick.draft_ref, "download_bytes": 100, "size_bytes": 100, "error": ""},
               {"kind": "vision", "status": "available", "packaging": "separate", "name": "mmproj-Example.gguf",
@@ -35,9 +34,9 @@ def test_download_component_choices_and_installed_component_action(joined, open_
     downloads.start.return_value = Getting("fixture", pick.file)
     joined.ui.downloads = downloads
     page, errors = open_page(joined, cookie=joined.cookie, path="/ui/#models")
-    page.get_by_text("Add from your Pool or Hugging Face").click()
+    page.get_by_role("button", name="+ Add a model", exact=True).click()
     page.get_by_role("button", name="Hugging Face", exact=True).click()
-    page.get_by_role("button", name="Download", exact=True).click()
+    page.locator('.model-row[data-model="Example-Q4_K_M.gguf"]').get_by_role("button", name="Download", exact=True).click()
     mtp = page.get_by_label("Multi-token prediction", exact=False)
     vision = page.get_by_role("checkbox", name="Vision", exact=False)
     expect(mtp).to_be_checked()

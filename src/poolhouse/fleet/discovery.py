@@ -53,7 +53,7 @@ def default_port() -> int:
 PROTOCOL = 3
 """3 sealed every datagram under a key derived from the pool key. A member speaking 2 is not heard."""
 MAX_SKEW_S = 60.0
-MAGIC = b"MLD3"
+MAGIC = b"PHD3"
 #: The most one UDP datagram carries.
 MAX_DATAGRAM = 65507
 #: What a beacon body may take. macOS refuses a datagram over ``net.inet.udp.maxdgram``

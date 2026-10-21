@@ -49,6 +49,11 @@ def test_chat_sidebar_loads_actual_activity_and_keeps_discovery_active(activity_
     board = page.locator('chat-view ml-board')
     assert board.evaluate('board => board.stopped') is False, page.evaluate('window.boardActivityCalls')
     page.locator('#conversation-channels').get_by_role('button', name=re.compile(r'^#general(?: · \d+)?$')).click()
+    focus = board.get_by_role('region', name='Message focus')
+    expect(focus.get_by_role('checkbox', name='Hide agent chatter')).to_be_checked()
+    expect(focus.get_by_role('status')).to_have_text('1 agent message hidden on this loaded page.')
+    expect(board.locator('.msg pre')).to_have_count(0)
+    focus.get_by_role('button', name='Show all messages', exact=True).click()
     expect(board.locator('.msg pre')).to_contain_text('Current authorized activity')
     page.evaluate('fleetModel.go("chat")')
     assert board.evaluate('board => board.stopped') is False

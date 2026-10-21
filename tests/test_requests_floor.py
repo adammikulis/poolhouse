@@ -9,7 +9,7 @@ import sys
 import pytest
 
 from poolhouse import chat, do, mcp, requests
-from poolhouse.chatpolicy import HumanOnlyRail
+from poolhouse.chatpolicy import HumanOnlyRail, refusal_for
 from poolhouse.interventions import Call, Context, Deny
 from poolhouse.sentinel.human import agent_may
 from tests.requests_support import ask, no_markers
@@ -62,3 +62,11 @@ def test_the_request_commands_refuse_a_process_an_agent_started(monkeypatch, cap
     out = capsys.readouterr()
     assert held.id not in out.out
     assert requests.get(held.id).state == "pending"
+
+
+@pytest.mark.parametrize('command', ['poolhouse-requests list --json', 'poolhouse-requests show rq_fixture',
+                                    'poolhouse-requests answer rq_fixture allow-once'])
+def test_current_request_commands_keep_the_person_only_policy(command):
+    refused = refusal_for(command)
+    assert refused is not None
+    assert refused[1] == 'poolhouse-requests answer ID CHOICE, at a terminal'

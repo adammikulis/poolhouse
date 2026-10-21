@@ -80,7 +80,7 @@ HUMAN_ONLY: tuple[tuple[str, re.Pattern[str], str], ...] = tuple(
          "/role NAME, typed at the prompt"),
         ("answer, approve, deny or cancel a request waiting for a person",
          r"\b(?:answer\w*|approv\w*|den(?:y|ies)|cancel\w*|resolv\w*|dismiss\w*|withdraw\w*)\b.{0,40}"
-         r"\b(?:requests?|inbox|confirmations?)\b|\bml[-_ ]stack[-_ ]requests\b"
+         r"\b(?:requests?|inbox|confirmations?)\b|\bpoolhouse-requests\b"
          r"|\b(?:requests?|inbox)\b.{0,30}\b(?:answer\w*|approv\w*|cancel\w*)\b",
          "poolhouse-requests answer ID CHOICE, at a terminal"),
     ))
