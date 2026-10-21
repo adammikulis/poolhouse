@@ -165,23 +165,37 @@ def test_a_subscription_never_delivers_from_a_room_the_subscriber_cannot_read(ro
 
 def test_rooms_and_subscriptions_cannot_be_made_without_limit(room):
     node, mallory = room, room.mallory
-    made = 0
-    for number in range(50):
-        done = node.cli("board", "create", f"#spam{number}", who=mallory)
-        if done.returncode:
-            assert done.returncode == 4, done.stderr
-            break
-        made += 1
-    assert made == 5
+    initial = run(node, node.alice, "board", "list")
+    assert {row["name"] for row in initial if row["created_by"]} == {"#ops", "#vault"}
+    for number in range(14):
+        run(node, mallory, "board", "create", f"#spam{number}")
+    rooms = run(node, node.alice, "board", "list")
+    assert len([row for row in rooms if row["created_by"]]) == 16
+    for name in ("#overflow", "#overflow", "#another"):
+        done = node.cli("board", "create", name, who=mallory)
+        assert done.returncode == 4 and "MOST_ROOMS_PER_LINEAGE" in done.stderr, done.stderr
+        assert run(node, node.alice, "board", "list") == rooms
+
+    session = node.session(mallory)
+    assert session.subs() == [{"type": "board", "target": f"#spam{number}", "mode": "digest"}
+                              for number in sorted(range(14), key=lambda value: f"#spam{value}")]
     kinds = ("task", "status", "handoff", "question", "answer", "claim", "release", "note", "file")
-    taken = 0
     for kind in kinds:
-        done = node.cli("subscribe", "kind", kind, "--mode", "digest", who=mallory)
-        if done.returncode:
-            assert done.returncode == 4, done.stderr
-            break
-        taken += 1
-    assert taken == 7 and len(run(node, mallory, "subs")) == 12, "each room made is followed in the digest; twelve a session"
+        session.subscribe("kind", kind, mode="digest")
+    remaining = 256 - 14 - len(kinds)
+    roots = [session.post("#general", "note", f"Subscription capacity thread {number}")["id"] for number in range(remaining + 2)]
+    for root in roots[:remaining]:
+        session.subscribe("thread", root, mode="digest")
+    subscriptions = run(node, mallory, "subs")
+    assert len(subscriptions) == 256
+    assert {sub["target"] for sub in subscriptions if sub["type"] == "kind"} == set(kinds)
+    overflow = roots[remaining:]
+    for target in (overflow[0], overflow[0], overflow[1]):
+        done = node.cli("subscribe", "thread", target, "--mode", "digest", who=mallory)
+        assert done.returncode == 4 and "MOST_SUBS" in done.stderr, done.stderr
+        assert run(node, mallory, "subs") == subscriptions
+    run(node, mallory, "subscribe", "thread", roots[0], "--mode", "digest")
+    assert run(node, mallory, "subs") == subscriptions
     child = node.member("kid", parent=mallory)
     for argv in (("board", "create", "#kid"), ("join-board", "#general"), ("subscribe", "mentions")):
         assert node.cli(*argv, who=child).returncode == 3, argv
