@@ -102,8 +102,11 @@ def test_chat_output_drag_saves_once_on_release(feedback_page, tmp_path):  # noq
 
     served, page, errors = feedback_page
     served.ui.conversations = Conversations(tmp_path / "chats")
-    status, made, _ = served.call('/ui/conversations', method='POST',
-                                 body={'title': 'Token drag check', 'model': 'offline-model'})
+    from launch_support import browser, sign_in
+
+    served.ui.root = served.files.parent
+    status, made, _ = served.call('/ui/conversations', method='POST', cookie=sign_in(served), headers=browser(served),
+                                 body={'operation_id': 'a' * 32, 'title': 'Token drag check', 'model': 'offline-model'})
     assert status == 201
     page.goto(f'http://127.0.0.1:{served.port}/ui/#chat')
     page.get_by_role('link', name='Token drag check', exact=True).click()
