@@ -64,8 +64,8 @@ def test_an_unreachable_node_degrades_the_pre_hook_to_a_warning(monkeypatch, tmp
     assert 'ownership not checked' in answer['permissionDecisionReason'] and 'does not answer' in answer['permissionDecisionReason']
 
 
-@pytest.mark.parametrize('secret', ['mlws1.worker.' + 'a' * 43, 'mlws1.worker.one/child.two.' + 'b' * 43,
-                                   'mlsk1.' + 'c' * 43, 'sk-' + 'a' * 30,
+@pytest.mark.parametrize('secret', ['poolhouse-ws1.worker.' + 'a' * 43, 'poolhouse-ws1.worker.one/child.two.' + 'b' * 43,
+                                   'poolhouse-sk1.' + 'c' * 43, 'sk-' + 'a' * 30,
                                    'https://owner:private-password@example.invalid',
                                    '-----BEGIN PRIVATE KEY-----hidden-----END PRIVATE KEY-----'])
 def test_diagnostic_redacts_credentials(secret, monkeypatch):

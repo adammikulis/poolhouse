@@ -39,7 +39,7 @@ def test_status_needs_a_token_and_shows_unread_claims_and_the_rooms_without_secr
     assert {a["id"] for a in data["registered"]} == {lead.name, bob.name}
     assert data["chains_ok"] is True and data["rejected"] == 0 and data["messages"] == 2 and data["notes"] == 0
     assert data["quarantined"] == 0 and data["testslots"]["running"] is not None
-    assert bob.token not in done.stdout and lead.token not in done.stdout and "mlws1" not in done.stdout
+    assert bob.token not in done.stdout and lead.token not in done.stdout and "poolhouse-ws1" not in done.stdout
     assert team.cli("status", "--json").returncode == 3, "a token is needed"
 
 

@@ -10,6 +10,7 @@ import pytest
 from poolhouse.fleet import daemon, join
 from poolhouse.fleet.discovery import derive_token
 from poolhouse.fleet.join_request import JoinHooks, JoinRequest
+from poolhouse.macauth import PREFIX
 
 PRODUCTION = base64.urlsafe_b64encode(bytes(range(32))).rstrip(b"=")
 DEVELOPMENT = base64.urlsafe_b64encode(bytes(reversed(range(32)))).rstrip(b"=")
@@ -57,6 +58,20 @@ def test_profile_local_token_reload_restores_private_permissions(tmp_path):
     assert stat.S_IMODE(token_path(root, profile).stat().st_mode) == 0o600
     assert stat.S_IMODE((root / "machine-tokens").stat().st_mode) == 0o700
     assert not (root / "token").exists()
+
+
+@pytest.mark.parametrize("profile", [None, "development.key"])
+def test_machine_token_provider_replaces_a_foreign_namespace_with_current_token(tmp_path, profile):
+    root = tmp_path / "daemon"
+    selected = tmp_path / profile if profile is not None else None
+    path = token_path(root, selected) if selected is not None else root / "token"
+    path.parent.mkdir(parents=True)
+    foreign = "foreign-v1." + "a" * 43
+    path.write_text(foreign)
+    current = daemon.load_or_create_token(root, profile=selected)
+    assert current.startswith(PREFIX) and current != foreign
+    assert path.read_text() == current
+    assert daemon.load_or_create_token(root, profile=selected) == current
 
 
 def test_profile_token_refuses_symbolic_link_target(tmp_path):

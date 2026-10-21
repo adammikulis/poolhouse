@@ -24,7 +24,7 @@ __all__ = ["PREFIX", "SCHEME", "Authenticator", "Lockout", "Stamp", "Verdict", "
            "parts", "sign", "unwrap"]
 
 SCHEME = "Poolhouse-MAC"
-PREFIX = "mlsk1."
+PREFIX = "poolhouse-sk1."
 """What a MAC secret starts with, so a caller holding a ``token`` string knows to sign."""
 WINDOW_S = 120.0
 MOST_NONCES = 100_000
@@ -40,7 +40,7 @@ def derive(key: bytes) -> str:
 
 
 def unwrap(authorization: str) -> str:
-    """The MAC secret a ``Bearer mlsk1.…`` header value carries, else an empty string."""
+    """The MAC secret a ``Bearer poolhouse-sk1.…`` header value carries, else an empty string."""
     bearer = authorization[7:].strip() if authorization.startswith("Bearer ") else ""
     return bearer if bearer.startswith(PREFIX) else ""
 
