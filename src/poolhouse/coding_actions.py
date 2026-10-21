@@ -10,6 +10,7 @@ from typing import Any
 
 from poolhouse import requests
 from poolhouse.activity.source_snapshot import INDEX_LIMIT
+from poolhouse.client import completion
 from poolhouse.fleet.conversation_types import CodingState
 from poolhouse.harnesshook import _summary
 from poolhouse.json_objects import unique_object
@@ -17,6 +18,7 @@ from poolhouse.requests.model import Origin, make_choices, shown
 
 MAX_FRAME = 4 * 1024 * 1024
 TOOLS = ("read", "bash", "edit", "write", "grep", "find", "ls")
+COMPLETION = "completion"
 IDENTITY = frozenset({"actor", "pool", "device", "native_session"})
 
 
@@ -102,10 +104,19 @@ class Action:
 
     @classmethod
     def prepare(cls, identifier, tool, inputs, workspace, decision) -> Action:
+        if tool not in TOOLS:
+            raise ValueError("Use a fixed stock coding tool")
         arguments = call_arguments(identifier, tool, inputs)
         if decision.action not in ("allow", "ask", "deny"):
             raise ValueError("Invalid coding action decision")
         return cls(identifier, tool, arguments, canonical(workspace, limit=INDEX_LIMIT), canonical(asdict(decision)))
+
+    @classmethod
+    def completion(cls, identifier, request, workspace) -> Action:
+        """Bind one prepared model request to the existing coding action ledger."""
+        arguments = call_arguments(identifier, COMPLETION, request)
+        decision = {"action": "allow", "label": "compute", "reason": "selected coding model request", "kind": "tool_call"}
+        return cls(identifier, COMPLETION, arguments, canonical(workspace, limit=INDEX_LIMIT), canonical(decision))
 
     def binding(self, execution: Execution) -> dict:
         return {"run": execution.binding, "id": self.id, "tool": self.tool, "arguments": self.arguments,
@@ -147,11 +158,17 @@ def approval_matches(request, ask) -> bool:
 
 
 def call_arguments(identifier, tool, inputs) -> str:
-    """Validate one fixed Pi tool identity and its canonical JSON arguments."""
+    """Bind a stock tool or factory-prepared completion to canonical arguments."""
     if (type(identifier) is not str or not identifier or len(identifier) > 256
             or not identifier.isascii() or not identifier.isprintable() or type(tool) is not str
-            or tool not in TOOLS or type(inputs) is not dict):
+            or tool not in (*TOOLS, COMPLETION)):
         raise ValueError("Invalid coding action")
+    if tool == COMPLETION:
+        request = completion.checked_completion(inputs)
+        return canonical({"model": request.model, "request_digest": request.digest,
+                          "request_bytes": len(request.arguments_json.encode())}, limit=MAX_FRAME)
+    if type(inputs) is not dict:
+        raise ValueError("Invalid coding action arguments")
     return canonical(inputs, limit=MAX_FRAME)
 
 

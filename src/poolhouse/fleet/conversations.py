@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from poolhouse import coding_actions, coding_workspace_state, requests
+from poolhouse.client import completion
 from poolhouse.fleet import conversation_graph as graph
 from poolhouse.fleet.conversation_settings import checked
 from poolhouse.fleet.conversation_types import (
@@ -280,6 +281,8 @@ class Conversations:
     def action_guard(self, execution: coding_actions.Execution, action: coding_actions.Action, replacement: dict,
                      result: dict, *, current):
         """Commit a completed result and replacement workspace in one transaction."""
+        if action.tool not in coding_actions.TOOLS:
+            raise ValueError("Only a stock coding tool can replace its workspace")
         if type(result) is not dict:
             raise ValueError("The coding tool result must be an object")
         result = json.loads(coding_actions.canonical(result, limit=coding_actions.MAX_FRAME))
@@ -299,8 +302,9 @@ class Conversations:
             run["active_action"] = ""
             store.put_doc(f"coding:{execution.policy.conversation}", saved)
 
-    def recorded_action(self, execution: coding_actions.Execution, identifier: str, tool: str, inputs: dict, *, current):
-        """Look up an exact original tool receipt before inspecting a new workspace."""
+    def recorded_action(self, execution: coding_actions.Execution, identifier: str, tool: str,
+                        inputs: dict | completion.PreparedCompletion, *, current):
+        """Look up an exact original action receipt before inspecting a new workspace."""
         arguments = coding_actions.call_arguments(identifier, tool, inputs)
         with self.policy_guard(execution.policy, current=current) as store:
             _saved, run = _execution(store, execution)
