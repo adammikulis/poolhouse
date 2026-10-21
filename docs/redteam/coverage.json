@@ -1,10 +1,10 @@
 {
- "surfaces": 926,
+ "surfaces": 933,
  "by_status": {
-  "covered": 607,
+  "covered": 610,
   "partial": 193,
   "uncovered": 51,
-  "n/a": 75,
+  "n/a": 79,
   "unmapped": 0
  },
  "by_kind": {
@@ -26,7 +26,7 @@
    "covered": 10,
    "partial": 0,
    "uncovered": 4,
-   "n/a": 18,
+   "n/a": 19,
    "unmapped": 0
   },
   "desktop": {
@@ -68,7 +68,7 @@
    "covered": 7,
    "partial": 5,
    "uncovered": 0,
-   "n/a": 17,
+   "n/a": 20,
    "unmapped": 0
   },
   "mcp-tool": {
@@ -86,7 +86,7 @@
    "unmapped": 0
   },
   "route": {
-   "covered": 135,
+   "covered": 138,
    "partial": 57,
    "uncovered": 0,
    "n/a": 1,
@@ -1013,6 +1013,16 @@
     "tests/test_decide_questions.py"
    ],
    "note": ""
+  },
+  {
+   "id": "context:fleet/setup_probe.py",
+   "kind": "context",
+   "source": "fleet/setup_probe.py",
+   "trust": "tool results, pages, files, members, stored facts",
+   "attacker": "text from outside is read by a model as an instruction",
+   "status": "n/a",
+   "tests": [],
+   "note": "prompts built from the person's own benchmark questions, canaries and fixed smoke checks"
   },
   {
    "id": "context:graph/conversation.py",
@@ -5269,6 +5279,36 @@
    "note": "A private owned Unix listener accepts fresh original SDK process connections and forwards fixed generic JSON publication, receipt or explicit retry requests under the inherited source capability to the exact daemon TLS/control process. Complete binding validation, original listener inode, one-frame dispatch, parent death and cancellation-aware partial reads/writes are exercised under the original deadline. No source HMAC or device secret is exposed to the SDK. Isolated forwarding tests do not establish complete receiver admission, current source authorization, durable delivery or an installed producer journey; those remain factory obligations."
   },
   {
+   "id": "listener:fleet/setup_preparation_routes.py:route",
+   "kind": "listener",
+   "source": "fleet/setup_preparation_routes.py:route",
+   "trust": "anything that can connect to the address",
+   "attacker": "an unauthenticated or cross-origin client reaches the port",
+   "status": "n/a",
+   "tests": [],
+   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
+  },
+  {
+   "id": "listener:fleet/setup_project_routes.py:Service.bind",
+   "kind": "listener",
+   "source": "fleet/setup_project_routes.py:Service.bind",
+   "trust": "anything that can connect to the address",
+   "attacker": "an unauthenticated or cross-origin client reaches the port",
+   "status": "n/a",
+   "tests": [],
+   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
+  },
+  {
+   "id": "listener:fleet/setup_project_routes.py:route",
+   "kind": "listener",
+   "source": "fleet/setup_project_routes.py:route",
+   "trust": "anything that can connect to the address",
+   "attacker": "an unauthenticated or cross-origin client reaches the port",
+   "status": "n/a",
+   "tests": [],
+   "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
+  },
+  {
    "id": "listener:fleet/studio_stream_routes.py:sources",
    "kind": "listener",
    "source": "fleet/studio_stream_routes.py:sources",
@@ -5379,9 +5419,9 @@
    "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
   },
   {
-   "id": "listener:serve/backend.py:LlamaServerBackend.start",
+   "id": "listener:serve/backend.py:LlamaServerBackend._start_native",
    "kind": "listener",
-   "source": "serve/backend.py:LlamaServerBackend.start",
+   "source": "serve/backend.py:LlamaServerBackend._start_native",
    "trust": "anything that can connect to the address",
    "attacker": "an unauthenticated or cross-origin client reaches the port",
    "status": "n/a",
@@ -8961,6 +9001,36 @@
    "note": "Actual Fleet sockets give a ticket only to a request carrying the daemon's launch secret with no browser Origin, or to a credentialed session; wrong secrets back off, tickets are capped, spent once, expire, and an uncredentialed session cannot hand one out"
   },
   {
+   "id": "route:fleet/notice_routes.py:/ui/notice/accept",
+   "kind": "route",
+   "source": "fleet/notice_routes.py:NoticeRoutes.public_route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_experimental_notice.py::test_agents_and_foreign_origins_cannot_accept",
+    "tests/test_experimental_notice.py::test_absent_revoked_weak_session_and_persistence_failure_remain_unaccepted",
+    "tests/test_experimental_notice.py::test_bug_report_target_is_fixed_and_opens_only_on_explicit_authenticated_post",
+    "tests/test_experimental_notice.py::test_duplicate_acceptance_fields_are_rejected_over_actual_http"
+   ],
+   "note": "Actual HTTP refuses foreign origins, agent credentials, revoked sessions and duplicate acceptance fields; bug reports use a fixed target and acknowledgement cannot grant authority."
+  },
+  {
+   "id": "route:fleet/notice_routes.py:/ui/notice/issues",
+   "kind": "route",
+   "source": "fleet/notice_routes.py:NoticeRoutes.public_route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_experimental_notice.py::test_agents_and_foreign_origins_cannot_accept",
+    "tests/test_experimental_notice.py::test_absent_revoked_weak_session_and_persistence_failure_remain_unaccepted",
+    "tests/test_experimental_notice.py::test_bug_report_target_is_fixed_and_opens_only_on_explicit_authenticated_post",
+    "tests/test_experimental_notice.py::test_duplicate_acceptance_fields_are_rejected_over_actual_http"
+   ],
+   "note": "Actual HTTP refuses foreign origins, agent credentials, revoked sessions and duplicate acceptance fields; bug reports use a fixed target and acknowledgement cannot grant authority."
+  },
+  {
    "id": "route:fleet/onboard/bootstrap.py:manifest",
    "kind": "route",
    "source": "fleet/onboard/bootstrap.py:BootstrapServer.dispatch",
@@ -9638,36 +9708,6 @@
    "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
   {
-   "id": "route:fleet/routes.py:/ui/setup",
-   "kind": "route",
-   "source": "fleet/routes.py:SetupRoutes.public_route",
-   "trust": "browser session on this machine behind the UI header",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_rejoining_needs_a_session_once_the_box_is_in_a_pool"
-   ],
-   "note": "Native Fleet sockets reject remote first-run ownership, DNS-rebinding Host values, missing UI headers and joined setup mutation without an authenticated session"
-  },
-  {
-   "id": "route:fleet/routes.py:/ui/setup/done",
-   "kind": "route",
-   "source": "fleet/routes.py:SetupRoutes._prefs",
-   "trust": "browser session on this machine behind the UI header",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "partial",
-   "tests": [
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
-   ],
-   "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
-  },
-  {
    "id": "route:fleet/routes.py:/ui/setup/jobs",
    "kind": "route",
    "source": "fleet/routes.py:SettingsRoutes.route",
@@ -9678,83 +9718,6 @@
     "tests/test_fleet_initial_setup.py::test_setup_jobs_refuses_untrusted_readers_and_ignores_external_paths"
    ],
    "note": "Joined job history refuses anonymous and forged cookies, missing UI headers and rebound hosts; authenticated hostile path queries cannot read an external job store"
-  },
-  {
-   "id": "route:fleet/routes.py:/ui/setup/join",
-   "kind": "route",
-   "source": "fleet/routes.py:SetupRoutes.public_route",
-   "trust": "browser session on this machine behind the UI header",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_rejoining_needs_a_session_once_the_box_is_in_a_pool"
-   ],
-   "note": "Native Fleet sockets reject remote first-run ownership, DNS-rebinding Host values, missing UI headers and joined setup mutation without an authenticated session"
-  },
-  {
-   "id": "route:fleet/routes.py:/ui/setup/members",
-   "kind": "route",
-   "source": "fleet/routes.py:SetupRoutes.public_route",
-   "trust": "browser session on this machine behind the UI header",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "partial",
-   "tests": [
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
-   ],
-   "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
-  },
-  {
-   "id": "route:fleet/routes.py:/ui/setup/pools",
-   "kind": "route",
-   "source": "fleet/routes.py:SetupRoutes.public_route",
-   "trust": "browser session on this machine behind the UI header",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "covered",
-   "tests": [
-    "tests/test_fleet_named_lan.py::test_prejoin_discovery_obeys_setup_boundary",
-    "tests/test_fleet_named_lan.py::test_malformed_stale_and_oversized_hints_are_ignored",
-    "tests/test_fleet_named_lan.py::test_random_key_hint_and_upload_authenticate_without_keystore",
-    "tests/test_fleet_named_lan.py::test_hostile_recovery_upload_never_writes_membership",
-    "tests/test_fleet_named_lan.py::test_wrong_name_wrong_key_and_cross_origin_cannot_import",
-    "tests/test_fleet_named_lan.py::test_authenticated_pake_answer_must_contain_selected_name_and_valid_key"
-   ],
-   "note": "LAN hints are bounded nonce-matching metadata; local setup or a signed-in person selects a named recovery file, validates its bounded shape, and authenticates a native encrypted protocol-3 beacon before any membership write; scans and recovery joins never access the keystore"
-  },
-  {
-   "id": "route:fleet/routes.py:/ui/setup/prefs",
-   "kind": "route",
-   "source": "fleet/routes.py:SetupRoutes.public_route",
-   "trust": "browser session on this machine behind the UI header",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "partial",
-   "tests": [
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
-   ],
-   "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
-  },
-  {
-   "id": "route:fleet/routes.py:/ui/setup/suggest",
-   "kind": "route",
-   "source": "fleet/routes.py:SetupRoutes.public_route",
-   "trust": "browser session on this machine behind the UI header",
-   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
-   "status": "partial",
-   "tests": [
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
-    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-    "tests/test_fleet_ui.py::TestSignIn::test_the_pool_cannot_be_browsed_without_signing_in"
-   ],
-   "note": "session, header and host checks are attacked; the query and body of each /ui screen route are not"
   },
   {
    "id": "route:fleet/routes.py:/ui/static/*",
@@ -9889,6 +9852,22 @@
    "note": "Serving validates installed model identity and context, fences the current session and artifact fingerprint around admission, reports the actual broker lease, and preserves owned lease cleanup. Fixed format-provider preparation is tested against tampering and filesystem substitution. These isolated tests do not prove installed model loading or generation."
   },
   {
+   "id": "route:fleet/setup_preparation_routes.py:/ui/setup/prepare/*",
+   "kind": "route",
+   "source": "fleet/setup_preparation_routes.py:route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_setup_preparation_routes.py::test_new_current_owner_can_inspect_but_cannot_cancel_an_original_request",
+    "tests/test_setup_preparation_routes.py::test_status_denies_foreign_headers_before_loading_jobs",
+    "tests/test_setup_preparation_routes.py::test_originless_get_never_admits_originless_post_or_head",
+    "tests/test_setup_preparation_routes.py::test_current_context_revocation_during_status_cannot_publish_response",
+    "tests/test_setup_preparation_routes.py::test_nonobjects_duplicates_and_oversized_body_are_rejected"
+   ],
+   "note": "Preparation rejects foreign origins, forged authority, malformed bodies and revoked contexts; read-only status admission cannot authorize a mutation."
+  },
+  {
    "id": "route:fleet/setup_recovery_routes.py:/ui/setup/recovery",
    "kind": "route",
    "source": "fleet/setup_recovery_routes.py:SetupRecoveryRoutes.public_route",
@@ -9904,6 +9883,102 @@
     "tests/test_fleet_named_lan.py::test_authenticated_pake_answer_must_contain_selected_name_and_valid_key"
    ],
    "note": "LAN hints are bounded nonce-matching metadata; local setup or a signed-in person selects a named recovery file, validates its bounded shape, and authenticates a native encrypted protocol-3 beacon before any membership write; scans and recovery joins never access the keystore"
+  },
+  {
+   "id": "route:fleet/setup_routes.py:/ui/setup",
+   "kind": "route",
+   "source": "fleet/setup_routes.py:SetupRoutes.public_route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
+    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
+    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
+    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_rejoining_needs_a_session_once_the_box_is_in_a_pool"
+   ],
+   "note": "The extracted setup owner retains actual socket tests for remote ownership, DNS rebinding, missing UI headers and rejoining without a session."
+  },
+  {
+   "id": "route:fleet/setup_routes.py:/ui/setup/done",
+   "kind": "route",
+   "source": "fleet/setup_routes.py:SetupRoutes._prefs",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_setup_finished.py::test_malformed_done_body_cannot_finish_setup",
+    "tests/test_setup_finished.py::test_invalid_system_theme_cannot_finish_or_write_preferences",
+    "tests/test_fleet_ui.py::TestOnItsOwn::test_finishing_is_refused_from_another_machine"
+   ],
+   "note": "Malformed completion bodies and invalid themes cannot finish setup; a remote machine cannot finish another device's setup."
+  },
+  {
+   "id": "route:fleet/setup_routes.py:/ui/setup/join",
+   "kind": "route",
+   "source": "fleet/setup_routes.py:SetupRoutes.public_route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
+    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
+    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
+    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_rejoining_needs_a_session_once_the_box_is_in_a_pool"
+   ],
+   "note": "The extracted setup owner retains actual socket tests for remote ownership, DNS rebinding, missing UI headers and rejoining without a session."
+  },
+  {
+   "id": "route:fleet/setup_routes.py:/ui/setup/members",
+   "kind": "route",
+   "source": "fleet/setup_routes.py:SetupRoutes.public_route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "partial",
+   "tests": [
+    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
+    "tests/test_fleet_named_lan.py::test_prejoin_discovery_obeys_setup_boundary"
+   ],
+   "note": "The shared UI-header boundary and prejoin discovery boundary are attacked; individual preference, suggestion and member routes lack a complete hostile-request matrix."
+  },
+  {
+   "id": "route:fleet/setup_routes.py:/ui/setup/pools",
+   "kind": "route",
+   "source": "fleet/setup_routes.py:SetupRoutes.public_route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "partial",
+   "tests": [
+    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
+    "tests/test_fleet_named_lan.py::test_prejoin_discovery_obeys_setup_boundary"
+   ],
+   "note": "The shared UI-header boundary and prejoin discovery boundary are attacked; individual preference, suggestion and member routes lack a complete hostile-request matrix."
+  },
+  {
+   "id": "route:fleet/setup_routes.py:/ui/setup/prefs",
+   "kind": "route",
+   "source": "fleet/setup_routes.py:SetupRoutes.public_route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "partial",
+   "tests": [
+    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
+    "tests/test_fleet_named_lan.py::test_prejoin_discovery_obeys_setup_boundary"
+   ],
+   "note": "The shared UI-header boundary and prejoin discovery boundary are attacked; individual preference, suggestion and member routes lack a complete hostile-request matrix."
+  },
+  {
+   "id": "route:fleet/setup_routes.py:/ui/setup/suggest",
+   "kind": "route",
+   "source": "fleet/setup_routes.py:SetupRoutes.public_route",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "partial",
+   "tests": [
+    "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
+    "tests/test_fleet_named_lan.py::test_prejoin_discovery_obeys_setup_boundary"
+   ],
+   "note": "The shared UI-header boundary and prejoin discovery boundary are attacked; individual preference, suggestion and member routes lack a complete hostile-request matrix."
   },
   {
    "id": "route:fleet/studio_destinations.py:/ui/studio/*",
@@ -12372,6 +12447,20 @@
    "note": "the argv is fixed words and the state directory as the value of one --state= argument, never through a shell; a directory named like an option or a command is still one argument"
   },
   {
+   "id": "spawn:net/git.py:_execute",
+   "kind": "spawn",
+   "source": "net/git.py:_execute",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_sandbox_redteam.py",
+    "tests/test_pdf_engine.py",
+    "tests/test_net_scan.py"
+   ],
+   "note": ""
+  },
+  {
    "id": "spawn:net/git.py:_origin",
    "kind": "spawn",
    "source": "net/git.py:_origin",
@@ -12396,20 +12485,6 @@
     "tests/test_project_source.py"
    ],
    "note": "snapshot paths use verified Git object IDs and bounded index/blob output; options, oversized objects and checkout filters are refused"
-  },
-  {
-   "id": "spawn:net/git.py:run",
-   "kind": "spawn",
-   "source": "net/git.py:run",
-   "trust": "arguments built from model output, member messages or file names",
-   "attacker": "attacker text becomes a command line, environment or working directory",
-   "status": "covered",
-   "tests": [
-    "tests/test_sandbox_redteam.py",
-    "tests/test_pdf_engine.py",
-    "tests/test_net_scan.py"
-   ],
-   "note": ""
   },
   {
    "id": "spawn:net/git.py:source_index",
