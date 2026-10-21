@@ -8,7 +8,7 @@ import os
 import time
 from pathlib import Path
 
-from poolhouse import authority, node_launch, person as terminal, roles
+from poolhouse import authority, harnessing, node_launch, person as terminal, roles
 from poolhouse.board import person, person_key, place, session as sessions
 from poolhouse.board.client import Client, Denied
 from poolhouse.command import flag
@@ -140,6 +140,8 @@ def _start(args: argparse.Namespace, s: sessions.Session, base: Path) -> int:
             f'{caps.rounds} turns, {caps.calls} tool calls, {caps.steps} model calls, {caps.seconds} seconds wall time')
         return 0 if args.no_wait else _wait(base, got.name, READY_WAIT_S)
     selected_profile = lp.profile(args.profile)
+    if selected_profile.name == "coding":
+        harnessing.require_isolated_execution()
     selected_context = lp.parse_ctx(args.ctx) or selected_profile.ctx
     project = args.project or ("." if selected_profile.name == "coding" else "")
     selected_role = args.role or (la.PLAN_AND_GO if selected_profile.name == "coding" else roles.DEFAULT)
