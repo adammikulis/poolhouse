@@ -78,3 +78,89 @@ def test_missing_sdk_disables_send_and_enter(tmp_path, playwright, monkeypatch):
         browser.close()
         served.close()
         fake.close()
+
+
+def test_chat_transport_missing_is_not_reported_as_missing_agents(monkeypatch):
+    original = agent_dependency.import_module
+
+    def importing(name):
+        if name == "poolhouse.fleet.sdk_chat":
+            raise ModuleNotFoundError("missing transport", name="httpx2")
+        return original(name)
+
+    monkeypatch.setattr(agent_dependency, "import_module", importing)
+    problem = agent_dependency.problem()
+    assert "incomplete or incompatible" in problem
+    assert "poolhouse[agents]" not in problem
+    route = ChatRoutes()
+    replies = []
+    route.send = lambda status, body: replies.append((status, body))
+    route.body = lambda: pytest.fail("unavailable chat must not parse/dispatch a request")
+    assert route._say([])
+    assert replies == [(503, {"error": problem})]
+
+
+def test_declared_agents_transport_matches_actual_sdk():
+    import tomllib
+    from pathlib import Path
+
+    import httpx2
+    from packaging.requirements import Requirement
+    from packaging.version import Version
+
+    from poolhouse.client.sdk import local_client
+    from poolhouse.fleet.chat import Target
+
+    project = tomllib.loads((Path(__file__).parents[1] / "pyproject.toml").read_text())
+    requirements = {r.name: r for r in map(Requirement, project["project"]["optional-dependencies"]["agents"])}
+    assert Version(httpx2.__version__) in requirements["httpx2"].specifier
+    assert Version("3") not in requirements["httpx2"].specifier
+    client = local_client(Target("local", "http://127.0.0.1:4567/v1/chat/completions"), "local")
+    try:
+        assert isinstance(client._client, httpx2.AsyncClient)
+        assert agent_dependency.problem() == ""
+    finally:
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+
+        with ThreadPoolExecutor(max_workers=1) as worker:
+            worker.submit(asyncio.run, client.close()).result()
+
+
+def test_fresh_import_detects_missing_transport(tmp_path):
+    import os
+    import subprocess
+    from pathlib import Path
+
+    source = str(Path(__file__).parents[1] / "src")
+    script = f"""
+import importlib.abc
+import sys
+sys.path.insert(0, {source!r})
+class MissingTransport(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname == 'httpx2':
+            raise ModuleNotFoundError('missing transport', name='httpx2')
+sys.meta_path.insert(0, MissingTransport())
+from poolhouse import agent_dependency
+problem = agent_dependency.problem()
+assert 'incomplete or incompatible' in problem, problem
+assert 'poolhouse[agents]' not in problem, problem
+"""
+    result = subprocess.run([sys.executable, "-I", "-B", "-c", script],
+                            cwd=tmp_path, env={**os.environ, "HOME": str(tmp_path)},
+                            capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stderr
+
+
+def test_chat_module_programming_error_is_not_a_dependency_failure(monkeypatch):
+    original = agent_dependency.import_module
+
+    def importing(name):
+        if name == "poolhouse.fleet.sdk_chat":
+            raise AttributeError("broken implementation")
+        return original(name)
+
+    monkeypatch.setattr(agent_dependency, "import_module", importing)
+    with pytest.raises(AttributeError, match="broken implementation"):
+        agent_dependency.problem()

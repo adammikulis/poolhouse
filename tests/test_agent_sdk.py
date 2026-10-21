@@ -14,7 +14,7 @@ def test_local_sdk_run_ignores_hosted_defaults(monkeypatch):
     monkeypatch.setenv('OPENAI_BASE_URL', 'https://unselected.invalid')
     async def forbid_cloud(*args, **kwargs):
         raise AssertionError('local agent attempted an SDK HTTP request')
-    monkeypatch.setattr('httpx.AsyncClient.send', forbid_cloud)
+    monkeypatch.setattr('httpx2.AsyncClient.send', forbid_cloud)
     server = ToolCallingServer([Turn(text=('local answer',))])
     agent = Agent(Client(server.base_url), FunctionTools([]), interventions=guard.default())
     try:

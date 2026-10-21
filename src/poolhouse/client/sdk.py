@@ -7,7 +7,7 @@ import socket
 from contextlib import suppress
 from typing import Any
 
-import httpx
+import httpx2
 from agents import OpenAIChatCompletionsModel
 from openai import AsyncOpenAI
 
@@ -15,7 +15,7 @@ from poolhouse.http import Options, ServerError, open_stream
 from poolhouse.http_cancel import Cancellation, scope
 
 
-class _Body(httpx.AsyncByteStream):
+class _Body(httpx2.AsyncByteStream):
     def __init__(self, response: Any) -> None:
         self.response = response
 
@@ -50,14 +50,14 @@ def _open_response(url: str, token: str, data: bytes, cancelled: Cancellation,
     return response
 
 
-class FleetTransport(httpx.AsyncBaseTransport):
+class FleetTransport(httpx2.AsyncBaseTransport):
     """Send SDK requests with fleet signatures, server keys and pinned TLS."""
 
     def __init__(self, url: str, token: str, timeout: float | None = None) -> None:
         self.url, self.token, self.timeout = url, token, timeout
         self.bodies: list[_Body] = []
 
-    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+    async def handle_async_request(self, request: httpx2.Request) -> httpx2.Response:
         if str(request.url) != self.url or request.method != "POST":
             raise ValueError("SDK requests must use the selected model endpoint")
         data = await request.aread()
@@ -72,10 +72,10 @@ class FleetTransport(httpx.AsyncBaseTransport):
                 await opening
             raise
         except ServerError as exc:
-            return httpx.Response(exc.status or 502, content=exc.body or str(exc), request=request)
+            return httpx2.Response(exc.status or 502, content=exc.body or str(exc), request=request)
         body = _Body(response)
         self.bodies.append(body)
-        return httpx.Response(response.status, headers=dict(response.headers), stream=body,
+        return httpx2.Response(response.status, headers=dict(response.headers), stream=body,
                               request=request)
 
     async def aclose(self) -> None:
@@ -92,7 +92,7 @@ def local_client(target: Any, model: str, *, token: str = "", timeout: float | N
         raise ValueError("a model and complete chat endpoint are required")
     transport = FleetTransport(url, token or target.token, timeout)
     return AsyncOpenAI(base_url=url[:-len(suffix)], api_key="local-transport",
-                       max_retries=0, timeout=timeout, http_client=httpx.AsyncClient(transport=transport,
+                       max_retries=0, timeout=timeout, http_client=httpx2.AsyncClient(transport=transport,
                                                                   trust_env=False))
 
 

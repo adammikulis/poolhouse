@@ -3,7 +3,7 @@
 import asyncio
 import json
 
-import httpx
+import httpx2
 import pytest
 
 from poolhouse.client.sdk import FleetTransport, local_client
@@ -17,7 +17,7 @@ def test_sdk_cannot_change_selected_member_endpoint(monkeypatch):
     touched = []
     monkeypatch.setattr("poolhouse.client.sdk.open_stream", lambda *a, **k: touched.append(a))
     transport = FleetTransport("http://127.0.0.1:4567/infer/v1/chat/completions", "secret")
-    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions", json={})
+    request = httpx2.Request("POST", "https://api.openai.com/v1/chat/completions", json={})
     with pytest.raises(ValueError, match="selected model endpoint"):
         asyncio.run(transport.handle_async_request(request))
     assert touched == []

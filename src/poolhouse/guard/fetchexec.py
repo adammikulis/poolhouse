@@ -34,7 +34,7 @@ RULES: tuple[tuple[str, re.Pattern[str]], ...] = (
         r"|(?:iwr|invoke-webrequest|downloadstring|\birm\b|invoke-restmethod)[^\n]*\|\s*(?:iex|invoke-expression)\b")),
     ("decodes hidden text and runs it", re.compile(rf"(?i)\A(?=.*\b(?:exec|eval|os\.system|os\.popen|subprocess\.\w+|execSync)\b)(?=.*{DECODES})")),
     ("downloads code and runs it in the same line", re.compile(
-        r"(?i)\A(?=.*(?:urlopen|urllib\.request|requests\.(?:get|post)|httpx\.|http\.client|\bfetch\(|XMLHttpRequest))"
+        r"(?i)\A(?=.*(?:urlopen|urllib\.request|requests\.(?:get|post)|httpx2?\.|http\.client|\bfetch\(|XMLHttpRequest))"
         rf"(?=.*{RUNS})")),
     ("opens a shell to another machine", re.compile(
         r"/dev/(?:tcp|udp)/|\bbash\s+-i\s*>?&|\bnc\s+(?:-\w+\s+)*-e\b|\bncat\b[^\n]*\s-e\b|\bmkfifo\b[^\n]*\b(?:nc|ncat)\b|pty\.spawn")),

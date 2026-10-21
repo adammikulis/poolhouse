@@ -35,11 +35,11 @@ class ChatRoutes(ConversationRoutes):
 
     def _say(self, available: list) -> bool:
         from .chat_stream import Transfer, frame, release, reserve
-        try:
-            from .sdk_chat import stream
-        except ImportError:
-            self.send(503, {"error": "chat requires the agents extra: pip install poolhouse[agents]"})
+        problem = agent_dependency.problem()
+        if problem:
+            self.send(503, {"error": problem})
             return True
+        stream = agent_dependency.chat_runtime().stream
         req = self.body()
         target = find(available, str(req.get("model") or ""))
         if target is None:
