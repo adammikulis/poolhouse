@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import os
 import re
@@ -143,3 +144,47 @@ def test_the_sandbox_tests_use_no_call_the_test_runner_cannot_observe():
     files = [*TESTS.glob("test_sandbox_*.py"), TESTS / "sandbox_kit.py", TESTS / "test_sentinel_sandbox_owner.py"]
     unseen = {path.name: found[0] for path in files if (found := testreuse_key.UNSEEN.findall(path.read_text()))}
     assert unseen == {}
+
+def test_lock_validation_uses_the_opened_descriptor_without_descriptor_filesystem(tmp_path, monkeypatch):
+    original = Path.stat
+
+    def checked(path, *args, **kwargs):
+        if str(path).startswith("/dev/fd/"):
+            raise FileNotFoundError("No descriptor filesystem")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", checked)
+    descriptor = sandbox_kit._open_lock(str(tmp_path / "owned-lock"))
+    try:
+        assert os.fstat(descriptor).st_ino == (tmp_path / "owned-lock").stat().st_ino
+    finally:
+        os.close(descriptor)
+    with pytest.raises(OSError):
+        os.fstat(descriptor)
+
+
+def test_descriptor_validation_error_closes_the_opened_lock(tmp_path, monkeypatch):
+    opened = []
+    original_open, original_stat = os.open, os.fstat
+
+    def recorded(*args, **kwargs):
+        descriptor = original_open(*args, **kwargs)
+        opened.append(descriptor)
+        return descriptor
+
+    def refused(_descriptor):
+        raise OSError("Descriptor validation unavailable")
+
+    monkeypatch.setattr(sandbox_kit.os, "open", recorded)
+    monkeypatch.setattr(sandbox_kit.os, "fstat", refused)
+    try:
+        with pytest.raises(OSError, match="validation unavailable"):
+            sandbox_kit._open_lock(str(tmp_path / "rejected-lock"))
+        assert len(opened) == 1
+        with pytest.raises(OSError):
+            original_stat(opened[0])
+    finally:
+        for descriptor in opened:
+            with contextlib.suppress(OSError):
+                original_stat(descriptor)
+                os.close(descriptor)
