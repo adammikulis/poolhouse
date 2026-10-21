@@ -165,7 +165,7 @@
           minimum:schema.minimum ?? 1, maximum:schema.maximum});
         input.value = value ?? schema.default;
         input.onchange = () => change(Number(input.value));
-        host.append(label, input);
+        host.append(input);
         return input;
       }
       if (schema.enum) {

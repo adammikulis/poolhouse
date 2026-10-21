@@ -356,3 +356,6 @@ Quillon Thistlewick
 
 # Product-owned coding workspace directory.
 Poolhouse Projects
+
+# Studio control label
+Add Report

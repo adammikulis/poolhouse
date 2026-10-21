@@ -4,8 +4,6 @@ from browser_expect import expect
 from test_fleet_ui import Serving
 from test_studio_canvas_browser import studio_browser  # noqa: F401 (fixture)
 
-from poolhouse.fleet.themes import PRESETS
-
 pytestmark = pytest.mark.slow
 
 
@@ -15,6 +13,7 @@ pytestmark = pytest.mark.slow
 def test_static_brand_and_primary_models_route(studio_browser, tmp_path, theme, width, height):  # noqa: F811
     served = Serving(tmp_path)
     served.ui.settings.setup_done = True
+    served.ui.settings.appearance = {'active_theme': theme, 'saved_themes': []}
     with studio_browser() as page:
         errors = []
         page.on('pageerror', lambda error: errors.append(str(error)))
@@ -23,8 +22,7 @@ def test_static_brand_and_primary_models_route(studio_browser, tmp_path, theme, 
             page.goto(f'http://127.0.0.1:{served.port}/ui/')
             expect(page.locator('studio-view')).to_be_visible()
             expect(page.locator('#app')).to_have_attribute('data-workspace', 'studio')
-            page.wait_for_function('() => !!fleetModel.preferences.resolved_theme')
-            page.evaluate('theme => fleetModel.setPreferences({...fleetModel.preferences,resolved_theme:theme})', PRESETS[theme])
+            expect(page.locator('html')).to_have_attribute('data-theme', theme)
             brand = page.locator('.poolhouse-mark')
             expect(brand).to_contain_text('Poolhouse')
             expect(brand.locator('svg')).to_be_visible()
@@ -63,5 +61,36 @@ def test_static_brand_and_primary_models_route(studio_browser, tmp_path, theme, 
             expect(primary.get_by_role('link', name='Models', exact=True)).to_have_attribute('aria-current', 'page')
             assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
             assert not errors
+        finally:
+            served.close()
+
+
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+@pytest.mark.parametrize('width', [1440, 390])
+def test_embedding_family_labels_in_fixture_library(studio_browser, tmp_path, theme, width):  # noqa: F811
+    from poolhouse.fleet.catalogue import family_of
+
+    served = Serving(tmp_path)
+    served.ui.settings.setup_done = True
+    served.ui.settings.appearance = {'active_theme': theme, 'saved_themes': []}
+    names = ['all-MiniLM-L6-v2', 'all-mpnet-base-v2']
+    rows = [{'id': name, 'name': name, 'path': str(tmp_path / name), 'family': family_of(name),
+             'format': 'safetensors', 'kind': 'embedding', 'status': 'ready', 'servable': False,
+             'shards': 1, 'is_complete': True, 'files': [], 'size_bytes': 90_000_000, 'mtime': 0}
+            for name in names]
+    with studio_browser() as page:
+        try:
+            page.set_viewport_size({'width': width, 'height': 900})
+            page.route('**/ui/models', lambda route: route.fulfill(json={'ok': True, 'library': rows, 'getting': [], 'unfinished': []}))
+            page.goto(f'http://127.0.0.1:{served.port}/ui/#models')
+            expect(page.locator('html')).to_have_attribute('data-theme', theme)
+            library = page.locator('models-library')
+            expect(library.get_by_role('heading', name='MiniLM', exact=True)).to_be_visible()
+            expect(library.get_by_role('heading', name='MPNet', exact=True)).to_be_visible()
+            expect(library.get_by_role('heading', name='All', exact=True)).to_have_count(0)
+            for button in library.get_by_role('button', name='Serve model', exact=True).all():
+                expect(button).to_be_disabled()
+            library.locator('[data-family=MiniLM]').scroll_into_view_if_needed()
+            page.screenshot(path=f'/private/tmp/poolhouse-embedding-family-fixture-{theme}-{width}.png')
         finally:
             served.close()

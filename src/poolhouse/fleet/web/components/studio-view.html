@@ -6,12 +6,11 @@
   >
     <h1 class="studio-page-title">Studio</h1>
     <header class="studio-heading" aria-label="Workflow identity and primary actions">
-      <input id="studio-title" aria-label="Workflow title" value="Untitled experiment" />
-      <button id="studio-new" type="button">New</button>
-      <button id="studio-save" type="button">Save</button>
-      <button id="studio-run" type="button" class="studio-primary">Run workflow</button>
-    </header>
-    <div class="studio-toolbar studio-command-bar" role="toolbar" aria-label="Workflow editing">
+      <div class="studio-identity">
+        <input id="studio-title" aria-label="Workflow title" value="Untitled experiment" />
+        <p class="studio-status" role="status" aria-live="polite"></p>
+      </div>
+    <div id="studio-command-bar" class="studio-toolbar studio-command-bar" role="toolbar" aria-label="Workflow editing">
       <details class="studio-command"><summary>Open workflow</summary><div>
         <label>Saved workflows<select id="studio-workflows" aria-label="Saved workflows"><option value="">New workflow</option></select></label>
       </div></details>
@@ -31,11 +30,17 @@
       </div></details>
       <input id="studio-import-file" type="file" accept="application/json,.json" hidden />
     </div>
-    <div class="studio-group-path" id="studio-group-path"></div>
-    <p class="studio-status" role="status" aria-live="polite"></p>
-    <div class="studio-workspace-tabs" role="tablist" aria-label="Studio workspace">
-      <button id="studio-tab-canvas" role="tab" aria-selected="true" aria-controls="studio-panel-canvas">Canvas</button>
-      <button id="studio-tab-results" role="tab" aria-selected="false" aria-controls="studio-panel-results" tabindex="-1">Runs and Results</button>
+      <button id="studio-new" type="button">New</button>
+      <button id="studio-save" type="button">Save</button>
+      <button id="studio-run" type="button" class="studio-primary">Run workflow</button>
+      <button id="studio-tools-toggle" type="button" aria-label="Workflow tools" aria-expanded="false" aria-controls="studio-command-bar">Tools</button>
+    </header>
+    <div class="studio-location-row">
+      <div class="studio-workspace-tabs" role="tablist" aria-label="Studio workspace">
+        <button id="studio-tab-canvas" role="tab" aria-selected="true" aria-controls="studio-panel-canvas">Canvas</button>
+        <button id="studio-tab-results" role="tab" aria-selected="false" aria-controls="studio-panel-results" tabindex="-1">Runs and Results</button>
+      </div>
+      <nav class="studio-group-path" id="studio-group-path" aria-label="Canvas location"></nav>
     </div>
     <div class="studio-shell" id="studio-panel-canvas" role="tabpanel" aria-labelledby="studio-tab-canvas">
       <aside class="studio-library" aria-label="Node library">
@@ -45,6 +50,7 @@
           aria-label="Search nodes, templates and groups"
           placeholder="Search nodes…"
         />
+        <select id="studio-library-category" aria-label="Library category"><option value="">All</option></select>
         <div id="studio-library-items"></div>
       </aside>
       <studio-canvas></studio-canvas>
@@ -68,6 +74,7 @@
     </section>
     <dialog class="studio-dialog" id="studio-share-dialog">
       <h2>Share a workflow</h2>
+      <div class="studio-dialog-content">
       <p>
         Packages contain declared workflow configuration. Recipients choose
         their own resources.
@@ -84,6 +91,7 @@
       ><label>Package title<input id="studio-package-title" /></label
       ><label>Documentation<textarea id="studio-package-docs"></textarea></label
       ><label>Licence<input id="studio-package-license" value="MIT" /></label>
+      </div>
       <div class="studio-toolbar">
         <button id="studio-export" type="button">Export file</button
         ><button id="studio-publish" type="button">Save to pool library</button
@@ -187,9 +195,11 @@
           );
         });
         this.querySelector("#studio-search").oninput = () => this.library();
+        this.querySelector("#studio-library-category").onchange = () => this.library();
         this.querySelector("#studio-title").oninput = () => this.selectionIntent++;
-        this.querySelector("#studio-title").onchange = () =>
-          this.changed(false);
+        this.querySelector("#studio-title").onchange = () => {
+          this.changed(false); this.groupPath(false);
+        };
         this.querySelector("#studio-workflows").onchange = (e) => {
           this.selectionIntent++;
           this.perform(() =>
@@ -197,6 +207,7 @@
           );
         };
         this.addEventListener("keydown", (e) => this.key(e));
+        this.setupN8nPaste();
         this.setupSharing();
         this.setupLive();
         this.setupWorkspaceTabs();
@@ -327,7 +338,7 @@
           this.submitting || !this.selected.size;
         this.groupPath();
       }
-      copy() {
+      copy(event) {
         this.flushGroup();
         const context = S.selectionContext(this),
           graph = context.graph,
@@ -347,6 +358,7 @@
           groups: S.clone(graph.groups),
           layout: S.clone(graph.layout),
         };
+        this.writeStudioClipboard(event);
         this.message(
           context.inherited
             ? "Copied containing controlled group and required dependencies"
@@ -422,13 +434,12 @@
         this.changed();
       }
       key(e) {
-        if (["INPUT", "TEXTAREA", "SELECT"].includes(e.target.tagName)) return;
+        if (this.n8nEditing(e)) return;
         const mod = e.metaKey || e.ctrlKey;
         if (mod && ["z", "c", "v", "a"].includes(e.key.toLowerCase())) {
+          if (["c", "v"].includes(e.key.toLowerCase())) return;
           e.preventDefault();
           if (e.key.toLowerCase() === "z") this.undo(e.shiftKey);
-          if (e.key.toLowerCase() === "c") this.copy();
-          if (e.key.toLowerCase() === "v") this.paste();
           if (e.key.toLowerCase() === "a") {
             this.selected = new Set(this.graph.nodes.map((n) => n.id));
             this.render();

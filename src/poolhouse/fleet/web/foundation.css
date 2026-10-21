@@ -19,6 +19,8 @@
   --warn:#9b5a00; --busy:#bc7200; --bad:var(--ml-red); --good:var(--ml-green);
   --nvidia:#527f00; --amd:#c02635; --apple:#555c70; --cpu:#3068b0;
   --radius:14px; --gap:calc(20px * var(--ui-density)); --mono:var(--ml-mono); --sans:var(--ml-font); --shadow:var(--ml-shadow);
+  --control-height:36px; --control-font-size:13px; --control-line-height:20px;
+  --control-radius:8px; --control-padding:7px 12px;
   --ui-font-size:14px; --ui-density:1; --rail-width:76px; --header-height:48px;
 }
 * { box-sizing:border-box; }
@@ -131,14 +133,16 @@ input:focus, select:focus {
 }
 .hint { font-size: 12px; color: var(--dim); margin-top: 6px; }
 button {
-  margin-top: 22px; width: 100%; padding: 11px 16px; border-radius: 8px;
-  background:var(--accent); color:var(--accent-foreground); border: 0; font-size: 14.5px;
+  margin:0; width:auto; min-height:var(--control-height); padding:var(--control-padding);
+  border-radius:var(--control-radius); line-height:var(--control-line-height);
+  background:var(--accent); color:var(--accent-foreground); border:1px solid transparent; font-size:var(--control-font-size);
   font-weight: 650; font-family: inherit; cursor: pointer;
   transition: filter .15s, opacity .15s;
 }
 button:hover:not(:disabled) { filter: brightness(1.08); }
 button:disabled { opacity: .5; cursor: default; }
-button.ghost { background: transparent; border: 1px solid var(--line-bright); color: var(--text); }
+.card > button:not(.back):not(.small) { width:100%; margin-top:22px; }
+button.secondary, button.ghost { background: transparent; border: 1px solid var(--line-bright); color: var(--text); }
 .choices { display: grid; gap: 10px; margin-top: 8px; }
 .choice {
   text-align: left; padding: 14px 16px; border-radius: 10px; cursor: pointer;
@@ -243,7 +247,7 @@ main > button { max-width: 240px; }
 }
 .row b { font-weight: 600; font-size: 13.5px; display: block; }
 .row .why { color: var(--muted); font-size: 12px; display: block; margin-top: 2px; }
-button.small { margin: 0; width: auto; padding: 6px 12px; font-size: 12.5px; }
+button.small { margin:0; width:auto; min-height:30px; padding:4px 10px; font-size:12.5px; }
 
 
 @media(max-width:720px) { main {padding:22px 18px 40px;} }
