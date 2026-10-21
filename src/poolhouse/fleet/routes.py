@@ -70,7 +70,7 @@ def asset_bytes(name: str) -> tuple[bytes, str] | None:
 
 
 def ui_asset(name: str) -> tuple[bytes, str] | None:
-    """One file from the ml-ui folder, by exact name."""
+    """One file from the poolhouse-ui folder, by exact name."""
     path = ui_assets().get(name)
     if path is None:
         return None
@@ -192,10 +192,10 @@ class PageRoutes:
             write(self.handler, 200, page.encode("utf-8"), "text/html; charset=utf-8", PAGE_HEADERS)
             return True
         if self.path in ("/ui/gallery", "/ui/gallery/"):
-            self.send(302, {}, {"Location": "/ui/ml-ui/gallery.html"})
+            self.send(302, {}, {"Location": "/ui/poolhouse-ui/gallery.html"})
             return True
-        if self.path.startswith("/ui/ml-ui/"):
-            asset = ui_asset(self.path[len("/ui/ml-ui/"):])
+        if self.path.startswith("/ui/poolhouse-ui/"):
+            asset = ui_asset(self.path[len("/ui/poolhouse-ui/"):])
             if asset is None:
                 self.send(404, {"error": "no such asset"})
                 return True

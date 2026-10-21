@@ -14,7 +14,7 @@ output-token-slider { display:block; min-width:0; }
     }
     connectedCallback() {
       if (!this.slider) {
-        this.slider = M.ui("ml-slider", {step:1});
+        this.slider = M.ui("poolhouse-slider", {step:1});
         this.append(this.slider);
         this.slider.addEventListener("input", event => {
           if (!Number.isFinite(event.detail?.value)) { event.stopPropagation(); return; }

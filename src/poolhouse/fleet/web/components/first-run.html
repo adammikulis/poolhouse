@@ -287,7 +287,7 @@ first-run .wizard-step { color:var(--muted); margin-bottom:12px; }
         if (this.progress.textContent === this.heading.textContent) this.progress.textContent = 'No model is marked ready.';
         buttons.push(this.button('Check status', () => this.checkPreparation(), true), this.button('Finish setup for now', () => this.finish(false), true));
       }
-      if (job.stage === 'transfer' && job.progress) this.progress.append(M.ui('ml-progress', {
+      if (job.stage === 'transfer' && job.progress) this.progress.append(M.ui('poolhouse-progress', {
         label:'Preparing model', format:'bytes', done:job.progress.done || 0, total:job.progress.total || 0,
         state:job.state === 'interrupted' ? 'failed' : job.state === 'cancelled' ? 'idle' : 'running', message:job.note || ''}));
       this.controls.replaceChildren(...buttons);

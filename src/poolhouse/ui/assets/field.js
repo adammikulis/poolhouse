@@ -1,23 +1,23 @@
 /* The shared shell of the form controls: label, hint, error, disabled. */
-import { MlElement, h, uid } from "./base.js";
+import { PoolhouseElement, h, uid } from "./base.js";
 
 export const FIELD_STYLES = `
 .field { display: block; }
-label, .lbl { display: block; font-size: 12.5px; font-weight: 600; color: var(--ml-muted);
+label, .lbl { display: block; font-size: 12.5px; font-weight: 600; color: var(--poolhouse-ui-muted);
   margin-bottom: 6px; }
-.hint { font-size: 12px; color: var(--ml-muted); margin-top: 6px; }
-.err { font-size: 12.5px; margin-top: 6px; color: var(--ml-red-ink); display: flex; gap: 6px; align-items: center; }
+.hint { font-size: 12px; color: var(--poolhouse-ui-muted); margin-top: 6px; }
+.err { font-size: 12.5px; margin-top: 6px; color: var(--poolhouse-ui-red-ink); display: flex; gap: 6px; align-items: center; }
 .err[hidden], .hint[hidden], label[hidden] { display: none; }
 input[type=text], select { width: 100%; padding: 9px 11px; border-radius: 8px; font: inherit; font-size: 14px;
-  background: var(--ml-sunken); border: 1px solid var(--ml-line-strong); color: var(--ml-text); }
+  background: var(--poolhouse-ui-sunken); border: 1px solid var(--poolhouse-ui-line-strong); color: var(--poolhouse-ui-text); }
 input:disabled, select:disabled, button:disabled { opacity: .55; cursor: not-allowed; }
-input:focus-visible, select:focus-visible { outline: 2px solid var(--ml-focus); outline-offset: 1px; }
-.invalid input, .invalid select { border-color: var(--ml-red); }
-.mono input { font-family: var(--ml-mono); font-size: 13px; }
+input:focus-visible, select:focus-visible { outline: 2px solid var(--poolhouse-ui-focus); outline-offset: 1px; }
+.invalid input, .invalid select { border-color: var(--poolhouse-ui-red); }
+.mono input { font-family: var(--poolhouse-ui-mono); font-size: 13px; }
 `;
 
 /** Base of select, slider, toggle and path: `label`, `hint`, `error`, `name`, `disabled`. */
-export class FieldElement extends MlElement {
+export class FieldElement extends PoolhouseElement {
   static formAssociated = true;
   static common = { label: "string", hint: "string", error: "string", name: "string", disabled: "bool" };
 

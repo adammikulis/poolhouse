@@ -134,13 +134,13 @@ def test_inventory_poll_preserves_hub_query_focus_filters_and_results(app):
     page.wait_for_function("() => document.querySelector('model-browser').hubKey.includes('qwen')")
     hunt.focus()
     before = state["requests"].count("/ui/models/popular")
-    page.evaluate("window.savedSearch = document.getElementById('hunt'); window.savedProgress = document.querySelector('#download-rows ml-progress')")
+    page.evaluate("window.savedSearch = document.getElementById('hunt'); window.savedProgress = document.querySelector('#download-rows poolhouse-progress')")
     state["done"] = 60
     page.evaluate("document.querySelector('models-view').draw()")
-    page.wait_for_function("() => document.querySelector('#download-rows ml-progress').done === 60")
+    page.wait_for_function("() => document.querySelector('#download-rows poolhouse-progress').done === 60")
     assert hunt.input_value() == "qwen"
     assert hunt.evaluate("e => e === window.savedSearch && e === document.activeElement")
-    assert page.locator("#download-rows ml-progress").evaluate("e => e === window.savedProgress")
+    assert page.locator("#download-rows poolhouse-progress").evaluate("e => e === window.savedProgress")
     assert state["requests"].count("/ui/models/popular") == before
     assert page.get_by_text("Hub Qwen", exact=True).is_visible()
     assert not errors
@@ -183,7 +183,7 @@ def test_capacity_lives_in_models_and_uses_q8_geometry(app):
     page.get_by_role("link", name="Explore capacity & performance →", exact=True).click()
     page.locator("#fit-controls select").first.wait_for()
     assert "/ui/fit.json" in state["requests"]
-    assert page.evaluate("window.fleetModel.contextPicker(8192, () => {}).querySelector('ml-slider').valueText") == "8,192 tokens"
+    assert page.evaluate("window.fleetModel.contextPicker(8192, () => {}).querySelector('poolhouse-slider').valueText") == "8,192 tokens"
     assert not errors
 
 
