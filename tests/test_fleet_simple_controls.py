@@ -32,7 +32,7 @@ def test_context_length_uses_tokens_and_saves_the_chosen_limit(joined, open_page
     slider.focus()
     slider.press('End')
     assert slider.get_attribute('aria-valuetext') == '1,048,576 tokens'
-    assert page.get_by_text('Extended context: Qwen uses YaRN above its native 256K window.', exact=False).is_visible()
+    assert page.get_by_text('Extended context requires more memory. Supported limits are checked when starting the model.', exact=True).is_visible()
     page.click('#settings-save')
     page.wait_for_selector('#settings-note .ok')
     _, saved, _ = joined.call('/ui/settings', cookie=joined.cookie)

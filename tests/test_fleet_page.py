@@ -376,9 +376,12 @@ class TestTheChatView:
         page, errors = open_page(joined, cookie=joined.cookie)
         page.wait_for_selector("#pool:not([hidden])")
         page.click(RAIL["Chat"])
-        page.wait_for_selector("#chat-none:not([hidden])")
-        assert "No model is running" in page.locator("#chat-none").inner_text()
+        page.locator("#conversation-choose-model").click()
+        picker = page.get_by_role("dialog", name="Choose a model or workspace agent")
+        pw.expect(picker.get_by_text("No chat models are available yet.", exact=True)).to_be_visible()
+        pw.expect(picker.get_by_role("button", name="Add New Model (Model Library)")).to_be_visible()
         assert page.locator("#chat-askrow").is_hidden()
+        pw.expect(page.locator("#chat-send")).to_be_hidden()
         assert not errors
 
     def test_a_kept_conversation_is_listed_and_opens(self, joined, open_page):
@@ -420,7 +423,7 @@ class TestTheModelsView:
     def test_with_no_hub_the_search_box_still_takes_a_query(self, joined, open_page):
         page, errors = open_page(joined, cookie=joined.cookie)
         open_models(page)
-        page.get_by_text("Add from your Pool or Hugging Face").click()
+        page.get_by_role("button", name="+ Add a model", exact=True).click()
         page.get_by_role("button", name="Hugging Face", exact=True).click()
         page.wait_for_selector("#browser-source")
         page.fill("#hunt", "thornfield")
