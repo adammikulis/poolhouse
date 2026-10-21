@@ -40,7 +40,7 @@ def _unmodified_module(tree: ast.Module, module: str, binding: str) -> bool:
         if isinstance(node, ast.Import):
             imports.extend(alias.name for alias in node.names if (alias.asname or alias.name.split(".")[0]) == binding)
         elif isinstance(node, ast.ImportFrom):
-            if any((alias.asname or alias.name) == binding for alias in node.names):
+            if any(alias.name == "*" or (alias.asname or alias.name) == binding for alias in node.names):
                 return False
         elif ((isinstance(node, ast.Name) and node.id == binding and not isinstance(node.ctx, ast.Load))
               or (isinstance(node, ast.arg) and node.arg == binding)

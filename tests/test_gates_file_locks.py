@@ -62,6 +62,8 @@ def test_descriptor_metadata_inspection_is_not_a_file_lock(tmp_path, source):
     "fcntl.fcntl = replacement", "fcntl = replacement", "del fcntl.fcntl", "del fcntl",
     "getattr(fcntl, operation)(fd)", "fcntl.unknown(fd)", "import other as fcntl",
     "def fcntl(): pass", "def inspect(fcntl): pass", "from other import fcntl",
+    "from hostile import *\nfcntl.fcntl(fd, fcntl.F_GETFL)",
+    "from hostile import *\nfcntl.ioctl(fd, termios.FIONREAD, buffer, True)",
     "match value:\n case fcntl: pass", "match value:\n case {**fcntl}: pass",
     "fcntl.ioctl(fd, termios.FIONREAD, buffer, False)", "fcntl.ioctl(fd, termios.FIONREAD, buffer)",
     "fcntl.ioctl(fd, termios.FIONREAD, buffer, True, extra)",
