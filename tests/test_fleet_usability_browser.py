@@ -11,24 +11,18 @@ def usability_page(tmp_path, browser_owner):
     served = Serving(tmp_path)
     served.ui.root = tmp_path / "traind"
     served.ui.settings.setup_done = True
-    context = None
     errors = []
     try:
-        context = browser_owner.new_context(viewport={'width': 1280, 'height': 900})
-        page = context.new_page()
-        page.on('pageerror', lambda error: errors.append(str(error)))
-        yield served, page, errors
+        with browser_owner.pages(viewport={'width': 1280, 'height': 900}) as page:
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            yield served, page, errors
     finally:
         try:
-            if context is not None:
-                context.close()
+            if engine := getattr(served.ui, "studio", None):
+                engine.close()
+                engine.store.close()
         finally:
-            try:
-                if engine := getattr(served.ui, "studio", None):
-                    engine.close()
-                    engine.store.close()
-            finally:
-                served.close()
+            served.close()
 
 
 def test_training_environment_catalogue_drafts_and_pending_submission(usability_page):

@@ -1195,24 +1195,27 @@ def leased(backend, spec, **starting):
     return ServerManager(backend=backend, state_file=state).lease(spec, roam=False, **starting)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def playwright():
-    """The Playwright driver owned by this pytest worker."""
+    """The shared Playwright context for this test module."""
     pw = pytest.importorskip("playwright.sync_api", reason="poolhouse[scrape]")
     with pw.sync_playwright() as play:
         yield play
 
 
 @pytest.fixture(scope="session")
-def browser_owner(playwright, tmp_path_factory):
+def browser_owner(tmp_path_factory):
     """The managed Chromium process owned by this pytest worker."""
-    from poolhouse.scrape.browser import Window, browser
+    pytest.importorskip("playwright.sync_api")
+    from browser_worker import BrowserWorker
 
     profile = tmp_path_factory.mktemp("managed-browser")
-    with browser(Window(profile=profile, headless=True), playwright) as page:
-        owner = page.context.browser
-        assert owner is not None
+    owner = BrowserWorker(profile)
+    owner.start()
+    try:
         yield owner
+    finally:
+        owner.close()
 
 
 def heavy_modules() -> frozenset[str]:

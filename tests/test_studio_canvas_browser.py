@@ -5,7 +5,6 @@ import hashlib
 import json
 import re
 import uuid
-from contextlib import contextmanager
 
 import pytest
 from browser_expect import expect
@@ -42,17 +41,7 @@ SPECS.extend([
 @pytest.fixture(scope='module')
 def studio_browser(browser_owner):
     """Fresh isolated pages on the worker's managed browser."""
-    @contextmanager
-    def isolated_page():
-        context = browser_owner.new_context(
-            viewport={'width': 1440, 'height': 1000}, accept_downloads=True)
-        try:
-            context.set_default_timeout(60_000)
-            yield context.new_page()
-        finally:
-            context.close()
-
-    return isolated_page
+    return browser_owner.pages
 
 
 @pytest.fixture
