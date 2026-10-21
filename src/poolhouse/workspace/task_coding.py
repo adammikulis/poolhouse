@@ -10,7 +10,7 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any, NamedTuple
 
-from poolhouse import coding_policy, roles, runtime
+from poolhouse import coding_policy, harnessing, roles, runtime
 from poolhouse.board.session import Session
 from poolhouse.chatpolicy import READ_ONLY
 from poolhouse.client import families
@@ -137,6 +137,7 @@ class Run(NamedTuple):
 
 def perform(s: Session, base: Path, agent, task, run: Run):
     """Return a native harness report and hashed worktree changes for independent review."""
+    harnessing.require_isolated_execution()
     project, stopped, checkpoint = run
     reputation = work_reputation.brief_on(s)
     la.Status(base, agent.name).update(reputation=reputation)

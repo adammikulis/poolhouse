@@ -47,6 +47,7 @@ __all__ = [
     "hook_command",
     "parser",
     "protected_paths",
+    "require_isolated_execution",
     "serving",
     "session_files",
     "window_of",
@@ -56,6 +57,11 @@ DEFAULT_CTX = 0
 DEFAULT_MODEL = "Qwen3.8-27B-UD-Q4_K_XL.gguf"
 PARENT = ""
 KV = "q8_0"
+
+
+def require_isolated_execution() -> None:
+    """Refuse native adapters without enforced parent-owned workspace execution."""
+    raise ValueError("This coding runtime cannot enforce isolated session permissions")
 
 
 def parser(name: str, what: str, port: int, slots: int) -> argparse.ArgumentParser:

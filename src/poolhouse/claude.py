@@ -107,6 +107,7 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
     try:
         coding_policy.Policy(args.permissions, args.execution_mode)
         args.project = str(harnessing.check_project(args.project))
+        harnessing.require_isolated_execution()
     except (OSError, RuntimeError, ValueError) as why:
         say(f"error: {why}")
         return 2
