@@ -78,7 +78,8 @@ def test_pending_run_keeps_primary_busy_state_and_menus_do_not_submit(studio_pag
 
     page.route('**/ui/studio/runs', submit)
     run = page.get_by_role('button', name='Run workflow', exact=True)
-    run.click()
+    with page.expect_request(lambda request: request.method == 'POST' and request.url.endswith('/ui/studio/runs')):
+        run.click()
     expect(run).to_be_disabled()
     edit = menu(page, 'Edit')
     edit.locator('summary').click()
@@ -199,4 +200,34 @@ def test_long_share_content_scrolls_inside_modal_with_actions_visible(studio_pag
     expect(page.locator('#studio-portable input')).to_be_in_viewport()
     expect(page.get_by_role('button', name='Export file', exact=True)).to_be_in_viewport()
     page.screenshot(path=tmp_path / 'mobile-share-long-content.png')
+    assert not errors
+
+
+@pytest.mark.parametrize('width', [960, 1100, 1101, 1440])
+def test_medium_header_keeps_primary_actions_on_one_row_and_tools_focus(studio_page, tmp_path, width):  # noqa: F811
+    page, _state, errors = studio_page
+    page.set_viewport_size({'width': width, 'height': 1000})
+    page.screenshot(path=tmp_path / 'medium-header.png')
+    tools = page.get_by_role('button', name='Workflow tools', exact=True)
+    if width <= 1100:
+        expect(tools).to_be_visible()
+        primary = [page.get_by_role('button', name=name, exact=True) for name in ['New', 'Save', 'Run workflow', 'Workflow tools']]
+        tops = [button.bounding_box()['y'] for button in primary]
+        assert max(tops) - min(tops) <= 1
+        before = page.locator('studio-view').evaluate('e=>({graph:structuredClone(e.rootGraph()),serial:e.editSerial})')
+        tools.click()
+        page.screenshot(path=tmp_path / 'medium-tools-open.png')
+        menu(page, 'Edit').locator('summary').focus()
+        page.keyboard.press('Escape')
+        expect(tools).to_be_focused()
+        expect(tools).to_have_attribute('aria-expanded', 'false')
+        menu(page, 'Open workflow').locator('summary').click()
+        select = page.get_by_label('Saved workflows', exact=True)
+        select.focus()
+        select.select_option('')
+        expect(tools).to_be_focused()
+        assert page.locator('studio-view').evaluate('e=>({graph:structuredClone(e.rootGraph()),serial:e.editSerial})') == before
+    else:
+        expect(tools).to_be_hidden()
+        expect(menu(page, 'Open workflow').locator('summary')).to_be_visible()
     assert not errors

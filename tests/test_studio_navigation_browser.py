@@ -121,6 +121,50 @@ def test_library_filters_preserve_graph_focus_and_selected_inspector(studio_page
     assert not errors
 
 
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+def test_medium_group_inspector_actions_keep_control_height_after_back(studio_page, tmp_path, theme):  # noqa: F811
+    page, _state, errors = studio_page
+    page.set_viewport_size({'width': 960, 'height': 1000})
+    page.evaluate('theme=>fleetModel.setPreferences({...fleetModel.preferences,resolved_theme:theme})', PRESETS[theme])
+    title = page.get_by_label('Workflow title', exact=True)
+    title.fill('Studio live data validation report')
+    title.press('Tab')
+    add(page, 'Prompt template')
+    named_group(page, 'Reusable group')
+    page.screenshot(path=tmp_path / 'medium-group-open.png')
+    before = page.locator('studio-view').evaluate('e=>({graph:structuredClone(e.rootGraph()),serial:e.editSerial})')
+    page.get_by_role('button', name='Back to Studio live data validation report', exact=True).click()
+    page.screenshot(path=tmp_path / 'medium-group-back.png')
+    for name in ['Open group', 'Unpack group']:
+        control = page.locator('.studio-inspector').get_by_role('button', name=name, exact=True)
+        expect(control).to_be_in_viewport()
+        assert 34 <= control.bounding_box()['height'] <= 40
+    assert page.locator('.studio-inspector').bounding_box()['height'] <= 160
+    assert page.locator('studio-canvas').bounding_box()['height'] >= 600
+    assert page.locator('studio-view').evaluate('e=>({graph:structuredClone(e.rootGraph()),serial:e.editSerial})') == before
+    expect(page.locator('.studio-node[aria-selected="true"]')).to_have_count(1)
+    assert not errors
+
+
+def test_medium_long_inspector_scrolls_focused_fields_without_scrolling_page(studio_page, tmp_path):  # noqa: F811
+    page, _state, errors = studio_page
+    page.set_viewport_size({'width': 960, 'height': 1000})
+    add(page, 'Report')
+    page.get_by_text('Sweep parameters', exact=True).click()
+    inspector = page.locator('.studio-inspector')
+    field = page.get_by_label('Sweep enabled', exact=True)
+    field.focus()
+    expect(field).to_be_in_viewport()
+    assert inspector.bounding_box()['height'] <= 350
+    assert inspector.evaluate('e=>e.scrollHeight>e.clientHeight && e.scrollTop>0')
+    field_box, inspector_box = field.bounding_box(), inspector.bounding_box()
+    assert field_box['y'] >= inspector_box['y']
+    assert field_box['y'] + field_box['height'] <= inspector_box['y'] + inspector_box['height']
+    assert page.evaluate('document.documentElement.scrollHeight<=innerHeight')
+    page.screenshot(path=tmp_path / 'medium-inspector-focused.png')
+    assert not errors
+
+
 @pytest.mark.parametrize('width,height', [(1440, 900), (1440, 600), (390, 844)])
 @pytest.mark.parametrize('theme', ['light', 'dark'])
 def test_group_navigation_is_compact_and_interface_controls_stay_in_inspector(studio_page, width, height, theme, tmp_path):  # noqa: F811

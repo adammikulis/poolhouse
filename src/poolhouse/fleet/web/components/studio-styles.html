@@ -213,7 +213,7 @@
     .studio-shell.studio-inspector-empty { grid-template-columns: 170px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
     .studio-shell {
       grid-template-columns: 170px minmax(0, 1fr);
-      grid-template-rows: minmax(0, 1fr) minmax(0, .6fr);
+      grid-template-rows: minmax(0, 1fr) auto;
     }
     .studio-inspector {
       grid-column: 1 / -1;
@@ -222,6 +222,8 @@
       min-height: 0;
       display: flex;
       flex-wrap: wrap;
+      align-items: flex-start; align-content: flex-start;
+      max-height: 35dvh;
       gap: 10px;
     }
     .studio-inspector h2 {
@@ -235,6 +237,11 @@
       width: auto;
       max-width: 240px;
     }
+    #studio-tools-toggle { display: block; }
+    .studio-heading .studio-command-bar { display: none; position: absolute; top: 100%; left: 0; right: 0; flex-wrap: wrap; background: var(--bg-raised); border: 1px solid var(--line); padding: 8px; border-radius: 8px; box-shadow: var(--shadow); }
+    .studio-heading .studio-command-bar[data-expanded="true"] { display: flex; }
+    .studio-command { position: static; }
+    .studio-command > div { left: 0 !important; right: 0 !important; top: 100%; min-width: 0; }
   }
   @media (max-width: 700px) {
     .studio-workspace {
@@ -267,7 +274,7 @@
       overflow: auto;
     }
     .studio-inspector {
-      display: block;
+      display: block; max-height: none;
     }
     .studio-inspector input,
     .studio-inspector select {
@@ -279,12 +286,7 @@
       width: 100%;
     }
     .studio-heading .studio-identity { flex-basis: 100%; }
-    #studio-tools-toggle { display: block; }
     .studio-heading > button { padding-inline: 7px; font-size: 12px; }
-    .studio-heading .studio-command-bar { display: none; position: absolute; top: 100%; left: 0; right: 0; flex-wrap: wrap; background: var(--bg-raised); border: 1px solid var(--line); padding: 8px; border-radius: 8px; box-shadow: var(--shadow); }
-    .studio-heading .studio-command-bar[data-expanded="true"] { display: flex; }
-    .studio-command { position: static; }
-    .studio-command > div { left: 0 !important; right: 0 !important; top: 100%; min-width: 0; }
     .studio-command summary { padding-inline: 6px; font-size: 12px; }
     .studio-location-row { flex-wrap: wrap; gap: 6px; }
     .studio-group-path { flex-basis: 100%; overflow: hidden !important; }

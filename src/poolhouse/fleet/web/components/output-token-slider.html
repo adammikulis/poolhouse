@@ -63,12 +63,12 @@ output-token-slider { display:block; min-width:0; }
       this.slider.disabled = this.busy || maximum < minimum;
       this.slider.label = this.options.label || "Maximum output tokens";
       this.slider.value = nearest;
-      const words = this.raw === "" ? "No user cap" : `${Number(this.raw).toLocaleString()} ${Number(this.raw) === 1 ? "token" : "tokens"}`;
+      const words = this.raw === "" ? "No output cap" : `${Number(this.raw).toLocaleString()} ${Number(this.raw) === 1 ? "token" : "tokens"}`;
       const custom = this.raw !== "" && !stops.includes(raw);
       this.slider.valueText = custom ? `Custom · ${words}` : words;
       this.slider.hint = Number(this.raw) > maximum
         ? `Saved limit exceeds the current ${maximum.toLocaleString()} token slider limit. Move the slider to choose a new limit.`
-        : custom ? "Saved custom limit. Choose a tick to replace it." : this.options.nullable ? "Select 0 for no user cap." : "";
+        : custom ? "Saved custom limit. Choose a tick to replace it." : this.options.nullable ? "Select 0 for no output cap." : "";
     }
   }
   customElements.define("output-token-slider", OutputTokenSlider);

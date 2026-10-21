@@ -25,7 +25,7 @@ models-view .model-loading{padding:28px;border-radius:16px;background:var(--bg-r
 <template>
   <main id="models" hidden>
     <header class="models-heading"><div><h1>Models</h1></div><button type="button" id="add-model">+ Add a model</button></header>
-    <div class="models-overview"><div class="models-stat"><div class="stat-icon" aria-hidden="true">▦</div><div><strong id="models-count">—</strong><br><span>Installed models</span></div></div><div class="models-stat"><div class="stat-icon" aria-hidden="true">↗</div><div><strong id="models-running">—</strong><br><span>Running chat models</span></div></div><div class="models-stat"><div class="stat-icon" aria-hidden="true">◉</div><div><strong id="models-free">—</strong><br><span>Free storage on this device</span></div></div></div>
+    <div class="models-overview"><div class="models-stat"><div class="stat-icon" aria-hidden="true">▦</div><div><strong id="models-count">—</strong><br><span>Installed models</span></div></div><div class="models-stat"><div class="stat-icon" aria-hidden="true">↗</div><div><strong id="models-running">—</strong><br><span>Running models</span></div></div><div class="models-stat"><div class="stat-icon" aria-hidden="true">◉</div><div><strong id="models-free">—</strong><br><span>Free storage on this device</span></div></div></div>
     <div id="models-note" role="status"></div>
     <section id="models-getting" hidden><h2>Downloads</h2><div id="download-rows"></div></section>
     <section id="models-here"><models-library></models-library></section>
@@ -73,13 +73,12 @@ models-view .model-loading{padding:28px;border-radius:16px;background:var(--bg-r
       if (this.loading) return;
       this.loading = true;
       try {
-        const [m, run, chat] = await Promise.all([api("/ui/models"), api("/ui/serving"), api("/ui/chat")]);
-        if (M.refused(m) || M.refused(run) || M.refused(chat) || this.box.hidden) return;
+        const [m, run] = await Promise.all([api("/ui/models"), api("/ui/serving")]);
+        if (M.refused(m) || M.refused(run) || this.box.hidden) return;
         this.querySelector("#models-free").textContent = m.ok && Number.isFinite(m.free_gb) && m.free_gb >= 0 ? `${m.free_gb} GiB` : "Unavailable";
         this.querySelector('#models-count').textContent = m.ok ? String((m.library || []).length) : "Unavailable";
-        const ready = (chat.runtime_ready === false ? [] : chat.models || []).filter(model => model.capabilities?.chat === true);
-        this.querySelector('#models-running').textContent = chat.ok
-          ? String(new Set(ready.map(model => JSON.stringify([model.member || "local", model.path || model.model]))).size) : "Unavailable";
+        this.querySelector('#models-running').textContent = run.ok
+          ? String(new Set((run.running || []).flatMap(server => (server.models || []).map((model, index) => server.aliases?.[index] || model))).size) : "Unavailable";
         this.browser.setInventory(m, run);
         this.querySelector("models-library").update(m.library || [], run,
           (path, name, options) => this.serve(path, name, options), (port) => this.halt(port));
