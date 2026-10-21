@@ -260,7 +260,7 @@ def test_other_writable_default_parent_is_not_mutated(prepared):
 @pytest.mark.parametrize('stage', ['mkdir', 'marker', 'promotion'])
 def test_interrupted_stage_establishment_is_reconciled_without_adopting_unknown_directory(prepared, monkeypatch, stage):
     import poolhouse.fleet.setup_projects as module
-    real_mkdir, real_write, real_promote = module.tempfile.mkdtemp, module.os.write, module.promote_new_directory
+    real_mkdir, real_write, real_promote = module.tempfile.mkdtemp, module.os.write, module.promote_new
     def mkdir(*args, **kwargs):
         real_mkdir(*args, **kwargs)
         raise RuntimeError('Interrupted after stage mkdir')
@@ -277,12 +277,12 @@ def test_interrupted_stage_establishment_is_reconciled_without_adopting_unknown_
     if stage == 'marker':
         monkeypatch.setattr(module.os, 'write', write)
     if stage == 'promotion':
-        monkeypatch.setattr(module, 'promote_new_directory', promote)
+        monkeypatch.setattr(module, 'promote_new', promote)
     with pytest.raises(RuntimeError, match='Interrupted after'):
         prepared.default(current=lambda: True)
     monkeypatch.setattr(module.tempfile, 'mkdtemp', real_mkdir)
     monkeypatch.setattr(module.os, 'write', real_write)
-    monkeypatch.setattr(module, 'promote_new_directory', real_promote)
+    monkeypatch.setattr(module, 'promote_new', real_promote)
     result = prepared.default(current=lambda: True)
     assert prepared.default(current=lambda: True) == result
     assert len(prepared.registry.boards()) == 1
@@ -290,12 +290,12 @@ def test_interrupted_stage_establishment_is_reconciled_without_adopting_unknown_
 
 def test_foreign_git_directory_is_never_replaced_during_promotion(prepared, monkeypatch):
     import poolhouse.fleet.setup_projects as module
-    real = module.promote_new_directory
+    real = module.promote_new
     def promote(source, target):
         target.mkdir()
         (target / 'foreign.txt').write_text('Preserve foreign content')
         return real(source, target)
-    monkeypatch.setattr(module, 'promote_new_directory', promote)
+    monkeypatch.setattr(module, 'promote_new', promote)
     with pytest.raises(FileExistsError):
         prepared.default(current=lambda: True)
     target = home.user_home() / 'Poolhouse Projects' / 'Workspace' / '.git' / 'foreign.txt'

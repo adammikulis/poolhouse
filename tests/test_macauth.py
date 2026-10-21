@@ -37,6 +37,7 @@ def _auth(**kw):
 
 
 def test_the_secret_is_derived_the_same_way_on_both_ends_and_is_not_the_key():
+    assert macauth.PREFIX == "poolhouse-sk1."
     assert macauth.derive(KEY) == SECRET and SECRET.startswith(macauth.PREFIX)
     assert KEY.decode() not in SECRET and SECRET != OTHER
 
@@ -72,7 +73,7 @@ def test_an_empty_body_and_no_body_sign_alike():
 
 def test_the_wrong_secret_is_refused_and_so_is_one_of_another_pool():
     assert not _send(_auth(), secret=OTHER).ok
-    assert not _send(_auth(), secret="mlsk1.guess").ok
+    assert not _send(_auth(), secret="poolhouse-sk1.guess").ok
 
 
 def test_a_machine_in_two_pools_answers_to_both():
@@ -121,7 +122,7 @@ def test_the_nonce_cache_is_bounded():
 
 
 @pytest.mark.parametrize("header", [
-    "", "Bearer mlsk1.abc", "Poolhouse-MAC", "Poolhouse-MAC k=,t=,n=,s=",
+    "", "Bearer poolhouse-sk1.abc", "Poolhouse-MAC", "Poolhouse-MAC k=,t=,n=,s=",
     "Poolhouse-MAC k=abc,t=notnumber,n=" + "n" * 24 + ",s=" + "0" * 64,
     "Poolhouse-MAC k=abc,t=1700000000,n=short,s=" + "0" * 64,
     "Poolhouse-MAC k=abc,t=1700000000,n=" + "n" * 24 + ",s=tooshort",
@@ -141,6 +142,58 @@ def test_unwrap_finds_a_mac_secret_in_a_bearer_header_and_nothing_else():
     assert macauth.unwrap(f"Bearer {SECRET}") == SECRET
     assert macauth.unwrap("Bearer plain-api-key") == ""
     assert macauth.unwrap("Basic abc") == ""
+
+
+@pytest.mark.parametrize("prefix", ["foreign-v1.", "poolhouse-sk2.", "poolhouse-sk1", "POOLHOUSE-SK1."])
+def test_a_foreign_namespace_cannot_reuse_a_current_secrets_payload(prefix):
+    foreign = prefix + SECRET.removeprefix(macauth.PREFIX)
+    assert macauth.unwrap(f"Bearer {foreign}") == ""
+    assert macauth.key_id(foreign) != macauth.key_id(SECRET)
+    assert not _send(_auth(), secret=foreign).ok
+
+
+def test_launcher_rejects_a_foreign_capability_before_constructing_a_request(tmp_path, monkeypatch):
+    from poolhouse.fleet import daemon_control
+
+    instance = "a" * 32
+    monkeypatch.setattr(daemon_control, "_record", lambda *_: {
+        "instance": instance, "capability": "foreign-v1." + "a" * 43})
+    monkeypatch.setattr(daemon_control, "_acknowledge", lambda *_: pytest.fail("foreign capability reached HTTP"))
+    with pytest.raises(daemon_control.ControlError, match="record is invalid"):
+        daemon_control.request_replacement(tmp_path, 8770, {"launcher_control": instance}, "b" * 40)
+
+
+def test_member_transport_rejects_foreign_secret_before_authorization():
+    from types import SimpleNamespace
+
+    from poolhouse.fleet.studio_transport import MemberExecution
+
+    member = SimpleNamespace(base_url="https://127.0.0.1:8770", token="foreign-v1." + "a" * 43,
+                             beacon=SimpleNamespace(cert="synthetic", machine="synthetic-device"))
+    with pytest.raises(ValueError, match="enrolled encrypted pool device"):
+        MemberExecution(member, lambda: pytest.fail("foreign secret reached authorization"))
+
+
+@pytest.mark.parametrize("carrier", ["token", "authorization"])
+def test_current_secret_inputs_sign_and_seal_without_sending_the_secret(carrier):
+    from poolhouse import sealing
+    from poolhouse.http import build_request
+
+    body = b'{"private":"synthetic-content"}'
+    supplied = {"token": SECRET} if carrier == "token" else {"headers": {"Authorization": f"Bearer {SECRET}"}}
+    request = build_request(URL, data=body, **supplied)
+    headers = dict(request.header_items())
+    headers["Host"] = macauth.parts(URL)[0]
+    assert headers["Authorization"].startswith(macauth.SCHEME + " ")
+    assert SECRET not in str(headers) and SECRET.encode() not in request.data
+    assert body != request.data and b"synthetic-content" not in request.data
+    auth = Authenticator(lambda: [SECRET])
+    verdict = auth.check("POST", "/jobs?tail=5", headers, request.data)
+    assert verdict.ok
+    opened = sealing.open_(sealing.box_key(SECRET), request.data, sealing.request_data(
+        "POST", "/jobs?tail=5", headers["Host"], verdict.at, verdict.nonce))
+    assert opened == body
+    assert not auth.check("POST", "/jobs?tail=5", headers, request.data).ok
 
 
 # -- lockout ---------------------------------------------------------------------------

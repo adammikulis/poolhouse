@@ -29,7 +29,7 @@ SPAWNS = re.compile(r"\b(?:subprocess|Popen|os\.system|os\.exec\w*|os\.spawn\w*|
                     r"pty|create_subprocess_\w+|ProcessPoolExecutor|runpytest_subprocess|playwright|"
                     r"concurrent\.futures\.process)\b")
 DYNAMIC = re.compile(r"\b(?:importlib\.util|runpy|pkgutil|entry_points|importorskip|__import__|import_module)\b")
-UNSEEN = re.compile(r"\b(?:DirEntry|scandir|fstat|utime|chown|setxattr|mmap|sqlite3|ladybug)\b")
+UNSEEN = re.compile(r"\b(?:DirEntry|scandir|utime|chown|setxattr|mmap|sqlite3|ladybug)\b")
 SNAPSHOT_SKIP = frozenset({".git", ".claude/worktrees", ".venv", "venv", ".build-venv", ".build-work", "node_modules",
                            *facts.BUILT_DIRS})
 SNAPSHOT_BUDGET_S = 10.0
@@ -41,7 +41,7 @@ VALUE_OPTIONS = frozenset({"-m", "-k", "-c", "-o", "-W", "-p", "-n", "--rootdir"
                            "--durations-min", "--log-level", "--color", "--assert", "--capture",
                            "--cov", "--timeout"})
 DROPPED_OPTIONS = frozenset({"-n", "--numprocesses", "--junitxml"})
-RUNNER_FILES = ("scripts/testreuse_plugin.py", "scripts/testreuse_key.py", "scripts/testreuse_store.py",
+RUNNER_FILES = ("scripts/testreuse_facts.py", "scripts/testreuse_plugin.py", "scripts/testreuse_key.py", "scripts/testreuse_store.py",
                 "scripts/testreuse_run.py", "scripts/testreuse_narrow.py", "scripts/testreuse_imports.py",
                 "scripts/testslots_pytest.py", "scripts/testslots_rpc.py")
 ENV_NAME = re.compile(r"""["']([A-Z][A-Z0-9_]{3,})["']""")
@@ -442,7 +442,12 @@ def build_manifest(root: Path, rel: str, seen: dict, closures: Closures, argumen
     spawning = any(SPAWNS.search(text_of(root / p)) for p in members if p.endswith(".py"))
     unseen = next((m.group(0) for p in members if p.endswith(".py") and p.startswith("tests/")
                    for m in [UNSEEN.search(text_of(root / p))] if m), "")
+    unseen = next(iter(sorted(seen.get("unobserved", ()))), unseen)
+    descriptor_stats = dict(seen.get("fd_stats", {}))
+    if any(value is None for value in descriptor_stats.values()):
+        unseen = "conflicting fstat metadata"
     return {"files": {p: file_sha(root / p) for p in files},
+            "fd_stats": descriptor_stats,
             "dirs": {d: listing(root, d) for d in sorted({*seen.get("dirs", ()), *(p for p in probed if (root / p).is_dir())})},
             "absent": sorted(p for p in probed if not (root / p).exists()),
             "links": dict(seen.get("links", {})),
@@ -478,12 +483,20 @@ def snapshot(root: Path) -> dict[str, tuple[int, int, int]] | None:
 
 def manifest_holds(root: Path, manifest: dict, closures: Closures) -> str:
     """Empty when every recorded input still matches the checkout, else the first that does not."""
+    if manifest.get("unobserved"):
+        return "unobserved input"
     for path, digest in manifest["files"].items():
         try:
             if file_sha(root / path) != digest:
                 return f"changed: {path}"
         except OSError:
             return f"missing: {path}"
+    for path, fields in manifest.get("fd_stats", {}).items():
+        try:
+            if not fields or facts.stat_fields((root / path).stat()) != fields:
+                return f"descriptor metadata changed: {path}"
+        except OSError:
+            return f"descriptor metadata unavailable: {path}"
     for path in manifest.get("absent", ()):
         if (root / path).exists():
             return f"appeared: {path}"

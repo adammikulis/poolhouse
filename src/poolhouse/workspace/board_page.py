@@ -1,4 +1,4 @@
-"""The person's Board page as the ml-board element reads it, answered from the person's session on the node.
+"""The person's Board page as the poolhouse-board element reads it, answered from the person's session on the node.
 
 The element counts messages with whole numbers. The node orders every message of a board by one clock, so a message's
 number here is its time in milliseconds times 4096 plus its tick, moved up past the number before it when two share

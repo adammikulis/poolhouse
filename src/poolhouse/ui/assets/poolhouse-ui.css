@@ -1,0 +1,68 @@
+/* poolhouse-ui tokens. Load this beside poolhouse-ui.js; override any --poolhouse-ui-* variable to theme. */
+:root {
+  color-scheme: dark light;
+  --poolhouse-ui-bg: #0b0f14;
+  --poolhouse-ui-surface: #111823;
+  --poolhouse-ui-sunken: #080c11;
+  --poolhouse-ui-line: #26323f;
+  --poolhouse-ui-line-strong: #5d7186;
+  --poolhouse-ui-text: #e6edf5;
+  --poolhouse-ui-muted: #8698ad;
+  --poolhouse-ui-accent: #35d6c3;
+  --poolhouse-ui-accent-ink: #35d6c3;
+  --poolhouse-ui-accent-dim: #1d7a70;
+  --poolhouse-ui-on-accent: #04120f;
+  --poolhouse-ui-green: #4ad07f;
+  --poolhouse-ui-yellow: #f2b544;
+  --poolhouse-ui-red: #f2685c;
+  --poolhouse-ui-green-ink: #4ad07f;
+  --poolhouse-ui-yellow-ink: #f2b544;
+  --poolhouse-ui-red-ink: #f2685c;
+  --poolhouse-ui-series-1: #35d6c3;
+  --poolhouse-ui-series-2: #5b8dd6;
+  --poolhouse-ui-series-3: #c58af9;
+  --poolhouse-ui-series-4: #e08b4c;
+  --poolhouse-ui-series-5: #9aa7f5;
+  --poolhouse-ui-series-6: #d97fb0;
+  --poolhouse-ui-focus: #8fb8ff;
+  --poolhouse-ui-radius: 10px;
+  --poolhouse-ui-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+  --poolhouse-ui-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --poolhouse-ui-shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --poolhouse-ui-bg: #f6f8fa; --poolhouse-ui-surface: #ffffff; --poolhouse-ui-sunken: #eceff3;
+    --poolhouse-ui-line: #dde3ea; --poolhouse-ui-line-strong: #7b8896;
+    --poolhouse-ui-text: #10161d; --poolhouse-ui-muted: #566574;
+    --poolhouse-ui-accent: #0b7468; --poolhouse-ui-accent-ink: #0b7468; --poolhouse-ui-accent-dim: #bfe9e3;
+    --poolhouse-ui-on-accent: #ffffff;
+    --poolhouse-ui-green: #198a4a; --poolhouse-ui-yellow: #b57600; --poolhouse-ui-red: #d6402f;
+    --poolhouse-ui-green-ink: #136a3a; --poolhouse-ui-yellow-ink: #765000; --poolhouse-ui-red-ink: #ad2417;
+    --poolhouse-ui-series-1: #0b7468; --poolhouse-ui-series-2: #3a6fc4; --poolhouse-ui-series-3: #8a4fd0;
+    --poolhouse-ui-series-4: #c25f1d; --poolhouse-ui-series-5: #5b66d6; --poolhouse-ui-series-6: #b8447f;
+    --poolhouse-ui-focus: #1a5fd0;
+    --poolhouse-ui-shadow: 0 1px 2px rgba(16,22,29,.06), 0 8px 24px -14px rgba(16,22,29,.25);
+  }
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --poolhouse-ui-bg: #f6f8fa; --poolhouse-ui-surface: #ffffff; --poolhouse-ui-sunken: #eceff3;
+  --poolhouse-ui-line: #dde3ea; --poolhouse-ui-line-strong: #7b8896;
+  --poolhouse-ui-text: #10161d; --poolhouse-ui-muted: #566574;
+  --poolhouse-ui-accent: #0b7468; --poolhouse-ui-accent-ink: #0b7468; --poolhouse-ui-accent-dim: #bfe9e3;
+  --poolhouse-ui-on-accent: #ffffff;
+  --poolhouse-ui-green: #198a4a; --poolhouse-ui-yellow: #b57600; --poolhouse-ui-red: #d6402f;
+  --poolhouse-ui-green-ink: #136a3a; --poolhouse-ui-yellow-ink: #765000; --poolhouse-ui-red-ink: #ad2417;
+  --poolhouse-ui-series-1: #0b7468; --poolhouse-ui-series-2: #3a6fc4; --poolhouse-ui-series-3: #8a4fd0;
+  --poolhouse-ui-series-4: #c25f1d; --poolhouse-ui-series-5: #5b66d6; --poolhouse-ui-series-6: #b8447f;
+  --poolhouse-ui-focus: #1a5fd0;
+  --poolhouse-ui-shadow: 0 1px 2px rgba(16,22,29,.06), 0 8px 24px -14px rgba(16,22,29,.25);
+}
+:root[data-theme="dark"] { color-scheme: dark; }
+
+/* An element that is defined late is laid out as a block meanwhile. */
+poolhouse-meter, poolhouse-progress, poolhouse-stepper, poolhouse-table, poolhouse-select, poolhouse-slider, poolhouse-toggle, poolhouse-path,
+poolhouse-toaster { display: block; }
+poolhouse-chip, poolhouse-sparkline { display: inline-block; }
+poolhouse-sheet:not([open]) { display: none; }

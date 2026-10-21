@@ -135,7 +135,7 @@ def results(junit: Path, root: Path) -> dict[str, dict[str, int]]:
 
 
 def merge_stamps(into: dict, more: dict) -> None:
-    """Fold read-time stamps of build output together; two different stamps of one file leave it unmatchable (None)."""
+    """Fold observed values together; conflicting values remain unmatchable (None)."""
     for rel, stamp in more.items():
         into[rel] = stamp if into.get(rel, stamp) == stamp else None
 
@@ -156,19 +156,21 @@ def recorded(folder: Path) -> tuple[dict[str, dict], str]:
             died += meta.get("died", ())
         for rel, row in data["files"].items():
             into = merged.setdefault(rel, {"reads": set(), "dirs": set(), "stats": set(), "links": {}, "marks": set(),
-                                           "violations": set(), "skipped": False, "collected": 0, "stamps": {}})
-            for name in ("reads", "dirs", "stats", "marks", "violations"):
+                                           "violations": set(), "skipped": False, "collected": 0, "stamps": {}, "fd_stats": {}, "unobserved": set()})
+            for name in ("reads", "dirs", "stats", "marks", "violations", "unobserved"):
                 into[name] |= set(row[name])
             into["links"].update(row["links"])
             merge_stamps(into["stamps"], row["stamps"])
+            merge_stamps(into["fd_stats"], row["fd_stats"])
             into["skipped"] = into["skipped"] or row["skipped"]
             into["collected"] = max(into["collected"], row["collected"])
     shared = merged.pop("*", None)
     for row in merged.values():
-        for name in ("reads", "dirs", "stats", "violations"):
+        for name in ("reads", "dirs", "stats", "violations", "unobserved"):
             row[name] |= shared[name] if shared else set()
         row["links"].update(shared["links"] if shared else {})
         merge_stamps(row["stamps"], shared["stamps"] if shared else {})
+        merge_stamps(row["fd_stats"], shared["fd_stats"] if shared else {})
     problem = f"worker {died[0]} died" if died else (
         f"worker {sorted(nodes - workers)[0]} did not report" if nodes - workers else "")
     return merged, problem
