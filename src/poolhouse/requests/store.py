@@ -44,7 +44,7 @@ def failures() -> tuple[type[BaseException], ...]:
     return (*_PLAIN_FAILURES, module.InvalidTag) if module is not None else _PLAIN_FAILURES
 PURPOSE = "requests"
 _AAD = b"poolhouse/requests/v1"
-_MAGIC = b"MLR1"
+_MAGIC = b"PHR1"
 SCHEMA_VERSION = 1
 DAY = 86400.0
 TTL_S = 300.0

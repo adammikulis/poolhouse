@@ -44,7 +44,7 @@ def test_a_bridge_without_a_lan_address_refuses_to_listen_on_every_interface():
 
 @pytest.mark.lan_network
 def test_udp_bridge_preserves_payload_and_member_address(bridge):
-    payload = b"MLD3\x00\xff encrypted beacon"
+    payload = b"PHD3\x00\xff encrypted beacon"
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as member:
         member.bind(("127.0.0.1", bridge.port))
         member.settimeout(2)
