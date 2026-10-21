@@ -7,6 +7,8 @@ import json
 import select
 import socket
 from collections.abc import Iterator
+from dataclasses import dataclass, field
+from hashlib import sha256
 from typing import Any
 
 from agents import Agent, ModelSettings, OpenAIChatCompletionsModel, RunConfig, Runner
@@ -197,6 +199,62 @@ def _completion_arguments(target, payload):
     return arguments
 
 
+_PREPARED = object()
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class PreparedCompletion:
+    """Factory-owned canonical SDK arguments within the trusted Python process."""
+
+    model: str
+    arguments_json: str
+    digest: str
+    _origin: object = field(repr=False, compare=False)
+
+    def __new__(cls):
+        raise TypeError("Use prepare_completion")
+
+    @property
+    def arguments(self) -> dict[str, Any]:
+        """Return an independent copy of the checked SDK arguments."""
+        return json.loads(checked_completion(self).arguments_json)
+
+
+def prepare_completion(target: Target, payload: dict[str, Any]) -> PreparedCompletion:
+    """Validate and freeze one request for the selected model without networking."""
+    try:
+        arguments = _completion_arguments(target, payload)
+        encoded = json.dumps(arguments, sort_keys=True, separators=(",", ":"), allow_nan=False)
+        if len(encoded.encode()) > MOST_BODY:
+            raise ValueError("Native completion input exceeds its byte limit")
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise ChatError("Invalid native completion request") from exc
+    request = object.__new__(PreparedCompletion)
+    for name, value in (("model", target.model), ("arguments_json", encoded),
+                        ("digest", sha256(encoded.encode()).hexdigest()), ("_origin", _PREPARED)):
+        object.__setattr__(request, name, value)
+    return request
+
+
+def checked_completion(request: PreparedCompletion) -> PreparedCompletion:
+    """Check factory provenance and canonical request integrity without networking."""
+    try:
+        if (type(request) is not PreparedCompletion or request._origin is not _PREPARED
+                or type(request.model) is not str or not request.model
+                or type(request.arguments_json) is not str or type(request.digest) is not str):
+            raise ValueError("Invalid prepared completion provenance")
+        encoded = request.arguments_json.encode()
+        if len(encoded) > MOST_BODY or sha256(encoded).hexdigest() != request.digest:
+            raise ValueError("Invalid prepared completion digest or size")
+        arguments = json.loads(encoded)
+        if (not isinstance(arguments, dict) or arguments.get("model") != request.model
+                or json.dumps(arguments, sort_keys=True, separators=(",", ":"), allow_nan=False) != request.arguments_json):
+            raise ValueError("Invalid prepared completion canonical arguments")
+    except (AttributeError, TypeError, ValueError, RecursionError) as exc:
+        raise ChatError("Invalid prepared completion request") from exc
+    return request
+
+
 def _completion_terminal(value, terminal):
     choices = value.get("choices")
     if not isinstance(choices, list) or len(choices) > 1 or (terminal and choices):
@@ -259,11 +317,10 @@ async def _completion_events(target, arguments, connection, control):
         yield _DONE
 
 
-def completion_stream(target: Target, payload: dict[str, Any], *, connection: Any = None,
+def completion_stream(target: Target, request: PreparedCompletion, *, connection: Any = None,
                       control: Any = None) -> Iterator[bytes]:
-    """Stream bounded native completion chunks through the selected SDK transport."""
-    try:
-        arguments = _completion_arguments(target, payload)
-    except (TypeError, ValueError, RecursionError) as exc:
-        raise ChatError("Invalid native completion request") from exc
-    return _bridge(_completion_events(target, arguments, connection, control), defer_done=True)
+    """Stream a prepared completion through the selected SDK transport."""
+    checked_completion(request)
+    if not isinstance(target, Target) or target.model != request.model:
+        raise ChatError("Prepared completion must use its selected model")
+    return _bridge(_completion_events(target, request.arguments, connection, control), defer_done=True)

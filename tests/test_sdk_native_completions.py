@@ -88,7 +88,7 @@ def test_actual_sdk_preserves_exact_native_payload_and_separate_provider_chunks(
                "chat_template_kwargs": {"enable_thinking": True, "preserve_thinking": True, "reasoning_effort": "low"}}
     expected = json.loads(json.dumps(payload))
     try:
-        pieces = sdk_chat.completion_stream(Target("model", fake.base_url + "/v1/chat/completions"), payload)
+        pieces = sdk_chat.completion_stream(Target("model", fake.base_url + "/v1/chat/completions"), sdk_chat.prepare_completion(Target("model", fake.base_url + "/v1/chat/completions"), payload))
         payload["messages"][0]["content"] = "Changed after admission"
         tools[0]["function"]["name"] = "substituted"
         output = []
@@ -111,7 +111,7 @@ def test_sdk_preserves_the_selected_native_token_field(token_key):
     fake.frames = lambda _body: [frame(terminal()), DONE]
     try:
         assert list(sdk_chat.completion_stream(Target("model", fake.base_url + "/v1/chat/completions"),
-                    {**PAYLOAD, token_key: 123}))[-1] == DONE
+                    sdk_chat.prepare_completion(Target("model", fake.base_url + "/v1/chat/completions"), {**PAYLOAD, token_key: 123})))[-1] == DONE
         assert fake.sent_to("/v1/chat/completions") == [{**PAYLOAD, token_key: 123}]
     finally:
         fake.close()
@@ -132,7 +132,7 @@ def test_invalid_native_payload_cannot_construct_client_or_open_network(monkeypa
     called = []
     monkeypatch.setattr(sdk_chat, "local_client", lambda *_args, **_kwargs: called.append(True))
     with pytest.raises(ChatError):
-        sdk_chat.completion_stream(Target("model", "http://127.0.0.1:1/v1/chat/completions"), {**PAYLOAD, **change})
+        sdk_chat.prepare_completion(Target("model", "http://127.0.0.1:1/v1/chat/completions"), {**PAYLOAD, **change})
     assert called == []
 
 
@@ -164,7 +164,7 @@ def test_native_missing_or_conflicting_terminal_never_emits_done(chunks):
     seen = []
     try:
         with pytest.raises(ChatError):
-            for block in sdk_chat.completion_stream(Target("model", fake.base_url + "/v1/chat/completions"), PAYLOAD):
+            for block in sdk_chat.completion_stream(Target("model", fake.base_url + "/v1/chat/completions"), sdk_chat.prepare_completion(Target("model", fake.base_url + "/v1/chat/completions"), PAYLOAD)):
                 seen.append(block)
         assert DONE not in seen
     finally:
@@ -177,7 +177,8 @@ def test_transfer_holds_coalesced_native_done_for_its_parent_commit(monkeypatch)
     fake.frames = lambda _body: [frame({"choices": [{"index": 0, "delta": {"content": "answer"}}]}) + frame(terminal()) + DONE]
     output = io.BytesIO()
     try:
-        transfer = Transfer(Target("model", fake.base_url + "/v1/chat/completions"), PAYLOAD, "native",
+        transfer = Transfer(Target("model", fake.base_url + "/v1/chat/completions"),
+                            sdk_chat.prepare_completion(Target("model", fake.base_url + "/v1/chat/completions"), PAYLOAD), "native",
                             source=sdk_chat.completion_stream)
         received, status = transfer.relay(SimpleNamespace(wfile=output), defer_done=True)
         assert status == "complete" and received.endswith(DONE)
@@ -205,7 +206,7 @@ def test_native_cancel_joins_socket_and_executor_before_device_release(monkeypat
             closed_source.set()
     monkeypatch.setattr(chat_stream, "turn", turn)
     with hanging_chat(headers=headers) as (url, requested, closed, requests):
-        transfer = Transfer(Target("model", url), PAYLOAD, "native", source=source)
+        transfer = Transfer(Target("model", url), sdk_chat.prepare_completion(Target("model", url), PAYLOAD), "native", source=source)
         transfer.worker.start()
         try:
             assert requested.wait(2)
@@ -233,7 +234,7 @@ def test_actual_sdk_redirect_never_reaches_other_listener(status):
     with (endpoint(lambda handler: handler.send_error(500)) as (other, foreign_requests, _finished),
           endpoint(redirect) as (selected, requests, _done)):
         with pytest.raises(ChatError):
-            list(sdk_chat.completion_stream(selected, PAYLOAD))
+            list(sdk_chat.completion_stream(selected, sdk_chat.prepare_completion(selected, PAYLOAD)))
         assert len(requests) == 1
         assert requests[0][1]["Authorization"] == "Bearer fixture-secret"
         assert foreign_requests == []
@@ -249,7 +250,7 @@ def test_actual_sdk_identity_encoding_succeeds(encodings):
         handler.end_headers()
         handler.wfile.write(frame(terminal()) + DONE)
     with endpoint(answer) as (target, requests, _finished):
-        assert list(sdk_chat.completion_stream(target, PAYLOAD))[-1] == DONE
+        assert list(sdk_chat.completion_stream(target, sdk_chat.prepare_completion(target, PAYLOAD)))[-1] == DONE
         assert requests[0][1]["Accept-Encoding"] == "identity"
 
 
@@ -272,7 +273,7 @@ def test_compressed_or_ambiguous_encoding_is_closed_before_sdk_decode(encodings,
         handler.wfile.flush()
     with endpoint(answer) as (target, _requests, finished):
         with pytest.raises(ChatError):
-            list(sdk_chat.completion_stream(target, PAYLOAD))
+            list(sdk_chat.completion_stream(target, sdk_chat.prepare_completion(target, PAYLOAD)))
         assert touched == [] and finished.wait(1)
 
 
@@ -297,7 +298,7 @@ def test_oversize_unterminated_event_stops_before_sdk_decoder_receives_excess(mo
             closed.set()
     with endpoint(answer) as (target, _requests, finished):
         with pytest.raises(ChatError):
-            list(sdk_chat.completion_stream(target, PAYLOAD))
+            list(sdk_chat.completion_stream(target, sdk_chat.prepare_completion(target, PAYLOAD)))
         assert sum(passed) <= 512 and closed.wait(1) and finished.wait(1)
         assert not any(thread.name.startswith("asyncio_") for thread in threading.enumerate())
 
@@ -310,7 +311,7 @@ def test_aggregate_reserialized_provider_fields_have_an_output_bound(monkeypatch
     seen = []
     try:
         with pytest.raises(ChatError, match="output exceeds"):
-            for block in sdk_chat.completion_stream(Target("model", fake.base_url + "/v1/chat/completions"), PAYLOAD):
+            for block in sdk_chat.completion_stream(Target("model", fake.base_url + "/v1/chat/completions"), sdk_chat.prepare_completion(Target("model", fake.base_url + "/v1/chat/completions"), PAYLOAD)):
                 seen.append(block)
         assert sum(map(len, seen)) <= 512 and DONE not in seen
     finally:
@@ -328,7 +329,7 @@ def test_cleanup_failure_never_exposes_native_done(monkeypatch):
     seen = []
     try:
         with pytest.raises((ChatError, RuntimeError)):
-            for block in sdk_chat.completion_stream(Target("model", fake.base_url + "/v1/chat/completions"), PAYLOAD):
+            for block in sdk_chat.completion_stream(Target("model", fake.base_url + "/v1/chat/completions"), sdk_chat.prepare_completion(Target("model", fake.base_url + "/v1/chat/completions"), PAYLOAD)):
                 seen.append(block)
         assert DONE not in seen
         assert not any(thread.name.startswith("asyncio_") for thread in threading.enumerate())
@@ -343,5 +344,96 @@ def test_oversized_native_tool_schema_cannot_construct_client(monkeypatch):
     payload = {**PAYLOAD, "tools": [{"type": "function", "function": {"name": "read",
                "parameters": {"type": "object", "description": "x" * 512}}}]}
     with pytest.raises(ChatError):
-        sdk_chat.completion_stream(Target("model", "http://127.0.0.1:1/v1/chat/completions"), payload)
+        sdk_chat.prepare_completion(Target("model", "http://127.0.0.1:1/v1/chat/completions"), payload)
     assert called == []
+
+
+def test_prepared_factory_canonical_digest_and_independent_copies(monkeypatch):
+    from dataclasses import FrozenInstanceError
+    from hashlib import sha256
+    target = Target("model", "http://127.0.0.1:1/v1/chat/completions", token="private-target-token")
+    payload = {**PAYLOAD, "chat_template_kwargs": {"enable_thinking": True}}
+    request = sdk_chat.prepare_completion(target, payload)
+    reordered = sdk_chat.prepare_completion(target, dict(reversed(list(payload.items()))))
+    assert request.arguments_json == reordered.arguments_json and request.digest == reordered.digest
+    assert request.digest == sha256(request.arguments_json.encode()).hexdigest()
+    assert json.loads(request.arguments_json)["extra_body"] == {"chat_template_kwargs": {"enable_thinking": True}}
+    assert "private-target-token" not in request.arguments_json and target.url not in request.arguments_json
+    assert "_origin" not in request.arguments_json
+    monkeypatch.setattr(sdk_chat, "local_client", lambda *_args, **_kwargs: pytest.fail("client constructed"))
+    assert sdk_chat.checked_completion(request) is request
+    copy = request.arguments
+    copy["messages"][0]["content"] = "mutated copy"
+    assert request.arguments["messages"][0]["content"] == "Inspect the source"
+    with pytest.raises(FrozenInstanceError):
+        request.model = "other"
+    messages = [{"role": "user", "content": "one"}, {"role": "assistant", "content": "two"}]
+    first = sdk_chat.prepare_completion(target, {**PAYLOAD, "messages": messages})
+    second = sdk_chat.prepare_completion(target, {**PAYLOAD, "messages": list(reversed(messages))})
+    assert first.digest != second.digest
+
+
+def test_prepared_constructor_and_unprepared_stream_are_refused_before_client(monkeypatch):
+    target = Target("model", "http://127.0.0.1:1/v1/chat/completions")
+    monkeypatch.setattr(sdk_chat, "local_client", lambda *_args, **_kwargs: pytest.fail("client constructed"))
+    with pytest.raises(TypeError, match="prepare_completion"):
+        sdk_chat.PreparedCompletion()
+    forged = object.__new__(sdk_chat.PreparedCompletion)
+    for value in (PAYLOAD, forged, {"arguments_json": "{}", "digest": "forged"}):
+        with pytest.raises(ChatError):
+            sdk_chat.checked_completion(value)
+        with pytest.raises(ChatError):
+            sdk_chat.completion_stream(target, value)
+    request = sdk_chat.prepare_completion(target, PAYLOAD)
+    with pytest.raises(ChatError, match="selected model"):
+        sdk_chat.completion_stream(Target("other", target.url), request)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("_origin", object()), ("digest", "0" * 64), ("arguments_json", "{}"),
+    ("model", "other"), ("arguments_json", None), ("digest", None),
+])
+def test_damaged_factory_record_is_refused_by_checker_property_and_stream(monkeypatch, field, value):
+    target = Target("model", "http://127.0.0.1:1/v1/chat/completions")
+    request = sdk_chat.prepare_completion(target, PAYLOAD)
+    object.__setattr__(request, field, value)
+    monkeypatch.setattr(sdk_chat, "local_client", lambda *_args, **_kwargs: pytest.fail("client constructed"))
+    with pytest.raises(ChatError):
+        sdk_chat.checked_completion(request)
+    with pytest.raises(ChatError):
+        _ = request.arguments
+    with pytest.raises(ChatError):
+        sdk_chat.completion_stream(target, request)
+
+
+def test_prepared_translated_canonical_size_is_bounded(monkeypatch):
+    payload = {**PAYLOAD, "chat_template_kwargs": {}}
+    target = Target("model", "http://127.0.0.1:1/v1/chat/completions")
+    request = sdk_chat.prepare_completion(target, payload)
+    # Translation wraps the vendor controls in the SDK extra_body object.
+    monkeypatch.setattr(sdk_chat, "MOST_BODY", len(request.arguments_json.encode()) - 1)
+    monkeypatch.setattr(sdk_chat, "local_client", lambda *_args, **_kwargs: pytest.fail("client constructed"))
+    with pytest.raises(ChatError):
+        sdk_chat.prepare_completion(target, payload)
+    with pytest.raises(ChatError):
+        sdk_chat.checked_completion(request)
+
+
+@pytest.mark.parametrize("replacement", ["model", "spacing", "nonfinite"])
+def test_integrity_checks_model_and_canonical_encoding_even_with_matching_hash(monkeypatch, replacement):
+    from hashlib import sha256
+    target = Target("model", "http://127.0.0.1:1/v1/chat/completions")
+    request = sdk_chat.prepare_completion(target, PAYLOAD)
+    arguments = request.arguments
+    if replacement == "model":
+        arguments["model"] = "other"
+    if replacement == "nonfinite":
+        arguments["temperature"] = float("nan")
+    encoded = json.dumps(arguments, sort_keys=True, separators=(",", ":"))
+    if replacement == "spacing":
+        encoded += " "
+    object.__setattr__(request, "arguments_json", encoded)
+    object.__setattr__(request, "digest", sha256(encoded.encode()).hexdigest())
+    monkeypatch.setattr(sdk_chat, "local_client", lambda *_args, **_kwargs: pytest.fail("client constructed"))
+    with pytest.raises(ChatError):
+        sdk_chat.checked_completion(request)
