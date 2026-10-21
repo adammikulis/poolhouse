@@ -5,12 +5,12 @@ from __future__ import annotations
 import contextlib
 import json
 import queue
-import socket
+import sys
 import threading
 from typing import Any
 
-from poolhouse.gate import QueueTimeout, turn
-from poolhouse.http import ServerError
+from poolhouse.gate import turn
+from poolhouse.http_cancel import Cancellation, scope
 
 from .chat import stream
 
@@ -43,25 +43,19 @@ class Transfer:
     def __init__(self, target: Any, payload: dict, cid: str, *, source: Any = None) -> None:
         self.target, self.payload, self.cid = target, payload, cid
         self.source = source
-        self.cancelled = threading.Event()
+        self.cancellation = Cancellation()
+        self.cancelled = self.cancellation.event
+        self.done = threading.Event()
+        self.failure: BaseException | None = None
         self.events: queue.Queue = queue.Queue(maxsize=64)
-        self.response = None
-        self.lock = threading.Lock()
         self.worker = threading.Thread(target=self.run, daemon=True)
 
     def bind(self, response: Any) -> None:
-        with self.lock:
-            self.response = response
         if self.cancelled.is_set():
-            self.cancel()
+            response.close()
 
     def cancel(self) -> None:
-        self.cancelled.set()
-        with self.lock:
-            response = self.response
-        if response is not None:
-            with contextlib.suppress(AttributeError, OSError):
-                response.fp.raw._sock.shutdown(socket.SHUT_RDWR)
+        self.cancellation.set()
 
     def emit(self, block: bytes | None) -> None:
         while not self.cancelled.is_set():
@@ -91,18 +85,24 @@ class Transfer:
                     return
                 self.state("rebuilding", "Rebuilding model context from the conversation transcript")
                 self.state("loading", "Waiting for the model to begin generating")
-                for block in (self.source or stream)(self.target, self.payload, control=self):
-                    self.emit(block)
-                    if self.cancelled.is_set():
-                        break
-        except (ServerError, QueueTimeout, OSError, ValueError) as exc:
+                with scope(self.cancellation), contextlib.closing(
+                        (self.source or stream)(self.target, self.payload, control=self)) as upstream:
+                    for block in upstream:
+                        self.emit(block)
+                        if self.cancelled.is_set():
+                            break
+        except (OSError, ValueError, RuntimeError) as exc:
             if not self.cancelled.is_set():
                 self.emit(frame({"error": {"message": str(exc)}}))
                 self.emit(b"data: [DONE]\n\n")
         finally:
-            if acquired:
-                lock.release()
-            self.emit(None)
+            self.failure = sys.exception()
+            try:
+                if acquired:
+                    lock.release()
+                self.emit(None)
+            finally:
+                self.done.set()
 
     def relay(self, handler: Any, *, defer_done: bool = False) -> tuple[bytes, str]:
         said = bytearray()
@@ -113,6 +113,8 @@ class Transfer:
                 try:
                     block = self.events.get(timeout=0.5)
                 except queue.Empty:
+                    if self.done.is_set():
+                        break
                     block = b": keep-alive\n\n"
                 if block is None:
                     break
@@ -127,5 +129,7 @@ class Transfer:
             status = "cancelled"
         finally:
             self.cancel()
-            self.worker.join(timeout=2)
+            self.worker.join()
+        if self.failure is not None:
+            raise self.failure
         return bytes(said), status
