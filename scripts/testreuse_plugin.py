@@ -5,13 +5,14 @@ import contextlib
 import functools
 import json
 import os
+import stat
 import sys
 import tempfile
 import threading
 from pathlib import Path
 
 import pytest
-from testreuse_facts import BUILT_DIRS
+from testreuse_facts import BUILT_DIRS, stat_fields
 
 ROOT = Path(os.environ.get("DEV_TEST_REUSE_ROOT", ".")).resolve()
 RECORD = Path(os.environ.get("DEV_TEST_REUSE_RECORD", ""))
@@ -41,11 +42,12 @@ DIED: list[str] = []
 ENABLED = bool(os.environ.get("DEV_TEST_REUSE_RECORD"))
 BUSY: list[bool] = []
 OPEN_CALLS = threading.local()
+_STAT = os.stat
 
 
 def _entry(rel: str) -> dict:
     return FILES.setdefault(rel, {"reads": set(), "dirs": set(), "stats": set(), "links": {}, "marks": set(),
-                                  "violations": set(), "skipped": False, "collected": 0, "stamps": {}})
+                                  "violations": set(), "skipped": False, "collected": 0, "stamps": {}, "fd_stats": {}, "unobserved": set()})
 
 
 def _under(path: Path, base: Path) -> bool:
@@ -69,7 +71,7 @@ def _source_of(path: str) -> str:
 
 
 def _fd_path(descriptor: int) -> str:
-    """The path a directory descriptor names, or empty when the platform cannot say."""
+    """The path a descriptor names, or empty when the platform cannot say."""
     try:
         return str(Path(f"/proc/self/fd/{descriptor}").readlink())
     except OSError:
@@ -249,6 +251,58 @@ def _note_probe(path: object, dir_fd: object) -> None:
             BUSY.pop()
 
 
+def _note_descriptor(descriptor: int, result: os.stat_result, original) -> None:
+    bucket = _entry(CURRENT[-1])
+    if BUSY:
+        bucket["unobserved"].add("fstat during another probe")
+        return
+    BUSY.append(True)
+    try:
+        raw = _fd_path(descriptor)
+        path = Path(raw)
+        if not raw or not path.is_absolute() or path.resolve(strict=True) != path:
+            bucket["unobserved"].add("fstat without a canonical path")
+            return
+        rel = _source_of(raw)
+        fields = stat_fields(result)
+        if (not rel or not stat.S_ISREG(result.st_mode)
+                or fields != stat_fields(_STAT(path))
+                or fields != stat_fields(original(descriptor))):
+            bucket["unobserved"].add("fstat without a stable checkout file")
+            return
+        previous = bucket["fd_stats"].get(rel, fields)
+        bucket["fd_stats"][rel] = fields if previous == fields else None
+        if previous != fields:
+            bucket["unobserved"].add("fstat metadata changed during execution")
+        _note_path(bucket, raw, "reads")
+        _note_path(bucket, raw, "stats")
+        if (path.resolve(strict=True) != path or fields != stat_fields(_STAT(path))
+                or fields != stat_fields(original(descriptor))):
+            bucket["unobserved"].add("fstat changed during observation")
+    except (OSError, ValueError, TypeError):
+        bucket["unobserved"].add("fstat observation unavailable")
+    finally:
+        BUSY.pop()
+
+
+def _probe_fstat(original):
+    @functools.wraps(original)
+    def wrapper(fd):
+        try:
+            result = original(fd)
+        except (OSError, ValueError, TypeError, OverflowError):
+            if CURRENT:
+                _entry(CURRENT[-1])["unobserved"].add("fstat failed")
+            raise
+        if CURRENT:
+            if type(fd) is int:
+                _note_descriptor(fd, result, original)
+            else:
+                _entry(CURRENT[-1])["unobserved"].add("fstat with an indirect descriptor")
+        return result
+    return wrapper
+
+
 def _probe_stat(original):
     @functools.wraps(original)
     def wrapper(path, *, dir_fd=None, follow_symlinks=True):
@@ -275,7 +329,8 @@ def _probe_access(original):
 
 if ENABLED:
     sys.addaudithook(_audit)
-    for _name, _make in (("stat", _probe_stat), ("lstat", _probe_lstat), ("access", _probe_access), ("open", _probe_open)):
+    for _name, _make in (("fstat", _probe_fstat), ("stat", _probe_stat), ("lstat", _probe_lstat),
+                         ("access", _probe_access), ("open", _probe_open)):
         _original = getattr(os, _name)
         _wrapper = _make(_original)
         for _support in (os.supports_follow_symlinks, os.supports_effective_ids, os.supports_dir_fd,

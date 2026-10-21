@@ -38,3 +38,9 @@ def changed_pins(pins: list[str]) -> str:
         if now.get(name) != version:
             return f"installed distribution changed: {name} {version} -> {now.get(name)}"
     return ""
+
+
+def stat_fields(value: object) -> dict[str, int | float]:
+    """The primitive metadata fields returned by the platform's stat syscall."""
+    return {name: field for name in dir(value) if name.startswith("st_")
+            and isinstance(field := getattr(value, name), (int, float))}

@@ -32,7 +32,7 @@ def test_a_test_that_makes_its_short_temp_folder_under_the_literal_tmp_is_stored
     (project / FILE).write_text(
         "import os\nimport shutil\nimport tempfile\n\n\ndef test_a():\n"
         "    root = tempfile.mkdtemp(prefix='ml', dir='/tmp')\n    os.mkdir(os.path.join(root, 'node'), 0o700)\n"
-        "    os.chmod(os.path.join(root, 'node'), 0o700)\n    shutil.rmtree(root)\n")
+        "    os.chmod(os.path.join(root, 'node'), 0o700)\n    os.rmdir(os.path.join(root, 'node'))\n    os.rmdir(root)\n")
     report, _ = attempt(project, store)
     assert report.status == 0 and "pass" in kinds(store)
 
@@ -105,7 +105,8 @@ def test_a_run_that_reads_a_file_in_the_shared_tmp_it_did_not_make_is_not_stored
     (project / "tests/test_foreign.py").write_text(f"def test_it():\n    open({name!r}).read()\n")
     (project / "tests/test_own.py").write_text(
         "import os\nimport shutil\nimport tempfile\n\n\ndef test_it():\n    root = tempfile.mkdtemp(prefix='ml', dir='/tmp')\n"
-        "    open(os.path.join(root, 'x'), 'w').write('1')\n    open(os.path.join(root, 'x')).read()\n    os.listdir(root)\n    shutil.rmtree(root)\n")
+        "    open(os.path.join(root, 'x'), 'w').write('1')\n    open(os.path.join(root, 'x')).read()\n    os.listdir(root)\n"
+        "    os.unlink(os.path.join(root, 'x'))\n    os.rmdir(root)\n")
     try:
         report, _ = attempt(project, store, "tests/test_foreign.py", "tests/test_own.py")
     finally:
