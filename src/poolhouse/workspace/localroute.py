@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from poolhouse import coding, roles
+from poolhouse import coding, harnessing, roles
 from poolhouse.board import person
 from poolhouse.board.session import Session
 from poolhouse.errors import Denied
@@ -95,6 +95,8 @@ def _write(base: Path, session: Callable[[], Session], route: str, body: bytes) 
     if route == "start":
         data = _typed(body, START_KEYS)
         profile = data.get("profile") or "coding"
+        if profile == "coding":
+            harnessing.require_isolated_execution()
         role = data.get("role") or (la.PLAN_AND_GO if profile == "coding" else roles.DEFAULT)
         context = lp.parse_ctx(data.get("ctx", "")) or lp.profile(profile).ctx
         try:

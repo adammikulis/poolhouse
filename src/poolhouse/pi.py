@@ -111,6 +111,7 @@ def launch(argv: Sequence[str] | None = None, *, say: Callable[[str], None] = sa
         return 2
     try:
         harnessing.check_role(args.role)
+        harnessing.require_isolated_execution()
     except ValueError as why:
         say(f"error: {why}")
         return 2
