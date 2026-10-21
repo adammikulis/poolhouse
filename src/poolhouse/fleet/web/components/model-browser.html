@@ -135,6 +135,7 @@ model-browser #browser-pages{display:flex;gap:12px;align-items:center;margin-top
         .filter((x) => isWeight(x.name) && x.name.toLowerCase().includes(this.search.typed.toLowerCase()));
       this.description.textContent = "Models already on this machine and authenticated machines in your Pool. No internet search.";
       this.filters.hidden = true;
+      this.filterSummary();
       this.pages.replaceChildren();
       const groups = this.grouped(rows);
       this.results.replaceChildren(...(groups.length ? groups.map((group) => this.variantRow(group, running))
@@ -213,7 +214,7 @@ model-browser #browser-pages{display:flex;gap:12px;align-items:center;margin-top
 
     filterSummary() {
       const labels=[this.bits.value ? this.bits.value+'-bit' : '',this.quantFamily.value];
-      if(this.source==='hub'&&this.hub){const all=this.hub.families||[];if(this.search.families?.size!==all.length)labels.push(this.search.families?.size+' families');if(this.search.rude)labels.push('uncensored included');}
+      if(this.source==='hub'&&this.hub){const all=this.hub.families||[];if(this.search.families&&this.search.families.size!==all.length)labels.push(this.search.families?.size+' families');if(this.search.rude)labels.push('uncensored included');}
       this.querySelector('details.aside summary').textContent='Advanced model filters'+(labels.filter(Boolean).length?' · '+labels.filter(Boolean).join(', '):'');
     }
     key() { return JSON.stringify([this.search.typed, this.search.page, this.search.rude]); }
@@ -253,7 +254,7 @@ model-browser #browser-pages{display:flex;gap:12px;align-items:center;margin-top
       this.filters.hidden = false;
       const uncensored = el("input", { type: "checkbox", id: "rude" });
       uncensored.checked = s.rude;
-      uncensored.onchange = () => { s.rude = uncensored.checked; s.page = 0; s.families = null; this.loadHub(); };
+      uncensored.onchange = () => { s.rude = uncensored.checked; s.page = 0; s.families = null; this.filterSummary(); this.loadHub(); };
       this.filters.replaceChildren(el("div", { class: "chips" },
         ...(response.families || []).map((family, i) => {
           const box = el("input", { type: "checkbox", id: `family-${i}` });

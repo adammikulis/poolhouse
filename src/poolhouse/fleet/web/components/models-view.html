@@ -14,14 +14,10 @@ models-view .models-stat:nth-child(1) .stat-icon{background:var(--poolhouse-oran
 models-view .models-stat:nth-child(2) .stat-icon{background:var(--poolhouse-cyan,#2de2e6);color:var(--poolhouse-cyan-ink,var(--poolhouse-navy,#1b1f3a))}
 models-view .models-stat:nth-child(3) .stat-icon{background:var(--poolhouse-yellow,#ffd166);color:var(--poolhouse-yellow-ink,var(--poolhouse-navy,#1b1f3a))}
 models-view #models-here{padding:0;border:0;background:transparent;min-height:0;flex:1}
-models-view #models:has(#model-discovery[open]) #models-here{display:none}
-models-view #models:has(#model-discovery[open]) .models-overview{display:none}
+models-view #models:has(#model-discovery:not([hidden])) #models-here{display:none}
+models-view #models:has(#model-discovery:not([hidden])) .models-overview{display:none}
 models-view #model-discovery{margin:0;padding:12px;border-radius:12px;background:var(--bg-raised);border:1px solid var(--line);flex-shrink:0}
-models-view #model-discovery:not([open]){display:none}
-models-view #model-discovery[open]{display:flex;flex-direction:column;gap:12px;min-height:0;flex:1;overflow:hidden}
-models-view #model-discovery>summary{font-weight:750;font-size:17px;cursor:pointer}
-models-view #model-discovery::details-content{display:flex;flex:1;min-height:0;overflow:hidden}
-models-view #model-discovery[open]>summary{margin:0;flex-shrink:0}
+models-view #model-discovery:not([hidden]){display:flex;flex-direction:column;gap:12px;min-height:0;flex:1;overflow:hidden}
 models-view #models-getting,models-view #models-unfinished{background:var(--bg-raised);border:1px solid var(--line);border-radius:16px;padding:12px;margin:0;overflow:visible;flex-shrink:0}
 models-view .models-utilities{margin-top:0;display:flex;gap:8px 16px;flex-shrink:0;flex-wrap:wrap;color:var(--muted);font-size:13px}
 models-view #models-room{margin:0;flex-shrink:0}
@@ -37,7 +33,7 @@ models-view .model-loading{padding:28px;border-radius:16px;background:var(--bg-r
     <header class="models-heading"><div><h1>Models</h1></div><button type="button" id="add-model">+ Add a model</button></header>
     <div class="models-overview"><div class="models-stat"><div class="stat-icon" aria-hidden="true">▦</div><div><strong id="models-count">—</strong><br><span>Installed models</span></div></div><div class="models-stat"><div class="stat-icon" aria-hidden="true">↗</div><div><strong id="models-running">—</strong><br><span>Running models</span></div></div><div class="models-stat"><div class="stat-icon" aria-hidden="true">◉</div><div><strong id="models-free">—</strong><br><span>Free storage on this device</span></div></div></div>
     <section id="models-here"><models-library></models-library></section>
-    <details id="model-discovery"><summary>Add from your Pool or Hugging Face</summary><model-browser></model-browser></details>
+    <section id="model-discovery" aria-label="Add models from your Pool or Hugging Face" hidden><model-browser></model-browser></section>
     <div class="models-utilities"><a href="#fit">Explore capacity &amp; performance →</a><a href="#settings">Manage model runtimes in Settings →</a></div>
     <div class="models-auxiliary" role="region" aria-label="Model downloads and device controls" tabindex="0">
     <div id="models-note" role="status"></div>
@@ -62,13 +58,11 @@ models-view .model-loading{padding:28px;border-radius:16px;background:var(--bg-r
       const add = this.querySelector('#add-model'), discovery = this.querySelector('#model-discovery');
       add.setAttribute('aria-controls', 'model-discovery'); add.setAttribute('aria-expanded', 'false');
       this.querySelector('#models-here').addEventListener('focusin', event => { this.libraryFocus = event.composedPath()[0]; });
-      discovery.addEventListener('toggle', () => {
-        add.textContent = discovery.open ? 'Back to installed models' : '+ Add a model';
-        add.setAttribute('aria-expanded', String(discovery.open));
-      });
       add.onclick = () => {
-        discovery.open = !discovery.open;
-        if (discovery.open) this.browser.hunt.focus();
+        discovery.hidden = !discovery.hidden;
+        add.textContent = discovery.hidden ? '+ Add a model' : 'Back to installed models';
+        add.setAttribute('aria-expanded', String(!discovery.hidden));
+        if (!discovery.hidden) this.browser.hunt.focus();
         else (this.libraryFocus?.isConnected ? this.libraryFocus : this.querySelector('models-library').search).focus({preventScroll:true});
       };
       this.progress = new Map();

@@ -130,3 +130,33 @@ def test_auxiliary_controls_share_a_bounded_region(inventory_page, tmp_path, the
     expect(page.locator('#models-room summary')).to_be_in_viewport()
     page.screenshot(path=tmp_path / 'models-auxiliary-memory.png')
     assert not errors
+
+
+@pytest.mark.parametrize(('width', 'theme'), [(960, 'light'), (390, 'dark')])
+def test_discovery_filter_summary_survives_source_and_pane_changes(inventory_page, tmp_path, width, theme):
+    served, page, _, errors = inventory_page
+    served.ui.settings.appearance = {'active_theme': theme, 'saved_themes': []}
+    page.set_viewport_size({'width': width, 'height': 844})
+    page.goto(f'http://127.0.0.1:{served.port}/ui/#models')
+    page.get_by_role('button', name='+ Add a model', exact=True).click()
+    page.get_by_role('button', name='Hugging Face', exact=True).click()
+    summary = page.locator('model-browser details.aside > summary')
+    summary.click()
+    page.get_by_role('checkbox', name='Fixture', exact=True).uncheck()
+    expect(summary).to_have_text('Advanced model filters · 0 families')
+    summary.click()
+    expect(summary).to_be_focused()
+    page.screenshot(path=tmp_path / 'models-filter-summary.png')
+    page.get_by_role('button', name='In your Pool', exact=True).click()
+    expect(summary).to_have_text('Advanced model filters')
+    page.get_by_role('button', name='Hugging Face', exact=True).click()
+    expect(summary).to_have_text('Advanced model filters · 0 families')
+    summary.click()
+    page.get_by_role('checkbox', name='Include uncensored builds', exact=True).check()
+    expect(summary).to_have_text('Advanced model filters · uncensored included')
+    page.screenshot(path=tmp_path / 'models-filters-open.png')
+    page.get_by_role('button', name='Back to installed models', exact=True).click()
+    page.get_by_role('button', name='+ Add a model', exact=True).click()
+    expect(page.get_by_role('checkbox', name='Include uncensored builds', exact=True)).to_be_checked()
+    expect(summary).to_have_text('Advanced model filters · uncensored included')
+    assert not errors
