@@ -23,7 +23,8 @@ def route(request, state):
         state["posts"].append((path, request.request.post_data_json))
     body = {"ok": True}
     if path == "/ui/setup":
-        body = {"needs_setup": False, "needs_password": False, "name": "local-test"}
+        body = {"needs_setup": False, "needs_password": False, "name": "local-test",
+                "experimental_notice_accepted": True}
     elif path == "/ui/models":
         body = {"free_gb": 120, "here": [{"name": "quill-27B.gguf", "size": 1000},
                  {"name": "quill-27B.draft.gguf", "size": 50}],
