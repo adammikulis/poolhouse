@@ -30,4 +30,6 @@ def test_native_picker_and_app_capabilities(tmp_path):
     assert process.returncode == 0, stdout + stderr
     assert 'test result: ok.' in stdout and '0 failed;' in stdout, stdout + stderr
     assert 'studio_watch::tests::only_daemon_mode_and_actual_os_selection_reach_private_completion ... ok' in stdout
+    assert 'coding_project::tests::folder_selection_is_private_and_returns_only_opaque_project ... ok' in stdout
+    assert 'coding_project::tests::late_completion_rejection_is_never_retried_or_rebound ... ok' in stdout
     assert 'security_tests::capabilities_reject_remote_shell_and_foreign_windows ... ok' in stdout

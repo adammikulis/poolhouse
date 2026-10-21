@@ -13,6 +13,7 @@
     "allow-close-choice",
     "allow-on-closing",
     "allow-renew-session",
-    "allow-choose-studio-watch-source"
+    "allow-choose-studio-watch-source",
+    "allow-choose-coding-project"
   ]
 }
