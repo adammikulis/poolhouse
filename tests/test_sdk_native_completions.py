@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import pytest
 from test_chat_stream import hanging_chat
 
-from poolhouse.client import sdk
+from poolhouse.client import completion, sdk
 from poolhouse.fleet import chat_stream, sdk_chat
 from poolhouse.fleet.chat import ChatError, Target
 from poolhouse.fleet.chat_stream import Transfer, frame
@@ -361,7 +361,7 @@ def test_prepared_factory_canonical_digest_and_independent_copies(monkeypatch):
     assert "private-target-token" not in request.arguments_json and target.url not in request.arguments_json
     assert "_origin" not in request.arguments_json
     monkeypatch.setattr(sdk_chat, "local_client", lambda *_args, **_kwargs: pytest.fail("client constructed"))
-    assert sdk_chat.checked_completion(request) is request
+    assert completion.checked_completion(request) is request
     copy = request.arguments
     copy["messages"][0]["content"] = "mutated copy"
     assert request.arguments["messages"][0]["content"] == "Inspect the source"
@@ -377,11 +377,11 @@ def test_prepared_constructor_and_unprepared_stream_are_refused_before_client(mo
     target = Target("model", "http://127.0.0.1:1/v1/chat/completions")
     monkeypatch.setattr(sdk_chat, "local_client", lambda *_args, **_kwargs: pytest.fail("client constructed"))
     with pytest.raises(TypeError, match="prepare_completion"):
-        sdk_chat.PreparedCompletion()
-    forged = object.__new__(sdk_chat.PreparedCompletion)
+        completion.PreparedCompletion()
+    forged = object.__new__(completion.PreparedCompletion)
     for value in (PAYLOAD, forged, {"arguments_json": "{}", "digest": "forged"}):
-        with pytest.raises(ChatError):
-            sdk_chat.checked_completion(value)
+        with pytest.raises(ValueError):
+            completion.checked_completion(value)
         with pytest.raises(ChatError):
             sdk_chat.completion_stream(target, value)
     request = sdk_chat.prepare_completion(target, PAYLOAD)
@@ -398,9 +398,9 @@ def test_damaged_factory_record_is_refused_by_checker_property_and_stream(monkey
     request = sdk_chat.prepare_completion(target, PAYLOAD)
     object.__setattr__(request, field, value)
     monkeypatch.setattr(sdk_chat, "local_client", lambda *_args, **_kwargs: pytest.fail("client constructed"))
-    with pytest.raises(ChatError):
-        sdk_chat.checked_completion(request)
-    with pytest.raises(ChatError):
+    with pytest.raises(ValueError):
+        completion.checked_completion(request)
+    with pytest.raises(ValueError):
         _ = request.arguments
     with pytest.raises(ChatError):
         sdk_chat.completion_stream(target, request)
@@ -412,11 +412,12 @@ def test_prepared_translated_canonical_size_is_bounded(monkeypatch):
     request = sdk_chat.prepare_completion(target, payload)
     # Translation wraps the vendor controls in the SDK extra_body object.
     monkeypatch.setattr(sdk_chat, "MOST_BODY", len(request.arguments_json.encode()) - 1)
+    monkeypatch.setattr(completion, "MOST_BODY", len(request.arguments_json.encode()) - 1)
     monkeypatch.setattr(sdk_chat, "local_client", lambda *_args, **_kwargs: pytest.fail("client constructed"))
     with pytest.raises(ChatError):
         sdk_chat.prepare_completion(target, payload)
-    with pytest.raises(ChatError):
-        sdk_chat.checked_completion(request)
+    with pytest.raises(ValueError):
+        completion.checked_completion(request)
 
 
 @pytest.mark.parametrize("replacement", ["model", "spacing", "nonfinite"])
@@ -435,8 +436,8 @@ def test_integrity_checks_model_and_canonical_encoding_even_with_matching_hash(m
     object.__setattr__(request, "arguments_json", encoded)
     object.__setattr__(request, "digest", sha256(encoded.encode()).hexdigest())
     monkeypatch.setattr(sdk_chat, "local_client", lambda *_args, **_kwargs: pytest.fail("client constructed"))
-    with pytest.raises(ChatError):
-        sdk_chat.checked_completion(request)
+    with pytest.raises(ValueError):
+        completion.checked_completion(request)
 
 
 @pytest.mark.parametrize("model", [1, True, None, ""])
