@@ -144,7 +144,8 @@ def _completion_arguments(target, payload):
     if len(encoded.encode()) > MOST_BODY:
         raise ValueError("Native completion input exceeds its byte limit")
     arguments = json.loads(encoded)
-    if arguments != payload or arguments.get("model") != target.model or not target.model:
+    if (arguments != payload or type(target.model) is not str or not target.model
+            or arguments.get("model") != target.model):
         raise ValueError("Native completion must use its selected model and literal JSON")
     if (not isinstance(arguments.get("messages"), list) or not arguments["messages"]
             or any(not isinstance(message, dict) or message.get("role") not in

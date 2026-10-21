@@ -437,3 +437,11 @@ def test_integrity_checks_model_and_canonical_encoding_even_with_matching_hash(m
     monkeypatch.setattr(sdk_chat, "local_client", lambda *_args, **_kwargs: pytest.fail("client constructed"))
     with pytest.raises(ChatError):
         sdk_chat.checked_completion(request)
+
+
+@pytest.mark.parametrize("model", [1, True, None, ""])
+def test_factory_refuses_invalid_trusted_target_model_before_client(monkeypatch, model):
+    target = Target(model, "http://127.0.0.1:1/v1/chat/completions")
+    monkeypatch.setattr(sdk_chat, "local_client", lambda *_args, **_kwargs: pytest.fail("client constructed"))
+    with pytest.raises(ChatError):
+        sdk_chat.prepare_completion(target, {**PAYLOAD, "model": model})
