@@ -77,10 +77,11 @@ def test_cli_creation_requires_an_explicit_pool_name(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def serving(tmp_path):
+def serving(tmp_path, request):
+    from test_experimental_notice import NoticeServing
     from test_fleet_ui import Serving
 
-    server = Serving(tmp_path)
+    server = (NoticeServing if getattr(request, "param", None) == "fresh-notice" else Serving)(tmp_path)
     yield server
     server.close()
 
@@ -119,8 +120,34 @@ def password_pool(tmp_path, serving):
         host.stop()
 
 
+def capture_join(page, directory, name):
+    page.screenshot(path=str(directory / (name + ".png")), full_page=True)
+
+
+def open_pool_join(page, serving, directory):
+    from playwright.sync_api import expect
+
+    page.goto(f"http://127.0.0.1:{serving.port}/ui/")
+    notice = page.locator("experimental-notice")
+    expect(notice.get_by_role("heading", name="Poolhouse is experimental")).to_be_visible()
+    capture_join(page, directory, "01-notice")
+    notice.get_by_role("button", name="Accept and continue", exact=True).click()
+    wizard = page.locator("first-run")
+    expect(wizard.get_by_role("heading", name="Welcome to Poolhouse", exact=True)).to_be_visible()
+    assert serving.ui.settings.experimental_notice_accepted is True
+    capture_join(page, directory, "02-device")
+    wizard.get_by_text("Connection options", exact=True).click()
+    wizard.get_by_label("Only connect devices I explicitly invite", exact=True).check()
+    capture_join(page, directory, "03-connection-options")
+    wizard.get_by_text("Join another pool", exact=True).click()
+    expect(wizard.get_by_role("button", name="Find nearby pools", exact=True)).to_be_visible()
+    capture_join(page, directory, "04-join-options")
+    return wizard
+
+
 @pytest.mark.slow
-def test_browser_named_choices_confirmation_refresh_and_manual(serving, password_pool, monkeypatch, playwright):
+@pytest.mark.parametrize("serving", ["fresh-notice"], indirect=True)
+def test_browser_named_choices_confirmation_refresh_and_manual(serving, password_pool, monkeypatch, playwright, tmp_path):
     from playwright.sync_api import expect
 
     monkeypatch.setattr("poolhouse.fleet.ui.recovery.remember", lambda *args: None)
@@ -128,12 +155,10 @@ def test_browser_named_choices_confirmation_refresh_and_manual(serving, password
         page = browser.new_page(viewport={"width": 390, "height": 844})
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
-        page.goto(f"http://127.0.0.1:{serving.port}/ui/")
-        wizard = page.locator("first-run")
-        wizard.get_by_label("Connection policy", exact=True).select_option("prod")
-        wizard.get_by_role("button", name="Continue", exact=True).click()
+        wizard = open_pool_join(page, serving, tmp_path)
         wizard.get_by_role("button", name="Find nearby pools", exact=True).click()
         expect(wizard.get_by_text("lab", exact=True)).to_be_visible()
+        capture_join(page, tmp_path, "05-nearby")
         wizard.get_by_role("button", name="Join", exact=True).click()
         named = wizard.locator("#setup-pool-name")
         words = wizard.locator("#setup-pool-passphrase")
@@ -141,19 +166,25 @@ def test_browser_named_choices_confirmation_refresh_and_manual(serving, password
         expect(named).to_have_value("lab")
         expect(wizard.locator("#setup-pool-action")).to_have_value("join")
         expect(submit).to_be_disabled()
+        capture_join(page, tmp_path, "06-selected-pool")
         named.fill("")
         words.fill("quince larch marlow")
         expect(submit).to_be_disabled()
         assert not discovery.memberships(serving.keyfile)
+        capture_join(page, tmp_path, "07-blank-name")
         wizard.get_by_role("button", name="Find nearby pools", exact=True).click()
+        capture_join(page, tmp_path, "08-refreshed")
         wizard.get_by_role("button", name="Join", exact=True).click()
         expect(named).to_have_value("lab")
+        capture_join(page, tmp_path, "09-restored-name")
         submit.click()
         expect(wizard.get_by_text("Joined pool 'lab'.", exact=True)).to_be_visible()
+        expect(wizard.get_by_text("Pool connected.", exact=True)).to_be_visible()
         assert discovery.memberships(serving.keyfile)[0].group == "lab"
+        assert discovery.memberships(serving.keyfile)[0].mode == "prod"
         assert discovery.load_pool_key(serving.keyfile) == password_pool.member.key
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-        page.screenshot(path="/private/tmp/poolhouse-named-lan-mobile.png", full_page=True)
+        capture_join(page, tmp_path, "10-joined")
         assert not errors
 
 
@@ -240,27 +271,35 @@ def test_wrong_name_wrong_key_and_cross_origin_cannot_import(serving, random_poo
 
 
 @pytest.mark.slow
-def test_browser_random_pool_recovery_picker(serving, random_pool, playwright):
+@pytest.mark.parametrize("serving", ["fresh-notice"], indirect=True)
+def test_browser_random_pool_recovery_picker(serving, random_pool, playwright, tmp_path):
     from playwright.sync_api import expect
 
     text, key = random_pool
     with playwright.chromium.launch(headless=True) as browser:
         page = browser.new_page(viewport={"width": 390, "height": 844})
-        page.goto(f"http://127.0.0.1:{serving.port}/ui/")
-        wizard = page.locator("first-run")
-        wizard.get_by_label("Connection policy", exact=True).select_option("prod")
-        wizard.get_by_role("button", name="Continue", exact=True).click()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        wizard = open_pool_join(page, serving, tmp_path)
         wizard.get_by_role("button", name="Find nearby pools", exact=True).click()
+        expect(wizard.get_by_text("Pine workshop", exact=True)).to_be_visible()
+        capture_join(page, tmp_path, "05-nearby")
         wizard.get_by_role("button", name="Join with recovery file", exact=True).click()
         expect(wizard.get_by_role("button", name="Join Pine workshop with recovery file", exact=True)).to_be_disabled()
+        capture_join(page, tmp_path, "06-recovery-options")
         wizard.locator("#pool-recovery-file").set_input_files({
             "name": "pine.recovery", "mimeType": "text/plain", "buffer": text.encode()})
+        capture_join(page, tmp_path, "07-recovery-picked")
         wizard.get_by_role("button", name="Join Pine workshop with recovery file", exact=True).click()
         expect(wizard.get_by_text("Joined Pine workshop.", exact=True)).to_be_visible()
+        expect(wizard.get_by_text("Pool connected.", exact=True)).to_be_visible()
         assert discovery.load_pool_key(serving.keyfile) == key
+        assert discovery.memberships(serving.keyfile)[0].group == "Pine workshop"
+        assert discovery.memberships(serving.keyfile)[0].mode == "prod"
         assert key.decode() not in page.content()
         assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
-        page.screenshot(path="/private/tmp/poolhouse-random-lan-mobile.png", full_page=True)
+        capture_join(page, tmp_path, "08-recovery-joined")
+        assert not errors
 
 
 @pytest.mark.redteam
