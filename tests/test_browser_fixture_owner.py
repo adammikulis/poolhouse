@@ -1,14 +1,65 @@
 """Worker-owned browser lifetime and isolation between application journeys."""
 
 import asyncio
+from contextlib import contextmanager
 
 import pytest
+import test_fleet_chat_browser as chat_fixtures
+from test_fleet_chat_browser import chat_browser  # noqa: F401
 from test_fleet_usability_browser import usability_page  # noqa: F401
 from test_studio_canvas_browser import studio_browser  # noqa: F401
 
 pytestmark = pytest.mark.slow
 
 ORIGIN = 'http://browser-fixture.invalid/'
+
+
+@pytest.mark.parametrize('failure', ['page', 'route'])
+def test_chat_setup_failure_closes_daemon_and_driver(browser_owner, tmp_path, monkeypatch, failure):
+    closed = []
+    close = chat_fixtures.Serving.close
+    pages = browser_owner.pages
+
+    def close_served(served):
+        closed.append(served)
+        close(served)
+
+    @contextmanager
+    def broken_pages():
+        if failure == 'page':
+            raise RuntimeError('page setup failed')
+        with pages() as page:
+            def fail_route(*args, **kwargs):
+                raise RuntimeError('route setup failed')
+            monkeypatch.setattr(page, 'route', fail_route)
+            yield page
+
+    monkeypatch.setattr(chat_fixtures.Serving, 'close', close_served)
+    monkeypatch.setattr(browser_owner, 'pages', broken_pages)
+    fixture = chat_fixtures.chat_browser.__wrapped__(tmp_path, browser_owner)
+    with pytest.raises(RuntimeError, match='setup failed'):
+        next(fixture)
+    assert len(closed) == 1
+    assert browser_owner.client is None
+
+
+def test_chat_uses_owner_with_isolated_storage_routes_and_scripts(browser_owner, chat_browser):  # noqa: F811
+    _served, chat = chat_browser
+    assert chat.context.browser is browser_owner.client
+    chat.route(ORIGIN + '**', lambda route: route.fulfill(body='<p>chat journey</p>'))
+    chat.add_init_script('window.privateChat = true')
+    chat.goto(ORIGIN)
+    chat.context.add_cookies([{'name': 'session', 'value': 'private', 'url': ORIGIN}])
+    chat.evaluate("localStorage.setItem('chat', 'private'); sessionStorage.setItem('chat', 'private')")
+    with browser_owner.pages() as other:
+        assert other.context.browser is chat.context.browser
+        assert other.context is not chat.context
+        other.route(ORIGIN + '**', lambda route: route.fulfill(body='<p>next journey</p>'))
+        other.goto(ORIGIN)
+        assert other.locator('p').inner_text() == 'next journey'
+        assert other.context.cookies() == []
+        assert other.evaluate("[localStorage.getItem('chat'), sessionStorage.getItem('chat'), window.privateChat ?? null]") == [None, None, None]
+    assert not chat.is_closed()
 
 
 def test_consumers_share_owner_and_driver_with_private_contexts(browser_owner, studio_browser, usability_page):  # noqa: F811

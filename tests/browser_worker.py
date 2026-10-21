@@ -24,7 +24,7 @@ class BrowserWorker:
         from playwright.sync_api import Error
 
         try:
-            with browser(DebugWindow(profile=self.profile, headless=True)):
+            with browser(DebugWindow(profile=self.profile, headless=True, channel='chromium-headless-shell')):
                 port, path = (self.profile / 'DevToolsActivePort').read_text().splitlines()
                 if not port.isdecimal() or not path.startswith('/devtools/browser/'):
                     raise RuntimeError('the browser did not publish a valid local debugging endpoint')
