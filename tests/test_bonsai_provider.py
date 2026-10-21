@@ -99,8 +99,11 @@ def prepare(tmp_path, monkeypatch, release, model=None):
     def existing_start(self, spec, *, lease, **options):
         grant.require(lease, provider.Lease)
         assert self.provider == 'prism' and self.binary == release[1] / 'llama-server'
+        from poolhouse.lock import Busy, only_one
+        with pytest.raises(Busy), only_one(release[1].parent / '.prepare.lock', wait=False):
+            raise AssertionError('preparation lock must cover the native start')
         raise Captured('existing admitted launch reached')
-    monkeypatch.setattr(LlamaServerBackend, 'start', existing_start)
+    monkeypatch.setattr(LlamaServerBackend, '_start_native', existing_start)
     with pytest.raises(Captured, match='existing admitted launch'):
         leased(LlamaServerBackend(binary=tmp_path / 'unselected-stock'), ServerSpec(model=model),
                preflight=False, check_flags=False, warmup_request=False)
@@ -291,7 +294,7 @@ def test_concurrent_admitted_preparation_downloads_one_fixed_dependency(tmp_path
         grant.require(lease, provider.Lease)
         assert self.binary == release[1] / 'llama-server'
         raise Captured('existing admitted launch reached')
-    monkeypatch.setattr(LlamaServerBackend, 'start', existing_start)
+    monkeypatch.setattr(LlamaServerBackend, '_start_native', existing_start)
     def request(_):
         with pytest.raises(Captured):
             leased(LlamaServerBackend(), ServerSpec(model=model), preflight=False,

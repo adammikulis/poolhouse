@@ -2,6 +2,7 @@
 import pytest
 from browser_expect import expect
 from test_studio_canvas_browser import add, studio_browser, studio_page  # noqa: F401
+from test_studio_initial_load_browser import delayed_page, release  # noqa: F401
 
 from poolhouse.fleet.themes import PRESETS
 
@@ -9,6 +10,9 @@ pytestmark = pytest.mark.slow
 
 
 def menu(page, name):
+    tools = page.get_by_role('button', name='Workflow tools', exact=True)
+    if tools.is_visible() and tools.get_attribute('aria-expanded') == 'false':
+        tools.click()
     return page.locator('.studio-command').filter(has=page.get_by_text(name, exact=True))
 
 
@@ -36,6 +40,7 @@ def test_header_identity_and_keyboard_commands_remain_compact(studio_page, theme
     expect(edit.locator('summary')).to_be_focused()
     expect(edit).not_to_have_attribute('open', '')
     add(page, 'Prompt template')
+    edit = menu(page, 'Edit')
     edit.locator('summary').click()
     page.get_by_role('button', name='Undo', exact=True).click()
     expect(edit.locator('summary')).to_be_focused()
@@ -73,7 +78,8 @@ def test_pending_run_keeps_primary_busy_state_and_menus_do_not_submit(studio_pag
 
     page.route('**/ui/studio/runs', submit)
     run = page.get_by_role('button', name='Run workflow', exact=True)
-    run.click()
+    with page.expect_request(lambda request: request.method == 'POST' and request.url.endswith('/ui/studio/runs')):
+        run.click()
     expect(run).to_be_disabled()
     edit = menu(page, 'Edit')
     edit.locator('summary').click()
@@ -89,7 +95,7 @@ def test_pending_run_keeps_primary_busy_state_and_menus_do_not_submit(studio_pag
     assert not errors
 
 
-def test_header_commands_preserve_invalid_draft_and_canvas_selection(studio_page):  # noqa: F811
+def test_header_commands_preserve_invalid_draft_and_canvas_selection(studio_page, tmp_path):  # noqa: F811
     page, state, errors = studio_page
     add(page, 'Report')
     page.get_by_text('Sweep parameters', exact=True).click()
@@ -103,9 +109,125 @@ def test_header_commands_preserve_invalid_draft_and_canvas_selection(studio_page
     page.get_by_role('button', name='Save', exact=True).click()
     expect(page.get_by_label('Sweep iterations', exact=True)).to_be_focused()
     expect(page.get_by_label('Sweep iterations', exact=True)).to_have_value('invalid integer')
+    page.screenshot(path=tmp_path / 'invalid-draft.png')
     assert state['saved'] == [] and state['submissions'] == []
     menu(page, 'Open workflow').locator('summary').click()
     page.get_by_label('Saved workflows', exact=True).select_option('')
     expect(page.get_by_label('Sweep iterations', exact=True)).to_be_focused()
     assert state['saved'] == [] and state['submissions'] == []
+    assert not errors
+
+
+@pytest.mark.parametrize('theme', ['light', 'dark'])
+def test_mobile_tools_keep_primary_actions_and_return_keyboard_focus(studio_page, tmp_path, theme):  # noqa: F811
+    page, _state, errors = studio_page
+    page.set_viewport_size({'width': 390, 'height': 600})
+    page.evaluate('theme=>fleetModel.setPreferences({...fleetModel.preferences,resolved_theme:theme})', PRESETS[theme])
+    tools = page.get_by_role('button', name='Workflow tools', exact=True)
+    expect(tools).to_be_visible()
+    expect(tools).to_have_attribute('aria-expanded', 'false')
+    assert page.locator('.studio-heading').bounding_box()['height'] <= 110
+    page.screenshot(path=tmp_path / 'mobile-primary.png')
+    before = page.locator('studio-view').evaluate('e=>({graph:structuredClone(e.rootGraph()),serial:e.editSerial})')
+    tools.focus()
+    tools.press('Enter')
+    expect(page.locator('.studio-command-bar')).to_be_visible()
+    page.screenshot(path=tmp_path / 'mobile-tools.png')
+    page.keyboard.press('Escape')
+    expect(tools).to_be_focused()
+    expect(tools).to_have_attribute('aria-expanded', 'false')
+    menu(page, 'Share and import').locator('summary').click()
+    page.get_by_role('button', name='Share', exact=True).click()
+    page.screenshot(path=tmp_path / 'mobile-share-dialog.png')
+    expect(page.get_by_role('button', name='Close', exact=True)).to_be_in_viewport()
+    expect(page.get_by_role('button', name='Export file', exact=True)).to_be_in_viewport()
+    page.locator('#studio-share-dialog').evaluate('dialog=>dialog.style.fontSize="200%"')
+    page.get_by_label('Licence', exact=True).focus()
+    expect(page.get_by_label('Licence', exact=True)).to_be_in_viewport()
+    expect(page.get_by_role('button', name='Close', exact=True)).to_be_in_viewport()
+    page.screenshot(path=tmp_path / 'mobile-share-expanded-text.png')
+    page.get_by_role('button', name='Close', exact=True).click()
+    expect(menu(page, 'Share and import').locator('summary')).to_be_focused()
+    page.get_by_label('Workflow title', exact=True).click()
+    expect(tools).to_have_attribute('aria-expanded', 'false')
+    assert page.locator('studio-view').evaluate('e=>({graph:structuredClone(e.rootGraph()),serial:e.editSerial})') == before
+    assert not errors
+
+
+@pytest.mark.parametrize('delayed_page', ['/workflows'], indirect=True)
+@pytest.mark.parametrize('width', [1440, 390])
+def test_open_workflow_menu_stays_open_when_initial_inventory_arrives(delayed_page, width):  # noqa: F811
+    page, state, old, errors = delayed_page
+    page.set_viewport_size({'width': width, 'height': 850})
+    opened = menu(page, 'Open workflow')
+    opened.locator('summary').click()
+    release(page, state)
+    expect(opened).to_have_attribute('open', '')
+    select = page.get_by_label('Saved workflows', exact=True)
+    expect(select).to_be_visible()
+    select.select_option(old['id'])
+    expect(page.get_by_label('Workflow title', exact=True)).to_have_value(old['title'])
+    assert not errors
+
+
+def test_share_escape_closes_dialog_without_changing_underlying_canvas(studio_page):  # noqa: F811
+    page, _state, errors = studio_page
+    page.set_viewport_size({'width': 390, 'height': 600})
+    add(page, 'Prompt template')
+    before = page.locator('studio-view').evaluate('e=>({selected:[...e.selected],serial:e.editSerial})')
+    share = menu(page, 'Share and import')
+    share.locator('summary').click()
+    page.get_by_role('button', name='Share', exact=True).click()
+    page.keyboard.press('Escape')
+    expect(page.locator('#studio-share-dialog')).to_be_hidden()
+    expect(share.locator('summary')).to_be_focused()
+    assert page.locator('studio-view').evaluate('e=>({selected:[...e.selected],serial:e.editSerial})') == before
+    assert not errors
+
+
+def test_long_share_content_scrolls_inside_modal_with_actions_visible(studio_page, tmp_path):  # noqa: F811
+    page, _state, errors = studio_page
+    page.set_viewport_size({'width': 390, 'height': 600})
+    add(page, 'Prompt template')
+    prompt = page.locator('.studio-inspector').get_by_label('Prompt text', exact=True)
+    prompt.fill('evidence' * 500)
+    prompt.press('Tab')
+    menu(page, 'Share and import').locator('summary').click()
+    page.get_by_role('button', name='Share', exact=True).click()
+    expect(page.locator('.studio-dialog-content #studio-portable')).to_have_count(1)
+    expect(page.get_by_role('button', name='Close', exact=True)).to_be_in_viewport()
+    page.locator('#studio-portable input').focus()
+    expect(page.locator('#studio-portable input')).to_be_in_viewport()
+    expect(page.get_by_role('button', name='Export file', exact=True)).to_be_in_viewport()
+    page.screenshot(path=tmp_path / 'mobile-share-long-content.png')
+    assert not errors
+
+
+@pytest.mark.parametrize('width', [960, 1100, 1101, 1440])
+def test_medium_header_keeps_primary_actions_on_one_row_and_tools_focus(studio_page, tmp_path, width):  # noqa: F811
+    page, _state, errors = studio_page
+    page.set_viewport_size({'width': width, 'height': 1000})
+    page.screenshot(path=tmp_path / 'medium-header.png')
+    tools = page.get_by_role('button', name='Workflow tools', exact=True)
+    if width <= 1100:
+        expect(tools).to_be_visible()
+        primary = [page.get_by_role('button', name=name, exact=True) for name in ['New', 'Save', 'Run workflow', 'Workflow tools']]
+        tops = [button.bounding_box()['y'] for button in primary]
+        assert max(tops) - min(tops) <= 1
+        before = page.locator('studio-view').evaluate('e=>({graph:structuredClone(e.rootGraph()),serial:e.editSerial})')
+        tools.click()
+        page.screenshot(path=tmp_path / 'medium-tools-open.png')
+        menu(page, 'Edit').locator('summary').focus()
+        page.keyboard.press('Escape')
+        expect(tools).to_be_focused()
+        expect(tools).to_have_attribute('aria-expanded', 'false')
+        menu(page, 'Open workflow').locator('summary').click()
+        select = page.get_by_label('Saved workflows', exact=True)
+        select.focus()
+        select.select_option('')
+        expect(tools).to_be_focused()
+        assert page.locator('studio-view').evaluate('e=>({graph:structuredClone(e.rootGraph()),serial:e.editSerial})') == before
+    else:
+        expect(tools).to_be_hidden()
+        expect(menu(page, 'Open workflow').locator('summary')).to_be_visible()
     assert not errors

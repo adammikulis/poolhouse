@@ -17,7 +17,7 @@ import pytest
 from test_fleet_ui import WORDS, Serving as UIServing
 
 from poolhouse.fleet.api import Daemon, make_handler
-from poolhouse.fleet.chat import find, targets
+from poolhouse.fleet.chat import Target, find, targets
 from poolhouse.fleet.daemon import load_or_create_token
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.serving import Serving
@@ -136,10 +136,11 @@ class TestPickingWhereToSend:
               "device": {"serving": [{"port": 1, "models": ["a.gguf"]}]}}
         assert targets([me], serving=None) == []
 
-    def test_naming_a_model_loosely_still_finds_it(self, host):
+    def test_only_an_exact_advertised_model_is_selected(self, host):
         found = targets([host], serving=None, token="t")
-        assert find(found, "qwen3").model == "qwen3-4b.gguf"
-        assert find(found, "").model == "qwen3-4b.gguf"
+        assert find(found, "qwen3-4b.gguf").model == "qwen3-4b.gguf"
+        assert find(found, "qwen3") is None
+        assert find(found, "") is None
         assert find(found, "nothing-like-this") is None
         assert find([], "anything") is None
 
@@ -162,6 +163,27 @@ class TestChattingThroughTheInterface:
             yield ui, headers["Set-Cookie"].split(";")[0]
         finally:
             ui.close()
+
+    def test_canonical_resource_dispatches_to_its_actual_same_named_server(self, bare):
+        from types import SimpleNamespace
+
+        from poolhouse.fleet.serving import Served as LocalServed
+
+        ui, cookie = bare
+        first = FakeLlamaServer(Served(model='shared.gguf', pieces=('first-resource',)))
+        second = FakeLlamaServer(Served(model='shared.gguf', pieces=('second-resource',)))
+        try:
+            ui.ui.serving = SimpleNamespace(live=lambda: [
+                LocalServed(port=first.port, models=['shared.gguf'], aliases=['/models/one/shared.gguf']),
+                LocalServed(port=second.port, models=['shared.gguf'], aliases=['/models/two/shared.gguf'])])
+            status, body, _ = ui.call('/ui/chat', method='POST', cookie=cookie,
+                body={'model': '/models/two/shared.gguf', 'messages': [{'role': 'user', 'content': 'hello'}]})
+            assert status == 200 and 'second-resource' in body['raw']
+            assert not first.requests
+            assert any(path.endswith('/chat/completions') for _method, path, _body in second.requests)
+        finally:
+            first.close()
+            second.close()
 
     def test_it_lists_the_model_another_machine_is_serving(self, bare):
         ui, cookie = bare
@@ -467,3 +489,23 @@ class TestAnsweringToSeveralPools:
             runner.shutdown()
             httpd.shutdown()
             httpd.server_close()
+
+
+def test_exact_local_paths_disambiguate_identical_model_names_without_guessing():
+    first = Target('shared.gguf', 'http://127.0.0.1:1/v1/chat/completions', alias='/models/one/shared.gguf')
+    second = Target('shared.gguf', 'http://127.0.0.1:2/v1/chat/completions', alias='/models/two/shared.gguf')
+    assert find([first, second], second.alias) is second
+    assert find([first, second], first.alias) is first
+    assert find([first, second], 'shared.gguf') is None
+    assert find([first, second], '/models/missing/shared.gguf') is None
+    assert find([first, second], 'shared') is None
+    assert find([first, second], '') is None
+
+
+def test_alias_model_collision_and_duplicate_exact_identity_are_refused():
+    local = Target('shared.gguf', 'http://127.0.0.1:1/v1/chat/completions', alias='/models/one/shared.gguf')
+    remote = Target(local.alias, 'http://127.0.0.1:2/infer/v1/chat/completions', member='member-one')
+    assert find([local, remote], local.alias) is None
+    assert find([remote, local], local.alias) is None
+    duplicate = Target('other.gguf', 'http://127.0.0.1:3/v1/chat/completions', alias=local.alias)
+    assert find([local, duplicate], local.alias) is None

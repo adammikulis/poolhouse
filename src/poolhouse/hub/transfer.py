@@ -123,14 +123,14 @@ def _targets(parsed: remote.Ref, chosen: list[RemoteFile],
                     for f in chosen]
 
 
-def plan(ref: str | remote.Ref) -> tuple[remote.Ref, list[RemoteFile]]:
+def plan(ref: str | remote.Ref, *, check=None) -> tuple[remote.Ref, list[RemoteFile]]:
     """The reference parsed, resolved to its commit, and the files it means, listed at that commit.
 
     A reference naming a repository only is resolved to the largest build under 85% of
     this machine's room when it is known, else to ``Q4_K_M``.
     """
-    parsed = remote.resolve(remote.parse(ref) if isinstance(ref, str) else ref)
-    listed = remote.listing(parsed.repo, parsed.commit)
+    parsed = remote.resolve(remote.parse(ref) if isinstance(ref, str) else ref, check=check)
+    listed = remote.listing(parsed.repo, parsed.commit, check=check)
     chosen = remote.members(listed, parsed)
     if not chosen and not parsed.file and not parsed.quant:
         chosen = _default_build(listed)
@@ -219,6 +219,8 @@ def _from_members(parsed: remote.Ref, one: RemoteFile, final: Path, meter: _Mete
     except peering.Stopped as exc:
         raise Cancelled(one.path) from exc
     except (OSError, ValueError, RuntimeError) as exc:
+        if cancel is not None and cancel.cancelled:
+            raise Cancelled(one.path) from exc
         logger.warning("members failed for %s, using the Hub: %s", one.path, exc)
         return False
 
@@ -296,18 +298,19 @@ def pull(ref: str, dest: str | Path | None = None, on_progress: Report | None = 
     without an answer; the default asks a person about anything but a shipped publisher (`admission.Trust`).
     """
     run = _Run(on_progress, cancel, members, admission.checked(trust))
-    parsed = remote.resolve(remote.parse(ref))
+    run.check()
+    parsed = remote.resolve(remote.parse(ref), check=run.check)
     if parsed.file.lower().endswith(".safetensors"):
-        files = remote.listing(parsed.repo, parsed.commit)
+        files = remote.listing(parsed.repo, parsed.commit, check=run.check)
         if parsed.file not in {one.path for one in files}:
             raise NotFound(f"{parsed.repo} has no {parsed.file}")
         return _snapshot_files(parsed, files, dest, run)
     try:
-        parsed, chosen = plan(parsed)
+        parsed, chosen = plan(parsed, check=run.check)
     except NotFound:
         if parsed.quant or parsed.file:
             raise
-        files = remote.listing(parsed.repo, parsed.commit)
+        files = remote.listing(parsed.repo, parsed.commit, check=run.check)
         names = {one.path for one in files}
         if "config.json" not in names or not any(name.lower().endswith(".safetensors")
                                                    for name in names):
@@ -326,10 +329,16 @@ class _Run:
     members: bool | None = None
     trust: admission.Trust = admission.PERSON
 
+    def check(self) -> None:
+        """Cancel the actual next operation; trusted token properties may raise unchanged."""
+        if self.cancel is not None and self.cancel.cancelled:
+            raise Cancelled("The model transfer was cancelled")
+
 
 def _bring(parsed: remote.Ref, chosen: list[RemoteFile], dest: str | Path | None,
            run: _Run) -> Path:
     """Fetch what is missing of ``chosen`` and return the folder the files can be read from."""
+    run.check()
     folder, targets = _targets(parsed, chosen, dest)
     root = folder.resolve()
     for one in chosen:
@@ -337,7 +346,8 @@ def _bring(parsed: remote.Ref, chosen: list[RemoteFile], dest: str | Path | None
         if (relative.is_absolute() or ".." in relative.parts
                 or not (folder / relative.parent).resolve().is_relative_to(root)):
             raise ValueError(f"Unsafe model file path: {one.path}")
-    unvetted = admission.admit(parsed, chosen, run.trust)
+    unvetted = admission.admit(parsed, chosen, run.trust, check=run.check)
+    run.check()
     _space(targets[0].final.parent, sum(_remaining(parsed, t) for t in targets))
     meter = _Meter(parsed.text, sum(f.size for f in chosen), len(chosen), run.report)
     meter.cancel, meter.unvetted = run.cancel, unvetted
@@ -346,14 +356,16 @@ def _bring(parsed: remote.Ref, chosen: list[RemoteFile], dest: str | Path | None
     for index, target in enumerate(targets):
         meter.index = index
         target.final.parent.mkdir(parents=True, exist_ok=True)
-        with lock.only_one(_lock_for(target.final), announce=lambda _t: None):
+        with lock.held(_lock_for(target.final), check=run.check):
             if not _present(target.final, target.file):
                 _fetch(parsed, target.file, target.final, meter)
+        run.check()
         if target.link:
             hfstore.link(target.link, target.final)
         meter.base += target.file.size
         meter.send("done" if index == len(chosen) - 1 else "downloading", target.file, 0,
                    force=True)
+    run.check()
     if dest is None:
         hfstore.point_ref(parsed.repo, parsed.revision, folder.name)
     return folder
@@ -368,8 +380,9 @@ def snapshot(repo: str, revision: str = "main", on_progress: Report | None = Non
     """Every file of ``repo`` but its pickle-based weights, in the Hub cache (or ``dest``);
     returns the snapshot folder. For a repository that holds safetensors, fetched under ``trust``."""
     run = _Run(on_progress, cancel, trust=admission.checked(trust))
-    parsed = remote.resolve(remote.Ref(repo, "", "", revision))
-    return _snapshot_files(parsed, remote.listing(repo, parsed.commit), dest, run)
+    run.check()
+    parsed = remote.resolve(remote.Ref(repo, "", "", revision), check=run.check)
+    return _snapshot_files(parsed, remote.listing(repo, parsed.commit, check=run.check), dest, run)
 
 
 def _snapshot_files(parsed: remote.Ref, files: list[RemoteFile], dest: str | Path | None,

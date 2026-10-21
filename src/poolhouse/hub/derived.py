@@ -109,7 +109,10 @@ def place(source: Source, recipe: str, path: Path, *, origin: str = "") -> Path:
     """
     root, folder = _folder(source, recipe)
     name, size = files.sha256_file(path), path.stat().st_size
-    got = hfstore.into_blobs(path, root / "blobs" / name, name, copy=False)
+    with hfstore.Placement(path, root / "blobs" / name, name) as placement:
+        got = placement.publish(copy=False)
+        if got in ("new", "have"):
+            placement.commit()
     if got not in ("new", "have"):
         raise OSError(got)
     target = folder / FILE

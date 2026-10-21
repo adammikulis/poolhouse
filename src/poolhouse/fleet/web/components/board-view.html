@@ -1,5 +1,5 @@
 <style>
-chat-view .chatmain { color:var(--text); font-family:var(--sans,var(--ml-font)); font-size:1rem; display:grid; gap:0; grid-template-columns:260px minmax(0,1fr); grid-template-rows:minmax(0,1fr); height:calc(100dvh - var(--header-height,88px)); min-height:0; overflow:hidden; padding:0; }
+chat-view .chatmain { color:var(--text); font-family:var(--sans,var(--ml-font)); font-size:1rem; display:grid; gap:0; grid-template-columns:260px minmax(0,1fr); grid-template-rows:minmax(0,1fr); height:calc(var(--app-height, 100dvh) - var(--header-height,88px)); min-height:0; overflow:hidden; padding:0; }
 chat-view .chats { display:flex; flex-direction:column; overflow-y:auto; padding:calc(20px * var(--ui-density,1)) calc(12px * var(--ui-density,1)); background:color-mix(in srgb,var(--poolhouse-pink) 10%,var(--bg-raised)); border-right:1px solid var(--line); gap:calc(12px * var(--ui-density,1)); }
 chat-view .conversation-space { display:flex; align-items:center; gap:calc(10px * var(--ui-density,1)); padding:0 calc(8px * var(--ui-density,1)) calc(8px * var(--ui-density,1)); }
 chat-view .conversation-space strong { display:block; font-size:1.286rem; }

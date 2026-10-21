@@ -1,0 +1,52 @@
+<style>
+.model-start-options { margin:8px 0; padding:12px; border:1px solid var(--line); border-radius:8px; background:var(--bg); }
+.model-start-options summary { cursor:pointer; color:var(--text); }
+.model-start-options .hint { margin:8px 0; }
+</style>
+<script>
+(() => {
+  const M = window.fleetModel;
+  M.ModelStartOptions = class {
+    constructor(model, output) {
+      this.maximum = Number.isSafeInteger(model.context_length) && model.context_length > 0 ? model.context_length : null;
+      const preferred = Number.isSafeInteger(M.preferences.context) && M.preferences.context > 0 ? M.preferences.context : 8192;
+      this.context = this.maximum ? Math.min(preferred, this.maximum) : preferred;
+      this.element = M.el('details', {class:'model-start-options'}, M.el('summary', {},
+        output === undefined ? 'Context length' : 'Context length and output'));
+      this.contextPicker = M.contextPicker(this.context, value => { this.context = value; this.paint(); }, {maximum:this.maximum});
+      this.slider = this.contextPicker.querySelector('ml-slider');
+      this.slider.removeAttribute('id');
+      this.element.append(this.contextPicker);
+      this.note = M.el('p', {class:'hint'}); this.element.append(this.note);
+      if (output !== undefined) {
+        this.output = M.el('output-token-slider');
+        this.output.configure({label:'Maximum output tokens', context:this.context});
+        this.output.value = output;
+        this.element.append(this.output, M.el('p', {class:'hint'},
+          'Output is a conversation limit; it does not change model residency.'));
+      }
+      this.paint();
+    }
+    update(model) {
+      this.maximum = Number.isSafeInteger(model.context_length) && model.context_length > 0 ? model.context_length : null;
+      this.paint();
+    }
+    paint() {
+      if (!this.contextPicker) return;
+      this.contextPicker.configure(this.context, this.maximum);
+      this.slider.valueText = `${this.context.toLocaleString()} tokens requested`;
+      this.note.textContent = this.maximum
+        ? `Model maximum: ${this.maximum.toLocaleString()} tokens. Larger context uses more memory.`
+        : 'The model maximum is not reported. Supported context is checked when starting.';
+      this.output?.configure({context:this.context});
+    }
+    set disabled(value) { this.slider.disabled = value; if (this.output) this.output.disabled = value; }
+    snapshot() {
+      if (!Number.isSafeInteger(this.context) || this.context < 1 || (this.maximum && this.context > this.maximum))
+        throw Error('Choose a context length within this model’s supported limit.');
+      if (this.output && !this.output.checkValidity()) throw Error('Maximum output tokens must be a positive integer or no cap.');
+      return Object.freeze({context:this.context, ...(this.output ? {output:this.output.value} : {})});
+    }
+  };
+})();
+</script>

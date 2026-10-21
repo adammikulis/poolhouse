@@ -90,10 +90,10 @@ class Serving:
         self.runner = JobRunner(root, self.files)
         self.ui = UI(name=name, pool_key_path=self.keyfile,
                      setup_token=setup_token)
-        from poolhouse.fleet.settings import Settings
         self.ui.runner = self.runner
-        self.ui.settings = Settings()
+        self.ui.settings = self.initial_settings()
         self.ui.settings_path = tmp_path / "settings.json"
+        self.ui.settings.save(self.ui.settings_path)
         self.ui.report = lambda: {"cpus": 8, "accelerator": False}
         self.port = _free_port()
         self.rows = arm(self)
@@ -116,6 +116,12 @@ class Serving:
                          schedule_path=(root / "availability.json") if schedule else None)))
         self.lan_httpd = None
         threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    @staticmethod
+    def initial_settings():
+        """Ordinary UI journeys start from an installation whose notice was acknowledged."""
+        from poolhouse.fleet.settings import Settings
+        return Settings(experimental_notice_accepted=True)
 
     def _pool_tokens(self):
         """Every token this daemon answers to, the way the real one works it out."""
@@ -234,7 +240,7 @@ class TestAssets:
 
         js = (COMPONENTS_DIR / "first-run.html").read_text(encoding="utf-8")
         defined = set(re.findall(r"^    (?:async )?(\w+)\(", js, re.M))
-        called = set(re.findall(r"return this\.(\w+Step)\(", js))
+        called = set(re.findall(r"this\.(\w+Step)\(", js))
         assert called, "the wizard moves to no screen at all"
         assert called <= defined, f"screens that are gone: {sorted(called - defined)}"
 
@@ -687,6 +693,24 @@ class TestPreferences:
         assert renamed == ["quillhaven"]
         assert joined.ui.name == "quillhaven"
         assert Settings.load(tmp_path / "named.json").name == "quillhaven"
+
+    def test_repeated_wizard_hours_preserve_one_window_and_unrelated_availability(self, joined, tmp_path):
+        from poolhouse.fleet.availability import Availability, parse_window
+        old = parse_window("sat 10:00-12:00 # Existing reservation")
+        joined.ui.schedule = Availability(windows=[old])
+        joined.ui.schedule_path = tmp_path / "availability.json"
+        status, result, headers = joined.call("/ui/session", method="POST", body={"passphrase":WORDS})
+        assert status == 200, result
+        cookie = headers["Set-Cookie"].split(";")[0]
+        for spec in ["mon-fri 09:00-17:00", "mon-fri 09:00-17:00", "mon,tue,wed,thu,fri 09:00-17:00"]:
+            status, result, _ = joined.call("/ui/setup/prefs", method="POST", cookie=cookie,
+                                            body={"work_hours":True, "work_hours_spec":spec})
+            assert status == 200 and not result.get("error"), result
+        expected = [old, parse_window("mon-fri 09:00-17:00")]
+        assert joined.ui.schedule.windows == expected
+        assert Availability.load(joined.ui.schedule_path).windows == expected
+        joined.call("/ui/setup/prefs", method="POST", cookie=cookie, body={"work_hours":False})
+        assert joined.ui.schedule.windows == expected
 
     def test_a_blank_name_leaves_the_machine_called_what_it_was(self, joined):
         _, _, headers = joined.call("/ui/session", method="POST",

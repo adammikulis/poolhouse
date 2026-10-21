@@ -90,7 +90,7 @@ def test_models_browser_groups_shards_filters_sorts_and_serves_exact_path(joined
     assert library.locator('article').filter(has_text='Qwen3-27B').count() == 1
     row = library.locator('article').filter(has_text='Qwen3-27B')
     assert not row.locator('code').is_visible()
-    row.locator('summary').click()
+    row.get_by_text('Files and model details', exact=True).click()
     assert row.locator('li').count() == 2
     assert '2 shards expected' in row.inner_text()
     library.get_by_text('Advanced library filters', exact=True).click()
@@ -107,7 +107,7 @@ def test_models_browser_groups_shards_filters_sorts_and_serves_exact_path(joined
     assert 'Ornith-9B' in library.locator('article').first.inner_text()
     library.get_by_label('Search installed models').fill('Qwen3')
     assert library.locator('article').count() == 1
-    library.get_by_role('button', name='Serve model').click()
+    library.get_by_role('button', name='Start model').click()
     page.wait_for_selector('#models-note .ok')
     assert calls == [first.resolve()]
     assert not errors

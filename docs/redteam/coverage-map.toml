@@ -628,15 +628,6 @@ count = 1
 note = "A process an agent started and a process with no terminal get no ticket from a live daemon; a person at a terminal gets an address that signs in once"
 
 [[group]]
-match = ["route:fleet/routes.py:/ui/setup", "route:fleet/routes.py:/ui/setup/join"]
-status = "covered"
-tests = ["tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine",
-         "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused",
-         "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header",
-         "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_rejoining_needs_a_session_once_the_box_is_in_a_pool"]
-note = "Native Fleet sockets reject remote first-run ownership, DNS-rebinding Host values, missing UI headers and joined setup mutation without an authenticated session"
-
-[[group]]
 match = ["human:workspace/taskboard.py:TaskBoard._reviewer", "human:workspace/taskboard.py:TaskBoard._scope", "human:workspace/taskboard.py:TaskBoard.create", "human:workspace/task_actions.py:block", "human:workspace/task_routes.py:route", "parser:workspace/task_routes.py"]
 status = "covered"
 tests = ["tests/test_fleet_task_routes.py::test_foreign_page_cannot_create_tasks",
@@ -723,7 +714,7 @@ note = "Real sign-in requests reject hostile passphrases and rate-limit repeated
 
 # -- named LAN setup and recovery uploads ---------------------------------------------------
 [[group]]
-match = ["route:fleet/routes.py:/ui/setup/pools",
+match = [
          "route:fleet/setup_recovery_routes.py:/ui/setup/recovery",
          "parser:fleet/lan_pools.py", "parser:fleet/recovery.py"]
 status = "covered"
@@ -1164,7 +1155,7 @@ status = "covered"
 tests = ["tests/test_startup_models.py::StartupModelTests::test_startup_route_refuses_untrusted_requests_and_ignores_query_paths"]
 
 [[group]]
-match = ["route:fleet/routes.py:/ui/setup/pools", "route:fleet/routes.py:/ui/pools/found"]
+match = [ "route:fleet/routes.py:/ui/pools/found"]
 status = "covered"
 tests = [
   "tests/test_fleet_found_route.py::test_first_run_refuses_the_list_from_another_machine",
@@ -1836,3 +1827,33 @@ match = ["route:fleet/knowledge_routes.py:*"]
 status = "covered"
 tests = ["tests/test_fleet_knowledge.py::test_inspector_authorization_path_bounds_and_read_only", "tests/test_fleet_knowledge.py::test_a_registered_project_coordination_graph_is_not_offered_or_readable", "tests/test_fleet_knowledge.py::test_large_fields_and_directory_discovery_are_bounded", "tests/test_fleet_knowledge.py::test_kind_identity_bounds_refuse_oversized_values"]
 note = "UI authorization, registered project scope, read-only access, traversal, symlinks and bounded graph fields are exercised"
+
+[[group]]
+match = ["route:fleet/notice_routes.py:/ui/notice/accept", "route:fleet/notice_routes.py:/ui/notice/issues"]
+status = "covered"
+tests = ["tests/test_experimental_notice.py::test_agents_and_foreign_origins_cannot_accept", "tests/test_experimental_notice.py::test_absent_revoked_weak_session_and_persistence_failure_remain_unaccepted", "tests/test_experimental_notice.py::test_bug_report_target_is_fixed_and_opens_only_on_explicit_authenticated_post", "tests/test_experimental_notice.py::test_duplicate_acceptance_fields_are_rejected_over_actual_http"]
+note = "Actual HTTP refuses foreign origins, agent credentials, revoked sessions and duplicate acceptance fields; bug reports use a fixed target and acknowledgement cannot grant authority."
+
+[[group]]
+match = ["route:fleet/setup_preparation_routes.py:/ui/setup/prepare", "route:fleet/setup_preparation_routes.py:/ui/setup/prepare/*"]
+status = "covered"
+tests = ["tests/test_setup_preparation_routes.py::test_new_current_owner_can_inspect_but_cannot_cancel_an_original_request", "tests/test_setup_preparation_routes.py::test_status_denies_foreign_headers_before_loading_jobs", "tests/test_setup_preparation_routes.py::test_originless_get_never_admits_originless_post_or_head", "tests/test_setup_preparation_routes.py::test_current_context_revocation_during_status_cannot_publish_response", "tests/test_setup_preparation_routes.py::test_nonobjects_duplicates_and_oversized_body_are_rejected"]
+note = "Preparation rejects foreign origins, forged authority, malformed bodies and revoked contexts; read-only status admission cannot authorize a mutation."
+
+[[group]]
+match = ["route:fleet/setup_routes.py:/ui/setup", "route:fleet/setup_routes.py:/ui/setup/join"]
+status = "covered"
+tests = ["tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_setup_is_refused_from_another_machine", "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_a_request_addressed_to_a_hostname_is_refused", "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header", "tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_rejoining_needs_a_session_once_the_box_is_in_a_pool"]
+note = "The extracted setup owner retains actual socket tests for remote ownership, DNS rebinding, missing UI headers and rejoining without a session."
+
+[[group]]
+match = ["route:fleet/setup_routes.py:/ui/setup/done"]
+status = "covered"
+tests = ["tests/test_setup_finished.py::test_malformed_done_body_cannot_finish_setup", "tests/test_setup_finished.py::test_invalid_system_theme_cannot_finish_or_write_preferences", "tests/test_fleet_ui.py::TestOnItsOwn::test_finishing_is_refused_from_another_machine"]
+note = "Malformed completion bodies and invalid themes cannot finish setup; a remote machine cannot finish another device's setup."
+
+[[group]]
+match = ["route:fleet/setup_routes.py:/ui/setup/pools", "route:fleet/setup_routes.py:/ui/setup/suggest", "route:fleet/setup_routes.py:/ui/setup/members", "route:fleet/setup_routes.py:/ui/setup/prefs"]
+status = "partial"
+tests = ["tests/test_fleet_ui.py::TestFirstRunIsNotUpForGrabs::test_the_api_is_unreachable_without_the_ui_header", "tests/test_fleet_named_lan.py::test_prejoin_discovery_obeys_setup_boundary"]
+note = "The shared UI-header boundary and prejoin discovery boundary are attacked; individual preference, suggestion and member routes lack a complete hostile-request matrix."

@@ -3,7 +3,7 @@
 import asyncio
 import json
 
-import httpx
+import httpx2
 import pytest
 
 from poolhouse.client.sdk import FleetTransport, local_client
@@ -17,7 +17,7 @@ def test_sdk_cannot_change_selected_member_endpoint(monkeypatch):
     touched = []
     monkeypatch.setattr("poolhouse.client.sdk.open_stream", lambda *a, **k: touched.append(a))
     transport = FleetTransport("http://127.0.0.1:4567/infer/v1/chat/completions", "secret")
-    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions", json={})
+    request = httpx2.Request("POST", "https://api.openai.com/v1/chat/completions", json={})
     with pytest.raises(ValueError, match="selected model endpoint"):
         asyncio.run(transport.handle_async_request(request))
     assert touched == []
@@ -93,6 +93,7 @@ def test_browser_sends_sdk_chat_and_reloads_saved_answer(tmp_path, sdk_playwrigh
         page.click('#conversation-details')
         page.get_by_role('slider', name='Maximum output tokens', exact=True).press('End')
         page.get_by_role('slider', name='Maximum output tokens', exact=True).press('ArrowLeft')
+        expect(page.get_by_role('slider', name='Maximum output tokens', exact=True)).to_have_attribute('aria-valuetext', '4,096 tokens')
         page.get_by_role("textbox", name="Message", exact=True).fill("Say hello")
         page.get_by_role("textbox", name="Message", exact=True).press("Enter")
         expect(page.locator("chat-view #chat-messages")).to_contain_text("A live ")
@@ -103,7 +104,7 @@ def test_browser_sends_sdk_chat_and_reloads_saved_answer(tmp_path, sdk_playwrigh
         expect(page.locator("chat-view #chat-messages")).to_contain_text("A live SDK answer")
         request = fake.sent_to("/v1/chat/completions")[0]
         assert request["model"] == "qwen-sdk.gguf"
-        assert request["max_tokens"] == 8191 and request["stream"] is True
+        assert request["max_tokens"] == 4096 and request["stream"] is True
     finally:
         browser.close()
         served.close()
@@ -151,6 +152,7 @@ def test_sdk_preserves_reasoning_alongside_the_answer():
 
 @pytest.mark.slow
 def test_output_tokens_selected_while_the_chat_page_loads_are_kept(tmp_path, sdk_playwright):
+    from playwright.sync_api import expect
     from test_fleet_ui import Serving
 
     served = Serving(tmp_path)
@@ -166,7 +168,7 @@ def test_output_tokens_selected_while_the_chat_page_loads_are_kept(tmp_path, sdk
         page.get_by_role('slider', name='Maximum output tokens', exact=True).press('ArrowLeft')
         held[0].continue_()
         page.wait_for_load_state("networkidle")
-        assert page.get_by_role('slider', name='Maximum output tokens', exact=True).input_value() == '8191'
+        expect(page.get_by_role('slider', name='Maximum output tokens', exact=True)).to_have_attribute('aria-valuetext', '4,096 tokens')
     finally:
         browser.close()
         served.close()

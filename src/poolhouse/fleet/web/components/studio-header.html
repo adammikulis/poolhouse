@@ -4,28 +4,46 @@
   S.installHeader = proto => Object.assign(proto, {
       setupHeaderCommands() {
         const menus = [...this.querySelectorAll(".studio-command")];
-        const close = (menu, restore = true) => { menu.open = false; if (restore) menu.querySelector("summary").focus(); };
+        const tools = this.querySelector("#studio-tools-toggle"), bar = this.querySelector("#studio-command-bar"),
+          narrow = matchMedia("(max-width:1100px)"), current = () => this.isConnected && !this.host.hidden;
+        const focus = menu => { if (current()) (narrow.matches && tools.getAttribute("aria-expanded") === "false" ? tools : menu.querySelector("summary")).focus(); };
+        const close = (menu, restore = true) => { menu.open = false; if (restore) focus(menu); };
+        const toggle = (open, restore = false) => {
+          tools.setAttribute("aria-expanded", String(open)); bar.dataset.expanded = String(open);
+          if (!open) for (const menu of menus) close(menu, false);
+          if (restore && current() && tools.isConnected) tools.focus();
+        };
+        tools.onclick = () => { if (tools.isConnected && current()) toggle(tools.getAttribute("aria-expanded") !== "true"); };
+        this.addEventListener("studio-context", () => toggle(false));
+        this.addEventListener("studio-selection", () => { if (this.loaded || this.selectionIntent) toggle(false); });
         this.addEventListener("click", event => {
           for (const menu of menus) {
             if (!menu.contains(event.target)) menu.open = false;
             else if (event.target.closest("button")) {
               const restore = document.activeElement === event.target.closest("button") || document.activeElement === document.body;
               menu.open = false;
-              if (restore) menu.querySelector("summary").focus();
-              this.querySelector("dialog[open]")?.addEventListener("close", () => menu.querySelector("summary").focus(), {once:true});
+              if (restore) focus(menu);
+              const workflow = this.workflowContext, route = this.loadContext;
+              this.querySelector("dialog[open]")?.addEventListener("close", () => {
+                if (workflow === this.workflowContext && route === this.loadContext) focus(menu);
+              }, {once:true});
             }
           }
+          if (!bar.contains(event.target) && event.target !== tools && !event.target.closest("dialog")) toggle(false);
         });
         this.addEventListener("keydown", event => {
           const menu = event.target.closest(".studio-command");
-          if (menu?.open && event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(menu); }
+          if (event.key !== "Escape") return;
+          if (event.target.closest("dialog")) { event.stopPropagation(); return; }
+          if (menu?.open) { event.preventDefault(); event.stopPropagation(); close(menu); }
+          else if (tools.getAttribute("aria-expanded") === "true") { event.preventDefault(); event.stopPropagation(); toggle(false, true); }
         }, true);
         this.addEventListener("change", event => {
           if (event.target.id !== "studio-workflows") return;
           const menu = event.target.closest(".studio-command");
           close(menu, menu.contains(document.activeElement) || document.activeElement === document.body);
         });
-        this.headerOutside = event => { if (!this.contains(event.target)) for (const menu of menus) menu.open = false; };
+        this.headerOutside = event => { if (!this.contains(event.target)) toggle(false); };
         document.addEventListener("click", this.headerOutside);
       }
   });

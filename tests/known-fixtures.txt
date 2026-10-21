@@ -353,3 +353,9 @@ All Systems Operational
 
 # allowed with `hook allow` on 2026-10-16: not people
 Quillon Thistlewick
+
+# Product-owned coding workspace directory.
+Poolhouse Projects
+
+# Studio control label
+Add Report

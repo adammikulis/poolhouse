@@ -140,7 +140,7 @@ settings-view #settings-removal { border-top:1px solid var(--line); padding-top:
         M.contextPicker(cur.context || 8192, (n) => { this.pick.context = n; output.configure({context:n}); }),
         el("p", {class:"hint"}, "Serving context controls the model memory window. Coding conversations can select automatic context separately."),
         output,
-        el("p", {class:"hint"}, "Used by new conversations. Select 0 for no output cap. Existing conversations keep their selected limits. Reasoning effort is configured separately."),
+        el("p", {class:"hint"}, "Default response length for new conversations. Existing conversations keep their selected output limits."),
       );
       this.querySelector("#settings-chatting").replaceChildren(
         el("h3", {}, "Download sources"),

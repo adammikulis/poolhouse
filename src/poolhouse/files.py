@@ -8,11 +8,13 @@ renames over it, so a reader sees the old contents or the new, never the middle.
 
 from __future__ import annotations
 
+import ctypes
 import errno
 import hashlib
 import json
 import os
 import stat
+import sys
 import tempfile
 from collections.abc import Callable, Iterator, Mapping, Set
 from contextlib import contextmanager
@@ -25,7 +27,7 @@ else:
     open_read = None
     replace = os.replace
 
-__all__ = ["UNVERSIONED", "CrossDevice", "promote", "prune_orphans", "read_json", "reading", "records_in",
+__all__ = ["UNVERSIONED", "CrossDevice", "promote", "promote_new_directory", "prune_orphans", "read_json", "reading", "records_in",
            "sha256_file", "stat_signature", "version_of", "versioned", "write_json", "write_text", "writing"]
 
 #: A record with no version key.
@@ -62,6 +64,28 @@ def promote(source: Path | str, target: Path | str, *, directory_fd: int | None 
             f"{source} and {target} are on different filesystems, so moving one onto the "
             f"other would copy it") from None
     return target
+
+
+def promote_new_directory(source: Path, target: Path) -> None:
+    """Atomically move a directory into an absent name, never replacing another entry."""
+    if os.name == 'nt':
+        source.rename(target)  # Windows rename refuses an existing destination.
+        return
+    libc = ctypes.CDLL(None, use_errno=True)
+    if sys.platform == 'darwin':
+        operation = libc.renamex_np
+        operation.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint]
+        args = (os.fsencode(source), os.fsencode(target), 0x00000004)  # RENAME_EXCL
+    elif sys.platform == 'linux' and hasattr(libc, 'renameat2'):
+        operation = libc.renameat2
+        operation.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+        args = (-100, os.fsencode(source), -100, os.fsencode(target), 1)  # AT_FDCWD, RENAME_NOREPLACE
+    else:
+        raise OSError(errno.ENOTSUP, 'Atomic directory creation is unavailable')
+    operation.restype = ctypes.c_int
+    if operation(*args) != 0:
+        code = ctypes.get_errno()
+        raise OSError(code, os.strerror(code), str(target))
 
 
 def _promote_relative(source: Path, target: Path, descriptor: int) -> None:

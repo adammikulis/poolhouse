@@ -43,7 +43,7 @@ def route(request, state):
             if state["serve_error"]:
                 body = {"error": state["serve_error"]}
             else:
-                state["running"] = [{"models": ["quill-27B.gguf"], "port": 9999}]
+                state["running"] = [{"models": ["quill-27B.gguf"], "aliases":["/models/quill-27B.gguf"], "port": 9999}]
         elif method == "DELETE":
             state["running"] = []
         body = {**body, "can_serve": True, "running": state["running"]}
@@ -165,7 +165,7 @@ def test_run_shows_loading_and_blocks_duplicate_posts_across_poll(app, failed):
         page.get_by_text("Not enough memory", exact=True).wait_for()
         assert row.get_by_role("button", name="Start model", exact=True).is_enabled()
     else:
-        state["running"] = [{"models": ["quill-27B.gguf"], "port": 9999}]
+        state["running"] = [{"models": ["quill-27B.gguf"], "aliases":["/models/quill-27B.gguf"], "port": 9999}]
         pending.fulfill(body=json.dumps({"ok": True}), content_type="application/json")
         ready = page.locator("#models-note .ok")
         ready.get_by_text("quill-27B.gguf is ready.", exact=False).wait_for()

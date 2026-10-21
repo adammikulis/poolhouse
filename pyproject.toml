@@ -140,7 +140,7 @@ standard = ["lm-eval[ifeval]>=0.4"]
 # `python -m poolhouse.redteam`: attacks on this library's own model-facing surfaces, sent through
 # PyRIT: about 110 packages and 550 MB, installed in a virtualenv of its own.
 redteam = ["poolhouse[web,pdf,testing]", "pyrit>=1.1,<2"]
-agents = ["openai-agents>=0.23.1"]
+agents = ["openai-agents>=0.24,<0.25", "openai>=3,<4", "httpx2>=2.12,<3"]
 pi = ["nodejs-wheel==24.19.0"]
 all = [
     "poolhouse[agents,train,gguf,graph,store,scrape,vision,pdf,testing,telemetry,plot,fleet-tls,fleet-update,fleet-onboard]",
@@ -332,9 +332,9 @@ select = [
 ignore = ["S603", "S607"]
 
 [tool.ruff.lint.isort]
-# The pre-commit gate lints a temporary tree holding only the staged files, where poolhouse
-# is not on any path; without this it reads as third-party and every import block moves.
-known-first-party = ["poolhouse"]
+# The pre-commit gate lints only staged files in a temporary tree. Declare our package
+# and test helpers explicitly so missing unstaged modules cannot change import grouping.
+known-first-party = ["poolhouse", "tests"]
 combine-as-imports = true
 
 [tool.ruff.lint.per-file-ignores]

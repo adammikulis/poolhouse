@@ -107,11 +107,10 @@ class TestWalkingTheDaemon:
         stops = walked(daemon, tmp_path, playwright)
         by_name = {stop.screen: stop for stop in stops}
 
-        assert [s.screen for s in stops if s.shot] == ["name", "pools", "job", "start"]
+        assert [s.screen for s in stops if s.shot] == ["device"]
         assert all(stop.ok for stop in stops)
-        assert "Set up this machine" in by_name["name"].text
-        assert "Pools" in by_name["pools"].text
-        assert "preferences" in by_name["run"].skipped
+        assert "Welcome to Poolhouse" in by_name["device"].text
+        assert "preferences" in by_name["model"].skipped
         assert "first-run" in by_name["pool"].skipped
 
     def test_every_screen_it_walked_left_a_picture(self, daemon, tmp_path, playwright):
@@ -122,9 +121,9 @@ class TestWalkingTheDaemon:
 
     def test_naming_two_screens_walks_only_those(self, daemon, tmp_path, playwright):
         stops = walked(daemon, tmp_path, playwright,
-                       screens=ops.screens_of("fleet", ["job", "name"]))
-        assert [stop.screen for stop in stops] == ["name", "job"]
-        assert "When can this device help?" in stops[1].text
+                       screens=ops.screens_of("fleet", ["model", "device"]), setup=True)
+        assert [stop.screen for stop in stops] == ["device", "model"]
+        assert "Make this device ready" in stops[1].text
 
     def test_a_port_with_nothing_on_it_is_refused_rather_than_walked(self, tmp_path,
                                                                      monkeypatch,

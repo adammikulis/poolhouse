@@ -3,23 +3,27 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from html import escape
 from pathlib import Path
 
 from poolhouse.ui import Component, assemble, load
 
-from . import vocabulary
+from . import notice_copy, vocabulary
+from .updates import GIT_URL, current_version
 
 WEB = Path(__file__).parent / "web"
 COMPONENTS_DIR = WEB / "components"
 #: the page, in the order the elements wire themselves up
-COMPONENTS = ("fleet-model", "vocabulary-model", "fleet-nav", "sign-in", "launch-needed", "startup-models", "pool-actions", "first-run", "fleet-benchmark", "pool-view",
+COMPONENTS = ("fleet-model", "experimental-notice", "vocabulary-model", "fleet-nav", "sign-in", "launch-needed", "startup-models", "pool-actions", "first-run", "fleet-benchmark", "pool-view",
               "output-token-slider", "chat-stream", "chat-markdown", "chat-view", "board-view", "projects-view", "wired-memory", "feature-flags", "models-library", "model-browser", "models-view", "theme-editor", "vocabulary-settings", "settings-view", "fit-model", "fit-view",
               "fit-charts", "rates-view", "telemetry-view",
               "workspace-jobs", "history-view", "tasks-view", "data-import", "data-discover", "data-view", "knowledge-view",
               "studio-styles", "studio-model", "studio-persistence", "studio-bindings", "studio-editor", "studio-sweeps", "studio-targets", "studio-setup", "studio-managed", "studio-live", "studio-delivery", "studio-webhook", "studio-producer", "studio-records", "studio-branches", "studio-groups", "studio-runs", "studio-sharing", "studio-nodes", "studio-insertion", "studio-placement", "studio-canvas", "studio-view", "training-view", "tools-view", "benchmarks-view", "gym-scene-controls",
               "gym-drone-camera", "gym-scene", "gym-recordings",
               "gym-world-options", "gym-model-options", "gym-view", "close-sheet")
-MODULES = {"studio-header": frozenset({"studio-view"}),
+MODULES = {"chat-discovery": frozenset({"chat-view"}),
+           "model-start-options": frozenset({"chat-view", "models-library"}),
+           "studio-header": frozenset({"studio-view"}),
            "gym-controller": frozenset({"gym-view"}),
            "studio-record-fields": frozenset({"studio-model"}),
            "settings-state": frozenset({"settings-view"}),
@@ -70,5 +74,12 @@ def render(parts: Sequence[str | Component] = COMPONENTS) -> str:
     for name in sorted(EXPERIMENTAL):
         if _absent(name):
             shell = shell.replace(f"<{name}></{name}>", "")
-    page = assemble(shell, components(parts))
+    notice = "".join(f"<p>{escape(text)}</p>" for text in notice_copy.PARAGRAPHS)
+    names = {part.name if isinstance(part, Component) else part for part in parts}
+    calculation = (f'<aside class="card wide calculation-notice" aria-label="Experimental software"><h1>{escape(notice_copy.TITLE)}</h1>'
+                   + notice + f'<a href="{escape(GIT_URL + "/issues")}" target="_blank" rel="noopener noreferrer">Report bugs on GitHub</a></aside>') \
+        if "fit-view" in names and "experimental-notice" not in names else ""
+    shell = shell.replace("__CALCULATION_NOTICE__", calculation)
+    shell = shell.replace("__RUNNING_VERSION__", escape(current_version() or "version unavailable"))
+    page = assemble(shell, components(parts)).replace("__EXPERIMENTAL_COPY__", notice).replace("__EXPERIMENTAL_TITLE__", escape(notice_copy.TITLE))
     return page.replace("__VOCABULARY_DATA__", vocabulary.payload()).replace("__VOCAB__", vocabulary.default_vocabulary())

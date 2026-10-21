@@ -125,7 +125,7 @@ def test_completed_prod_hands_no_launch_session_and_refuses_initial(device):
     assert "Set-Cookie" not in headers
     status, _, _ = device.call("/ui/setup/initial", method="POST", headers=browser_headers(device),
                                   body={"name": "quillhaven", "pool_mode": "prod"})
-    assert status == 403
+    assert status == 401
     assert len(device.ui.sessions) == 0
     assert {"event": "session.refused", "reason": "production-needs-passphrase",
             "source": "127.0.0.1"} in device.rows
@@ -219,3 +219,25 @@ def test_setup_jobs_refuses_untrusted_readers_and_ignores_external_paths(device,
     assert status == 200
     assert body == {"jobs": []}
     assert outside.read_text() == '{"secret":"external-job-store"}'
+
+
+@pytest.mark.parametrize("kind", ["missing", "forged", "expired", "uncredentialed"])
+def test_initial_distinguishes_session_loss_from_forbidden_credentials(device, kind):
+    from poolhouse.fleet.session import parse_cookie
+    cookie = ""
+    if kind == "forged":
+        from poolhouse.fleet.session import COOKIE
+        cookie = COOKIE + "=not-a-session"
+    elif kind == "expired":
+        cookie = sign_in(device)
+        device.ui.sessions.get(parse_cookie(cookie)).expires_at = 0
+    elif kind == "uncredentialed":
+        held = device.ui.sessions.open("browser")
+        cookie = device.ui.sessions.cookie_header(held).split(";")[0]
+    status, response, headers = device.call('/ui/setup/initial', method='POST',
+                                            headers=browser_headers(device), cookie=cookie,
+                                            body={'name':'quillhaven', 'pool_mode':'dev'})
+    assert status == (403 if kind == "uncredentialed" else 401)
+    assert response['error'] and 'run:' not in response['error']
+    assert 'Set-Cookie' not in headers
+    assert not memberships(device.keyfile)

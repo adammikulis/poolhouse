@@ -7,18 +7,22 @@ from types import SimpleNamespace
 
 import pytest
 
-from poolhouse.fleet.studio_native_picks import NATIVE, NativePickRoutes, NativePicks
+from poolhouse.fleet.native_picks import NativePicks
+from poolhouse.fleet.studio_native_picks import NATIVE, NativePickRoutes
 from poolhouse.studio.store import Conflict
 
 
 class Store:
     def __init__(self):
+        self.purpose = "studio-source"
         self.lock = threading.RLock()
         self.rows = {}
-        self.graph = SimpleNamespace(get_doc=lambda key: copy.deepcopy(self.rows.get(key)))
 
-    def put(self, kind, row):
-        self.rows['studio.' + kind + ':' + row['id']] = copy.deepcopy(row)
+    def read(self, ident):
+        return copy.deepcopy(self.rows.get(ident))
+
+    def write(self, row):
+        self.rows[row['id']] = copy.deepcopy(row)
         return copy.deepcopy(row)
 
 
@@ -35,7 +39,7 @@ def picker():
         return created[request_id]
     callbacks = {'epoch': lambda owner: authority['epoch'],
                  'current': lambda owner, epoch: owner == principal and authority['live'] and epoch == authority['epoch'],
-                 'create_watch': create, 'clock': lambda: authority['now']}
+                 'create_resource': create, 'clock': lambda: authority['now']}
     return NativePicks(store, **callbacks), store, principal, authority, calls, callbacks
 
 
@@ -124,11 +128,11 @@ def test_restart_never_resurrects_nonce_or_reopens_chooser(picker):
 def test_lost_registry_ack_only_reconciles_exact_selection(picker):
     picks, _, _, _, calls, callbacks = picker
     request, first = selected(picker)
-    original = callbacks['create_watch']
+    original = callbacks['create_resource']
     def uncertain(*args):
         original(*args)
         raise OSError('lost acknowledgement')
-    picks.create_watch = uncertain
+    picks.create_resource = uncertain
     args = request['request_id'], request['nonce'], first['claim']
     with pytest.raises(OSError):
         picks.complete(*args, '/private/events.csv')
@@ -137,7 +141,7 @@ def test_lost_registry_ack_only_reconciles_exact_selection(picker):
         picks.complete(*args, '/private/different.csv')
     with pytest.raises(Conflict):
         picks.cancel(*args)
-    picks.create_watch = original
+    picks.create_resource = original
     assert picks.complete(*args, '/private/events.csv')['status'] == 'complete'
     assert len({call[-1] for call in calls}) == 1
 
@@ -156,7 +160,7 @@ def test_registry_owns_descriptor_safety_without_a_permissive_fallback(picker):
     request, first = selected(picker)
     def refuse(*args):
         raise PermissionError('symlink or revoked resource')
-    picks.create_watch = refuse
+    picks.create_resource = refuse
     with pytest.raises(PermissionError):
         picks.complete(request['request_id'], request['nonce'], first['claim'], '/private/linked.csv')
     assert not calls
@@ -228,3 +232,25 @@ def test_duplicate_json_callback_fields_never_consume_the_request(picker):
     context.handler.rfile = io.BytesIO(raw.encode())
     assert NativePickRoutes.public_route(context)
     assert replies[0][0] == 409
+
+
+def test_foreign_purpose_row_cannot_be_completed(picker):
+    picks, store, *_ = picker
+    request, claim = selected(picker)
+    store.rows[request['request_id']]['purpose'] = 'coding-project'
+    with pytest.raises(PermissionError):
+        picks.complete(request['request_id'], request['nonce'], claim['claim'], '/private/events.csv')
+
+
+def test_coding_folder_and_studio_requests_have_separate_identity(picker):
+    studio, store, principal, _, _, callbacks = picker
+    records = SimpleNamespace(purpose='coding-project', lock=store.lock, read=store.read, write=store.write)
+    coding = NativePicks(records, **callbacks)
+    key = 'b' * 32
+    studio_request = studio.request(principal, 'folder', key)
+    coding_request = coding.request(principal, 'folder', key)
+    assert studio_request['request_id'] != coding_request['request_id']
+    with pytest.raises(PermissionError):
+        coding.begin(studio_request['request_id'], studio_request['nonce'])
+    with pytest.raises(ValueError):
+        coding.request(principal, 'file', 'c' * 32)

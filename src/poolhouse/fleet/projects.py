@@ -13,6 +13,7 @@ import urllib.parse
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from poolhouse.activity import source_snapshot
 from poolhouse.files import read_json, write_json, writing
 from poolhouse.home import DEFAULT_NAME
 from poolhouse.net import git
@@ -139,6 +140,8 @@ class ProjectRegistry:
         self._candidates: dict[str, Path] = {}
         self._projects: dict[str, Project] = {}
         stored = read_json(self.path, {})
+        self._coding = stored.get("coding_selection", {"id": None, "revision": 0})
+        self._coding_receipts = stored.get("coding_receipts", {})
         for row in stored.get("projects", []):
             project = Project(**{key: value for key, value in row.items() if key in Project.__dataclass_fields__})
             source.project_id(project.id)
@@ -191,7 +194,94 @@ class ProjectRegistry:
             return [project.public() for project in self._projects.values() if project.shared]
 
     def _save(self) -> None:
-        write_json(self.path, {"projects": [asdict(p) for p in self._projects.values()]})
+        write_json(self.path, {"projects": [asdict(p) for p in self._projects.values()],
+                               "coding_selection": self._coding, "coding_receipts": self._coding_receipts})
+
+    @staticmethod
+    def _coding_current(current) -> None:
+        if current() is not True:
+            raise PermissionError("This coding folder choice ended. Choose it again.")
+
+    def coding_revision(self, *, current) -> int:
+        with self.lock:
+            self._coding_current(current)
+            revision = self._coding["revision"]
+            if type(revision) is not int or revision < 0:
+                raise source.ProjectError("The coding folder selection is invalid.")
+            self._coding_current(current)
+            return revision
+
+    def resolve_coding_project(self, identifier: str, *, current) -> Project:
+        """Validate one registered task binding independently of the default selection."""
+        with self.lock:
+            self._coding_current(current)
+            project = self.get(identifier)
+            root = Path(project.root)
+            stamp = root.stat()
+            if root.resolve(strict=True) != root:
+                raise source.ProjectError("The coding folder changed. Choose it again.")
+            source_snapshot.validate_storage(root, source_snapshot.protected_roots(dict(os.environ)))
+            top = git.run(["rev-parse", "--show-toplevel"], cwd=root, protocols="").stdout.strip()
+            after = root.stat()
+            if (top != str(root) or identity(root) != identifier
+                    or (stamp.st_dev, stamp.st_ino) != (after.st_dev, after.st_ino)):
+                raise source.ProjectError("The coding folder changed. Choose it again.")
+            self._coding_current(current)
+            return project
+
+    def coding_project(self, *, current) -> Project | None:
+        """Resolve the chosen registered project under current local storage policy."""
+        with self.lock:
+            self._coding_current(current)
+            identifier = self._coding["id"]
+            result = None if identifier is None else self.resolve_coding_project(identifier, current=current)
+            self._coding_current(current)
+            return result
+
+    def coding_operation(self, operation: str, *, current) -> dict | None:
+        """Read an inert operation receipt without changing the current preference."""
+        source.project_id(operation)
+        with self.lock:
+            self._coding_current(current)
+            receipt = self._coding_receipts.get(operation)
+            if receipt is None:
+                return None
+            self.resolve_coding_project(receipt["id"], current=current)
+            self._coding_current(current)
+            return {**receipt, "current": receipt == self._coding}
+
+    def coding_operation_current(self, operation: str, revision: int, *, current) -> bool:
+        with self.lock:
+            receipt = self.coding_operation(operation, current=current)
+            return receipt["current"] if receipt is not None else self.coding_revision(current=current) == revision
+
+    def select_coding(self, identifier: str, operation: str, revision: int, *, current) -> dict:
+        """Compare-and-set a preference; repeated operations never select it again."""
+        source.project_id(operation)
+        with self.lock:
+            self._coding_current(current)
+            self.resolve_coding_project(identifier, current=current)
+            previous = self._coding_receipts.get(operation)
+            if previous is not None:
+                if previous["id"] != identifier:
+                    raise source.ProjectError("This coding folder operation changed.")
+                self._coding_current(current)
+                return {**previous, "current": previous == self._coding}
+            if type(revision) is not int or revision != self.coding_revision(current=current):
+                raise source.ProjectError("A newer coding folder was chosen. Choose this folder again.")
+            old = self._coding
+            selected = {"id": identifier, "revision": revision + 1}
+            self._coding, self._coding_receipts[operation] = selected, selected
+            try:
+                self._coding_current(current)
+                self._save()
+                self._coding_current(current)
+            except (OSError, ValueError, RuntimeError):
+                self._coding = old
+                self._coding_receipts.pop(operation, None)
+                self._save()
+                raise
+            return {**selected, "current": True}
 
     def share(self, candidate: str, name: str = "") -> Project:
         with self.lock:

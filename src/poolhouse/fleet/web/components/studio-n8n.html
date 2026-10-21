@@ -12,7 +12,108 @@
       requirements:[reason], available:false, missing:['a supported Poolhouse replacement']};
   };
   S.installN8n = proto => Object.assign(proto, {
-    importN8n() {
+    n8nEditing(event) {
+      return event.isComposing || event.composedPath().some(element =>
+        element instanceof HTMLElement && (element.isContentEditable ||
+          ['INPUT', 'TEXTAREA', 'SELECT'].includes(element.tagName)));
+    },
+    writeStudioClipboard(event) {
+      if (!this.clipboard?.nodes.length) return;
+      const marker = 'poolhouse-studio-selection';
+      if (event?.clipboardData) {
+        event.preventDefault();
+        event.clipboardData.setData('application/x-poolhouse-studio', 'selection');
+        event.clipboardData.setData('text/plain', marker);
+      } else navigator.clipboard?.writeText(marker).catch(() => {});
+    },
+    setupN8nPaste() {
+      this.addEventListener('copy', event => {
+        if (event.composedPath().includes(this.canvas) && !this.n8nEditing(event) &&
+            !event.defaultPrevented && !this.host.hidden && M.route === 'studio' &&
+            location.hash === '#studio') this.copy(event);
+      });
+      this.canvas.view.addEventListener('pointermove', event => {
+        this.n8nPointer = {clientX:event.clientX, clientY:event.clientY};
+      });
+      this.addEventListener('paste', event => {
+        if (!event.composedPath().includes(this.canvas) || this.n8nEditing(event) || event.defaultPrevented || this.host.hidden ||
+            M.route !== 'studio' || location.hash !== '#studio' || this.n8nDialog?.open) return;
+        const text = event.clipboardData?.getData('text/plain') || '';
+        const oversized = text.length > 2000000 || new TextEncoder().encode(text).length > 2000000;
+        let recognized = false;
+        if (!oversized) {
+          try {
+            const value = JSON.parse(text);
+            recognized = value && Array.isArray(value.nodes) && value.connections &&
+              typeof value.connections === 'object' && !Array.isArray(value.connections);
+          } catch { recognized = /"nodes"\s*:/.test(text) && /"connections"\s*:/.test(text); }
+        } else recognized = /"nodes"\s*:/.test(text.slice(0,4096));
+        if (recognized) {
+          event.preventDefault();
+          if (oversized) {
+            this.message('Choose n8n JSON smaller than 2 MB.'); return;
+          }
+          const box = this.canvas.view.getBoundingClientRect(), pointer = this.n8nPointer;
+          const inside = pointer && pointer.clientX >= box.left && pointer.clientX <= box.right &&
+            pointer.clientY >= box.top && pointer.clientY <= box.bottom;
+          this.importN8n({text, anchor:this.canvas.point(inside ? pointer :
+            {clientX:box.left + box.width/2, clientY:box.top + box.height/2})});
+        } else if (this.clipboard) { event.preventDefault(); this.paste(); }
+      });
+    },
+    revealN8n() {
+      const held = {graph:this.graph, root:this.rootGraph(), edit:this.editSerial, load:this.loadContext,
+        context:this.workflowContext, session:M.sessionContext(), intent:this.selectionIntent, live:this.liveGeneration,
+        title:this.querySelector("#studio-title").value, history:this.historyCurrent,
+        pending:this.historyPending, tail:this.undoStack.at(-1), selection:[...this.selected].join('/'),
+        snapshot:JSON.stringify(this.rootGraph())};
+      requestAnimationFrame(() => {
+        if (!this.isConnected || this.host.hidden || M.route !== 'studio' || location.hash !== '#studio' ||
+            this.graph !== held.graph || this.rootGraph() !== held.root || this.editSerial !== held.edit ||
+            this.loadContext !== held.load || this.workflowContext !== held.context || M.sessionContext() !== held.session ||
+            this.selectionIntent !== held.intent || this.liveGeneration !== held.live || this.querySelector("#studio-title").value !== held.title ||
+            this.historyCurrent !== held.history || this.historyPending !== held.pending || this.undoStack.at(-1) !== held.tail ||
+            [...this.selected].join('/') !== held.selection || JSON.stringify(this.rootGraph()) !== held.snapshot) return;
+        const cards = [...this.canvas.layer.children].filter(card => this.selected.has(card.dataset.nodeId))
+          .map(card => card.getBoundingClientRect()), view = this.canvas.view.getBoundingClientRect(), v = this.canvas.viewport();
+        const valid = rect => [rect.left,rect.top,rect.right,rect.bottom,rect.width,rect.height].every(Number.isFinite)
+          && rect.width > 0 && rect.height > 0;
+        if (!cards.length || !cards.every(valid) || !valid(view) || view.width <= 32 || view.height <= 32 ||
+            !Number.isFinite(v.zoom) || v.zoom <= 0) return;
+        const union = {left:Math.min(...cards.map(r => r.left)),top:Math.min(...cards.map(r => r.top)),
+          right:Math.max(...cards.map(r => r.right)),bottom:Math.max(...cards.map(r => r.bottom))};
+        const obstacles = [...this.canvas.querySelectorAll('.studio-minimap, .studio-canvas-tools')]
+          .map(item => item.getBoundingClientRect()).filter(valid);
+        if (union.left >= view.left && union.right <= view.right && union.top >= view.top && union.bottom <= view.bottom &&
+            obstacles.every(rect => union.right <= rect.left || union.left >= rect.right || union.bottom <= rect.top || union.top >= rect.bottom)) return;
+        const fits = rect => rect.left >= view.left+16 && rect.right <= view.right-16 &&
+          rect.top >= view.top+16 && rect.bottom <= view.bottom-16 && obstacles.every(obstacle =>
+            rect.right <= obstacle.left-8 || rect.left >= obstacle.right+8 ||
+            rect.bottom <= obstacle.top-8 || rect.top >= obstacle.bottom+8);
+        const shifted = (rect, x, y) => ({left:rect.left+x,right:rect.right+x,top:rect.top+y,bottom:rect.bottom+y});
+        const place = zoom => {
+          const ratio = zoom/v.zoom, rect = {
+            left:view.left+v.x+(union.left-view.left-v.x)*ratio,
+            right:view.left+v.x+(union.right-view.left-v.x)*ratio,
+            top:view.top+v.y+(union.top-view.top-v.y)*ratio,
+            bottom:view.top+v.y+(union.bottom-view.top-v.y)*ratio};
+          const x = Math.max(view.left+16-rect.left, Math.min(0,view.right-16-rect.right)),
+            y = Math.max(view.top+16-rect.top, Math.min(0,view.bottom-16-rect.bottom)), base = shifted(rect,x,y);
+          const moves = [{x:0,y:0}, ...obstacles.flatMap(obstacle => [
+            {x:obstacle.left-8-base.right,y:0},{x:obstacle.right+8-base.left,y:0},
+            {x:0,y:obstacle.top-8-base.bottom},{x:0,y:obstacle.bottom+8-base.top}])]
+            .filter(move => fits(shifted(base,move.x,move.y))).sort((a,b) =>
+              (x+a.x)**2+(y+a.y)**2-((x+b.x)**2+(y+b.y)**2));
+          return moves.length ? {x:v.x+x+moves[0].x,y:v.y+y+moves[0].y,zoom} : null;
+        };
+        const next = place(v.zoom) || place(Math.max(.2, v.zoom*Math.min(1,
+          (view.width-32)/(union.right-union.left),
+          (view.height-32-Math.max(0,...obstacles.map(r => r.height+8)))/(union.bottom-union.top))));
+        if (!next || next.x === v.x && next.y === v.y && next.zoom === v.zoom) return;
+        Object.assign(v,next); this.canvas.transform(); this.canvas.connections(); this.recordHistory(true);
+      });
+    },
+    importN8n(options = {}) {
       if (this.context.length) { this.message('Return to the outer workflow before importing n8n JSON.'); return; }
       this.n8nDialog?.close();
       const dialog = this.n8nDialog = E('dialog', {class:'studio-dialog', 'aria-label':'Import n8n workflow'}),
@@ -22,13 +123,16 @@
         preview = E('button', {type:'button'}, 'Preview translation'),
         apply = E('button', {type:'button', disabled:true}, 'Import draft into canvas');
       let sequence = 0, result, approved;
-      const capture = () => ({root:this.rootGraph(), graph:this.graph, workflow:this.workflowId,
+      const capture = () => ({root:this.rootGraph(), graph:this.graph, workflow:this.workflowId, revision:this.revision,
         edit:this.editSerial, intent:this.selectionIntent, load:this.loadContext, live:this.liveGeneration,
         groups:this.context.map(item => item.node.id).join('/'), json:text.value,
-        snapshot:JSON.stringify(this.rootGraph())});
+        session:M.sessionContext(), workflowContext:this.workflowContext, snapshot:JSON.stringify(this.rootGraph())});
       const current = held => dialog.open && dialog.isConnected && this.isConnected && !this.host.hidden
         && M.route === 'studio' && location.hash === '#studio' && this.n8nDialog === dialog
-        && held.root === this.rootGraph() && held.graph === this.graph && held.workflow === this.workflowId
+        && held.session === M.sessionContext() && held.workflowContext === this.workflowContext
+        && held.root === this.rootGraph() && held.graph === this.graph
+        && (held.workflow === this.workflowId || (!held.workflow && held.revision === 0 &&
+          this.workflowId && Number.isInteger(this.revision) && this.revision > 0))
         && held.edit === this.editSerial && held.intent === this.selectionIntent && held.load === this.loadContext
         && held.live === this.liveGeneration && held.groups === this.context.map(item => item.node.id).join('/')
         && held.json === text.value && held.snapshot === JSON.stringify(this.rootGraph());
@@ -70,15 +174,30 @@
           note.textContent = 'The combined canvas exceeds 1,000 nodes. Import into an empty workflow instead.'; return;
         }
         this.checkpoint();
-        this.graph.nodes.push(...S.clone(result.graph.nodes));
-        this.graph.edges.push(...S.clone(result.graph.edges));
-        Object.assign(this.graph.layout.nodes, S.clone(result.graph.layout.nodes));
-        if (this.graph.nodes.length === result.graph.nodes.length) this.querySelector('#studio-title').value = result.title;
-        this.selected = new Set(result.graph.nodes.map(node => node.id));
+        const imported = S.clone(result.graph), ids = new Map(imported.nodes.map(node => [node.id, S.id()]));
+        const positions = Object.values(imported.layout.nodes), anchor = options.anchor;
+        const offset = anchor && Number.isFinite(anchor.x) && Number.isFinite(anchor.y)
+          ? {x:Math.max(-1000000, Math.min(1000000, anchor.x)) - Math.min(...positions.map(p => p.x)),
+            y:Math.max(-1000000, Math.min(1000000, anchor.y)) - Math.min(...positions.map(p => p.y))}
+          : {x:0,y:0};
+        for (const node of imported.nodes) {
+          const old = node.id, position = imported.layout.nodes[old];
+          node.id = ids.get(old);
+          this.graph.nodes.push(node);
+          this.graph.layout.nodes[node.id] = {x:position.x + offset.x, y:position.y + offset.y};
+        }
+        for (const edge of imported.edges) {
+          edge.source.node = ids.get(edge.source.node); edge.target.node = ids.get(edge.target.node);
+          this.graph.edges.push(edge);
+        }
+        if (!options.anchor && this.graph.nodes.length === result.graph.nodes.length) this.querySelector('#studio-title').value = result.title;
+        this.selected = new Set(ids.values());
         clearTimeout(this.autosave);
         this.editSerial++; this.dirty = true;
-        this.canvas.fit(false); this.recordHistory(); this.render();
+        if (!options.anchor) this.canvas.fit(false);
+        this.recordHistory(); this.render();
         dialog.close();
+        if (options.anchor) this.revealN8n();
         this.message('Imported an unsaved draft. Replace blocked nodes, choose resources, then save.');
       };
       dialog.onclose = () => { sequence++; text.value = ''; file.value = ''; result = approved = null; dialog.remove(); };
@@ -86,6 +205,7 @@
         E('label', {}, 'Paste n8n JSON', text), file, preview, note, rows, apply,
         E('button', {type:'button', onclick:() => dialog.close()}, 'Cancel'));
       this.host.append(dialog); dialog.showModal(); text.focus();
+      if (typeof options.text === 'string') { text.value = options.text; preview.click(); }
     },
   });
 })();

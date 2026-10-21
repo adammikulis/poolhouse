@@ -34,45 +34,20 @@ def press(page: Page, label: str) -> None:
 
 
 def first_run(page: Page, name: str, passphrase: str, group: str) -> None:
-    """Walks the setup wizard, whatever steps it has, until it offers to open the pool.
-
-    Each step is answered by its heading, so a step added or reordered in the wizard is one
-    more entry here and not a silent timeout.
-    """
-    page.wait_for_selector("#first-run:not([hidden]) h1")
-    for _ in range(20):
-        heading = page.locator("#first-run h1").first.inner_text()
-        if heading == "Set up this machine":
-            page.fill("#n", name)
-            press(page, "Continue")
-        elif heading == "Pools":
-            if page.locator("#first-run button:text-is('Join manually')").count():
-                press(page, "Join manually")
-            page.select_option("#setup-pool-action", "create")
-            page.fill("#setup-pool-name", group)
-            page.fill("#setup-pool-passphrase", passphrase)
-            press(page, "Create new pool")
-            page.wait_for_selector("#first-run .ok:has-text('Created')")
-            press(page, "Continue")
-        elif heading in ("What should this machine do?", "When you are not using it"):
-            press(page, "Continue")
-        elif heading == "When should it start?":
-            page.check("#autostart-manual")
-            press(page, "Continue")
-        elif heading == "Where should downloads come from?":
-            page.check("#source-internet")
-            press(page, "Save and continue")
-        elif heading == "What should it be able to do?":
-            press(page, "Not now")
-        elif heading == "Give models more memory?":
-            press(page, "Skip")
-        elif heading.startswith("Joined") or heading.endswith("is ready"):
-            page.click("#first-run button:text-matches('^Open ')")
-            return
-        else:
-            raise SystemExit(f"the setup wizard showed a step this smoke test does not know: {heading!r}")
-        page.wait_for_function(
-            "h => document.querySelector('#first-run h1')?.innerText !== h", arg=heading)
+    """Complete isolated setup through explicit model deferral; smoke never starts compute."""
+    page.get_by_role("heading", name="Welcome to Poolhouse", exact=True).wait_for()
+    page.fill("#setup-device-name", name)
+    page.get_by_text("Join another pool", exact=True).click()
+    page.wait_for_selector("#setup-pool-action")
+    page.select_option("#setup-pool-action", "create")
+    page.fill("#setup-pool-name", group)
+    page.fill("#setup-pool-passphrase", passphrase)
+    page.get_by_role("button", name="Create new pool", exact=True).click()
+    page.wait_for_selector("#first-run .ok:has-text('Created')")
+    press(page, "Continue")
+    page.get_by_role("heading", name="Make this device ready", exact=True).wait_for()
+    press(page, "Set up models later")
+    page.wait_for_selector("#app:not([hidden])")
 
 
 def sign_in(page: Page, passphrase: str) -> None:

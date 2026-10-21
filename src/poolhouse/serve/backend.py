@@ -19,7 +19,7 @@ from typing import Any
 from poolhouse import errors, home, sentinel, serverkeys
 from poolhouse.client import families, wait_for_health
 from poolhouse.platform import process_group_kwargs
-from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache
+from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache, startup
 from poolhouse.serve.binary import child_env, require_binary
 from poolhouse.serve.downloads import LLAMA_FLAGS, clean_env, unlisted_flag
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE
@@ -424,6 +424,7 @@ class ServerInfo:
     # The ``Popen`` for a server this process started, for whoever stops it to wait on.
     # Never serialised: it is not a value, and it is None for an adopted server.
     process: Any = field(default=None, repr=False, compare=False)
+    startup: Any = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -743,7 +744,18 @@ class LlamaServerBackend(ServerBackend):
         return replace(spec, rope_scaling="yarn", rope_scale=scale,
                        yarn_orig_ctx=trained), said
 
+    @contextlib.contextmanager
+    def preparing(self, spec: ServerSpec, lease: Lease):
+        """Hold backend preparation through the native launch lifecycle."""
+        yield
+
     def start(self, spec: ServerSpec, *, lease: Lease, timeout: float = 300.0,
+              **starting: bool) -> ServerInfo:
+        grant.require(lease, Lease)
+        with self.preparing(spec, lease):
+            return self._start_native(spec, lease=lease, timeout=timeout, **starting)
+
+    def _start_native(self, spec: ServerSpec, *, lease: Lease, timeout: float = 300.0,
               **starting: bool) -> ServerInfo:
         """Launch and wait until healthy. Raises ``ServerFailed`` with the log tail.
 
@@ -793,12 +805,14 @@ class LlamaServerBackend(ServerBackend):
             extra_env["LLAMA_SERVER_SLOTS_DEBUG"] = "1"
 
         env = self.environment(extra_env or None)
+        evidence = startup.capture(spec, self.binary, argv, environment=env)
         confined = None
         if confinement.wanted(self.sandboxed):
             confined = confinement.confine(
                 argv, env, self.binary, writable=[spec.slot_save_path] if spec.slot_save_path else [])
             argv, env = confined.argv, confined.env
         try:
+            evidence = startup.current(evidence)
             process, base_url, load_s = launch(argv, lease, log_path=log_path, timeout=timeout,
                                                env=env, cwd=confined.cwd if confined else None)
         except ServerFailed as failure:
@@ -822,6 +836,7 @@ class LlamaServerBackend(ServerBackend):
             load_s=load_s,
             warmup_s=warmup_s,
             process=process,
+            startup=evidence.bind(process, spec.port, self.name) if evidence else None,
         )
 
     def _warm_up(self, base_url: str, *, timeout: float) -> float | None:

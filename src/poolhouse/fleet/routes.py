@@ -16,7 +16,6 @@ from . import (
     credential_routes,
     experimental_routes,
     invite_routes,
-    lan_pools,
     project_client,
     recovery,
 )
@@ -35,6 +34,7 @@ from .features_routes import FeatureRoutes
 from .initial_setup_routes import InitialSetupRoutes
 from .knowledge_routes import KnowledgeRoutes
 from .launch_routes import LaunchRoutes
+from .notice_routes import NoticeRoutes
 from .onboard.joining import JoinOptions, join_by_passphrase, pool_action
 from .onboard.pools import known_pools
 from .page import COMPONENTS, render
@@ -45,8 +45,9 @@ from .runtime_repair_routes import RuntimeRepairRoutes
 from .serving_routes import route as serving_route
 from .session import parse_cookie
 from .setup_jobs import jobs, libraries, provenance, server
+from .setup_preparation import choices_for
 from .setup_recovery_routes import SetupRecoveryRoutes
-from .startup_models import choices
+from .setup_routes import SetupRoutes
 from .studio_native_picks import NativePickRoutes
 from .studio_routes import StudioRoutes
 from .themes import default_appearance, registry, resolve
@@ -219,106 +220,6 @@ def found_pools(routes: Any) -> bool:
     return True
 
 
-class SetupRoutes:
-    """First run: what this machine looks like, what to set it to, and who may say so."""
-
-    def _may_setup(self) -> str:
-        return self.ui.may_setup(self.client_ip, self.host_header,
-                                 self.header("X-Poolhouse-Setup", ""))
-
-    def public_route(self) -> bool:
-        if self.path == "/ui/setup" and self.method == "GET":
-            self.send(200, self.ui.state())
-            return True
-        if self.path == "/ui/setup/join" and self.method == "POST":
-            return self._join()
-        if self.path == "/ui/setup/pools" and self.method == "GET":
-            why = self._may_setup() if not in_pool(self.ui.pool_key_path) else ""
-            if why:
-                self.send(403, {"error": why})
-            elif in_pool(self.ui.pool_key_path) and not self.ui.authed(self.cookie):
-                self.send(401, {"error": "sign in to discover pools"})
-            else:
-                try:
-                    self.send(200, {"pools": lan_pools.nearby(port=self.ui.discovery_port),
-                                    "found": [c.public() for c in known_pools(
-                                        self.ui.pool_key_path, port=self.ui.discovery_port,
-                                        self_names=(self.ui.name,))]})
-                except OSError:
-                    self.send(503, {"error": "LAN discovery is unavailable; enter the pool name manually."})
-            return True
-        if self.path == "/ui/setup/suggest" and self.method == "GET":
-            return self._suggest()
-        if self.path in ("/ui/setup/prefs", "/ui/setup/done") and self.method == "POST":
-            return self._prefs()
-        if self.path == "/ui/setup/members" and self.method == "GET":
-            self.send(200, {"members": self.ui.members(force=True)})
-            return True
-        return super().public_route()
-
-    def _join(self) -> bool:
-        ui = self.ui
-        joined = in_pool(ui.pool_key_path)
-        if joined and not ui.authed(self.cookie):
-            self.send(401, {"error": "this machine is already in a pool -- sign in to "
-                                     "move it to another one"})
-            return True
-        if not joined:
-            why = self._may_setup()
-            if why:
-                self.send(403, {"error": why})
-                return True
-        req = self.body()
-        try:
-            if not isinstance(req.get("existing", False), bool):
-                raise DiscoveryError("existing pool selection must be true or false")
-            held = ui.sessions.get(parse_cookie(self.cookie))
-            state, sid = ui.join(str(req.get("passphrase") or ""),
-                                 require_name(req.get("group")), self.client_ip,
-                                 options=JoinOptions(action=req.get("mode"), existing=req.get("existing") is True,
-                                                     mode=req.get("pool_mode")),
-                                 origin=held.origin if held is not None and held.credentialed else "")
-        except DiscoveryError as exc:
-            self.send(429 if "attempts" in str(exc) or "busy" in str(exc) else 400,
-                      {"error": str(exc)})
-            return True
-        session = ui.sessions.get(sid)
-        self.send(200, state,
-                  {"Set-Cookie": ui.sessions.cookie_header(session)} if session else None)
-        return True
-
-    def _suggest(self) -> bool:
-        from .settings import suggest
-        ui = self.ui
-        report = ui.report() if callable(ui.report) else {}
-        self.send(200, {
-            "machine": {k: report.get(k) for k in
-                        ("gpu", "vendor", "cpus", "ram_gb", "accelerator",
-                         "vram_total_gb", "temp_c")},
-            "suggest": {k: {"value": s.value, "why": s.why}
-                        for k, s in suggest().items()},
-            "current": ui.settings.public() if ui.settings else {},
-        })
-        return True
-
-    def _prefs(self) -> bool:
-        ui = self.ui
-        if in_pool(ui.pool_key_path):
-            if not ui.authed(self.cookie):
-                self.send(401, {"error": "sign in first"})
-                return True
-        else:
-            why = self._may_setup()
-            if why:
-                self.send(403, {"error": why})
-                return True
-        if self.path == "/ui/setup/done":
-            self.send(200, ui.setup_finished())
-            return True
-        self.send(200, ui.apply_prefs(self.body()))
-        return True
-
-
 class SessionRoutes:
     """``/ui/session``: who is signed in, signing in, and signing out."""
 
@@ -476,9 +377,10 @@ class ModelRoutes:
         if component_routes.route(self):
             return True
         if self.path == "/ui/models/startup" and self.method == "GET":
-            ui = self.ui
-            self.send(200, choices(disk_gb=ui.models.free_gb() if ui.models else 0,
-                                   installed=(m.name for m in ui.models.all()) if ui.models else ()))
+            result = choices_for(self.ui)
+            if not self.signed_in():
+                return True
+            self.send(200, result)
             return True
         if self.path == "/ui/models/popular" and self.method == "GET":
             return self._popular()
@@ -808,7 +710,7 @@ class JobRoutes:
         return True
 
 
-class Router(InitialSetupRoutes, RuntimeRepairRoutes, PageRoutes, SetupRecoveryRoutes, SetupRoutes, SessionRoutes, MeasureRoutes, SettingsRoutes,
+class Router(NoticeRoutes, InitialSetupRoutes, RuntimeRepairRoutes, PageRoutes, SetupRecoveryRoutes, SetupRoutes, SessionRoutes, MeasureRoutes, SettingsRoutes,
              BoardRoutes, RoomRoutes, FeatureRoutes, ModelRoutes, ChatRoutes, UpdateRoutes, PoolRoutes, JobRoutes,
              KnowledgeRoutes, *experimental_routes.load(), NativePickRoutes, StudioRoutes, WorkspaceRoutes, LaunchRoutes, ExtensionRoutes, Base):
     """Every screen's routes, in the order a request meets them."""

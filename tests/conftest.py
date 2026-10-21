@@ -1203,6 +1203,21 @@ def playwright():
         yield play
 
 
+@pytest.fixture(scope="session")
+def browser_owner(tmp_path_factory):
+    """The managed Chromium process owned by this pytest worker."""
+    pytest.importorskip("playwright.sync_api")
+    from browser_worker import BrowserWorker
+
+    profile = tmp_path_factory.mktemp("managed-browser")
+    owner = BrowserWorker(profile)
+    owner.start()
+    try:
+        yield owner
+    finally:
+        owner.close()
+
+
 def heavy_modules() -> frozenset[str]:
     """The test modules listed in ``tests/heavy-modules.txt``, one file name per line."""
     listed = (Path(__file__).parent / "heavy-modules.txt").read_text(encoding="utf-8")

@@ -35,12 +35,14 @@
       }
     },
     libraryPlacement(entry, title, detail, pending) {
-      const card = E('div', {class: 'studio-library-node', draggable: true, 'data-node-type': entry.type || 'group'},
-        E('span', {}, title), E('small', {}, detail || 'Workflow'));
+      const description = 'studio-library-detail-' + S.id();
+      const card = E('div', {class: 'studio-library-node', draggable: true, 'data-node-type': entry.type || 'group',
+        'data-library-entry': JSON.stringify(entry), title: detail || 'Workflow'},
+        E('span', {}, title), E('small', {id: description}, detail || 'Workflow'));
       card.ondragstart = event => {
         event.dataTransfer.setData(MIME, JSON.stringify(entry)); event.dataTransfer.effectAllowed = 'copy';
       };
-      const add = E('button', {type: 'button', 'aria-label': 'Add ' + title, onclick: () => {
+      const add = E('button', {type: 'button', 'aria-label': 'Add ' + title, 'aria-describedby': description, onclick: () => {
         this.placeEntry(entry, pending && this.pendingPosition ? {...this.pendingPosition} : this.placementCenter());
       }}, 'Add');
       card.append(add); return card;

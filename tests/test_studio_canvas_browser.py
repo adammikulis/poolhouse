@@ -5,7 +5,6 @@ import hashlib
 import json
 import re
 import uuid
-from contextlib import contextmanager
 
 import pytest
 from browser_expect import expect
@@ -13,7 +12,6 @@ from studio_commands import studio_command, workflow_picker
 from test_fleet_ui import Serving
 
 from poolhouse.fleet import studio_service
-from poolhouse.scrape.browser import Window, browser
 
 pytestmark = pytest.mark.slow
 
@@ -41,25 +39,9 @@ SPECS.extend([
 
 
 @pytest.fixture(scope='module')
-def studio_browser(tmp_path_factory):
-    """Keep one managed process per worker, with a fresh context for every journey."""
-    pytest.importorskip('playwright.sync_api')
-    profile = tmp_path_factory.mktemp('studio-managed-browser')
-    with browser(Window(profile=profile, headless=True)) as managed_page:
-        managed_browser = managed_page.context.browser
-        assert managed_browser is not None
-
-        @contextmanager
-        def isolated_page():
-            context = managed_browser.new_context(
-                viewport={'width': 1440, 'height': 1000}, accept_downloads=True)
-            context.set_default_timeout(60_000)
-            try:
-                yield context.new_page()
-            finally:
-                context.close()
-
-        yield isolated_page
+def studio_browser(browser_owner):
+    """Fresh isolated pages on the worker's managed browser."""
+    return browser_owner.pages
 
 
 @pytest.fixture
@@ -211,8 +193,8 @@ def test_nested_group_copies_and_exposed_parameter_undo(studio_page):
     expect(page.get_by_label('Expose parameter template')).to_have_value('shared_prompt')
     page.locator('.studio-inspector').get_by_label('Prompt text', exact=True).fill('Changed original')
     page.locator('.studio-inspector').get_by_label('Prompt text', exact=True).press('Tab')
-    page.get_by_role('button', name='← Back to parent').click()
-    page.get_by_role('button', name='← Back to parent').click()
+    page.locator('.studio-group-back').click()
+    page.locator('.studio-group-back').click()
     page.locator('.studio-node').nth(1).get_by_role('button', name='Open group').click()
     page.locator('.studio-node').get_by_role('button', name='Open group').click()
     page.locator('.studio-node').focus()
@@ -243,7 +225,7 @@ def make_prompt_group(page):
     page.keyboard.press('Enter')
     page.get_by_label('Expose outputs prompt').fill('prompt')
     page.get_by_label('Expose outputs prompt').press('Tab')
-    page.get_by_role('button', name='← Back to parent').click()
+    page.locator('.studio-group-back').click()
 
 
 def test_actual_catalogue_template_run_and_package_round_trip(tmp_path, studio_browser):

@@ -15,7 +15,7 @@ from poolhouse.httpguard import Refused
 from poolhouse.net import policy as hosts, provenance
 from poolhouse.net.hold import staging_dir
 
-__all__ = ["NETWORK", "GitFailed", "clone", "environment", "guarded", "head", "run"]
+__all__ = ["NETWORK", "GitFailed", "clone", "commit_empty", "environment", "guarded", "head", "run"]
 
 NETWORK = frozenset({"clone", "fetch", "pull", "ls-remote", "push", "submodule"})
 TIMEOUT_S = 1800.0
@@ -85,11 +85,29 @@ def run(args: Sequence[str], *, cwd: Path | None = None, url: str = "",
     if args and args[0] in NETWORK:
         target = url or _origin(cwd)
         guarded(target, policy, protocols)
-    hooks = staging_dir() / "no-hooks"
+    return _execute(args, cwd, _execution_env(protocols))
+
+
+def _execution_env(protocols):
+    hooks = staging_dir() / 'no-hooks'
     hooks.mkdir(exist_ok=True)
+    return environment(protocols, hooks)
+
+
+def commit_empty(cwd: Path, identity: tuple[str, str], message: str) -> subprocess.CompletedProcess[str]:
+    """Record an empty local commit with explicit software identity and no signing or hooks."""
+    env = _execution_env('')
+    name, email = identity
+    env.update(GIT_AUTHOR_NAME=name, GIT_AUTHOR_EMAIL=email,
+               GIT_COMMITTER_NAME=name, GIT_COMMITTER_EMAIL=email)
+    return _execute(['-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null',
+                     'commit', '--allow-empty', '--no-verify', '-m', message], cwd, env)
+
+
+def _execute(args, cwd, env):
     try:
         done = subprocess.run([_git(), *args], cwd=cwd, capture_output=True, text=True,
-                              timeout=TIMEOUT_S, env=environment(protocols, hooks), check=False)
+                              timeout=TIMEOUT_S, env=env, check=False)
     except subprocess.TimeoutExpired as exc:
         raise GitFailed(f"git {args[0] if args else ''} timed out") from exc
     if done.returncode != 0:

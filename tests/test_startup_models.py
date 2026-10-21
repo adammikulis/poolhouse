@@ -69,6 +69,7 @@ class StartupModelTests(unittest.TestCase):
             draft = Path(directory) / "model.draft.gguf"
             draft.touch()
             manager = Mock()
+            manager.lease.return_value.port = 7000
             with patch.object(serving, "read_gguf_header", return_value={
                     "general.architecture": "qwen3_5", "qwen3_5.nextn_predict_layers": 1}), patch.object(
                     serving, "estimate"), patch.object(serving, "verdict", return_value="red"):
@@ -78,7 +79,8 @@ class StartupModelTests(unittest.TestCase):
             with patch.object(serving, "read_gguf_header", return_value={
                     "general.architecture": "qwen3_5", "qwen3_5.nextn_predict_layers": 1}), patch.object(
                     serving, "estimate"), patch.object(serving, "verdict", return_value="green"):
-                serving.start_model(directory, model, manager=manager)
+                started = serving.start_model(directory, model, manager=manager)
+                self.assertEqual(started.port, 7000)
                 spec = manager.lease.call_args.args[0]
                 self.assertEqual(spec.spec_type, "draft-mtp")
                 self.assertEqual(spec.draft, str(draft))
@@ -97,7 +99,7 @@ class StartupModelTests(unittest.TestCase):
         ui = Mock()
         ui.authed.return_value = False
         ui.may_setup.return_value = "remote setup refused"
-        with patch.object(routes, "choices") as offered, patch.object(
+        with patch.object(routes, "choices_for") as offered, patch.object(
                 routes, "in_pool", return_value=False), patch.object(routes.Router, "send") as send:
             routes.Router(ui, handler).run()
             self.assertEqual(send.call_args.args[0], 403)
@@ -109,7 +111,7 @@ class StartupModelTests(unittest.TestCase):
             ui.authed.return_value = True
             ui.models = None
             routes.Router(ui, handler).run()
-            offered.assert_called_once_with(disk_gb=0, installed=())
+            offered.assert_called_once_with(ui)
 
 
 if __name__ == "__main__":

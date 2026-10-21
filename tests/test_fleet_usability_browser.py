@@ -7,18 +7,16 @@ pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
-def usability_page(tmp_path, playwright):
+def usability_page(tmp_path, browser_owner):
     served = Serving(tmp_path)
     served.ui.root = tmp_path / "traind"
     served.ui.settings.setup_done = True
-    browser = playwright.chromium.launch(headless=True)
-    page = browser.new_page(viewport={'width': 1280, 'height': 900})
     errors = []
-    page.on('pageerror', lambda error: errors.append(str(error)))
     try:
-        yield served, page, errors
+        with browser_owner.pages(viewport={'width': 1280, 'height': 900}) as page:
+            page.on('pageerror', lambda error: errors.append(str(error)))
+            yield served, page, errors
     finally:
-        browser.close()
         try:
             if engine := getattr(served.ui, "studio", None):
                 engine.close()
@@ -288,9 +286,13 @@ def test_workspace_tools_and_utilities_at_all_sizes(usability_page, theme):
     from playwright.sync_api import expect
 
     served, page, errors = usability_page
+    served.ui.settings.appearance = {'active_theme': theme, 'saved_themes': []}
     page.route('**/ui/workspace/jobs', lambda route: route.fulfill(status=503, json={'error': 'Job status unavailable'}))
     page.goto(f'http://127.0.0.1:{served.port}/ui/')
-    page.evaluate('theme => document.documentElement.dataset.theme = theme', theme)
+    from poolhouse.fleet.themes import PRESETS
+
+    page.wait_for_function('() => !!fleetModel.preferences.resolved_theme')
+    page.evaluate('theme => fleetModel.setPreferences({...fleetModel.preferences,resolved_theme:theme})', PRESETS[theme])
     for width, height in [(1440, 900), (1280, 768), (1280, 640), (1024, 420), (390, 844)]:
         page.set_viewport_size({'width': width, 'height': height})
         tools = page.get_by_role('group', name='Workspace tools', exact=True)
@@ -323,11 +325,18 @@ def test_workspace_tools_and_utilities_at_all_sizes(usability_page, theme):
         }''')
         assert utilities.locator('.rail-link').evaluate_all('nodes => nodes.map(node => node.id)') == ['nav-guide', 'nav-settings', 'nav-signout']
         expect(explore).to_be_in_viewport()
+        if width in (1440, 390):
+            expect(page.locator('html')).to_have_attribute('data-theme', theme)
+            page.screenshot(path=f'/private/tmp/poolhouse-explore-{theme}-{width}-rail.png')
         explore.focus()
         explore.press('Enter')
         expect(page.locator('.demo-slice')).to_have_count(10)
+        if width in (1440, 390):
+            page.screenshot(path=f'/private/tmp/poolhouse-explore-{theme}-{width}-guide.png')
         page.locator('.demo-slice').filter(has_text='Find the right model').click()
         expect(page.locator('#models')).to_be_visible()
+        if width in (1440, 390):
+            page.screenshot(path=f'/private/tmp/poolhouse-explore-{theme}-{width}-return.png')
         training.click()
         expect(page.locator('training-view > section.workspace')).to_be_visible()
         expect(page.get_by_role('button', name='Sign out', exact=True)).to_be_in_viewport()

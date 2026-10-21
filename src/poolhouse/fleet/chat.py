@@ -81,16 +81,11 @@ def targets(members: list[dict[str, Any]], serving: Any = None,
 
 
 def find(available: list[Target], model: str) -> Target | None:
-    """The target for ``model``, preferring one on this machine."""
+    """Resolve one exact advertised model or resource alias without guessing."""
     if not model:
-        return available[0] if available else None
-    for target in available:
-        if target.model == model or target.alias == model or target.model == Path(model).name:
-            return target
-    for target in available:
-        if model.lower() in target.model.lower():
-            return target
-    return None
+        return None
+    matches = [target for target in available if model in (target.model, target.alias)]
+    return matches[0] if len(matches) == 1 else None
 
 
 def stream(target: Target, payload: dict[str, Any], *,
