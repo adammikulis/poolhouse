@@ -21,10 +21,10 @@ def test_current_agents_are_visible_with_no_direct_history_and_open_only_a_draft
     expect(agent).to_have_attribute('aria-description', f'Agent identity {member.name}')
     expect(page.locator('#conversation-direct')).to_contain_text('No direct messages yet.')
     agent.focus()
-    page.locator('chat-view ml-board').evaluate('board => board.load()')
+    page.locator('chat-view poolhouse-board').evaluate('board => board.load()')
     expect(agent).to_be_focused()
     agent.press('Enter')
-    board = page.locator('chat-view ml-board')
+    board = page.locator('chat-view poolhouse-board')
     assert board.evaluate('board => board.target().to') == member.name
     expect(page.locator('#conversation-team-heading')).to_contain_text('active-workspace')
     expect(page.locator('#conversation-team-heading')).to_contain_text(member.name)
@@ -51,11 +51,11 @@ def test_agent_directory_search_scope_and_keyboard_use_theme_tokens(activity_wor
     agent = page.locator(f'#conversation-directory button[title="{member.name}"]')
     expect(agent).to_have_count(1)
     agent.focus()
-    page.locator('chat-view ml-board').evaluate('board => board.load()')
+    page.locator('chat-view poolhouse-board').evaluate('board => board.load()')
     expect(agent).to_be_focused()
     agent.press('Enter')
     expect(page.locator('#conversation-team-heading')).to_contain_text('Shared workspace')
-    composer = page.locator('chat-view ml-board').get_by_role('textbox', name='Message', exact=True)
+    composer = page.locator('chat-view poolhouse-board').get_by_role('textbox', name='Message', exact=True)
     expect(composer).to_be_in_viewport()
     assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
     page.screenshot(path=str(tmp_path / f'chat-directory-{theme}-{width}.png'), full_page=True)
@@ -72,7 +72,7 @@ def test_stale_agent_button_cannot_open_dm_after_workspace_switch(activity_works
     expect(page.locator('#conversation-workspace-status')).to_have_text('Only on this device')
     page.evaluate('previousAgentButton.click()')
     assert page.evaluate('fleetModel.route') == 'chat'
-    assert page.locator('chat-view ml-board').get_attribute('endpoint') == '/ui/board'
+    assert page.locator('chat-view poolhouse-board').get_attribute('endpoint') == '/ui/board'
 
 
 def test_person_required_is_distinct_from_connection_failure_without_enrollment(activity_workspace):

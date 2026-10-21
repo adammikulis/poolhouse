@@ -111,7 +111,7 @@ def test_apple_memory_is_one_physical_pool(joined, open_page):
                                 'slots': 1, 'spec_type': 'draft-mtp', 'draft_status': 'active'}]}}]
     page, errors = open_page(joined, cookie=joined.cookie, path='/ui/#pool')
     page.get_by_text('45.0 GB of 128.0 GB in use', exact=False).wait_for()
-    meters = page.locator('pool-view ml-meter')
+    meters = page.locator('pool-view poolhouse-meter')
     assert meters.filter(has=page.get_by_text('memory', exact=True)).count() == 1
     assert page.get_by_text('unified memory', exact=True).count() == 0
     assert page.locator('.loaded-models').get_by_text('Qwen3.8-27B', exact=True).is_visible()

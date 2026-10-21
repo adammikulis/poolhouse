@@ -133,7 +133,7 @@ models-view .model-loading{padding:28px;border-radius:16px;background:var(--bg-r
         keep.add(key);
         let progress = this.progress.get(key);
         if (!progress) {
-          progress = M.ui("ml-progress");
+          progress = M.ui("poolhouse-progress");
           this.progress.set(key, progress);
           container.append(progress);
         }
