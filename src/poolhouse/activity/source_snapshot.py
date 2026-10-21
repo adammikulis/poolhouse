@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import unicodedata
 from contextlib import ExitStack, suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -221,7 +222,7 @@ def metadata_directory(root: Path) -> Path:
 class SourceSnapshot:
     """Inventory a worktree using private Git metadata without configured filters."""
 
-    def __init__(self, root: Path, storage: Path):
+    def __init__(self, root: Path, storage: Path, *, known_paths: tuple[bytes, ...] = ()):
         self.root = validate_storage(root, protected_roots(dict(os.environ)))
         storage = validate_storage(storage, ())
         owner = storage.stat()
@@ -233,6 +234,7 @@ class SourceSnapshot:
         with ExitStack() as cleanup:
             cleanup.callback(self.close)
             self.prepare()
+            self._retain_paths(known_paths)
             cleanup.pop_all()
 
     def prepare(self) -> None:
@@ -276,6 +278,25 @@ class SourceSnapshot:
             if name:
                 self.path(name)
                 self.entries.setdefault(name, (b"100644", b""))
+
+    def _retain_paths(self, names: tuple[bytes, ...]) -> None:
+        if (type(names) is not tuple or any(type(name) is not bytes for name in names)
+                or sum(len(name) + 1 for name in names) > OUTPUT_LIMIT
+                or names != tuple(sorted(set(names)))):
+            raise RuntimeError("source snapshot: retained paths must be bounded canonical byte names")
+        if not names:
+            return
+        folded = {unicodedata.normalize("NFD", os.fsdecode(name)).casefold(): name for name in self.entries}
+        for name in names:
+            if b"\0" in name or any(part.lower() == b".git" for part in name.split(b"/")):
+                raise RuntimeError("source snapshot: retained path is not source content")
+            self.path(name)
+            key = unicodedata.normalize("NFD", os.fsdecode(name)).casefold()
+            if key in folded and folded[key] != name:
+                raise RuntimeError("source snapshot: retained path has a case or normalization alias")
+            folded[key] = name
+            self.entries.setdefault(name, (b"100644", b""))
+        self.tracked = tuple(sorted(set(self.tracked).union(names)))
 
     def command(self, args: list[str]) -> bytes:
         return git_output(["--git-dir=" + str(self.directory), "--work-tree=" + str(self.root), *args],

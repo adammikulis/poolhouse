@@ -265,3 +265,96 @@ finally:
                             capture_output=True, timeout=10)
     assert result.returncode == 23 and b"changed before read" in result.stdout
     assert not (storage / "capture").exists()
+
+
+@pytest.mark.parametrize("present", [False, True])
+def test_retained_paths_cover_absence_and_ignored_recreation(repo, present):
+    root, storage, _ = repo
+    (root / ".gitignore").write_text("retained\n")
+    if present:
+        (root / "retained").write_bytes(b"recreated bytes")
+    snapshot = source.SourceSnapshot(root, storage, known_paths=(b"retained",))
+    try:
+        result = snapshot.capture(storage / "retained-result")
+    finally:
+        snapshot.close()
+    assert result.missing == (() if present else (b"retained",))
+    if present:
+        assert (result.directory / "retained").read_bytes() == b"recreated bytes"
+
+
+@pytest.mark.parametrize("names", [
+    [b"file"], ("file",), (b"",), (b"../outside",), (b"a/../outside",), (b"/outside",),
+    (b"a//b",), (b"a/./b",), (b"a\0b",), (b".git/config",), (b"a/.GiT/config",),
+    (b"same", b"same"), (b"z", b"a"), (b"Name", b"name"),
+    (b"e\xcc\x81", b"\xc3\xa9"),
+])
+def test_retained_paths_refuse_malformed_or_ambiguous_inventory(repo, names):
+    root, storage, _ = repo
+    before = set(storage.iterdir())
+    with pytest.raises((RuntimeError, ValueError)):
+        source.SourceSnapshot(root, storage, known_paths=names)
+    assert set(storage.iterdir()) == before
+
+
+def test_retained_inventory_obeys_existing_encoded_byte_limit(repo):
+    root, storage, _ = repo
+    with pytest.raises(RuntimeError, match="bounded canonical"):
+        source.SourceSnapshot(root, storage, known_paths=(b"x" * source.OUTPUT_LIMIT,))
+    assert not list(storage.iterdir())
+
+
+@pytest.mark.parametrize("kind", ["symlink", "hardlink", "fifo"])
+def test_recreated_ignored_retained_paths_cannot_change_type(repo, kind):
+    root, storage, _ = repo
+    (root / ".gitignore").write_text("retained\n")
+    path = root / "retained"
+    if kind == "symlink":
+        path.symlink_to(root / "tracked")
+    elif kind == "hardlink":
+        os.link(root / "tracked", path)
+    else:
+        os.mkfifo(path)
+    snapshot = source.SourceSnapshot(root, storage, known_paths=(b"retained",))
+    try:
+        with pytest.raises(RuntimeError, match="protected regular"):
+            snapshot.capture(storage / "rejected-result")
+    finally:
+        snapshot.close()
+    assert not list(storage.iterdir())
+
+
+def test_retained_paths_cannot_override_exclusions(repo):
+    root, storage, _ = repo
+    (root / "retained").write_text("private configuration")
+    snapshot = source.SourceSnapshot(root, storage, known_paths=(b"retained",))
+    try:
+        result = snapshot.capture(storage / "excluded-result", excluded=(b"retained",))
+    finally:
+        snapshot.close()
+    assert b"retained" not in result.missing
+    assert all(entry.path != b"retained" for entry in result.entries)
+    assert not (result.directory / "retained").exists()
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_absent_retained_path_appearing_during_capture_refuses_output(repo, monkeypatch, nested):
+    root, storage, _ = repo
+    name = b"nested/retained" if nested else b"retained"
+    target = root / os.fsdecode(name)
+    target.parent.mkdir(exist_ok=True)
+    (root / ".gitignore").write_text(os.fsdecode(name) + "\n")
+    snapshot = source.SourceSnapshot(root, storage, known_paths=(name,))
+    original = snapshot._verify_capture
+
+    def changed(*args):
+        target.write_text("concurrent")
+        original(*args)
+
+    monkeypatch.setattr(snapshot, "_verify_capture", changed)
+    try:
+        with pytest.raises(RuntimeError, match="changed"):
+            snapshot.capture(storage / "changed-result")
+    finally:
+        snapshot.close()
+    assert not list(storage.iterdir())
