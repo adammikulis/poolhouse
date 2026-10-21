@@ -26,10 +26,10 @@ def test_the_ordinary_names_around_the_reserved_ones_still_work():
 
 
 def test_a_workspace_token_is_a_credential_in_its_own_right():
-    token = "mlws1.worker." + "A1b2C3d4E5f6G7h8I9j0K1l2"
+    token = "poolhouse-ws1.worker." + "A1b2C3d4E5f6G7h8I9j0K1l2"
     assert "workspace-token" in screen.secret_kinds(f"use {token} to log in")
     assert any("workspace-token" in why for why in screen.refusals(token, Path("/nonexistent")))
-    assert "workspace-token" not in screen.secret_kinds("mlws1.worker is an id, not a token")
+    assert "workspace-token" not in screen.secret_kinds("poolhouse-ws1.worker is an id, not a token")
 
 
 @pytest.mark.parametrize("text", [

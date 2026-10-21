@@ -434,6 +434,23 @@ def test_planted_decoys_are_files_and_tokens_and_idempotent(tmp_path):
         assert Path(decoy.path).stat().st_mode & 0o777 == 0o600
 
 
+def test_pool_decoy_uses_current_namespace_and_never_authenticates(tmp_path):
+    import base64
+
+    from poolhouse import macauth
+
+    honey = Honey(tmp_path / "home", state=tmp_path / "honey.json")
+    decoy = next(item for item in honey.plant() if item.id == "pool")
+    assert decoy.value.startswith(macauth.PREFIX)
+    auth = macauth.Authenticator(lambda: [macauth.derive(b"synthetic-issued-pool")])
+    url = "http://127.0.0.1:8770/jobs"
+    headers = {"Host": "127.0.0.1:8770", **macauth.sign(decoy.value, "GET", url, None)}
+    assert not auth.check("GET", "/jobs", headers, None).ok
+    raw = decoy.value.encode()
+    for value in (decoy.value, raw.hex(), base64.b64encode(raw).decode(), base64.urlsafe_b64encode(raw).decode()):
+        assert honey.scan(value, "tool_result", session="synthetic-session")
+
+
 def test_a_person_s_own_file_is_never_overwritten(tmp_path):
     home = tmp_path / "home"
     home.mkdir()
