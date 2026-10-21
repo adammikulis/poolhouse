@@ -45,6 +45,7 @@ from .runtime_paths import default_root
 from .serving import Hosting, context_settings
 from .session import Sessions, Throttle, parse_cookie
 from .settings import apply_preferences
+from .updates import current_version
 
 __all__ = ["ASSETS", "UI", "UI_HEADER", "asset_bytes", "routes", "serve_page"]
 
@@ -179,7 +180,9 @@ class UI:
         joined = bool(selected)
         mode = selected[0].mode if selected else getattr(self.settings, "pool_mode", "") or "dev"
         done = bool(self.settings and self.settings.setup_done)
-        return {"in_pool": joined, "name": self.name,
+        return {"version": current_version(),
+                "experimental_notice_accepted": bool(self.settings and self.settings.experimental_notice_accepted is True),
+                "in_pool": joined, "name": self.name,
                 "group": pool_group(self.pool_key_path) if joined else None,
                 "needs_password": joined, "pool_mode": mode,
                 "selection": getattr(selected[0], "selection", "automatic") if selected else "automatic",

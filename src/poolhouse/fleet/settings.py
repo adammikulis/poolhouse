@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from poolhouse import lock
+from poolhouse.files import write_json
+from poolhouse.json_objects import unique_object
 from poolhouse.records import Document
 
 from .themes import default_appearance, validate_appearance
@@ -27,6 +32,8 @@ class Settings:
     """``stop`` gets the machine back now, at the cost of restarting the current job"""
     autostart: str = "manual"
     setup_done: bool = False
+    experimental_notice_accepted: bool = False
+    """One local product acknowledgement, independent of pools, versions and authority."""
     pool_mode: str = ""
     gym_python: str = ""
     """The default interpreter for installed simulator libraries."""
@@ -68,8 +75,24 @@ class Settings:
 
         The `features` map is the file's own: a daemon's copy of it can be stale, so what is on disk is kept.
         """
-        self.features = _DOC.read(path).features
-        return _DOC.write(self, path, atomic=True)
+        with lock.rewriting(path):
+            held = _stored(path)
+            self.features = _build(held).features
+            self.experimental_notice_accepted = (self.experimental_notice_accepted is True
+                                                 or held.get("experimental_notice_accepted") is True)
+            return _DOC.write(self, path, atomic=True)
+
+    def accept_notice(self, path: Path | str, *, current: Callable[[], bool]) -> None:
+        """Persist an explicit authenticated acknowledgement without changing other preferences."""
+        with lock.rewriting(path):
+            if current() is not True:
+                raise PermissionError("Open Poolhouse from its own window to continue.")
+            held = _stored(path)
+            if current() is not True:
+                raise PermissionError("The local connection changed. Please try again.")
+            held["experimental_notice_accepted"] = True
+            write_json(path, held)
+        self.experimental_notice_accepted = True
 
     def public(self) -> dict[str, Any]:
         return asdict(self)
@@ -77,6 +100,8 @@ class Settings:
 
 def _build(raw: dict[str, Any]) -> Settings:
     values = {k: v for k, v in raw.items() if k in Settings.__dataclass_fields__}
+    if "experimental_notice_accepted" in values and type(values["experimental_notice_accepted"]) is not bool:
+        raise ValueError("The experimental notice acknowledgement must be a boolean.")
     if "studio_undo_steps" in values and (type(values["studio_undo_steps"]) is not int
                                           or not 1 <= values["studio_undo_steps"] <= 128):
         raise ValueError("Studio undo steps must be an integer from 1 to 128.")
@@ -89,6 +114,18 @@ def _build(raw: dict[str, Any]) -> Settings:
         values["features"] = {k: v for k, v in held.items() if isinstance(k, str) and isinstance(v, bool)} \
             if isinstance(held, dict) else {}
     return Settings(**values)
+
+
+def _stored(path: Path | str) -> dict[str, Any]:
+    try:
+        raw = json.loads(Path(path).read_bytes(), object_pairs_hook=unique_object)
+    except FileNotFoundError:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("The local settings must be an object.")
+    json.dumps(raw, allow_nan=False)
+    _build(raw)
+    return raw
 
 
 _DOC: Document[Settings] = Document(

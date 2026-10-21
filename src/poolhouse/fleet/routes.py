@@ -34,6 +34,7 @@ from .features_routes import FeatureRoutes
 from .initial_setup_routes import InitialSetupRoutes
 from .knowledge_routes import KnowledgeRoutes
 from .launch_routes import LaunchRoutes
+from .notice_routes import NoticeRoutes
 from .onboard.joining import JoinOptions, join_by_passphrase, pool_action
 from .onboard.pools import known_pools
 from .page import COMPONENTS, render
@@ -709,7 +710,7 @@ class JobRoutes:
         return True
 
 
-class Router(InitialSetupRoutes, RuntimeRepairRoutes, PageRoutes, SetupRecoveryRoutes, SetupRoutes, SessionRoutes, MeasureRoutes, SettingsRoutes,
+class Router(NoticeRoutes, InitialSetupRoutes, RuntimeRepairRoutes, PageRoutes, SetupRecoveryRoutes, SetupRoutes, SessionRoutes, MeasureRoutes, SettingsRoutes,
              BoardRoutes, RoomRoutes, FeatureRoutes, ModelRoutes, ChatRoutes, UpdateRoutes, PoolRoutes, JobRoutes,
              KnowledgeRoutes, *experimental_routes.load(), NativePickRoutes, StudioRoutes, WorkspaceRoutes, LaunchRoutes, ExtensionRoutes, Base):
     """Every screen's routes, in the order a request meets them."""
