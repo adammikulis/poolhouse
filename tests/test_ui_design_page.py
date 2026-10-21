@@ -7,6 +7,7 @@ import pytest
 from web_assets import serve_page_asset
 
 from poolhouse.fleet.page import render
+from poolhouse.fleet.themes import PRESETS, registry
 
 pytestmark = pytest.mark.slow
 
@@ -23,7 +24,8 @@ def route(request, state):
         state["posts"].append((path, request.request.post_data_json))
     body = {"ok": True}
     if path == "/ui/setup":
-        body = {"needs_setup": False, "needs_password": False, "name": "local-test"}
+        body = {"needs_setup": False, "needs_password": False, "name": "local-test",
+                "experimental_notice_accepted": True}
     elif path == "/ui/models":
         body = {"free_gb": 120, "here": [{"name": "quill-27B.gguf", "size": 1000},
                  {"name": "quill-27B.draft.gguf", "size": 50}],
@@ -63,7 +65,11 @@ def route(request, state):
     elif path == "/ui/room":
         body = {"machine": {"supported": False}}
     elif path == "/ui/settings":
-        body = {"name": "local-test", "group": "default", "settings": {"download_sources": "both"}}
+        body = {"name": "local-test", "group": "default",
+                "settings": {"download_sources": "both", "appearance": {"active_theme": "light", "saved_themes": []}},
+                "resolved_theme": PRESETS["light"], "theme_registry": registry()}
+    elif path == "/ui/workspace/jobs":
+        body = {"jobs": [], "capacity": {"running": [], "queued": 0, "slots": 1}}
     elif path == "/ui/fit.json":
         body = {"records": [], "room": 24 * 1024**3, "at_room": 24 * 1024**3,
                 "name": "local-test", "steps": [8, 16, 24], "ladder": [2048, 4096, 8192], "vram_gb": [24]}
@@ -77,11 +83,8 @@ def route(request, state):
 
 
 @pytest.fixture
-def app():
-    pw = pytest.importorskip("playwright.sync_api")
-    with pw.sync_playwright() as play:
-        browser = play.chromium.launch(headless=True)
-        page = browser.new_page(viewport={"width": 1280, "height": 900})
+def app(browser_owner):
+    with browser_owner.pages(viewport={"width": 1280, "height": 900}) as page:
         page.set_default_timeout(5000)
         errors = []
         page.on("pageerror", lambda error: errors.append(str(error)))
@@ -92,8 +95,9 @@ def app():
         page.route("http://design.test/**", lambda request: route(request, state))
         page.goto("http://design.test/#pool")
         page.locator("#pool:not([hidden])").wait_for()
+        page.locator("#pool workspace-jobs").get_by_text(
+            "No jobs yet. Start a training run or a tool operation to see its progress here.", exact=True).wait_for()
         yield page, state, errors
-        browser.close()
 
 
 def models(page):
@@ -213,7 +217,9 @@ def test_settings_schedule_and_chat_remain_reachable(app):
     assert page.locator("#chat-send").is_disabled()
     page.get_by_role("link", name="Settings", exact=True).click()
     page.locator("#settings-sub:not(:empty)").wait_for()
-    assert page.get_by_role("button", name="Save preferences", exact=True).is_visible()
+    assert page.get_by_role("button", name="Save preferences", exact=True).is_enabled()
+    page.get_by_role("button", name="Poolhouse Light", exact=True).wait_for()
+    assert page.locator("theme-editor .theme-status").inner_text() == ""
     page.get_by_role("tab", name="Compute & device", exact=True).click()
     assert page.get_by_text("When you need this device", exact=True).is_visible()
     assert not errors
