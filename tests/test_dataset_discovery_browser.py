@@ -3,6 +3,7 @@ import json
 
 import pytest
 from browser_expect import expect
+from studio_commands import studio_command
 from test_dataset_catalogue import REPO, remote as _remote
 from test_fleet_ui import Serving
 from test_studio_canvas_browser import add, studio_browser as _studio_browser
@@ -125,7 +126,7 @@ def test_local_csv_and_nested_jsonl_inspection_adds_one_bound_node_without_repla
     assert after['nodes'][:-1] == before['nodes'] and after['edges'] == before['edges']
     assert after['nodes'][-1]['bindings'] == {'dataset': {'kind': 'dataset', 'id': 'datasets/nested/records.jsonl'}}
     assert len(after['nodes']) == len(before['nodes']) + 1 and app.runner.jobs == {}
-    page.get_by_role('button', name='Undo', exact=True).click()
+    studio_command(page, 'Undo').click()
     assert page.evaluate("document.querySelector('studio-view').graph.nodes") == before['nodes']
 
 

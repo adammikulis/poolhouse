@@ -8,7 +8,7 @@ data-discover .dataset-search { display:flex; flex-wrap:wrap; gap:12px; align-it
 data-discover .dataset-search label { margin:0; display:grid; gap:6px; }
 data-discover .dataset-search input { width:220px; }
 data-discover .data-discovery { display:grid; grid-template-columns:minmax(240px,.8fr) minmax(0,1.6fr); gap:var(--page-gap);flex:1;min-height:0;overflow:hidden; }
-data-discover .dataset-results { display:grid; gap:8px; align-content:start;overflow:auto;min-height:0; }
+data-discover .dataset-results { display:grid; grid-auto-rows:max-content; gap:8px; align-content:start;overflow:auto;min-height:0; }
 data-discover .dataset-result { display:grid; gap:6px; width:100%; text-align:left; overflow-wrap:anywhere; background:var(--bg-raised); color:var(--text); border:1px solid var(--line); }
 data-discover .dataset-result[aria-pressed=true] { border-color:var(--accent); }
 data-discover .dataset-detail { min-width:0; background:var(--bg-raised); border:1px solid var(--line); border-radius:var(--page-panel-radius);padding:var(--page-gutter); }
