@@ -333,11 +333,26 @@ def test_the_system_prompt_tells_the_model_what_the_fence_means():
 
 
 @pytest.mark.parametrize('value,kind', [
-    ('mlws1.worker.' + 'a' * 43, 'workspace-token'),
-    ('mlws1.worker.one/child.two.' + 'b' * 43, 'workspace-token'),
-    ('mlsk1.' + 'c' * 43, 'pool-token'),
+    ('poolhouse-ws1.worker.' + 'a' * 43, 'workspace-token'),
+    ('poolhouse-ws1.worker.one/child.two.' + 'b' * 43, 'workspace-token'),
+    ('poolhouse-sk1.' + 'c' * 43, 'pool-token'),
 ])
 def test_bare_workspace_and_pool_capabilities_are_redacted(value, kind):
     clean, kinds = redact(f'connection refused for {value}')
     assert value not in clean and kind in kinds
     assert 'connection refused' in clean
+
+
+@pytest.mark.parametrize('suffix', ['a' * 43, '-_' * 21 + 'A'])
+def test_current_pool_namespace_is_redacted_at_punctuation_boundaries(suffix):
+    from poolhouse import macauth
+    from poolhouse.sentinel import redaction
+    from poolhouse.workspace import screen
+
+    token = macauth.PREFIX + suffix
+    message = f'connection refused: ({token}), retry later'
+    clean, kinds = redact(message)
+    assert token not in clean and 'pool-token' in kinds
+    assert token not in redaction.redact(message)
+    assert 'pool-token' in screen.secret_kinds(message)
+    assert 'retry later' in clean

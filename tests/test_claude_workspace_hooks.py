@@ -99,8 +99,9 @@ def test_missing_model_registers_session_without_guessing_and_explains_it(comman
 @pytest.mark.parametrize('name', ['claude-session-start', 'claude-subagent-start'])
 @pytest.mark.redteam
 def test_unavailable_workspace_is_nonblocking_with_redacted_reason(commands, monkeypatch, tmp_path, name):
-    monkeypatch.setenv('HOOK_FAILURE', 'Denied: daemon unavailable mlws1.actor.syntheticSecret123 mlsk1.syntheticPool123')
-    done = invoke(name, {'model': 'claude-sonnet-4-6', 'cwd': str(tmp_path)})
+    monkeypatch.setenv('HOOK_FAILURE', 'Denied: daemon unavailable poolhouse-ws1.actor.syntheticSecret123 poolhouse-sk1.syntheticPool123')
+    done = invoke(name, {'model': 'claude-sonnet-4-6', 'cwd': str(tmp_path),
+                         'session_id': 'native-outage', 'agent_id': 'abc123'})
     assert done.returncode == 0 and 'command exited 3' in done.stderr and 'daemon unavailable' in done.stderr
     assert 'syntheticSecret123' not in done.stderr and 'syntheticPool123' not in done.stderr
     assert '[REDACTED:workspace-token]' in done.stderr and '[REDACTED:pool-token]' in done.stderr
@@ -143,7 +144,7 @@ def test_timeout_warning_is_nonblocking_and_redacts_the_command(monkeypatch, cap
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     def timeout(*args, **kwargs):
-        raise subprocess.TimeoutExpired(['poolhouse-workspace', 'mlws1.actor.syntheticSecret123'], 30)
+        raise subprocess.TimeoutExpired(['poolhouse-workspace', 'poolhouse-ws1.actor.syntheticSecret123'], 30)
     monkeypatch.setattr(module.subprocess, 'run', timeout)
     assert module.run(['poolhouse-workspace', 'whoami'], stage) is None
     warning = capsys.readouterr().err
