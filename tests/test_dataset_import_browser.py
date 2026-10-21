@@ -250,7 +250,7 @@ def test_discovery_uses_internal_panels_instead_of_body_scroll(import_page, remo
     page.wait_for_function("() => document.querySelector('data-discover .dataset-results').scrollTop>0")
     results.locator('.dataset-result').first.click()
     expect(page.get_by_role('button', name='Import selected preview rows', exact=True)).to_be_visible()
-    inspector = page.locator('data-discover .dataset-inspect')
+    inspector = page.locator('data-discover .dataset-import-content')
     assert inspector.evaluate('element=>element.scrollHeight>element.clientHeight')
     assert page.evaluate('document.documentElement.scrollHeight<=window.innerHeight+1')
     page.set_viewport_size({'width':390,'height':844})

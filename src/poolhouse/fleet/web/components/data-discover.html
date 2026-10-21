@@ -3,7 +3,7 @@ data-discover {display:flex;flex:1;min-height:0}
 data-discover>section {display:flex;flex-direction:column;gap:12px;min-height:0;width:100%;overflow:hidden}
 data-discover .dataset-status {margin:0}data-discover .dataset-status:empty{display:none}
 data-discover .dataset-results-panel{display:flex;flex-direction:column;min-height:0;overflow:hidden}
-data-discover .dataset-inspect{min-height:0;overflow:auto}
+data-discover .dataset-inspect{min-height:0;overflow:hidden;display:flex;flex-direction:column}
 data-discover .dataset-search { display:flex; flex-wrap:wrap; gap:12px; align-items:end; margin:0; }
 data-discover .dataset-search label { margin:0; display:grid; gap:6px; }
 data-discover .dataset-search input { width:220px; }
@@ -30,7 +30,7 @@ data-discover .dataset-revision { font-size:11px; overflow-wrap:anywhere; color:
    <button type="submit" class="data-primary">Search datasets</button>
   </form>
   <p class="dataset-status" role="status" aria-live="polite"></p>
-  <div class="data-discovery"><div class="dataset-results-panel"><div class="dataset-results" tabindex="0" aria-label="Hugging Face dataset results"></div><button type="button" class="dataset-more" hidden>Load more datasets</button></div><div class="dataset-inspect" tabindex="0" aria-label="Dataset details"><div class="dataset-detail"><p>Choose a dataset to inspect its subsets, splits, fields and sample records.</p></div><data-import></data-import></div></div>
+  <div class="data-discovery"><div class="dataset-results-panel"><div class="dataset-results" tabindex="0" aria-label="Hugging Face dataset results"></div><button type="button" class="dataset-more" hidden>Load more datasets</button></div><div class="dataset-inspect" tabindex="0" aria-label="Dataset details"><data-import></data-import></div></div>
  </section>
 </template>
 <script>
