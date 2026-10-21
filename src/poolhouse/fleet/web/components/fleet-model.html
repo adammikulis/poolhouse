@@ -202,24 +202,28 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
 
   M.ctxWords = (tokens) => `${Number(tokens).toLocaleString()} tokens`;
 
-  M.contextPicker = function (start, onPick) {
-    const slider = M.ui("ml-slider", {
-      label: "Context length", stops: CTX_STEPS,
-      value: CTX_STEPS.includes(start) ? start : 8192,
-      hint: "Maximum tokens in the model's context. Larger contexts require more memory." });
+  M.contextPicker = function (start, onPick, {maximum} = {}) {
+    const slider = M.ui("ml-slider", {label:"Context length"});
     slider.id = "ctx";
-    const paint = (n) => {
-      slider.valueText = `${new Intl.NumberFormat().format(n)} tokens`;
-      slider.hint = n > 262144
-        ? "Extended context: Qwen uses YaRN above its native 256K window. Larger contexts require more memory."
+    const meter = el("div", {class:"meter"}, slider);
+    meter.configure = (value, cap = maximum) => {
+      maximum = Number.isSafeInteger(cap) && cap > 0 ? cap : null;
+      const stops = CTX_STEPS.filter(n => !maximum || n <= maximum);
+      if (maximum && !stops.includes(maximum)) stops.push(maximum);
+      const nearest = stops.reduce((best, n) => Math.abs(n - value) < Math.abs(best - value) ? n : best);
+      slider.stops = stops;
+      slider.value = nearest;
+      slider.valueText = `${new Intl.NumberFormat().format(value)} tokens${stops.includes(value) ? "" : " requested · custom"}`;
+      slider.hint = value > 262144
+        ? "Extended context requires more memory. Supported limits are checked when starting the model."
         : "Maximum tokens in the model’s context. Larger contexts require more memory.";
-      onPick(n);
     };
-    slider.addEventListener("input", (e) => {
-      if (Number.isFinite(e.detail?.value)) paint(e.detail.value);
+    slider.addEventListener("input", e => {
+      if (!Number.isFinite(e.detail?.value)) return;
+      meter.configure(e.detail.value); onPick(e.detail.value);
     });
-    paint(slider.value);
-    return el("div", { class: "meter" }, slider);
+    meter.configure(start); onPick(start);
+    return meter;
   };
 
   // ------------------------------------------------------------- which screen is showing

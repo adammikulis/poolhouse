@@ -29,7 +29,25 @@ class MlSlider extends FieldElement {
 
   build() {
     this.control = h("input", { type: "range", id: "c", oninput: () => this.moved() });
-    this.control.onchange = () => this.dispatchEvent(new Event("commit", {bubbles:true}));
+    const commit = () => this.dispatchEvent(new Event("commit", {bubbles:true}));
+    this.control.onchange = commit;
+    this.control.onkeydown = event => {
+      if (this.disabled || !["Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      this.control.value = event.key === "Home" ? this.control.min : this.control.max;
+      this.moved(); commit();
+    };
+    this.control.onpointerdown = event => {
+      if (!this.disabled && event.isPrimary && event.button === 0) this.pointer = {id:event.pointerId, moved:false};
+    };
+    this.control.onpointerup = event => {
+      const pointer = this.pointer;
+      if (pointer?.id !== event.pointerId) return;
+      this.pointer = null;
+      if (!pointer.moved && !this.disabled) { this.moved(); commit(); }
+    };
+    this.control.onpointercancel = event => { if (this.pointer?.id === event.pointerId) this.pointer = null; };
+    this.control.onlostpointercapture = event => { if (this.pointer?.id === event.pointerId) this.pointer = null; };
     this.out = h("output", { for: "c" });
     this.ticks = h("div", { class: "ticks", "aria-hidden": "true" });
     this.chrome(h("div", {}, this.control, this.ticks));
@@ -39,7 +57,10 @@ class MlSlider extends FieldElement {
 
   list() { return Array.isArray(this.stops) && this.stops.length ? this.stops.map(Number) : null; }
 
+  disconnectedCallback() { this.pointer = null; super.disconnectedCallback?.(); }
+
   moved() {
+    if (this.pointer) this.pointer.moved = true;
     const stops = this.list();
     const value = stops ? stops[Number(this.control.value)] : Number(this.control.value);
     this.value = value;
@@ -69,6 +90,7 @@ class MlSlider extends FieldElement {
       class: `tick${m.value === shown ? " on" : ""}`,
       style: { left: `calc(${frac(m.value)} * (100% - ${THUMB}px) + ${THUMB / 2}px)` } },
       String(m.label ?? compact(m.value)))));
+    if (this.disabled) this.pointer = null;
     this.paintChrome(this.control);
     this.control.setAttribute("aria-labelledby", this.ids.l);
   }

@@ -13,13 +13,10 @@
       this.context = this.maximum ? Math.min(preferred, this.maximum) : preferred;
       this.element = M.el('details', {class:'model-start-options'}, M.el('summary', {},
         output === undefined ? 'Context length' : 'Context length and output'));
-      this.slider = M.ui('ml-slider', {label:'Context length', min:1,
-        max:this.maximum || Math.max(1048576, this.context), step:1, value:this.context});
-      this.slider.addEventListener('input', event => {
-        if (!Number.isSafeInteger(event.detail?.value)) return;
-        this.context = event.detail.value; this.paint();
-      });
-      this.element.append(this.slider);
+      this.contextPicker = M.contextPicker(this.context, value => { this.context = value; this.paint(); }, {maximum:this.maximum});
+      this.slider = this.contextPicker.querySelector('ml-slider');
+      this.slider.removeAttribute('id');
+      this.element.append(this.contextPicker);
       this.note = M.el('p', {class:'hint'}); this.element.append(this.note);
       if (output !== undefined) {
         this.output = M.el('output-token-slider');
@@ -32,11 +29,11 @@
     }
     update(model) {
       this.maximum = Number.isSafeInteger(model.context_length) && model.context_length > 0 ? model.context_length : null;
-      this.slider.max = this.maximum || Math.max(1048576, this.context);
       this.paint();
     }
     paint() {
-      this.slider.value = this.context;
+      if (!this.contextPicker) return;
+      this.contextPicker.configure(this.context, this.maximum);
       this.slider.valueText = `${this.context.toLocaleString()} tokens requested`;
       this.note.textContent = this.maximum
         ? `Model maximum: ${this.maximum.toLocaleString()} tokens. Larger context uses more memory.`
