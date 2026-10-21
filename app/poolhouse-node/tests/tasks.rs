@@ -705,3 +705,29 @@ fn task_admission_refuses_released_resources_stopped_tasks_and_retired_sessions(
         assert_eq!(code(&req(&mut n, "task_admit", "demo", &t.kid.1, json!({"task": entry}))), "denied", "{event}");
     }
 }
+
+#[test]
+fn task_admission_does_not_follow_a_task_reassigned_to_another_worker() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let time = clocked(&mut n);
+    let t = team(&mut n);
+    let task = id_of(make(&mut n, &t.lead.1, json!({})));
+    let allocation = assign(&mut n, &t, &task);
+    ok(claim(&mut n, &t, &task, &allocation));
+    let entry = get(&mut n, &t.kid.1, &task)["entry"].as_str().unwrap().to_string();
+    advance(&time, 121);
+    ok(req(&mut n, "task_ready", "demo", &t.other.1, json!({"task": task, "reason": "Expired worker lease", "expired": true})));
+    let next = ok(req(&mut n, "register", "demo", &t.lead.1, json!({"model": "other-model", "harness": "pi", "session": "replacement"})));
+    let token = next["token"].as_str().unwrap();
+    let model = ok(req(&mut n, "lease_acquire", "demo", token,
+        json!({"resources": [{"type": "model_slot", "model": "other-model"}], "ttl_s": 5000})));
+    let allocated = ok(req(&mut n, "task_assign", "demo", &t.lead.1,
+        json!({"task": task, "worker": next["name"], "lease": model["id"], "capabilities": ["coding"]})));
+    ok(req(&mut n, "task_claim", "demo", token, json!({"task": task, "assign": allocated["allocation_id"]})));
+    assert_eq!(code(&req(&mut n, "task_admit", "demo", &t.kid.1, json!({"task": entry}))), "denied");
+    let admitted = ok(req(&mut n, "task_admit", "demo", token, json!({"task": entry})));
+    assert_eq!(admitted["worker"], next["name"]);
+    assert_eq!(admitted["lease"]["allocation_id"], allocated["allocation_id"]);
+    assert_ne!(admitted["lease"]["allocation_id"], allocation);
+}
