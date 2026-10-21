@@ -46,6 +46,12 @@ class Tasks:
         """One task in full."""
         return dict(self._call("task_get", task=ident))
 
+    def admit(self, ident: str) -> dict[str, Any]:
+        """Read this worker's working task after checking its task and model leases."""
+        if type(ident) is not str or ident.count(":") != 2 or not taskspec.TASK_ID.fullmatch(ident):
+            raise ValueError("task admission requires the canonical task entry ID")
+        return dict(self._call("task_admit", task=ident))
+
     def subscribe(self, ident: str, subscriber: str = "") -> dict[str, Any]:
         """Hear the task's state changes in the inbox; a parent may subscribe its worker."""
         return dict(self._call("task_watch", task=ident, on=True, **({"who": subscriber} if subscriber else {})))

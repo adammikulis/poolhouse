@@ -611,3 +611,97 @@ fn tasks_survive_a_restart() {
     let mut n = node(dir.path());
     assert_eq!(get(&mut n, &lead, &task)["source_key"], "keep");
 }
+
+#[test]
+fn task_admission_is_worker_only_and_repeated_reads_preserve_leases_and_entries() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let time = clocked(&mut n);
+    let t = team(&mut n);
+    let task = id_of(make(&mut n, &t.lead.1, json!({})));
+    let entry = get(&mut n, &t.kid.1, &task)["entry"].as_str().unwrap().to_string();
+    let allocation = assign(&mut n, &t, &task);
+    ok(req(&mut n, "task_scope", "demo", &t.lead.1, json!({"task": task, "scope": {"state": "reserved"}})));
+    assert_eq!(code(&req(&mut n, "task_admit", "demo", &t.kid.1, json!({"task": entry}))), "denied");
+    let held = ok(claim(&mut n, &t, &task, &allocation));
+    for token in [&t.lead.1, &t.other.1] {
+        assert_eq!(get(&mut n, token, &entry)["worker"], t.kid.0);
+        assert_eq!(code(&req(&mut n, "task_admit", "demo", token, json!({"task": entry}))), "denied");
+    }
+    let lease = held["id"].as_str().unwrap();
+    let deadline = n.leases.table.find(lease).unwrap().expires_ms;
+    let model_deadline = n.leases.table.find(&t.model).unwrap().expires_ms;
+    let entries = n.view("demo").unwrap().len();
+    let leases = n.leases.table.leases.len();
+    for _ in 0..2 {
+        advance(&time, 1);
+        let admitted = ok(req(&mut n, "task_admit", "demo", &t.kid.1, json!({"task": entry})));
+        assert_eq!(admitted["entry"], entry);
+        assert_eq!(admitted["worker"], t.kid.0);
+        assert_eq!(admitted["lease"]["id"], held["id"]);
+        assert_eq!(admitted["lease"]["active"], true);
+        assert_eq!(admitted["scope"]["state"], "reserved");
+        assert_eq!(n.leases.table.find(lease).unwrap().expires_ms, deadline);
+        assert_eq!(n.leases.table.find(&t.model).unwrap().expires_ms, model_deadline);
+        assert_eq!(n.leases.table.leases.len(), leases);
+        assert_eq!(n.view("demo").unwrap().len(), entries);
+    }
+}
+
+#[test]
+fn task_admission_refuses_aliases_malformed_ids_and_resource_overrides() {
+    let dir = tempdir().unwrap();
+    let mut n = node(dir.path());
+    let t = team(&mut n);
+    let task = id_of(make(&mut n, &t.lead.1, json!({})));
+    let allocation = assign(&mut n, &t, &task);
+    ok(claim(&mut n, &t, &task, &allocation));
+    let entry = get(&mut n, &t.kid.1, &task)["entry"].as_str().unwrap().to_string();
+    for value in [json!(task), json!(""), json!("../task"), json!("x".repeat(129)), json!(42), json!([entry])] {
+        assert_eq!(code(&req(&mut n, "task_admit", "demo", &t.kid.1, json!({"task": value}))), "invalid");
+    }
+    for field in ["worker", "root", "profile", "scope"] {
+        let mut params = json!({"task": entry});
+        params[field] = json!("override");
+        assert_ne!(code(&req(&mut n, "task_admit", "demo", &t.kid.1, params)), "ok");
+    }
+}
+
+#[test]
+fn task_admission_refuses_expired_task_leases_and_wall_budgets() {
+    for wall in [false, true] {
+        let dir = tempdir().unwrap();
+        let mut n = node(dir.path());
+        let time = clocked(&mut n);
+        let t = team(&mut n);
+        let extra = if wall { json!({"limits": {"max_wall_s": 1}}) } else { json!({}) };
+        let task = id_of(make(&mut n, &t.lead.1, extra));
+        let allocation = assign(&mut n, &t, &task);
+        ok(claim(&mut n, &t, &task, &allocation));
+        let entry = get(&mut n, &t.kid.1, &task)["entry"].as_str().unwrap().to_string();
+        advance(&time, if wall { 2 } else { 121 });
+        assert_eq!(code(&req(&mut n, "task_admit", "demo", &t.kid.1, json!({"task": entry}))), "denied");
+    }
+}
+
+#[test]
+fn task_admission_refuses_released_resources_stopped_tasks_and_retired_sessions() {
+    for event in ["model", "task", "blocked", "submitted", "retired"] {
+        let dir = tempdir().unwrap();
+        let mut n = node(dir.path());
+        let t = team(&mut n);
+        let task = id_of(make(&mut n, &t.lead.1, json!({})));
+        let allocation = assign(&mut n, &t, &task);
+        let held = ok(claim(&mut n, &t, &task, &allocation));
+        let entry = get(&mut n, &t.kid.1, &task)["entry"].as_str().unwrap().to_string();
+        match event {
+            "model" => { ok(req(&mut n, "lease_release", "demo", &t.kid.1, json!({"id": t.model}))); },
+            "task" => { ok(req(&mut n, "lease_release", "demo", &t.kid.1, json!({"id": held["id"]}))); },
+            "blocked" => { ok(req(&mut n, "task_block", "demo", &t.kid.1, json!({"task": task, "reason": "Stopped", "kind": "infrastructure"}))); },
+            "submitted" => { submit(&mut n, &t, &task); },
+            "retired" => { ok(req(&mut n, "retire", "demo", &t.lead.1, json!({"target": t.kid.0, "reason": "revoked"}))); },
+            _ => unreachable!(),
+        }
+        assert_eq!(code(&req(&mut n, "task_admit", "demo", &t.kid.1, json!({"task": entry}))), "denied", "{event}");
+    }
+}
