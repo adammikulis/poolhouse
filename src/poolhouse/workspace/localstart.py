@@ -12,7 +12,7 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, TypedDict, Unpack
 
-from poolhouse import agent_dependency, jobs, roles
+from poolhouse import agent_dependency, harnessing, jobs, roles
 from poolhouse.board import place
 from poolhouse.board.client import NodeError
 from poolhouse.board.session import Native, Registration, Session
@@ -151,6 +151,8 @@ def start(s: Session, ask: Ask, **options: Unpack[StartOptions]) -> Started:
     """Join a local model to the board of ``s`` as a subagent of that session and run its loop detached; the same name
     again reports the agent already running. Raises `Unavailable` when no suitable model is downloaded or it would
     not fit, ValueError for a bad name, role or project."""
+    if ask.profile == "coding":
+        harnessing.require_isolated_execution()
     base, reuse = options.get("base") or limits.root(), options.get("reuse", False)
     output_tokens = _output_tokens(ask.max_output_tokens)
     task_caps = asdict(localloop.checked_caps(ask.task_caps))

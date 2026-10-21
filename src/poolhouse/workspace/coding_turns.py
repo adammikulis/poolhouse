@@ -84,6 +84,7 @@ class Manager:
     def start(self, cid: str, prompt: str) -> Turn:
         if not safe(cid) or not isinstance(prompt, str) or not prompt.strip() or len(prompt) > 200000:
             raise ValueError("a turn needs an existing conversation and a nonempty message under 200000 characters")
+        harnessing.require_isolated_execution()
         conversation = self.store.get(cid)
         if conversation is None:
             raise ValueError("choose an existing conversation first")
@@ -162,6 +163,7 @@ class Manager:
         return self.status(cid)
 
     def _run(self, turn: Turn, conversation, prompt: str) -> None:
+        harnessing.require_isolated_execution()
         settings = conversation.settings
         fingerprint = hashlib.sha256(json.dumps({"model": conversation.model, **settings}, sort_keys=True).encode()).hexdigest()[:24]
         home = self.store.root / "harness" / conversation.id / fingerprint
