@@ -4,9 +4,12 @@ from __future__ import annotations
 import json
 import shlex
 import shutil
+import subprocess
+import sys
 import tempfile
 import time
 from contextlib import contextmanager, nullcontext
+from pathlib import Path
 
 import pytest
 
@@ -284,3 +287,64 @@ def test_parent_rejects_even_ignored_new_control_prefix_before_capture(workspace
         workspace.run(bypassed_worker, permitted, writable=True)
     assert workspace.revision == 0 and workspace.last is None
     assert not (workspace.master / ".claude").exists()
+
+
+def test_subsequent_stages_preserve_absent_tracked_paths(workspace):
+    stage = workspace.begin()
+    (stage.physical / "code.txt").unlink()
+    workspace.finish(stage, permitted, writable=True)
+    assert workspace.last.missing == (b"code.txt",)
+    following = workspace.begin()
+    assert following.before.missing == (b"code.txt",)
+    assert not (following.physical / "code.txt").exists()
+
+
+@pytest.mark.parametrize("recreate", [False, True])
+def test_absent_lineage_survives_reopen_and_recreation(workspace, coding_owner, recreate):
+    owner, expected = coding_owner
+    stage = workspace.begin()
+    (stage.physical / "code.txt").unlink()
+
+    def guard(capture, revision):
+        return owner.coding_guard(expected, workspace.receipt(), workspace.next_receipt(capture, revision),
+                                  current=workspace.current)
+
+    workspace.finish(stage, guard, writable=True)
+    assert workspace.result().missing == (b"code.txt",)
+    package = str(Path(__file__).resolve().parents[1] / "src")
+    script = (f"import sys;sys.path.insert(0,{package!r})\n"
+              "import json\nfrom pathlib import Path\n"
+              "from poolhouse.fleet.conversations import Conversations\n"
+              "from poolhouse.coding_workspace import Workspace\n"
+              "owner=Conversations(sys.argv[1]);expected=owner.coding_state(sys.argv[2])\n"
+              "with Workspace.reopened(Path(sys.argv[3]),owner,expected,current=lambda:True) as opened:\n"
+              " print(json.dumps([path.hex() for path in opened.begin().before.missing]))\n")
+    child = subprocess.run([sys.executable, "-I", "-c", script, str(owner.root), expected.conversation,
+                            str(workspace.source)], text=True, capture_output=True, timeout=10, check=True)
+    assert json.loads(child.stdout) == [b"code.txt".hex()]
+    with Workspace.reopened(workspace.source, owner, expected, current=lambda: True) as reopened:
+        following = reopened.begin()
+        assert following.before.missing == (b"code.txt",)
+        if recreate:
+            (following.physical / ".gitignore").write_text("code.txt\n")
+            (following.physical / "code.txt").write_text("new bytes")
+        reopened.finish(following, permitted, writable=True)
+        result = reopened.result()
+        assert result.missing == (() if recreate else (b"code.txt",))
+        if recreate:
+            assert (result.directory / "code.txt").read_text() == "new bytes"
+
+
+def test_verified_manifest_index_uses_literal_names_and_leaves_source_git_unchanged(workspace):
+    original_config = (workspace.source / ".git" / "config").read_bytes()
+    original_index = workspace.source / ".git" / "index"
+    assert not original_index.exists()
+    stage = workspace.begin()
+    literal = ":(exclude)code.txt"
+    (stage.physical / literal).write_text("literal filename")
+    workspace.finish(stage, permitted, writable=True)
+    indexed = git_output(["ls-files", "-z"], cwd=workspace.master).split(b"\0")
+    assert sorted(name for name in indexed if name) == sorted(entry.path for entry in workspace.last.entries)
+    assert (workspace.master / literal).read_text() == "literal filename"
+    assert (workspace.source / ".git" / "config").read_bytes() == original_config
+    assert not original_index.exists()

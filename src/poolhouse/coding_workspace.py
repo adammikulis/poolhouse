@@ -7,7 +7,7 @@ import threading
 import uuid
 from collections.abc import Callable
 from contextlib import AbstractContextManager, contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 
 from poolhouse import coding_workspace_state as state, files, lock, private_path, secretpaths
@@ -134,15 +134,14 @@ class Workspace:
         target = self.directory / name
         if target.resolve(strict=True) != target or private_path.problem(target):
             raise ValueError("The coding snapshot directory changed")
-        snapshot = SourceSnapshot(target, self.directory)
+        missing = state.paths(saved["manifest"]["missing"])
+        snapshot = SourceSnapshot(target, self.directory, known_paths=missing)
         try:
-            missing = state.paths(saved["manifest"]["missing"])
             if any(os.path.lexists(snapshot.path(path)) for path in missing):
                 raise ValueError("An absent coding snapshot path appeared")
             proof = snapshot.capture(self.directory / f"result-{uuid.uuid4().hex}", excluded=self.excluded)
         finally:
             snapshot.close()
-        proof = replace(proof, missing=missing)
         if state.manifest(proof) != saved["manifest"]:
             raise ValueError("The coding snapshot manifest changed")
         self._index(proof.directory, proof)
@@ -153,8 +152,8 @@ class Workspace:
                        if secretpaths.path_hit(os.fsdecode(snapshot.root / os.fsdecode(name))))
         return tuple(sorted({*self.excluded, *credentials, *(os.fsencode(path) for path in state.CONTROL_PREFIXES)}))
 
-    def _capture(self, root: Path, label: str) -> Capture:
-        snapshot = SourceSnapshot(root, self.directory)
+    def _capture(self, root: Path, label: str, previous: Capture) -> Capture:
+        snapshot = SourceSnapshot(root, self.directory, known_paths=previous.missing)
         try:
             return snapshot.capture(self.directory / f"{label}-{uuid.uuid4().hex}",
                                     excluded=self._excluded(snapshot))
@@ -168,7 +167,7 @@ class Workspace:
         try:
             names.write_bytes(b"\0".join(entry.path for entry in capture.entries) + b"\0")
             if capture.entries:
-                source_snapshot.git_output(["add", "--pathspec-from-file=" + str(names),
+                source_snapshot.git_output(["--literal-pathspecs", "add", "--force", "--pathspec-from-file=" + str(names),
                                             "--pathspec-file-nul"], cwd=root)
         finally:
             names.unlink(missing_ok=True)
@@ -177,7 +176,7 @@ class Workspace:
         """Create a unique writable copy and rotate the model's workspace alias."""
         if not self.current():
             raise ValueError("The coding workspace roots changed")
-        before = self._capture(self.master, "before")
+        before = self._capture(self.master, "before", self.last or self.initial)
         physical = self.directory / f"tool-{uuid.uuid4().hex}"
         shutil.copytree(before.directory, physical)
         self._index(physical, before)
@@ -191,14 +190,14 @@ class Workspace:
         for prefix in state.CONTROL_PREFIXES:
             if os.path.lexists(stage.physical / prefix):
                 raise ValueError("The tool created a trusted control path")
-        captured = self._capture(stage.physical, "result")
+        captured = self._capture(stage.physical, "result", stage.before)
         if captured.excluded != stage.before.excluded:
             raise ValueError("The tool created a protected or credential path")
         if not writable and state.manifest(captured) != state.manifest(stage.before):
             raise ValueError("A read-only coding tool changed its input snapshot")
         changes = _changes(stage.before, captured)
-        current = self._capture(self.master, "current")
-        if current.tree_hash != stage.before.tree_hash or current.entries != stage.before.entries:
+        current = self._capture(self.master, "current", stage.before)
+        if state.manifest(current) != state.manifest(stage.before):
             raise ValueError("The coding workspace changed while the tool was running")
         self._index(captured.directory, captured)
         previous = self.master, self.last, self.changes, self.revision, self.persisted
@@ -241,4 +240,4 @@ class Workspace:
     def result(self) -> Capture:
         """Capture the current parent master for the existing task proposal pipeline."""
         with self.lock:
-            return self._capture(self.master, "proposal")
+            return self._capture(self.master, "proposal", self.last or self.initial)
