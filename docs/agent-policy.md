@@ -16,7 +16,7 @@ The rules never to break, then the ones needed every hour; each names the sectio
 5. **One piece of work on a device's compute at a time; never start a model server by hand** (1, 6).
 6. **Never a fake model**: no code, demo, example, doc sample or test substitutes a fake model, mock server, canned or
    scripted answer, rule-based imitation or mockup for a model; a real local one runs through the lease, or the work stops
-   loudly (1).
+   loudly; only a plumbing server with no model behaviour under test may stand in, and it marks every reply canned (1).
 7. **No real person's name, handle, email or phone number** anywhere in the repository (1).
 8. **Attack first**: a design or security-adjacent change gets a written break-it pass by a non-author before it is
    built (1).
@@ -90,6 +90,16 @@ Whatever needs a model runs a real local one. No code, demo, example, doc sample
 stub server, a scripted or canned answer, a rule-based imitation or a mockup for a model. The real model runs through the normal
 lease path (section 6); when it cannot run, the work stops loudly and says why, and no default, cached or substitute answer
 stands in. Setup steps that a real model needs (the download, the lease) are stated, never skipped.
+
+Anything that tests what a model says or decides runs a real local model. A plain protocol server (ports, queues, process
+handling, HTTP framing) may stand in only where no model behaviour is under test, and it must never pass as a model.
+
+- Such a server marks every reply as canned: the model id it reports is a fixed, obviously canned name (for example
+  `CANNED-NOT-A-MODEL`), every reply body begins with a visible `[CANNED RESPONSE, NOT A MODEL]` marker, and the marker is
+  also in the response headers or metadata, so a log, a screenshot or a person reading it sees at once that nothing was
+  inferred.
+- A canned reply never reaches a user-facing surface (UI, demo, report) unmarked.
+- Tests assert the marker is present on the plumbing server's replies.
 
 ### One thing computing on the GPU at a time
 
