@@ -12,12 +12,12 @@ from dataclasses import replace
 from typing import ClassVar
 
 import pytest
+from bench_clients import ScriptedModel
 from conftest import a_row, json_reply, scored_rows
 
 from poolhouse import hub
 from poolhouse.asking import Asking
 from poolhouse.bench import Row, _hit, missed, runs, save, table
-from poolhouse.bench.selfcheck import ScriptedModel
 from poolhouse.client import Request, Transport
 from poolhouse.testing.fakes import FakeConverse, FakePreflight, FakeServe, fake_serve
 
@@ -670,8 +670,8 @@ TINY = {
 
 class _Scripted(ScriptedModel):
     """The runner's own scripted model -- calls look_up for one text, then answers, keeps
-    every message it was shown -- given the text to look up. One fake, shared with
-    `bench.selfcheck`, so that what the tests let through the runner lets through."""
+    every message it was shown -- given the text to look up. One fake, bound
+    against the real `Client`, so that what the tests let through the runner lets through."""
 
     def __init__(self, text: str = "compilers") -> None:
         super().__init__()
@@ -1249,7 +1249,7 @@ def test_the_concurrent_subcommand_smokes_two_conversations_of_one_turn(tmp_path
     assert bench.main(["concurrent", "two-at-once", "--smoke", "--conversations", "9",
                        "--turns", "9", "--kept", str(kept), "--graph", str(graph),
                        "--questions", str(asked), "--client", "fake:client",
-                       "--store", "", "--no-selfcheck"]) == 0
+                       "--store", ""]) == 0
     said = capsys.readouterr().out
     first = next(ln for ln in said.splitlines() if not ln.startswith("estimate:"))
     assert first.startswith("two-at-once: 2 conversations of 1 turn(s) at once")
@@ -1441,7 +1441,7 @@ def test_a_smoke_run_whose_run_does_not_come_back_raises(tmp_path, monkeypatch):
     with pytest.raises(bench.RunNotKept, match="did not come back"):
         bench.main(["run", "tried", "--smoke", "--kept", str(tmp_path / "runs.ladybug"),
                     "--graph", str(graph), "--questions", str(asked), "--client", "fake:client",
-                    "--store", "", "--no-selfcheck"])
+                    "--store", ""])
 
 
 def test_empty_runs_are_skipped_named_and_forgotten(tmp_path, capsys):
@@ -1677,8 +1677,7 @@ def test_a_measuring_command_takes_sigterm_as_an_exit_so_its_server_comes_down(t
     with pytest.raises(SystemExit) as left:
         bench.main(["sweep", "--serve", "tiny.gguf", "--plain-only", "--kept",
                     str(tmp_path / "runs.ladybug"), "--graph", str(graph),
-                    "--questions", str(asked), "--store", "", "--serve-port", "1",
-                    "--no-selfcheck"])
+                    "--questions", str(asked), "--store", "", "--serve-port", "1"])
     assert left.value.code == 128 + signal.SIGTERM
     assert [str(spec.model) for spec in serving.leased] == ["tiny.gguf"]
     assert len(serving.released) == 1, "the server was taken down on the way out"
@@ -1837,7 +1836,7 @@ def test_every_hf_reference_is_fetched_before_the_lock_and_no_prefetch_skips_it(
     monkeypatch.setattr(poolhouse.hub, "fetch", fake_fetch)
     argv = ["sweep", "--serve", "hf:someone/tiny-GGUF/tiny.gguf", "--serve", "local.gguf",
             "--serve-draft", "hf:someone/tiny-GGUF/mtp-tiny.gguf", "--plain-only",
-            *seen["common"], "--no-selfcheck"]
+            *seen["common"]]
     assert bench.main(argv) == 0
     said = capsys.readouterr().out
     assert fetched == ["hf:someone/tiny-GGUF/tiny.gguf", "hf:someone/tiny-GGUF/mtp-tiny.gguf"], \
@@ -2555,7 +2554,7 @@ def test_a_model_that_will_not_load_ends_that_model_and_not_the_sweep(monkeypatc
     graph.write_text('{"nodes": [], "edges": []}')
     code = bench._main(["sweep", "--serve", "bad.gguf", "--serve", "good.gguf", "--plain-only",
                         "--graph", str(graph), "--kept", str(tmp_path / "runs.ladybug"),
-                        "--no-prefetch", "--no-smoke", "--no-selfcheck"])
+                        "--no-prefetch", "--no-smoke"])
     said = capsys.readouterr().out
     assert calls == ["bad.gguf", "good.gguf"], said
     assert "did not load; moving on" in said
@@ -2988,9 +2987,8 @@ def test_a_served_sweep_smokes_every_way_first_on_the_one_load(tmp_path, monkeyp
 def test_a_smoke_that_fails_ends_the_run_with_exit_1_and_nothing_else_starts(tmp_path,
                                                                             monkeypatch,
                                                                             capsys):
-    """The self-check passes -- its model is scripted -- and then the real server answers
-    nothing: every smoke question fails, the run stops there with the reason, and the
-    questions that cost the GPU are never asked."""
+    """The real server answers nothing: every smoke question fails, the run stops there with
+    the reason, and the questions that cost the GPU are never asked."""
     import poolhouse.bench as bench
     import poolhouse.client
 
@@ -3007,7 +3005,7 @@ def test_a_smoke_that_fails_ends_the_run_with_exit_1_and_nothing_else_starts(tmp
     assert bench.main(["sweep", "--serve", "tiny.gguf", "--plain-only", "--also", "terse",
                        *common]) == 1
     said = capsys.readouterr()
-    assert said.out.splitlines()[0].startswith("selfcheck: ok (")
+    assert "selfcheck" not in said.out, "no scripted run goes before the real smoke"
     assert ("error: smoke failed, so the run did not start: tiny smoke: every question "
             "failed -- RuntimeError: no answer from the server") in said.err
     assert seen["models"] == ["tiny.gguf"] and len(built) == 2, "the smoke's clients, no more"
@@ -3595,7 +3593,7 @@ def test_main_refuses_over_the_ceiling_with_exit_5_and_serves_nothing_unless_yes
 
     seen = _serving(monkeypatch, tmp_path)
     argv = ["sweep", "--serve", "tiny.gguf", "--plain-only", *seen["common"],
-            "--no-selfcheck", "--ceiling", "0.5"]
+            "--ceiling", "0.5"]
     assert bench.main(argv) == 5
     said = capsys.readouterr()
     assert said.out.splitlines()[0].startswith("estimate: 45 s (tiny 1 q x 1 asking x 15 s/q "
@@ -3874,7 +3872,7 @@ class _Talkative:
         self.sampling: dict = {}
 
     def chat(self, messages, tools=None, **kw):
-        from poolhouse.bench.selfcheck import _Reply
+        from bench_clients import Reply as _Reply
 
         self.seen.append([dict(m) for m in messages])
         offered = {str((t.get("function") or {}).get("name")) for t in (tools or [])}
@@ -3980,8 +3978,9 @@ def test_a_tool_result_is_cut_at_two_thousand_characters_and_says_how_long_it_wa
     """A tool result is the largest thing in a conversation and the least of what is being
     taught -- the lesson is the call, not the graph's answer. The whole length is kept
     beside the cut text, so what it cost is not lost with the bytes."""
+    from bench_clients import Reply as _Reply
+
     from poolhouse.bench import TRACE_CAP, Counting
-    from poolhouse.bench.selfcheck import _Reply
 
     class Once:
         def chat(self, messages, **kw):
@@ -4737,7 +4736,7 @@ def test_a_profile_naming_a_build_that_is_not_here_is_not_served(tmp_path, monke
         pytest.fail("a record naming build 'gone' was about to run on another binary")
 
 
-@pytest.mark.parametrize("module", ["run", "extract", "estimate", "selfcheck"])
+@pytest.mark.parametrize("module", ["run", "extract", "estimate"])
 def test_a_bench_module_imports_first_in_a_fresh_interpreter(module):
     import os
     import subprocess
