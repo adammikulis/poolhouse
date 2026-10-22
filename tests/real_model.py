@@ -222,7 +222,15 @@ class Real:
         self.idle()
         self.request.getfixturevalue("serve_leases")
         self.monkeypatch.setenv("LLAMA_CPP_SERVER", str(binary))
+        # `serve()` keeps its manager, and that manager the lease table it was made with: one made in an earlier
+        # test would ask a node whose state root that test removed
+        self.monkeypatch.setattr("poolhouse.serve.manager._DEFAULT", None)
         return binary, model
+
+    def prepared(self, use: str) -> Path:
+        """The model file pinned for ``use``, with the machine ready to serve it (the binary named, the compute idle,
+        the lease table in place), for code that leases it through `serve()` itself."""
+        return self._ready(use)[1]
 
     @contextmanager
     def serving(self, use: str, *, sandboxed: bool = False, **spec: Any) -> Iterator[Served]:

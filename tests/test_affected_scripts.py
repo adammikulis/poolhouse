@@ -258,6 +258,38 @@ def test_an_unknown_file_type_still_runs_everything_and_says_why(toy) -> None:
     assert affected.select(toy, ["pyproject.toml"]).reasons["pyproject.toml"]
 
 
+def glossary_toy(toy: Path, with_policy: bool) -> Path:
+    """The toy repository with a glossary test, a Rust test file that one other test names, and optionally the real policy."""
+    (toy / "tests" / "test_glossary.py").write_text("def test_it():\n    assert 1\n", encoding="utf-8")
+    (toy / "tests" / "test_native.py").write_text("def test_it():\n    assert 'native_case.rs'\n", encoding="utf-8")
+    (toy / "app").mkdir()
+    (toy / "app" / "native_case.rs").write_text("struct Duo;\n", encoding="utf-8")
+    (toy / "docs" / "notes").mkdir(parents=True, exist_ok=True)
+    (toy / "docs" / "notes" / "old.rs").write_text("struct Duo;\n", encoding="utf-8")
+    if with_policy:
+        (toy / "contracts").mkdir()
+        for name in ("glossary-rules.toml", "glossary-allowlist.toml"):
+            (toy / "contracts" / name).write_text((REPO / "contracts" / name).read_text(encoding="utf-8"), encoding="utf-8")
+    return toy
+
+
+def test_a_rust_file_a_test_names_still_selects_the_glossary_scan(toy) -> None:
+    root = glossary_toy(toy, with_policy=True)
+    got = chosen(root, "app/native_case.rs")
+    assert got == {"tests/test_native.py", "tests/test_glossary.py"}
+
+
+def test_the_glossary_scan_is_selected_when_its_policy_cannot_be_read(toy) -> None:
+    root = glossary_toy(toy, with_policy=False)
+    assert "tests/test_glossary.py" in chosen(root, "app/native_case.rs")
+
+
+def test_a_file_the_glossary_scan_leaves_out_does_not_select_it(toy) -> None:
+    root = glossary_toy(toy, with_policy=True)
+    assert "tests/test_glossary.py" not in chosen(root, "docs/notes/old.rs")
+    assert "tests/test_glossary.py" not in chosen(root, "app/native_case.rs", deleted=frozenset({"app/native_case.rs"}))
+
+
 def recent_scripts(count: int) -> list[str]:
     """Scripts that still exist and were touched by the latest commits that touched scripts/."""
     done = subprocess.run(["git", "log", "-n", "400", "--no-renames", "--name-only", "--format=@@%h",

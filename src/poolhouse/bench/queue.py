@@ -24,7 +24,7 @@ run detaches, `python -m poolhouse.bench status` says which step is running and 
 `python -m poolhouse.bench stop` ends the queue and the step inside it.
 
 Not a second scheduler: the steps are `python -m poolhouse.bench` lines, and everything that decides
-whether a measurement may run -- the self-check, the estimate against the ceiling, the
+whether a measurement may run -- the estimate against the ceiling, the
 smoke, the lock -- stays in the step, where it already is.
 """
 
@@ -309,7 +309,7 @@ def run_step(argv: Sequence[str]) -> int:
     goes -- the terminal, or the detached queue's log.
 
     Its own process, not a function call: that is what puts each step through the measuring
-    lock, the self-check, the estimate and the smoke it already has, and what lets `stop`
+    lock, the estimate and the smoke it already has, and what lets `stop`
     take a step down without taking the queue's own interpreter with it. Its stderr is
     read through a pipe and written on, so a step that dies within `FAST_DEATH_S` can
     have its last lines printed under "died in Ns:".

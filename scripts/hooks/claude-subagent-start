@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -81,7 +82,7 @@ def workspace_brief(event: dict) -> str:
     if not made:
         return unregistered(event, parent, why)
     subagent_records.save(str(event["agent_id"]), name=made["id"], parent=made["parent"], board=made.get("board", ""),
-                          model=made.get("model", ""))
+                          model=made.get("model", ""), started=time.time())
     environment = workspace_hook.own_environment(event, "SubagentStart")
     if environment is None:
         return ""

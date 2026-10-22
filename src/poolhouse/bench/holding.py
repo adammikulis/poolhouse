@@ -17,7 +17,7 @@ from typing import Any
 
 from psutil import Error as ProcessError
 
-# The package is the namespace the tests and `selfcheck` patch -- `bench.footprint`,
+# The package is the namespace the tests patch -- `bench.footprint`,
 # `bench.busy` -- so anything patchable is looked up there at call time, never bound here
 # at import.
 from poolhouse import bench

@@ -64,7 +64,7 @@ STORE = "runs.ladybug"
 """Where a member's ``python -m poolhouse.bench`` keeps its runs, under `bench_home`: the store its
 ``--kept`` defaults to, which is why a `Job` may not name one."""
 
-FAILED_MARKS = ("error:", "Traceback (most recent call last)", "[killed]", "selfcheck: FAILED")
+FAILED_MARKS = ("error:", "Traceback (most recent call last)", "[killed]")
 """What the end of a detached bench's log says when it did not finish. A detached child is
 nobody's to ``wait()`` on -- it was reparented the moment it started -- so its exit code is
 gone, and the log is the record: `python -m poolhouse.bench` prints ``error:`` on every failing path,

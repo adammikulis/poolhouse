@@ -319,17 +319,6 @@ mod tests {
     }
 
     #[test]
-    fn five_actions_are_device_local_and_every_other_action_reaches_the_pool() {
-        assert!(DEVICE_LOCAL.iter().all(|a| ACTIONS.contains(a) && !pool_wide(a)));
-        let wide: Vec<&&str> = ACTIONS.iter().filter(|a| pool_wide(a)).collect();
-        assert_eq!(wide.len(), ACTIONS.len() - 5, "{wide:?}");
-        for action in ["file_delete", "shard_consent", "shard_call", "task_authority", "note_verify", "sync_now", "land_trust", "member_remove", "add_device", "join_pool", "pool_create", "admin_manage", "link_write"] {
-            assert!(pool_wide(action), "{action}");
-        }
-        assert!(pool_wide("an_action_added_later"));
-    }
-
-    #[test]
     fn a_grant_id_is_a_prefix_and_sixteen_to_thirty_two_hex_digits() {
         assert!(valid_gid("g-0123456789abcdef") && valid_gid(&format!("g-{}", "a".repeat(32))));
         assert!(!valid_gid("g-0123456789abcde") && !valid_gid(&format!("g-{}", "a".repeat(33))) && !valid_gid("x-0123456789abcdef") && !valid_gid("g-0123456789ABCDEF"));

@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-# The package is the namespace the tests and `selfcheck` patch -- `bench.home_dir()` -- so
+# The package is the namespace the tests patch -- `bench.home_dir()` -- so
 # anything patchable is looked up there at call time, never bound here at import.
 from poolhouse import bench
 from poolhouse.bench import fitcontext, thinking
@@ -34,8 +34,7 @@ __all__ = ["animate_options", "asking_options", "checking", "concurrent_options"
 
 def checking() -> tuple[Option, ...]:
     """The flags every measuring subcommand has for the checks it makes before it measures:
-    the self-check on no GPU, the estimate against the ceiling, and the smoke on the real
-    one."""
+    the estimate against the ceiling and the smoke on the real server."""
     return (
         flag("--ceiling", type=float, default=ceiling_default(), metavar="MINUTES",
              help="refuse to start when the estimate -- seconds per question from "
@@ -46,13 +45,6 @@ def checking() -> tuple[Option, ...]:
                   "refused. No more eight-hour tests"),
         flag("--yes", action="store_true",
              help="run it even when the estimate is over --ceiling"),
-        flag("--no-selfcheck", action="store_true",
-             help="skip the dry run made first, before the lock is taken: this exact "
-                  "command through the whole path with a scripted model, no server "
-                  "and no GPU, into a scratch store read back -- what catches a flag "
-                  "the client does not take before a load is paid for it. For a run "
-                  "you are deliberately repeating, whose path the last one proved. "
-                  "Read before the rest of the line is parsed, like --no-queue"),
         flag("--no-smoke", action="store_true",
              help=f"skip the {SMOKE}-question smoke a real run makes first on the "
                   f"real server and the real store, read back, before its own "

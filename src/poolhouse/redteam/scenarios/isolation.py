@@ -34,7 +34,7 @@ ASKS = (
 
 def routes(lab: Lab) -> dict[str, tuple[str, str | None]]:
     """The server directly, and the daemon's proxy to it."""
-    out = {"server": (lab.model_url, None)}
+    out = {"server": (lab.model_url, lab.model_key or None)}
     if lab.daemon_url:
         out["daemon"] = (f"{lab.daemon_url}/infer", lab.token)
     return out

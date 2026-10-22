@@ -15,9 +15,14 @@ from poolhouse import lan, worktreerules
 from poolhouse.guard.secrets import env_secrets, redact
 
 
-def warning(stage: str, reason: object) -> None:
+def redacted(reason: object) -> str:
+    """``reason`` on one line with the secrets of the environment and any token in it removed."""
     text, _ = redact(str(reason), env_secrets(os.environ))
-    print(f'workspace {stage}: {" ".join(text.split())[:1000]}', file=sys.stderr)
+    return ' '.join(text.split())
+
+
+def warning(stage: str, reason: object) -> None:
+    print(f'workspace {stage}: {redacted(reason)[:1000]}', file=sys.stderr)
 
 
 def event(stage: str) -> dict | None:
@@ -34,17 +39,17 @@ def event(stage: str) -> dict | None:
         return None
 
 
-def attempt(command: list[str], stage: str, *, environment: dict | None = None):
+def attempt(command: list[str], stage: str, *, environment: dict | None = None, timeout: float = 30):
     """The finished process of ``command`` whatever its exit status; None (with a warning) when it could not run."""
     try:
-        return subprocess.run(command, capture_output=True, text=True, check=False, timeout=30, env=environment)
+        return subprocess.run(command, capture_output=True, text=True, check=False, timeout=timeout, env=environment)
     except (OSError, subprocess.TimeoutExpired) as error:
         warning(stage, error)
         return None
 
 
-def run(command: list[str], stage: str, *, environment: dict | None = None):
-    done = attempt(command, stage, environment=environment)
+def run(command: list[str], stage: str, *, environment: dict | None = None, timeout: float = 30):
+    done = attempt(command, stage, environment=environment, timeout=timeout)
     if done is None:
         return None
     if done.returncode:
@@ -196,6 +201,18 @@ def hook_notice(environment: dict, source: Path | None = None) -> str:
         warning('SessionStart', f'hook check: {error}')
         return ''
     return hookcheck.context(repo, problems) if problems else ''
+
+
+def subagent_meta(event: dict) -> dict:
+    """What the harness wrote about this subagent beside its transcript (its `description`, `agentType`, `spawnDepth`), or an empty dict."""
+    session, agent = Path(str(event.get('transcript_path') or '')), str(event.get('agent_id') or '')
+    if not session.name or not agent:
+        return {}
+    try:
+        meta = json.loads((session.with_suffix('') / 'subagents' / f'agent-{agent}.meta.json').read_text())
+    except (OSError, ValueError):
+        return {}
+    return meta if isinstance(meta, dict) else {}
 
 
 def spawner_id(event: dict) -> str:
