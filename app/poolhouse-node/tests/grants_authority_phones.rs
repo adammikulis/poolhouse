@@ -129,3 +129,20 @@ fn a_phone_whose_key_the_charter_lists_is_not_removed_by_a_request_or_an_approva
     assert!(node.persons.get(&pool.phone.fingerprint()).is_some());
     assert!(node.approvals.all().is_empty(), "no request to remove it was ever made");
 }
+
+#[test]
+fn a_second_listed_phone_approves_live_and_a_device_that_forgets_it_ignores_what_it_approved() {
+    let pool = found();
+    let mut second = FakePhone::new("second phone");
+    pool.rig.add(&mut second, Some(&pool.phone));
+    pool.add_admin(&second);
+    assert_eq!(authority(&pool).len(), 2, "both phones are admin keys here");
+    assert_eq!(pool.approve_with(&second, "sync_now", "*")["state"], "approved");
+    let gid = pool.gids().remove(0);
+    assert_eq!(pool.state(&gid).0, "live", "the second listed phone's approval counts");
+    pool.rig.node.lock().unwrap().persons.remove(&second.fingerprint(), now_ms()).unwrap();
+    let (state, why) = pool.state(&gid);
+    assert_eq!(state, "ignored");
+    assert!(why.contains("does not know that key as a phone's"), "{why}");
+    assert_eq!(authority(&pool), vec![pool.phone.fingerprint()], "the authority shrinks to the key this device still knows");
+}

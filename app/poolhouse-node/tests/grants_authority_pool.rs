@@ -8,6 +8,8 @@ use kit::phone::{ask, FakePhone, Rig};
 use kit::*;
 use poolhouse_node::approvals::challenge;
 use poolhouse_node::fsutil::{hex, sha256_hex, unhex};
+use poolhouse_node::grants::spec::{pool_wide, signing_bytes, ACTIONS, DEVICE_LOCAL};
+use poolhouse_node::grants::Scope;
 use poolhouse_node::row::Kind;
 use serde_json::{json, Value};
 
@@ -87,6 +89,20 @@ impl Pool {
         mine[0]["gid"].as_str().unwrap().to_string()
     }
 
+    /// The gid of the one grant of ``action`` on the board besides the one that founded the pool.
+    fn only_gid_of(&self, action: &str) -> String {
+        let all = self.grants();
+        let mine: Vec<&Value> = all["grants"].as_array().unwrap().iter().filter(|g| g["action"] == action && g["gid"] != FOUNDING).collect();
+        assert_eq!(mine.len(), 1, "{all}");
+        mine[0]["gid"].as_str().unwrap().to_string()
+    }
+
+    /// The sentence of the refusal ``reply``, after checking it is a denial.
+    fn denial(reply: &Value) -> String {
+        assert_eq!(code(reply), "denied", "{reply}");
+        reply["error"]["message"].as_str().unwrap().to_string()
+    }
+
     fn delete(&self, handle: &str) -> Value {
         self.rig.call("file_delete", "demo", &self.token, json!({"handle": handle}))
     }
@@ -99,6 +115,20 @@ impl Pool {
 
     fn enrol_typed(&self, who: &Person) {
         self.rig.node.lock().unwrap().persons.add(&who.public(), "another typed key", kit::grants::now_ms()).unwrap();
+    }
+
+    /// Append the revoke ``params`` as a row, as a writer with access to the log could.
+    fn append_revoke(&self, mut params: Value) {
+        params["op"] = json!("revoke");
+        params["board"] = json!("demo");
+        self.rig.node.lock().unwrap().host("demo").unwrap().board.append_person(Kind::Grant, &self.name, params).unwrap();
+    }
+
+    /// Whether the session holds a grant of ``action`` now.
+    fn holds(&self, action: &str) -> bool {
+        let mut node = self.rig.node.lock().unwrap();
+        let holder = node.tokens.resolve(&self.token).cloned().unwrap();
+        poolhouse_node::grants::holds(&mut node, &holder, action, &Scope::any()).unwrap()
     }
 }
 
@@ -263,4 +293,70 @@ fn rows_a_non_admin_or_a_weak_key_signed_are_listed_ignored_with_the_reason() {
     assert_eq!(listing["governance"], "governed");
     assert_eq!(listing["authority"], json!([pool.phone.fingerprint()]));
     assert_eq!(listing["may_issue"], json!([]));
+    let mut ends: Vec<String> = serde_json::from_value(listing["may_revoke"].clone()).unwrap();
+    ends.sort();
+    let mut listed = vec![pool.phone.fingerprint(), typed.fingerprint()];
+    listed.sort();
+    assert_eq!(ends, listed, "the keys the pool lists end its grants, the enrolled key it does not list does not");
+    assert_eq!(listing["registry"]["device_local"], json!(DEVICE_LOCAL));
+}
+
+#[test]
+fn a_raw_row_the_admin_phone_signed_itself_with_no_approval_is_no_grant() {
+    let pool = Pool::new();
+    let phone = &pool.phone;
+    let mut body = kit::govnode::approved_row(&pool.device(), "demo", "g-00000000000000e1", &Spec::session(&pool.name, "sync_now"), &phone.fingerprint(), &|bytes| phone.sign(bytes));
+    body.remove("approval");
+    body.remove("sig");
+    let sig = phone.sign(&signing_bytes(&body));
+    body.insert("sig".into(), json!(sig));
+    pool.rig.node.lock().unwrap().host("demo").unwrap().board.append_person(Kind::Grant, &pool.name, Value::Object(body)).unwrap();
+    let (state, why) = pool.state("g-00000000000000e1");
+    assert_eq!(state, "ignored", "{why}");
+    assert!(why.contains("come from an approval on a phone"), "a good signature of the admin phone is not an approval: {why}");
+    assert!(!pool.holds("sync_now"));
+}
+
+#[test]
+fn a_key_enrolled_here_ends_a_device_local_grant_by_a_call_and_by_a_row_where_it_cannot_end_a_pool_wide_one() {
+    let pool = Pool::new();
+    let (typed, outsider) = (person(), agent());
+    pool.enrol_typed(&outsider);
+    for gid in ["g-00000000000000b3", "g-00000000000000b4"] {
+        assert_eq!(pool.rig.call("grant_issue", "demo", &pool.token, typed.issue_params("demo", gid, &Spec::session(&pool.name, "link_read")))["ok"], true);
+        assert_eq!(pool.state(gid).0, "live");
+    }
+    let ended = pool.rig.call("grant_revoke", "demo", &pool.token, outsider.revoke_params("demo", "g-00000000000000b3", "done"));
+    assert_eq!(ended["ok"], true, "{ended}");
+    assert_eq!(pool.state("g-00000000000000b3").0, "revoked");
+    pool.append_revoke(outsider.revoke_params("demo", "g-00000000000000b4", "done"));
+    assert_eq!(pool.state("g-00000000000000b4").0, "revoked", "a revoke row of a key enrolled here counts for a grant that stays on this device");
+    assert!(!pool.holds("link_read"));
+    pool.approve("sync_now", "*");
+    let wide = pool.only_gid_of("sync_now");
+    pool.append_revoke(outsider.revoke_params("demo", &wide, "done"));
+    assert_eq!(pool.state(&wide).0, "live", "and does not for one that reaches the pool");
+}
+
+#[test]
+fn a_typed_key_grants_exactly_the_device_local_actions_in_a_pool_and_every_other_action_waits_for_a_phone() {
+    let pool = Pool::new();
+    let typed = person();
+    assert_eq!(DEVICE_LOCAL, ["link_read", "link_remove", "source_add", "quarantine_release", "pool_leave"], "an action is pool-wide until a reviewed change lists it here");
+    assert!(DEVICE_LOCAL.iter().all(|a| ACTIONS.contains(a) && !pool_wide(a)));
+    assert_eq!(ACTIONS.iter().filter(|a| pool_wide(a)).count(), ACTIONS.len() - DEVICE_LOCAL.len());
+    assert!(pool_wide("an_action_added_later"));
+    for (n, action) in ACTIONS.iter().enumerate() {
+        let gid = format!("g-{:016x}", 0xc000 + n);
+        let reply = pool.rig.call("grant_issue", "demo", &pool.token, typed.issue_params("demo", &gid, &Spec::session(&pool.name, action)));
+        if DEVICE_LOCAL.contains(action) {
+            assert_eq!(reply["ok"], true, "{action}: {reply}");
+            assert_eq!(pool.state(&gid).0, "live", "{action}");
+            assert!(pool.holds(action), "{action}");
+        } else {
+            assert!(Pool::denial(&reply).contains("your phone gives standing grants"), "{action}: {reply}");
+            assert_eq!(pool.state(&gid).0, "absent", "{action}: nothing was written");
+            assert!(!pool.holds(action), "{action}");
+        }
+    }
 }
