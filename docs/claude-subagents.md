@@ -112,10 +112,12 @@ board keeps, for each session, what it is for and where it works:
 
 - **Recorded at start.** `claude-subagent-start` reads the description of the Agent call from the meta file beside the transcript
   (`SubagentStart` itself carries only `agent_id` and `agent_type`), the branch and top directory of the checkout it starts in, and
-  has the subagent say them as itself: `whoami --purpose TEXT --branch NAME --worktree PATH`. The node keeps each as one short clean line
-  (120, 100 and 240 characters) beside the session's identity. A purpose the board screens out (a credential or a private term) is
-  warned on stderr and the agent type is recorded in its place; the branch and worktree are still recorded. A branch or worktree claim
-  the subagent makes later replaces what the hook saw, because a claim is the authenticated statement of what it works on.
+  has the subagent say them as itself in the call that builds its brief, which costs no extra process: `brief --registered --purpose TEXT
+  --agent-type TYPE --branch NAME --worktree PATH` (`whoami` takes the same three for a session that says them later). The node keeps each as
+  one short clean line (120, 100 and 240 characters) beside the session's identity. A purpose the board screens out (a credential or a
+  private term) is recorded as the agent type and the brief says so; a record that fails is said in the brief too, and the rest of the
+  brief is still given. A branch or worktree claim the subagent makes later replaces what the hook saw, because a claim is the
+  authenticated statement of what it works on.
 - **Shown.** `poolhouse-workspace roster` (also `status`, and `who` with no arguments) prints one line per live session: name, main or
   subagent of, working/idle/done (`done` only with `--all`; an ended session leaves the live list), purpose, branch, worktree and when it last
   acted; `--json` gives the rows. The text is one fenced block of untrusted data: a purpose is length-limited, a line, and has fence tags

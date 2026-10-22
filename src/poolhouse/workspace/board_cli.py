@@ -357,12 +357,29 @@ def waiting_entries(entries: list[Entry], me: str, now: float) -> dict[str, Any]
     return {"me": me, "now": now, "rows": rows, "messages": messages}
 
 
+def profile_note(args: argparse.Namespace, s: Session) -> str:
+    """Record what the subagent is for and where it works (--purpose, --branch, --worktree) and give a line for its brief when that did
+    not go as given: a purpose the board screens out is recorded as the agent type, a record that failed is said so."""
+    said = {k: v for k in ("purpose", "branch", "worktree") if (v := getattr(args, k))}
+    note, kind = "", args.agent_type or "subagent"
+    try:
+        try:
+            screened("the purpose", *said.values())
+        except Refused as why:
+            said["purpose"], note = kind, f"Your purpose was recorded as {kind!r}: {why}\n"
+        if said:
+            s.whoami(**said)
+    except FAILURES as error:
+        return f"Your purpose, branch and worktree were not recorded for the roster ({data_line(error, 200)}); `whoami --purpose TEXT` records them.\n"
+    return note
+
+
 def brief(args: argparse.Namespace, s: Session) -> Any:
     """The brief of the spawned subagent the caller runs as, then what already waits for it."""
     me = next((a for a in s.agents() if a.name == s.name), None)
     if me is None or not me.parent:
         raise ValueError(f"{s.name} was not spawned by another agent; run `spawn` as the parent, then brief --agent NAME")
-    say(onboard.brief(me.name, me.parent, args.registered) + roster.brief_text(s, me.name), end="")
+    say(onboard.brief(me.name, me.parent, args.registered) + profile_note(args, s) + roster.brief_text(s, me.name), end="")
     mine = s.read(s.cursor("inbox"), inbox=True).entries
     if mine:
         say("Unread messages for you; `inbox` shows them again:")
@@ -427,6 +444,10 @@ TABLE: tuple[tuple[str, str, list[Any], Handler], ...] = (
         flag("--status", action="store_true", help="your active subagents, their claims and what is unanswered for you")],
      digest),
     ("brief", "print the short brief for the spawned subagent you run as (--agent NAME), to paste into its prompt",
-     [flag("--registered", action="store_true", help="hooks registered the subagent and record its done for its subscribers")],
+     [flag("--registered", action="store_true", help="hooks registered the subagent and record its done for its subscribers"),
+      flag("--purpose", default="", help="what the subagent is for, recorded for the roster"),
+      flag("--agent-type", default="", help="recorded as the purpose when the board refuses --purpose"),
+      flag("--branch", default="", help="the branch it works on, recorded for the roster"),
+      flag("--worktree", default="", help="the checkout it works in, recorded for the roster")],
      brief),
 )

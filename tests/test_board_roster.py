@@ -134,11 +134,12 @@ def test_an_ended_session_drops_out_of_the_roster_and_is_not_found(board, crew):
     assert gone.returncode == 3 and 'no live session fits' in gone.stderr and first.name not in gone.stderr
 
 
-def test_a_purpose_holding_a_credential_is_recorded_as_the_agent_type_and_warned(board, tmp_path):
+def test_a_purpose_holding_a_credential_is_recorded_as_the_agent_type_and_the_brief_says_so(board, tmp_path):
     secret = 'ghp_' + 'a' * 36
     made = events(tmp_path, (RBMK[0], 'branch-worker', f'push with {secret}'))
     done = hook('claude-subagent-start', made[RBMK[0]])
-    assert done.returncode == 0 and secret not in done.stdout and 'was not recorded' in done.stderr
+    assert done.returncode == 0 and not done.stderr and secret not in done.stdout
+    assert "Your purpose was recorded as 'branch-worker'" in json.loads(done.stdout)['hookSpecificOutput']['additionalContext']
     name = board_session.find('claude-code', RBMK[0], client=board.client)
     shown = rows(board)[name]
     assert shown['purpose'] == 'branch-worker' and shown['branch'].startswith('seed/')
