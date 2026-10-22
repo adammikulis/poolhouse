@@ -4469,6 +4469,9 @@ class _FakeProcess:
         self.pid, self._series, self._n = pid, list(series), 0
         self.info = {"pid": pid, "cmdline": ["llama-server", "--port", str(port)]}
 
+    def as_dict(self, attrs=None, ad_value=None):
+        return dict(self.info)
+
     def _next(self):
         got = self._series[min(self._n, len(self._series) - 1)]
         self._n += 1
@@ -4522,6 +4525,7 @@ def test_the_sampler_keeps_the_worst_of_a_rising_series(monkeypatch):
         _FakeProcess([70 * G, 88 * G, 91 * G, 87 * G]),
         [(84 * G, 30 * G, 6 * G), (92 * G, 14 * G, 5 * G),
          (96 * G, 9 * G, 4 * G), (95 * G, 11 * G, 4 * G)]))
+    monkeypatch.setattr("poolhouse.procscan.psutil", sys.modules["psutil"])
 
     watcher = measuring.Watching("http://127.0.0.1:8099", every=0.01,
                                  baseline={"wired": 41 * G}, start=False)

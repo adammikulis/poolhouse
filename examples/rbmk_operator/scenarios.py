@@ -64,7 +64,7 @@ def _normal(key: str, title: str, blurb: str, **kw: object) -> Scenario:
     return Scenario(key, title, blurb, "normal", **kw)  # type: ignore[arg-type]
 
 
-FULL_POWER = _normal("full_power", "Full power", "3200 MW thermal, equilibrium xenon, regulator on. The right answer is to hold.",
+FULL_POWER = _normal("full_power", "Full power", "3200 MW thermal, equilibrium xenon, regulator on.",
                      ticks=36, seed=11, power=1.0, setpoint=1.0)
 LOAD_FOLLOW = _normal(
     "load_follow", "Load following", "Demand drops to 80 percent and returns. Xenon follows with a lag.",
