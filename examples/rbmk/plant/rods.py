@@ -6,7 +6,7 @@ import math
 import random
 from dataclasses import dataclass
 
-STROKE_S = 20.0            # full stroke, about 18 to 21 s on the real drives
+STROKE_S = 18.0            # full stroke of the emergency protection rods from the upper limit stop: 18 s (INSAG-7 section 2.3)
 KINDS = {"MR": "manual control", "AR": "automatic regulation", "LAR": "local automatic regulation",
          "USP": "shortened absorber", "EP": "emergency protection"}
 COUNTS = (("EP", 24), ("AR", 12), ("LAR", 12), ("USP", 24))   # the rest are manual rods: 139

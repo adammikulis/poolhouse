@@ -52,7 +52,7 @@ class ModelDecider:
         seed = f"{self.seed}:{n}"
         prop = Proposal("hold", desk.NONE, "1")
         prop.cls = self._round(n, [builder.decision_call(view, seed)], prop)["decision"]["class"]["choice"]
-        if prop.cls in ("hold", "scram", "orm_print"):
+        if prop.cls in ("hold", "scram"):
             return prop
         options = desk.target_options(prop.cls, view, seed + ":options")
         prop.target = self._round(n, [builder.target_call(view, prop.cls, options, seed)], prop)["target"]["target"]["choice"]

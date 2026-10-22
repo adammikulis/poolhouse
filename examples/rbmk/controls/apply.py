@@ -20,9 +20,9 @@ def act(cls: str, target: str, step: str, plant: Any, sensors: Any) -> str:
     c = plant.core
     if cls not in CLASSES:
         raise ValueError(f"unknown action class {cls!r}")
-    if cls == "hold" or (target == NONE and cls not in ("scram", "orm_print")):
+    if cls == "hold" or (target == NONE and cls != "scram"):
         return ""
-    if c.scram and cls != "orm_print":
+    if c.scram:
         plant.log("request_ignored", cls=cls, target=target, reason="AZ-5 is already pressed")
         return ""
     if cls in ("insert_rod", "withdraw_rod"):
@@ -56,8 +56,5 @@ def act(cls: str, target: str, step: str, plant: Any, sensors: Any) -> str:
             return ""
         (plant.start_test if target == "test:start" else plant.abort_test)()
         return "started the turbine rundown test" if target == "test:start" else "aborted the turbine rundown test"
-    if cls == "orm_print":
-        sensors.print_orm(plant)
-        return "requested the margin printout"
     rx.start_scram(c)
     return "pressed AZ-5"

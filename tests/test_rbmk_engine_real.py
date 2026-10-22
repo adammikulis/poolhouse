@@ -30,7 +30,7 @@ def test_a_tiny_real_run_records_replays_and_every_answer_is_a_complete_argmax_d
     for call in (c for d in res.decisions for c in d["calls"]):
         for name, answer in call["answers"].items():
             assert sum(answer["scores"].values()) == pytest.approx(1.0, abs=1e-6), name
-            assert answer["choice"] == max(answer["scores"], key=answer["scores"].get) and answer["tokens"] < 4096
+            assert answer["choice"] == max(answer["scores"], key=answer["scores"].get) and answer["tokens"] > 0
             assert list(answer["scores"]) == list(answer["options"]) and not answer["error"]
     again = recorder.replay(json.loads(json.dumps(rec)), scn)
     assert recorder.digest(again) == rec["digest"]

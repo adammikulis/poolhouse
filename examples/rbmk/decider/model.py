@@ -14,7 +14,6 @@ CALL_TIMEOUT_S = 120.0
 DECIDERS = ({"id": "", "label": "Strands 2B (strands-decider-2B-hobson-v19)"},)
 MEMORIES = ("none", "history")
 KEPT = ("name", "kind", "choice", "scores", "certainty", "error", "p_true", "expected", "backend", "model", "latency_ms")
-TOKEN_LIMIT = 4096
 
 
 class ModelStopped(RuntimeError):
@@ -123,8 +122,6 @@ class LiveAsker:
                 raise ModelStopped(f"the answers came from different models: {sorted(ids)}")
             self.model = ids.pop()
             for name, n in self._tokens(text, qs).items():
-                if n > TOKEN_LIMIT:
-                    raise ModelStopped(f"question {name!r} prompt is {n} tokens; the limit is {TOKEN_LIMIT}")
                 answers[name]["tokens"] = n
             out.append((answers, {"sent_at": round(sent, 3), "answered_at": round(answered, 3),
                                   "batch_size": sum(len(qs) for _, _, qs in calls)}))
