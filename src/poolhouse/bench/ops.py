@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-# The package is the namespace the tests and `selfcheck` patch -- `bench.drafted_by()` --
+# The package is the namespace the tests patch -- `bench.drafted_by()` --
 # so anything patchable is looked up there at call time, never bound here at import.
 from poolhouse import bench, lock
 from poolhouse.bench.askings import sampling_from

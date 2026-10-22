@@ -16,7 +16,7 @@ PyRIT is about 110 packages and 550 MB (Azure SDKs, `transformers`, `datasets`, 
 ```
 python -m venv .venv-redteam && .venv-redteam/bin/pip install -e ".[redteam]" pytest
 .venv-redteam/bin/python -m poolhouse.redteam run --out redteam-report      # needs an installed GGUF
-.venv-redteam/bin/python -m poolhouse.redteam run --model stub --limit 3     # no model at all
+.venv-redteam/bin/python -m poolhouse.redteam run --limit 3                  # a short run, same real model
 .venv-redteam/bin/python -m poolhouse.redteam run --against docs/redteam/baseline-2026-10-02.json
 .venv-redteam/bin/python -m poolhouse.redteam compare old.json new.json
 .venv-redteam/bin/python -m poolhouse.redteam corpus                        # hashes of the seeds
@@ -24,9 +24,10 @@ python -m venv .venv-redteam && .venv-redteam/bin/pip install -e ".[redteam]" py
 
 `--model` is the name or path of a GGUF that is already installed (default
 `Qwen3-4B-Instruct-2507-Q4_K_M.gguf`); it is served through `poolhouse.serve`, two slots, and
-stopped afterwards. Nothing is downloaded. `--model stub` uses a scripted server that obeys every
-instruction it is shown (`--stub-mode resistant` obeys none), which is how the scorers are
-tested. `run --against` and `compare` exit 1 when an attack that failed in the older report
+stopped afterwards. Nothing is downloaded, and a model that is not installed stops the run with
+that said: no scripted or stand-in server ever answers for it. The scorers are tested on the
+toolbox and the canary directly (`tests/test_redteam_toolbox.py`) and the scenarios on a real
+model. `run --against` and `compare` exit 1 when an attack that failed in the older report
 succeeds in the newer one.
 
 ## What is attacked
@@ -118,7 +119,7 @@ and of a plain function.
 
 ## Dependency
 
-`poolhouse[redteam]` is `pyrit>=1.1,<2` and the `web`, `pdf` and `testing` extras (the stub and the honeypot are built on `poolhouse.testing.fakes`). PyRIT 1.1.0 requires
+`poolhouse[redteam]` is `pyrit>=1.1,<2` and the `web`, `pdf` and `testing` extras (the honeypot and the page server are plain loopback servers in `redteam/evidence.py`; neither ever answers as a model). PyRIT 1.1.0 requires
 Python `>=3.10,<3.15`, which covers the interpreters Poolhouse runs on. `pyproject.toml` leaves it
 out of `all`; `tests/test_redteam_*.py` that need it are marked `redteam` and deselected unless
 `--redteam` is given.

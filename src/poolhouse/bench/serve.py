@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 # `poolhouse.serve.serve`, `hub.fetch`, `hub.room`, `binary.find_binary` and
-# `checks.Preflight` are patched by the tests and `selfcheck`, so each is read off its module.
+# `checks.Preflight` are patched by the tests, so each is read off its module.
 import poolhouse.serve
 from poolhouse import bench, hub
 from poolhouse.bench.backends import DRAFT_OBEYED, draft_depth_support

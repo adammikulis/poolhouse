@@ -109,7 +109,6 @@ clock from about 145 s to about 109 s on four workers.
 | `test_fleet_join.py`, `test_fleet_daemon.py`, `test_fleet_serving.py` | health and beacon deadlines waited out for real |
 | `test_no_real_names.py` (the two wrapper tests) | runs the commit hook through `sh`; the in-process `check()` tests are fast and stay in |
 | `test_packaging.py`, `test_fleet_environment.py` | builds a wheel |
-| `test_bench_selfcheck.py` (four of them) | runs the whole self-check path |
 
 `test_packaging_install_runs.py` (slow) builds what it needs from the checkout: the Poolhouse wheel through
 `packaging/build.py` (hatchling, from the local pip cache or the index) and a stand-in wheelhouse of the

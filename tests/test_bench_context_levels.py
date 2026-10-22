@@ -233,7 +233,7 @@ def _sweep(monkeypatch, tmp_path, *flags, template=QWEN_TEMPLATE):
     graph.write_text('{"nodes": [], "edges": []}')
     code = bench._main(["sweep", "--serve", str(path), "--plain-only", "--graph", str(graph),
                         "--kept", str(tmp_path / "runs.ladybug"), "--no-prefetch",
-                        "--no-smoke", "--no-selfcheck", "--no-profile", "--serve-label", "tf",
+                        "--no-smoke", "--no-profile", "--serve-label", "tf",
                         *flags])
     return code, loads
 

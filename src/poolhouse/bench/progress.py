@@ -17,7 +17,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-# The package is the namespace the tests and `selfcheck` patch -- `bench.home_dir()` -- so
+# The package is the namespace the tests patch -- `bench.home_dir()` -- so
 # anything patchable is looked up there at call time, never bound here at import.
 from poolhouse import bench
 from poolhouse.bench.history import _epoch, _span

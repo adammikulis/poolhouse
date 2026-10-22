@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from poolhouse import harnessid, harnessing
+from poolhouse import coding_policy, harnessid, harnessing
 from poolhouse.briefing import REQUIRED_BRIEFING
 from poolhouse.workspace import onboard
 
@@ -40,9 +40,10 @@ def test_managed_worker_keeps_task_only_restrictions_and_parent_update_owner(mon
                               revoke=lambda: events.append('revoked'))
     files = SimpleNamespace(release=lambda: events.append('released'))
     args = SimpleNamespace(project=str(tmp_path), parent='codex', role='approve-first',
-                           name='local-qwen', orders_from=[], session_factory=lambda *args: assigned)
+                           name='local-qwen', orders_from=[], session_factory=lambda *args: assigned,
+                           permissions=coding_policy.ASK_DANGEROUS, execution_mode=coding_policy.EXECUTE, protect=[])
     monkeypatch.setattr(harnessing, 'session_files', lambda cwd: files)
-    monkeypatch.setattr(harnessing, 'protected_paths', lambda files: [])
+    monkeypatch.setattr(harnessing, 'protected_paths', lambda files, extra=(): [])
     monkeypatch.setattr(harnessing, 'hook_command', lambda *args, **kwargs: 'hook')
     with harnessing.opened(args, 'codex', ('http://localhost:9000', 'qwen', 32000), lambda text: None) as session:
         _required(session.brief)
