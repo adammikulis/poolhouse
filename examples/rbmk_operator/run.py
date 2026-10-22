@@ -47,7 +47,7 @@ def record(args: argparse.Namespace) -> int:
 
     try:
         asker = LiveAsker(abstain_below=args.abstain_below)
-        with gpu.hold("RBMK operator example", wait_s=0.0):
+        with gpu.hold("RBMK operator example", wait_s=args.wait):
             for key in args.scenarios:
                 scn = scenarios.scenario(key)
                 print(f"{key}: asking {asker.model or 'the decision model'} ...", flush=True)
@@ -155,6 +155,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("scenarios", nargs="+")
     p.add_argument("--out", required=True)
     p.add_argument("--abstain-below", type=float, default=ABSTAIN_BELOW)
+    p.add_argument("--wait", type=float, default=0.0, help="seconds to wait for the GPU claim; 0 refuses at once if it is held")
     p.set_defaults(fn=record)
     p = sub.add_parser("replay")
     p.add_argument("file")
