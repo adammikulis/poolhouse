@@ -19,7 +19,7 @@ pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
         "session_lookup" => &["harness", "session"],
         "agents" => &["retired"],
         "retire" => &["target", "reason"],
-        "rebind" => &["harness", "session", "at_ms", "nonce", "anchor", "by", "sig"],
+        "rebind" => &["harness", "session", "at_ms", "nonce", "anchor", "by", "sig", "approval"],
         _ => return None,
     })
 }
@@ -78,6 +78,9 @@ fn rebind(node: &mut Node, board: &str, p: &Map<String, Value>, peer: &Peer) -> 
     if ENFORCED && lineage.is_empty() {
         return Err(Error::Denied("the process asking could not be read, so the session cannot be moved to it".into()));
     }
+    if crate::grants::authority::Authority::of(node).governed() {
+        return crate::rebind::by_phone(node, (board, &name), p, &lineage);
+    }
     let at = crate::grants::calls::fresh(node, p, "at_ms")?;
     let (by, nonce, anchor) = (text(p, "by")?, text(p, "nonce")?, Anchor::signed(p)?);
     if nonce.len() < 16 || nonce.len() > 64 || !nonce.bytes().all(|b| b.is_ascii_alphanumeric()) {
@@ -92,10 +95,15 @@ fn rebind(node: &mut Node, board: &str, p: &Map<String, Value>, peer: &Peer) -> 
     if !node.persons.once(nonce, node.now_ms())? {
         return Err(Error::Denied("that approval was used already".into()));
     }
-    node.host(board)?.names.rebind(&name, &lineage)?;
+    carry_out(node, board, &name, &lineage, &format!("the person key {}", by.chars().take(16).collect::<String>()))
+}
+
+/// Register the main session ``name`` from ``lineage`` from now on, end the tokens it held and say so on the board; ``by`` is who moved it.
+pub fn carry_out(node: &mut Node, board: &str, name: &str, lineage: &[Anchor], by: &str) -> Result<Value> {
+    node.host(board)?.names.rebind(name, lineage)?;
     node.regroup(board)?;
-    let ended = node.tokens.revoke_name(board, &name)?;
-    let detail = format!("moved by the person key {}: {ended} tokens ended", by.chars().take(16).collect::<String>());
+    let ended = node.tokens.revoke_name(board, name)?;
+    let detail = format!("moved by {by}: {ended} tokens ended");
     node.host(board)?.board.append_person(Kind::Audit, "node", json!({"event": "rebind", "subject": name, "detail": detail}))?;
     Ok(json!({"name": name, "moved": true, "tokens_ended": ended}))
 }

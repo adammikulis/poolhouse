@@ -101,6 +101,7 @@ public final class ApprovalActivity extends Activity {
             ui.line("What the signed request itself asks, read from the bytes your key signs:", Ui.CALM, true);
             for (String want : wants) ui.line(want, Color.BLACK, false);
         }
+        showListing();
         countdown = ui.text("", 15);
         final String onScreen = shown.toString();
         boolean open = view.pending();
@@ -115,6 +116,18 @@ public final class ApprovalActivity extends Activity {
         if (direct) {
             prompted = true;
             decide(prompt, onScreen);
+        }
+    }
+
+    /** For a request that lists a phone as an admin key: what the act itself says when it checks, or why it does not. */
+    private void showListing() {
+        try {
+            AdminAddAct act = AdminAddAct.of(view.challenge, store.nodeNowMs());
+            if (act == null) return;
+            ui.line("What the signed listing itself says, read from the bytes your key signs:", Ui.CALM, true);
+            ui.line(act.card, Color.BLACK, false);
+        } catch (SecurityException refused) {
+            ui.line(refused.getMessage(), Ui.WARN, true);
         }
     }
 

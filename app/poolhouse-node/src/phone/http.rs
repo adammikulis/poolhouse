@@ -18,7 +18,7 @@ use crate::approvals::decide::{decide, sweep, view, Decision};
 use crate::error::{Error, Result};
 use crate::grants::authority::Authority;
 use crate::node::Node;
-use crate::phone::enrol::{ask_to_remove, enrol, make_offer_by, offer_is_live};
+use crate::phone::enrol::{ask_to_remove, enrol, make_offer_from_phone, offer_is_live};
 use crate::phone::gate::{Gate, Permit};
 use crate::phone::{shown, ACTIVE, PENDING};
 
@@ -110,14 +110,18 @@ fn offer(node: &mut Node, id: &str) -> Result<Value> {
     if offer_is_live(node, node.now_ms()) {
         return Err(Error::Denied("A code for a phone is already waiting to be scanned; use it or wait for it to run out.".into()));
     }
+    let Some(maker) = node.phones.get(id).map(|f| (f.fingerprint.clone(), f.name.clone())) else { return Err(Error::Denied("This phone is not added to this device, or it was removed.".into())) };
+    if !Authority::of(node).decides(&maker.0) {
+        return Err(Error::Denied("Only an admin's phone makes a code for another phone.".into()));
+    }
     let key = format!("phone offer {id}");
     if !node.rates.permits(&key, MOST_CODES_PER_PHONE, Duration::from_secs(3600)) {
         return Err(crate::limits::floor("This phone has asked for as many codes as it may; try again later."));
     }
     node.rates.record(&key, Duration::from_secs(3600));
-    let by = format!("the phone {}", node.phones.get(id).map(|f| f.name.clone()).unwrap_or_default());
+    let by = format!("the phone {}", maker.1);
     let now = node.now_ms();
-    let secret = make_offer_by(node, now, &by)?;
+    let secret = make_offer_from_phone(node, now, &by, &maker.0)?;
     let expires = node.now_ms() + crate::phone::enrol::OFFER_TTL_MS;
     Ok(json!({"link": crate::phone::calls::link(node, &secret, expires), "expires_ms": expires}))
 }
@@ -183,7 +187,7 @@ pub fn handle(node: &Mutex<Node>, ip: IpAddr, http: &str, path: &str, token: &st
             }
             n.rates.record(&key, Duration::from_secs(60));
             return reply(if op == "add" { enrol(&mut n, ip, &params) } else {
-                decide(&mut n, &Decision { id: text(&params, "id"), decision: text(&params, "decision"), key: text(&params, "key"), sig: text(&params, "sig"), text_sha256: text(&params, "text_sha256"), pick: text(&params, "pick") })
+                decide(&mut n, &Decision { id: text(&params, "id"), decision: text(&params, "decision"), key: text(&params, "key"), sig: text(&params, "sig"), text_sha256: text(&params, "text_sha256"), pick: text(&params, "pick"), act_sig: text(&params, "act_sig") })
             });
         }
         ("POST", _) => {}
