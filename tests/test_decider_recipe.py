@@ -1,4 +1,4 @@
-"""The decider's one prompt limit and the trainer's defaults, which are the reference recipe's.
+"""The trainer's defaults, which are the reference recipe's. A decider prompt has no length limit of ours.
 
 The recipe's numbers are read from github.com/strands-labs/strands-decider at commit
 d942e5515db750f80a51032629ec312455a87976 (configs/train.yaml, training/train.py,
@@ -6,45 +6,10 @@ skills/customize-decider/references/training.md); docs/decision-models.md cites 
 
 from __future__ import annotations
 
-import re
-
 import pytest
 
-from poolhouse.decide.cases import Case
 from poolhouse.decide.pins import BASES, QWEN35_0_8B_BASE, QWEN35_2B_BASE, STRANDS_V19
-from poolhouse.decide.types import DecideError, options_of
-from poolhouse.train.decider import Settings, encode
-
-OPTS = options_of({"yes": "it is", "no": "it is not"})
-
-
-class Words:
-    """A tokenizer that makes each run of non-space characters one token."""
-
-    def __call__(self, text, return_offsets_mapping=True, add_special_tokens=False):
-        found = list(re.finditer(r"\S+", text))
-        return {"input_ids": [len(m.group()) for m in found],
-                "offset_mapping": [m.span() for m in found]}
-
-
-def test_the_trainer_default_limit_is_the_one_limit_the_pointer_decider_reads_by():
-    from poolhouse.decide import pointer_prompt
-    assert Settings().max_tokens == pointer_prompt.MAX_PROMPT_TOKENS == 4096
-
-
-def test_a_3000_token_case_encodes_by_default_and_a_longer_one_names_the_constant():
-    fits = Case("q", "word " * 3000, OPTS, "yes", id="three-thousand")
-    row = encode(Words(), fits, [0, 1], Settings().max_tokens)
-    assert 3000 < len(row["ids"]) <= 4096
-    too_long = Case("q", "word " * 5000, OPTS, "yes", id="five-thousand")
-    with pytest.raises(DecideError, match=r"five-thousand.*MAX_PROMPT_TOKENS"):
-        encode(Words(), too_long, [0, 1], Settings().max_tokens)
-
-
-def test_a_lower_max_tokens_is_a_memory_trade_the_refusal_says_the_run_was_given():
-    case = Case("q", "word " * 50, OPTS, "yes", id="long-one")
-    with pytest.raises(DecideError, match=r"long-one.*max_tokens 20"):
-        encode(Words(), case, [0, 1], 20)
+from poolhouse.train.decider import Settings
 
 
 def test_the_default_run_is_the_reference_recipe_on_the_released_base():
@@ -57,6 +22,12 @@ def test_the_default_run_is_the_reference_recipe_on_the_released_base():
     assert {"in_proj_qkv", "in_proj_z", "in_proj_a", "in_proj_b", "out_proj"} <= set(s.lora.targets)
 
 
+def test_the_trainer_has_no_prompt_limit_unless_the_person_sets_one():
+    from poolhouse.decide import pointer_prompt
+    assert Settings().max_tokens is None and Settings.smoke().max_tokens is None
+    assert not hasattr(pointer_prompt, "MAX_PROMPT_TOKENS") and not hasattr(pointer_prompt, "too_long")
+
+
 def test_continuing_the_released_head_trains_it_at_the_adapters_rate_unless_told_otherwise():
     assert Settings(init=STRANDS_V19).head_scale == 1.0
     assert Settings(init=STRANDS_V19, head_lr_scale=3.0).head_scale == 3.0
@@ -66,7 +37,7 @@ def test_the_smoke_preset_is_the_small_base_and_a_few_steps():
     s = Settings.smoke()
     assert s.base is QWEN35_0_8B_BASE and (s.steps, s.batch_size, s.grad_accum) == (60, 4, 1)
     assert not s.gradient_checkpointing
-    assert s.max_tokens == Settings().max_tokens
+    assert s.max_tokens is None
     assert Settings.smoke(steps=3, name="x").steps == 3
 
 
