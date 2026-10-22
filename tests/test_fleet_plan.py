@@ -27,7 +27,7 @@ from poolhouse.fleet.serving import Hosting, NoRoom, ServeSettings, Serving
 from poolhouse.http import Options, Server
 from poolhouse.serve.fit import Fit
 from poolhouse.serve.profile import Profile
-from poolhouse.testing.fakes import fake_llama_binary
+from poolhouse.testing.canned import CANNED_MODEL_ID, canned_binary
 from tests.model_approval import approved
 from tests.pool_support import join as join_pool_by_passphrase
 
@@ -301,7 +301,7 @@ def llama_binary(tmp_path, monkeypatch, workspace_node):
     from poolhouse.serve import backend as backend_module
 
     monkeypatch.setattr(backend_module, "log_dir", lambda: tmp_path / "logs")
-    return fake_llama_binary(tmp_path)
+    return canned_binary(tmp_path)
 
 
 class ServingDaemon:
@@ -357,7 +357,7 @@ class TestServeRoute:
         daemons.append(d)
         served = d.client._json("POST", "/serve", {"model": MID, "context": 16384,
                                                    "parallel": 2})
-        assert served["models"] == [MID] and served["slots"] == 2
+        assert served["models"] == [CANNED_MODEL_ID, MID] and served["slots"] == 2
         assert [s.port for s in d.serving.live(force=True)] == [served["port"]]
         argv = json.loads((tmp_path / "argv.json").read_text())
         assert argv[argv.index("-np") + 1] == "2"
@@ -429,8 +429,9 @@ class TestApply:
         assert code == 0, out
         assert f"small: {MID}: 2 slot(s) on port" in out
         live = d.serving.live(force=True)
-        assert len(live) == 1 and live[0].models == [MID] and live[0].slots == 2
-        assert f"small            {MID}:{live[0].port} (2 slot(s))" in out
+        assert len(live) == 1 and live[0].models == [CANNED_MODEL_ID, MID] and live[0].slots == 2
+        port = live[0].port
+        assert f"small            {CANNED_MODEL_ID}:{port} (2 slot(s)), {MID}:{port} (2 slot(s))" in out
 
     def test_apply_as_json_carries_each_answer(
             self, tmp_path, llama_binary, key, udp, daemons, measured, monkeypatch,
@@ -445,7 +446,7 @@ class TestApply:
         got = json.loads(capsys.readouterr().out)
         assert got["applied"][0]["status"] == 201
         assert got["applied"][0]["served"]["slots"] == 2
-        assert got["applied"][0]["serving"][0]["models"] == [MID]
+        assert got["applied"][0]["serving"][0]["models"] == [CANNED_MODEL_ID, MID]
 
     def test_a_member_that_refuses_is_reported_not_dropped(
             self, tmp_path, llama_binary, key, udp, daemons, monkeypatch, capsys):

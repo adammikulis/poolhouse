@@ -12,7 +12,7 @@ import pytest
 
 from poolhouse.serve import LlamaServerBackend, ServerManager, broker_holds, broker_wire, gpu
 from poolhouse.serve.broker import Broker
-from poolhouse.testing.fakes import fake_llama_binary
+from poolhouse.testing.canned import canned_binary
 
 pytest_plugins = ['serve_node']
 pytestmark = [pytest.mark.usefixtures('serve_leases'), pytest.mark.redteam]
@@ -20,7 +20,7 @@ pytestmark = [pytest.mark.usefixtures('serve_leases'), pytest.mark.redteam]
 
 @pytest.fixture
 def setup(tmp_path):
-    broker = Broker(ServerManager(LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    broker = Broker(ServerManager(LlamaServerBackend(binary=canned_binary(tmp_path)),
                                   state_file=tmp_path / 'servers.json'), scan=lambda: [])
     children = []
     def process():
