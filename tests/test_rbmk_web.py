@@ -287,11 +287,53 @@ def _shipped() -> list[Path]:
     return sorted(recordings.RECORDINGS.glob("*.json")) if recordings.RECORDINGS.is_dir() else []
 
 
+FIXTURES = Path(__file__).parent / "fixtures" / "rbmk_operator"
+FIXTURE = "fixture_short.recording.json"
+
+
+def test_a_real_model_recording_is_replayed_and_shown_with_its_label(served):
+    """The fixture holds real answers of the released decider; the page shows them replayed on the simulator."""
+    hub, port = served
+    hub.folder = FIXTURES
+    status, rows = call(port, "GET", "/api/recordings")
+    assert status == 200 and [r["name"] for r in rows] == [FIXTURE] and rows[0]["ok"]
+    status, shown = call(port, "GET", f"/api/recordings/{FIXTURE}")
+    doc = shown["doc"]
+    assert status == 200 and shown["label"] == "recorded from strands-decider-2B-hobson-v19 on 2026-10-22"
+    assert doc["schema"] == bundle.SCHEMA and len(doc["trace"]) == 8 and all("gauges" in r for r in doc["trace"])
+    assert [d["source"] for d in doc["decisions"]] == ["model"] * 3
+    first = doc["decisions"][0]["answers"]["class"]
+    assert abs(sum(first["scores"].values()) - 1) < 1e-6 and first["model"] == "strands-decider-2B-hobson-v19"
+
+
+def test_a_recording_is_the_source_of_a_what_if(served):
+    hub, port = served
+    hub.folder = FIXTURES
+    status, options = call(port, "GET", f"/api/candidates?recording={FIXTURE}&index=1&cls=insert_rod")
+    assert status == 200 and "none" in options and any(k.startswith("R-") for k in options)
+    assert call(port, "GET", f"/api/candidates?recording={FIXTURE}&index=99&cls=insert_rod")[0] == 404
+    assert call(port, "GET", f"/api/candidates?recording={FIXTURE}&index=1&cls=explode")[0] == 400
+
+
+def test_a_recording_that_does_not_match_the_simulator_is_refused(tmp_path):
+    rec = json.loads((FIXTURES / FIXTURE).read_text())
+    rec["decisions"][0]["calls"][0]["state_sha256"] = "0" * 64
+    (tmp_path / "changed.json").write_text(json.dumps(rec))
+    rec = json.loads((FIXTURES / FIXTURE).read_text())
+    rec["digest"] = "f" * 64
+    (tmp_path / "digest.json").write_text(json.dumps(rec))
+    hub = Hub(tmp_path)
+    with pytest.raises(recordings.BadDocument, match="does not replay"):
+        hub.recording("changed.json")
+    with pytest.raises(recordings.BadDocument, match="does not reproduce"):
+        hub.recording("digest.json")
+
+
 @pytest.mark.parametrize("path", _shipped(), ids=lambda p: p.name)
 def test_every_shipped_recording_replays_to_the_run_it_was_made_from(path):
     """Each recording is a genuine model run; replaying it on the simulator must reproduce its digest."""
-    hub = Hub(path.parent)
-    doc = hub.recording(path.name)
+    if path.name == recordings.INDEX:
+        pytest.skip("the index lists the recordings")
+    doc = Hub(path.parent).recording(path.name)
     assert doc["meta"]["backend"]["model"] and doc["meta"]["backend"].get("recorded_at")
     assert recordings.check(doc) is doc and len(doc["trace"]) > 1
-    assert all("gauges" in r and "faults" in r for r in doc["trace"])

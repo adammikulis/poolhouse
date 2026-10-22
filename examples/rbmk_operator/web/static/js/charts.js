@@ -131,8 +131,10 @@ window.RB = window.RB || {};
     const x1 = total <= 120 ? Math.max(total, last) : Math.min(Math.max(total, last), Math.max(first + W, cur + 15));
     const x0 = total <= 120 ? first : x1 - W;
     const marks = run.events.map(function (e) { return { x: e.tick }; });
-    const dmarks = run.decisions.filter(function (d) { return d && d.kind === 'decision'; }).map(function (d) {
-      return { x: d.tick, color: d.abstained ? RB.cssVar('--warn') : d.source === 'interlock' ? RB.cssVar('--bad') : RB.cssVar('--grid') };
+    const dmarks = [];
+    run.decisions.filter(function (d) { return d && d.kind === 'decision'; }).forEach(function (d) {
+      dmarks.push({ x: RB.snapTick(d), color: d.abstained ? RB.cssVar('--warn') : d.source === 'interlock' ? RB.cssVar('--bad') : RB.cssVar('--grid') });
+      if (RB.appliedTick(d) !== RB.snapTick(d)) { dmarks.push({ x: RB.appliedTick(d), color: RB.cssVar('--c2') }); }
     });
     defs.forEach(function (def) {
       const cv = canvases[def.id];

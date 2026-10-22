@@ -16,6 +16,11 @@
     <span class="chip" id="modestate">LIVE</span>
     <span class="chipbox"><span class="muted">model</span> <b id="modelid">-</b></span>
     <span class="muted" id="runlabel"></span>
+    <span class="clocks" id="clocks">
+      <span class="clk" title="Plant time at the playhead; for a live run the newest plant time in brackets"><b>sim</b> <span id="clkSim">-</span></span>
+      <span class="clk" title="Real time since the run started (live), or model time spent (recording)"><b>wall</b> <span id="clkWall">-</span></span>
+      <span class="clk" id="clkDecBox" title="How often the model is asked and how long it takes to answer"><b>decisions</b> <span id="clkDec">-</span></span>
+    </span>
   </div>
   <div class="topbtns">
     <div class="seg"><button id="modeLive" class="on">Live</button><button id="modeRec">Recorded</button></div>
@@ -57,7 +62,7 @@
   <div class="top2">
     <section class="card corecard">
       <h2>Core cross-section</h2>
-      <div class="corewrap"><canvas id="core" class="core" aria-label="Reactor core with 211 control rods"></canvas><div id="caption" class="caption" style="display:none"></div></div>
+      <div class="corewrap"><canvas id="core" class="core" aria-label="Reactor core with 211 control rods"></canvas><div id="pending" class="pending" style="display:none"></div><div id="caption" class="caption" style="display:none"></div></div>
       <div class="legendrow">
         <label>Channel colour <select id="colormode"><option value="power">local power</option><option value="heat">fuel temperature</option></select></label>
         <span id="legend" class="legend"></span>

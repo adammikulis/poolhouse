@@ -52,7 +52,7 @@ window.RB = window.RB || {};
     const i = run.trace.findIndex(function (r) { return r.tick >= tick; });
     S.cursor = i < 0 ? run.last : i; RB.touch();
   };
-  RB.pick = function (d) { S.selected = d.i; S.playing = false; RB.seekTick(d.tick); RB.notify(); };
+  RB.pick = function (d) { S.selected = d.i; S.playing = false; RB.seekTick(RB.snapTick(d)); RB.notify(); };
 
   RB.exportJson = async function () {
     const run = S.main; if (!run) { RB.fail('Nothing to export yet.'); return; }
@@ -228,11 +228,35 @@ window.RB = window.RB || {};
     else if (tab === 'compare') { RB.compare.draw(cursor); }
   }
 
+  const SLOW_S = 20, TIMEOUT_S = 120;
+  RB.fmtWall = function (s) { return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0') + (s < 60 ? '.' + Math.floor(s % 1 * 10) : ''); };
+
+  function median(a) { const s = a.slice().sort(function (x, y) { return x - y; }); return s.length ? s[s.length >> 1] : null; }
+
+  /* The three clocks of the header and the waiting-for-model state; the playhead clock never depends on either. */
+  function clocks() {
+    const run = S.main, frame = run && run.trace.length ? RB.frameAt(run, S.cursor) : null;
+    $('clkSim').textContent = frame ? RB.fmtClock(frame.t_s) + (run.live ? ' (newest ' + RB.fmtClock(run.trace[run.last].t_s) + ')' : '') : '-';
+    $('clkWall').textContent = run ? RB.fmtWall(run.wallSeconds()) + (run.live || run.origin === 'live' ? ' elapsed' : ' model time') : '-';
+    const rows = run ? run.decisions.filter(function (d) { return d && d.kind === 'decision'; }) : [], box = $('clkDecBox');
+    const lat = rows.map(function (d) { return d.latency_ms / 1000; }), gap = median(rows.slice(1).map(function (d, i) { return d.tick - rows[i].tick; }));
+    const wait = run ? run.pendingFor() : 0;
+    $('clkDec').textContent = rows.length ? 'every ' + (gap === null ? '-' : gap + ' ticks') + ', latency last ' + lat[lat.length - 1].toFixed(1) + ' s, mean ' +
+      (lat.reduce(function (s, v) { return s + v; }, 0) / lat.length).toFixed(1) + ' s' + (wait ? ', waiting ' + wait.toFixed(1) + ' s' : '') : (wait ? 'waiting ' + wait.toFixed(1) + ' s' : '-');
+    box.className = 'clk' + (wait > TIMEOUT_S ? ' stuck' : wait > SLOW_S ? ' slow' : '');
+    const p = $('pending');
+    p.style.display = wait ? '' : 'none';
+    p.className = 'pending' + (wait > SLOW_S ? ' loud' : '');
+    p.textContent = wait ? (wait > TIMEOUT_S ? 'NO ANSWER FROM THE MODEL FOR ' : wait > SLOW_S ? 'MODEL SLOW: waiting for the answer to the decision at tick ' + run.asking + ', ' : 'Waiting for the model: decision at tick ' + run.asking + ', ') + wait.toFixed(1) + ' s' : '';
+    if (wait > TIMEOUT_S) { $('banner').textContent = 'The model has not answered the decision at tick ' + run.asking + ' for ' + wait.toFixed(0) + ' s. The animation keeps running; stop the run or keep waiting.'; $('banner').style.display = ''; }
+  }
+
   function loop(now) {
     const dt = Math.min((now - (loop.last || now)) / 1000, 0.25); loop.last = now;
     advance(dt);
     const run = S.main, frame = run && run.trace.length ? RB.frameAt(run, S.cursor) : null;
-    const extra = { paused: !S.playing, highlight: new Set() };
+    const extra = { paused: !S.playing && !(run && run.live), highlight: new Set() };
+    if (now - (loop.clocked || 0) > 200) { loop.clocked = now; clocks(); }
     if (run && frame) {
       const d = activeDecision(run, frame);
       if (d && frame.tick - d.tick <= 2) { extra.highlight = RB.movedRods(run, run.trace.findIndex(function (r) { return r.tick === d.tick; })); }

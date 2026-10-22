@@ -29,6 +29,13 @@ h1 { font-size: 18px; margin: 0; } h2 { font-size: 15px; margin: 0 0 8px; } h3 {
 .chip.rec { background: color-mix(in srgb, var(--info) 20%, transparent); color: var(--info); border-color: var(--info); }
 .chip.pulse { animation: pulse 1.2s infinite; }
 @keyframes pulse { 50% { opacity: .45; } }
+.clocks { display: flex; flex-wrap: wrap; gap: 6px 10px; font-variant-numeric: tabular-nums; width: 100%; }
+.clk { padding: 1px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--tile); font-size: 12px; }
+.clk.slow { border-color: var(--warn); color: var(--warn); } .clk.stuck { border-color: var(--bad); color: var(--bad); font-weight: 700; }
+.pending { position: absolute; left: 4%; right: 4%; top: 3%; background: color-mix(in srgb, var(--warn) 85%, #000); color: #fff; padding: 6px 10px; border-radius: 8px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+.pending.loud { background: var(--loud); animation: pulse 1s infinite; }
+.drow.flight { border-color: var(--warn); border-style: dashed; }
+.delay { font-size: 12px; color: var(--warn); }
 .topbtns { display: flex; gap: 8px; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .seg button { border: 0; background: var(--tile); color: var(--text); padding: 6px 12px; cursor: pointer; font: inherit; }

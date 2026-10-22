@@ -5,6 +5,9 @@ window.RB = window.RB || {};
 
   const CALL_TITLES = { neutron: 'Neutron panel', coolant: 'Coolant panel', rods: 'Rods panel', instruments: 'Whole console',
                         decision: 'Decision: risk and action class', target: 'Target', step: 'Step size' };
+  /* The tick whose console the model read, and the tick its action took effect (the decision tick when the run does not say). */
+  RB.snapTick = function (d) { return d.snapshot_tick !== undefined ? d.snapshot_tick : d.tick; };
+  RB.appliedTick = function (d) { return d.applied_tick !== undefined ? d.applied_tick : d.tick; };
   RB.fmtAction = function (a) {
     if (!a) { return 'none'; }
     return a.cls + (a.target && a.target !== 'none' ? ' ' + a.target : '') + (a.cls.endsWith('_rod') && a.target !== 'none' ? ' (step ' + a.step + ')' : '');
@@ -62,16 +65,25 @@ window.RB = window.RB || {};
     const rows = (run && run.decisions || []).filter(Boolean);
     if (!rows.length) { root.appendChild(RB.el('p', { class: 'muted', text: run && run.live ? 'Waiting for the first decision...' : 'No decisions.' })); return; }
     rows.forEach(function (d) {
-      const row = RB.el('div', { class: 'drow ' + d.kind, 'data-i': d.i, 'data-tick': d.tick, onclick: function () { onPick(d); } });
+      const row = RB.el('div', { class: 'drow ' + d.kind, 'data-i': d.i, 'data-tick': RB.appliedTick(d), 'data-snap': RB.snapTick(d), onclick: function () { onPick(d); } });
       const conf = d.answers && d.answers.class ? d.answers.class.scores[d.answers.class.choice] : null;
       const same = JSON.stringify(d.requested) === JSON.stringify(d.applied);
+      if (d.kind === 'busy') {
+        row.appendChild(RB.el('div', { class: 'banner warn', text: 'MODEL BUSY at tick ' + d.tick + ': ' + (d.note || 'a decision is still in flight, so nothing new was asked') }));
+        root.appendChild(row);
+        return;
+      }
       row.appendChild(RB.el('div', { class: 'dhead' }, [
-        RB.el('span', { class: 'dtick', text: '#' + d.i + '  tick ' + d.tick }), RB.el('span', { class: 'dclock muted', text: RB.fmtClock(d.t_s) }),
+        RB.el('span', { class: 'dtick', text: '#' + d.i + '  tick ' + RB.snapTick(d) }), RB.el('span', { class: 'dclock muted', text: RB.fmtClock(d.t_s) }),
         RB.el('span', { class: 'src ' + d.source, text: d.kind === 'trip' ? 'AUTOMATIC TRIP' : d.source }),
         RB.el('span', { class: 'act', text: d.kind === 'trip' ? 'AZ-5' : (same ? RB.fmtAction(d.applied) : RB.fmtAction(d.requested) + '  ->  ' + RB.fmtAction(d.applied)) }),
         conf !== null ? RB.el('span', { class: 'conf', text: 'confidence ' + conf.toFixed(2) }) : null,
         d.model_risk !== null && d.model_risk !== undefined ? RB.el('span', { class: 'conf', text: 'risk ' + d.model_risk.toFixed(1) }) : null,
         d.latency_ms ? RB.el('span', { class: 'muted', text: d.latency_ms.toFixed(0) + ' ms' }) : null]));
+      if (RB.appliedTick(d) > RB.snapTick(d)) {
+        row.appendChild(RB.el('div', { class: 'delay', text: 'The model saw tick ' + RB.snapTick(d) + ' and its action took effect at tick ' + RB.appliedTick(d) +
+          ' (' + (RB.appliedTick(d) - RB.snapTick(d)) + ' ticks later' + (d.latency_ms ? ', ' + (d.latency_ms / 1000).toFixed(1) + ' s to answer' : '') + ').' }));
+      }
       if (d.abstained) { row.appendChild(RB.el('div', { class: 'banner warn', text: 'ABSTAINED. ' + d.note })); }
       else if (d.source === 'forced') { row.appendChild(RB.el('div', { class: 'banner info', text: d.note })); }
       (d.interlocks || []).forEach(function (x) {
@@ -93,9 +105,10 @@ window.RB = window.RB || {};
   RB.markLog = function (root, tick, selected, scroll) {
     let active = null;
     root.querySelectorAll('.drow').forEach(function (r) {
-      const t = +r.getAttribute('data-tick');
+      const t = +r.getAttribute('data-tick'), seen = +r.getAttribute('data-snap');
       r.classList.toggle('selected', +r.getAttribute('data-i') === selected);
       r.classList.remove('active');
+      r.classList.toggle('flight', seen <= tick && tick < t);
       if (t <= tick) { active = r; }
     });
     if (active) {

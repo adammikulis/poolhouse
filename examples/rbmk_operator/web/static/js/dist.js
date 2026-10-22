@@ -60,10 +60,10 @@ window.RB = window.RB || {};
     const ok = rows.filter(function (r) { return r.verdict === 'recovered'; }).length, bad = rows.length - ok;
     if (live && b) {
       const done = b.items.filter(Boolean).length;
-      D.body.appendChild(RB.el('p', { class: b.status === 'error' ? 'banner bad' : 'muted', text: 'Batch ' + b.status + ': ' + done + ' of ' + b.plan.length + ' runs done' +
+      D.body.appendChild(RB.el('p', { class: b.status === 'error' ? 'banner bad' : 'muted', text: 'Batch ' + b.status + ': ' + (b.plan.length ? done + ' of ' + b.plan.length + ' runs done' : 'waiting for the GPU hold and the model') +
         (b.current ? '; running ' + b.current.scenario + ' (seed ' + b.current.seed + ')' + (b.progress ? ', tick ' + b.progress.tick + ' of ' + b.progress.ticks : '') : '') + (b.error ? '. ' + b.error : '') }));
     }
-    if (!rows.length) { D.body.appendChild(RB.el('p', { class: 'muted', text: live ? 'No batch has run yet.' : 'No poisoned-start model recordings in the recordings folder.' })); return; }
+    if (!rows.length) { D.body.appendChild(RB.el('p', { class: 'muted', text: live ? (b && b.status === 'running' ? 'The first run has not finished yet.' : 'No batch has run yet.') : 'No poisoned-start model recordings in the recordings folder.' })); return; }
     const total = rows.length, bar = RB.el('div', { class: 'distbar' }, [
       ok ? RB.el('div', { class: 'ok', style: 'width:' + (ok / total * 100) + '%', text: 'recovered ' + ok }) : null,
       bad ? RB.el('div', { class: 'bad', style: 'width:' + (bad / total * 100) + '%', text: 'failed ' + bad }) : null]);

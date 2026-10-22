@@ -26,7 +26,7 @@ window.RB = window.RB || {};
     constructor(role) {
       this.role = role; this.header = null; this.trace = []; this.decisions = []; this.events = [];
       this.captions = []; this.status = 'idle'; this.error = ''; this.jobId = null; this.model = ''; this.label = '';
-      this.doc = null; this.asking = null; this.origin = 'live'; this.branch = null; this.stream = null;
+      this.doc = null; this.asking = null; this.askedAt = 0; this.startedAt = performance.now(); this.origin = 'live'; this.branch = null; this.stream = null;
     }
     get rods() { return this.header ? this.header.rods : []; }
     get scenario() { return this.header ? this.header.scenario : null; }
@@ -37,10 +37,10 @@ window.RB = window.RB || {};
       else if (ev.type === 'decision') { this.decisions[ev.row.i] = ev.row; }
       else if (ev.type === 'event') { this.events.push(ev.row); }
       else if (ev.type === 'caption') { this.captions.push(ev.row); }
-      else if (ev.type === 'asking') { this.asking = ev.tick; }
+      else if (ev.type === "asking") { this.asking = ev.tick; this.askedAt = performance.now(); }
       else if (ev.type === 'model') { this.model = ev.id; RB.state.info.model.id = ev.id; }
       else if (ev.type === 'document') { this.fetchDocument(); }
-      else if (ev.type === 'status') { this.status = ev.status; this.error = ev.error; this.asking = null; }
+      else if (ev.type === 'status') { this.status = ev.status; this.error = ev.error; this.asking = null; this.endedAt = performance.now(); }
       RB.touch();
     }
     async fetchDocument() {
@@ -61,8 +61,15 @@ window.RB = window.RB || {};
       this.error = doc.meta.error || ''; this.branch = doc.branch ? doc : null;
       RB.notify();
     }
+    /* Seconds the decision now in flight has been waiting for the model; 0 when none is. */
+    pendingFor() { return this.asking === null || !this.live ? 0 : (performance.now() - this.askedAt) / 1000; }
+    /* Wall seconds this run has been going (live), or the model time its decisions took (recorded). */
+    wallSeconds() {
+      if (this.live || this.origin === 'live') { return ((this.endedAt || performance.now()) - this.startedAt) / 1000; }
+      return this.decisions.reduce(function (s, d) { return s + (d && d.latency_ms ? d.latency_ms : 0); }, 0) / 1000;
+    }
     follow(jobId) {
-      this.jobId = jobId; this.status = 'running';
+      this.jobId = jobId; this.status = "running"; this.startedAt = performance.now(); this.endedAt = 0;
       let after = 0;
       const open = () => {
         const es = new EventSource('/api/jobs/' + jobId + '/events?after=' + after);

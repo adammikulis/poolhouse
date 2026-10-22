@@ -11,6 +11,7 @@ from ..bundle import RECORDING, SCHEMA
 
 RECORDINGS = Path(__file__).resolve().parent.parent / "recordings"
 MAX_BYTES = 64 << 20
+INDEX = "index.json"
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.json$")
 CONTROLLERS = {"model": "decision model", "naive": "naive controller (plain policy code, not a model)",
                "crew": "1986 crew script (not a model)"}
@@ -79,10 +80,10 @@ def label(doc: dict[str, Any]) -> str:
     """What the header says about where the run came from."""
     meta = doc["meta"]
     backend = meta["backend"]
-    when = backend.get("recorded_at") or "a date that was not stored"
+    when = backend.get("recorded_at")
     if meta["controller"] != "model":
-        return f"{CONTROLLERS[meta['controller']]}, recorded on {when}"
-    return f"recorded from {backend['model']} on {when}"
+        return CONTROLLERS[meta["controller"]] + (f", recorded on {when}" if when else "")
+    return f"recorded from {backend['model']} on {when or 'a date that was not stored'}"
 
 
 def parse(text: str | bytes) -> dict[str, Any]:
@@ -123,6 +124,8 @@ def listing(folder: Path) -> list[dict[str, Any]]:
         return []
     out = []
     for path in sorted(folder.glob("*.json")):
+        if path.name == INDEX:
+            continue
         try:
             out.append(summary(path.name, read(folder, path.name)))
         except (BadDocument, OSError) as exc:
