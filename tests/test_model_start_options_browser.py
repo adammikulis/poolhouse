@@ -198,7 +198,7 @@ def test_context_uses_shared_stops_and_exact_model_boundary(inline_models,maximu
     inventory[0]['context_length']=maximum
     open_picker(app,page)
     controls=options(page)
-    context=controls.locator('ml-slider').first
+    context=controls.locator('poolhouse-slider').first
     assert context.evaluate('node => node.stops') == expected
     context.get_by_role('slider').press('Home')
     expect(controls).to_contain_text(f'{expected[0]:,} tokens requested')

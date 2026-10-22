@@ -1,4 +1,4 @@
-"""The ml-board element: what the folder holds, and the element driven in headless Chromium
+"""The poolhouse-board element: what the folder holds, and the element driven in headless Chromium
 against the real read-only route over the person's session on the node."""
 
 from __future__ import annotations
@@ -50,14 +50,14 @@ def test_the_page_is_served_with_a_policy_that_forbids_eval_and_other_origins(te
     assert "connect-src 'self'" in policy
 
 
-def test_the_element_is_loaded_by_ml_ui_and_builds_nothing_from_markup():
+def test_the_element_is_loaded_by_poolhouse_ui_and_builds_nothing_from_markup():
     source = (assets_dir() / "board.js").read_text(encoding="utf-8")
-    assert 'import "./board.js"' in (assets_dir() / "ml-ui.js").read_text(encoding="utf-8")
+    assert 'import "./board.js"' in (assets_dir() / "poolhouse-ui.js").read_text(encoding="utf-8")
     for banned in ("innerHTML", "outerHTML", "insertAdjacentHTML", "eval(", "new Function",
                    "document.write", "window.open",
                    "target="):
         assert banned not in source, banned
-    assert re.search(r'define\("ml-board"', source)
+    assert re.search(r'define\("poolhouse-board"', source)
     assert 'method: document ? "POST" : "GET"' in source
     assert 'this.request("post", {}, document)' in source
     assert "PUT" not in source and "DELETE" not in source
@@ -89,16 +89,16 @@ def test_hostile_text_is_shown_as_text_and_the_page_runs_nothing_and_holds_no_to
     seen = []
     page.on("request", lambda r: seen.append((r.method, r.url)))
     page.goto(f"http://127.0.0.1:{served}/?session={served.session}")
-    page.wait_for_selector("ml-board", state="attached")
-    page.wait_for_function("() => document.querySelector('ml-board')?.shadowRoot?.querySelector('nav button')")
+    page.wait_for_selector("poolhouse-board", state="attached")
+    page.wait_for_function("() => document.querySelector('poolhouse-board')?.shadowRoot?.querySelector('nav button')")
     page.get_by_role("button", name="#ops").click()
-    page.wait_for_function("() => document.querySelector('ml-board')?.shadowRoot?.querySelector('.row')")
-    row = page.evaluate("document.querySelector('ml-board')?.shadowRoot?.querySelector('.row .subject').textContent")
+    page.wait_for_function("() => document.querySelector('poolhouse-board')?.shadowRoot?.querySelector('.row')")
+    row = page.evaluate("document.querySelector('poolhouse-board')?.shadowRoot?.querySelector('.row .subject').textContent")
     assert row == "<b>bold</b>"
-    page.evaluate("document.querySelector('ml-board')?.shadowRoot?.querySelector('.row').click()")
-    page.wait_for_function("() => document.querySelector('ml-board')?.shadowRoot?.querySelector('.msg pre')")
+    page.evaluate("document.querySelector('poolhouse-board')?.shadowRoot?.querySelector('.row').click()")
+    page.wait_for_function("() => document.querySelector('poolhouse-board')?.shadowRoot?.querySelector('.msg pre')")
     found = page.evaluate("""() => {
-      const root = document.querySelector('ml-board').shadowRoot;
+      const root = document.querySelector('poolhouse-board').shadowRoot;
       return { text: root.querySelector('.msg pre').textContent,
                images: root.querySelectorAll('img,script,a,iframe').length,
                pwned: window.__pwned ?? null, html: document.documentElement.outerHTML };
@@ -108,9 +108,9 @@ def test_hostile_text_is_shown_as_text_and_the_page_runs_nothing_and_holds_no_to
     assert team.me.token not in found["html"] and all(m == "GET" for m, _ in seen)
     assert all(u.startswith(f"http://127.0.0.1:{served}/") for _, u in seen)
     page.get_by_role("button", name=f"{min(team.me.name, team.alice.name)} and {max(team.me.name, team.alice.name)}").click()
-    page.wait_for_function("() => document.querySelector('ml-board')?.shadowRoot?.querySelector('.msg pre')"
+    page.wait_for_function("() => document.querySelector('poolhouse-board')?.shadowRoot?.querySelector('.msg pre')"
                            "?.textContent.includes('a dm')")
-    assert "a dm <i>x</i>" in page.evaluate("document.querySelector('ml-board')?.shadowRoot?.querySelector('.msg pre').textContent")
+    assert "a dm <i>x</i>" in page.evaluate("document.querySelector('poolhouse-board')?.shadowRoot?.querySelector('.msg pre').textContent")
     page.close()
 
 
@@ -120,19 +120,19 @@ def test_the_live_feed_picks_up_a_new_message_and_backs_off_when_the_route_fails
     alice.room("create", "#ops")
     page = browser.new_context(bypass_csp=True).new_page()
     page.goto(f"http://127.0.0.1:{served}/?session={served.session}")
-    page.wait_for_function("() => document.querySelector('ml-board')?.shadowRoot?.querySelector('nav button')")
+    page.wait_for_function("() => document.querySelector('poolhouse-board')?.shadowRoot?.querySelector('nav button')")
     page.get_by_role("button", name="#ops").click()
     page.wait_for_timeout(500)
     began = time.monotonic()
     alice.post("#ops", "note", "later", subject="arrives by push")
     page.wait_for_function(
-        "() => document.querySelector('ml-board')?.shadowRoot?.querySelector('.row .subject')?.textContent"
+        "() => document.querySelector('poolhouse-board')?.shadowRoot?.querySelector('.row .subject')?.textContent"
         " === 'arrives by push'", timeout=15000)
     assert time.monotonic() - began < 3
-    delays = page.evaluate("import('/ui/ml-ui/board.js').then(m => [m.nextDelay(3000, false),"
+    delays = page.evaluate("import('/ui/poolhouse-ui/board.js').then(m => [m.nextDelay(3000, false),"
                            " m.nextDelay(3000, true), m.nextDelay(40000, true), m.nextDelay(60000, true)])")
     assert delays == [3000, 6000, 60000, 60000]
-    assert page.evaluate("import('/ui/ml-ui/board.js').then(m => m.line('a\\u202eb\\nc', 10))") == "a b c"
+    assert page.evaluate("import('/ui/poolhouse-ui/board.js').then(m => m.line('a\\u202eb\\nc', 10))") == "a b c"
     page.close()
 
 
@@ -146,11 +146,11 @@ def test_the_person_chats_from_the_page_and_an_agent_reads_it(team, served, brow
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto(f"http://127.0.0.1:{served}/?session={served.session}")
-    page.wait_for_function("() => document.querySelector('ml-board')?.shadowRoot?.querySelector('nav button')")
+    page.wait_for_function("() => document.querySelector('poolhouse-board')?.shadowRoot?.querySelector('nav button')")
     page.get_by_role("button", name="#ops").click()
-    page.wait_for_function("() => document.querySelector('ml-board')?.shadowRoot?.querySelector('.composer textarea')")
+    page.wait_for_function("() => document.querySelector('poolhouse-board')?.shadowRoot?.querySelector('.composer textarea')")
     page.evaluate("""() => {
-      const root = document.querySelector('ml-board').shadowRoot;
+      const root = document.querySelector('poolhouse-board').shadowRoot;
       root.querySelector('.composer input').value = 'from the page';
       const box = root.querySelector('.composer textarea');
       box.value = '<img src=x onerror="window.__pwned=1"> hello agents';
@@ -158,13 +158,13 @@ def test_the_person_chats_from_the_page_and_an_agent_reads_it(team, served, brow
       root.querySelector('.composer button').click();
     }""")
     page.wait_for_function(
-        "() => document.querySelector('ml-board')?.shadowRoot?.querySelector('.row .subject')?.textContent === 'from the page'")
+        "() => document.querySelector('poolhouse-board')?.shadowRoot?.querySelector('.row .subject')?.textContent === 'from the page'")
     mine = [m for m in alice.read(channel="#ops", kind="message").entries if m.sender == team.me.name]
     assert [m.text for m in mine] == ['<img src=x onerror="window.__pwned=1"> hello agents']
     assert page.evaluate("window.__pwned ?? null") is None and errors == []
     assert [m for m, _ in posts] == ["POST"] and posts[0][1].endswith("/board/post")
-    page.evaluate("document.querySelector('ml-board').readonly = true")
-    page.wait_for_function("() => !document.querySelector('ml-board').shadowRoot.querySelector('.composer')")
+    page.evaluate("document.querySelector('poolhouse-board').readonly = true")
+    page.wait_for_function("() => !document.querySelector('poolhouse-board').shadowRoot.querySelector('.composer')")
     page.close()
 
 
@@ -181,7 +181,7 @@ def test_drafts_are_scoped_to_channel_and_survive_reload_without_posting(team, s
     page.on('request', lambda request: posts.append(request.url) if request.method == 'POST' else None)
     page.goto(f'http://127.0.0.1:{served}/?session={served.session}')
     page.get_by_role('button', name='#ops', exact=True).click()
-    editor = page.locator('ml-board textarea')
+    editor = page.locator('poolhouse-board textarea')
     editor.fill('Unsent operations draft')
     page.get_by_role('button', name='#second', exact=True).click()
     expect(editor).to_have_value('')
@@ -205,10 +205,10 @@ def test_a_subagent_is_listed_with_its_parent_and_its_message_keeps_its_exact_na
     page.get_by_role('button', name=child.name, exact=True).wait_for()
     page.get_by_role('combobox', name='Message an agent').select_option(child.name)
     page.get_by_role('button', name='Open', exact=True).click()
-    page.wait_for_function("name => document.querySelector('ml-board').view.b === name", arg=child.name)
+    page.wait_for_function("name => document.querySelector('poolhouse-board').view.b === name", arg=child.name)
     page.get_by_role('button', name='#general', exact=False).click()
     page.get_by_role('button', name='Readable child', exact=False).click()
-    author = page.locator('ml-board .who')
+    author = page.locator('poolhouse-board .who')
     author.wait_for()
     assert author.inner_text().startswith(child.name)
     assert author.get_attribute('title') == child.name

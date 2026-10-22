@@ -122,8 +122,8 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
     root.dataset.density = theme?.density || "comfortable";
     const colors = {
       pink:"--poolhouse-pink", orange:"--poolhouse-orange", yellow:"--poolhouse-yellow",
-      cyan:"--poolhouse-cyan", navy:"--poolhouse-navy", background:"--ml-bg",
-      panel:"--ml-surface", sunken:"--ml-sunken", text:"--ml-text", muted:"--ml-muted", border:"--ml-line"
+      cyan:"--poolhouse-cyan", navy:"--poolhouse-navy", background:"--poolhouse-ui-bg",
+      panel:"--poolhouse-ui-surface", sunken:"--poolhouse-ui-sunken", text:"--poolhouse-ui-text", muted:"--poolhouse-ui-muted", border:"--poolhouse-ui-line"
     };
     for (const [key, variable] of Object.entries(colors)) {
       if (theme?.colors?.[key]) root.style.setProperty(variable, theme.colors[key]);
@@ -134,8 +134,8 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
       root.style.setProperty(`--poolhouse-${color}-ink`,
         foreground(palette.getPropertyValue(`--poolhouse-${color}`).trim(),navy));
     }
-    if (theme?.colors?.pink) root.style.setProperty("--ml-accent", theme.colors.pink);
-    else root.style.removeProperty("--ml-accent");
+    if (theme?.colors?.pink) root.style.setProperty("--poolhouse-ui-accent", theme.colors.pink);
+    else root.style.removeProperty("--poolhouse-ui-accent");
     root.style.setProperty("--ui-font-size", `${theme?.font_size || 14}px`);
   };
   M.setPreferences = function (settings) {
@@ -161,7 +161,7 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
     if (result.ok && !result.error) M.setPreferences({...result.settings, resolved_theme:result.resolved_theme});
   };
 
-  /** An ml-ui element with its properties set; a property set before the element is defined
+  /** An poolhouse-ui element with its properties set; a property set before the element is defined
       is kept by the element when it upgrades. */
   M.ui = function (tag, props = {}) {
     const n = document.createElement(tag);
@@ -203,7 +203,7 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
   M.ctxWords = (tokens) => `${Number(tokens).toLocaleString()} tokens`;
 
   M.contextPicker = function (start, onPick, {maximum} = {}) {
-    const slider = M.ui("ml-slider", {label:"Context length"});
+    const slider = M.ui("poolhouse-slider", {label:"Context length"});
     slider.id = "ctx";
     const meter = el("div", {class:"meter"}, slider);
     meter.configure = (value, cap = maximum) => {
