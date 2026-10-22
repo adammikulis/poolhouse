@@ -14,6 +14,30 @@ fn revoke(board: &mut poolhouse_node::board::Board) -> Row {
     board.append(Kind::Grant, "node", json!({"op": "revoke", "gid": "g1", "reason": "done"}), "").unwrap()
 }
 
+fn distrust(board: &mut poolhouse_node::board::Board) -> Row {
+    board.append(Kind::Grant, "node", json!({"op": "distrust", "key": "k1", "since": 2, "pool": "p1", "person": "k0", "at_ms": 1, "reason": "its key was lost"}), "").unwrap()
+}
+
+#[test]
+fn a_restart_at_a_base_that_leaves_out_a_held_distrust_is_refused_and_the_rows_stay() {
+    let m = (tempdir().unwrap(), tempdir().unwrap());
+    let (mut a, mut b) = (rotating(&m.0, 1), rotating(&m.1, 2));
+    let origin = a.origin().to_string();
+    distrust(&mut a);
+    for i in 0..10 {
+        say(&mut a, "writer", &format!("early {i}"));
+    }
+    exchange(&mut a, &mut b).unwrap();
+    let held = view(&b, &origin);
+    assert!(held.iter().any(|r| r.kind == Kind::Grant));
+    let tip = held.last().unwrap();
+    let phantom = forged(&origin, tip.seq + 5, &"a".repeat(64), (Kind::Message, ""), json!({}));
+    let tail = base_after(&key(1), &phantom, json!({"carried": 0, "left": 0}), vec![]);
+    is_damaged(b.ingest(&origin, &tail, true), "grant revocation");
+    assert_eq!(view(&b, &origin), held, "the copy keeps the rows it held, the distrust included");
+    assert_eq!(b.first_seq(&origin), 1);
+}
+
 #[test]
 fn a_restart_at_a_base_that_leaves_out_a_held_revocation_is_refused_and_the_rows_stay() {
     let m = (tempdir().unwrap(), tempdir().unwrap());

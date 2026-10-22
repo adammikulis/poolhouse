@@ -13,6 +13,7 @@ from conftest import json_reply
 from PIL import Image
 
 from poolhouse.gym import models, vision_process
+from poolhouse.testing.canned import CANNED_MARKER, CANNED_MODEL_ID, canned_chat_reply, marked
 
 pytestmark = pytest.mark.redteam
 
@@ -58,10 +59,8 @@ def test_vision_uses_rgb_thermal_pixels_without_simulator_truth(server, monkeypa
     def reply(method, path, body):
         if path == '/v1/chat/completions':
             requests.append(json.loads(body))
-            return json_reply({'id': 'camera', 'model': 'actual-smol', 'choices': [
-                {'index': 0, 'message': {'role': 'assistant', 'content': 'A warm visible shape on the left'},
-                 'finish_reason': 'stop'}]})
-        return json_reply({'data': [{'id': 'actual-smol'}]})
+            return canned_chat_reply('A warm visible shape on the left', top={'id': 'camera'})
+        return json_reply({'data': [{'id': CANNED_MODEL_ID}]})
 
     service = server(reply)
     leases = []
@@ -82,7 +81,8 @@ def test_vision_uses_rgb_thermal_pixels_without_simulator_truth(server, monkeypa
     events = [json.loads(line) for line in capture.getvalue().splitlines()]
     assert events[0]['status'] == 'ready'
     result = events[1]['result']
-    assert result['perception'] == 'A warm visible shape on the left'
+    assert result['perception'] == marked('A warm visible shape on the left')
+    assert result['perception'].startswith(CANNED_MARKER), 'the perception says it came from a canned server'
     assert result['sequence'] == 22 and result['revision'] == 7
     assert result['camera']['frame_id'] == 18 and result['camera']['image_hashes']['rgb']
     assert leases[0][1]['reason'] == 'Live Gym RGB and synthetic thermal camera perception'

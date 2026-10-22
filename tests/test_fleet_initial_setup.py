@@ -5,7 +5,7 @@ import pytest
 from launch_support import browser as browser_headers, sign_in
 from test_fleet_ui import Serving
 
-from poolhouse.fleet import automatic_pools
+from poolhouse.fleet import automatic_pools, daemon as daemon_module
 from poolhouse.fleet.daemon import DaemonOptions, DaemonRuntime
 from poolhouse.fleet.discovery import memberships, mint_pool
 from poolhouse.fleet.settings import Settings
@@ -67,12 +67,15 @@ def test_initial_rejects_mode_change_and_nonboolean_automatic(device):
     assert memberships(device.keyfile)[0].mode == "prod"
 
 
-def test_fresh_browser_daemon_defers_admission(tmp_path, monkeypatch):
+def test_fresh_browser_daemon_starts_in_dev_mode_and_leaves_production_to_the_first_run_page(tmp_path, monkeypatch):
     key = tmp_path / "pool.key"
     monkeypatch.setattr(automatic_pools, "offers", lambda port=None: [])
+    monkeypatch.setattr(daemon_module, "member_pause", lambda *args, **kwargs: None)
     runtime = DaemonRuntime(DaemonOptions(root=tmp_path / "root", pool_key_path=key, initial_setup=True))
+    runtime.announce = True
     runtime.configure()
-    assert not memberships(key)
+    (member,) = memberships(key)
+    assert member.mode == "dev" and member.selection == "automatic"
     assert runtime.effective_mode == "dev"
 
 
