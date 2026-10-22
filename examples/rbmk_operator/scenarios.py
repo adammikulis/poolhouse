@@ -47,6 +47,7 @@ class Scenario:
     pumps: int = 6
     throttle: float = 1.0
     crew: bool = False
+    slow_s: float = SLOW_TICK_S
     extra: dict[str, float] = field(default_factory=dict)
 
     def build_core(self) -> rx.Core:
@@ -116,14 +117,20 @@ POISONED = tuple(_poisoned(row) for row in (
 
 HISTORIC = Scenario(
     "historic_1986", "1986 replay (the crew)",
-    "The crew's sequence from 30 MW: manual rods pulled out one by one to recover power, the test started with the "
-    "margin at 7 rod-equivalents, AZ-5 pressed 36 seconds later. The crew is a script, not a model.",
-    "history", ticks=200, seed=1986, power=0.03, setpoint=0.22, iodine=0.6, orm=9.0, events=(
-        Event(12, "test_start", 0, "01:23:04 The turbine rundown test begins: pumps 5 to 8 start to coast down"),
-        Event(0, "setpoint", 0.22, "The programme wants 700 MW; the unit is at 40 MW")),
-    defeated=_DEFEATED, ar_on=False, has_test=True, pumps=8, throttle=0.9, crew=True, decide_slow=1, fast_from=12)
+    "The crew's sequence from 30 MW: power has fallen into the xenon pit, manual rods are pulled out one by one to "
+    "recover it, the margin ends near 7 rod-equivalents, the test starts, AZ-5 is pressed 36 seconds later. The crew "
+    "is a script, not a model.",
+    "history", ticks=200, seed=1986, power=0.0094, setpoint=0.0625, iodine=0.9, orm=12.0, events=(
+        Event(0, "setpoint", 0.0625, "Power has fallen to 30 MW thermal after the regulator switchover; the crew works to hold 200 MW"),
+        Event(40, "ar_off", 0, "The automatic regulator is switched off; the crew goes to manual control"),
+        Event(41, "test_start", 0, "01:23:04 The turbine rundown test begins: pumps 5 to 8 start to coast down")),
+    defeated=_DEFEATED, ar_on=True, has_test=True, pumps=8, throttle=0.9, crew=True, decide_slow=1, fast_from=40,
+    slow_s=120.0)
 
-SCENARIOS = {s.key: s for s in (FULL_POWER, LOAD_FOLLOW, LOW_POWER, *FAULTS, *POISONED, HISTORIC)}
+FIXTURE = replace(FULL_POWER, key="fixture_short", title="Short fixture", group="fixture", ticks=7,
+                  blurb="Seven ticks at full power: the small run whose real model answers are kept as a test fixture.")
+
+SCENARIOS = {s.key: s for s in (FULL_POWER, LOAD_FOLLOW, LOW_POWER, *FAULTS, *POISONED, HISTORIC, FIXTURE)}
 
 
 def scenario(key: str) -> Scenario:
