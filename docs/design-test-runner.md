@@ -563,8 +563,9 @@ The runner's rule, for every unit and every project:
 - **Where a timeout's value comes from.** The runner has no timeout of its own. In order: `[label.NAME] timeout` for the unit's labels
   (the largest of its labels), `[run] timeout`, then none locally. Poolhouse's file takes its value from the owner's setting: 120 s a
   unit (`pyproject.toml`, `docs/limits.md` row `pytest timeout`), and a longer unit carries a label with a longer value (the
-  `@pytest.mark.timeout(N)` it has today). On a device a unit with no timeout is bounded by its shard's deadline: twice the planner's
-  estimate for the shard (`docs/design-test-selection.md` 6.1) and, when nothing is recorded, no deadline of the runner's own (the receiver's policy, 10.6, ends a runaway).
+  `@pytest.mark.timeout(N)` it has today). On a device a unit with no timeout is bounded by its shard's deadline, which is the largest unit
+  timeout the sender sent for the shard and, when no unit has one, no deadline of the runner's own (the sender's cancel and the receiver's
+  bounds, 10.6, end a runaway).
   A build step has its own deadline (`BUILD_TIMEOUT_S`, 1800 s) and never counts in a unit's.
 - **Overload is named, not guessed.** The report says `the machine was overloaded` only when units are `not started`; a run in which every
   unit started but some queued for a long time says `queued N s (the machine's)` and judges the units by `ran_s` alone.
@@ -1100,7 +1101,7 @@ under the module that holds them after the move; a number with no source is deri
 | sample clip in history | three times the value once three samples exist | `testhistory.py` |
 | fixed overhead limit | 5 s or a quarter of the wall time | AGENTS.md section 5 |
 | units per shard, slices per run | no bound of the runner's own | units: the receiver's request-size bound (10.6); slices: the plan (targets times `slices_per_target`), or the project's `slice_count`; the tool refuses what it cannot take |
-| shard deadline on a device | the sender's estimate for the shard (`docs/design-test-selection.md` 6.1), or `[run] timeout`, or the receiver's own policy | replaces `shard_spec.MOST_SECONDS` (3600 s), which has no source |
+| shard deadline on a device | the largest of the units' timeouts from the project's file, or none | replaces `shard_spec.MOST_SECONDS` (3600 s), which has no source |
 | packed tree, unpacked tree, members | shares of the receiver's free scratch disk and free inodes, divided by the shards it holds | replaces `shard_tree.MOST_PACKED`, `MOST_UNPACKED`, `MOST_MEMBERS` (24 MiB, 256 MiB, 20,000), which have no source |
 | runner output, tee, result, tail, failures, message, tests, junit | shares of the same free scratch disk, divided by the shards held | replaces `shard_run.MOST_LOG`, `MOST_TEE`, `shard_routes.MOST_RESULT`, `shard_result.MOST_*`, which have no source |
 | shards held, per sender | the device's free slots at admission, and the free disk (10.6) | replaces `shard_store.MOST_KEPT`, `MOST_OWNED` (8, 4), which have no source |
@@ -1112,6 +1113,11 @@ under the module that holds them after the move; a number with no source is deri
 | exit statuses | 0, 1, 4, 6, 70, 75, 124, 130 | section 11 |
 | queue limit | 3600 s | `testslots.WAIT_S` |
 | unit timeout in Poolhouse's file | 120 s | `pyproject.toml` `timeout`, the owner (`docs/limits.md`, `pytest timeout`) |
+
+Rows above that name a module constant with a value and no source here (aging, backfill, single-flight wait, step build deadline, idle,
+prune walk, sample clip, `unrecorded_max` 30 s, queue limit, poll, lost device) are carried over unchanged from the current code and are
+the owner's values in source; the step that moves each module either measures it (a poll is a multiple of the measured round trip, an
+unrecorded duration is the median of the recorded ones) or gives it a `docs/limits.md` row, and a number that gets neither is removed.
 
 The Rust host's constants (`MOST_RUNNING` 2, `MOST_OPEN` 6, `MOST_KEPT` 40, `GRACE_S` 120, `KILL_AFTER` 45) have no source: the single
 receiver derives them (running shards from the device's free slots, open shards from its free disk, the kill grace from the process
