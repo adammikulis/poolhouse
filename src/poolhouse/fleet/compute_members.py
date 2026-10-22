@@ -51,6 +51,7 @@ EXTRA_FILES = (
     'poolhouse/sources/units.py',
     'poolhouse/testing/__init__.py',
     'poolhouse/testing/answers.py',
+    'poolhouse/testing/canned.py',
     'poolhouse/testing/fakes.py',
     'poolhouse/testing/markers.py',
     'poolhouse/testing/parity.py',

@@ -58,8 +58,7 @@ def _regressions(old: Report, new: Report, success: float = 0.0,
 @COMMANDS.command("run", help="run scenarios and write a report", options=[
     flag("--scenarios", default=",".join(NAMES), help=f"comma-separated, from {', '.join(NAMES)}"),
     flag("--model", default=DEFAULT_MODEL,
-         help="an installed GGUF by name or path, or 'stub' for the scripted stand-in"),
-    flag("--stub-mode", choices=("gullible", "resistant"), default="gullible"),
+         help="an installed GGUF by name or path; it is served through the lease and attacked"),
     flag("--limit", type=int, help="most attempts per attack class (smoke runs)"),
     flag("--out", type=Path, default=Path("redteam-report"), help="write OUT.json and OUT.md"),
     flag("--against", type=Path,
@@ -72,7 +71,7 @@ def _run(args: argparse.Namespace) -> int:
     if unknown := sorted(set(names) - set(NAMES)):
         warn(f"unknown scenarios: {', '.join(unknown)}")
         return 2
-    plan = Plan(names, args.model, Options(limit=args.limit), args.stub_mode)
+    plan = Plan(names, args.model, Options(limit=args.limit))
     report = execute(plan, shlex.join(["python", "-m", "poolhouse.redteam", *sys.argv[1:]]))
     args.out.with_suffix(".json").write_text(report.to_json(), encoding="utf-8")
     args.out.with_suffix(".md").write_text(markdown(report), encoding="utf-8")

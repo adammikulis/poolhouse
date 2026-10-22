@@ -9,6 +9,7 @@ from pathlib import Path
 import stop_jobs
 import stop_landed
 import subagent_records
+import tool_count
 import tree_watch
 import workspace_hook
 
@@ -53,6 +54,8 @@ def main() -> int:
     if verdict.reason:
         print(json.dumps({"decision": "block", "reason": verdict.reason}))
         return 0
+    if event.get("agent_id"):
+        tool_count.clear(str(event["agent_id"]))
     if environment is None:
         return 0
     path =event.get("agent_transcript_path") or ""

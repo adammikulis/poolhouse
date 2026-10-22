@@ -2,7 +2,7 @@
 
 Every subcommand parses its arguments and prints; the work is in `poolhouse.bench.ops` and
 the modules beside it, and its flags are in `poolhouse.bench.options`. `main` is what the
-console script calls -- the self-check and the prefetch before the lock, the lock itself,
+console script calls -- the prefetch before the lock, the lock itself,
 SIGTERM taken as an exit so a served model comes down, and ``--detach`` re-running the
 command in its own session with `status`, `tail` and `stop` reading the same file.
 """
@@ -16,13 +16,12 @@ import json
 import os
 import signal
 import sys
-import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 # `bench.served`, `bench.home_dir`, `poolhouse.client.Client` and `lock.only_one` are patched by
-# the tests and `selfcheck`, so each is read off its module at call time.
+# the tests, so each is read off its module at call time.
 import poolhouse.client
 from poolhouse import bench, hub, jobs, lock
 from poolhouse.bench import (
@@ -32,7 +31,6 @@ from poolhouse.bench import (
     ops,
     options,
     retrieval,
-    selfcheck as bench_selfcheck,
     speed as bench_speed,
     system,
     thinking,
@@ -712,20 +710,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     refuse = "--no-queue" in rest
     rest = [a for a in rest if a != "--no-queue"]
-    if "--no-selfcheck" not in rest:
-        began = time.monotonic()
-        try:
-            proved = bench_selfcheck.selfcheck(rest)
-        except bench_selfcheck.SelfCheckFailed as why:
-            warn(f"selfcheck: FAILED -- this command would not get through with a "
-                 f"scripted model, so nothing was loaded:\n{why}")
-            warn("error: the self-check failed; fix it, or pass --no-selfcheck to "
-                 "repeat a run whose path the last one proved")
-            return 4
-        say(f"selfcheck: ok ({time.monotonic() - began:.1f} s) -- {proved}", flush=True)
     if cmd == "sweep":
         llamacpp_note.announce()
-    # After the self-check and before the prefetch and the lock: what this will cost, from
+    # Before the prefetch and the lock: what this will cost, from
     # what is kept, and a refusal over the ceiling before a download or a load is paid
     refused = _estimated(rest)
     if refused:

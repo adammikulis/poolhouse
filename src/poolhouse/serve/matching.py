@@ -26,10 +26,15 @@ def model_matches(reported: str, wanted: str | Path, *, loaded_file: str | None 
     is not evidence it holds any particular file of that repository: two files of one
     repository are not the same weights. ``loaded_file`` is what breaks the tie; a
     bare-repository report with no file requested either still matches every file of
-    that repository, since nothing named a file to check.
+    that repository, since nothing named a file to check. A reported id is only a label (``--alias``): the file ``/props`` loaded matching ``wanted`` is a match too.
     """
     if loaded_file and repo_only(reported):
-        reported = loaded_file
+        return _same(loaded_file, wanted)
+    return _same(reported, wanted) or bool(loaded_file and _same(loaded_file, wanted))
+
+
+def _same(reported: str, wanted: str | Path) -> bool:
+    """Whether one reported name, a file or a repository, is the weights ``wanted`` names."""
     wanted_repo, reported_repo = repo_only(wanted), repo_only(reported)
     if reported_repo and not wanted_repo:
         # the report names only the repository, a specific file was asked for, and

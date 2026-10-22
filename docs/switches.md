@@ -15,7 +15,7 @@ Classes
 - **C, plain config**: a path, a name, a limit, an address; no safety consequence.
 - **D, opt-in speed-up**: faster when set and off by default. The decision column says why it stays off or why it was turned on.
 
-Counts: A 32, B 35, C 116, D 6 (a variable name counts once, a row naming no variable counts once; a name is in one class only).
+Counts: A 32, B 35, C 118, D 6 (a variable name counts once, a row naming no variable counts once; a name is in one class only).
 
 ## A: opt-in safety
 
@@ -54,7 +54,8 @@ Counts: A 32, B 35, C 116, D 6 (a variable name counts once, a row naming no var
 | `POOLHOUSE_REPUTATION_RECOVER` | `reputation.store` | a damaged store is refused | a person | its own process | no | kept |
 | `POOLHOUSE_IQ` | `serve.lifecycle_cli` | `warn` | a person | its own process | no | kept |
 | `POOLHOUSE_LIVE_API`, `POOLHOUSE_LIVE_NET`, `POOLHOUSE_LAN_TESTS` | `poolhouse.testing.live`, `poolhouse.lan` | the marked tests skip | a person at the machine | **`lan_network` tests skip under an agent marker**; the other two are documented "do not set" | no | kept; `POOLHOUSE_LAN_TESTS=1` also lets a person's own run listen on the LAN (`lan.allowed`), never under an agent marker |
-| `POOLHOUSE_NET`, `POOLHOUSE_TEST_SSHD`, `POOLHOUSE_MANUAL_DIALOG`, `POOLHOUSE_TEST_GGUF`, `POOLHOUSE_POOL_CHECK` | tests and the `scripts/pool-check` rig only | the marked tests skip | a person | its own process | no | kept |
+| `POOLHOUSE_NET`, `POOLHOUSE_TEST_SSHD`, `POOLHOUSE_MANUAL_DIALOG`, `POOLHOUSE_POOL_CHECK` | tests and the `scripts/pool-check` rig only | the marked tests skip | a person | its own process | no | kept |
+| `POOLHOUSE_TEST_GGUF` | `tests/real_model.py` only | the chat model pinned there is read from the Hugging Face cache | a person | its own process | no | kept; a file named here that is missing fails the test, never skips it |
 | `POOLHOUSE_MUTATION` | `scripts/gates/_mutation.py` | normal runs | the mutation runner | its own child | no | kept |
 | `POOLHOUSE_FLEET_TLS` | nothing: removed | nothing | nobody | ignored (a test proves it) | no | removed |
 
@@ -69,6 +70,8 @@ Not a variable but a switch: `CLAUDECODE`, `POOLHOUSE_AGENT` and `POOLHOUSE_NONI
 | `POOLHOUSE_ACTIVITY`, `POOLHOUSE_ACTIVITY_RETENTION_DAYS`, `POOLHOUSE_ACTOR`, `POOLHOUSE_SESSION`, `POOLHOUSE_SESSION_HARNESS`, `POOLHOUSE_SESSION_ID`, `POOLHOUSE_WORKSPACE_AGENT`, `POOLHOUSE_SUBAGENT`, `POOLHOUSE_WORKSPACE_HOME`, `POOLHOUSE_WORKSPACE_TOKEN`, `POOLHOUSE_WORKSPACE_DENYLIST`, `POOLHOUSE_BOARD`, `POOLHOUSE_AGENT`, `POOLHOUSE_HOOK_STATE`, `POOLHOUSE_ATTENTION_EVERY_S`, `POOLHOUSE_LABELS` | who is speaking and where it is recorded; set by the launchers, never typed |
 | `POOLHOUSE_NODE_PARENT_PID`, `POOLHOUSE_NO_MEMBERS`, `POOLHOUSE_ADMISSION_WAIT_S`, `POOLHOUSE_REQUEST_WAIT_S`, `POOLHOUSE_LEASE_FOR`, `POOLHOUSE_SLOTS`, `POOLHOUSE_LOG_DAYS`, `POOLHOUSE_LOG_FILES`, `POOLHOUSE_LOG_MB`, `POOLHOUSE_MIN_INTERVAL` | the owner process of a started test node (its supervisor stops when that process is gone), waits, reasons and sizes; `POOLHOUSE_NO_MEMBERS=1` stops a download asking the pool's other members first |
 | `POOLHOUSE_STATUS_COMMAND` | a JSON list that replaces the command the lead's attention hook runs to read the stuck-run verdict line (`scripts/hooks/stuck_verdict.py`) |
+| `POOLHOUSE_STUDIO_LAUNCH_FD` | the descriptor number of the private socket on which a Studio worker's parent sends its launch message; `poolhouse.fleet.studio_worker_launch` sets it for the one child it starts and `poolhouse.studio_launch` reads it there; set by the launcher, never typed |
+| `POOLHOUSE_TOOL_MILESTONE_EVERY` | the number of tool calls between the milestone notices the post-tool hook gives a subagent after the first at 100 (`scripts/hooks/milestones.py`); unset or not a positive whole number means 50; informs and never limits |
 | `POOLHOUSE_GITHUB_STATUS_URL` | the address of the githubstatus.com summary that `scripts/github_status.py` reads for `scripts/status` and `scripts/ci_watch.py` |
 | `POOLHOUSE_STEP_LEDGER` | a file a check names so every step it asks of a person is written to it, one JSON line each (the onboarding step count; `app/poolhouse-node/src/gov/signer.rs`) |
 | `POOLHOUSE_ADOPT_CACHE`, `POOLHOUSE_BUILD`, `POOLHOUSE_DEST`, `POOLHOUSE_MODE`, `POOLHOUSE_MODELS`, `POOLHOUSE_NAME`, `POOLHOUSE_OFFLINE_MODELS`, `POOLHOUSE_OFFLINE_WHEELS`, `POOLHOUSE_OFFLINE_ZIP`, `POOLHOUSE_PREFIX`, `POOLHOUSE_REF`, `POOLHOUSE_REPO`, `POOLHOUSE_SRC`, `POOLHOUSE_TRACK`, `POOLHOUSE_VERSION`, `POOLHOUSE_WIRE`, `POOLHOUSE_BUILD_ID`, `POOLHOUSE_BUILD_SEQ` | the installer and the build the node reports |

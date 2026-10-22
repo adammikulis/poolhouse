@@ -8,6 +8,7 @@ OPTIONS = (
     ("--slow", "also run the tests marked slow (a browser, a subprocess, a wheel build, a network timeout)"),
     ("--gate", "also run the tests marked gate (whole-tree scans that `scripts/test gate` runs)"),
     ("--redteam", "also run the tests marked redteam (they need the redteam extra)"),
+    ("--real-model", "also run the tests marked real_model (a real model on a real llama-server; one missing fails the test)"),
 )
 
 
