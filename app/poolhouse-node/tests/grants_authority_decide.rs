@@ -21,6 +21,9 @@ fn a_key_that_is_no_admin_key_decides_no_kind_of_request_in_any_way_it_offers() 
     let outsider = agent();
     pool.rig.node.lock().unwrap().persons.add(&outsider.public(), "a laptop", now_ms()).unwrap();
     let grant = pool.request("sync_now", "*");
+    let declined = pool.request("note_verify", "*");
+    assert_eq!(kit::ok(pool.answer(&pool.phone, &declined, "deny"))["state"], "denied");
+    let again = pool.request("note_verify", "*");
     let hold = {
         let mut node = pool.rig.node.lock().unwrap();
         summary::raise(&mut node, "session:demo/noisy", "suspended", 2).unwrap();
@@ -42,7 +45,8 @@ fn a_key_that_is_no_admin_key_decides_no_kind_of_request_in_any_way_it_offers() 
     };
     let ledger = || std::fs::read(pool.rig.dir.path().join("fatigue.json")).ok();
     let before = ledger();
-    let table = [("a grant", &grant, vec!["approve", "deny", "block"]), ("a hold", &hold, vec!["approve", "deny", "block"]),
+    let table = [("a grant", &grant, vec!["approve", "deny", "block"]), ("a grant asked again after a decline", &again, vec!["approve_repeat", "deny", "block"]),
+                 ("a hold", &hold, vec!["approve", "deny", "block"]),
                  ("a phone to add", &add, vec!["approve", "deny"]), ("a phone to remove", &remove, vec!["approve", "deny"])];
     for (what, id, decisions) in table {
         let seen = {
