@@ -2,7 +2,8 @@
 does to issue or revoke one (docs/node.md, "Standing grants").
 
 The node counts a grant only when a person key enrolled on it signed the grant, so nothing here can make one for a
-caller that does not hold that key. The key is passed in as an object with ``public`` (32 bytes) and ``sign_bytes``.
+caller that does not hold that key. On a device in a pool that holds for the actions that stay on the device; a grant that reaches
+beyond it counts only from an approval an admin key of the pool signed on a phone, so a typed ``yes`` signs none. The key is passed in as an object with ``public`` (32 bytes) and ``sign_bytes``.
 """
 
 from __future__ import annotations
@@ -244,13 +245,22 @@ class Listing:
     registry: dict[str, list[str]] = field(default_factory=dict)
     now_ms: int = 0
     device: str = ""
+    governance: str = "unfounded"
+    authority: list[str] = field(default_factory=list)
+    may_issue: list[str] = field(default_factory=list)
+    may_revoke: list[str] = field(default_factory=list)
+
+    def pool_wide(self, action: str) -> bool:
+        """Whether a device in a pool counts a grant of ``action`` only from an admin key's approval: every action but the device-local ones."""
+        return self.governance == "governed" and action not in self.registry.get("device_local", ())
 
 
 def listing(session: Session) -> Listing:
     """Every grant of the session's board with its state, the entries that name none that count, and the registry."""
     got = session.call("grants")
     rows = [Grant(**{k: g[k] for k in Grant.__dataclass_fields__}) for g in got["grants"]]
-    return Listing(rows, got["ignored"], got["persons"], got["registry"], got["now_ms"], got["device"])
+    return Listing(rows, got["ignored"], got["persons"], got["registry"], got["now_ms"], got["device"], got["governance"], got["authority"], got["may_issue"],
+                   got["may_revoke"])
 
 
 def log(session: Session, limit: int = 50) -> list[dict[str, Any]]:

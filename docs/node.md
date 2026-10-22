@@ -424,7 +424,19 @@ when it is issued, so a captured request cannot be replayed later, and a repeate
 another device may use (`task_authority`, `note_verify`, `sync_now`, `shard_call`) names the one device it is used on, so its count is
 kept where it is spent.
 
-**Who may sign.** The keys enrolled in `persons.json`. `person_enroll` takes `public`, `about`, `at_ms` and `proof` (the key's own
+**Who may sign.** On a device in no pool, any key enrolled in `persons.json`. On a device in a pool (founded or joined; leaving keeps it so) the
+action decides. A device-local action (`link_read`, `link_remove`, `source_add`, `quarantine_release`, `pool_leave`: everything it does stays in this
+device's own state) is granted by any key enrolled here, as before. Every other action, including one added later, reaches beyond the device and counts
+only from an approval a pool admin key signed: the key is listed in the charter in force with the admin role and strength strong, its own acceptance
+verifies, and this device knows it as a phone's key (the mark a phone's own enrolment puts in `persons.json`). `grant_issue` for such an action is
+refused ("In a pool your phone gives standing grants: ask for one and tap approve."), and an `issue` row that carries no approval, or that a key outside
+that set signed, is listed `ignored` with the reason. The approval row carries the decision (`approve` or `approve_repeat`) the signature was made
+for. A revocation of a grant of the pool counts from any admin-role key the pool listed in any epoch, strong or weak, checked against the charter and
+never against `persons.json`; a revocation of a device-local grant also counts from any key enrolled here. `approval_decide` takes a decision only
+from such an admin key. `grants` reports `governance` (`governed` or `unfounded`), `authority` (the admin keys that count now), `may_issue`,
+`may_revoke` and `registry.device_local`, and `poolhouse-workspace grant` and `grants-setup` refuse in a pool before they ask for a typed `yes`.
+
+**Who may sign on a device in no pool.** `person_enroll` takes `public`, `about`, `at_ms` and `proof` (the key's own
 signature over the enrolment). The first key also takes `secret`: `poolhouse-workspace grants-setup`, run by a person at a terminal, asks the node (`presence_ask`)
 to allow the session to add the first key, and the node asks the person itself: the operating system's own prompt (a password or a fingerprint,
 on macOS and Linux, raised only by the installed software on the real home: the launcher passes `--presence os` only when

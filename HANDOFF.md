@@ -140,6 +140,14 @@ The owner requested a usage-conscious wrap: land useful reviewed work, tidy chec
 - Temporary wrap helper scripts are bound to the prior authenticated session. A fresh session establishes its own native identity and credentials; never copy the old actor environment or select its token. No person credentials were exported.
 
 
+## Charter-bound grants: what remains (docs/notes/attack-charter-bound-grants.md)
+- Landed on `fix/governed-grant-authority`: the authority predicate (`grants/authority.rs`), the fold, issue and revoke refusal, `approval_decide` gating, the decision in the approval row, the listing fields, the CLI pre-check, the controls of `grants_authority_pool.rs`. Slices 1 and 3 are one release: until slice 3 lands a joined device cannot get pool-wide grants for its agents (no admin phone can be added to it without an approval from a phone already there).
+- Slice 3, phones: a charter-listed phone enrols with the code and its key proof and no approval (`phone/enrol.rs`, `Authority::would_hold`); pushes and `list`/`get`/`wait`/`approval_pending` only to authority phones; `PHONE_REMOVE` and `person_unenroll` of a listed key refused before `persons.once`; the phone-add approval carries `admin_add`; `rebind` as a phone-approved request; `approval_request` refused while no authority key is held (A35).
+- Slice 2 (R6 strict pool loading, `grants_floor.json`) and distrust (R7, `grant_distrust`, conjunct (d)).
+- Tests not yet written: A21-A23 (removal with a hold, three entry points), A30, A38-A39, A42-A47, A51-A54, P-g, P-h, P-i, the fixed-cost bound of `standing()`, A9/A29 over two nodes. Mutations M1-M27 are not run.
+- `tests/test_board_grants.py::test_hostile_arguments_to_the_person_commands_are_refused_before_anything_is_written` fails on 0.3dev before this branch (a quota of 16 live main sessions on the `grant` argv with a newline).
+- A grant an approval writes names this device in its scope, so in a pool no approval-written grant is portable to another device; the note's A9/A29 over two nodes need an approval ask that can name `*`.
+
 ## Silent failures left (audit of 2026-10-16)
 - `scripts/test` prints the "fixed overhead" warning (`scripts/testphases.py`) and records it nowhere; a test run that starts a node pays about 20 s of bring-up each time, so the warning is on most runs. A fix needs the node kit to start faster or the warning to feed a ratchet metric.
 - A person-record hook failure is one stderr line (`person` in `scripts/hooks/workspace_hook.py`); `person-consume` then says only that no record exists, without the stage that failed.

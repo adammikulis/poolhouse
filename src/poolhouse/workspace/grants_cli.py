@@ -139,10 +139,21 @@ def _device(asked: str, this: str) -> str:
     return this if asked in ("", "this") else "*" if asked == "any" else asked
 
 
+POOL_GRANTS = "In a pool your phone gives standing grants: ask for one and tap approve."
+
+
+def _pool_refuses(held: grants.Listing, *actions: str) -> None:
+    """Refuse, before any prompt is shown, a grant that a pool counts only from an admin key's approval on a phone."""
+    if any(held.pool_wide(a) for a in actions):
+        raise Denied("denied", POOL_GRANTS)
+
+
 def grant(args: argparse.Namespace, ctx: Ctx) -> Any:
     """Allow an action: to a session, a model family or a verified model, on a resource, until a time, a number of times."""
+    held = grants.listing(ctx.carrier)
+    _pool_refuses(held, args.action)
     key = _held(ctx)
-    this = grants.listing(ctx.carrier).device
+    this = held.device
     want = grants.Want(args.action, _to(args), args.scope, _device(args.device, this), grants.duration_ms(args.until), args.uses or None, args.review)
     got = grants.issue(ctx.carrier, key, want)
     return {"granted": got["gid"], "action": want.action, "to": _who(want.to), "on": want.resource, "until": grants.when(got["until_ms"]),
@@ -188,8 +199,9 @@ def _who_gets(args: argparse.Namespace, ctx: Ctx) -> list[dict[str, Any]]:
 
 def setup(args: argparse.Namespace, ctx: Ctx) -> Any:
     """Approve once the grants the lead needs: the exact list is printed and asked about at the terminal, every item is revoked by its own id."""
-    who = _who_gets(args, ctx)
     held = grants.listing(ctx.carrier)
+    _pool_refuses(held, *grants.DEFAULT_ACTIONS)
+    who = _who_gets(args, ctx)
     if held.persons and grants.fingerprint(ctx.key.public) not in held.persons:
         raise Denied("denied", "the node already holds another key: carry this one over with `person-proof` here and `person-enroll` where the other key is")
     bundle = grants.default_bundle(who, held.device, args.days)
