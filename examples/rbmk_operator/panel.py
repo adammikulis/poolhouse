@@ -173,9 +173,22 @@ def protections(plant: Any) -> str:
 PANELS = {"neutron": neutron, "rods": rods, "coolant": coolant, "steam": steam, "protection": protections}
 
 
+def facts(plant: Any) -> str:
+    """The key facts as plain numbers with their limits: no action words."""
+    c = plant.core
+    avg = sum(plant.reading) / 2
+    margin = plant.orm_value
+    test = {"pending": "not started", "running": "running", "aborted": "aborted", "none": "none planned"}[plant.test]
+    return (f"KEY FACTS: margin {margin:.1f} rod-equivalents against a permitted minimum of {rx.ORM_MIN:.0f} "
+            f"({'below' if margin < rx.ORM_MIN else 'not below'} the minimum). Power {avg * 100:.1f}% against a demand of "
+            f"{plant.setpoint * 100:.0f}%. Coolant flow {c.f * 100:.0f}% of nominal. Xenon index {plant.xenon_value:.2f}. "
+            f"Turbine test {test}. Safety systems defeated: {sum(1 for on in plant.prot.values() if not on)} of {len(plant.prot)}. "
+            f"Emergency shutdown {'active' if c.scram else 'not pressed'}.")
+
+
 def full(plant: Any) -> str:
-    """Every sub-panel one after another, with the clock."""
+    """The key facts, then every sub-panel one after another, with the clock."""
     c = plant.core
     clock = f"{int(c.t // 3600)}h{int(c.t % 3600 // 60):02d}m{int(c.t % 60):02d}s"
     return (f"RBMK-type reactor console (educational toy), plant time {clock}. Last operator action: {plant.last_action}. "
-            + " ".join(f(plant) for f in PANELS.values()))
+            + facts(plant) + " " + " ".join(f(plant) for f in PANELS.values()))

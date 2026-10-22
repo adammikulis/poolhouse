@@ -1,6 +1,7 @@
 """Command line for the RBMK operator example.
 
     python examples/rbmk_operator/run.py record poisoned_a --out DIR   # real model, under a GPU hold
+    python examples/rbmk_operator/run.py live SCENARIO --out DIR --speed 60   # async: plant, decider and speed knob on separate clocks
     python examples/rbmk_operator/run.py replay FILE                   # no model; checks the file replays identically
     python examples/rbmk_operator/run.py baseline historic_1986 --out DIR   # scripted crew or naive rule, no model
     python examples/rbmk_operator/run.py summary DIR                   # recoveries and failures table
@@ -12,6 +13,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -75,6 +77,36 @@ def _run_live(scn: scenarios.Scenario, asker: LiveAsker, out: Path) -> Result:
         doc["meta"]["error"] = str(exc)
         _write(out / f"{scn.key}.failed.json", doc)
         raise
+
+
+def live_cmd(args: argparse.Namespace) -> int:
+    """Run one scenario live: the plant on its own clock, each decision an async request, the answer applied at its real latency."""
+    import asyncio
+
+    from poolhouse.serve import gpu
+    from poolhouse.serve.broker import BrokerError
+    from rbmk_operator.live import COMPUTE, LiveRunner
+
+    scn = scenarios.scenario(args.scenario)
+    try:
+        asker = LiveAsker(abstain_below=args.abstain_below, timeout=args.timeout)
+        live = LiveRunner(Runner(scn, ModelOperator(asker)), speed=args.speed, timeout=args.timeout)
+        with gpu.hold("RBMK operator live", wait_s=args.wait):
+            res = asyncio.run(live.run())
+    except ModelStopped as exc:
+        print(f"RUN STOPPED, no action was taken after this point: {exc}", file=sys.stderr)
+        if COMPUTE.dead:
+            print("a model call from this run is still running; this process exits now so that compute is released", file=sys.stderr)
+            sys.stderr.flush()
+            os._exit(2)
+        return 2
+    except (BrokerError, OSError) as exc:
+        print(f"RUN STOPPED: the GPU hold or the broker refused: {exc}", file=sys.stderr)
+        return 2
+    doc = bundle.export(res, scn, _backend(asker), with_whatif=False)
+    _write(Path(args.out) / f"{scn.key}.json", bundle.recording_of(doc))
+    print(f"{scn.key}: {doc['outcome']['verdict']} ({doc['outcome']['why']}), {len(res.decisions)} rows, speed {args.speed}")
+    return 0
 
 
 def replay_cmd(args: argparse.Namespace) -> int:
@@ -201,6 +233,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--abstain-below", type=float, default=ABSTAIN_BELOW)
     p.add_argument("--wait", type=float, default=0.0, help="seconds to wait for the GPU claim; 0 refuses at once if it is held")
     p.set_defaults(fn=record)
+    p = sub.add_parser("live")
+    p.add_argument("scenario")
+    p.add_argument("--out", required=True)
+    p.add_argument("--speed", type=float, default=60.0, help="simulated seconds per wall second")
+    p.add_argument("--timeout", type=float, default=120.0, help="seconds a model call may take before the run halts")
+    p.add_argument("--abstain-below", type=float, default=ABSTAIN_BELOW)
+    p.add_argument("--wait", type=float, default=0.0)
+    p.set_defaults(fn=live_cmd)
     p = sub.add_parser("replay")
     p.add_argument("file")
     p.set_defaults(fn=replay_cmd)

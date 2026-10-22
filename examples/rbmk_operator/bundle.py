@@ -129,7 +129,7 @@ def export(res: Result, scn: Scenario, backend: dict[str, Any], with_whatif: boo
                    "note": "answers land at snapshot time + latency x speed; playback speed is an interface matter"},
         "classes": controls.CLASSES, "interlocks": controls.INTERLOCKS, "protections": controls.PROTECTIONS,
         "rods": _rod_map(scn), "trace": res.trace, "events": res.events, "decisions": res.decisions,
-        "captions": captions(res), "outcome": outcome(res), "score": score(res, scn),
+        "captions": captions(res), "outcome": outcome(res), "score": score(res, scn), "late_answers": res.late,
     }
     if with_whatif:
         doc["whatif"] = whatifs(res)
@@ -157,9 +157,10 @@ def digest(doc: dict[str, Any]) -> str:
 
 def recording_of(doc: dict[str, Any]) -> dict[str, Any]:
     """The recording of a run: only what the model said, with a digest of the whole run it produced."""
-    calls = [{"i": d["i"], "tick": d["tick"],
+    calls = [{"i": d["n"], "tick": d["tick"], "applied_t_s": d["due_s"],
               "calls": [{"key": c["key"], "state_sha256": sha(c["state_text"]), "answers": c["answers"],
-                        "latency_ms": c["latency_ms"], "sent_at": c["sent_at"], "answered_at": c["answered_at"]}
+                        "latency_ms": c["latency_ms"], "sent_at": c["sent_at"], "answered_at": c["answered_at"],
+                        "batch_size": c.get("batch_size", 0)}
                        for c in d["calls"]]}
              for d in doc["decisions"] if d["kind"] == "decision"]
     return {"schema": RECORDING, "meta": doc["meta"], "outcome": doc["outcome"], "digest": digest(doc), "decisions": calls}
@@ -177,21 +178,32 @@ class ReplayAsker:
             raise ReplayMismatch(f"not a {RECORDING} document")
         self.model = rec["meta"]["backend"]["model"]
         self.calls = {d["i"]: {c["key"]: c for c in d["calls"]} for d in rec["decisions"]}
+        self.applied = {d["i"]: d["applied_t_s"] for d in rec["decisions"]}
 
-    def ask(self, index: int, key: str, text: str, qs: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
-        """The recorded answers and timing for this call, checked against what is being asked now."""
-        call = self.calls.get(index, {}).get(key)
-        if call is None:
-            raise ReplayMismatch(f"the recording has no call {key!r} for decision {index}")
-        if call["state_sha256"] != sha(text):
-            raise ReplayMismatch(f"decision {index} call {key!r}: the console text differs from the recording")
-        for name, q in qs.items():
-            got = call["answers"].get(name)
-            if got is None or list(got["options"]) != [o.name for o in q.options] or got["question"] != q.text:
-                raise ReplayMismatch(f"decision {index} call {key!r}: question {name!r} differs from the recording")
-        return {name: call["answers"][name] for name in qs}, {"sent_at": call["sent_at"], "answered_at": call["answered_at"]}
+    def landing(self, n: int) -> float | None:
+        """The simulated time the recorded run applied request ``n``."""
+        return self.applied.get(n)
+
+    def ask_batch(self, index: int, calls: list[tuple[str, str, dict[str, Any]]]
+                  ) -> list[tuple[dict[str, dict[str, Any]], dict[str, Any]]]:
+        """The recorded answers and timing for these calls, each checked against what is being asked now."""
+        out = []
+        for key, text, qs in calls:
+            call = self.calls.get(index, {}).get(key)
+            if call is None:
+                raise ReplayMismatch(f"the recording has no call {key!r} for decision {index}")
+            if call["state_sha256"] != sha(text):
+                raise ReplayMismatch(f"decision {index} call {key!r}: the console text differs from the recording")
+            for name, q in qs.items():
+                got = call["answers"].get(name)
+                if got is None or list(got["options"]) != [o.name for o in q.options] or got["question"] != q.text:
+                    raise ReplayMismatch(f"decision {index} call {key!r}: question {name!r} differs from the recording")
+            out.append(({name: call["answers"][name] for name in qs},
+                        {"sent_at": call["sent_at"], "answered_at": call["answered_at"], "batch_size": call.get("batch_size", 0)}))
+        return out
 
 
 def replay(rec: dict[str, Any], scn: Scenario) -> Result:
     """Re-run the simulator, taking every model answer from the recording."""
-    return Runner(scn, ModelOperator(ReplayAsker(rec))).run()
+    asker = ReplayAsker(rec)
+    return Runner(scn, ModelOperator(asker), landing=asker.landing).run()

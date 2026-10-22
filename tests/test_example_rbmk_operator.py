@@ -7,6 +7,7 @@ used only to test the recording round trip and replay.
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import json
 import math
@@ -25,6 +26,7 @@ from rbmk_operator import (  # noqa: E402
     reactor as rx,
     scenarios,
 )
+from rbmk_operator.live import Compute, LiveRunner  # noqa: E402
 from rbmk_operator.loop import Runner  # noqa: E402
 from rbmk_operator.operator_model import (  # noqa: E402
     CrewOperator,
@@ -369,3 +371,86 @@ def test_every_shipped_recording_is_indexed_and_replays_to_its_digest_with_no_mo
         doc = bundle.export(bundle.replay(rec, scn), scn, rec["meta"]["backend"], with_whatif=False)
         assert bundle.digest(doc) == rec["digest"], entry["file"]
         assert doc["outcome"]["verdict"] == entry["verdict"]
+
+
+class RealSleep(NaiveOperator):
+    """The naive rule behind a real, blocking wait: a slow call with a measured latency, not a model."""
+
+    def __init__(self, seconds: float) -> None:
+        self.seconds = seconds
+
+    def propose(self, index, plant):
+        began = time.perf_counter()
+        time.sleep(self.seconds)
+        prop = super().propose(index, plant)
+        prop.latency_ms = (time.perf_counter() - began) * 1000.0
+        return prop
+
+
+def live(seconds: float, *, ticks: int = 14, speed: float = 3000.0, timeout: float = 5.0, compute=None):
+    scn = scenarios.variant(scenarios.scenario("load_follow"), ticks=ticks)
+    return LiveRunner(Runner(scn, RealSleep(seconds)), speed=speed, timeout=timeout, compute=compute or Compute())
+
+
+def test_a_slow_model_call_does_not_stop_the_plant():
+    run = live(0.35)
+    res = asyncio.run(run.run())
+    rows = [d for d in res.decisions if d["kind"] == "decision"]
+    assert rows and all(d["applied_tick"] - d["snapshot_tick"] >= 2 for d in rows if d["applied_tick"] is not None)
+    assert len(res.trace) >= 14
+
+
+def test_a_request_still_in_flight_at_the_next_decision_time_is_a_busy_row():
+    res = asyncio.run(live(0.9, ticks=20).run())
+    assert any(d["kind"] == "busy" and "MODEL BUSY" in d["note"] for d in res.decisions)
+
+
+def test_the_live_trajectory_equals_the_synchronous_one_at_the_same_applied_times():
+    scn = scenarios.variant(scenarios.scenario("load_follow"), ticks=14)
+    res = asyncio.run(live(0.35).run())
+    rows = {d["n"]: d for d in res.decisions if d["kind"] == "decision"}
+
+    class Fixed(NaiveOperator):
+        def propose(self, index, plant):
+            prop = super().propose(index, plant)
+            prop.latency_ms = rows[index]["latency_ms"] if index in rows else 1e9
+            return prop
+
+    again = Runner(scn, Fixed(), landing=lambda n: rows[n]["due_s"] if n in rows else None).run()
+    assert [r["P"] for r in again.trace] == [r["P"] for r in res.trace]
+    assert sorted(d["applied_t_s"] for d in again.decisions if d["applied_t_s"] is not None) == sorted(
+        d["applied_t_s"] for d in res.decisions if d["applied_t_s"] is not None)
+
+
+def test_a_hung_call_halts_the_run_loudly_and_its_late_answer_is_discarded_and_logged():
+    compute = Compute()
+
+    async def scenario_run():
+        run = live(1.5, timeout=0.3, compute=compute)
+        with pytest.raises(ModelStopped, match="did not answer within"):
+            await run.run()
+        assert compute.dead == 1
+        with pytest.raises(ModelStopped, match="still held"):
+            await live(0.01, compute=compute).run()
+        await asyncio.sleep(2.0)
+        return run
+
+    run = asyncio.run(scenario_run())
+    assert compute.dead == 0
+    assert run.late and "late answer discarded after halt" in run.late[0]["note"] and run.late[0]["latency_ms"] >= 1000
+    assert not [d for d in run.result.decisions if d["kind"] == "decision"]
+
+
+def test_stopping_a_live_run_ends_it_without_applying_an_in_flight_answer():
+    async def scenario_run():
+        run = live(0.8, ticks=60, speed=300.0)
+        task = asyncio.create_task(run.run())
+        await asyncio.sleep(0.3)
+        run.stop()
+        await task
+        await asyncio.sleep(1.2)
+        return run
+
+    run = asyncio.run(scenario_run())
+    assert run.late and "late answer discarded after halt" in run.late[0]["note"]
+    assert not [d for d in run.result.decisions if d["kind"] == "decision"]
