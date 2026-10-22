@@ -28,7 +28,7 @@ does is the same for every file.
   admission of compute slots, the jobs, the dependency sets for selection, and fail-first.
 - **Transports** (section 6) take a shard to somewhere it runs: this machine's processes, a device of a Poolhouse pool over the pool's
   mutual-TLS routes, later ssh. The pool is one transport plugin. There is one sharding path and one wire protocol; what exists today as
-  a node carrier, a dev-pool carrier, `--split` and a CI splitter is folded into it (section 2, section 14).
+  a node carrier, a pool carrier in dev mode, `--split` and a CI splitter is folded into it (section 2, section 14).
 - **The surface** (section 3) is `ph.test` in Python, the `poolhouse-test` command (also `poolhouse test`), and the `testfarm.toml`
   schema. Everything else is internal. `pip install poolhouse` gives a repository all three.
 - **Poolhouse's repository** keeps its tiers, markers, node build, gates, agent rules and confinement in its own `testfarm.toml` and
@@ -118,7 +118,7 @@ lease = ["gpu"]
 | Affected | `affected.py`, `affected_rules.py` | import graph plus string rules written for Poolhouse's tests, testmon | core: selection over dependency sets; `python-imports` analyzer in the pytest preset; the string rules become globs in Poolhouse's config; testmon deleted |
 | Rust builds | `testnode.py`, `testunits.py`, `testartifacts.py`, `tests/native_cargo.py`, `testapp.py` | one cargo call builds the targets before the timer, shared target folder, pruning | core: steps; cargo preset helpers; the node binary stays Poolhouse's step |
 | Node carrier | `app/poolhouse-node/src/shard/*.rs` (1,271 lines with `tests/shard.rs`), `testfarm/client.py` (`Shards`), `testfarm/consent.py`, grants `shard_call` and `shard_consent` | send a tree to a device of the node's pool, per-device allow list, leases | one wire and one receiver (section 6); open question 1 |
-| Dev-pool carrier | `fleet/shard_{routes,host,store,spec,tree,run,exec,result,split}.py` (9 files, 974 lines), `testfarm/dev.py`, `Member.shard_*` | `/shards/v1/*` over the pool's pinned TLS, executor, limits | the pool transport and the executor (section 6) |
+| Pool carrier in dev mode | `fleet/shard_{routes,host,store,spec,tree,run,exec,result,split}.py` (9 files, 974 lines), `testfarm/dev.py`, `Member.shard_*` | `/shards/v1/*` over the pool's pinned TLS, executor, limits | the pool transport and the executor (section 6) |
 | Farm and `--on` | `testfarm/farm.py`, `scripts/test_on.py`, `testfarm/ledger.py`, `testfarm/report.py`, `poolhouse-test-devices`, `poolhouse.api.remote_tests` (`ph.test`) | merges the two carriers, reuse ledger apart from the store, per-device report | the planner, the store, the report, `poolhouse-test devices`, `ph.test` |
 | `--split` | `fleet/shard_split.py`, `test_on.divide` | duration-balanced division, a person's option | the planner, always on when targets exist |
 | CI shards | `scripts/ci_shards.py`, `tests/ci-durations.json`, `.github/workflows/ci.yml` | the same division for eight CI jobs | `poolhouse-test plan --shards N --index I` |
@@ -218,7 +218,7 @@ A check (section 13, check F) runs the same generated project with and without e
 
 The runner uses the glossary's words (`docs/glossary.md`): a **device** runs a shard, the **pool** is the set of devices, a **member** is a
 device in it, a **lease** is permission to use a limited resource, **capacity** is what a device offers, and **node** appears only as the
-software `poolhouse-node`. It never says cluster, peer, fleet for a pool, or pair. The words this design adds are **unit** (the
+software `poolhouse-node`. It uses no word that `docs/glossary.md` bans. The words this design adds are **unit** (the
 scheduling and reuse granule), **id**, **shard** (the part of a run sent to one target), **target** (a place a shard can run),
 **transport**, **preset**, **step**, **set** (a named selection, where the old tiers were), **label**, **DEPS** and **analyzer**. The
 package keeps its name `testfarm`; `farm` is not a glossary word and is not banned. `tests/test_glossary.py` covers this document and
@@ -239,9 +239,11 @@ labels, how many units have DEPS, and which steps would run.
 | `preset` | a tool preset to start from (section 7); any key below overrides it | none |
 | `[project] name` | a label in reports only | the directory name; never an identity |
 | `[tree] exclude` | globs left out of the tree sent to a device | none; the tree is the tracked and untracked-not-ignored files (`git ls-files -co --exclude-standard`), no `.git`, no hidden top-level entries, no links: `shard_tree.tracked_paths` today |
-| `[list] run` | the LIST argument vector | required unless the preset gives it |
+| `[list] run` | the LIST argument vector | none: without it the run is split by slice or not at all (5.2, "Three split modes") |
 | `[list] format`, `match`, `group` | `lines` or `jsonl`; id filter; the group rule | `lines`; every non-empty line; each id is a unit |
-| `[run] argv` | the RUN template | required unless the preset gives it |
+| `[run] argv` | the RUN template | required unless the preset gives it; with LIST it receives ids, without LIST it runs the whole selection once |
+| `[run] slice` | the RUN-slice template for a tool that cannot list its tests but can run a share of them (`--shard {slice_index}/{slice_count}`); an array of strings with exactly one `{slice_index}` and one `{slice_count}` | none; read only when there is no `[list]` (5.2) |
+| `[run] slice_base`, `slice_count`, `slice_results` | whether the tool counts slices from 0 or 1; the number of slices, or `auto`; what a slice reports (`exit`, `jsonl` or `junit`, as for `results`) | `1`; `auto` (the sum of the capacities of the targets the plan may use, at least 1, at most `MOST_SLICES` 64); `exit` |
 | `[run] results`, `junit_id`, `batch` | `exit`, `jsonl` or `junit`; how junit rows map to ids; ids per invocation | `exit`; `1` for `exit`, all of a unit's ids otherwise |
 | `[run] timeout` | seconds one invocation may run, from the moment it starts | none locally; on a device, the shard's deadline (5.10, 10.6) |
 | `[run] env` | variables set for every invocation (values travel in the file) | none; the child environment is an allowlist (10.5) |
@@ -369,6 +371,42 @@ inputs.
   worked around: the planner runs the shards in an order different from the unit's own, and a test that passes in the unit's
   order and fails in another is reported as a defect in the test. A unit whose LIST gives no ids cannot be split, and the plan
   says so.
+- **Three split modes, chosen by the config and stated by the plan.** (1) *By name*: the project gives LIST, the ids are known, and the
+  planner splits them into shards from the recorded durations (the rules above). (2) *By slice*: the project gives no LIST but gives
+  `[run] slice`, a RUN-slice template with an index and a count placeholder (`pytest --shard {slice_index}/{slice_count}`, `cargo
+  nextest --partition count:{slice_index}/{slice_count}`); the runner makes one unit per slice, `slice 1/8` to `slice 8/8`, and spreads
+  the slices over the targets as it spreads units, one slice a unit that takes one slot or the slots its labels say. (3) *Whole*: the
+  project gives neither, the selection is one unit that runs once on one target, and the plan says `not split: the project gives no
+  LIST and no slice template`. The plan names the mode on its first line (`split: by name`, `split: by slice, 8 slices`, `split:
+  none`), so no run is split in a way the person did not see. A project with LIST never uses its slice template (names are
+  strictly better information); the template is not a fallback for a failed LIST, which is an error.
+  - **The count.** `slice_count` is the number of slices, `auto` by default: the sum of the capacities of the targets the plan may use,
+    so every slot has one slice. The count is fixed before anything runs and printed; it is one number for the whole run, because the
+    tool's own partition is only a partition for one count. `--slices N` overrides it for one run and joins the unit key.
+  - **The balance is rough, and the plan says so.** The tool splits by count of tests (or by its own rule), not by duration, and the
+    runner cannot see inside a slice: a slice of a few slow tests finishes long after the others. Each slice is scheduled with the
+    mean of its own recorded durations (history is kept per `slice i/n` for one count), or `unrecorded_max` with none, and the plan
+    prints `balance: rough, slices are even by count, not by duration` with the longest and shortest recorded slice once any exist.
+    A slice is never rebalanced, retried elsewhere or split further by the runner.
+  - **Results merge per slice.** A slice reports what the project's `slice_results` says. With `exit` (the usual case: the tool
+    reports only pass or fail for its share) the slice is one result, `slice 3/8: passed` or `failed`, with the tool's output tail;
+    the run lists slices, not tests, and says `tests in a failed slice are not named`. With `jsonl` or `junit` the rows are real ids,
+    merged as in 6.4, and the runner checks that no id appears in two slices (duplicates are an error naming both slices). The run
+    passes when every slice passed, the report is ordered by slice number, and a run's selection is the same as the tool's whole
+    selection only because the slice template carries the project's own filters in `[run] argv`'s shared arguments; the runner does not
+    check that the slices cover the suite, and the plan states `coverage is the tool's partition, not checked`.
+  - **Reuse is per slice and keyed on the slice count.** A slice unit's key is the key of 5.3 over the slice template with its
+    placeholders filled (so the index and the count are in it), over the tree or the DEPS the project gives (a project without LIST
+    usually has none, so the whole tree). A pass is stored per slice; changing the count changes every key and invalidates every
+    stored slice, which is correct because slice 3 of 8 and slice 3 of 6 hold different tests. A changed file reruns the slices its
+    DEPS reach, and with no DEPS all of them. Canary re-runs (5.3) apply per slice. The `remote` kind rules are unchanged.
+  - **A failing or lost slice.** A failing slice is `failed` with its slice number, the exact invocation (argument vector with the
+    two integers filled) and its tail, so it can be re-run by hand; status 1. A slice on a device that stopped answering is `not
+    run` and named `slice 5/8`, status 70, exactly as in section 11; a slice that never got a permit is `not started`, status 75; a
+    slice ended by a deadline is 124. Nothing re-runs a slice elsewhere by itself, and running the command again reuses the
+    passed slices so only the failed and not-run ones execute. A tool that exits zero having run no tests in a slice is the tool's
+    business (the runner reads exit codes and rows, never output text); a project that wants that caught gives `junit` or `jsonl`.
+  - **Exit codes are unchanged.** The table in section 11 holds for all three modes; no code is added for slices.
 - **Batch size and order** inside a shard: longest first (`testorder`'s rule, the recorded duration), `batch` ids per invocation.
 
 CI uses the same planner without a transport: `poolhouse-test plan --shards 8 --index 3` prints the ids or units of shard 3 using the
@@ -401,7 +439,7 @@ any root a unit may write. What it adds:
   `canary mismatch`, fails the run, writes an `incident` row and a disabling record for the key, and sends one event to the sinks. The
   draw is seeded from the run id, printed in the report, so a run is repeatable with `--seed`.
 - **Never stored:** a failure, a unit with `reuse = false`, a result with `unstorable`, a run whose tree changed while it ran (status
-  4), a unit whose key recomputed at the end differs from the start, a split unit, an interrupted or crashed invocation.
+  4), a unit whose key recomputed at the end differs from the start, a split unit (a slice unit is not a split unit: it is stored per slice, 5.2), an interrupted or crashed invocation.
 - **Report lines:** `ran` or `reused from <run id>` per unit with the key prefix, `--no-reuse` forces execution and says so once.
 
 The unit key and the affected set are one definition (design-test-selection 4.6): the DEPS of a unit are what the key hashes and what
@@ -554,7 +592,7 @@ pool in dev mode every member already runs tests for every other member (`docs/f
 
 ### 6.2 The pool transport
 
-The wire is the dev-pool shard routes, generalised from a fixed command to a unit list. [code] today:
+The wire is the shard routes of a pool in dev mode, generalised from a fixed command to a unit list. [code] today:
 
 | Operation | Route | Notes |
 |---|---|---|
@@ -768,6 +806,12 @@ ids in them); a unit group is checked as a whole. An id is only ever an argument
 data: lines over the bound, binary output, a LIST that never ends (bounded by output size and a deadline) and duplicate ids are
 errors that name the first offender.
 
+A slice index and count (5.2) are never read from a result, a device or the environment: the runner computes them as integers, `slice_base`
+to `slice_count + slice_base - 1` and `1` to `MOST_SLICES` (64), formats them in decimal with no sign or padding, and substitutes
+them as whole arguments of the argument vector (or inside one argument, never into a shell string). A template with a placeholder
+other than the two, a repeated one, or one in the program name is refused when the file is loaded; a device receives the filled
+vector with ids from this grammar and refuses anything else.
+
 ### 10.5 Output and environment
 
 - **Output from a device is data.** Every byte a device sends (output, messages, names) is decoded as UTF-8 with replacement,
@@ -829,6 +873,8 @@ first, then the ones this design adds.
 | A24 | Takeover by whoever is merely present on the LAN | dev mode trusts every device that joined it, which `docs/fleet.md` states; a pool that is not in dev mode requires the allow list; the kill switch is `remote-tests` |
 | A25 | An old build on one device (a downgrade of the protocol) | caps carries `protocol` and the build; a mismatch is refused, never run |
 | A26 | A sender queues work or sets tiny timeouts to make a device's own work look failed or late | the device's own work is admitted first (background class); `not started` is reported to the sender only |
+| A27 | Slice injection: a hostile index or count (`--slices '8; rm -rf'`, `-1`, `1e9`, a count that makes the tool run one slice out of range, a slice template that smuggles a flag), or a device that reports slices the sender did not assign | the index and count are integers the runner makes, bounded by `MOST_SLICES`, decimal only, put in as whole arguments (10.4); `--slices` is parsed as an integer or refused with status 4; the template allows exactly the two placeholders; the sender checks the slice set it received (exactly the slices it assigned, once each) as it checks ids (A5) |
+| A28 | A slice count change used to keep a stale pass (slice 3 of 8 satisfying slice 3 of 6), or a hidden gap where the tool's partition skips tests | the count and index are in every slice key (5.2); the plan states that coverage is the tool's partition and not checked, so nothing claims a coverage the runner cannot see |
 
 ## 11. Failure behaviour, exit codes and determinism
 
@@ -989,7 +1035,7 @@ are steps 8 and 9.
    with the deny-default profile, the allowlist environment, the sanitiser, the id grammar, the tree hash over the transported set, the
    sender-keyed step directories, the `remote` kind in the store, `admit()`. The daemon mounts the server by name. Everything the
    generalised path replaces is deleted in this same step, because two ways of sending a shard cannot rest side by side:
-   `fleet/shard_{routes,host,store,spec,tree,run,exec,result,split}.py`, the node carrier's client and the dev-pool carrier
+   `fleet/shard_{routes,host,store,spec,tree,run,exec,result,split}.py`, the node carrier's client and the carrier of a pool in dev mode
    (`testfarm/client.py`, `dev.py`, `farm.py`, `ledger.py`; the report moves to the core), `scripts/test_on.py`,
    `poolhouse-test-devices` (the `pyproject.toml` script and the `docs/commands.md` row; `poolhouse-test devices` replaces it),
    `poolhouse.api.remote_tests` (`ph.test` is the facade), and the `--split` flag (the planner always splits); `scripts/test --on` now
@@ -1048,6 +1094,7 @@ under the module that holds them after the move; a number with no source is deri
 | sample clip in history | three times the value once three samples exist | `testhistory.py` |
 | fixed overhead limit | 5 s or a quarter of the wall time | AGENTS.md section 5 |
 | units per shard | 200 | `shard_spec.MOST_FILES` |
+| slices per run | 64 | `MOST_SLICES`, the owner, in source (a row of `docs/limits.md` when built) |
 | shard deadline bound on a device | 3600 s | `shard_spec.MOST_SECONDS` |
 | packed tree, unpacked, members | 24 MiB, 256 MiB, 20,000 | `shard_tree.MOST_PACKED`, `MOST_UNPACKED`, `MOST_MEMBERS`; to be replaced by the disk-derived bound in 10.6 |
 | runner output, tee | 64 MiB, 8 MiB | `shard_run.MOST_LOG`, `MOST_TEE` |
@@ -1069,7 +1116,7 @@ or carries the Python module's values above, and `docs/limits.md` is updated in 
 
 Product choices this document cannot settle from the code and documents. Each names the option it would take.
 
-1. **Which pool stack carries production pools' allow list, and does the Rust carrier stay?** Pools in dev mode are served by the Python
+1. **Which pool stack carries the allow list of a pool in prod mode, and does the Rust carrier stay?** Pools in dev mode are served by the Python
    daemon; pools with charters, grants and phone approvals are served by `poolhouse-node`, whose `shard_consent` grant is the only
    place a person's signed yes for "this sender may run code here" exists. The design makes one server and one wire. Option A: delete the
    Rust shard host and its two grants and keep the allow list as a device setting changed by `poolhouse-test allow` (a typed yes at a
