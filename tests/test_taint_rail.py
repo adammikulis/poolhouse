@@ -1,4 +1,7 @@
-"""The rail on its own, one argument rule at a time, with the schemas the loop would pass it."""
+"""The rail on its own, one argument rule at a time, with the schemas the loop would pass it.
+
+These tests exercise the rail and the loop, not a model: where a loop runs, the canned server replies with scripted
+turns and the worst-case `Obeying` stand-in, every reply marked as canned."""
 
 from __future__ import annotations
 
@@ -21,7 +24,7 @@ from poolhouse.taint import (
     sinks_from_mcp,
 )
 from poolhouse.testing import canary
-from poolhouse.testing.tool_server import Turn
+from poolhouse.testing.canned import Turn
 
 TOOLS = [{"type": "function", "function": {"name": "act", "parameters": {
     "type": "object", "properties": {
