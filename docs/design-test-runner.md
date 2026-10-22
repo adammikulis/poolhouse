@@ -257,7 +257,7 @@ labels, how many units have DEPS, and which steps would run.
 | `[reuse] key_env, key_tools, canary` | extra key inputs; the sampling rate | none; none; none (off; the project's file sets it) |
 | `[remote] default, accept` | `auto`, `local` or `pool`; which labels may leave this machine | `auto` (section 6.1); every label except `local` |
 | `[failfirst] tests, fail_line, exempt_line, mode` | section 5.9 | `report`; the lines of `docs/agent-policy.md` |
-| `[schedule] seed, unrecorded_max` | a committed durations file used until history exists (CI); seconds assumed for a unit with no record | none; the median of the recorded ones, at most `testhistory`'s 30 s |
+| `[schedule] seed, unrecorded_max, silence_margin, total_margin, queue_wait` | a committed durations file used until history exists (CI); seconds assumed for a unit with no record; the margins of the hang guards (5.10); the queue limit | none; the median of the recorded ones; none; none; none (the hang guards and queue wait then use no progress, 5.10) |
 | `[requires]` | things a device must have, checked by probes the device owns (6.5) | none |
 | `[[unit]]` | a command unit with no LIST (5.7) | none |
 | `[preset.NAME]` | a preset defined in the project (7) | none |
@@ -562,16 +562,24 @@ The runner's rule, for every unit and every project:
   learn queue time.
 - **Outcomes.** A unit is `passed`, `failed`, `timed out` (it ran past its timeout: a failure that says `timed out after N s running`
   and shows the three numbers), `skipped`, `reused`, `not reported`, or **`not started`**. `not started` means the machine could not
-  admit it: it waited for a permit or lease past the project's queue limit (`[schedule] queue_wait`, no runner default: with none a unit waits until it is admitted or the run is cancelled), or the run was
+  admit it: it waited for a permit or lease past the project's queue limit (`[schedule] queue_wait`, no runner default; with none, the queue wait is guarded by no progress: the broker's queue position and the holders' heartbeats stop advancing for the derived stretch, status 75 naming the holder waited for), or the run was
   cancelled before its permit. It is neither a failure nor a pass, is listed apart in the report (`NOT STARTED, machine overloaded:
   waited <N> s for a permit`, N measured), is not stored, and gives status 75. Running the command again continues with exactly those units.
 - **Where a timeout's value comes from.** The runner has no timeout of its own. In order: `[label.NAME] timeout` for the unit's labels
   (the largest of its labels), `[run] timeout`, then none locally. Poolhouse's file takes its value from the owner's setting: 120 s a
   unit (`pyproject.toml`, `docs/limits.md` row `pytest timeout`), and a longer unit carries a label with a longer value (the
   `@pytest.mark.timeout(N)` it has today). On a device a unit with no timeout is bounded by its shard's deadline, which is the largest unit
-  timeout the sender sent for the shard and, when no unit has one, no deadline of the runner's own (the sender's cancel and the receiver's
-  bounds, 10.6, end a runaway).
-  A build step has its own deadline, its `timeout` (none when the project gives none), and never counts in a unit's.
+  timeout the sender sent for the shard and, when no unit has one, the hang guard below.
+- **Hang guards: no progress first, a total second.** Nothing waits forever. Each unit, shard, build step and queue wait has (1) a
+  *no-progress* guard: it ends when no output, heartbeat or result row has arrived for a stretch derived from a measurement, namely the
+  longest silence its own recorded runs showed times the project's `[schedule] silence_margin`, or for a device the measured round
+  trip of the stream times that margin; and (2) a *total* guard, the unit's recorded typical duration (the median, 5.8) times the
+  project's `[schedule] total_margin`, used only when the label, step or `[run]` table names no `timeout` (which always wins). The
+  margins are the project's numbers in `testfarm.toml` with no runner default; a unit with no record and no margin set is guarded by
+  the no-progress guard once a first run has recorded its silence, and the first run of it is guarded by the cancel and the
+  receiver's bounds (10.6). A guard ends the work loudly, with status 124 for a unit, shard or step and 75 for a queue wait, and the
+  line names what was waited for and the derivation: `unit tests/x.py: no output for 41 s (longest silence recorded 8 s x margin 5)`.
+  A build step has its own `timeout`, else the hang guards above on the step's recorded runs, and never counts in a unit's.
 - **Overload is named, not guessed.** The report says `the machine was overloaded` only when units are `not started`; a run in which every
   unit started but some queued for a long time says `queued N s (the machine's)` and judges the units by `ran_s` alone.
 
@@ -904,8 +912,9 @@ first, then the ones this design adds.
 | 130 | cancelled | `scripts/test` job cancel |
 
 **A device vanishes mid-run.** The sender holds one pinned-TLS stream per shard and the receiver reports on it as things happen,
-so there is no poll interval; a stream that fails (a reset, or the TCP keepalive timeout of the operating system) ends the device's
-part, and no waiting time is the runner's own: the report says, loudly and on stderr, `<device> stopped answering <N>s ago (measured) while shard <id> ran there; its units did not finish
+so there is no poll interval; a stream that fails (a reset, or the TCP keepalive timeout of the operating system), or that carries
+no result or heartbeat for the no-progress stretch (the measured round trip of the stream times the project's `silence_margin`), ends
+the device's part: the report says, loudly and on stderr, `<device> stopped answering <N>s ago (measured) while shard <id> ran there; its units did not finish
 and were not run anywhere else`, lists the units as `not run` (neither failed nor reused), and the status is 70. The other targets
 finish and are reported. Nothing re-runs on another device or locally by itself. Running the same command again continues: reuse
 serves every unit that passed, so exactly the not-run remainder runs, on whatever is reachable then. The shard on the vanished device is
@@ -1103,21 +1112,22 @@ under the module that holds them after the move; a number with no source is deri
 | aging, backfill | aged by the estimated work ahead; backfilled when it ends before the head's estimated start | the history's estimates (5.8), no constant |
 | canary rate | the project's `[reuse] canary` | the project's file, no runner default; Poolhouse's file sets it |
 | single-flight wait | while the claim holder is alive | the OS's process liveness, no time |
-| step build deadline, slots, idle, prune | the step's `timeout`; its `slots` or the free slots; `keep` or least recently used on disk need; no interval | the project's file, or the measured free slots and free disk |
+| hang guards | no-progress stretch: longest recorded silence or measured round trip times `silence_margin`; total: recorded median times `total_margin` | the history and the measured round trip; both margins are the project's, no runner default |
+| step build deadline, slots, idle, prune | the step's `timeout`, else the hang guards; its `slots` or the free slots; `keep` or least recently used on disk need; no interval | the project's file, or the measured free slots and free disk |
 | history sample | the median of the recorded samples | no clip |
 | fixed overhead limit | 5 s or a quarter of the wall time | AGENTS.md section 5 |
 | units per shard, slices per run | no bound of the runner's own | units: the receiver's request-size bound (10.6); slices: the plan (targets times `slices_per_target`), or the project's `slice_count`; the tool refuses what it cannot take |
-| shard deadline on a device | the largest of the units' timeouts from the project's file, or none | replaces `shard_spec.MOST_SECONDS` (3600 s), which has no source |
+| shard deadline on a device | the largest of the units' timeouts from the project's file, else the no-progress guard and the recorded-typical-times-margin total (5.10) | replaces `shard_spec.MOST_SECONDS` (3600 s), which has no source |
 | packed tree, unpacked tree, members | shares of the receiver's free scratch disk and free inodes, divided by the shards it holds | replaces `shard_tree.MOST_PACKED`, `MOST_UNPACKED`, `MOST_MEMBERS` (24 MiB, 256 MiB, 20,000), which have no source |
 | runner output, tee, result, tail, failures, message, tests, junit | shares of the same free scratch disk, divided by the shards held | replaces `shard_run.MOST_LOG`, `MOST_TEE`, `shard_routes.MOST_RESULT`, `shard_result.MOST_*`, which have no source |
 | shards held, per sender | the device's free slots at admission, and the free disk (10.6) | replaces `shard_store.MOST_KEPT`, `MOST_OWNED` (8, 4), which have no source |
 | idle upload, kept shard, grace before kill | the receiver's admission clock: an upload idle for the sender's own poll interval times missed polls; a kept shard until its result is fetched or the disk is needed; grace is the process group's own exit | replaces `shard_store.IDLE_S`, `KEPT_S`, `shard_run.GRACE_S` (600 s, 24 h, 30 s), which have no source |
-| poll, lost device | none: results are reported on the stream; a failed stream is the loss | the transport's own failure (reset, the OS's keepalive timeout); replaces `dev.POLL_S`, `dev.LOST_S` (2 s, 45 s) |
+| poll, lost device | none: results are reported on the stream; a failed or silent stream is the loss | the transport's own failure (reset, the OS's keepalive timeout); replaces `dev.POLL_S`, `dev.LOST_S` (2 s, 45 s) |
 | shard id | 128 random bits | a security floor: guessing or colliding is out of reach (a row of `docs/limits.md`) |
 | id length | `PATH_MAX` of the sender and the receiver | the operating system headers |
 | arguments before `{idfile}` | `ARG_MAX` of the platform | `sysconf(SC_ARG_MAX)` |
 | exit statuses | 0, 1, 4, 6, 70, 75, 124, 130 | section 11 |
-| queue limit | the project's `[schedule] queue_wait`, else none | the project's file; replaces `testslots.WAIT_S` (3600 s) |
+| queue limit | the project's `[schedule] queue_wait`, else none | the project's file, else the no-progress guard; replaces `testslots.WAIT_S` (3600 s) |
 | unit timeout in Poolhouse's file | 120 s | `pyproject.toml` `timeout`, the owner (`docs/limits.md`, `pytest timeout`) |
 
 `unrecorded_max` (the cap on a unit with no record) is the project's setting with no runner default, and the sample clip and `JOBS_DIVISOR`
