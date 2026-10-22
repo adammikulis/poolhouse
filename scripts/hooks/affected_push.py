@@ -23,8 +23,10 @@ import sealed_git as lg  # noqa: E402
 SHOWN = 8
 """How many test files the opening line names before it only counts them."""
 RUNNER = Path("scripts") / "test"
-TIER = "full"
-"""The tier the selected files run in: every test of them not marked slow or gate; the slow ones and the whole-tree scans belong to the gate and to CI."""
+TIER = "all"
+FLAGS = ("--redteam",)
+"""The tier and flags the selected files run with: every test of them, the slow ones, the whole-tree scans and the red-team ones too.
+A test marked ``real_model`` needs a served model under a lease, which a push never takes; it is named in a warning instead."""
 FAILED = ("FAILED ", "ERROR ")
 
 
@@ -46,18 +48,32 @@ def pushed_paths(root: Path, base: str, tip: str) -> tuple[list[str], frozenset[
     return lg.changed(root, start, tip), frozenset(lg.changed(root, start, tip, "--diff-filter=D")), start
 
 
+def moved_module(root: Path, start: str, tip: str, names: list[str]) -> bool:
+    """Whether the push adds, deletes or renames a Python or Rust source (any it changes, when the start is not known)."""
+    found = lg.changed(root, start, tip, "--diff-filter=AD") if start else names
+    return any(n.endswith((".py", ".rs")) for n in found)
+
+
+def needing_a_model(root: Path, files: list[str]) -> list[str]:
+    """The test files that hold tests marked ``real_model``."""
+    return [f for f in files if "real_model" in (root / f).read_text(encoding="utf-8", errors="replace")]
+
+
 def selected(root: Path, dev: str, base: str, tip: str) -> tuple[list[str], list[str], str]:
-    """The test files to run, the notes (a path no rule could place, the files only a name reaches) and the start commit, for ``tip``."""
+    """The test files to run, the notes (a path no rule could place, files left to CI or the gate) and the start commit, for ``tip``."""
     names, gone, start = pushed_paths(root, base, tip)
     picked = affected.select(root, names, gone, base=start or f"origin/{dev}")
     files = set(picked.files) - picked.loose
     notes = [f"{p}: {picked.reasons.get(p, 'nothing says which tests it affects')}" + (
         "; the tests that import or name it run" if p in gone else "; only the tree-wide guards run for it") for p in picked.unmapped]
-    if picked.unmapped:
+    if picked.unmapped or moved_module(root, start, tip, names):    # a new, deleted or renamed module is for the layer and wiring guards
         files.update(f"tests/{g}" for g in affected.GUARDS if (root / "tests" / g).is_file())
     if picked.loose:
         notes.append(f"{len(picked.loose)} more test file(s) are reached only by a bare word in a string or a directory listing, "
                      "which CI runs")
+    if held := needing_a_model(root, sorted(files)):
+        notes.append(f"{', '.join(held)} hold tests marked real_model, which need a served model under a lease; this check does not "
+                     "run them, the gate and CI do")
     return sorted(files), notes, start
 
 
@@ -65,7 +81,7 @@ def run_tests(root: Path, selectors: list[str], echo: bool = True) -> tuple[int,
     """Run ``scripts/test full SELECTORS`` in ``root``; its exit status and the failing test lines it printed (all of it too when ``echo``)."""
     env = {k: v for k, v in os.environ.items() if not lg.REDIRECTS.match(k)}
     failing: list[str] = []
-    with subprocess.Popen([sys.executable, str(root / RUNNER), TIER, *selectors], cwd=root, env=env, text=True, errors="replace",
+    with subprocess.Popen([sys.executable, str(root / RUNNER), TIER, *selectors, *FLAGS], cwd=root, env=env, text=True, errors="replace",
                           stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT) as child:
         for line in child.stdout:
             if echo:
@@ -116,7 +132,7 @@ def failing_files(lines: list[str]) -> list[str]:
 
 def rerun(files: list[str]) -> str:
     """The command that runs ``files`` again."""
-    return f"scripts/test {TIER} " + " ".join(files)
+    return " ".join(["scripts/test", TIER, *files, *FLAGS])
 
 
 def refuse(why: str, again: str = "") -> int:

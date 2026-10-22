@@ -33,19 +33,23 @@ and data-file checks and before any watcher starts) selects test files with `scr
 `scripts/test quick` makes, from every path the push changes (the net difference from the remote's old tip, or the commits on
 no remote-tracking ref): the test files that import or name the path, directly or through one module; the glossary scan for any
 file it reads; the switch-table scan (`tests/test_documented_env_vars.py`) for a path it scans; and the tree-wide guards once any
-test runs, unless every changed path is prose (`.md`). A deleted module selects the tests that import it. A path no rule can place (`pyproject.toml`, `budgets.json`,
-`tests/conftest.py`) runs only the tree-wide guards and is named in a warning; `scripts/test gate` and CI cover it.
+test runs, unless every changed path is prose (`.md`); the guards also run for a push that adds, deletes or renames a Python or Rust
+source, whatever else it selects. A source that defines command-line arguments (`add_argument(`) selects the tests that read
+`docs/commands.md` (`tests/test_cli_help.py`, `tests/test_cli_reference.py`). A deleted module selects the tests that import it. A
+path no rule can place (`pyproject.toml`, `budgets.json`, `tests/conftest.py`) runs only the tree-wide guards and is named in a
+warning; `scripts/test gate` and CI cover it.
 A test file that only a bare word in a string or a directory listing reaches (`Selection.loose`) is counted in a warning and left to
 CI; the files that import, run or name the path by its path, and the files they reach through such references, run. The hook then
-runs `scripts/test full FILES` in the pushing checkout (every test of those files not marked `slow` or `gate`; the slow
-tests and the whole-tree scans of `scripts/test gate` are the gate's and CI's) with reuse on, so a file whose tree already passed
-for the `full` tier is not run again and the broker admits the rest like any run. The tests run on the checked-out tree, so the pushed commit must be `HEAD`
+runs `scripts/test all FILES --redteam` in the pushing checkout: every test of those files, the `slow` tests, the whole-tree scans and
+the red-team tests included, with the node binary and what else they need built through the broker, and with reuse on, so a file whose
+tree already passed is not run again. A test marked `real_model` needs a served model under a lease, which a push never takes: its
+file is named in a warning and the gate and CI run it. The tests run on the checked-out tree, so the pushed commit must be `HEAD`
 (`git push origin HEAD:refs/heads/<dev>`).
 
 A failing test is run again on a checkout of the commit the push is measured from (the remote's old tip, in a temporary worktree
 that is removed afterwards): one that fails there too was red before the push, is named in a warning and is not held against it.
 A test that passes there, and a test the push adds, refuses the push: stderr lists each `FAILED path::test` line and
-`run it again with: scripts/test full FILES` for the failing files. Where the old tip is not known to the repository, or cannot be
+`run it again with: scripts/test all FILES --redteam` for the failing files. Where the old tip is not known to the repository, or cannot be
 checked out, every failure is held against the push. Nothing passes because the check could not run: a selection that raises, a push of a commit that is not
 `HEAD`, a missing `scripts/test`, and a run that ends with a nonzero status and names no failing test each refuse the push with
 the cause and the command for the same selection. The parses of the sources `affected.py` reads are kept between runs in

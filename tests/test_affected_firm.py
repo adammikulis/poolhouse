@@ -40,3 +40,14 @@ def test_a_change_of_prose_alone_selects_no_tree_wide_guard_but_a_change_of_code
     (root / "tests/test_suite.py").write_text("def test_guard():\n    assert True\n", encoding="utf-8")
     assert affected.select(root, ["docs/notes.md"]).files == {"tests/test_notes.py"}
     assert "tests/test_suite.py" in affected.select(root, ["docs/notes.md", "scripts/runner.py"]).files
+
+
+def test_a_source_that_defines_arguments_selects_the_tests_that_read_the_command_reference(tmp_path):
+    root = toy(tmp_path)
+    (root / "src/poolhouse").mkdir(parents=True)
+    (root / "src/poolhouse/__init__.py").write_text("", encoding="utf-8")
+    (root / "src/poolhouse/tool.py").write_text("def build(parser):\n    parser.add_argument('--flag')\n", encoding="utf-8")
+    (root / "src/poolhouse/plain.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (root / "tests/test_help.py").write_text("TEXT = open('docs/commands.md').read()\n", encoding="utf-8")
+    assert "tests/test_help.py" in affected.select(root, ["src/poolhouse/tool.py"]).files
+    assert "tests/test_help.py" not in affected.select(root, ["src/poolhouse/plain.py"]).files

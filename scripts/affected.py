@@ -417,6 +417,22 @@ def reverse_graph(root: Path, known: dict[str, str], memo_file: Path | None) -> 
     return reverse, raws
 
 
+COMMAND_DOCS = "docs/commands.md"
+
+
+def add_command_docs(out: Selection, root: Path, changed: list[str], deleted: frozenset[str], tests: list[str]) -> None:
+    """A changed source that defines command-line arguments moves what the command reference documents: the tests that read it run."""
+    parsers = [c for c in changed if c.endswith(".py") and c not in deleted and c.startswith(("src/", "scripts/"))
+               and "add_argument(" in (root / c).read_text(encoding="utf-8", errors="replace")]
+    if not parsers:
+        return
+    because = f"{parsers[0]} defines command-line arguments that {COMMAND_DOCS} documents"
+    for test in mentioning(root, COMMAND_DOCS, tests):
+        out.add(test, because)
+    for test in rules.generated_tests(rules.corpus(root), COMMAND_DOCS):
+        out.add(test, because)
+
+
 def select(root: Path, changed: list[str], deleted: frozenset[str] = frozenset(),
            depth: int = DEPTH, base: str = "HEAD") -> Selection:
     """The test files within ``depth`` imports of ``changed``; ``unmapped`` non-empty means run all.
@@ -480,6 +496,7 @@ def select(root: Path, changed: list[str], deleted: frozenset[str] = frozenset()
     if any(Path(c).parts[:2] == ("src", "poolhouse") for c in changed):
         for rel in dynamic_tests(root, tests):
             out.add(rel, "imports a module chosen at run time")
+    add_command_docs(out, root, changed, deleted, tests)
     add_tree_wide(out, root, changed, deleted, tests)
     return out
 

@@ -15,7 +15,7 @@ import json, os, subprocess, sys
 with open(os.environ["STUB_LOG"], "a") as log:
     log.write(json.dumps({"argv": sys.argv[1:], "git_dir": os.environ.get("GIT_DIR", "")}) + "\\n")
 env = {k: v for k, v in os.environ.items() if not k.startswith("PYTEST")}
-sys.exit(subprocess.call([sys.executable, "-m", "pytest", "-q", "-rfE", "-p", "no:cacheprovider", *sys.argv[2:]],
+sys.exit(subprocess.call([sys.executable, "-m", "pytest", "-q", "-rfE", "-p", "no:cacheprovider", *[a for a in sys.argv[2:] if a != "--redteam"]],
                          env={**env, "PYTHONPATH": "src"}))
 '''
 EXITS_4 = "#!/usr/bin/env python3\nimport sys\nsys.exit(4)\n"
@@ -54,7 +54,7 @@ def test_a_push_that_breaks_a_test_it_did_not_touch_is_refused(repo, tmp_path):
     done = landing(repo, tmp_path / "log")
     assert done.returncode != 0
     assert "FAILED tests/test_untouched.py::test_value" in done.stderr
-    assert "run it again with: scripts/test full tests/test_untouched.py" in done.stderr
+    assert "run it again with: scripts/test all tests/test_untouched.py --redteam" in done.stderr
     assert "the push breaks the tests above" in done.stderr
 
 
@@ -74,7 +74,7 @@ def test_an_old_red_test_does_not_hide_a_test_the_push_breaks(repo, tmp_path):
     commit(repo, "src/poolhouse/mod.py", "VALUE = 2\n")
     done = landing(repo, tmp_path / "log")
     assert done.returncode != 0
-    assert "run it again with: scripts/test full tests/test_untouched.py" in done.stderr
+    assert "run it again with: scripts/test all tests/test_untouched.py --redteam" in done.stderr
     assert "tests/test_red.py" not in done.stderr.split("run it again with:")[1]
 
 
@@ -82,7 +82,7 @@ def test_a_new_test_that_fails_is_a_failure_of_the_push(repo, tmp_path):
     commit(repo, "tests/test_fresh.py", "from poolhouse import mod\n\n\ndef test_fresh():\n    assert mod.VALUE == 99\n")
     done = landing(repo, tmp_path / "log")
     assert done.returncode != 0
-    assert "run it again with: scripts/test full tests/test_fresh.py" in done.stderr
+    assert "run it again with: scripts/test all tests/test_fresh.py --redteam" in done.stderr
 
 
 def test_a_push_that_breaks_nothing_goes_through(repo, tmp_path):
@@ -90,7 +90,7 @@ def test_a_push_that_breaks_nothing_goes_through(repo, tmp_path):
     log = tmp_path / "log"
     done = landing(repo, log)
     assert done.returncode == 0, done.stderr
-    assert [c["argv"] for c in calls(log)] == [["full", "tests/test_untouched.py"]]
+    assert [c["argv"] for c in calls(log)] == [["all", "tests/test_untouched.py", "--redteam"]]
 
 
 def test_the_check_runs_the_scripts_test_of_the_checkout_with_the_pushed_files(repo, tmp_path):
@@ -98,7 +98,7 @@ def test_the_check_runs_the_scripts_test_of_the_checkout_with_the_pushed_files(r
     commit(repo, "tests/test_unrelated.py", SKIPPED + "\n\ndef test_more():\n    assert True\n")
     log = tmp_path / "log"
     assert landing(repo, log).returncode == 0
-    assert [c["argv"] for c in calls(log)] == [["full", "tests/test_unrelated.py", "tests/test_untouched.py"]]
+    assert [c["argv"] for c in calls(log)] == [["all", "tests/test_unrelated.py", "tests/test_untouched.py", "--redteam"]]
 
 
 def test_the_tests_run_without_the_repository_variables_git_gives_a_hook(repo, tmp_path):
@@ -134,7 +134,7 @@ def test_a_run_that_ends_without_naming_a_test_refuses_the_push(repo, tmp_path):
     done = landing(repo, tmp_path / "log")
     assert done.returncode != 0
     assert "scripts/test exited 4 without naming a failing test" in done.stderr
-    assert "run it again with: scripts/test full tests/test_untouched.py" in done.stderr
+    assert "run it again with: scripts/test all tests/test_untouched.py --redteam" in done.stderr
 
 
 def test_a_checkout_without_the_runner_refuses_the_push_with_its_cause(repo, tmp_path):
@@ -164,7 +164,7 @@ def test_a_path_no_rule_can_place_runs_the_guards_and_says_so(repo, tmp_path):
     done = landing(repo, log)
     assert done.returncode == 0, done.stderr
     assert "warning: pyproject.toml" in done.stderr and "only the tree-wide guards run for it" in done.stderr
-    assert [c["argv"] for c in calls(log)] == [["full", "tests/test_suite.py"]]
+    assert [c["argv"] for c in calls(log)] == [["all", "tests/test_suite.py", "--redteam"]]
 
 
 def test_deleting_a_module_runs_the_tests_that_import_it(repo, tmp_path):
@@ -174,13 +174,43 @@ def test_deleting_a_module_runs_the_tests_that_import_it(repo, tmp_path):
     assert done.returncode != 0
     assert "src/poolhouse/other.py: a deleted module" in done.stderr
     assert "the tests that import or name it run" in done.stderr
-    assert "tests/test_other.py" in done.stderr and "run it again with: scripts/test full tests/test_other.py" in done.stderr
+    assert "tests/test_other.py" in done.stderr and "run it again with: scripts/test all tests/test_other.py --redteam" in done.stderr
 
 
-def test_the_real_runner_takes_the_tier_the_check_runs():
+def test_a_new_module_runs_the_layer_and_wiring_guards_even_when_no_test_reaches_it(repo, tmp_path):
+    commit(repo, "tests/test_suite.py", "def test_guard():\n    assert True\n")
+    git(repo, "push", "-q", "origin", "0.9dev")
+    commit(repo, "src/poolhouse/brand_new.py", "VALUE = 3\n")
+    log = tmp_path / "log"
+    done = landing(repo, log)
+    assert done.returncode == 0, done.stderr
+    assert [c["argv"] for c in calls(log)] == [["all", "tests/test_suite.py", "--redteam"]]
+
+
+def test_an_edit_of_a_module_that_no_test_reaches_runs_no_guard(repo, tmp_path):
+    commit(repo, "tests/test_suite.py", "def test_guard():\n    assert True\n")
+    commit(repo, "src/poolhouse/lonely.py", "VALUE = 3\n")
+    git(repo, "push", "-q", "origin", "0.9dev")
+    commit(repo, "src/poolhouse/lonely.py", "VALUE = 4\n")
+    log = tmp_path / "log"
+    assert landing(repo, log).returncode == 0
+    assert calls(log) == []
+
+
+def test_a_test_that_needs_a_served_model_is_named_as_not_run(repo, tmp_path):
+    commit(repo, "tests/test_untouched.py", UNTOUCHED + "\n\n# pytest.mark.real_model\n")
+    git(repo, "push", "-q", "origin", "0.9dev")
+    commit(repo, "src/poolhouse/mod.py", "VALUE = 1\nMORE = 10\n")
+    done = landing(repo, tmp_path / "log")
+    assert done.returncode == 0, done.stderr
+    assert "tests/test_untouched.py hold tests marked real_model" in done.stderr
+
+
+def test_the_real_runner_takes_the_tier_and_flags_the_check_runs():
     sys.path.insert(0, str(REPO / "scripts" / "hooks"))
     import affected_push
     asked = [sys.executable, str(REPO / "scripts" / "test")]
+    assert affected_push.TIER == "all" and "--redteam" in affected_push.FLAGS
     ok = subprocess.run([*asked, affected_push.TIER, "--help"], capture_output=True, text=True, check=False)
     bad = subprocess.run([*asked, "no-such-tier", "--help"], capture_output=True, text=True, check=False)
     assert ok.returncode == 0 and bad.returncode == 2
