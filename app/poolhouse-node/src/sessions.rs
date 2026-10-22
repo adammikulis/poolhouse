@@ -15,7 +15,7 @@ const REBIND_DOMAIN: &str = "poolhouse/session-rebind/v1\n";
 
 pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
-        "whoami" => &["model", "harness", "purpose", "branch", "worktree"],
+        "whoami" => &["model", "harness"],
         "session_lookup" => &["harness", "session"],
         "agents" => &["retired"],
         "retire" => &["target", "reason"],
@@ -34,8 +34,7 @@ fn text<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
 
 fn show(name: &str, i: &Ident, idle: bool) -> Value {
     json!({"name": name, "parent": i.parent, "family": i.family, "model": i.model, "model_state": i.model_state,
-           "harness": i.harness, "retired": i.retired, "retired_reason": i.retired_reason, "person": i.person, "seen_ms": i.seen_ms, "idle": idle,
-           "purpose": i.purpose, "branch": i.branch, "worktree": i.worktree})
+           "harness": i.harness, "retired": i.retired, "retired_reason": i.retired_reason, "person": i.person, "seen_ms": i.seen_ms, "idle": idle})
 }
 
 /// Whether ``i`` is idle: not retired and neither heard from lately nor holding a live lease.
@@ -123,13 +122,6 @@ fn whoami(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
                 node.write_identity(board, &access.actor)?;
             }
         }
-    }
-    let (purpose, branch, worktree) = (text(p, "purpose")?, text(p, "branch")?, text(p, "worktree")?);
-    if !(purpose.is_empty() && branch.is_empty() && worktree.is_empty()) {
-        if access.holder.board != board {
-            return Err(Error::Denied("a purpose is stated on the session's own board".into()));
-        }
-        node.host(board)?.names.set_profile(&access.actor, purpose, branch, worktree)?;
     }
     let mut out = json!({"name": access.actor, "board": access.holder.board, "target": board});
     if let Some(i) = node.host(board)?.names.get(&access.actor).cloned() {

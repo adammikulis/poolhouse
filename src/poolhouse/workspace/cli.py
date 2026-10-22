@@ -36,7 +36,6 @@ from poolhouse.workspace import (
     pool_cli,
     render,
     rooms_cli,
-    roster,
     scratch_cli,
     status_cli,
     task_cli,
@@ -99,7 +98,7 @@ for _name, _help, _options, _handler in (
           flag("--backlog", type=int, default=20),
           flag("--board", default="", help="the board to use (default: the project this directory belongs to)")], _chat)):
     COMMANDS.add(_name, board_cli.guarded(_handler), help=_help, options=[*NAMED, *_options])
-for _name, _help, _options, _handler in (*board_cli.TABLE, *claims_cli.TABLE, *notes_cli.TABLE, *landing_cli.TABLE, *mail_cli.TABLE, *rooms_cli.TABLE, *filecli.TABLE, *scratch_cli.TABLE, *status_cli.TABLE, *roster.TABLE, *task_cli.TABLE):
+for _name, _help, _options, _handler in (*board_cli.TABLE, *claims_cli.TABLE, *notes_cli.TABLE, *landing_cli.TABLE, *mail_cli.TABLE, *rooms_cli.TABLE, *filecli.TABLE, *scratch_cli.TABLE, *status_cli.TABLE, *task_cli.TABLE):
     COMMANDS.add(_name, board_cli.runner(_handler), help=_help, options=[*NODE_COMMON, *_options])
 for _name, _help, _options, _handler in cli_setup.TABLE:
     COMMANDS.add(_name, board_cli.exiting(_handler), help=_help, options=[*NODE_COMMON, *_options])

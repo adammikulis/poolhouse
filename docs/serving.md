@@ -104,6 +104,12 @@ a server on the registry is a quiet lease of the GPU (of the request line of a `
 compute at a time whichever process asks. `poolhouse-serve queue` shows the requests in line. The broker renews the leases it holds
 every thirty seconds and takes one again for a running server the node holds none for.
 
+The broker waits on every server it started (`poolhouse.serve.children`), so none is left defunct for a process scan to count as
+running compute: one it stops, one evicted for room, and one that dies on its own (found within a second, taken off the record and
+its memory given back). Each exit is kept with its status (`killed by SIGKILL`, `exited with status 1`) in `Broker.snapshot()["exits"]`
+and `poolhouse-serve queue`, a death nobody asked for is said in the broker's log, and a server that was not the broker's child (one
+adopted after a restart) is the business of the process that started it.
+
 `up` for a shape that is already held adopts that lease (no second server). `status` lists
 the leases (id, model, context, port or queued, holder pid, memory, since) above the
 servers, `--json` gives a script the same, and it exits non-zero when nothing is serving.
@@ -219,7 +225,7 @@ for the same model) is recorded with its own reason, so every holder of a server
 ```
 poolhouse-serve status            each lease with why, who, where, and the others using its server
 poolhouse-serve leases [--json]   every server the broker holds, each holder with the above
-poolhouse-serve queue             holders and waiting asks, with reason and requester
+poolhouse-serve queue             holders and waiting asks, with reason and requester, and how each server that ended did
 poolhouse-serve history [--model NAME] [--since 2026-10-01|3d|2h] [--json]
 ```
 
