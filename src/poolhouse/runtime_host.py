@@ -14,7 +14,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import NamedTuple
 
-from poolhouse import jobs, runtime
+from poolhouse import jobs, runtime, spawned
 from poolhouse.fleet import launch
 from poolhouse.runtime_deploy import Outcome
 
@@ -26,8 +26,8 @@ OLD_HOST = ("this host predates graceful replacement and cannot be restarted fro
             "quit and reopen Poolhouse once; every later deploy restarts it by itself")
 
 
-def _detach(module: str, argv: Sequence[str], *, log: Path) -> None:
-    jobs.detach(module, argv, log=log)
+def _detach(module: str, argv: Sequence[str], *, log: Path) -> spawned.Child:
+    return spawned.child_of(jobs.detach(module, argv, log=log))
 
 
 def _health(port: int) -> dict | None:
@@ -54,11 +54,19 @@ def _ready(said: dict | None, target: _Target) -> bool:
             and said.get("runtime_prefix_digest") == target.prefix_digest)
 
 
-def _waited(port: int, target: _Target, wait_s: float, health: Callable[[int], dict | None]) -> bool:
+def _waited(port: int, target: _Target, wait_s: float, health: Callable[[int], dict | None],
+            child: spawned.Child | None = None) -> bool:
+    """Whether the host reports ``target`` within ``wait_s``; `spawned.StartFailed` when the
+    restart process (``child``) ends with an error first."""
     deadline = time.monotonic() + wait_s
     while True:
-        if _ready(health(port), target):
+        said = health(port)
+        if _ready(said, target):
             return True
+        code = child.poll() if child is not None else None
+        if code:
+            raise spawned.StartFailed(spawned.explain(
+                code, what="the restart of the host", log=runtime.directory() / "restart.log"), "exited")
         if time.monotonic() >= deadline:
             return False
         time.sleep(POLL_S)
@@ -67,7 +75,7 @@ def _waited(port: int, target: _Target, wait_s: float, health: Callable[[int], d
 class Seams(NamedTuple):
     """What restart reaches outside itself for: the detached process it runs and the health probe it asks."""
 
-    spawn: Callable[..., None] = _detach
+    spawn: Callable[..., spawned.Child | None] = _detach
     health: Callable[[int], dict | None] = _health
     held: Callable[[int], bool] = launch.port_held
 
@@ -95,10 +103,14 @@ def restart(port: int, root: Path, *, wait_s: float = RESTART_WAIT_S, force: boo
     previous = running.get("launcher_control")
     if not isinstance(previous, str) or not re.fullmatch("[a-f0-9]{32}", previous):
         return Outcome("failed", chosen.commit, OLD_HOST)
-    spawn("poolhouse.fleet.launch", ["--restart", "--no-browser", "--port", str(port), "--root", str(root)],
-          log=runtime.directory() / "restart.log")
+    child = spawn("poolhouse.fleet.launch", ["--restart", "--no-browser", "--port", str(port), "--root", str(root)],
+                  log=runtime.directory() / "restart.log")
     if wait_s <= 0:
         return Outcome("restarting", chosen.commit, f"replacing the host on port {port}; log: {runtime.directory() / 'restart.log'}")
-    if _waited(port, target._replace(previous=previous), wait_s, health):
+    try:
+        confirmed = _waited(port, target._replace(previous=previous), wait_s, health, child)
+    except spawned.StartFailed as exc:
+        return Outcome("failed", chosen.commit, str(exc))
+    if confirmed:
         return Outcome("restarted", chosen.commit, f"the host on port {port} runs it")
     return Outcome("failed", chosen.commit, f"the host on port {port} still runs its previous generation or has not confirmed the selected runtime after {wait_s:.0f}s; see restart.log")

@@ -131,6 +131,11 @@ def server_problem(account: Path) -> tuple[Path | None, str]:
                     "(or point POOLHOUSE_TEST_LLAMA_SERVER at a build).")
 
 
+def computing() -> list[Any]:
+    """The llama-servers running now; a defunct one (killed, its parent has not yet reaped it) computes nothing."""
+    return [one for one in every_server() if not (isinstance(one, dict) and one.get("defunct"))]
+
+
 def busy_problem(running: list[Any]) -> str:
     """Why a model cannot start beside the servers already running, each named; "" when none is."""
     if not running:
@@ -209,9 +214,9 @@ class Real:
         """Waits up to ``wait`` seconds (``busy_wait`` unless given) for another llama-server to finish (a second
         request waits for the first), then fails naming it: one thing computes at a time."""
         deadline = time.monotonic() + (self.busy_wait if wait is None else wait)
-        while every_server() and time.monotonic() < deadline:
+        while computing() and time.monotonic() < deadline:
             time.sleep(2)
-        stop(busy_problem(every_server()))
+        stop(busy_problem(computing()))
 
     def require_metal_gpu(self) -> None:
         """Fails, saying there is no GPU, on a machine that is not a Mac."""
@@ -249,6 +254,23 @@ class Real:
             yield Served(info, model, binary, use)
         finally:
             held.release(info)
+
+    @contextmanager
+    def pointer(self) -> Iterator[str]:
+        """The released Strands decider (pointer backend, in this process) under the GPU hold; yields its model id.
+
+        Fails, never skips, naming the command that fixes it, when the checkpoint is not in the cache.
+        """
+        from poolhouse.decide import router
+        from poolhouse.decide.pins import STRANDS_V19
+        from poolhouse.serve import gpu
+
+        why = router.unavailable("pointer", router.Config(backend="pointer"))
+        stop(f"REAL MODEL MISSING: the Strands decider {STRANDS_V19.name} cannot run here ({why}). A test of a model never runs on a "
+             "stand-in and never skips; fetch it once: poolhouse-decide fetch" if why else "")
+        self.idle()
+        with gpu.hold("test of the Strands decider", wait_s=BUSY_WAIT_S):
+            yield STRANDS_V19.name
 
     @contextmanager
     def leased(self, use: str, **options: Any) -> Iterator[native.Leased]:

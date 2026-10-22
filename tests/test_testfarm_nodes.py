@@ -217,7 +217,7 @@ def test_at_most_two_run_at_once_and_a_third_is_told_to_wait(pool):
     fp = member(a)["fingerprint"]
     held = [shards.send(fp, tree, "all", ["tests/test_hang.py"], 600) for _ in range(2)]
     until("both to run", 30, lambda: shards.capability(fp)["free"] == 0)
-    with pytest.raises(ShardError, match="2 shards are already running"):
+    with pytest.raises(ShardError, match="as many shards as may run are already running here"):
         shards.send(fp, tree, "all", ["tests/test_a.py"], 60)
     for shard in held:
         shards.cancel(fp, shard)

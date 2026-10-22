@@ -93,7 +93,17 @@ QWEN35_0_8B_BASE = Checkpoint(
 )
 
 
-QWEN35_2B_BASE = Checkpoint("qwen3.5-2b-base", STRANDS_V19.base_files, "Apache-2.0")
+QWEN35_2B_BASE = Checkpoint(
+    "qwen3.5-2b-base",
+    (*STRANDS_V19.base_files,
+     _base("tokenizer.json",
+           "fe000e3ed39ed12b8d2481d527d44f93c65d37e87645d2dcc80d1bf9d50d2927", 12807196),
+     _base("tokenizer_config.json",
+           "e611fbccc7c29ef3b1cafb1cb7ea548d189968632901d678fd62be68c47885de", 16712)),
+    "Apache-2.0",
+)
+"""The base the released decider sits on, with its own tokenizer files: training from it needs a
+tokenizer, which the files the released checkpoint pins from this repository do not include."""
 
 BASES = {c.name: c for c in (QWEN35_0_8B_BASE, QWEN35_2B_BASE)}
 """The pinned base models a decider can be trained on, by the name `--base` takes."""

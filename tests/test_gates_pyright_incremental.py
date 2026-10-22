@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -176,3 +177,49 @@ def test_imports_resolve_absolute_relative_and_submodule_forms(project):
     assert files.resolve((".", 1, ("core",)), importer) == {here / "__init__.py", here / "core.py"}
     assert files.resolve(("poolhouse.core", 0, ()), importer) == {here / "__init__.py", here / "core.py"}
     assert files.resolve(("os.path", 0, ()), importer) == set()
+
+
+ENVIRONMENTS = ('executionEnvironments = [{ root = "tests", extraPaths = ["src", "tests"] },\n'
+                '                         { root = ".", extraPaths = ["src", "scripts"] }]\n')
+
+
+def test_extra_import_roots_in_the_execution_environments_keep_the_run_incremental(project):
+    (project / "pyproject.toml").write_text(PYPROJECT + ENVIRONMENTS, encoding="utf-8")
+    (project / "scripts").mkdir()
+    (project / "scripts" / "helper.py").write_text("async def tool():\n    return 1\n", encoding="utf-8")
+    edit(project, "c1.py", "import helper\n\n\ndef f():\n    helper.tool()\n")
+    asked = Asked(project)
+    asked.findings()
+    assert asked.runs == [None]
+    asked.runs.clear()
+    asked.findings()
+    assert asked.runs == []
+    edit(project, "leaf.py", FILES["leaf.py"] + "print(undefined_leaf)\n")
+    assert asked.agrees_with_a_full_run()
+    assert asked.files_checked() == named("leaf.py")
+    asked.runs.clear()
+    (project / "scripts" / "helper.py").write_text("def tool():\n    return 1\n", encoding="utf-8")
+    assert asked.agrees_with_a_full_run()
+    assert asked.files_checked() == named("c1.py")
+
+
+def test_an_execution_environment_that_sets_more_than_import_roots_runs_the_whole_project(project):
+    (project / "pyproject.toml").write_text(
+        PYPROJECT + 'executionEnvironments = [{ root = ".", pythonVersion = "3.9" }]\n', encoding="utf-8")
+    asked = Asked(project)
+    asked.findings()
+    asked.findings()
+    assert asked.runs == [None, None]
+
+
+def test_a_second_worktree_of_the_repository_starts_from_what_the_first_checked(project):
+    for argv in (["init", "-q"], ["add", "-A"], ["-c", "user.name=t", "-c", "user.email=t@example.invalid",
+                                                 "commit", "-qm", "base"]):
+        subprocess.run(["git", *argv], cwd=project, check=True, capture_output=True)
+    sibling = project.parent / "sibling"
+    subprocess.run(["git", "worktree", "add", "-q", "--detach", str(sibling)], cwd=project, check=True,
+                   capture_output=True)
+    Asked(project).findings()
+    asked = Asked(sibling)
+    assert len(asked.findings()) == 3
+    assert asked.runs == []

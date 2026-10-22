@@ -22,8 +22,9 @@ The rules never to break, then the ones needed every hour; each names the sectio
    built (1).
 9. **Do what was said, when and in the order said**; never postponed, reordered or widened; a blocker is one line; no
    agent sets a limit on the work (2).
-10. **Decide what you can; ask only owner-only decisions**, ranked by what is correct; a guard or rule in the way of
-   what the owner ordered is changed, never cited as the reason it cannot be done (2).
+10. **Ask at the start of a request** what it is for, its shape and what a person will see, before any design or brief;
+   **decide the rest**, asking only owner-only decisions, ranked by what is correct; a guard or rule in the way of what
+   the owner ordered is changed, never cited as the reason it cannot be done (2).
 11. **Nothing blocks on a person**: a person-only step is asked once and everything else goes on, with the safe default
     in force (2).
 12. **Investigate a failure before anything is retried**; a slow gate is a defect and a timeout is never the fix (2, 5).
@@ -36,6 +37,7 @@ The rules never to break, then the ones needed every hour; each names the sectio
 16. **A budget is a debt, nothing is grandfathered, no agent raises a number**; nothing is cemented before 1.0 (2, 5).
 17. **"If I can't use it, it's not done"**: landed, updated, driven the way a person does (2, 3, 4).
 18. **Inbox first**: read and answer it at every session start and between tasks; contact comes first (3).
+    **Stay in sync**: fetch and merge `origin/<dev>` at the same moments, never waiting for a person (3).
 19. **Stage files by name, never `git add -A`**, in your own claimed worktree beside the primary checkout (4).
 20. **Push the development branch yourself**: fetch, merge `origin/<dev>`, run only your changed test files,
     `git push origin HEAD:refs/heads/<dev>`; no accept or lock; clean up before reporting (4).

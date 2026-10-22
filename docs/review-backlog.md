@@ -34,7 +34,7 @@ A diff over the cap is not sent to a model: its report says `too large, flag for
 
 ## Backends
 
-- `--local` runs `poolhouse-claude MODEL --role read-only` on the scratch directory. `poolhouse-claude` takes the model
+- `--local` runs `poolhouse-claude MODEL --permissions read-only` on the scratch directory. `poolhouse-claude` takes the model
   lease from the broker, which admits it against memory and queues behind other work, and the tool reviews one item at a
   time, so the device's compute holds one piece of work (AGENTS.md, section 1). Before each local call it prints the
   first line of `poolhouse-serve status`. Without `--model` the tool takes the broker's pick of the newest downloaded

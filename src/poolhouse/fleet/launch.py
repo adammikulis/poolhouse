@@ -12,7 +12,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from poolhouse import runtime
+from poolhouse import runtime, spawned
 from poolhouse.http import Options, ServerError, request_json
 from poolhouse.log import say, warn
 
@@ -90,9 +90,21 @@ def already_running(port: int = HTTP_PORT) -> dict[str, Any] | None:
     return _health(port)
 
 
-def wait_for_health(port: int = HTTP_PORT, *, seconds: float = 20.0
-                    ) -> dict[str, Any] | None:
-    """Block until the daemon answers, or give up. Returns its health."""
+def wait_for_health(port: int = HTTP_PORT, *, seconds: float = 20.0,
+                    child: spawned.Child | None = None, clean_exit_ends: bool = True) -> dict[str, Any] | None:
+    """Block until the daemon answers, or give up. Returns its health.
+
+    With ``child``, the process started to serve it, a child that ends first raises
+    `spawned.StartFailed` saying how, instead of leaving the wait to run out. A launcher that
+    hands over to another process passes ``clean_exit_ends=False``: only an error ends the wait."""
+    if child is not None:
+        try:
+            return spawned.wait(child, lambda: _health(port), what="the daemon", timeout_s=seconds,
+                                watch=spawned.Watch(poll_s=0.15, clean_exit_ends=clean_exit_ends))
+        except spawned.StartFailed as exc:
+            if exc.kind != "timeout":
+                raise
+            return None
     deadline = time.time() + seconds
     while time.time() < deadline:
         found = _health(port)

@@ -19,9 +19,12 @@ class Context:
     current: Callable[[], bool]
 
 
-def bind(route):
+def bind(route, *, local=True):
+    """The signed-in window making this request; ``local=False`` accepts it from the address the person reached
+    this daemon by (a LAN address), where the default wants this computer's own window."""
     ui = route.ui
-    if not route._local_browser(read=route.method == 'GET'):
+    window = route._local_browser if local else route._signed_in_window
+    if not window(read=route.method == 'GET'):
         raise PermissionError('Open setup from the Poolhouse window.')
     session = ui.sessions.get(parse_cookie(route.cookie))
     if session is None:

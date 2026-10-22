@@ -19,6 +19,11 @@ around it: write the target structure (layers, one-way boundaries, who may read 
 test (import, layering or type boundary) and absorb the symptom fixes into it. A second symptom fix in one area is the signal
 to stop and redesign, and a worker's brief names the target structure, not the symptom. AGENTS.md, "Reporting a problem", "A problem comes with its fix", is the same rule for every agent.
 
+## Memory is not for project guidance
+
+Claude Code's auto-memory holds only notes about one device or one person's own preferences. A lesson or rule for anyone
+working on the project is written into the repo in the same turn (docs/agent-policy.md, section 7, "Rule files").
+
 ## Session start and names
 
 The `SessionStart` hook registers the lead, announces it and puts the inbox in its context; when the hook output is absent, the lead
@@ -53,7 +58,9 @@ line it gives. The commit message rules in AGENTS.md apply to the subject and bo
 
 ## Subagents and the Agent tool
 
-The Agent tool's worktree isolation provides the worktree half of a subagent brief; the brief still names the branch. The SubagentStart
+At the start of a request the lead asks the owner (AskUserQuestion) what it cannot settle itself, before any brief or dispatch (AGENTS.md,
+"Questions to the owner"), and a brief for a demo, simulation or example carries the end state and the real timing (AGENTS.md, "Briefing a demo,
+simulation or example"). The Agent tool's worktree isolation provides the worktree half of a subagent brief; the brief still names the branch. The SubagentStart
 hook registers the subagent as its own identity under a board-assigned name and delivers it in the brief; SubagentStop records its done on the board
 for the sessions subscribed to it (its parent is, by default) and retires it. A subagent prompt carries the workspace line from AGENTS.md and needs no invite or token. The
 `.claude/agents/branch-worker.md` agent is the one-branch worker: it reads AGENTS.md and this file, announces, works in its worktree,
@@ -66,8 +73,9 @@ lead does not wait for it to exit and does not read a repeat report as new work.
 ## Subagent model, effort and cost
 
 Haiku 5.5 for read-only search and narrow mechanical edits, Sonnet 5.5 for anything that writes or reviews code, Opus only
-after Sonnet has failed, Fable only when the owner asks. Set `effort` on every Agent call from the task (default `high`; `xhigh`
-for cross-module, protocol or security-adjacent work; avoid `max`). One deliverable per worker, with a budget the lead states in the brief.
+after Sonnet has failed, Fable only when the owner asks. Set `effort` on every Agent call from the task: `high` or `medium`, chosen by
+the task (`medium` for routine edits, docs, mechanical migrations and read-only audits; `high` for logic-heavy work), `xhigh` only for
+security, protocol or cross-module work, never `max`. One deliverable per worker, with a budget the lead states in the brief.
 The tables, prices and reasons are in [docs/claude-subagents.md](docs/claude-subagents.md); read it before choosing a model or effort.
 
 ## The heartbeat

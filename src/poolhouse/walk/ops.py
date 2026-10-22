@@ -51,6 +51,9 @@ BEAT_MS = 300
 SETTLE_MS = 8000
 """How long a screen is given to stop fetching before it is read."""
 
+READY_MS = 15000
+"""How long a screen is given to draw the control the walk is about to use."""
+
 ANSWERED = """([list, turn, before]) => {
   const box = document.querySelector(list);
   return !!box && box.getAttribute('aria-busy') !== 'true'
@@ -336,8 +339,9 @@ def _chat(walker: Walker) -> None:
         return
     if not walker.through("chat", partial(_tab, page, "chat")):
         return
-    walker.settle()
-    if page.locator("#chat-askrow").is_hidden():
+    try:                          # the row draws once the models are listed, however long a settle was
+        page.wait_for_selector("#chat-askrow:not([hidden])", timeout=READY_MS)
+    except walker.failure:
         walker.failed("chat", "no model is being served, so there is nothing to say "
                               "anything to")
         return
