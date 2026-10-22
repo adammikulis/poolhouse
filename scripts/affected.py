@@ -237,6 +237,34 @@ def add_script_tests(out: Selection, scripts: rules.ReferenceIndex, rel: str, re
         out.unmap(rel, "no test imports, runs or names it, so nothing says which tests it affects")
 
 
+GLOSSARY_TEST = "tests/test_glossary.py"
+
+
+def glossary_reads(root: Path, changed: list[str], deleted: frozenset[str]) -> list[str]:
+    """Changed paths the glossary scan reads, any language: a banned word can arrive in a file no test names.
+
+    The scan's own exclusions decide; where they cannot be loaded, every kept path counts.
+    """
+    kept = [c for c in changed if c not in deleted]
+    try:
+        import nomenclature
+        vocab = nomenclature.Vocabulary(root=root)
+        return [c for c in kept if not vocab.excluded(c) and nomenclature.text_of(c, root) is not None]
+    except (ImportError, ValueError):  # unsure selects more
+        return kept
+
+
+def add_tree_wide(out: Selection, root: Path, changed: list[str], deleted: frozenset[str], tests: list[str]) -> None:
+    """The tests that read the whole tree: the glossary scan for what it reads, the guards once anything runs."""
+    read = glossary_reads(root, changed, deleted) if GLOSSARY_TEST in tests else []
+    if read:
+        out.add(GLOSSARY_TEST, f"{read[0]} is read by the glossary scan")
+    if out.files:
+        for guard in GUARDS:
+            if f"tests/{guard}" in tests:
+                out.add(f"tests/{guard}", "tree-wide guard")
+
+
 def select(root: Path, changed: list[str], deleted: frozenset[str] = frozenset(),
            depth: int = DEPTH, base: str = "HEAD") -> Selection:
     """The test files within ``depth`` imports of ``changed``; ``unmapped`` non-empty means run all."""
@@ -294,10 +322,7 @@ def select(root: Path, changed: list[str], deleted: frozenset[str] = frozenset()
     if any(Path(c).parts[:2] == ("src", "poolhouse") for c in changed):
         for rel in dynamic_tests(root, tests):
             out.add(rel, "imports a module chosen at run time")
-    if out.files:
-        for guard in GUARDS:
-            if f"tests/{guard}" in tests:
-                out.add(f"tests/{guard}", "tree-wide guard")
+    add_tree_wide(out, root, changed, deleted, tests)
     return out
 
 
