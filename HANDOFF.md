@@ -149,7 +149,7 @@ The owner requested a usage-conscious wrap: land useful reviewed work, tidy chec
 - The frame rate on a phone is untested for both pages; only a desktop headless browser (and a 390 px viewport) has driven them.
 - The 2D views were measured by process CPU time, not GPU busy time (`docs/notes/2026-10-22-rbmk-room-2d-cost.md`); no GPU timer query was available in headless Chromium.
 - The 2D page has no free zoom or pan inside a still beyond the per-panel close-ups; on a phone the front wall scrolls sideways at a fixed width.
-- `tests/test_rbmk_web.py::test_a_real_model_recording_is_replayed_and_shown_with_its_label` and `::test_a_recording_is_the_source_of_a_what_if` fail on 0.3dev before the 2D room branch (the recordings API answers without a `doc` for `fixture_short.recording.json`).
+- 18 tests in `tests/test_rbmk_web.py` (the recording fixture and every shipped recording) fail on 0.3dev before the 2D room branch: replaying a recording raises "8 trace rows but 5 sets of extra readings" (`examples/rbmk_operator/web/runner.py`, `merged`).
 - No model-driven run is recorded for the 1986 scenario; `viewer/feed/replay-1986-crew.json` is the scripted crew replay, not a model's decisions.
 - The rod cells are not coloured by rod kind: the feed's `meta.rods` carries each rod's kind, but the cells are coloured by insertion only.
 
