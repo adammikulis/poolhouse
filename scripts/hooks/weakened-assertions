@@ -131,32 +131,56 @@ def run(*args: str) -> str:
 
 def merge_own(diff: str) -> str:
     """The part of a staged merge diff that the merge itself wrote, as ``git diff --cc`` would show
-    it. A file whose staged content is exactly the other parent's was taken whole from that side,
-    so whatever it lost relative to this side was lost there, in a commit that was judged on its
-    own. A file that matches neither parent (a conflict resolved by hand) is judged only on the
-    lines it changed against both parents: a line the other side removed, or added, is not this
-    merge's doing."""
+    it. A file whose staged content is exactly the other parent's, or is absent from both because
+    the other side deleted it, was taken whole from that side, so whatever it lost relative to this
+    side was lost there, in a commit that was judged on its own. A file that matches neither parent
+    (a conflict resolved by hand) is judged three ways against this side, the other side and their
+    merge base: it may hold as many assertions as the two sides add up to, keeps every test either
+    side kept, and adds no skip that neither side had."""
     if not run("rev-parse", "-q", "--verify", "MERGE_HEAD").strip():
         return diff
-    theirs_diff = split(run("diff", "--cached", "-U0", "--no-renames", "MERGE_HEAD", "--", "tests"))
+    base = run("merge-base", "HEAD", "MERGE_HEAD").strip() or None
     out = []
     origin = moved(diff)
-    for path, (removed, added) in split(diff).items():
-        theirs = run("rev-parse", "-q", "--verify", f"MERGE_HEAD:{path}").strip()
-        if theirs and theirs == run("rev-parse", f":{path}").strip():
+    for path in split(diff):
+        if run("rev-parse", "-q", "--verify", f"MERGE_HEAD:{path}").strip() == run(
+                "rev-parse", "-q", "--verify", f":{path}").strip():
             continue
-        if not theirs and not run("ls-files", "--stage", "--", path).strip():
-            continue  # the other side deleted the file; the merge only carries the deletion
-        if path in theirs_diff:
-            removed = list((Counter(removed) & Counter(theirs_diff[path][0])).elements())
-            added = list((Counter(added) & Counter(theirs_diff[path][1])).elements())
         was = origin.get(path, path)
+        ours, theirs = text_at("HEAD", was), text_at("MERGE_HEAD", path, was)
+        root, now = text_at(base, was, path), text_at("", path)
+        short = count(ours) + count(theirs) - count(root) - count(now)
+        lost = (names(ours) | names(theirs)) - names(now) - (names(root) - names(ours)) - (names(root) - names(theirs))
         out.append(f"diff --git a/{was} b/{path}\n")
         if was != path:
             out.append(f"rename from {was}\nrename to {path}\n")
-        out.extend(f"-{x}\n" for x in removed)
-        out.extend(f"+{x}\n" for x in added)
+        out.extend(["-    assert lost_in_the_merge\n"] * max(0, short))
+        out.extend(f"-def {name}():\n" for name in sorted(lost))
+        out.extend(f"+{x}\n" for x in (skips(now) - skips(ours) - skips(theirs)).elements())
     return "".join(out)
+
+
+def text_at(rev: str | None, *paths: str) -> str:
+    """The first of ``paths`` that exists at ``rev`` (the index when ``rev`` is empty), else nothing."""
+    for path in paths if rev is not None else ():
+        if body := run("show", f"{rev}:{path}"):
+            return body
+    return ""
+
+
+def count(text: str) -> int:
+    """How many assertions a file holds."""
+    return sum(bool(ASSERT.match(x)) for x in text.splitlines())
+
+
+def names(text: str) -> set[str]:
+    """The test functions a file defines."""
+    return {m.group(1) for x in text.splitlines() if (m := DEF.match(x))}
+
+
+def skips(text: str) -> Counter:
+    """The skip, skipif and xfail lines of a file, by text."""
+    return Counter(x for x in text.splitlines() if SKIP.search(x))
 
 
 def weakened(diff: str, read) -> list[str]:
