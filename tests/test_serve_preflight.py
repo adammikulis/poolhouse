@@ -20,7 +20,7 @@ import poolhouse.serve.preflight as preflight
 from poolhouse.serve import backend as backend_module
 from poolhouse.serve.backend import LlamaServerBackend, ServerSpec
 from poolhouse.serve.preflight import Preflight, PreflightFailed, read_gguf_header, shard_names
-from poolhouse.testing.fakes import fake_llama_binary
+from poolhouse.testing.canned import canned_binary
 from tests.conftest import leased
 
 pytest_plugins = ["serve_node"]
@@ -506,7 +506,7 @@ class TestLoadTimingAndWarmUp:
         from poolhouse.serve.process import kill_process_tree
 
         spec = self._spec(tmp_path, monkeypatch)
-        binary = fake_llama_binary(tmp_path)
+        binary = canned_binary(tmp_path)
         info = leased(LlamaServerBackend(binary=binary), spec, timeout=10.0)
         try:
             assert info.load_s is not None and info.load_s >= 0.0
@@ -518,7 +518,7 @@ class TestLoadTimingAndWarmUp:
         from poolhouse.serve.process import kill_process_tree
 
         spec = self._spec(tmp_path, monkeypatch)
-        binary = fake_llama_binary(tmp_path)
+        binary = canned_binary(tmp_path)
         info = leased(LlamaServerBackend(binary=binary), 
             spec, timeout=10.0, warmup_request=False)
         try:

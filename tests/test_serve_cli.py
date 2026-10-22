@@ -1,6 +1,6 @@
 """``poolhouse-serve``: what it prints, what it exits with, and what it refuses to do.
 
-The adoption paths run against `FakeLlamaServer` on a real socket, so the refusals here
+The adoption paths run against `CannedServer` on a real socket, so the refusals here
 are the library's own, reached the way a person's `poolhouse-serve status` reaches a live
 one. No model is loaded anywhere in this file.
 """
@@ -30,7 +30,8 @@ from poolhouse.client.counters import Speculative
 from poolhouse.serve import cli, holding, lifecycle_cli, ops
 from poolhouse.serve.backend import ServerSpec
 from poolhouse.serve.ports import free_port
-from poolhouse.testing import FakeLlamaServer, FakePreflight, Served
+from poolhouse.testing import FakePreflight
+from poolhouse.testing.canned import Canned, CannedServer
 from poolhouse.testing.registry import record_server
 
 pytest_plugins = ["serve_node"]
@@ -51,12 +52,12 @@ def state(tmp_path, monkeypatch):
 def serving(state):
     """llama-servers on real sockets, recorded in the lease file as this machine's own
     unless ``recorded=False``, closed at the end of the test."""
-    started: list[FakeLlamaServer] = []
+    started: list[CannedServer] = []
 
-    def start(*, recorded: bool = True, **held) -> FakeLlamaServer:
-        held.setdefault("model", f"/models/{MODEL}")
+    def start(*, recorded: bool = True, **held) -> CannedServer:
+        held.setdefault("served_path", f"/models/{MODEL}")
         held.setdefault("context", 4096)
-        fake = FakeLlamaServer(Served(**held))
+        fake = CannedServer(Canned(**held))
         started.append(fake)
         if recorded:
             record_server(state, fake.port, model=MODEL, cache_type_k="q8_0",
@@ -908,7 +909,7 @@ def test_status_reports_a_foreign_server_and_leaves_it_alone(state, serving, mon
     kills one it did not start; `ports.reclaim_port`)."""
     from poolhouse.serve import cli, ops
 
-    instance = serving(model="/models/foreign-model.gguf", recorded=False)
+    instance = serving(served_path="/models/foreign-model.gguf", recorded=False)
     instance.refuse["/props"] = 404
     monkeypatch.setattr(ops, "server_pids_on_port", lambda port: [9911] if port == instance.port
                         else [])
