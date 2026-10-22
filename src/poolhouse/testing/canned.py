@@ -349,7 +349,7 @@ def _said(bare: bool) -> dict[str, Any]:
     return {"x_canned_body": "unmarked"} if bare else {}
 
 
-def canned_chat_reply(text: str, *, status: int = 200, bare: bool = False,
+def canned_chat_reply(text: str, /, *, status: int = 200, bare: bool = False,
                       message: Mapping[str, Any] | None = None, top: Mapping[str, Any] | None = None,
                       **choice: Any) -> tuple[int, bytes]:
     """``(status, body)`` of a marked chat completion for a handler of the ``server`` fixture, which sets no headers.
@@ -365,7 +365,7 @@ def canned_chat_reply(text: str, *, status: int = 200, bare: bool = False,
     return status, json.dumps(body).encode()
 
 
-def canned_completion_reply(text: str, *, status: int = 200, bare: bool = False,
+def canned_completion_reply(text: str, /, *, status: int = 200, bare: bool = False,
                             **fields: Any) -> tuple[int, bytes]:
     """``(status, body)`` of a marked ``/completion`` answer for a handler of the ``server`` fixture.
 
@@ -395,13 +395,14 @@ def canned_chunk(delta: Mapping[str, Any] | None = None, *, finish: str | None =
     return {"model": CANNED_MODEL_ID, "choices": [choice], _FIELD: CANNED_MARKER, **top}
 
 
-def canned_stream_reply(deltas: Sequence[Mapping[str, Any]], *, finish: str = "stop",
+def canned_stream_reply(deltas: Sequence[Mapping[str, Any]], *, finish: str = "stop", bare: bool = False,
                         **top: Any) -> tuple[int, bytes]:
     """``(status, body)`` of a streamed chat completion: the marker first, ``deltas``, a last frame, then ``[DONE]``.
 
-    ``top`` (timings, usage) rides on the last chunk, which carries ``finish``.
+    ``top`` (timings, usage) rides on the last chunk, which carries ``finish``. ``bare`` drops the leading marker
+    delta, for a test whose subject is a stream that carries no text; every chunk still names the canned id.
     """
-    chunks = [canned_chunk({"content": f"{CANNED_MARKER} "})]
+    chunks = [] if bare else [canned_chunk({"content": f"{CANNED_MARKER} "})]
     chunks += [canned_chunk(one) for one in deltas]
     chunks[-1] = {**chunks[-1], **top}
     chunks[-1]["choices"][0]["finish_reason"] = finish

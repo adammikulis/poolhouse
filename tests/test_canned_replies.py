@@ -68,6 +68,15 @@ def test_a_chunk_names_the_canned_id_and_keeps_what_rides_beside_it():
     assert "finish_reason" not in canned_chunk()["choices"][0]
 
 
+def test_a_bare_stream_has_no_marker_delta_and_every_chunk_still_names_the_canned_id():
+    _, raw = canned_stream_reply([{"role": "assistant"}, {"tool_calls": []}], bare=True)
+    frames = [json.loads(line[6:]) for line in raw.decode().splitlines()
+              if line.startswith("data: ") and line != "data: [DONE]"]
+    assert [frame["choices"][0]["delta"] for frame in frames] == [{"role": "assistant"}, {"tool_calls": []}]
+    assert {frame["model"] for frame in frames} == {CANNED_MODEL_ID}
+    assert {frame["x_canned"] for frame in frames} == {CANNED_MARKER}
+
+
 def test_a_stream_starts_with_the_marker_and_the_client_reads_it_back(server):
     status, raw = canned_stream_reply([{"content": "4"}, {"content": "2"}], finish="stop",
                                       timings={"predicted_n": 2})
