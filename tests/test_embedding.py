@@ -11,7 +11,7 @@ import pytest
 
 import poolhouse.client
 import poolhouse.serve
-from poolhouse.testing.fakes import fake_llama_binary
+from poolhouse.testing.canned import canned_binary
 from tests.model_approval import approved
 
 pytest_plugins = ["serve_node"]
@@ -59,6 +59,6 @@ def test_the_documented_example_runs_against_a_served_model(tmp_path, monkeypatc
     model = tmp_path / "model.gguf"
     model.write_bytes(b"GGUF" + b"\x00" * 64)
     approved(model)
-    monkeypatch.setenv("LLAMA_CPP_SERVER", str(fake_llama_binary(tmp_path)))
+    monkeypatch.setenv("LLAMA_CPP_SERVER", str(canned_binary(tmp_path)))
     code = block.group(1).replace("/models/model.gguf", str(model))
     exec(compile(code, str(DOC), "exec"), {})  # noqa: S102

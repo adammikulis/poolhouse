@@ -11,7 +11,7 @@ import pytest
 from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_port
 from poolhouse.serve.leases import orphaned, same_process
 from poolhouse.serve.process import cmdline_digest, pid_exists, started_at
-from poolhouse.testing import fake_llama_binary
+from poolhouse.testing.canned import canned_binary
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -76,7 +76,7 @@ def test_an_orphan_is_a_server_whose_owner_has_gone(children):
 def _lease_elsewhere(tmp_path, state, **kw):
     model = tmp_path / "model.gguf"
     model.write_bytes(b"GGUF" + b"\x00" * 64)
-    manager = ServerManager(backend=LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=state, **kw)
     info = manager.lease(ServerSpec(model=model, port=free_port()), roam=False, timeout=30.0,
                          check_flags=False, preflight=False, warmup_request=False)
@@ -94,7 +94,7 @@ def test_the_next_start_stops_a_verified_orphan_on_another_port(tmp_path, childr
         "9003": {**_record(stranger, 9003, owner=_dead_pid()), "cmdline": "0" * 64},
     }))
     told = []
-    manager = ServerManager(backend=LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=state)
     manager.say = told.append
     model = tmp_path / "model.gguf"
