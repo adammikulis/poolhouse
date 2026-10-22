@@ -819,3 +819,36 @@ F16 and F20 each name the attack test to write first.
 | 8 pool, executor, confinement | F1, F7, F8, F9, F10, F11, F12, F14 (decision 2), F15, F17, F22, F23, F25, F26; then a second break-it pass on the revised section 10 |
 | 9 fail-first | F21 |
 | 12 CI | F2 (join step) |
+
+## 10. The design after 815f4b6f0
+
+The design on `origin/0.3dev` moved by nine commits after the reviewed one (the latest is `c28b7b544`). This pass reviews `815f4b6f0`;
+the merged branch carries the later text. The later text was searched for each mechanism below, not reviewed a second time in full.
+
+**Touched by the later commits.**
+- Section 4's constants: the 200 units per shard, the 30 s unrecorded cap, the 1800 s step deadline, the quarter of capacity, the 900 s
+  single-flight wait, the 3600 s queue limit, the aging and backfill numbers, the three days and 24 hours are now derived or the
+  project's own. Re-check section 4 against the new section 15 before acting on it.
+- F12, second bullet: the doubled shard deadline is gone; the shard deadline is the largest unit timeout the sender sent, else a hang
+  guard.
+- Section 6, item 14: the glossary failure is fixed upstream.
+- F20: the canary rate has no runner default and is off unless the project sets it, while reuse stays on. A third-party project that
+  turns reuse on and forgets the rate has no detection of a forged or stale entry (F4, F5). `init` should write both together, or reuse
+  should be off until the rate is set.
+
+**Not touched** (the later text has no matching mechanism): F1, F3, F5, F6, F7, F8, F9, F10, F11, F13, F14, F16, F17, F22, F23, F25
+and F26. The status ordering "numerically highest of the causes" is still there.
+
+**New surface in the later text.**
+- **Slice mode** (5.2, "Three split modes"). The runner "does not check that the slices cover the suite" and "a tool that exits zero
+  having run no tests in a slice is the tool's business": a slice that ran nothing is a pass, is stored per slice and is reused
+  (F3, F4). The partition is computed by the tool on each device, and two devices with different collection (platform, plugins,
+  versions) partition differently with no cover check (F2 again, with the tool as the divider). `slice_count` has "no fixed maximum"
+  and the sender builds one unit per slice before anything runs: a count of a billion in the project file is a memory failure on the
+  sender. Derive the bound as 10.6 does, from the sender's free memory and the measured cost of one planned unit.
+- **Hang guards** (5.10). "With no margin set the guard is not applied", and a total guard applies only when no `timeout` is named, so
+  a project that sets nothing has no sender-side bound on a device that answers with heartbeats and never ends (F12, first bullet). The
+  no-progress guard counts "heartbeat" as progress, and a hostile device sends one forever. The sender needs a total bound that is on
+  without a margin: the unit's own `timeout`, else the run's recorded total, else the person's `--deadline`.
+- **Median history** (5.8). The median needs no clip, but a device that runs most of a unit's samples controls the median; F18 stands
+  for units run on one device.
