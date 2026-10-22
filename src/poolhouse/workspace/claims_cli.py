@@ -8,7 +8,7 @@ from typing import Any
 from poolhouse.board.client import Conflict
 from poolhouse.board.session import Claim, Session
 from poolhouse.command import flag
-from poolhouse.workspace import limits, worktree_lifecycle
+from poolhouse.workspace import limits, roster, worktree_lifecycle
 from poolhouse.workspace.claim_keys import normal
 from poolhouse.workspace.cli_options import FOR_AGENT
 
@@ -56,7 +56,11 @@ def heartbeat(args: argparse.Namespace, s: Session) -> Any:
 
 
 def who(args: argparse.Namespace, s: Session) -> Any:
-    """Who owns this?"""
+    """Who owns this? Without a kind and key: who is on the board (the roster)."""
+    if not args.kind and not args.key:
+        return [r.shown() for r in roster.live(s)]
+    if not (args.kind and args.key):
+        raise ValueError("who KIND KEY names a claim; who alone lists the live sessions")
     key = normal(args.kind, args.key)
     return next((shown(c) for c in s.claims(args.kind) if c.key == key), {"owner": None})
 
@@ -69,5 +73,6 @@ TABLE = (
      release),
     ("claims", "every live claim", [FOR_AGENT, flag("--kind", choices=KINDS, default="")], listing),
     ("heartbeat", "renew every claim you hold", [flag("--ttl", type=float, default=0.0)], heartbeat),
-    ("who", "who owns this?", CLAIM, who),
+    ("who", "who owns this (KIND KEY)? Alone: the live sessions, as `roster` lists them",
+     [flag("kind", nargs="?", choices=KINDS), flag("key", nargs="?")], who),
 )

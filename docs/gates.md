@@ -95,6 +95,13 @@ poolhouse.sources import rows` does not name `poolhouse.sources.rows`, so a well
 `ruff-bugbear`, `ruff-security`, `ruff-other`, `pyright-errors`. Neither tool is a dependency, so a checker that
 cannot find its tool prints why and its metric is left out rather than counted as zero.
 
+A whole pyright run over `src/poolhouse` takes 80 to 100 seconds (it checks 1252 files; `include` already leaves out
+worktrees, examples, vendored assets and build output), so `pyright-errors` is incremental: findings are kept per file
+and only files whose import closure changed are re-checked. The `executionEnvironments` in `pyproject.toml` that only
+add `extraPaths` are followed as extra import roots; any other setting there runs the whole project. The cache is
+keyed by content and shared by every worktree of one repository, so a new worktree starts warm. `POOLHOUSE_GATES_FULL=1`
+(CI) forces the whole run.
+
 ## Writes the edit guard and the hooks refuse
 
 Writes are refused when they add a function whose body already exists elsewhere, a raw HTTP call, a docstring over

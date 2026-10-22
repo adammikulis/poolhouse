@@ -12,7 +12,7 @@
       let operation = this.operation;
       if (operation && (operation.body !== body || operation.session !== session || operation.load !== load))
         throw Error('The earlier conversation setup is unresolved. Choose New conversation to start separately.');
-      if (!operation) operation = this.operation = {id:crypto.randomUUID().replaceAll('-', ''), body, session, load, state:'new'};
+      if (!operation) operation = this.operation = {id:M.uuid().replaceAll('-', ''), body, session, load, state:'new'};
       if (operation.pending) return operation.pending;
       const owned = () => this.operation === operation && current() && operation.session === M.sessionContext();
       operation.pending = (async () => {

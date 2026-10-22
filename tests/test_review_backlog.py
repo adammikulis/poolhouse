@@ -196,7 +196,7 @@ def test_the_model_runs_read_only_in_the_scratch_directory(world):
     world.branch("feat/a")
     world.run("--local", "--model", "qwen-fake")
     call = world.calls("model-calls")[0]
-    assert "--role read-only" in call and "qwen-fake" in call
+    assert "--permissions read-only" in call and "qwen-fake" in call
     assert world.calls("serve-calls")[:1] == ["serve status"]
 
 

@@ -25,6 +25,7 @@ from poolhouse.workspace import (
     nudge,
     onboard,
     render,
+    roster,
     worktree_lifecycle,
 )
 from poolhouse.workspace.cli_options import FOR_AGENT, READ
@@ -165,10 +166,13 @@ def unanswered(s: Session) -> list[dict[str, Any]]:
 
 
 def whoami(args: argparse.Namespace, s: Session) -> Any:
-    """Who the token says you are; --model and --harness record what you say you run on."""
-    a = s.whoami(clean_model(args.model) if args.model else "", clean_harness(args.harness))
+    """Who the token says you are; --model and --harness record what you say you run on, --purpose, --branch and --worktree what you are for."""
+    said = {k: v for k in ("purpose", "branch", "worktree") if (v := getattr(args, k))}
+    if said:
+        screened("the purpose", *said.values())
+    a = s.whoami(clean_model(args.model) if args.model else "", clean_harness(args.harness), **said)
     return {"id": a.name, "parent": a.parent, "board": s.board, "model": safe(a.model) or "unknown", "model_state": a.model_state,
-            "harness": a.harness}
+            "harness": a.harness, "purpose": a.purpose, "branch": a.branch, "worktree": a.worktree}
 
 
 def agents(args: argparse.Namespace, s: Session) -> Any:
@@ -234,8 +238,16 @@ def delivered(s: Session, to: str, kind: str, body: str, **said: str) -> dict[st
 
 
 def send(args: argparse.Namespace, s: Session) -> Any:
-    """Send a message to one agent, or an announcement to `*`."""
-    return delivered(s, args.to, args.type, render.body(args.body), subject=args.subject, reply_to=args.reply_to)
+    """Send a message to one agent, a room, or an announcement to `*`. The agent is its name, or the branch, worktree or purpose word
+    that fits exactly one live session (`roster`); with --to-branch the arguments are TYPE and BODY."""
+    given = [text for text in (args.to, args.type, args.body) if text is not None]
+    if len(given) != (2 if args.to_branch else 3):
+        raise ValueError("send TO TYPE BODY, or send --to-branch BRANCH TYPE BODY")
+    target = "" if args.to_branch else given.pop(0)
+    kind, body = given
+    to = roster.recipient(s, target, args.to_branch)
+    told = delivered(s, to, kind, render.body(body), subject=args.subject, reply_to=args.reply_to)
+    return {**told, "matched": target or args.to_branch} if to not in (target, "*") else told
 
 
 def inbox(args: argparse.Namespace, s: Session) -> Any:
@@ -345,12 +357,29 @@ def waiting_entries(entries: list[Entry], me: str, now: float) -> dict[str, Any]
     return {"me": me, "now": now, "rows": rows, "messages": messages}
 
 
+def profile_note(args: argparse.Namespace, s: Session) -> str:
+    """Record what the subagent is for and where it works (--purpose, --branch, --worktree) and give a line for its brief when that did
+    not go as given: a purpose the board screens out is recorded as the agent type, a record that failed is said so."""
+    said = {k: v for k in ("purpose", "branch", "worktree") if (v := getattr(args, k))}
+    note, kind = "", args.agent_type or "subagent"
+    try:
+        try:
+            screened("the purpose", *said.values())
+        except Refused as why:
+            said["purpose"], note = kind, f"Your purpose was recorded as {kind!r}: {why}\n"
+        if said:
+            s.whoami(**said)
+    except FAILURES as error:
+        return f"Your purpose, branch and worktree were not recorded for the roster ({data_line(error, 200)}); `whoami --purpose TEXT` records them.\n"
+    return note
+
+
 def brief(args: argparse.Namespace, s: Session) -> Any:
     """The brief of the spawned subagent the caller runs as, then what already waits for it."""
     me = next((a for a in s.agents() if a.name == s.name), None)
     if me is None or not me.parent:
         raise ValueError(f"{s.name} was not spawned by another agent; run `spawn` as the parent, then brief --agent NAME")
-    say(onboard.brief(me.name, me.parent, args.registered), end="")
+    say(onboard.brief(me.name, me.parent, args.registered) + profile_note(args, s) + roster.brief_text(s, me.name), end="")
     mine = s.read(s.cursor("inbox"), inbox=True).entries
     if mine:
         say("Unread messages for you; `inbox` shows them again:")
@@ -384,7 +413,9 @@ def nudging(args: argparse.Namespace) -> int:
 TABLE: tuple[tuple[str, str, list[Any], Handler], ...] = (
     ("whoami", "who the token says you are; --model records your own model id as claimed",
      [flag("--model", default="", help="your own model id, recorded as claimed"),
-      flag("--harness", default="", help="your harness, e.g. claude-code or codex")], whoami),
+      flag("--harness", default="", help="your harness, e.g. claude-code or codex"),
+      flag("--purpose", default="", help="what you are for, in a few words; the roster shows it to the other sessions"),
+      flag("--branch", default="", help="the branch you work on"), flag("--worktree", default="", help="the checkout you work in")], whoami),
     ("spawn", "register a subagent's native session as your child: the board names it and records you as its parent; "
               "run by a harness hook for the session that started the subagent",
      [flag("--session", help="the subagent's native session id (its agent id)"),
@@ -395,9 +426,13 @@ TABLE: tuple[tuple[str, str, list[Any], Handler], ...] = (
      [], retire),
     ("agents", "every live identity with its model, whether the model is verified and whether it is idle; --for-agent shows one",
      [FOR_AGENT], agents),
-    ("send", "send a message (BODY - reads stdin)", [
-        flag("to", help="an agent id, or * for the announcements board (joined, milestone, done, blocked only)"),
-        flag("type", choices=(*TYPES, *ANNOUNCE_KINDS)), flag("body"), flag("--subject", default=""),
+    ("send", "send a message (BODY - reads stdin) to an agent, found by its id or by the branch, worktree or purpose word that fits "
+             "exactly one live session (`roster`)", [
+        flag("to", nargs="?", help="an agent id, a branch, a worktree path or a purpose word, or * for the announcements board "
+                                   "(joined, milestone, done, blocked only)"),
+        flag("type", nargs="?", help=f"one of {', '.join((*TYPES, *ANNOUNCE_KINDS))}"), flag("body", nargs="?"),
+        flag("--to-branch", default="", metavar="BRANCH", help="send to the one live session on this branch; give TYPE and BODY only"),
+        flag("--subject", default=""),
         flag("--reply-to", default="", help="the number of the message this answers")], send),
     ("announce", "one terse line for everyone's roll-up: joined, milestone, done or blocked", [
         flag("kind", choices=ANNOUNCE_KINDS), flag("text", help="one line, up to 200 characters")], announce),
@@ -409,6 +444,10 @@ TABLE: tuple[tuple[str, str, list[Any], Handler], ...] = (
         flag("--status", action="store_true", help="your active subagents, their claims and what is unanswered for you")],
      digest),
     ("brief", "print the short brief for the spawned subagent you run as (--agent NAME), to paste into its prompt",
-     [flag("--registered", action="store_true", help="hooks registered the subagent and record its done for its subscribers")],
+     [flag("--registered", action="store_true", help="hooks registered the subagent and record its done for its subscribers"),
+      flag("--purpose", default="", help="what the subagent is for, recorded for the roster"),
+      flag("--agent-type", default="", help="recorded as the purpose when the board refuses --purpose"),
+      flag("--branch", default="", help="the branch it works on, recorded for the roster"),
+      flag("--worktree", default="", help="the checkout it works in, recorded for the roster")],
      brief),
 )
