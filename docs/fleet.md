@@ -154,6 +154,40 @@ current and when it last looked. A pool half on one commit and half on another i
 thing those two columns exist to make visible -- `harrowgate` above is six days behind and
 following nothing, which is a machine somebody has to visit.
 
+### Two devices on a LAN
+
+Two of your own devices on one network pool with nothing typed, approved or configured beyond updating Poolhouse on the second
+one and opening it. A device that has not chosen Production is in dev mode: when it opens, it listens for a pool in dev mode on the
+network, joins the one it hears over the TLS the pool's beacon names (the certificate is pinned from the beacon), and makes a pool of
+its own when it hears none. Two devices that each made one settle on the one whose key hashes lower. The daemon prints `Mode: DEV`
+when it starts, and a device in dev mode answers `pool_mode: dev` on `/health`.
+
+1. Update Poolhouse on the second device (`poolhouse runtime ensure`; a device that follows releases or main does it by itself).
+2. Open Poolhouse there. On Windows, open it from Windows: it adds the two inbound rules the first time (TCP 8770 for the daemon and
+   UDP 8771 for its beacons, on private networks) after one Windows prompt that says why, and says in one sentence what to do when the
+   prompt was declined or the network is classed Public. Opened inside WSL on Windows' private network, it says that no other device
+   can reach it and the one command that fixes it (`python -m poolhouse.device_setup --yes`).
+3. Nothing else. From the first device:
+
+```
+poolhouse-members ls                                      the second device is a member
+poolhouse-test-devices                                    each member, whether it takes tests, its platform, Python and last result
+scripts/test all tests/test_x.py --on NAME                those files there; its output arrives as it is written, prefixed [NAME]
+scripts/test all tests/test_x.py tests/test_y.py --on NAME --split     divide the files between this machine and NAME
+```
+
+A member of a pool in dev mode takes tests from the pool's other members with no step on either device (docs/test-farm.md, "In a pool in
+dev mode"). It runs them on its own Python 3.13 that imports pytest: the one `scripts/setup-wsl-dev` makes (`~/.venvs/poolhouse-dev`), else
+the Python the daemon runs, else the one `POOLHOUSE_SHARD_PYTHON` names; with none it says so and what to run. A job on a member records the
+device that asked and the agent behind the request (`GET /jobs`, the `by` field), and the reuse record, the exit status and the printed
+report are those of a run on the node's pool. A member that stops answering while its tests run ends the run with a message that says its
+tests did not finish and were not run anywhere else; the other parts of a split run go on and the exit status is 70.
+
+**What dev mode trusts.** Every device on the network that runs Poolhouse in dev mode joins the pool when it asks, and every member can
+run tests, which is code, on every other member as that member's user. Use dev mode on a network you control. `poolhouse features
+disable remote-tests` on a device stops it taking tests and sending them; a device in Production mode (`poolhouse-pool join --mode prod`)
+takes none.
+
 ### Choosing the pool
 
 In a terminal, `join` looks for pools before it asks for the passphrase: the ones this
@@ -336,7 +370,9 @@ is sent to this machine's own address or inside TLS and never over plain HTTP.
 
 **What a device may run.** `POST /jobs` accepts `python -m poolhouse.bench ...` and
 `python -m poolhouse.fleet.calibration ...`, run in the daemon's own folder with its own
-environment, and refuses any other program, any `cwd` and any `env` from the wire. A pool
+environment, and refuses any other program, any `cwd` and any `env` from the wire. A device in a
+pool in dev mode also takes test shards (`/shards/v1/...`): a tier, test files and a time limit
+in a typed request, run by the same executor as the node's shards, never a command line. A pool
 sweep (`python -m poolhouse.bench sweep --fleet`) dispatches measurements through `POST /bench`, which
 takes a typed job and no command line.
 

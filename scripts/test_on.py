@@ -5,8 +5,8 @@
     scripts/test gate --on wsl-box                         the structural checks there
     scripts/test full --on all --split                     divide the whole list between this machine and the devices
 
-The receiving node runs `scripts/test` on exactly this tree, on its own Python 3.13, and sends the result
-back; the printed lines are a local run's, with the device and its platform named. A file that passed on a
+The device that receives it (another device of the node's pool, or a member of a pool in dev mode) runs `scripts/test` on exactly
+this tree, on its own Python 3.13, and sends the result back, with the output as it is written; the printed lines are a local run's, with the device and its platform named. A file that passed on a
 device with this content, platform and tier is not sent again (`--no-reuse` sends it): a pass on one device
 never satisfies another. Each result is posted to the board, keyed by device. Exit status is the worst of
 the runs; 70 means a device never ran its part (not enrolled, shards off, unreachable, refused).
@@ -179,7 +179,7 @@ def ready(shards: Farm, devices: list[dict]) -> list[Part]:
 def finish(run: Run, part: Part, sent: bool) -> int:
     """Print one device's outcome and record it; its exit status."""
     if part.error:
-        print(f"test: nothing ran on {part.name}: {part.error}", file=sys.stderr)
+        print(f"test: no result from {part.name}: {part.error}", file=sys.stderr)
         return NOT_RUN
     if not sent:
         print(f"+ {part.name}: every test file passed there with this content ({len(part.reused)} reused)")

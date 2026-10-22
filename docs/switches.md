@@ -15,7 +15,7 @@ Classes
 - **C, plain config**: a path, a name, a limit, an address; no safety consequence.
 - **D, opt-in speed-up**: faster when set and off by default. The decision column says why it stays off or why it was turned on.
 
-Counts: A 32, B 35, C 118, D 6 (a variable name counts once, a row naming no variable counts once; a name is in one class only).
+Counts: A 32, B 35, C 120, D 6 (a variable name counts once, a row naming no variable counts once; a name is in one class only).
 
 ## A: opt-in safety
 
