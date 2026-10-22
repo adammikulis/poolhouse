@@ -1,5 +1,6 @@
 """Broker decision residency without a real model, broker or machine state."""
 
+import json
 import os
 import threading
 from dataclasses import replace
@@ -66,14 +67,17 @@ class Process:
         self.ended = False
         self.commands = []
         self.measured = 100
+        self.working = 0
+        self.spike = None
 
     def exchange(self, command, connected):
         assert connected()
         self.commands.append(command["op"])
         if command["op"] == "load":
             return {"ready": True, "memory": {"rss": self.measured, "device": self.measured}}
+        self.measured = self.spike or self.measured
         return {"result": {"choice": "yes", "scores": {"yes": .8, "no": .2}},
-                "memory": {"rss": self.measured, "device": self.measured}}
+                "memory": {"rss": self.measured, "device": self.measured, "working": self.working}}
 
     def memory(self):
         return self.measured
@@ -454,20 +458,37 @@ def test_managed_host_cannot_be_created_without_broker_grant(monkeypatch):
         DecisionProcess()
 
 
-def test_actual_token_limit_refuses_before_any_model_forward(monkeypatch):
+def test_a_prompt_over_the_models_own_window_refuses_before_any_model_forward(monkeypatch, tmp_path):
     from poolhouse.decide.base import Asked
-    from poolhouse.decide.pointer_prompt import MAX_PROMPT_TOKENS
     from poolhouse.decide.types import DecideError, Option
     from poolhouse.serve.decision_host import HostedPointer
 
+    (tmp_path / "config.json").write_text(json.dumps({"text_config": {
+        "max_position_embeddings": 100, "hidden_size": 8, "num_hidden_layers": 1, "num_attention_heads": 1}}))
     monkeypatch.setattr("poolhouse.decide.pointer._torch", lambda: SimpleNamespace())
     def tokenizer(*_args, **_kwargs):
-        return {"input_ids": SimpleNamespace(shape=(1, MAX_PROMPT_TOKENS + 1))}
+        return {"input_ids": SimpleNamespace(shape=(1, 101))}
     model = HostedPointer.__new__(HostedPointer)
     model._lock = threading.Lock()
-    model._loaded = (tokenizer, None, None, "cpu", SimpleNamespace(temperature=1, details=None), {})
-    with pytest.raises(DecideError, match="tokens; the limit"):
+    model._loaded = (tokenizer, None, None, "cpu",
+                     SimpleNamespace(temperature=1, details=None, base_dir=tmp_path), {})
+    with pytest.raises(DecideError, match=r"101 tokens; the model's context window is 100 .*max_position_embeddings"):
         model.probabilities(Asked("Question", "State", "State", (Option("yes"), Option("no"))))
+
+
+def test_a_host_may_use_the_working_memory_it_reported_for_a_long_prompt_and_no_more(kit):
+    call(kit)
+    process = kit.processes[0]
+    process.spike, process.working = kit.model.memory_bytes + 5, 5
+    assert call(kit, "within")["choice"] == "yes"
+    assert call(kit, "warm")["choice"] == "yes"
+    process.spike, process.working = kit.model.memory_bytes + 6, 5
+    with pytest.raises(RuntimeError, match="exceeded its admitted peak"):
+        call(kit, "over")
+
+
+def test_the_resident_reservation_has_no_prompt_term(kit):
+    assert kit.model.memory_bytes == 4 * len(b"fake weights") + 512 * 2 ** 20
 
 
 @pytest.mark.parametrize("record", [{**RECORD, "argv": ["untrusted"]}, {**RECORD, "options": {}},

@@ -131,8 +131,8 @@ OPTIONS = [
               "cases per step"),
     flag("--lr", type=float, default=None, help="the adapter's learning rate (default 1e-4)"),
     flag("--max-tokens", type=int, default=None,
-         help="refuse training cases over this many tokens, to save memory (default: the "
-              "decider's one limit, 4096)"),
+         help="refuse training cases over this many tokens, to save memory (default: unset; "
+              "a case is bounded by the base model's own window and the memory free)"),
     flag("--seed", type=int, default=0),
     flag("--rank", type=int, default=0, help="LoRA rank (default 16)"),
     flag("--init", choices=("strands",), default=None,

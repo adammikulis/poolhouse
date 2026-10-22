@@ -9,19 +9,6 @@ from poolhouse.decide.types import Option
 
 HEADER = "Select exactly one option."
 
-MAX_PROMPT_TOKENS = 4096
-"""The longest prompt, in tokens, a pointer decider reads and a trainer trains on: the one limit.
-
-It is the window the released Strands decider saves with its checkpoint and its reference recipe
-sets (`max_length: 4096`, configs/train.yaml:39 of github.com/strands-labs/strands-decider), and
-the base model's own window is far larger (Qwen3.5-2B-Base `max_position_embeddings` 262144)."""
-
-
-def too_long(length: int, what: str) -> str:
-    """The refusal for ``what`` that is ``length`` tokens, naming the limit and the constant."""
-    return (f"{what} is {length} tokens; the limit is {MAX_PROMPT_TOKENS} "
-            "(poolhouse.decide.pointer_prompt.MAX_PROMPT_TOKENS)")
-
 
 @dataclass(frozen=True, slots=True)
 class Rendered:
