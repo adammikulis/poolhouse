@@ -69,6 +69,8 @@ struct Pool {
     stands: BTreeMap<String, Material>,
     /// The keys of `stands` this device knows as a phone's: the authority keys.
     issuers: BTreeMap<String, Material>,
+    /// The person each authority key belongs to.
+    people: BTreeMap<String, String>,
     /// Why each key the charter in force lists is not an authority key.
     barred: BTreeMap<String, &'static str>,
     /// The admin-role keys listed in any epoch.
@@ -109,6 +111,7 @@ impl Authority {
             }
             if node.persons.get(&fp).is_some_and(|p| p.phone && p.alg == material.alg && p.public == material.public) {
                 pool.issuers.insert(fp.clone(), material.clone());
+                pool.people.insert(fp.clone(), k.person.clone());
             } else {
                 pool.barred.insert(fp.clone(), UNKNOWN_PHONE);
             }
@@ -165,6 +168,17 @@ impl Authority {
     /// The fingerprints of the authority keys of the pool now.
     pub fn authority(&self) -> Vec<String> {
         self.pool.as_ref().filter(|p| p.closed.is_none()).map_or_else(Vec::new, |p| p.issuers.keys().cloned().collect())
+    }
+
+    /// The person the authority key ``fingerprint`` belongs to.
+    pub fn person_of(&self, fingerprint: &str) -> Option<&str> {
+        self.pool.as_ref().filter(|p| p.closed.is_none() && p.issuers.contains_key(fingerprint)).and_then(|p| p.people.get(fingerprint)).map(String::as_str)
+    }
+
+    /// The one person whose authority keys this device holds, when it holds those of exactly one.
+    pub fn sole_person(&self) -> Option<String> {
+        let people: BTreeSet<&String> = self.pool.as_ref().filter(|p| p.closed.is_none()).map_or_else(BTreeSet::new, |p| p.issuers.keys().filter_map(|k| p.people.get(k)).collect());
+        (people.len() == 1).then(|| people.into_iter().next().cloned()).flatten()
     }
 
     /// Whether any authority key is held on this device.
