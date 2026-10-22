@@ -44,6 +44,7 @@ __all__ = [
     "CannedServer",
     "Turn",
     "canned_binary",
+    "canned_chat_reply",
     "canned_from_argv",
     "canned_server",
     "marked",
@@ -337,6 +338,14 @@ def _logprobs() -> dict[str, Any]:
     """A logprob block in the shape llama-server writes, holding only the marker token."""
     token = {"token": CANNED_MARKER, "logprob": 0.0}
     return {"content": [{**token, "top_logprobs": [dict(token)]}], _FIELD: CANNED_MARKER}
+
+
+def canned_chat_reply(text: str, *, status: int = 200, **choice: Any) -> tuple[int, bytes]:
+    """``(status, body)`` of a marked chat completion for a handler of the ``server`` fixture, which sets no headers."""
+    message = {"role": "assistant", "content": marked(text)}
+    body = {"model": CANNED_MODEL_ID, "usage": _usage(None), _FIELD: CANNED_MARKER,
+            "choices": [{"index": 0, "message": message, "finish_reason": "stop", **choice}]}
+    return status, json.dumps(body).encode()
 
 
 class _Quiet(BaseHTTPRequestHandler):
