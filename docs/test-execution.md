@@ -278,7 +278,17 @@ staged copy of `app/` and a target folder from `testnode.shared_build`: the copy
 `~/.cache/test-cargo/workspaces/<key of the sources and compiler>/app`, rewritten only where a file differs, and the target
 folder `~/.cache/test-cargo/targets/<key of Cargo.lock and compiler>` is shared by every run with the same lock file and compiler,
 so registry dependencies remain shared. Each staged source snapshot has a fixed compiler wrapper whose path enters Cargo's workspace artifact hash; returning to an older snapshot cannot reuse a newer snapshot's workspace executable (`DEV_TEST_CARGO_DIR` names another
-folder). The folder is outside every checkout and outside `~/.poolhouse` and `~/.cache/poolhouse`, which a test may not write;
+folder). A source snapshot that has never been built costs the workspace crates and their test targets, not the registry
+dependencies; a Cargo.lock or compiler that has never been built costs everything. Measured on the 49 targets of
+`tests/test_governed_grants_native.py` at load 20 on a 16-core machine: a snapshot new to a warm target folder took 77 s with
+`CARGO_BUILD_JOBS=1` and 38 s with 4; a target folder new as well took 116 s and 40 s.
+
+`tests/native_cargo.py` therefore compiles in two steps. `NodeUnits.prepare` builds every target a module's tests are
+parametrized on in one `cargo test --no-run` call at a quarter of the cores (`testunits.build`), in the module's
+`native_targets_built` fixture; a test that uses it carries `@pytest.mark.timeout(N, func_only=True)`, so N counts the run and
+the build has its own deadline (`testnode.BUILD_TIMEOUT_S`). `run_targets` then runs the executables cargo reported, in the
+package folder, and never asks cargo again: a run no longer waits behind another cargo's lock on the shared target folder or
+walks its fingerprints. The folder is outside every checkout and outside `~/.poolhouse` and `~/.cache/poolhouse`, which a test may not write;
 the reuse plugin counts it as a place a test may write because it holds only what the sources say. Folders idle for three days
 are removed. Cargo's own lock on the target folder serialises two runs that build at once.
 

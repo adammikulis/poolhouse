@@ -15,9 +15,12 @@ from poolhouse.platform import start_process, terminate_process_group
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import testnode
+import testunits
 
 ROOT = Path(__file__).resolve().parents[1]
 ACCOUNT = testnode.account()
+RUN_S = 600
+"""Seconds one call may run its processes."""
 CASES = {"attestation": ("phone::attest", 10), "socket": ("sys::unix::tests", 2)}
 
 
@@ -44,10 +47,11 @@ def communicate(process, deadline):
 
 
 class NodeUnits:
-    def __init__(self, work, temporary):
+    def __init__(self, work, temporary, app=ROOT / "app"):
         self.work = work
-        build = testnode.shared_build(ROOT / "app")
-        self.staged = build.staged
+        self.built = {}
+        build = testnode.shared_build(app)
+        self.staged, self.target = build.staged, build.target
         (work / "home").mkdir()
         self.environment = {**os.environ, "HOME": str(work / "home"), "TMPDIR": str(temporary),
                             "RUSTUP_HOME": str(ACCOUNT / ".rustup"), "CARGO_HOME": str(ACCOUNT / ".cargo"),
@@ -62,21 +66,39 @@ class NodeUnits:
         assert any(line.startswith(expected) for line in stdout.splitlines()), stdout
         return stdout
 
+    def prepare(self, targets):
+        """Compile the targets not yet built, in one cargo call and with the build's own deadline; their executables are kept."""
+        missing = [target for target in targets if target not in self.built]
+        if missing:
+            self.built.update(testunits.build(testnode.tool("cargo"), self.staged, missing, self.build_output, self.environment))
+
     def run_targets(self, targets):
-        argv = [testnode.tool("cargo"), "test", "--locked", "--offline", "--no-fail-fast", "-p", "poolhouse-node"]
-        for target in targets:
-            argv.extend(("--test", target))
-        stdout = self.execute([*argv, "--", "--test-threads=1"])
+        """Run the built executable of each target as cargo would (the package folder as the working folder), one after another."""
+        self.prepare(targets)
+        deadline = time.monotonic() + RUN_S
+        package = self.staged / "poolhouse-node"
+        environment = {**self.environment, "CARGO_MANIFEST_DIR": str(package)}
+        results = [self.launch([str(self.built[target]), "--test-threads=1"], package, environment, deadline) for target in targets]
+        failed = [stdout + stderr for code, stdout, stderr in results if code]
+        assert not failed, "\n".join(failed)
+        stdout = "".join(result[1] for result in results)
         assert stdout.count("test result: ok.") == len(targets), stdout
         return stdout
 
-    def execute(self, argv):
-        deadline = time.monotonic() + 600
-        process = start_process(argv, cwd=self.staged, env=self.environment, stdin=subprocess.DEVNULL,
-                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        stdout, stderr = communicate(process, deadline)
-        assert process.returncode == 0, stdout + stderr
+    def build_output(self, argv, work, environment):
+        code, stdout, stderr = self.launch(argv, work, environment, time.monotonic() + testnode.BUILD_TIMEOUT_S)
+        assert code == 0, stderr[-4000:]
         return stdout
+
+    def execute(self, argv):
+        code, stdout, stderr = self.launch(argv, self.staged, self.environment, time.monotonic() + RUN_S)
+        assert code == 0, stdout + stderr
+        return stdout
+
+    def launch(self, argv, cwd, environment, deadline):
+        process = start_process(argv, cwd=cwd, env=environment, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        stdout, stderr = communicate(process, deadline)
+        return process.returncode, stdout, stderr
 
 
 @pytest.fixture(scope="session")
@@ -86,3 +108,13 @@ def native_node_units(tmp_path_factory):
         work = Path(directory).resolve()
         assert work.stat().st_mode & 0o777 == 0o700
         yield NodeUnits(tmp_path_factory.mktemp("native-node").resolve(), work)
+
+
+@pytest.fixture(scope="module")
+def native_targets_built(native_node_units, request):
+    """Compile once per module every Rust test target its selected tests are parametrized on (their ``target``), before any of them
+    starts its timer; such a test carries ``@pytest.mark.timeout(N, func_only=True)`` so N counts the run, not this build."""
+    wanted = {item.callspec.params["target"] for item in request.session.items
+              if item.module is request.module and "target" in getattr(getattr(item, "callspec", None), "params", {})}
+    native_node_units.prepare(sorted(wanted))
+    return native_node_units
