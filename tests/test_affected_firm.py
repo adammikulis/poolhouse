@@ -49,5 +49,5 @@ def test_a_source_that_defines_arguments_selects_the_tests_that_read_the_command
     (root / "src/poolhouse/tool.py").write_text("def build(parser):\n    parser.add_argument('--flag')\n", encoding="utf-8")
     (root / "src/poolhouse/plain.py").write_text("VALUE = 1\n", encoding="utf-8")
     (root / "tests/test_help.py").write_text("TEXT = open('docs/commands.md').read()\n", encoding="utf-8")
-    assert "tests/test_help.py" in affected.select(root, ["src/poolhouse/tool.py"]).files
+    assert affected.select(root, ["src/poolhouse/tool.py"]).files == {"tests/test_help.py"}
     assert "tests/test_help.py" not in affected.select(root, ["src/poolhouse/plain.py"]).files

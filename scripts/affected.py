@@ -429,8 +429,6 @@ def add_command_docs(out: Selection, root: Path, changed: list[str], deleted: fr
     because = f"{parsers[0]} defines command-line arguments that {COMMAND_DOCS} documents"
     for test in mentioning(root, COMMAND_DOCS, tests):
         out.add(test, because)
-    for test in rules.generated_tests(rules.corpus(root), COMMAND_DOCS):
-        out.add(test, because)
 
 
 def select(root: Path, changed: list[str], deleted: frozenset[str] = frozenset(),
