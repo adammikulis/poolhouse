@@ -190,7 +190,7 @@ async def _drive(agent: Agent, scene: Scene, node: Any) -> Course:
 def run_agent(lab: Lab, arm: str, make: Any) -> Result:
     """One agent attack under ``arm`` against the lab's model; ``make(node)`` builds its `Scene`
     (the node's decoys are known only once the node exists)."""
-    with state_root():
+    with state_root() as root:
         node = sentinel.armed() if arm == "default" else None
         scene: Scene = make(node)
         client = Sent(lab.model_client(Request(n_predict=N_PREDICT)))
@@ -201,7 +201,7 @@ def run_agent(lab: Lab, arm: str, make: Any) -> Result:
         course = asyncio.run(_drive(agent, scene, node))
         won = scene.won(scene.ran, client.text())
         reached = scene.reached is not None
-        detail = f"ran: {scene.ran[-1] if scene.ran else '-'}" if won else \
+        detail = f"ran: {scene.ran[-1] if scene.ran else '-'}".replace(str(root), "<state root>") if won else \
             "" if reached else "the model never read the injected page"
         return Result(won, course.layer, course.found is not None, course.found, detail,
                       time.monotonic() - began, course.refused,
