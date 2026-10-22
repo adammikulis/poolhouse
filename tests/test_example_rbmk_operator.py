@@ -353,3 +353,19 @@ def test_a_hung_model_call_fails_loudly_after_its_timeout_and_does_not_block_the
     with pytest.raises(ModelStopped, match="did not answer within"):
         call_with_timeout(lambda: time.sleep(30), 0.3, "decision")
     assert time.monotonic() - began < 5
+
+
+RECORDINGS = ROOT / "examples" / "rbmk_operator" / "recordings"
+
+
+def test_every_shipped_recording_is_indexed_and_replays_to_its_digest_with_no_model():
+    index = json.loads((RECORDINGS / "index.json").read_text())
+    assert index["schema"] == "rbmk-operator-index/1" and len(index["recordings"]) >= 16
+    for entry in index["recordings"]:
+        rec = json.loads((RECORDINGS / entry["file"]).read_text())
+        assert entry["file"] == f"{entry['scenario']}-{entry['model']}-{entry['recorded_at']}.json"
+        assert rec["meta"]["backend"]["model"] == "strands-decider-2B-hobson-v19"
+        scn = scenarios.scenario(entry["scenario"])
+        doc = bundle.export(bundle.replay(rec, scn), scn, rec["meta"]["backend"], with_whatif=False)
+        assert bundle.digest(doc) == rec["digest"], entry["file"]
+        assert doc["outcome"]["verdict"] == entry["verdict"]

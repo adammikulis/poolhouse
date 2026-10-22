@@ -514,6 +514,11 @@ Create worktrees beside the primary checkout, never inside it (including `.workt
 
 - A new worktree has no `dist/`, and one test builds a real environment out of it: run `python packaging/build.py` there
   before trusting a full test run.
+- Never `git stash` (any subcommand): the stash stack is shared by every worktree, so a pop or drop takes another agent's
+  work; only `git stash list` and `git stash show` are allowed. Commit work in progress first (a `wip:` commit, undone
+  with `git reset --soft HEAD~1`). Fail-first: `git restore --source=<parent-sha> -- <changed source files>`, run the test,
+  then `git restore --source=HEAD -- <those files>`, or a throwaway `git worktree add <scratchpad>/parent <parent-sha>`
+  removed after. To merge with local changes, make the WIP commit first.
 - Keep stash snapshots and superseded recovery histories out of the development branch's ancestry: preserve them in
   external Git bundles, verify each bundle's complete history and saved tips, and integrate useful changes through
   reviewed commits.
