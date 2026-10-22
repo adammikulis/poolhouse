@@ -36,12 +36,8 @@ from poolhouse.serve import (
     wait_until_free,
 )
 from poolhouse.serve.leases import lease_file, orphaned
-from poolhouse.testing.fakes import (
-    FakeLlamaServer,
-    Served,
-    fake_binary,
-    fake_llama_binary,
-)
+from poolhouse.testing.canned import Canned, CannedServer, canned_binary
+from poolhouse.testing.fakes import fake_binary
 from poolhouse.testing.registry import record_server
 from tests.conftest import leased
 
@@ -74,11 +70,11 @@ def _exited(pid: int) -> bool:
 @pytest.fixture
 def serving():
     """llama-servers on real sockets, closed at the end of the test."""
-    started: list[FakeLlamaServer] = []
+    started: list[CannedServer] = []
 
-    def start(model: str, *, context: int = 4096, slots: int = 1) -> FakeLlamaServer:
-        fake = FakeLlamaServer(Served(model=f"/models/{model}", context=context,
-                                      slots=slots))
+    def start(model: str, *, context: int = 4096, slots: int = 1) -> CannedServer:
+        fake = CannedServer(Canned(served_path=f"/models/{model}", context=context,
+                                   slots=slots))
         started.append(fake)
         return fake
 
@@ -223,10 +219,13 @@ class TestPorts:
     def test_windows_does_not_ask_to_share_the_port(self, monkeypatch):
         asked = []
         real = socket.socket.setsockopt
-        monkeypatch.setattr(socket.socket, "setsockopt",
+        # undone inside the test: the lease table's fixture closes after this test's own monkeypatch scope
+        # opens, and must not find sys.platform saying win32 when it registers with the node
+        with monkeypatch.context() as patched:
+            patched.setattr(socket.socket, "setsockopt",
                             lambda self, *a: (asked.append(a), real(self, *a))[1])
-        monkeypatch.setattr(sys, "platform", "win32")
-        port_is_free(free_port())
+            patched.setattr(sys, "platform", "win32")
+            port_is_free(free_port())
         assert (socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) not in asked
 
 
@@ -1016,7 +1015,7 @@ def running(tmp_path):
     """A manager holding one real, healthy stand-in server, stopped at the end."""
     model = tmp_path / "model.gguf"
     model.write_bytes(b"GGUF" + b"\x00" * 64)
-    manager = ServerManager(backend=LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
     info = manager.lease(ServerSpec(model=model, port=free_port()), roam=False,
                          timeout=30.0, check_flags=False, preflight=False,
@@ -1051,7 +1050,7 @@ class TestTheStartedProcess:
         monkeypatch.setattr(backend_module, "wait_for_health", watching)
         model = tmp_path / "model.gguf"
         model.write_bytes(b"GGUF" + b"\x00" * 64)
-        manager = ServerManager(backend=LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+        manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(tmp_path)),
                                 state_file=tmp_path / "servers.json")
         info = manager.lease(ServerSpec(model=model, port=free_port()), roam=False,
                              timeout=30.0, check_flags=False, preflight=False,

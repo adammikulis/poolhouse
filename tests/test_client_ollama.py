@@ -337,9 +337,9 @@ def _proc(pid, argv, *, listening=(), children=(), state="running", name=None):
     conns = [types.SimpleNamespace(status="LISTEN",
                                    laddr=types.SimpleNamespace(ip="127.0.0.1", port=p))
              for p in listening]
+    info = {"pid": pid, "name": name or argv[0].rsplit("/", 1)[-1], "cmdline": argv}
     return types.SimpleNamespace(
-        pid=pid, info={"pid": pid, "name": name or argv[0].rsplit("/", 1)[-1],
-                       "cmdline": argv},
+        pid=pid, info=info, as_dict=lambda attrs=None, ad_value=None: dict(info),
         status=lambda: state,
         net_connections=lambda kind="inet": conns,
         children=lambda recursive=False: list(children))

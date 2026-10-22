@@ -27,8 +27,8 @@ from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import kill_process_tree
+from poolhouse.testing.canned import canned_binary
 from poolhouse.testing.fakehub import fake_hub
-from poolhouse.testing.fakes import fake_llama_binary
 
 FILE = "thing-Q4_K_M.gguf"
 
@@ -442,7 +442,7 @@ def test_serving_a_model_pulled_under_library_by_path_starts_no_server_until_a_p
     stand(repos())
     got = ph.models.pull("maker/thing-GGUF", FILE, trust=LIBRARY)
     state = tmp_path / "servers.json"
-    manager = ServerManager(backend=LlamaServerBackend(binary=fake_llama_binary(tmp_path)), state_file=state)
+    manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(tmp_path)), state_file=state)
     try:
         with pytest.raises(guarded.SentinelRefused, match="This model is from maker"):
             manager.lease(ServerSpec(model=got, port=free_port()), roam=False, timeout=30.0, check_flags=False,

@@ -10,14 +10,14 @@ from . import reactor as rx
 from .rods import worth as _w
 
 CLASSES = {
-    "hold": "change nothing and watch",
+    "hold": "do nothing and keep watching",
     "insert_rod": "insert one control rod or a group of rods",
     "withdraw_rod": "withdraw one control rod or a group of rods",
     "change_flow": "start or stop a main circulation pump, or move the throttle valves",
     "regulator": "switch the automatic power regulator on or off, or change its setpoint",
     "protection": "defeat or restore a protection or trip signal",
     "turbine_test": "start or abort the turbine rundown test",
-    "orm_print": "ask for a fresh printout of the operational reactivity margin",
+    "orm_print": "read the margin printout again (changes nothing in the plant)",
     "scram": "press AZ-5, emergency shutdown, every rod drives in",
 }
 STEPS = {"1": 0.10, "2": 0.25, "3": 0.50}
