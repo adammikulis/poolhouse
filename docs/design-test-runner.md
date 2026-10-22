@@ -28,7 +28,7 @@ does is the same for every file.
   admission of compute slots, the jobs, the dependency sets for selection, and fail-first.
 - **Transports** (section 6) take a shard to somewhere it runs: this machine's processes, a device of a Poolhouse pool over the pool's
   mutual-TLS routes, later ssh. The pool is one transport plugin. There is one sharding path and one wire protocol; what exists today as
-  a node carrier, a dev-pool carrier, `--split` and a CI splitter is folded into it (section 2, section 14).
+  a node carrier, a pool carrier in dev mode, `--split` and a CI splitter is folded into it (section 2, section 14).
 - **The surface** (section 3) is `ph.test` in Python, the `poolhouse-test` command (also `poolhouse test`), and the `testfarm.toml`
   schema. Everything else is internal. `pip install poolhouse` gives a repository all three.
 - **Poolhouse's repository** keeps its tiers, markers, node build, gates, agent rules and confinement in its own `testfarm.toml` and
@@ -118,7 +118,7 @@ lease = ["gpu"]
 | Affected | `affected.py`, `affected_rules.py` | import graph plus string rules written for Poolhouse's tests, testmon | core: selection over dependency sets; `python-imports` analyzer in the pytest preset; the string rules become globs in Poolhouse's config; testmon deleted |
 | Rust builds | `testnode.py`, `testunits.py`, `testartifacts.py`, `tests/native_cargo.py`, `testapp.py` | one cargo call builds the targets before the timer, shared target folder, pruning | core: steps; cargo preset helpers; the node binary stays Poolhouse's step |
 | Node carrier | `app/poolhouse-node/src/shard/*.rs` (1,271 lines with `tests/shard.rs`), `testfarm/client.py` (`Shards`), `testfarm/consent.py`, grants `shard_call` and `shard_consent` | send a tree to a device of the node's pool, per-device allow list, leases | one wire and one receiver (section 6); open question 1 |
-| Dev-pool carrier | `fleet/shard_{routes,host,store,spec,tree,run,exec,result,split}.py` (9 files, 974 lines), `testfarm/dev.py`, `Member.shard_*` | `/shards/v1/*` over the pool's pinned TLS, executor, limits | the pool transport and the executor (section 6) |
+| Pool carrier in dev mode | `fleet/shard_{routes,host,store,spec,tree,run,exec,result,split}.py` (9 files, 974 lines), `testfarm/dev.py`, `Member.shard_*` | `/shards/v1/*` over the pool's pinned TLS, executor, limits | the pool transport and the executor (section 6) |
 | Farm and `--on` | `testfarm/farm.py`, `scripts/test_on.py`, `testfarm/ledger.py`, `testfarm/report.py`, `poolhouse-test-devices`, `poolhouse.api.remote_tests` (`ph.test`) | merges the two carriers, reuse ledger apart from the store, per-device report | the planner, the store, the report, `poolhouse-test devices`, `ph.test` |
 | `--split` | `fleet/shard_split.py`, `test_on.divide` | duration-balanced division, a person's option | the planner, always on when targets exist |
 | CI shards | `scripts/ci_shards.py`, `tests/ci-durations.json`, `.github/workflows/ci.yml` | the same division for eight CI jobs | `poolhouse-test plan --shards N --index I` |
@@ -218,7 +218,7 @@ A check (section 13, check F) runs the same generated project with and without e
 
 The runner uses the glossary's words (`docs/glossary.md`): a **device** runs a shard, the **pool** is the set of devices, a **member** is a
 device in it, a **lease** is permission to use a limited resource, **capacity** is what a device offers, and **node** appears only as the
-software `poolhouse-node`. It never says cluster, peer, fleet for a pool, or pair. The words this design adds are **unit** (the
+software `poolhouse-node`. It uses no word that `docs/glossary.md` bans. The words this design adds are **unit** (the
 scheduling and reuse granule), **id**, **shard** (the part of a run sent to one target), **target** (a place a shard can run),
 **transport**, **preset**, **step**, **set** (a named selection, where the old tiers were), **label**, **DEPS** and **analyzer**. The
 package keeps its name `testfarm`; `farm` is not a glossary word and is not banned. `tests/test_glossary.py` covers this document and
@@ -239,9 +239,11 @@ labels, how many units have DEPS, and which steps would run.
 | `preset` | a tool preset to start from (section 7); any key below overrides it | none |
 | `[project] name` | a label in reports only | the directory name; never an identity |
 | `[tree] exclude` | globs left out of the tree sent to a device | none; the tree is the tracked and untracked-not-ignored files (`git ls-files -co --exclude-standard`), no `.git`, no hidden top-level entries, no links: `shard_tree.tracked_paths` today |
-| `[list] run` | the LIST argument vector | required unless the preset gives it |
+| `[list] run` | the LIST argument vector | none: without it the run is split by slice or not at all (5.2, "Three split modes") |
 | `[list] format`, `match`, `group` | `lines` or `jsonl`; id filter; the group rule | `lines`; every non-empty line; each id is a unit |
-| `[run] argv` | the RUN template | required unless the preset gives it |
+| `[run] argv` | the RUN template | required unless the preset gives it; with LIST it receives ids, without LIST it runs the whole selection once |
+| `[run] slice` | the RUN-slice template for a tool that cannot list its tests but can run a share of them (`--shard {slice_index}/{slice_count}`); an array of strings with exactly one `{slice_index}` and one `{slice_count}` | none; read only when there is no `[list]` (5.2) |
+| `[run] slice_base`, `slice_count`, `slices_per_target`, `slice_results` | whether the tool counts slices from 0 or 1; the number of slices, or `auto`; for `auto`, slices per target; what a slice reports (`exit`, `jsonl` or `junit`, as for `results`) | `1` (a tool's own first index is the project's to say, 1 is the common reading of "slice 1 of N"); `auto`; `1` (one slice per target is the least that uses every target); `exit` |
 | `[run] results`, `junit_id`, `batch` | `exit`, `jsonl` or `junit`; how junit rows map to ids; ids per invocation | `exit`; `1` for `exit`, all of a unit's ids otherwise |
 | `[run] timeout` | seconds one invocation may run, from the moment it starts | none locally; on a device, the shard's deadline (5.10, 10.6) |
 | `[run] env` | variables set for every invocation (values travel in the file) | none; the child environment is an allowlist (10.5) |
@@ -252,14 +254,14 @@ labels, how many units have DEPS, and which steps would run.
 | `[[step]] name, run, inputs, tools, env, slots, timeout, keep` | a build or environment command (4.4) | `slots` and `timeout` below |
 | `[label.NAME] match, lease, serial, platform, local, reuse, slots, estimate, timeout` | what a label means (4.3); `match` globs ids that carry it | see 4.3 |
 | `[set.NAME] labels, not_labels, ids, extra, reuse` | a named selection: `poolhouse-test run @NAME` (4.5) | none |
-| `[reuse] key_env, key_tools, canary` | extra key inputs; the sampling rate | none; none; 0.05 (`CANARY_RATE`, `docs/test-reuse.md`) |
+| `[reuse] key_env, key_tools, canary` | extra key inputs; the sampling rate | none; none; none (off; the project's file sets it) |
 | `[remote] default, accept` | `auto`, `local` or `pool`; which labels may leave this machine | `auto` (section 6.1); every label except `local` |
 | `[failfirst] tests, fail_line, exempt_line, mode` | section 5.9 | `report`; the lines of `docs/agent-policy.md` |
-| `[schedule] seed, unrecorded_max` | a committed durations file used until history exists (CI); seconds assumed for a unit with no record | none; the median of the recorded ones, at most `testhistory`'s 30 s |
+| `[schedule] seed, unrecorded_max, silence_margin, total_margin, queue_wait` | a committed durations file used until history exists (CI); seconds assumed for a unit with no record; the margins of the hang guards (5.10); the queue limit | none; the median of the recorded ones; none; none; none (the hang guards and queue wait then use no progress, 5.10) |
 | `[requires]` | things a device must have, checked by probes the device owns (6.5) | none |
 | `[[unit]]` | a command unit with no LIST (5.7) | none |
 | `[preset.NAME]` | a preset defined in the project (7) | none |
-| `[list] glob, split` | the `files` preset's glob; whether a unit may be split by id | none; false |
+| `[list] glob` | the `files` preset's glob | none |
 | `[hooks] before_plan, before_run, after_run` | commands run on this machine only, never on a device | none |
 | `[events] sinks` | where canary mismatches and run endings go | `stderr`; a sink such as `board` is named here |
 
@@ -302,10 +304,12 @@ A step is a command the project declares to prepare a device before any unit run
 - **Its own directories.** The step receives `{cache}`, a directory keyed by the step's key and removed when idle, and `{shared}`, a
   directory that persists across keys for the same project and sender (a compiler's target folder). Both are outside the checkout and
   outside the tree a device receives; later commands read them as `{step:NAME}` (the cache) and `{shared:NAME}`.
-- **Admitted.** A step takes `slots` (default a quarter of the capacity, `testunits.JOBS_DIVISOR`) from the admission interface before it
-  starts and reports `CARGO_BUILD_JOBS`-style parallelism through `{jobs}`.
-- **Pruned.** `keep` (default three days, `testnode.IDLE_S`) removes keyed directories nobody used; a step may name `prune`, a command
-  run at most once in 24 hours (`testartifacts.EVERY_S`), for what the runner cannot see inside `{shared}`.
+- **Admitted.** A step takes the `slots` its table names, else the slots the admission interface has free when the step starts (a
+  measurement, not a fraction of the capacity), before it starts and reports `CARGO_BUILD_JOBS`-style parallelism through `{jobs}`.
+- **Pruned.** `keep` (the project's setting, no runner default) removes keyed directories not used for that long; with no `keep`, nothing
+  is removed by age and the least recently used keyed directories are removed when the volume's free disk is needed (10.6). A step may
+  name `prune`, a command run when a run starts and the free disk is short, for what the runner cannot see inside `{shared}`; there is
+  no interval.
 - **Sender-scoped on a device.** On a device that receives a shard, `{cache}` and `{shared}` are keyed by the sender's fingerprint
   as well, so one sender cannot leave a product that another sender's step key then finds (10.8, A12).
 
@@ -351,8 +355,9 @@ least finish time, ties broken by target name. The same inputs give the same pla
 inputs.
 
 - **Local with no pool.** The one target is this machine, with capacity from the admission broker (5.5). The shard is run by
-  `workers = clamp(sqrt(estimated seconds), 1, capacity)` processes pulling batches from the shard's queue (`docs/test-execution.md`:
-  each worker costs about a second of start-up); a run with no estimate takes the whole capacity.
+  `workers = clamp(sqrt(estimated seconds / start-up seconds), 1, capacity)` processes pulling batches from the shard's queue. The
+  rule is the minimum of `start-up * workers + work / workers`, and the start-up seconds are the project's own, measured: the median
+  of the recorded `setup` seconds of earlier workers in the history (5.8); with none recorded the run takes the whole capacity.
 - **A device takes a shard only when it finishes sooner.** A target's `fixed_cost_s` is measured from earlier shards on it (upload,
   unpack, tree hash, steps, start); with none recorded it is the measured local cost of the same phases. A unit goes to the target that
   finishes it first including that cost, so a short run stays local and a long run spreads, with no constant of the runner's own.
@@ -362,8 +367,53 @@ inputs.
   replaces nothing (decision 4 of `docs/design-test-selection.md`).
 - **Units that do not move.** `local` labels, labels whose `platform` no target satisfies, and units that hold a lease no target
   offers stay on the sender; the plan says why for each.
-- **A unit longer than the ideal shard** is split by id when its group rule allows it (`list.split = true`); a split unit stores no
-  per-unit pass (5.3).
+- **A unit longer than the ideal shard** is split by id automatically, from the recorded durations, in every project; there is no
+  opt-in and no test file is rewritten into smaller ones. Each shard pays the unit's module and session setup once, and the planner
+  counts that cost (measured from the history of runs of one id against the whole unit, never guessed) when it decides whether a
+  split pays off. A split unit stores no per-unit pass (5.3). Order-dependence between the tests of a split unit is detected, not
+  worked around: the planner runs the shards in an order different from the unit's own, and a test that passes in the unit's
+  order and fails in another is reported as a defect in the test. A unit whose LIST gives no ids cannot be split, and the plan
+  says so.
+- **Three split modes, chosen by the config and stated by the plan.** (1) *By name*: the project gives LIST, the ids are known, and the
+  planner splits them into shards from the recorded durations (the rules above). (2) *By slice*: the project gives no LIST but gives
+  `[run] slice`, a RUN-slice template with an index and a count placeholder (`pytest --shard {slice_index}/{slice_count}`, `cargo
+  nextest --partition count:{slice_index}/{slice_count}`); the runner makes one unit per slice, `slice 1/8` to `slice 8/8`, and spreads
+  the slices over the targets as it spreads units, one slice a unit that takes one slot or the slots its labels say. (3) *Whole*: the
+  project gives neither, the selection is one unit that runs once on one target, and the plan says `not split: the project gives no
+  LIST and no slice template`. The plan names the mode on its first line (`split: by name`, `split: by slice, 8 slices`, `split:
+  none`), so no run is split in a way the person did not see. A project with LIST never uses its slice template (names are
+  strictly better information); the template is not a fallback for a failed LIST, which is an error.
+  - **The count comes from the plan and has no fixed maximum.** `slice_count` is `auto` by default: the number of targets the plan may
+    use times `[run] slices_per_target`, the project's setting. A project that sets an integer gets that integer. The count is a
+    positive decimal integer (at least 1) and nothing else is checked by the runner: the tool alone knows which counts it accepts, so
+    a count the tool refuses shows as its slices failing with the tool's own message (status 1, section 11), never a count the runner
+    guessed was too large. The count is fixed before anything runs and printed; it is one number for the whole run, because the
+    tool's own partition is only a partition for one count. `--slices N` (a positive integer, otherwise status 4) overrides it for one
+    run and joins the unit key.
+  - **The balance is rough, and the plan says so.** The tool splits by count of tests (or by its own rule), not by duration, and the
+    runner cannot see inside a slice: a slice of a few slow tests finishes long after the others. Each slice is scheduled with the
+    mean of its own recorded durations (history is kept per `slice i/n` for one count), or `unrecorded_max` with none, and the plan
+    prints `balance: rough, slices are even by count, not by duration` with the longest and shortest recorded slice once any exist.
+    A slice is never rebalanced, retried elsewhere or split further by the runner.
+  - **Results merge per slice.** A slice reports what the project's `slice_results` says. With `exit` (the usual case: the tool
+    reports only pass or fail for its share) the slice is one result, `slice 3/8: passed` or `failed`, with the tool's output tail;
+    the run lists slices, not tests, and says `tests in a failed slice are not named`. With `jsonl` or `junit` the rows are real ids,
+    merged as in 6.4, and the runner checks that no id appears in two slices (duplicates are an error naming both slices). The run
+    passes when every slice passed, the report is ordered by slice number, and a run's selection is the same as the tool's whole
+    selection only because the slice template carries the project's own filters in `[run] argv`'s shared arguments; the runner does not
+    check that the slices cover the suite, and the plan states `coverage is the tool's partition, not checked`.
+  - **Reuse is per slice and keyed on the slice count.** A slice unit's key is the key of 5.3 over the slice template with its
+    placeholders filled (so the index and the count are in it), over the tree or the DEPS the project gives (a project without LIST
+    usually has none, so the whole tree). A pass is stored per slice; changing the count changes every key and invalidates every
+    stored slice, which is correct because slice 3 of 8 and slice 3 of 6 hold different tests. A changed file reruns the slices its
+    DEPS reach, and with no DEPS all of them. Canary re-runs (5.3) apply per slice. The `remote` kind rules are unchanged.
+  - **A failing or lost slice.** A failing slice is `failed` with its slice number, the exact invocation (argument vector with the
+    two integers filled) and its tail, so it can be re-run by hand; status 1. A slice on a device that stopped answering is `not
+    run` and named `slice 5/8`, status 70, exactly as in section 11; a slice that never got a permit is `not started`, status 75; a
+    slice ended by a deadline is 124. Nothing re-runs a slice elsewhere by itself, and running the command again reuses the
+    passed slices so only the failed and not-run ones execute. A tool that exits zero having run no tests in a slice is the tool's
+    business (the runner reads exit codes and rows, never output text); a project that wants that caught gives `junit` or `jsonl`.
+  - **Exit codes are unchanged.** The table in section 11 holds for all three modes; no code is added for slices.
 - **Batch size and order** inside a shard: longest first (`testorder`'s rule, the recorded duration), `batch` ids per invocation.
 
 CI uses the same planner without a transport: `poolhouse-test plan --shards 8 --index 3` prints the ids or units of shard 3 using the
@@ -385,18 +435,18 @@ writes them). The store keeps them in the entry's **manifest** and a later hit r
 `unstorable` with a reason (a write outside the temporary roots, a skip), and then nothing is stored. The runner never infers either.
 
 The store is the one `docs/test-reuse.md` defines: entries written through a rename, a chain of row hashes, `latest/<key>`, single flight
-with `inflight/<key>.json` claims (a waiter waits up to 900 s, `testreuse_run.WAIT_S`), a store per project (origin url hash, else the
+with `inflight/<key>.json` claims (a waiter waits while the claim's holder is alive, a liveness the OS reports, and for no fixed time), a store per project (origin url hash, else the
 common git directory: `testruns.scope`), only the runner process writes it, and the state directory is outside the checkout and outside
 any root a unit may write. What it adds:
 
 - **Kinds.** An entry is `local` (this machine ran it) or `remote` (a device did, keyed by its fingerprint and platform class). A
   `remote` pass satisfies only a later run on that device and never a local run; a `local` pass satisfies this machine. Task evidence
   (`workspace.testruns.verified`) reads only `local`. The ledger `remote-results.json` is deleted; its job is the `remote` kind.
-- **Canary.** Each hit is re-executed with probability `reuse.canary` (0.05). A cached pass that fails fresh prints
+- **Canary.** Each hit is re-executed with probability `reuse.canary`, the project's setting with no runner default (with none, no hit is re-executed and the report says `canary: off`; Poolhouse's file sets it). A cached pass that fails fresh prints
   `canary mismatch`, fails the run, writes an `incident` row and a disabling record for the key, and sends one event to the sinks. The
   draw is seeded from the run id, printed in the report, so a run is repeatable with `--seed`.
 - **Never stored:** a failure, a unit with `reuse = false`, a result with `unstorable`, a run whose tree changed while it ran (status
-  4), a unit whose key recomputed at the end differs from the start, a split unit, an interrupted or crashed invocation.
+  4), a unit whose key recomputed at the end differs from the start, a split unit (a slice unit is not a split unit: it is stored per slice, 5.2), an interrupted or crashed invocation.
 - **Report lines:** `ran` or `reused from <run id>` per unit with the key prefix, `--no-reuse` forces execution and says so once.
 
 The unit key and the affected set are one definition (design-test-selection 4.6): the DEPS of a unit are what the key hashes and what
@@ -431,10 +481,12 @@ Grant.release()
 ```
 
 The default implementation is the machine-wide, file-lock-backed broker of `testslots*.py` moved in whole: capacity is the logical CPU
-count less the reserved cores (`DEV_TEST_RESERVED_CORES`, default 1: `testslots.base_budget`, `docs/test-execution.md`), shortest
-estimated work first, aging after 600 s (`BACKGROUND_MAX_WAIT_S`), backfill after two later requests or 30 s (`BACKFILLS`,
-`BACKFILL_WAIT_S`), a class of `interactive` or `background` (background when the estimate is 180 s or more:
-`DEV_TEST_BACKGROUND_S`), one slots directory shared by every checkout and project on the machine, a dead holder's record removed at
+count less the cores the machine is measurably busy with outside the broker (load sampled when a permit is asked for) and less the
+cores the user reserves (`reserved_cores` in the user's settings, no default), shortest estimated work first, a request ages once it has waited as
+long as the estimated work ahead of it (from the history, 5.8), so it is never passed over by later shorter work for longer than the
+queue it joined; a later request backfills when it fits in the free slots and its estimate ends before the head's estimated start, so
+the head is never delayed; a class of `interactive` or `background` (background when the project's `[schedule] background_after`
+says so, no default: with none every run is interactive unless the person says `--background`), one slots directory shared by every checkout and project on the machine, a dead holder's record removed at
 once. Environment variable names become `TESTFARM_*` (Poolhouse's `DEV_TEST_*`, read by `tests/conftest.py`, move with them).
 
 A unit holds the slots its label names for the duration of its invocation. Finer admission (a permit per test inside one pytest
@@ -464,11 +516,11 @@ structure tests) is a set of command units; `gaterun.py` and `gatescope.py` are 
 ### 5.8 History and estimates
 
 Every run records per-unit CPU and wall seconds (from the invocation's rusage and the result file's `seconds`), merged under a file lock
-into the project's history in the state directory, shared by every worktree (the common git directory today), an exponentially weighted
-value per unit with a sample count and a sample clipped to three times the value once three exist (`testhistory.py`). The estimate
+into the project's history in the state directory, shared by every worktree (the common git directory today), the median of the recorded samples per
+unit with a sample count (a median is not moved by one slow outlier, so no clip is needed). The estimate
 of a run is the sum of its units' seconds divided by the workers granted, with a unit that has no record counted at the mean of the
-recorded ones with the slowest percent left out, at most `[schedule] unrecorded_max` seconds (30 in Poolhouse's file, from
-`testhistory`); a unit the store would serve costs nothing. The estimate and its class print before admission.
+recorded ones (the median, so no clip and no cap are needed), and with none recorded at all the units are placed by count and the
+estimate says `unknown`; `[schedule] unrecorded_max`, if the project sets it, caps the median; a unit the store would serve costs nothing. The estimate and its class print before admission.
 
 ### 5.9 Fail-first
 
@@ -510,15 +562,27 @@ The runner's rule, for every unit and every project:
   learn queue time.
 - **Outcomes.** A unit is `passed`, `failed`, `timed out` (it ran past its timeout: a failure that says `timed out after N s running`
   and shows the three numbers), `skipped`, `reused`, `not reported`, or **`not started`**. `not started` means the machine could not
-  admit it: it waited for a permit or lease past the queue limit (`WAIT_S`, 3600 s, `testslots.WAIT_S`; `TESTFARM_WAIT_S`), or the run was
+  admit it: it waited for a permit or lease past the project's queue limit (`[schedule] queue_wait`, no runner default; with none, the queue wait is guarded by no progress: the broker's queue position and the holders' heartbeats stop advancing for the derived stretch, status 75 naming the holder waited for), or the run was
   cancelled before its permit. It is neither a failure nor a pass, is listed apart in the report (`NOT STARTED, machine overloaded:
-  waited 3600 s for a permit`), is not stored, and gives status 75. Running the command again continues with exactly those units.
+  waited <N> s for a permit`, N measured), is not stored, and gives status 75. Running the command again continues with exactly those units.
 - **Where a timeout's value comes from.** The runner has no timeout of its own. In order: `[label.NAME] timeout` for the unit's labels
   (the largest of its labels), `[run] timeout`, then none locally. Poolhouse's file takes its value from the owner's setting: 120 s a
   unit (`pyproject.toml`, `docs/limits.md` row `pytest timeout`), and a longer unit carries a label with a longer value (the
-  `@pytest.mark.timeout(N)` it has today). On a device a unit with no timeout is bounded by its shard's deadline: twice the planner's
-  estimate for the shard (`docs/design-test-selection.md` 6.1) and at most `shard_spec.MOST_SECONDS` (3600 s) when nothing is recorded.
-  A build step has its own deadline (`BUILD_TIMEOUT_S`, 1800 s) and never counts in a unit's.
+  `@pytest.mark.timeout(N)` it has today). On a device a unit with no timeout is bounded by its shard's deadline, which is the largest unit
+  timeout the sender sent for the shard and, when no unit has one, the hang guard below.
+- **Hang guards: no progress first, a total second.** Nothing waits forever. Each unit, shard, build step and queue wait has (1) a
+  *no-progress* guard: it ends when no output, heartbeat or result row has arrived for a stretch derived from a measurement, namely the
+  longest silence its own recorded runs showed times the project's `[schedule] silence_margin`, or for a device the measured round
+  trip of the stream times that margin; and (2) a *total* guard, the unit's recorded typical duration (the median, 5.8) times the
+  project's `[schedule] total_margin`, used only when the label, step or `[run]` table names no `timeout` (which always wins). The
+  margins are the project's numbers in `testfarm.toml` with no runner default; a unit with no silence recorded of its own takes the
+  guard of its siblings: the median of the per-unit longest silences recorded across the project's other units times `silence_margin`.
+  With no history at all in the project (its first run ever), the run is guarded against the live gaps it produces itself: a silence
+  longer than the longest gap seen so far in this run times `silence_margin`, applied after at least one unit has finished, and the
+  report says `guard: bootstrapping`. With no margin set the guard is not applied and the report says so (the cancel and the
+  receiver's bounds, 10.6, remain). A guard ends the work loudly, with status 124 for a unit, shard or step and 75 for a queue wait, and the
+  line names what was waited for and the derivation: `unit tests/x.py: no output for 41 s (longest silence recorded 8 s x margin 5)`.
+  A build step has its own `timeout`, else the hang guards above on the step's recorded runs, and never counts in a unit's.
 - **Overload is named, not guessed.** The report says `the machine was overloaded` only when units are `not started`; a run in which every
   unit started but some queued for a long time says `queued N s (the machine's)` and judges the units by `ran_s` alone.
 
@@ -549,7 +613,7 @@ pool in dev mode every member already runs tests for every other member (`docs/f
 
 ### 6.2 The pool transport
 
-The wire is the dev-pool shard routes, generalised from a fixed command to a unit list. [code] today:
+The wire is the shard routes of a pool in dev mode, generalised from a fixed command to a unit list. [code] today:
 
 | Operation | Route | Notes |
 |---|---|---|
@@ -692,13 +756,13 @@ What stays in `scripts/` as Poolhouse-specific: `test_kernel_*.py`, `test_contai
 The handling that has landed [code, `testunits.py`, `tests/native_cargo.py`, `testnode.py`, `testartifacts.py`] is: build every target a
 module names in one `cargo test --no-run` call at a quarter of the cores, before the module's timer; run the executables cargo
 reported, never asking cargo again; a staged copy of the workspace at a fixed path keyed by the sources and compiler, a target folder
-keyed by `Cargo.lock` and the compiler and shared by every run; products of old snapshots pruned after three days; cargo's own lock
+keyed by `Cargo.lock` and the compiler and shared by every run; products of old snapshots pruned when the disk is needed, least recently used first; cargo's own lock
 serialising two builds.
 
 In the design this is the `cargo` preset plus a step, with the core knowing none of it:
 
-- the **step** `build` has `inputs` (the workspace files), `tools` (`rustc --version --verbose`), `slots` a quarter of capacity, its own
-  deadline (`BUILD_TIMEOUT_S`, 1800 s), `{shared}` for the target folder (so registry dependencies are built once across keys), `{cache}`
+- the **step** `build` has `inputs` (the workspace files), `tools` (`rustc --version --verbose`), `slots` (the project's, else the free slots), its own
+  `timeout` (the project's), `{shared}` for the target folder (so registry dependencies are built once across keys), `{cache}`
   for the staged workspace and the products manifest, and `prune` for the workspace-crate products (`testartifacts.prune_when_due`);
 - the preset's **list helper** names the targets the step built; its **run helper** executes the built files with the package folder as
   the working directory;
@@ -758,10 +822,16 @@ grammar and, when the sender asked for it (`[remote] verify_list`), against its 
 ### 10.4 The id grammar and untrusted lists
 
 An id is 1 to `PATH_MAX` bytes (the smaller of sender and receiver), UTF-8, no control characters (U+0000 to U+001F, U+007F), no
-bidirectional override characters, not beginning with `-`, with no repeat inside a shard, at most `MOST_FILES` (200) *units* per shard (more
-ids in them); a unit group is checked as a whole. An id is only ever an argument or a line of `{idfile}`. The sender's LIST output is
+bidirectional override characters, not beginning with `-`, with no repeat inside a shard, with the units of one shard bounded only by the
+receiver's request-size bound (10.6) and not by a count of the runner's own (more ids in them); a unit group is checked as a whole. An id is only ever an argument or a line of `{idfile}`. The sender's LIST output is
 data: lines over the bound, binary output, a LIST that never ends (bounded by output size and a deadline) and duplicate ids are
 errors that name the first offender.
+
+A slice index and count (5.2) are never read from a result, a device or the environment: the runner computes them as positive integers (the count at
+least 1, the index from `slice_base` to `slice_count + slice_base - 1`, with no fixed maximum), formats them in decimal with no sign or padding, and substitutes
+them as whole arguments of the argument vector (or inside one argument, never into a shell string). A template with a placeholder
+other than the two, a repeated one, or one in the program name is refused when the file is loaded; a device receives the filled
+vector with ids from this grammar and refuses anything else.
 
 ### 10.5 Output and environment
 
@@ -769,20 +839,22 @@ errors that name the first offender.
   stripped of ANSI/OSC/CSI escapes, other control characters (except newline and tab), carriage-return line overwrites and
   bidirectional overrides, truncated per line and in total, and printed after a `[device]` prefix the *sender* adds, so a device cannot
   forge another device's line, a summary line or an exit status. A device's name is sanitised the same way before display
-  (`report.plain`). Result messages and failure texts are bounded (`MOST_MESSAGE`, `MOST_FAILURES`, `MOST_TAIL`).
+  (`report.plain`). Result messages and failure texts are bounded by the receiver's result bound (10.6), shared among the fields.
 - **The child environment is an allowlist**, not today's denylist (`shard_run.DROPPED`): `PATH`, `LANG`, `LC_*`, `TZ`, `TMPDIR` (a scratch
   path), `HOME` (a scratch path), and the names the verified file's `run.env` sets; nothing else, so agent markers, tokens and the
   sender's variables do not arrive, and `credentials.child_environment` strips what looks like a credential.
 - **XML is parsed without entities or external references** (`defusedxml` is already a test dependency; the runner uses the standard
-  parser with DTDs refused), and a junit file larger than `MOST_JUNIT` (32 MiB) is refused.
+  parser with DTDs refused), and a junit file larger than the receiver's result bound (10.6) is refused.
 
 ### 10.6 Resource bounds and where they come from
 
 Every bound has a source; where the source is "the owner, in source" it is a row of `docs/limits.md`, and the rows of the deleted Rust
-host move to the Python module that now holds them. Section 15 lists them. The rule for new bounds: derived from the device (free disk
-of the scratch volume, logical CPUs, memory), never typed in. Examples: the packed-tree limit a receiver accepts is at most its free
+host move to the Python module that now holds them. Section 15 lists them. The rule for every bound, new or carried over: derived from the device (free disk
+of the scratch volume, free inodes, logical CPUs, memory) or from the operating system (`PATH_MAX`, `ARG_MAX`), or set by the project's
+own file, never typed in by the runner. The request, result, log, junit, member, unit and output bounds are all shares of the free
+scratch disk the receiver measures when it takes a shard. Examples: the packed-tree limit a receiver accepts is at most its free
 scratch disk divided by the shards it holds open; slots granted to one sender are at most the device's free slots at admission; the
-output kept is the executor's bounded log. A runaway shard (output over `MOST_LOG`, time over its deadline, tree over the bound) is
+output kept is the executor's bounded log. A runaway shard (output over the receiver's log bound, time over its deadline, tree over the bound) is
 cancelled with a defined status (124) and the group is killed.
 
 ### 10.7 Not starving the device's owner
@@ -824,6 +896,8 @@ first, then the ones this design adds.
 | A24 | Takeover by whoever is merely present on the LAN | dev mode trusts every device that joined it, which `docs/fleet.md` states; a pool that is not in dev mode requires the allow list; the kill switch is `remote-tests` |
 | A25 | An old build on one device (a downgrade of the protocol) | caps carries `protocol` and the build; a mismatch is refused, never run |
 | A26 | A sender queues work or sets tiny timeouts to make a device's own work look failed or late | the device's own work is admitted first (background class); `not started` is reported to the sender only |
+| A27 | Slice injection: a hostile index or count (`--slices '8; rm -rf'`, `-1`, `1e9`, a count that makes the tool run one slice out of range, a slice template that smuggles a flag), or a device that reports slices the sender did not assign | the index and count are integers the runner makes, positive, decimal only, with no invented maximum, put in as whole arguments (10.4); `--slices` is parsed as an integer or refused with status 4; the template allows exactly the two placeholders; the sender checks the slice set it received (exactly the slices it assigned, once each) as it checks ids (A5) |
+| A28 | A slice count change used to keep a stale pass (slice 3 of 8 satisfying slice 3 of 6), or a hidden gap where the tool's partition skips tests | the count and index are in every slice key (5.2); the plan states that coverage is the tool's partition and not checked, so nothing claims a coverage the runner cannot see |
 
 ## 11. Failure behaviour, exit codes and determinism
 
@@ -836,12 +910,14 @@ first, then the ones this design adds.
 | 4 | refused before anything ran: invalid config, id, selector or tree; a hook refused; the tree changed during the run; a selector matched nothing | `scripts/test` argument errors and the tree-changed rule |
 | 6 | busy: a whole-selection job is already live | `BUSY_EXIT` |
 | 70 | a device did not complete its part: not in the pool, refused, unreachable, vanished mid-run, missing a requirement | `test_on.NOT_RUN`, `docs/test-farm.md` |
-| 75 | at least one unit never started: it waited for a permit past the queue limit while the machine was overloaded; nothing about it failed | `EX_TEMPFAIL` of `sysexits.h`; the queue limit is `WAIT_S` (3600 s, `testslots.WAIT_S`) |
+| 75 | at least one unit never started: it waited for a permit past the queue limit while the machine was overloaded; nothing about it failed | `EX_TEMPFAIL` of `sysexits.h`; the queue limit is the project's `[schedule] queue_wait` |
 | 124 | a deadline or an output bound ended a shard | `shard_run.execute` |
 | 130 | cancelled | `scripts/test` job cancel |
 
-**A device vanishes mid-run.** The sender polls (every 2 s, `POLL_S`); a device that has not answered for 45 s (`dev.LOST_S`) ends its
-part: the report says, loudly and on stderr, `<device> stopped answering 45s ago while shard <id> ran there; its units did not finish
+**A device vanishes mid-run.** The sender holds one pinned-TLS stream per shard and the receiver reports on it as things happen,
+so there is no poll interval; a stream that fails (a reset, or the TCP keepalive timeout of the operating system), or that carries
+no result or heartbeat for the no-progress stretch (the measured round trip of the stream times the project's `silence_margin`), ends
+the device's part: the report says, loudly and on stderr, `<device> stopped answering <N>s ago (measured) while shard <id> ran there; its units did not finish
 and were not run anywhere else`, lists the units as `not run` (neither failed nor reused), and the status is 70. The other targets
 finish and are reported. Nothing re-runs on another device or locally by itself. Running the same command again continues: reuse
 serves every unit that passed, so exactly the not-run remainder runs, on whatever is reachable then. The shard on the vanished device is
@@ -984,7 +1060,7 @@ are steps 8 and 9.
    with the deny-default profile, the allowlist environment, the sanitiser, the id grammar, the tree hash over the transported set, the
    sender-keyed step directories, the `remote` kind in the store, `admit()`. The daemon mounts the server by name. Everything the
    generalised path replaces is deleted in this same step, because two ways of sending a shard cannot rest side by side:
-   `fleet/shard_{routes,host,store,spec,tree,run,exec,result,split}.py`, the node carrier's client and the dev-pool carrier
+   `fleet/shard_{routes,host,store,spec,tree,run,exec,result,split}.py`, the node carrier's client and the carrier of a pool in dev mode
    (`testfarm/client.py`, `dev.py`, `farm.py`, `ledger.py`; the report moves to the core), `scripts/test_on.py`,
    `poolhouse-test-devices` (the `pyproject.toml` script and the `docs/commands.md` row; `poolhouse-test devices` replaces it),
    `poolhouse.api.remote_tests` (`ph.test` is the facade), and the `--split` flag (the planner always splits); `scripts/test --on` now
@@ -1033,38 +1109,43 @@ under the module that holds them after the move; a number with no source is deri
 
 | Name | Value | Source |
 |---|---|---|
-| capacity | logical CPUs less reserved cores (default 1) | `testslots.base_budget`, `docs/test-execution.md` |
-| automatic workers | square root of the estimated seconds, between 1 and the capacity | `docs/test-execution.md` (each worker costs about a second of start-up) |
-| background class | an estimate of 180 s or more | `DEV_TEST_BACKGROUND_S`, `testclass.py` |
-| aging, backfill | 600 s; 2 later requests or 30 s | `testslots_policy.BACKGROUND_MAX_WAIT_S`, `BACKFILLS`, `BACKFILL_WAIT_S` |
-| canary rate | 0.05 | `testreuse_run.CANARY_RATE`, `docs/test-reuse.md` |
-| single-flight wait | 900 s | `testreuse_run.WAIT_S` |
-| step build deadline, parallelism, idle, prune walk | 1800 s; a quarter of the cores; 3 days; 24 h | `testnode.BUILD_TIMEOUT_S`, `testunits.JOBS_DIVISOR`, `testnode.IDLE_S`, `testartifacts.EVERY_S` |
-| sample clip in history | three times the value once three samples exist | `testhistory.py` |
+| capacity | logical CPUs less the measured outside load and the user's `reserved_cores` | the OS (CPU count), a load sample, the user's setting with no default |
+| automatic workers | `sqrt(estimated seconds / measured start-up seconds)`, between 1 and the capacity | the minimum of start-up times workers plus work divided by workers; start-up from the recorded `setup` seconds |
+| background class | the project's `[schedule] background_after` | the project's file, no runner default |
+| aging, backfill | aged by the estimated work ahead; backfilled when it ends before the head's estimated start | the history's estimates (5.8), no constant |
+| canary rate | the project's `[reuse] canary` | the project's file, no runner default; Poolhouse's file sets it |
+| single-flight wait | while the claim holder is alive | the OS's process liveness, no time |
+| hang guards | no-progress stretch: longest recorded silence or measured round trip times `silence_margin`; total: recorded median times `total_margin` | the history and the measured round trip; both margins are the project's, no runner default |
+| step build deadline, slots, idle, prune | the step's `timeout`, else the hang guards; its `slots` or the free slots; `keep` or least recently used on disk need; no interval | the project's file, or the measured free slots and free disk |
+| history sample | the median of the recorded samples | no clip |
 | fixed overhead limit | 5 s or a quarter of the wall time | AGENTS.md section 5 |
-| units per shard | 200 | `shard_spec.MOST_FILES` |
-| shard deadline bound on a device | 3600 s | `shard_spec.MOST_SECONDS` |
-| packed tree, unpacked, members | 24 MiB, 256 MiB, 20,000 | `shard_tree.MOST_PACKED`, `MOST_UNPACKED`, `MOST_MEMBERS`; to be replaced by the disk-derived bound in 10.6 |
-| runner output, tee | 64 MiB, 8 MiB | `shard_run.MOST_LOG`, `MOST_TEE` |
-| result, tail, failures, message, tests, junit | 900 KiB, 8000, 200, 2000, 3000, 32 MiB | `shard_routes.MOST_RESULT`, `shard_result.MOST_*` |
-| shards held, per sender, idle upload, kept | 8, 4, 600 s, 24 h | `shard_store.MOST_KEPT`, `MOST_OWNED`, `IDLE_S`, `KEPT_S` |
-| grace before kill | 30 s on the executor | `shard_run.GRACE_S` |
-| poll, lost device | 2 s, 45 s | `dev.POLL_S`, `dev.LOST_S` |
+| units per shard, slices per run | no bound of the runner's own | units: the receiver's request-size bound (10.6); slices: the plan (targets times `slices_per_target`), or the project's `slice_count`; the tool refuses what it cannot take |
+| shard deadline on a device | the largest of the units' timeouts from the project's file, else the no-progress guard and the recorded-typical-times-margin total (5.10) | replaces `shard_spec.MOST_SECONDS` (3600 s), which has no source |
+| packed tree, unpacked tree, members | shares of the receiver's free scratch disk and free inodes, divided by the shards it holds | replaces `shard_tree.MOST_PACKED`, `MOST_UNPACKED`, `MOST_MEMBERS` (24 MiB, 256 MiB, 20,000), which have no source |
+| runner output, tee, result, tail, failures, message, tests, junit | shares of the same free scratch disk, divided by the shards held | replaces `shard_run.MOST_LOG`, `MOST_TEE`, `shard_routes.MOST_RESULT`, `shard_result.MOST_*`, which have no source |
+| shards held, per sender | the device's free slots at admission, and the free disk (10.6) | replaces `shard_store.MOST_KEPT`, `MOST_OWNED` (8, 4), which have no source |
+| idle upload, kept shard, grace before kill | the receiver's admission clock: an upload idle for the sender's own poll interval times missed polls; a kept shard until its result is fetched or the disk is needed; grace is the process group's own exit | replaces `shard_store.IDLE_S`, `KEPT_S`, `shard_run.GRACE_S` (600 s, 24 h, 30 s), which have no source |
+| poll, lost device | none: results are reported on the stream; a failed or silent stream is the loss | the transport's own failure (reset, the OS's keepalive timeout); replaces `dev.POLL_S`, `dev.LOST_S` (2 s, 45 s) |
+| shard id | 128 random bits | a security floor: guessing or colliding is out of reach (a row of `docs/limits.md`) |
 | id length | `PATH_MAX` of the sender and the receiver | the operating system headers |
 | arguments before `{idfile}` | `ARG_MAX` of the platform | `sysconf(SC_ARG_MAX)` |
 | exit statuses | 0, 1, 4, 6, 70, 75, 124, 130 | section 11 |
-| queue limit | 3600 s | `testslots.WAIT_S` |
+| queue limit | the project's `[schedule] queue_wait`, else none | the project's file, else the no-progress guard; replaces `testslots.WAIT_S` (3600 s) |
 | unit timeout in Poolhouse's file | 120 s | `pyproject.toml` `timeout`, the owner (`docs/limits.md`, `pytest timeout`) |
 
-The Rust host's constants (`MOST_RUNNING` 2, `MOST_OPEN` 6, `MOST_KEPT` 40, `GRACE_S` 120, `KILL_AFTER` 45) have no source other than
-"the owner, in source": the single receiver derives them (running shards from the device's free slots, open shards from its free disk)
-or carries the Python module's values above, and `docs/limits.md` is updated in step 8.
+`unrecorded_max` (the cap on a unit with no record) is the project's setting with no runner default, and the sample clip and `JOBS_DIVISOR`
+are gone. No row of this table has "the owner's value in code" as its source: a number is measured, set by the project's file with no
+runner default, or has a row in `docs/limits.md` with its protocol, operating system or security reason (the shard id).
+
+The Rust host's constants (`MOST_RUNNING` 2, `MOST_OPEN` 6, `MOST_KEPT` 40, `GRACE_S` 120, `KILL_AFTER` 45) have no source: the single
+receiver derives them (running shards from the device's free slots, open shards from its free disk, the kill grace from the process
+group's own exit) and `docs/limits.md` is updated in step 8.
 
 ## 16. Open questions
 
 Product choices this document cannot settle from the code and documents. Each names the option it would take.
 
-1. **Which pool stack carries production pools' allow list, and does the Rust carrier stay?** Pools in dev mode are served by the Python
+1. **Which pool stack carries the allow list of a pool in prod mode, and does the Rust carrier stay?** Pools in dev mode are served by the Python
    daemon; pools with charters, grants and phone approvals are served by `poolhouse-node`, whose `shard_consent` grant is the only
    place a person's signed yes for "this sender may run code here" exists. The design makes one server and one wire. Option A: delete the
    Rust shard host and its two grants and keep the allow list as a device setting changed by `poolhouse-test allow` (a typed yes at a
@@ -1093,9 +1174,10 @@ Product choices this document cannot settle from the code and documents. Each na
 6. **Names.** `poolhouse-test` and `ph.test` follow the existing `ph.test` and `poolhouse-test-devices`; `testfarm` stays as the
    package and the config's file name. Does the owner want the file called `testfarm.toml` or `poolhouse-test.toml`? The glossary has no
    word against either; the design uses `testfarm.toml`.
-7. **Splitting a long unit.** A unit longer than the ideal shard (the two files of 814 s and 611 s in `docs/design-test-selection.md`
-   section 3.5) can be split by id only if its tests are independent. The design makes it opt-in per project (`list.split`) and
-   stores no pass for a split unit. Whether Poolhouse's two long files should be rewritten into smaller units instead is the owner's
-   call on the tests, not the runner's.
+7. **Splitting a long unit.** Decided: the runner splits any unit longer than the ideal shard by id, automatically, from recorded
+   durations (the two files of 814 s and 611 s in `docs/design-test-selection.md` section 3.5 are split, not rewritten). The cost
+   of module and session setup per shard is measured and counted by the planner; order-dependence in a split file is found by
+   running its shards in a different order than the file's own and is reported as a defect in the test; a unit with no ids from
+   LIST is not split and the report says so. Nothing remains open.
 8. **ssh.** The transport interface leaves room for it. Whether it is built, and whether it needs the same confinement on a device
    that is not a pool member, is deferred; no step of the plan depends on it.

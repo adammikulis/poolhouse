@@ -15,7 +15,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from poolhouse.decide import pointer_prompt
+from poolhouse.decide import pointer_prompt, window
 from poolhouse.decide.base import Asked, BaseDecider, Request, text_of
 from poolhouse.decide.calibrate import Calibration
 from poolhouse.decide.pins import STRANDS_V19, Checkpoint
@@ -134,6 +134,8 @@ class PointerDecider(BaseDecider):
         self.calibration = calibration
         self._lock = threading.Lock()
         self._loaded: tuple[Any, ...] | None = None
+        self.last_working = 0
+        """The working memory, in bytes, the last prompt encoded was measured to need."""
 
     def resolve(self) -> Source:
         """The verified local files."""
@@ -169,8 +171,9 @@ class PointerDecider(BaseDecider):
         rendered = pointer_prompt.render(asked.question, asked.state, asked.options)
         enc = tok(rendered.text, return_offsets_mapping=True, add_special_tokens=False, return_tensors="pt")
         length = int(enc["input_ids"].shape[1])
-        if length > pointer_prompt.MAX_PROMPT_TOKENS:
-            raise DecideError(pointer_prompt.too_long(length, "the prompt"))
+        dim = window.of_directory(files.base_dir)
+        window.within_window(length, dim, "the prompt")
+        self.last_working = window.require_room(dim, length, self._loaded[3], "the prompt")
         spots = pointer_prompt.positions([tuple(o) for o in enc["offset_mapping"][0].tolist()], rendered.spans)
         return enc["input_ids"][0], spots, temperature_for(files, asked.question)
 
@@ -215,6 +218,8 @@ class PointerDecider(BaseDecider):
         with self._lock, torch.inference_mode():
             for group in _length_groups([int(ids.shape[0]) for ids, _, _ in encoded]):
                 longest = max(int(encoded[i][0].shape[0]) for i in group)
+                window.require_room(window.of_directory(self._loaded[4].base_dir), longest, device,
+                                    "the padded batch", rows=len(group))
                 pad = getattr(self._loaded[0], "pad_token_id", None) or 0
                 batch = torch.full((len(group), longest), pad, dtype=encoded[0][0].dtype)
                 mask = torch.zeros((len(group), longest), dtype=torch.long)

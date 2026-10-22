@@ -580,6 +580,28 @@ different operating system, kernel and network stack, joined through the real jo
 nodes on one machine over loopback is not tested; what the check cannot cover (a real Windows device, a beacon on a real
 network, a firewall prompt) is said, not implied.
 
+### Staying in sync across devices
+
+Every device keeps in step with the development branch by the agents on it, and no agent waits for a person to fetch,
+pull, push or remind it.
+
+- **When.** At session start, between tasks, at least every 15 minutes in longer work, and before the final report:
+  `git fetch origin`, check whether local or `origin/<dev>` advanced, and merge `origin/<dev>` into the branch worked on.
+  The inbox is read at the same moments (3, "The workspace").
+- **Whose checkout.** The main session fast-forwards its clean claimed development checkout when upstream advances; a
+  worker refreshes its own claimed worktree at a safe boundary. Never change another agent's checkout or interrupt a
+  running job to synchronize. Divergence is reconciled in an isolated sibling worktree, with review and the affected
+  tests before it lands.
+- **What the merge changes.** Re-read `CLAUDE.md` and `AGENTS.md` after a merge changes them, and read the updated source
+  before reporting a feature missing. Synchronized source is not proof that the installed application runs it; record
+  the installed version separately.
+- **Pushing.** Fetch again right before every development push, and publish normally after reconciling if another
+  device advanced upstream. Ready work is not held behind unrelated tasks or background suites. Never force push, push
+  `main` or tags, delete a remote ref, or discard local work to get a clean sync.
+- **Reporting.** Say the development commit and the upstream state in the final report. If access or a required
+  approval blocks the sync, name that one blocker and keep the responsibility; routine synchronization is never handed
+  back to the owner.
+
 ## 4. Git, worktrees and landing
 
 ### Worktrees

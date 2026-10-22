@@ -387,7 +387,7 @@ class Broker(BrokerHolds):
             return
         if held is not None:
             self._stop(held)
-        elif not info.adopted and info.pid and self.alive(info.pid):
+        elif not info.adopted and info.pid:
             self.manager._stop_server(info, grace_s=grace_s)
 
     @admitted
@@ -687,6 +687,8 @@ class Broker(BrokerHolds):
         died, and stop the idle ones of ours. Returns the servers stopped."""
         if self._decision_hosts is not None:
             self._decision_hosts.upkeep()
+        for gone in self.manager.settle_exited():
+            self.say(f"port {gone.port}: the server (pid {gone.pid}) died on its own: {gone.said}")
         now = time.monotonic()
         with self._cond:
             for held in list(self.servers.values()):
@@ -833,6 +835,7 @@ class Broker(BrokerHolds):
                 "exclusive_gpu_claims": True,
                 "decision_residents": self._decision_hosts.snapshot() if self._decision_hosts is not None else [],
                 "servers": [h.said() for h in sorted(self.servers.values(), key=lambda h: h.port)],
+                "exits": self.manager.children.exits(),
                 "queue": [{"lease": w.lease, "purpose": w.ask.purpose, "model": w.ask.models[0],
                            "pid": w.ask.pid, "label": w.ask.label,
                            "reason": w.ask.record.get("reason") or provenance.NO_REASON,

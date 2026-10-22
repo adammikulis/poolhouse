@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import leasetable
-from poolhouse.decide.pointer_prompt import MAX_PROMPT_TOKENS
 from poolhouse.decide.types import MAX_NAME, MAX_OPTIONS, MAX_TEXT
 from poolhouse.graph import GraphStore
 from poolhouse.serve import admission
@@ -48,7 +47,9 @@ class DecisionOwner:
 
 
 def peak_estimate(source: dict) -> int:
-    """Estimate admitted peak for the supported dense Qwen pointer torso."""
+    """Estimate the admitted resident peak for the supported dense Qwen pointer torso: its weights and a
+    base. A prompt's own working memory is not reserved here (its length is not known); the host measures
+    it against the memory free when the prompt arrives, and the broker allows it on top of this peak."""
     config = json.loads((Path(source["base_dir"]) / "config.json").read_text())
     if not isinstance(config, dict) or config.get("quantization") or config.get("quantization_config"):
         raise ValueError("Resident pointer inference does not load quantized weights.")
@@ -60,13 +61,11 @@ def peak_estimate(source: dict) -> int:
     dimensions = [config.get(key) for key in ("hidden_size", "num_hidden_layers", "num_attention_heads")]
     if any(type(value) is not int or value <= 0 for value in dimensions):
         raise ValueError("The decision model is missing its verified architecture dimensions.")
-    hidden, layers, heads = dimensions
     files = set(Path(source["base_dir"]).rglob("*.safetensors")) | {Path(source["head"])}
     if source.get("lora_dir"):
         files.update(Path(source["lora_dir"]).rglob("*.safetensors"))
     weights = sum(path.stat().st_size for path in files)
-    return (4 * weights + MAX_PROMPT_TOKENS ** 2 * heads * 8 + MAX_PROMPT_TOKENS * hidden * layers * 16
-            + 512 * admission.MIB)
+    return 4 * weights + 512 * admission.MIB
 
 
 def validate_record(record: dict) -> None:
@@ -259,7 +258,8 @@ class DecisionResidents:
     @staticmethod
     def _memory(resident: dict, report: dict) -> None:
         measured = max(resident["process"].memory(), report.get("rss", 0), report.get("device", 0))
-        if measured > resident["bytes"]:
+        resident["working"] = max(resident.get("working", 0), int(report.get("working", 0)))
+        if measured > resident["bytes"] + resident["working"]:
             raise RuntimeError("Decision residency exceeded its admitted peak memory; the host was stopped.")
 
     def _evict(self, key: str, *, wait: bool = True) -> None:

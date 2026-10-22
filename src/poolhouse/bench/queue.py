@@ -48,6 +48,7 @@ from typing import Any
 
 from poolhouse import bench
 from poolhouse.log import say
+from poolhouse.platform import end_child
 from poolhouse.serve.process import pid_exists
 
 #: what a summary line looks like, so the log can be read by eye and by `grep`
@@ -347,11 +348,8 @@ def _stop_running(grace: float = 60.0) -> None:
         return
     say("[killed] the queue was told to stop; asking the step in flight to stop too",
         flush=True)
-    try:
-        child.terminate()
-        child.wait(timeout=grace)
-    except (OSError, subprocess.TimeoutExpired):
-        pass
+    with contextlib.suppress(OSError):
+        end_child(child, grace_s=grace)
 
 
 def _for_step(argv: list[str], *, yes: bool, ceiling: float) -> list[str]:

@@ -334,7 +334,7 @@ def _served_by_the_sweep(args: Any, questions: Any, graph: Any, already: Any,
             unmeasured.append(f"{Path(model).name}: {why}")
             continue
         stem = ((str(getattr(args, "serve_label", "") or "")
-                 or str(model).rsplit("/", 1)[-1].removesuffix(".gguf")[:14])
+                 or Path(model).name.removesuffix(".gguf")[:14])
                 + ("-nodraft" if getattr(args, "no_draft", False) else "")
                 + str(getattr(args, "label_suffix", "") or "")
                 + (f"-{level.name}" if level and level.name else "") + fitted)

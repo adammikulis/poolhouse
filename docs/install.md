@@ -254,6 +254,21 @@ Everything is adjustable later:
 ![Settings](images/settings.jpg)
 
 
+## Staying in sync
+
+`scripts/sync-dev` fetches `origin` and fast-forwards the checkout, and does nothing else: it moves only when the current branch is the development branch (`POOLHOUSE_DEV_BRANCH`, else `DEFAULT` in `src/poolhouse/devbranch.py`), the working tree is clean and the merge is `--ff-only`. Otherwise it prints one line saying why and exits 0. It never stashes, resets or merges a changed tree. A pull runs the `post-merge` hook, which refreshes the runtime in the background.
+
+**VS Code.** The tracked `.vscode/settings.json` turns on `git.autofetch` (every 120 seconds), `git.pruneOnFetch` and no sync confirmation. `.vscode/tasks.json` holds the `sync-dev` task, which runs when the folder opens and then every 5 minutes with no panel. VS Code asks once to allow automatic tasks in the folder; allow it. On Windows run it in WSL.
+
+**A headless device.** Run the script from the checkout every few minutes.
+
+```
+*/5 * * * * cd /path/to/poolhouse && ./scripts/sync-dev >> ~/.poolhouse-sync.log 2>&1      # cron
+```
+
+For systemd, a user service with `WorkingDirectory=/path/to/poolhouse` and `ExecStart=/path/to/poolhouse/scripts/sync-dev`, started by a timer with `OnUnitActiveSec=5min`. For launchd, a LaunchAgent with `WorkingDirectory`, `ProgramArguments` of the script and `StartInterval` 300.
+
+
 ## Following the source checkout
 
 `poolhouse runtime` keeps the installed runtime on the commit a source checkout's development branch is on. Each runtime is its own tree, `~/.poolhouse/runtimes/<platform>/<commit>/<id>`, built from `git archive <commit>` with the extras a full install asks for and never changed afterwards. Console launchers (`poolhouse-workspace` and the rest) are small files that exec the selected tree's interpreter with `-I`.

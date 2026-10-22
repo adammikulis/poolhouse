@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from poolhouse.log import say, warn
-from poolhouse.platform import launch
+from poolhouse.platform import end_child, launch
 
 from . import discovery, runtime_wheel, windows_firewall, wsl_network, wsl_ui
 
@@ -243,7 +243,7 @@ def start(argv: list[str], *, executable: str | None = None) -> int:
             try:
                 process.wait(timeout=10)
             except subprocess.TimeoutExpired:
-                process.terminate()
+                end_child(process)
     finally:
         if bridge:
             bridge.close()
