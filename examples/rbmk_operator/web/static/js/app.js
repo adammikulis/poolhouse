@@ -241,7 +241,7 @@ window.RB = window.RB || {};
     const rows = run ? run.decisions.filter(function (d) { return d && d.kind === 'decision'; }) : [], box = $('clkDecBox');
     const lat = rows.map(function (d) { return d.latency_ms / 1000; }), gap = median(rows.slice(1).map(function (d, i) { return d.tick - rows[i].tick; }));
     const wait = run ? run.pendingFor() : 0;
-    $('clkDec').textContent = rows.length ? 'every ' + (gap === null ? '-' : gap + ' ticks') + ', latency last ' + lat[lat.length - 1].toFixed(1) + ' s, mean ' +
+    $('clkDec').textContent = rows.length ? (gap === null ? '' : 'every ' + gap + ' ticks, ') + 'latency last ' + lat[lat.length - 1].toFixed(1) + ' s, mean ' +
       (lat.reduce(function (s, v) { return s + v; }, 0) / lat.length).toFixed(1) + ' s' + (wait ? ', waiting ' + wait.toFixed(1) + ' s' : '') : (wait ? 'waiting ' + wait.toFixed(1) + ' s' : '-');
     box.className = 'clk' + (wait > TIMEOUT_S ? ' stuck' : wait > SLOW_S ? ' slow' : '');
     const p = $('pending');
