@@ -3,15 +3,13 @@ window.RB = window.RB || {};
 (function (RB) {
   'use strict';
 
-  /* Seconds after the turbine rundown test began (01:23:04), from the accident record (INSAG-7). */
-  const RECORD = [[0, '01:23:04 test begins'], [36, '01:23:40 AZ-5 pressed'], [39, '01:23:43 power excursion'], [43, '01:23:47 explosions']];
+  /* Seconds after the turbine rundown test began (01:23:04), from secondary sources (World Nuclear Association, Wikipedia). */
+  const RECORD = [[0, '01:23:04 test begins'], [36, '01:23:40 AZ-5 pressed']];
   const H = { root: null, crew: null };
   RB.history = H;
 
   function testStart(run) {
-    const ev = run.events.find(function (e) { return e.kind === 'test_start'; });
-    if (!ev) { return null; }
-    const row = run.trace.find(function (r) { return r.tick >= ev.tick; });
+    const row = run.trace.find(function (r) { return r.test === 'running'; });
     return row ? row.t_s : null;
   }
 
@@ -22,7 +20,7 @@ window.RB = window.RB || {};
     H.note = RB.el('p', { class: 'muted' });
     H.crewBtn = RB.el('button', { class: 'btn', text: 'Add the 1986 crew script run (no model)', onclick: H.runCrew });
     root.appendChild(RB.el('h3', { text: '26 April 1986 beside this run' }));
-    root.appendChild(RB.el('p', { class: 'muted', text: 'Time is seconds from the start of the turbine rundown test. The top lane is the historical record (INSAG-7), not simulation output. The crew lane is a script that follows the crew\'s sequence in this toy; it is not a model.' }));
+    root.appendChild(RB.el('p', { class: 'muted', text: 'Time is seconds from the start of the turbine rundown test. The top lane is the historical sequence from secondary sources, not simulation output. The crew lane is a script that follows the crew\'s sequence in this toy; it is not a model.' }));
     root.appendChild(H.crewBtn); root.appendChild(H.note); root.appendChild(H.cv);
     H.cv.addEventListener('click', H.click);
   };
@@ -48,7 +46,7 @@ window.RB = window.RB || {};
     const ctx = cv.getContext('2d'); ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
     const text = RB.cssVar('--text'), muted = RB.cssVar('--muted'), grid = RB.cssVar('--grid');
     const starts = lanes.map(function (l) { return testStart(l.run); });
-    H.note.textContent = lanes.length && starts.every(function (s) { return s === null; }) ? 'This scenario has no turbine test; pick a poisoned start or the 1986 replay.' : '';
+    H.note.textContent = lanes.length && starts.every(function (s) { return s === null; }) ? 'No turbine test was started in this run; pick a poisoned start or the 1986 replay.' : '';
     let t0 = -20, t1 = 60;
     lanes.forEach(function (l, i) {
       if (starts[i] === null) { return; }
@@ -64,7 +62,7 @@ window.RB = window.RB || {};
       ctx.strokeStyle = grid; ctx.beginPath(); ctx.moveTo(X(t), 24); ctx.lineTo(X(t), h - 18); ctx.stroke();
       ctx.fillStyle = muted; ctx.textAlign = 'center'; ctx.fillText(t + ' s', X(t), h - 16);
     }
-    ctx.textAlign = 'left'; ctx.fillStyle = text; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('Historical record (INSAG-7)', 6, 28);
+    ctx.textAlign = 'left'; ctx.fillStyle = text; ctx.font = '600 12px system-ui, sans-serif'; ctx.fillText('Historical sequence', 6, 28);
     RECORD.forEach(function (m, k) {
       const x = X(m[0]); ctx.fillStyle = RB.cssVar('--bad'); ctx.beginPath(); ctx.arc(x, 34, 5, 0, 6.283); ctx.fill();
       ctx.font = '11px system-ui, sans-serif'; ctx.fillStyle = text; ctx.textAlign = x > w - 190 ? 'right' : 'left'; ctx.fillText(m[1], x + (x > w - 190 ? -12 : 8), 30 + k * 14);
@@ -85,11 +83,11 @@ window.RB = window.RB || {};
     lane.hits = [];
     let before = null;
     lane.run.decisions.filter(Boolean).forEach(function (d) {
-      const px = X(d.t_s - start), cls = d.applied.cls, show = cls !== 'hold' && (cls !== before || d.kind === 'trip');
+      const px = X(d.t_s - start), cls = d.choice.cls, show = cls !== 'hold' && cls !== before;
       before = cls;
-      ctx.fillStyle = d.kind === 'trip' ? RB.cssVar('--bad') : d.abstained ? RB.cssVar('--warn') : cls === 'hold' ? muted : RB.cssVar('--c2');
+      ctx.fillStyle = cls === 'hold' ? muted : RB.cssVar('--c2');
       ctx.fillRect(px - 3, y + laneH - 24, 6, 14);
-      if (show) { ctx.fillStyle = text; ctx.save(); ctx.translate(px + 3, y + laneH - 26); ctx.rotate(-0.9); ctx.fillText(cls + (d.applied.target !== 'none' ? ' ' + d.applied.target : ''), 0, 0); ctx.restore(); }
+      if (show) { ctx.fillStyle = text; ctx.save(); ctx.translate(px + 3, y + laneH - 26); ctx.rotate(-0.9); ctx.fillText(cls + (d.choice.target !== 'none' ? ' ' + d.choice.target : ''), 0, 0); ctx.restore(); }
       lane.hits.push({ x: px, d: d });
     });
   };

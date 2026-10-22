@@ -154,13 +154,13 @@ The owner requested a usage-conscious wrap: land useful reviewed work, tidy chec
 - The frame rate on a phone is untested for the 3D room and the 2D view; a headless browser (desktop and a 390 px viewport) has driven the app.
 - The 2D view was measured by process CPU time, not GPU busy time (`docs/notes/2026-10-22-rbmk-room-2d-cost.md`); no GPU timer query was available in headless Chromium.
 - The 2D view has no free zoom or pan inside a still beyond the per-panel close-ups; on a phone the front wall scrolls sideways at a fixed width.
-- No model-driven run is recorded for the 1986 scenario; `feed/replay-1986-crew.json` is the scripted crew replay, not a model's decisions.
+- No model-driven run of the 1986 scenario exists; the crew run is the scripted crew, not a model's decisions.
 - The rod cells are not coloured by rod kind: the run's `rods` carries each rod's kind, but the cells are coloured by insertion only.
-- The wall dials read the plant's true values; the Readings drawer shows the lagged, stale and faulted gauges the decider reads. Wiring the gauge readings into the dials is not done.
-- The core cross-section (channel power tint, void bubbles, moved-rod rings) is a drawer; the wall carries only the rod position map.
+- The wall dials read the plant's true values; the Readings drawer shows the console as the decider was given it. Wiring the sensor readings into the dials is not done.
+- The core cross-section (channel power tint, void bubbles, moved-rod rings) is a drawer; the wall carries only the rod position map. Stuck and slow rod drives are not drawn: the run's trace carries no per-rod fault.
 - The Run console is a drawer in the dock, not an object on the desk in the 3D room; a desk console needs a node in the generator and a rebuild of the room and the stills.
-- The Decider and Memory selects list `DECIDERS` and `MEMORIES` of `examples/rbmk/decider/controllers.py`: the Strands 2B decider and memory `none`. The 12B Gemma decider and the history and state memory variants are not built.
-- `tests/test_rbmk_web.py` and `tests/test_rbmk_sim.py` read a recording fixture that is no longer committed; they move to `tests/rbmk_run.py` (`model_run`, `save_recording`).
+- The Decider and Memory selects list `DECIDERS` and `MEMORIES` of `examples/rbmk/decider/model.py`: the Strands 2B decider, and memory `none` and `history`. The 12B Gemma decider and the state memory variant are not integrated.
+- The Poisoned starts drawer lists the poisoned-start recordings of the local run store; starting a batch is `python -m examples.rbmk.run batch`, not a button.
 
 ## Silent failures left (audit of 2026-10-16)
 - `scripts/test` prints the "fixed overhead" warning (`scripts/testphases.py`) and records it nowhere; a test run that starts a node pays about 20 s of bring-up each time, so the warning is on most runs. A fix needs the node kit to start faster or the warning to feed a ratchet metric.

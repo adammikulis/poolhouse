@@ -80,7 +80,7 @@ def test_every_feed_instrument_has_a_rect_in_the_front_view():
 
 
 def test_the_rod_panel_shows_every_rod():
-    from examples.rbmk.sim.rods import Rods
+    from examples.rbmk.plant.rods import Rods
 
     rods = {r.id for r in Rods().rods}
     assert set(VIEWS['rodpanel']['rods']) == rods

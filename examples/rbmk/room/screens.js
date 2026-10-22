@@ -87,17 +87,18 @@ function answers(g, dec) {
 
 const act = (a) => (a ? `${a.cls}${a.target && a.target !== 'none' ? ` ${a.target}` : ''}${a.cls.includes('rod') ? ` step ${a.step}` : ''}` : 'none');
 
+function applied(dec) {
+  if (dec.applied_tick === null || dec.applied_tick === undefined) return 'not applied yet';
+  return `tick ${dec.applied_tick}${dec.log_line ? `: ${dec.log_line}` : ', no change on the desk'}`;
+}
+
 function footer(g, dec) {
   g.font = 'bold 20px sans-serif';
   g.fillStyle = FG;
-  g.fillText(`requested: ${act(dec.requested)}`, 20, 448);
-  g.fillText(`applied: ${act(dec.applied)}     source: ${dec.source}`, 20, 474);
+  g.fillText(`chosen: ${act(dec.choice)}`, 20, 448);
   g.font = '16px sans-serif';
   g.fillStyle = DIM;
-  const il = (dec.interlocks || []).map((i) => i.id).join(', ');
-  const fl = (dec.flags || []).map((i) => i.id).join(', ');
-  g.fillText(`${il ? `interlocks: ${il}` : 'no interlock fired'}${fl ? `   flags: ${fl}` : ''}`, 520, 448, 484);
-  if (dec.note) wrap(g, dec.note, 520, 472, 484, 20, 2);
+  wrap(g, `applied ${applied(dec)}`, 20, 472, 984, 20, 1);
 }
 
 function events(g, feed) {
@@ -134,9 +135,8 @@ export function paintDecision(c, feed) {
     g.fillText('NO MODEL ANSWERS IN THIS RUN', 20, 200);
     g.font = '22px sans-serif';
     g.fillStyle = FG;
-    g.fillText(`The controller is "${d.controller}". Source of the last action: ${any.source}.`, 20, 250);
-    g.fillText(`requested: ${act(any.requested)}   applied: ${act(any.applied)}`, 20, 290);
-    if (any.note) wrap(g, any.note, 20, 330, 984, 26, 3);
+    g.fillText(`The controller is "${d.controller}", plain policy code.`, 20, 250);
+    g.fillText(`chosen: ${act(any.choice)}   applied ${applied(any)}`, 20, 290, 984);
     events(g, feed);
     return null;
   }
@@ -145,7 +145,7 @@ export function paintDecision(c, feed) {
   events(g, feed);
   g.fillStyle = DIM;
   g.font = '14px sans-serif';
-  g.fillText(`decision #${dec.i}  tick ${dec.tick}  model latency ${dec.latency_ms} ms`, 20, 594);
+  g.fillText(`request #${dec.n}  tick ${dec.tick}  model latency ${dec.latency_ms} ms`, 20, 594);
   return null;
 }
 

@@ -14,7 +14,7 @@ window.RB = window.RB || {};
   RB.startRun = async function () {
     const key = $('scenario').value, controller = $('controller').value;
     try {
-      const job = await RB.api('/api/run', { scenario: key, controller: controller, decider: $('decider').value, memory: $('memory').value });
+      const job = await RB.api('/api/run', { scenario: key, controller: controller, decider: $('decider').value, memory: $('memory').value, speed: +$('speedLive').value });
       const run = new RB.Run('main'); run.origin = 'live'; run.follow(job.id);
       RB.setMain(run); S.playing = true;
       if ($('alsoNaive').checked && controller === 'model') {
@@ -34,7 +34,7 @@ window.RB = window.RB || {};
   };
 
   RB.openRecording = async function (name) {
-    try { const r = await RB.api('/api/recordings/' + encodeURIComponent(name)); RB.openDocument(r.doc, r.label, 'recorded', name); }
+    try { const r = await RB.api('/api/recording?name=' + encodeURIComponent(name)); RB.openDocument(r.doc, r.label, 'recorded', name); }
     catch (e) { RB.fail('Cannot open ' + name + ': ' + e.message); }
   };
 
@@ -59,7 +59,7 @@ window.RB = window.RB || {};
     try {
       const doc = run.jobId ? await RB.api('/api/jobs/' + run.jobId + '/document') : run.doc;
       if (!doc) { throw new Error('this run has no document'); }
-      const name = 'rbmk-' + doc.meta.scenario.key + '-' + doc.meta.controller + '-' + (doc.meta.backend.recorded_at || 'run') + '.json';
+      const name = 'rbmk-' + doc.meta.scenario.key + '-' + doc.meta.controller + (doc.meta.memory && doc.meta.memory !== 'none' ? '-' + doc.meta.memory : '') + '-' + (doc.meta.backend.recorded_at || 'run') + '.json';
       const a = RB.el('a', { href: URL.createObjectURL(new Blob([JSON.stringify(doc, null, 1)], { type: 'application/json' })), download: name });
       document.body.appendChild(a); a.click(); a.remove();
     } catch (e) { RB.fail('Export failed: ' + e.message); }
@@ -94,7 +94,7 @@ window.RB = window.RB || {};
     $('runlabel').textContent = h.label;
     const banner = bannerText(S.main);
     $('banner').textContent = banner; $('banner').style.display = banner ? '' : 'none';
-    $('scndesc').textContent = S.mode === 'live' ? (RB.scenarioInfo($('scenario').value) || {}).blurb || '' : '';
+    $('scndesc').textContent = S.mode === 'live' ? (RB.scenarioInfo($('scenario').value) || {}).description || '' : '';
   }
   RB.scenarioInfo = function (key) { return S.info.scenarios.find(function (s) { return s.key === key; }); };
 
@@ -111,6 +111,7 @@ window.RB = window.RB || {};
     $('controller').addEventListener('change', syncModelBoxes);
     S.info.deciders.forEach(function (d) { $('decider').appendChild(RB.el('option', { value: d.id, text: d.label })); });
     S.info.memories.forEach(function (m) { $('memory').appendChild(RB.el('option', { value: m, text: m })); });
+    S.info.speeds.forEach(function (v) { const o = RB.el('option', { value: v, text: v + ' plant s per s' }); o.selected = v === S.info.default_speed; $('speedLive').appendChild(o); });
     syncController();
   }
 
@@ -124,7 +125,7 @@ window.RB = window.RB || {};
   }
 
   function syncModelBoxes() {
-    ['deciderBox', 'memoryBox'].forEach(function (id) { $(id).style.display = $('controller').value === 'model' ? '' : 'none'; });
+    ['deciderBox', 'memoryBox', 'speedBox'].forEach(function (id) { $(id).style.display = $('controller').value === 'model' ? '' : 'none'; });
   }
 
   RB.loadRecordings = async function () {
@@ -190,24 +191,24 @@ window.RB = window.RB || {};
   /* ---------------------------------------------------------------------------- rendering */
   function activeDecision(run, frame) {
     let d = null;
-    run.decisions.forEach(function (x) { if (x && x.kind === 'decision' && x.tick <= frame.tick) { d = x; } });
+    run.decisions.forEach(function (x) { if (x && x.tick <= frame.tick) { d = x; } });
     return d;
   }
 
   function renderState() {
     const run = S.main, frame = run && run.trace.length ? RB.frameAt(run, S.cursor) : null;
-    panel.update(frame);
+    panel.update(frame, run);
     if (!run || !frame) { $('clock').textContent = run && run.live ? 'waiting for the GPU hold and the model...' : ''; $('caption').style.display = 'none'; return; }
     $('clock').textContent = 'tick ' + frame.tick + '  |  plant time ' + RB.fmtClock(frame.t_s) + (run.live ? '  |  ' + (run.asking !== null ? 'asking the model about tick ' + run.asking : 'running') : '');
     $('scrub').max = Math.max(run.last, 1); $('scrub').value = S.cursor;
     if (S.drawer === 'charts') { RB.drawChartSet(chartCv, run, S.cursor, RB.chartDefs(run.header.rods.map(function (r) { return r.kind; }))); }
-    const key = run.decisions.length + ':' + run.status + ':' + (run.doc ? 1 : 0) + ':' + run.jobId;
+    const key = run.rows.length + ':' + run.status + ':' + (run.doc ? 1 : 0) + ':' + run.jobId;
     if (key !== lastLog) { lastLog = key; RB.renderLog($('log'), run, RB.pick); }
     RB.markLog($('log'), frame.tick, S.selected, S.playing || lastCursor !== Math.floor(S.cursor));
     const dkey = (run.jobId || run.label) + ':' + S.selected + ':' + (run.doc ? 1 : 0);
     if (dkey !== lastDetail) {
       lastDetail = dkey;
-      RB.renderDetail($('detail'), run.decisions[S.selected], function () { RB.openDrawer('whatif'); });
+      RB.renderDetail($('detail'), run.rows[S.selected], function () { RB.openDrawer('whatif'); });
     }
     narrate(run, frame);
   }
@@ -282,7 +283,7 @@ window.RB = window.RB || {};
     if (now - (loop.clocked || 0) > 200) { loop.clocked = now; clocks(); }
     if (run && frame) {
       const d = activeDecision(run, frame);
-      if (d && frame.tick - d.tick <= 2) { extra.highlight = RB.movedRods(run, run.trace.findIndex(function (r) { return r.tick === d.tick; })); }
+      if (d && d.applied_tick !== null && d.applied_tick !== undefined && frame.tick >= d.applied_tick && frame.tick - d.applied_tick <= 2) { extra.highlight = RB.movedRods(run, d); }
     }
     core.draw(run && run.header ? run.header.rods : [], frame, extra);
     if (S.dirty) {

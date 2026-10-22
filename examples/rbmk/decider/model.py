@@ -11,6 +11,8 @@ import time
 from typing import Any, Protocol
 
 CALL_TIMEOUT_S = 120.0
+DECIDERS = ({"id": "", "label": "Strands 2B (strands-decider-2B-hobson-v19)"},)
+MEMORIES = ("none", "history")
 KEPT = ("name", "kind", "choice", "scores", "certainty", "error", "p_true", "expected", "backend", "model", "latency_ms")
 TOKEN_LIMIT = 4096
 

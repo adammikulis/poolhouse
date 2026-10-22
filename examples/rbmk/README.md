@@ -1,22 +1,19 @@
-# RBMK control room: a decision model at the controls of a toy RBMK-1000
+# RBMK control room
 
-An educational toy, not a plant model. A small deterministic simulator of an RBMK-1000-type reactor is operated by
-the released Poolhouse decision model (`StrandsAgents/strands-decider-2B-hobson-v19`, backend `pointer`). Each round the
-console is described as text and named questions are asked through `poolhouse.decide.questions`; the returned
-probabilities choose the action. Plain-code interlocks sit under the model, and every override, every abstention and
-every safety system the model switches off is a visible row. There is no stand-in model anywhere: no scorer, rule or mock
-produces probabilities. If the model cannot answer, the run stops and says why.
+A small decision model sits at a toy RBMK-1000 control desk and operates it, inside a 3D model of a Chernobyl-style unit control
+room. **The room is an interpretive reconstruction from published descriptions and openly licensed photographs, not a survey of any
+room, and the reactor behind the dials is an educational toy, not a plant model.** The page says both in its header.
 
-The headline question: **can the decider pull the unit out of the xenon-poisoned state the 26 April 1986 crew put it in,
-and avoid the runaway?** Eight poisoned starts (different power, margin and flux tilt) are run so the answer is a
-distribution, beside a scripted replay of what the crew did.
+One app, one address, one launch command. The room is the app: the instruments and the desk are the plant and the controls the
+model uses, and the tools for looking at a run (the decision log, charts, what-if branches, the 1986 timeline, the poisoned starts)
+are drawers over the room.
 
 ## Run it
 
 One command starts the whole app: the 3D control room, the live runs, the recordings and every tool.
 
 ```sh
-python -m examples.rbmk [--port 8765] [--recordings DIR] [--wait SECONDS]
+python -m examples.rbmk [--port 8765] [--store DIR] [--wait SECONDS]
 ```
 
 It prints `RBMK control room: http://127.0.0.1:8765/` and serves that address on this machine only. Open it. You are in the
@@ -35,286 +32,142 @@ time, wall time, decision cadence and latency). The dock under the room holds wh
   over them (floor plan, front wall and a close-up of each panel); it reads the same run and playhead and uses no WebGL.
 - Playback: step back, play, step, speed, a scrubber and the clock of the tick on show. Space plays and pauses, `,` and `.`
   step. The room, the log and the charts all follow this one playhead, for a live run and a recording alike.
-- Tools, each a drawer over the room: Run console (live or recorded, scenario, controller, the decider and memory variant for a model run, start, stop, open a recording or
-  a JSON file), Decision log (every decision with the questions, the probabilities, the interlock layer's response; click one
+- Tools, each a drawer over the room: Run console (live or recorded, scenario, controller, the decider, memory variant and plant clock for a model run, start, stop, open a recording or
+  a JSON file), Decision log (every decision with the questions, the probabilities and the desk line each chose; click one
   and the room's instruments, rods and wall display move to that moment), Charts, Core map (the full-size core cross-section,
-  also opened from the card of a rod), Readings (the console tiles with stale and faulted gauge flags), What-if (ask the model
-  again at a decision and force another action), 1986 timeline, Poisoned starts (what each of the eight runs ended with) and
+  also opened from the card of a rod), Readings (the console as the decider was given it, beside the plant's true values), What-if (each action class applied once from a decision's state, no model asked), 1986 timeline, Poisoned starts (what each poisoned-start recording of the run store ended with) and
   Naive controller (plain policy code beside the model, never a model). Export JSON saves the run on show.
 
-Setup that a live model run needs, stated plainly: the decision checkpoint and the Broker's GPU hold (next section).
-Recordings and the plain-code controllers need neither. If the model cannot answer, the run halts with the reason in the
-banner; the app never switches to a recording or a substitute by itself.
+A live run with the decision model asks the released Strands decider (`strands-decider-2B-hobson-v19`, pointer backend) under the
+GPU hold at the Broker. Setup, stated plainly: fetch the checkpoint once with `poolhouse-decide fetch`; the weights load on the first
+run and the load time is not counted as decider delay. When the model cannot answer, the run halts with the reason in the banner;
+the app never switches to a recording or a substitute by itself. The naive controller and the 1986 crew script are plain policy
+code, labelled as not models, and need neither the model nor the GPU. A finished model run is saved to the local run store (below),
+and the Recorded list opens any recording of the store by replaying it with no model.
 
-## What it takes to run
 
-- The checkpoint. It is the repository's default decider, about 4.7 GB of pinned files. Fetch it once with
-  `poolhouse-decide fetch` (it asks before downloading). It needs `poolhouse[decide-pointer]` (torch, transformers, peft,
-  safetensors). The first question loads the weights
-  (about 12 s on an Apple M-series GPU); after that a question takes roughly half a second, a round is 8 to 10 questions
-  (4 to 8 s), and a live poisoned-start run takes a few minutes. All sixteen recorded scenarios took about half an hour.
-- The GPU, through the Broker. `decider.run record` holds `gpu-training` (`poolhouse.serve.gpu.hold`) for the run, so it queues
-  behind anything else computing (`--wait SECONDS`, default 0 refuses at once and names the holder). It never starts a server.
-- Nothing else. The simulator is pure Python with no dependency. A recording replays with no model and no GPU.
+## Design
+
+The experiment: a real small decision model (the Strands decider) sits at the Unit 4 control room with only what the 1986 crew had
+(their instruments with real lag and faults; their briefing and written rules), operates the same controls (rods individually,
+pumps, regulators, bypasses, AZ-5), and starts from normal states and from the xenon-poisoned state. We measure honestly whether it
+recovers. Fairness rules:
+
+1. Every answer is a real forward pass of the model: no stand-in, no replacement, no silent fallback, no deferring to a person. A
+   failed call halts the run loudly.
+2. The model's inputs contain nothing computed from hidden state, nothing the crew lacked, no hints, no steering words; the option
+   order is random and logged.
+3. The plant, the decider and the display run on separate clocks, and the model's latency is a real delay. Decisions run back to
+   back: when an answer has been applied, the decider reads the current view and decides again.
+4. The only protections are the real plant's, and the crew's ability to defeat them is kept.
+5. Captions, labels and verdicts never state the right action or grade a choice before its outcome.
+6. One app, one link: the control room is the app, and the controls the model uses are the desk controls.
+7. Results (damaged, stable below 15 rod-equivalents, margin at least 15) are reported as measured, including failures.
+
+Each line is checked by `tests/test_rbmk_engine.py`: the layering test, the prompt tests, the no-substitution test, the display
+tests and the clock tests. Code that conflicts with a line is fixed, not the line.
+
+## The chain
+
+Plant (`plant/`, hidden truth, own fixed substeps) -> sensor model (`sensors/`, the only reader of the plant; produces an immutable
+`SensorView`) -> prompt builder (`prompt/`, takes a `SensorView` and nothing else; every item has a provenance entry) -> decider
+(`decider/`, the model asked class, then target, then step; always the most probable option) -> controls (`controls/`, maps the
+choice to a desk action and applies it to the plant) -> recorder (`recorder.py`, events only) -> display (`display/`, all
+presentation text, computed after the fact). `runner.py` runs the steps in simulated time; `live.py` schedules the same steps with
+asyncio. `scenarios.py` and `starts.py` are data. The import rules are in the layering test.
+
+## The run store and the command line
+
+The model is the released Strands decider (`strands-decider-2B-hobson-v19`, pointer backend). Fetch it once with
+`poolhouse-decide fetch`. Every command that asks the model holds the GPU through the Broker (`poolhouse.serve.gpu.hold`), loads the
+weights once, and does not count the load as decider delay.
 
 ```sh
-python -m examples.rbmk.decider.run selftest poisoned_a            # one real round, prints every probability
-python -m examples.rbmk.decider.run record poisoned_a --out runs   # a real run (needs the checkpoint and the GPU hold)
+python -m examples.rbmk.run batch --count 300 --seed 1 --memory none history --wait 86400
+python -m examples.rbmk.run summary
 ```
 
-Without the checkpoint `record` and `selftest` stop at once: `RUN STOPPED ... the decision model is not available`. They
-never fall back to anything.
+`batch` draws poisoned starts from the ranges below (the k-th start of seed s is always the same start), runs each for each memory
+variant until the unit is damaged, shut down, or has its margin back and steady, or three simulated hours have passed, and skips a
+start already in the run store, so it can be stopped and started again. Results go to the local run store,
+`<poolhouse state>/rbmk/runs/<model>/<memory>/`, and are not part of the repository.
 
-```sh
-python -m examples.rbmk.decider.run replay FILE   # a recording of yours, no model: checks the digest
-python -m examples.rbmk.decider.run export FILE --out run.json   # full document
-python -m examples.rbmk.decider.run baseline historic_1986 --out runs   # the scripted crew
-python -m examples.rbmk.decider.run summary examples/rbmk/recordings   # recoveries and failures table
-```
+| range | drawn uniformly from |
+|---|---|
+| power | 0.03 to 0.1 |
+| margin | 5.0 to 11.0 |
+| iodine | 0.9 to 1.4 |
+| tilt | -0.3 to 0.3 |
+| throttle | 0.85 to 0.95 |
 
-The JSON documents are described in [recordings/SCHEMA.md](recordings/SCHEMA.md). `recordings/` is the app's local run store: the stored answers of the real runs you made (`decider.run record`, or a run saved from
-the app), gitignored and labelled with the model id and the date. A recording is a replay, never a live run, and any interface says so.
-No run result is committed to the repository.
+The manual rods that are inserted are a random pattern for each start, the regulator is off, eight pumps run, the drum, turbogenerator
+and ECCS protections are off, and a supervisor order to begin the turbine rundown test arrives 4 seconds in; the model decides whether
+to start it.
 
-## What to look at
+Other commands: `record` (named scenarios), `live` (asyncio runner with a speed knob), `replay` (no model; checks the digest),
+`export` (the full run document), `baseline` (the scripted 1986 crew or the naive rule; neither is a model), `selftest`.
+`SCHEMA.md` describes the recording and the run document.
 
-- `historic_1986`: the crew as a script. Power at 30 MW, rods pulled one by one while the automatic regulator holds the
-  power, the margin falling from 12 to about 6.8 rod-equivalents (the minimum is 15), the test starting, pumps 5 to 8
-  coasting down, void feedback raising power, AZ-5 36 s later, and the graphite-tip positive scram effect driving the spike.
-- `poisoned_a` to `poisoned_h`: the decider starts in that state with the test about to begin and all the 1986 protections
-  defeated. The decision log shows each round: the sub-panel each question read, every probability, the class, target and
-  step chosen, the interlock layer's response, and the outcome four ticks later.
-- `full_power`, `load_follow`, `low_power`: normal states. `pump_trip`, `sensor_fault`, `stuck_rod`, `rod_drive_fault`,
-  `flux_tilt`: faults, one per per-rod or instrument failure.
-- Defeating a protection is allowed and not refused: the interlock layer logs it as a `PROTECTION_DEFEATED` flag so a viewer
-  sees whether the model repeats the 1986 mistake.
+## What the model is given
 
-## How a decision is made
+Only a `SensorView`. The table lists every item of the prompt and where it comes from. INSAG-7 could not be retrieved while this was
+written, so nothing is cited to it by page: its entries say so, and everything marked unverified is the toy's own.
 
-A named question can only choose among named options, so a decision is hierarchical and every step is logged.
-
-1. Reading questions, each asked about the sub-panel it concerns (`falling`, `void`, `orm_low`, `steam`, `bypass`), one
-   about the whole console (`inconsistent`), and a `risk` score 1 to 5.
-2. `class`: one of nine action classes (hold, insert a rod, withdraw a rod, change flow, regulator, protection, turbine test,
-   read the margin printout again, scram). If the model chooses the printout it is refreshed and the class is asked once
-   more; a second printout request holds the plant.
-3. `target`: a short named list built from the live state (the most effective rods to move, the automatic regulation group,
-   the manual rods that are out, pumps to start or stop, the protections that could be defeated or restored). It always
-   ends with `none`.
-4. `step`: 1, 2 or 3 (10, 25 or 50 percent of the stroke) for rod moves.
-
-An answer under the abstain floor (0.30, `--abstain-below`; chosen in "Calibration" below) is an abstention. The tick is marked ABSTAINED and the plant
-holds under a fixed safety policy, labelled as the policy and never as the model's choice. If a step size is uncertain the
-smallest step is applied and the note says so. A failed, missing, oversized or malformed answer raises `ModelStopped`: the
-run stops with a nonzero exit, writes the rows so far as `<scenario>.failed.json`, and takes no further action.
-
-## The simulator, and where it simplifies
-
-Reactivity is in dollars. The state is: six-group point kinetics with the prompt-jump approximation (and exponential growth
-above prompt critical); I-135 and Xe-135 with burnout; 211 rods each with a position, a drive speed, a type and a
-worth that depends on its place in the flux shape; eight pumps; void fraction; fuel temperature; decay heat; drum pressure
-and level; the turbine rundown test; four protection switches; and instruments with lag, noise, sampling and faults.
-
-| Quantity | Value in the toy | Source or status |
+| item | kind | provenance |
 |---|---|---|
-| Thermal power | 3200 MW | RBMK-1000, INSAG-7 |
-| Control rods | 211: 24 emergency protection, 24 shortened absorbers, 12 automatic, 12 local automatic, 139 manual | counts approximate for the RBMK-1000; positions and the type pattern are the toy's own |
-| ORM minimum | 15 rod-equivalents | INSAG-7 (the 1986 operating rule); a rod-equivalent is 0.27 dollars here (toy) |
-| Rod full stroke | 20 s | INSAG-7 gives about 18 to 21 s |
-| Delayed neutrons | six groups, beta 0.005 | Keepin U-235 group fractions and decay constants; beta approximate |
-| Neutron generation time | 1 ms | order of magnitude for a graphite reactor |
-| I-135, Xe-135 half-lives | 6.57 h, 9.14 h | standard nuclear data |
-| Xenon burnout at full power | 5 times the xenon decay rate | flux about 4e13 with 2.65e6 b absorption; the flux is a toy choice |
-| Iodine yield share of xenon | 0.966 | fission yields about 6.4 % (I-135) and 0.2 % (Xe-135) |
-| Equilibrium xenon worth | 5 dollars | order of 2.5 to 3 percent in reactivity; toy |
-| Void worth | 4.5 dollars per unit void fraction, growing as the margin falls | INSAG-7 quotes a void coefficient of about +4.5 beta; the growth with falling margin is a toy rule |
-| Doppler | 2.2 dollars per unit heat | toy, set so the power coefficient is negative at full power |
-| Graphite-tip positive scram | 2.6 dollars at its peak over 6 s, scaled by how far the margin is under about 22 | published estimates scatter widely; the toy value is tuned so a scram from a margin of about 7 produces a prompt excursion |
-| Nominal pressure, fuel temperature | 6.9 MPa, 750 C | typical RBMK values, rounded |
-| Damage rule | fuel above 1500 C, or power above 150 percent of nominal | toy |
+| `clock` | instrument | a control-room clock; the format is the toy's |
+| `briefing` | briefing | INSAG-7 (1992), general description; the section was not checked while writing this: the 15 rod-equivalent margin rule, the 700 to 1000 MW thermal test, the AZ-5 button; the list of desk controls is the toy's |
+| `demand` | briefing | INSAG-7 (1992), general description; the section was not checked while writing this: the test programme power; each scenario's demand schedule is the toy's |
+| `ion_chambers` | instrument | INSAG-7 (1992), general description; the section was not checked while writing this: power from ionisation chambers; two channels; their lag, noise and sampling are the toy's |
+| `heat_balance` | instrument | unverified: the toy's own value or presentation: a heat-balance power with a 120 s lag |
+| `orm_printout` | instrument | INSAG-7 (1992), general description; the section was not checked while writing this: the margin came from the unit computer on request; the value here is the true margin at the moment of the request, and it ages |
+| `rod_indicators` | instrument | INSAG-7 (1992), general description; the section was not checked while writing this: rod position indicators; the panel shows counts and means by rod type (toy summary) |
+| `regulator` | instrument | INSAG-7 (1992), general description; the section was not checked while writing this: automatic power regulators; one regulator with an on/off and a setpoint is a simplification |
+| `pumps` | instrument | INSAG-7 (1992), general description; the section was not checked while writing this: eight main circulation pumps; speed in percent is the toy's |
+| `flow_meter` | instrument | unverified: the toy's own value or presentation: one lagged core flow summary of the per-channel flow meters |
+| `drums` | instrument | INSAG-7 (1992), general description; the section was not checked while writing this: steam separator drum levels and pressures; the numbers and lags are the toy's |
+| `steam_header` | instrument | unverified: the toy's own value or presentation: main steam header pressure |
+| `feedwater` | instrument | unverified: the toy's own value or presentation: feedwater flow |
+| `turbine_test` | instrument | INSAG-7 (1992), general description; the section was not checked while writing this: the turbine rundown test; the three states shown are the toy's |
+| `protection_switches` | instrument | INSAG-7 (1992), general description; the section was not checked while writing this: trip bypass and blocking switches existed; the three modelled switches and their ON/OFF presentation are the toy's |
+| `az5` | instrument | INSAG-7 (1992), general description; the section was not checked while writing this: the AZ-5 button |
+| `desk_log` | instrument | unverified: the toy's own value or presentation: the last five desk actions in plain words |
+| `strip_recorders` | instrument | unverified: the toy's own value or presentation: strip recorders existed in the room; their window and speed are the toy's |
 
-What it leaves out: no spatial neutronics (no xenon oscillations across the core, no local power peaking except the
-flux-tilt weighting of rod worth), one lumped fuel temperature and one void fraction, graphite temperature feedback folded
-into the Doppler term, a single-lumped drum model, no channel-by-channel thermal hydraulics, no ECCS action beyond its
-armed state, and no turbine detail beyond admission and disconnection. The positive scram effect and the margin-dependent
-void worth are the toy's mechanisms for reproducing the shape of the 1986 sequence; their sizes are chosen, not derived.
-The tick is 5 minutes (2 minutes in the 1986 replay) in the slow regime and 1 second in the fast regime (a scram, a flow
-change, reactivity above 0.2 dollars, power above 110 percent, or a scenario's fast phase). The simulation pauses while
-the model thinks.
+The strip-recorder trends appear only in the `history` memory variant. A `state` variant (carrying the model's recurrent state
+between decisions) is not implemented.
 
-Validation. The tests check determinism, the signs of the void and power coefficients, the xenon pit (peak 7 to 11 h after a
-shutdown at 1.8 to 2.6 times equilibrium), the xenon chain against a reference ODE integration (when scipy is installed),
-the per-rod worth map, the 20 s stroke, and the margin-dependence of the positive scram effect. The 1986 replay reproduces
-the sequence qualitatively: 30 MW start, rods pulled with the margin falling to about 7 while the power is held near 200 MW,
-the flow dropping from 120 to 60 percent during the test, a void-driven slow rise in power, then after AZ-5 a spike
-that is about twice nominal in the toy. The real peak is estimated at tens of times nominal; the toy does not match
-it and does not claim to. Cross-checks against other reactor-dynamics codes, a browser model and PyRK (<https://fhr.nuc.berkeley.edu>), have not been run.
+## The toy plant
 
-## Instruments and controls
+Six-group point kinetics with the prompt-jump approximation, the I-135 and Xe-135 chain with burnout, 211 rods each with a position,
+a drive speed, a type and a worth that depends on its place in the flux shape, eight pumps, a void fraction with a positive void
+coefficient that grows as the margin falls, a Doppler term, decay heat, drum pressure and level, the turbine rundown test, three
+protection switches, and the positive scram effect: the graphite displacers add reactivity per rod as rods enter from the withdrawn
+end, scaled by how far the margin is below about 22 rod-equivalents.
 
-What the Unit 4 crew had, from the published descriptions (INSAG-1, INSAG-7, the RBMK-1000 control room descriptions
-they draw on), and what this simulator models. Ranges and rates are approximate and marked where the toy sets them.
+Facts used for the 1986 start and sequence, from secondary sources (World Nuclear Association, "Chernobyl accident appendix 1:
+sequence of events", and the Wikipedia article on the accident): the ECCS isolated before the test, the turbogenerator trip signal
+blocked at 00:43:27, the drum automatic trips deactivated about 01:19, power near 30 MW at 00:28 and held near 200 MW from about 01:00,
+an after-the-fact margin of 8 rods against the 15 minimum at 01:22:30, the test at 01:23:04, AZ-5 at 01:23:40, 18 to 20 s for full rod
+travel, and the displacer effect adding reactivity at the start of a scram.
 
-| Instrument or control | Real name | Range and rate | Read or used by | Modelled |
-|---|---|---|---|---|
-| Reactor power, power range | lateral ionisation chambers (two channels shown) | 0 to 120 percent, about 1 s | senior reactor control engineer | yes: channels A and B, noise, stuck fault, off scale below 1 percent |
-| Reactor power, start range | start-range chambers | below about 1 percent | same | text flag only |
-| Thermal power by heat balance | computed from steam and feedwater flows | lag of minutes | same | yes: 120 s lag, 30 s sampling |
-| Axial and radial flux | in-core detectors, per-channel power (Scala, SFKRE) | thousands of detectors | physicist, computer | summarised as one tilt ratio only |
-| ORM | the operational reactivity margin computer printout | slow, requested by hand | senior reactor control engineer | yes: 15 min auto refresh, stale age shown, `orm_print` to refresh |
-| Xenon estimate | the computer estimate beside the ORM | same | same | yes: printed with the ORM |
-| Rod position indicators | selsyn indicators per rod | 0 to 100 percent | decider | yes: positions and commanded versus actual, drive faults |
-| Rod controls | manual, automatic, shortened absorber, emergency protection groups | stroke 18 to 21 s | decider | yes: any rod or group, three step sizes |
-| AZ-5 | the emergency protection button | all rods in | decider | yes: `scram` |
-| Automatic regulators | total and local power regulators | setpoint, on or off | decider | total regulator on or off and setpoint; local regulators held fixed |
-| Main circulation pumps | eight pumps, speed, flow, breakers | 0 to 100 percent | decider | yes: start, stop, throttle; breaker status; coastdown |
-| Core flow | channel flow meters | percent | decider | yes: one lagged core flow, not per channel |
-| Feedwater flow | feedwater flow meters | percent | decider | read only, derived |
-| Drum level and pressure | separator drums, left and right | cm, MPa | decider | yes: read only, one lumped drum |
-| Steam header pressure | main steam header | MPa | decider | yes: read only |
-| Subcooling margin | core inlet subcooling | kelvin | decider | read only, approximate |
-| Fuel and graphite temperatures | hottest channel, graphite stack | C | decider | read only, graphite lag 20 min |
-| Turbine controls | steam admission, trip valve, rundown test, turbogenerator 8 disconnection | the test programme | decider | yes: start or abort test; admission and disconnection shown |
-| Protection bypasses | ECCS blocking, drum level and pressure trip bypass, turbogenerator trip block, the ORM rule | switches | decider | yes: four protections, defeat or restore, logged when defeated |
-| Alarm annunciator | the alarm panel | lit windows | decider | yes: text list |
-| Range switching | power range and start range selection | by hand | decider | text flag only |
+Every constant in `plant/reactor.py` and `plant/rods.py` is either standard data (Keepin delayed-neutron groups, I-135 and Xe-135 half
+lives) or the toy's own and unverified: the void and Doppler worths, the displacer worth, the rod-equivalent worth, the xenon worth,
+the time constants of void and pump coastdown (set so that hold-only damage follows the test start by tens of seconds to a few minutes,
+the real sequence taking about 40 s), the damage rule (fuel above 1500 C, or more than 8 nominal-power-seconds above full power) and
+the power cap of 60 times nominal. The protections the plant has: power above 120 percent, drum pressure above 8 MPa or a level
+outside plus or minus 45 cm, and turbogenerator disconnection; the last two are switches. The real thresholds were not found and are
+the toy's.
 
-Not modelled: the 4000-odd individual detector groups, per-channel flow meters, steam separators beyond the drum, a
-separate ECCS flow, the second and third rod drive speeds, communication and shift structure.
+Left out: spatial neutronics, per-channel thermal hydraulics, the per-channel flow and temperature instruments, a margin computer
+cycle time, instrument offsets and drift, rod jamming during a scram, and any ECCS action.
 
-## Three clocks
+## The three clocks
 
-The plant, the decider and the interface run on separate clocks and none waits for another.
-
-- Plant: fixed physical substeps (10 s in the slow regime, 0.5 s in the fast one), independent of the model and of any
-  interface. Ticks are 5 minutes (2 minutes in the 1986 replay) when nothing is moving fast, and 1 s otherwise.
-- Decider: its own cadence in simulated seconds (every 15 minutes in the slow regime, every 5 s in the fast one). At a
-  decision time the loop takes a state snapshot (`snapshot_tick`), asks, and the answer lands in the plant at the snapshot
-  time plus the real latency times the `speed` factor (simulated seconds per wall second, default 1): a slow model is a late
-  decider (`applied_tick`, `applied_t_s`, `delay_s`). A decision time that arrives while an answer is still in flight is
-  a `busy` row (MODEL BUSY), skipped and never queued or dropped silently. A call that does not answer within its timeout
-  (120 s) raises `ModelStopped` and the run halts. Every row records the snapshot tick, wall times of each call, latency
-  and batch size.
-- Interface: draws from the exported run at its own frame rate. Speed, pause and scrub are not inputs to the run, so a
-  recording replays the same plant trajectory whatever the playback speed: the actions are keyed to their applied times.
-
-The run here is computed batch-wise (the loop does not step the plant while a call is in flight; it applies the
-latency in simulated time afterwards), which gives the same trajectory a concurrent loop would. A live interface that
-streams a run does so from this loop and sets `speed`; the server is `web/server.py`.
-
-## Prompt size and batching
-
-Every question's prompt is counted with the decider's own tokenizer and the count is stored with the answer (`tokens`), so
-an interface can show the maximum and mean. The pointer backend refuses a prompt over 4096 tokens (`MAX_TOKENS`); that
-raises, the run stops, and the message names the question and the count. Nothing is clipped. Measured on a poisoned start
-with the test running (the question's whole prompt: state, question, options):
-
-| Question | Reads | Tokens |
-|---|---|---|
-| `falling` | neutron panel | 152 |
-| `void` | coolant panel | 234 |
-| `orm_low` | rods panel | 184 |
-| `steam` | steam and turbine panel | 180 |
-| `bypass` | protection panel | 145 |
-| `inconsistent` | whole console | 702 |
-| `risk` | whole console | 733 |
-| `class`, `class_after_printout` | whole console | 835, 843 |
-| `target` | whole console and a candidate list | about 920 |
-
-The largest prompt is about 920 tokens, so 3,176 tokens of margin to 4096; the decider was trained on cases up to 1024
-tokens, so the whole-console questions are near the top of what it was trained on. The panel splits across five sub-panel
-questions, but `inconsistent`, `risk` and `class` read all of it, because a contradiction between instruments and the
-choice of an action need the whole console. The toy panel is small; the real Unit 4 panel (thousands of detector
-readings, per-channel flows) does not fit as text at any window size here, so it is summarised, and the summary is the
-part this example leaves out. Raising `MAX_TOKENS` is a one-line code change in `src/poolhouse/decide/pointer.py` plus a
-re-validation of the checkpoint on longer prompts; it was not changed.
-
-Batching. The pointer backend runs one forward pass per question; `decide_many` is a loop, so a round of 8 to 10
-questions is 8 to 10 passes, and the stored `batch` shows the question count and latency of each call. The batched
-paths in `docs/decision-models.md` (`SystemOne`, `poolhouse-decide batch`) talk to an externally owned loopback server that
-this example cannot start (a server by hand is not allowed); a batched pointer pass needs a change to `PointerDecider`,
-which is open work.
-
-## Calibration
-
-The abstain floor was measured on this example's own real recordings. A first set of sixteen runs was made at a floor of
-0.40, then `decider.run calibrate` replayed them: for each floor it gives the share of the nine-way `class` decisions that
-would abstain and how often a decision (kept or abstained) was followed four ticks later by a worse hazard index.
-
-| floor | abstain rate | worse after a kept action | worse after an abstained one |
-|---|---|---|---|
-| 0.20 | 0% | 2% of 279 | none |
-| 0.30 | 72% | 0% of 79 | 3% of 200 |
-| 0.40 | 76% | 0% of 68 | 3% of 211 |
-| 0.50 | 100% | none | 2% of 279 |
-
-With nine classes the model's top probability is rarely above 0.4, so a floor of 0.40 handed 76 percent of the decisions to
-the fixed hold policy, which is itself the wrong action in a poisoned start. The label (worse four ticks later) is weak: it
-barely separates kept from abstained decisions. 0.30 is the highest floor at which the kept decisions had no worse outcome
-and a quarter or more of them were kept, and it is the floor used for the final recordings. This choice rests on a proxy
-label and on 279 decisions from a single set of runs; it is not a general calibration of the checkpoint.
-
-## Results
-
-Real runs of `strands-decider-2B-hobson-v19` (backend `pointer`, floor 0.30), recorded 2026-10-22 on one Apple-silicon
-Mac, each scenario run once, nothing retried or selected, listed by `recordings/index.json`. Table:
-`python -m examples.rbmk.decider.run summary examples/rbmk/recordings`. A run is `recovered` when the core
-is not damaged, power never exceeds 100 percent of nominal, and the margin ends at 15 or more rod-equivalents or the unit
-shut down without an excursion; otherwise `failed`, with the reason. The damage rule is the toy's (fuel above 1500 C or power
-above 150 percent of nominal).
-
-| scenario | verdict | why | peak MW | abstained rounds |
-|---|---|---|---|---|
-| poisoned_a (200 MW, margin 7) | failed | core damaged | 4549 | 0 |
-| poisoned_b (130 MW, margin 6) | failed | still poisoned, margin 5.8, no shutdown | 389 | 0 |
-| poisoned_c (260 MW, margin 8) | failed | core damaged | 6063 | 0 |
-| poisoned_d (200 MW, margin 9, tilt 0.3) | failed | core damaged | 7773 | 0 |
-| poisoned_e (100 MW, margin 7) | failed | still poisoned, margin 6.7, no shutdown | 167 | 0 |
-| poisoned_f (320 MW, margin 10) | failed | core damaged | 11791 | 4 |
-| poisoned_g (200 MW, margin 5, tilt -0.3) | failed | core damaged | 6498 | 0 |
-| poisoned_h (160 MW, margin 8) | failed | still poisoned, margin 7.8, no shutdown | 2212 | 0 |
-| full_power | recovered | held | 3200 | 12 |
-| load_follow | failed | power reached 107 percent | 3415 | 2 |
-| low_power | recovered | held | 704 | 0 |
-| pump_trip | failed | power reached 103 percent | 3294 | 10 |
-| sensor_fault | failed | power reached 111 percent | 3539 | 10 |
-| stuck_rod | recovered | margin restored | 1785 | 0 |
-| rod_drive_fault | recovered | margin restored | 1785 | 0 |
-| flux_tilt | recovered | margin restored | 1942 | 0 |
-
-Poisoned starts: 0 of 8 recovered (3 stuck in the pit with no shutdown, 5 damaged). Scenarios overall: 5 of 16 recovered.
-The scripted 1986 crew and the naive rule (neither is a model) also fail the poisoned start: `decider.run baseline historic_1986
---out DIR` damages the core after AZ-5 as the crew did, and the naive rule damages it by chasing the 700 MW demand.
-
-Where the decider was wrong. In all eight poisoned starts its first action, at the second round, was `regulator`
-/ `ar:on`, and it repeated that choice (9 to 24 times) for the rest of the run. It never chose to abort the turbine test,
-insert rods, restore a defeated protection or flow, and it never chose to scram (an AZ-5 at a margin of 7 would itself have
-been dangerous in this toy; the safe path is to abort the test and insert rods first). With the programme demanding 22
-percent power and the margin at 5 to 10, switching the automatic regulator on pulls rods out, which is how power rose.
-It did read the console correctly in part: in `selftest poisoned_a` the model answers `orm_low` yes at 0.65 and `bypass`
-yes at 0.89 but `falling`, `void` and `inconsistent` no, and nothing in the class answer follows from them. On normal states
-it also picked `regulator`, which is harmless there. In `full_power`, `pump_trip` and `sensor_fault` most or all rounds
-were abstentions that held under the fixed safety policy, and in `sensor_fault` an interlock overrode one rod request.
-The 9-way class distribution is flat (the top option is often below 0.4), which is why the floor matters.
-At the first floor tried, 0.40, 76 percent of class decisions abstained and the result was the same: 0 of 8 poisoned starts
-recovered, 5 of 16 scenarios recovered.
-
-What this does not show: that no decision model can do this. One checkpoint, one phrasing of nine class descriptions, one
-panel text, and a weak proxy for calibration were tried; the questions were not tuned to the outcome. The model
-card says the decider is weak on long text, and the class question reads a console of about 800 tokens.
-
-Latency. A round of 8 to 10 questions took 4 to 8 s on average (about 0.5 s per question) on this machine, so in the fast
-regime, where the cadence is 5 s, several decision times arrive while an answer is in flight; the recordings hold 3 to 8
-`busy` rows per poisoned run. The model card quotes about 115 to 150 ms per decision for a batched pass; this example makes
-one pass per question (see above), so its rounds are slower.
-
-## Tests
-
-`tests/test_rbmk_sim.py` (run with `scripts/test all tests/test_rbmk_sim.py`) does not start a
-model or touch a GPU. A test that needs a run takes one from the app's own hub (`tests/rbmk_run.py`): a plain-code controller
-(declared as not a model), or the real decision model on the seven-tick scenario under the lease (marked `real_model`, run with
-`--real-model`, failing loudly when the model is missing). The loud stop is tested against a real failure (a checkpoint
-directory that does not exist), not a mock.
+The plant steps on fixed substeps (10 s in the slow regime, 0.5 s in the fast one) and never waits. The decider's latency is turned
+into plant time (`speed` simulated seconds per wall second; one for the fast regime of a poisoned start, 60 for the quiet regime): a
+slow model is a late decider. `live.LiveRunner` runs the plant task and the decision tasks with asyncio, a speed knob, a timeout
+that halts the run, and a record of any late answer that was discarded. Playback speed in an interface changes none of this.
 
 ## The room
 
@@ -324,15 +177,14 @@ toy above, not a plant model. The header says both.
 
 Every instrument in `room/instruments.json` reads a field of the row of the run at the playhead (the newest row of a live run):
 
-- 16 round dials (power channels A and B, demand, ORM, mean rod insertion, coolant flow, pressure, fuel temperature, void,
-  xenon, iodine, reactivity, graphite-tip reactivity, hazard, drum level, the model's risk score);
+- 15 round dials (power channels A and B, demand, ORM, mean rod insertion, coolant flow, pressure, fuel temperature, void,
+  xenon, iodine, reactivity, displacer reactivity, drum level, the model's expected risk rating);
 - 3 strip recorders (power, fuel temperature and pressure, margin and rods);
 - 211 rod-position cells in the round map, one per rod, from `rods[i]`;
-- 26 annunciator tiles and 20 lamps, each lit by a rule on the row or on the latest decision (limits the simulator enforces, its
-  interlocks, the pumps, the protection switches, who chose the last action);
+- annunciator tiles and lamps, each lit by a rule on the row (the plant's limits, its protection switches, the pumps, the regulator, the turbine test);
 - the AZ-5 box: the guard lifts and the button lights while the shutdown is active;
 - the ORM terminal (printed and true margin) and the wall decision display: the model's latest answers as probability bars,
-  the requested and applied action, the source, interlocks, flags and scenario events.
+  the action it chose, when it was applied and the desk log line it wrote, and the scenario events.
 
 Everything else (mimic windows, rod key matrix, switches, chairs, doors, the turbine hall behind the glazing) is static decor,
 and its card says so. A dial with no value in the row leaves its needle at rest. With no run open the instruments are dark and
@@ -373,7 +225,7 @@ blender --background --factory-startup --python examples/rbmk/generator/render_v
     --out examples/rbmk/room/stills [--scale 0.5 --samples 32 --only front,dials]
 ```
 
-`python -m examples.rbmk.room.measure --recordings examples/rbmk/recordings --recording FILE` (a recording of yours) reports what each view costs a browser
+`python -m examples.rbmk.room.measure --store DIR --recording FILE` (a recording of yours) reports what each view costs a browser
 (CPU time per process over a replay, the overlay's draw time per frame); measurements are kept in
 [docs/notes/2026-10-22-rbmk-room-2d-cost.md](../../docs/notes/2026-10-22-rbmk-room-2d-cost.md).
 
@@ -391,37 +243,40 @@ decompresses with `DecompressionStream`. Instruments are named nodes (`INS_<id>`
 canvases at load, so the labels always match `room/instruments.json`. The GLB stores a hash of the generator and the instrument
 list; `tests/test_rbmk_room.py` fails when the file is older than its source.
 
-## Feed files
-
-`feed/export_feed.py` runs one scenario and writes a feed JSON: the run's rows, decisions and events with a `meta` header
-(`mode`, `model`, `controller`, `rods`). It is a way to take a run out of this directory; the app itself reads its own run state
-and opens no feed file.
-
-```sh
-python -m examples.rbmk.feed.export_feed --scenario pump_trip --controller model \
-    --live examples/rbmk/feed/live.json --replay examples/rbmk/feed/replay.json
-```
-
-`--controller model` asks the released decision checkpoint under a GPU hold at the Broker; when the model cannot answer the run
-stops and says why. `naive` and `crew` run the plain-code baselines, which are not models and are labelled so. No feed is
-committed. `room/check.mjs` prints what every lamp and dial shows for each row of a feed, and the room tests check the instrument
-rules against a run made by the hub.
-
 ## Layout
 
 | Path | What |
 |---|---|
-| `sim/` | the toy plant: `reactor.py`, `rods.py`, `plant.py`, `controls.py`, `panel.py`, `scenarios.py` |
-| `decider/` | the decision loop: `loop.py`, `controllers.py` (model, naive and crew controllers), `bundle.py` (run and recording documents), `run.py` (record, replay, export, baseline, summary, calibrate, selftest) |
-| `web/` | the server (`server.py`, `hub.py`, `jobs.py`, `runner.py`, `recordings.py`) and the app's page, scripts and styles (`static/`) |
+| `plant/`, `sensors/`, `prompt/`, `decider/`, `controls/`, `display/` | the engine's chain: the hidden plant, the sensor model, the prompt builder, the decider and the baselines, the desk controls, the presentation text and the run document |
+| `runner.py`, `live.py`, `recorder.py`, `scenarios.py`, `starts.py`, `whatif.py` | the run in simulated time, the same run on separate clocks (asyncio), the recording and its replay, the scenarios and drawn starts as data, the what-if branches |
+| `run.py` | the command line: record, batch, live, replay, export, baseline, summary, selftest |
+| `SCHEMA.md` | the recording and run documents |
+| `web/` | the server (`server.py`, `hub.py`, `jobs.py`, `recordings.py`) and the app's page, scripts and styles (`static/`) |
 | `room/` | the room in the browser: `main.js` (feed, view switch), `feed.js` (the run as the instruments read it), the 3D view (`room3d.js`, `drive.js`, `fly.js`, `paint.js`), the 2D view (`room2d.js`, `overlay.js`, `paint2d.js`, `state.js`, `loop.js`, `bench.js`, `stills/`), shared `rules.js`, `rods.js`, `faces.js`, `screens.js`, `cards.js`, `instruments.json`, `room.glb.gz`, `vendor/`, and the tools `check.mjs`, `shoot.py`, `measure.py` |
 | `generator/` | the Blender generator of the room and of the 2D stills (`render_views.py`, `views.py`) |
-| `feed/` | the feed exporter |
-| `recordings/` | the local, gitignored run store, and [SCHEMA.md](recordings/SCHEMA.md) |
 | `__main__.py` | `python -m examples.rbmk` |
 
-`room/shoot.py` takes screenshots of named camera views in a headless Chromium of its own:
-`python -m examples.rbmk.room.shoot --out DIR --recordings examples/rbmk/recordings --recording FILE --row 30 overview az5 decision` (a recording of yours; without `--recording` the room is shown with no run).
+`python -m examples.rbmk.room.shoot --out DIR --store DIR --recording FILE --row 30 overview az5 decision` takes screenshots of named
+views in a headless Chromium of its own (a recording of yours; without `--recording` the room is shown with no run).
+
+## Tests
+
+```sh
+scripts/test all tests/test_rbmk_engine.py tests/test_rbmk_room.py tests/test_rbmk_room_2d.py tests/test_rbmk_web.py tests/test_rbmk_app.py
+scripts/test all tests/test_rbmk_engine_real.py tests/test_rbmk_web.py tests/test_rbmk_app.py tests/test_rbmk_room.py --real-model
+```
+
+`test_rbmk_engine.py` covers the plant, the one-way chain (a layering test), the prompt, the controls, the display text, the three
+clocks and the recording replay with no model. `test_rbmk_room.py` covers the GLB (valid, current, a node for every instrument and
+rod, camera marks), the instrument list against a hub run, the rules evaluated in node and the rod order. `test_rbmk_room_2d.py`
+covers the stills (current with the generator, under the file limit), a rect for every instrument in the front view and for all 211
+rods in the rod panel, the projected rects against the id masks rendered from the same cameras, the three modes and the cards in a
+headless browser, and that an idle or hidden view draws nothing. `test_rbmk_web.py` covers the server, its routes and the
+documents. `test_rbmk_app.py` drives the app in a headless Chromium: no run leaves the room dark, a decision picked in the log is
+the state the room shows, a live run drives the room, a phone width holds every tool, and nothing is graded or given away before the
+run reaches it. A test that needs a run takes one from the app's own hub (`tests/rbmk_run.py`): a plain-code controller, or, in the
+tests marked `real_model`, the real decision model on the seven-tick scenario while the test holds the GPU; a missing model fails
+the test naming the command that fixes it. No run result is committed to the repository.
 
 ## Licences of vendored files
 
@@ -432,17 +287,14 @@ rules against a run made by the hub.
 
 Everything else in this directory is Poolhouse code under the repository licence. See [LICENSES.md](LICENSES.md).
 
-## Room and app tests
+## Not done
 
-```sh
-scripts/test all tests/test_rbmk_room.py tests/test_rbmk_room_2d.py tests/test_rbmk_web.py tests/test_rbmk_app.py
-```
+- The 12B decider (`strands-decider-12B-gemma4-v1-2610`): it needs the upstream `strands-decider` package from its git main in its own
+  environment, pinned by commit, behind the same decider interface. Not integrated.
+- Runs by the batch command: none are committed, and none had been run to a count when this was written.
+- Agreement of the 2B decider with the upstream implementation on the same prompts; the answer quality at 1k, 2k and 4k tokens.
+- Checking the toy's constants against INSAG-7 and against other reactor-dynamics codes.
+- The Run console is a drawer in the dock, not an object on the desk in the 3D room.
+- The 12B Gemma decider and the state memory variant are not integrated; the Decider and Memory selects list `DECIDERS` and `MEMORIES` of `decider/model.py`.
+- The wall dials read the plant's true values; the Readings drawer shows the console as the decider was given it.
 
-`test_rbmk_room.py` covers the GLB (valid, current, a node for every instrument and rod, camera marks), the instrument list against
-a hub run, the rules evaluated in node, and the rod order against the simulator's `Rods`. `test_rbmk_room_2d.py` covers
-the stills (current with the generator, under the file limit), a rect for every instrument in the front view and for all 211 rods in the
-rod panel, the projected rects against the id masks rendered from the same cameras, the three modes and the cards in a headless browser,
-and that an idle or hidden view draws nothing and a row redraws only the changed elements. `test_rbmk_web.py` covers the server, its
-routes and the documents. `test_rbmk_app.py` drives the app in a headless Chromium: no run leaves the room dark, a decision picked in the
-log is the state the room shows, a live run drives the room, a phone width holds every tool, and nothing is graded or given away before
-the run reaches it.

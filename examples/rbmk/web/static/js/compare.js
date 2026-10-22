@@ -28,7 +28,7 @@ window.RB = window.RB || {};
     const main = RB.state.main;
     if (!main) { RB.fail('Start or load a run first.'); return; }
     try {
-      const job = await RB.api('/api/run', { scenario: main.scenario.key, controller: 'naive', seed: main.scenario.seed });
+      const job = await RB.api('/api/run', { scenario: main.scenario.key, controller: 'naive' });
       RB.state.naive = new RB.Run('naive'); RB.state.naive.follow(job.id); RB.state.banner = ''; RB.notify();
     } catch (e) { RB.fail('Could not start the naive controller: ' + e.message); }
   };
@@ -37,7 +37,7 @@ window.RB = window.RB || {};
     if (!run) { return ''; }
     const o = run.doc && run.doc.outcome;
     if (!o) { return run.live ? 'running...' : ''; }
-    return 'Peak ' + o.peak_MW + ' MW, core damaged: ' + (o.damaged ? 'yes' : 'no') + ', shut down: ' + (o.scram ? 'yes' : 'no') + ', final power ' + (o.final_P * 100).toFixed(0) + '%, final margin ' + o.final_orm.toFixed(1) + '.';
+    return 'Peak ' + o.peak_MW + ' MW, core damaged: ' + (o.damaged ? 'yes' : 'no') + ', AZ-5 pressed: ' + (o.az5_pressed ? 'yes' : 'no') + ', final power ' + (o.final_power * 100).toFixed(0) + '%, final margin ' + o.final_margin.toFixed(1) + '.';
   };
 
   C.draw = function (cursor) {
@@ -55,8 +55,8 @@ window.RB = window.RB || {};
     const t = RB.frameAt(main, cursor).t_s;
     const mk = function (run, get, label, color) { return { label: label, color: color, pts: run.trace.map(function (r) { return [r.t_s / 60, get(r)]; }) }; };
     const hi = Math.max(main.trace[main.trace.length - 1].t_s, naive.trace[naive.trace.length - 1].t_s) / 60;
-    [['power', 'Power', '% of nominal', function (r) { return r.P * 100; }, 120, 'trip 120'], ['hazard', 'Hazard index', '1 = a limit', function (r) { return r.hazard; }, 1, 'limit']].forEach(function (c) {
-      RB.drawChart(C.cv[c[0]], { title: c[1] + ': model and naive controller', unit: c[2], x0: 0, x1: hi, y0: 0, cursor: t / 60, xfmt: function (v) { return v + ' min'; },
+    [['power', 'Power', '% of nominal', function (r) { return r.P * 100; }, 120, 'trip 120'], ['hazard', 'Reactivity margin', 'rod-eq', function (r) { return r.orm; }, 15, 'minimum 15']].forEach(function (c) {
+      RB.drawChart(C.cv[c[0]], { title: c[1] + ': the run and the naive controller', unit: c[2], x0: 0, x1: hi, y0: 0, cursor: t / 60, xfmt: function (v) { return v + ' min'; },
         limits: [{ y: c[4], label: c[5], color: RB.cssVar('--bad') }], series: [mk(main, c[3], main.controller === 'model' ? 'model' : main.controller, RB.cssVar('--c1')), mk(naive, c[3], 'naive controller', RB.cssVar('--c2'))] });
     });
   };

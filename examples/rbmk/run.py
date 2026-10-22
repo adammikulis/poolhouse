@@ -148,7 +148,7 @@ def live_cmd(args: argparse.Namespace) -> int:
     return 0
 
 
-def _scenario_of(rec: dict[str, Any]) -> scenarios.Scenario:
+def scenario_of(rec: dict[str, Any]) -> scenarios.Scenario:
     key = rec["meta"]["scenario"]
     if key.startswith("start_"):
         _, seed, k = key.split("_")
@@ -160,7 +160,7 @@ def replay_cmd(args: argparse.Namespace) -> int:
     """Replay a recording with no model and check that it reproduces the run it was made from."""
     rec = json.loads(Path(args.file).read_text())
     try:
-        res = recorder.replay(rec, _scenario_of(rec))
+        res = recorder.replay(rec, scenario_of(rec))
     except recorder.ReplayMismatch as exc:
         print(f"replay of {args.file}: DIFFERENT: {exc}")
         return 1
@@ -171,7 +171,7 @@ def replay_cmd(args: argparse.Namespace) -> int:
 def export_cmd(args: argparse.Namespace) -> int:
     """Replay a recording into the full run document, with what-if branches, for an interface."""
     rec = json.loads(Path(args.file).read_text())
-    scn = _scenario_of(rec)
+    scn = scenario_of(rec)
     res = recorder.replay(rec, scn)
     _write(Path(args.out), display.export(res, scn, rec["meta"], rods_of(scn), whatif.whatifs(res, scn)))
     return 0
@@ -196,7 +196,7 @@ def summary(args: argparse.Namespace) -> int:
         rec = json.loads(path.read_text())
         if rec.get("schema") != recorder.RECORDING:
             continue
-        state = text.outcome(recorder.replay(rec, _scenario_of(rec)))["state"]
+        state = text.outcome(recorder.replay(rec, scenario_of(rec)))["state"]
         row = counts.setdefault((rec["meta"]["backend"]["model"], rec["meta"]["memory"]), {})
         row[state] = row.get(state, 0) + 1
     print("| model | memory | runs | damaged | margin below 15, no damage | margin at least 15, no damage |\n|---|---|---|---|---|---|")

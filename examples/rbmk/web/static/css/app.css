@@ -89,7 +89,7 @@ pre.state { white-space: pre-wrap; font-size: 12px; background: var(--tile); bor
 .bval { text-align: right; font-variant-numeric: tabular-nums; } .bdesc { grid-column: 1 / -1; color: var(--muted); font-size: 11px; padding-left: 4px; }
 table.grid { border-collapse: collapse; width: 100%; font-size: 13px; } table.grid th, table.grid td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; }
 tr.clickable { cursor: pointer; } tr.clickable:hover { background: var(--tile); }
-.distbar { display: flex; height: 28px; border-radius: 6px; overflow: hidden; margin: 6px 0 10px; font-weight: 700; color: #fff; } .distbar .ok { background: var(--ok); } .distbar .bad { background: var(--bad); } .distbar div { padding: 4px 8px; white-space: nowrap; overflow: hidden; }
+.distbar { display: flex; height: 28px; border-radius: 6px; overflow: hidden; margin: 6px 0 10px; font-weight: 700; color: #fff; } .distbar .ok { background: var(--ok); } .distbar .bad { background: var(--bad); } .distbar .warn { background: var(--warn); } .distbar div { padding: 4px 8px; white-space: nowrap; overflow: hidden; }
 canvas.timeline { width: 100%; display: block; margin-top: 8px; cursor: pointer; }
 .sidebyside { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
 @media (prefers-reduced-motion: reduce) { .chip.pulse, .banner.loud { animation: none; } }
@@ -174,3 +174,4 @@ body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; 
   #views2d { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
   #views2d .btn { white-space: nowrap; flex: none; }
 }
+.logline { font-size: 12px; margin-top: 2px; }

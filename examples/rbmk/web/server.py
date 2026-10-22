@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The RBMK control room app: a stdlib server on 127.0.0.1 that serves the room, streams live runs and serves recordings.
 
-    python -m examples.rbmk [--port 8765] [--recordings DIR]
+    python -m examples.rbmk [--port 8765] [--store DIR] [--wait SECONDS]
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from . import recordings
-from .hub import Hub
+from .hub import DEFAULT_SPEED, Hub
 from .jobs import Busy
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -120,12 +120,11 @@ def make_handler(hub: Hub, port_of: Any) -> type[BaseHTTPRequestHandler]:
                 self._json(200, hub.info())
             elif path == "/api/recordings":
                 self._json(200, recordings.listing(hub.folder))
-            elif parts[:2] == ["api", "recordings"] and len(parts) == 3:
-                doc = hub.recording(parts[2])
+            elif path == "/api/recording":
+                doc = hub.recording(query["name"])
                 self._json(200, {"label": recordings.label(doc), "doc": doc})
-            elif path == "/api/candidates":
-                source = {"job": query["job"]} if "job" in query else {"recording": query["recording"]}
-                self._json(200, hub.candidates(source, int(query["index"]), query["cls"]))
+            elif path == "/api/summary":
+                self._json(200, hub.summary())
             elif parts[:2] == ["api", "jobs"] and len(parts) == 4 and parts[3] == "events":
                 resume = self.headers.get("Last-Event-ID")
                 self._stream(hub.job(parts[2]), int(resume) + 1 if resume else int(query.get("after", 0)))
@@ -145,15 +144,8 @@ def make_handler(hub: Hub, port_of: Any) -> type[BaseHTTPRequestHandler]:
         def _post(self, path: str, query: dict[str, str]) -> None:
             if path == "/api/run":
                 a = self._arguments()
-                job = hub.start_run(str(a["scenario"]), str(a.get("controller", "model")), a.get("seed"), str(a.get("decider", "")), str(a.get("memory", "none")))
-                self._json(200, job.public())
-            elif path == "/api/batch":
-                a = self._arguments()
-                self._json(200, hub.start_batch([str(k) for k in a["scenarios"]], int(a.get("repeats", 1))).public())
-            elif path == "/api/whatif":
-                a = self._arguments()
-                horizon = a.get("horizon")
-                job = hub.start_whatif(a["source"], int(a["index"]), a["forced"], None if horizon is None else int(horizon))
+                job = hub.start_run(str(a["scenario"]), str(a.get("controller", "model")), str(a.get("decider", "")),
+                                    str(a.get("memory", "none")), float(a.get("speed", DEFAULT_SPEED)))
                 self._json(200, job.public())
             elif path == "/api/stop":
                 job = hub.job(str(self._arguments()["job"]))
@@ -213,10 +205,10 @@ def main(argv: list[str] | None = None) -> int:
     """Start the server and serve until interrupted."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--port", type=int, default=8765)
-    ap.add_argument("--recordings", type=Path, default=recordings.RECORDINGS)
+    ap.add_argument("--store", type=Path, default=None, help="the local run store to list and save runs in (default: the poolhouse state directory)")
     ap.add_argument("--wait", type=float, default=0.0, help="seconds a model run waits for the GPU hold (default: refuse at once)")
     args = ap.parse_args(argv)
-    server = serve(Hub(args.recordings, args.wait), args.port)
+    server = serve(Hub(args.store, args.wait), args.port)
     sys.stdout.write(f"RBMK control room: http://127.0.0.1:{server.server_address[1]}/\n")
     sys.stdout.flush()
     try:

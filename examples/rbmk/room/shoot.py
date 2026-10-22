@@ -1,8 +1,8 @@
 """Opens the app in a headless Chromium of its own and takes screenshots of named camera views of the room.
 
-    python -m examples.rbmk.room.shoot --out DIR --recordings DIR --recording NAME.json --row 30 overview az5 rodpanel orm decision
+    python -m examples.rbmk.room.shoot --out DIR --store DIR --recording NAME.json --row 30 overview az5 rodpanel orm decision
 
-``--recording`` opens that file of the recordings folder as the run the room shows (a recording of a real model run);
+``--recording`` opens that file of the run store as the run the room shows (a recording of a real model run);
 ``2d-<view>`` names a 2D view (2d-plan, 2d-front, 2d-dials ...); ``--drawer NAME`` opens one of the tool drawers (run, log, charts, core, readouts, whatif, history, dist, compare) first.
 """
 
@@ -14,6 +14,7 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 from ..web import server
 from ..web.hub import Hub
@@ -22,9 +23,9 @@ GL_ARGS = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-g
 
 
 @contextmanager
-def serving(folder: Path, wait_s: float = 0.0) -> Iterator[str]:
-    """Serve the app on a free local port with ``folder`` as its recordings folder; yields the origin."""
-    srv = server.serve(Hub(folder, wait_s), 0)
+def serving(folder: Path, wait_s: float = 0.0, hold: Any = None) -> Iterator[str]:
+    """Serve the app on a free local port with ``folder`` as its run store; yields the origin."""
+    srv = server.serve(Hub(folder, wait_s, hold), 0)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
         yield f"http://127.0.0.1:{srv.server_address[1]}"
@@ -76,7 +77,7 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("views", nargs="+")
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--recordings", type=Path, required=True)
+    ap.add_argument("--store", type=Path, required=True)
     ap.add_argument("--recording")
     ap.add_argument("--drawer")
     ap.add_argument("--row", type=int)
@@ -85,7 +86,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--touch", action="store_true")
     args = ap.parse_args(argv)
     args.out.mkdir(parents=True, exist_ok=True)
-    with serving(args.recordings) as origin, sync_playwright() as pw:
+    with serving(args.store) as origin, sync_playwright() as pw:
         browser, page, errors = open_page(pw, origin, args.recording, args.width, args.height, args.touch)
         page.evaluate("(d) => (d ? window.RB.openDrawer(d) : window.RB.closeDrawer())", args.drawer)
         for name in args.views:

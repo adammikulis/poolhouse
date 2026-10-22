@@ -1,4 +1,4 @@
-"""A job: one run, batch or what-if, with the append-only list of events a browser follows."""
+"""A job: one run, with the append-only list of events a browser follows."""
 
 from __future__ import annotations
 
@@ -21,7 +21,7 @@ class Job:
     """What a browser follows: events are only ever appended."""
 
     id: str
-    kind: str                         # run | batch | whatif
+    kind: str                         # run
     scenario: str
     controller: str
     label: str = ""
@@ -32,6 +32,7 @@ class Job:
     docs: list[dict[str, Any]] = field(default_factory=list)
     runner: Any = None
     scn: Any = None
+    backend: dict[str, Any] = field(default_factory=dict)
     started: float = field(default_factory=time.time)
     cond: threading.Condition = field(default_factory=threading.Condition)
     cancel: threading.Event = field(default_factory=threading.Event)

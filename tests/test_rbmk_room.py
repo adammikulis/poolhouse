@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from rbmk_run import feed_file, machine_models, model_run, plain_run
+from rbmk_run import feed_file, model_run, plain_run
 
 pytest_plugins = ['real_model']
 
@@ -73,7 +73,7 @@ def test_no_instrument_node_is_missing_from_the_spec():
 
 
 def test_rod_cells_match_the_demos_211_rods(plain):
-    from examples.rbmk.sim.rods import Rods
+    from examples.rbmk.plant.rods import Rods
 
     rods = [r.id for r in Rods().rods]
     assert len(rods) == 211
@@ -99,9 +99,9 @@ def test_dial_recorder_and_rule_fields_exist_in_a_run(plain):
     used |= {r['field'] for r in leaves if r['when'] == 'trace' or r['when'] == 'index'}
     used |= {r[k] for r in leaves if r['when'] in ('diff', 'diffrow') for k in ('a', 'b')}
     assert used <= known, used - known
-    decision_fields = set(next(d for d in FEED['decisions'] if d['kind'] == 'decision'))
+    decision_fields = set(next(r for r in FEED['rows'] if r['kind'] == 'decision'))
     assert {r['field'] for r in leaves if r['when'] == 'decision'} <= decision_fields
-    assert all(r.get('id') in SPEC['interlock_ids'] for i in instruments('lamp', 'ann') for r in rule_leaves(i['rule']) if r['when'] == 'interlock')
+    assert not [r for i in instruments('lamp', 'ann') for r in rule_leaves(i['rule']) if r['when'] == 'interlock'], 'the plant has no interlock layer'
     prot = {r['id'] for i in instruments('lamp') for r in rule_leaves(i['rule']) if r['when'] == 'prot'}
     assert prot <= set(row['prot'])
 
@@ -111,20 +111,18 @@ def rule_leaves(rule):
 
 
 @pytest.fixture
-def model(tmp_path, serve_leases, real, monkeypatch):
+def model(tmp_path, serve_leases, real):
     """A finished run of the real decision model on the seven-tick scenario; fails naming the cause when the model cannot run."""
-    machine_models(real, monkeypatch)
-    return model_run(tmp_path)
+    return model_run(tmp_path, real)[0]
 
 
 @pytest.mark.real_model
 def test_a_model_run_names_its_model_and_every_answer_comes_from_it(model):
     meta = model['meta']
     assert meta['controller'] == 'model' and meta['backend']['model'] and 'CANNED' not in meta['backend']['model'].upper()
-    answered = [d for d in model['decisions'] if d.get('answers')]
+    answered = [r for r in model['rows'] if r['kind'] == 'decision' and r.get('answers')]
     assert answered and all(a['model'] == meta['backend']['model'] for d in answered for a in d['answers'].values())
-    known = set(SPEC['interlock_ids'])
-    assert {i['id'] for d in model['decisions'] for i in d['interlocks']} <= known
+    assert all(d['choice']['cls'] in model['classes'] for d in answered)
 
 
 def run_check(feed_file):
@@ -143,12 +141,12 @@ def test_rules_agree_with_a_runs_own_values(plain):
         assert lit['A_ORM_LOW'] == (row['orm'] < 15)
         assert all(lit[f'L_PUMP_{n + 1}'] == (row['pumps'][n] > 0.05) for n in range(8))
         assert dials['D_FUELT'] == row['Tf'] and dials['D_PRESS'] == row['p']
-        assert abs(dials['D_POWER_A'] - row['chA'] * 100) < 1e-9
+        assert abs(dials['D_POWER_A'] - row['chA']) < 1e-9
         assert abs(dials['D_ROD_BANK'] - sum(row['rods']) / 211) < 1e-9
     assert any(any(r['lit'].values()) for r in got['rows'])
 
 
 def test_rod_order_matches_the_simulator(plain):
-    from examples.rbmk.sim.rods import Rods
+    from examples.rbmk.plant.rods import Rods
 
     assert run_check(plain[1])['rodOrder'] == [r.id for r in Rods().rods]

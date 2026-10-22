@@ -24,20 +24,25 @@ window.RB = window.RB || {};
 
   class Run {
     constructor(role) {
-      this.role = role; this.header = null; this.trace = []; this.decisions = []; this.events = [];
+      this.role = role; this.header = null; this.trace = []; this.rows = []; this.decisions = []; this.events = [];
       this.captions = []; this.status = 'idle'; this.error = ''; this.jobId = null; this.model = ''; this.label = '';
-      this.doc = null; this.asking = null; this.askedAt = 0; this.startedAt = performance.now(); this.origin = 'live'; this.branch = null; this.stream = null;
+      this.doc = null; this.asking = null; this.askedAt = 0; this.startedAt = performance.now(); this.origin = 'live'; this.stream = null;
     }
     get rods() { return this.header ? this.header.rods : []; }
     get scenario() { return this.header ? this.header.scenario : null; }
     get controller() { return this.header ? this.header.controller : ''; }
+    get memory() { return this.header && this.header.memory ? this.header.memory : 'none'; }
+    addRow(row) {
+      this.rows[row.i] = row;
+      if (row.kind === 'decision') { this.decisions.push(row); } else { this.events.push(row); }
+    }
     ingest(ev) {
-      if (ev.type === 'header') { this.header = ev; this.label = ev.label; this.branch = ev.forced ? ev : null; }
+      if (ev.type === 'header') { this.header = ev; this.label = ev.label; }
       else if (ev.type === 'trace') { this.trace.push(ev.row); this.asking = null; }
-      else if (ev.type === 'decision') { this.decisions[ev.row.i] = ev.row; }
-      else if (ev.type === 'event') { this.events.push(ev.row); }
+      else if (ev.type === 'row') { this.addRow(ev.row); }
+      else if (ev.type === 'landed') { Object.assign(this.rows[ev.i], { applied_tick: ev.applied_tick, applied_t_s: ev.applied_t_s, log_line: ev.log_line }); }
       else if (ev.type === 'caption') { this.captions.push(ev.row); }
-      else if (ev.type === "asking") { this.asking = ev.tick; this.askedAt = performance.now(); }
+      else if (ev.type === 'asking') { this.asking = ev.tick; this.askedAt = performance.now(); }
       else if (ev.type === 'model') { this.model = ev.id; RB.state.info.model.id = ev.id; }
       else if (ev.type === 'document') { this.fetchDocument(); }
       else if (ev.type === 'status') { this.status = ev.status; this.error = ev.error; this.asking = null; this.endedAt = performance.now(); }
@@ -49,16 +54,18 @@ window.RB = window.RB || {};
     }
     adoptDocument(doc) {
       this.doc = doc;
-      this.decisions = doc.decisions.slice();
       this.captions = doc.captions || this.captions;
       RB.notify();
     }
     loadDocument(doc, label, origin) {
-      this.header = { scenario: doc.meta.scenario, controller: doc.meta.controller, label: label, rods: doc.rods };
-      this.trace = doc.trace; this.decisions = doc.decisions.slice(); this.events = doc.events;
+      const scn = doc.meta.scenario;
+      this.header = { scenario: { key: scn.key, title: doc.display.title, description: doc.display.description, group: scn.group, seed: scn.seed, ticks: scn.ticks },
+                      controller: doc.meta.controller, memory: doc.meta.memory, label: label, rods: doc.rods };
+      this.trace = doc.trace; this.rows = doc.rows.slice(); this.decisions = doc.rows.filter(function (r) { return r.kind === 'decision'; });
+      this.events = doc.rows.filter(function (r) { return r.kind !== 'decision'; });
       this.captions = doc.captions || []; this.doc = doc; this.label = label; this.origin = origin || 'recorded';
       this.model = doc.meta.backend.model || ''; this.status = doc.meta.error ? 'error' : 'done';
-      this.error = doc.meta.error || ''; this.branch = doc.branch ? doc : null;
+      this.error = doc.meta.error || '';
       RB.notify();
     }
     /* Seconds the decision now in flight has been waiting for the model; 0 when none is. */
@@ -92,8 +99,8 @@ window.RB = window.RB || {};
   }
   RB.Run = Run;
 
-  const NUM = ['P', 'X', 'I', 'void', 'orm', 'orm_printed', 'f', 'Tf', 'p', 'rho', 'level', 'hazard', 'chA', 'chB',
-               't_s', 'setpoint', 'throttle', 'tip', 'orm_age'];
+  const NUM = ['P', 'X', 'I', 'void', 'orm', 'orm_printed', 'f', 'Tf', 'p', 'rho', 'level', 'chA', 'chB',
+               't_s', 'demand', 'throttle', 'tip'];
   const ARR = ['rods', 'pumps'];
 
   /* The row at fractional index c: numbers and arrays between rows, everything else from the row before. */

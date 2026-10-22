@@ -156,15 +156,15 @@ window.RB = window.RB || {};
   }
   RB.CoreView = CoreView;
 
-  /* Rods the model moved at the decision whose row index is ``i``: the named rod, or those that change next. */
-  RB.movedRods = function (run, i) {
-    const d = run.decisions.find(function (x) { return x && x.kind === 'decision' && x.tick === (run.trace[i] || {}).tick; });
+  /* Rods the decision ``d`` moves: the named rod, or the rods of the named group that change over the next ticks. */
+  RB.movedRods = function (run, d) {
     const out = new Set();
-    if (!d || !run.header) { return out; }
-    const rods = run.header.rods, next = run.trace[Math.min(i + 2, run.trace.length - 1)], here = run.trace[i];
-    const t = d.applied.target;
-    rods.forEach(function (r, k) {
-      const grp = t.startsWith('grp:') && (t === 'grp:' + r.kind || (t === 'grp:MR_out' && r.kind === 'MR'));
+    if (!d || !run.header || d.applied_tick === null || d.applied_tick === undefined || !d.choice.cls.endsWith('_rod')) { return out; }
+    const i = run.trace.findIndex(function (r) { return r.tick === d.applied_tick; });
+    if (i < 0) { return out; }
+    const next = run.trace[Math.min(i + 2, run.trace.length - 1)], here = run.trace[i], t = d.choice.target;
+    run.header.rods.forEach(function (r, k) {
+      const grp = t.startsWith('grp:') && t === 'grp:' + r.kind;
       const moved = next && here && next.rods[k] !== here.rods[k];
       if (t === r.id || (grp && moved)) { out.add(k); }
     });

@@ -51,8 +51,8 @@ export class RunFeed {
       this._sig = sig;
       this._data = {
         trace: r.trace,
-        decisions: r.decisions.filter((d) => d && (d.kind === 'decision' || d.kind === 'trip')),
-        events: r.events,
+        decisions: r.decisions.filter(Boolean),
+        events: r.captions,
         finished: !r.live,
         controller: r.controller,
         scenario: r.scenario ? r.scenario.title : '',
@@ -123,7 +123,9 @@ export class RunFeed {
     if (this._row.index !== i || this._row.stamp !== stamp || this._row.src !== src) {
       const rods = src.rods;
       const mean = Array.isArray(rods) && rods.length ? rods.reduce((a, b) => a + b, 0) / rods.length : null;
-      this._row = { index: i, stamp, src, value: { ...src, rods_mean: mean } };
+      const d = this._decisionAt(src.tick);
+      const risk = d && d.answers && d.answers.risk ? d.answers.risk.expected : null;
+      this._row = { index: i, stamp, src, value: { ...src, rods_mean: mean, model_risk: risk } };
     }
     return this._row.value;
   }
@@ -132,15 +134,17 @@ export class RunFeed {
     return this.status === 'ok' ? this.run.trace.slice(Math.max(0, this.index - n + 1), this.index + 1) : [];
   }
 
-  get decision() {
-    if (this.status !== 'ok') return null;
-    const tick = this.row.tick;
+  _decisionAt(tick) {
     let best = null;
     for (const d of this.data.decisions) {
       if (d.tick <= tick) best = d;
       else break;
     }
     return best;
+  }
+
+  get decision() {
+    return this.status === 'ok' ? this._decisionAt(this.row.tick) : null;
   }
 
   get modelDecision() {

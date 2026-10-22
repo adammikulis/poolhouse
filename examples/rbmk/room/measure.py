@@ -1,6 +1,6 @@
 """Measures what the room's 2D views and the 3D room cost a browser: process CPU time over a replay, and the overlay's own frame cost.
 
-    python -m examples.rbmk.room.measure --recordings examples/rbmk/recordings --recording FILE --seconds 10 [--angle metal]
+    python -m examples.rbmk.room.measure --store DIR --recording FILE --seconds 10 [--angle metal]
 
 Each view plays the recording at 5 ticks/s in a headless Chromium of its own; the browser's per-process CPU time (browser,
 renderer, GPU) is read through the DevTools protocol before and after. ``--angle metal`` asks Chromium for the machine's GPU
@@ -72,11 +72,11 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--seconds", type=float, default=10.0)
     ap.add_argument("--angle", default="", help="ANGLE backend for the browser's GL, for example metal")
-    ap.add_argument("--recordings", type=Path, required=True)
+    ap.add_argument("--store", type=Path, required=True)
     ap.add_argument("--recording", required=True)
     ap.add_argument("views", nargs="*", default=list(VIEWS))
     args = ap.parse_args(argv)
-    with shoot.serving(args.recordings) as origin, sync_playwright() as pw:
+    with shoot.serving(args.store) as origin, sync_playwright() as pw:
         for name in args.views:
             sys.stdout.write(json.dumps(run(pw, origin, name, args.recording, args.seconds, args.angle)) + "\n")
     return 0

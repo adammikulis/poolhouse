@@ -84,7 +84,11 @@ window.RB = window.RB || {};
     }
     return out;
   }
-  const gauge = function (name, scale) { return function (r) { return r.gauges && r.gauges[name] ? r.gauges[name][0] * (scale || 1) : undefined; }; };
+  function dpts(decisions, get, a, b) {
+    return decisions.filter(function (d) { return d.tick >= a && d.tick <= b; }).map(function (d) { const v = get(d); return [d.tick, v === undefined ? null : v]; });
+  }
+  /* What the decider was shown for an instrument at each decision. */
+  const shown = function (name) { return function (d) { const v = d.view && d.view.readings[name]; return v ? v.value : undefined; }; };
 
   /* Series definitions of the standard set; ``kinds`` maps rod index to type for the insertion chart. */
   RB.chartDefs = function (kinds) {
@@ -94,8 +98,8 @@ window.RB = window.RB || {};
     };
     return [
       { id: 'power', title: 'Power', unit: '% of nominal', y0: 0, limits: [{ y: 120, label: 'trip 120' }], series: [
-        { label: 'actual', get: (r) => r.P * 100, color: '--c1' }, { label: 'channel A', get: (r) => r.chA * 100, color: '--c2', width: 1 },
-        { label: 'channel B', get: (r) => r.chB * 100, color: '--c3', width: 1 }, { label: 'demand', get: (r) => r.setpoint * 100, dash: [4, 3], color: '--muted' }] },
+        { label: 'actual', get: (r) => r.P * 100, color: '--c1' }, { label: 'channel A', get: (r) => r.chA, color: '--c2', width: 1 },
+        { label: 'channel B', get: (r) => r.chB, color: '--c3', width: 1 }, { label: 'demand', get: (r) => r.demand * 100, dash: [4, 3], color: '--muted' }] },
       { id: 'xenon', title: 'Xenon and iodine', unit: 'index', y0: 0, series: [
         { label: 'xenon', get: (r) => r.X, color: '--c1' }, { label: 'iodine', get: (r) => r.I, color: '--c2' }] },
       { id: 'orm', title: 'Reactivity margin (ORM)', unit: 'rod-eq', y0: 0, limits: [{ y: 15, label: 'minimum 15' }], series: [
@@ -106,42 +110,38 @@ window.RB = window.RB || {};
       { id: 'void', title: 'Steam void fraction', unit: '%', y0: 0, series: [{ label: 'void', get: (r) => r.void * 100, color: '--c1' }],
         limits: [{ y: 25.3, label: 'nominal 25', color: '--muted' }] },
       { id: 'pressure', title: 'Drum pressure', unit: 'MPa', limits: [{ y: 8, label: 'trip 8.0' }], series: [
-        { label: 'actual', get: (r) => r.p, color: '--c1' }, { label: 'left gauge', get: gauge('press_l'), color: '--c3', width: 1 }] },
+        { label: 'actual', get: (r) => r.p, color: '--c1' }, { label: 'left, as shown', dget: shown('press_l'), step: true, color: '--c3', width: 1 }] },
       { id: 'drums', title: 'Drum level', unit: 'cm', series: [
-        { label: 'actual', get: (r) => r.level, color: '--c1' }, { label: 'left', get: gauge('level_l'), color: '--c2', width: 1 },
-        { label: 'right', get: gauge('level_r'), color: '--c3', width: 1 }] },
+        { label: 'actual', get: (r) => r.level, color: '--c1' }, { label: 'left, as shown', dget: shown('level_l'), step: true, color: '--c2', width: 1 },
+        { label: 'right, as shown', dget: shown('level_r'), step: true, color: '--c3', width: 1 }] },
       { id: 'flow', title: 'Coolant flow', unit: '% of nominal', y0: 0, limits: [{ y: 55, label: 'trip 55 at power', color: '--warn' }], series: [
-        { label: 'actual', get: (r) => r.f * 100, color: '--c1' }, { label: 'meters', get: gauge('flow'), color: '--c3', width: 1 },
-        { label: 'feedwater', get: gauge('feedwater'), color: '--c2', width: 1 }] },
-      { id: 'temps', title: 'Temperatures', unit: 'C', limits: [{ y: 1200, label: 'fuel limit 1200' }], series: [
-        { label: 'fuel', get: (r) => r.Tf, color: '--c1' }, { label: 'fuel gauge', get: gauge('fuel'), color: '--c3', width: 1 },
-        { label: 'graphite', get: gauge('graphite'), color: '--c2', width: 1 }] },
-      { id: 'hazard', title: 'Hazard index', unit: '1 = a limit', y0: 0, limits: [{ y: 1, label: 'limit' }], series: [
-        { label: 'hazard', get: (r) => r.hazard, color: '--c1' }] },
-      { id: 'risk', title: "Model's risk score", unit: '1 lowest risk, 5 highest risk', y0: 1, y1: 5, fitLimits: false, series: [
-        { label: 'risk', get: (r) => (r.model_risk === null || r.model_risk === undefined ? null : r.model_risk), step: true, color: '--c2' }] },
+        { label: 'actual', get: (r) => r.f * 100, color: '--c1' }, { label: 'meters, as shown', dget: shown('flow'), step: true, color: '--c3', width: 1 },
+        { label: 'feedwater, as shown', dget: shown('feedwater'), step: true, color: '--c2', width: 1 }] },
+      { id: 'temps', title: 'Fuel temperature', unit: 'C', series: [{ label: 'fuel', get: (r) => r.Tf, color: '--c1' }] },
+      { id: 'risk', title: "Model's risk rating", unit: '1 lowest risk, 5 highest risk', y0: 1, y1: 5, fitLimits: false, series: [
+        { label: 'risk', dget: (d) => (d.answers && d.answers.risk ? d.answers.risk.expected : undefined), step: true, color: '--c2' }] },
     ];
   };
 
   /* Draw every chart of the set onto its canvas for the main run at ``cursor`` (a fractional row index). */
   RB.drawChartSet = function (canvases, run, cursor, defs) {
     if (!run || !run.trace.length) { return; }
-    const sc = run.header.scenario, total = sc.ticks, W = 100, last = run.trace[run.trace.length - 1].tick;
+    const sc = run.header.scenario, total = sc.ticks || 1e9, W = 100, last = run.trace[run.trace.length - 1].tick;
     const first = run.trace[0].tick, cur = RB.frameAt(run, cursor).tick + RB.frameAt(run, cursor).f;
     const x1 = total <= 120 ? Math.max(total, last) : Math.min(Math.max(total, last), Math.max(first + W, cur + 15));
     const x0 = total <= 120 ? first : x1 - W;
     const marks = run.events.map(function (e) { return { x: e.tick }; });
     const dmarks = [];
-    run.decisions.filter(function (d) { return d && d.kind === 'decision'; }).forEach(function (d) {
-      dmarks.push({ x: RB.snapTick(d), color: d.abstained ? RB.cssVar('--warn') : d.source === 'interlock' ? RB.cssVar('--bad') : RB.cssVar('--grid') });
-      if (RB.appliedTick(d) !== RB.snapTick(d)) { dmarks.push({ x: RB.appliedTick(d), color: RB.cssVar('--c2') }); }
+    run.decisions.forEach(function (d) {
+      dmarks.push({ x: RB.snapTick(d), color: RB.cssVar('--grid') });
+      if (d.applied_tick !== null && d.applied_tick !== undefined && d.applied_tick !== d.tick) { dmarks.push({ x: d.applied_tick, color: RB.cssVar('--c2') }); }
     });
     defs.forEach(function (def) {
       const cv = canvases[def.id];
       if (!cv) { return; }
       const series = def.series.map(function (s) {
         return { label: s.label, dash: s.dash, step: s.step, width: s.width, color: s.color && s.color.startsWith('--') ? RB.cssVar(s.color) : s.color,
-                 pts: pts(run.trace, 'tick', s.get, x0 - 1, x1 + 1) };
+                 pts: s.dget ? dpts(run.decisions, s.dget, x0 - 1, x1 + 1) : pts(run.trace, 'tick', s.get, x0 - 1, x1 + 1) };
       }).filter(function (s) { return s.pts.some(function (p) { return p[1] !== null; }); });
       RB.drawChart(cv, { title: def.title, unit: def.unit, x0: x0, x1: x1, y0: def.y0, y1: def.y1, series: series, cursor: cur,
                          limits: (def.limits || []).map(function (l) { return { y: l.y, label: l.label, color: l.color && l.color.startsWith('--') ? RB.cssVar(l.color) : l.color }; }),

@@ -16,7 +16,6 @@ export function evalRule(rule, row, decision) {
     case 'index': return Array.isArray(row[rule.field]) && CMP[rule.op](row[rule.field][rule.index], rule.value);
     case 'prot': return !!row.prot && row.prot[rule.id] === rule.eq;
     case 'anyprot': return !!row.prot && Object.values(row.prot).some((on) => on === false);
-    case 'interlock': return !!decision && (decision.interlocks || []).some((i) => i.id === rule.id);
     case 'decision': return !!decision && decision[rule.field] === rule.eq;
     default: throw new Error(`unknown rule kind ${rule.when}`);
   }

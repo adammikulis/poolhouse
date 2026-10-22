@@ -13,7 +13,7 @@ import threading
 from pathlib import Path
 
 import pytest
-from rbmk_run import HOLD_WAIT_S, machine_models, save_recording
+from rbmk_run import HOLD_WAIT_S, already_held
 
 from examples.rbmk.room import shoot
 from examples.rbmk.web import server
@@ -73,7 +73,7 @@ def test_without_a_run_the_room_is_dark_and_says_so(playwright, tmp_path):
             assert page.is_visible("#drawer") and page.inner_text("#drawer-title") == "Run console"
             assert page.eval_on_selector_all("#decider option", "(os) => os.map((o) => o.textContent)") == [
                 "Strands 2B (strands-decider-2B-hobson-v19)"]
-            assert page.eval_on_selector_all("#memory option", "(os) => os.map((o) => o.value)") == ["none"]
+            assert page.eval_on_selector_all("#memory option", "(os) => os.map((o) => o.value)") == ["none", "history"]
         finally:
             browser.close()
         assert not errors
@@ -96,7 +96,7 @@ def test_a_run_started_in_the_console_drives_the_room_and_a_picked_decision_move
                         return Math.abs(d.nodes.get('D_FUELT').value - window.RB.state.main.trace[f.index].Tf) < 1e-9; }""")
                 got = page.evaluate("""() => {
                     const S = window.RB.state, f = window.__room.feed, row = S.main.trace[f.index], d = window.__room.state.driver;
-                    return { selected: S.selected, cursor: S.cursor, index: f.index, tick: row.tick, snap: S.main.decisions[S.selected].snapshot_tick,
+                    return { selected: S.selected, cursor: S.cursor, index: f.index, tick: row.tick, snap: S.main.rows[S.selected].tick,
                              shown: f.decision && f.decision.i, rods: d.rods.map((r) => r.value).filter((v) => v !== undefined).length,
                              scram: d.nodes.get('L_SCRAM').lit, wantScram: !!row.scram };
                 }""")
@@ -133,9 +133,6 @@ def test_nothing_is_graded_or_given_away_before_it_happens(playwright, tmp_path)
                 page.evaluate("(n) => window.RB.openDrawer(n)", name)
                 page.wait_for_function(SETTLED)
                 assert not BANNED.search(page.inner_text("#drawer")), name
-            page.evaluate("window.RB.openDrawer('log')")
-            page.evaluate("window.__room.feed.setIndex(0)")
-            page.wait_for_function("[...document.querySelectorAll('#log .outcome')].some((o) => o.style.display === 'none')", timeout=15000)
         finally:
             browser.close()
         assert not errors
@@ -160,9 +157,8 @@ def test_a_phone_sees_the_whole_app_without_sideways_scrolling(playwright, tmp_p
 
 @pytest.mark.slow
 @pytest.mark.real_model
-def test_a_real_model_run_shows_its_answers_in_the_log_and_on_the_wall_and_opens_again_as_a_recording(playwright, tmp_path, serve_leases, real, monkeypatch):
-    machine_models(real, monkeypatch)
-    with shoot.serving(tmp_path, wait_s=HOLD_WAIT_S) as origin:
+def test_a_real_model_run_shows_its_answers_in_the_log_and_on_the_wall_and_opens_again_from_the_run_store(playwright, tmp_path, real):
+    with real.pointer(), shoot.serving(tmp_path, wait_s=HOLD_WAIT_S, hold=already_held) as origin:
         browser, page, errors = shoot.open_page(playwright, origin)
         try:
             page.select_option("#scenario", "fixture_short")
@@ -174,13 +170,12 @@ def test_a_real_model_run_shows_its_answers_in_the_log_and_on_the_wall_and_opens
             assert model and page.inner_text("#modelid") == model
             page.click("[data-drawer=log]")
             assert "probability of the top option" in page.inner_text("#log")
-            rows = page.query_selector_all("#log .drow.decision")
-            rows[0].click()
+            page.query_selector_all("#log .drow.decision")[0].click()
             page.wait_for_function("window.__room.feed.modelDecision !== null")
             assert page.evaluate("window.__room.feed.modelDecision.i") == page.evaluate("window.RB.state.selected")
             assert page.evaluate("window.__room.feed.modelId") == model
-            doc = page.evaluate("window.RB.state.main.doc")
-            name = save_recording(doc, tmp_path)
+            name = f"{model}/none/fixture_short.json"
+            assert (tmp_path / name).is_file(), "a finished model run is saved to the run store"
             page.click("#modeRec")
             page.wait_for_function(f"[...document.querySelectorAll('#recording option')].some((o) => o.value === {name!r})")
             page.select_option("#recording", name)
