@@ -7,6 +7,7 @@ compile once, outside the tests' own timers, and leaves the run itself independe
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 from collections.abc import Callable
@@ -53,5 +54,27 @@ def executables(output: str, targets: list[str]) -> dict[str, Path]:
 
 def build(cargo: str, work: Path, targets: list[str], execute: Callable[[list[str], Path, dict[str, str]], str],
           environment: dict[str, str]) -> dict[str, Path]:
-    """Compile ``targets`` of the staged workspace ``work`` in one cargo call (run by ``execute``); the executable of each."""
-    return executables(execute(build_argv(cargo, targets), work, {**environment, "CARGO_BUILD_JOBS": jobs()}), targets)
+    """Compile ``targets`` of the staged workspace ``work`` in one cargo call (run by ``execute``); the executable of each.
+
+    The workspace products this build used are touched, so the pruning of idle products (``testartifacts``) leaves them be.
+    """
+    output = execute(build_argv(cargo, targets), work, {**environment, "CARGO_BUILD_JOBS": jobs()})
+    made = executables(output, targets)
+    touch(output, work)
+    return made
+
+
+def touch(output: str, work: Path) -> None:
+    """Mark as used each file (and its dep-info file) cargo reported for a crate or test of the workspace under ``work``."""
+    for line in output.splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if row.get("reason") != "compiler-artifact" or not str((row.get("target") or {}).get("src_path", "")).startswith(str(work)):
+            continue
+        for name in (*row.get("filenames", ()), row.get("executable") or ""):
+            path = Path(name)
+            for used in (path, path.with_suffix(".d")) if name else ():
+                with contextlib.suppress(OSError):
+                    os.utime(used)

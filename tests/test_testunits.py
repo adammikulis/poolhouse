@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import fcntl
+import json
+import os
 import subprocess
 import threading
+import time
 
 import pytest
 import testnode
@@ -57,10 +60,19 @@ def test_a_target_nobody_asked_for_is_not_built(specimen):
 
 
 def test_the_same_sources_name_the_same_files_without_compiling_again(specimen):
-    _, first = compiled(specimen, ["alpha", "beta"])
-    stamps = {name: path.stat().st_mtime_ns for name, path in first.items()}
-    _, second = compiled(specimen, ["alpha", "beta"])
-    assert second == first and {name: path.stat().st_mtime_ns for name, path in second.items()} == stamps
+    reports = []
+
+    def recording(argv, work, environment):
+        reports.append(local(argv, work, environment))
+        return reports[-1]
+
+    build = testnode.shared_build(specimen.root / "app")
+    environment = {**testnode.account_environment(), "CARGO_TARGET_DIR": str(build.target)}
+    first = testunits.build(testnode.tool("cargo"), build.staged, ["alpha", "beta"], recording, environment)
+    second = testunits.build(testnode.tool("cargo"), build.staged, ["alpha", "beta"], recording, environment)
+    rows = [json.loads(line) for line in reports[1].splitlines() if line.startswith("{")]
+    tests = [row for row in rows if row.get("reason") == "compiler-artifact" and row["target"]["kind"] == ["test"]]
+    assert second == first and len(tests) == 2 and all(row["fresh"] for row in tests)
 
 
 def test_a_target_cargo_reported_no_executable_for_is_an_error(specimen):
@@ -90,3 +102,19 @@ def test_a_built_target_runs_while_another_cargo_holds_the_target_folder(specime
     runner.join(60)
     assert finished, "running built targets waited for cargo's lock on the target folder"
     assert outcome and outcome[0].count("test result: ok. 1 passed") == 2
+
+
+def test_the_products_a_build_used_are_marked_used_so_pruning_leaves_them(specimen):
+    _, made = compiled(specimen, ["alpha"])
+    old = time.time() - 30 * 24 * 3600
+    products = [made["alpha"], made["alpha"].with_suffix(".d")]
+    for path in products:
+        os.utime(path, (old, old))
+    compiled(specimen, ["alpha"])
+    assert all(path.stat().st_mtime > time.time() - 600 for path in products)
+
+
+def test_a_snapshot_is_built_without_incremental_state_nothing_would_reuse(specimen):
+    build, _ = compiled(specimen, ["alpha"])
+    assert "incremental = false" in (build.staged.parent / ".cargo" / "config.toml").read_text()
+    assert not list((build.target / "debug" / "incremental").glob("alpha-*"))
