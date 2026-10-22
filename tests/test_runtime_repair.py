@@ -232,18 +232,18 @@ def test_missing_runtime_install_runs_in_background_and_readiness_enables_chat(t
     from poolhouse import agent_dependency
     from poolhouse.fleet.conversations import Conversations
     from poolhouse.fleet.serving import Serving as ModelsServing
-    from poolhouse.testing.fakes import FakeLlamaServer, Served
+    from poolhouse.testing.canned import CANNED_MODEL_ID, Canned, CannedServer
 
     ready = {"value": False}
     monkeypatch.setattr(agent_dependency, "problem", lambda: "" if ready["value"] else "The agent runtime is not installed.")
     monkeypatch.setattr(runtime_repair, "resume", lambda *args: None)
-    model = FakeLlamaServer(Served(model="qwen3.8-test.gguf", pieces=("hello",)))
+    model = CannedServer(Canned(pieces=("hello",)))
     served = Serving(tmp_path)
     served.ui.root = tmp_path
     served.ui.setup_jobs = Jobs(tmp_path)
     served.ui.settings.setup_done = True
     served.ui.serving = ModelsServing(tmp_path / "models.json")
-    served.ui.serving.register(model.port, ["qwen3.8-test.gguf"])
+    served.ui.serving.register(model.port, [CANNED_MODEL_ID])
     served.ui.conversations = Conversations(tmp_path / "chats")
     from poolhouse.scrape.browser import Window, browser
 
@@ -364,17 +364,17 @@ def test_failed_runtime_job_survives_reload_and_retries_through_actual_api(tmp_p
     from poolhouse.fleet.conversations import Conversations
     from poolhouse.fleet.serving import Serving as ModelsServing
     from poolhouse.scrape.browser import Window, browser
-    from poolhouse.testing.fakes import FakeLlamaServer, Served
+    from poolhouse.testing.canned import CANNED_MODEL_ID, Canned, CannedServer
 
     monkeypatch.setattr(agent_dependency, "problem", lambda: "The agent runtime is not installed.")
     monkeypatch.setattr(runtime_repair, "resume", lambda *args: None)
-    model = FakeLlamaServer(Served(model="qwen3.8-test.gguf", pieces=("hello",)))
+    model = CannedServer(Canned(pieces=("hello",)))
     served = Serving(tmp_path)
     served.ui.root = tmp_path
     served.ui.setup_jobs = Jobs(tmp_path)
     served.ui.settings.setup_done = True
     served.ui.serving = ModelsServing(tmp_path / "models.json")
-    served.ui.serving.register(model.port, ["qwen3.8-test.gguf"])
+    served.ui.serving.register(model.port, [CANNED_MODEL_ID])
     served.ui.conversations = Conversations(tmp_path / "chats")
     try:
         with browser(Window(profile=tmp_path / "retry-browser", channel="chromium"), playwright) as page:

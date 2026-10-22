@@ -12,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from poolhouse.log import to
+from poolhouse.testing.canned import CANNED_MARKER, CANNED_MODEL_ID, marked
 from poolhouse.walk import ops
 from poolhouse.walk.cli import report
 from poolhouse.walk.ops import FLEET, GRAPH, Stop, Walk
@@ -156,11 +157,11 @@ GRAPH_OF_TWO = {
 
 @pytest.fixture
 def slow_model(monkeypatch):
-    """A model streaming for longer than a screen is given to settle."""
-    from poolhouse.testing.fakes import FakeLlamaServer, Served
+    """A canned server streaming for longer than a screen is given to settle; it is not a model."""
+    from poolhouse.testing.canned import Canned, CannedServer
 
     monkeypatch.setattr(ops, "SETTLE_MS", 300)
-    fake = FakeLlamaServer(Served(pieces=SLOW, gap=0.4))
+    fake = CannedServer(Canned(pieces=SLOW, gap=0.4))
     try:
         yield fake
     finally:
@@ -195,7 +196,7 @@ def test_asking_the_graph_page_waits_for_the_whole_streamed_answer(slow_model, t
         except pw.Error as exc:                        # pragma: no cover - depends on setup
             pytest.skip(f"chromium did not launch: {exc}")
     assert [s.screen for s in stops] == ["ask"] and stops[0].ok, stops
-    assert "Ada Lovelace works on iron." in stops[0].text.splitlines(), stops[0].text
+    assert marked("Ada Lovelace works on iron.") in stops[0].text.splitlines(), stops[0].text
 
 
 @pytest.mark.slow
@@ -219,7 +220,7 @@ def test_saying_something_in_the_fleet_chat_waits_for_the_whole_reply(slow_model
         served.ui.setup_finished()
         served.ui.conversations = Conversations(tmp_path / "chats")
         models = Models(tmp_path / "serving.json")
-        decoder = models.register(slow_model.port, ["quince-2b.gguf"])
+        decoder = models.register(slow_model.port, [CANNED_MODEL_ID])
         decoder.capabilities = {"chat": True}
         monkeypatch.setattr(models, "all", lambda: [decoder])
         served.ui.serving = models
@@ -230,7 +231,8 @@ def test_saying_something_in_the_fleet_chat_waits_for_the_whole_reply(slow_model
         served.httpd.shutdown()
         served.httpd.server_close()
     assert [s.screen for s in stops] == ["chat"] and stops[0].ok, stops
-    assert "hello" in stops[0].text and "".join(SLOW) in stops[0].text, stops[0].text
+    assert "hello" in stops[0].text and marked("".join(SLOW)) in stops[0].text, stops[0].text
+    assert CANNED_MARKER in stops[0].text, "the walked page shows the reply is canned"
 
 
 @pytest.mark.slow

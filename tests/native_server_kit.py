@@ -1,4 +1,10 @@
-"""Scripted native CPU HTTP fixtures prove protocol wiring, never model ability."""
+"""Scripted native CPU HTTP fixtures prove protocol wiring, never model ability.
+
+They are canned servers and say so: every response carries the canned header, every body names the canned model
+id and carries the marker in its metadata, and the process writes the marker to stderr. The chat answer begins with
+the marker; an answer the setup check compares as a value (``5``, or an empty one) is bare, which its body and a
+header say.
+"""
 import json
 import shutil
 import subprocess
@@ -7,17 +13,26 @@ from contextlib import contextmanager
 
 import pytest
 
+from poolhouse.testing.canned import (
+    CANNED_HEADER,
+    CANNED_HEADER_VALUE,
+    CANNED_MARKER,
+    canned_chat_reply,
+)
 
-def _body(content=None, calls=None):
-    return json.dumps({'model': 'fixture', 'choices': [{'finish_reason': 'tool_calls' if calls else 'stop',
-        'message': {'content': content, **({'tool_calls': calls} if calls else {})}}]}, separators=(',', ':'))
+
+def _body(content=None, calls=None, *, bare=False):
+    message = {'content': None, 'tool_calls': calls} if calls else {}
+    return canned_chat_reply(content or '', bare=bare or content == '', message=message,
+                             finish_reason='tool_calls' if calls else 'stop')[1].decode()
 
 
-HEALTH = json.dumps({'data': [], 'status': 'ok'}, separators=(',', ':'))
+HEALTH = json.dumps({'data': [], 'status': 'ok', 'x_canned': CANNED_MARKER}, separators=(',', ':'))
 CHAT = _body('ready')
 CALL = _body(calls=[{'id': 'call_setup', 'type': 'function', 'function': {
     'name': 'poolhouse_setup_sum', 'arguments': '{"left":2,"right":3}'}}])
-RESULT = _body('5')
+RESULT = _body('5', bare=True)
+EMPTY = _body('', bare=True)
 
 SOURCE = r'''#include <arpa/inet.h>
 #include <signal.h>
@@ -34,6 +49,7 @@ int main(int argc, char **argv) {
     }
     for(int i=1;i+1<argc;i++) if(!strcmp(argv[i],"--port")) port=atoi(argv[i+1]);
     signal(SIGPIPE,SIG_IGN);
+    fprintf(stderr,"CANNED_MARKER_TEXT canned plumbing server; nothing here is a model\n");
     int s=socket(AF_INET,SOCK_STREAM,0), yes=1;
     setsockopt(s,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(yes));
     struct sockaddr_in a={0}; a.sin_family=AF_INET; a.sin_addr.s_addr=htonl(INADDR_LOOPBACK);
@@ -65,7 +81,8 @@ int main(int argc, char **argv) {
             body=strstr(payload,"\"tools\"")?CALL_BODY:
                 (strstr(payload,"\"tool_call_id\"") && strstr(payload,"\"5\"")?RESULT_BODY:CHAT_BODY);
         }
-        dprintf(c,"HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nContent-Length: %zu\r\n\r\n%s",strlen(body),body);
+        dprintf(c,"HTTP/1.0 200 OK\r\nContent-Type: application/json\r\n" CANNED_HEADER_LINE "%sContent-Length: %zu\r\n\r\n%s",
+                strstr(body,"x_canned_body")?"X-Canned-Body: unmarked\r\n":"",strlen(body),body);
         close(c);
     }
 }
@@ -79,9 +96,11 @@ def compiled(factory, *, structured=False, refused=False):
     root = factory.mktemp('native-protocol')
     try:
         source = SOURCE
-        for name, value in {'HEALTH_BODY': HEALTH, 'CHAT_BODY': _body('') if refused else CHAT, 'CALL_BODY': CALL,
+        for name, value in {'HEALTH_BODY': HEALTH, 'CHAT_BODY': EMPTY if refused else CHAT, 'CALL_BODY': CALL,
                             'RESULT_BODY': RESULT}.items():
             source = source.replace(name, json.dumps(value))
+        source = source.replace('CANNED_HEADER_LINE', json.dumps(f'{CANNED_HEADER}: {CANNED_HEADER_VALUE}\r\n'))
+        source = source.replace('CANNED_MARKER_TEXT', CANNED_MARKER)
         source = source.replace('STRUCTURED', '1' if structured else '0')
         path = root / 'fixture.c'
         path.write_text(source)
