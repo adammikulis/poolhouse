@@ -155,7 +155,7 @@ def daemon() -> Path:
     run([str(pip), "install", "-q", "--no-index", "--find-links", str(DIST),
          "--force-reinstall", "--no-deps", "poolhouse"])
     run([str(pip), "install", "-q", "--find-links", str(DIST),
-         "poolhouse[agents,hub,fleet-onboard,coordinator]"])
+         "poolhouse[agents,hub,fleet-onboard,coordinator,telemetry]"])
 
     built_from(env / ("Scripts" if sys.platform == "win32" else "bin") / ("python.exe" if sys.platform == "win32" else "python"))
     tool = env / ("Scripts" if sys.platform == "win32" else "bin") / "pyinstaller"
