@@ -79,7 +79,11 @@ def route(request, state):
     elif path == "/ui/chat" and method == "GET":
         body = {"models": [{"model": "quill-27B", "local": True}] if state["chat_available"] else []}
     elif path == "/ui/conversations" and method == "POST":
-        body = {"id": "chat-test"}
+        state["created"] = request.request.post_data_json
+        body = {"ok": True, "id": "chat-test", "operation_id": state["created"]["operation_id"]}
+    elif path == "/ui/conversations/chat-test" and method == "GET" and state.get("created"):
+        body = {"ok": True, "id": "chat-test", "model": state["created"]["model"],
+                "settings": state["created"]["settings"], "messages": [], "title": "New conversation"}
     request.fulfill(body=json.dumps(body), content_type="application/json")
 
 
@@ -93,6 +97,10 @@ def app(browser_owner):
                  "serve_error": "", "pending": None, "hub_models": None, "chat_available": False,
                  "addons": []}
 
+        # design.test is not a secure context, where the browser has no crypto.randomUUID, which a new
+        # conversation's setup id needs; loopback and https pages have it.
+        page.add_init_script("crypto.randomUUID ??= () => ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, "
+                             "c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16))")
         page.route("http://design.test/**", lambda request: route(request, state))
         page.goto("http://design.test/#pool")
         page.locator("#pool:not([hidden])").wait_for()
