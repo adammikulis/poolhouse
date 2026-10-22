@@ -420,7 +420,8 @@ def fake_process(argv: list[str], rss: int, *, pid: int = 0, state: str = "runni
             "memory_info": types.SimpleNamespace(rss=rss)}
     if pid:
         info["pid"] = pid
-    return types.SimpleNamespace(info=info, pid=pid, status=lambda: state)
+    return types.SimpleNamespace(info=info, pid=pid, status=lambda: state,
+                                 as_dict=lambda attrs=None, ad_value=None: {k: info.get(k, ad_value) for k in attrs or info})
 
 
 def fake_memory(*, total: int, available: int, wired: int):
