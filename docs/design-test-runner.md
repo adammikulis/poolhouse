@@ -243,7 +243,7 @@ labels, how many units have DEPS, and which steps would run.
 | `[list] format`, `match`, `group` | `lines` or `jsonl`; id filter; the group rule | `lines`; every non-empty line; each id is a unit |
 | `[run] argv` | the RUN template | required unless the preset gives it; with LIST it receives ids, without LIST it runs the whole selection once |
 | `[run] slice` | the RUN-slice template for a tool that cannot list its tests but can run a share of them (`--shard {slice_index}/{slice_count}`); an array of strings with exactly one `{slice_index}` and one `{slice_count}` | none; read only when there is no `[list]` (5.2) |
-| `[run] slice_base`, `slice_count`, `slice_results` | whether the tool counts slices from 0 or 1; the number of slices, or `auto`; what a slice reports (`exit`, `jsonl` or `junit`, as for `results`) | `1`; `auto` (the sum of the capacities of the targets the plan may use, at least 1, at most `MOST_SLICES` 64); `exit` |
+| `[run] slice_base`, `slice_count`, `slices_per_target`, `slice_results` | whether the tool counts slices from 0 or 1; the number of slices, or `auto`; for `auto`, slices per target; what a slice reports (`exit`, `jsonl` or `junit`, as for `results`) | `1` (a tool's own first index is the project's to say, 1 is the common reading of "slice 1 of N"); `auto`; `1` (one slice per target is the least that uses every target); `exit` |
 | `[run] results`, `junit_id`, `batch` | `exit`, `jsonl` or `junit`; how junit rows map to ids; ids per invocation | `exit`; `1` for `exit`, all of a unit's ids otherwise |
 | `[run] timeout` | seconds one invocation may run, from the moment it starts | none locally; on a device, the shard's deadline (5.10, 10.6) |
 | `[run] env` | variables set for every invocation (values travel in the file) | none; the child environment is an allowlist (10.5) |
@@ -380,9 +380,13 @@ inputs.
   LIST and no slice template`. The plan names the mode on its first line (`split: by name`, `split: by slice, 8 slices`, `split:
   none`), so no run is split in a way the person did not see. A project with LIST never uses its slice template (names are
   strictly better information); the template is not a fallback for a failed LIST, which is an error.
-  - **The count.** `slice_count` is the number of slices, `auto` by default: the sum of the capacities of the targets the plan may use,
-    so every slot has one slice. The count is fixed before anything runs and printed; it is one number for the whole run, because the
-    tool's own partition is only a partition for one count. `--slices N` overrides it for one run and joins the unit key.
+  - **The count comes from the plan and has no fixed maximum.** `slice_count` is `auto` by default: the number of targets the plan may
+    use times `[run] slices_per_target`, the project's setting. A project that sets an integer gets that integer. The count is a
+    positive decimal integer (at least 1) and nothing else is checked by the runner: the tool alone knows which counts it accepts, so
+    a count the tool refuses shows as its slices failing with the tool's own message (status 1, section 11), never a count the runner
+    guessed was too large. The count is fixed before anything runs and printed; it is one number for the whole run, because the
+    tool's own partition is only a partition for one count. `--slices N` (a positive integer, otherwise status 4) overrides it for one
+    run and joins the unit key.
   - **The balance is rough, and the plan says so.** The tool splits by count of tests (or by its own rule), not by duration, and the
     runner cannot see inside a slice: a slice of a few slow tests finishes long after the others. Each slice is scheduled with the
     mean of its own recorded durations (history is kept per `slice i/n` for one count), or `unrecorded_max` with none, and the plan
@@ -559,8 +563,9 @@ The runner's rule, for every unit and every project:
 - **Where a timeout's value comes from.** The runner has no timeout of its own. In order: `[label.NAME] timeout` for the unit's labels
   (the largest of its labels), `[run] timeout`, then none locally. Poolhouse's file takes its value from the owner's setting: 120 s a
   unit (`pyproject.toml`, `docs/limits.md` row `pytest timeout`), and a longer unit carries a label with a longer value (the
-  `@pytest.mark.timeout(N)` it has today). On a device a unit with no timeout is bounded by its shard's deadline: twice the planner's
-  estimate for the shard (`docs/design-test-selection.md` 6.1) and at most `shard_spec.MOST_SECONDS` (3600 s) when nothing is recorded.
+  `@pytest.mark.timeout(N)` it has today). On a device a unit with no timeout is bounded by its shard's deadline, which is the largest unit
+  timeout the sender sent for the shard and, when no unit has one, no deadline of the runner's own (the sender's cancel and the receiver's
+  bounds, 10.6, end a runaway).
   A build step has its own deadline (`BUILD_TIMEOUT_S`, 1800 s) and never counts in a unit's.
 - **Overload is named, not guessed.** The report says `the machine was overloaded` only when units are `not started`; a run in which every
   unit started but some queued for a long time says `queued N s (the machine's)` and judges the units by `ran_s` alone.
@@ -801,13 +806,13 @@ grammar and, when the sender asked for it (`[remote] verify_list`), against its 
 ### 10.4 The id grammar and untrusted lists
 
 An id is 1 to `PATH_MAX` bytes (the smaller of sender and receiver), UTF-8, no control characters (U+0000 to U+001F, U+007F), no
-bidirectional override characters, not beginning with `-`, with no repeat inside a shard, at most `MOST_FILES` (200) *units* per shard (more
-ids in them); a unit group is checked as a whole. An id is only ever an argument or a line of `{idfile}`. The sender's LIST output is
+bidirectional override characters, not beginning with `-`, with no repeat inside a shard, with the units of one shard bounded only by the
+receiver's request-size bound (10.6) and not by a count of the runner's own (more ids in them); a unit group is checked as a whole. An id is only ever an argument or a line of `{idfile}`. The sender's LIST output is
 data: lines over the bound, binary output, a LIST that never ends (bounded by output size and a deadline) and duplicate ids are
 errors that name the first offender.
 
-A slice index and count (5.2) are never read from a result, a device or the environment: the runner computes them as integers, `slice_base`
-to `slice_count + slice_base - 1` and `1` to `MOST_SLICES` (64), formats them in decimal with no sign or padding, and substitutes
+A slice index and count (5.2) are never read from a result, a device or the environment: the runner computes them as positive integers (the count at
+least 1, the index from `slice_base` to `slice_count + slice_base - 1`, with no fixed maximum), formats them in decimal with no sign or padding, and substitutes
 them as whole arguments of the argument vector (or inside one argument, never into a shell string). A template with a placeholder
 other than the two, a repeated one, or one in the program name is refused when the file is loaded; a device receives the filled
 vector with ids from this grammar and refuses anything else.
@@ -818,20 +823,22 @@ vector with ids from this grammar and refuses anything else.
   stripped of ANSI/OSC/CSI escapes, other control characters (except newline and tab), carriage-return line overwrites and
   bidirectional overrides, truncated per line and in total, and printed after a `[device]` prefix the *sender* adds, so a device cannot
   forge another device's line, a summary line or an exit status. A device's name is sanitised the same way before display
-  (`report.plain`). Result messages and failure texts are bounded (`MOST_MESSAGE`, `MOST_FAILURES`, `MOST_TAIL`).
+  (`report.plain`). Result messages and failure texts are bounded by the receiver's result bound (10.6), shared among the fields.
 - **The child environment is an allowlist**, not today's denylist (`shard_run.DROPPED`): `PATH`, `LANG`, `LC_*`, `TZ`, `TMPDIR` (a scratch
   path), `HOME` (a scratch path), and the names the verified file's `run.env` sets; nothing else, so agent markers, tokens and the
   sender's variables do not arrive, and `credentials.child_environment` strips what looks like a credential.
 - **XML is parsed without entities or external references** (`defusedxml` is already a test dependency; the runner uses the standard
-  parser with DTDs refused), and a junit file larger than `MOST_JUNIT` (32 MiB) is refused.
+  parser with DTDs refused), and a junit file larger than the receiver's result bound (10.6) is refused.
 
 ### 10.6 Resource bounds and where they come from
 
 Every bound has a source; where the source is "the owner, in source" it is a row of `docs/limits.md`, and the rows of the deleted Rust
-host move to the Python module that now holds them. Section 15 lists them. The rule for new bounds: derived from the device (free disk
-of the scratch volume, logical CPUs, memory), never typed in. Examples: the packed-tree limit a receiver accepts is at most its free
+host move to the Python module that now holds them. Section 15 lists them. The rule for every bound, new or carried over: derived from the device (free disk
+of the scratch volume, free inodes, logical CPUs, memory) or from the operating system (`PATH_MAX`, `ARG_MAX`), or set by the project's
+own file, never typed in by the runner. The request, result, log, junit, member, unit and output bounds are all shares of the free
+scratch disk the receiver measures when it takes a shard. Examples: the packed-tree limit a receiver accepts is at most its free
 scratch disk divided by the shards it holds open; slots granted to one sender are at most the device's free slots at admission; the
-output kept is the executor's bounded log. A runaway shard (output over `MOST_LOG`, time over its deadline, tree over the bound) is
+output kept is the executor's bounded log. A runaway shard (output over the receiver's log bound, time over its deadline, tree over the bound) is
 cancelled with a defined status (124) and the group is killed.
 
 ### 10.7 Not starving the device's owner
@@ -873,7 +880,7 @@ first, then the ones this design adds.
 | A24 | Takeover by whoever is merely present on the LAN | dev mode trusts every device that joined it, which `docs/fleet.md` states; a pool that is not in dev mode requires the allow list; the kill switch is `remote-tests` |
 | A25 | An old build on one device (a downgrade of the protocol) | caps carries `protocol` and the build; a mismatch is refused, never run |
 | A26 | A sender queues work or sets tiny timeouts to make a device's own work look failed or late | the device's own work is admitted first (background class); `not started` is reported to the sender only |
-| A27 | Slice injection: a hostile index or count (`--slices '8; rm -rf'`, `-1`, `1e9`, a count that makes the tool run one slice out of range, a slice template that smuggles a flag), or a device that reports slices the sender did not assign | the index and count are integers the runner makes, bounded by `MOST_SLICES`, decimal only, put in as whole arguments (10.4); `--slices` is parsed as an integer or refused with status 4; the template allows exactly the two placeholders; the sender checks the slice set it received (exactly the slices it assigned, once each) as it checks ids (A5) |
+| A27 | Slice injection: a hostile index or count (`--slices '8; rm -rf'`, `-1`, `1e9`, a count that makes the tool run one slice out of range, a slice template that smuggles a flag), or a device that reports slices the sender did not assign | the index and count are integers the runner makes, positive, decimal only, with no invented maximum, put in as whole arguments (10.4); `--slices` is parsed as an integer or refused with status 4; the template allows exactly the two placeholders; the sender checks the slice set it received (exactly the slices it assigned, once each) as it checks ids (A5) |
 | A28 | A slice count change used to keep a stale pass (slice 3 of 8 satisfying slice 3 of 6), or a hidden gap where the tool's partition skips tests | the count and index are in every slice key (5.2); the plan states that coverage is the tool's partition and not checked, so nothing claims a coverage the runner cannot see |
 
 ## 11. Failure behaviour, exit codes and determinism
@@ -1093,24 +1100,28 @@ under the module that holds them after the move; a number with no source is deri
 | step build deadline, parallelism, idle, prune walk | 1800 s; a quarter of the cores; 3 days; 24 h | `testnode.BUILD_TIMEOUT_S`, `testunits.JOBS_DIVISOR`, `testnode.IDLE_S`, `testartifacts.EVERY_S` |
 | sample clip in history | three times the value once three samples exist | `testhistory.py` |
 | fixed overhead limit | 5 s or a quarter of the wall time | AGENTS.md section 5 |
-| units per shard | 200 | `shard_spec.MOST_FILES` |
-| slices per run | 64 | `MOST_SLICES`, the owner, in source (a row of `docs/limits.md` when built) |
-| shard deadline bound on a device | 3600 s | `shard_spec.MOST_SECONDS` |
-| packed tree, unpacked, members | 24 MiB, 256 MiB, 20,000 | `shard_tree.MOST_PACKED`, `MOST_UNPACKED`, `MOST_MEMBERS`; to be replaced by the disk-derived bound in 10.6 |
-| runner output, tee | 64 MiB, 8 MiB | `shard_run.MOST_LOG`, `MOST_TEE` |
-| result, tail, failures, message, tests, junit | 900 KiB, 8000, 200, 2000, 3000, 32 MiB | `shard_routes.MOST_RESULT`, `shard_result.MOST_*` |
-| shards held, per sender, idle upload, kept | 8, 4, 600 s, 24 h | `shard_store.MOST_KEPT`, `MOST_OWNED`, `IDLE_S`, `KEPT_S` |
-| grace before kill | 30 s on the executor | `shard_run.GRACE_S` |
-| poll, lost device | 2 s, 45 s | `dev.POLL_S`, `dev.LOST_S` |
+| units per shard, slices per run | no bound of the runner's own | units: the receiver's request-size bound (10.6); slices: the plan (targets times `slices_per_target`), or the project's `slice_count`; the tool refuses what it cannot take |
+| shard deadline on a device | the largest of the units' timeouts from the project's file, or none | replaces `shard_spec.MOST_SECONDS` (3600 s), which has no source |
+| packed tree, unpacked tree, members | shares of the receiver's free scratch disk and free inodes, divided by the shards it holds | replaces `shard_tree.MOST_PACKED`, `MOST_UNPACKED`, `MOST_MEMBERS` (24 MiB, 256 MiB, 20,000), which have no source |
+| runner output, tee, result, tail, failures, message, tests, junit | shares of the same free scratch disk, divided by the shards held | replaces `shard_run.MOST_LOG`, `MOST_TEE`, `shard_routes.MOST_RESULT`, `shard_result.MOST_*`, which have no source |
+| shards held, per sender | the device's free slots at admission, and the free disk (10.6) | replaces `shard_store.MOST_KEPT`, `MOST_OWNED` (8, 4), which have no source |
+| idle upload, kept shard, grace before kill | the receiver's admission clock: an upload idle for the sender's own poll interval times missed polls; a kept shard until its result is fetched or the disk is needed; grace is the process group's own exit | replaces `shard_store.IDLE_S`, `KEPT_S`, `shard_run.GRACE_S` (600 s, 24 h, 30 s), which have no source |
+| poll, lost device | `dev.POLL_S`, `dev.LOST_S` (2 s, 45 s) | carried over in `testfarm/dev.py`; to be derived from the measured round trip of the transport, and until then the owner's values in source |
+| shard id | 128 random bits | the security strength of the pool's signatures (a collision or a guess is out of reach) |
 | id length | `PATH_MAX` of the sender and the receiver | the operating system headers |
 | arguments before `{idfile}` | `ARG_MAX` of the platform | `sysconf(SC_ARG_MAX)` |
 | exit statuses | 0, 1, 4, 6, 70, 75, 124, 130 | section 11 |
 | queue limit | 3600 s | `testslots.WAIT_S` |
 | unit timeout in Poolhouse's file | 120 s | `pyproject.toml` `timeout`, the owner (`docs/limits.md`, `pytest timeout`) |
 
-The Rust host's constants (`MOST_RUNNING` 2, `MOST_OPEN` 6, `MOST_KEPT` 40, `GRACE_S` 120, `KILL_AFTER` 45) have no source other than
-"the owner, in source": the single receiver derives them (running shards from the device's free slots, open shards from its free disk)
-or carries the Python module's values above, and `docs/limits.md` is updated in step 8.
+Rows above that name a module constant with a value and no source here (aging, backfill, single-flight wait, step build deadline, idle,
+prune walk, sample clip, `unrecorded_max` 30 s, queue limit, poll, lost device) are carried over unchanged from the current code and are
+the owner's values in source; the step that moves each module either measures it (a poll is a multiple of the measured round trip, an
+unrecorded duration is the median of the recorded ones) or gives it a `docs/limits.md` row, and a number that gets neither is removed.
+
+The Rust host's constants (`MOST_RUNNING` 2, `MOST_OPEN` 6, `MOST_KEPT` 40, `GRACE_S` 120, `KILL_AFTER` 45) have no source: the single
+receiver derives them (running shards from the device's free slots, open shards from its free disk, the kill grace from the process
+group's own exit) and `docs/limits.md` is updated in step 8.
 
 ## 16. Open questions
 
