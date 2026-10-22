@@ -21,7 +21,7 @@ from poolhouse.board import presence
 from poolhouse.board.client import Client
 from poolhouse.board.session import Session
 
-__all__ = ["DEFAULT_ACTIONS", "Grant", "Listing", "Signs", "Want", "Where", "approval_bytes", "approve", "canonical", "default_bundle", "describe", "duration_ms",
+__all__ = ["DEFAULT_ACTIONS", "POOL_GRANTS", "Grant", "Listing", "Signs", "Want", "Where", "approval_bytes", "approve", "canonical", "default_bundle", "describe", "duration_ms",
            "enrol", "enrol_first", "enrol_line", "enrolment", "fingerprint", "here", "issue", "list_bytes", "listing", "log", "rebind",
            "revoke", "sign_approval", "sign_issue", "sign_list", "sign_rebind", "sign_revoke", "sign_unenroll", "unenrol", "want_line", "when"]
 
@@ -36,6 +36,8 @@ FRESH_MS = 5 * 60 * 1000
 """How long the node takes a person's signature as fresh."""
 SPANS = {"s": 1000, "m": 60_000, "h": 3_600_000, "d": 86_400_000}
 MOST_DAYS = 366
+POOL_GRANTS = "In a pool your phone gives standing grants: ask for one and tap approve."
+"""What the node says to a grant of a pool signed by a typed yes."""
 
 
 class Signs(Protocol):

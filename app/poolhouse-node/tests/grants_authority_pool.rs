@@ -114,6 +114,15 @@ fn the_founding_phone_approves_a_file_delete_and_the_delete_works_once() {
     assert_eq!(done["state"], "approved", "{done}");
     let gid = pool.only_gid();
     assert_eq!(pool.state(&gid).0, "live");
+    let row = {
+        let mut node = pool.rig.node.lock().unwrap();
+        let board = &node.host("demo").unwrap().board;
+        let own = board.origin().to_string();
+        board.rows(&own).iter().rev().find(|r| r.kind == Kind::Grant).unwrap().body.clone()
+    };
+    assert_eq!(row["approval"]["decision"], "approve", "the row names the decision the phone signed: {row}");
+    assert_eq!(row["person"], pool.phone.fingerprint().as_str(), "{row}");
+    assert_eq!(pool.grants()["authority"], json!([pool.phone.fingerprint()]), "the founding phone is the one authority key of the pool");
     assert_eq!(pool.delete(&handle)["ok"], true);
     assert!(!path.exists(), "the delete the phone approved ran");
     let log = ok(pool.rig.call("grant_log", "demo", &pool.token, json!({"limit": 20})));
