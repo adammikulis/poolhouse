@@ -1,10 +1,10 @@
-/* <ml-agents endpoint="/agents">: start a local model as a workspace agent, see the agents that run,
+/* <poolhouse-agents endpoint="/agents">: start a local model as a workspace agent, see the agents that run,
    stop one. Every string from the route is shown as text after control and bidirectional
    characters are removed; nothing is parsed as markup and no link is made. The page holds no
    token: start and stop travel on the person's browser session cookie. */
 import "./chip.js";
 import "./controls.js";
-import { MlElement, define, h } from "./base.js";
+import { PoolhouseElement, define, h } from "./base.js";
 import { fmt } from "./format.js";
 
 const HIDDEN = /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/g;
@@ -26,31 +26,31 @@ const VERDICT = { idle: "green", working: "yellow", loading: "yellow", starting:
 
 const STYLES = `
 :host { max-width: 920px; }
-section { border: 1px solid var(--ml-line); border-radius: var(--ml-radius); background: var(--ml-surface);
+section { border: 1px solid var(--poolhouse-ui-line); border-radius: var(--poolhouse-ui-radius); background: var(--poolhouse-ui-surface);
   padding: 14px 16px; margin-bottom: 16px; }
 h2 { margin: 0 0 10px; font-size: 16px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; align-items: end; }
-.roles { margin: 12px 0 0; padding: 0; list-style: none; font-size: 13px; color: var(--ml-muted); }
-.roles b { color: var(--ml-text); }
+.roles { margin: 12px 0 0; padding: 0; list-style: none; font-size: 13px; color: var(--poolhouse-ui-muted); }
+.roles b { color: var(--poolhouse-ui-text); }
 .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-top: 14px; }
 button.go, button.stop { padding: 9px 16px; border-radius: 8px; cursor: pointer; font-weight: 600;
-  border: 1px solid var(--ml-line-strong); background: transparent; }
-button.go { background: var(--ml-accent); color: var(--ml-on-accent); border-color: var(--ml-accent); }
+  border: 1px solid var(--poolhouse-ui-line-strong); background: transparent; }
+button.go { background: var(--poolhouse-ui-accent); color: var(--poolhouse-ui-on-accent); border-color: var(--poolhouse-ui-accent); }
 button:disabled { opacity: .55; cursor: not-allowed; }
-.note { font-size: 13px; color: var(--ml-muted); overflow-wrap: anywhere; }
-.note.error { color: var(--ml-red-ink); }
-label { display: block; font-size: 12.5px; font-weight: 600; color: var(--ml-muted); margin-bottom: 6px; }
+.note { font-size: 13px; color: var(--poolhouse-ui-muted); overflow-wrap: anywhere; }
+.note.error { color: var(--poolhouse-ui-red-ink); }
+label { display: block; font-size: 12.5px; font-weight: 600; color: var(--poolhouse-ui-muted); margin-bottom: 6px; }
 input { width: 100%; padding: 9px 11px; border-radius: 8px; font: inherit; font-size: 14px;
-  background: var(--ml-sunken); border: 1px solid var(--ml-line-strong); color: var(--ml-text); }
-.agent { border-top: 1px solid var(--ml-line); padding: 10px 0; display: grid; gap: 4px; }
+  background: var(--poolhouse-ui-sunken); border: 1px solid var(--poolhouse-ui-line-strong); color: var(--poolhouse-ui-text); }
+.agent { border-top: 1px solid var(--poolhouse-ui-line); padding: 10px 0; display: grid; gap: 4px; }
 .agent:first-of-type { border-top: 0; }
 .head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 .head b { overflow-wrap: anywhere; }
-.meta { color: var(--ml-muted); font-size: 12.5px; overflow-wrap: anywhere; }
+.meta { color: var(--poolhouse-ui-muted); font-size: 12.5px; overflow-wrap: anywhere; }
 .spacer { flex: 1; }
 `;
 
-class MlAgents extends MlElement {
+class PoolhouseAgents extends PoolhouseElement {
   static props = { endpoint: "string" };
   static styles = STYLES;
 
@@ -69,9 +69,9 @@ class MlAgents extends MlElement {
     this.modelField.addEventListener("input", () => this.update());
     this.projectField = h("input", { type: "text", id: "project", spellcheck: "false", autocomplete: "off",
       placeholder: "optional" });
-    this.roleControl = h("ml-select", { label: "What it may do", value: "" });
-    this.effort = h("ml-select", { label: "Reasoning effort", hint: "Off thinks least and answers fastest", value: "off" });
-    this.profile = h("ml-select", { label: "Kind of work", hint: "Auto context uses the model capacity and admitted memory",
+    this.roleControl = h("poolhouse-select", { label: "What it may do", value: "" });
+    this.effort = h("poolhouse-select", { label: "Reasoning effort", hint: "Off thinks least and answers fastest", value: "off" });
+    this.profile = h("poolhouse-select", { label: "Kind of work", hint: "Auto context uses the model capacity and admitted memory",
       value: "chat" });
     this.profile.options = [{value:"chat",label:"Chat"},{value:"coding",label:"Coding"}];
     this.contextField = h("input", { type:"text", id:"context", placeholder:"Auto", value:"" });
@@ -80,9 +80,9 @@ class MlAgents extends MlElement {
       h("input", {type:"number", id:`task-${key}`, min:"1", step:key === "seconds" ? "any" : "1", placeholder:"None"})]));
     this.limitNote = h("p", {class:"note"});
     for (const field of [this.outputField, ...Object.values(this.capFields)]) field.addEventListener("input", () => this.update());
-    this.harness = h("ml-select", { label:"Harness", value:"poolhouse-agent" });
+    this.harness = h("poolhouse-select", { label:"Harness", value:"poolhouse-agent" });
     this.profile.addEventListener("change", event => { if (event.detail?.value) { this.update(); } });
-    this.ceiling = h("ml-select", { label: "Maximum reasoning effort", hint: "It can raise its own effort up to this",
+    this.ceiling = h("poolhouse-select", { label: "Maximum reasoning effort", hint: "It can raise its own effort up to this",
       value: "medium" });
     this.go = h("button", { class: "go", type: "button", onclick: () => this.start() }, "Start a local agent");
     this.note = h("span", { class: "note", role: "status", "aria-live": "polite" });
@@ -250,7 +250,7 @@ class MlAgents extends MlElement {
     return h("div", { class: "agent" },
       h("div", { class: "head" },
         h("b", {}, line(a.name, 48)),
-        h("ml-chip", { verdict: VERDICT[a.state] || "none", label: line(a.state, 20) }),
+        h("poolhouse-chip", { verdict: VERDICT[a.state] || "none", label: line(a.state, 20) }),
         h("span", { class: "spacer" }),
         h("button", {type:"button", onclick:() => this.applySettings(this.saved.find(row => row.name === a.name))}, "Use settings"),
         h("button", { class: "stop", type: "button", onclick: () => this.stop(a.name) }, "Stop")),
@@ -264,4 +264,4 @@ class MlAgents extends MlElement {
       h("div", { class: "meta" }, last));
   }
 }
-define("ml-agents", MlAgents);
+define("poolhouse-agents", PoolhouseAgents);

@@ -1,5 +1,5 @@
-/* <ml-chip>: a verdict or status label with an icon and a word. */
-import { MlElement, define, h } from "./base.js";
+/* <poolhouse-chip>: a verdict or status label with an icon and a word. */
+import { PoolhouseElement, define, h } from "./base.js";
 import { LABELS, icon, normalize } from "./verdict.js";
 
 const STYLES = `
@@ -7,15 +7,15 @@ const STYLES = `
 .chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 7px;
   border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 1.5; white-space: nowrap;
   max-width: 100%; color: var(--v-ink);
-  background: color-mix(in srgb, var(--v) 16%, var(--ml-surface));
+  background: color-mix(in srgb, var(--v) 16%, var(--poolhouse-ui-surface));
   border: 1px solid color-mix(in srgb, var(--v) 55%, transparent); }
-.chip.plain { color: var(--ml-text); --v: var(--ml-line-strong);
-  background: var(--ml-sunken); border-color: var(--ml-line-strong); }
+.chip.plain { color: var(--poolhouse-ui-text); --v: var(--poolhouse-ui-line-strong);
+  background: var(--poolhouse-ui-sunken); border-color: var(--poolhouse-ui-line-strong); }
 .text { overflow: hidden; text-overflow: ellipsis; }
 :host([icon-only]) .chip { padding: 2px 5px; }
 `;
 
-class MlChip extends MlElement {
+class PoolhouseChip extends PoolhouseElement {
   static props = { verdict: "string", label: "string", iconOnly: "bool" };
   static styles = STYLES;
 
@@ -41,4 +41,4 @@ class MlChip extends MlElement {
     if (this.iconOnly) this.chip.setAttribute("title", text); else this.chip.removeAttribute("title");
   }
 }
-define("ml-chip", MlChip);
+define("poolhouse-chip", PoolhouseChip);

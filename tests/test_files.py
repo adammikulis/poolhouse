@@ -185,3 +185,234 @@ for counter in range(1, 51):
         assert json.load(snapshot) == initial
     assert localagent.status_of(ws.base, "worker")["counter"] == 50
     assert list(status.path.parent.glob("*.tmp")) == []
+
+
+@pytest.fixture
+def promotion_dirs(tmp_path):
+    import os
+    from contextlib import ExitStack
+
+    source, target = tmp_path / "source", tmp_path / "target"
+    source.mkdir()
+    target.mkdir()
+    with ExitStack() as closing:
+        descriptors = []
+        for directory in (source, target):
+            descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            closing.callback(os.close, descriptor)
+            descriptors.append(descriptor)
+        yield source, target, descriptors
+
+
+def test_new_promotion_uses_independent_pinned_directories(promotion_dirs):
+    import os
+
+    from poolhouse.files import promote_new
+
+    source, target, descriptors = promotion_dirs
+    (source / "ready").write_bytes(b"finished bytes")
+    (source / "ready").chmod(0o700)
+    before = (source / "ready").stat()
+    promote_new(b"ready", b"result", source_fd=descriptors[0], target_fd=descriptors[1])
+    assert not os.path.lexists(source / "ready")
+    after = (target / "result").stat()
+    assert (after.st_dev, after.st_ino, after.st_mode) == (before.st_dev, before.st_ino, before.st_mode)
+    assert (target / "result").read_bytes() == b"finished bytes"
+
+
+@pytest.mark.parametrize("kind", ["file", "directory", "dangling"])
+@pytest.mark.parametrize("relative", [False, True])
+def test_new_promotion_never_replaces_existing_names(promotion_dirs, kind, relative):
+    import os
+
+    from poolhouse.files import promote_new
+
+    source, target, descriptors = promotion_dirs
+    (source / "ready").write_bytes(b"candidate")
+    destination = target / "result"
+    if kind == "file":
+        destination.write_bytes(b"owner bytes")
+    elif kind == "directory":
+        destination.mkdir()
+        (destination / "owner").write_bytes(b"owner bytes")
+    else:
+        destination.symlink_to("absent-owner-file")
+    before = destination.lstat()
+    args = ("ready", "result") if relative else (source / "ready", destination)
+    kwargs = {"source_fd": descriptors[0], "target_fd": descriptors[1]} if relative else {}
+    with pytest.raises(FileExistsError):
+        promote_new(*args, **kwargs)
+    assert destination.lstat() == before
+    assert (source / "ready").read_bytes() == b"candidate"
+    assert os.path.lexists(destination)
+
+
+def test_new_promotion_keeps_pinned_inode_scope_after_ancestor_redirect(promotion_dirs):
+    from poolhouse.files import promote_new
+
+    source, target, descriptors = promotion_dirs
+    (source / "ready").write_bytes(b"prepared")
+    retained_source, retained_target = source.with_name("retained-source"), target.with_name("retained-target")
+    source.rename(retained_source)
+    target.rename(retained_target)
+    foreign = source.with_name("foreign")
+    foreign.mkdir()
+    (foreign / "ready").write_bytes(b"foreign source")
+    (foreign / "result").write_bytes(b"foreign result")
+    source.symlink_to(foreign, target_is_directory=True)
+    target.symlink_to(foreign, target_is_directory=True)
+    promote_new("ready", "result", source_fd=descriptors[0], target_fd=descriptors[1])
+    assert (retained_target / "result").read_bytes() == b"prepared"
+    assert (foreign / "ready").read_bytes() == b"foreign source"
+    assert (foreign / "result").read_bytes() == b"foreign result"
+
+
+@pytest.mark.parametrize("name", ["", ".", "..", "../ready", "/ready", "part/ready", "./ready", "ready/", "a\0b", b"\xff/x"])
+@pytest.mark.parametrize("side", ["source", "target"])
+def test_new_promotion_rejects_unmodified_relative_names(promotion_dirs, name, side):
+    from poolhouse.files import promote_new
+
+    source, target, descriptors = promotion_dirs
+    (source / "ready").write_bytes(b"prepared")
+    args = (name, "result") if side == "source" else ("ready", name)
+    with pytest.raises(ValueError):
+        promote_new(*args, source_fd=descriptors[0], target_fd=descriptors[1])
+    assert (source / "ready").read_bytes() == b"prepared"
+    assert list(target.iterdir()) == []
+
+
+@pytest.mark.parametrize("bad", [True, False, -1, "3"])
+@pytest.mark.parametrize("side", [0, 1])
+def test_new_promotion_rejects_invalid_descriptor_types(promotion_dirs, bad, side):
+    from poolhouse.files import promote_new
+
+    source, target, descriptors = promotion_dirs
+    (source / "ready").write_bytes(b"prepared")
+    chosen = list(descriptors)
+    chosen[side] = bad
+    with pytest.raises(ValueError):
+        promote_new("ready", "result", source_fd=chosen[0], target_fd=chosen[1])
+    assert (source / "ready").read_bytes() == b"prepared"
+    assert list(target.iterdir()) == []
+
+
+def test_new_promotion_rejects_missing_closed_and_regular_file_descriptors(promotion_dirs):
+    import os
+
+    from poolhouse.files import promote_new
+
+    source, target, descriptors = promotion_dirs
+    candidate = source / "ready"
+    candidate.write_bytes(b"prepared")
+    with pytest.raises(ValueError):
+        promote_new("ready", "result", source_fd=descriptors[0])
+    with pytest.raises(ValueError):
+        promote_new("ready", "result", target_fd=descriptors[1])
+    descriptor = os.open(candidate, os.O_RDONLY)
+    try:
+        with pytest.raises(ValueError):
+            promote_new("ready", "result", source_fd=descriptor, target_fd=descriptors[1])
+    finally:
+        os.close(descriptor)
+    with pytest.raises(OSError) as error:
+        promote_new("ready", "result", source_fd=descriptor, target_fd=descriptors[1])
+    assert error.value.errno == errno.EBADF
+    assert candidate.read_bytes() == b"prepared"
+    assert list(target.iterdir()) == []
+
+
+def test_new_promotion_moves_symlink_itself_without_following(promotion_dirs):
+    from poolhouse.files import promote_new
+
+    source, target, descriptors = promotion_dirs
+    owner = source / "owner"
+    owner.write_bytes(b"owner content")
+    (source / "ready").symlink_to(owner)
+    promote_new("ready", "result", source_fd=descriptors[0], target_fd=descriptors[1])
+    assert (target / "result").is_symlink()
+    assert (target / "result").readlink() == owner
+    assert owner.read_bytes() == b"owner content"
+
+
+def test_new_promotion_competing_creators_have_one_winner(promotion_dirs):
+    from poolhouse.files import promote_new
+
+    source, target, descriptors = promotion_dirs
+    ready = threading.Barrier(8)
+    for index in range(8):
+        (source / str(index)).write_text(str(index))
+    def publish(index):
+        ready.wait(timeout=10)
+        try:
+            promote_new(str(index), "result", source_fd=descriptors[0], target_fd=descriptors[1])
+        except FileExistsError:
+            return False
+        return True
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        outcomes = list(pool.map(publish, range(8)))
+    assert sum(outcomes) == 1
+    winner = outcomes.index(True)
+    assert (target / "result").read_text() == str(winner)
+    assert sorted(path.name for path in source.iterdir()) == [str(index) for index in range(8) if index != winner]
+
+
+def test_new_promotion_missing_destination_parent_preserves_source(promotion_dirs):
+    from poolhouse.files import promote_new
+
+    source, target, _descriptors = promotion_dirs
+    (source / "ready").write_bytes(b"prepared")
+    with pytest.raises(FileNotFoundError):
+        promote_new(source / "ready", target / "missing" / "result")
+    assert (source / "ready").read_bytes() == b"prepared"
+    assert list(target.iterdir()) == []
+
+
+def test_new_promotion_unsupported_platform_has_no_fallback(promotion_dirs, monkeypatch):
+    from poolhouse import files
+
+    source, target, descriptors = promotion_dirs
+    (source / "ready").write_bytes(b"prepared")
+    monkeypatch.setattr(files.sys, "platform", "unsupported")
+    with pytest.raises(OSError) as error:
+        files.promote_new("ready", "result", source_fd=descriptors[0], target_fd=descriptors[1])
+    assert error.value.errno == errno.ENOTSUP
+    assert (source / "ready").read_bytes() == b"prepared"
+    assert list(target.iterdir()) == []
+
+
+def test_new_promotion_cross_device_error_never_copies(promotion_dirs, monkeypatch):
+    import ctypes
+
+    from poolhouse import files
+
+    source, target, descriptors = promotion_dirs
+    (source / "ready").write_bytes(b"prepared")
+    def elsewhere(*_arguments):
+        ctypes.set_errno(errno.EXDEV)
+        return -1
+    library = SimpleNamespace(renameatx_np=elsewhere, renameat2=elsewhere)
+    monkeypatch.setattr(files.ctypes, "CDLL", lambda *_args, **_kwargs: library)
+    with pytest.raises(CrossDevice):
+        files.promote_new("ready", "result", source_fd=descriptors[0], target_fd=descriptors[1])
+    assert (source / "ready").read_bytes() == b"prepared"
+    assert list(target.iterdir()) == []
+
+
+@pytest.mark.parametrize("side", ["source", "target"])
+@pytest.mark.parametrize("encoded", [False, True])
+def test_new_promotion_path_mode_rejects_embedded_null_without_truncation(promotion_dirs, side, encoded):
+    import os
+
+    from poolhouse.files import promote_new
+
+    source, target, _descriptors = promotion_dirs
+    candidate, destination = source / "ready", target / "result"
+    candidate.write_bytes(b"prepared")
+    arguments = [str(candidate), str(destination)]
+    arguments[0 if side == "source" else 1] += "\0ignored"
+    if encoded:
+        arguments = [os.fsencode(argument) for argument in arguments]
+    with pytest.raises(ValueError, match="null"):
+        promote_new(*arguments)
+    assert candidate.read_bytes() == b"prepared"
+    assert list(target.iterdir()) == []

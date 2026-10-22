@@ -23,8 +23,8 @@ const cell = (title, ...kids) => h("div", { class: "cell" }, h("h3", {}, title),
 const wide = (title, ...kids) => { const c = cell(title, ...kids); c.classList.add("wide"); return c; };
 const section = (name, ...cells) => [h("h2", { id: name.toLowerCase().replace(/\W+/g, "-") }, name), h("div", { class: "grid" }, ...cells)];
 
-const meter = (title, props) => cell(title, el("ml-meter", props));
-const meters = section("ml-meter",
+const meter = (title, props) => cell(title, el("poolhouse-meter", props));
+const meters = section("poolhouse-meter",
   meter("green: 8 of 24 GB", { label: "Video memory", format: "bytes", capacity: 24 * GB,
     segments: [{ label: "weights", value: 5 * GB }, { label: "cache", value: 2 * GB }, { label: "compute", value: 1 * GB }] }),
   meter("yellow: 20 of 24 GB", { label: "Video memory", format: "bytes", capacity: 24 * GB,
@@ -41,23 +41,23 @@ const meters = section("ml-meter",
   meter("hostile label", { label: HOSTILE, value: 10, capacity: 100, caption: HOSTILE }),
   meter("zero capacity", { label: "Zero", value: 5, capacity: 0 }),
   meter("custom thresholds (yellow at 50%)", { label: "Queue", value: 60, capacity: 100, "yellow-at": 0.5, "red-at": 0.9 }),
-  cell("rtl", el("div", { dir: "rtl", lang: "ar" }, el("ml-meter", { label: "الذاكرة", value: 70, capacity: 100, unit: "GB" }))));
+  cell("rtl", el("div", { dir: "rtl", lang: "ar" }, el("poolhouse-meter", { label: "الذاكرة", value: 70, capacity: 100, unit: "GB" }))));
 
-const chips = section("ml-chip",
+const chips = section("poolhouse-chip",
   cell("verdicts", el("div", { class: "row" },
-    el("ml-chip", { verdict: "green" }), el("ml-chip", { verdict: "yellow" }), el("ml-chip", { verdict: "red" }),
-    el("ml-chip", { verdict: "none" }))),
+    el("poolhouse-chip", { verdict: "green" }), el("poolhouse-chip", { verdict: "yellow" }), el("poolhouse-chip", { verdict: "red" }),
+    el("poolhouse-chip", { verdict: "none" }))),
   cell("custom text", el("div", { class: "row" },
-    el("ml-chip", { verdict: "green", label: "Fits at 128k" }), el("ml-chip", { verdict: "yellow", label: "Tight" }),
-    el("ml-chip", { verdict: "red", label: "Does not fit" }))),
+    el("poolhouse-chip", { verdict: "green", label: "Fits at 128k" }), el("poolhouse-chip", { verdict: "yellow", label: "Tight" }),
+    el("poolhouse-chip", { verdict: "red", label: "Does not fit" }))),
   cell("plain status and icon only", el("div", { class: "row" },
-    el("ml-chip", { label: "NVIDIA · CUDA" }), el("ml-chip", { verdict: "green", "icon-only": true, label: "ok" }),
-    el("ml-chip", { verdict: "red", "icon-only": true, label: "failed" }))),
+    el("poolhouse-chip", { label: "NVIDIA · CUDA" }), el("poolhouse-chip", { verdict: "green", "icon-only": true, label: "ok" }),
+    el("poolhouse-chip", { verdict: "red", "icon-only": true, label: "failed" }))),
   cell("long and hostile", el("div", { class: "row narrow" },
-    el("ml-chip", { verdict: "red", label: LONG }), el("ml-chip", { verdict: "yellow", label: HOSTILE }))));
+    el("poolhouse-chip", { verdict: "red", label: LONG }), el("poolhouse-chip", { verdict: "yellow", label: HOSTILE }))));
 
-const progress = (title, props) => cell(title, el("ml-progress", props));
-const progresses = section("ml-progress",
+const progress = (title, props) => cell(title, el("poolhouse-progress", props));
+const progresses = section("poolhouse-progress",
   progress("downloading", { label: "thornfield-8B-Q4_K_M.gguf", format: "bytes", done: 1.7 * GB, total: 4.9 * GB, rate: 41e6, cancelable: true }),
   progress("indeterminate (size unknown)", { label: "Starting…", cancelable: true }),
   progress("done", { label: "marrowgate-A3B", format: "bytes", done: 4.9 * GB, total: 4.9 * GB, state: "done" }),
@@ -68,8 +68,8 @@ const progresses = section("ml-progress",
   progress("hostile label and message", { label: HOSTILE, value: 0.2, state: "failed", message: HOSTILE }),
   progress("zero total", { label: "Empty", done: 0, total: 0 }));
 
-const spark = (title, props) => cell(title, el("ml-sparkline", props));
-const sparklines = section("ml-sparkline",
+const spark = (title, props) => cell(title, el("poolhouse-sparkline", props));
+const sparklines = section("poolhouse-sparkline",
   spark("rising", { values: [1, 2, 2, 3, 5, 4, 6, 8, 9, 12], label: "tokens per second", area: true }),
   spark("red verdict, wide", { values: [10, 30, 55, 80, 96, 99, 97], width: 220, height: 40, verdict: "red", min: 0, max: 100, area: true }),
   spark("green flat", { values: [5, 5, 5, 5, 5], verdict: "green" }),
@@ -89,19 +89,19 @@ const columns = [
   { key: "size", label: "Size", kind: "bytes", sortable: true },
   { key: "users", label: "Users", kind: "number", sortable: true },
 ];
-const tables = section("ml-table",
-  wide("models with verdicts, selectable, sortable", el("ml-table", { columns, rows: models, selectable: true, label: "Models that fit this machine", "sort-key": "size", "sort-dir": "descending" })),
-  cell("empty", el("ml-table", { columns, rows: [], empty: "No models on this machine yet." })),
-  cell("loading", el("ml-table", { columns, rows: [], loading: true })),
-  cell("error", el("ml-table", { columns, rows: [], error: "The hub did not answer." })));
+const tables = section("poolhouse-table",
+  wide("models with verdicts, selectable, sortable", el("poolhouse-table", { columns, rows: models, selectable: true, label: "Models that fit this machine", "sort-key": "size", "sort-dir": "descending" })),
+  cell("empty", el("poolhouse-table", { columns, rows: [], empty: "No models on this machine yet." })),
+  cell("loading", el("poolhouse-table", { columns, rows: [], loading: true })),
+  cell("error", el("poolhouse-table", { columns, rows: [], error: "The hub did not answer." })));
 
 const steps = [{ id: "name", title: "Name" }, { id: "pool", title: "Pool" }, { id: "job", title: "Job" }, { id: "done", title: "Done" }];
 const stepper = (id, current, validate) => {
-  const s = el("ml-stepper", { id, steps, current, validate });
+  const s = el("poolhouse-stepper", { id, steps, current, validate });
   steps.forEach((st) => s.append(el("div", { slot: `step-${st.id}`, text: `Content of step ${st.title}. ${HOSTILE}` })));
   return s;
 };
-const steppers = section("ml-stepper",
+const steppers = section("poolhouse-stepper",
   cell("first step", stepper("st1", 0)),
   cell("middle step, validation refuses", stepper("st2", 1, (i) => (i === 1 ? "Pick at least one job first." : true))),
   cell("last step, finish", stepper("st3", 3)),
@@ -109,21 +109,21 @@ const steppers = section("ml-stepper",
 
 const field = (title, e) => cell(title, e);
 const fields = section("fields",
-  field("select", el("ml-select", { label: "Cache type", hint: "Smaller caches fit more users.", value: "q8_0",
+  field("select", el("poolhouse-select", { label: "Cache type", hint: "Smaller caches fit more users.", value: "q8_0",
     options: [{ value: "f16", label: "f16 (largest)" }, { value: "q8_0", label: "q8_0" }, { value: "q4_0", label: "q4_0 (smallest)" }] })),
-  field("select with error", el("ml-select", { label: "Model", error: "Choose a model.", placeholder: "Pick one…", value: "",
+  field("select with error", el("poolhouse-select", { label: "Model", error: "Choose a model.", placeholder: "Pick one…", value: "",
     options: [{ value: "a", label: "thornfield" }, { value: "h", label: HOSTILE }] })),
-  field("slider with stops and tick labels", el("ml-slider", { label: "How much it reads", value: 8192, unit: "tokens",
+  field("slider with stops and tick labels", el("poolhouse-slider", { label: "How much it reads", value: 8192, unit: "tokens",
     stops: [2048, 4096, 8192, 16384, 32768, 65536, 131072], hint: "Roughly a page of text per 500 tokens." })),
-  field("slider with custom marks", el("ml-slider", { label: "Users", min: 1, max: 64, value: 12,
+  field("slider with custom marks", el("poolhouse-slider", { label: "Users", min: 1, max: 64, value: 12,
     marks: [{ value: 1 }, { value: 16 }, { value: 32 }, { value: 48 }, { value: 64 }] })),
-  field("toggle on", el("ml-toggle", { label: "Run in the background", hint: "Stays reachable while the window is shut.", checked: true })),
-  field("toggle off, disabled", el("ml-toggle", { label: "Share this machine", disabled: true })),
-  field("path", el("ml-path", { label: "Model folder", value: "~/models", browse: "Browse…", verdict: "green", "verdict-text": "Folder exists",
+  field("toggle on", el("poolhouse-toggle", { label: "Run in the background", hint: "Stays reachable while the window is shut.", checked: true })),
+  field("toggle off, disabled", el("poolhouse-toggle", { label: "Share this machine", disabled: true })),
+  field("path", el("poolhouse-path", { label: "Model folder", value: "~/models", browse: "Browse…", verdict: "green", "verdict-text": "Folder exists",
     hint: "Models are read from here." })),
-  field("path with error", el("ml-path", { label: "Model folder", value: "/no/such/place", error: "That folder does not exist.", verdict: "red", "verdict-text": "Missing" })),
-  field("path hostile", el("ml-path", { label: HOSTILE, value: HOSTILE, hint: HOSTILE })),
-  field("rtl", el("div", { dir: "rtl", lang: "ar" }, el("ml-select", { label: "اللغة", value: "a", options: [{ value: "a", label: "عربي" }] }))));
+  field("path with error", el("poolhouse-path", { label: "Model folder", value: "/no/such/place", error: "That folder does not exist.", verdict: "red", "verdict-text": "Missing" })),
+  field("path hostile", el("poolhouse-path", { label: HOSTILE, value: HOSTILE, hint: HOSTILE })),
+  field("rtl", el("div", { dir: "rtl", lang: "ar" }, el("poolhouse-select", { label: "اللغة", value: "a", options: [{ value: "a", label: "عربي" }] }))));
 
 const buttons = ["green", "yellow", "red", "none"].map((v) => {
   const b = el("button", { class: "demo", type: "button", text: `${v} toast` });
@@ -133,15 +133,15 @@ const buttons = ["green", "yellow", "red", "none"].map((v) => {
   return b;
 });
 const sheetBtn = el("button", { class: "demo", type: "button", text: "Open sheet" });
-const sheet = el("ml-sheet", { heading: `Close poolhouse? ${HOSTILE}`, id: "sheet" },
+const sheet = el("poolhouse-sheet", { heading: `Close poolhouse? ${HOSTILE}`, id: "sheet" },
   el("p", { text: "Keeping it running lets this machine answer." }),
   el("button", { class: "demo", slot: "footer", type: "button", id: "sheet-cancel", text: "Cancel" }),
   el("button", { class: "demo", slot: "footer", type: "button", id: "sheet-ok", text: "Quit" }));
 sheet.addEventListener("click", (e) => { if (e.target.id === "sheet-cancel" || e.target.id === "sheet-ok") sheet.close("button"); });
 sheetBtn.addEventListener("click", () => sheet.setAttribute("open", ""));
-const overlays = section("ml-sheet and ml-toaster",
+const overlays = section("poolhouse-sheet and poolhouse-toaster",
   cell("sheet", sheetBtn, sheet), cell("toasts", el("div", { class: "row" }, ...buttons)));
 
 document.getElementById("gallery").append(
-  h("h1", {}, "ml-ui"), h("p", { style: { color: "var(--ml-muted)" } }, "Every primitive in every state."),
+  h("h1", {}, "poolhouse-ui"), h("p", { style: { color: "var(--poolhouse-ui-muted)" } }, "Every primitive in every state."),
   ...meters, ...chips, ...progresses, ...sparklines, ...tables, ...steppers, ...fields, ...overlays);

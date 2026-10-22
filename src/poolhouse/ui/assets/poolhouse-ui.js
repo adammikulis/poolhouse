@@ -1,4 +1,4 @@
-/* ml-ui: importing this module defines every element. */
+/* poolhouse-ui: importing this module defines every element. */
 import "./chip.js";
 import "./meter.js";
 import "./progress.js";

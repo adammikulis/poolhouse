@@ -34,7 +34,7 @@ def route(team):
     person.session(Path.cwd(), team.client)
 
     def call(path, method="GET", headers=None, body=None, json_body=True):
-        head = {"Cookie": f"ml_session={server.session}", **(headers or {})}
+        head = {"Cookie": f"poolhouse_session={server.session}", **(headers or {})}
         if body is not None and json_body:
             head.setdefault("Content-Type", "application/json")
             body = json.dumps(body)
@@ -101,7 +101,7 @@ def test_the_route_reads_only_and_checks_host_origin_and_fetch_site(team, route)
     assert route("/board/messages?board=%23..%2Fx")[0] == 400
     assert route("/board/messages?board=%23nothing")[0] in (400, 403)
     assert route("/board/unknown")[0] == 400
-    assert route("/ui/ml-ui/../daemon.py")[0] == 404
+    assert route("/ui/poolhouse-ui/../daemon.py")[0] == 404
 
 
 def test_the_route_without_a_signed_in_person_answers_401_and_in_no_project_403(team):
