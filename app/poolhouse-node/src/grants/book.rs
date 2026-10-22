@@ -19,6 +19,8 @@ use super::authority::{Authority, NO_APPROVAL};
 use super::person::Persons;
 use super::spec::{parse_issue, parse_revoke, signing_bytes, Issue, PORTABLE};
 
+/// Why an entry written before a pool of another version was set aside counts for nothing.
+const BEFORE_FLOOR: &str = "written before this device set an older pool aside";
 /// How many entries of each device this one does not trust are read for the listing; the rest are not looked at.
 const MOST_UNTRUSTED: usize = 200;
 
@@ -27,15 +29,19 @@ const MOST_UNTRUSTED: usize = 200;
 #[derive(Default)]
 pub struct Book {
     rows: BTreeMap<String, Vec<usize>>,
+    /// Where the distrust rows of each origin sit in its log.
+    distrusts: BTreeMap<String, Vec<usize>>,
     used: BTreeMap<String, BTreeMap<String, u64>>,
     seen: BTreeMap<String, (usize, String)>,
 }
 
 impl Book {
-    /// Read the rows of ``board`` written since the last call; an origin whose log was replaced is read again.
-    pub fn refresh(&mut self, board: &Board) {
+    /// Read the rows of ``board`` written since the last call; an origin whose log was replaced is read again. A use whose clock is at or
+    /// before ``floor`` counts toward nothing.
+    pub fn refresh(&mut self, board: &Board, floor: u64) {
         let origins = board.origins();
         self.rows.retain(|o, _| origins.contains(o));
+        self.distrusts.retain(|o, _| origins.contains(o));
         self.used.retain(|o, _| origins.contains(o));
         self.seen.retain(|o, _| origins.contains(o));
         for origin in origins {
@@ -43,6 +49,7 @@ impl Book {
             let changed = self.seen.get(&origin).is_some_and(|(n, h)| *n > log.len() || (*n > 0 && log[*n - 1].hash != *h));
             if changed {
                 self.rows.remove(&origin);
+                self.distrusts.remove(&origin);
                 self.used.remove(&origin);
                 self.seen.remove(&origin);
             }
@@ -50,8 +57,13 @@ impl Book {
             for (at, row) in log.iter().enumerate().skip(from).filter(|(_, r)| r.kind == Kind::Grant) {
                 let body = row.body.as_object();
                 if body.and_then(|b| b.get("op")).and_then(Value::as_str) == Some("use") {
+                    if row.hlc.0 <= floor {
+                        continue;
+                    }
                     let gid = body.and_then(|b| b.get("gid")).and_then(Value::as_str).unwrap_or("").to_string();
                     *self.used.entry(origin.clone()).or_default().entry(gid).or_default() += 1;
+                } else if body.and_then(|b| b.get("op")).and_then(Value::as_str) == Some("distrust") {
+                    self.distrusts.entry(origin.clone()).or_default().push(at);
                 } else {
                     self.rows.entry(origin.clone()).or_default().push(at);
                 }
@@ -72,6 +84,24 @@ impl Book {
         }).filter(|r| r.origin == board.origin() || !held_back(r, now_ms)).collect();
         all.sort_by(|a, b| a.order().cmp(&b.order()));
         all.into_iter().cloned().collect()
+    }
+
+    /// The newest distrust rows of each origin of ``board``: those indexed, and any written since the last refresh.
+    pub fn distrusts<'a>(&'a self, board: &'a Board) -> Vec<&'a Row> {
+        let is_distrust = |r: &&Row| r.kind == Kind::Grant && r.body.get("op").and_then(Value::as_str) == Some("distrust");
+        let mut found = Vec::new();
+        for origin in board.origins() {
+            let log = board.rows(&origin);
+            let indexed = self.seen.get(&origin).filter(|(n, h)| *n <= log.len() && (*n == 0 || log[*n - 1].hash == *h));
+            let mut rows: Vec<&Row> = match indexed {
+                Some((n, _)) => self.distrusts.get(&origin).into_iter().flatten().filter_map(|i| log.get(*i)).chain(log[*n..].iter().filter(is_distrust)).collect(),
+                None => log.iter().filter(is_distrust).collect(),
+            };
+            rows.reverse();
+            rows.truncate(MOST_UNTRUSTED);
+            found.extend(rows);
+        }
+        found
     }
 
     /// Whether another device wrote any entry of this board's grants.
@@ -137,9 +167,14 @@ fn status(issue: &Issue, used: u64, now_ms: u64) -> &'static str {
 /// What the grant entries of ``board`` come to at this moment.
 pub fn standing(node: &mut Node, board: &str) -> Result<Standing> {
     let now = node.now_ms();
+    let floor = node.members.grants_floor_ms;
+    if node.members.gov().is_some() && board != crate::poolops::POOL_BOARD {
+        let pool = node.host(crate::poolops::POOL_BOARD)?;
+        pool.book.refresh(&pool.board, floor);
+    }
     let (own, foreign) = {
         let hosted = node.host(board)?;
-        hosted.book.refresh(&hosted.board);
+        hosted.book.refresh(&hosted.board, floor);
         let own = hosted.board.origin().to_string();
         let foreign = hosted.book.foreign(&own);
         (own, foreign)
@@ -156,6 +191,10 @@ pub fn standing(node: &mut Node, board: &str) -> Result<Standing> {
     let mut ignored = Vec::new();
     for row in &rows {
         let Some(map) = row.body.as_object() else { continue };
+        if row.hlc.0 <= floor {
+            ignored.push((row.id(), BEFORE_FLOOR.to_string()));
+            continue;
+        }
         match map.get("op").and_then(Value::as_str) {
             Some("issue") => match parse_issue(map) {
                 Ok(issue) if found.iter().any(|(_, i, why)| why.is_none() && i.gid == issue.gid) => ignored.push((row.id(), "that grant id was used before".to_string())),

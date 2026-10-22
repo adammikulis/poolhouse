@@ -9,6 +9,13 @@ signed it", with the break-it pass written before anything is built (AGENTS.md s
 Nothing was run: every finding is from reading code and documents, and every `file:line` below was read at that commit. Words follow
 [glossary.md](../glossary.md).
 
+Round 3 (builder, claude-e40b84): an approval always writes the asking node's own fingerprint into the grant's device (`approvals/request.rs`,
+`grant_of`), and `grants::find` counts a row whose scope device is `*` or this device. In a pool no approval-written grant is therefore portable to
+another device: a session that works on two devices is approved on each. The `PORTABLE` set only says which actions a foreign row with device `*`
+may cover, and no product path writes `*` into an approval-written row (an ask names no device); a pool-wide ask that names `*` is a product
+decision this note does not take. A9 and A29 over two nodes are tested with the foreign row built by hand, which is what a hostile writer
+on a trusted device would append; the rows of the table below read that way.
+
 Round 1: claude-7d9978 (subagent of claude-2f6d13). Round 2: claude-a67834 (subagent of claude-2f6d13), answering an independent review
 of round 1; this is the last fix round and the builder works from this text. An author's own pass does not satisfy the non-author
 requirement: the reviewer of round 1 reads round 2, and for grants that reviewer is a cloud model (AGENTS.md section 4, "Reviewing the
@@ -120,7 +127,7 @@ action, including one added later, is pool-wide.
 | --- | --- | --- |
 | pool-wide | `member_remove`, `add_device`, `join_pool`, `pool_create`, `admin_manage` | membership and governance (the act itself still needs the admins' signatures) |
 | pool-wide | `land_trust`, `shard_consent`, `shard_call` | which devices' commits and rows this device counts, which devices may run code here, code run on another device |
-| pool-wide | `task_authority`, `note_verify`, `sync_now` | with `shard_call`, the `PORTABLE` set: a grant of one device counts on another, and tasks and notes replicate |
+| pool-wide | `task_authority`, `note_verify`, `sync_now` | with `shard_call`, the `PORTABLE` set: a foreign row naming device `*` may cover them (an approval names its own device, so none does today), and tasks and notes replicate |
 | pool-wide | `file_delete` | removes bytes the other members read (red tests T1, T3) |
 | pool-wide | `link_write` | writes into another project's board, which replicates; not sure, so closed |
 | device-local | `link_read`, `link_remove`, `source_add` | `links.json` and the project registry of this device |
@@ -253,7 +260,7 @@ keeps the old name). Callers: `book::refusal`, the revoke arm of `book::standing
 `decide::decide`, `phone::enrol`, `phone::announce`, `phone::remove`, the phone endpoint's reads and `sessions::rebind`. A test bounds
 the fixed cost of `standing()` with sixteen admin keys and many rows, because every guarded action runs it.
 
-**What does not change.** The portable set (`task_authority`, `note_verify`, `sync_now`, `shard_call`); the landing trust list for
+**What does not change.** The portable set (`task_authority`, `note_verify`, `sync_now`, `shard_call`: a foreign row naming device `*` may cover these and no other action; a grant an approval writes names its own device); the landing trust list for
 foreign origins; the floors; the five-minute freshness of an issue or revoke at the call; the uses count; the lineage rule at spend; the
 single signature per grant (a grant is a permission to ask, and the governing act it may lead to still needs the threshold of admin
 signatures); the typed-yes enrolment of keys.
@@ -353,7 +360,7 @@ note. "Red test" is the red test that already holds the case (T1 `an_enrolled_no
 | A6 | H | Relabel: the outsider signs, with `person` set to an admin's fingerprint | signature fails under the admin's charter material; ignored | none |
 | A7 | M | A key listed with the recovery role signs an issue or approves | refused: "the recovery key signs no grant" | none |
 | A8 | H | A key listed weak signs an issue or approves, or `grants-setup` signs the bundle with the typed-yes key | refused with one plain sentence that names the phone; no prompt is raised first (R10) | none |
-| A9 | H | The charter lists a second admin whose phone is not enrolled as a phone key on this device, and its approval-written pool-wide row arrives from a trusted device | ignored: (c) is not true here; the person adds the phone (R8) | none |
+| A9 | H | The charter lists a second admin whose phone is not enrolled as a phone key on this device, and its pool-wide row, built by hand with device `*`, arrives from a trusted device | ignored: (c) is not true here; the person adds the phone (R8) | none |
 | A10 | M | `persons.json` holds a different public key or `alg` under an admin's fingerprint (planted file) | refused by the byte compare in (c); revokes and distrusts are unaffected, they read the charter | none |
 | A11 | H | A key in `persons.json` marked `phone: true` that no charter lists; and the mirror, the mark planted on a key the charter lists weak | counts for nothing: (a) is the charter's and (c) is the device's, and both must hold | none |
 | A12 | H | Non-admin key calls `grant_revoke` on an admin's live pool-wide grant (a denial of service on the lead) | `denied`; the grant stays live | none |
@@ -516,7 +523,7 @@ Fail first on the parent commit, each by name; the four red tests already do and
   grant in either order of arrival), and A38 to A39 (distrust, in either order, and what it must not do);
 - A21, A22, A23 (a removal with a hold, folded through `gov_tick`, not an edit of the roster; through each of the three entry points);
 - A5, A6, A7, A8, A10, A11 against the fold with rows appended directly, so the call-site checks cannot hide a fold gap;
-- A9 and A29 over two real nodes (`kit::netkit`), a foreign row from a trusted device;
+- A9 and A29 over two real nodes (`kit::netkit`), a foreign row built by hand with device `*` from a trusted device (an approval names its own node, so only a hand-built row can be portable);
 - A32, A33, A40, A44, A52 (rebind, unenroll, nonce, session move);
 - A41 and A54 (the decision in the row, the high-`s` signature), A42 (each kind of damage, in `Pool::load`), A43 (found, plant a row,
   change the version, reload, plant another, check both);

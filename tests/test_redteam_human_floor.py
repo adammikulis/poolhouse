@@ -32,7 +32,7 @@ SRC = str(Path(__file__).resolve().parent.parent / "src")
 HOST = "evil.example"
 CLEAN = {"CLAUDECODE": "", "POOLHOUSE_AGENT": "", "POOLHOUSE_NONINTERACTIVE": "",
          "POOLHOUSE_SENTINEL": ""}
-COMMAND_COUNT = 25
+COMMAND_COUNT = 26
 
 
 def sentinel_dir(tmp_path: Path) -> Path:
@@ -59,6 +59,7 @@ def commands(tmp_path: Path) -> list[tuple[str, str, str, list[str], str]]:
         ("workspace grant", "poolhouse.workspace.cli", "main",
          ["grant", "note_verify", "--to", "claude-0a1b2c", "--until", "1h"], ""),
         ("workspace revoke-grant", "poolhouse.workspace.cli", "main", ["revoke-grant", "g-0123456789abcdef"], ""),
+        ("workspace distrust", "poolhouse.workspace.cli", "main", ["distrust", "--key", "abc"], ""),
         ("workspace grants-setup", "poolhouse.workspace.cli", "main",
          ["grants-setup", "--session", "claude-0a1b2c"], ""),
         ("workspace person-proof", "poolhouse.workspace.cli", "main", ["person-proof"], ""),

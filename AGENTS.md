@@ -41,7 +41,7 @@ The rules never to break, then the ones needed every hour; each names the sectio
 
 ## Full policy
 
-The sections the numbers above point to (1 Hard floors, 2 How to work, 3 Workspace and coordination, 4 Git, worktrees and
+The vocabulary in [docs/glossary.md](docs/glossary.md) is binding: use its words, never the ones it bans. The sections the numbers above point to (1 Hard floors, 2 How to work, 3 Workspace and coordination, 4 Git, worktrees and
 landing, 5 Testing and gates, 6 Models and GPU, 7 Writing rules) are in [docs/agent-policy.md](docs/agent-policy.md), under
 the same headings. Read the section a task touches before starting it; a reference elsewhere to "AGENTS.md, section X"
 means that file.

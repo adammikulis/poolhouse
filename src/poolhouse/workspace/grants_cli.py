@@ -163,6 +163,12 @@ def revoke_grant(args: argparse.Namespace, ctx: Ctx) -> Any:
     return {"revoked": done["gid"]}
 
 
+def distrust(args: argparse.Namespace, ctx: Ctx) -> Any:
+    """Stop counting an admin key of this device's pool, at once, on every board; the pool's other admins remove it for good."""
+    done = grants.distrust(ctx.carrier, _held(ctx), args.key, args.reason)
+    return {"distrusted": done["key"], "next": "an admin removal ends the key for good: `poolhouse-workspace pool status` shows the admin keys"}
+
+
 def _leads(ctx: Ctx) -> dict[str, Any]:
     """The live main sessions of the board, by name: what each said it runs on is a claim."""
     return {a.name: a for a in sorted(ctx.carrier.agents(), key=lambda a: a.name) if not a.parent and not a.person and a.harness != place.PLACER}
@@ -255,6 +261,9 @@ PERSON = (
       flag("--uses", type=int, default=0, help="how often it may be used (default: as often as it is needed)"),
       flag("--review", action="store_true", help="each use needs an independent review behind it")], grant),
     ("revoke-grant", "a person ends a grant at once", [flag("gid"), flag("--reason", default="")], revoke_grant),
+    ("distrust", "a person stops this pool counting one of its admin keys, at once, on every board",
+     [flag("--key", required=True, metavar="FINGERPRINT", help="the fingerprint of the admin key to stop counting (`pool status` lists them)"),
+      flag("--reason", default="")], distrust),
     ("grants-setup", "a person approves, once, the grants the lead sessions of this board need",
      [flag("--session", action="append", metavar="NAME", help="a lead session, by its unique name (repeat for several; default: pick from the list the board shows)"),
       flag("--family", default="", help="every main session that says it is of this model family; needs " + OPEN),

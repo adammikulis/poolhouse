@@ -6,15 +6,16 @@ use serde_json::{json, Map, Value};
 use crate::error::{Error, Result};
 use crate::lineage::{Anchor, Peer};
 use crate::node::Node;
+use crate::poolops::POOL_BOARD;
 use crate::row::{canonical, is_line, Kind, Row};
 use crate::rules::held_back;
 
-use super::authority::Authority;
+use super::authority::{Authority, LISTED};
 use super::book::{standing, Grant};
 use super::person::verifies;
 use super::spec::{self, signing_bytes, ACTIONS, DEVICE_LOCAL, FLOORS, PORTABLE, SKEW_MS};
 
-pub const METHODS: [&str; 7] = ["grant_issue", "grant_revoke", "grants", "grant_log", "person_enroll", "person_unenroll", "person_keys"];
+pub const METHODS: [&str; 8] = ["grant_issue", "grant_revoke", "grant_distrust", "grants", "grant_log", "person_enroll", "person_unenroll", "person_keys"];
 const MOST_LISTED: usize = 200;
 const MOST_LOGGED_PER_ORIGIN: usize = 500;
 const ENROLL_DOMAIN: &str = "poolhouse/person-enroll/v1\n";
@@ -25,6 +26,7 @@ pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
     Some(match method {
         "grant_issue" => &["gid", "to", "action", "scope", "at_ms", "until_ms", "uses", "conditions", "person", "sig"],
         "grant_revoke" => &["gid", "at_ms", "reason", "person", "sig"],
+        "grant_distrust" => &["key", "since", "pool", "person", "at_ms", "reason", "sig"],
         "grants" => &[],
         "grant_log" => &["limit"],
         "person_enroll" => &["public", "about", "at_ms", "proof", "by", "approval", "approved_ms", "nonce", "anchor", "secret"],
@@ -36,7 +38,7 @@ pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
 
 /// The methods that name no board.
 pub fn boardless(method: &str) -> bool {
-    matches!(method, "person_enroll" | "person_unenroll" | "person_keys")
+    matches!(method, "person_enroll" | "person_unenroll" | "person_keys" | "grant_distrust")
 }
 
 fn text<'a>(p: &'a Map<String, Value>, key: &str) -> Result<&'a str> {
@@ -130,6 +132,28 @@ fn revoke(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
     Ok(json!({"gid": named.gid, "revoked": true, "entry": row.id()}))
 }
 
+/// Cut a key the pool lists off from granting and deciding: an admin-role key signs the row, any registered session carries it, and the node
+/// writes it to the pool board. The same row again changes nothing.
+fn distrust(node: &mut Node, token: &str, p: &Map<String, Value>) -> Result<Value> {
+    node.tokens.resolve(token).ok_or_else(|| Error::Denied("a registered session carries a distrust".into()))?;
+    let body = signed_body("distrust", POOL_BOARD, p, &["key", "since", "pool", "person", "at_ms", "reason"]);
+    let sig = text(p, "sig")?;
+    let mut whole = body.clone();
+    whole.insert("sig".into(), json!(sig));
+    spec::parse_distrust(&whole)?;
+    fresh(node, p, "at_ms")?;
+    let gov = node.members.gov().ok_or_else(|| Error::Denied("A device in no pool has no key to distrust.".into()))?;
+    let key = super::distrust::subject(gov, &whole).map_err(|why| Error::Denied(format!("That distrust counts for nothing: {why}.")))?;
+    if super::distrust::set(node).contains(&key) {
+        return Ok(json!({"key": key, "distrusted": true, "entry": ""}));
+    }
+    let row = write(node, POOL_BOARD, "node", body, sig)?;
+    let floor = node.members.grants_floor_ms;
+    let pool = node.host(POOL_BOARD)?;
+    pool.book.refresh(&pool.board, floor);
+    Ok(json!({"key": key, "distrusted": true, "entry": row.id()}))
+}
+
 fn shown(g: &Grant, mine: bool) -> Value {
     let body = &g.row.body;
     json!({"gid": g.issue.gid, "action": g.issue.action, "to": body["to"], "scope": body["scope"], "at_ms": g.issue.at_ms, "until_ms": g.issue.until_ms,
@@ -148,7 +172,7 @@ fn listing(node: &mut Node, board: &str, token: &str) -> Result<Value> {
     let may_issue: Vec<&String> = keys.iter().copied().filter(|_| !authority.governed()).collect();
     let may_revoke: Vec<&String> = keys.iter().copied().filter(|f| authority.may_revoke(f)).collect();
     Ok(json!({"grants": rows, "ignored": ignored, "persons": keys, "now_ms": node.now_ms(), "governance": if authority.governed() { "governed" } else { "unfounded" },
-              "authority": authority.authority(), "may_issue": may_issue, "may_revoke": may_revoke,
+              "authority": authority.authority(), "distrusted": super::distrust::set(node), "may_issue": may_issue, "may_revoke": may_revoke,
               "registry": {"actions": ACTIONS, "floors": FLOORS, "portable": PORTABLE, "device_local": DEVICE_LOCAL}, "device": node.cert.fingerprint()}))
 }
 
@@ -252,6 +276,9 @@ fn unenrolment(fingerprint: &str, by: &str, at_ms: u64, device: &str, nonce: &st
 fn unenroll(node: &mut Node, token: &str, p: &Map<String, Value>, peer: &Peer) -> Result<Value> {
     let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("a registered session carries the removal of a person key".into()))?;
     let (fingerprint, by) = (text(p, "fingerprint")?, text(p, "by")?);
+    if Authority::of(node).lists(fingerprint) {
+        return Err(Error::Denied(LISTED.into()));
+    }
     let at = fresh(node, p, "at_ms")?;
     let (nonce, anchor) = (nonce_of(p, "a removal")?, Anchor::signed(p)?);
     if !node.persons.signed(by, &unenrolment(fingerprint, by, at, &node.cert.fingerprint(), nonce, &anchor), text(p, "sig")?) {
@@ -275,6 +302,7 @@ pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
     match method {
         "grant_issue" => issue(node, board, token, p),
         "grant_revoke" => revoke(node, board, token, p),
+        "grant_distrust" => distrust(node, token, p),
         "grants" => listing(node, board, token),
         "grant_log" => log(node, board, token, p),
         "person_enroll" => enroll(node, token, p, peer),

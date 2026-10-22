@@ -11,7 +11,7 @@ Refusal shapes: `X is for a person; this process was started by an agent (CLAUDE
 | `poolhouse-members roster add`, `adopt` | `fleet/members_cli.py:65,84` | a device joining a pool | node grant `add_device`, a phone approves |
 | `poolhouse-members roster remove` | `fleet/members_cli.py:109` | removing a member, irreversible | `ph.pool.remove`, grant `member_remove`, a phone approves |
 | `poolhouse-workspace phone add` (first phone), `phone remove` | `workspace/phone_cli.py:79,105` | the person key that approves grants | later phones: `phone offer`, an existing phone approves |
-| `grant`, `revoke-grant`, `grants-setup`, `person-enroll`, `person-unenroll`, `person-proof` | `workspace/grants_cli.py:99` | grants of authority | `approval request ACTION`, a phone answers |
+| `grant`, `revoke-grant`, `distrust`, `grants-setup`, `person-enroll`, `person-unenroll`, `person-proof` | `workspace/grants_cli.py:99` | grants of authority | `approval request ACTION`, a phone answers |
 | `rebind HARNESS SESSION` | `grants_cli.py:258`, node `sessions.rs:81` | a session's tokens moving to another terminal | none |
 | `approval decide`, `approval pending --all` | `workspace/approval_cli.py:144,87` | answering with the person key | agents request, status, wait, cancel their own |
 | `poolhouse-workspace chat` | `workspace/cli.py:50` | speaking as the person on the board | none (AGENTS.md section 1) |

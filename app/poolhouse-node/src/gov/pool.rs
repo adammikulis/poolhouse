@@ -32,6 +32,10 @@ const CHARTER: &str = "charter.json";
 const ACTS: &str = "acts.json";
 const SEEN: &str = "seen.json";
 const REFUSED: &str = "refused.json";
+/// Where a new pool is written before it is renamed into `pools/`.
+const SCRATCH: &str = "pool-scratch";
+/// The files a pool directory holds besides its charter.
+pub const POOL_FILES: [&str; 3] = [ACTS, SEEN, REFUSED];
 
 /// An act that was not accepted, and why.
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -174,16 +178,21 @@ impl GovPool {
         Ok(pool)
     }
 
-    /// Start a pool from its founding act under ``root`` (`pools/<id>/`).
+    /// Start a pool from its founding act under ``root``: the pool is written whole into a scratch directory and renamed to `pools/<id>/`,
+    /// so a directory under `pools/` always holds all of it.
     pub fn create(root: &Path, found: Act) -> Result<GovPool> {
         let id = founding(&found)?.pool_id();
-        let dir = root.join("pools").join(&id);
-        private_dir(&root.join("pools"))?;
-        private_dir(&dir)?;
-        let mut pool = GovPool::assemble(dir, found, Arc::new(Awake::new(0)))?;
+        let (scratch, dir) = (root.join(SCRATCH).join(&id), root.join("pools").join(&id));
+        let _ = std::fs::remove_dir_all(&scratch);
+        private_dir(&root.join(SCRATCH))?;
+        private_dir(&scratch)?;
+        let mut pool = GovPool::assemble(scratch.clone(), found, Arc::new(Awake::new(0)))?;
         write_atomic(&pool.dir.join(CHARTER), &serde_json::to_vec(&pool.found)?)?;
         pool.dirty = Dirty { acts: true, seen: true, refused: true };
         pool.save()?;
+        private_dir(&root.join("pools"))?;
+        std::fs::rename(&scratch, &dir)?;
+        pool.dir = dir;
         Ok(pool)
     }
 
@@ -202,15 +211,20 @@ impl GovPool {
     }
 
     pub(super) fn load_with_awake_base(dir: &Path, earned_base: Option<i64>) -> Result<GovPool> {
+        let damaged = |what: &str| Error::Damaged(format!("the pool in {} is damaged: {what}", dir.display()));
         let found: Act = read_json(&dir.join(CHARTER))?.ok_or_else(|| Error::Damaged("a pool without its charter".into()))?;
-        let saved: Option<Value> = read_json(&dir.join(SEEN))?;
-        let awake = earned_base.unwrap_or_else(|| saved.as_ref().and_then(|v| v["awake_ms"].as_i64()).unwrap_or(0));
-        let mut pool = GovPool::assemble(dir.into(), found, Arc::new(Awake::new(awake)))?;
-        let acts: Vec<Act> = read_json::<Value>(&dir.join(ACTS))?.and_then(|v| serde_json::from_value(v["acts"].clone()).ok()).unwrap_or_default();
-        pool.acts = acts.into_iter().filter(|a| a.check_shape().is_ok() && a.pool == pool.id).map(|a| (a.id(), a)).collect();
-        pool.seen = saved.as_ref().and_then(|v| serde_json::from_value(v["seen"].clone()).ok()).unwrap_or_default();
-        pool.joined = saved.as_ref().and_then(|v| v["joined_ms"].as_i64());
-        pool.ready = saved.and_then(|v| serde_json::from_value(v["ready"].clone()).ok()).unwrap_or_default();
+        let saved: Value = read_json(&dir.join(SEEN))?.ok_or_else(|| damaged("seen.json is missing"))?;
+        let held: Value = read_json(&dir.join(ACTS))?.ok_or_else(|| damaged("acts.json is missing"))?;
+        let awake = saved["awake_ms"].as_i64().ok_or_else(|| damaged("seen.json holds no awake time"))?;
+        let mut pool = GovPool::assemble(dir.into(), found, Arc::new(Awake::new(earned_base.unwrap_or(awake))))?;
+        let acts: Vec<Act> = serde_json::from_value(held["acts"].clone()).map_err(|_| damaged("acts.json holds no list of acts"))?;
+        if acts.iter().any(|a| a.check_shape().is_err() || a.pool != pool.id) {
+            return Err(damaged("acts.json holds an act that is malformed or belongs to another pool"));
+        }
+        pool.acts = acts.into_iter().map(|a| (a.id(), a)).collect();
+        pool.seen = serde_json::from_value(saved["seen"].clone()).map_err(|_| damaged("seen.json holds no record of when acts were seen"))?;
+        pool.joined = serde_json::from_value(saved["joined_ms"].clone()).map_err(|_| damaged("seen.json holds a join time that is not a number"))?;
+        pool.ready = serde_json::from_value(saved["ready"].clone()).map_err(|_| damaged("seen.json holds no record of when acts were ready"))?;
         pool.refusals = read_json(&dir.join(REFUSED))?.unwrap_or_default();
         pool.refold();
         Ok(pool)
@@ -267,11 +281,16 @@ impl GovPool {
         self.folds
     }
 
+    /// Whether a hold, a delegate or a dispute has run out and a second of awake time has passed since the last fold.
+    pub fn due(&self) -> bool {
+        let now = self.clock.now_ms();
+        now >= self.deadline && now.saturating_sub(self.folded_at) >= 1000
+    }
+
     /// Fold again when a second or more of awake time has passed since the last fold and a hold, a delegate or a dispute has run
     /// out, so what it ended takes effect; whether it did.
     pub fn tick(&mut self) -> bool {
-        let now = self.clock.now_ms();
-        let due = now >= self.deadline && now.saturating_sub(self.folded_at) >= 1000;
+        let due = self.due();
         if due {
             self.refold();
         }

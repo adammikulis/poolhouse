@@ -25,11 +25,11 @@ fn size_of(rows: &[&Row]) -> Held {
     Held { rows: rows.len(), bytes: rows.iter().map(|r| r.size() as u64 + 1).sum() }
 }
 
-/// Count revocations by exact original logical operation ID and hash.
+/// Count revocations and distrusts by exact original logical operation ID and hash.
 fn revokes(rows: &[&Row]) -> Result<BTreeMap<String, usize>> {
     let mut found = BTreeMap::new();
     let operations = rows.iter().map(|r| r.operation()).collect::<Result<Vec<_>>>()?;
-    for r in operations.iter().filter(|r| r.kind == Kind::Grant && op(r) == "revoke") {
+    for r in operations.iter().filter(|r| r.kind == Kind::Grant && matches!(op(r), "revoke" | "distrust")) {
         *found.entry(format!("{}|{}", r.id(), r.hash)).or_default() += 1;
     }
     Ok(found)

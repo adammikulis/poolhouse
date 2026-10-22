@@ -6,6 +6,7 @@ pub mod grants;
 pub mod netkit;
 pub mod p256;
 pub mod phone;
+pub mod pool;
 #[cfg(unix)]
 pub mod screen;
 #[cfg(unix)]

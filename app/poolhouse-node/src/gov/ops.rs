@@ -240,7 +240,8 @@ impl Node {
 
     /// Refold the pool as it stands now, so a hold that has run takes effect; true when the members changed.
     pub fn gov_tick(&mut self) -> Result<bool> {
-        let before: BTreeMap<String, Status> = self.members.devices().into_iter().map(|d| (d.fingerprint, d.status)).collect();
+        let Some(held) = self.members.gov() else { return Ok(false) };
+        let before: BTreeMap<String, Status> = if held.due() { self.members.devices().into_iter().map(|d| (d.fingerprint, d.status)).collect() } else { BTreeMap::new() };
         let Some(gov) = self.members.gov_mut() else { return Ok(false) };
         let due = gov.tick();
         if gov.checkpoint_due() {

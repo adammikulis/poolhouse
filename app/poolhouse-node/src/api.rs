@@ -308,6 +308,7 @@ pub fn parse(request: &Value) -> Result<Call> {
 
 fn run(node: &mut Node, request: &Value, peer: &Peer) -> Result<Value> {
     let c = parse(request)?;
+    node.gov_tick()?;
     node.asking = Asking::of(&c.token, peer);
     let done = dispatch(node, &c.method, &c.board, &c.token, &c.params, peer);
     node.asking = Asking::default();

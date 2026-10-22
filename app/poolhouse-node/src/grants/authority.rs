@@ -6,8 +6,10 @@
 //! The snapshot is built from the node at each call and kept nowhere.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Mutex;
 
 use crate::gov::charter::Mode;
+use crate::fsutil::sha256_hex;
 use crate::gov::keys::{Role, Strength};
 use crate::node::Node;
 
@@ -19,9 +21,12 @@ const RECOVERY: &str = "the recovery key signs no grant";
 const WEAK: &str = "signed by a key that is not strong";
 const UNACCEPTED: &str = "that admin key never accepted being listed";
 const UNKNOWN_PHONE: &str = "this device does not know that key as a phone's";
+const DISTRUSTED: &str = "that admin key is distrusted";
 const NOT_ADMINS: &str = "this pool is not run by its admins";
 const NO_STRONG: &str = "this pool lists no strong admin key";
 const BAD_SIGNATURE: &str = "the signature is not that admin key's";
+/// Why a key the charter in force lists is not removed from this device by the device's own acts.
+pub const LISTED: &str = "That key is an admin key of this pool: it leaves through an admin removal.";
 /// Why a grant row for a pool-wide action carries no approval.
 pub const NO_APPROVAL: &str = "a pool's grants come from an approval on a phone";
 
@@ -32,9 +37,25 @@ struct Material {
     public: String,
 }
 
+/// How many verdicts of signature checks are remembered.
+const MEMO_MOST: usize = 8192;
+
 impl Material {
+    /// Whether ``sig`` over ``bytes`` is this key's, remembering the verdict: a check is a pure function of the key, the bytes and the signature.
     fn signed(&self, bytes: &[u8], sig: &str) -> bool {
-        verifies_with(&self.alg, &self.public, bytes, sig)
+        static MEMO: Mutex<BTreeMap<String, bool>> = Mutex::new(BTreeMap::new());
+        let id = sha256_hex(&[self.alg.as_bytes(), self.public.as_bytes(), sig.as_bytes(), bytes].join(&0u8));
+        if let Some(verdict) = MEMO.lock().ok().and_then(|m| m.get(&id).copied()) {
+            return verdict;
+        }
+        let verdict = verifies_with(&self.alg, &self.public, bytes, sig);
+        if let Ok(mut memo) = MEMO.lock() {
+            if memo.len() >= MEMO_MOST {
+                memo.clear();
+            }
+            memo.insert(id, verdict);
+        }
+        verdict
     }
 }
 
@@ -66,6 +87,7 @@ impl Authority {
         let charter = &gov.state().chain.latest().charter;
         let accepted = gov.authority_keys();
         let closed = if charter.mode != Mode::Admins { Some(NOT_ADMINS) } else if charter.weak_only() { Some(NO_STRONG) } else { None };
+        let distrusted = super::distrust::set(node);
         let mut pool = Pool { closed, ..Pool::default() };
         for k in &charter.admins {
             let (fp, material) = (k.fingerprint(), Material { alg: k.alg.name().into(), public: k.key.clone() });
@@ -76,6 +98,8 @@ impl Authority {
                 Some(WEAK)
             } else if !accepted.iter().any(|a| a.key == k.key) {
                 Some(UNACCEPTED)
+            } else if distrusted.contains(&fp) {
+                Some(DISTRUSTED)
             } else {
                 None
             };
