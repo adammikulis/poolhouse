@@ -132,7 +132,8 @@ def test_subagent_event_includes_brief_and_actual_primary_branch_rules(commands,
     assert [record['argv'] for record in records] == [
         ['spawn', '--session', 'abcdef12345', '--harness', 'claude-code', '--json'],
         ['subscribe', 'agent', 'claude-aaaaaa', '--mode', 'inbox', '--force'],
-        ['brief', '--registered']]
+        ['brief', '--registered', '--purpose', 'Explore', '--agent-type', 'Explore', '--branch', 'development',
+         '--worktree', str(repository.resolve())]]
     assert records[0]['session'] == 'native-parent' and records[0]['harness'] == 'claude-code'
     assert records[0]['agent'] == records[1]['agent'] != child
     assert records[2]['agent'] == child

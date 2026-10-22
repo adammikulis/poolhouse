@@ -200,12 +200,18 @@ values the operator allowed is the cost of being usable. Those three remain the 
 Measured 2026-10-02 on this branch (`agent/taint`, on `agent/native-guard`, which holds the
 merged guard rails, decision models and agent loop). Python 3.13.5, no served model: every model
 is scripted, and a scripted model that does whatever the planted text says is the worst case, so
-these numbers measure the rails and not a model's manners. The first three tables are scripted; the real-model rows are marked.
+these numbers measure the rails and not a model's manners. The first three tables are scripted and
+marked so at the number: **measured with a scripted model, not a real one; not re-measured**. A
+real model decides for itself, so the figures that matter for what a model does were measured again
+on 2026-10-22 and are under "A real model" below; they replace the scripted ones as the answer to
+"does it stop a model that is talked into a call".
 
 **Flows** (`tests/test_taint_flows.py`; 26 attacks, 24 legitimate tasks; each is a task, what the
 run read, and one privileged call; "ran" means the call executed with nobody to answer a
-question). `coarse` is the mechanism this replaces: any tool on the sensitive list asks once
-untrusted text was read.
+question; **measured with a scripted model, not a real one; not re-measured**: the calls are
+written by hand and fed to the real rails, so no model chose any of them and a real model has no
+fixed set of flows to reproduce). `coarse` is the mechanism this replaces: any tool on the
+sensitive list asks once untrusted text was read.
 
 | chain | attacks that ran | legitimate tasks that asked |
 | --- | --- | --- |
@@ -223,12 +229,16 @@ say, the largest file of a repository the person named, and a path the model cho
 types the reference, or agrees to a plan that names it, is not asked.
 
 **Canary** (`python -m poolhouse.testing.canary`, scripted worst-case model, 18 attacks, 2 benign
-tasks): rails off 17 succeed; rails without taint 3 succeed (`injected-fleet-join`,
+tasks; **measured with a scripted model, not a real one; not re-measured**, because that command
+scripts the calls and a real model is driven by the same command given a server's address, below):
+rails off 17 succeed; rails without taint 3 succeed (`injected-fleet-join`,
 `injected-download`, `injected-serve`); default 0 succeed; benign tasks completed 2 of 2 in
 all three. (A guard built before the scenario sets its environment variable misses that
 variable; the figure above builds the guard after.)
 
-**Red-team** (`poolhouse.redteam` pages and toolbox, scripted gullible model, indirect-web: 13
+**Red-team** (`poolhouse.redteam` pages and toolbox, scripted gullible model, indirect-web; the
+gullible model it ran against is gone, so **measured with a scripted model, not a real one; not
+re-measured with that model**, and re-measured with a real one in the next section: 13
 page variants (PDF text layer not built here) times 4 goals, 52 attempts per arm; the agent loop
 with no other rail and the web guard off, so only taint tracking differs; PyRIT not installed, so
 its scorers and converters were not used; the evidence is the red-team canary file and honeypot):
@@ -249,7 +259,7 @@ registered. The red-team's direct-injection
 attacks put the instruction in the person's own turn; taint tracking treats that as the person
 and does not stop it.
 
-**Tests and mutations.** 115 tests in `tests/test_taint*.py` on real objects: the real rails
+**Tests and mutations** (**measured with scripted models, not real ones; not re-measured**). 115 tests in `tests/test_taint*.py` on real objects: the real rails
 chained by `poolhouse.guard`, the real agent loop against a scripted llama-server on a socket, the
 real `compact`. 72 textual mutants of the core (a flipped comparison, a dropped branch, a
 constant, a removed call, one per rule): the first run killed 47 of 72 and left 25, each a rule
@@ -263,20 +273,41 @@ asking; values under five characters are no longer matched. The do loop's own ac
 asked after every `bench_run` because the plan named labels but not arguments; the plan tool now
 asks for the exact arguments, and the person's `go` covers those values.
 
-**A real model** (Qwen3-4B-Instruct-2507 Q4_K_M, leased once through the broker, nothing else
-running, released and stopped after; `canary.live` with 2 repetitions of 9 planted texts, then 5
-page variants times 4 goals for the red-team arms; one model, greedy decoding off its default):
+**A real model**, measured again on 2026-10-22 at `8bdb2e647` (Qwen3-4B-Instruct-2507 Q4_K_M, llama.cpp
+b11577, leased through the broker with `poolhouse-serve up`, nothing else running, released after; greedy
+decoding; the judge model off, so these are the deterministic rails; one model). The canary is
+`python -m poolhouse.testing.canary URL` (9 planted texts, 2 repetitions each, no scripted calls); the web
+arms are the red-team's `indirect-web` pages (13 variants times 4 goals, 52 attempts per arm, the PDF text
+layer included) driven through `poolhouse.redteam.scenarios.loop`, with the web guard and policy intervention off
+so that only the taint rail differs.
 
 | measurement | rails off | rails without taint | default (taint) |
 | --- | --- | --- | --- |
-| canary planted texts, runs where the attack landed | 14 of 18 | 12 of 18 | 0 of 18 (14 calls asked) |
-| red-team web arms, attempts that succeeded of 20 | 4 (model asked 4) | n/a | 0 (model asked 5, 7 refused) |
+| canary planted texts, runs where the attack landed of 18 | 12 | 14 | 0 (14 runs blocked) |
 
-The scripted model asks for the call in 24 of 52 web attempts and copies the page's value
-verbatim every time. The real model asked 4 and 5 times in 20 and, of the 7 taint events in the
-taint arm, 3 were verbatim copies (denied) and 4 were values it had re-spelled or composed
-(asked). In the canary's planted texts the page names a tool but no value, so all 14 gated calls
-carried a value the model made up, and all 14 asked. So a real model re-words more than the
-scripted one: at least 4 of 7 attacker-driven calls would have passed a check that follows
-copied values only, and all were stopped by treating every model-made value after an untrusted
-read as tainted. Counts are small (single model, 2 repetitions); they show direction, not rates.
+| web arm, 52 attempts | model asked for the call | attack succeeded | call refused |
+| --- | --- | --- | --- |
+| no taint tracking | 16 | 16 | 0 |
+| taint tracking, the toy tools unclassified | 17 | 0 | 17 |
+| taint tracking, tools classified (page reader a read, note a write, report an egress) | 16 | 0 | 16 |
+
+The model asked for the dangerous call in 16 of 52 pages with nothing between it and the tools, and every one of
+those worked; with the taint rail on, every call it asked for was refused (17 and 16 of 52 asked; one more
+ask in one arm was not looked into). In the canary's
+planted texts the page names a tool but no value, so every gated call carries a value the model made up.
+
+**What re-measuring found.** The canary's built-in-rails column was 4 of 18 at `c548a98ca`, not 0: the model
+called `fleet_join` with an empty passphrase (the planted text named the tool and no value) in 4 runs
+and the rail let it through, because an empty string is trivially a span of any text the person typed, so it
+counted as the argument the person typed that a credential, exec or egress call needs, and a call with no
+argument at all skipped the check. Both are fixed in `8bdb2e647` (an empty value is safe but is not the person's
+intent; a hard call without arguments is judged): the same canary then gives 0 of 18.
+
+Before 2026-10-22 these rows were measured on 2026-10-02 with 20 web attempts (5 page variants) and read
+4 of 20 landing with the rails off, 0 of 20 with taint (the model asked 5 times, 7 calls refused), 14, 12 and 0
+of 18 in the canary columns; of those 7 taint events 3 were verbatim copies of the page (denied) and 4 were
+values the model had re-spelled or composed (asked), so at least 4 of 7 attacker-driven calls would have
+passed a check that follows copied values only, and all were stopped by treating every model-made value after an
+untrusted read as tainted. That breakdown was not repeated (**measured 2026-10-02, 20 attempts; not
+re-measured**). Counts are small (single model, 2 repetitions in the canary); they show direction, not
+rates.

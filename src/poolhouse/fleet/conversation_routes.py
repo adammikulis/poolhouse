@@ -57,7 +57,7 @@ class ConversationRoutes:
             if self.method != "GET":
                 self.send(405, {"error": "Use GET to check a conversation request."})
                 return True
-            context = setup_context.bind(self)
+            context = setup_context.bind(self, local=False)
             found = store.creation(self.path.removeprefix("/ui/conversations/operations/"), context.binding,
                                    current=context.current)
             self.send(200 if found is not None else 404, found if found is not None else {"error": "No such conversation request."},
@@ -71,7 +71,7 @@ class ConversationRoutes:
                                              for conversation in store.search(self.asked("q"))]})
             return True
         if self.method == "POST":
-            context = setup_context.bind(self)
+            context = setup_context.bind(self, local=False)
             request = exact_body(self, ("operation_id",), optional=("model", "title", "settings"))
             operation = request.pop("operation_id")
             made = store.create(operation, request, context.binding, defaults=effective(self.ui.settings), current=context.current)
