@@ -1,7 +1,7 @@
-"""The RBMK operator example: the toy simulator, the interlocks, the loud stop and the recording replay.
+"""The RBMK simulator and decision loop: the toy plant, the interlocks, the loud stop and the recording replay.
 
-No test here starts a model or touches a GPU. The model answers in `tests/fixtures/rbmk_operator/` are
-a small recording of a real run of the released decision checkpoint (`run.py record fixture_short`),
+No test here starts a model or touches a GPU. The model answers in `tests/fixtures/rbmk/` are
+a small recording of a real run of the released decision checkpoint (`python -m examples.rbmk.decider.run record fixture_short`),
 used only to test the recording round trip and replay.
 """
 
@@ -10,38 +10,31 @@ from __future__ import annotations
 import copy
 import json
 import math
-import sys
 import time
 from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "examples"))
-
-from rbmk_operator import (  # noqa: E402
-    bundle,
-    controls,
-    reactor as rx,
-    scenarios,
-)
-from rbmk_operator.loop import Runner  # noqa: E402
-from rbmk_operator.operator_model import (  # noqa: E402
-    CrewOperator,
+from examples.rbmk.decider import bundle
+from examples.rbmk.decider.controllers import (
+    CrewController,
     LiveAsker,
-    ModelOperator,
+    ModelController,
     ModelStopped,
-    NaiveOperator,
+    NaiveController,
     call_with_timeout,
 )
-from rbmk_operator.plant import Plant  # noqa: E402
-from rbmk_operator.rods import Rods, worth  # noqa: E402
+from examples.rbmk.decider.loop import Runner
+from examples.rbmk.sim import controls, reactor as rx, scenarios
+from examples.rbmk.sim.plant import Plant
+from examples.rbmk.sim.rods import Rods, worth
 
-FIXTURE = ROOT / "tests" / "fixtures" / "rbmk_operator" / "fixture_short.recording.json"
+ROOT = Path(__file__).resolve().parent.parent
+FIXTURE = ROOT / "tests" / "fixtures" / "rbmk" / "fixture_short.recording.json"
 
 
 def naive(key: str):
-    return Runner(scenarios.scenario(key), NaiveOperator()).run()
+    return Runner(scenarios.scenario(key), NaiveController()).run()
 
 
 def test_a_run_replays_identically_from_its_seed():
@@ -231,7 +224,7 @@ def test_stuck_rod_scenario_reports_the_fault_in_the_alarms_and_the_rod_panel():
 
 def test_the_historic_replay_follows_the_known_sequence():
     scn = scenarios.scenario("historic_1986")
-    res = Runner(scn, CrewOperator()).run()
+    res = Runner(scn, CrewController()).run()
     first, rows = res.trace[0], res.trace
     assert first["P"] * rx.THERMAL_MW == pytest.approx(30, abs=5)
     assert min(r["orm"] for r in rows if not r["scram"]) < 8
@@ -252,7 +245,7 @@ def test_a_missing_checkpoint_stops_the_run_loudly_before_any_question(tmp_path)
 
 def test_a_real_model_failure_at_ask_time_stops_the_run_with_no_action_taken(tmp_path):
     asker = LiveAsker(pointer=str(tmp_path / "no-such-decider"), verify=False)
-    runner = Runner(scenarios.scenario("full_power"), ModelOperator(asker))
+    runner = Runner(scenarios.scenario("full_power"), ModelController(asker))
     rods_before = [r.r for r in runner.plant.core.rods.rods]
     with pytest.raises(ModelStopped, match="failed"):
         runner.run()
@@ -301,7 +294,7 @@ def test_a_recording_that_does_not_match_the_simulator_is_refused():
         bundle.replay(bad, scn)
 
 
-class SlowRule(NaiveOperator):
+class SlowRule(NaiveController):
     """The naive rule with a stated model latency: the clock tests need a latency, not probabilities."""
 
     def __init__(self, ms: float) -> None:
@@ -317,7 +310,7 @@ def acted(res):
     return [d for d in res.decisions if d["kind"] == "decision" and d["requested"]["cls"] != "hold"]
 
 
-def test_a_slow_model_is_a_late_operator():
+def test_a_slow_model_is_a_late_decider():
     scn = scenarios.scenario("load_follow")
     quick = Runner(scn, SlowRule(0.0)).run()
     slow = Runner(scn, SlowRule(400_000.0)).run()
@@ -355,12 +348,12 @@ def test_a_hung_model_call_fails_loudly_after_its_timeout_and_does_not_block_the
     assert time.monotonic() - began < 5
 
 
-RECORDINGS = ROOT / "examples" / "rbmk_operator" / "recordings"
+RECORDINGS = ROOT / "examples" / "rbmk" / "recordings"
 
 
 def test_every_shipped_recording_is_indexed_and_replays_to_its_digest_with_no_model():
     index = json.loads((RECORDINGS / "index.json").read_text())
-    assert index["schema"] == "rbmk-operator-index/1" and len(index["recordings"]) >= 16
+    assert index["schema"] == "rbmk-index/1" and len(index["recordings"]) >= 16
     for entry in index["recordings"]:
         rec = json.loads((RECORDINGS / entry["file"]).read_text())
         assert entry["file"] == f"{entry['scenario']}-{entry['model']}-{entry['recorded_at']}.json"

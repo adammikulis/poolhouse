@@ -1,4 +1,4 @@
-"""The operator: a poolhouse decision model asked named questions about the console.
+"""The controllers: a poolhouse decision model asked named questions about the console.
 
 There is one source of answers, the released checkpoint through `poolhouse.decide`, held under a GPU
 hold at the Broker. A failed, missing, oversized or malformed answer raises `ModelStopped`; nothing
@@ -37,7 +37,7 @@ class Asker(Protocol):
 
 @dataclass
 class Proposal:
-    """What the operator asked for at one decision, before the interlocks see it."""
+    """What the controller asked for at one decision, before the interlocks see it."""
 
     cls: str
     target: str
@@ -156,7 +156,7 @@ def situational(plant: Any) -> list[tuple[str, str, dict[str, Any]]]:
     ]
 
 
-class ModelOperator:
+class ModelController:
     """The decision-model controller: class, then target, then step; an abstained answer holds."""
 
     kind = "model"
@@ -229,7 +229,7 @@ class ModelOperator:
         return prop
 
 
-class NaiveOperator:
+class NaiveController:
     """A baseline rule, not a model: chase the demand with the best manual rod using the average reading."""
 
     kind = "naive"
@@ -242,7 +242,7 @@ class NaiveOperator:
         return Proposal(cls, target, "2", "naive-rule", None, note=f"average reading {got:.2f} against demand {want:.2f}")
 
 
-class CrewOperator:
+class CrewController:
     """The 1986 crew as a script: pull the best manual rod out until the margin is near 7, then AZ-5 36 s into the test."""
 
     kind = "crew"

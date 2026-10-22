@@ -43,7 +43,7 @@ def make_handler(hub: Hub, port_of: Any) -> type[BaseHTTPRequestHandler]:
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
-        server_version = "rbmk-operator-web"
+        server_version = "rbmk-web"
 
         def log_message(self, format: str, *args: Any) -> None:
             return

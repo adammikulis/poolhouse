@@ -118,7 +118,7 @@ window.RB = window.RB || {};
         { label: 'graphite', get: gauge('graphite'), color: '--c2', width: 1 }] },
       { id: 'hazard', title: 'Hazard index', unit: '1 = a limit', y0: 0, limits: [{ y: 1, label: 'limit' }], series: [
         { label: 'hazard', get: (r) => r.hazard, color: '--c1' }] },
-      { id: 'risk', title: "Model's risk score", unit: '1 safe, 5 about to be damaged', y0: 1, y1: 5, fitLimits: false, series: [
+      { id: 'risk', title: "Model's risk score", unit: '1 lowest risk, 5 highest risk', y0: 1, y1: 5, fitLimits: false, series: [
         { label: 'risk', get: (r) => (r.model_risk === null || r.model_risk === undefined ? null : r.model_risk), step: true, color: '--c2' }] },
     ];
   };

@@ -103,6 +103,7 @@ def summary(name: str, doc: dict[str, Any]) -> dict[str, Any]:
             "title": meta["scenario"].get("title"), "seed": meta["scenario"].get("seed"), "controller": meta["controller"],
             "model": meta["backend"].get("model"), "recorded_at": meta["backend"].get("recorded_at"),
             "label": label(doc), "verdict": out.get("verdict"), "why": out.get("why"), "peak_MW": out.get("peak_MW"),
+            "damaged": out.get("damaged"), "scram": out.get("scram"), "final_P": out.get("final_P"), "final_orm": out.get("final_orm"),
             "error": meta.get("error"), "decisions": count}
 
 

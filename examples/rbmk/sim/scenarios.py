@@ -14,7 +14,7 @@ ALL_PROTECTIONS = ("ORM_RULE", "DRUM_TRIPS", "TG_TRIP", "ECCS")
 
 @dataclass(frozen=True)
 class Event:
-    """Something that happens to the plant at a tick: the operator did not choose it."""
+    """Something that happens to the plant at a tick: no decision chose it."""
 
     tick: int
     kind: str          # setpoint | pump_trip | test_start | sensor_stuck | rod_stuck | rod_slow

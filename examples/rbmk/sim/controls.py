@@ -159,7 +159,7 @@ def apply(g: Gated, plant: Any) -> None:
     if cls in ("insert_rod", "withdraw_rod"):
         sign = 1.0 if cls == "insert_rod" else -1.0
         for r in _targets(plant, target):
-            core.rods.command([r], r.r + sign * STEPS[g.step], "operator")
+            core.rods.command([r], r.r + sign * STEPS[g.step], "decider")
     elif cls == "change_flow":
         kind, _, arg = target.partition(":")
         if kind in ("start", "stop"):

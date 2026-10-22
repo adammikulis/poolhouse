@@ -1,5 +1,5 @@
 {
- "schema": "rbmk-operator-recording/1",
+ "schema": "rbmk-recording/1",
  "meta": {
   "scenario": {
    "key": "fixture_short",
@@ -36,7 +36,7 @@
   "interlock_rows": 0,
   "protections_defeated": 0
  },
- "digest": "3dc27f3ddf6be49a550e7503c356f84739087daf0e4bc9e8a097419e22ab3e9c",
+ "digest": "33c604714534dae84acc398192d015f2c407f5362db11f0839cfa5fce89cbd54",
  "decisions": [
   {
    "i": 0,

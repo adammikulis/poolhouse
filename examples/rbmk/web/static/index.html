@@ -15,14 +15,14 @@
 </head>
 <body data-mode="live">
 <header id="top">
-  <div class="brand"><h1>RBMK-1000 unit control room</h1><span class="tag" id="toy"></span></div>
+  <div class="brand"><h1>RBMK control room</h1><span class="tag" id="toy" title="Tap to read all"></span></div>
   <div class="status">
     <span class="chip" id="modestate">LIVE</span>
     <span class="chipbox"><span class="muted">model</span> <b id="modelid">-</b></span>
     <span class="muted" id="runlabel"></span>
   </div>
   <div class="topbtns">
-    <div class="seg" role="group" aria-label="Room view"><button id="view3d" class="on">3D room</button><button id="view2d" disabled title="The low-power 2D views of this room are not built yet">Low-power 2D: not built yet</button></div>
+    <div class="seg" role="group" aria-label="Room view"><button id="view3d" class="on">3D room</button><button id="view2d" disabled title="The low-power 2D views of this room are not built yet"><span class="long">Low-power 2D: not built yet</span><span class="short">2D: not built</span></button></div>
     <button id="theme" class="btn" title="Light or dark">Theme</button>
   </div>
   <span class="clocks" id="clocks">
@@ -103,7 +103,7 @@
     <button id="back" class="btn" title="Back one tick (comma)">Step back</button>
     <button id="play" class="btn primary" title="Space">Play</button>
     <button id="fwd" class="btn" title="Forward one tick (period)">Step</button>
-    <label>Speed <select id="speed"><option value="0.5">0.5 ticks/s</option><option value="1">1</option><option value="2" selected>2</option><option value="5">5</option><option value="10">10</option><option value="25">25</option></select></label>
+    <label><span class="lbl">Speed</span> <select id="speed"><option value="0.5">0.5 ticks/s</option><option value="1">1</option><option value="2" selected>2</option><option value="5">5</option><option value="10">10</option><option value="25">25</option></select></label>
     <input type="range" id="scrub" min="0" max="1" step="0.01" value="0" aria-label="Replay scrubber">
     <span id="clock" class="clock"></span>
     <label class="check"><input type="checkbox" id="pauseCap"> pause at captions</label>

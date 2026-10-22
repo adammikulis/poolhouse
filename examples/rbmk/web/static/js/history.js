@@ -21,7 +21,7 @@ window.RB = window.RB || {};
     H.cv = RB.el('canvas', { class: 'timeline' });
     H.note = RB.el('p', { class: 'muted' });
     H.crewBtn = RB.el('button', { class: 'btn', text: 'Add the 1986 crew script run (no model)', onclick: H.runCrew });
-    root.appendChild(RB.el('h3', { text: '26 April 1986 beside the operator' }));
+    root.appendChild(RB.el('h3', { text: '26 April 1986 beside this run' }));
     root.appendChild(RB.el('p', { class: 'muted', text: 'Time is seconds from the start of the turbine rundown test. The top lane is the historical record (INSAG-7), not simulation output. The crew lane is a script that follows the crew\'s sequence in this toy; it is not a model.' }));
     root.appendChild(H.crewBtn); root.appendChild(H.note); root.appendChild(H.cv);
     H.cv.addEventListener('click', H.click);

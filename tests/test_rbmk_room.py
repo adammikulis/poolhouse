@@ -1,24 +1,21 @@
-"""The RBMK control room example: the generated GLB, the instrument list against the real feed, and the rules."""
+"""The RBMK control room: the generated GLB, the instrument list against a real feed, and the rules."""
 import gzip
 import hashlib
 import json
 import struct
 import subprocess
-import sys
 from pathlib import Path
 
-import pytest
-
-ROOM = Path(__file__).resolve().parents[1] / 'examples' / 'rbmk_control_room'
-VIEWER = ROOM / 'viewer'
-SPEC = json.loads((ROOM / 'instruments.json').read_text())
-FEED = json.loads((VIEWER / 'feed' / 'replay.json').read_text())
-sys.path.insert(0, str(ROOM.parent.parent))
-sys.path.insert(0, str(ROOM))
+APP = Path(__file__).resolve().parents[1] / 'examples' / 'rbmk'
+ROOM = APP / 'room'
+SPEC_FILE = ROOM / 'instruments.json'
+FEED_FILE = APP / 'feed' / 'replay.json'
+SPEC = json.loads(SPEC_FILE.read_text())
+FEED = json.loads(FEED_FILE.read_text())
 
 
 def glb():
-    data = gzip.decompress((VIEWER / 'room.glb.gz').read_bytes())
+    data = gzip.decompress((ROOM / 'room.glb.gz').read_bytes())
     magic, version, length = struct.unpack_from('<4sII', data, 0)
     assert (magic, version, length) == (b'glTF', 2, len(data))
     size, kind = struct.unpack_from('<I4s', data, 12)
@@ -28,7 +25,7 @@ def glb():
 
 def source_hash():
     h = hashlib.sha256()
-    for p in [*sorted((ROOM / 'generator').glob('*.py')), ROOM / 'instruments.json']:
+    for p in [*sorted((APP / 'generator').glob('*.py')), SPEC_FILE]:
         h.update(p.name.encode())
         h.update(p.read_bytes())
     return h.hexdigest()
@@ -46,7 +43,7 @@ def test_glb_is_current_and_labelled_interpretive():
     scene = glb()['scenes'][0]['extras']
     assert scene['build_hash'] == source_hash(), 'room.glb is older than the generator; rebuild it (README)'
     assert 'Interpretive' in scene['interpretive']
-    assert (VIEWER / 'room.glb.gz').stat().st_size < 1_000_000
+    assert (ROOM / 'room.glb.gz').stat().st_size < 1_000_000
 
 
 def test_every_instrument_has_its_nodes():
@@ -65,7 +62,7 @@ def test_no_instrument_node_is_missing_from_the_spec():
 
 
 def test_rod_cells_match_the_demos_211_rods():
-    from examples.rbmk_operator.rods import Rods
+    from examples.rbmk.sim.rods import Rods
 
     rods = [r.id for r in Rods().rods]
     assert len(rods) == 211
@@ -103,7 +100,7 @@ def rule_leaves(rule):
 
 def test_feed_is_a_real_model_run_and_says_so():
     meta = FEED['meta']
-    assert meta['mode'] == 'replay' and meta['operator'] == 'model'
+    assert meta['mode'] == 'replay' and meta['controller'] == 'model'
     assert meta['model'] and 'CANNED' not in meta['model'].upper()
     answered = [d for d in FEED['decisions'] if d.get('answers')]
     assert answered and all(a['model'] == meta['model'] for d in answered for a in d['answers'].values())
@@ -112,7 +109,7 @@ def test_feed_is_a_real_model_run_and_says_so():
 
 
 def run_check():
-    out = subprocess.run(['node', str(VIEWER / 'check.mjs'), str(ROOM / 'instruments.json'), str(VIEWER / 'feed' / 'replay.json')],
+    out = subprocess.run(['node', str(ROOM / 'check.mjs'), str(SPEC_FILE), str(FEED_FILE)],
                          capture_output=True, text=True, check=True, timeout=60).stdout
     return json.loads(out)
 
@@ -132,29 +129,6 @@ def test_rules_agree_with_the_feeds_own_values():
 
 
 def test_rod_order_matches_the_demo():
-    from examples.rbmk_operator.rods import Rods
+    from examples.rbmk.sim.rods import Rods
 
     assert run_check()['rodOrder'] == [r.id for r in Rods().rods]
-
-
-@pytest.mark.slow
-def test_page_shows_the_feed_and_fails_loudly_without_one(playwright):
-    import shoot
-
-    with shoot.serving() as origin:
-        browser, page, errors = shoot.open_page(playwright, origin, './feed/replay.json')
-        try:
-            page.wait_for_function("document.getElementById('badge').textContent === 'REPLAY'", timeout=30000)
-            assert FEED['meta']['model'] in page.inner_text('#model')
-            shoot.view(page, 'az5', 20)
-            assert page.evaluate("window.__room.state.driver.nodes.get('D_FUELT').value") == pytest.approx(FEED['trace'][20]['Tf'])
-        finally:
-            browser.close()
-        assert not errors
-        browser, page, errors = shoot.open_page(playwright, origin, './feed/missing.json')
-        try:
-            page.wait_for_function("document.getElementById('badge').textContent === 'NO FEED'", timeout=30000)
-            assert 'NO FEED' in page.inner_text('#banner')
-            assert page.evaluate("window.__room.state.driver.nodes.get('D_FUELT').value") is None
-        finally:
-            browser.close()

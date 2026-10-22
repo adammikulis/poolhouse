@@ -1,10 +1,10 @@
 """Runs one scenario of the RBMK example and writes a feed JSON: the run's trace, decisions and events with a meta header.
 
-    python -m examples.rbmk.feed.export_feed --scenario pump_trip --operator model \
+    python -m examples.rbmk.feed.export_feed --scenario pump_trip --controller model \
         --live examples/rbmk/feed/live.json --replay examples/rbmk/feed/replay.json
 
 ``--live`` is rewritten after every decision while the run goes on (meta.mode "live"); ``--replay`` is written once when
-the run ends (meta.mode "replay"). The model operator asks the released decision checkpoint under a GPU hold at the
+the run ends (meta.mode "replay"). The model controller asks the released decision checkpoint under a GPU hold at the
 Broker, and the run stops loudly when the model cannot answer; there is no substitute.
 """
 
@@ -15,12 +15,12 @@ import contextlib
 import json
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from examples.rbmk.decider.loop import Result, Runner
-from examples.rbmk.decider.operator_model import CrewOperator, ModelOperator, NaiveOperator
+from examples.rbmk.decider.controllers import CrewController, ModelController, NaiveController
 from examples.rbmk.sim.scenarios import scenario
 
 
@@ -37,31 +37,31 @@ def feed_of(res: Result, mode: str, runner: Runner, args: argparse.Namespace, mo
     doc = res.public()
     doc["decisions"] = [{k: v for k, v in d.items() if k not in ("calls", "state_text")} for d in doc["decisions"]]
     doc["meta"] = {
-        "mode": mode, "model": model, "operator": args.operator, "scenario": args.scenario,
-        "generated_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "mode": mode, "model": model, "controller": args.controller, "scenario": args.scenario,
+        "generated_utc": datetime.now(UTC).isoformat(timespec="seconds"),
         "source": "examples/rbmk", "format": 1,
         "rods": [{"id": r.id, "kind": r.kind} for r in runner.plant.core.rods.rods],
     }
     return doc
 
 
-def build_operator(kind: str, pointer: str) -> tuple[Any, Any]:
-    """The operator and the asker behind it (None unless it is the model)."""
+def build_controller(kind: str, pointer: str) -> tuple[Any, Any]:
+    """The controller and the asker behind it (None unless it is the model)."""
     if kind == "naive":
-        return NaiveOperator(), None
+        return NaiveController(), None
     if kind == "crew":
-        return CrewOperator(), None
-    from examples.rbmk.decider.operator_model import LiveAsker
+        return CrewController(), None
+    from examples.rbmk.decider.controllers import LiveAsker
 
     asker = LiveAsker(pointer)
-    return ModelOperator(asker), asker
+    return ModelController(asker), asker
 
 
 def parse(argv: list[str]) -> argparse.Namespace:
     """The command line."""
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--scenario", default="pump_trip")
-    ap.add_argument("--operator", choices=("model", "naive", "crew"), default="model")
+    ap.add_argument("--controller", choices=("model", "naive", "crew"), default="model")
     ap.add_argument("--pointer", default="", help="a registered decider name (default: the released Strands checkpoint)")
     ap.add_argument("--live", type=Path, help="progressive feed file, meta.mode live")
     ap.add_argument("--replay", type=Path, help="final feed file, meta.mode replay")
@@ -75,7 +75,7 @@ def main(argv: list[str]) -> int:
     if not (args.live or args.replay):
         sys.stderr.write("give --live and/or --replay\n")
         return 2
-    operator, asker = build_operator(args.operator, args.pointer)
+    controller, asker = build_controller(args.controller, args.pointer)
     holder: contextlib.AbstractContextManager[Any] = contextlib.nullcontext()
     if asker is not None:
         from poolhouse.serve.gpu import hold
@@ -88,7 +88,7 @@ def main(argv: list[str]) -> int:
             write_atomic(args.live, feed_of(res, "live", box["runner"], args, asker.model if asker else ""))
 
     with holder:
-        runner = Runner(scenario(args.scenario), operator, progress)
+        runner = Runner(scenario(args.scenario), controller, progress)
         box["runner"] = runner
         res = runner.run()
     model = asker.model if asker else ""

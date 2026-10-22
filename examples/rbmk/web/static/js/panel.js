@@ -1,4 +1,4 @@
-/* The instrument panel: one tile per console reading, with the flags the operator is not told in numbers. */
+/* The instrument panel: one tile per console reading, with the flags the decider is not told in numbers. */
 window.RB = window.RB || {};
 (function (RB) {
   'use strict';

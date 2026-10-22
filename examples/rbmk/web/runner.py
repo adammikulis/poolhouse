@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import copy
+from collections.abc import Callable
 from typing import Any
 
 from ..decider import bundle
+from ..decider.loop import Controller, Result, Runner
+from ..decider.controllers import ModelController, Proposal
 from ..sim import controls
-from ..decider.loop import Operator, Result, Runner
-from ..decider.operator_model import ModelOperator, Proposal
 from ..sim.plant import Plant
 from ..sim.scenarios import Scenario, variant
 from .jobs import Cancelled, Job
@@ -44,6 +45,11 @@ class WebPlant(Plant):
         self.sink.rows.append(self.extras())
         super().advance()
 
+    def advance_split(self, first: float, act: Callable[[], None]) -> None:
+        """Note this tick's extras, then advance with ``act`` carried out ``first`` seconds in."""
+        self.sink.rows.append(self.extras())
+        super().advance_split(first, act)
+
 
 def merged(trace: list[dict[str, Any]], sink: Sink) -> list[dict[str, Any]]:
     """The trace rows with their extras added; a trace and sink of different lengths are an error."""
@@ -55,8 +61,8 @@ def merged(trace: list[dict[str, Any]], sink: Sink) -> list[dict[str, Any]]:
 class WebRunner(Runner):
     """A `Runner` on a `WebPlant` that emits each new row, decision, event and caption to ``job`` (when there is one)."""
 
-    def __init__(self, scn: Scenario, operator: Operator, job: Job | None = None, tag: int = 0) -> None:
-        super().__init__(scn, operator)
+    def __init__(self, scn: Scenario, controller: Controller, job: Job | None = None, tag: int = 0) -> None:
+        super().__init__(scn, controller)
         self.plant = WebPlant(scn)
         self.job, self.tag, self.sent = job, tag, {"trace": 0, "decision": 0, "event": 0}
         self.skip_head = self.quiet = False
@@ -89,7 +95,7 @@ class WebRunner(Runner):
             if key not in self.captioned:
                 self.captioned.add(key)
                 job.emit(type="caption", run=self.tag, row=cap)
-        model = getattr(getattr(self.operator, "asker", None), "model", "")
+        model = getattr(getattr(self.controller, "asker", None), "model", "")
         if model and model != job.model:
             job.model = model
             job.emit(type="model", id=model)
@@ -122,12 +128,12 @@ class WebRunner(Runner):
         return res
 
 
-class ForcedOperator:
+class ForcedController:
     """Asks the real model about the state, then applies a chosen action at the first decision only."""
 
     kind = "model"
 
-    def __init__(self, inner: ModelOperator, forced: dict[str, str]) -> None:
+    def __init__(self, inner: ModelController, forced: dict[str, str]) -> None:
         self.inner, self.forced, self.asker = inner, forced, inner.asker
 
     def propose(self, index: int, plant: Any) -> Proposal:
@@ -157,13 +163,13 @@ def check_forced(fork: Plant, forced: dict[str, Any]) -> dict[str, str]:
     return {"cls": cls, "target": "none" if cls == "hold" else target, "step": step}
 
 
-def resume(fork: Plant, scn: Scenario, operator: Operator, job: Job, horizon: int | None) -> WebRunner:
+def resume(fork: Plant, scn: Scenario, controller: Controller, job: Job, horizon: int | None) -> WebRunner:
     """A runner that continues the plant ``fork`` at its decision, for ``horizon`` more ticks (None: to the end)."""
     plant = copy.deepcopy(fork)
     end = scn.ticks if horizon is None else min(scn.ticks, plant.tick + horizon)
     branch = variant(scn, ticks=end, events=tuple(e for e in scn.events if e.tick != plant.tick))
     plant.scn, plant.sink = branch, Sink()
-    runner = WebRunner(branch, operator, job)
+    runner = WebRunner(branch, controller, job)
     runner.plant, runner.skip_head = plant, True
     return runner
 

@@ -1,11 +1,11 @@
 # Run and recording schema
 
-Two JSON documents. Both are plain JSON, UTF-8, written by `run.py`; a reader needs nothing from this directory.
+Two JSON documents. Both are plain JSON, UTF-8, written by `decider.run`; a reader needs nothing from this directory.
 
-- **Recording** (`rbmk-operator-recording/1`, files in `recordings/`): only what the decision model said, plus a digest of
-  the run it produced. Small (tens of kilobytes). `run.py replay FILE` re-runs the simulator with no model and checks the
+- **Recording** (`rbmk-recording/1`, files in `recordings/`): only what the decision model said, plus a digest of
+  the run it produced. Small (tens of kilobytes). `decider.run replay FILE` re-runs the simulator with no model and checks the
   digest; a text or option that differs from what the model was asked is an error (`ReplayMismatch`), never a guess.
-- **Run** (`rbmk-operator-run/1`): the full document an interface draws. `run.py export FILE --out OUT` replays a
+- **Run** (`rbmk-run/1`): the full document an interface draws. `decider.run export FILE --out OUT` replays a
   recording into it; `bundle.export(result, scenario, backend)` builds it from a live result. Everything in it that is not
   a model answer is derived deterministically from the scenario and seed.
 
@@ -18,7 +18,7 @@ An interface must show the model id and `live` or `recorded from <model> on <dat
 
 | key | content |
 |---|---|
-| `schema` | `"rbmk-operator-run/1"` |
+| `schema` | `"rbmk-run/1"` |
 | `clocks` | the three clocks: `plant_substep_s` {slow 10, fast 0.5}, `tick_s` {slow, fast}, `decision_cadence_s` {slow, fast}, `speed` (simulated seconds per wall second used to turn latency into plant time), `note` |
 | `toy_notice` | the educational-toy notice to show |
 | `meta` | `scenario` {key, title, blurb, group, seed, ticks, defeated[]}, `controller` (`model` / `naive` / `crew`), `backend` {mode, model, recorded_at, abstain_below, source}, `finished`, `error` (a string when the run stopped, else null) |
@@ -28,14 +28,14 @@ An interface must show the model id and `live` or `recorded from <model> on <dat
 | `protections` | the four protection switches and what each is |
 | `rods` | the 211 rods: `id`, `kind` (MR manual, AR automatic regulation, LAR local regulation, USP shortened absorber, EP emergency protection), `x`, `y` (core position, -1 to 1), `w` (worth weight, mean 1) |
 | `trace` | one row per tick, see below |
-| `events` | `{tick, kind, text}` the scenario did to the plant (not the operator) |
+| `events` | `{tick, kind, text}` the scenario did to the plant (not the decider) |
 | `decisions` | one row per question round or automatic trip, see below |
 | `captions` | `{tick, kind, text}` plain narration at key moments (xenon pit, margin below minimum, void feedback, graphite-tip scram, damage, interlock, defeat, abstain) |
 | `outcome` | `verdict` (`recovered` / `failed`), `why`, `peak_P`, `peak_MW`, `max_hazard`, `scram`, `damaged`, `final_orm`, `final_P`, `decisions`, `abstained`, `interlock_rows`, `protections_defeated` |
 | `score` | `in_band` (0 to 40), `within_limits` (0 to 30), `reacted_early` (0 or 20), `avoided_scram` (0 or 10), `total` (0 when the core was damaged) |
-| `whatif` | `{decision index: {action class: branch}}`; a branch is `{applied {cls, target}, interlocks[], rows[], peak_P, end_hazard}` where `rows` are `{tick, P, hazard, orm, f, Tf, scram}` for the next 10 ticks with no further operator action (the trips stay on). Absent from recordings. |
+| `whatif` | `{decision index: {action class: branch}}`; a branch is `{applied {cls, target}, interlocks[], rows[], peak_P, end_hazard}` where `rows` are `{tick, P, hazard, orm, f, Tf, scram}` for the next 10 ticks with no further action (the trips stay on). Absent from recordings. |
 
-### `trace[]` row (true plant values, plus the two power channels the operator reads)
+### `trace[]` row (true plant values, plus the two power channels the decider reads)
 
 `tick`, `t_s` (plant seconds), `dt` (300 or 120 s slow tick, 1 s fast tick), `P` (relative power, 1 = 3200 MW), `chA`, `chB`
 (channel readings, fractions), `X` (xenon index, 1 = full-power equilibrium), `I` (iodine), `void`, `orm` (true margin,
@@ -49,7 +49,7 @@ rod-equivalents), `orm_printed` (what the stale ORM printout shows), `f` (core f
 
 | key | content |
 |---|---|
-| `i`, `kind` | index; `decision` (the operator was asked), `busy` (a decision time arrived while an earlier answer was still in flight: MODEL BUSY, skipped, nothing queued) or `trip` (an automatic trip fired, no question asked) |
+| `i`, `kind` | index; `decision` (the decider was asked), `busy` (a decision time arrived while an earlier answer was still in flight: MODEL BUSY, skipped, nothing queued) or `trip` (an automatic trip fired, no question asked) |
 | `tick`, `t_s`, `snapshot_tick`, `fast` | when the state snapshot was taken (simulated) |
 | `applied_tick`, `applied_t_s`, `delay_s` | when the answer landed in the plant: snapshot time plus latency times `meta` speed. Null if the run ended first |
 | `batch` | `{calls: [{key, size (questions in the call), latency_ms, sent_at, answered_at (wall epoch seconds), tokens_max}], questions, latency_ms}`. Each question is its own forward pass of the pointer backend; there is no batched path for it (see README) |
@@ -92,7 +92,7 @@ setpoint), `protection` (defeat or restore ORM_RULE, DRUM_TRIPS, TG_TRIP, ECCS),
 
 ## Recording document
 
-`{schema: "rbmk-operator-recording/1", meta, outcome, digest, decisions: [{i, tick, calls: [{key, state_sha256, answers, latency_ms, sent_at, answered_at}]}]}`.
+`{schema: "rbmk-recording/1", meta, outcome, digest, decisions: [{i, tick, calls: [{key, state_sha256, answers, latency_ms, sent_at, answered_at}]}]}`.
 `meta` and `outcome` are as in the run document. `digest` is the SHA-256 of the run document (without `whatif`) that the
 recording replays to. `state_sha256` is the SHA-256 of the console text of that call.
 
@@ -101,6 +101,6 @@ A failed live run writes `<scenario>.failed.json` in the run-document form with 
 
 ## Index
 
-`recordings/index.json`: `{schema: "rbmk-operator-index/1", recordings: [{file, scenario, title, group, model, recorded_at,
-abstain_below, verdict, why, peak_MW}]}`, written by `run.py index recordings`. Files are named
+`recordings/index.json`: `{schema: "rbmk-index/1", recordings: [{file, scenario, title, group, model, recorded_at,
+abstain_below, verdict, why, peak_MW}]}`, written by `decider.run index recordings`. Files are named
 `<scenario>-<model-id>-<date>.json`.

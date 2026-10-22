@@ -172,7 +172,7 @@ class Plant:
         panel.sense(self, seconds)
 
     def due(self) -> bool:
-        """Whether the operator is asked this tick."""
+        """Whether the decider is asked this tick."""
         every = scenarios.DECIDE_FAST if self.fast() else scenarios.DECIDE_SLOW
         return self.since_decision >= (self.scn.decide_slow if not self.fast() else every) and not self.core.scram and not self.core.damaged
 
@@ -198,7 +198,7 @@ class Plant:
         return c.scram and c.scram_t > 600.0 and c.P < 0.03
 
     def state_text(self) -> str:
-        """The whole console the operator model reads."""
+        """The whole console the decision model reads."""
         return panel.full(self)
 
     def sample(self) -> dict[str, object]:

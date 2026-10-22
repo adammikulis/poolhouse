@@ -10,19 +10,19 @@ from pathlib import Path
 from typing import Any
 
 from ..decider import bundle
-from ..sim import controls, scenarios
 from ..decider.bundle import ReplayAsker
-from ..decider.operator_model import (
+from ..decider.controllers import (
     ABSTAIN_BELOW,
-    CrewOperator,
+    CrewController,
     LiveAsker,
-    ModelOperator,
+    ModelController,
     ModelStopped,
-    NaiveOperator,
+    NaiveController,
 )
+from ..sim import controls, scenarios
 from . import recordings
 from .jobs import Busy, Cancelled, Job
-from .runner import ForcedOperator, WebRunner, check_forced, divergence, merged, resume
+from .runner import ForcedController, WebRunner, check_forced, divergence, merged, resume
 
 PINNED = "strands-decider-2B-hobson-v19"
 MAX_REPEATS = 20
@@ -38,13 +38,13 @@ def _header(scn: scenarios.Scenario, controller: str, label: str) -> dict[str, A
             "controller": controller, "label": label, "rods": _rod_layout(scn)}
 
 
-def _operator_for(controller: str, scn: scenarios.Scenario) -> Any:
+def _controller_for(controller: str, scn: scenarios.Scenario) -> Any:
     if controller == "naive":
-        return NaiveOperator()
+        return NaiveController()
     if controller == "crew":
         if not scn.crew:
             raise ValueError("the crew script only exists for the 1986 replay")
-        return CrewOperator()
+        return CrewController()
     raise ValueError(f"unknown controller {controller!r}")
 
 
@@ -108,7 +108,7 @@ class Hub:
                 from poolhouse.serve import gpu
 
                 job.emit(type="waiting", seconds=self.wait_s)
-                with gpu.hold(f"RBMK operator web, job {job.id}", wait_s=self.wait_s):
+                with gpu.hold(f"RBMK control room, job {job.id}", wait_s=self.wait_s):
                     body(job)
             else:
                 body(job)
@@ -136,13 +136,13 @@ class Hub:
         if seed is not None:
             scn = scenarios.variant(scn, seed=int(seed))
         label = f"live: {controller}" + (f" {self.model_id or PINNED}" if controller == "model" else "")
-        plain = None if controller == "model" else _operator_for(controller, scn)
+        plain = None if controller == "model" else _controller_for(controller, scn)
         job = self._new("run", key, controller, label)
         job.scn = scn
 
         def body(j: Job) -> None:
             j.emit(type="header", **_header(scn, controller, label))
-            op = ModelOperator(self._model()) if plain is None else plain
+            op = ModelController(self._model()) if plain is None else plain
             j.runner = WebRunner(scn, op, j)
             try:
                 j.runner.run()
@@ -165,7 +165,7 @@ class Hub:
 
         def body(j: Job) -> None:
             j.emit(type="plan", items=[{"scenario": s.key, "seed": s.seed + 1000 * n, "title": s.title} for s, n in plan])
-            op = ModelOperator(self._model())
+            op = ModelController(self._model())
             for index, (scn, n) in enumerate(plan):
                 scn = scenarios.variant(scn, seed=scn.seed + 1000 * n)
                 j.emit(type="item_start", index=index, scenario=scn.key, seed=scn.seed)
@@ -208,7 +208,7 @@ class Hub:
         meta = rec["meta"]
         scn = scenarios.scenario(meta["scenario"]["key"])
         scn = scenarios.variant(scn, seed=meta["scenario"].get("seed", scn.seed), ticks=meta["scenario"].get("ticks", scn.ticks))
-        runner = WebRunner(scn, ModelOperator(ReplayAsker(rec)))
+        runner = WebRunner(scn, ModelController(ReplayAsker(rec)))
         try:
             runner.run()
         except ModelStopped as exc:
@@ -244,7 +244,7 @@ class Hub:
         def body(j: Job) -> None:
             asker = self._model()
             j.emit(type="header", **_header(scn, "model", label), fork_tick=fork.tick, forced=choice, source=source)
-            runner = resume(fork, scn, ForcedOperator(ModelOperator(asker), choice), j, horizon)
+            runner = resume(fork, scn, ForcedController(ModelController(asker), choice), j, horizon)
             j.runner, j.scn = runner, runner.scn
             try:
                 runner.run()

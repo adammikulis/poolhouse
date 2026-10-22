@@ -1,5 +1,5 @@
 {
- "schema": "rbmk-operator-index/1",
+ "schema": "rbmk-index/1",
  "recordings": [
   {
    "file": "flux_tilt-strands-decider-2B-hobson-v19-2026-10-22.json",

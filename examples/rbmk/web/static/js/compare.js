@@ -35,9 +35,9 @@ window.RB = window.RB || {};
 
   C.summary = function (run) {
     if (!run) { return ''; }
-    const o = run.doc && run.doc.outcome, s = run.doc && run.doc.score;
+    const o = run.doc && run.doc.outcome;
     if (!o) { return run.live ? 'running...' : ''; }
-    return o.verdict + ': ' + o.why + '. Peak ' + o.peak_MW + ' MW' + (s ? ', score ' + s.total + ' of 100' : '') + '.';
+    return 'Peak ' + o.peak_MW + ' MW, core damaged: ' + (o.damaged ? 'yes' : 'no') + ', shut down: ' + (o.scram ? 'yes' : 'no') + ', final power ' + (o.final_P * 100).toFixed(0) + '%, final margin ' + o.final_orm.toFixed(1) + '.';
   };
 
   C.draw = function (cursor) {

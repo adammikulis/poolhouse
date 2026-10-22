@@ -1,4 +1,4 @@
-"""The RBMK operator page's server: a real HTTP server on loopback, real plain-code runs, real documents.
+"""The RBMK control room's server: a real HTTP server on loopback, real plain-code runs, real documents.
 
 No model runs here and none is imitated: the naive controller and the crew script are plain declared policy code, and
 the model paths that need the released decider are exercised by the live run, not by a stand-in.
@@ -14,11 +14,11 @@ from typing import Any
 
 import pytest
 
-from examples.rbmk_operator.web import hub as hub_module, recordings, runner, server
-from examples.rbmk_operator.web.hub import Hub
-from examples.rbmk_operator.web.jobs import Job
+from examples.rbmk.web import hub as hub_module, recordings, runner, server
+from examples.rbmk.web.hub import Hub
+from examples.rbmk.web.jobs import Job
 
-bundle, scenarios, NaiveOperator = hub_module.bundle, hub_module.scenarios, hub_module.NaiveOperator
+bundle, scenarios, NaiveController = hub_module.bundle, hub_module.scenarios, hub_module.NaiveController
 
 
 @pytest.fixture
@@ -40,7 +40,7 @@ def call(port: int, method: str, path: str, body: Any = None, headers: dict[str,
     raw = res.read()
     conn.close()
     kind = res.getheader("Content-Type", "")
-    return res.status, (json.loads(raw) if kind.startswith("application/json") else raw.decode())
+    return res.status, (json.loads(raw) if kind.startswith("application/json") else raw.decode(errors="replace"))
 
 
 def events(port: int, job: str, after: int = 0, headers: dict[str, str] | None = None) -> list[dict[str, Any]]:
@@ -61,7 +61,21 @@ def test_the_server_listens_on_loopback_only(served):
     _, port = served
     assert server.serve(Hub(Path("/nonexistent")), 0).server_address[0] == "127.0.0.1"
     status, page = call(port, "GET", "/")
-    assert status == 200 and "<title>RBMK operator</title>" in page
+    assert status == 200 and "<title>RBMK control room</title>" in page
+
+
+@pytest.mark.parametrize("path", ["/room/main.js", "/room/room.glb.gz", "/room/instruments.json", "/assets/three.module.js", "/assets/three.core.js",
+                                  "/assets/OrbitControls.js", "/assets/RoomEnvironment.js", "/js/app.js", "/css/app.css"])
+def test_the_room_and_its_scripts_are_served_from_the_one_server(served, path):
+    _, port = served
+    assert call(port, "GET", path)[0] == 200
+
+
+@pytest.mark.parametrize("path", ["/room/shoot.py", "/room/check.mjs", "/room/../web/server.py", "/room/%2e%2e/web/server.py", "/room/vendor",
+                                  "/assets/agents.js", "/assets/poolhouse-ui.js", "/assets/../board.js", "/assets/%2e%2e/base.js", "/room/", "/room"])
+def test_only_the_rooms_own_files_and_the_three_shared_scripts_are_served(served, path):
+    _, port = served
+    assert call(port, "GET", path)[0] == 404
 
 
 @pytest.mark.parametrize("path", ["/../server.py", "/%2e%2e/server.py", "/js/../../hub.py", "/js/nothing.js", "/js", "//etc/passwd",
@@ -170,7 +184,7 @@ def test_a_resumed_fork_reproduces_the_run_it_was_taken_from(served):
     index = 3
     fork = original.forks[index]
     branch = Job("t", "whatif", "load_follow", "naive")
-    again = runner.resume(fork, job.scn, NaiveOperator(), branch, None)
+    again = runner.resume(fork, job.scn, NaiveController(), branch, None)
     again.run()
     start = fork.tick
     assert again.res.trace == [r for r in original.trace if r["tick"] >= start]
@@ -179,16 +193,16 @@ def test_a_resumed_fork_reproduces_the_run_it_was_taken_from(served):
 
 def test_a_forced_action_changes_the_branch_and_the_choices_are_checked():
     scn = scenarios.scenario("poisoned_a")
-    res = runner.WebRunner(scn, NaiveOperator()).run()
+    res = runner.WebRunner(scn, NaiveController()).run()
     fork = res.forks[0]
     assert runner.check_forced(fork, {"cls": "hold", "target": "x", "step": "2"}) == {"cls": "hold", "target": "none", "step": "2"}
     for bad in ({"cls": "explode", "target": "none"}, {"cls": "insert_rod", "target": "R-99-99"}, {"cls": "insert_rod", "target": "none", "step": "9"}):
         with pytest.raises(ValueError):
             runner.check_forced(fork, bad)
     branch = Job("t", "whatif", scn.key, "naive")
-    plain = runner.resume(fork, scn, NaiveOperator(), branch, 6)
+    plain = runner.resume(fork, scn, NaiveController(), branch, 6)
     plain.run()
-    pushed = runner.resume(fork, scn, runner.ForcedOperator(_Inner(), {"cls": "scram", "target": "none", "step": "1"}), branch, 6)
+    pushed = runner.resume(fork, scn, runner.ForcedController(_Inner(), {"cls": "scram", "target": "none", "step": "1"}), branch, 6)
     pushed.run()
     assert pushed.res.decisions[0]["applied"]["cls"] == "scram" and pushed.res.decisions[0]["source"] == "forced"
     assert pushed.res.trace[-1]["scram"] and not plain.res.trace[-1]["scram"]
@@ -197,12 +211,12 @@ def test_a_forced_action_changes_the_branch_and_the_choices_are_checked():
 
 
 class _Inner:
-    """The inner operator of a forced decision, taken from the plain-code naive rule for a plumbing test."""
+    """The inner controller of a forced decision, taken from the plain-code naive rule for a plumbing test."""
 
     asker = None
 
     def propose(self, index, plant):
-        return NaiveOperator().propose(index, plant)
+        return NaiveController().propose(index, plant)
 
 
 def test_divergence_of_identical_rows_is_none():
@@ -273,7 +287,7 @@ def test_the_recordings_list_shows_files_that_cannot_be_shown(served, tmp_path):
     port = served[1]
     (tmp_path / "good.json").write_text(json.dumps(_good()))
     (tmp_path / "broken.json").write_text("{")
-    (tmp_path / "old.json").write_text(json.dumps({**_good(), "schema": "rbmk-operator-run/0"}))
+    (tmp_path / "old.json").write_text(json.dumps({**_good(), "schema": "rbmk-run/0"}))
     status, rows = call(port, "GET", "/api/recordings")
     by_name = {r["name"]: r for r in rows}
     assert status == 200 and by_name["good.json"]["ok"] and not by_name["broken.json"]["ok"] and "JSON" in by_name["broken.json"]["error"]
@@ -287,7 +301,7 @@ def _shipped() -> list[Path]:
     return sorted(recordings.RECORDINGS.glob("*.json")) if recordings.RECORDINGS.is_dir() else []
 
 
-FIXTURES = Path(__file__).parent / "fixtures" / "rbmk_operator"
+FIXTURES = Path(__file__).parent / "fixtures" / "rbmk"
 FIXTURE = "fixture_short.recording.json"
 
 

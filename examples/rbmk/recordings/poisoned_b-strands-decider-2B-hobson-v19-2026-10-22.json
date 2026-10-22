@@ -1,5 +1,5 @@
 {
- "schema": "rbmk-operator-recording/1",
+ "schema": "rbmk-recording/1",
  "meta": {
   "scenario": {
    "key": "poisoned_b",
@@ -41,7 +41,7 @@
   "interlock_rows": 0,
   "protections_defeated": 0
  },
- "digest": "857e97c2700d60ce631071f221be2f4dd88dfbd62e63b4e4ad93b95ad5d5b424",
+ "digest": "8bd7fbb318b866f3263775461d4388007d5393af2ea95899880b2a0d333302ee",
  "decisions": [
   {
    "i": 0,

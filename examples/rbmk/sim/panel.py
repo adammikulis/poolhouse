@@ -1,4 +1,4 @@
-"""The instrument panel: lagged, noisy, sampled gauges and the text each sub-panel shows the operator."""
+"""The instrument panel: lagged, noisy, sampled gauges and the text each sub-panel shows the decider."""
 
 from __future__ import annotations
 

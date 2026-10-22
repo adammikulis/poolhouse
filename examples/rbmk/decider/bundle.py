@@ -8,12 +8,12 @@ import json
 from typing import Any
 
 from ..sim import controls, reactor as rx
-from .loop import Result, Runner
-from .operator_model import ModelOperator, ModelStopped
 from ..sim.scenarios import Scenario
+from .loop import Result, Runner
+from .controllers import ModelController, ModelStopped
 
-SCHEMA = "rbmk-operator-run/1"
-RECORDING = "rbmk-operator-recording/1"
+SCHEMA = "rbmk-run/1"
+RECORDING = "rbmk-recording/1"
 TOY_NOTICE = "Educational toy, not a plant model. Constants are in the README with their sources and simplifications."
 WHATIF_TICKS = 10
 EXCURSION = rx.EXCURSION_P
@@ -194,4 +194,4 @@ class ReplayAsker:
 
 def replay(rec: dict[str, Any], scn: Scenario) -> Result:
     """Re-run the simulator, taking every model answer from the recording."""
-    return Runner(scn, ModelOperator(ReplayAsker(rec))).run()
+    return Runner(scn, ModelController(ReplayAsker(rec))).run()

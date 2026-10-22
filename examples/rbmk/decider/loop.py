@@ -1,8 +1,8 @@
 """The decision loop with three separate clocks.
 
-The plant steps with fixed substeps (10 s slow, 0.5 s fast) and never waits for the model. The operator is asked on its
+The plant steps with fixed substeps (10 s slow, 0.5 s fast) and never waits for the model. The decider is asked on its
 own cadence (every 3 slow ticks, or every 5 s in the fast regime). A model answer lands in the plant at the simulated
-time that matches its real latency (``speed`` simulated seconds per wall second), so a slow model is a late operator;
+time that matches its real latency (``speed`` simulated seconds per wall second), so a slow model is a late decider;
 a decision time that arrives while an answer is in flight is logged as a MODEL BUSY row, never dropped or queued
 silently. Playback speed belongs to an interface and changes none of this: a run is keyed to its applied ticks.
 """
@@ -15,12 +15,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ..sim import reactor as rx
-from .operator_model import CrewOperator, ModelOperator, NaiveOperator
 from ..sim.plant import Plant
 from ..sim.scenarios import Scenario
+from .controllers import CrewController, ModelController, NaiveController
 
 OUTCOME_AFTER = 4
-Operator = ModelOperator | NaiveOperator | CrewOperator
+Controller = ModelController | NaiveController | CrewController
 
 
 @dataclass
@@ -73,12 +73,12 @@ def _outcomes(res: Result) -> None:
 
 
 class Runner:
-    """Runs a scenario with one operator, calling ``progress`` after each decision."""
+    """Runs a scenario with one controller, calling ``progress`` after each decision."""
 
-    def __init__(self, scn: Scenario, operator: Operator, progress: Callable[[Result], None] | None = None,
+    def __init__(self, scn: Scenario, controller: Controller, progress: Callable[[Result], None] | None = None,
                  speed: float = 1.0) -> None:
-        self.scn, self.operator, self.progress, self.speed = scn, operator, progress, speed
-        self.res = Result(scn.key, operator.kind, speed=speed)
+        self.scn, self.controller, self.progress, self.speed = scn, controller, progress, speed
+        self.res = Result(scn.key, controller.kind, speed=speed)
         self.plant = Plant(scn)
         self.risk: float | None = None
         self.model_choice: dict[str, str] | None = None
@@ -106,7 +106,7 @@ class Runner:
         text = plant.state_text()
         fork = copy.deepcopy(plant)
         plant.since_decision = 0
-        prop = self.operator.propose(index, plant)
+        prop = self.controller.propose(index, plant)
         delay = prop.latency_ms / 1000.0 * self.speed
         self.risk = prop.answers["risk"]["expected"] if prop.answers else self.risk
         self.model_choice = prop.model_choice

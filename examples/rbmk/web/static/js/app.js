@@ -121,7 +121,7 @@ window.RB = window.RB || {};
     S.recordings = await RB.api('/api/recordings');
     const sel = $('recording'); sel.replaceChildren();
     S.recordings.filter(function (r) { return r.ok; }).forEach(function (r) {
-      sel.appendChild(RB.el('option', { value: r.name, text: r.title + ' | ' + r.label + (r.verdict ? ' | ' + r.verdict : '') }));
+      sel.appendChild(RB.el('option', { value: r.name, text: r.title + ' | ' + r.label }));
     });
     const bad = S.recordings.filter(function (r) { return !r.ok; });
     $('badfiles').textContent = bad.length ? 'Could not show: ' + bad.map(function (r) { return r.name + ' (' + r.error + ')'; }).join('; ') : '';
@@ -201,17 +201,17 @@ window.RB = window.RB || {};
   }
 
   function narrate(run, frame) {
-    const caps = run.captions.slice().sort(function (a, b) { return a.tick - b.tick; });
-    const cur = caps.filter(function (c) { return c.tick <= frame.tick; }).pop();
+    const caps = run.captions.filter(function (c) { return c.tick <= frame.tick; }).sort(function (a, b) { return a.tick - b.tick; });
+    const cur = caps[caps.length - 1];
     $('caption').textContent = cur && frame.tick - cur.tick <= 6 ? cur.text : '';
     $('caption').style.display = $('caption').textContent ? '' : 'none';
-    const key = caps.length + ':' + (cur ? cur.tick : -1);
+    const key = (run.jobId || run.label) + ':' + caps.length + ':' + (cur ? cur.tick : -1);
     if (key !== lastCaption) {
       lastCaption = key; const box = $('captions'); box.replaceChildren();
       caps.forEach(function (c) {
         box.appendChild(RB.el('li', { class: c === cur ? 'now' : '', onclick: function () { S.playing = false; RB.seekTick(c.tick); } }, [RB.el('b', { text: 'tick ' + c.tick + ' ' }), c.text]));
       });
-      if (!caps.length) { box.appendChild(RB.el('li', { class: 'muted', text: run.live ? 'Captions appear as key moments happen.' : 'No key moments in this run.' })); }
+      if (!caps.length) { box.appendChild(RB.el('li', { class: 'muted', text: 'Captions appear as key moments happen.' })); }
     }
   }
 
@@ -222,11 +222,11 @@ window.RB = window.RB || {};
     S.drawer = name; lastCursor = -1;
     document.querySelectorAll('.pane').forEach(function (p) { p.style.display = p === pane ? '' : 'none'; });
     document.querySelectorAll('.toolbtn').forEach(function (b) { b.classList.toggle('on', b.dataset.drawer === name); });
-    $('drawer-title').textContent = pane.dataset.title; $('drawer').hidden = false; $('drawer').scrollTop = 0;
+    $('drawer-title').textContent = pane.dataset.title; $('drawer').hidden = false; $('stage').classList.add('drawer-open'); $('drawer').scrollTop = 0;
     RB.touch();
   };
   RB.closeDrawer = function () {
-    S.drawer = ''; $('drawer').hidden = true;
+    S.drawer = ''; $('drawer').hidden = true; $('stage').classList.remove('drawer-open');
     document.querySelectorAll('.toolbtn').forEach(function (b) { b.classList.remove('on'); });
     RB.touch();
   };
@@ -290,8 +290,9 @@ window.RB = window.RB || {};
     $('legend').replaceChildren.apply($('legend'), Object.keys(RB.KINDS).map(function (k) {
       return RB.el('span', { class: 'lg' }, [RB.el('i', { style: 'background:' + RB.KINDS[k][1] }), RB.KINDS[k][0]]);
     }));
-    $('toy').textContent = S.info.toy_notice;
+    $('toy').textContent = S.info.toy_notice + ' The room is an interpretive reconstruction from published descriptions, not a survey of any room.';
     buildPicker(); controls();
+    $('toy').onclick = function () { $('toy').classList.toggle('open'); };
     RB.whatif.build($('pane-whatif')); RB.history.build($('pane-history')); RB.dist.build($('pane-dist')); RB.compare.build($('pane-compare'));
     document.querySelectorAll('.toolbtn').forEach(function (b) { b.onclick = function () { if (S.drawer === b.dataset.drawer) { RB.closeDrawer(); } else { RB.openDrawer(b.dataset.drawer); } }; });
     $('drawer-close').onclick = RB.closeDrawer;

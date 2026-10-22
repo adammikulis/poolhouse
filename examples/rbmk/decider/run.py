@@ -19,13 +19,13 @@ from typing import Any
 from ..sim import scenarios
 from . import bundle
 from .loop import Result, Runner
-from .operator_model import (
+from .controllers import (
     ABSTAIN_BELOW,
-    CrewOperator,
+    CrewController,
     LiveAsker,
-    ModelOperator,
+    ModelController,
     ModelStopped,
-    NaiveOperator,
+    NaiveController,
 )
 
 
@@ -46,7 +46,7 @@ def record(args: argparse.Namespace) -> int:
 
     try:
         asker = LiveAsker(abstain_below=args.abstain_below)
-        with gpu.hold("RBMK operator example", wait_s=args.wait):
+        with gpu.hold("RBMK recording", wait_s=args.wait):
             for key in args.scenarios:
                 scn = scenarios.scenario(key)
                 print(f"{key}: asking {asker.model or 'the decision model'} ...", flush=True)
@@ -64,7 +64,7 @@ def record(args: argparse.Namespace) -> int:
 
 
 def _run_live(scn: scenarios.Scenario, asker: LiveAsker, out: Path) -> Result:
-    runner = Runner(scn, ModelOperator(asker))
+    runner = Runner(scn, ModelController(asker))
     try:
         return runner.run()
     except ModelStopped as exc:
@@ -101,7 +101,7 @@ def export_cmd(args: argparse.Namespace) -> int:
 def baseline(args: argparse.Namespace) -> int:
     """Run the scripted crew (history scenarios) or the naive rule; no model is involved."""
     scn = scenarios.scenario(args.scenario)
-    op = CrewOperator() if scn.crew else NaiveOperator()
+    op = CrewController() if scn.crew else NaiveController()
     res = Runner(scn, op).run()
     doc = bundle.export(res, scn, {"mode": "none", "model": None, "recorded_at": None, "abstain_below": None,
                                    "source": f"{op.kind} controller, no decision model"})
@@ -167,7 +167,7 @@ def index_cmd(args: argparse.Namespace) -> int:
                     "model": meta["backend"]["model"], "recorded_at": meta["backend"]["recorded_at"],
                     "abstain_below": meta["backend"]["abstain_below"], "verdict": rec["outcome"]["verdict"],
                     "why": rec["outcome"]["why"], "peak_MW": rec["outcome"]["peak_MW"]})
-    _write(Path(args.dir) / "index.json", {"schema": "rbmk-operator-index/1", "recordings": out})
+    _write(Path(args.dir) / "index.json", {"schema": "rbmk-index/1", "recordings": out})
     print(f"{len(out)} recordings indexed")
     return 0
 
@@ -178,9 +178,9 @@ def selftest(args: argparse.Namespace) -> int:
 
     try:
         asker = LiveAsker()
-        runner = Runner(scenarios.scenario(args.scenario), ModelOperator(asker))
-        with gpu.hold("RBMK operator selftest", wait_s=0.0):
-            prop = runner.operator.propose(0, runner.plant)
+        runner = Runner(scenarios.scenario(args.scenario), ModelController(asker))
+        with gpu.hold("RBMK selftest", wait_s=0.0):
+            prop = runner.controller.propose(0, runner.plant)
     except ModelStopped as exc:
         print(f"SELFTEST FAILED: {exc}", file=sys.stderr)
         return 2

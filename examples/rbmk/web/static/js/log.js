@@ -77,7 +77,7 @@ window.RB = window.RB || {};
         RB.el('span', { class: 'dtick', text: '#' + d.i + '  tick ' + RB.snapTick(d) }), RB.el('span', { class: 'dclock muted', text: RB.fmtClock(d.t_s) }),
         RB.el('span', { class: 'src ' + d.source, text: d.kind === 'trip' ? 'AUTOMATIC TRIP' : d.source }),
         RB.el('span', { class: 'act', text: d.kind === 'trip' ? 'AZ-5' : (same ? RB.fmtAction(d.applied) : RB.fmtAction(d.requested) + '  ->  ' + RB.fmtAction(d.applied)) }),
-        conf !== null ? RB.el('span', { class: 'conf', text: 'confidence ' + conf.toFixed(2) }) : null,
+        conf !== null ? RB.el('span', { class: 'conf', text: 'probability of the top option ' + conf.toFixed(2) }) : null,
         d.model_risk !== null && d.model_risk !== undefined ? RB.el('span', { class: 'conf', text: 'risk ' + d.model_risk.toFixed(1) }) : null,
         d.latency_ms ? RB.el('span', { class: 'muted', text: d.latency_ms.toFixed(0) + ' ms' }) : null]));
       if (RB.appliedTick(d) > RB.snapTick(d)) {
@@ -87,14 +87,14 @@ window.RB = window.RB || {};
       if (d.abstained) { row.appendChild(RB.el('div', { class: 'banner warn', text: 'ABSTAINED. ' + d.note })); }
       else if (d.source === 'forced') { row.appendChild(RB.el('div', { class: 'banner info', text: d.note })); }
       (d.interlocks || []).forEach(function (x) {
-        row.appendChild(RB.el('div', { class: 'banner bad', text: 'INTERLOCK OVERRIDE ' + x.id + ': ' + x.rule + ' (' + x.detail + ')' }));
+        row.appendChild(RB.el('div', { class: 'banner bad', text: 'Interlock ' + x.id + ' changed the request: ' + x.rule + ' (' + x.detail + ')' }));
       });
       (d.flags || []).forEach(function (x) {
-        row.appendChild(RB.el('div', { class: 'banner loud', text: 'SAFETY SYSTEM DISABLED BY THIS CHOICE: ' + x.detail + '. ' + x.rule }));
+        row.appendChild(RB.el('div', { class: 'banner loud', text: 'Protection switched off by this action: ' + x.detail + '. ' + x.rule }));
       });
       if (d.outcome) {
         const o = d.outcome;
-        row.appendChild(RB.el('div', { class: 'outcome ' + o.verdict, text: 'Tick ' + o.tick + ': ' + o.verdict + '. Hazard ' + o.hazard_before.toFixed(2) + ' -> ' + o.hazard.toFixed(2) +
+        row.appendChild(RB.el('div', { class: 'outcome', 'data-tick': o.tick, text: 'At tick ' + o.tick + ': hazard ' + o.hazard_before.toFixed(2) + ' -> ' + o.hazard.toFixed(2) +
                                                         ', power ' + (o.P_before * 100).toFixed(0) + '% -> ' + (o.P * 100).toFixed(0) + '%' }));
       }
       root.appendChild(row);
@@ -107,6 +107,7 @@ window.RB = window.RB || {};
     root.querySelectorAll('.drow').forEach(function (r) {
       const t = +r.getAttribute('data-tick'), seen = +r.getAttribute('data-snap');
       r.classList.toggle('selected', +r.getAttribute('data-i') === selected);
+      r.querySelectorAll('.outcome').forEach(function (o) { o.style.display = +o.getAttribute('data-tick') > tick ? 'none' : ''; });
       r.classList.remove('active');
       r.classList.toggle('flight', seen <= tick && tick < t);
       if (t <= tick) { active = r; }
