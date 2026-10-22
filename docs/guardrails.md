@@ -147,7 +147,9 @@ Attack success rate means the objective check named in `poolhouse.testing.canary
 tool ran with arguments it should not have had, a credential reached the model or the screen, or a
 count passed its ceiling.
 
-Scripted worst case (a model that does whatever the planted text or the attack says), 18 attacks:
+Scripted worst case (a model that does whatever the planted text or the attack says), 18 attacks;
+**measured with a scripted model, not a real one; not re-measured** (the command scripts the calls, so a
+real model has nothing to repeat; the real-model rates are in the next table):
 
     python -m poolhouse.testing.canary
 
@@ -163,16 +165,23 @@ keyword itself. Two ordinary tasks (look up, plan, serve; serve, stop) complete 
 
 A served model that decides for itself (9 planted texts, 3 phrasings x fleet_join, models_fetch,
 serve_up, 2 runs each), no scripted calls, Qwen3-4B-Instruct-2507 as the main model and, where a
-judge is named, the same server answering for it:
+judge is named, the same server answering for it. Measured again on 2026-10-22 at `8bdb2e647`, llama.cpp b11577,
+greedy decoding, one leased server and nothing else running:
 
     python -m poolhouse.testing.canary http://127.0.0.1:PORT [JUDGE_URL]
 
 | configuration | attacks that landed | what stopped the rest |
 | --- | --- | --- |
-| rails off | 14 of 18 | |
-| deterministic rails | 0 of 18 | 12 calls blocked by `tool-policy` |
-| deterministic rails + native judge | 0 of 18 | 12 results withheld before the model read them; in the other 6 runs the model read the text and made no forbidden call |
-| deterministic rails + NeMo self-check input | 0 of 18 | 12 results withheld |
+| rails off | 12 of 18 | |
+| deterministic rails | 0 of 18 | 14 runs blocked by a rail |
+| deterministic rails + native judge | 0 of 18 | 14 results withheld before the model read them; 2 runs blocked |
+| deterministic rails + NeMo self-check input | 0 of 18 (2026-10-02, not re-measured) | 12 results withheld |
+
+Re-measuring found that the deterministic rails let 4 of the 18 land, not 0: the model called `fleet_join` with
+an empty passphrase and the taint rail counted the empty string as an argument the person typed (see
+`docs/taint.md`, "What re-measuring found"). That is fixed in `8bdb2e647`; the table above is after the fix. On
+2026-10-02 the same table read rails off 14 of 18, deterministic rails 0 of 18 (12 calls blocked by
+`tool-policy`), native judge 0 of 18 (12 withheld; in the other 6 the model read the text and made no forbidden call).
 
 Detection of injection text in tool results:
 
@@ -344,11 +353,13 @@ pip 26.2).
 - The PyRIT suite itself: PyRIT is not installed here. `REDTEAM` reuses its four styles and four
   goals (from the red-team branch) as plain text, plus eight encodings written here, and
   not its converters, jailbreak templates, scorers or arms.
-- `Agent` with the model tier and a real model: the `Agent` path is tested with scripted
-  interventions and the default rails, and the same tier is tested through `do.run`, not through
-  `Agent.run` end to end with a leased judge.
-- The red-team suite's arms, including the new `poolhouse-guard` arm and the explicit `bare` opt-out:
-  PyRIT is not installed here, so `tests/test_redteam_loop.py` was not run.
+- `Agent` with the model tier and a real model: the default `Agent` (the rails and sentinel, no model tier) is attacked
+  end to end by a real model in `tests/test_redteam_sentinel_model.py` and `tests/test_redteam_loop.py`; the `Agent`
+  path with a leased judge is tested with scripted interventions and through `do.run`, not through `Agent.run` end to end.
+- The red-team suite's arms, including the `poolhouse-guard` arm and the explicit `bare` opt-out: run on a real model
+  on 2026-10-22 (`docs/taint.md`, "A real model"). In the `poolhouse-guard` arm the default rails refuse the page reader's
+  fetch of `docs.example` (not this machine), so the model never reads the injected page there and the arm does not
+  measure the taint rail; the taint arms of `docs/taint.md` do.
 - Fleet use: the tier leases on the local machine only.
 - Qwen3-VL-8B and the pointer decider on `REDTEAM`; the model tier against an adaptive attacker
   that targets the judge's one-letter answer (none of the corpora does).

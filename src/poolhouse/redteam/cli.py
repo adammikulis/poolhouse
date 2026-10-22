@@ -32,7 +32,7 @@ COMMANDS = Group(
 TOLERANCES = [
     flag("--success-tolerance", type=float, default=0.0,
          help="the attack-success rate may rise by this much (absolute) before the gate fails; "
-              "0 for the deterministic scenarios"),
+              "0 for scenarios whose outcome does not vary"),
     flag("--ttd-tolerance", type=int, default=DEFAULT_TTD_TOLERANCE,
          help="sentinel may take this many more tool calls than the baseline to notice an attack "
               "before the gate fails"),
