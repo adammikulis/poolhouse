@@ -492,6 +492,14 @@ These are not in the four red tests. F-1 is part of the fix because without it a
   tables, and the listing fields. `docs/design-phone-free-pools.md:58` ("Standing grants count any enrolled person key", "decided by any
   enrolled key's signature, with no phone test") is rewritten to the new fact. `src/poolhouse/board/grants.py` and
   `workspace/grants_cli.py` say in their heading and refusal text which key signs in a governed pool.
+- **As built in slice 3b.** The acceptance travels in the one `add` request: the link a code makes carries `admit` (pool, charter hash, epoch + 1, person) and
+  the phone signs `acceptance_message` for those terms; the node builds the entry and the act from its own state, so a stale or foreign term is refused
+  as "did not accept being listed" and no step is added to the phone's journey beyond the second prompt. The person is a property of the code: the person of
+  the phone that made it, else the one person whose admin phones the device holds; with several and no maker the code names none and the add is refused.
+  `admin_add` of a key the charter lists (a distrusted or weak listed key) is never made; that key waits for an approval that lists nothing. The approving
+  phone signs `act_sig` beside `sig`; only a phone of the entry's person may approve. The act is handed to the pool at the tap and an act that needs
+  more signers waits for `pool_cosign`. `rebind` is a request of kind `rebind` with a number match; one waits per session and three an hour per session; the
+  completion is valid ten minutes after the tap. A non-admin phone no longer makes a code for another phone.
 - **Phone app** (slice 5): the `add` request carries the new key's acceptance of being listed (`AdminKey::acceptance_message`); the
   approval card for a phone-add names the admin, the person and the hold; the decision for it carries the `admin_add` signature; the
   `rebind` card shows the session, the board and the terminal. Each signature uses a fresh biometric object (`PoolKey.java`), so this is

@@ -141,6 +141,13 @@ minutes) and the terminal it was signed in (`anchor`: the shell of that terminal
 `yes`; the node makes the caller's lineage the session's and ends the tokens it held; the harness started in that terminal registers as
 the session. Tokens of its subagents stay bound to where they were registered.
 
+On a device in a pool a typed `yes` moves no session. `rebind` with the terminal's `anchor` and no `approval` makes a request that the admin
+phones are shown (kind `rebind`, the session, the board and the terminal inside what the phone signs) and answers its id and a number; the
+person picks that number among three on the phone, which ties the tap to the terminal in front of them. The same call with the request's id
+as `approval` answers `{state: pending, moved: false}` until the tap, then makes the caller's lineage the session's once, from the terminal
+the request names, within ten minutes of the tap; the request is then `used`. A session has one request waiting at a time and at most three
+an hour, and the call spends no nonce. A device with no admin phone of the pool added refuses the request.
+
 A main session with no lineage recorded (registered before lineages were kept, by a process the node could not read, from another
 process id namespace, or under `hidepid`) is taken again only by a process that presents a token of that name, which binds it to where
 that process runs; any other process is refused saying a person moves the session with `rebind`. No process adopts a name by being the
@@ -190,7 +197,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `lineage` | | | `{lineage}`: the processes the node reads for the one asking, from it up to the shell of its terminal, each `{pid, start}`; the last is the `anchor` a person signs for |
 | `register` | board | `model, harness, session` (token = parent, or the session's own token) | `{name, token, created, parent, origin}`; a main session already registered is answered only to its lineage, and the token it gets is bound to the lineage it registers from |
 | `register_person` | board | `session` (token = none, or the person's own session's token) | as `register`, for the person's own main session (harness `poolhouse-ui`, model `person`), which the node marks `person`; `register` and `whoami` refuse the harness `poolhouse-ui` |
-| `rebind` | board | `harness, session, at_ms, nonce, anchor, by, sig` (a person key's signature) | `{name, moved, tokens_ended}` |
+| `rebind` | board | `harness, session, anchor`, and in no pool `at_ms, nonce, by, sig` (a person key's signature), in a pool `approval` (the id of the request) | `{name, moved, tokens_ended}`; in a pool the request with its `id` and `code`, then `{state, moved}` until the phone answers |
 | `whoami` | board, token | `model, harness` (claim what you run on) | `{name, board, target, identity}` |
 | `session_lookup` | board | `harness, session` | `{name}` (denied when none is registered) |
 | `agents` | board, token | `retired` | `{agents: [{name, parent, family, model, model_state, harness, retired, retired_reason, person, seen_ms, idle}]}`; retires the sessions idle for a day first |
@@ -241,7 +248,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `person_enroll`, `person_unenroll`, `person_keys` | token (enrol, unenrol), none (keys) | `public, about, at_ms, proof` and `secret` (the first key) or `by, approval, approved_ms, nonce, anchor`; `fingerprint, at_ms, by, nonce, anchor, sig` | `{fingerprint, keys}` / the enrolled person keys, each with its `alg` (`ed25519` or `p256`) |
 | `approval_request`, `approval_status`, `approval_cancel`, `approvals` | board, token | `asks` (one to eight of `{action, resource, lasts_ms, uses, review}`), `note`, `task`, `ttl_s`, `expect_policy` / `id` / `id` / `state` | the request with its plain-words `text` and `challenge` / its state and the grants it wrote / the request / the session's own requests; docs/phone-approval.md |
 | `approval_pending`, `approval_decide` | token (any registered session; a session only carries a decision) | `key, sig, at_ms` / `id, decision (approve, approve_repeat, deny, block), key, sig, text_sha256, pick` | the session's own waiting requests, or every one with the signature of an enrolled key made in the last thirty seconds / the request decided, once, by the signature of an enrolled key |
-| `phone_info`, `phone_offer`, `phones` | none, token, token | `secret` / / | where phones reach this node and its pinned certificate / a code for a further phone (once a person key exists) / the phones held |
+| `phone_info`, `phone_offer`, `phones` | none, token, token | `secret` / / | where phones reach this node and its pinned certificate / a code for a further phone (once a person key exists); in a pool its link also carries `admit`, the terms a phone accepts being listed under / the phones held |
 
 A refusal for want of a grant is `denied` and carries `error.grant`: the action, the resource, the session, its board and this
 device, so a client a person is running can sign a grant for exactly that and ask again. The network methods
@@ -503,7 +510,13 @@ signs a challenge that binds the text, the node and the request, and an approved
 of a signature over the grant, so they count wherever a grant a person typed `yes` for counts. The phone endpoint (`--phone ADDR`, or the address in
 `phone.json` in the state directory) is HTTPS on one P-256 certificate (`phone.cert`, pinned by the code a person scans); `phones.json` holds each phone, its token's hash
 and its push address; `approvals.json` the requests; `fatigue.json` the declines, timeouts, holds and pushes that keep a request made again and again from wearing the person down (docs/phone-approval.md, "Approval fatigue"); `phone_offer.json` the hash of the one-time code a person's command (or the node, once a key exists) left for the next
-phone. The first phone is enrolled by that code alone; every later phone waits for a key the node holds to approve it.
+phone. The first phone is enrolled by that code alone; every later phone waits for a key the node holds to approve it. On a device in a pool a phone the charter
+lists as a strong admin key is enrolled by the code alone; any other phone sends, with its `add`, its `acceptance` of being listed as an admin key of the person
+the code is for (the terms are in the link's `admit`: pool, charter hash, epoch and person, which the node reads from its own state again), and the request an
+admin phone is shown carries the unsigned `admin_add` act. That phone approves with two signatures, `sig` on the request and `act_sig` on the act; the node hands
+the act to the pool at that tap, so the hold begins there, and the new phone is an admin key when the hold has run. The person is the one whose admin phone the
+code was made for (the one person whose admin phones the device holds, or the person of the phone that made it), and only a phone of that person approves. A
+device with no admin phone refuses a phone the charter does not list before its code is spent.
 
 **Recovery.** When the only key is lost or no longer trusted, the owner stops the node, deletes `persons.json` in the node's state directory, starts the node and runs `grants-setup` again. It is an offline step at a terminal: with
 the node stopped no session can ask for it, and every grant the deleted key signed reads as ignored until the new key signs new ones.
