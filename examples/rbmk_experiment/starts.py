@@ -7,17 +7,18 @@ from __future__ import annotations
 
 import random
 
-from .scenarios import PROTECTIONS_OFF, Event, Scenario
+from .scenarios import PROTECTIONS_OFF, XENON_BOUND_S, Event, Scenario
 
 RANGES = {
-    "power": (0.03, 0.10),        # relative power: 100 to 320 MW thermal
-    "margin": (5.0, 11.0),        # rod-equivalents inserted
-    "iodine": (0.9, 1.4),         # iodine index; xenon follows from power and margin
-    "tilt": (-0.3, 0.3),          # radial flux tilt
-    "throttle": (0.85, 0.95),
+    # Power: about 30 MW thermal at 00:28 and held near 200 MW from about 01:00 on 26 April 1986 (World Nuclear Association, "Chernobyl
+    # accident appendix 1", a secondary source for INSAG-7). Relative to 3200 MW.
+    "power": (30 / 3200, 200 / 3200),
+    # Margin: the post-accident calculation gave 8 rod-equivalents at 01:22:30 (same source); accounts of 6 to 8 are recalled, unverified.
+    "margin": (6.0, 8.0),
+    # Iodine index: the toy's own range; xenon follows from power and margin. Unverified.
+    "iodine": (0.9, 1.4),
 }
-HORIZON_S = 3 * 3600.0
-ORDER_TICK = 4
+ORDER_TICK = 4        # seconds into the run at which the supervisor's order arrives: the toy's own
 
 
 def draw(seed: int, k: int) -> Scenario:
@@ -26,7 +27,7 @@ def draw(seed: int, k: int) -> Scenario:
     power = round(rng.uniform(*RANGES["power"]), 4)
     margin = round(rng.uniform(*RANGES["margin"]), 1)
     return Scenario(
-        f"start_{seed}_{k}", "poisoned", ticks=100_000, max_s=HORIZON_S, seed=rng.randrange(1 << 30), power=power, setpoint=0.22,
-        iodine=round(rng.uniform(*RANGES["iodine"]), 2), orm=margin, tilt=round(rng.uniform(*RANGES["tilt"]), 2),
-        pattern=rng.randrange(1 << 30), throttle=round(rng.uniform(*RANGES["throttle"]), 2), pumps=8, ar_on=False, has_test=True,
+        f"start_{seed}_{k}", "poisoned", ticks=100_000, max_s=XENON_BOUND_S, seed=rng.randrange(1 << 30), power=power, setpoint=0.22,
+        iodine=round(rng.uniform(*RANGES["iodine"]), 2), orm=margin, tilt=0.0,
+        pattern=rng.randrange(1 << 30), throttle=0.9, pumps=8, ar_on=False, has_test=True,
         fast_from=0, defeated=PROTECTIONS_OFF, speed=1.0, events=(Event(ORDER_TICK, "order", 0), Event(ORDER_TICK, "setpoint", 0.22)))

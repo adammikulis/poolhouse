@@ -11,6 +11,7 @@ from .plant import reactor as rx
 
 SLOW_TICK_S = 300.0
 FAST_TICK_S = 1.0
+XENON_BOUND_S = 12 * 3600.0  # Xe-135 peaks 8 to 11 h after a shutdown (standard reactor physics; tests/test_rbmk_experiment.py::test_xenon_peaks...): by 12 h the poisoning is past its worst
 PROTECTIONS_OFF = ("DRUM_TRIPS", "TG_TRIP", "ECCS")
 
 
@@ -85,7 +86,7 @@ _TEST = (Event(4, "order", 0), Event(4, "setpoint", 0.22))
 
 def _poisoned(row: tuple[str, float, float, float, int]) -> Scenario:
     letter, power, orm, tilt, seed = row
-    return Scenario(f"poisoned_{letter}", "poisoned", ticks=100_000, max_s=3 * 3600.0, seed=seed, power=power, setpoint=0.22, iodine=1.2, orm=orm,
+    return Scenario(f"poisoned_{letter}", "poisoned", ticks=100_000, max_s=XENON_BOUND_S, seed=seed, power=power, setpoint=0.22, iodine=1.2, orm=orm,
                     events=_TEST, defeated=PROTECTIONS_OFF, ar_on=False, has_test=True, fast_from=0, pumps=8,
                     throttle=0.9, tilt=tilt, speed=1.0)
 
