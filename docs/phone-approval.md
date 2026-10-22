@@ -51,6 +51,10 @@ poolhouse://add-phone?data=<base64url of {"v":1,"pin":"<64 hex>","endpoints":["h
                                "secret":"<43 characters>","expires":<unix seconds>,"name":"<device name>","policy":"open|secure"}>
 ```
 
+When the device is in a pool that lists its admins, the code also carries `"admit":{"pool":"<32 hex>","prev":"<64 hex>","since":<epoch>,"person":"<text>"}`:
+the terms under which the new phone would be listed as an admin key. The app refuses a code whose `admit` is anything else, and the key signs its acceptance
+of exactly those terms (`poolhouse/pool-accept/v2`) with the proof of its own addition.
+
 **The first phone.** A person runs `poolhouse-workspace phone add` once on the computer (a person's command: it refuses a
 process an agent started, like `grants-setup`). The command asks the node (`presence_ask`) to allow the session to add the first phone,
 and the node asks the person itself with **one prompt that no agent can answer**: the operating system's own dialog (macOS and Linux:
@@ -73,7 +77,9 @@ allowed once a person key exists, three an hour for each session), or by the app
 notifications", "Add another phone"). The new phone scans it and the node puts "Add the phone `<name>`, key `7f3a 91c2 d04e
 5b18 a6c3 7e20`" in front of every phone already added (24 characters of the key, 96 bits, so no key can be ground to look like
 another). One tap and one fingerprint on one of them adds it. The text says what it means: the new phone approves everything
-this one can. A code asked for through the node records who asked, and the request then carries a `FLAG:` line: "The code this
+this one can. In a pool that lists its admins the same tap also lists the new phone as an admin key of the person whose phone made the code (the one person whose admin phones the device holds, when a session or the computer made it): the request carries
+the unsigned `admin_add` act (`action.act`), the approving phone checks it before any prompt (the one shape the device writes: that key, strong, the next epoch, written lately and
+valid for at most a week, with the new key's own acceptance) and signs it with the same key in a second fingerprint (`act_sig`, beside `sig`). A deny and a block sign nothing more. A code asked for through the node records who asked, and the request then carries a `FLAG:` line: "The code this
 phone used was made by the session `<name>` on board `<board>`, not by you at the computer. Approve only if you scanned it
 yourself just now." A code that is waiting to be scanned is never replaced by one a session or a phone asks for, so an agent
 cannot take over the code the person is showing.
@@ -436,6 +442,13 @@ token, registering the push address, pinning the certificate, choosing the node'
 
 **Another phone.** Scan (1), one fingerprint on the phone that approves (1), and the new phone does steps 3 and 4 above.
 The tap on the notification on the approving phone is the routine approval below.
+
+**Another phone, in a pool that lists its admins.** The phone is also listed as an admin key, which adds one fingerprint on each of the two phones and nothing else:
+
+| # | Step | Kind | Why it is needed |
+|---|---|---|---|
+| 1 | Second fingerprint on the new phone, to accept being listed | one biometric prompt | a key is listed only with its own signature over the exact terms (person, epoch, charter), so no one can list a key that did not agree |
+| 2 | Second fingerprint on the phone that approves, to sign the act that lists the new phone | one biometric prompt | the listing is an act of the pool with its own bytes, so the approval's signature cannot stand for it |
 
 **A routine approval (one request, one or many asks).**
 

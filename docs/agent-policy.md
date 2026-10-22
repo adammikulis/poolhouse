@@ -14,29 +14,32 @@ The rules never to break, then the ones needed every hour; each names the sectio
    the agent that finished the change (`git push origin HEAD:refs/heads/<dev>`), never left for the owner (1, 4).
 4. **Tests never touch the real keystore, the real home, a paid API or a public endpoint** (1).
 5. **One piece of work on a device's compute at a time; never start a model server by hand** (1, 6).
-6. **No real person's name, handle, email or phone number** anywhere in the repository (1).
-7. **Attack first**: a design or security-adjacent change gets a written break-it pass by a non-author before it is
+6. **Never a fake model**: no code, demo, example, doc sample or test substitutes a fake model, mock server, canned or
+   scripted answer, rule-based imitation or mockup for a model; a real local one runs through the lease, or the work stops
+   loudly; only a plumbing server with no model behaviour under test may stand in, and it marks every reply canned (1).
+7. **No real person's name, handle, email or phone number** anywhere in the repository (1).
+8. **Attack first**: a design or security-adjacent change gets a written break-it pass by a non-author before it is
    built (1).
-8. **Do what was said, when and in the order said**; never postponed, reordered or widened; a blocker is one line; no
+9. **Do what was said, when and in the order said**; never postponed, reordered or widened; a blocker is one line; no
    agent sets a limit on the work (2).
-9. **Decide what you can; ask only owner-only decisions**, ranked by what is correct; a guard or rule in the way of
+10. **Decide what you can; ask only owner-only decisions**, ranked by what is correct; a guard or rule in the way of
    what the owner ordered is changed, never cited as the reason it cannot be done (2).
-10. **Nothing blocks on a person**: a person-only step is asked once and everything else goes on, with the safe default
+11. **Nothing blocks on a person**: a person-only step is asked once and everything else goes on, with the safe default
     in force (2).
-11. **Investigate a failure before anything is retried**; a slow gate is a defect and a timeout is never the fix (2, 5).
+12. **Investigate a failure before anything is retried**; a slow gate is a defect and a timeout is never the fix (2, 5).
     **Chase every finding to a fixed root cause before reporting it**; never hand the owner a symptom (2).
-12. **Say it short**: result first; announce only news others act on, never progress (2, 3).
-13. **Onboarding is the product**: a change that adds a human step (terminal, config, key, port) for a non-technical
-    person is a regression (2).
-14. **Security is invisible**: a new check that adds a visible step, prompt, wait, flag or error to a normal journey is a
+13. **Say it short**: result first; announce only news others act on, never progress (2, 3).
+14. **Onboarding is the product**: make the real steps easier for a non-technical person; never remove, fake or weaken the
+    real thing to do it; a mock, stand-in or silent fallback is never used to skip a setup step (2).
+15. **Security is invisible**: a new check that adds a visible step, prompt, wait, flag or error to a normal journey is a
     regression to redesign (2).
-15. **A budget is a debt, nothing is grandfathered, no agent raises a number**; nothing is cemented before 1.0 (2, 5).
-16. **"If I can't use it, it's not done"**: landed, updated, driven the way a person does (2, 3, 4).
-17. **Inbox first**: read and answer it at every session start and between tasks; contact comes first (3).
-18. **Stage files by name, never `git add -A`**, in your own claimed worktree beside the primary checkout (4).
-19. **Push the development branch yourself**: fetch, merge `origin/<dev>`, run only your changed test files,
+16. **A budget is a debt, nothing is grandfathered, no agent raises a number**; nothing is cemented before 1.0 (2, 5).
+17. **"If I can't use it, it's not done"**: landed, updated, driven the way a person does (2, 3, 4).
+18. **Inbox first**: read and answer it at every session start and between tasks; contact comes first (3).
+19. **Stage files by name, never `git add -A`**, in your own claimed worktree beside the primary checkout (4).
+20. **Push the development branch yourself**: fetch, merge `origin/<dev>`, run only your changed test files,
     `git push origin HEAD:refs/heads/<dev>`; no accept or lock; clean up before reporting (4).
-20. **Test your own change with explicit `scripts/test` selectors**, any list of files and never the full suite (GitHub runs it on pull requests, on `main` and nightly; a development push runs only the `gates` job)
+21. **Test your own change with explicit `scripts/test` selectors**, any list of files and never the full suite (GitHub runs it on pull requests, on `main` and nightly; a development push runs only the `gates` job)
     (5).
 
 Contents: [1 Hard floors](#1-hard-floors) | [2 How to work](#2-how-to-work) |
@@ -80,6 +83,23 @@ primary checkout is on; `main` is never it); promotion to `main`, tags, releases
 - No test calls a paid or quota-limited API or a public endpoint on its own, whatever keys or logins the machine holds:
   such a test is marked `live_api` or `live_net` and skipped unless `POOLHOUSE_LIVE_API=1` or `POOLHOUSE_LIVE_NET=1` is
   set by a person (tests/README.md, *Live services*). Do not set either.
+
+### Never a fake model
+
+Whatever needs a model runs a real local one. No code, demo, example, doc sample or test substitutes a fake model, a mock or
+stub server, a scripted or canned answer, a rule-based imitation or a mockup for a model. The real model runs through the normal
+lease path (section 6); when it cannot run, the work stops loudly and says why, and no default, cached or substitute answer
+stands in. Setup steps that a real model needs (the download, the lease) are stated, never skipped.
+
+Anything that tests what a model says or decides runs a real local model. A plain protocol server (ports, queues, process
+handling, HTTP framing) may stand in only where no model behaviour is under test, and it must never pass as a model.
+
+- Such a server marks every reply as canned: the model id it reports is a fixed, obviously canned name (for example
+  `CANNED-NOT-A-MODEL`), every reply body begins with a visible `[CANNED RESPONSE, NOT A MODEL]` marker, and the marker is
+  also in the response headers or metadata, so a log, a screenshot or a person reading it sees at once that nothing was
+  inferred.
+- A canned reply never reaches a user-facing surface (UI, demo, report) unmarked.
+- Tests assert the marker is present on the plumbing server's replies.
 
 ### One thing computing on the GPU at a time
 
@@ -309,6 +329,13 @@ change that touches setup, joining, first run, errors a new user can hit, docs f
 of use is judged by the onboarding journey of a person bad with tech: install, then only taps and plain sentences to an
 agent. No terminal, config file, key handling or port talk is asked of them, and a refusal is explained in one plain
 sentence an agent can relay. A change that adds a human step to that journey is a regression to fix, not to accept.
+
+**The rule judges the real journey.** It asks to make the real steps easier; it never asks to remove, fake or weaken the real
+thing. A demo, example or test of a model runs that real model: a mock, stand-in, scripted answer or rule-based substitute is
+never used to avoid a setup step. Steps that are already part of the journey (the first-time model download, the lease, the key
+tap) are not regressions when a demo or example uses them; that example's README states them plainly. There is no silent
+fallback: a failure that a default, cached or substitute answer would paper over stops loudly instead (section 2, "Investigate a
+failure before anything is retried"; the failure reaches the party who must act).
 
 **Security without friction.** Adding security must not noticeably increase user friction unless absolutely needed.
 Security is the default and invisible: keys in the OS keystore, signed handoffs and verification done by the nodes,

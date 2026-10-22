@@ -46,7 +46,8 @@ fn a_phone_that_only_names_a_listed_key_without_its_proof_is_not_added() {
 fn a_phone_the_charter_does_not_list_waits_for_an_admin_phone_where_the_listed_one_does_not() {
     let pool = found();
     let other = FakePhone::new("other");
-    let (_, reply) = pool.rig.phone("POST", "add", "", other.add_body(&pool.rig.device(), &pool.rig.offer()));
+    let secret = pool.rig.offer();
+    let (_, reply) = pool.rig.phone("POST", "add", "", pool.rig.add_body(&other, &secret));
     assert_eq!((reply["result"]["state"].clone(), reply["result"]["approval"].as_str().is_some_and(|a| !a.is_empty())), (json!("pending"), true), "{reply}");
     let waiting = pool.rig.phone("POST", "list", reply["result"]["token"].as_str().unwrap(), json!({})).1;
     assert!(Founded::denial(&waiting).contains("waiting for a phone you already added"), "{waiting}");

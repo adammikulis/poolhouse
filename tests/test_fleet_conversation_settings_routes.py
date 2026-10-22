@@ -126,6 +126,20 @@ def test_guarded_routes_attach_once_reconcile_and_reject_missing_key(conversatio
     assert len(app.ui.conversations.all()) == 1
 
 
+def test_operation_lookup_is_get_only_and_needs_ui_authority_and_the_same_origin(conversation_api):
+    app = conversation_api
+    payload = {"operation_id": OPERATION, "model": "model-a"}
+    assert app.call("/ui/conversations", method="POST", body=payload)[0] == 201
+    path = "/ui/conversations/operations/" + OPERATION
+    assert app.call(path, ui_header=False)[0] == 403
+    assert app.call(path, headers={"Origin": "https://foreign.invalid"})[0] == 403
+    for method in ("POST", "DELETE", "PUT"):
+        assert app.call(path, method=method, body={"title": "taken over"})[0] == 405
+        assert app.call(path, method=method, body={"title": "taken over"}, ui_header=False)[0] == 403
+    assert app.call(path)[0] == 200
+    assert [chat.model for chat in app.ui.conversations.all()] == ["model-a"]
+
+
 def test_uncredentialed_and_expired_sessions_cannot_create_or_lookup(conversation_api): 
     from poolhouse.fleet.session import parse_cookie
 

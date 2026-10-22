@@ -37,8 +37,11 @@ pub fn endpoints(port: u16) -> Vec<String> {
 /// The link a person scans: everything the phone needs to find this node, be sure it is the right one and add itself.
 pub fn link(node: &Node, secret: &str, expires_ms: u64) -> String {
     let device = node.members.get(&node.cert.fingerprint()).map(|d| d.name.clone()).unwrap_or_default();
-    let body = json!({"v": 1, "pin": node.phone_cert.fingerprint(), "endpoints": endpoints(node.phone_port), "secret": secret, "expires": expires_ms / 1000,
-                      "name": device, "policy": node.members.policy.name()});
+    let mut body = json!({"v": 1, "pin": node.phone_cert.fingerprint(), "endpoints": endpoints(node.phone_port), "secret": secret, "expires": expires_ms / 1000,
+                          "name": device, "policy": node.members.policy.name()});
+    if let Some(terms) = node.offer.as_ref().and_then(|o| crate::phone::admit::terms(node, o.person())) {
+        body["admit"] = terms;
+    }
     format!("poolhouse://add-phone?data={}", b64url(body.to_string().as_bytes()))
 }
 
