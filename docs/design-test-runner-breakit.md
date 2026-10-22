@@ -822,7 +822,7 @@ F16 and F20 each name the attack test to write first.
 
 ## 10. The design after 815f4b6f0
 
-The design on `origin/0.3dev` moved by nine commits after the reviewed one (the latest is `c28b7b544`). This pass reviews `815f4b6f0`;
+The design on `origin/0.3dev` moved by eight commits after the reviewed one (the latest is `c467def2a`). This pass reviews `815f4b6f0`;
 the merged branch carries the later text. The later text was searched for each mechanism below, not reviewed a second time in full.
 
 **Touched by the later commits.**
@@ -846,9 +846,9 @@ and F26. The status ordering "numerically highest of the causes" is still there.
   versions) partition differently with no cover check (F2 again, with the tool as the divider). `slice_count` has "no fixed maximum"
   and the sender builds one unit per slice before anything runs: a count of a billion in the project file is a memory failure on the
   sender. Derive the bound as 10.6 does, from the sender's free memory and the measured cost of one planned unit.
-- **Hang guards** (5.10). "With no margin set the guard is not applied", and a total guard applies only when no `timeout` is named, so
-  a project that sets nothing has no sender-side bound on a device that answers with heartbeats and never ends (F12, first bullet). The
-  no-progress guard counts "heartbeat" as progress, and a hostile device sends one forever. The sender needs a total bound that is on
-  without a margin: the unit's own `timeout`, else the run's recorded total, else the person's `--deadline`.
+- **Hang guards** (5.10). A run with no guard is now refused (status 4), but one `silence_margin` satisfies the refusal and gives only
+  the no-progress guard; that guard counts a "heartbeat" as progress, and a hostile device sends one forever (F12, first bullet). The
+  total guard needs `total_margin`, which the refusal does not require. The sender needs a total bound that is on whenever a device
+  runs a shard: the unit's own `timeout`, else the run's recorded total with a margin the refusal also requires.
 - **Median history** (5.8). The median needs no clip, but a device that runs most of a unit's samples controls the median; F18 stands
   for units run on one device.
