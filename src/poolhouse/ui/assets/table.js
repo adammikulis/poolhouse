@@ -1,40 +1,40 @@
-/* <ml-table>: rows of records with verdict dots, sortable columns and an empty state. */
-import { MlElement, define, h } from "./base.js";
+/* <poolhouse-table>: rows of records with verdict dots, sortable columns and an empty state. */
+import { PoolhouseElement, define, h } from "./base.js";
 import { fmt } from "./format.js";
 import { LABELS, icon, normalize } from "./verdict.js";
 
 const STYLES = `
-.wrap { overflow-x: auto; border: 1px solid var(--ml-line); border-radius: var(--ml-radius);
-  background: var(--ml-surface); }
+.wrap { overflow-x: auto; border: 1px solid var(--poolhouse-ui-line); border-radius: var(--poolhouse-ui-radius);
+  background: var(--poolhouse-ui-surface); }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-caption { text-align: left; padding: 0 0 8px; color: var(--ml-muted); font-size: 12px; caption-side: top; }
-th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--ml-line);
+caption { text-align: left; padding: 0 0 8px; color: var(--poolhouse-ui-muted); font-size: 12px; caption-side: top; }
+th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--poolhouse-ui-line);
   vertical-align: middle; }
 tbody tr:last-child td { border-bottom: 0; }
-th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--ml-muted);
-  font-weight: 600; white-space: nowrap; background: var(--ml-sunken); }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--poolhouse-ui-muted);
+  font-weight: 600; white-space: nowrap; background: var(--poolhouse-ui-sunken); }
 th button { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
-th button:focus-visible { outline: 2px solid var(--ml-focus); outline-offset: 2px; }
-.num, th.num { text-align: right; font-family: var(--ml-mono); font-variant-numeric: tabular-nums; }
-.mono { font-family: var(--ml-mono); }
+th button:focus-visible { outline: 2px solid var(--poolhouse-ui-focus); outline-offset: 2px; }
+.num, th.num { text-align: right; font-family: var(--poolhouse-ui-mono); font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--poolhouse-ui-mono); }
 .name { display: block; font-weight: 600; overflow-wrap: anywhere; }
-.sub { display: block; color: var(--ml-muted); font-size: 12px; overflow-wrap: anywhere; }
+.sub { display: block; color: var(--poolhouse-ui-muted); font-size: 12px; overflow-wrap: anywhere; }
 .verdict { display: inline-flex; align-items: center; gap: 7px; color: var(--v-ink);
   font-weight: 600; white-space: nowrap; }
 .dot { width: 18px; height: 18px; border-radius: 50%; display: inline-grid; place-items: center;
-  background: color-mix(in srgb, var(--v) 18%, var(--ml-surface));
+  background: color-mix(in srgb, var(--v) 18%, var(--poolhouse-ui-surface));
   border: 1.5px solid var(--v); color: var(--v-ink); flex: none; }
 .dot svg { width: 11px; height: 11px; }
 tbody tr[tabindex] { cursor: pointer; }
 tbody tr[tabindex]:hover, tbody tr[aria-selected=true] {
-  background: color-mix(in srgb, var(--ml-accent) 10%, transparent); }
-.state { padding: 28px 16px; text-align: center; color: var(--ml-muted); }
-.state.error { color: var(--ml-red-ink); }
+  background: color-mix(in srgb, var(--poolhouse-ui-accent) 10%, transparent); }
+.state { padding: 28px 16px; text-align: center; color: var(--poolhouse-ui-muted); }
+.state.error { color: var(--poolhouse-ui-red-ink); }
 `;
 
 const ARROW = { ascending: " ↑", descending: " ↓" };
 
-class MlTable extends MlElement {
+class PoolhouseTable extends PoolhouseElement {
   static props = { columns: "object", rows: "object", label: "string", empty: "string",
                    error: "string", loading: "bool", selectable: "bool", sortKey: "string",
                    sortDir: "string", selected: "string" };
@@ -79,13 +79,13 @@ class MlTable extends MlElement {
     const dir = this.sortKey === col.key && this.sortDir !== "descending" ? "descending" : "ascending";
     this.sortKey = col.key;
     this.sortDir = dir;
-    this.emit("ml-sort", { key: col.key, direction: dir });
+    this.emit("poolhouse-sort", { key: col.key, direction: dir });
   }
 
   pick(row) {
     if (!this.selectable) return;
     this.selected = String(row.id ?? "");
-    this.emit("ml-row", { id: row.id, row });
+    this.emit("poolhouse-row", { id: row.id, row });
   }
 
   update() {
@@ -116,4 +116,4 @@ class MlTable extends MlElement {
       this.label ? h("caption", {}, this.label) : null, h("thead", {}, head), h("tbody", {}, body)));
   }
 }
-define("ml-table", MlTable);
+define("poolhouse-table", PoolhouseTable);

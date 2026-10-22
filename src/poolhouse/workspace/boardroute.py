@@ -1,7 +1,7 @@
 """The person's Board reads and posts through the local HTTP route.
 
 ``respond`` answers one request from the person's session on the node (`poolhouse.board.person`); ``serve`` runs it
-on a loopback socket with the Board page and the ml-ui assets. The page holds no token: the session is kept here, for
+on a loopback socket with the Board page and the poolhouse-ui assets. The page holds no token: the session is kept here, for
 a browser that opened the page with the listener's session secret.
 """
 
@@ -28,7 +28,7 @@ from poolhouse.workspace import board_page, plain
 __all__ = ["COOKIE", "MAX_BODY", "PREFIX", "Request", "respond", "serve", "session_ok"]
 
 PREFIX = "/board/"
-COOKIE = "ml_session"
+COOKIE = "poolhouse_session"
 POST_MAX = 32 * 1024
 WAIT_MAX_S = 25
 
@@ -171,8 +171,8 @@ def _page(req: Request) -> Reply:
         return 200, {**SAFE, "Content-Type": "text/html; charset=utf-8",
                      "Content-Security-Policy": "default-src 'none'; script-src 'self' 'unsafe-inline'; "
                                                 "style-src 'self' 'unsafe-inline'; connect-src 'self'"}, PAGE.encode()
-    name = path.removeprefix("/ui/ml-ui/")
-    found = assets().get(name) if path.startswith("/ui/ml-ui/") else None
+    name = path.removeprefix("/ui/poolhouse-ui/")
+    found = assets().get(name) if path.startswith("/ui/poolhouse-ui/") else None
     if found is None:
         return 404, SAFE, b""
     kind = "text/css" if name.endswith(".css") else "text/javascript" if name.endswith(".js") \
@@ -219,9 +219,9 @@ class _Route:
 
 PAGE = """<!doctype html><meta charset="utf-8"><title>Board</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="/ui/ml-ui/ml-ui.css">
-<body style="margin:0;background:var(--ml-bg)"><ml-board endpoint="/board" style="height:100vh"></ml-board>
-<script type="module" src="/ui/ml-ui/ml-ui.js"></script>"""
+<link rel="stylesheet" href="/ui/poolhouse-ui/poolhouse-ui.css">
+<body style="margin:0;background:var(--poolhouse-ui-bg)"><poolhouse-board endpoint="/board" style="height:100vh"></poolhouse-board>
+<script type="module" src="/ui/poolhouse-ui/poolhouse-ui.js"></script>"""
 
 
 def serve(session: Callable[[], Session], port: int = 0, *, routes: Callable[[Callable[[], Session]], _Route] = _Route) -> Listener:

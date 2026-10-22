@@ -1,35 +1,35 @@
-/* <ml-stepper>: a wizard shell. Steps are named in `steps`; each step's content is a child
+/* <poolhouse-stepper>: a wizard shell. Steps are named in `steps`; each step's content is a child
    with slot="step-<id>". */
-import { MlElement, define, h, uid } from "./base.js";
+import { PoolhouseElement, define, h, uid } from "./base.js";
 
 const STYLES = `
 .bar { display: flex; gap: 6px; list-style: none; margin: 0 0 20px; padding: 0; }
 .bar li { flex: 1; min-width: 0; }
 .bar button { display: block; width: 100%; text-align: left; background: transparent; border: 0;
-  padding: 0; cursor: default; color: var(--ml-muted); font-size: 12px; }
+  padding: 0; cursor: default; color: var(--poolhouse-ui-muted); font-size: 12px; }
 .bar button:not([disabled]) { cursor: pointer; }
-.bar i { display: block; height: 4px; border-radius: 2px; background: var(--ml-line-strong);
+.bar i { display: block; height: 4px; border-radius: 2px; background: var(--poolhouse-ui-line-strong);
   margin-bottom: 6px; transition: background .3s; }
-.bar .done i, .bar .current i { background: var(--ml-accent); }
-.bar .current button { color: var(--ml-text); font-weight: 600; }
+.bar .done i, .bar .current i { background: var(--poolhouse-ui-accent); }
+.bar .current button { color: var(--poolhouse-ui-text); font-weight: 600; }
 .bar .name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :host([compact]) .name { position: absolute; width: 1px; height: 1px; overflow: hidden;
   clip: rect(0 0 0 0); }
 .err { margin: 14px 0 0; padding: 10px 12px; border-radius: 8px; font-size: 13px;
-  color: var(--ml-red-ink); border: 1px solid color-mix(in srgb, var(--ml-red) 55%, transparent);
-  background: color-mix(in srgb, var(--ml-red) 12%, var(--ml-surface)); }
+  color: var(--poolhouse-ui-red-ink); border: 1px solid color-mix(in srgb, var(--poolhouse-ui-red) 55%, transparent);
+  background: color-mix(in srgb, var(--poolhouse-ui-red) 12%, var(--poolhouse-ui-surface)); }
 .err[hidden] { display: none; }
 .nav { display: flex; justify-content: space-between; gap: 10px; margin-top: 22px; }
 .nav[hidden] { display: none; }
 .nav button { padding: 9px 18px; border-radius: 8px; font-weight: 600; cursor: pointer;
-  border: 1px solid var(--ml-line-strong); background: transparent; }
-.nav button.primary { background: var(--ml-accent); border-color: var(--ml-accent);
-  color: var(--ml-on-accent); }
+  border: 1px solid var(--poolhouse-ui-line-strong); background: transparent; }
+.nav button.primary { background: var(--poolhouse-ui-accent); border-color: var(--poolhouse-ui-accent);
+  color: var(--poolhouse-ui-on-accent); }
 .nav button[disabled] { opacity: .5; cursor: default; }
 .nav .spacer { flex: 1; }
 `;
 
-class MlStepper extends MlElement {
+class PoolhouseStepper extends PoolhouseElement {
   static props = { steps: "object", current: "number", controls: "string", compact: "bool",
                    backLabel: "string", nextLabel: "string", finishLabel: "string",
                    busy: "bool", validate: "object" };
@@ -58,14 +58,14 @@ class MlStepper extends MlElement {
     this.current = Number(v?.current) || 0;
   }
 
-  /** Go to step `to` without validating; fires `ml-step`. */
+  /** Go to step `to` without validating; fires `poolhouse-step`. */
   goto(to) {
     const n = Math.max(0, Math.min(this.list().length - 1, to));
     if (n === this.index()) return;
     const from = this.index();
     this.current = n;
     this.err.hidden = true;
-    this.emit("ml-step", { from, to: n, id: this.list()[n]?.id, state: this.state });
+    this.emit("poolhouse-step", { from, to: n, id: this.list()[n]?.id, state: this.state });
     this.updateNow();
   }
 
@@ -85,9 +85,9 @@ class MlStepper extends MlElement {
         this.showError(typeof verdict === "string" ? verdict : "This step is not complete.");
         return;
       }
-      if (!this.emit("ml-before-next", { from, to, id: this.list()[from]?.id }, true)) return;
+      if (!this.emit("poolhouse-before-next", { from, to, id: this.list()[from]?.id }, true)) return;
       this.completed.add(from);
-      if (from >= last) { this.emit("ml-finish", { state: this.state }); this.updateNow(); return; }
+      if (from >= last) { this.emit("poolhouse-finish", { state: this.state }); this.updateNow(); return; }
     }
     this.goto(to);
   }
@@ -134,4 +134,4 @@ class MlStepper extends MlElement {
     this.next.setAttribute("aria-busy", String(!!this.busy));
   }
 }
-define("ml-stepper", MlStepper);
+define("poolhouse-stepper", PoolhouseStepper);

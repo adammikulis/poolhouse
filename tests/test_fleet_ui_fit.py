@@ -128,8 +128,11 @@ class TestThePage:
         """This has to open on a machine that has never been online, so there is no d3 and
         no CDN: both panels are hand-drawn SVG."""
         _, got, _ = page.call("/ui/fit")
-        assert not re.search(r'(?:src|href)="https?://', got["raw"]), \
-            "the page fetches a library"
+        resources = re.findall(r'<(?:script|link|img|iframe|source|video|audio)\b[^>]*\b(?:src|href)=[\"\']([^\"\']+)',
+                               got["raw"], flags=re.I)
+        assert resources, "the offline check must inspect the page's actual resource references"
+        assert all(not re.match(r"(?:https?:)?//", resource) for resource in resources), \
+            "the page fetches a remote resource"
 
     @pytest.mark.parametrize("name", ["fit-model", "fit-view", "fit-charts", "rates-view",
                                  "telemetry-view"])
@@ -200,8 +203,8 @@ class TestTheSplitBetweenTheFitComponents:
             page.goto(f'http://127.0.0.1:{served.port}/ui/')
             assert page.locator('html').get_attribute('lang') == 'en'
             expect(page.locator('html')).to_have_attribute('data-theme', 'dark')
-            assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--ml-bg').trim()") == '#141518'
-            assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--ml-accent').trim()") == '#ff5fa2'
+            assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--poolhouse-ui-bg').trim()") == '#141518'
+            assert page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--poolhouse-ui-accent').trim()") == '#ff5fa2'
             page.get_by_role('navigation', name='Main navigation').get_by_role('link', name='Pool', exact=True).click()
             nav = page.get_by_role('navigation', name='Workspace pages')
             nav.locator('a[href="#fit"]').click()

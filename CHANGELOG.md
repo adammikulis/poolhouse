@@ -29,7 +29,7 @@
 * Taint tracking: once text from outside the person has been read, a call that changes something runs only when each argument is vouched for or the person confirms.
 * `python -m poolhouse.redteam` sends attacks at the library's own surfaces through PyRIT.
 * `poolhouse.web` and `poolhouse.datasheet` page through search results, read PDFs, download files with a provenance record and find a part's datasheet.
-* `poolhouse.ui` elements (`ml-meter`, `ml-chip`, `ml-table` and the rest) draw the daemon page.
+* `poolhouse.ui` elements (`poolhouse-meter`, `poolhouse-chip`, `poolhouse-table` and the rest) draw the daemon page.
 * One bounded reader for GGUF and safetensors headers.
 
 ## [0.2.1](https://github.com/adammikulis/poolhouse/compare/v0.2.0...v0.2.1) (2026-09-26)

@@ -86,6 +86,43 @@ def ui(store):
     return SimpleNamespace(invitations=store, name="test computer", serving=SimpleNamespace(live=lambda: [live]))
 
 
+def test_optional_chat_import_failure_precedes_stream_headers_and_queue(enrolled, monkeypatch):
+    from poolhouse import agent_dependency
+
+    store, grant, _, _ = enrolled
+    request = handler(grant, "/companion/v1/chat", "POST")
+
+    def unavailable():
+        raise ImportError("synthetic unavailable chat runtime")
+
+    monkeypatch.setattr(agent_dependency, "chat_runtime", unavailable)
+    monkeypatch.setattr(companion_routes, "turn", lambda *a, **kw: pytest.fail("unavailable chat entered the queue"))
+    raw = json.dumps({"model": "model-q", "messages": [{"role": "user", "content": "question"}]}).encode()
+    assert companion_routes.answer(ui(store), request, raw)
+    assert request.replies == [(400, {"error": "install poolhouse[agents] for Android chat"})]
+    assert request.wfile.getvalue() == b""
+
+
+@pytest.mark.parametrize("case", ["status", "malformed", "unavailable", "revoked"])
+def test_non_chat_or_invalid_requests_do_not_load_optional_chat(enrolled, monkeypatch, case):
+    from poolhouse import agent_dependency
+
+    monkeypatch.setattr(agent_dependency, "chat_runtime", lambda: pytest.fail("invalid request loaded chat"))
+    store, grant, _, _ = enrolled
+    request = handler(grant, "/companion/v1/chat", "POST")
+    body = {"model": "model-q", "messages": [{"role": "user", "content": "question"}]}
+    if case == "status":
+        request.path, request.command = "/companion/v1/status", "GET"
+    elif case == "malformed":
+        body["messages"] = []
+    elif case == "unavailable":
+        body["model"] = "unavailable"
+    else:
+        store.revoke(grant["device_id"])
+    assert companion_routes.answer(ui(store), request, json.dumps(body).encode())
+    assert request.replies[0][0] == {"status": 200, "revoked": 403}.get(case, 400)
+
+
 def test_status_omits_computer_capabilities_paths_and_secrets(enrolled):
     store, grant, _, _ = enrolled
     request = handler(grant)

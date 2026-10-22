@@ -9,6 +9,25 @@ from poolhouse.fleet.chat_routes import ChatRoutes
 from poolhouse.workspace import localstart
 
 
+def test_daemon_import_keeps_optional_chat_runtime_unloaded(tmp_path):
+    import os
+    import subprocess
+    from pathlib import Path
+
+    source = str(Path(__file__).parents[1] / "src")
+    script = f"""
+import sys
+sys.path.insert(0, {source!r})
+from poolhouse.fleet import api
+assert 'poolhouse.fleet.sdk_chat' not in sys.modules
+assert 'agents' not in sys.modules
+"""
+    result = subprocess.run([sys.executable, "-I", "-B", "-c", script],
+                            cwd=tmp_path, env={**os.environ, "HOME": str(tmp_path)},
+                            capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stderr
+
+
 def test_missing_sdk_reports_dependency(monkeypatch):
     monkeypatch.setitem(sys.modules, "agents", None)
     assert "poolhouse[agents]" in agent_dependency.problem()
@@ -42,10 +61,7 @@ def test_chat_readiness_reports_actual_dependency(monkeypatch):
 
 def test_missing_chat_sdk_does_not_change_coding_prerequisites(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "agents", None)
-    monkeypatch.setattr(localstart.la, "check_project", lambda *args: "")
-    monkeypatch.setattr(localstart.la, "check_orders", lambda value: value)
-    monkeypatch.setattr(localstart.localmodel, "choose", lambda *a, **k: SimpleNamespace(ok=False, problem="no coding model", hint="download a model"))
-    with pytest.raises(localstart.Unavailable, match="no coding model"):
+    with pytest.raises(ValueError, match="cannot enforce isolated session permissions"):
         localstart.start(SimpleNamespace(board="b"), localstart.Ask(profile="coding"), base=tmp_path)
 
 

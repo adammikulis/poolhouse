@@ -1,7 +1,7 @@
-/* <ml-board endpoint="/board">: the workspace's boards, threads and direct conversations, with a live feed and the person's composer (`readonly` removes it).
+/* <poolhouse-board endpoint="/board">: the workspace's boards, threads and direct conversations, with a live feed and the person's composer (`readonly` removes it).
    Every string from the route is shown as text after control and bidirectional characters are
    removed; nothing is parsed as markup and the only link is a file's download (an attachment, never shown inline). The page holds no token. */
-import { MlElement, define, h } from "./base.js";
+import { PoolhouseElement, define, h } from "./base.js";
 import { loadPage, messageRoute, pageControls, renderFeed } from "./board-pages.js";
 import { INTEGRATED_STYLES } from "./board-styles.js";
 import "./composer.js";
@@ -39,60 +39,60 @@ const when = (ts) => {
 const STYLES = `
 :host { min-height: 320px; }
 .shell { display: grid; grid-template-columns: minmax(150px, 220px) 1fr; height: 100%;
-  min-height: inherit; border: 1px solid var(--ml-line); border-radius: var(--ml-radius);
-  background: var(--ml-surface); overflow: hidden; }
+  min-height: inherit; border: 1px solid var(--poolhouse-ui-line); border-radius: var(--poolhouse-ui-radius);
+  background: var(--poolhouse-ui-surface); overflow: hidden; }
 @media (max-width: 560px) { .shell { grid-template-columns: 1fr; grid-template-rows:auto minmax(0,1fr); } nav { max-height:180px; } }
-nav { border-right: 1px solid var(--ml-line); background: var(--ml-sunken); overflow-y: auto;
+nav { border-right: 1px solid var(--poolhouse-ui-line); background: var(--poolhouse-ui-sunken); overflow-y: auto;
   padding: 8px 0; }
 nav h3 { margin: 10px 14px 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
-  color: var(--ml-muted); font-weight: 600; }
+  color: var(--poolhouse-ui-muted); font-weight: 600; }
 nav button { all: unset; box-sizing: border-box; display: flex; justify-content: space-between;
   gap: 8px; width: 100%; padding: 6px 14px; cursor: pointer; overflow-wrap: anywhere; }
 nav button:hover, nav button[aria-current=true] {
-  background: color-mix(in srgb, var(--ml-accent) 12%, transparent); }
-nav button:focus-visible { outline: 2px solid var(--ml-focus); outline-offset: -2px; }
-.count { font-family: var(--ml-mono); font-size: 12px; color: var(--ml-accent-ink); font-weight: 600; }
+  background: color-mix(in srgb, var(--poolhouse-ui-accent) 12%, transparent); }
+nav button:focus-visible { outline: 2px solid var(--poolhouse-ui-focus); outline-offset: -2px; }
+.count { font-family: var(--poolhouse-ui-mono); font-size: 12px; color: var(--poolhouse-ui-accent-ink); font-weight: 600; }
 main { overflow-y: auto; padding: 12px 16px; min-width: 0; }
 main header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
 main h2 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
-.badge { font-size: 11px; color: var(--ml-muted); border: 1px solid var(--ml-line-strong);
+.badge { font-size: 11px; color: var(--poolhouse-ui-muted); border: 1px solid var(--poolhouse-ui-line-strong);
   border-radius: 999px; padding: 0 8px; }
 .row { all: unset; box-sizing: border-box; display: block; width: 100%; padding: 8px 10px;
-  border-bottom: 1px solid var(--ml-line); cursor: pointer; }
-.row:hover { background: color-mix(in srgb, var(--ml-accent) 8%, transparent); }
-.row:focus-visible { outline: 2px solid var(--ml-focus); outline-offset: -2px; }
+  border-bottom: 1px solid var(--poolhouse-ui-line); cursor: pointer; }
+.row:hover { background: color-mix(in srgb, var(--poolhouse-ui-accent) 8%, transparent); }
+.row:focus-visible { outline: 2px solid var(--poolhouse-ui-focus); outline-offset: -2px; }
 .row .subject { font-weight: 600; overflow-wrap: anywhere; }
-.meta { color: var(--ml-muted); font-size: 12px; }
-.msg { padding: 8px 0; border-bottom: 1px solid var(--ml-line); }
+.meta { color: var(--poolhouse-ui-muted); font-size: 12px; }
+.msg { padding: 8px 0; border-bottom: 1px solid var(--poolhouse-ui-line); }
 .msg.sent { margin-left: 24px; }
 .msg .who { font-weight: 600; font-size: 13px; }
 .msg pre { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
-.cut { color: var(--ml-yellow-ink); font-size: 12px; }
+.cut { color: var(--poolhouse-ui-yellow-ink); font-size: 12px; }
 .focus-controls { display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:10px 0; font-size:12px; }
 .focus-controls label { display:flex; align-items:center; gap:5px; }
 .focus-controls input { width:auto; }
 .channel-tabs { display:flex; gap:8px; margin:0 0 12px; }
-.channel-tabs button { background:var(--ml-sunken); border:1px solid var(--ml-line); border-radius:6px; padding:5px 12px; cursor:pointer; }
-.channel-tabs button[aria-pressed=true] { color:var(--ml-accent-ink); border-color:var(--ml-accent); }
-.back { all: unset; cursor: pointer; color: var(--ml-accent-ink); font-size: 13px; }
-.back:focus-visible { outline: 2px solid var(--ml-focus); outline-offset: 2px; }
+.channel-tabs button { background:var(--poolhouse-ui-sunken); border:1px solid var(--poolhouse-ui-line); border-radius:6px; padding:5px 12px; cursor:pointer; }
+.channel-tabs button[aria-pressed=true] { color:var(--poolhouse-ui-accent-ink); border-color:var(--poolhouse-ui-accent); }
+.back { all: unset; cursor: pointer; color: var(--poolhouse-ui-accent-ink); font-size: 13px; }
+.back:focus-visible { outline: 2px solid var(--poolhouse-ui-focus); outline-offset: 2px; }
 .composer { display: grid; gap: 6px; margin-top: 12px; padding-top: 10px;
-  border-top: 1px solid var(--ml-line); }
-.composer textarea, .composer input { font: inherit; color: var(--ml-text); background: var(--ml-sunken);
-  border: 1px solid var(--ml-line-strong); border-radius: 6px; padding: 6px 8px; width: 100%; }
+  border-top: 1px solid var(--poolhouse-ui-line); }
+.composer textarea, .composer input { font: inherit; color: var(--poolhouse-ui-text); background: var(--poolhouse-ui-sunken);
+  border: 1px solid var(--poolhouse-ui-line-strong); border-radius: 6px; padding: 6px 8px; width: 100%; }
 .composer textarea { min-height: 64px; resize: vertical; }
 .composer button { justify-self: start; padding: 5px 14px; border-radius: 6px; cursor: pointer;
-  background: var(--ml-accent); color: var(--ml-on-accent); border: 0; font-weight: 600; }
+  background: var(--poolhouse-ui-accent); color: var(--poolhouse-ui-on-accent); border: 0; font-weight: 600; }
 .composer button[disabled] { opacity: .5; cursor: default; }
-.composer .err { color: var(--ml-red-ink); font-size: 12px; }
+.composer .err { color: var(--poolhouse-ui-red-ink); font-size: 12px; }
 nav .new { display: flex; gap: 4px; padding: 6px 14px; }
-nav .new input { flex: 1; min-width: 0; font: inherit; color: var(--ml-text);
-  background: var(--ml-surface); border: 1px solid var(--ml-line-strong); border-radius: 6px; padding: 2px 6px; }
-.state { padding: 24px 8px; color: var(--ml-muted); }
-.state.error { color: var(--ml-red-ink); }
+nav .new input { flex: 1; min-width: 0; font: inherit; color: var(--poolhouse-ui-text);
+  background: var(--poolhouse-ui-surface); border: 1px solid var(--poolhouse-ui-line-strong); border-radius: 6px; padding: 2px 6px; }
+.state { padding: 24px 8px; color: var(--poolhouse-ui-muted); }
+.state.error { color: var(--poolhouse-ui-red-ink); }
 `;
 
-class MlBoard extends MlElement {
+class PoolhouseBoard extends PoolhouseElement {
   static props = { endpoint: "string", interval: "number", readonly: "bool", channelFeed:"bool", integrated:"bool" };
   static styles = STYLES + INTEGRATED_STYLES;
 
@@ -301,7 +301,7 @@ class MlBoard extends MlElement {
     }
     this.loading = false;
     if (render) this.update();
-    this.emit("ml-board-view", {kind:view.kind});
+    this.emit("poolhouse-board-view", {kind:view.kind});
   }
 
   async markRead() {
@@ -360,7 +360,7 @@ class MlBoard extends MlElement {
     const open = () => {
       const name = line(box.value, 97);
       if (name) {
-        this.emit("ml-board-open", {kind:"dm"});
+        this.emit("poolhouse-board-open", {kind:"dm"});
         this.open({ kind: "dm", a: this.me, b: name });
       }
     };
@@ -411,7 +411,7 @@ class MlBoard extends MlElement {
         this.update();
       }
     };
-    const node = h("ml-composer", {class:"composer", recipient:this.view.kind === "thread"
+    const node = h("poolhouse-composer", {class:"composer", recipient:this.view.kind === "thread"
       ? `Reply in ${to.to}` : `Message ${to.to}`}, subject, text, go,
       this.draft.error ? h("div", { class: "err", role: "alert" }, this.draft.error) : null);
     node.addEventListener("composer-send", post);
@@ -478,4 +478,4 @@ class MlBoard extends MlElement {
         this.open({kind:"thread", root:Number(m.thread || m.seq), board:this.view.name})}, "Reply in thread") : null));
   }
 }
-define("ml-board", MlBoard);
+define("poolhouse-board", PoolhouseBoard);
