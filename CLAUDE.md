@@ -13,7 +13,11 @@ because Y"), never list problems and stop, and never route around it (an extra r
 moment "X can't because Y" is about to be written, the next action is the change that removes Y. A report to the owner says what
 was changed; when the agent is truly blocked (a person-only act, a harness permission only the owner can grant) it says what was
 tried and asks the one decision with the fix as the first option. If the concept is the flaw, the whole concept is removed, not one
-hook at a time. AGENTS.md, "Reporting a problem", "A problem comes with its fix", is the same rule for every agent.
+hook at a time. The same holds in code: a defect that shows a wrong structure (a boundary in the wrong place, hidden state
+reaching a consumer, behaviour coupled that should not be, the same area fixed twice) is fixed by redesign, never by a patch
+around it: write the target structure (layers, one-way boundaries, who may read what) first, rebuild to it, enforce it with a
+test (import, layering or type boundary) and absorb the symptom fixes into it. A second symptom fix in one area is the signal
+to stop and redesign, and a worker's brief names the target structure, not the symptom. AGENTS.md, "Reporting a problem", "A problem comes with its fix", is the same rule for every agent.
 
 ## Session start and names
 

@@ -258,7 +258,12 @@ which, in one line, at once, and do every part that is not blocked.
   changed to remove it, and who is changing it: the concrete fix, or the one decision the owner must make with the fix as
   the first option. A message that lists what is wrong, or several bad designs, and stops there is wrong: the agent has
   not finished investigating. An obstacle (a guard, a rule, a refusal, a lock, a retired identity, a queue) is never
-  reported as a fact of the system; it is a thing to change, and the message names the change.
+  reported as a fact of the system; it is a thing to change, and the message names the change. A defect that shows a wrong
+  structure (a boundary in the wrong place, hidden state reaching a consumer, behaviour coupled that should not be, the same
+  area fixed twice) is fixed by redesign, never patched around: write the target structure (layers, one-way boundaries, who
+  may read what) before changing code, rebuild to it, enforce it with a test (import, layering or type boundary) and absorb
+  the symptom fixes into it. A second symptom fix in one area means stop and redesign; a brief names the target structure,
+  not the symptom.
 - **Say it short.** A few lines, result or question first, findings as a list; prose that has to be mined is work handed
   back.
 - **Dependencies and root causes.** Do not leave a relevant regression, security issue or missing prerequisite
