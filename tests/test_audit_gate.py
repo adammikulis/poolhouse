@@ -66,6 +66,18 @@ def test_the_redteam_workflow_runs_no_attack_on_a_runner_that_has_no_model_and_s
     assert len(tests) == 1 and "--redteam" in tests[0]["run"] and "--slow" not in tests[0]["run"]
 
 
+def test_the_real_model_red_team_tests_run_in_the_nightly_real_model_job():
+    """What the redteam workflow does not run on a hosted runner has a place where it does run."""
+    ci = yaml.safe_load((WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))
+    job = ci["jobs"]["real-model"]
+    assert "schedule" in str(job["if"]) and "--real-model" in str(job["steps"])
+    ran = " ".join(str(one.get("run", "")) for one in job["steps"])
+    assert "tests/test_redteam_sentinel_model.py" in ran and "tests/test_redteam_lab_home.py::" in ran
+    for name in ("tests/test_redteam_sentinel_model.py", "tests/test_redteam_lab_home.py"):
+        module = (ROOT / name).read_text(encoding="utf-8")
+        assert "pytest.mark.real_model" in module and "pytest.mark.slow" in module, name
+
+
 def test_the_command_the_workflow_prints_reproduces_the_committed_real_model_baseline():
     command = shlex.split(not_run_notice()["env"]["COMMAND"])
     assert command[:4] == ["python", "-m", "poolhouse.redteam", "run"]

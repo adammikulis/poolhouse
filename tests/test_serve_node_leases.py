@@ -1,6 +1,6 @@
 """The serve broker takes the memory, the model slot and the GPU from the node's lease table, and holds nothing of its own.
 
-Every server is a real process on a real port (`fake_llama_binary`), every holder a real process whose pid can end, and the lease
+Every server is a real process on a real port (`canned_binary`), every holder a real process whose pid can end, and the lease
 table is a real node's.
 """
 
@@ -19,7 +19,7 @@ from poolhouse.http import Server
 from poolhouse.serve import LlamaServerBackend, ServerManager, admission
 from poolhouse.serve.broker import Ask, Broker, BrokerError
 from poolhouse.serve.process import kill_process_tree, pid_exists
-from poolhouse.testing.fakes import fake_llama_binary
+from poolhouse.testing.canned import canned_binary
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -29,7 +29,7 @@ GIB = 1024 ** 3
 
 @pytest.fixture
 def broker(tmp_path, serve_leases):
-    manager = ServerManager(LlamaServerBackend(binary=fake_llama_binary(tmp_path)), state_file=tmp_path / "servers.json")
+    manager = ServerManager(LlamaServerBackend(binary=canned_binary(tmp_path)), state_file=tmp_path / "servers.json")
     made = Broker(manager, idle_s=3600.0, scan=lambda: [])
     yield made
     for held in list(made.servers.values()):

@@ -420,7 +420,8 @@ def fake_process(argv: list[str], rss: int, *, pid: int = 0, state: str = "runni
             "memory_info": types.SimpleNamespace(rss=rss)}
     if pid:
         info["pid"] = pid
-    return types.SimpleNamespace(info=info, pid=pid, status=lambda: state)
+    return types.SimpleNamespace(info=info, pid=pid, status=lambda: state,
+                                 as_dict=lambda attrs=None, ad_value=None: {k: info.get(k, ad_value) for k in attrs or info})
 
 
 def fake_memory(*, total: int, available: int, wired: int):
@@ -1235,7 +1236,7 @@ def seatbelt_modules() -> frozenset[str]:
 
 def pytest_collection_modifyitems(config, items) -> None:
     """Mark the modules in ``heavy-modules.txt`` and ``seatbelt-modules.txt``, skip the live tests nobody switched on, leave
-    the slow tests out unless --slow, the whole-tree scans out unless --gate, and the redteam tests out unless --redteam."""
+    the slow tests out unless --slow, the scans out unless --gate, the redteam out unless --redteam, real_model out unless --real-model."""
     heavy, seatbelt = heavy_modules(), seatbelt_modules()
     for item in items:
         if Path(str(item.fspath)).name in heavy:
@@ -1245,7 +1246,7 @@ def pytest_collection_modifyitems(config, items) -> None:
         reason = live.skip_reason((m.name for m in item.iter_markers()), os.environ)
         if reason:
             item.add_marker(pytest.mark.skip(reason=reason))
-    wanted = {name: config.getoption(f"--{name}") for name in ("slow", "gate", "redteam")}
+    wanted = {name: config.getoption(f"--{name.replace('_', '-')}") for name in ("slow", "gate", "redteam", "real_model")}
     wanted["gate"] = wanted["gate"] or wanted["slow"]   # CI runs `--slow`: everything, whole-tree scans too
     left_out = [name for name, given in wanted.items() if not given]
     if not left_out:

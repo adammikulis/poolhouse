@@ -3,9 +3,10 @@ name: redteam
 # installed model, and nothing stands in for one (AGENTS.md, "Never a fake model"). The last step says so in
 # every run: a warning annotation and the run's summary name what was not run, why, and the command that
 # runs it on a machine that has the model, against docs/redteam/baseline-real-model-2026-10-22.json
-# (docs/redteam.md, "Baselines"). The tests that need a real model (tests/test_redteam_sentinel_model.py,
-# tests/test_redteam_loop.py, the end-to-end test in tests/test_redteam_lab_home.py) are marked slow and are
-# not collected here either; they fail, never skip, on a machine without the model.
+# (docs/redteam.md, "Baselines and the gate"). The tests that need a real model
+# (tests/test_redteam_sentinel_model.py, the end-to-end test in tests/test_redteam_lab_home.py) are marked
+# real_model and slow, are not collected here, and run nightly in the `real-model` job of ci.yml, which fetches
+# the pinned model and a llama-server; on a machine without them they fail, never skip.
 on:
   workflow_dispatch:
   schedule:

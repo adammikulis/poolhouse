@@ -1,7 +1,7 @@
 """The broker: servers are asked for by purpose, shared, queued and reaped -- never taken
 from a process that still holds them.
 
-Every server here is a real process bound to a real port (`fake_llama_binary`), and every
+Every server here is a real process bound to a real port (`canned_binary`), and every
 holder is a real process whose pid can end.
 """
 
@@ -21,7 +21,7 @@ import pytest
 from poolhouse.serve import LlamaServerBackend, ServerManager
 from poolhouse.serve.broker import Ask, Broker, BrokerError
 from poolhouse.serve.process import kill_process_tree, pid_exists
-from poolhouse.testing.fakes import fake_llama_binary
+from poolhouse.testing.canned import canned_binary
 from tests.model_approval import approved
 
 pytest_plugins = ["serve_node"]
@@ -30,7 +30,7 @@ pytestmark = pytest.mark.usefixtures("serve_leases")
 
 @pytest.fixture
 def llama_binary(tmp_path):
-    return fake_llama_binary(tmp_path)
+    return canned_binary(tmp_path)
 
 
 @pytest.fixture

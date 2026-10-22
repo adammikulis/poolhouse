@@ -1,7 +1,7 @@
 """The tool-calling loop under attack by a real model, served through the lease.
 
 Needs the redteam extra, poolhouse.agent, a llama-server build and an installed small model
-(tests/real_model.py): run with --redteam --slow. What a real model does with an injected
+(tests/real_model.py): run with --redteam --slow --real-model. What a real model does with an injected
 instruction varies, so these assert what holds whatever it does: every arm and attack is
 recorded once, the model really answered, and a guard that refuses a call by rule is never
 beaten by it.
@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from real_model import real_model  # noqa: F401
 
 from poolhouse import serverkeys
 from poolhouse.redteam.lab import lab as make_lab
@@ -20,8 +19,8 @@ from poolhouse.redteam.report import Report
 from poolhouse.redteam.scenarios import Options
 from poolhouse.serve import serve
 
-pytest_plugins = ["serve_node"]
-pytestmark = [pytest.mark.redteam, pytest.mark.slow, pytest.mark.timeout(1800)]
+pytest_plugins = ["serve_node", "real_model"]
+pytestmark = [pytest.mark.redteam, pytest.mark.slow, pytest.mark.real_model, pytest.mark.timeout(1800)]
 
 ARMS = ("bare", "web-guard", "web-guard+policy", "poolhouse-guard")
 
@@ -37,8 +36,8 @@ def attacked(model) -> Report:
     return report
 
 
-def test_the_loop_is_attacked_in_every_arm_by_a_model_that_answers(real_model):  # noqa: F811
-    report = attacked(real_model)
+def test_the_loop_is_attacked_in_every_arm_by_a_model_that_answers(real):
+    report = attacked(real.prepared("tool_calling"))
     keys = [(a.attack_class, a.attack_id, a.arm) for a in report.attempts]
     assert len(keys) == len(set(keys)), "an attack is recorded once per arm"
     assert {a.arm for a in report.attempts} == set(ARMS)

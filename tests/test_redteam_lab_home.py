@@ -44,9 +44,10 @@ def snapshot(root: Path) -> dict[str, tuple[int, int]]:
 
 @pytest.mark.slow
 @pytest.mark.redteam
+@pytest.mark.real_model
 @pytest.mark.timeout(1800)
 def test_a_run_on_a_real_model_writes_nothing_to_the_home_it_started_in_once_the_lease_is_up(
-        tool_model, monkeypatch):
+        real, monkeypatch):
     """The lease is the run's own and writes where it must (its server's log grows while it answers), so the home
     is read the moment the lease is up and again when the scenarios are done: the forged requests, the decoys, the
     quarantines and the rotated keys the scenarios and the daemon they attack make all land in the home `execute`
@@ -69,8 +70,9 @@ def test_a_run_on_a_real_model_writes_nothing_to_the_home_it_started_in_once_the
 
     monkeypatch.setattr(run, "serve", watched_lease)
     monkeypatch.setattr(run, "_scenarios", audited)
-    report = run.execute(run.Plan(("fleet", "sentinel"), str(tool_model), Options(limit=1)))
-    assert {a.target for a in report.attempts} >= {"fleet", "sentinel"} and report.meta["model"] == tool_model.name
+    model = real.prepared("tool_calling")
+    report = run.execute(run.Plan(("fleet", "sentinel"), str(model), Options(limit=1)))
+    assert {a.target for a in report.attempts} >= {"fleet", "sentinel"} and report.meta["model"] == model.name
     before, after = seen["lease up"], seen["scenarios done"]
     own_log = f"logs/llama-server-{served[0]}-"
     changed = sorted(name for name in before.keys() | after.keys()
