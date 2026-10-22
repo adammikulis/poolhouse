@@ -60,12 +60,14 @@ The cost that grows with length is the re-reading: every tool call of an agent r
 unless a one-hour write was made), so a worker's bill grows with tool calls times context, roughly the square of its length.
 Measured in this project: workers that ran 600 to 900 tool calls consumed 0.5 to 0.9 million tokens each. So:
 
-- One slice per worker: a brief that names one deliverable with a stop condition. A worker that has made about 150 tool calls
-  without reporting is stopped by the lead, its commits kept, and the rest is a new worker with a fresh context and a one-line
-  summary of state (a continuation is cheaper than a longer life). The PostToolUse hook `scripts/hooks/claude-wrap-up`
-  tells a subagent at 120 and again at 140 tool calls to commit, push, clean up and report before its `maxTurns` cap of 150.
+- One slice per worker: a brief that names one deliverable and a budget, either a number of tool calls or a stopping
+  condition ("run until X is delivered; report at the latest after N calls if blocked"), chosen from the task's size. No
+  agent definition sets a turn ceiling (`maxTurns` is absent from `.claude/agents`), so the budget is the brief's. A worker
+  that reaches its budget with work left says exactly what remains and pushes no half-done work unless the brief says to; the
+  lead raises the budget by resuming that worker with SendMessage. A worker that is long past a sensible size is better
+  replaced by a new one with a fresh context and a one-line summary of state (a continuation is cheaper than a longer life).
 - Split by deliverable, not by phase: design, code, review and fixes are separate workers; a reviewer reads, runs a few
-  targeted checks and reports, with its tool calls capped near 40.
+  targeted checks and reports, with a small budget the brief states.
 - A reviewer is started once per batch of related changes, not once per commit, and a failure to register or to record an accept
   is root-caused before any reviewer is started again.
 - Briefs point at files and sections; they do not paste documents. Workers read ranges, not whole files, and run the
