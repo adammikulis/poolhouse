@@ -2,7 +2,7 @@
 import pytest
 from native_cargo import native_node_units  # noqa: F401 (fixture)
 
-CHARTER = ('grants_authority', 'grants_authority_pool', 'grants_authority_phones', 'grants_authority_loading', 'grants_authority_removal',
+CHARTER = ('grants_authority', 'grants_authority_pool', 'grants_authority_phones', 'grants_authority_admit', 'phone_admit_vectors', 'grants_authority_loading', 'grants_authority_removal',
            'grants_authority_distrust', 'grants_authority_cost')
 GRANTING = ('grants', 'grants_enrol', 'grants_foreign', 'grants_hostile', 'grants_keys', 'grants_sites', 'approvals', 'approvals_fatigue', 'person', 'phone_endpoint')
 GOVERNING = ('gov_acts', 'gov_charter', 'gov_describe', 'gov_expiry', 'gov_first', 'gov_floods', 'gov_found', 'gov_net', 'gov_strength', 'gov_removal', 'governance',

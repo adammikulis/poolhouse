@@ -237,6 +237,9 @@ pub fn grants_text(d: &Draft) -> (String, String, &'static str) {
 
 /// What a phone's own request shows: a title, the text and the risk, for adding or removing a phone. ``phone`` is its name and ``key``
 /// the first twenty-four characters of its key in groups of four.
+/// The line that says what a phone added to a device may do.
+pub const ADD_SCOPE: &str = "SCOPE: From the moment you approve, that phone can approve or deny anything for this device, until you remove it.";
+
 pub fn phone_text(adding: bool, phone: &str, key: &str, by: &str, policy: &str, flags: &[String], ctx: &Context, expires_ms: u64) -> (String, String, &'static str) {
     let action = if adding { "phone_add" } else { "phone_remove" };
     let (risk, why) = risk_of(action);
@@ -248,7 +251,7 @@ pub fn phone_text(adding: bool, phone: &str, key: &str, by: &str, policy: &str, 
     out.push(format!("WHO: {by}."));
     out.push(format!("ASK: {} the phone {phone} (key {key}).", if adding { "Add" } else { "Remove" }));
     out.push(if adding {
-        "SCOPE: From the moment you approve, that phone can approve or deny anything for this device, until you remove it.".into()
+        ADD_SCOPE.into()
     } else {
         "SCOPE: That phone stops being able to approve at once, and what it already approved stays as signed.".into()
     });

@@ -20,6 +20,8 @@ pub struct Decision<'a> {
     pub sig: &'a str,
     pub text_sha256: &'a str,
     pub pick: &'a str,
+    /// The approving key's signature over the act the request lists a phone with, in hex; empty for a request that lists nothing.
+    pub act_sig: &'a str,
 }
 
 fn denied<T>(why: &str) -> Result<T> {
@@ -182,6 +184,9 @@ pub fn decide(node: &mut Node, d: &Decision) -> Result<Value> {
     if !Authority::of(node).decides(d.key) {
         return denied("That key is not an admin key of this pool, so nothing was decided.");
     }
+    if a.kind == PHONE_ADD && d.decision.starts_with("approve") {
+        crate::phone::admit::check_decision(node, &a, d.key, d.act_sig)?;
+    }
     if !d.text_sha256.is_empty() && d.text_sha256 != sha256_hex(a.text.as_bytes()) {
         return denied("The text you were shown is not the text of this request, so nothing was signed.");
     }
@@ -280,7 +285,10 @@ fn approved(node: &mut Node, a: &Approval, d: &Decision, now: u64) -> Result<()>
             node.approvals.update(&a.id, |x| x.grants = written)
         }
         HOLD => summary::apply(node, a, "approve"),
-        PHONE_ADD => crate::phone::activate(node, a),
+        PHONE_ADD => {
+            crate::phone::admit::submit(node, a, d.key, d.act_sig)?;
+            crate::phone::activate(node, a)
+        }
         PHONE_REMOVE => crate::phone::remove(node, a),
         _ => Err(Error::Invalid("That kind of request is not known.".into())),
     }

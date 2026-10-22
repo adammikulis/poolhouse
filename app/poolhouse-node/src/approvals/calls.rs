@@ -25,7 +25,7 @@ pub fn params_for(method: &str) -> Option<&'static [&'static str]> {
         "approval_status" | "approval_cancel" => &["id"],
         "approvals" => &["state"],
         "approval_pending" => &["key", "sig", "at_ms"],
-        "approval_decide" => &["id", "decision", "key", "sig", "text_sha256", "pick"],
+        "approval_decide" => &["id", "decision", "key", "sig", "text_sha256", "pick", "act_sig"],
         _ => return None,
     })
 }
@@ -189,7 +189,7 @@ pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
             if node.approvals.get(id).is_some_and(|a| a.board == holder.board && a.session == holder.name) {
                 return Err(Error::Denied("The session that asked cannot carry the answer to its own request.".into()));
             }
-            decide(node, &Decision { id, decision: text(p, "decision")?, key: text(p, "key")?, sig: text(p, "sig")?, text_sha256: text(p, "text_sha256")?, pick: text(p, "pick")? })
+            decide(node, &Decision { id, decision: text(p, "decision")?, key: text(p, "key")?, sig: text(p, "sig")?, text_sha256: text(p, "text_sha256")?, pick: text(p, "pick")?, act_sig: text(p, "act_sig")? })
         }
     }
 }
