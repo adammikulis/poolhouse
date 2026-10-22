@@ -25,7 +25,8 @@ own model id (`--model <id>`; `claude-sonnet-5-5` unless it knows otherwise).
 
 `.claude/settings.json` wires `scripts/hooks/claude-bash-guard` and `scripts/hooks/claude-edit-guard` before tools run, and
 `claude-session-start`, `claude-subagent-start` and `claude-subagent-stop` around sessions and subagents. `POOLHOUSE_GUARD=off` turns
-both guards off.
+both guards off. The `PostToolUse` hook `claude-tool-milestones` counts each subagent's tool calls and posts a notice to the lead at 100 and every 50
+after (`POOLHOUSE_TOOL_MILESTONE_EVERY`); it informs and never limits (docs/claude-subagents.md, "Tool-call milestones").
 
 - The Bash guard refuses the command-line forms of the rules in AGENTS.md: `git add -A`, `.` and `-u`, `git commit -a`, `llama-server`
   by hand, `poolhouse-serve up` flags that skip the lease, a push to `main` until the person has selected the approval for that
@@ -62,7 +63,7 @@ lead does not wait for it to exit and does not read a repeat report as new work.
 
 Haiku 5.5 for read-only search and narrow mechanical edits, Sonnet 5.5 for anything that writes or reviews code, Opus only
 after Sonnet has failed, Fable only when the owner asks. Set `effort` on every Agent call from the task (default `high`; `xhigh`
-for cross-module, protocol or security-adjacent work; avoid `max`). One deliverable per worker, stopped at about 150 tool calls.
+for cross-module, protocol or security-adjacent work; avoid `max`). One deliverable per worker, with a budget the lead states in the brief.
 The tables, prices and reasons are in [docs/claude-subagents.md](docs/claude-subagents.md); read it before choosing a model or effort.
 
 ## The heartbeat

@@ -359,3 +359,8 @@ Poolhouse Projects
 
 # Studio control label
 Add Report
+Principled BSDF
+Base Color
+Emission Color
+Emission Strength
+Creates BufferGeometries

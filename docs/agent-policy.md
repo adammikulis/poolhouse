@@ -208,7 +208,8 @@ person's keystore, secrets, the administrator prompt) stay a person's, and `main
 runs, idle workers, work nobody asked for), never by shrinking what was asked. No agent sets a cap on coverage, depth,
 rows, findings, tool calls or rounds beyond the ones written in these rules or named by the owner. If a brief imposes any
 other limit it says so, says what is lost and why, and the lead reports it; a limit is never presented as a rule it is
-not.
+not. A worker's tool-call budget is such a limit: the lead states it in the brief for the task, no agent definition
+fixes one, and a worker at its budget with work left says what remains and waits to be resumed with a higher one.
 
 ### Only real decisions go to the owner
 

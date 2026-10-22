@@ -192,7 +192,6 @@ abuse by one session is not kept (the owner never asked for one). The security f
 | `OPEN_POOL_PER_HOUR` | 10 | `app/poolhouse-node/src/gov/mod.rs:65` | open joins a pool takes in an hour | the owner, in source; a security floor no agent loosens |
 | `DELEGATE_PER_HOUR` | 3 | `app/poolhouse-node/src/gov/mod.rs:60` | devices a delegate admits in an hour | the owner, in source; a security floor no agent loosens |
 | `DELEGATE_PER_DAY` | 10 | `app/poolhouse-node/src/gov/mod.rs:61` | devices a delegate admits in a day | the owner, in source; a security floor no agent loosens |
-| `maxTurns` | 150 | `.claude/agents/branch-worker.md:5`, `.claude/agents/branch-finisher.md:5` | tool turns one worker agent makes before the harness ends it: a worker that never reports | the owner |
 | `pytest timeout` | 120 s a test | `pyproject.toml:268` | one test that hangs; a longer one carries `@pytest.mark.timeout(N)` | the owner |
 | `CI test timeout` | 120 s a test | `.github/workflows/ci.yml:108` | the same limit on the pushed commit | the owner |
 | `CI shard timeout` | 30 minutes | `.github/workflows/ci.yml:46` | one of the eight test shards that hangs | the owner |

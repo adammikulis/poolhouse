@@ -197,9 +197,10 @@ reason = "the guard reads other programs' arguments: a Kubernetes cluster name a
 [[allow]]
 path = ["src/poolhouse/fleet/web/components/gym-scene.html", "src/poolhouse/fleet/web/components/gym-drone-geometry.html",
         "tests/test_gym_scene_browser.py", "tests/test_gym_drone.py", "src/poolhouse/gym/drone_sensors.py",
-        "docs/studio-gym.md", "src/poolhouse/data/tidy-gold.json", "src/poolhouse/world/names.py"]
+        "docs/studio-gym.md", "src/poolhouse/data/tidy-gold.json", "src/poolhouse/world/names.py",
+        "examples/rbmk_control_room/generator/roomkit.py"]
 words = ["mesh"]
-reason = "a 3D mesh (three.js Mesh, MeshStandardMaterial) in the drone simulator and its page; graphics, not a network"
+reason = "a 3D mesh (three.js Mesh, MeshStandardMaterial, Blender's bpy.data.meshes) in the drone simulator, the control-room generator and their pages; graphics, not a network"
 
 # -- "peer" in the node's wire protocol ------------------------------------------------------------------
 
