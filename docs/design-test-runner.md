@@ -575,9 +575,12 @@ The runner's rule, for every unit and every project:
   longest silence its own recorded runs showed times the project's `[schedule] silence_margin`, or for a device the measured round
   trip of the stream times that margin; and (2) a *total* guard, the unit's recorded typical duration (the median, 5.8) times the
   project's `[schedule] total_margin`, used only when the label, step or `[run]` table names no `timeout` (which always wins). The
-  margins are the project's numbers in `testfarm.toml` with no runner default; a unit with no record and no margin set is guarded by
-  the no-progress guard once a first run has recorded its silence, and the first run of it is guarded by the cancel and the
-  receiver's bounds (10.6). A guard ends the work loudly, with status 124 for a unit, shard or step and 75 for a queue wait, and the
+  margins are the project's numbers in `testfarm.toml` with no runner default; a unit with no silence recorded of its own takes the
+  guard of its siblings: the median of the per-unit longest silences recorded across the project's other units times `silence_margin`.
+  With no history at all in the project (its first run ever), the run is guarded against the live gaps it produces itself: a silence
+  longer than the longest gap seen so far in this run times `silence_margin`, applied after at least one unit has finished, and the
+  report says `guard: bootstrapping`. With no margin set the guard is not applied and the report says so (the cancel and the
+  receiver's bounds, 10.6, remain). A guard ends the work loudly, with status 124 for a unit, shard or step and 75 for a queue wait, and the
   line names what was waited for and the derivation: `unit tests/x.py: no output for 41 s (longest silence recorded 8 s x margin 5)`.
   A build step has its own `timeout`, else the hang guards above on the step's recorded runs, and never counts in a unit's.
 - **Overload is named, not guessed.** The report says `the machine was overloaded` only when units are `not started`; a run in which every
