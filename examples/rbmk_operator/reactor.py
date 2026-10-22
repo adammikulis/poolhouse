@@ -32,6 +32,7 @@ TIP_WORTH = 2.6             # graphite-displacer reactivity at its peak, dollars
 P_NOM_MPA = 6.9
 TF_LIMIT, P_LIMIT = 1200.0, 8.0
 DAMAGE_TF = 1500.0
+EXCURSION_P = 1.5            # toy damage rule: a power excursion above 150 percent of nominal damages fuel
 THERMAL_MW = 3200.0
 
 
@@ -204,7 +205,7 @@ def substep(c: Core, dt: float) -> None:
     _poisons(c, dt)
     _thermal(c, dt)
     c.t += dt
-    if c.Tf > DAMAGE_TF or c.P > 5.0:
+    if c.Tf > DAMAGE_TF or c.P > EXCURSION_P:
         c.damaged = True
 
 

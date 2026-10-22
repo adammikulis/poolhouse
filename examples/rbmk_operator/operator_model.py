@@ -81,13 +81,13 @@ def annotated(raw: dict[str, Any], qs: dict[str, Any]) -> dict[str, dict[str, An
 class LiveAsker:
     """Asks the released decision checkpoint, one forward pass per question."""
 
-    def __init__(self, pointer: str = "", abstain_below: float = ABSTAIN_BELOW) -> None:
+    def __init__(self, pointer: str = "", abstain_below: float = ABSTAIN_BELOW, verify: bool = True) -> None:
         from poolhouse.decide import router
 
         self.abstain_below = abstain_below
         self.config = router.Config(backend="pointer", pointer=pointer)
         self.model = ""
-        why = router.unavailable("pointer", self.config)
+        why = router.unavailable("pointer", self.config) if verify else ""
         if why:
             raise ModelStopped(f"the decision model is not available: {why}")
 
@@ -210,7 +210,8 @@ class CrewOperator:
             self.test_tick = plant.tick if self.test_tick is None else self.test_tick
             if plant.tick - self.test_tick >= 36:
                 return Proposal("scram", controls.NONE, "1", "crew-history", None, note="AZ-5 pressed at 01:23:40")
-        elif plant.core.orm() > 7.5 and plant.tick < 12 and sum(plant.reading) / 2 < 0.06:
-            target = next(iter(controls.candidates("withdraw_rod", plant)))
-            return Proposal("withdraw_rod", target, "1", "crew-history", None, note="the crew pulls another manual rod to recover power")
+        elif plant.tick < 40 and plant.core.orm() > 5.5:
+            options = [k for k in controls.candidates("withdraw_rod", plant) if k.startswith("R-")]
+            return Proposal("withdraw_rod", options[0], "2", "crew-history", None,
+                            note="the crew pulls another manual rod; the automatic regulator holds the power")
         return Proposal("hold", controls.NONE, "1", "crew-history", None, note="continuing the programme")
