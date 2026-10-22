@@ -52,8 +52,8 @@ def test_an_unknown_scenario_is_refused_before_anything_starts(capsys):
 
 
 def watched_report(tmp_path, name: str, ttd: int, won: bool = False) -> str:
-    report = Report({"model": "stub"}, [Attempt("sentinel", "decoy-touch", "read", won, arm="default",
-                                                  layer="sentinel", detected=True, ttd=ttd)])
+    report = Report({"model": "recorded.gguf"}, [Attempt("sentinel", "decoy-touch", "read", won, arm="default",
+                                                           layer="sentinel", detected=True, ttd=ttd, attempted=True)])
     path = tmp_path / name
     path.write_text(report.to_json(), encoding="utf-8")
     return str(path)
