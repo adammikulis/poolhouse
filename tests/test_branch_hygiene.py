@@ -168,6 +168,25 @@ def test_a_merge_that_takes_a_weakened_file_whole_from_the_other_parent_is_not_j
     assert out.returncode == 0, out.stderr
 
 
+def test_a_merge_that_carries_the_other_sides_deletion_of_a_guard_test_file_is_not_judged(tmp_path) -> None:
+    where = tmp_path / "d"
+    where.mkdir()
+    sh(where, "git", "init", "-q", "-b", "0.2dev")
+    (where / "tests").mkdir()
+    (where / GUARD).write_text(BEFORE)
+    sh(where, "git", "add", GUARD)
+    assert sh(where, "git", "commit", "-qm", "base", "--no-verify").returncode == 0
+    sh(where, "git", "checkout", "-qb", "side")
+    sh(where, "git", "rm", "-q", GUARD)
+    sh(where, "git", "commit", "-qm", "side deletes the file", "--no-verify")
+    sh(where, "git", "checkout", "-q", "0.2dev")
+    commit(where, "other.txt")
+    merged = sh(where, "git", "merge", "--no-commit", "--no-ff", "side")
+    assert merged.returncode == 0, merged.stdout
+    out = sh(where, sys.executable, str(HOOK), "--staged")
+    assert out.returncode == 0, out.stderr
+
+
 def test_a_merge_that_combines_both_sides_is_judged_only_on_what_it_wrote_itself(tmp_path) -> None:
     """The side branch dropped an assertion in its own commit, and this side added a test to the
     same file. The merged file matches neither parent, but the dropped assertion is the other
