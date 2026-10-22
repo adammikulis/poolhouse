@@ -243,10 +243,31 @@ def unenroll(args: argparse.Namespace, ctx: Ctx) -> Any:
     return grants.unenrol(ctx.client, ctx.carrier.token, _held(ctx), args.key)
 
 
+REBIND_POLL_S = 2.0
+STARTED = "start the harness in this terminal: it registers as that session"
+
+
+def _rebind_by_phone(args: argparse.Namespace, ctx: Ctx) -> Any:
+    """Move a main session in a pool: an admin phone approves, the person picks the number this terminal shows, and the move completes from here."""
+    board = ctx.carrier.board
+    asked = grants.rebind_ask(ctx.client, board, args.harness, args.session)
+    say(f"Approve the move on your phone and choose {asked['code']}, the number this terminal shows.")
+    until = int(asked["expires_ms"]) / 1000 + REBIND_POLL_S
+    while True:
+        done = grants.rebind_finish(ctx.client, board, args.harness, args.session, str(asked["id"]))
+        if done.get("moved"):
+            return {"moved": done["name"], "tokens_ended": done["tokens_ended"], "next": STARTED}
+        if time.time() >= until:
+            raise Denied("denied", "Nobody approved the move in time: run the command again when your phone is at hand.")
+        time.sleep(REBIND_POLL_S)
+
+
 def rebind(args: argparse.Namespace, ctx: Ctx) -> Any:
     """Move a main session to the terminal this runs in: the node ends the tokens it holds, and the harness registers it from here."""
+    if grants.listing(ctx.carrier).governance == "governed":
+        return _rebind_by_phone(args, ctx)
     done = grants.rebind(ctx.client, ctx.carrier.board, args.harness, args.session, _held(ctx))
-    return {"moved": done["name"], "tokens_ended": done["tokens_ended"], "next": "start the harness in this terminal: it registers as that session"}
+    return {"moved": done["name"], "tokens_ended": done["tokens_ended"], "next": STARTED}
 
 
 TABLE = (

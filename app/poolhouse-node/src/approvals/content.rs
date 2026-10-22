@@ -269,6 +269,25 @@ pub fn phone_text(adding: bool, phone: &str, key: &str, by: &str, policy: &str, 
     (format!("{} the phone {phone}", if adding { "Add" } else { "Remove" }), out.join("\n"), risk)
 }
 
+/// The request to move the main session ``session`` of ``board`` to the terminal that asked: what the person is shown and what is signed.
+pub fn rebind_text(session: &str, board: &str, policy: &str, ctx: &Context, expires_ms: u64) -> (String, String, &'static str) {
+    let why = "The terminal that asked then acts as the session, with the grants approved for it.";
+    let out = [
+        "FLAG: A terminal asked to take this session over. Approve only if you ran the command there just now and it shows the number you choose below.".to_string(),
+        pool_line(policy, false),
+        format!("RISK: {}. {why}", SENSITIVE.to_uppercase()),
+        "WHO: A terminal on this device, through `poolhouse-workspace rebind`.".into(),
+        format!("ASK: Move the session {session} on board {board} to the terminal that asked."),
+        format!("SCOPE: From then on only that terminal registers as {session}; the tokens it holds now stop working and the grants approved for it go with it."),
+        if ctx.pick.is_empty() { "NOTE: No number is matched.".into() } else { "PICK: After your fingerprint you choose the number that terminal shows, out of three. A wrong choice counts as a decline.".into() },
+        "CANNOT: Nothing else changes. No grant is added or widened.".into(),
+        "WHY: A person ran `poolhouse-workspace rebind` in a terminal.".into(),
+        "DENY: If you deny, nothing changes and the session stays where it is.".into(),
+        format!("EXPIRES: This request ends at {}.", utc(expires_ms)),
+    ];
+    (format!("Move the session {session}"), out.join("\n"), SENSITIVE)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

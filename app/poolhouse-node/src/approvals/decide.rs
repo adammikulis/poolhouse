@@ -3,7 +3,7 @@
 use serde_json::{json, Value};
 
 use crate::approvals::fatigue::{kind_of, requester, Cause, Outcome, Requester};
-use crate::approvals::{challenge, summary, Approval, APPROVED, CANCELLED, DENIED, EXPIRED, FAILED, GRANTS, HELD, HOLD, PENDING, PHONE_ADD, PHONE_REMOVE};
+use crate::approvals::{challenge, summary, Approval, APPROVED, CANCELLED, DENIED, EXPIRED, FAILED, GRANTS, HELD, HOLD, PENDING, PHONE_ADD, PHONE_REMOVE, REBIND};
 use crate::error::{Error, Result};
 use crate::fsutil::sha256_hex;
 use crate::grants::authority::Authority;
@@ -290,6 +290,7 @@ fn approved(node: &mut Node, a: &Approval, d: &Decision, now: u64) -> Result<()>
             crate::phone::activate(node, a)
         }
         PHONE_REMOVE => crate::phone::remove(node, a),
+        REBIND => Ok(()),
         _ => Err(Error::Invalid("That kind of request is not known.".into())),
     }
 }

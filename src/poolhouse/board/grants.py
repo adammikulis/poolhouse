@@ -23,7 +23,7 @@ from poolhouse.board.session import Session
 
 __all__ = ["DEFAULT_ACTIONS", "Grant", "Listing", "Signs", "Want", "Where", "approval_bytes", "approve", "canonical", "default_bundle", "describe", "duration_ms",
            "enrol", "enrol_first", "enrol_line", "enrolment", "fingerprint", "here", "issue", "list_bytes", "listing", "log", "rebind",
-           "revoke", "sign_approval", "sign_issue", "sign_list", "sign_rebind", "sign_revoke", "sign_unenroll", "unenrol", "want_line", "when"]
+           "rebind_ask", "rebind_finish", "revoke", "sign_approval", "sign_issue", "sign_list", "sign_rebind", "sign_revoke", "sign_unenroll", "unenrol", "want_line", "when"]
 
 SIGN_DOMAIN = b"poolhouse/grant/v1\n"
 ENROLL_DOMAIN = b"poolhouse/person-enroll/v1\n"
@@ -169,13 +169,18 @@ class Where:
     anchor: dict[str, int]
 
 
-def here(client: Client) -> Where:
-    """The node ``client`` reaches and the terminal this process runs in, as the node reads them."""
+def terminal(client: Client) -> dict[str, int]:
+    """The terminal this process runs in, as the node reads it: the process at the top of its lineage."""
     lineage = client.call("lineage")["lineage"]
     if not lineage:
         raise ValueError("the node could not read the process this runs in, so a signature cannot be made for its terminal")
     top = lineage[-1]
-    return Where(str(client.call("hello")["device"]), {"pid": int(top["pid"]), "start": int(top["start"])})
+    return {"pid": int(top["pid"]), "start": int(top["start"])}
+
+
+def here(client: Client) -> Where:
+    """The node ``client`` reaches and the terminal this process runs in, as the node reads them."""
+    return Where(str(client.call("hello")["device"]), terminal(client))
 
 
 def approve(proof: dict[str, Any], approver: Signs, where: Where, *, now_ms: int | None = None) -> dict[str, Any]:
@@ -227,6 +232,17 @@ def rebind(client: Client, board: str, harness: str, session: str, key: Signs) -
     """Move the main session ``session`` of ``harness`` on ``board`` to this process's terminal, signed by ``key``; the tokens it held end."""
     name = str(client.call("session_lookup", board, harness=harness, session=session)["name"])
     return dict(client.call("rebind", board, "", harness=harness, session=session, **sign_rebind(key, board, name, here(client))))
+
+
+def rebind_ask(client: Client, board: str, harness: str, session: str) -> dict[str, Any]:
+    """Ask a device in a pool to move the main session ``session`` of ``harness`` on ``board`` to this terminal on an admin phone's tap: the
+    request, with the number the person picks on the phone."""
+    return dict(client.call("rebind", board, "", harness=harness, session=session, anchor=terminal(client)))
+
+
+def rebind_finish(client: Client, board: str, harness: str, session: str, approval: str) -> dict[str, Any]:
+    """Carry out the move the request ``approval`` got approved, from this terminal; `moved` is false while the phone has not answered."""
+    return dict(client.call("rebind", board, "", harness=harness, session=session, anchor=terminal(client), approval=approval))
 
 
 def unenrol(client: Client, token: str, key: Signs, fingerprint_: str) -> dict[str, Any]:
