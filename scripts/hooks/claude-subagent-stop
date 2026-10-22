@@ -11,7 +11,6 @@ import stop_landed
 import subagent_records
 import tree_watch
 import workspace_hook
-import wrap_up
 
 
 def transcript_model(path: str) -> str:
@@ -54,8 +53,6 @@ def main() -> int:
     if verdict.reason:
         print(json.dumps({"decision": "block", "reason": verdict.reason}))
         return 0
-    if event.get("agent_id"):
-        wrap_up.clear(str(event["agent_id"]))
     if environment is None:
         return 0
     path =event.get("agent_transcript_path") or ""

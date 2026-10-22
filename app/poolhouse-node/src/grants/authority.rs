@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
-use crate::gov::charter::Mode;
+use crate::gov::charter::{Charter, Mode};
 use crate::fsutil::sha256_hex;
 use crate::gov::keys::{Role, Strength};
 use crate::node::Node;
@@ -69,10 +69,24 @@ struct Pool {
     stands: BTreeMap<String, Material>,
     /// The keys of `stands` this device knows as a phone's: the authority keys.
     issuers: BTreeMap<String, Material>,
+    /// The person each authority key belongs to.
+    people: BTreeMap<String, String>,
     /// Why each key the charter in force lists is not an authority key.
     barred: BTreeMap<String, &'static str>,
     /// The admin-role keys listed in any epoch.
     narrowers: BTreeMap<String, Material>,
+}
+
+/// Why no key can sign a grant of a pool run by ``charter``, when the charter itself rules it out: its members run the pool, or it lists no strong
+/// admin key.
+pub fn closed_reason(charter: &Charter) -> Option<&'static str> {
+    if charter.mode != Mode::Admins {
+        Some(NOT_ADMINS)
+    } else if charter.weak_only() {
+        Some(NO_STRONG)
+    } else {
+        None
+    }
 }
 
 /// What a signature counts for on this node at this moment.
@@ -86,9 +100,8 @@ impl Authority {
         let Some(gov) = node.members.gov() else { return Authority { pool: None } };
         let charter = &gov.state().chain.latest().charter;
         let accepted = gov.authority_keys();
-        let closed = if charter.mode != Mode::Admins { Some(NOT_ADMINS) } else if charter.weak_only() { Some(NO_STRONG) } else { None };
         let distrusted = super::distrust::set(node);
-        let mut pool = Pool { closed, ..Pool::default() };
+        let mut pool = Pool { closed: closed_reason(charter), ..Pool::default() };
         for k in &charter.admins {
             let (fp, material) = (k.fingerprint(), Material { alg: k.alg.name().into(), public: k.key.clone() });
             pool.listed.insert(fp.clone());
@@ -109,6 +122,7 @@ impl Authority {
             }
             if node.persons.get(&fp).is_some_and(|p| p.phone && p.alg == material.alg && p.public == material.public) {
                 pool.issuers.insert(fp.clone(), material.clone());
+                pool.people.insert(fp.clone(), k.person.clone());
             } else {
                 pool.barred.insert(fp.clone(), UNKNOWN_PHONE);
             }
@@ -165,6 +179,17 @@ impl Authority {
     /// The fingerprints of the authority keys of the pool now.
     pub fn authority(&self) -> Vec<String> {
         self.pool.as_ref().filter(|p| p.closed.is_none()).map_or_else(Vec::new, |p| p.issuers.keys().cloned().collect())
+    }
+
+    /// The person the authority key ``fingerprint`` belongs to.
+    pub fn person_of(&self, fingerprint: &str) -> Option<&str> {
+        self.pool.as_ref().filter(|p| p.closed.is_none() && p.issuers.contains_key(fingerprint)).and_then(|p| p.people.get(fingerprint)).map(String::as_str)
+    }
+
+    /// The one person whose authority keys this device holds, when it holds those of exactly one.
+    pub fn sole_person(&self) -> Option<String> {
+        let people: BTreeSet<&String> = self.pool.as_ref().filter(|p| p.closed.is_none()).map_or_else(BTreeSet::new, |p| p.issuers.keys().filter_map(|k| p.people.get(k)).collect());
+        (people.len() == 1).then(|| people.into_iter().next().cloned()).flatten()
     }
 
     /// Whether any authority key is held on this device.

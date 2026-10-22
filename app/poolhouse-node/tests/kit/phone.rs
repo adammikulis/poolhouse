@@ -6,6 +6,8 @@ use std::sync::Mutex;
 
 use poolhouse_node::approvals::challenge;
 use poolhouse_node::fsutil::{hex, sha256_hex};
+use poolhouse_node::gov::act::Act;
+use poolhouse_node::gov::keys::{AdminKey, Alg, Role, Strength};
 use poolhouse_node::node::Node;
 use poolhouse_node::phone::enrol::{add_bytes, make_offer};
 use super::grants::first_secret;
@@ -81,10 +83,22 @@ impl FakePhone {
         Value::Object(p)
     }
 
-    /// The `decide` body for the request ``view`` (as `list` or `get` gives it): the signature over its challenge.
+    /// The `decide` body for the request ``view`` (as `list` or `get` gives it): the signature over its challenge, and for an approval of a
+    /// phone that is to be listed, the second signature over the act it lists the phone with.
     pub fn decision(&self, view: &Value, decision: &str) -> Value {
         let bytes = challenge::bytes(&view["challenge"], decision, &self.fingerprint());
-        json!({"id": view["id"], "decision": decision, "key": self.fingerprint(), "sig": self.sign(&bytes), "text_sha256": sha256_hex(view["text"].as_str().unwrap().as_bytes())})
+        let mut body = json!({"id": view["id"], "decision": decision, "key": self.fingerprint(), "sig": self.sign(&bytes), "text_sha256": sha256_hex(view["text"].as_str().unwrap().as_bytes())});
+        if let (true, Some(act)) = (decision.starts_with("approve"), view["challenge"]["action"].get("act")) {
+            body["act_sig"] = json!(self.sign_low(&serde_json::from_value::<Act>(act.clone()).unwrap().sign_bytes()));
+        }
+        body
+    }
+
+    /// Its acceptance of being listed under the ``terms`` a code carries (`pool`, `prev`, `since`, `person`), in the canonical low-`s` form.
+    pub fn accept(&self, terms: &Value) -> String {
+        let entry = AdminKey { key: self.public.clone(), alg: Alg::P256, role: Role::Admin, strength: Strength::Strong, person: terms["person"].as_str().unwrap().into(),
+                               since: terms["since"].as_u64().unwrap(), acceptance: String::new(), label: self.name.clone() };
+        self.sign_low(&entry.acceptance_message(terms["pool"].as_str().unwrap(), terms["prev"].as_str().unwrap()))
     }
 
     /// Open a push body the node sealed to this phone (a phone's push key opens one body: the test makes a phone for each).
@@ -175,11 +189,25 @@ impl Rig {
         first_secret(&mut |m, b, t, p| self.call(m, b, t, p), &token, "phone", "")
     }
 
+    /// The body of ``phone``'s `add` request with the code ``secret``: in a pool it also carries the phone's acceptance of the terms the code
+    /// carries, as the app reads them from the link.
+    pub fn add_body(&self, phone: &FakePhone, secret: &str) -> Value {
+        let mut body = phone.add_body(&self.device(), secret);
+        let terms = {
+            let node = self.node.lock().unwrap();
+            node.offer.as_ref().and_then(|o| poolhouse_node::phone::admit::terms(&node, o.person()))
+        };
+        if let Some(terms) = terms {
+            body["acceptance"] = json!(phone.accept(&terms));
+        }
+        body
+    }
+
     /// Add ``phone``: with the code the first phone's prompt makes or the code the node makes, then, for a later phone, the approval of
     /// ``by``, an added phone.
     pub fn add(&self, phone: &mut FakePhone, by: Option<&FakePhone>) {
         let secret = self.offer();
-        let (status, reply) = self.phone("POST", "add", "", phone.add_body(&self.device(), &secret));
+        let (status, reply) = self.phone("POST", "add", "", self.add_body(phone, &secret));
         assert_eq!((status, &reply["ok"]), (200, &json!(true)), "{reply}");
         phone.token = reply["result"]["token"].as_str().unwrap().into();
         phone.id = reply["result"]["phone"].as_str().unwrap().into();

@@ -62,7 +62,7 @@ lead does not wait for it to exit and does not read a repeat report as new work.
 
 Haiku 5.5 for read-only search and narrow mechanical edits, Sonnet 5.5 for anything that writes or reviews code, Opus only
 after Sonnet has failed, Fable only when the owner asks. Set `effort` on every Agent call from the task (default `high`; `xhigh`
-for cross-module, protocol or security-adjacent work; avoid `max`). One deliverable per worker, stopped at about 150 tool calls.
+for cross-module, protocol or security-adjacent work; avoid `max`). One deliverable per worker, with a budget the lead states in the brief.
 The tables, prices and reasons are in [docs/claude-subagents.md](docs/claude-subagents.md); read it before choosing a model or effort.
 
 ## The heartbeat

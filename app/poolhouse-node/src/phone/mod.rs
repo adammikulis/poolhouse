@@ -10,6 +10,7 @@
 //! | `cert` | the P-256 certificate of that endpoint, which the code pins |
 //! | `push` | the sealed notification and its delivery |
 
+pub mod admit;
 pub mod attest;
 pub mod calls;
 pub mod cert;

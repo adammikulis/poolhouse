@@ -5,7 +5,6 @@ use std::sync::Mutex;
 
 use ed25519_dalek::Signer;
 use poolhouse_node::fsutil::{hex, unhex};
-use poolhouse_node::gov::keys::{AdminKey, Alg, Role, Strength};
 use poolhouse_node::row::Kind;
 use serde_json::{json, Value};
 
@@ -137,18 +136,11 @@ impl Founded {
         self.rig.call("pool_submit", "", &self.token, json!({"act": act}))
     }
 
-    /// List the phone ``new`` as a second strong admin key of the same person, and let the hold run: the admin phone signs the `admin_add`.
+    /// Let the hold run on the listing of the phone ``new`` as a second strong admin key of the same person, which the approval that added the
+    /// phone handed to the pool.
     pub fn add_admin(&self, new: &FakePhone) {
-        let entry = {
-            let node = self.rig.node.lock().unwrap();
-            let gov = node.members.gov().unwrap();
-            let (epoch, prev) = gov.context();
-            let mut entry = AdminKey { key: new.public.clone(), alg: Alg::P256, role: Role::Admin, strength: Strength::Strong, person: "ann".into(), since: epoch + 1, acceptance: String::new(), label: "second phone".into() };
-            entry.acceptance = new.sign_low(&entry.acceptance_message(&gov.id, &prev));
-            entry
-        };
-        ok(self.act("admin_add", json!({"entry": entry})));
         self.pass(48 * HOURS);
+        assert!(self.authority().contains(&new.fingerprint()), "the approval that added the phone listed it as an admin key");
     }
 
     /// Move the awake clock of the pool on by ``ms`` and let the pool notice, as an idle node would at the next request that ticks it.
