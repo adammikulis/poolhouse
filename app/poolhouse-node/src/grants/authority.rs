@@ -8,7 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
-use crate::gov::charter::Mode;
+use crate::gov::charter::{Charter, Mode};
 use crate::fsutil::sha256_hex;
 use crate::gov::keys::{Role, Strength};
 use crate::node::Node;
@@ -75,6 +75,18 @@ struct Pool {
     narrowers: BTreeMap<String, Material>,
 }
 
+/// Why no key can sign a grant of a pool run by ``charter``, when the charter itself rules it out: its members run the pool, or it lists no strong
+/// admin key.
+pub fn closed_reason(charter: &Charter) -> Option<&'static str> {
+    if charter.mode != Mode::Admins {
+        Some(NOT_ADMINS)
+    } else if charter.weak_only() {
+        Some(NO_STRONG)
+    } else {
+        None
+    }
+}
+
 /// What a signature counts for on this node at this moment.
 pub struct Authority {
     pool: Option<Pool>,
@@ -86,9 +98,8 @@ impl Authority {
         let Some(gov) = node.members.gov() else { return Authority { pool: None } };
         let charter = &gov.state().chain.latest().charter;
         let accepted = gov.authority_keys();
-        let closed = if charter.mode != Mode::Admins { Some(NOT_ADMINS) } else if charter.weak_only() { Some(NO_STRONG) } else { None };
         let distrusted = super::distrust::set(node);
-        let mut pool = Pool { closed, ..Pool::default() };
+        let mut pool = Pool { closed: closed_reason(charter), ..Pool::default() };
         for k in &charter.admins {
             let (fp, material) = (k.fingerprint(), Material { alg: k.alg.name().into(), public: k.key.clone() });
             pool.listed.insert(fp.clone());

@@ -3,13 +3,15 @@
 mod kit;
 
 use ed25519_dalek::{Signer, SigningKey};
-use kit::gov::{found_act, recovery, sign, strong, weak, HOUR};
+use kit::gov::{charter, found_act, recovery, sign, strong, weak, HOUR};
 use kit::govnode::{approved, approved_row, charter_for, enrol_phone_key, pass};
 use kit::grants::{Person, Spec};
 use kit::netkit::{device, Dev};
 use kit::{code, ok};
 use poolhouse_node::fsutil::hex;
 use poolhouse_node::gov::act::Act;
+use poolhouse_node::gov::charter::{Charter, Mode, Unit};
+use poolhouse_node::grants::authority::closed_reason;
 use poolhouse_node::membership::Policy;
 use poolhouse_node::row::Kind;
 use serde_json::{json, Value};
@@ -135,6 +137,17 @@ fn the_recovery_key_ends_no_grant_where_the_weak_key_does() {
     assert_eq!(s.state(&gid).0, "live", "a revoke row of the recovery key is ignored");
     ok(s.revoke(W, &gid));
     assert_eq!(s.state(&gid).0, "revoked", "a weak admin key only narrows, so it ends a grant");
+}
+
+#[test]
+fn a_charter_the_members_run_or_with_no_strong_key_closes_the_pool_to_every_grant() {
+    let admins = charter(&[strong(A, "ann"), weak(W, "ann")], Policy::Secure, Unit::Person);
+    assert_eq!(closed_reason(&admins), None);
+    let mut members: Charter = admins.clone();
+    members.mode = Mode::Members;
+    assert!(closed_reason(&members).is_some_and(|why| why.contains("not run by its admins")));
+    let no_strong = charter(&[weak(W, "ann")], Policy::Secure, Unit::Person);
+    assert!(closed_reason(&no_strong).is_some_and(|why| why.contains("no strong admin key")));
 }
 
 #[test]
