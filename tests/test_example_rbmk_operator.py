@@ -11,6 +11,7 @@ import copy
 import json
 import math
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -31,6 +32,7 @@ from rbmk_operator.operator_model import (  # noqa: E402
     ModelOperator,
     ModelStopped,
     NaiveOperator,
+    call_with_timeout,
 )
 from rbmk_operator.plant import Plant  # noqa: E402
 from rbmk_operator.rods import Rods, worth  # noqa: E402
@@ -297,3 +299,57 @@ def test_a_recording_that_does_not_match_the_simulator_is_refused():
     bad["decisions"][0]["calls"] = bad["decisions"][0]["calls"][1:]
     with pytest.raises(bundle.ReplayMismatch):
         bundle.replay(bad, scn)
+
+
+class SlowRule(NaiveOperator):
+    """The naive rule with a stated model latency: the clock tests need a latency, not probabilities."""
+
+    def __init__(self, ms: float) -> None:
+        self.ms = ms
+
+    def propose(self, index, plant):
+        prop = super().propose(index, plant)
+        prop.latency_ms = self.ms
+        return prop
+
+
+def acted(res):
+    return [d for d in res.decisions if d["kind"] == "decision" and d["requested"]["cls"] != "hold"]
+
+
+def test_a_slow_model_is_a_late_operator():
+    scn = scenarios.scenario("load_follow")
+    quick = Runner(scn, SlowRule(0.0)).run()
+    slow = Runner(scn, SlowRule(400_000.0)).run()
+    first_quick, first_slow = acted(quick)[0], acted(slow)[0]
+    assert first_quick["applied_t_s"] == first_quick["t_s"] and first_quick["applied_tick"] == first_quick["tick"]
+    assert first_slow["applied_t_s"] >= first_slow["t_s"] + 400 and first_slow["applied_tick"] > first_slow["tick"]
+    assert [r["P"] for r in quick.trace] != [r["P"] for r in slow.trace]
+
+
+def test_equal_applied_times_give_identical_plant_trajectories_whatever_the_speed_factor():
+    scn = scenarios.scenario("load_follow")
+    a = Runner(scn, SlowRule(2000.0), speed=1.0).run()
+    b = Runner(scn, SlowRule(1000.0), speed=2.0).run()
+    assert [r["P"] for r in a.trace] == [r["P"] for r in b.trace]
+    assert [d["applied_t_s"] for d in a.decisions] == [d["applied_t_s"] for d in b.decisions]
+
+
+def test_a_decision_time_during_an_inflight_answer_is_a_visible_busy_row_not_a_silent_drop():
+    scn = scenarios.scenario("load_follow")
+    res = Runner(scn, SlowRule(2_000_000.0)).run()
+    busy = [d for d in res.decisions if d["kind"] == "busy"]
+    assert busy and all("MODEL BUSY" in d["note"] and d["applied"]["cls"] == "hold" for d in busy)
+
+
+def test_the_exported_run_does_not_depend_on_how_it_is_played_back():
+    scn = scenarios.scenario("steady" if "steady" in scenarios.SCENARIOS else "full_power")
+    res = Runner(scn, SlowRule(500.0)).run()
+    assert bundle.dumps(bundle.export(res, scn, {}, False)) == bundle.dumps(bundle.export(res, scn, {}, False))
+
+
+def test_a_hung_model_call_fails_loudly_after_its_timeout_and_does_not_block_the_caller():
+    began = time.monotonic()
+    with pytest.raises(ModelStopped, match="did not answer within"):
+        call_with_timeout(lambda: time.sleep(30), 0.3, "decision")
+    assert time.monotonic() - began < 5

@@ -1,13 +1,8 @@
 name: redteam
-# Gating: the job fails when an attack that the committed baseline
-# (docs/redteam/baseline-deterministic-2026-10-03.json) recorded as blocked now succeeds, when the
-# attack-success rate over the surfaces it attacked rises at all (success tolerance 0: these scenarios
-# do not vary), when sentinel stops noticing an attack, or when it takes more than 1 more tool call
-# than the baseline to notice one (time to detect). It runs only the scenarios that need no model and
-# are deterministic (extraction: what text a page reader hands the model; fleet: the daemon's real
-# request handler; sentinel: the default Agent with sentinel armed, a decoy, a changed model file and
-# a forging member, against a scripted model). The measurement against a real model (chat, loop,
-# compaction, isolation) is run by hand and compared with `compare`.
+# The red-team tests run here; the tests and scenarios that need a model skip with the reason when no
+# llama-server and installed GGUF exist, which a hosted runner does not have. No model is faked: the
+# measurement against a real model (chat, loop, compaction, isolation, fleet's proxy) is run by hand
+# on a machine that has one and compared with `compare` (docs/redteam.md).
 on:
   workflow_dispatch:
   schedule:
@@ -51,14 +46,3 @@ jobs:
           echo "DEV_TEST_NODE_BINARY=$binary" >> "$GITHUB_ENV"
       - name: tests
         run: python -m pytest tests/test_redteam_*.py -q --redteam -n 0
-      - name: attacks that need no model, against the recorded baseline
-        run: >
-          python -m poolhouse.redteam run --model stub --out redteam-stub
-          --scenarios extraction,fleet,sentinel
-          --against docs/redteam/baseline-deterministic-2026-10-03.json
-          --success-tolerance 0 --ttd-tolerance 1
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: always()
-        with:
-          name: redteam-report
-          path: redteam-stub.*

@@ -21,6 +21,7 @@ import pytest
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO / "scripts"))
+sys.path.insert(0, str(REPO / "tests"))
 
 import affected  # noqa: E402
 import affected_rules as rules  # noqa: E402
@@ -288,6 +289,29 @@ def test_a_file_the_glossary_scan_leaves_out_does_not_select_it(toy) -> None:
     root = glossary_toy(toy, with_policy=True)
     assert "tests/test_glossary.py" not in chosen(root, "docs/notes/old.rs")
     assert "tests/test_glossary.py" not in chosen(root, "app/native_case.rs", deleted=frozenset({"app/native_case.rs"}))
+
+
+def env_toy(toy: Path) -> Path:
+    """The toy repository with the switch-table test, which no module imports."""
+    (toy / "tests" / "test_documented_env_vars.py").write_text("def test_it():\n    assert 1\n", encoding="utf-8")
+    (toy / "src" / "poolhouse").mkdir(parents=True)
+    (toy / "src" / "poolhouse" / "reads.py").write_text("import os\nV = os.environ.get('POOLHOUSE_X')\n", encoding="utf-8")
+    return toy
+
+
+def test_a_changed_source_file_selects_the_switch_table_test_though_no_test_imports_it(toy) -> None:
+    root = env_toy(toy)
+    assert "tests/test_documented_env_vars.py" in chosen(root, "src/poolhouse/reads.py")
+    assert "tests/test_documented_env_vars.py" in chosen(root, "scripts/alpha.py")
+    assert "tests/test_documented_env_vars.py" not in chosen(root, "tests/test_unrelated.py")
+
+
+def test_the_paths_selecting_the_switch_table_test_cover_what_it_scans() -> None:
+    import test_documented_env_vars as env
+    for d in env.SOURCE_DIRS:
+        assert f"{d}/" in affected.ENV_READS, d
+    for f in env.SOURCE_FILES:
+        assert f in affected.ENV_READS, f
 
 
 def recent_scripts(count: int) -> list[str]:

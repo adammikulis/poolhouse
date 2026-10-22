@@ -328,3 +328,13 @@ else:
                            provider_archive.__file__, str(path)], cwd=tmp_path,
                           capture_output=True, text=True, timeout=3)
     assert done.returncode == 0, done.stdout + done.stderr
+
+
+def test_a_file_that_is_not_a_readable_gguf_selects_the_stock_backend(tmp_path):
+    """A truncated or tampered header is the sentinel's to refuse, not a crash of the format
+    choice that runs before it."""
+    model = tmp_path / 'torn.gguf'
+    model.write_bytes(b'GGUF' + b'\x01' * 4096)
+    provider._requires.cache_clear()
+    assert provider.required(model) is False
+    assert provider.for_model(LlamaServerBackend(), model, {}).__class__ is LlamaServerBackend

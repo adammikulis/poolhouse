@@ -129,6 +129,50 @@ def summary(args: argparse.Namespace) -> int:
     return 0
 
 
+def calibrate(args: argparse.Namespace) -> int:
+    """Abstain-floor calibration on the recordings: for each floor, the abstain rate and how often a kept action was followed by worse."""
+    samples = []
+    for path in sorted(Path(args.dir).glob("*.json")):
+        rec = json.loads(path.read_text())
+        if rec.get("schema") != bundle.RECORDING or rec["meta"]["backend"]["mode"] != "recorded":
+            continue
+        scn = scenarios.scenario(rec["meta"]["scenario"]["key"])
+        doc = bundle.export(bundle.replay(rec, scn), scn, rec["meta"]["backend"], with_whatif=False)
+        for d in doc["decisions"]:
+            cls = d["answers"].get("class")
+            if d["kind"] == "decision" and cls and "outcome" in d:
+                samples.append((max(cls["scores"].values()), d["outcome"]["verdict"] == "worse", d["applied"] is not None
+                              and d["applied"]["cls"] not in ("hold", "orm_print")))
+    print(f"{len(samples)} class decisions over the recordings\n| floor | abstain rate | worse after a kept action | worse after an abstained one |\n|---|---|---|---|")
+    for floor in (0.2, 0.3, 0.4, 0.5, 0.6, 0.7):
+        kept = [w for top, w, _ in samples if top >= floor]
+        held = [w for top, w, _ in samples if top < floor]
+        def rate(xs):
+            return f"{100 * sum(xs) / len(xs):.0f}% of {len(xs)}" if xs else "none"
+        print(f"| {floor:.2f} | {100 * len(held) / len(samples):.0f}% | {rate(kept)} | {rate(held)} |")
+    return 0
+
+
+def index_cmd(args: argparse.Namespace) -> int:
+    """Write recordings/index.json and rename each recording to <scenario>-<model-id>-<date>.json."""
+    out = []
+    for path in sorted(Path(args.dir).glob("*.json")):
+        rec = json.loads(path.read_text())
+        if rec.get("schema") != bundle.RECORDING:
+            continue
+        meta, key = rec["meta"], rec["meta"]["scenario"]["key"]
+        name = f"{key}-{meta['backend']['model']}-{meta['backend']['recorded_at']}.json"
+        if path.name != name:
+            path.rename(path.with_name(name))
+        out.append({"file": name, "scenario": key, "title": meta["scenario"]["title"], "group": meta["scenario"]["group"],
+                    "model": meta["backend"]["model"], "recorded_at": meta["backend"]["recorded_at"],
+                    "abstain_below": meta["backend"]["abstain_below"], "verdict": rec["outcome"]["verdict"],
+                    "why": rec["outcome"]["why"], "peak_MW": rec["outcome"]["peak_MW"]})
+    _write(Path(args.dir) / "index.json", {"schema": "rbmk-operator-index/1", "recordings": out})
+    print(f"{len(out)} recordings indexed")
+    return 0
+
+
 def selftest(args: argparse.Namespace) -> int:
     """Ask the real model one full hierarchical decision about a poisoned start and print every probability."""
     from poolhouse.serve import gpu
@@ -142,7 +186,7 @@ def selftest(args: argparse.Namespace) -> int:
         print(f"SELFTEST FAILED: {exc}", file=sys.stderr)
         return 2
     for name, a in prop.answers.items():
-        print(f"{name}: {a['choice']} { {k: round(v, 3) for k, v in a['scores'].items()} }")
+        print(f"{name}: {a['choice']} { {k: round(v, 3) for k, v in a['scores'].items()} } tokens={a.get('tokens')}")
     print(f"model {asker.model}; proposed {prop.cls} {prop.target} step {prop.step} ({prop.source})")
     return 0
 
@@ -171,6 +215,12 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("summary")
     p.add_argument("dir")
     p.set_defaults(fn=summary)
+    p = sub.add_parser("calibrate")
+    p.add_argument("dir")
+    p.set_defaults(fn=calibrate)
+    p = sub.add_parser("index")
+    p.add_argument("dir")
+    p.set_defaults(fn=index_cmd)
     p = sub.add_parser("selftest")
     p.add_argument("scenario", nargs="?", default="poisoned_a")
     p.set_defaults(fn=selftest)
