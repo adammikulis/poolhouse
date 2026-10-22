@@ -256,6 +256,23 @@ class Real:
             held.release(info)
 
     @contextmanager
+    def pointer(self) -> Iterator[str]:
+        """The released Strands decider (pointer backend, in this process) under the GPU hold; yields its model id.
+
+        Fails, never skips, naming the command that fixes it, when the checkpoint is not in the cache.
+        """
+        from poolhouse.decide import router
+        from poolhouse.decide.pins import STRANDS_V19
+        from poolhouse.serve import gpu
+
+        why = router.unavailable("pointer", router.Config(backend="pointer"))
+        stop(f"REAL MODEL MISSING: the Strands decider {STRANDS_V19.name} cannot run here ({why}). A test of a model never runs on a "
+             "stand-in and never skips; fetch it once: poolhouse-decide fetch" if why else "")
+        self.idle()
+        with gpu.hold("test of the Strands decider", wait_s=BUSY_WAIT_S):
+            yield STRANDS_V19.name
+
+    @contextmanager
     def leased(self, use: str, **options: Any) -> Iterator[native.Leased]:
         """The guard's own lease (`native.Leased`) on the model pinned for ``use``, closed on exit."""
         _binary, model = self._ready(use)
