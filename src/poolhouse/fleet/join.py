@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home
+from poolhouse import home, spawned
 from poolhouse.checks import line as fix_line
 from poolhouse.files import UNVERSIONED, read_json, version_of, versioned, write_json
 from poolhouse.http import Options, ServerError, ServerUnreachable, json_body, request_bytes
@@ -494,9 +494,7 @@ def join_machine(request: JoinRequest = DEFAULT_JOIN, *, hooks: JoinHooks = DEFA
             joined.daemon_pid = _start_selected(hooks.start, joined, request.pool_key_path)
             joined.started = True
             hooks.say(f"started the daemon (pid {joined.daemon_pid}); waiting for it to answer")
-            if wait_for_health(request.port, seconds=request.wait_s) is None:
-                raise JoinError(f"the daemon did not answer on port {request.port} within "
-                                f"{request.wait_s:.0f}s; its log is {root / 'traind.log'}")
+            _daemon_answers(request, joined.daemon_pid, root)
             running = already_running(request.port) or {}
         joined.name = str((running or {}).get("name") or request.name)
         joined.machine = str((running or {}).get("machine") or "")
@@ -508,6 +506,18 @@ def join_machine(request: JoinRequest = DEFAULT_JOIN, *, hooks: JoinHooks = DEFA
                          port=request.admission.port, self_machine=joined.machine, finder=hooks.finder)
     hooks.say(table(joined.members))
     return joined
+
+
+def _daemon_answers(request: JoinRequest, pid: int, root: Path) -> None:
+    """Wait for the daemon started as ``pid`` to answer; `JoinError` says why when it ends or does not."""
+    log = root / "traind.log"
+    try:
+        answered = wait_for_health(request.port, seconds=request.wait_s, child=spawned.child_of(pid))
+    except spawned.StartFailed as exc:
+        raise JoinError(f"{exc}; its log is {log}") from exc
+    if answered is None:
+        raise JoinError(f"the daemon did not answer on port {request.port} within "
+                        f"{request.wait_s:.0f}s; its log is {log}")
 
 
 def _start_selected(start: Callable[[int, Path, str], int] | None, joined: Joined,

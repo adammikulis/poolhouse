@@ -131,6 +131,11 @@ def server_problem(account: Path) -> tuple[Path | None, str]:
                     "(or point POOLHOUSE_TEST_LLAMA_SERVER at a build).")
 
 
+def computing() -> list[Any]:
+    """The llama-servers running now; a defunct one (killed, its parent has not yet reaped it) computes nothing."""
+    return [one for one in every_server() if not (isinstance(one, dict) and one.get("defunct"))]
+
+
 def busy_problem(running: list[Any]) -> str:
     """Why a model cannot start beside the servers already running, each named; "" when none is."""
     if not running:
@@ -209,9 +214,9 @@ class Real:
         """Waits up to ``wait`` seconds (``busy_wait`` unless given) for another llama-server to finish (a second
         request waits for the first), then fails naming it: one thing computes at a time."""
         deadline = time.monotonic() + (self.busy_wait if wait is None else wait)
-        while every_server() and time.monotonic() < deadline:
+        while computing() and time.monotonic() < deadline:
             time.sleep(2)
-        stop(busy_problem(every_server()))
+        stop(busy_problem(computing()))
 
     def require_metal_gpu(self) -> None:
         """Fails, saying there is no GPU, on a machine that is not a Mac."""

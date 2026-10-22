@@ -34,7 +34,8 @@ from its next handshake and next request. The pool key stays as the secret that 
 signs and seals request bodies (defence in depth); a device that is revoked still knows it until the
 key is rotated (docs/pool-encryption.md, slice 7). Production admission protects its pool key, 256 random bits that
 no passphrase derives. Development admission extends this trust to nearby devices through
-its automatic TLS handshake. The passphrase is only a password for the Production join handshake, which locks out a
+its automatic TLS handshake, and a member of a pool in dev mode runs the test shards (a tree of code and test files) that any
+member sends it, as its user, until a person runs `poolhouse features disable remote-tests` there (docs/test-farm.md). The passphrase is only a password for the Production join handshake, which locks out a
 source that keeps failing, so it is at least 5 characters; `poolhouse-members init` makes a key with
 no passphrase. A job a device submits is limited to an allowlist of Poolhouse commands
 (`docs/fleet.md`).

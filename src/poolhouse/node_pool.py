@@ -1,8 +1,9 @@
-"""The node's pool of devices, for a machine that joined it without a pool key.
+"""The node's pool of devices.
 
-The node (``poolhouse-node run --lan``) takes the project of the repository it runs in, listens for an open pool of that
-project, joins the one it hears and makes one when it hears none (docs/sentinel-open-join.md, 3.7). Nothing here asks for
-a key file: this reads who is in that pool from the running node.
+The node (``poolhouse-node run --lan``) takes the project of the repository it runs in and listens for an open pool of that
+project; it joins the one it hears and founds none, because a pool is founded by a person's key (docs/node.md, "The unfounded
+pool of one"). Two devices that pool with no person's key are the daemons of a pool in dev mode (docs/fleet.md, "Two devices on a
+LAN"). Nothing here asks for a key file: this reads who is in the node's pool from the running node.
 """
 
 from __future__ import annotations

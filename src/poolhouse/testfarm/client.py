@@ -33,7 +33,7 @@ def pool_devices(state: Path | None = None) -> list[dict]:
     except (OSError, ValueError) as exc:
         raise ShardError(f"no node answers on this device ({exc}); start it with `python -m poolhouse.device_setup --yes`") from None
     return [{"name": m.get("name") or m["fingerprint"][:12], "fingerprint": m["fingerprint"], "addr": m.get("addr") or "",
-             "connected": bool(m.get("connected")), "reach": m.get("reach", "unknown"), "reach_hint": m.get("reach_hint", "")}
+             "connected": bool(m.get("connected")), "reach": m.get("reach", "unknown"), "reach_hint": m.get("reach_hint", ""), "via": "node"}
             for m in pool.get("members", []) if m.get("status") == "active" and not m.get("self")]
 
 

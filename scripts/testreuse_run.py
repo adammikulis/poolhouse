@@ -17,6 +17,7 @@ from pathlib import Path
 
 import testreuse_key as keys
 import testreuse_store as storage
+import testselectors
 from testreuse_narrow import narrowed
 
 from poolhouse.log import warn
@@ -111,7 +112,7 @@ def selectors(command: list[str], root: Path) -> list[str] | None:
         if "::" in word or (root / word).is_dir():
             return None
         if (root / word).is_file() and word.endswith(".py"):
-            files.append(word)
+            files.append(testselectors.canonical(word, root))
     return files or None
 
 
@@ -209,7 +210,9 @@ class Session:
 
     def __init__(self, root: Path, command: list[str], files: list[str] | None, store: storage.Store,
                  events: Events | None = None) -> None:
-        self.root, self.command, self.files, self.store = root, command, files, store
+        self.root, self.store = root, store
+        self.command = testselectors.relative(command, root)
+        self.files = None if files is None else testselectors.relative(files, root)
         self.events = events or Events()
         self.narrow = narrowed(command)
         self.closures = keys.Closures(root, keys.import_facts(store.folder))

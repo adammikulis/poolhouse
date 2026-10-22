@@ -1,10 +1,11 @@
-"""The client against an Ollama server and against a hosted OpenAI one, on a fake socket.
+"""The client against an Ollama server and against a hosted OpenAI one, on a canned socket.
 
 Every reply here is shaped exactly as the Ollama API documents it
 (https://github.com/ollama/ollama/blob/main/docs/api.md): ``/api/chat`` with the
 nanosecond durations, ``/api/show`` with ``details``, ``/api/ps``, ``/api/tags`` and
-``/api/version``. No request reaches port 11434 or 8080; the fake server answers on an
-ephemeral port and psutil is faked in place.
+``/api/version``. No request reaches port 11434 or 8080; the canned server answers on an
+ephemeral port and psutil is faked in place. It is not a model: the one it names is the canned id,
+and the text of every chat reply begins with the marker.
 """
 
 from __future__ import annotations
@@ -18,8 +19,10 @@ from conftest import json_reply
 from poolhouse.client import Client, Request, Transport, ollama
 from poolhouse.client.spent import Spent
 from poolhouse.telemetry import Call
+from poolhouse.testing.canned import CANNED_MARKER, CANNED_MODEL_ID, marked
 
-MODEL = "qwen3.8-flash-next:125b-mlx"
+MODEL = CANNED_MODEL_ID
+QWEN_TAG = "qwen3.8-flash-next:125b-mlx"
 
 
 def ollama_chat_reply(*, content="ok", thinking=None, tool_calls=None, done_reason="stop",
@@ -27,12 +30,12 @@ def ollama_chat_reply(*, content="ok", thinking=None, tool_calls=None, done_reas
                       eval_duration=400_000_000, load_duration=2_000_000_000,
                       total_duration=2_600_000_000):
     """One final ``/api/chat`` response, durations in nanoseconds as Ollama sends them."""
-    message = {"role": "assistant", "content": content}
+    message = {"role": "assistant", "content": marked(content)}
     if thinking is not None:
         message["thinking"] = thinking
     if tool_calls is not None:
         message["tool_calls"] = tool_calls
-    return {"model": MODEL, "created_at": "2026-09-03T00:00:00Z", "message": message,
+    return {"model": MODEL, "x_canned": CANNED_MARKER, "created_at": "2026-09-03T00:00:00Z", "message": message,
             "done": True, "done_reason": done_reason, "total_duration": total_duration,
             "load_duration": load_duration, "prompt_eval_count": prompt_eval_count,
             "prompt_eval_duration": prompt_eval_duration, "eval_count": eval_count,
@@ -189,8 +192,8 @@ class TestOllamaChat:
         method, path, body = fake.requests[-1]
         assert (method, path) == ("POST", "/api/chat")
         assert json.loads(body)["model"] == MODEL and json.loads(body)["stream"] is False
-        assert reply.content == "Iris surveys land." and reply.thinking == "who surveys?"
-        assert reply.finish_reason == "stop" and reply.raw["model"] == MODEL
+        assert reply.content == marked("Iris surveys land.") and reply.thinking == "who surveys?"
+        assert reply.finish_reason == "stop" and reply.raw["model"] == CANNED_MODEL_ID
 
     def test_tool_calls_come_back_in_the_openai_shape(self, server):
         fake = an_ollama(server, ollama_chat_reply(content="", tool_calls=[
@@ -392,7 +395,7 @@ class TestProcesses:
 class TestFamilyOnOllama:
     def test_the_tag_names_the_family_without_a_probe(self, server):
         fake = an_ollama(server)
-        c = Client(fake.base_url, model=MODEL, transport=Transport(api="ollama"))
+        c = Client(fake.base_url, model=QWEN_TAG, transport=Transport(api="ollama"))
         assert c.family.name == "qwen"
         assert fake.requests == []
 
@@ -402,7 +405,7 @@ class TestFamilyOnOllama:
 
         forget_families()
         c = Client(fake.base_url, transport=Transport(api="ollama"))
-        assert c.family.name == "qwen"
+        assert c.family.name == "generic", "the canned id names no family"
         assert [path for _, path, _ in fake.requests] == ["/v1/models"]
 
     def test_the_card_does_not_ask_for_props(self, server):

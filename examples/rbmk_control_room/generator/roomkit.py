@@ -22,6 +22,11 @@ EMISSIVE = {"light_panel": ((1.0, 0.98, 0.92), 6.0), "hall_glow": ((0.70, 0.82, 
 _MATS: dict[str, bpy.types.Material] = {}
 
 
+def reset_materials() -> None:
+    """Forget the cached materials (after the Blender file was reset)."""
+    _MATS.clear()
+
+
 def material(name: str, rgb=(0.5, 0.5, 0.5), rough: float = 0.6, metal: float = 0.0,
              emit=None, strength: float = 1.0) -> bpy.types.Material:
     """Create (once) a Principled material that exports to glTF."""

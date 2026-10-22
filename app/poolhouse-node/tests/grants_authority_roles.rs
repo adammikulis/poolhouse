@@ -167,3 +167,29 @@ fn a_removed_admins_grants_stop_counting_and_the_revoke_it_signed_before_still_h
     s.dev.node.lock().unwrap().persons.remove(&holder(A).fingerprint(), kit::grants::now_ms()).unwrap();
     assert_eq!(s.state(&other).0, "revoked", "and so does it when this device forgets the key");
 }
+
+/// The reply to the key ``by`` cutting the key ``subject`` off, through the call.
+fn distrust_by(s: &Seeded, by: u8, subject: u8) -> Value {
+    let fingerprint = holder(subject).fingerprint();
+    let (pool, since) = {
+        let node = s.dev.node.lock().unwrap();
+        let gov = node.members.gov().unwrap();
+        (gov.id.clone(), gov.state().chain.latest().charter.admins.iter().find(|k| k.fingerprint() == fingerprint).map_or(0, |k| k.since))
+    };
+    let mut body = serde_json::Map::new();
+    for (k, v) in [("op", json!("distrust")), ("board", json!("pool")), ("key", json!(fingerprint)), ("since", json!(since)), ("pool", json!(pool)),
+                   ("person", json!(holder(by).fingerprint())), ("at_ms", json!(kit::grants::now_ms())), ("reason", json!("its key was lost"))] {
+        body.insert(k.into(), v);
+    }
+    s.dev.call("grant_distrust", "", &s.dev.token, holder(by).sign_params(body))
+}
+
+#[test]
+fn the_recovery_key_cuts_no_key_off_where_the_weak_key_does() {
+    let s = Seeded::new();
+    let by_recovery = distrust_by(&s, D, A);
+    assert_eq!(code(&by_recovery), "denied", "{by_recovery}");
+    assert_eq!(s.authority(), sorted(&[A, B, C]), "a distrust row of the recovery key cut nothing off");
+    ok(distrust_by(&s, W, A));
+    assert_eq!(s.authority(), sorted(&[B, C]), "the weak admin key cut A off");
+}

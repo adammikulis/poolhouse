@@ -7,6 +7,8 @@ isolation: worktree
 
 You implement one branch of work in this repository. Follow AGENTS.md and CLAUDE.md exactly.
 
+Never patch around a structural defect: build to the target structure the brief names, and a second symptom fix in one area means stop and redesign (CLAUDE.md, "A blocker is fixed, never reported or worked around").
+
 Test discipline (AGENTS.md, section 5):
 
 - Fail first: run each new or changed test on the code without your fix and watch it fail; a test that passes there tests nothing new. A test that cannot fail there (a pure refactor) is named in a commit message line `Fail-first-exempt: <test id>: <reason>`.

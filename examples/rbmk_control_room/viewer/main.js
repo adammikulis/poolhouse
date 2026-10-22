@@ -3,9 +3,10 @@ import * as THREE from 'three';
 import { GLTFLoader } from './vendor/loaders/GLTFLoader.js';
 import { RoomEnvironment } from '../../../src/poolhouse/ui/assets/RoomEnvironment.js';
 import { Feed } from './feed.js';
+import { bindReplay, loadSpec, setHeader } from './header.js';
 import { Driver } from './drive.js';
 import { Navigator } from './fly.js';
-import { describe, instrumentOf } from './cards.js';
+import { describe, fillCard, instrumentOf } from './cards.js';
 import { paintFloor, paintCeiling, paintMimic } from './paint.js';
 
 const $ = (id) => document.getElementById(id);
@@ -37,41 +38,8 @@ function resize() {
 }
 addEventListener('resize', resize);
 
-function setHeader() {
-  const badge = $('badge');
-  const model = $('model');
-  const banner = $('banner');
-  banner.hidden = true;
-  if (feed.status === 'loading') {
-    badge.textContent = 'LOADING';
-    badge.className = 'badge warn';
-    return;
-  }
-  if (feed.status === 'error') {
-    badge.textContent = 'NO FEED';
-    badge.className = 'badge bad';
-    model.textContent = 'model: none';
-    $('scenario').textContent = '';
-    banner.hidden = false;
-    banner.textContent = `NO FEED. ${feed.error}. Every instrument is dark and nothing here is simulated. Run the demo's exporter and reload (see README).`;
-    return;
-  }
-  const d = feed.data;
-  const mode = feed.live ? (feed.stalled ? 'LIVE: STALLED' : feed.finished ? 'LIVE RUN FINISHED' : 'LIVE') : 'REPLAY';
-  badge.textContent = mode;
-  badge.className = `badge ${feed.live && !feed.stalled && !feed.finished ? 'live' : feed.stalled ? 'bad' : 'warn'}`;
-  const id = feed.modelId;
-  model.textContent = id ? `model: ${id}` : `model: none in this feed (controller: ${d.controller})`;
-  $('scenario').textContent = `${d.scenario}  tick ${feed.row.tick}  t ${feed.row.t_s} s`;
-  if (d.meta.model && id && d.meta.model !== id) {
-    banner.hidden = false;
-    banner.textContent = `The feed header names model ${d.meta.model} but its answers came from ${id}.`;
-  }
-  const slider = $('scrub');
-  slider.max = d.trace.length - 1;
-  slider.value = feed.index;
-  $('replay').hidden = feed.live;
-  $('playpause').textContent = feed.playing ? 'Pause' : 'Play';
+function refreshHeader() {
+  setHeader(feed, $);
 }
 
 function applyMaterials(root) {
@@ -110,15 +78,7 @@ function collectBookmarks(root) {
 }
 
 function showCard(key) {
-  const c = describe(key, state.spec, state.driver, feed);
-  $('card').hidden = false;
-  $('card-title').textContent = c.title;
-  $('card-tag').textContent = c.tag;
-  $('card-what').textContent = c.what;
-  $('card-range').textContent = c.range || 'none';
-  $('card-modelled').textContent = c.modelled;
-  $('card-now').textContent = c.now || '';
-  $('card-now-row').hidden = !c.now;
+  fillCard($, describe(key, state.spec, state.driver, feed));
   state.cardKey = key;
 }
 
@@ -153,9 +113,8 @@ function buildUi() {
     $('mode').textContent = next === 'fly' ? 'Switch to orbit' : 'Switch to fly';
   };
   $('card-close').onclick = () => { $('card').hidden = true; };
-  $('playpause').onclick = () => { feed.playing = !feed.playing; setHeader(); };
-  $('scrub').oninput = (e) => { feed.playing = false; feed.setIndex(+e.target.value); };
-  $('speed').onchange = (e) => { feed.speed = +e.target.value; };
+  bindReplay(feed, $, refreshHeader);
+  $('to2d').href = `room2d.html${location.search}`;
 }
 
 function goBookmark(id) {
@@ -180,12 +139,12 @@ async function loadRoom() {
 async function main() {
   resize();
   const [spec, gltf] = await Promise.all([
-    fetch('../instruments.json').then((r) => r.json()),
+    loadSpec(),
     loadRoom(),
   ]);
   feed = new Feed(FEED_URL, spec.feed_trace_fields);
   window.__room.feed = feed;
-  feed.onchange = setHeader;
+  feed.onchange = refreshHeader;
   state.spec = spec;
   state.root = gltf.scene;
   scene.add(gltf.scene);
@@ -216,7 +175,7 @@ async function main() {
     }
     if (feed.live && Math.floor(now / 1000) !== state.lastHeader) {
       state.lastHeader = Math.floor(now / 1000);
-      setHeader();
+      refreshHeader();
     }
     renderer.render(scene, camera);
   });
