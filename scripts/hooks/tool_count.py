@@ -1,4 +1,4 @@
-"""A subagent's tool-call count and the wrap-up warnings it earns; imports nothing from poolhouse so each call stays cheap."""
+"""A subagent's tool-call count and the exclusive markers kept beside it; imports nothing from poolhouse so each call stays cheap."""
 
 from __future__ import annotations
 
@@ -8,13 +8,10 @@ from pathlib import Path
 
 import hook_state
 
-LIMIT = 150
-WARN_AT = (120, 140)
-
 
 def stem(agent_id: str) -> Path:
-    """The path prefix of this subagent's count file and warning markers."""
-    folder = hook_state.state_dir() / "wrap-up"
+    """The path prefix of this subagent's count file and markers."""
+    folder = hook_state.state_dir() / "tool-count"
     folder.mkdir(parents=True, exist_ok=True, mode=0o700)
     return folder / hashlib.sha256(agent_id.encode()).hexdigest()[:24]
 
@@ -45,22 +42,18 @@ def record(agent_id: str, call_id: str = "") -> int:
         os.close(descriptor)
 
 
-def claim(agent_id: str, level: int, kind: str = "warned") -> bool:
+def claim(agent_id: str, kind: str, level: int) -> bool:
     """Whether this call is the first to claim the ``kind`` marker for ``level`` (an exclusive marker file decides)."""
     return mark(f"{stem(agent_id)}.{kind}-{level}")
 
 
-def warning(agent_id: str, count: int) -> str:
-    """The wrap-up text owed at this count, or an empty string when none is due."""
-    for level in reversed(WARN_AT):
-        if count >= level and claim(agent_id, level):
-            return (f"You have made {count} tool calls and are stopped at {LIMIT} with no chance to commit. Wrap up now: "
-                    "commit what is green by named files, push, clean up your worktree and report. Start no new work.")
-    return ""
+def release(agent_id: str, kind: str, level: int) -> None:
+    """Give a claimed marker back, so that the next call claims it again."""
+    Path(f"{stem(agent_id)}.{kind}-{level}").unlink(missing_ok=True)
 
 
 def clear(agent_id: str) -> None:
-    """Forget this subagent's count, call markers and warnings."""
+    """Forget this subagent's count and markers."""
     prefix = stem(agent_id)
     for path in prefix.parent.glob(f"{prefix.name}.*"):
         path.unlink(missing_ok=True)

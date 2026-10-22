@@ -1,7 +1,7 @@
 """The lead's notice when a subagent reaches 100 tool calls and every 50 after; it informs and never limits or stops the subagent.
 
-The count is the wrap-up hook's (`wrap_up.record`). Nothing from poolhouse is imported until a milestone is reached, so an
-ordinary tool call stays cheap. The interval is `POOLHOUSE_TOOL_MILESTONE_EVERY` (default 50); the first milestone is 100.
+The count is `tool_count`'s. Nothing from poolhouse is imported until a milestone is reached, so an ordinary tool call stays
+cheap. The interval is `POOLHOUSE_TOOL_MILESTONE_EVERY` (default 50); the first milestone is 100.
 """
 
 from __future__ import annotations
@@ -10,10 +10,9 @@ import os
 import subprocess
 import sys
 import time
-from pathlib import Path
 
 import subagent_records
-import wrap_up
+import tool_count
 
 FIRST = 100
 EVERY = 50
@@ -73,9 +72,9 @@ def failed(agent: str, level: int, count: int, why: str) -> str:
     import workspace_hook
     reason = workspace_hook.redacted(why)[:200]
     workspace_hook.warning("PostToolUse", f"milestone notice at {level} tool calls not delivered: {reason}")
-    attempt = next((n for n in range(1, TRIES + 1) if wrap_up.claim(agent, level, f"milestone-try{n}")), TRIES)
+    attempt = next((n for n in range(1, TRIES + 1) if tool_count.claim(agent, f"try{n}", level)), TRIES)
     if attempt < TRIES:
-        Path(f"{wrap_up.stem(agent)}.milestone-{level}").unlink(missing_ok=True)
+        tool_count.release(agent, "milestone", level)
         return ""
     return (f"The lead could not be told that you reached {count} tool calls ({reason}). Say so in your final report so it can "
             "decide whether to check in.")
@@ -84,7 +83,7 @@ def failed(agent: str, level: int, count: int, why: str) -> str:
 def check(event: dict, agent: str, count: int) -> str:
     """Tell the lead if this call is the first to reach a milestone; text for the subagent's context when the lead could not be told."""
     level = reached(count, interval())
-    if not level or not wrap_up.claim(agent, level, "milestone"):
+    if not level or not tool_count.claim(agent, "milestone", level):
         return ""
     try:
         why = tell(event, count)

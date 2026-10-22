@@ -1,4 +1,4 @@
-"""The lead is told when a subagent reaches 100 tool calls and every 50 after; the count is shared with the wrap-up hook."""
+"""The lead is told when a subagent reaches 100 tool calls and every 50 after; the notice informs and never limits."""
 
 from __future__ import annotations
 
@@ -59,14 +59,14 @@ def event(tmp_path: Path, agent: str = NATIVE, **more: object) -> dict:
             "cwd": str(tmp_path), "agent_id": agent, "agent_type": "general-purpose", **more}
 
 
-def call(payload: dict, script: str = "claude-wrap-up"):
+def call(payload: dict, script: str = "claude-tool-milestones"):
     return subprocess.run([sys.executable, str(HOOKS / script)], input=json.dumps(payload), text=True, capture_output=True,
                           timeout=60, check=False)
 
 
 def preload(agent: str, calls: int) -> None:
-    import wrap_up
-    target = Path(f"{wrap_up.stem(agent)}.count")
+    import tool_count
+    target = Path(f"{tool_count.stem(agent)}.count")
     target.write_bytes(b"." * calls)
 
 
@@ -83,21 +83,21 @@ def describe(tmp_path: Path, text: str = "Build the counter") -> None:
 
 
 def test_a_repeated_event_is_counted_once(board):
-    import wrap_up
+    import tool_count
     _, tmp_path = board
     for _ in range(3):
         assert call(event(tmp_path, tool_use_id="toolu_one")).returncode == 0
     assert call(event(tmp_path, tool_use_id="toolu_two")).returncode == 0
-    assert Path(f"{wrap_up.stem(NATIVE)}.count").stat().st_size == 2
+    assert Path(f"{tool_count.stem(NATIVE)}.count").stat().st_size == 2
 
 
 @pytest.mark.parametrize(("before", "level"), [(98, None), (99, 100), (100, None), (148, None), (149, 150), (199, 200), (299, 300)])
 def test_the_lead_is_told_at_100_and_every_50_after(board, before, level):
-    import wrap_up
+    import tool_count
     name, tmp_path = board
     preload(NATIVE, before)
     for step in range(100, before + 1, 50):
-        Path(f"{wrap_up.stem(NATIVE)}.milestone-{step}").touch()
+        Path(f"{tool_count.stem(NATIVE)}.milestone-{step}").touch()
     done = call(event(tmp_path, tool_use_id="toolu_x"))
     assert done.returncode == 0 and not done.stderr
     sent = posts(tmp_path)
@@ -112,9 +112,9 @@ def test_the_lead_is_told_at_100_and_every_50_after(board, before, level):
 def test_the_interval_is_a_setting(board, monkeypatch):
     _, tmp_path = board
     monkeypatch.setenv("POOLHOUSE_TOOL_MILESTONE_EVERY", "10")
-    import wrap_up
+    import tool_count
     preload(NATIVE, 109)
-    Path(f"{wrap_up.stem(NATIVE)}.milestone-100").touch()
+    Path(f"{tool_count.stem(NATIVE)}.milestone-100").touch()
     assert call(event(tmp_path, tool_use_id="toolu_y")).returncode == 0
     assert len(posts(tmp_path)) == 1 and "110 tool calls" in posts(tmp_path)[0][3]
 
@@ -213,13 +213,13 @@ def test_an_unnamed_subagent_fails_loudly(board):
 
 
 def test_the_stop_hook_forgets_the_milestones(board):
-    import wrap_up
+    import tool_count
     _, tmp_path = board
     preload(NATIVE, 99)
     assert call(event(tmp_path, tool_use_id="toolu_s")).returncode == 0
-    assert list(wrap_up.stem(NATIVE).parent.glob(f"{wrap_up.stem(NATIVE).name}.*"))
+    assert list(tool_count.stem(NATIVE).parent.glob(f"{tool_count.stem(NATIVE).name}.*"))
     assert call({**event(tmp_path), "hook_event_name": "SubagentStop"}, "claude-subagent-stop").returncode == 0
-    assert not list(wrap_up.stem(NATIVE).parent.glob(f"{wrap_up.stem(NATIVE).name}.*"))
+    assert not list(tool_count.stem(NATIVE).parent.glob(f"{tool_count.stem(NATIVE).name}.*"))
 
 
 def test_the_start_hook_records_when_the_subagent_began(board):
@@ -238,14 +238,14 @@ def test_the_settings_call_the_hook_that_posts(board):
     settings = json.loads((ROOT / ".claude" / "settings.json").read_text())
     commands = [hook["command"] for group in settings["hooks"]["PostToolUse"] if not group.get("matcher")
                 for hook in group["hooks"]]
-    wired = [c for c in commands if c.endswith("/claude-wrap-up")]
+    wired = [c for c in commands if c.endswith("/claude-tool-milestones")]
     assert len(wired) == 1
     preload(NATIVE, 99)
     path = os.pathsep.join([os.environ["PATH"], str(Path(sys.executable).parent)])
     done = subprocess.run([wired[0].replace("$CLAUDE_PROJECT_DIR", str(ROOT))], input=json.dumps(event(tmp_path, tool_use_id="toolu_w")),
                           text=True, capture_output=True, timeout=60, check=False, env={**os.environ, "PATH": path})
     assert done.returncode == 0 and len(posts(tmp_path)) == 1
-    assert os.access(HOOKS / "claude-wrap-up", os.X_OK)
+    assert os.access(HOOKS / "claude-tool-milestones", os.X_OK)
     assert settings["hooks"]["PostToolUse"][-1]["hooks"][-1]["timeout"] >= 15
 
 
@@ -269,3 +269,41 @@ def test_the_lead_finds_the_notice_in_its_inbox(workspace_node, tmp_path, monkey
     assert done.returncode == 0 and not done.stderr, done.stderr
     bodies = [e.text for e in workspace_node.session(lead).read(inbox=True).entries]
     assert any(child.name in body and "100 tool calls" in body for body in bodies), bodies
+
+
+def test_each_subagent_has_its_own_count_and_the_main_session_has_none(board):
+    import tool_count
+    _, tmp_path = board
+    assert call(event(tmp_path, agent="agent-other", tool_use_id="toolu_o1")).returncode == 0
+    main = {key: value for key, value in event(tmp_path, tool_use_id="toolu_main").items() if key not in ("agent_id", "agent_type")}
+    for payload in (main, {**main, "agent_id": ""}):
+        assert call(payload).returncode == 0
+    assert call(event(tmp_path, tool_use_id="toolu_o2")).returncode == 0
+    assert Path(f"{tool_count.stem('agent-other')}.count").stat().st_size == 1
+    assert Path(f"{tool_count.stem(NATIVE)}.count").stat().st_size == 1
+    assert len(list(tool_count.stem(NATIVE).parent.glob("*.count"))) == 2
+
+
+def test_a_bad_event_is_ignored_and_a_unreadable_one_says_so(board):
+    for text in ("", "not json", "[1]", "null"):
+        done = subprocess.run([sys.executable, str(HOOKS / "claude-tool-milestones")], input=text, text=True, capture_output=True,
+                              timeout=30, check=False)
+        assert done.returncode == 0 and not done.stdout
+        assert bool(done.stderr) is (text in ("", "not json"))
+
+
+def test_each_call_costs_a_bounded_amount(board):
+    """An ordinary call imports nothing from poolhouse, leaves two small files and takes well under a second."""
+    import tool_count
+    _, tmp_path = board
+    program = (f"import runpy, sys; sys.argv = ['claude-tool-milestones']; sys.path.insert(0, {str(HOOKS)!r})\n"
+               f"try:\n    runpy.run_path({str(HOOKS / 'claude-tool-milestones')!r}, run_name='__main__')\nexcept SystemExit:\n    pass\n"
+               "print(sorted(name for name in sys.modules if name.split('.')[0] in ('poolhouse', 'workspace_hook')))")
+    done = subprocess.run([sys.executable, "-c", program], input=json.dumps({"agent_id": NATIVE, "tool_use_id": "toolu_b0"}), text=True,
+                          capture_output=True, timeout=30, check=False)
+    assert done.stdout.strip() == "[]", done.stderr
+    started = time.monotonic()
+    for number in range(1, 31):
+        call(event(tmp_path, tool_use_id=f"toolu_b{number}"))
+    assert (time.monotonic() - started) / 30 < 0.5
+    assert Path(f"{tool_count.stem(NATIVE)}.count").stat().st_size == 31
