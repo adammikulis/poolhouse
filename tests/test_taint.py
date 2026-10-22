@@ -1,7 +1,10 @@
 """Taint tracking: the ledger, the sinks, the rail, and the agent loop that runs them by default.
 
 Everything runs on real objects: the real rails chained by `poolhouse.guard`, the real agent loop
-against a scripted llama-server on a socket, the real compaction.
+against the canned server on a socket, the real compaction.
+
+The agent-loop tests exercise the rail and the loop, not a model: the canned server replies with scripted worst-case
+turns (a model that obeys an injected `shell` call), each reply carrying the canned marker.
 """
 
 from __future__ import annotations
@@ -46,7 +49,7 @@ from poolhouse.taint import (
     Sink,
     TaintRail,
 )
-from poolhouse.testing.tool_server import Turn
+from poolhouse.testing.canned import Turn
 
 # -- ledger -----------------------------------------------------------------------------
 

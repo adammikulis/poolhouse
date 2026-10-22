@@ -118,6 +118,7 @@ fn a_distrust_that_should_not_count_changes_nothing_and_no_row_ends_one() {
         let sig = sign_with(signer, &row);
         plant(&pool, row, sig).unwrap();
         assert_eq!(pool.authority(), vec![phone.clone()], "{what}");
+        assert_eq!(pool.grants()["distrusted"], json!([]), "{what}: the listing names no distrusted key");
     }
     let by_outsider = pool.rig.call("grant_distrust", "", &pool.token, outsider.sign_params(body(&phone, since, &pool_id(&pool), &outsider.fingerprint())));
     assert!(Founded::denial(&by_outsider).contains("counts for nothing"), "{by_outsider}");
@@ -134,6 +135,16 @@ fn a_distrust_that_should_not_count_changes_nothing_and_no_row_ends_one() {
     undo.insert("op".into(), json!("undistrust"));
     let _ = plant(&pool, undo, pool.phone.sign(b"undistrust"));
     assert!(pool.authority().is_empty(), "there is no row that ends a distrust");
+}
+
+#[test]
+fn a_distrust_row_at_or_before_the_floor_cuts_nothing_off() {
+    let pool = found();
+    ok(distrust(&pool, &pool.phone.fingerprint()));
+    assert!(pool.authority().is_empty(), "while no floor stands the distrust cuts the key off");
+    let pool = pool.restarted(|root| std::fs::write(root.join("grants_floor.json"), json!({"before_ms": now_ms() + 3_600_000}).to_string()).unwrap());
+    assert_eq!(pool.authority(), vec![pool.phone.fingerprint()], "a row at or before the floor counts for nothing");
+    assert_eq!(pool.grants()["distrusted"], json!([]));
 }
 
 #[test]
