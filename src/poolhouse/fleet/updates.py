@@ -27,6 +27,7 @@ from poolhouse.httpguard import Refused
 from poolhouse.lock import Busy
 from poolhouse.net import git as netgit, provenance
 from poolhouse.paths import repo_root
+from poolhouse.platform import reap_in_background
 from poolhouse.safenames import Unsafe, safe_filename, unpack
 
 from . import signing
@@ -363,9 +364,9 @@ def relaunch(*, delay_s: float = 1.5, stop: bool = True) -> bool:
         time.sleep(delay_s)
         try:
             if target.suffix == ".app":
-                subprocess.Popen(["open", "-n", str(target)])
+                reap_in_background(subprocess.Popen(["open", "-n", str(target)]))
             else:
-                subprocess.Popen([str(target)], start_new_session=True)
+                reap_in_background(subprocess.Popen([str(target)], start_new_session=True))
         finally:
             if stop:
                 os._exit(0)

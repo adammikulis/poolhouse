@@ -18,7 +18,7 @@ from typing import Any
 
 from poolhouse import errors, home, sentinel, serverkeys
 from poolhouse.client import families, wait_for_health
-from poolhouse.platform import process_group_kwargs
+from poolhouse.platform import end_child, process_group_kwargs
 from poolhouse.serve import confined as confinement, exit_guard, grant, kvcache, startup
 from poolhouse.serve.binary import child_env, require_binary
 from poolhouse.serve.downloads import LLAMA_FLAGS, clean_env, unlisted_flag
@@ -495,9 +495,7 @@ def launch(  # noqa: PLR0913 - the independent facts of one spawn; a bundle type
     base_url = f"http://{DEFAULT_HOST}:{port}"
     if not wait_for_health(base_url, timeout=timeout, is_alive=lambda: process.poll() is None):
         code = process.poll()
-        process.terminate()
-        with contextlib.suppress(subprocess.TimeoutExpired):
-            process.wait(timeout=5.0)
+        end_child(process, grace_s=5.0)
         exit_guard.release(process.pid)
         raise ServerFailed(
             f"{Path(argv[0]).name} did not become healthy on {base_url}"
