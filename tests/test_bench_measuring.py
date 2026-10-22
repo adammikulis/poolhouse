@@ -30,7 +30,7 @@ def _measurable(tmp_path, monkeypatch):
                                  "expect": ["topic:compiler"]}) + "\n")
     return ["--kept", str(tmp_path / "runs.ladybug"), "--graph", str(graph),
             "--questions", str(asked), "--client", "fake:client", "--no-smoke",
-            "--no-selfcheck", "--no-prefetch"]
+            "--no-prefetch"]
 
 
 def test_a_run_in_the_foreground_is_measuring_and_says_how_it_asks(tmp_path, monkeypatch,
@@ -108,7 +108,7 @@ def test_a_run_that_is_killed_leaves_no_live_record(tmp_path, monkeypatch, capsy
     monkeypatch.setattr(running, "_main", killed)
     monkeypatch.setattr(running, "_estimated", lambda rest: 0)
     with pytest.raises(SystemExit):
-        running.main(["run", "stopped", "--no-selfcheck", "--no-prefetch"])
+        running.main(["run", "stopped", "--no-prefetch"])
     capsys.readouterr()
     assert measuring() is None
     assert json.loads(measuring_file().read_text(encoding="utf-8"))["ended"]

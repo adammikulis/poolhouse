@@ -236,6 +236,14 @@ UDP on a real interface, on randomised ports so a run never answers -- or gets a
 by -- a daemon you actually have running on your LAN. A forged beacon, a replayed reply,
 a multicast group a router quietly drops: a fake socket reproduces none of those either.
 
+A test of what a model says, decides, ranks or calls runs a real one. `tests/real_model.py` is the harness: a test asks
+the `real` fixture for a use (`chat`, `decide`, `judge`, `tool_calling`, `embedding`, `rerank`, `vision`, `other`) and gets
+the smallest pinned GGUF for it on a llama-server leased through the broker, never started by hand. Run these tests with
+`--real-model` (`scripts/test all tests/test_serve_real_llama.py --real-model`); nothing in them skips: a missing model
+fails the test and names the `poolhouse-models fetch` command, a missing llama-server names `poolhouse-serve llama-cpp
+update`, and a machine without the Apple GPU a test needs says so. The nightly `real-model` job in `.github/workflows/ci.yml`
+runs the CPU-sized ones on a hosted runner. Detail: tests/README.md, "Real models".
+
 What *is* faked -- the model's answers, a `serve()` that would load 87G, a preflight that
 would read it -- is faked once, in `poolhouse.testing.fakes`, with the real signature.
 `FakeClient` is built exactly as `Client` is built, `fake_serve` / `FakeServe` take what
@@ -245,6 +253,15 @@ that accepts every keyword lets a test pass on a keyword the real thing refuses,
 how a `--also tight` flag once reached `Client.__init__` in a benchmark and took the load
 down with it. `tests/test_testing_fakes.py` diffs every fake's signature against the real
 one (`mirrors`, `drift`), so a change to the real one fails the suite until the fake follows.
+
+A test that needs a model's HTTP server and tests no model behaviour (ports, queues, framing) uses
+`poolhouse.testing.canned.CannedServer`, which says it is not a model: it reports the model
+`CANNED-NOT-A-MODEL`, begins every reply body `[CANNED RESPONSE, NOT A MODEL]` and sets
+`X-Canned-Response: not-a-model` on every response, errors and streams included, with no switch to turn that off.
+`unmarked()` drops only the text prefix, for a test whose subject is the framing text itself (JSON the client
+must parse); the header, the model id and the metadata stay. The `model-replies` gate refuses a model-shaped reply
+built anywhere else under `tests/`, and `scripts/gates/model_replies.txt` lists the files that still build them and
+only shrinks.
 
 ## Commit history by type
 

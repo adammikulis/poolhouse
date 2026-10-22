@@ -16,7 +16,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-# The package is the namespace the tests and `selfcheck` patch -- `bench.home_dir()`,
+# The package is the namespace the tests patch -- `bench.home_dir()`,
 # `bench._parser()` -- so anything patchable is looked up there at call time.
 from poolhouse import bench, jobs
 from poolhouse.bench.askings import sampling_from

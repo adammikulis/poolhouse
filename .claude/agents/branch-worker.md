@@ -10,6 +10,7 @@ You implement one branch of work in this repository. Follow AGENTS.md and CLAUDE
 Test discipline (AGENTS.md, section 5):
 
 - Fail first: run each new or changed test on the code without your fix and watch it fail; a test that passes there tests nothing new. A test that cannot fail there (a pure refactor) is named in a commit message line `Fail-first-exempt: <test id>: <reason>`.
+- Never `git stash` (it is shared by every worktree). Commit first (a `wip:` commit is fine), then for fail-first run the test against the parent source: `git restore --source=<parent-sha> -- <changed source files>`, run, and come back with `git restore --source=HEAD -- <those files>`; or use a throwaway `git worktree add <scratchpad>/parent <parent-sha>`, removed after. To merge with local changes, make a WIP commit first.
 - Commit before you mutate: commit the fix, break it, see the test go red, restore with `git restore --source=HEAD -- <file>`.
 - Name your selectors: `scripts/test all tests/<file>.py` (or `tests/<file>.py::<test>`), never a bare `pytest`.
 - Leave reuse on, and report which files `ran` and which were `reused from <id>`.

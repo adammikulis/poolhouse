@@ -6,6 +6,7 @@ the Rust side is `cargo metadata` over a copy of app, when cargo is on PATH.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import shutil
@@ -99,6 +100,61 @@ def rust_crates() -> list[tuple[str, str, str]]:
     return sorted(rows, key=lambda r: r[0].lower())
 
 
+UI_ASSETS = "src/poolhouse/ui/assets"
+UI_LICENCES = {"dompurify": "MPL-2.0 OR Apache-2.0", "marked": "MIT", "three": "MIT"}
+"""The licence each npm package under `UI_ASSETS` declares; its text is the package's `<name>.LICENSE` beside it."""
+
+
+def _manifests(root: Path) -> list[Path]:
+    return sorted(p for p in (root / "examples").glob("**/vendor/vendor.json") if "node_modules" not in p.parts)
+
+
+def vendored_rows(root: Path = ROOT) -> list[tuple[str, str, str, str]]:
+    """(path, project, version, licence) for every vendored JavaScript file the repository records."""
+    rows: list[tuple[str, str, str, str]] = []
+    ui = root / UI_ASSETS / "vendor.json"
+    if ui.is_file():
+        data = json.loads(ui.read_text(encoding="utf-8"))
+        for name, _source, target in data["files"]:
+            rows.append((f"{UI_ASSETS}/{target}", name, data["dependencies"][name], UI_LICENCES.get(name, "UNKNOWN")))
+    for manifest in _manifests(root):
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        for entry in data["files"]:
+            rel = (manifest.parent / entry["path"]).relative_to(root).as_posix()
+            rows.append((rel, data["project"], data["version"], data["licence"]))
+    return rows
+
+
+def vendored_problems(root: Path = ROOT) -> list[str]:
+    """A vendored file with no manifest entry, a missing file or licence text, or bytes that no longer match."""
+    found: list[str] = []
+    for manifest in _manifests(root):
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+        folder = manifest.parent
+        listed = {e["path"] for e in data["files"]}
+        if not (folder / data["licence_file"]).is_file():
+            found.append(f"{folder.relative_to(root)}: licence text {data['licence_file']} is missing")
+        for path in sorted(folder.glob("**/*.js")):
+            if path.relative_to(folder).as_posix() not in listed:
+                found.append(f"{path.relative_to(root)}: vendored JavaScript not listed in {manifest.name}")
+        for entry in data["files"]:
+            path = folder / entry["path"]
+            if not path.is_file():
+                found.append(f"{path.relative_to(root)}: listed in {manifest.name} but missing")
+            elif hashlib.sha256(path.read_bytes()).hexdigest() != entry["sha256"]:
+                found.append(f"{path.relative_to(root)}: sha256 differs from the pinned {data['package']} {data['version']}")
+    for rel, _project, _version, licence in vendored_rows(root):
+        if not (root / rel).is_file() or licence == "UNKNOWN":
+            found.append(f"{rel}: vendored file missing or licence unknown")
+    return found
+
+
+def vendored_table() -> str:
+    lines = ["| File | Project | Version | Licence |", "|---|---|---|---|"]
+    lines += [f"| `{p}` | {n} | {v} | {lic} |" for p, n, v, lic in vendored_rows()]
+    return "\n".join(lines)
+
+
 def is_allowed(lic: str) -> bool:
     for alternative in re.split(r"\s+OR\s+|;|/", lic):
         if all(not DISALLOWED.search(part) for part in re.split(r"\s+AND\s+", alternative)):
@@ -118,6 +174,7 @@ def table(rows: list[tuple[str, str, str]]) -> str:
 def main(argv: list[str]) -> int:
     py, rust = python_closure(), rust_crates()
     bad = [(n, v, lic) for n, v, lic in py + rust if not is_allowed(lic)]
+    bad += [("vendored", "", line) for line in vendored_problems()]
     if "--check" in argv:
         for n, v, lic in bad:
             sys.stderr.write(f"disallowed licence: {n} {v}: {lic}\n")
@@ -136,6 +193,15 @@ def main(argv: list[str]) -> int:
         f"Closure of the base requirements and the {', '.join(f'`{e}`' for e in EXTRAS)} extras at generation time.",
         "",
         table(py),
+        "",
+        "## Vendored JavaScript",
+        "",
+        "Copied into the repository, not installed from a registry. Each example's `vendor/vendor.json` pins the version "
+        "and the sha256 of its files and the licence text sits beside them; `--check` fails when a vendored file is "
+        "unlisted or its bytes change. The three.js texts (Copyright (c) 2010-2026 three.js authors) are the "
+        "`three.LICENSE` files in `src/poolhouse/ui/assets` and the example's `vendor`.",
+        "",
+        vendored_table(),
         "",
         "## Rust crates in the window (`app/src-tauri`)",
         "",

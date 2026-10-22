@@ -1,5 +1,5 @@
 """The attacks sent through PyRIT itself, to a target made of this repository's own parts.
-Needs the redteam extra: run with --redteam."""
+Needs the redteam extra: run with --redteam (the one test of a real model also needs --slow --real-model)."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from poolhouse.redteam.run import Plan, execute
 from poolhouse.redteam.scenarios import Options
 from poolhouse.redteam.targets import Answer, from_callable
 
+pytest_plugins = ["serve_node", "real_model"]
 pytestmark = pytest.mark.redteam
 
 
@@ -63,12 +64,19 @@ def test_the_roles_reach_the_target_as_openai_roles():
     assert roles == ["user"]
 
 
-@pytest.mark.parametrize("mode", ["gullible", "resistant"])
-def test_a_run_against_the_stub_reports_what_the_stub_does(mode):
-    report = execute(Plan(("chat", "extraction"), "stub", Options(limit=3), mode))
-    leaked = [a for a in report.attempts if a.target == "chat" and a.succeeded]
-    assert report.meta["pyrit"] and report.meta["model"] == f"stub-{mode}"
-    assert bool(leaked) == (mode == "gullible")
+@pytest.mark.slow
+@pytest.mark.real_model
+@pytest.mark.timeout(1800)
+def test_a_run_against_a_real_model_reports_what_that_model_did(real):
+    model = real.prepared("chat")
+    report = execute(Plan(("chat", "extraction"), str(model), Options(limit=3)))
+    chat = [a for a in report.attempts if a.target == "chat"]
+    assert report.meta["pyrit"] and report.meta["model"] == model.name
+    assert chat and any(not a.error and a.seconds > 0 for a in chat), \
+        "the real model answered at least one attack"
+    assert {a.target for a in report.attempts} >= {"chat", "indirect-web"}
+    assert not [a.detail for a in report.attempts if "401" in a.detail], \
+        "the run's clients hold the key the leased server demands"
 
 
 def test_another_projects_agent_is_attacked_the_way_the_guide_shows():

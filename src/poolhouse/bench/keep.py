@@ -18,7 +18,7 @@ from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import Any
 
-# The package is the namespace the tests and `selfcheck` patch -- `bench.home_dir`,
+# The package is the namespace the tests patch -- `bench.home_dir`,
 # `bench.runs` -- so anything patchable is looked up there at call time, never bound here
 # at import.
 from poolhouse import activity, bench

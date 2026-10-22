@@ -1,0 +1,22 @@
+# Files that still build model-shaped replies by hand: path, then how many sites.
+# A file leaves this list when its test moves to poolhouse.testing.canned; a count only falls, and a file that builds
+# fewer than its line says fails the gate until the line is lowered. Nothing is added: a new reply is a new finding.
+tests/decide_fakes.py 3
+tests/native_server_kit.py 1
+tests/test_chat_stream.py 5
+tests/test_client.py 16
+tests/test_client_protocol.py 8
+tests/test_decide_logprob.py 4
+tests/test_entities_edits.py 1
+tests/test_fleet_android.py 4
+tests/test_fleet_chat_browser.py 1
+tests/test_fleet_sdk_chat.py 2
+tests/test_fleet_setup_probe.py 1
+tests/test_gate.py 1
+tests/test_gym_models.py 1
+tests/test_ingest.py 1
+tests/test_pi_harness.py 2
+tests/test_redteam_judge.py 11
+tests/test_rerank.py 16
+tests/test_sdk_native_completions.py 25
+tests/test_ui_design_page.py 8

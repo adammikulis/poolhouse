@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from dataclasses import replace
 from typing import Any
 
-# The package is the namespace the tests and `selfcheck` patch -- `bench._askings` -- so
+# The package is the namespace the tests patch -- `bench._askings` -- so
 # anything patchable is looked up there at call time, never bound here at import.
 from poolhouse import bench
 from poolhouse.asking import Asking

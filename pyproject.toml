@@ -295,6 +295,7 @@ timeout = 120
 markers = [
     "slow: needs a browser, a subprocess, a wheel build or a network timeout; left out unless --slow is given",
     "redteam: needs the redteam extra (PyRIT); left out unless --redteam is given",
+    "real_model: loads a real model on a real llama-server (tests/real_model.py); left out unless --real-model is given, and fails, never skips, where the model or the binary is missing",
     "live_api: calls a paid or quota-limited remote API; runs only when POOLHOUSE_LIVE_API=1",
     "live_net: reaches a public endpoint; runs only when POOLHOUSE_LIVE_NET=1",
     "lan_network: binds a non-loopback address, joins multicast or sends to the LAN; runs only when POOLHOUSE_LAN_TESTS=1",

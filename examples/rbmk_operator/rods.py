@@ -103,10 +103,10 @@ class Rods:
         for r in regs:
             r.r = r.target = lo
         left = orm - sum(r.w * worth(r.r) for r in self.rods)
-        for r in sorted(self.group("MR"), key=lambda q: -q.w):
+        for r in sorted(self.group("MR"), key=lambda q: q.w):
             if left <= 0:
                 break
-            take = min(left / r.w, 1.0)
+            take = min(left / r.w, 0.5)
             lo, hi = 0.0, 1.0
             for _ in range(30):
                 mid = (lo + hi) / 2

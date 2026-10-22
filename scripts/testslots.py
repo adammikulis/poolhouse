@@ -27,8 +27,10 @@ HEAVY_MODULES = frozenset({
     "test_serve_broker",
     "test_serve_three_callers", "test_spec_serve", "test_fleet_daemon", "test_fleet_bind",
     "test_fleet_join", "test_fleet_bench", "test_graph_bench", "test_graph_bench_animate",
-    "test_graph_store_scale",
+    "test_graph_store_scale", "test_real_model_uses", "test_redteam_judge_real", "test_redteam_loop",
+    "test_redteam_pyrit", "test_sandbox_gpu", "test_serve_llamacpp_real",
 })
+"""Test modules that take a heavy lane (a real model server, a benchmark, a fleet daemon); every real_model module is in it."""
 
 WAIT_S = 3600.0
 ALLOCATION = "allocation.json"

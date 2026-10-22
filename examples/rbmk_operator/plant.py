@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Callable
 
 from . import controls, panel, reactor as rx, scenarios
 from .scenarios import Event, Scenario
@@ -109,6 +110,8 @@ class Plant:
             self.setpoint = e.value
         elif e.kind == "pump_trip":
             c.pump_on[int(e.value) - 1], c.pump_tau[int(e.value) - 1] = False, 12.0
+        elif e.kind == "ar_off":
+            self.ar_on = False
         elif e.kind == "test_start":
             if self.test == "pending":
                 self.start_test()
@@ -138,14 +141,32 @@ class Plant:
         swell = 8.0 * (c.alpha - rx.VOID_NOM) / rx.VOID_NOM - 10.0 * max(0.0, 1.0 - c.f)
         self.level += (swell - self.level) * (1.0 - math.exp(-dt / 20.0))
 
-    def advance(self) -> None:
-        """One tick: 5 minutes in the slow regime, 1 second in the fast one."""
-        seconds, step = (scenarios.FAST_TICK_S, 0.5) if self.fast() else (scenarios.SLOW_TICK_S, 10.0)
-        n = max(1, math.ceil(seconds / step))
-        for _ in range(n):
+    def regime(self) -> tuple[float, float]:
+        """The tick length and the fixed substep, in seconds, for the regime the plant is in now."""
+        return (scenarios.FAST_TICK_S, 0.5) if self.fast() else (self.scn.slow_s, 10.0)
+
+    def _substeps(self, seconds: float, step: float) -> None:
+        for _ in range(math.ceil(seconds / step) if seconds > 0 else 0):
+            n = math.ceil(seconds / step)
             self._regulate(seconds / n)
             rx.substep(self.core, seconds / n)
             self._steam(seconds / n)
+
+    def advance(self) -> None:
+        """One tick: 5 minutes in the slow regime, 1 second in the fast one."""
+        seconds, step = self.regime()
+        self._substeps(seconds, step)
+        self._end_tick(seconds)
+
+    def advance_split(self, first: float, act: Callable[[], None]) -> None:
+        """One tick, with ``act`` carried out ``first`` seconds into it."""
+        seconds, step = self.regime()
+        self._substeps(first, step)
+        act()
+        self._substeps(seconds - first, step)
+        self._end_tick(seconds)
+
+    def _end_tick(self, seconds: float) -> None:
         self.tick += 1
         self.since_decision += 1
         panel.sense(self, seconds)
@@ -160,7 +181,6 @@ class Plant:
         got = controls.gate(cls, target, step, self)
         controls.apply(got, self)
         self.last_action = f"{got.cls} {got.target}".strip() if got.cls != "hold" else "hold"
-        self.since_decision = 0
         return got
 
     def trip(self) -> list[dict[str, str]]:
@@ -186,7 +206,7 @@ class Plant:
         c = self.core
         a, b = self.reading
         return {"tick": self.tick, "t_s": round(c.t, 1),
-                "dt": scenarios.FAST_TICK_S if self.fast() else scenarios.SLOW_TICK_S,
+                "dt": scenarios.FAST_TICK_S if self.fast() else self.scn.slow_s,
                 "P": round(c.P, 5), "chA": a, "chB": b, "X": round(c.X, 4), "I": round(c.iod, 4),
                 "void": round(c.alpha, 4), "orm": round(c.orm(), 3), "orm_printed": round(self.orm_value, 2),
                 "f": round(c.f, 4), "Tf": round(c.Tf, 1), "p": round(c.p, 3), "rho": round(c.rho, 4),

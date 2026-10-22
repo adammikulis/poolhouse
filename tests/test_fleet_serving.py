@@ -19,7 +19,7 @@ from poolhouse.fleet.daemon import load_or_create_token
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.serving import Endpoint, ServeSettings, Serving, answers
 from poolhouse.http import Server, build_request
-from poolhouse.testing.fakes import FakeLlamaServer, Served, fake_llama_binary
+from poolhouse.testing.canned import CANNED_MODEL_ID, Canned, CannedServer, canned_binary, marked
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -60,7 +60,7 @@ class Running:
 @pytest.fixture
 def model():
     """A model server that streams a reply with real gaps between its pieces."""
-    m = FakeLlamaServer(Served(model="qwen3-4b.gguf", answer="hello", gap=0.25,
+    m = CannedServer(Canned(served_path="qwen3-4b.gguf", answer="hello", gap=0.25,
                                pieces=tuple(f"tok{n}" for n in range(8))))
     try:
         yield m
@@ -118,7 +118,7 @@ def metadata_server(body, *, redirect=""):
 class TestRegistry:
     def test_verified_unchanged_reads_do_not_create_a_write_lock(self, tmp_path, model):
         registry = Serving(tmp_path / "serving.json")
-        registry.register(model.port, ["qwen3-4b.gguf"])
+        registry.register(model.port, [CANNED_MODEL_ID, "qwen3-4b.gguf"])
         expected = registry.live(force=True)
         lock_path = registry.path.with_suffix(".lock")
         lock_path.unlink()
@@ -143,7 +143,7 @@ class TestRegistry:
 
         monkeypatch.setattr(module.lock, "only_one", concurrent_registration)
         live = registry.live(force=True)
-        assert live[0].models == ["qwen3-4b.gguf"]
+        assert live[0].models == [CANNED_MODEL_ID, "qwen3-4b.gguf"]
         assert registry.all() == [current]
 
     @pytest.mark.parametrize("port", [-1, 0, 65536, True, "8080", None])
@@ -173,8 +173,8 @@ class TestRegistry:
         registry.register(model.port, ["stale-claim.gguf"])
         registry.register(free_port(), ["dead-claim.gguf"])
         live = registry.live(force=True)
-        assert [(one.port, one.models) for one in live] == [(model.port, ["qwen3-4b.gguf"])]
-        assert [(one.port, one.models) for one in registry.all()] == [(model.port, ["qwen3-4b.gguf"])]
+        assert [(one.port, one.models) for one in live] == [(model.port, [CANNED_MODEL_ID, "qwen3-4b.gguf"])]
+        assert [(one.port, one.models) for one in registry.all()] == [(model.port, [CANNED_MODEL_ID, "qwen3-4b.gguf"])]
 
     def test_a_registered_server_that_died_is_not(self, tmp_path, model):
         """Registration is a claim. A beacon advertising a model nobody can reach
@@ -254,7 +254,7 @@ class TestProxy:
         model.api_key = serverkeys.issue(model.port)
         with daemon.post("/infer/v1/chat/completions",
                          {"messages": [{"role": "user", "content": "hi"}]}) as r:
-            assert json.loads(r.read())["choices"][0]["message"]["content"] == "hello"
+            assert json.loads(r.read())["choices"][0]["message"]["content"] == marked("hello")
 
     def test_an_unauthenticated_model_identity_is_not_advertised(self, wired):
         daemon, serving, model = wired
@@ -269,7 +269,7 @@ class TestProxy:
         with daemon.post("/infer/v1/chat/completions",
                          {"messages": [{"role": "user", "content": "hi"}]}) as r:
             body = json.loads(r.read())
-        assert body["choices"][0]["message"]["content"] == "hello"
+        assert body["choices"][0]["message"]["content"] == marked("hello")
 
     @pytest.mark.slow
 
@@ -337,7 +337,7 @@ class TestProxy:
     def test_a_path_cannot_name_another_host(self, wired):
         """`/infer@host:port/` would read as userinfo in front of a host the caller picked."""
         daemon, _, _ = wired
-        other = FakeLlamaServer(Served(answer="elsewhere"))
+        other = CannedServer(Canned(answer="elsewhere"))
         try:
             with pytest.raises(urllib.error.HTTPError) as exc:
                 daemon.post(f"/infer@127.0.0.1:{other.port}/v1/chat/completions", {})
@@ -368,7 +368,7 @@ class TestEndpoint:
                             token=daemon.token)
         reply = Client(**endpoint.client_kwargs()).chat(
             [{"role": "user", "content": "hi"}])
-        assert reply.content == "hello"
+        assert reply.content == marked("hello")
 
 
 def test_a_probe_reports_a_port_nothing_is_on(tmp_path):
@@ -389,7 +389,7 @@ def llama_binary(tmp_path, monkeypatch):
     from poolhouse.serve import backend as backend_module
 
     monkeypatch.setattr(backend_module, "log_dir", lambda: tmp_path / "logs")
-    return fake_llama_binary(tmp_path)
+    return canned_binary(tmp_path)
 
 
 @pytest.fixture

@@ -118,7 +118,39 @@ def plugin_names(node: ast.AST) -> list[str]:
     return [c.value for c in ast.walk(node.value) if isinstance(c, ast.Constant) and isinstance(c.value, str)]
 
 
-def references(source: str, module: str, is_package: bool, known: dict[str, str]) -> set[str]:
+def reexports(root: Path, known: dict[str, str]) -> dict[tuple[str, str], str]:
+    """For each package ``__init__`` that imports a name from a module, ``(package, name)`` to that module.
+
+    ``from poolhouse.serve import ServerManager`` depends on the module that defines ``ServerManager``,
+    not only on the package that forwards it, so a change there reaches the importer in one step.
+    """
+    out: dict[tuple[str, str], str] = {}
+    for name, rel in known.items():
+        if not rel.endswith("__init__.py"):
+            continue
+        try:
+            tree = ast.parse((root / rel).read_text(encoding="utf-8", errors="replace"))
+        except SyntaxError:
+            continue
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                base = absolute(node, name, True)
+                if base in known:
+                    out.update({(name, a.asname or a.name): base for a in node.names if f"{base}.{a.name}" not in known})
+    return out
+
+
+def forwarded(package: str, name: str, forwards: dict[tuple[str, str], str]) -> str | None:
+    """The module that finally defines ``name`` as ``package`` exposes it, following forwarding packages."""
+    found, seen = None, set()
+    while (package, name) in forwards and package not in seen:
+        seen.add(package)
+        package = found = forwards[(package, name)]
+    return found
+
+
+def references(source: str, module: str, is_package: bool, known: dict[str, str],
+               forwards: dict[tuple[str, str], str] | None = None) -> set[str]:
     """The modules in ``known`` that ``source`` imports or names in a string."""
     try:
         tree = ast.parse(source)
@@ -132,6 +164,7 @@ def references(source: str, module: str, is_package: bool, known: dict[str, str]
             base = absolute(node, module, is_package)
             wanted.add(base)
             wanted.update(f"{base}.{alias.name}" for alias in node.names)
+            wanted.update(d for alias in node.names if (d := forwarded(base, alias.name, forwards or {})))
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             wanted.update(m.group(1) for m in DOTTED.finditer(node.value))
         else:
@@ -148,12 +181,13 @@ def references(source: str, module: str, is_package: bool, known: dict[str, str]
 def graph(root: Path, known: dict[str, str]) -> dict[str, set[str]]:
     """Module to the modules it depends on, over the whole index."""
     edges: dict[str, set[str]] = {}
+    forwards = reexports(root, known)
     for name, rel in known.items():
         if name == "tests.conftest":
             edges[name] = set()
             continue
         text = (root / rel).read_text(encoding="utf-8", errors="replace")
-        edges[name] = references(text, name, rel.endswith("__init__.py"), known)
+        edges[name] = references(text, name, rel.endswith("__init__.py"), known, forwards)
     return edges
 
 
@@ -237,6 +271,43 @@ def add_script_tests(out: Selection, scripts: rules.ReferenceIndex, rel: str, re
         out.unmap(rel, "no test imports, runs or names it, so nothing says which tests it affects")
 
 
+GLOSSARY_TEST = "tests/test_glossary.py"
+
+
+def glossary_reads(root: Path, changed: list[str], deleted: frozenset[str]) -> list[str]:
+    """Changed paths the glossary scan reads, any language: a banned word can arrive in a file no test names.
+
+    The scan's own exclusions decide; where they cannot be loaded, every kept path counts.
+    """
+    kept = [c for c in changed if c not in deleted]
+    try:
+        import nomenclature
+        vocab = nomenclature.Vocabulary(root=root)
+        return [c for c in kept if not vocab.excluded(c) and nomenclature.text_of(c, root) is not None]
+    except (ImportError, ValueError):  # unsure selects more
+        return kept
+
+
+ENV_TEST = "tests/test_documented_env_vars.py"
+ENV_READS = ("src/", "scripts/", "packaging/", "app/src/", "app/src-tauri/src/", "app/poolhouse-node/src/", "contracts/",
+             "tests/pool_check/", "docs/", "pyproject.toml", "README.md", "CHANGELOG.md")
+"""The paths the switch-table test scans (its SOURCE_DIRS and SOURCE_FILES, and the docs it reads): a variable can arrive in any of them."""
+
+
+def add_tree_wide(out: Selection, root: Path, changed: list[str], deleted: frozenset[str], tests: list[str]) -> None:
+    """The tests that read the whole tree: the glossary scan for what it reads, the guards once anything runs."""
+    read = glossary_reads(root, changed, deleted) if GLOSSARY_TEST in tests else []
+    if read:
+        out.add(GLOSSARY_TEST, f"{read[0]} is read by the glossary scan")
+    scanned = [c for c in changed if c.startswith(ENV_READS)]
+    if scanned and ENV_TEST in tests:
+        out.add(ENV_TEST, f"{scanned[0]} is scanned for POOLHOUSE_ variables")
+    if out.files:
+        for guard in GUARDS:
+            if f"tests/{guard}" in tests:
+                out.add(f"tests/{guard}", "tree-wide guard")
+
+
 def select(root: Path, changed: list[str], deleted: frozenset[str] = frozenset(),
            depth: int = DEPTH, base: str = "HEAD") -> Selection:
     """The test files within ``depth`` imports of ``changed``; ``unmapped`` non-empty means run all."""
@@ -294,10 +365,7 @@ def select(root: Path, changed: list[str], deleted: frozenset[str] = frozenset()
     if any(Path(c).parts[:2] == ("src", "poolhouse") for c in changed):
         for rel in dynamic_tests(root, tests):
             out.add(rel, "imports a module chosen at run time")
-    if out.files:
-        for guard in GUARDS:
-            if f"tests/{guard}" in tests:
-                out.add(f"tests/{guard}", "tree-wide guard")
+    add_tree_wide(out, root, changed, deleted, tests)
     return out
 
 

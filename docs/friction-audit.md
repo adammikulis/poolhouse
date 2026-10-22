@@ -34,7 +34,7 @@ edit guard keeps agents out of that file; **next** needs infrastructure that doe
 | 17 | worktreerules (Bash guard) | `cd` or `git -C` into a sibling worktree | not refused (the guard follows `cd` and `-C`) | no refusal | none |
 | 18 | worktreerules (Bash guard) | `git worktree add` inside an existing checkout | none needed: put it beside the checkout | already agent-resolvable | none |
 | 19 | Bash guard | `git add -A`, `.`, `-u`, `commit -a` | none needed: name the files | already agent-resolvable | none |
-| 20 | Bash guard | a bare `git stash`, `stash pop`, an untagged `stash push` | none needed: `stash push -u -m <tag>`, then `stash apply <sha>` | already agent-resolvable | none |
+| 20 | Bash guard | any `git stash` subcommand but `list` and `show` | none needed: a `wip:` commit, or a second `git worktree` | already agent-resolvable | none |
 | 21 | Bash guard | `nohup`, `llama-server` by hand, `poolhouse-serve up` flags that skip the lease, `pkill` of the server, hand-written waiters, curl probes, GGUF hunts | none needed: the named command | KEEP-FLOOR (one GPU job at a time) / already agent-resolvable | none |
 | 22 | Bash guard | `poolhouse-workspace mint` and `delegate` (neither verb exists any more; the guard still refuses the words) | nobody: the node registers a session and names it, a session registers its own subagents (`spawn`), and a person signs grants | KEEP-FLOOR | none: an agent never creates identities |
 | 23 | Bash guard / edit guard | reading or writing the person record, its key, `claude-user-prompt`, `person-consume` (except `propose`), `person_*.py` | nobody; the harness hooks write it when the person types | KEEP-FLOOR | none: forgery |

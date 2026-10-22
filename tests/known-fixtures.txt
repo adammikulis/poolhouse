@@ -359,3 +359,9 @@ Poolhouse Projects
 
 # Studio control label
 Add Report
+# Blender shader socket names (the room generator) and a comment in the vendored three.js GLTFLoader; no person
+Principled BSDF
+Base Color
+Emission Color
+Emission Strength
+Creates BufferGeometries

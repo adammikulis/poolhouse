@@ -488,8 +488,8 @@ def _wheel(where: Path, name: str, version: str, extras: tuple[str, ...],
 def test_a_frozen_member_installs_the_bench_after_accepting_the_job(boxes, tmp_path, monkeypatch):
     """The install runs after ``POST /bench`` has answered, so an install slower than the
     dispatcher's member timeout is ``preparing``, not an unreachable member."""
-    from poolhouse.fleet.environment import Environment
     from poolhouse.fleet import compute_artifact
+    from poolhouse.fleet.environment import Environment
     from poolhouse.fleet.wheel_provenance import stamp
 
     roomy, _ = boxes
@@ -563,12 +563,12 @@ def test_an_export_reads_the_store_through_member_runs(tmp_path):
 
 @pytest.mark.slow
 def test_a_real_bench_that_refuses_its_only_model_is_failed_with_the_refusal(tmp_path):
-    from poolhouse.testing.fakes import fake_llama_binary
+    from poolhouse.testing.canned import canned_binary
 
     runner = JobRunner(tmp_path / "traind", tmp_path / "files")
     host = BenchHost(runner, home=tmp_path / "bench", name="lone")
     host.poll_s = 0.2
-    binary = fake_llama_binary(tmp_path)
+    binary = canned_binary(tmp_path)
     job = Job(argv=("sweep", "--serve", str(tmp_path / "absent.gguf"), "--plain-only",
                     "--no-smoke", "--store", "", "--binary", str(binary)),
               models=("absent.gguf",), commit=host.commit)
@@ -1102,7 +1102,7 @@ def test_sweep_fleet_discovers_a_real_daemon_and_measures_on_it_for_real(
     from poolhouse.bench import runs
     from poolhouse.fleet.discovery import create_pool_key
     from poolhouse.graph.cache import digest
-    from poolhouse.testing.fakes import fake_llama_binary
+    from poolhouse.testing.canned import canned_binary
 
     keyfile = tmp_path / "pool.key"
     create_pool_key(keyfile, group="poolhouse")
@@ -1115,7 +1115,7 @@ def test_sweep_fleet_discovers_a_real_daemon_and_measures_on_it_for_real(
         monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(disco_port))
         monkeypatch.setenv("POOLHOUSE_BENCH_HOME", str(tmp_path / "dispatcher-home"))
 
-        binary = fake_llama_binary(tmp_path)
+        binary = canned_binary(tmp_path)
         kept = tmp_path / "runs.ladybug"
         dispatcher = tmp_path / "dispatcher"
         real_dispatch = sweeps_module.dispatch
@@ -1166,7 +1166,7 @@ def _one_machine(boxes, tmp_path, monkeypatch, *, models):
     monkeypatch.setattr(sweeps_module, "wait",
                         lambda handles: real_wait(handles, poll_s=0.1, timeout_s=20))
     kept = tmp_path / "home.ladybug"
-    line = ["sweep", "--fleet", "--plain-only", "--kept", str(kept), "--no-selfcheck",
+    line = ["sweep", "--fleet", "--plain-only", "--kept", str(kept),
             "--no-prefetch"]
     for m in models:
         line += ["--serve", m]

@@ -8,13 +8,17 @@ list built from the live state, then a step size. Each question reads the sub-pa
 
 from __future__ import annotations
 
+import concurrent.futures
 import math
+import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from . import controls, panel
 
-ABSTAIN_BELOW = 0.40
+ABSTAIN_BELOW = 0.30
+CALL_TIMEOUT_S = 120.0
+TOKEN_LIMIT = 4096
 STEP_TEXT = ("How large a step: 1 is small (a tenth of the stroke), 2 is medium (a quarter), 3 is large (half)?")
 ROD_CLASSES = ("insert_rod", "withdraw_rod")
 
@@ -28,7 +32,7 @@ class Asker(Protocol):
 
     model: str
 
-    def ask(self, index: int, key: str, text: str, qs: dict[str, Any]) -> dict[str, dict[str, Any]]: ...
+    def ask(self, index: int, key: str, text: str, qs: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]: ...
 
 
 @dataclass
@@ -79,32 +83,58 @@ def annotated(raw: dict[str, Any], qs: dict[str, Any]) -> dict[str, dict[str, An
 
 
 class LiveAsker:
-    """Asks the released decision checkpoint, one forward pass per question."""
+    """Asks the released decision checkpoint, one forward pass per question, with a timeout on every call."""
 
-    def __init__(self, pointer: str = "", abstain_below: float = ABSTAIN_BELOW) -> None:
+    def __init__(self, pointer: str = "", abstain_below: float = ABSTAIN_BELOW, verify: bool = True,
+                 timeout: float = CALL_TIMEOUT_S) -> None:
         from poolhouse.decide import router
 
-        self.abstain_below = abstain_below
+        self.abstain_below, self.timeout = abstain_below, timeout
         self.config = router.Config(backend="pointer", pointer=pointer)
         self.model = ""
-        why = router.unavailable("pointer", self.config)
+        why = router.unavailable("pointer", self.config) if verify else ""
         if why:
             raise ModelStopped(f"the decision model is not available: {why}")
 
-    def ask(self, index: int, key: str, text: str, qs: dict[str, Any]) -> dict[str, dict[str, Any]]:
-        """Answers for every question in ``qs`` about ``text``; raises `ModelStopped` on any failure."""
-        from poolhouse.decide.questions import decide
+    def _tokens(self, text: str, qs: dict[str, Any]) -> dict[str, int]:
+        """The decider's own token count of each question's prompt."""
+        from poolhouse.decide import pointer_prompt, router
 
-        try:
-            got = decide(text, qs, config=self.config, abstain_below=self.abstain_below)
-        except (OSError, RuntimeError, ValueError) as exc:
-            raise ModelStopped(f"{type(exc).__name__}: {exc}") from exc
+        tok = router.build("pointer", self.config)._loaded[0]
+        shown = _questions().prepare(text)
+        return {name: len(tok(pointer_prompt.render(q.text, shown, q.options).text,
+                              add_special_tokens=False)["input_ids"]) for name, q in qs.items()}
+
+    def ask(self, index: int, key: str, text: str, qs: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+        """Answers for every question in ``qs`` about ``text``; raises `ModelStopped` on any failure or hang."""
+        sent = time.time()
+        got = call_with_timeout(lambda: _questions().decide(text, qs, config=self.config,
+                                                            abstain_below=self.abstain_below), self.timeout, key)
+        answered = time.time()
         answers = annotated(got, qs)
         ids = {a["model"] for a in answers.values()}
         if len(ids) != 1:
             raise ModelStopped(f"the answers came from different models: {sorted(ids)}")
         self.model = ids.pop()
-        return answers
+        for name, n in self._tokens(text, qs).items():
+            if n > TOKEN_LIMIT:
+                raise ModelStopped(f"question {name!r} prompt is {n} tokens; the limit is {TOKEN_LIMIT}")
+            answers[name]["tokens"] = n
+        return answers, {"sent_at": round(sent, 3), "answered_at": round(answered, 3)}
+
+
+def call_with_timeout(fn: Any, timeout: float, what: str) -> Any:
+    """Run ``fn`` and wait at most ``timeout`` seconds; a failure or a hang is a `ModelStopped`."""
+    pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+    future = pool.submit(fn)
+    try:
+        return future.result(timeout=timeout)
+    except concurrent.futures.TimeoutError as exc:
+        raise ModelStopped(f"the model call {what!r} did not answer within {timeout:.0f} s") from exc
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ModelStopped(f"{type(exc).__name__}: {exc}") from exc
+    finally:
+        pool.shutdown(wait=False, cancel_futures=True)
 
 
 def _questions() -> Any:
@@ -120,6 +150,8 @@ def situational(plant: Any) -> list[tuple[str, str, dict[str, Any]]]:
         ("neutron", panel.neutron(plant), {"falling": q.noul("Is reactor power falling dangerously?")}),
         ("coolant", panel.coolant(plant), {"void": q.noul("Is steam void feedback pushing reactor power up?")}),
         ("rods", panel.rods(plant), {"orm_low": q.noul("Is the operational reactivity margin below the 15 rod minimum?")}),
+        ("steam", panel.steam(plant), {"steam": q.noul("Is a drum level or pressure reading close to its trip limit?")}),
+        ("protection", panel.protections(plant), {"bypass": q.noul("Is any safety system currently defeated?")}),
         ("instruments", panel.full(plant), {"inconsistent": q.noul("Do any two instrument readings contradict each other?")}),
     ]
 
@@ -133,11 +165,12 @@ class ModelOperator:
         self.asker = asker
 
     def _call(self, index: int, key: str, text: str, qs: dict[str, Any], prop: Proposal) -> dict[str, dict[str, Any]]:
-        got = self.asker.ask(index, key, text, qs)
-        prop.calls.append({"key": key, "state_text": text, "answers": got})
+        got, timing = self.asker.ask(index, key, text, qs)
+        latency = sum(item["latency_ms"] for item in got.values())
+        prop.calls.append({"key": key, "state_text": text, "answers": got, "latency_ms": round(latency, 3), **timing})
         for name, item in got.items():
             prop.answers[name] = {**item, "call": key}
-            prop.latency_ms += item["latency_ms"]
+        prop.latency_ms += latency
         return got
 
     def _hold(self, prop: Proposal, name: str, ans: dict[str, Any]) -> Proposal:
@@ -161,8 +194,21 @@ class ModelOperator:
         if cls["abstained"]:
             return self._hold(prop, "class", cls)
         prop.cls = cls["choice"]
+        if prop.cls == "orm_print":
+            plant.print_orm()
+            again = self._call(index, "decision_after_printout", panel.full(plant), {
+                "class_after_printout": q.choice("The margin printout is now fresh. Which kind of operator action "
+                                                 "should be taken now?", controls.CLASSES)}, prop)["class_after_printout"]
+            if again["abstained"]:
+                return self._hold(prop, "class_after_printout", again)
+            prop.cls = again["choice"]
+            prop.note = "The model asked for a margin printout first, then chose again with the fresh printout."
         prop.model_choice = {"cls": prop.cls, "target": controls.NONE, "step": "1"}
-        if prop.cls in ("hold", "scram", "orm_print"):
+        if prop.cls == "orm_print":
+            prop.cls = "hold"
+            prop.note += " It asked for a printout again, which it already had: the plant holds."
+            return prop
+        if prop.cls in ("hold", "scram"):
             return prop
         options = controls.candidates(prop.cls, plant)
         tgt = self._call(index, "target", full + f" The operator is considering: {controls.CLASSES[prop.cls]}.",
@@ -210,7 +256,8 @@ class CrewOperator:
             self.test_tick = plant.tick if self.test_tick is None else self.test_tick
             if plant.tick - self.test_tick >= 36:
                 return Proposal("scram", controls.NONE, "1", "crew-history", None, note="AZ-5 pressed at 01:23:40")
-        elif plant.core.orm() > 7.5 and plant.tick < 12 and sum(plant.reading) / 2 < 0.06:
-            target = next(iter(controls.candidates("withdraw_rod", plant)))
-            return Proposal("withdraw_rod", target, "1", "crew-history", None, note="the crew pulls another manual rod to recover power")
+        elif plant.tick < 40 and plant.core.orm() > 5.5:
+            options = [k for k in controls.candidates("withdraw_rod", plant) if k.startswith("R-")]
+            return Proposal("withdraw_rod", options[0], "2", "crew-history", None,
+                            note="the crew pulls another manual rod; the automatic regulator holds the power")
         return Proposal("hold", controls.NONE, "1", "crew-history", None, note="continuing the programme")
