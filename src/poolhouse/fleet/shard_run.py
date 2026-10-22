@@ -28,6 +28,8 @@ CUT_S = 2.0
 """How long a cancelled run's output is waited for: a child it left behind may hold the pipe open, and the node ends it."""
 POLL_S = 1.0
 MOST_LOG = 64 << 20
+MOST_TEE = 8 << 20
+"""How much of a runner's output also goes to this process's own, which a daemon keeps as the job's log."""
 """The output a runner may write before it is cancelled: a runaway test must not fill the disk."""
 RESULT = "result.json"
 PYTHON_ENV = "POOLHOUSE_SHARD_PYTHON"
@@ -114,7 +116,7 @@ def keep_output(pipe, out, flooded: threading.Event, tee=None) -> None:
         if kept <= MOST_LOG:
             piece = chunk[:MOST_LOG + 1 - kept]
             out.write(piece)
-            if tee is not None:
+            if tee is not None and kept <= MOST_TEE:
                 tee.write(piece)
                 tee.flush()
             kept += len(chunk)
