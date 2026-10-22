@@ -48,6 +48,8 @@ class Job:
     log: str = ""
     """Where its output goes, when that is not the runner's own ``job.log``: a bench job
     started with ``--detach`` writes under the bench's home, and the runner reads that."""
+    by: str = ""
+    """Who asked: the member device's fingerprint and, when it said so, the agent behind the request."""
 
     def public(self) -> dict[str, Any]:
         """The view clients see. A launch in progress is still waiting from where they stand;
@@ -271,6 +273,13 @@ class JobRunner:
             self.jobs[job_id] = job
             self._queue.append(job_id)
         self._wake.set()
+        return job
+
+    def label(self, job: Job, by: str) -> Job:
+        """Record who asked for ``job``, unless it already says."""
+        if by and not job.by:
+            job.by = by
+            self.record(job)
         return job
 
     def stop(self, job_id: str, *, grace_s: float = 30.0) -> Job:

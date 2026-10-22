@@ -187,10 +187,8 @@ class DaemonRuntime:
             raise DiscoveryError(
                 "select a pool with the requested mode before starting this daemon"
             )
-        pending = (self.web and self.initial_setup and not self.selected
-                   and not self.settings.pool_mode and not self.pool_mode)
         saved_prod = not self.selected and self.settings.pool_mode == "prod" and not self.pool_mode
-        if self.announce and not pending and not saved_prod:
+        if self.announce and not saved_prod:
             self.selected_member = automatic_pools.ensure(
                 self.pool_key_path, mode=self.effective_mode
             )

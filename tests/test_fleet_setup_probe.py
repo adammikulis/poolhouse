@@ -1,6 +1,7 @@
 """The setup tool is fixed data; it cannot select an implementation or cause effects."""
 import copy
 import hashlib
+import json
 import os
 import shutil
 import struct
@@ -21,6 +22,14 @@ from poolhouse.serve.backend import LlamaServerBackend, ServerSpec
 from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import started_at
+from poolhouse.testing.canned import (
+    CANNED_BODY_HEADER,
+    CANNED_HEADER,
+    CANNED_HEADER_VALUE,
+    CANNED_MARKER,
+    CANNED_MODEL_ID,
+    canned_chat_reply,
+)
 
 pytest_plugins = ['serve_node', 'native_server_kit']
 
@@ -167,6 +176,33 @@ def test_native_fixture_metadata_exit_is_reaped_and_compiled_directory_cleaned(t
     assert list(tmp_path.iterdir()) == []
 
 
+def test_native_fixture_says_it_is_canned_on_every_response(probe_executable):
+    import http.client
+
+    child = subprocess.Popen([str(probe_executable), '--port', '0'], stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True)
+    try:
+        link = http.client.HTTPConnection('127.0.0.1', int(child.stdout.readline()), timeout=10)
+        link.request('GET', '/health')
+        health = link.getresponse()
+        assert health.getheader(CANNED_HEADER) == CANNED_HEADER_VALUE
+        assert json.loads(health.read())['x_canned'] == CANNED_MARKER
+        for sent, bare in (({'messages': []}, False), ({'messages': [{'tool_call_id': 'c', 'content': '5'}]}, True)):
+            link = http.client.HTTPConnection('127.0.0.1', link.port, timeout=10)
+            link.request('POST', '/v1/chat/completions', body=json.dumps(sent))
+            answer = link.getresponse()
+            assert answer.getheader(CANNED_HEADER) == CANNED_HEADER_VALUE
+            assert (answer.getheader(CANNED_BODY_HEADER) == 'unmarked') is bare
+            held = json.loads(answer.read())
+            text = held['choices'][0]['message']['content']
+            assert held['model'] == CANNED_MODEL_ID and held['x_canned'] == CANNED_MARKER
+            assert text.startswith(CANNED_MARKER) is not bare
+    finally:
+        child.terminate()
+        said = child.communicate(timeout=10)[1]
+    assert CANNED_MARKER in said
+
+
 def test_local_parser_mismatch_cannot_adopt_broker_readiness(tmp_path, native_probe, monkeypatch):
     monkeypatch.setattr(setup_probe, 'startup', SimpleNamespace(parser_identity=lambda: 'f' * 64))
     jobs = setup_jobs.Jobs(tmp_path / 'jobs')
@@ -215,8 +251,9 @@ def test_change_after_chat_stops_future_probe_requests(tmp_path, native_probe, m
 def reply(arguments='{"left":2,"right":3}', *, calls=None, content=None, finish='tool_calls'):
     call = {'id': 'call_fixed', 'type': 'function', 'function': {
         'name': 'poolhouse_setup_sum', 'arguments': arguments}}
-    return Client.normalize({'model': 'fixture', 'choices': [{'finish_reason': finish,
-        'message': {'content': content, 'tool_calls': [call] if calls is None else calls}}]})
+    _, sent = canned_chat_reply('', bare=True, finish_reason=finish, message={
+        'content': content, 'tool_calls': [call] if calls is None else calls})
+    return Client.normalize(json.loads(sent))
 
 
 def test_tool_reply_requires_actual_structured_fixed_call():

@@ -23,11 +23,12 @@ from poolhouse.fleet.daemon import load_or_create_token
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.serving import Serving
 from poolhouse.http import Options, Server, ServerError, open_stream
-from poolhouse.testing.fakes import FakeLlamaServer, Served
+from poolhouse.testing.canned import CANNED_MARKER, CANNED_MODEL_ID, Canned, CannedServer, marked
 from tests.keystore_support import counting  # noqa: F401
 from tests.net_site import gguf_bytes
 from tests.pool_support import a_keystore, join_pool_by_passphrase  # noqa: F401
 
+MODEL = CANNED_MODEL_ID
 PIECES = ["Hel", "lo", " there"]
 
 
@@ -65,8 +66,8 @@ def _free_port() -> int:
 
 @pytest.fixture
 def model_server():
-    """A llama.cpp-shaped server that streams a reply a piece at a time."""
-    fake = FakeLlamaServer(Served(model="qwen3-4b.gguf", pieces=tuple(PIECES), gap=0.05))
+    """A canned llama.cpp-shaped server that streams a reply a piece at a time; it is not a model."""
+    fake = CannedServer(Canned(served_path=CANNED_MODEL_ID, pieces=tuple(PIECES), gap=0.05))
     try:
         yield fake.port
     finally:
@@ -82,7 +83,7 @@ def host(tmp_path, model_server):
     key = join_pool_by_passphrase(WORDS, group="home", path=tmp_path / "host.key")
     token = load_or_create_token(root, key)
     serving = Serving(root / "serving.json")
-    serving.register(model_server, ["qwen3-4b.gguf"])
+    serving.register(model_server, [MODEL])
     runner = JobRunner(root, files)
     port = _free_port()
     httpd = Server(
@@ -117,7 +118,7 @@ class TestPickingWhereToSend:
 
     def test_a_machine_serving_nothing_still_sees_a_members_model(self, host):
         found = targets([host], serving=None, token="t")
-        assert [t.model for t in found] == ["qwen3-4b.gguf"]
+        assert [t.model for t in found] == [MODEL]
         assert found[0].member == "host"
         assert found[0].local is False
         assert found[0].url.endswith("/infer/v1/chat/completions")
@@ -126,7 +127,7 @@ class TestPickingWhereToSend:
         class Fake:
             def live(self):
                 from poolhouse.fleet.serving import Served
-                return [Served(port=9999, models=["qwen3-4b.gguf"])]
+                return [Served(port=9999, models=[MODEL])]
 
         found = targets([host], serving=Fake(), token="t")
         assert len(found) == 1
@@ -139,7 +140,7 @@ class TestPickingWhereToSend:
 
     def test_only_an_exact_advertised_model_is_selected(self, host):
         found = targets([host], serving=None, token="t")
-        assert find(found, "qwen3-4b.gguf").model == "qwen3-4b.gguf"
+        assert find(found, MODEL).model == MODEL
         assert find(found, "qwen3") is None
         assert find(found, "") is None
         assert find(found, "nothing-like-this") is None
@@ -172,8 +173,8 @@ class TestChattingThroughTheInterface:
         from poolhouse.fleet.serving import Served as LocalServed
 
         ui, cookie = bare
-        first = FakeLlamaServer(Served(model='shared.gguf', pieces=('first-resource',)))
-        second = FakeLlamaServer(Served(model='shared.gguf', pieces=('second-resource',)))
+        first = CannedServer(Canned(served_path='shared.gguf', pieces=('first-resource',)))
+        second = CannedServer(Canned(served_path='shared.gguf', pieces=('second-resource',)))
         try:
             ui.ui.serving = SimpleNamespace(live=lambda: [
                 LocalServed(port=first.port, models=['shared.gguf'], aliases=['/models/one/shared.gguf']),
@@ -191,7 +192,7 @@ class TestChattingThroughTheInterface:
         ui, cookie = bare
         status, body, _ = ui.call("/ui/chat", cookie=cookie)
         assert status == 200
-        assert [m["model"] for m in body["models"]] == ["qwen3-4b.gguf"]
+        assert [m["model"] for m in body["models"]] == [MODEL]
         assert body["models"][0]["member"] == "host"
 
     def test_post_cannot_select_a_known_non_chat_server(self, bare):
@@ -201,25 +202,26 @@ class TestChattingThroughTheInterface:
         status, body, _ = ui.call('/ui/chat', cookie=cookie)
         assert status == 200 and body['models'] == []
         status, body, _ = ui.call('/ui/chat', method='POST', cookie=cookie,
-            body={'model': 'qwen3-4b.gguf', 'messages': [{'role': 'user', 'content': 'hello'}]})
+            body={'model': MODEL, 'messages': [{'role': 'user', 'content': 'hello'}]})
         assert status == 503 and 'no machine' in body['error']
 
     def test_a_machine_with_nothing_installed_holds_a_conversation(self, bare):
         ui, cookie = bare
         status, raw, headers = ui.call(
             "/ui/chat", method="POST", cookie=cookie,
-            body={"model": "qwen3-4b.gguf",
+            body={"model": MODEL,
                   "messages": [{"role": "user", "content": "hi"}]})
         assert status == 200
         assert headers.get("X-Poolhouse-Member") == "host"
         text = raw["raw"] if "raw" in raw else json.dumps(raw)
         assert "Hel" in text and "there" in text
+        assert CANNED_MARKER in text, "what the page is shown says it is not a model"
 
     @pytest.mark.parametrize('limit',[0,-1,True,1.5,'2048'])
     def test_invalid_output_budget_is_refused_before_generation(self, bare, limit):
         ui,cookie=bare
         status,body,_=ui.call('/ui/chat',method='POST',cookie=cookie,
-            body={'model':'qwen3-4b.gguf','messages':[{'role':'user','content':'hi'}],'max_output_tokens':limit})
+            body={'model':MODEL,'messages':[{'role':'user','content':'hi'}],'max_output_tokens':limit})
         assert status == 400 and 'positive integer' in body['error']
 
     def test_the_reply_arrives_as_it_is_generated(self, bare):
@@ -229,7 +231,7 @@ class TestChattingThroughTheInterface:
         ui, cookie = bare
         req = urllib.request.Request(
             f"http://127.0.0.1:{ui.port}/ui/chat", method="POST",
-            data=json.dumps({"model": "qwen3-4b.gguf",
+            data=json.dumps({"model": MODEL,
                              "messages": [{"role": "user", "content": "hi"}]}).encode())
         req.add_header("Content-Type", "application/json")
         req.add_header("X-Poolhouse-UI", "1")
@@ -254,18 +256,18 @@ class TestChattingThroughTheInterface:
         ui, cookie = bare
         ui.ui.conversations = Conversations(tmp_path / "bare" / "chats")
         status, made, _ = ui.call("/ui/conversations", method="POST", cookie=cookie, headers=browser(ui),
-                                  body={"operation_id": "a" * 32, "model": "qwen3-4b.gguf"})
+                                  body={"operation_id": "a" * 32, "model": MODEL})
         assert status == 201
 
         ui.call("/ui/chat", method="POST", cookie=cookie,
-                body={"conversation": made["id"], "model": "qwen3-4b.gguf",
+                body={"conversation": made["id"], "model": MODEL,
                       "messages": [{"role": "user", "content": "hi"}]})
 
         # A fresh handle, as a restarted daemon would have.
         kept = Conversations(tmp_path / "bare" / "chats").get(made["id"])
         assert [m.role for m in kept.messages] == ["user", "assistant"]
         assert kept.messages[0].content == "hi"
-        assert kept.messages[1].content == "".join(PIECES)
+        assert kept.messages[1].content == marked("".join(PIECES))
         assert kept.title == "hi"
 
     def test_chats_are_listed_and_searchable_over_the_interface(self, bare, tmp_path):

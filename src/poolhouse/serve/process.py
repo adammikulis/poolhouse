@@ -14,6 +14,7 @@ from typing import Any
 
 import psutil
 
+from poolhouse import procscan
 from poolhouse.client.health import reported_models
 from poolhouse.home import state
 from poolhouse.units import human_bytes
@@ -262,12 +263,9 @@ def every_server() -> list[dict]:
 
 def _servers_now() -> list[dict]:
     out = []
-    for proc in psutil.process_iter(["pid", "name", "cmdline", "memory_info"]):
-        try:
-            argv = list(proc.info.get("cmdline") or [])
-            name = str(proc.info.get("name") or "")
-        except (psutil.Error, OSError):
-            continue
+    for proc, info in readable(["pid", "name", "cmdline", "memory_info"]):
+        argv = list(info.get("cmdline") or [])
+        name = str(info.get("name") or "")
         head = Path(argv[0]).name if argv else name
         if "llama-server" not in head and "llama-server" not in name:
             continue
@@ -280,7 +278,7 @@ def _servers_now() -> list[dict]:
                     return a.split("=", 1)[1]
             return ""
 
-        mem = proc.info.get("memory_info")
+        mem = info.get("memory_info")
         try:
             state = str(proc.status())
         except (psutil.Error, OSError):
@@ -289,7 +287,7 @@ def _servers_now() -> list[dict]:
         if isinstance(proc, psutil.Process):
             rss = footprint_of(proc) or rss
         ahead = after("--spec-draft-n-max")
-        out.append({"pid": int(proc.info["pid"]), "port": int(after("--port") or 8080),
+        out.append({"pid": int(info["pid"]), "port": int(after("--port") or 8080),
                     "defunct": state == psutil.STATUS_ZOMBIE,
                     "model": after("--model", "-m") or after("-hf") or "",
                     "binary": argv[0] if argv else name,
@@ -311,18 +309,7 @@ def running_within(path: Path) -> list[int]:
                    for word in [info.get("exe") or "", info.get("cwd") or "", *(info.get("cmdline") or [])])]
 
 
-def readable(attrs: list[str], *, uncertain: bool = False) -> list[tuple[Any, dict]]:
-    """Read process attributes; retain unknown entries when an idle proof requires them."""
-    found = []
-    for proc in psutil.process_iter():
-        try:
-            found.append((proc, proc.as_dict(attrs)))
-        except psutil.NoSuchProcess:
-            continue
-        except (psutil.Error, OSError, SystemError):
-            if uncertain:
-                found.append((proc, dict.fromkeys(attrs)))
-    return found
+readable = procscan.readable
 
 
 def working_directories() -> list[str | None]:
@@ -381,14 +368,10 @@ def machine_memory() -> dict | None:
         return None
     servers = 0
     rest: list[tuple[int, str]] = []
-    for proc in psutil.process_iter(["name", "cmdline", "memory_info"]):
-        try:
-            mem = proc.info.get("memory_info")
-            rss = int(getattr(mem, "rss", 0) or 0)
-            argv = list(proc.info.get("cmdline") or [])
-            head = Path(argv[0]).name if argv else str(proc.info.get("name") or "")
-        except (psutil.Error, OSError):
-            continue
+    for _proc, info in readable(["name", "cmdline", "memory_info"]):
+        rss = int(getattr(info.get("memory_info"), "rss", 0) or 0)
+        argv = list(info.get("cmdline") or [])
+        head = Path(argv[0]).name if argv else str(info.get("name") or "")
         if "llama-server" in head:
             servers += rss
         elif rss:
@@ -409,7 +392,7 @@ def listener(port: int) -> dict[str, Any] | None:
         return None
     for proc in psutil.process_iter():
         try:
-            for conn in proc.net_connections(kind="inet"):
+            for conn in procscan.connections(proc):
                 if (conn.status == psutil.CONN_LISTEN and conn.laddr
                         and conn.laddr.port == port):
                     uids = proc.uids() if hasattr(proc, "uids") else None
@@ -418,6 +401,6 @@ def listener(port: int) -> dict[str, Any] | None:
                             "user": proc.username(), "exe": proc.exe(),
                             "n_gpu_layers": offloaded_layers(proc.cmdline()),
                             "rss": int(proc.memory_info().rss)}
-        except (psutil.Error, OSError):
+        except procscan.UNREADABLE:
             continue
     return None
