@@ -203,9 +203,17 @@ def test_a_run_the_runner_did_not_start_has_no_node_and_is_told_to_use_the_runne
         node_kit.runner_binary()
 
 
+def keep_app_tests_unbuilt(runner, monkeypatch, tmp_path):
+    """The runner prepares the native app tests before the node; a source snapshot new to the cache would build them for real (and
+    ask the broker for a lease inside this test's own lease), which these tests are not about."""
+    monkeypatch.setitem(os.environ, runner.testapp.ENV, "")
+    monkeypatch.setattr(runner.testapp, "ensure", lambda *a, **k: tmp_path / "app-tests")
+
+
 def test_the_runner_builds_the_node_before_the_gate_runs_a_step_and_names_it_for_pytest(tmp_path, monkeypatch):
     runner = load_runner()
     order = []
+    keep_app_tests_unbuilt(runner, monkeypatch, tmp_path)
     monkeypatch.setattr(runner.testnode, "ensure", lambda *a, **k: order.append("build") or tmp_path / "node")
     monkeypatch.setattr(runner.gatescope, "unreached", lambda root, base: "")
     monkeypatch.setattr(runner, "gate_steps", lambda workers, rest: order.append("steps") or [])
@@ -221,8 +229,9 @@ def test_a_gate_the_diff_does_not_reach_builds_nothing(monkeypatch):
     assert runner.gate(Namespace(full=False, base="0.2dev", workers=0, artifact_output=False), []) == 0
 
 
-def test_a_failed_build_stops_the_run_before_any_test_with_the_cargo_error(monkeypatch, capsys):
+def test_a_failed_build_stops_the_run_before_any_test_with_the_cargo_error(tmp_path, monkeypatch, capsys):
     runner = load_runner()
+    keep_app_tests_unbuilt(runner, monkeypatch, tmp_path)
 
     def broken(*a, **k):
         raise testnode.BuildError("cargo build -p poolhouse-node failed:\nerror[E0432]")
