@@ -25,7 +25,12 @@ final class BiometricAuthorizer implements Authorizer {
         return biometrics != null && biometrics.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS;
     }
 
+    /** Asks on the screen's own thread: a second prompt for one answer is asked from the first prompt's callback. */
     @Override public void sign(byte[] message, String title, boolean strong, Result result) {
+        activity.runOnUiThread(() -> prompt(message, title, strong, result));
+    }
+
+    private void prompt(byte[] message, String title, boolean strong, Result result) {
         final Signature signature;
         try {
             signature = ApprovalKey.signature();
