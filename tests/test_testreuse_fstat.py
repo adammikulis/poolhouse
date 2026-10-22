@@ -136,6 +136,32 @@ def test_deleted_pipe_and_external_descriptors_never_bind(project, opened, tmp_p
         os.close(external_fd)
 
 
+def test_library_fstat_of_descriptors_that_cannot_alias_a_checkout_file_is_ignored(project, tmp_path, monkeypatch):
+    (project / "data.bin").write_bytes(b"data")
+    os.link(project / "data.bin", tmp_path / "alias.bin")
+    (tmp_path / "external.dat").write_bytes(b"outside")
+    namespace = {}
+    exec(compile("def library(probe, fd):\n    return probe(fd)\n", os.__file__, "exec"), namespace)  # noqa: S102
+    descriptors = {name: os.open(tmp_path / name, os.O_RDONLY) for name in ("external.dat", "alias.bin")}
+    reader, writer = os.pipe()
+    try:
+        with observing(monkeypatch, project) as seen:
+            namespace["library"](plugin._probe_fstat(FSTAT), descriptors["external.dat"])
+            assert not seen["unobserved"] and not seen["fd_stats"]
+        with observing(monkeypatch, project) as seen:
+            namespace["library"](plugin._probe_fstat(FSTAT), descriptors["alias.bin"])
+            assert seen["unobserved"] or "data.bin" in seen["fd_stats"]
+        with observing(monkeypatch, project) as seen:
+            namespace["library"](plugin._probe_fstat(FSTAT), reader)
+            assert not seen["unobserved"]
+        with observing(monkeypatch, project) as seen:
+            plugin._probe_fstat(FSTAT)(descriptors["external.dat"])
+            assert seen["unobserved"]
+    finally:
+        for descriptor in (*descriptors.values(), reader, writer):
+            os.close(descriptor)
+
+
 def test_no_dev_fd_path_or_replacement_syscall(project, opened, monkeypatch):
     _, fd = opened
     actual_stat = plugin._STAT

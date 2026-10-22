@@ -43,6 +43,7 @@ ENABLED = bool(os.environ.get("DEV_TEST_REUSE_RECORD"))
 BUSY: list[bool] = []
 OPEN_CALLS = threading.local()
 _STAT = os.stat
+_OWN_TESTS = Path(__file__).resolve().parent.parent / "tests"
 
 
 def _entry(rel: str) -> dict:
@@ -251,14 +252,21 @@ def _note_probe(path: object, dir_fd: object) -> None:
             BUSY.pop()
 
 
-def _outside_directory(result: os.stat_result, raw: str) -> bool:
-    """True for a directory descriptor whose canonical path lies outside the checkout, which no checkout file can alias."""
-    if not raw or not Path(raw).is_absolute() or not stat.S_ISDIR(result.st_mode):
+def _cannot_alias(result: os.stat_result, raw: str) -> bool:
+    """True when no checkout file can be read through the descriptor.
+
+    A pipe, socket or device is never a file. A directory or a regular file with a single link whose canonical
+    path lies outside the checkout is not a checkout file, and a hard link to one would have a second link.
+    """
+    mode = result.st_mode
+    if not (stat.S_ISDIR(mode) or stat.S_ISREG(mode)):
+        return True
+    if not raw or not Path(raw).is_absolute() or _under(Path(os.path.realpath(raw)), ROOT):
         return False
-    return not _under(Path(os.path.realpath(raw)), ROOT)
+    return stat.S_ISDIR(mode) or result.st_nlink == 1
 
 
-def _note_descriptor(descriptor: int, result: os.stat_result, original, cleanup: bool = False) -> None:
+def _note_descriptor(descriptor: int, result: os.stat_result, original, infrastructure: bool = False) -> None:
     bucket = _entry(CURRENT[-1])
     if BUSY:
         bucket["unobserved"].add("fstat during another probe")
@@ -266,7 +274,7 @@ def _note_descriptor(descriptor: int, result: os.stat_result, original, cleanup:
     BUSY.append(True)
     try:
         raw = _fd_path(descriptor)
-        if cleanup and _outside_directory(result, raw):
+        if infrastructure and _cannot_alias(result, raw):
             return
         path = Path(raw)
         if not raw or not path.is_absolute() or path.resolve(strict=True) != path:
@@ -305,8 +313,8 @@ def _probe_fstat(original):
             raise
         if CURRENT:
             if type(fd) is int:
-                caller = sys._getframe(1).f_code.co_filename
-                _note_descriptor(fd, result, original, caller == getattr(sys.modules.get("shutil"), "__file__", None))
+                caller = Path(sys._getframe(1).f_code.co_filename)
+                _note_descriptor(fd, result, original, not any(_under(caller, base) for base in (ROOT / "tests", _OWN_TESTS)))
             else:
                 _entry(CURRENT[-1])["unobserved"].add("fstat with an indirect descriptor")
         return result
