@@ -569,6 +569,15 @@ pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
             member(node, token, board)?;
             shown(node, board, text(p, "task"))
         }
+        "task_admit" => {
+            let actor = member(node, token, board)?;
+            let asked = super::line(p, "task", 128)?;
+            let (task, _) = working(node, board, &actor, asked)?;
+            if task.id != asked {
+                return invalid("task admission requires the canonical task entry ID");
+            }
+            shown(node, board, asked)
+        }
         "task_watchers" => {
             member(node, token, board)?;
             let b = fold(node, board)?;

@@ -1,6 +1,6 @@
 """Pages assembled out of components: one file per component, a page is the list of them.
 
-``assets_dir`` is the folder of ml-ui, the custom elements and tokens any page can load.
+``assets_dir`` is the folder of poolhouse-ui, the custom elements and tokens any page can load.
 """
 
 from pathlib import Path
@@ -11,7 +11,7 @@ __all__ = ["Component", "assemble", "assets", "assets_dir", "load"]
 
 
 def assets_dir() -> Path:
-    """The folder holding ``ml-ui.css``, ``ml-ui.js`` and the modules and gallery beside them."""
+    """The folder holding ``poolhouse-ui.css``, ``poolhouse-ui.js`` and the modules and gallery beside them."""
     return Path(__file__).parent / "assets"
 
 

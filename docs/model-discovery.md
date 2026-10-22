@@ -292,7 +292,7 @@ reserve_bytes=None)` is `green` below 80% of the memory the estimate lands in, `
 unified working-set limit or available RAM less the reserve (the larger of 2 GiB and a tenth of RAM), or
 a card's free VRAM for the GPU part, so 95% of it is the real limit. The two numbers are the ones
 `poolhouse.ui.verdict` uses. `meters(estimate, machine)` gives one `Meter` per pool with `segments`
-(`[{label, value}]` in bytes), `capacity_bytes` and `verdict`, which `<ml-meter>` takes as `segments`,
+(`[{label, value}]` in bytes), `capacity_bytes` and `verdict`, which `<poolhouse-meter>` takes as `segments`,
 `capacity` and `verdict`. `max_context(model, machine, setup, max_verdict="yellow")` is the longest
 context in steps of 256.
 

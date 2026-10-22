@@ -339,7 +339,7 @@ class TestThePoolView:
         member = page.locator("#pool-cards .member").first
         # the meters draw inside their shadow roots, which inner_text does not enter
         card = member.inner_text() + " " + member.evaluate(
-            "n => [...n.querySelectorAll('ml-meter')].map(m => m.shadowRoot.textContent).join(' ')")
+            "n => [...n.querySelectorAll('poolhouse-meter')].map(m => m.shadowRoot.textContent).join(' ')")
         assert "greenhollow" in card
         assert "NVIDIA · CUDA" in card and "Marrowgate 5000" in card
         assert "3 running of 4" in card and "2 waiting" in card
@@ -376,14 +376,18 @@ class TestTheChatView:
         page, errors = open_page(joined, cookie=joined.cookie)
         page.wait_for_selector("#pool:not([hidden])")
         page.click(RAIL["Chat"])
-        page.wait_for_selector("#chat-none:not([hidden])")
-        assert "No model is running" in page.locator("#chat-none").inner_text()
+        page.locator("#conversation-choose-model").click()
+        picker = page.get_by_role("dialog", name="Choose a model or workspace agent")
+        pw.expect(picker.get_by_text("No chat models are available yet.", exact=True)).to_be_visible()
+        pw.expect(picker.get_by_role("button", name="Add New Model (Model Library)")).to_be_visible()
         assert page.locator("#chat-askrow").is_hidden()
+        pw.expect(page.locator("#chat-send")).to_be_hidden()
         assert not errors
 
     def test_a_kept_conversation_is_listed_and_opens(self, joined, open_page):
         joined.call("/ui/conversations", method="POST", cookie=joined.cookie,
-                    body={"model": "thornfield-8B", "title": "about the roof"})
+                    headers={"Origin": f"http://127.0.0.1:{joined.port}", "Sec-Fetch-Site": "same-origin"},
+                    body={"operation_id": "a" * 32, "model": "thornfield-8B", "title": "about the roof"})
         page, errors = open_page(joined, cookie=joined.cookie)
         page.click(RAIL["Chat"])
         page.wait_for_selector("#chat-list .chatrow")
@@ -394,7 +398,8 @@ class TestTheChatView:
 
     def test_deleting_one_takes_it_off_the_list(self, joined, open_page):
         joined.call("/ui/conversations", method="POST", cookie=joined.cookie,
-                    body={"model": "thornfield-8B", "title": "about the roof"})
+                    headers={"Origin": f"http://127.0.0.1:{joined.port}", "Sec-Fetch-Site": "same-origin"},
+                    body={"operation_id": "a" * 32, "model": "thornfield-8B", "title": "about the roof"})
         page, errors = open_page(joined, cookie=joined.cookie)
         page.click(RAIL["Chat"])
         page.wait_for_selector("#chat-list .chatrow")
@@ -420,7 +425,7 @@ class TestTheModelsView:
     def test_with_no_hub_the_search_box_still_takes_a_query(self, joined, open_page):
         page, errors = open_page(joined, cookie=joined.cookie)
         open_models(page)
-        page.get_by_text("Add from your Pool or Hugging Face").click()
+        page.get_by_role("button", name="+ Add a model", exact=True).click()
         page.get_by_role("button", name="Hugging Face", exact=True).click()
         page.wait_for_selector("#browser-source")
         page.fill("#hunt", "thornfield")

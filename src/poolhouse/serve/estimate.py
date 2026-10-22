@@ -313,7 +313,7 @@ def rating(share: float) -> str:
 @dataclass(frozen=True, slots=True)
 class Meter:
     """One pool of memory as a bar: ``segments`` are ``{label, value}`` in bytes, in the
-    shape `<ml-meter>` takes, drawn against ``capacity_bytes``."""
+    shape `<poolhouse-meter>` takes, drawn against ``capacity_bytes``."""
 
     pool: str
     capacity_bytes: int

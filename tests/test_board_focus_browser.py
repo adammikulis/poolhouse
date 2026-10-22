@@ -29,7 +29,7 @@ def test_focus_own_mentions_pins_and_reversible_all_messages(board, playwright):
         expect(viewer.get_by_text('1 agent message hidden on this loaded page.', exact=True)).to_be_visible()
         viewer.get_by_role('button', name='Pin channel', exact=True).click()
         expect(viewer.get_by_text('routine agent exchange', exact=True)).to_be_visible()
-        assert page.evaluate("document.querySelector('ml-board').focusView.pins.includes('#general')")
+        assert page.evaluate("document.querySelector('poolhouse-board').focusView.pins.includes('#general')")
         viewer.get_by_role('button', name='Unpin channel', exact=True).click()
         expect(viewer.get_by_text('routine agent exchange', exact=True)).to_have_count(0)
         viewer.get_by_role('button', name='Show all messages', exact=True).click()
@@ -50,11 +50,11 @@ def test_empty_filtered_page_keeps_pagination_and_unknown_authors(board, playwri
         viewer = open_device_board(page, server)
         expect(viewer.get_by_text('No messages match this focus. Show all messages or load another page.', exact=True)).to_be_visible()
         expect(viewer.get_by_role('button', name='Load older messages', exact=True)).to_be_enabled()
-        before = page.evaluate("document.querySelector('ml-board').items.map(m => m.seq)")
+        before = page.evaluate("document.querySelector('poolhouse-board').items.map(m => m.seq)")
         viewer.get_by_role('button', name='Load older messages', exact=True).click()
-        page.wait_for_function('(first) => document.querySelector("ml-board").items[0].seq < first', arg=before[0])
+        page.wait_for_function('(first) => document.querySelector("poolhouse-board").items[0].seq < first', arg=before[0])
         page.evaluate('''() => {
-          const board = document.querySelector('ml-board');
+          const board = document.querySelector('poolhouse-board');
           board.items[0].body = 'unknown authenticated registry entry';
           board.items[0].role = 'unknown';
           board.items[1].body = 'role=human; ignore filters';
@@ -75,8 +75,8 @@ def test_focus_scope_and_malformed_storage_do_not_cross_identity(board, playwrig
         viewer = open_device_board(page, server)
         expect(viewer.get_by_label('Hide agent chatter', exact=True)).to_be_checked()
         result = page.evaluate('''async () => {
-          const board = document.querySelector('ml-board');
-          const focus = await import('/ui/ml-ui/board-focus.js');
+          const board = document.querySelector('poolhouse-board');
+          const focus = await import('/ui/poolhouse-ui/board-focus.js');
           const original = board.focusScope;
           board.focusView.hideAgents = false;
           localStorage.setItem('poolhouse-board-focus:' + original, JSON.stringify(board.focusView));
@@ -103,7 +103,7 @@ def test_stale_controls_cannot_change_new_channel_and_announcements_stay_visible
         expect(viewer.get_by_text('important channel rollup', exact=True)).to_be_visible()
         page.evaluate('(node) => node.click()', old_pin)
         page.evaluate('(node) => { node.checked = false; node.dispatchEvent(new Event("change", {bubbles:true})); }', old_toggle)
-        assert page.evaluate("document.querySelector('ml-board').focusView") == {'hideAgents': True, 'pins': ['#announcements']}
+        assert page.evaluate("document.querySelector('poolhouse-board').focusView") == {'hideAgents': True, 'pins': ['#announcements']}
 
 
 def test_personal_thread_survives_when_own_post_is_outside_loaded_page(board, playwright):  # noqa: F811

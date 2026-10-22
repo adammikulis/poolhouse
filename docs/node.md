@@ -366,7 +366,7 @@ needs an `assign` entry that names it and a model lease of this device's table t
 worker's parent, by the task's maker when the worker is named in its assignees, or by a session with no parent that holds
 `task_authority` for itself), and `task_claim` takes the claim lease `task` of the task for two minutes at a time, which
 `task_beat` renews and a lost worker lets lapse; an expired lease is recovered by a qualified reviewer (`task_ready`), which
-spends a retry, and a blocked task is resumed the same way. A submission is stamped with the model of the lease and the
+spends a retry, and a blocked task is resumed the same way. `task_admit` is the worker's read-only check before it works: it returns the working task with its lease and scope only to the worker the task is assigned to, and renews nothing. A submission is stamped with the model of the lease and the
 worker's own registration; a review names the exact proposal and hash and needs every acceptance criterion passed by an
 independent check. The worker never reviews its own task. In `open` mode (the default) any other session of the board
 reviews; in `strict` mode only a person (a session with no parent that holds `task_authority`), a designated reviewer, or the

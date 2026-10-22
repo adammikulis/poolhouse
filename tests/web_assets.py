@@ -2,11 +2,11 @@
 
 from poolhouse.fleet.routes import asset_bytes, ui_asset
 
-_FOLDERS = (("/ui/ml-ui/", ui_asset), ("/ui/static/", asset_bytes))
+_FOLDERS = (("/ui/poolhouse-ui/", ui_asset), ("/ui/static/", asset_bytes))
 
 
 def serve_page_asset(request, path):
-    """Fulfil the route's request from the ml-ui or static folder; False when `path` is neither."""
+    """Fulfil the route's request from the poolhouse-ui or static folder; False when `path` is neither."""
     for prefix, find in _FOLDERS:
         if path.startswith(prefix):
             asset = find(path[len(prefix):])

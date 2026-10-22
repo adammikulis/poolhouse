@@ -1,19 +1,28 @@
 <style>
-data-import .dataset-import {margin-top:20px;padding:20px;border:1px solid var(--line);border-radius:16px;background:var(--bg-raised)}
+data-import {display:flex;flex:1;min-height:0;min-width:0}
+data-import .dataset-import {display:flex;flex-direction:column;gap:12px;flex:1;min-height:0;min-width:0}
+data-import .dataset-import-content {flex:1;min-height:0;overflow:auto;overscroll-behavior:contain;scroll-padding-block:8px}
+data-import .dataset-import-selection {margin-top:12px;padding:20px;border:1px solid var(--line);border-radius:16px;background:var(--bg-raised)}
+data-import .dataset-import-feedback {display:grid;grid-template-columns:minmax(0,1fr) minmax(140px,.9fr);gap:8px;min-height:0;max-height:55%;flex:0 1 auto;padding:8px;border:1px solid var(--line);border-radius:12px;background:var(--bg-raised);overflow:hidden}
+data-import .dataset-import-feedback .dataset-import-progress,data-import .dataset-import-feedback .dataset-import-actions {min-height:0;overflow:auto;overscroll-behavior:contain}
+data-import .dataset-import-feedback .dataset-import-actions {flex-direction:column;flex-wrap:nowrap;margin:0;gap:6px;padding:2px;scroll-padding-block:2px}
+data-import .dataset-import-feedback button {flex-shrink:0;width:100%;white-space:normal;font-size:12px;line-height:18px;padding:6px 8px}
+data-import .dataset-import-feedback h3 {font-size:14px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+data-import .dataset-import-feedback p {font-size:12px;line-height:18px;margin:6px 0}
+data-import .dataset-import-progress:focus-visible {outline:2px solid var(--accent-ink);outline-offset:-2px}
 data-import .dataset-import-fields {display:flex;gap:12px;flex-wrap:wrap;align-items:end}
 data-import fieldset {min-width:0}data-import input {min-width:0;max-width:100%}data-import .dataset-import-column span {overflow-wrap:anywhere}
 data-import label {display:grid;gap:6px;margin:8px 0}data-import .dataset-import-columns {max-height:260px;overflow:auto}
-data-import .dataset-import-column {display:grid;grid-template-columns:auto minmax(80px,1fr) minmax(100px,1fr);align-items:center;gap:10px}
-data-import .dataset-import-column label {display:contents}data-import .dataset-import-column input[type=checkbox] {width:auto}
+data-import .dataset-import-column {display:grid;grid-template-columns:16px minmax(0,1fr) minmax(0,1fr);align-items:center;gap:10px}
+data-import .dataset-import-column label {display:contents}data-import .dataset-import-column input[type=checkbox] {width:16px;min-width:16px;height:16px}
 data-import .dataset-import-rows {display:flex;flex-wrap:wrap;gap:14px}data-import .dataset-import-rows label {display:flex;align-items:center}
 data-import .dataset-import-rows input {width:auto}data-import .dataset-import-actions {display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
 data-import .dataset-import-progress {overflow-wrap:anywhere}
 </style>
 <template>
- <section class="dataset-import" aria-label="Import observed dataset rows" hidden>
-  <div class="dataset-import-selection"></div>
-  <div class="dataset-import-progress" role="status" aria-live="polite"></div>
-  <div class="dataset-import-actions"></div>
+ <section class="dataset-import" aria-label="Dataset details and import">
+  <div class="dataset-import-content"><div class="dataset-detail"><p>Choose a dataset to inspect its subsets, splits, fields and sample records.</p></div><div class="dataset-import-selection" hidden></div></div>
+  <div class="dataset-import-feedback" aria-label="Current dataset import" hidden><div class="dataset-import-progress" role="status" aria-label="Dataset import status" aria-live="polite" tabindex="0"></div><div class="dataset-import-actions"></div></div>
  </section>
 </template>
 <script>
@@ -22,21 +31,21 @@ data-import .dataset-import-progress {overflow-wrap:anywhere}
  const terminal=new Set(['done','failed','blocked','interrupted','cancelled']);
  class DatasetImport extends HTMLElement{
   connectedCallback(){
-   if(this.wired)return;this.wired=true;this.host=this.querySelector('section');this.form=this.querySelector('.dataset-import-selection');
-   this.note=this.querySelector('.dataset-import-progress');this.actions=this.querySelector('.dataset-import-actions');
+   if(this.wired)return;this.wired=true;this.form=this.querySelector('.dataset-import-selection');
+   this.feedback=this.querySelector('.dataset-import-feedback');this.note=this.querySelector('.dataset-import-progress');this.actions=this.querySelector('.dataset-import-actions');
    M.onRoute(route=>{clearTimeout(this.poll);if(['sign-in','launch-needed','first-run'].includes(route))this.invalidate();else if(route==='data'&&this.active)this.refresh();});
   }
   enter(){this.active=true;this.refresh();}
   leave(){this.active=false;clearTimeout(this.poll);}
-  invalidate(){clearTimeout(this.poll);this.operation=null;this.selection=null;this.form.replaceChildren();this.note.replaceChildren();this.actions.replaceChildren();this.host.hidden=true;}
+  invalidate(){clearTimeout(this.poll);this.operation=null;this.selection=null;this.form.replaceChildren();this.note.replaceChildren();this.actions.replaceChildren();this.form.hidden=true;this.feedback.hidden=true;}
   session(){return M.sessionContext();}
   expire(op){if(this.operation===op&&this.session()!==op.epoch){this.invalidate();return true;}return false;}
   owns(op){return this.isConnected&&this.operation===op&&op.epoch!==null&&this.session()===op.epoch;}
   visible(op){return this.owns(op)&&this.active&&M.route==='data'&&location.hash==='#data'&&!this.closest('[hidden]');}
   select(params,preview,current){
-   this.selection=null;this.form.replaceChildren();this.host.hidden=!this.operation;
+   this.selection=null;this.form.replaceChildren();this.form.hidden=true;this.feedback.hidden=!this.operation;
    if(!preview?.preview_digest||!preview.rows.length)return;
-   const selected=this.selection={params:{...params},preview,current};this.host.hidden=false;
+   const selected=this.selection={params:{...params},preview,current};this.form.hidden=false;
    const name=E('input',{'aria-label':'Imported dataset name',maxlength:'256',value:params.repo.split('/').pop()+' sample'});
    const rows=E('div',{class:'dataset-import-rows'}),columns=E('div',{class:'dataset-import-columns'});
    const rowFields=preview.rows.map((_row,index)=>{const input=E('input',{type:'checkbox',checked:true,'aria-label':'Import sample row '+(index+1)});rows.append(E('label',{},input,'Row '+(index+1)));return input;});
@@ -133,23 +142,25 @@ data-import .dataset-import-progress {overflow-wrap:anywhere}
   }
   draw(){
    const op=this.operation;if(this.submitButton)this.submitButton.disabled=!!op&&!terminal.has(op.run?.state)&&op.state!=='refused';
-   this.note.replaceChildren();this.actions.replaceChildren();if(!op)return;
-   this.host.hidden=false;
+   this.note.replaceChildren();this.feedback.hidden=!op;if(!op){this.actions.replaceChildren();return;}
+   const actions=E('div');
    if(!this.owns(op)){this.invalidate();return;}
    const state=op.run?.state||op.state;
-   this.note.append(E('h3',{},op.body.name),E('p',{},'Preview-row import · '+state));
-   if(op.run)for(const node of Object.values(op.run.nodes||{}))this.note.append(E('p',{},'Dataset step: '+node.state));
+   this.note.append(E('h3',{title:op.body.name},op.body.name),E('p',{},'Preview-row import · '+state));
+   if(op.run&&op.run.state!=='done')for(const node of Object.values(op.run.nodes||{}))this.note.append(E('p',{},'Dataset step: '+node.state));
    if(op.error||op.run?.error)this.note.append(E('p',{},op.error||op.run.error));
-   if(op.state==='unknown'&&!op.run){const check=E('button',{type:'button',disabled:!!op.querying},op.querying?'Checking import…':'Check this import');check.onclick=()=>this.lookup(op);this.actions.append(check);}
-   if(op.state==='notfound'){const retry=E('button',{type:'button'},'Submit this same selection');retry.onclick=()=>this.send(op);this.actions.append(retry);}
+   if(op.state==='unknown'&&!op.run){const check=E('button',{type:'button',disabled:!!op.querying},op.querying?'Checking import…':'Check this import');check.onclick=()=>this.lookup(op);actions.append(check);}
+   if(op.state==='notfound'){const retry=E('button',{type:'button'},'Submit this same selection');retry.onclick=()=>this.send(op);actions.append(retry);}
    if(op.run&&!terminal.has(op.run.state)){
-    const cancel=E('button',{type:'button',disabled:!!op.cancelling},op.cancelling?'Cancelling…':'Cancel import');cancel.onclick=()=>this.cancel(op);this.actions.append(cancel);
+    const cancel=E('button',{type:'button',disabled:!!op.cancelling},op.cancelling?'Cancelling…':'Cancel import');cancel.onclick=()=>this.cancel(op);actions.append(cancel);
    }
-   if(op.run){const refresh=E('button',{type:'button'},'Refresh import status');refresh.onclick=()=>this.refresh();this.actions.append(refresh);}
+   if(op.run&&!(op.dataset&&op.run.state==='done')){const refresh=E('button',{type:'button'},'Refresh import status');refresh.onclick=()=>this.refresh();actions.append(refresh);}
    if(op.dataset&&op.run?.state==='done'){
     this.note.append(E('p',{},op.dataset.rows+' imported rows · '+op.dataset.columns.length+' fields · observed preview data'));
-    const preview=E('button',{type:'button',class:'data-primary'},'Preview imported dataset');preview.onclick=()=>this.preview(op);this.actions.append(preview);
+    const preview=E('button',{type:'button',class:'data-primary'},'Preview imported dataset');preview.onclick=()=>this.preview(op);actions.append(preview);
    }
+   const signature=element=>Array.from(element.children,button=>[button.textContent,button.disabled,button.className]);
+   if(this.actionOperation!==op||JSON.stringify(signature(this.actions))!==JSON.stringify(signature(actions))){this.actions.replaceChildren(...actions.children);this.actionOperation=op;}
   }
  }
  customElements.define('data-import',DatasetImport);

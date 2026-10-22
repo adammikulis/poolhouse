@@ -1,0 +1,49 @@
+<script>
+(() => {
+  const M = window.fleetModel;
+  const canonical = value => JSON.stringify(value, (_key, item) => item && !Array.isArray(item) && typeof item === 'object'
+    ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
+  M.ChatCreation = class {
+    constructor(chat) { this.chat = chat; }
+    reset() { this.operation = null; }
+    async ensure(payload, current, signal) {
+      if (!current()) return null;
+      const body = canonical(payload), session = M.sessionContext(), load = this.chat.loadEpoch;
+      let operation = this.operation;
+      if (operation && (operation.body !== body || operation.session !== session || operation.load !== load))
+        throw Error('The earlier conversation setup is unresolved. Choose New conversation to start separately.');
+      if (!operation) operation = this.operation = {id:crypto.randomUUID().replaceAll('-', ''), body, session, load, state:'new'};
+      if (operation.pending) return operation.pending;
+      const owned = () => this.operation === operation && current() && operation.session === M.sessionContext();
+      operation.pending = (async () => {
+        let receipt;
+        try {
+          if (!owned()) return null;
+          if (operation.state === 'new') {
+            operation.state = 'unknown';
+            receipt = await M.api('/ui/conversations', {method:'POST', signal,
+              body:JSON.stringify({...JSON.parse(operation.body), operation_id:operation.id})});
+          } else receipt = await M.api('/ui/conversations/operations/' + operation.id, {signal});
+        } catch (error) {
+          if (!owned()) return null;
+          if (error.name === 'AbortError') throw error;
+          throw Error('Could not confirm conversation setup. Send again to check its status.');
+        }
+        if (!owned() || M.refused(receipt)) return null;
+        if (!receipt.ok) throw Error(receipt.error || 'Conversation setup is not confirmed. Send again to check its status.');
+        if (receipt.operation_id !== operation.id || !/^[A-Za-z0-9_-]{1,64}$/.test(receipt.id))
+          throw Error('The conversation setup response could not be verified.');
+        operation.state = 'created';
+        const actual = await M.api('/ui/conversations/' + receipt.id, {signal});
+        if (!owned() || M.refused(actual)) return null;
+        if (!actual.ok) throw Error(actual.error || 'Could not read the created conversation.');
+        if (actual.id !== receipt.id || actual.model !== payload.model || canonical(actual.settings) !== canonical(payload.settings))
+          throw Error('The conversation settings changed. Open its current version from the conversation list.');
+        return actual;
+      })();
+      try { return await operation.pending; }
+      finally { if (this.operation === operation) operation.pending = null; }
+    }
+  };
+})();
+</script>
