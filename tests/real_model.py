@@ -131,6 +131,11 @@ def server_problem(account: Path) -> tuple[Path | None, str]:
                     "(or point POOLHOUSE_TEST_LLAMA_SERVER at a build).")
 
 
+def computing() -> list[Any]:
+    """The llama-servers running now; a defunct one (killed, its parent has not yet reaped it) computes nothing."""
+    return [one for one in every_server() if not (isinstance(one, dict) and one.get("defunct"))]
+
+
 def busy_problem(running: list[Any]) -> str:
     """Why a model cannot start beside the servers already running, each named; "" when none is."""
     if not running:
@@ -148,11 +153,6 @@ def gpu_problem(system: str, machine: str) -> str:
         return ""
     return (f"NO GPU: this test needs the Apple GPU (Metal) and the macOS sandbox; this machine is {system} on "
             f"{machine}, which has neither, so it cannot pass here. Run it on a Mac with --real-model.")
-
-
-def computing() -> list[Any]:
-    """The llama-servers that are running; a defunct one an agent left unreaped computes nothing."""
-    return [one for one in every_server() if not (isinstance(one, dict) and one.get("defunct"))]
 
 
 def stop(problem: str) -> None:

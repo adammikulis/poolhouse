@@ -157,15 +157,15 @@ def test_another_server_on_the_compute_fails_the_test_naming_it(tmp_path, monkey
     harness(tmp_path).idle(wait=0)
 
 
-def test_a_defunct_server_an_agent_left_unreaped_computes_nothing_and_blocks_no_test(tmp_path, monkeypatch):
-    zombie = {"pid": 19787, "port": 8080, "model": "", "defunct": True}
-    monkeypatch.setattr(real_model, "every_server", lambda: [zombie])
+def test_a_defunct_server_computes_nothing_and_does_not_hold_the_test_back(tmp_path, monkeypatch):
+    dead = {"pid": 4243, "port": 8080, "model": "", "defunct": True}
+    monkeypatch.setattr(real_model, "every_server", lambda: [dead])
     harness(tmp_path).idle(wait=0)
-    live = {"pid": 4242, "port": 54543, "model": "/hub/m.gguf"}
-    monkeypatch.setattr(real_model, "every_server", lambda: [zombie, live])
+    live = {"pid": 4244, "port": 54544, "model": "/hub/m.gguf"}
+    monkeypatch.setattr(real_model, "every_server", lambda: [dead, live])
     with fails("COMPUTE BUSY") as raised:
         harness(tmp_path).idle(wait=0)
-    assert "pid 4242" in raised.message and "19787" not in raised.message
+    assert "pid 4244" in raised.message and "pid 4243" not in raised.message
 
 
 def test_a_server_that_finishes_while_the_test_waits_lets_it_go_on(tmp_path, monkeypatch):
