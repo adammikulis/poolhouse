@@ -254,11 +254,20 @@ def glossary_reads(root: Path, changed: list[str], deleted: frozenset[str]) -> l
         return kept
 
 
+ENV_TEST = "tests/test_documented_env_vars.py"
+ENV_READS = ("src/", "scripts/", "packaging/", "app/src/", "app/src-tauri/src/", "app/poolhouse-node/src/", "contracts/",
+             "tests/pool_check/", "docs/", "pyproject.toml", "README.md", "CHANGELOG.md")
+"""The paths the switch-table test scans (its SOURCE_DIRS and SOURCE_FILES, and the docs it reads): a variable can arrive in any of them."""
+
+
 def add_tree_wide(out: Selection, root: Path, changed: list[str], deleted: frozenset[str], tests: list[str]) -> None:
     """The tests that read the whole tree: the glossary scan for what it reads, the guards once anything runs."""
     read = glossary_reads(root, changed, deleted) if GLOSSARY_TEST in tests else []
     if read:
         out.add(GLOSSARY_TEST, f"{read[0]} is read by the glossary scan")
+    scanned = [c for c in changed if c.startswith(ENV_READS)]
+    if scanned and ENV_TEST in tests:
+        out.add(ENV_TEST, f"{scanned[0]} is scanned for POOLHOUSE_ variables")
     if out.files:
         for guard in GUARDS:
             if f"tests/{guard}" in tests:
