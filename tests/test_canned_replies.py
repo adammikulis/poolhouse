@@ -63,7 +63,8 @@ def test_an_embedding_reply_is_visibly_canned():
 def test_a_chunk_names_the_canned_id_and_keeps_what_rides_beside_it():
     chunk = canned_chunk({"content": marked("hi")}, finish="stop", index=1, usage={"total_tokens": 2})
     assert chunk["model"] == CANNED_MODEL_ID and chunk["x_canned"] == CANNED_MARKER
-    assert chunk["choices"] == [{"index": 1, "delta": {"content": marked("hi")}, "finish_reason": "stop"}]
+    (choice,) = chunk["choices"]
+    assert (choice["index"], choice["delta"], choice["finish_reason"]) == (1, {"content": marked("hi")}, "stop")
     assert chunk["usage"] == {"total_tokens": 2}
     assert "finish_reason" not in canned_chunk()["choices"][0]
 

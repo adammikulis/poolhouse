@@ -2,7 +2,6 @@
 # A file leaves this list when its test moves to poolhouse.testing.canned; a count only falls, and a file that builds
 # fewer than its line says fails the gate until the line is lowered. Nothing is added: a new reply is a new finding.
 tests/decide_fakes.py 3
-tests/test_client_protocol.py 5
 tests/test_decide_logprob.py 4
 tests/test_entities_edits.py 1
 tests/test_pi_harness.py 2

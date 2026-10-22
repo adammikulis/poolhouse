@@ -100,30 +100,29 @@ class TestBuildBody:
         assert not [key for key in body if key.startswith("speculative.")]
 
 
+def _parsed(text="", *, bare=False, **fields):
+    """A canned chat body, parsed by `Client.normalize` with no server in between; ``fields`` ride in the message."""
+    return Client.normalize(json.loads(canned_chat_reply(text, bare=bare, message=fields)[1]))
+
+
 class TestNormalize:
     def test_lifts_a_legacy_function_call_into_tool_calls(self):
         """Some llama.cpp builds emit tool calls only in the legacy field. Callers must
         see one shape, not two."""
-        reply = Client.normalize(
-            {"choices": [{"message": {"function_call": {"name": "ping", "arguments": "{}"}}}]}
-        )
+        reply = _parsed(bare=True, content=None, function_call={"name": "ping", "arguments": "{}"})
         assert reply.tool_calls is not None
         assert reply.tool_calls[0]["function"]["name"] == "ping"
         assert reply.tool_calls[0]["type"] == "function"
 
     def test_prefers_real_tool_calls_over_the_legacy_field(self):
-        reply = Client.normalize(
-            {"choices": [{"message": {
-                "tool_calls": [{"id": "a", "type": "function",
-                                "function": {"name": "real", "arguments": "{}"}}],
-                "function_call": {"name": "legacy", "arguments": "{}"}}}]}
-        )
+        reply = _parsed(bare=True, content=None, function_call={"name": "legacy", "arguments": "{}"},
+                        tool_calls=[{"id": "a", "type": "function",
+                                     "function": {"name": "real", "arguments": "{}"}}])
         assert reply.tool_calls[0]["function"]["name"] == "real"
 
     def test_truncation_is_visible(self):
-        reply = Client.normalize({"choices": [{"message": {"content": "cut"},
-                                               "finish_reason": "length"}]})
-        assert reply.truncated
+        reply = Client.normalize(json.loads(canned_chat_reply("cut", finish_reason="length")[1]))
+        assert reply.truncated and reply.content == marked("cut")
 
     def test_rejects_a_non_dict_payload(self):
         with pytest.raises(ServerError):
@@ -131,16 +130,12 @@ class TestNormalize:
 
 
     def test_a_reasoning_field_is_carried_as_thinking(self):
-        reply = Client.normalize({"choices": [{"message": {
-            "role": "assistant", "content": "",
-            "reasoning_content": "count the people first"}, "finish_reason": "stop"}]})
+        reply = _parsed(bare=True, reasoning_content="count the people first")
         assert reply.content == "" and reply.thinking == "count the people first"
 
     def test_reasoning_and_think_tags_both_survive(self):
-        reply = Client.normalize({"choices": [{"message": {
-            "role": "assistant", "content": "<think>tags</think>42",
-            "reasoning": "field"}, "finish_reason": "stop"}]})
-        assert reply.content == "42"
+        reply = _parsed("<think>tags</think>42", reasoning="field")
+        assert reply.content == marked("42")
         assert reply.thinking == "field\ntags"
 
 
