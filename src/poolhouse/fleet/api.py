@@ -40,6 +40,7 @@ from . import (
     device_auth,
     invite_routes,
     projects as project_routes,
+    shard_routes,
     studio_device_routes,
     studio_library,
     studio_webhooks,
@@ -430,7 +431,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             if not (path == "/health" and here and "Authorization" not in self.headers) \
                     and not self._guard():
                 return
-            if member_answer(self, roster, "GET", path, None):
+            if member_answer(self, roster, "GET", path, None) or shard_routes.answer(self, daemon, "GET", self.path, None):
                 return
             if project_routes.answer(self, daemon.projects, parsed):
                 return
@@ -625,7 +626,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             body = self._unsealed(body)
             if body is None:
                 return
-            if member_answer(self, roster, "POST", self.path.split("?")[0], body):
+            if member_answer(self, roster, "POST", self.path.split("?")[0], body) or shard_routes.answer(self, daemon, "POST", self.path, body):
                 return
             if project_routes.register(self, daemon.projects, pool_key_path, body):
                 return
@@ -692,8 +693,8 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                     argv = req.get("argv")
                     if isinstance(argv, str):
                         argv = shlex.split(argv)
-                    job = runner.submit(req.get("name", ""), command(argv or []),
-                                        str(files_root))
+                    job = runner.label(runner.submit(req.get("name", ""), command(argv or []),
+                                                     str(files_root)), shard_routes.who(self))
                 except (DaemonError, ValueError) as e:
                     self._send(400, {"error": str(e)})
                     return

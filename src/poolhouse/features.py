@@ -20,7 +20,7 @@ from pathlib import Path
 from poolhouse import authority, home
 from poolhouse.files import read_json, write_json
 
-__all__ = ["FEATURES", "FLOORS", "STAGES", "Feature", "UnknownFeature", "enabled", "listing", "register", "switch"]
+__all__ = ["FEATURES", "FLOORS", "STAGES", "Feature", "UnknownFeature", "enabled", "listing", "register", "switch", "turned_off"]
 
 STAGES = ("experimental", "beta", "stable")
 NAME = re.compile(r"[a-z][a-z0-9]*(-[a-z0-9]+)*")
@@ -111,6 +111,12 @@ def enabled(name: str, root: str = "") -> bool:
     return _held(root).get(name) is True
 
 
+def turned_off(name: str, root: str = "") -> bool:
+    """Whether a person turned ``name`` off, as against never having turned it on."""
+    _known(name)
+    return _held(root).get(name) is False
+
+
 def listing(root: str = "") -> list[dict[str, object]]:
     """Every feature with its stage, description, risk and whether it is on, in name order."""
     return [{"name": f.name, "stage": f.stage, "about": f.about, "risk": f.risk, "enabled": enabled(f.name, root)}
@@ -136,5 +142,5 @@ register("guard-change", "experimental",
          "A person-approved change to the guards and the code that makes them (no gate is wired yet).",
          "Would let an approved diff alter the guard code itself; nothing reads it until it is wired.")
 register("remote-tests", "experimental",
-         "Run tests on other devices of the pool (scripts/test --on), and take their tests here when this device's node allows it.",
-         "While a device allows it, any member of its pool runs a checkout's tests there as its user: a stolen pool certificate is code execution.")
+         "Run tests on other devices of the pool (scripts/test --on), and take their tests here: in a pool in dev mode this is on until turned off, in any other pool a person turns it on and names the senders.",
+         "While a device takes tests, any member allowed to send them runs a checkout's tests there as its user: in dev mode that is every device that joined the pool, and a stolen pool certificate is code execution.")

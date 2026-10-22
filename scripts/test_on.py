@@ -33,8 +33,9 @@ from poolhouse.activity.gate import tree_hash
 from poolhouse.fleet import shard_split
 from poolhouse.fleet.shard_spec import TEST_FILE
 from poolhouse.testfarm import report
-from poolhouse.testfarm.client import ShardError, Shards, choose, pool_devices
+from poolhouse.testfarm.client import ShardError, choose
 from poolhouse.testfarm.consent import FEATURE
+from poolhouse.testfarm.farm import Farm, open_farm
 from poolhouse.testfarm.ledger import Ledger, key as ledger_key
 from poolhouse.workspace import testruns
 
@@ -48,7 +49,7 @@ OPTION = re.compile(r"^-")
 class Run:
     """What every part of one remote run shares: who asks, the record, the tier, the file keys and the tree."""
 
-    shards: Shards
+    shards: Farm
     ledger: Ledger
     tier: str
     content: dict[str, str]
@@ -160,7 +161,7 @@ def record(run: Run, part: Part) -> None:
         print(f"test: board notice not sent: {exc}", file=sys.stderr)
 
 
-def ready(shards: Shards, devices: list[dict]) -> list[Part]:
+def ready(shards: Farm, devices: list[dict]) -> list[Part]:
     """A part for each device that takes tests; the ones that do not are named with the reason."""
     parts = []
     for device in devices:
@@ -198,14 +199,16 @@ def main(args: argparse.Namespace, rest: list[str], root: Path, command_for: Cal
         return refuse("a run on another device takes test files tests/NAME.py only: no options, node ids or paths")
     if tier == "gate" and files:
         return refuse("the gate takes no files")
-    if not features.enabled(FEATURE):
-        return refuse(f"running tests on another device is an experimental feature and off here; a person turns it on with `poolhouse features enable {FEATURE}`")
+    if features.turned_off(FEATURE):
+        return refuse(f"running tests on another device was turned off here (`poolhouse features disable {FEATURE}`); `poolhouse features enable {FEATURE}` turns it on")
     try:
-        chosen = choose(args.on, pool_devices())
-        shards = Shards()
+        shards = open_farm()
+        chosen = choose(args.on, shards.devices)
     except Exception as exc:  # noqa: BLE001 - no node, no session, no such device: one line and the status of a run that never started
         print(f"test: {exc}", file=sys.stderr)
         return NOT_RUN
+    if any(row["via"] == "node" and not row["also"] for row in chosen) and not features.enabled(FEATURE):
+        return refuse(f"running tests on another device through the node is an experimental feature and off here; a person turns it on with `poolhouse features enable {FEATURE}`")
     if tier == "quick":
         picked = reached(root, args.base)
         if picked is None:

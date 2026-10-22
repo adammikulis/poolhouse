@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import shutil
@@ -15,6 +16,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import psutil
+
 from poolhouse.credentials import child_environment
 from poolhouse.platform import start_grouped, terminate_process_group
 
@@ -27,10 +30,13 @@ POLL_S = 1.0
 MOST_LOG = 64 << 20
 """The output a runner may write before it is cancelled: a runaway test must not fill the disk."""
 RESULT = "result.json"
+PYTHON_ENV = "POOLHOUSE_SHARD_PYTHON"
+STREAM_ENV = "POOLHOUSE_SHARD_STREAM"
+"""The interpreter a daemon-started shard runs its tests with, and whether the runner's output is also written to this process's own."""
 COMMIT = ["git", "-c", "user.name=shard", "-c", "user.email=shard@localhost", "-c", "core.autocrlf=false",
           "-c", "core.safecrlf=false", "commit", "-q", "-m", "shard"]
 DROPPED = ("DEV_TEST_JOB", "DEV_TEST_AGENT", "DEV_TEST_PYTEST_ENDPOINT", "DEV_TEST_PYTEST_TOKEN",
-           "DEV_TEST_REMOTE_BROKER", "CLAUDECODE", "AI_AGENT", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ATTENDED",
+           "DEV_TEST_REMOTE_BROKER", PYTHON_ENV, STREAM_ENV, "CLAUDECODE", "AI_AGENT", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ATTENDED",
            "CODEX_THREAD_ID", "CODEX_SESSION_ID", "POOLHOUSE_AGENT", "POOLHOUSE_BOARD", "POOLHOUSE_HOME",
            "POOLHOUSE_NONINTERACTIVE", "POOLHOUSE_SESSION_HARNESS", "POOLHOUSE_SESSION_ID", "POOLHOUSE_WORKSPACE_AGENT",
            "POOLHOUSE_WORKSPACE_DENYLIST", "POOLHOUSE_WORKSPACE_TOKEN", "PYTEST_ADDOPTS", "PYTEST_PLUGINS",
@@ -40,7 +46,7 @@ DROPPED = ("DEV_TEST_JOB", "DEV_TEST_AGENT", "DEV_TEST_PYTEST_ENDPOINT", "DEV_TE
 
 def shard_command(tree: Path, tier: str, files: list[str], junit: Path) -> list[str]:
     """The only command a shard runs: this device's test runner, on this device's Python, for the tier."""
-    return [sys.executable, str(tree / "scripts" / "test"), tier, "--no-reuse", f"--junitxml={junit}", *files]
+    return [os.environ.get(PYTHON_ENV) or sys.executable, str(tree / "scripts" / "test"), tier, "--no-reuse", f"--junitxml={junit}", *files]
 
 
 def environment(base: Path) -> dict[str, str]:
@@ -67,6 +73,21 @@ def cpu_seconds() -> float:
     return times.children_user + times.children_system
 
 
+def note(pid: int, seen: dict[int, psutil.Process]) -> None:
+    """Remember the processes below ``pid`` now, so that those it leaves behind can be ended."""
+    with contextlib.suppress(psutil.Error):
+        for child in psutil.Process(pid).children(recursive=True):
+            seen[child.pid] = child
+
+
+def end(seen: dict[int, psutil.Process]) -> None:
+    """End the remembered processes that still run."""
+    for child in seen.values():
+        with contextlib.suppress(psutil.Error, ValueError):
+            if child.is_running():
+                child.kill()
+
+
 def stop(proc: subprocess.Popen) -> None:
     """Cancel a runner that overran: an interrupt first, so it cancels its job, then all of it.
 
@@ -86,12 +107,16 @@ def stop(proc: subprocess.Popen) -> None:
     proc.wait()
 
 
-def keep_output(pipe, out, flooded: threading.Event) -> None:
-    """Copy a runner's output into ``out`` up to MOST_LOG bytes, then only drain it, so the disk stays bounded."""
+def keep_output(pipe, out, flooded: threading.Event, tee=None) -> None:
+    """Copy a runner's output into ``out`` (and ``tee``) up to MOST_LOG bytes, then only drain it, so the disk stays bounded."""
     kept = 0
     for chunk in iter(lambda: pipe.read(65536), b""):
         if kept <= MOST_LOG:
-            out.write(chunk[:MOST_LOG + 1 - kept])
+            piece = chunk[:MOST_LOG + 1 - kept]
+            out.write(piece)
+            if tee is not None:
+                tee.write(piece)
+                tee.flush()
             kept += len(chunk)
         if kept > MOST_LOG:
             flooded.set()
@@ -111,20 +136,23 @@ def execute(argv: list[str], tree: Path, env: dict[str, str], log: Path, limit: 
     with log.open("wb") as out:
         proc = start_grouped(argv, cwd=tree, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                              stdin=subprocess.DEVNULL)
-        reader = threading.Thread(target=keep_output, args=(proc.stdout, out, flooded), daemon=True)
+        tee = sys.stdout.buffer if os.environ.get(STREAM_ENV) else None
+        reader = threading.Thread(target=keep_output, args=(proc.stdout, out, flooded, tee), daemon=True)
         reader.start()
         deadline = time.monotonic() + limit.seconds
-        code = None
+        code, seen = None, {}
         while code is None:
             try:
                 code = proc.wait(max(0.0, min(POLL_S, deadline - time.monotonic())))
             except subprocess.TimeoutExpired:
+                note(proc.pid, seen)
                 if limit.cancel.is_set():
                     stop(proc)
                     code = 130
                 elif time.monotonic() >= deadline or flooded.is_set():
                     stop(proc)
                     code = 124
+        end(seen)
         reader.join(CUT_S if code in (124, 130) else GRACE_S)
         return 124 if flooded.is_set() else code
 
