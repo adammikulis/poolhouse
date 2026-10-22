@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import secrets
-import tempfile
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -22,13 +21,14 @@ from poolhouse.fleet.remote import Discovery, Member, MemberError
 from poolhouse.log import say as default_say
 
 from .client import ShardError
+from .report import plain
 
 POLL_S = 2.0
 LOST_S = 45.0
 VIA = "dev"
 
 
-def plain(exc: MemberError) -> str:
+def said(exc: MemberError) -> str:
     """What a member's refusal says, in its own words when it sent them."""
     body = getattr(exc, "body", "") or ""
     try:
@@ -50,7 +50,7 @@ def reached(timeout_s: float = 2.0) -> list[tuple[dict, Member]]:
             if beacon is None or beacon.machine == own or not beacon.cert:
                 continue
             fingerprint = fingerprint_of(beacon.cert)
-            found.append(({"name": beacon.name, "fingerprint": fingerprint, "addr": f"{beacon.host}:{beacon.port}", "connected": True,
+            found.append(({"name": plain(beacon.name)[:40], "fingerprint": fingerprint, "addr": f"{beacon.host}:{beacon.port}", "connected": True,
                            "reach": "direct", "reach_hint": "", "via": VIA}, member))
     return found
 
@@ -83,7 +83,7 @@ class DevShards:
         try:
             return self.member(device).shard_caps()
         except MemberError as exc:
-            raise ShardError(plain(exc)) from None
+            raise ShardError(said(exc)) from None
 
     def send(self, device: str, root: Path, tier: str, files: list[str], timeout_s: int) -> str:
         """Pack the tree at ``root``, upload it to ``device`` and start the run; the shard id. ShardError when the device takes no tests."""
@@ -96,13 +96,10 @@ class DevShards:
             raise ShardError(str(exc)) from None
         shard, member = secrets.token_hex(16), self.member(device)
         try:
-            with tempfile.TemporaryDirectory(prefix="shard-send-") as scratch:
-                path = Path(scratch) / "tree.tgz"
-                path.write_bytes(tree)
-                member.push(path, f"shards/{shard}/tree.tgz")
+            member.shard_upload(shard, tree)
             member.shard_start({"id": shard, "tree_sha256": digest, "tier": tier, "files": files, "timeout_s": timeout_s})
         except MemberError as exc:
-            raise ShardError(plain(exc)) from None
+            raise ShardError(said(exc)) from None
         return shard
 
     def wait(self, device: str, shard: str, *, timeout_s: float, poll_s: float = POLL_S,
@@ -117,13 +114,13 @@ class DevShards:
             except MemberError as exc:
                 silent = silent or time.monotonic()
                 if time.monotonic() - silent > LOST_S:
-                    raise ShardError(f"{name} stopped answering {LOST_S:.0f}s ago while shard {shard} ran there ({plain(exc)}); "
+                    raise ShardError(f"{name} stopped answering {LOST_S:.0f}s ago while shard {shard} ran there ({said(exc)}); "
                                      "its tests did not finish and were not run anywhere else") from None
                 time.sleep(poll_s)
                 continue
             since = got.get("next", since)
             for line in str(got.get("output", "")).splitlines():
-                self.say(f"[{name}] {line}")
+                self.say(plain(f"[{name}] {line}"))
             if got["state"] == "done":
                 return got["result"]
             if got["state"] in ("failed", "cancelled"):
@@ -137,11 +134,11 @@ class DevShards:
     def name_of(self, device: str) -> str:
         """How the member is called on screen."""
         beacon = self.member(device).beacon
-        return beacon.name if beacon else device[:12]
+        return plain(beacon.name)[:40] if beacon else device[:12]
 
     def cancel(self, device: str, shard: str) -> dict:
         """Stop a shard on ``device`` and everything it started."""
         try:
             return self.member(device).shard_cancel(shard)
         except MemberError as exc:
-            raise ShardError(plain(exc)) from None
+            raise ShardError(said(exc)) from None

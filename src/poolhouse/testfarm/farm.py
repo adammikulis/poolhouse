@@ -13,6 +13,7 @@ from typing import Any
 
 from . import dev
 from .client import ShardError, Shards, pool_devices
+from .report import plain
 
 __all__ = ["Farm", "open_farm"]
 
@@ -90,7 +91,7 @@ def open_farm(session: Callable[[], Shards] | None = None) -> Farm:
     except ShardError as exc:
         node_rows, problem = [], str(exc)
     pool = dev.DevShards()
-    pool_rows = [{"name": m.beacon.name, "fingerprint": fp, "addr": m.base_url, "connected": True, "reach": "direct",
+    pool_rows = [{"name": plain(m.beacon.name)[:40], "fingerprint": fp, "addr": m.base_url, "connected": True, "reach": "direct",
                   "reach_hint": "", "via": dev.VIA} for fp, m in pool.members.items() if m.beacon]
     rows = merged(node_rows, pool_rows)
     if not rows and problem:

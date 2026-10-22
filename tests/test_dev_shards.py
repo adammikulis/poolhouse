@@ -28,8 +28,7 @@ from dev_pool_kit import (  # noqa: F401  (a fixture)
 from testfarm_tree import make_tree
 
 from poolhouse import features, http
-from poolhouse.fleet import shard_host, tls
-from poolhouse.fleet.pool_roster import Pool
+from poolhouse.fleet import shard_host, shard_store, tls
 from poolhouse.testfarm import dev, farm
 from poolhouse.testfarm.client import ShardError
 
@@ -135,10 +134,13 @@ def test_a_request_that_names_a_command_or_leaves_its_shape_is_refused_and_nothi
 def test_a_tree_that_was_never_uploaded_or_does_not_match_its_digest_is_refused(tmp_path):
     with device(tmp_path) as one:
         header = {"id": "cd" * 16, "tree_sha256": "0" * 64, "tier": "all", "files": ["tests/test_pass.py"], "timeout_s": 60}
-        with pytest.raises(Exception, match="has not been uploaded"):
+        with pytest.raises(Exception, match="belongs to another device"):
             one.member.shard_start(header)
-        (one.root / "files" / "shards" / header["id"]).mkdir(parents=True)
-        (one.root / "files" / "shards" / header["id"] / "tree.tgz").write_bytes(b"not the tree that was digested")
+        folder = shard_store.folder_of(one.root / "files", header["id"])
+        assert shard_store.claim(folder, dev.fingerprint_of(tls.local().beacon))
+        with pytest.raises(Exception, match="has not been sent"):
+            one.member.shard_start(header)
+        (folder / "tree.tgz").write_bytes(b"not the tree that was digested")
         with pytest.raises(Exception, match="does not match its digest"):
             one.member.shard_start(header)
         assert one.runner.snapshot() == []
@@ -151,7 +153,7 @@ def test_a_shard_belongs_to_the_member_that_started_it(tmp_path):
         shard = shards.send(one.fingerprint, real_tree(tmp_path / "tree"), "all", ["tests/test_pass.py"], 120)
         shards.wait(one.fingerprint, shard, timeout_s=120, poll_s=0.2)
         stranger = tls.identity(tmp_path / "other-member", "other")
-        Pool(one.root / "pool.key").enrol("lab", stranger.beacon, "other", "test")
+        one.roster.enrol("lab", stranger.beacon, "other", "test")
         http.pin(f"127.0.0.1:{one.httpd.server_port}", tls.pinned_context(one.ident.beacon, who=stranger))
         for call in (lambda: one.member.shard_state(shard), lambda: one.member.shard_cancel(shard)):
             with pytest.raises(Exception, match="no such shard"):

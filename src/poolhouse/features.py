@@ -12,6 +12,7 @@ it would loosen a push to main, an agent posing as a person, the keystore, or sh
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from dataclasses import dataclass
@@ -112,9 +113,15 @@ def enabled(name: str, root: str = "") -> bool:
 
 
 def turned_off(name: str, root: str = "") -> bool:
-    """Whether a person turned ``name`` off, as against never having turned it on."""
+    """Whether a person turned ``name`` off, as against never having turned it on; true too when the settings cannot be read."""
     _known(name)
-    return _held(root).get(name) is False
+    try:
+        held = json.loads(_settings_path(root).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError):
+        return True
+    return not isinstance(held, dict) or _held(root).get(name) is False
 
 
 def listing(root: str = "") -> list[dict[str, object]]:

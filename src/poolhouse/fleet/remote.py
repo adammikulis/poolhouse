@@ -255,8 +255,18 @@ class Member:
         """Whether this member takes test shards (and why not), its platform and its free slots."""
         return self._json("GET", "/shards/v1/caps")
 
+    def shard_upload(self, shard: str, tree: bytes) -> dict:
+        """Send the packed tree of ``shard`` in order, 8 MB at a time; the last answer."""
+        total, sent, last = len(tree), 0, b"{}"
+        while sent < total:
+            chunk = tree[sent:sent + CHUNK]
+            span = {"Content-Range": f"bytes {sent}-{sent + len(chunk) - 1}/{total}"}
+            _, last, _ = self._request("PUT", f"/shards/v1/{shard}/tree", data=chunk, options=Options(headers=span, timeout=300))
+            sent += len(chunk)
+        return json.loads(last or b"{}")
+
     def shard_start(self, header: dict) -> dict:
-        """Run the shard ``header`` names on the tree already pushed to ``shards/ID/tree.tgz``."""
+        """Run the shard ``header`` names on the tree already sent with `shard_upload`."""
         return self._json("POST", "/shards/v1/start", header)
 
     def shard_state(self, shard: str, since: int = 0) -> dict:

@@ -16,8 +16,7 @@ import pytest
 from poolhouse import http
 from poolhouse.fleet import shard_host, tls
 from poolhouse.fleet.api import Daemon, make_handler
-from poolhouse.fleet.daemon import load_or_create_token
-from poolhouse.fleet.discovery import Beacon, mint_pool
+from poolhouse.fleet.discovery import Beacon, derive_token, mint_pool
 from poolhouse.fleet.framing import LimitedServer
 from poolhouse.fleet.jobs import JobRunner
 from poolhouse.fleet.pool_roster import Pool
@@ -44,6 +43,8 @@ class Device:
     member: Member
     root: Path
     ident: tls.Identity
+    roster: Pool
+    clients: dict[str, Member]
 
     @property
     def fingerprint(self) -> str:
@@ -77,24 +78,32 @@ def this_python_runs_shards(monkeypatch):
 
 
 def serve(tmp_path: Path, name: str = "box", mode: str = "dev", enrol_sender: bool = True) -> Device:
-    """A daemon listening on loopback over TLS in a pool of mode ``mode``; the sender's certificate is a member's unless told otherwise."""
+    """A daemon in one pool of mode ``mode`` listening on loopback over TLS; the sender's certificate is a member's unless told otherwise."""
+    return serve_pools(tmp_path, name, {"lab": (mode, enrol_sender)})
+
+
+def serve_pools(tmp_path: Path, name: str, pools: dict[str, tuple[str, bool]]) -> Device:
+    """A daemon in each pool of ``pools`` (group to its mode and whether the sender's certificate is a member of it), the first the one it is in."""
     root = tmp_path / name
     (root / "files").mkdir(parents=True)
     ident = tls.identity(root / "tls", name)
     keyfile = root / "pool.key"
-    mint_pool("lab", keyfile, mode=mode)
-    pool = Pool(keyfile)
-    for one in (ident, tls.local()) if enrol_sender else (ident,):
-        pool.enrol("lab", one.beacon, name, "test")
+    made = {group: mint_pool(group, keyfile, mode=mode) for group, (mode, _) in pools.items()}
+    roster = Pool(keyfile)
+    for group, (_, enrol_sender) in pools.items():
+        for one in (ident, tls.local()) if enrol_sender else (ident,):
+            roster.enrol(group, one.beacon, name, "test")
+    tokens = {group: derive_token(member.key) for group, member in made.items()}
+    first = next(iter(pools))
     runner = JobRunner(root)
-    token = load_or_create_token(root)
-    daemon = Daemon(runner, root / "files", token, name=name, pool_key_path=keyfile, members=pool, pool_mode=mode)
-    httpd = LimitedServer(("127.0.0.1", 0), make_handler(daemon), tls=tls.member_context(ident, pool))
+    daemon = Daemon(runner, root / "files", tokens[first], name=name, pool_key_path=keyfile, members=roster, pool_mode=pools[first][0],
+                    tokens=lambda: set(tokens.values()))
+    httpd = LimitedServer(("127.0.0.1", 0), make_handler(daemon), tls=tls.member_context(ident, roster))
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     http.pin(f"127.0.0.1:{httpd.server_port}", tls.pinned_context(ident.beacon))
     beacon = Beacon(name=name, port=httpd.server_port, host="127.0.0.1", cert=ident.beacon, machine=f"machine-of-{name}")
-    member = Member(f"https://127.0.0.1:{httpd.server_port}", token, beacon=beacon)
-    return Device(httpd, runner, member, root, ident)
+    clients = {group: Member(f"https://127.0.0.1:{httpd.server_port}", token, beacon=beacon) for group, token in tokens.items()}
+    return Device(httpd, runner, clients[first], root, ident, roster, clients)
 
 
 @contextlib.contextmanager

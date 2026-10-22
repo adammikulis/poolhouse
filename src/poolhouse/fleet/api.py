@@ -229,18 +229,20 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                     remaining -= len(chunk)
 
         _member = ""
+        _group = ""
 
         def _guard(self, body: bytes | None = None) -> bool:
             """Whether this request is signed by a secret this machine answers to, and when it
             came over TLS from another machine, by a device that is a member; the answer is
             sent when it is not. ``body`` is what the request carried."""
             seen = screen.check(self, body)
-            verdict, self._member = seen.verdict, seen.member
+            verdict, self._member, self._group = seen.verdict, seen.member, ""
             if seen.refusal is not None:
                 self.close_connection = seen.kind == callers.STRANGER
                 self._send(seen.refusal[0], {"error": seen.refusal[1]})
                 return False
             if verdict.ok:
+                self._group = callers.pool_of(verdict.secret, pool_key_path) or ""
                 mode = self.headers.get(sealing.HEADER, "")
                 self._opening = (sealing.box_key(verdict.secret), verdict, mode == "2",
                                  self.headers) if mode in ("1", "2") else None
@@ -845,7 +847,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
             if body is None:
                 return
             parsed = urllib.parse.urlparse(self.path)
-            if studio_device_routes.answer(self, ui, parsed.path, body):
+            if studio_device_routes.answer(self, ui, parsed.path, body) or shard_routes.answer(self, daemon, "PUT", self.path, body):
                 return
             if not parsed.path.startswith("/files/"):
                 self._send(404, {"error": "no such route"})
