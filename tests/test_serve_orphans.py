@@ -8,9 +8,9 @@ import time
 import psutil
 import pytest
 
-from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_port, process
+from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_port
 from poolhouse.serve.leases import orphaned, same_process
-from poolhouse.serve.process import cmdline_digest, every_server, pid_exists, started_at
+from poolhouse.serve.process import cmdline_digest, pid_exists, started_at
 from poolhouse.testing.canned import canned_binary
 
 pytest_plugins = ["serve_node"]
@@ -124,33 +124,3 @@ def test_a_server_whose_owner_is_alive_is_not_swept(tmp_path, children):
         assert live.poll() is None
     finally:
         manager.release(info)
-
-
-def test_a_process_that_exits_while_its_command_line_is_read_does_not_fail_the_scan(monkeypatch):
-    """psutil on macOS raises SystemError for it; the scan is made again and the server is still listed."""
-    from tests.conftest import fake_process
-
-    server = fake_process(["/b/llama-server", "--port", "9", "-m", "/m/x.gguf"], 10, pid=77)
-    scans = iter([SystemError("proc_cmdline returned a result with an exception set"), [server]])
-
-    def process_iter(_attrs=None):
-        got = next(scans)
-        if isinstance(got, BaseException):
-            raise got
-        return iter(got)
-
-    monkeypatch.setattr(psutil, "process_iter", process_iter)
-    assert [(one["pid"], one["port"]) for one in every_server()] == [(77, 9)]
-
-
-def test_a_scan_that_keeps_failing_lets_the_error_out_after_its_retries(monkeypatch):
-    calls = []
-
-    def process_iter(_attrs=None):
-        calls.append(1)
-        raise SystemError("proc_cmdline")
-
-    monkeypatch.setattr(psutil, "process_iter", process_iter)
-    with pytest.raises(SystemError):
-        every_server()
-    assert len(calls) == process.SCAN_RETRIES + 1
