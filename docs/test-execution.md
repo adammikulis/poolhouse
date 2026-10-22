@@ -283,8 +283,8 @@ dependencies; a Cargo.lock or compiler that has never been built costs everythin
 `tests/test_governed_grants_native.py` at load 20 on a 16-core machine: a snapshot new to a warm target folder took 77 s with
 `CARGO_BUILD_JOBS=1` and 38 s with 4; a target folder new as well took 116 s and 40 s.
 
-`tests/native_cargo.py` therefore compiles in two steps. `NodeUnits.prepare` builds every target a module's tests are
-parametrized on in one `cargo test --no-run` call at a quarter of the cores (`testunits.build`), in the module's
+`tests/native_cargo.py` therefore compiles in two steps. `NodeUnits.prepare` builds every target a module names in `NATIVE_TARGETS` (`testunits.LIB` for the library's unit tests) or
+its tests are parametrized on in one `cargo test --no-run` call at a quarter of the cores (`testunits.build`), in the module's
 `native_targets_built` fixture; a test that uses it carries `@pytest.mark.timeout(N, func_only=True)`, so N counts the run and
 the build has its own deadline (`testnode.BUILD_TIMEOUT_S`). `run_targets` then runs the executables cargo reported, in the
 package folder, and never asks cargo again: a run no longer waits behind another cargo's lock on the shared target folder or

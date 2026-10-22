@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ACCOUNT = testnode.account()
 RUN_S = 600
 """Seconds one call may run its processes."""
-CASES = {"attestation": ("phone::attest", 10), "socket": ("sys::unix::tests", 2)}
+CASES = {"attestation": ("phone::attest", 10), "socket": ("sys::unix::tests", 2), "replacement": ("log::replacement_tests", 2)}
 
 
 def communicate(process, deadline):
@@ -58,13 +58,24 @@ class NodeUnits:
                             "CARGO_TARGET_DIR": str(build.target), "CARGO_BUILD_JOBS": "1"}
 
     def run(self, case):
+        """Run the library unit tests the case selects (built by ``prepare`` when not yet) and check how many passed."""
         selected, count = CASES[case]
-        argv = [testnode.tool("cargo"), "test", "--locked", "--offline", "-p", "poolhouse-node", "--lib",
-                selected, "--", "--test-threads=1"]
-        stdout = self.execute(argv)
+        stdout = self.start_built(testunits.LIB, [selected])
         expected = f"test result: ok. {count} passed; 0 failed;"
         assert any(line.startswith(expected) for line in stdout.splitlines()), stdout
         return stdout
+
+    def start_built(self, target, arguments=()):
+        """Run the built executable of one target as cargo would (the package folder as the working folder); its output."""
+        code, stdout, stderr = self.launch_built(target, arguments)
+        assert code == 0, stdout + stderr
+        return stdout
+
+    def launch_built(self, target, arguments=()):
+        self.prepare([target])
+        package = self.staged / "poolhouse-node"
+        environment = {**self.environment, "CARGO_MANIFEST_DIR": str(package)}
+        return self.launch([str(self.built[target]), *arguments, "--test-threads=1"], package, environment, time.monotonic() + RUN_S)
 
     def prepare(self, targets):
         """Compile the targets not yet built, in one cargo call and with the build's own deadline; their executables are kept."""
@@ -73,12 +84,8 @@ class NodeUnits:
             self.built.update(testunits.build(testnode.tool("cargo"), self.staged, missing, self.build_output, self.environment))
 
     def run_targets(self, targets):
-        """Run the built executable of each target as cargo would (the package folder as the working folder), one after another."""
-        self.prepare(targets)
-        deadline = time.monotonic() + RUN_S
-        package = self.staged / "poolhouse-node"
-        environment = {**self.environment, "CARGO_MANIFEST_DIR": str(package)}
-        results = [self.launch([str(self.built[target]), "--test-threads=1"], package, environment, deadline) for target in targets]
+        """Run the built executable of each target, one after another and every one even when an earlier failed; the output of all."""
+        results = [self.launch_built(target) for target in targets]
         failed = [stdout + stderr for code, stdout, stderr in results if code]
         assert not failed, "\n".join(failed)
         stdout = "".join(result[1] for result in results)
@@ -112,9 +119,11 @@ def native_node_units(tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def native_targets_built(native_node_units, request):
-    """Compile once per module every Rust test target its selected tests are parametrized on (their ``target``), before any of them
-    starts its timer; such a test carries ``@pytest.mark.timeout(N, func_only=True)`` so N counts the run, not this build."""
-    wanted = {item.callspec.params["target"] for item in request.session.items
-              if item.module is request.module and "target" in getattr(getattr(item, "callspec", None), "params", {})}
+    """Compile once per module every Rust test target the module names in ``NATIVE_TARGETS`` (``testunits.LIB`` for the library's unit
+    tests) or its selected tests are parametrized on (their ``target``); such a test carries ``@pytest.mark.timeout(N, func_only=True)``
+    so N counts its run, not this build."""
+    wanted = {*getattr(request.module, "NATIVE_TARGETS", ())}
+    wanted.update(item.callspec.params["target"] for item in request.session.items
+                  if item.module is request.module and "target" in getattr(getattr(item, "callspec", None), "params", {}))
     native_node_units.prepare(sorted(wanted))
     return native_node_units

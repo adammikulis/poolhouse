@@ -16,6 +16,8 @@ from pathlib import Path
 import testnode
 
 PACKAGE = "poolhouse-node"
+LIB = "lib"
+"""The name that stands for the unit tests of the crate's library in a list of targets."""
 JOBS_DIVISOR = 4
 """A build takes a quarter of the cores; the tests it serves each run on one."""
 
@@ -29,7 +31,7 @@ def build_argv(cargo: str, targets: list[str]) -> list[str]:
     """The cargo command that compiles ``targets`` without running them and reports each artifact as a JSON line."""
     argv = [cargo, "test", "--locked", "--offline", "--no-run", "--message-format=json", "-p", PACKAGE]
     for target in targets:
-        argv.extend(("--test", target))
+        argv.extend(("--lib",) if target == LIB else ("--test", target))
     return argv
 
 
@@ -42,10 +44,11 @@ def executables(output: str, targets: list[str]) -> dict[str, Path]:
         except ValueError:
             continue
         spec = row.get("target") or {}
-        if (row.get("reason") == "compiler-artifact" and spec.get("kind") == ["test"] and spec.get("name") in targets
+        named = LIB if "lib" in spec.get("kind", ()) else spec.get("name")
+        if (row.get("reason") == "compiler-artifact" and spec.get("kind") in (["test"], ["lib"]) and named in targets
                 and (row.get("profile") or {}).get("test") is True and row.get("executable")
                 and Path(spec.get("src_path", "")).parent.parent.name == PACKAGE):
-            found[spec["name"]] = Path(row["executable"])
+            found[named] = Path(row["executable"])
     missing = [target for target in targets if target not in found or not found[target].is_file()]
     if missing:
         raise testnode.BuildError("cargo built no test executable for " + ", ".join(missing))

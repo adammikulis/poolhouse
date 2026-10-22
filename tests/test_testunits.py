@@ -31,6 +31,7 @@ def specimen(site, tmp_path, monkeypatch):  # noqa: F811
     tests.mkdir()
     (tests / "alpha.rs").write_text(ALPHA)
     (tests / "beta.rs").write_text(BETA)
+    (site.root / "app" / "poolhouse-node" / "src" / "lib.rs").write_text("#[cfg(test)]\nmod tests {\n    #[test]\n    fn unit() {}\n}\n")
     monkeypatch.setenv(testnode.CARGO_ENV, str(tmp_path / "cache"))
     return site
 
@@ -51,6 +52,13 @@ def test_each_requested_target_gets_its_own_executable_that_passes(specimen):
     _, made = compiled(specimen, ["alpha", "beta"])
     assert sorted(made) == ["alpha", "beta"] and made["alpha"] != made["beta"]
     done = subprocess.run([made["alpha"]], capture_output=True, text=True, check=False)
+    assert done.returncode == 0 and "test result: ok. 1 passed" in done.stdout, done.stdout + done.stderr
+
+
+def test_the_library_unit_tests_are_a_target_of_their_own(specimen):
+    _, made = compiled(specimen, [testunits.LIB, "alpha"])
+    assert sorted(made) == ["alpha", testunits.LIB]
+    done = subprocess.run([made[testunits.LIB], "unit"], capture_output=True, text=True, check=False)
     assert done.returncode == 0 and "test result: ok. 1 passed" in done.stdout, done.stdout + done.stderr
 
 
