@@ -109,6 +109,8 @@ class Plant:
             self.setpoint = e.value
         elif e.kind == "pump_trip":
             c.pump_on[int(e.value) - 1], c.pump_tau[int(e.value) - 1] = False, 12.0
+        elif e.kind == "ar_off":
+            self.ar_on = False
         elif e.kind == "test_start":
             if self.test == "pending":
                 self.start_test()
@@ -140,7 +142,7 @@ class Plant:
 
     def advance(self) -> None:
         """One tick: 5 minutes in the slow regime, 1 second in the fast one."""
-        seconds, step = (scenarios.FAST_TICK_S, 0.5) if self.fast() else (scenarios.SLOW_TICK_S, 10.0)
+        seconds, step = (scenarios.FAST_TICK_S, 0.5) if self.fast() else (self.scn.slow_s, 10.0)
         n = max(1, math.ceil(seconds / step))
         for _ in range(n):
             self._regulate(seconds / n)
@@ -186,7 +188,7 @@ class Plant:
         c = self.core
         a, b = self.reading
         return {"tick": self.tick, "t_s": round(c.t, 1),
-                "dt": scenarios.FAST_TICK_S if self.fast() else scenarios.SLOW_TICK_S,
+                "dt": scenarios.FAST_TICK_S if self.fast() else self.scn.slow_s,
                 "P": round(c.P, 5), "chA": a, "chB": b, "X": round(c.X, 4), "I": round(c.iod, 4),
                 "void": round(c.alpha, 4), "orm": round(c.orm(), 3), "orm_printed": round(self.orm_value, 2),
                 "f": round(c.f, 4), "Tf": round(c.Tf, 1), "p": round(c.p, 3), "rho": round(c.rho, 4),

@@ -1,0 +1,37 @@
+#!/usr/bin/env python3
+"""A PostToolUse hook: counts a subagent's tool calls and tells the lead when it reaches 100 and every 50 after.
+
+The event's `agent_id` names the subagent (the main session has none and is not counted); a repeated `tool_use_id` counts once.
+The notice informs and never limits or stops the subagent (`milestones`; the interval is POOLHOUSE_TOOL_MILESTONE_EVERY). The
+count is cleared by the SubagentStop hook.
+
+Wire it in as a PostToolUse hook in `.claude/settings.json`:
+
+    {"hooks": [{"type": "command", "command": "$CLAUDE_PROJECT_DIR/scripts/hooks/claude-tool-milestones", "timeout": 15}]}
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+
+import milestones
+import tool_count
+
+
+def main() -> int:
+    try:
+        event = json.load(sys.stdin)
+        agent = str(event.get("agent_id") or "") if isinstance(event, dict) else ""
+        count = tool_count.record(agent, str(event.get("tool_use_id") or "")) if agent else 0
+    except (OSError, ValueError) as error:
+        print(f"workspace PostToolUse: tool-call count not recorded: {error}", file=sys.stderr)
+        return 0
+    text = milestones.check(event, agent, count) if count else ""
+    if text:
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": text}}))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

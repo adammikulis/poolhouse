@@ -130,7 +130,7 @@ def gate(cls: str, target: str, step: str, plant: Any) -> Gated:
     held = Gated("hold", NONE, step, ())
     if cls not in CLASSES:
         raise ValueError(f"unknown action class {cls!r}")
-    if target == NONE or cls == "hold":
+    if cls == "hold" or (target == NONE and cls not in ("scram", "orm_print")):
         return Gated("hold", NONE, step, ())
     if core.scram and cls != "orm_print":
         return Gated("hold", NONE, step, (fire("ALREADY_SCRAMMED", f"requested {cls}"),))
@@ -187,7 +187,7 @@ def apply(g: Gated, plant: Any) -> None:
 def trips(plant: Any) -> list[dict[str, str]]:
     """Automatic shutdown conditions that are true now; defeated protections do not fire."""
     c = plant.core
-    if c.scram or c.damaged:
+    if c.scram:
         return []
     out = []
     if plant.prot["ORM_RULE"] and c.orm() < rx.ORM_MIN:
