@@ -8,6 +8,7 @@ from web_assets import serve_page_asset
 
 from poolhouse.fleet.page import render
 from poolhouse.fleet.themes import PRESETS, registry
+from poolhouse.testing.canned import CANNED_MARKER, canned_chunk, marked
 
 pytestmark = pytest.mark.slow
 
@@ -309,7 +310,7 @@ def test_chat_enter_shift_enter_ime_and_pending_prevent_duplicate_send(app):
     assert page.evaluate("window.chatRequests.length") == 1
     assert page.evaluate("window.chatRequests[0].conversation") == "chat-test"
     assert page.evaluate("window.chatRequests[0].messages.at(-1)") == {"role": "user", "content": "First\nSecond"}
-    event(page, {"choices": [{"delta": {"content": "Reply"}}]})
+    event(page, canned_chunk({"content": marked("Reply")}))
     page.evaluate("window.streamController.close()")
     page.wait_for_function("() => !document.getElementById('chat-send').disabled")
     assert not errors
@@ -323,18 +324,19 @@ def test_streamed_reasoning_is_collapsed_separate_and_keeps_user_expansion(app):
     page.wait_for_function("() => window.streamController !== undefined")
     event(page, {"poolhouse": {"state": "rebuilding", "conversation": "chat-test"}})
     page.locator(".reply-activity").get_by_text("Restoring conversation…", exact=True).wait_for()
-    event(page, {"choices": [{"delta": {"reasoning_content": "First thought."}}]})
+    event(page, canned_chunk({"reasoning_content": "First thought."}))
     details = page.locator(".model-reasoning")
     details.wait_for()
     assert not details.evaluate("e => e.open")
     page.locator(".reply-activity").get_by_text("Thinking…", exact=True).wait_for()
     details.locator("summary").click()
-    event(page, {"choices": [{"delta": {"reasoning_content": " More thought."}}]})
+    event(page, canned_chunk({"reasoning_content": " More thought."}))
     assert details.evaluate("e => e.open")
-    event(page, {"choices": [{"delta": {"content": "The answer."}}]})
+    event(page, canned_chunk({"content": marked("The answer.")}))
     answer = page.locator(".msg.assistant .message-body")
-    answer.get_by_text("The answer.", exact=True).wait_for()
+    answer.get_by_text(marked("The answer."), exact=True).wait_for()
     assert "thought" not in answer.inner_text()
+    assert CANNED_MARKER in answer.inner_text(), "the page shows the reply is canned"
     page.evaluate("window.streamController.close()")
     page.wait_for_function("() => !document.getElementById('chat-send').disabled")
     assert details.evaluate("e => e.open")
