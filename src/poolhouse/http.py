@@ -29,6 +29,9 @@ USER_AGENT = "poolhouse"
 # 5xx from a server means "busy / still loading", not "your request is wrong".
 RETRY_STATUS = frozenset({500, 502, 503, 504})
 
+MOST_BODY = 32 << 20
+"""The most bytes of a request or response body any part of poolhouse takes or sends in one go."""
+
 
 class ServerError(RuntimeError, errors.Error):
     """The server answered, but with an error."""

@@ -1,10 +1,10 @@
 {
- "surfaces": 933,
+ "surfaces": 937,
  "by_status": {
-  "covered": 610,
+  "covered": 612,
   "partial": 193,
   "uncovered": 51,
-  "n/a": 79,
+  "n/a": 81,
   "unmapped": 0
  },
  "by_kind": {
@@ -68,7 +68,7 @@
    "covered": 7,
    "partial": 5,
    "uncovered": 0,
-   "n/a": 20,
+   "n/a": 22,
    "unmapped": 0
   },
   "mcp-tool": {
@@ -79,14 +79,14 @@
    "unmapped": 0
   },
   "parser": {
-   "covered": 92,
+   "covered": 91,
    "partial": 0,
    "uncovered": 47,
    "n/a": 0,
    "unmapped": 0
   },
   "route": {
-   "covered": 138,
+   "covered": 139,
    "partial": 57,
    "uncovered": 0,
    "n/a": 1,
@@ -100,7 +100,7 @@
    "unmapped": 0
   },
   "spawn": {
-   "covered": 102,
+   "covered": 104,
    "partial": 59,
    "uncovered": 0,
    "n/a": 4,
@@ -4973,7 +4973,7 @@
     "tests/test_node_lineage.py::test_a_token_read_from_its_file_in_another_terminal_reads_and_spends_no_grant",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent"
    ],
-   "note": "grant, revoke-grant, grants-setup, person-proof, person-enroll, person-unenroll and rebind sign with the person's key, which asks for a typed yes on the terminal device for each signature, and refuse a process an agent started or one with no terminal; the node refuses what that key did not sign, a first key enrolled without the one-time secret, a key removal or an approval of a key that an enrolled key did not sign for this node and once, and the move of a session an enrolled key did not sign for this node, once, from the terminal it was signed in, a removed key enrolled again, a token used from another terminal than the one that registered it, and a name with no lineage taken by a process that holds none of its tokens (app/poolhouse-node/tests/grants.rs, grants_enrol.rs, grants_keys.rs, grants_hostile.rs, grants_foreign.rs, lineage.rs, lineage_tokens.rs, limits.rs, registry.rs)"
+   "note": "grant, revoke-grant, distrust, grants-setup, person-proof, person-enroll, person-unenroll and rebind sign with the person's key, which asks for a typed yes on the terminal device for each signature, and refuse a process an agent started or one with no terminal; the node refuses what that key did not sign, a first key enrolled without the one-time secret, a key removal or an approval of a key that an enrolled key did not sign for this node and once, and the move of a session an enrolled key did not sign for this node, once, from the terminal it was signed in, a removed key enrolled again, a token used from another terminal than the one that registered it, and a name with no lineage taken by a process that holds none of its tokens (app/poolhouse-node/tests/grants.rs, grants_enrol.rs, grants_keys.rs, grants_hostile.rs, grants_foreign.rs, lineage.rs, lineage_tokens.rs, limits.rs, registry.rs)"
   },
   {
    "id": "human:workspace/grants_cli.py:reader.run",
@@ -5005,7 +5005,7 @@
     "tests/test_node_lineage.py::test_a_token_read_from_its_file_in_another_terminal_reads_and_spends_no_grant",
     "tests/test_redteam_human_floor.py::test_every_human_only_command_refuses_a_process_started_by_an_agent"
    ],
-   "note": "grant, revoke-grant, grants-setup, person-proof, person-enroll, person-unenroll and rebind sign with the person's key, which asks for a typed yes on the terminal device for each signature, and refuse a process an agent started or one with no terminal; the node refuses what that key did not sign, a first key enrolled without the one-time secret, a key removal or an approval of a key that an enrolled key did not sign for this node and once, and the move of a session an enrolled key did not sign for this node, once, from the terminal it was signed in, a removed key enrolled again, a token used from another terminal than the one that registered it, and a name with no lineage taken by a process that holds none of its tokens (app/poolhouse-node/tests/grants.rs, grants_enrol.rs, grants_keys.rs, grants_hostile.rs, grants_foreign.rs, lineage.rs, lineage_tokens.rs, limits.rs, registry.rs)"
+   "note": "grant, revoke-grant, distrust, grants-setup, person-proof, person-enroll, person-unenroll and rebind sign with the person's key, which asks for a typed yes on the terminal device for each signature, and refuse a process an agent started or one with no terminal; the node refuses what that key did not sign, a first key enrolled without the one-time secret, a key removal or an approval of a key that an enrolled key did not sign for this node and once, and the move of a session an enrolled key did not sign for this node, once, from the terminal it was signed in, a removed key enrolled again, a token used from another terminal than the one that registered it, and a name with no lineage taken by a process that holds none of its tokens (app/poolhouse-node/tests/grants.rs, grants_enrol.rs, grants_keys.rs, grants_hostile.rs, grants_foreign.rs, lineage.rs, lineage_tokens.rs, limits.rs, registry.rs)"
   },
   {
    "id": "human:workspace/hooks_cli.py:install",
@@ -5151,6 +5151,16 @@
    "status": "n/a",
    "tests": [],
    "note": "binds only to probe whether a port is free, to serve a local fit page on loopback, or to run the sandbox self-test; no request is read from a client"
+  },
+  {
+   "id": "listener:fleet/conversation_routes.py:ConversationRoutes._conversations",
+   "kind": "listener",
+   "source": "fleet/conversation_routes.py:ConversationRoutes._conversations",
+   "trust": "anything that can connect to the address",
+   "attacker": "an unauthenticated or cross-origin client reaches the port",
+   "status": "n/a",
+   "tests": [],
+   "note": "setup_context.bind ties a request to the signed-in browser session and identity it came with. It neither creates a socket nor listens for connections; the routes that call it are mapped as routes."
   },
   {
    "id": "listener:fleet/daemon.py:DaemonRuntime.initialize_listener",
@@ -5515,6 +5525,16 @@
    "status": "n/a",
    "tests": [],
    "note": "This bind call associates an existing software-owned webhook source with a subscription grant. It neither creates a socket nor listens for connections."
+  },
+  {
+   "id": "listener:workspace/coding_routes.py:current_catalogue",
+   "kind": "listener",
+   "source": "workspace/coding_routes.py:current_catalogue",
+   "trust": "anything that can connect to the address",
+   "attacker": "an unauthenticated or cross-origin client reaches the port",
+   "status": "n/a",
+   "tests": [],
+   "note": "setup_context.bind ties a request to the signed-in browser session and identity it came with. It neither creates a socket nor listens for connections; the routes that call it are mapped as routes."
   },
   {
    "id": "mcp-tool:bench_history",
@@ -6981,22 +7001,6 @@
    "status": "uncovered",
    "tests": [],
    "note": "files the product wrote for itself (stores, caches, snapshots, case files) are read back; a hand-edited or planted file is not tried"
-  },
-  {
-   "id": "parser:guard/autoexec.py",
-   "kind": "parser",
-   "source": "guard/autoexec.py",
-   "trust": "files, pages and archives from outside",
-   "attacker": "a crafted file or page crashes the reader, exhausts it or smuggles text",
-   "status": "covered",
-   "tests": [
-    "tests/test_net_untrusted.py",
-    "tests/test_pdf_engine.py",
-    "tests/test_hub_modelfile.py::test_every_hostile_header_is_refused_quickly",
-    "tests/test_redteam_judge.py",
-    "tests/test_model_capabilities.py::test_hostile_model_metadata_is_refused_without_a_crash"
-   ],
-   "note": ""
   },
   {
    "id": "parser:guard/fetchlog.py",
@@ -8683,9 +8687,12 @@
    "tests": [
     "tests/test_fleet_conversation_settings_routes.py::test_defaults_endpoint_exposes_the_persisted_settings_source",
     "tests/test_fleet_conversation_settings_routes.py::test_conversation_mutations_require_ui_authority",
-    "tests/test_fleet_conversation_settings_routes.py::test_invalid_updates_return_400_without_changing_the_chat"
+    "tests/test_fleet_conversation_settings_routes.py::test_invalid_updates_return_400_without_changing_the_chat",
+    "tests/test_fleet_conversation_settings_routes.py::test_operation_lookup_is_get_only_and_needs_ui_authority_and_the_same_origin",
+    "tests/test_fleet_conversation_settings_routes.py::test_guarded_routes_attach_once_reconcile_and_reject_missing_key",
+    "tests/test_fleet_conversation_settings_routes.py::test_uncredentialed_and_expired_sessions_cannot_create_or_lookup"
    ],
-   "note": "socket requests reject missing UI authority and foreign origins; invalid settings and unknown fields preserve persisted history"
+   "note": "socket requests reject missing UI authority, foreign origins and non-GET operation lookups; invalid settings and unknown fields preserve persisted history; a creation or lookup under another identity or an expired session finds and makes nothing"
   },
   {
    "id": "route:fleet/conversation_routes.py:/ui/conversations/defaults",
@@ -8697,9 +8704,29 @@
    "tests": [
     "tests/test_fleet_conversation_settings_routes.py::test_defaults_endpoint_exposes_the_persisted_settings_source",
     "tests/test_fleet_conversation_settings_routes.py::test_conversation_mutations_require_ui_authority",
-    "tests/test_fleet_conversation_settings_routes.py::test_invalid_updates_return_400_without_changing_the_chat"
+    "tests/test_fleet_conversation_settings_routes.py::test_invalid_updates_return_400_without_changing_the_chat",
+    "tests/test_fleet_conversation_settings_routes.py::test_operation_lookup_is_get_only_and_needs_ui_authority_and_the_same_origin",
+    "tests/test_fleet_conversation_settings_routes.py::test_guarded_routes_attach_once_reconcile_and_reject_missing_key",
+    "tests/test_fleet_conversation_settings_routes.py::test_uncredentialed_and_expired_sessions_cannot_create_or_lookup"
    ],
-   "note": "socket requests reject missing UI authority and foreign origins; invalid settings and unknown fields preserve persisted history"
+   "note": "socket requests reject missing UI authority, foreign origins and non-GET operation lookups; invalid settings and unknown fields preserve persisted history; a creation or lookup under another identity or an expired session finds and makes nothing"
+  },
+  {
+   "id": "route:fleet/conversation_routes.py:/ui/conversations/operations/*",
+   "kind": "route",
+   "source": "fleet/conversation_routes.py:ConversationRoutes._conversations",
+   "trust": "network member or local browser",
+   "attacker": "reach a protected path, crash the handler, read or write a file outside the root",
+   "status": "covered",
+   "tests": [
+    "tests/test_fleet_conversation_settings_routes.py::test_defaults_endpoint_exposes_the_persisted_settings_source",
+    "tests/test_fleet_conversation_settings_routes.py::test_conversation_mutations_require_ui_authority",
+    "tests/test_fleet_conversation_settings_routes.py::test_invalid_updates_return_400_without_changing_the_chat",
+    "tests/test_fleet_conversation_settings_routes.py::test_operation_lookup_is_get_only_and_needs_ui_authority_and_the_same_origin",
+    "tests/test_fleet_conversation_settings_routes.py::test_guarded_routes_attach_once_reconcile_and_reject_missing_key",
+    "tests/test_fleet_conversation_settings_routes.py::test_uncredentialed_and_expired_sessions_cannot_create_or_lookup"
+   ],
+   "note": "socket requests reject missing UI authority, foreign origins and non-GET operation lookups; invalid settings and unknown fields preserve persisted history; a creation or lookup under another identity or an expired session finds and makes nothing"
   },
   {
    "id": "route:fleet/dataset_catalogue.py:/api/datasets",
@@ -12668,6 +12695,40 @@
     "tests/test_pi_harness.py::test_pi_launch_is_offline_and_uses_the_policy_extension"
    ],
    "note": "Pi runs offline with poolhouse's tool-policy extension and an explicit local model endpoint"
+  },
+  {
+   "id": "spawn:pi_tools.py:_inspect",
+   "kind": "spawn",
+   "source": "pi_tools.py:_inspect",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_pi_tools.py::test_inspect_passes_hostile_text_as_one_argument_with_a_minimal_environment",
+    "tests/test_redteam_pi_tools.py::test_inspect_refuses_a_report_past_the_frame_limit",
+    "tests/test_redteam_pi_tools.py::test_runtime_refuses_a_package_that_is_not_the_pi_tool_library",
+    "tests/test_redteam_pi_tools.py::test_runtime_refuses_a_node_report_that_is_not_a_list_of_absolute_paths",
+    "tests/test_redteam_pi_tools.py::test_runtime_refuses_an_oversized_node_report",
+    "tests/test_redteam_pi_tools.py::test_runtime_asks_node_with_fixed_arguments_and_reads_a_hostile_library_name_as_data"
+   ],
+   "note": "the Node library query and the platform inspector take one argv item per hostile name with a minimal environment and no shell; a Node report that is not a list of absolute paths, or that is too large, is refused, and a package that is not the Pi tool library never reaches Node"
+  },
+  {
+   "id": "spawn:pi_tools.py:runtime",
+   "kind": "spawn",
+   "source": "pi_tools.py:runtime",
+   "trust": "arguments built from model output, member messages or file names",
+   "attacker": "attacker text becomes a command line, environment or working directory",
+   "status": "covered",
+   "tests": [
+    "tests/test_redteam_pi_tools.py::test_inspect_passes_hostile_text_as_one_argument_with_a_minimal_environment",
+    "tests/test_redteam_pi_tools.py::test_inspect_refuses_a_report_past_the_frame_limit",
+    "tests/test_redteam_pi_tools.py::test_runtime_refuses_a_package_that_is_not_the_pi_tool_library",
+    "tests/test_redteam_pi_tools.py::test_runtime_refuses_a_node_report_that_is_not_a_list_of_absolute_paths",
+    "tests/test_redteam_pi_tools.py::test_runtime_refuses_an_oversized_node_report",
+    "tests/test_redteam_pi_tools.py::test_runtime_asks_node_with_fixed_arguments_and_reads_a_hostile_library_name_as_data"
+   ],
+   "note": "the Node library query and the platform inspector take one argv item per hostile name with a minimal environment and no shell; a Node report that is not a list of absolute paths, or that is too large, is refused, and a package that is not the Pi tool library never reaches Node"
   },
   {
    "id": "spawn:platform.py:_windows_sid",

@@ -19,13 +19,12 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from poolhouse.http import Server
+from poolhouse.http import MOST_BODY, Server
 
 __all__ = ["HEADER_S", "MOST_BODY", "MOST_CONNECTIONS", "MOST_UPLOAD", "Limited",
            "LimitedServer", "Malformed", "addressed_to_this_machine", "content_range", "declared_length", "read_body",
            "requested_range"]
 
-MOST_BODY = 32 << 20
 MOST_UPLOAD = 24 << 20
 MOST_CONNECTIONS = 64
 HEADER_S = 15.0

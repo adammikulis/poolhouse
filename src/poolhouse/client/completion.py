@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from hashlib import sha256
 from typing import Any
 
-from poolhouse.fleet.framing import MOST_BODY
+from poolhouse.http import MOST_BODY
 
 _PREPARED = object()
 
