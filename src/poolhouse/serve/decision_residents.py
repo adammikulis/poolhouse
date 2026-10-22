@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import leasetable
-from poolhouse.decide.pointer import MAX_TOKENS
+from poolhouse.decide.pointer_prompt import MAX_PROMPT_TOKENS
 from poolhouse.decide.types import MAX_NAME, MAX_OPTIONS, MAX_TEXT
 from poolhouse.graph import GraphStore
 from poolhouse.serve import admission
@@ -65,7 +65,8 @@ def peak_estimate(source: dict) -> int:
     if source.get("lora_dir"):
         files.update(Path(source["lora_dir"]).rglob("*.safetensors"))
     weights = sum(path.stat().st_size for path in files)
-    return 4 * weights + MAX_TOKENS ** 2 * heads * 8 + MAX_TOKENS * hidden * layers * 16 + 512 * admission.MIB
+    return (4 * weights + MAX_PROMPT_TOKENS ** 2 * heads * 8 + MAX_PROMPT_TOKENS * hidden * layers * 16
+            + 512 * admission.MIB)
 
 
 def validate_record(record: dict) -> None:
