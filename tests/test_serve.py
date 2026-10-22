@@ -219,10 +219,13 @@ class TestPorts:
     def test_windows_does_not_ask_to_share_the_port(self, monkeypatch):
         asked = []
         real = socket.socket.setsockopt
-        monkeypatch.setattr(socket.socket, "setsockopt",
+        # undone inside the test: the lease table's fixture closes after this test's own monkeypatch scope
+        # opens, and must not find sys.platform saying win32 when it registers with the node
+        with monkeypatch.context() as patched:
+            patched.setattr(socket.socket, "setsockopt",
                             lambda self, *a: (asked.append(a), real(self, *a))[1])
-        monkeypatch.setattr(sys, "platform", "win32")
-        port_is_free(free_port())
+            patched.setattr(sys, "platform", "win32")
+            port_is_free(free_port())
         assert (socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) not in asked
 
 
