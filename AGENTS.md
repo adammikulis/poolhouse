@@ -16,7 +16,7 @@ The rules never to break, then the ones needed every hour; each names the sectio
 5. **One piece of work on a device's compute at a time; never start a model server by hand** (1, 6).
 6. **Never a fake model**: no code, demo, example, doc sample or test substitutes a fake model, mock server, canned or
    scripted answer, rule-based imitation or mockup for a model; a real local one runs through the lease, or the work stops
-   loudly (1).
+   loudly; only a plumbing server with no model behaviour under test may stand in, and it marks every reply canned (1).
 7. **No real person's name, handle, email or phone number** anywhere in the repository (1).
 8. **Attack first**: a design or security-adjacent change gets a written break-it pass by a non-author before it is
    built (1).
