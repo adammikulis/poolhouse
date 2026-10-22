@@ -127,7 +127,7 @@ def board(args: argparse.Namespace, s: Session) -> Any:
     if name == ANNOUNCE:
         raise ValueError(f"{ANNOUNCE} takes only `announce KIND TEXT` (joined, milestone, done, blocked; one line)")
     return board_cli.send(argparse.Namespace(to=name, type=args.type, body=" ".join(rest), subject=args.subject,
-                                             reply_to=args.reply_to), s)
+                                             reply_to=args.reply_to, to_branch=""), s)
 
 
 def join(args: argparse.Namespace, s: Session) -> Any:

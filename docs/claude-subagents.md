@@ -105,3 +105,25 @@ in the lead's inbox and in its `attention` text between turns. The harness gives
 never to the lead, so the lead is not reached that way. A refused post warns on stderr, is tried again on the next two calls,
 and after the third refusal the subagent is told (in its context) that the lead could not be told and to say so in its report.
 
+## The roster
+
+A worker that needs a sibling finds it itself; the lead never relays names. The Agent tool's agent id is not a board name, so the
+board keeps, for each session, what it is for and where it works:
+
+- **Recorded at start.** `claude-subagent-start` reads the description of the Agent call from the meta file beside the transcript
+  (`SubagentStart` itself carries only `agent_id` and `agent_type`), the branch and top directory of the checkout it starts in, and
+  has the subagent say them as itself: `whoami --purpose TEXT --branch NAME --worktree PATH`. The node keeps each as one short clean line
+  (120, 100 and 240 characters) beside the session's identity. A purpose the board screens out (a credential or a private term) is
+  warned on stderr and the agent type is recorded in its place; the branch and worktree are still recorded. A branch or worktree claim
+  the subagent makes later replaces what the hook saw, because a claim is the authenticated statement of what it works on.
+- **Shown.** `poolhouse-workspace roster` (also `status`, and `who` with no arguments) prints one line per live session: name, main or
+  subagent of, working/idle/done (`done` only with `--all`; an ended session leaves the live list), purpose, branch, worktree and when it last
+  acted; `--json` gives the rows. The text is one fenced block of untrusted data: a purpose is length-limited, a line, and has fence tags
+  and chat markup neutralised, and it grants nothing.
+- **In the brief.** The brief every worker receives lists the other live sessions with their purposes (twenty, then a count) and says
+  how to reach one, so it never has to ask the lead.
+- **Used by `send`.** `send TO TYPE TEXT` takes a session name or a room as before; otherwise `TO` is a branch, a worktree path or a word
+  (three letters or more) of a purpose, tried in that order, and it must fit exactly one live session. `send --to-branch BRANCH TYPE TEXT`
+  takes a branch only. Several fits, or none, is an exit status 3 error that lists the candidates (fenced, ten of them and a count), never a
+  guess; the reply names the session it reached (`matched`). A session can word its own purpose to fit a message meant for another, so
+  an ambiguous word is refused rather than delivered, and the reply shows where the message went.
