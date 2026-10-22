@@ -281,11 +281,16 @@ impl GovPool {
         self.folds
     }
 
+    /// Whether a hold, a delegate or a dispute has run out and a second of awake time has passed since the last fold.
+    pub fn due(&self) -> bool {
+        let now = self.clock.now_ms();
+        now >= self.deadline && now.saturating_sub(self.folded_at) >= 1000
+    }
+
     /// Fold again when a second or more of awake time has passed since the last fold and a hold, a delegate or a dispute has run
     /// out, so what it ended takes effect; whether it did.
     pub fn tick(&mut self) -> bool {
-        let now = self.clock.now_ms();
-        let due = now >= self.deadline && now.saturating_sub(self.folded_at) >= 1000;
+        let due = self.due();
         if due {
             self.refold();
         }

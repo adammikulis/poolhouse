@@ -94,6 +94,7 @@ fn wait(node: &Mutex<Node>, me: &str, p: &Map<String, Value>) -> Result<Value> {
     loop {
         {
             let mut n = lock(node)?;
+            n.gov_tick()?;
             still_added(&n, me)?;
             sweep(&mut n)?;
             if n.approvals.version() != after || start.elapsed() >= limit {
@@ -127,6 +128,7 @@ fn phone_op(node: &Mutex<Node>, id: &str, op: &str, p: &Map<String, Value>) -> R
         return wait(node, id, p);
     }
     let mut n = lock(node)?;
+    n.gov_tick()?;
     still_added(&n, id)?;
     sweep(&mut n)?;
     let now = n.now_ms();
@@ -166,6 +168,9 @@ pub fn handle(node: &Mutex<Node>, ip: IpAddr, http: &str, path: &str, token: &st
         Err(e) => return reply(Err(e)),
     };
     let mut n = guard;
+    if let Err(e) = n.gov_tick() {
+        return reply(Err(e));
+    }
     match (http, op) {
         ("GET", "hello") => {
             let name = n.members.get(&n.cert.fingerprint()).map(|d| d.name.clone()).unwrap_or_default();

@@ -616,6 +616,7 @@ impl Net {
         if c.method != "shard_call" {
             let resource = if c.method == "join_pool" { text("host") } else { "*".into() };
             let mut node = locked(&self.node)?;
+            node.gov_tick()?;
             authorize_from(&mut node, &c.token, peer, &c.method, &resource)?;
         }
         match c.method.as_str() {

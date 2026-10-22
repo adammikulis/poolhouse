@@ -29,6 +29,8 @@ const MOST_UNTRUSTED: usize = 200;
 #[derive(Default)]
 pub struct Book {
     rows: BTreeMap<String, Vec<usize>>,
+    /// Where the distrust rows of each origin sit in its log.
+    distrusts: BTreeMap<String, Vec<usize>>,
     used: BTreeMap<String, BTreeMap<String, u64>>,
     seen: BTreeMap<String, (usize, String)>,
 }
@@ -39,6 +41,7 @@ impl Book {
     pub fn refresh(&mut self, board: &Board, floor: u64) {
         let origins = board.origins();
         self.rows.retain(|o, _| origins.contains(o));
+        self.distrusts.retain(|o, _| origins.contains(o));
         self.used.retain(|o, _| origins.contains(o));
         self.seen.retain(|o, _| origins.contains(o));
         for origin in origins {
@@ -46,6 +49,7 @@ impl Book {
             let changed = self.seen.get(&origin).is_some_and(|(n, h)| *n > log.len() || (*n > 0 && log[*n - 1].hash != *h));
             if changed {
                 self.rows.remove(&origin);
+                self.distrusts.remove(&origin);
                 self.used.remove(&origin);
                 self.seen.remove(&origin);
             }
@@ -58,6 +62,8 @@ impl Book {
                     }
                     let gid = body.and_then(|b| b.get("gid")).and_then(Value::as_str).unwrap_or("").to_string();
                     *self.used.entry(origin.clone()).or_default().entry(gid).or_default() += 1;
+                } else if body.and_then(|b| b.get("op")).and_then(Value::as_str) == Some("distrust") {
+                    self.distrusts.entry(origin.clone()).or_default().push(at);
                 } else {
                     self.rows.entry(origin.clone()).or_default().push(at);
                 }
@@ -78,6 +84,24 @@ impl Book {
         }).filter(|r| r.origin == board.origin() || !held_back(r, now_ms)).collect();
         all.sort_by(|a, b| a.order().cmp(&b.order()));
         all.into_iter().cloned().collect()
+    }
+
+    /// The newest distrust rows of each origin of ``board``: those indexed, and any written since the last refresh.
+    pub fn distrusts<'a>(&'a self, board: &'a Board) -> Vec<&'a Row> {
+        let is_distrust = |r: &&Row| r.kind == Kind::Grant && r.body.get("op").and_then(Value::as_str) == Some("distrust");
+        let mut found = Vec::new();
+        for origin in board.origins() {
+            let log = board.rows(&origin);
+            let indexed = self.seen.get(&origin).filter(|(n, h)| *n <= log.len() && (*n == 0 || log[*n - 1].hash == *h));
+            let mut rows: Vec<&Row> = match indexed {
+                Some((n, _)) => self.distrusts.get(&origin).into_iter().flatten().filter_map(|i| log.get(*i)).chain(log[*n..].iter().filter(is_distrust)).collect(),
+                None => log.iter().filter(is_distrust).collect(),
+            };
+            rows.reverse();
+            rows.truncate(MOST_UNTRUSTED);
+            found.extend(rows);
+        }
+        found
     }
 
     /// Whether another device wrote any entry of this board's grants.
@@ -144,6 +168,10 @@ fn status(issue: &Issue, used: u64, now_ms: u64) -> &'static str {
 pub fn standing(node: &mut Node, board: &str) -> Result<Standing> {
     let now = node.now_ms();
     let floor = node.members.grants_floor_ms;
+    if node.members.gov().is_some() && board != crate::poolops::POOL_BOARD {
+        let pool = node.host(crate::poolops::POOL_BOARD)?;
+        pool.book.refresh(&pool.board, floor);
+    }
     let (own, foreign) = {
         let hosted = node.host(board)?;
         hosted.book.refresh(&hosted.board, floor);

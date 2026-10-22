@@ -5,6 +5,8 @@ use std::sync::Mutex;
 
 use ed25519_dalek::Signer;
 use poolhouse_node::fsutil::{hex, unhex};
+use poolhouse_node::gov::keys::{AdminKey, Alg, Role, Strength};
+use poolhouse_node::row::Kind;
 use serde_json::{json, Value};
 
 use super::grants::{person, Person, Spec};
@@ -121,5 +123,53 @@ impl Founded {
     /// The addresses the node has pushed to so far.
     pub fn pushed_to(&self) -> Vec<String> {
         self.rig.pushed.sent().into_iter().map(|(endpoint, _)| endpoint).collect()
+    }
+}
+
+const HOURS: i64 = 3_600_000;
+
+impl Founded {
+    /// Draft an act of ``kind`` after the charter in force, have the admin phone sign it, and hand it to the pool; the reply of `pool_submit`.
+    pub fn act(&self, kind: &str, body: Value) -> Value {
+        let draft = ok(self.rig.call("pool_draft", "", &self.token, json!({"kind": kind, "body": body})));
+        let mut act = draft["act"].clone();
+        act["signatures"] = json!([{"kind": "admin", "key": self.phone.public, "sig": self.phone.sign_low(&unhex(draft["sign_bytes"].as_str().unwrap()).unwrap())}]);
+        self.rig.call("pool_submit", "", &self.token, json!({"act": act}))
+    }
+
+    /// List the phone ``new`` as a second strong admin key of the same person, and let the hold run: the admin phone signs the `admin_add`.
+    pub fn add_admin(&self, new: &FakePhone) {
+        let entry = {
+            let node = self.rig.node.lock().unwrap();
+            let gov = node.members.gov().unwrap();
+            let (epoch, prev) = gov.context();
+            let mut entry = AdminKey { key: new.public.clone(), alg: Alg::P256, role: Role::Admin, strength: Strength::Strong, person: "ann".into(), since: epoch + 1, acceptance: String::new(), label: "second phone".into() };
+            entry.acceptance = new.sign_low(&entry.acceptance_message(&gov.id, &prev));
+            entry
+        };
+        ok(self.act("admin_add", json!({"entry": entry})));
+        self.pass(48 * HOURS);
+    }
+
+    /// Move the awake clock of the pool on by ``ms`` and let the pool notice, as an idle node would at the next request that ticks it.
+    pub fn pass(&self, ms: i64) {
+        self.advance(ms);
+        self.rig.node.lock().unwrap().gov_tick().unwrap();
+    }
+
+    /// Move the awake clock of the pool on by ``ms`` and tick nothing.
+    pub fn advance(&self, ms: i64) {
+        self.rig.node.lock().unwrap().members.gov().unwrap().clock.advance_ms(ms);
+    }
+
+    /// Append to the log of board `demo` the issue row of ``spec`` that ``signer`` approved, built by hand.
+    pub fn append_approved(&self, gid: &str, spec: &Spec, signer: &FakePhone) {
+        let body = super::govnode::approved_row(&self.rig.device(), "demo", gid, spec, &signer.fingerprint(), &|bytes| signer.sign(bytes));
+        self.rig.node.lock().unwrap().host("demo").unwrap().board.append_person(Kind::Grant, &self.name, Value::Object(body)).unwrap();
+    }
+
+    /// The fingerprints of the keys that count as admin keys on this device now.
+    pub fn authority(&self) -> Vec<String> {
+        poolhouse_node::grants::authority::Authority::of(&self.rig.node.lock().unwrap()).authority()
     }
 }
