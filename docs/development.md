@@ -249,6 +249,15 @@ how a `--also tight` flag once reached `Client.__init__` in a benchmark and took
 down with it. `tests/test_testing_fakes.py` diffs every fake's signature against the real
 one (`mirrors`, `drift`), so a change to the real one fails the suite until the fake follows.
 
+A test that needs a model's HTTP server and tests no model behaviour (ports, queues, framing) uses
+`poolhouse.testing.canned.CannedServer`, which says it is not a model: it reports the model
+`CANNED-NOT-A-MODEL`, begins every reply body `[CANNED RESPONSE, NOT A MODEL]` and sets
+`X-Canned-Response: not-a-model` on every response, errors and streams included, with no switch to turn that off.
+`unmarked()` drops only the text prefix, for a test whose subject is the framing text itself (JSON the client
+must parse); the header, the model id and the metadata stay. The `model-replies` gate refuses a model-shaped reply
+built anywhere else under `tests/`, and `scripts/gates/model_replies.txt` lists the files that still build them and
+only shrinks.
+
 ## Commit history by type
 
 `python3 scripts/commit_types_chart.py [--branch 0.2dev] [--bucket day|week|month] [--out commit-types.png]`

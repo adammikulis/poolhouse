@@ -3,6 +3,21 @@ suite shares -- each with the real signature (`poolhouse.testing.fakes`)."""
 
 from __future__ import annotations
 
+from poolhouse.testing.canned import (
+    CANNED_BODY_HEADER,
+    CANNED_HEADER,
+    CANNED_HEADER_VALUE,
+    CANNED_MARKER,
+    CANNED_MODEL_ID,
+    Canned,
+    CannedServer,
+    Turn,
+    canned_binary,
+    canned_from_argv,
+    canned_server,
+    marked,
+    unmarked,
+)
 from poolhouse.testing.fakes import (
     DRAFTING,
     LLAMA_SERVER_FLAGS,
@@ -54,6 +69,11 @@ from poolhouse.testing.parity import (
 from poolhouse.testing.signatures import drift, mirrors
 
 __all__ = [
+    "CANNED_BODY_HEADER",
+    "CANNED_HEADER",
+    "CANNED_HEADER_VALUE",
+    "CANNED_MARKER",
+    "CANNED_MODEL_ID",
     "DRAFTING",
     "FORWARD_ATOL",
     "FORWARD_RTOL",
@@ -65,6 +85,8 @@ __all__ = [
     "MIRRORED",
     "SEED",
     "ZERO_GRAD",
+    "Canned",
+    "CannedServer",
     "FakeBackend",
     "FakeClient",
     "FakeConverse",
@@ -76,9 +98,13 @@ __all__ = [
     "ParityReport",
     "ScriptedModel",
     "Served",
+    "Turn",
     "Yielding",
     "assert_forward_parity",
     "assert_grad_parity",
+    "canned_binary",
+    "canned_from_argv",
+    "canned_server",
     "copy_torch_weights_to_mlx",
     "drift",
     "fake_binary",
@@ -86,6 +112,7 @@ __all__ = [
     "fake_llama_server",
     "fake_serve",
     "inputs",
+    "marked",
     "metrics_text",
     "mirrors",
     "mlx_grad_norms",
@@ -98,4 +125,5 @@ __all__ = [
     "run_pair",
     "serve_from_argv",
     "torch_grad_norms",
+    "unmarked",
 ]
