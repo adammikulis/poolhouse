@@ -63,7 +63,7 @@ class NodeUnits:
         return stdout
 
     def run_targets(self, targets):
-        argv = [testnode.tool("cargo"), "test", "--locked", "--offline", "-p", "poolhouse-node"]
+        argv = [testnode.tool("cargo"), "test", "--locked", "--offline", "--no-fail-fast", "-p", "poolhouse-node"]
         for target in targets:
             argv.extend(("--test", target))
         stdout = self.execute([*argv, "--", "--test-threads=1"])
