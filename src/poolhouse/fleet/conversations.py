@@ -9,7 +9,7 @@ from pathlib import Path
 
 from poolhouse import coding_actions, coding_workspace_state, requests
 from poolhouse.client import completion
-from poolhouse.fleet import conversation_graph as graph
+from poolhouse.fleet import conversation_creation as creation, conversation_graph as graph
 from poolhouse.fleet.conversation_settings import checked
 from poolhouse.fleet.conversation_types import (
     ROLES,
@@ -21,6 +21,7 @@ from poolhouse.fleet.conversation_types import (
     title,
 )
 from poolhouse.graph.columns import column
+from poolhouse.studio.store import digest
 
 __all__ = ["Conversation", "Conversations", "Message"]
 
@@ -100,6 +101,50 @@ class Conversations:
         with graph.opened(self.root) as store, store.transaction():
             graph.save(store, made)
         return made
+
+    def create(self, operation_id: str, request: dict, identity: dict, *, defaults: dict, current) -> dict:
+        """Create or attach one conversation under its original live browser intent."""
+        key, requested = creation.operation(operation_id), creation.request(request)
+        creation.current(current)
+        self.root.mkdir(parents=True, exist_ok=True)
+        bound = creation.binding(self.root, identity)
+        with graph.opened(self.root) as store, store.transaction():
+            creation.current(current)
+            row = creation.receipt(store, key, bound)
+            if row is not None:
+                if row["request"] != requested:
+                    raise creation.Conflict(creation.ERROR)
+            else:
+                settings = checked({**checked(defaults), **requested["settings"]})
+                made = Conversation(id=uuid.uuid4().hex, model=requested["model"], title=requested["title"], settings=settings)
+                if graph.get(store, made.id) is not None:
+                    raise creation.Conflict(creation.ERROR)
+                graph.save(store, made)
+                row = {"version": 1, "binding": bound, "request": requested,
+                       "response": {**made.public(), "operation_id": operation_id}}
+                store.put_doc(key, row)
+                store.upsert_node({"id": key, "kind": "conversation-create", "attrs": {"digest": digest(row)}})
+                store.upsert_edge({"source": key, "target": graph.node_id(made.id), "rel": "created"})
+            if creation.binding(self.root, identity) != bound:
+                raise creation.Conflict(creation.ERROR)
+            creation.current(current)
+            return row["response"]
+
+    def creation(self, operation_id: str, identity: dict, *, current) -> dict | None:
+        """Read historical creation evidence without creating a conversation or operation."""
+        key = creation.operation(operation_id)
+        creation.current(current)
+        if not (self.root / "conversations.db").exists():
+            creation.current(current)
+            return None
+        bound = creation.binding(self.root, identity)
+        with graph.opened(self.root) as store:
+            creation.current(current)
+            row = creation.receipt(store, key, bound, lookup=True)
+            if creation.binding(self.root, identity) != bound:
+                raise creation.Conflict(creation.ERROR)
+            creation.current(current)
+            return row["response"] if row is not None else None
 
     def coding_state(self, cid: str) -> CodingState:
         """Read one current coding policy without loading its conversation history."""

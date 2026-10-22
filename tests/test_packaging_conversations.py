@@ -37,7 +37,7 @@ def test_frozen_daemon_keeps_graph_conversations_after_restart(tmp_path):
         board = call(port, "GET", "/ui/board/agents")
         assert board["agents"] == [] and board["owner_id"]
         assert call(port, "GET", f"/ui/conversations/{seeded.id}")["messages"] == seeded.public()["messages"]
-        made = call(port, "POST", "/ui/conversations", {"model": "chosen-model", "title": "Packaged chat",
+        made = call(port, "POST", "/ui/conversations", {"operation_id": "a" * 32, "model": "chosen-model", "title": "Packaged chat",
                     "settings": {"project": "/tmp/project", "temperature": .4}})
         assert made["settings"]["temperature"] == .4
         call(port, "POST", f"/ui/conversations/{made['id']}", {"title": "Renamed packaged chat"})

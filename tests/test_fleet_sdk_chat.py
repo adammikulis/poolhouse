@@ -83,6 +83,7 @@ def test_browser_sends_sdk_chat_and_reloads_saved_answer(tmp_path, sdk_playwrigh
     fake = FakeLlamaServer(Served(model="qwen-sdk.gguf", pieces=("A live ", "SDK answer"), gap=2.0))
     served = Serving(tmp_path)
     served.ui.settings.setup_done = True
+    served.ui.root = tmp_path
     served.ui.serving = ModelsServing(tmp_path / "models.json")
     served.ui.serving.register(fake.port, ["qwen-sdk.gguf"])
     served.ui.conversations = Conversations(tmp_path / "chats")

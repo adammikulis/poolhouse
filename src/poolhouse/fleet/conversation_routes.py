@@ -1,7 +1,9 @@
 """Saved conversation listing, lookup and updates behind the daemon UI guard."""
 from __future__ import annotations
 
+from . import conversation_creation, setup_context
 from .conversation_settings import effective
+from .request_fields import exact_body
 from .room_routes import _origin_ok
 
 
@@ -13,6 +15,15 @@ class ConversationRoutes:
                 return True
             try:
                 return self._conversations()
+            except setup_context.SessionLost as error:
+                self.send(401, {"error": str(error)})
+                return True
+            except PermissionError:
+                self.send(403, {"error": "Reconnect this Poolhouse window to continue."})
+                return True
+            except conversation_creation.Conflict:
+                self.send(409, {"error": conversation_creation.ERROR})
+                return True
             except (TypeError, ValueError) as error:
                 self.send(400, {"error": str(error)})
                 return True
@@ -42,6 +53,16 @@ class ConversationRoutes:
         if store is None:
             self.send(501, {"error": "no chat store on this daemon"})
             return True
+        if self.path.startswith("/ui/conversations/operations/"):
+            if self.method != "GET":
+                self.send(405, {"error": "Use GET to check a conversation request."})
+                return True
+            context = setup_context.bind(self)
+            found = store.creation(self.path.removeprefix("/ui/conversations/operations/"), context.binding,
+                                   current=context.current)
+            self.send(200 if found is not None else 404, found if found is not None else {"error": "No such conversation request."},
+                      {"Cache-Control": "no-store"})
+            return True
         cid = self.path[len("/ui/conversations"):].strip("/")
         if cid:
             return self._one_conversation(cid)
@@ -50,12 +71,11 @@ class ConversationRoutes:
                                              for conversation in store.search(self.asked("q"))]})
             return True
         if self.method == "POST":
-            request = self._body()
-            if not isinstance(request.get("model", ""), str) or not isinstance(request.get("title", ""), str):
-                raise ValueError("model and title must be text")
-            made = store.start(model=request.get("model", ""), title=request.get("title", ""),
-                               settings={**effective(self.ui.settings), **request.get("settings", {})})
-            self.send(201, made.public())
+            context = setup_context.bind(self)
+            request = exact_body(self, ("operation_id",), optional=("model", "title", "settings"))
+            operation = request.pop("operation_id")
+            made = store.create(operation, request, context.binding, defaults=effective(self.ui.settings), current=context.current)
+            self.send(201, made, {"Cache-Control": "no-store"})
             return True
         return super().route()
 
