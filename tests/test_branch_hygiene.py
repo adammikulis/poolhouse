@@ -199,3 +199,117 @@ def test_a_merge_that_resolves_a_guard_test_down_by_hand_is_still_reported(tmp_p
     sh(where, "git", "add", GUARD)
     out = sh(where, sys.executable, str(HOOK), "--staged")
     assert out.returncode == 1 and "fewer assertions" in out.stderr
+
+
+STUB = "tests/test_redteam_stub.py"
+STUB_BODY = "def test_a():\n    assert 1\n    assert 2\n"
+
+
+def dev_repo(tmp_path: Path, with_hook: bool = False) -> Path:
+    """A repo on ``dev`` holding a red-team test, and a branch ``br`` with one commit of its own."""
+    where = tmp_path / "d"
+    where.mkdir()
+    sh(where, "git", "init", "-q", "-b", "dev")
+    (where / "tests").mkdir()
+    (where / STUB).write_text(STUB_BODY)
+    sh(where, "git", "add", STUB)
+    assert sh(where, "git", "commit", "-qm", "base", "--no-verify").returncode == 0
+    if with_hook:
+        (where / ".git" / "hooks" / "commit-msg").symlink_to(REPO / "scripts" / "hooks" / "commit-msg")
+    sh(where, "git", "checkout", "-qb", "br")
+    commit(where, "own.txt")
+    sh(where, "git", "checkout", "-q", "dev")
+    return where
+
+
+def dev_deletes_the_stub(where: Path) -> None:
+    sh(where, "git", "rm", "-q", STUB)
+    assert sh(where, "git", "commit", "-qm", "dev drops the stub", "--no-verify").returncode == 0
+    sh(where, "git", "checkout", "-q", "br")
+
+
+def test_a_merge_of_a_dev_that_deleted_a_red_team_test_file_is_not_the_branchs_removal(tmp_path) -> None:
+    """The deletion arrives from the dev side; the branch only carries it in."""
+    where = dev_repo(tmp_path)
+    dev_deletes_the_stub(where)
+    assert sh(where, "git", "merge", "--no-commit", "--no-ff", "dev").returncode == 0
+    out = sh(where, sys.executable, str(HOOK), "--staged")
+    assert out.returncode == 0, out.stderr
+
+
+def test_git_merge_of_that_dev_is_accepted_by_the_commit_msg_hook(tmp_path) -> None:
+    """The landing step itself: `git merge dev` runs the installed commit-msg hook."""
+    where = dev_repo(tmp_path, with_hook=True)
+    dev_deletes_the_stub(where)
+    env = {"HOME": str(tmp_path), "PYTHON": sys.executable}
+    done = sh(where, "git", "merge", "--no-ff", "-m", "merge dev", "dev", env=env)
+    assert done.returncode == 0, done.stderr
+    assert sh(where, "git", "rev-parse", "HEAD^2").returncode == 0
+    assert not (where / STUB).exists()
+
+
+def test_a_branch_keeping_a_test_the_dev_deleted_may_accept_the_deletion(tmp_path) -> None:
+    """A modify/delete conflict resolved to the dev side's deletion: the removal is the dev's."""
+    where = dev_repo(tmp_path)
+    sh(where, "git", "checkout", "-q", "br")
+    (where / STUB).write_text(STUB_BODY + "    assert 3\n")
+    sh(where, "git", "add", STUB)
+    assert sh(where, "git", "commit", "-qm", "br adds an assertion", "--no-verify").returncode == 0
+    sh(where, "git", "checkout", "-q", "dev")
+    dev_deletes_the_stub(where)
+    assert sh(where, "git", "merge", "--no-commit", "--no-ff", "dev").returncode == 1
+    sh(where, "git", "rm", "-q", STUB)
+    out = sh(where, sys.executable, str(HOOK), "--staged")
+    assert out.returncode == 0, out.stderr
+
+
+def test_a_branch_that_deletes_a_red_team_test_in_its_own_commit_is_refused(tmp_path) -> None:
+    where = dev_repo(tmp_path)
+    sh(where, "git", "checkout", "-q", "br")
+    sh(where, "git", "rm", "-q", STUB)
+    out = sh(where, sys.executable, str(HOOK), "--staged")
+    assert out.returncode == 1 and "fewer assertions" in out.stderr
+
+
+def test_a_branch_that_deleted_a_test_itself_is_caught_over_its_range_after_merging_the_dev(tmp_path) -> None:
+    """The range check (CI) reads the branch against the dev it merged, not the dev's own commits."""
+    where = dev_repo(tmp_path)
+    commit(where, "dev.txt")
+    sh(where, "git", "checkout", "-q", "br")
+    sh(where, "git", "rm", "-q", STUB)
+    assert sh(where, "git", "commit", "-qm", "br drops the stub", "--no-verify").returncode == 0
+    assert sh(where, "git", "merge", "--no-ff", "-m", "merge dev", "dev", "--no-verify").returncode == 0
+    out = sh(where, sys.executable, str(HOOK), "--against", "dev")
+    assert out.returncode == 1 and "test function test_a removed" in out.stderr
+
+
+def test_a_range_of_a_branch_that_merged_a_dev_deletion_is_not_the_branchs_removal(tmp_path) -> None:
+    where = dev_repo(tmp_path)
+    dev_deletes_the_stub(where)
+    assert sh(where, "git", "merge", "--no-ff", "-m", "merge dev", "dev", "--no-verify").returncode == 0
+    out = sh(where, sys.executable, str(HOOK), "--against", "dev")
+    assert out.returncode == 0, out.stderr
+
+
+def test_a_rebase_onto_a_dev_that_deleted_a_red_team_test_is_not_the_branchs_removal(tmp_path) -> None:
+    where = dev_repo(tmp_path)
+    dev_deletes_the_stub(where)
+    assert sh(where, "git", "rebase", "dev").returncode == 0
+    out = sh(where, sys.executable, str(HOOK), "--against", "dev")
+    assert out.returncode == 0, out.stderr
+
+
+def test_a_conflict_resolved_by_dropping_assertions_is_refused_beside_a_dev_deletion(tmp_path) -> None:
+    """Both sides edit the same assertion; the hand resolution keeps neither and drops one."""
+    where = dev_repo(tmp_path)
+    for branch, text in (("br", "    assert 1 == 1\n"), ("dev", "    assert 1 != 0\n")):
+        sh(where, "git", "checkout", "-q", branch)
+        (where / STUB).write_text(STUB_BODY.replace("    assert 1\n", text))
+        sh(where, "git", "add", STUB)
+        assert sh(where, "git", "commit", "-qm", f"{branch} edits", "--no-verify").returncode == 0
+    sh(where, "git", "checkout", "-q", "br")
+    assert sh(where, "git", "merge", "--no-commit", "--no-ff", "dev").returncode == 1
+    (where / STUB).write_text("def test_a():\n    assert 2\n")
+    sh(where, "git", "add", STUB)
+    out = sh(where, sys.executable, str(HOOK), "--staged")
+    assert out.returncode == 1 and "fewer assertions" in out.stderr
