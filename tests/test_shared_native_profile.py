@@ -13,7 +13,7 @@ from poolhouse.serve.backend import LlamaServerBackend
 from poolhouse.serve.broker import Ask, Broker, Held, _shape_of
 from poolhouse.serve.process import kill_process_tree
 from poolhouse.serve.serving import Config, Serving
-from poolhouse.testing.fakes import fake_llama_binary
+from poolhouse.testing.canned import canned_binary
 from poolhouse.workspace import localagent as la, localloop, localmodel
 
 pytest_plugins = ["serve_node"]
@@ -100,7 +100,7 @@ def test_installed_aliases_share_one_native_server_with_matching_profile(tmp_pat
     candidate = SimpleNamespace(path=snapshot, ref="hf:owner/repo/Qwen.gguf",
                                 name=snapshot.name, size_bytes=snapshot.stat().st_size)
     pick = localmodel._line(SimpleNamespace(candidate=candidate, verdict="green", reason="fits"))
-    manager = ServerManager(LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    manager = ServerManager(LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
     broker = Broker(manager, idle_s=3600, room=lambda: None, scan=lambda: [])
     manager._broker = broker

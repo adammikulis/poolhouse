@@ -13,7 +13,8 @@ from poolhouse.serve import grant
 from poolhouse.serve.backend import Lease, LlamaServerBackend, ServerFailed, ServerInfo, ServerSpec
 from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.ports import free_port
-from poolhouse.testing.fakes import FakeLlamaServer, Served, fake_binary
+from poolhouse.testing.canned import Canned, CannedServer
+from poolhouse.testing.fakes import fake_binary
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -136,10 +137,10 @@ def _ended(proc, within: float = 10.0) -> bool:
 @pytest.fixture
 def serving():
     """llama-servers on real sockets, closed at the end of the test."""
-    started: list[FakeLlamaServer] = []
+    started: list[CannedServer] = []
 
-    def start(model: str) -> FakeLlamaServer:
-        fake = FakeLlamaServer(Served(model=f"/models/{model}", context=4096))
+    def start(model: str) -> CannedServer:
+        fake = CannedServer(Canned(served_path=f"/models/{model}", context=4096))
         started.append(fake)
         return fake
 
