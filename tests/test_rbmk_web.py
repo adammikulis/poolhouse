@@ -265,7 +265,7 @@ def test_a_recording_without_a_date_says_so_in_its_label():
 
 @pytest.mark.parametrize("name", ["../x.json", "a/b.json", ".hidden.json", "x.txt", "", "a" * 200 + ".json", "x\n.json", "x.json\n"])
 def test_recording_names_are_plain_file_names(tmp_path, name):
-    with pytest.raises((recordings.BadDocument, FileNotFoundError)):
+    with pytest.raises(recordings.BadDocument, match="not a recording file name"):
         recordings.read(tmp_path, name)
 
 
