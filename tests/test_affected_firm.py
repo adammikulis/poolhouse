@@ -30,3 +30,13 @@ def test_a_test_that_one_firm_path_reaches_is_not_loose(tmp_path):
     root = toy(tmp_path)
     (root / "tests/test_word.py").write_text("WHERE = 'scripts/runner.py'\nNAME = 'runner'\n", encoding="utf-8")
     assert affected.select(root, ["scripts/runner.py"]).loose == set()
+
+
+def test_a_change_of_prose_alone_selects_no_tree_wide_guard_but_a_change_of_code_does(tmp_path):
+    root = toy(tmp_path)
+    (root / "docs").mkdir()
+    (root / "docs/notes.md").write_text("x\n", encoding="utf-8")
+    (root / "tests/test_notes.py").write_text("TEXT = open('docs/notes.md').read()\n", encoding="utf-8")
+    (root / "tests/test_suite.py").write_text("def test_guard():\n    assert True\n", encoding="utf-8")
+    assert affected.select(root, ["docs/notes.md"]).files == {"tests/test_notes.py"}
+    assert "tests/test_suite.py" in affected.select(root, ["docs/notes.md", "scripts/runner.py"]).files

@@ -33,7 +33,7 @@ and data-file checks and before any watcher starts) selects test files with `scr
 `scripts/test quick` makes, from every path the push changes (the net difference from the remote's old tip, or the commits on
 no remote-tracking ref): the test files that import or name the path, directly or through one module; the glossary scan for any
 file it reads; the switch-table scan (`tests/test_documented_env_vars.py`) for a path it scans; and the tree-wide guards once any
-test runs. A deleted module selects the tests that import it. A path no rule can place (`pyproject.toml`, `budgets.json`,
+test runs, unless every changed path is prose (`.md`). A deleted module selects the tests that import it. A path no rule can place (`pyproject.toml`, `budgets.json`,
 `tests/conftest.py`) runs only the tree-wide guards and is named in a warning; `scripts/test gate` and CI cover it.
 A test file that only a bare word in a string or a directory listing reaches (`Selection.loose`) is counted in a warning and left to
 CI; the files that import, run or name the path by its path, and the files they reach through such references, run. The hook then
