@@ -13,8 +13,8 @@ from poolhouse.serve.backend import LlamaServerBackend
 from poolhouse.serve.broker import Ask, Broker, Held, _shape_of
 from poolhouse.serve.process import kill_process_tree
 from poolhouse.serve.serving import Config, Serving
-from poolhouse.testing.fakes import fake_llama_binary
-from poolhouse.workspace import localloop, localmodel
+from poolhouse.testing.canned import canned_binary
+from poolhouse.workspace import localharness, localloop, localmodel
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -52,7 +52,8 @@ def test_native_lease_uses_shared_harness_profile_and_template(monkeypatch, tmp_
     monkeypatch.setattr(localloop, "serve", lease)
     monkeypatch.setattr(localloop, "check_context", lambda *args: "")
     monkeypatch.setattr(localloop, "client_on", lambda url: url)
-    agent = SimpleNamespace(model=str(model), ctx=262144, name="local-qwen", size_bytes=4)
+    agent = SimpleNamespace(model=str(model), ctx=262144, name="local-qwen", size_bytes=4,
+                            profile="chat", harness=localharness.OWN)
     held = localloop.lease_model(agent)
     assert calls[0][0] == str(model) and calls[0][1].ctx == 262144
     assert captured["model"] == str(model)
@@ -100,7 +101,7 @@ def test_installed_aliases_share_one_native_server_with_matching_profile(tmp_pat
     candidate = SimpleNamespace(path=snapshot, ref="hf:owner/repo/Qwen.gguf",
                                 name=snapshot.name, size_bytes=snapshot.stat().st_size)
     pick = localmodel._line(SimpleNamespace(candidate=candidate, verdict="green", reason="fits"))
-    manager = ServerManager(LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    manager = ServerManager(LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
     broker = Broker(manager, idle_s=3600, room=lambda: None, scan=lambda: [])
     manager._broker = broker
@@ -114,7 +115,8 @@ def test_installed_aliases_share_one_native_server_with_matching_profile(tmp_pat
     try:
         first = broker.lease(Ask(purpose="serve:shared-profile", models=(str(snapshot),), pid=os.getppid(),
                                  label="chat", spec=spec), timeout=10)
-        second = localloop.lease_model(SimpleNamespace(model=pick.ref, ctx=512, name="coding"))
+        second = localloop.lease_model(SimpleNamespace(model=pick.ref, ctx=512, name="coding",
+                                                       profile="chat", harness=localharness.OWN))
         assert second.lease["shared"] and second.lease["port"] == first.port
         assert second.lease["id"] in broker.servers[first.port].holders
         assert len(broker.servers) == 1
