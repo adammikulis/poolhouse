@@ -62,8 +62,9 @@ PAGE = "http://127.0.0.1/{}"        # the tool-policy rail lets a tool reach onl
 
 @contextmanager
 def state_root() -> Iterator[Path]:
-    """A fresh state root for one attack, with the judge model off."""
-    with tempfile.TemporaryDirectory(prefix="redteam-sentinel-") as where:
+    """A fresh state root for one attack, with the judge model off. A thread of the node can still be
+    writing when it is removed, and a file left behind in a scratch folder is no reason to end the run."""
+    with tempfile.TemporaryDirectory(prefix="redteam-sentinel-", ignore_cleanup_errors=True) as where:
         moved = {"POOLHOUSE_HOME": where, "POOLHOUSE_GUARD_JUDGE": "off"}
         before = {key: os.environ.get(key) for key in moved}
         os.environ.update(moved)

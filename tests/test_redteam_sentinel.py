@@ -6,6 +6,9 @@ run is gated on. The agent attacks, which a real model decides, are in
 from __future__ import annotations
 
 import asyncio
+import errno
+import os
+import shutil
 from dataclasses import replace
 from pathlib import Path
 
@@ -45,6 +48,25 @@ def test_a_forging_member_is_never_accepted_and_is_blocked_within_a_known_number
     got = row(attacked, "forged-member", how, "default")
     assert not got["succeeded"] and got["blocked_by"] == "sentinel" and got["ttd"] <= 12
     assert not row(attacked, "forged-member", how, "unwatched")["detected"]
+
+
+def test_a_state_root_that_cannot_be_removed_does_not_end_the_run(monkeypatch):
+    """A node's thread can write into the folder while it is removed (a real model keeps the run long enough
+    for it to happen) and the removal then fails with `Directory not empty`; the leftover is scratch and the
+    attack's result stands."""
+    real_rmdir = os.rmdir
+
+    def busy(name, *args, **kwargs):
+        if name == "sentinel":
+            raise OSError(errno.ENOTEMPTY, "Directory not empty", name)
+        return real_rmdir(name, *args, **kwargs)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "rmdir", busy)
+        with sentinel.state_root() as root:
+            (root / "sentinel").mkdir()
+            (root / "sentinel" / "events.log").write_text("late write", encoding="utf-8")
+    shutil.rmtree(root)
 
 
 def test_the_scenario_refuses_to_run_its_agent_attacks_without_a_model():
