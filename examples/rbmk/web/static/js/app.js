@@ -14,7 +14,7 @@ window.RB = window.RB || {};
   RB.startRun = async function () {
     const key = $('scenario').value, controller = $('controller').value;
     try {
-      const job = await RB.api('/api/run', { scenario: key, controller: controller });
+      const job = await RB.api('/api/run', { scenario: key, controller: controller, decider: $('decider').value, memory: $('memory').value });
       const run = new RB.Run('main'); run.origin = 'live'; run.follow(job.id);
       RB.setMain(run); S.playing = true;
       if ($('alsoNaive').checked && controller === 'model') {
@@ -70,7 +70,8 @@ window.RB = window.RB || {};
     const info = S.info, m = info.model, run = S.main;
     if (run) {
       const label = run.live ? 'LIVE, running' : run.origin === 'live' ? 'LIVE run finished' : 'RECORDED';
-      return { id: run.model || (run.origin === 'live' ? m.pinned + ' (pinned, answers not yet received)' : 'no model id in this run'), state: label, cls: run.origin === 'live' ? 'live' : 'rec', label: run.label };
+      const plain = run.controller === 'crew' ? 'none: 1986 crew script, not a model' : run.controller === 'naive' ? 'none: naive controller, plain code, not a model' : '';
+      return { id: plain || run.model || (run.origin === 'live' ? m.pinned + ' (pinned, answers not yet received)' : 'no model id in this run'), state: label, cls: run.origin === 'live' ? 'live' : 'rec', label: run.label };
     }
     if (S.mode === 'live') { return { id: m.id || (m.pinned + (m.available ? ' (pinned, loads at the first run)' : ' (pinned, NOT available)')), state: 'LIVE: no run', cls: 'live', label: '' }; }
     return { id: 'no recording open', state: 'RECORDED: no run', cls: 'rec', label: '' };
@@ -107,14 +108,23 @@ window.RB = window.RB || {};
       sel.appendChild(og);
     });
     sel.addEventListener('change', syncController);
+    $('controller').addEventListener('change', syncModelBoxes);
+    S.info.deciders.forEach(function (d) { $('decider').appendChild(RB.el('option', { value: d.id, text: d.label })); });
+    S.info.memories.forEach(function (m) { $('memory').appendChild(RB.el('option', { value: m, text: m })); });
     syncController();
   }
 
   function syncController() {
-    const s = RB.scenarioInfo($('scenario').value), c = $('controller');
+    const s = RB.scenarioInfo($('scenario').value), c = $('controller'), keep = c.value;
     c.replaceChildren(RB.el('option', { value: 'model', text: 'Decision model' }), RB.el('option', { value: 'naive', text: 'Naive controller (policy code, not a model)' }));
     if (s && s.crew) { c.appendChild(RB.el('option', { value: 'crew', text: '1986 crew script (not a model)' })); }
+    if (keep && Array.from(c.options).some(function (o) { return o.value === keep; })) { c.value = keep; }
+    syncModelBoxes();
     RB.touch();
+  }
+
+  function syncModelBoxes() {
+    ['deciderBox', 'memoryBox'].forEach(function (id) { $(id).style.display = $('controller').value === 'model' ? '' : 'none'; });
   }
 
   RB.loadRecordings = async function () {

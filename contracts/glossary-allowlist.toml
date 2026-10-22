@@ -203,7 +203,7 @@ path = ["src/poolhouse/fleet/web/components/gym-scene.html", "src/poolhouse/flee
         "tests/test_gym_scene_browser.py", "tests/test_gym_drone.py", "src/poolhouse/gym/drone_sensors.py",
         "docs/studio-gym.md", "src/poolhouse/data/tidy-gold.json", "src/poolhouse/world/names.py",
         "examples/rbmk/generator/roomkit.py", "examples/rbmk/room/drive.js",
-        "examples/rbmk/room/main.js"]
+        "examples/rbmk/room/room3d.js"]
 words = ["mesh"]
 reason = "a 3D mesh (three.js Mesh, MeshStandardMaterial, Blender's bpy.data.meshes) in the drone simulator, the control-room generator and viewer and their pages; graphics, not a network"
 

@@ -145,7 +145,7 @@ def make_handler(hub: Hub, port_of: Any) -> type[BaseHTTPRequestHandler]:
         def _post(self, path: str, query: dict[str, str]) -> None:
             if path == "/api/run":
                 a = self._arguments()
-                job = hub.start_run(str(a["scenario"]), str(a.get("controller", "model")), a.get("seed"))
+                job = hub.start_run(str(a["scenario"]), str(a.get("controller", "model")), a.get("seed"), str(a.get("decider", "")), str(a.get("memory", "none")))
                 self._json(200, job.public())
             elif path == "/api/batch":
                 a = self._arguments()

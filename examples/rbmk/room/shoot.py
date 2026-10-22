@@ -22,9 +22,9 @@ GL_ARGS = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-g
 
 
 @contextmanager
-def serving(folder: Path) -> Iterator[str]:
+def serving(folder: Path, wait_s: float = 0.0) -> Iterator[str]:
     """Serve the app on a free local port with ``folder`` as its recordings folder; yields the origin."""
-    srv = server.serve(Hub(folder), 0)
+    srv = server.serve(Hub(folder, wait_s), 0)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     try:
         yield f"http://127.0.0.1:{srv.server_address[1]}"

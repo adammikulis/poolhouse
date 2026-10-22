@@ -30,7 +30,8 @@ from examples.rbmk.sim.plant import Plant
 from examples.rbmk.sim.rods import Rods, worth
 
 ROOT = Path(__file__).resolve().parent.parent
-FIXTURE = ROOT / "tests" / "fixtures" / "rbmk" / "fixture_short.recording.json"
+
+pytest_plugins = ["real_model", "rbmk_run"]
 
 
 def naive(key: str):
@@ -254,13 +255,15 @@ def test_a_real_model_failure_at_ask_time_stops_the_run_with_no_action_taken(tmp
     assert runner.plant.last_action == "none yet"
 
 
-def load_recording() -> dict:
-    return json.loads(FIXTURE.read_text())
+def load_recording(short_recording) -> dict:
+    folder, name = short_recording
+    return json.loads((folder / name).read_text())
 
 
-def test_the_recording_names_the_real_model_and_has_complete_probabilities():
-    rec = load_recording()
-    assert rec["schema"] == bundle.RECORDING and rec["meta"]["backend"]["model"] == "strands-decider-2B-hobson-v19"
+@pytest.mark.real_model
+def test_the_recording_names_the_real_model_and_has_complete_probabilities(short_recording):
+    rec = load_recording(short_recording)
+    assert rec["schema"] == bundle.RECORDING and rec["meta"]["backend"]["model"].startswith("strands-decider")
     assert rec["meta"]["backend"]["recorded_at"]
     for decision in rec["decisions"]:
         for call in decision["calls"]:
@@ -269,8 +272,9 @@ def test_the_recording_names_the_real_model_and_has_complete_probabilities():
                 assert list(answer["scores"]) == list(answer["options"]) and answer["choice"] in answer["scores"]
 
 
-def test_the_recording_replays_to_the_identical_run_and_the_export_round_trips():
-    rec = load_recording()
+@pytest.mark.real_model
+def test_the_recording_replays_to_the_identical_run_and_the_export_round_trips(short_recording):
+    rec = load_recording(short_recording)
     scn = scenarios.scenario(rec["meta"]["scenario"]["key"])
     doc = bundle.export(bundle.replay(rec, scn), scn, rec["meta"]["backend"])
     assert bundle.digest(doc) == rec["digest"]
@@ -281,8 +285,9 @@ def test_the_recording_replays_to_the_identical_run_and_the_export_round_trips()
     assert doc["whatif"] and set(doc) >= {"schema", "meta", "rods", "trace", "events", "decisions", "captions", "outcome", "score"}
 
 
-def test_a_recording_that_does_not_match_the_simulator_is_refused():
-    rec = load_recording()
+@pytest.mark.real_model
+def test_a_recording_that_does_not_match_the_simulator_is_refused(short_recording):
+    rec = load_recording(short_recording)
     scn = scenarios.scenario(rec["meta"]["scenario"]["key"])
     bad = copy.deepcopy(rec)
     bad["decisions"][0]["calls"][0]["state_sha256"] = "0" * 64
@@ -348,17 +353,19 @@ def test_a_hung_model_call_fails_loudly_after_its_timeout_and_does_not_block_the
     assert time.monotonic() - began < 5
 
 
-RECORDINGS = ROOT / "examples" / "rbmk" / "recordings"
+@pytest.mark.real_model
+def test_a_recording_is_indexed_and_replays_to_its_digest_with_no_model(short_recording):
+    from examples.rbmk.decider import run
 
-
-def test_every_shipped_recording_is_indexed_and_replays_to_its_digest_with_no_model():
-    index = json.loads((RECORDINGS / "index.json").read_text())
-    assert index["schema"] == "rbmk-index/1" and len(index["recordings"]) >= 16
-    for entry in index["recordings"]:
-        rec = json.loads((RECORDINGS / entry["file"]).read_text())
-        assert entry["file"] == f"{entry['scenario']}-{entry['model']}-{entry['recorded_at']}.json"
-        assert rec["meta"]["backend"]["model"] == "strands-decider-2B-hobson-v19"
-        scn = scenarios.scenario(entry["scenario"])
-        doc = bundle.export(bundle.replay(rec, scn), scn, rec["meta"]["backend"], with_whatif=False)
-        assert bundle.digest(doc) == rec["digest"], entry["file"]
-        assert doc["outcome"]["verdict"] == entry["verdict"]
+    folder, _ = short_recording
+    assert run.main(["index", str(folder)]) == 0
+    index = json.loads((folder / "index.json").read_text())
+    assert index["schema"] == "rbmk-index/1" and len(index["recordings"]) == 1
+    entry = index["recordings"][0]
+    rec = json.loads((folder / entry["file"]).read_text())
+    assert entry["file"] == f"{entry['scenario']}-{entry['model']}-{entry['recorded_at']}.json"
+    assert rec["meta"]["backend"]["model"].startswith("strands-decider")
+    scn = scenarios.scenario(entry["scenario"])
+    doc = bundle.export(bundle.replay(rec, scn), scn, rec["meta"]["backend"], with_whatif=False)
+    assert bundle.digest(doc) == rec["digest"]
+    assert doc["outcome"]["verdict"] == entry["verdict"]

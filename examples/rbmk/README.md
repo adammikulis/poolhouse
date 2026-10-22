@@ -35,7 +35,7 @@ time, wall time, decision cadence and latency). The dock under the room holds wh
   over them (floor plan, front wall and a close-up of each panel); it reads the same run and playhead and uses no WebGL.
 - Playback: step back, play, step, speed, a scrubber and the clock of the tick on show. Space plays and pauses, `,` and `.`
   step. The room, the log and the charts all follow this one playhead, for a live run and a recording alike.
-- Tools, each a drawer over the room: Run console (live or recorded, scenario, controller, start, stop, open a recording or
+- Tools, each a drawer over the room: Run console (live or recorded, scenario, controller, the decider and memory variant for a model run, start, stop, open a recording or
   a JSON file), Decision log (every decision with the questions, the probabilities, the interlock layer's response; click one
   and the room's instruments, rods and wall display move to that moment), Charts, Core map (the full-size core cross-section,
   also opened from the card of a rod), Readings (the console tiles with stale and faulted gauge flags), What-if (ask the model
@@ -55,7 +55,7 @@ banner; the app never switches to a recording or a substitute by itself.
   (4 to 8 s), and a live poisoned-start run takes a few minutes. All sixteen recorded scenarios took about half an hour.
 - The GPU, through the Broker. `decider.run record` holds `gpu-training` (`poolhouse.serve.gpu.hold`) for the run, so it queues
   behind anything else computing (`--wait SECONDS`, default 0 refuses at once and names the holder). It never starts a server.
-- Nothing else. The simulator is pure Python with no dependency. The recordings replay with no model and no GPU.
+- Nothing else. The simulator is pure Python with no dependency. A recording replays with no model and no GPU.
 
 ```sh
 python -m examples.rbmk.decider.run selftest poisoned_a            # one real round, prints every probability
@@ -66,14 +66,15 @@ Without the checkpoint `record` and `selftest` stop at once: `RUN STOPPED ... th
 never fall back to anything.
 
 ```sh
-python -m examples.rbmk.decider.run replay examples/rbmk/recordings/poisoned_a-strands-decider-2B-hobson-v19-2026-10-22.json   # no model: checks the digest
-python -m examples.rbmk.decider.run export examples/rbmk/recordings/poisoned_a-strands-decider-2B-hobson-v19-2026-10-22.json --out run.json   # full document
+python -m examples.rbmk.decider.run replay FILE   # a recording of yours, no model: checks the digest
+python -m examples.rbmk.decider.run export FILE --out run.json   # full document
 python -m examples.rbmk.decider.run baseline historic_1986 --out runs   # the scripted crew
 python -m examples.rbmk.decider.run summary examples/rbmk/recordings   # recoveries and failures table
 ```
 
-The JSON documents are described in [recordings/SCHEMA.md](recordings/SCHEMA.md). `recordings/*.json` are the stored answers of real runs,
-labelled with the model id and the date; they are replays, never live runs, and any interface must say so.
+The JSON documents are described in [recordings/SCHEMA.md](recordings/SCHEMA.md). `recordings/` is the app's local run store: the stored answers of the real runs you made (`decider.run record`, or a run saved from
+the app), gitignored and labelled with the model id and the date. A recording is a replay, never a live run, and any interface says so.
+No run result is committed to the repository.
 
 ## What to look at
 
@@ -310,10 +311,10 @@ one pass per question (see above), so its rounds are slower.
 ## Tests
 
 `tests/test_rbmk_sim.py` (run with `scripts/test all tests/test_rbmk_sim.py`) does not start a
-model or touch a GPU. The recording it replays, `tests/fixtures/rbmk/fixture_short.recording.json`, is a real run
-of the checkpoint on a seven-tick full-power scenario, used only for the round trip and replay tests. The loud stop is
-tested against a real failure (a checkpoint directory that does not exist), not a mock. The real-model path itself is
-exercised by `decider.run selftest` and by the recordings, because tests here never use a GPU (`tests/README.md`).
+model or touch a GPU. A test that needs a run takes one from the app's own hub (`tests/rbmk_run.py`): a plain-code controller
+(declared as not a model), or the real decision model on the seven-tick scenario under the lease (marked `real_model`, run with
+`--real-model`, failing loudly when the model is missing). The loud stop is tested against a real failure (a checkpoint
+directory that does not exist), not a mock.
 
 ## The room
 
@@ -372,7 +373,7 @@ blender --background --factory-startup --python examples/rbmk/generator/render_v
     --out examples/rbmk/room/stills [--scale 0.5 --samples 32 --only front,dials]
 ```
 
-`python -m examples.rbmk.room.measure --recordings examples/rbmk/recordings --recording FILE` reports what each view costs a browser
+`python -m examples.rbmk.room.measure --recordings examples/rbmk/recordings --recording FILE` (a recording of yours) reports what each view costs a browser
 (CPU time per process over a replay, the overlay's draw time per frame); measurements are kept in
 [docs/notes/2026-10-22-rbmk-room-2d-cost.md](../../docs/notes/2026-10-22-rbmk-room-2d-cost.md).
 
@@ -402,10 +403,9 @@ python -m examples.rbmk.feed.export_feed --scenario pump_trip --controller model
 ```
 
 `--controller model` asks the released decision checkpoint under a GPU hold at the Broker; when the model cannot answer the run
-stops and says why. `naive` and `crew` run the plain-code baselines, which are not models and are labelled so. The committed
-`feed/replay.json` is one real run of `strands-decider-2B-hobson-v19` on `pump_trip`; `feed/replay-1986-crew.json` is the scripted
-crew on `historic_1986`. They are the fixtures the room tests check the instrument rules against, and `room/check.mjs` prints
-what every lamp and dial shows for each row of a feed.
+stops and says why. `naive` and `crew` run the plain-code baselines, which are not models and are labelled so. No feed is
+committed. `room/check.mjs` prints what every lamp and dial shows for each row of a feed, and the room tests check the instrument
+rules against a run made by the hub.
 
 ## Layout
 
@@ -416,12 +416,12 @@ what every lamp and dial shows for each row of a feed.
 | `web/` | the server (`server.py`, `hub.py`, `jobs.py`, `runner.py`, `recordings.py`) and the app's page, scripts and styles (`static/`) |
 | `room/` | the room in the browser: `main.js` (feed, view switch), `feed.js` (the run as the instruments read it), the 3D view (`room3d.js`, `drive.js`, `fly.js`, `paint.js`), the 2D view (`room2d.js`, `overlay.js`, `paint2d.js`, `state.js`, `loop.js`, `bench.js`, `stills/`), shared `rules.js`, `rods.js`, `faces.js`, `screens.js`, `cards.js`, `instruments.json`, `room.glb.gz`, `vendor/`, and the tools `check.mjs`, `shoot.py`, `measure.py` |
 | `generator/` | the Blender generator of the room and of the 2D stills (`render_views.py`, `views.py`) |
-| `feed/` | the feed exporter and its two committed feeds |
-| `recordings/` | recordings of real model runs, their index and [SCHEMA.md](recordings/SCHEMA.md) |
+| `feed/` | the feed exporter |
+| `recordings/` | the local, gitignored run store, and [SCHEMA.md](recordings/SCHEMA.md) |
 | `__main__.py` | `python -m examples.rbmk` |
 
 `room/shoot.py` takes screenshots of named camera views in a headless Chromium of its own:
-`python -m examples.rbmk.room.shoot --out DIR --recordings examples/rbmk/recordings --recording FILE --row 30 overview az5 decision`.
+`python -m examples.rbmk.room.shoot --out DIR --recordings examples/rbmk/recordings --recording FILE --row 30 overview az5 decision` (a recording of yours; without `--recording` the room is shown with no run).
 
 ## Licences of vendored files
 
@@ -439,7 +439,7 @@ scripts/test all tests/test_rbmk_room.py tests/test_rbmk_room_2d.py tests/test_r
 ```
 
 `test_rbmk_room.py` covers the GLB (valid, current, a node for every instrument and rod, camera marks), the instrument list against
-the committed real feed, the rules evaluated in node, and the rod order against the simulator's `Rods`. `test_rbmk_room_2d.py` covers
+a hub run, the rules evaluated in node, and the rod order against the simulator's `Rods`. `test_rbmk_room_2d.py` covers
 the stills (current with the generator, under the file limit), a rect for every instrument in the front view and for all 211 rods in the
 rod panel, the projected rects against the id masks rendered from the same cameras, the three modes and the cards in a headless browser,
 and that an idle or hidden view draws nothing and a row redraws only the changed elements. `test_rbmk_web.py` covers the server, its

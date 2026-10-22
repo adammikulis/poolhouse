@@ -17,6 +17,8 @@ from typing import Any, Protocol
 from ..sim import controls, panel
 
 ABSTAIN_BELOW = 0.30
+DECIDERS = ({"id": "", "label": "Strands 2B (strands-decider-2B-hobson-v19)"},)
+MEMORIES = ("none",)
 CALL_TIMEOUT_S = 120.0
 TOKEN_LIMIT = 4096
 STEP_TEXT = ("How large a step: 1 is small (a tenth of the stroke), 2 is medium (a quarter), 3 is large (half)?")

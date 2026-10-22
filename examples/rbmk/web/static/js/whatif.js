@@ -59,7 +59,7 @@ window.RB = window.RB || {};
     else { msg = 'Decision ' + d.i + ' at tick ' + d.tick + '. The model chose ' + RB.fmtAction(d.applied) + '.'; }
     W.note.textContent = msg;
     W.go.disabled = !(run && d && src && run.controller === 'model' && !run.live);
-    W.fillTargets(false);
+    if (run && run.controller === 'model' && d && src) { W.fillTargets(false); }
     W.results();
   };
 

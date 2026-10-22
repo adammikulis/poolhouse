@@ -1,4 +1,4 @@
-"""The RBMK control room: the generated GLB, the instrument list against a real feed, and the rules."""
+"""The RBMK control room: the generated GLB, the instrument list against a run, and the rules."""
 import gzip
 import hashlib
 import json
@@ -6,12 +6,23 @@ import struct
 import subprocess
 from pathlib import Path
 
+import pytest
+from rbmk_run import feed_file, machine_models, model_run, plain_run
+
+pytest_plugins = ['real_model']
+
 APP = Path(__file__).resolve().parents[1] / 'examples' / 'rbmk'
 ROOM = APP / 'room'
 SPEC_FILE = ROOM / 'instruments.json'
-FEED_FILE = APP / 'feed' / 'replay.json'
 SPEC = json.loads(SPEC_FILE.read_text())
-FEED = json.loads(FEED_FILE.read_text())
+
+
+@pytest.fixture(scope='session')
+def plain(tmp_path_factory):
+    """A finished run of the plain-code naive controller on pump_trip, with the feed file the node check reads."""
+    tmp = tmp_path_factory.mktemp('rbmk-plain')
+    doc = plain_run(tmp, 'pump_trip', 'naive')
+    return doc, feed_file(doc, tmp / 'feed.json')
 
 
 def glb():
@@ -61,13 +72,13 @@ def test_no_instrument_node_is_missing_from_the_spec():
     assert root == ids
 
 
-def test_rod_cells_match_the_demos_211_rods():
+def test_rod_cells_match_the_demos_211_rods(plain):
     from examples.rbmk.sim.rods import Rods
 
     rods = [r.id for r in Rods().rods]
     assert len(rods) == 211
     assert {n[4:] for n in node_names() if n.startswith('ROD_')} == set(rods)
-    assert len(FEED['trace'][0]['rods']) == 211
+    assert len(plain[0]['trace'][0]['rods']) == 211
 
 
 def test_bookmarks_have_camera_nodes():
@@ -77,8 +88,9 @@ def test_bookmarks_have_camera_nodes():
     assert sum(n.startswith('LIGHT_') for n in names) >= 4
 
 
-def test_dial_recorder_and_rule_fields_exist_in_the_feed():
+def test_dial_recorder_and_rule_fields_exist_in_a_run(plain):
     known = set(SPEC['feed_trace_fields']) | set(SPEC['derived_fields'])
+    FEED = plain[0]
     row = FEED['trace'][0]
     assert not [f for f in SPEC['feed_trace_fields'] if f not in row and f not in ('model_risk', 'tip')]
     used = {i['field'] for i in instruments('dial')}
@@ -87,7 +99,7 @@ def test_dial_recorder_and_rule_fields_exist_in_the_feed():
     used |= {r['field'] for r in leaves if r['when'] == 'trace' or r['when'] == 'index'}
     used |= {r[k] for r in leaves if r['when'] in ('diff', 'diffrow') for k in ('a', 'b')}
     assert used <= known, used - known
-    decision_fields = set(next(d for d in FEED['decisions'] if d.get('answers')))
+    decision_fields = set(next(d for d in FEED['decisions'] if d['kind'] == 'decision'))
     assert {r['field'] for r in leaves if r['when'] == 'decision'} <= decision_fields
     assert all(r.get('id') in SPEC['interlock_ids'] for i in instruments('lamp', 'ann') for r in rule_leaves(i['rule']) if r['when'] == 'interlock')
     prot = {r['id'] for i in instruments('lamp') for r in rule_leaves(i['rule']) if r['when'] == 'prot'}
@@ -98,24 +110,32 @@ def rule_leaves(rule):
     return rule['of'] if rule['when'] == 'all' else [rule]
 
 
-def test_feed_is_a_real_model_run_and_says_so():
-    meta = FEED['meta']
-    assert meta['mode'] == 'replay' and meta['controller'] == 'model'
-    assert meta['model'] and 'CANNED' not in meta['model'].upper()
-    answered = [d for d in FEED['decisions'] if d.get('answers')]
-    assert answered and all(a['model'] == meta['model'] for d in answered for a in d['answers'].values())
+@pytest.fixture
+def model(tmp_path, serve_leases, real, monkeypatch):
+    """A finished run of the real decision model on the seven-tick scenario; fails naming the cause when the model cannot run."""
+    machine_models(real, monkeypatch)
+    return model_run(tmp_path)
+
+
+@pytest.mark.real_model
+def test_a_model_run_names_its_model_and_every_answer_comes_from_it(model):
+    meta = model['meta']
+    assert meta['controller'] == 'model' and meta['backend']['model'] and 'CANNED' not in meta['backend']['model'].upper()
+    answered = [d for d in model['decisions'] if d.get('answers')]
+    assert answered and all(a['model'] == meta['backend']['model'] for d in answered for a in d['answers'].values())
     known = set(SPEC['interlock_ids'])
-    assert {i['id'] for d in FEED['decisions'] for i in d['interlocks']} <= known
+    assert {i['id'] for d in model['decisions'] for i in d['interlocks']} <= known
 
 
-def run_check(feed_file=FEED_FILE):
+def run_check(feed_file):
     out = subprocess.run(['node', str(ROOM / 'check.mjs'), str(SPEC_FILE), str(feed_file)],
                          capture_output=True, text=True, check=True, timeout=60).stdout
     return json.loads(out)
 
 
-def test_rules_agree_with_the_feeds_own_values():
-    got = run_check()
+def test_rules_agree_with_a_runs_own_values(plain):
+    FEED = plain[0]
+    got = run_check(plain[1])
     rows = {r['tick']: r for r in got['rows']}
     for row in FEED['trace']:
         lit, dials = rows[row['tick']]['lit'], rows[row['tick']]['dials']
@@ -128,7 +148,7 @@ def test_rules_agree_with_the_feeds_own_values():
     assert any(any(r['lit'].values()) for r in got['rows'])
 
 
-def test_rod_order_matches_the_demo():
+def test_rod_order_matches_the_simulator(plain):
     from examples.rbmk.sim.rods import Rods
 
-    assert run_check()['rodOrder'] == [r.id for r in Rods().rods]
+    assert run_check(plain[1])['rodOrder'] == [r.id for r in Rods().rods]

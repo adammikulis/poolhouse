@@ -2,18 +2,16 @@
 
 import json
 import re
-import shutil
 
 import pytest
-from test_rbmk_room import ROOM, SPEC, SPEC_FILE, run_check, source_hash
+from test_rbmk_app import start_run
+from test_rbmk_room import ROOM, SPEC, run_check, source_hash
 
 from examples.rbmk.room import shoot
 
 STILLS = ROOM / 'stills'
 DOC = json.loads((STILLS / 'views.json').read_text())
 VIEWS = DOC['views']
-RECORDING = 'pump_trip-strands-decider-2B-hobson-v19-2026-10-22.json'
-RECORDINGS = ROOM.parent / 'recordings'
 SETTLED = '!window.RB.state.dirty && !window.__room2d.loop.running'
 
 MASK_CHECK = """async ([views, maskIds, shift]) => {
@@ -51,15 +49,12 @@ MASK_CHECK = """async ([views, maskIds, shift]) => {
 }"""
 
 
-@pytest.fixture
-def folder(tmp_path):
-    shutil.copy(RECORDINGS / RECORDING, tmp_path / RECORDING)
-    return tmp_path
-
-
-def open2d(pw, origin, recording=None, view='front', size=(1280, 800)):
+def open2d(pw, origin, run=False, view='front', size=(1280, 800)):
     """The app opened in a Chromium of its own, then switched to a 2D view; returns (browser, page, errors)."""
-    browser, page, errors = shoot.open_page(pw, origin, recording, size[0], size[1])
+    browser, page, errors = shoot.open_page(pw, origin, None, size[0], size[1])
+    if run:
+        start_run(page)
+        page.evaluate('window.RB.closeDrawer()')
     page.evaluate('(v) => window.__room.setMode("2d", v)', view)
     page.wait_for_function(f"window.__room.ready && window.__room2d.shown === '{view}'", timeout=30000)
     page.wait_for_function(SETTLED, timeout=10000)
@@ -149,8 +144,8 @@ def test_the_stills_and_their_masks_are_served_with_their_types(tmp_path):
 
 
 @pytest.mark.slow
-def test_projected_rects_match_the_render(playwright, folder):
-    with shoot.serving(folder) as origin:
+def test_projected_rects_match_the_render(playwright, tmp_path):
+    with shoot.serving(tmp_path) as origin:
         browser, page, _ = open2d(playwright, origin)
         try:
             args = [VIEWS, DOC['mask_ids']]
@@ -165,17 +160,15 @@ def test_projected_rects_match_the_render(playwright, folder):
 
 
 @pytest.mark.slow
-def test_the_2d_view_shows_the_apps_run_in_three_modes_and_opens_cards(playwright, folder, tmp_path):
-    with shoot.serving(folder) as origin:
-        browser, page, errors = open2d(playwright, origin, RECORDING)
+def test_the_2d_view_shows_the_apps_run_in_three_modes_and_opens_cards(playwright, tmp_path):
+    with shoot.serving(tmp_path) as origin:
+        browser, page, errors = open2d(playwright, origin, True)
         try:
-            page.evaluate('window.RB.closeDrawer()')
-            assert page.inner_text('#modestate') == 'RECORDED'
-            assert page.inner_text('#modelid') == page.evaluate('window.__room.feed.modelId')
+            assert page.inner_text('#modestate') == 'LIVE run finished'
             doc = page.evaluate('() => ({ trace: window.RB.state.main.trace, decisions: window.RB.state.main.decisions.filter(Boolean) })')
-            feed_file = tmp_path / 'feed.json'
-            feed_file.write_text(json.dumps(doc))
-            checked = run_check(feed_file)['rows']
+            feed = tmp_path / 'feed.json'
+            feed.write_text(json.dumps(doc))
+            checked = run_check(feed)['rows']
             row = next(i for i, r in enumerate(checked) if any(r['lit'].values()))
             page.evaluate('(r) => { window.__room.feed.playing = false; window.__room.feed.setIndex(r); }', row)
             page.wait_for_function(SETTLED, timeout=10000)
@@ -211,9 +204,9 @@ def test_the_2d_view_shows_the_apps_run_in_three_modes_and_opens_cards(playwrigh
 
 
 @pytest.mark.slow
-def test_a_decision_picked_in_the_log_moves_the_2d_view_too(playwright, folder):
-    with shoot.serving(folder) as origin:
-        browser, page, errors = open2d(playwright, origin, RECORDING, 'dials')
+def test_a_decision_picked_in_the_log_moves_the_2d_view_too(playwright, tmp_path):
+    with shoot.serving(tmp_path) as origin:
+        browser, page, errors = open2d(playwright, origin, True, 'dials')
         try:
             page.click('[data-drawer=log]')
             rows = page.query_selector_all('#log .drow.decision')
@@ -222,15 +215,15 @@ def test_a_decision_picked_in_the_log_moves_the_2d_view_too(playwright, folder):
                 """() => { const a = window.__room2d, f = window.__room.feed;
                     return Math.abs(a.state.nodes.get('D_FUELT').value - window.RB.state.main.trace[f.index].Tf) < 1e-9 && !a.loop.running; }""",
                 timeout=15000)
-            assert page.evaluate('window.__room.feed.modelDecision.i') == page.evaluate('window.RB.state.selected')
+            assert page.evaluate('window.__room.feed.decision.i') == page.evaluate('window.RB.state.selected')
         finally:
             browser.close()
         assert not errors
 
 
 @pytest.mark.slow
-def test_the_2d_view_without_a_run_says_so_and_shows_nothing(playwright, folder):
-    with shoot.serving(folder) as origin:
+def test_the_2d_view_without_a_run_says_so_and_shows_nothing(playwright, tmp_path):
+    with shoot.serving(tmp_path) as origin:
         browser, page, errors = open2d(playwright, origin)
         try:
             assert 'NO RUN' in page.inner_text('#banner')
@@ -245,8 +238,8 @@ def test_the_2d_view_without_a_run_says_so_and_shows_nothing(playwright, folder)
 
 
 @pytest.mark.slow
-def test_a_page_opened_on_a_2d_view_never_loads_the_3d_room_and_can_switch_to_it(playwright, folder):
-    with shoot.serving(folder) as origin:
+def test_a_page_opened_on_a_2d_view_never_loads_the_3d_room_and_can_switch_to_it(playwright, tmp_path):
+    with shoot.serving(tmp_path) as origin:
         browser = playwright.chromium.launch(headless=True, args=shoot.GL_ARGS)
         page = browser.new_page(viewport={'width': 1280, 'height': 800})
         errors = []
@@ -268,9 +261,9 @@ def test_a_page_opened_on_a_2d_view_never_loads_the_3d_room_and_can_switch_to_it
 
 
 @pytest.mark.slow
-def test_the_2d_view_redraws_only_what_changed_and_stops_when_idle_or_hidden(playwright, folder):
-    with shoot.serving(folder) as origin:
-        browser, page, _ = open2d(playwright, origin, RECORDING)
+def test_the_2d_view_redraws_only_what_changed_and_stops_when_idle_or_hidden(playwright, tmp_path):
+    with shoot.serving(tmp_path) as origin:
+        browser, page, _ = open2d(playwright, origin, True)
         try:
             page.evaluate('() => { window.__room.feed.playing = false; window.__room.feed.setIndex(10); }')
             page.wait_for_function(SETTLED, timeout=10000)

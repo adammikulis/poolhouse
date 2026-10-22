@@ -21,6 +21,9 @@ from examples.rbmk.web.jobs import Job
 bundle, scenarios, NaiveController = hub_module.bundle, hub_module.scenarios, hub_module.NaiveController
 
 
+pytest_plugins = ["real_model", "rbmk_run"]
+
+
 @pytest.fixture
 def served(tmp_path: Path):
     hub = Hub(tmp_path)
@@ -306,45 +309,43 @@ def test_the_recordings_list_shows_files_that_cannot_be_shown(served, tmp_path):
     assert call(port, "POST", "/api/load", b"{")[0] == 422
 
 
-def _shipped() -> list[Path]:
-    return sorted(recordings.RECORDINGS.glob("*.json")) if recordings.RECORDINGS.is_dir() else []
-
-
-FIXTURES = Path(__file__).parent / "fixtures" / "rbmk"
-FIXTURE = "fixture_short.recording.json"
-
-
-def test_a_real_model_recording_is_replayed_and_shown_with_its_label(served):
-    """The fixture holds real answers of the released decider; the page shows them replayed on the simulator."""
+@pytest.mark.real_model
+def test_a_real_model_recording_is_replayed_and_shown_with_its_label(served, short_recording):
+    """The recording holds real answers of the decider from a run made now; the page shows them replayed on the simulator."""
     hub, port = served
-    hub.folder = FIXTURES
+    folder, FIXTURE = short_recording
+    hub.folder = folder
     status, rows = call(port, "GET", "/api/recordings")
     assert status == 200 and [r["name"] for r in rows] == [FIXTURE] and rows[0]["ok"]
     status, shown = call(port, "GET", f"/api/recordings/{FIXTURE}")
     doc = shown["doc"]
-    assert status == 200 and shown["label"] == "recorded from strands-decider-2B-hobson-v19 on 2026-10-22"
+    assert status == 200 and shown["label"].startswith("recorded from strands-decider")
     assert doc["schema"] == bundle.SCHEMA and len(doc["trace"]) == 8 and all("gauges" in r for r in doc["trace"])
-    recorded = json.loads((FIXTURES / FIXTURE).read_text())["decisions"]
+    recorded = json.loads((folder / FIXTURE).read_text())["decisions"]
     held = [any(a.get("abstained") for c in d["calls"] for n, a in c["answers"].items() if n == "class") for d in recorded]
     assert [d["source"] for d in doc["decisions"] if d["kind"] == "decision"] == ["safety-policy" if h else "model" for h in held]
     first = doc["decisions"][0]["answers"]["class"]
-    assert abs(sum(first["scores"].values()) - 1) < 1e-6 and first["model"] == "strands-decider-2B-hobson-v19"
+    assert abs(sum(first["scores"].values()) - 1) < 1e-6 and first["model"] == doc["meta"]["backend"]["model"]
 
 
-def test_a_recording_is_the_source_of_a_what_if(served):
+@pytest.mark.real_model
+def test_a_recording_is_the_source_of_a_what_if(served, short_recording):
     hub, port = served
-    hub.folder = FIXTURES
+    folder, FIXTURE = short_recording
+    hub.folder = folder
     status, options = call(port, "GET", f"/api/candidates?recording={FIXTURE}&index=1&cls=insert_rod")
     assert status == 200 and "none" in options and any(k.startswith("R-") for k in options)
     assert call(port, "GET", f"/api/candidates?recording={FIXTURE}&index=99&cls=insert_rod")[0] == 404
     assert call(port, "GET", f"/api/candidates?recording={FIXTURE}&index=1&cls=explode")[0] == 400
 
 
-def test_a_recording_that_does_not_match_the_simulator_is_refused(tmp_path):
-    rec = json.loads((FIXTURES / FIXTURE).read_text())
+@pytest.mark.real_model
+def test_a_recording_that_does_not_match_the_simulator_is_refused(tmp_path, short_recording):
+    folder, FIXTURE = short_recording
+    rec = json.loads((folder / FIXTURE).read_text())
     rec["decisions"][0]["calls"][0]["state_sha256"] = "0" * 64
     (tmp_path / "changed.json").write_text(json.dumps(rec))
-    rec = json.loads((FIXTURES / FIXTURE).read_text())
+    rec = json.loads((folder / FIXTURE).read_text())
     rec["digest"] = "f" * 64
     (tmp_path / "digest.json").write_text(json.dumps(rec))
     hub = Hub(tmp_path)
@@ -352,13 +353,3 @@ def test_a_recording_that_does_not_match_the_simulator_is_refused(tmp_path):
         hub.recording("changed.json")
     with pytest.raises(recordings.BadDocument, match="does not reproduce"):
         hub.recording("digest.json")
-
-
-@pytest.mark.parametrize("path", _shipped(), ids=lambda p: p.name)
-def test_every_shipped_recording_replays_to_the_run_it_was_made_from(path):
-    """Each recording is a genuine model run; replaying it on the simulator must reproduce its digest."""
-    if path.name == recordings.INDEX:
-        pytest.skip("the index lists the recordings")
-    doc = Hub(path.parent).recording(path.name)
-    assert doc["meta"]["backend"]["model"] and doc["meta"]["backend"].get("recorded_at")
-    assert recordings.check(doc) is doc and len(doc["trace"]) > 1

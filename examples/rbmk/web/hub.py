@@ -13,6 +13,8 @@ from ..decider import bundle
 from ..decider.bundle import ReplayAsker
 from ..decider.controllers import (
     ABSTAIN_BELOW,
+    DECIDERS,
+    MEMORIES,
     CrewController,
     LiveAsker,
     ModelController,
@@ -57,6 +59,7 @@ class Hub:
         self.slot = threading.Lock()
         self.working: str | None = None
         self.asker: LiveAsker | None = None
+        self.askers: dict[str, LiveAsker] = {}
         self.model_id = ""
         self.replays: dict[str, Any] = {}
         self.rendered: dict[str, dict[str, Any]] = {}
@@ -73,9 +76,10 @@ class Hub:
             why = f"{type(exc).__name__}: {exc}"
         return {"pinned": PINNED, "id": self.model_id, "available": not why, "why": why}
 
-    def _model(self) -> LiveAsker:
-        if self.asker is None:
-            self.asker = LiveAsker(abstain_below=ABSTAIN_BELOW)
+    def _model(self, decider: str = "") -> LiveAsker:
+        if decider not in self.askers:
+            self.askers[decider] = LiveAsker(pointer=decider, abstain_below=ABSTAIN_BELOW)
+        self.asker = self.askers[decider]
         return self.asker
 
     def _backend(self, mode: str) -> dict[str, Any]:
@@ -129,8 +133,12 @@ class Hub:
         doc["meta"]["error"] = job.error or (f"{type(failure).__name__}: {failure}" if failure else None)
         return doc
 
-    def start_run(self, key: str, controller: str, seed: int | None = None) -> Job:
+    def start_run(self, key: str, controller: str, seed: int | None = None, decider: str = "", memory: str = "none") -> Job:
         """Begin a live run of scenario ``key``; the model controller needs the model slot."""
+        if decider not in {d["id"] for d in DECIDERS}:
+            raise ValueError(f"unknown decider {decider!r}")
+        if memory not in MEMORIES:
+            raise ValueError(f"memory variant {memory!r} is not available")
         scn = scenarios.scenario(key)
         if seed is not None:
             scn = scenarios.variant(scn, seed=int(seed))
@@ -141,7 +149,7 @@ class Hub:
 
         def body(j: Job) -> None:
             j.emit(type="header", **_header(scn, controller, label))
-            op = ModelController(self._model()) if plain is None else plain
+            op = ModelController(self._model(decider)) if plain is None else plain
             j.runner = WebRunner(scn, op, j)
             try:
                 j.runner.run()
@@ -270,7 +278,7 @@ class Hub:
         """Everything the page needs before the first run."""
         scn = [{"key": s.key, "title": s.title, "blurb": s.blurb, "group": s.group, "ticks": s.ticks, "crew": s.crew}
                for s in scenarios.SCENARIOS.values()]
-        return {"scenarios": scn, "model": self.model_status(), "working": self.working,
+        return {"scenarios": scn, "model": self.model_status(), "working": self.working, "deciders": list(DECIDERS), "memories": list(MEMORIES),
                 "classes": controls.CLASSES, "steps": controls.STEPS, "interlocks": controls.INTERLOCKS,
                 "recordings_dir": str(self.folder), "schema": bundle.SCHEMA, "toy_notice": bundle.TOY_NOTICE,
                 "jobs": [j.public() for j in self.jobs.values()]}

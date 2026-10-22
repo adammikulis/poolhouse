@@ -2,3 +2,4 @@ __pycache__/
 feed/live.json
 feed/*.tmp
 room/room.glb
+recordings/*.json
