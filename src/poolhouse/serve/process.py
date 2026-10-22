@@ -238,13 +238,29 @@ def offloaded_layers(argv: list[str]) -> str:
     return "auto"
 
 
+SCAN_RETRIES = 3
+"""How many times `every_server` scans again after a process vanished mid-read, before it lets the error out."""
+
+
 def every_server() -> list[dict]:
     """Every llama-server process on this machine, leased or not: pid, port, model, the draft
     head it was started with, memory.
 
     A server nobody recorded -- a Homebrew one from before the managed build, a hand start
     -- holds memory a lease cannot see.
+
+    psutil on macOS raises SystemError, not one of its own errors, when a process exits while its
+    command line is being read; the scan is made again, and the process is gone from the second.
     """
+    for _attempt in range(SCAN_RETRIES):
+        try:
+            return _servers_now()
+        except SystemError:
+            continue
+    return _servers_now()
+
+
+def _servers_now() -> list[dict]:
     out = []
     for proc in psutil.process_iter(["pid", "name", "cmdline", "memory_info"]):
         try:
