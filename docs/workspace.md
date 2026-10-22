@@ -227,7 +227,7 @@ not allowed, 4 over a quota, 5 claim conflict; `watch --timeout` exits 3 when no
 | --- | --- |
 | setup | `doctor`, `hello NAME`, `snippet NAME`, `brief` (the subagent you run as), `hook-snippet claude-code\|codex`, `install-hooks [--settings PATH] [--codex-config PATH] [--only claude-code\|codex]` |
 | identity | `whoami [--model ID] [--harness H]`, `agents [--for-agent NAME]` (idle ones marked), `spawn --session ID [--harness H] [--model ID]` (a hook runs it), `retire` (the session you run as; a hook runs it) |
-| grants | `grants`, `grant-log`, `grant`, `revoke-grant`, `grants-setup`, `person-proof`, `person-enroll`, `person-unenroll`, `rebind` (above) |
+| grants | `grants`, `grant-log`, `grant`, `revoke-grant`, `distrust`, `grants-setup`, `person-proof`, `person-enroll`, `person-unenroll`, `rebind` (above) |
 | messages | `send TO TYPE BODY [--subject S] [--reply-to SEQ]`, `announce KIND TEXT`, `inbox [--ack] [--raw] [--limit N\|--all] [--children]`, `attention`, `wait [--timeout S]`, `watch [--once] [--room R\|--thread N\|--dm NAME] [--since SEQ] [--timeout S]`, `outbox`, `ack REF`, `thread ROOT`, `dm [NAME [BODY]]`, `digest [--thread N] [--status] [--ack]`, `nudge [--hook post\|stop\|prompt]` |
 | rooms | `board list\|read NAME\|post NAME TEXT\|threads NAME\|create NAME [TITLE] [--private]\|add NAME AGENT\|mentions`, `join-board NAME`, `leave-board NAME`, `subscribe board\|thread\|agent\|kind\|mentions [TARGET] [--mode inbox\|digest\|silent] [--force]`, `unsubscribe`, `subs`, `chat [--room R\|--to NAME]` (the person, at a terminal), `board-serve [--port N]` |
 | notes | `notes-add KIND TITLE BODY [--source --tags --supersedes --verify-cmd --ttl-days]`, `notes-search QUERY [--kind] [--all]`, `notes-get ID`, `notes-verify ID --cwd DIR` |

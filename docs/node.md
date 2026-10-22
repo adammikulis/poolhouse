@@ -236,6 +236,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 
 | `lease_acquire`, `lease_renew`, `lease_release`, `lease_list`, `lease_wait` | board, token | see "Leases" | a lease |
 | `grant_issue`, `grant_revoke` | board, any session (it only carries the request) | the signed grant or revocation, see "Standing grants" | `{gid, action, until_ms, entry}` / `{gid, revoked, entry}` |
+| `grant_distrust` | none, any session (it only carries the request) | `key, since, pool, person, at_ms, reason, sig`: the signed distrust, see "Standing grants" | `{key, distrusted, entry}` |
 | `grants`, `grant_log` | board, token | `limit` (log) | every grant with its state, the entries that name none that count, the registry / the newest grant entries |
 | `person_enroll`, `person_unenroll`, `person_keys` | token (enrol, unenrol), none (keys) | `public, about, at_ms, proof` and `secret` (the first key) or `by, approval, approved_ms, nonce, anchor`; `fingerprint, at_ms, by, nonce, anchor, sig` | `{fingerprint, keys}` / the enrolled person keys, each with its `alg` (`ed25519` or `p256`) |
 | `approval_request`, `approval_status`, `approval_cancel`, `approvals` | board, token | `asks` (one to eight of `{action, resource, lasts_ms, uses, review}`), `note`, `task`, `ttl_s`, `expect_policy` / `id` / `id` / `state` | the request with its plain-words `text` and `challenge` / its state and the grants it wrote / the request / the session's own requests; docs/phone-approval.md |
@@ -435,6 +436,18 @@ for. A revocation of a grant of the pool counts from any admin-role key the pool
 never against `persons.json`; a revocation of a device-local grant also counts from any key enrolled here. `approval_decide` takes a decision only
 from such an admin key. `grants` reports `governance` (`governed` or `unfounded`), `authority` (the admin keys that count now), `may_issue`,
 `may_revoke` and `registry.device_local`, and `poolhouse-workspace grant` and `grants-setup` refuse in a pool before they ask for a typed `yes`.
+
+**Who is added, told and shown requests in a pool.** A phone whose key the charter in force lists as a strong admin key joins with the one-time code
+and the proof of its key and needs no approval: a device that holds only a typed-yes key gets the admin's phone with one scan. Any other phone waits for
+an admin phone to approve it. Pushes, `list`, `get`, `wait` and `approval_pending` go only to an admin phone (an admin key this device knows as a
+phone's, not distrusted); another phone is shown no request. `person_unenroll`, a phone removal and its request refuse a key the charter lists ("it
+leaves through an admin removal") before a nonce is spent. `approval_request` is refused while this device holds no admin phone. Every request ticks
+the pool once before it is served, so a removal whose hold has run counts at once. A `distrust` row (`grant_distrust`) is signed by an admin-role key
+of the charter in force, names a key the charter lists and the epoch it was listed at, and the pool's id; it stops that key counting as an authority
+key (grants, decisions, pushes, reads) on every board at once and ends only when the key leaves the charter or is listed again. It can only narrow:
+a distrusted key's revocations and distrusts still count, and no row undoes one. A pool whose `acts.json` or `seen.json` is missing or malformed
+stops the node. A pool set aside for another charter version leaves `grants_floor.json` at the state root: no grant row written at or before it
+counts on any board.
 
 **Who may sign on a device in no pool.** `person_enroll` takes `public`, `about`, `at_ms` and `proof` (the key's own
 signature over the enrolment). The first key also takes `secret`: `poolhouse-workspace grants-setup`, run by a person at a terminal, asks the node (`presence_ask`)

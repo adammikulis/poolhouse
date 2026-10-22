@@ -135,6 +135,24 @@ def revoke(session: Session, key: Signs, gid: str, reason: str = "") -> dict[str
     return dict(session.call("grant_revoke", **sign_revoke(key, session.board, gid, reason)))
 
 
+def sign_distrust(key: Signs, pool: str, subject: str, since: int, reason: str = "") -> dict[str, Any]:
+    """The `grant_distrust` params that cut the admin key ``subject`` (listed at epoch ``since`` in the pool ``pool``) off, signed by ``key``."""
+    body: dict[str, Any] = {"op": "distrust", "board": "pool", "key": subject, "since": since, "pool": pool,
+                            "at_ms": _now_ms(), "person": fingerprint(key.public)}
+    if reason:
+        body["reason"] = reason
+    return _params(key, body, SIGN_DOMAIN)
+
+
+def distrust(session: Session, key: Signs, subject: str, reason: str = "") -> dict[str, Any]:
+    """Ask the node to stop counting the admin key ``subject`` of this device's pool, at once, on every board."""
+    status = session.client.call("pool_status", "", session.token)
+    listed = {a["fingerprint"]: a for a in status["governance"].get("admins", [])}
+    if subject not in listed:
+        raise RuntimeError("this pool does not list that key: `poolhouse-workspace pool status` shows the admin keys it lists")
+    return dict(session.client.call("grant_distrust", "", session.token, **sign_distrust(key, status["pool"], subject, listed[subject]["since"], reason)))
+
+
 def enrolment(key: Signs, about: str, *, now_ms: int | None = None) -> dict[str, Any]:
     """A key's own proof that it holds its private half, to carry to a node: valid for five minutes."""
     body = {"op": "enroll", "public": key.public.hex(), "about": about, "at_ms": _now_ms() if now_ms is None else now_ms}
@@ -249,6 +267,7 @@ class Listing:
     authority: list[str] = field(default_factory=list)
     may_issue: list[str] = field(default_factory=list)
     may_revoke: list[str] = field(default_factory=list)
+    distrusted: list[str] = field(default_factory=list)
 
     def pool_wide(self, action: str) -> bool:
         """Whether a device in a pool counts a grant of ``action`` only from an admin key's approval: every action but the device-local ones."""
@@ -260,7 +279,7 @@ def listing(session: Session) -> Listing:
     got = session.call("grants")
     rows = [Grant(**{k: g[k] for k in Grant.__dataclass_fields__}) for g in got["grants"]]
     return Listing(rows, got["ignored"], got["persons"], got["registry"], got["now_ms"], got["device"], got["governance"], got["authority"], got["may_issue"],
-                   got["may_revoke"])
+                   got["may_revoke"], got.get("distrusted", []))
 
 
 def log(session: Session, limit: int = 50) -> list[dict[str, Any]]:
