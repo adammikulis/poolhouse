@@ -54,8 +54,8 @@ run store, so it can be stopped and started again. Results go to the local run s
 
 | range | drawn uniformly from (relative power; rod-equivalents; iodine index) | source |
 |---|---|---|
-| power | 0.0094 to 0.0625 (30 to 200 MW of 3200) | about 30 MW at 00:28 and held near 200 MW from about 01:00 (World Nuclear Association appendix, a secondary source) |
-| margin | 6 to 8 | 8 rod-equivalents at 01:22:30 (same source); the lower bound is recalled, unverified |
+| power | 0.0094 to 0.0625 (30 to 200 MW of 3200) | 30 MW after 00:28 and stabilised at 200 MW at 01:03 (INSAG-7 annex I, table I-I) |
+| margin | 7 to 8 | 8 rod-equivalents at 01:22:30 (table I-I); 7 in the positive-scram analysis (annex I section 1-4) |
 | iodine | 0.9 to 1.4 | the toy's own; unverified |
 
 The manual rods that are inserted are a random pattern for each start. The regulator is off, eight pumps run at a throttle of 0.9
@@ -68,29 +68,30 @@ Other commands: `record` (named scenarios), `live` (asyncio runner with a speed 
 
 ## What the model is given
 
-Only a `SensorView`. The table lists every item of the prompt and where it comes from. INSAG-7 could not be retrieved while this was
-written, so nothing is cited to it by page: its entries say so, and everything marked unverified is the toy's own.
+Only a `SensorView`. The table lists every item of the prompt and where it comes from. The source is INSAG-7 (IAEA Safety Series
+75-INSAG-7, 1992), fetched as `https://www-pub.iaea.org/MTCD/publications/PDF/Pub913e_web.pdf` (the IAEA catalogue page and a fetch
+tool answered 402; a plain `curl` of that file worked); section numbers below are its own. Anything marked unverified is the toy's.
 
 | item | kind | provenance |
 |---|---|---|
 | `clock` | instrument | a control-room clock; the format is the toy's |
-| `briefing` | briefing | INSAG-7 (1992), general description; the section was not checked while writing this: the 15 rod-equivalent margin rule, the 700 to 1000 MW thermal test, the AZ-5 button; the list of desk controls is the toy's |
-| `demand` | briefing | INSAG-7 (1992), general description; the section was not checked while writing this: the test programme power; each scenario's demand schedule is the toy's |
-| `ion_chambers` | instrument | INSAG-7 (1992), general description; the section was not checked while writing this: power from ionisation chambers; two channels; their lag, noise and sampling are the toy's |
+| `briefing` | briefing | INSAG-7 (IAEA Safety Series 75-INSAG-7, 1992): ORM 26 to 30 rods at rated power, authorization below 26, immediate shutdown at 15 (annex II, operating procedures), the test at 700 to 1000 MW thermal and the four pumps run down on the turbogenerator (sections 2.9 and 3); the list of desk controls is the toy's |
+| `demand` | briefing | INSAG-7 (IAEA Safety Series 75-INSAG-7, 1992): the test programme power; each scenario's demand schedule is the toy's |
+| `ion_chambers` | instrument | INSAG-7 (IAEA Safety Series 75-INSAG-7, 1992) section 2.4: below 10 percent of nominal power control relied on the ex-core detectors (lateral ionisation chambers); two channels shown; their lag, noise and sampling are the toy's, unverified |
 | `heat_balance` | instrument | unverified: the toy's own value or presentation: a heat-balance power with a 120 s lag |
-| `orm_printout` | instrument | INSAG-7 (1992), general description; the section was not checked while writing this: the margin came from the unit computer on request; the value here is the true margin at the moment of the request, and it ages |
-| `rod_indicators` | instrument | INSAG-7 (1992), general description; the section was not checked while writing this: rod position indicators; the panel shows counts and means by rod type (toy summary) |
-| `regulator` | instrument | INSAG-7 (1992), general description; the section was not checked while writing this: automatic power regulators; one regulator with an on/off and a setpoint is a simplification |
-| `pumps` | instrument | INSAG-7 (1992), general description; the section was not checked while writing this: eight main circulation pumps; speed in percent is the toy's |
-| `flow_meter` | instrument | unverified: the toy's own value or presentation: one lagged core flow summary of the per-channel flow meters |
-| `drums` | instrument | INSAG-7 (1992), general description; the section was not checked while writing this: steam separator drum levels and pressures; the numbers and lags are the toy's |
-| `steam_header` | instrument | unverified: the toy's own value or presentation: main steam header pressure |
+| `orm_printout` | instrument | INSAG-7 (IAEA Safety Series 75-INSAG-7, 1992) section 2.5: the computer took 10 to 15 min to cycle through its measurements and calculate the ORM; section 3 item 5: it became unreliable during the test. The toy refreshes every 12.5 min with the true margin |
+| `rod_indicators` | instrument | unverified: the toy's own value or presentation: INSAG-7 annex I section 1-4.3.2 says only nine of the 211 rod positions were recorded by the data recorder; the console indicators are not described. The panel shows counts and means by type |
+| `regulator` | instrument | INSAG-7 (IAEA Safety Series 75-INSAG-7, 1992) section 2.4 and annex II: automatic power regulators and local automatic control; one regulator with on/off and a setpoint is a simplification |
+| `pumps` | instrument | INSAG-7 (IAEA Safety Series 75-INSAG-7, 1992) section 2.9: eight main circulation pumps, 8000 m3/h each; speed in percent is the toy's |
+| `flow_meter` | instrument | INSAG-7 (IAEA Safety Series 75-INSAG-7, 1992) annex II: a ball-type flow meter on every channel; one lagged core flow summary is the toy's |
+| `drums` | instrument | INSAG-7 (IAEA Safety Series 75-INSAG-7, 1992) section 2.9 and annex I: steam separator drums with level (mm) and pressure; the lags are the toy's |
+| `steam_header` | instrument | INSAG-7 (IAEA Safety Series 75-INSAG-7, 1992) section 2.9: two steam headers; the reading is the toy's |
 | `feedwater` | instrument | unverified: the toy's own value or presentation: feedwater flow |
-| `turbine_test` | instrument | INSAG-7 (1992), general description; the section was not checked while writing this: the turbine rundown test; the three states shown are the toy's |
-| `protection_switches` | instrument | INSAG-7 (1992), general description; the section was not checked while writing this: trip bypass and blocking switches existed; the three modelled switches and their ON/OFF presentation are the toy's |
-| `az5` | instrument | INSAG-7 (1992), general description; the section was not checked while writing this: the AZ-5 button |
+| `turbine_test` | instrument | INSAG-7 (IAEA Safety Series 75-INSAG-7, 1992) annex I table I-I: stop valves of turbogenerator 8 closed at 01:23:04 and four pumps ran down; the three states shown are the toy's |
+| `protection_switches` | instrument | INSAG-7 (IAEA Safety Series 75-INSAG-7, 1992) sections 2.7 and 3: protections could be blocked (ECCS 14:00, turbogenerator trip signal 00:43:27, steam drum protection); the three switches and their ON/OFF presentation are the toy's |
+| `az5` | instrument | INSAG-7 (IAEA Safety Series 75-INSAG-7, 1992) section 2.3: the AZ-5 (EPS-5) button |
 | `desk_log` | instrument | unverified: the toy's own value or presentation: the last five desk actions in plain words |
-| `strip_recorders` | instrument | unverified: the toy's own value or presentation: strip recorders existed in the room; their window and speed are the toy's |
+| `strip_recorders` | instrument | unverified: the toy's own value or presentation: INSAG-7 annex I section 1-4.3 describes recording systems; the window and speed here are the toy's |
 
 The strip-recorder trends appear only in the `history` memory variant. A `state` variant (carrying the model's recurrent state
 between decisions) is not implemented.
@@ -103,11 +104,20 @@ coefficient that grows as the margin falls, a Doppler term, decay heat, drum pre
 protection switches, and the positive scram effect: the graphite displacers add reactivity per rod as rods enter from the withdrawn
 end, scaled by how far the margin is below about 22 rod-equivalents.
 
-Facts used for the 1986 start and sequence, from secondary sources (World Nuclear Association, "Chernobyl accident appendix 1:
-sequence of events", and the Wikipedia article on the accident): the ECCS isolated before the test, the turbogenerator trip signal
-blocked at 00:43:27, the drum automatic trips deactivated about 01:19, power near 30 MW at 00:28 and held near 200 MW from about 01:00,
-an after-the-fact margin of 8 rods against the 15 minimum at 01:22:30, the test at 01:23:04, AZ-5 at 01:23:40, 18 to 20 s for full rod
-travel, and the displacer effect adding reactivity at the start of a scram.
+From INSAG-7: 3200 MW thermal, 211 control and protection rods of which 24 are shortened absorbers inserted from below and 12 are
+automatic rods without displacers (sections 2.2, annex II); full insertion of the emergency rods takes 18 s (2.3); the ORM is the
+number of equivalent fully inserted rods, 26 to 30 at rated power, authorization needed below 26, immediate shutdown at 15 (annex II,
+operating procedures); the computer that calculated it took 10 to 15 min per cycle and was unreliable during the test (2.5, 3);
+the void coefficient is +2.0 to +2.5 x 10^-4 per percent void (delta k over k) in the steady refuelling regime and a total loss of
+coolant adds +4 to +5 beta (2.1; the toy's void worth of 4.5 dollars per unit void fraction follows that); the fuel temperature
+coefficient is -1.2 x 10^-5 per C (table II-I); with the margin at 15 rods the first six seconds of an AZ-5 add less than beta of negative
+reactivity and at 7 rods the first eight seconds add positive reactivity (annex I section 1-3); the displacers add reactivity as
+rods leave their upper stop (2.2); all eight pumps ran, four of them on the turbogenerator that was run down (2.9); the chronology
+(annex I, table I-I): ECCS disconnected 14:00 on 25 April, power cut to 30 MW at 00:28, the drum pressure protection trip point
+changed from 55 to 50 kg/cm2 at 00:36:24, the turbogenerator trip signal blocked at 00:43:35, power stabilised at 200 MW at 01:03,
+the post-accident calculation of 8 rods at 01:22:30, stop valves closed and the four pumps run down at 01:23:04, AZ-5 at 01:23:40, the
+power-rise protection signals at 01:23:43 with a period under 20 s and power above 530 MW, and rods stopped short of the lower stop at
+01:24.
 
 Every constant in `plant/reactor.py` and `plant/rods.py` is either standard data (Keepin delayed-neutron groups, I-135 and Xe-135 half
 lives) or the toy's own and unverified: the void and Doppler worths, the displacer worth, the rod-equivalent worth, the xenon worth,
@@ -115,12 +125,12 @@ the time constants of void and pump coastdown (set so that hold-only damage foll
 the real sequence taking about 40 s). Damage is the fuel temperature passing 1204 C, the US light-water peak cladding temperature limit
 (10 CFR 50.46(b)(1), 2200 F), used as an analogy and unverified for the RBMK. There is no cap on power: the prompt-critical growth is
 limited only by the numerical guards named in `plant/reactor.py`, so the peak a run reports at the moment of damage is a toy output and not
-a claim about the real accident. The protections the plant has: power above 120 percent, drum pressure above 8 MPa or a level
-outside plus or minus 45 cm, and turbogenerator disconnection; the last two are switches. The real thresholds were not found and are
-the toy's.
+a claim about the real accident. The protections the plant has: a reactor period under 20 s (INSAG-7, as above), power above 120 percent (the trip point is not given in INSAG-7: unverified), the low
+steam drum level at -600 mm and the drum pressure drop at 55 kg/cm2 (both sourced; switchable together), and turbogenerator disconnection (a switch).
 
-Left out: spatial neutronics, per-channel thermal hydraulics, the per-channel flow and temperature instruments, a margin computer
-cycle time, instrument offsets and drift, rod jamming during a scram, and any ECCS action.
+Left out: spatial neutronics, per-channel thermal hydraulics, the graphite temperature coefficient and the fast power coefficient of table II-I
+(the toy keeps one lumped Doppler term of 2.2 dollars per unit heat so that the plant is controllable; INSAG-7's fuel coefficient would give
+about 1.3), instrument offsets and drift, rods stopping short of the lower stop, and any ECCS action.
 
 ## The three clocks
 
@@ -136,4 +146,4 @@ that halts the run, and a record of any late answer that was discarded. Playback
 - Runs by the batch command: none are committed, and none had been run to a count when this was written.
 - Agreement of the 2B decider with the upstream implementation on the same prompts; the answer quality at 1k, 2k and 4k tokens.
 - The unified control room still reads `examples/rbmk_operator`; migrating it onto this package is open.
-- Checking the toy's constants against INSAG-7 and against other reactor-dynamics codes.
+- Checking the rest of the toy's constants against INSAG-7 and against other reactor-dynamics codes.

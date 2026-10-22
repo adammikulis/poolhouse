@@ -18,6 +18,7 @@ from .view import PumpDesk, Reading, RodDesk, SensorView
 TREND_POINTS = 12
 TREND_EVERY_S = 60.0
 LOG_LINES = 5
+ORM_CYCLE_S = 750.0   # the computer took 10 to 15 min to cycle through its measurements and calculate the ORM (INSAG-7 section 2.5): the midpoint
 TRENDED = ("chA", "flow", "press_l", "level_l")
 
 
@@ -89,6 +90,8 @@ class SensorModel:
         c = plant.core
         for name, true in _truth(plant).items():
             self.gauges[name].update(c.t, dt, true, self.rng)
+        if c.t - self.orm_t >= ORM_CYCLE_S:
+            self.print_orm(plant)
         if self.memory == "history" and c.t - self.last_trend >= TREND_EVERY_S:
             self.last_trend = c.t
             for name in TRENDED:

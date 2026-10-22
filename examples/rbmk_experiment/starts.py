@@ -10,11 +10,11 @@ import random
 from .scenarios import PROTECTIONS_OFF, XENON_BOUND_S, Event, Scenario
 
 RANGES = {
-    # Power: about 30 MW thermal at 00:28 and held near 200 MW from about 01:00 on 26 April 1986 (World Nuclear Association, "Chernobyl
-    # accident appendix 1", a secondary source for INSAG-7). Relative to 3200 MW.
+    # Power: 30 MW thermal after 00:28 and stabilised at 200 MW at 01:03 on 26 April 1986 (INSAG-7 annex I, table I-I). Relative to 3200 MW.
     "power": (30 / 3200, 200 / 3200),
-    # Margin: the post-accident calculation gave 8 rod-equivalents at 01:22:30 (same source); accounts of 6 to 8 are recalled, unverified.
-    "margin": (6.0, 8.0),
+    # Margin: 8 rod-equivalents at 01:22:30 by the post-accident calculation (same table); 7 in the analysis of the positive scram
+    # (annex I section 1-4, "a non-regulation ORM of 7 control rods").
+    "margin": (7.0, 8.0),
     # Iodine index: the toy's own range; xenon follows from power and margin. Unverified.
     "iodine": (0.9, 1.4),
 }

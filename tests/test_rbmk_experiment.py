@@ -147,7 +147,7 @@ def test_a_stuck_rod_does_not_move_a_slow_drive_moves_one_fifth_as_fast_and_the_
     assert a.r == 0.0 and b.r == pytest.approx(c.r / 5, rel=1e-6)
     full = Rods()
     full.scram()
-    full.step(19.9)
+    full.step(17.9)
     assert not all(r.r >= 1.0 for r in full.rods)
     full.step(0.2)
     assert all(r.r >= 1.0 for r in full.rods)
@@ -211,6 +211,21 @@ def test_plant_protections_trip_and_can_be_switched_off_and_the_margin_rule_is_n
     other.tg_disconnected = True
     other._protect()
     assert other.core.scram and any(e.get("protection") == "TG_TRIP" for e in other.events)
+
+
+def test_the_period_and_drum_protections_trip_at_their_sourced_settings_and_the_drum_one_is_a_switch():
+    plant = Plant(scenarios.scenario("full_power"))
+    plant.core.P = plant._last_power * 1.2
+    plant.end_tick(1.0)
+    assert plant.core.scram and any(e.get("protection") == "POWER_PERIOD" for e in plant.events)
+    other = Plant(scenarios.scenario("full_power"))
+    other.level = -61.0
+    other.end_tick(300.0)
+    assert other.core.scram and any(e.get("protection") == "DRUM_TRIPS" for e in other.events)
+    off = Plant(scenarios.scenario("poisoned_a"))
+    off.level = -61.0
+    off.end_tick(300.0)
+    assert not off.core.scram
 
 
 # ---- the one-way chain ------------------------------------------------------------------------------------------
@@ -291,15 +306,16 @@ def test_the_prompt_is_a_function_of_the_sensor_view_only():
     assert builder.console(again.observe(plant_b, 1.0)).text != builder.console(a).text
 
 
-def test_the_orm_comes_only_from_the_printout_and_ages_until_it_is_asked_for_again():
+def test_the_orm_comes_only_from_the_printout_which_the_computer_refreshes_every_cycle():
     view, plant, sensors = view_of("poisoned_a")
     assert view.orm_printout == 7.0
     plant.core.rods.command(plant.core.rods.group("USP"), 1.0, "test")
     plant.substeps(30.0, 10.0)
     stale = sensors.observe(plant, 30.0)
-    assert stale.orm_printout == 7.0 and stale.orm_age_s >= 30.0
-    act("orm_print", desk.NONE, "1", plant, sensors)
-    assert sensors.view(plant).orm_printout > 7.0 and sensors.view(plant).orm_age_s == 0.0
+    assert stale.orm_printout == 7.0 and stale.orm_age_s >= 30.0 and plant.core.orm() > 7.0
+    plant.substeps(750.0, 10.0)
+    fresh = sensors.observe(plant, 750.0)
+    assert fresh.orm_printout > 7.0 and fresh.orm_age_s < 760.0
 
 
 def test_option_lists_carry_ids_and_positions_only_and_are_logged_in_a_seeded_order():
