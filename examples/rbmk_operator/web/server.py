@@ -24,8 +24,11 @@ from .hub import Hub
 from .jobs import Busy
 
 STATIC = Path(__file__).resolve().parent / "static"
+ROOT = Path(__file__).resolve().parents[3]
+ROOM_PATHS = tuple(ROOT / p for p in ("examples/rbmk_control_room", "src/poolhouse/ui/assets"))
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
-         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml"}
+         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json", ".webp": "image/webp",
+         ".png": "image/png", ".gz": "application/gzip"}
 BODY_LIMIT = 64 << 10
 UPLOAD_LIMIT = recordings.MAX_BYTES
 KEEPALIVE_S = 10.0
@@ -163,8 +166,10 @@ def make_handler(hub: Hub, port_of: Any) -> type[BaseHTTPRequestHandler]:
 
         def _static(self, path: str) -> None:
             name = "index.html" if path in ("/", "") else path.lstrip("/")
-            target = (STATIC / name).resolve()
-            if STATIC.resolve() not in target.parents or target.suffix not in TYPES or not target.is_file():
+            room = name.startswith("room/")
+            target = ((ROOT / name[5:]) if room else (STATIC / name)).resolve()
+            roots = ROOM_PATHS if room else (STATIC.resolve(),)
+            if not any(r.resolve() in target.parents for r in roots) or target.suffix not in TYPES or not target.is_file():
                 raise Refused(HTTPStatus.NOT_FOUND, f"no page {path}")
             self._send(200, target.read_bytes(), TYPES[target.suffix])
 
