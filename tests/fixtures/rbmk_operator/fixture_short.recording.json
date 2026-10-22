@@ -32,11 +32,11 @@
   "final_orm": 26.011,
   "final_P": 1.0,
   "decisions": 3,
-  "abstained": 0,
+  "abstained": 3,
   "interlock_rows": 0,
   "protections_defeated": 0
  },
- "digest": "13e3ecb54da990326a6326479a03c97998eb8a421e76858269e206d9375b6345",
+ "digest": "3dc27f3ddf6be49a550e7503c356f84739087daf0e4bc9e8a097419e22ab3e9c",
  "decisions": [
   {
    "i": 0,
@@ -61,14 +61,18 @@
        "expected": null,
        "backend": "pointer",
        "model": "strands-decider-2B-hobson-v19",
-       "latency_ms": 5718.808,
+       "latency_ms": 4970.522,
        "question": "Is reactor power falling dangerously?",
        "options": {
         "no": "",
         "yes": ""
-       }
+       },
+       "tokens": 166
       }
-     }
+     },
+     "latency_ms": 4970.522,
+     "sent_at": 1792695766.714,
+     "answered_at": 1792695771.685
     },
     {
      "key": "coolant",
@@ -89,14 +93,18 @@
        "expected": null,
        "backend": "pointer",
        "model": "strands-decider-2B-hobson-v19",
-       "latency_ms": 263.157,
+       "latency_ms": 278.021,
        "question": "Is steam void feedback pushing reactor power up?",
        "options": {
         "no": "",
         "yes": ""
-       }
+       },
+       "tokens": 227
       }
-     }
+     },
+     "latency_ms": 278.021,
+     "sent_at": 1792695771.685,
+     "answered_at": 1792695771.964
     },
     {
      "key": "rods",
@@ -117,14 +125,82 @@
        "expected": null,
        "backend": "pointer",
        "model": "strands-decider-2B-hobson-v19",
-       "latency_ms": 234.751,
+       "latency_ms": 205.981,
        "question": "Is the operational reactivity margin below the 15 rod minimum?",
        "options": {
         "no": "",
         "yes": ""
-       }
+       },
+       "tokens": 187
       }
-     }
+     },
+     "latency_ms": 205.981,
+     "sent_at": 1792695771.964,
+     "answered_at": 1792695772.171
+    },
+    {
+     "key": "steam",
+     "state_sha256": "5e49cdbfbf0fb4b7a055135aa114cbbfa4e9517311be011bba2deef74fdc55c0",
+     "answers": {
+      "steam": {
+       "name": "steam",
+       "kind": "noul",
+       "choice": "no",
+       "scores": {
+        "no": 0.5298364758491516,
+        "yes": 0.4701635241508484
+       },
+       "certainty": 0.05967295169830322,
+       "abstained": false,
+       "error": "",
+       "p_true": 0.4701635241508484,
+       "expected": null,
+       "backend": "pointer",
+       "model": "strands-decider-2B-hobson-v19",
+       "latency_ms": 212.571,
+       "question": "Is a drum level or pressure reading close to its trip limit?",
+       "options": {
+        "no": "",
+        "yes": ""
+       },
+       "tokens": 178
+      }
+     },
+     "latency_ms": 212.571,
+     "sent_at": 1792695772.171,
+     "answered_at": 1792695772.384
+    },
+    {
+     "key": "protection",
+     "state_sha256": "21b869f4098b367f0f8f9b6ad6f92febdd025cc5365ac9874021684f93f6fc3f",
+     "answers": {
+      "bypass": {
+       "name": "bypass",
+       "kind": "noul",
+       "choice": "no",
+       "scores": {
+        "no": 0.8235839973502158,
+        "yes": 0.17641600264978421
+       },
+       "certainty": 0.6471679947004316,
+       "abstained": false,
+       "error": "",
+       "p_true": 0.17641600264978421,
+       "expected": null,
+       "backend": "pointer",
+       "model": "strands-decider-2B-hobson-v19",
+       "latency_ms": 196.833,
+       "question": "Is any safety system currently defeated?",
+       "options": {
+        "no": "",
+        "yes": ""
+       },
+       "tokens": 97
+      }
+     },
+     "latency_ms": 196.833,
+     "sent_at": 1792695772.384,
+     "answered_at": 1792695772.581
     },
     {
      "key": "instruments",
@@ -145,14 +221,18 @@
        "expected": null,
        "backend": "pointer",
        "model": "strands-decider-2B-hobson-v19",
-       "latency_ms": 655.936,
+       "latency_ms": 653.488,
        "question": "Do any two instrument readings contradict each other?",
        "options": {
         "no": "",
         "yes": ""
-       }
+       },
+       "tokens": 662
       }
-     }
+     },
+     "latency_ms": 653.488,
+     "sent_at": 1792695772.581,
+     "answered_at": 1792695773.235
     },
     {
      "key": "decision",
@@ -176,7 +256,7 @@
        "expected": 2.4004730671926184,
        "backend": "pointer",
        "model": "strands-decider-2B-hobson-v19",
-       "latency_ms": 666.461,
+       "latency_ms": 689.781,
        "question": "How risky is the current reactor state, from 1 (safe) to 5 (about to be damaged)?",
        "options": {
         "1": "",
@@ -184,45 +264,50 @@
         "3": "",
         "4": "",
         "5": ""
-       }
+       },
+       "tokens": 693
       },
       "class": {
        "name": "class",
        "kind": "choice",
        "choice": "orm_print",
        "scores": {
-        "hold": 0.07039774921537494,
-        "insert_rod": 0.07483298296652277,
-        "withdraw_rod": 0.014206852697735407,
-        "change_flow": 0.01199534157293224,
-        "regulator": 0.0750247907125168,
-        "protection": 0.04137913118405672,
-        "turbine_test": 0.014663460596169063,
-        "orm_print": 0.6778764097118918,
-        "scram": 0.01962328134280033
+        "hold": 0.13606249987136107,
+        "insert_rod": 0.199972051007089,
+        "withdraw_rod": 0.030890433959384254,
+        "change_flow": 0.024946347200271335,
+        "regulator": 0.18456368273961002,
+        "protection": 0.10421567577521645,
+        "turbine_test": 0.031168105946669317,
+        "orm_print": 0.2203592701943325,
+        "scram": 0.06782193330606606
        },
-       "certainty": 0.6376109609258782,
-       "abstained": false,
+       "certainty": 0.12290417896862404,
+       "abstained": true,
        "error": "",
        "p_true": null,
        "expected": null,
        "backend": "pointer",
        "model": "strands-decider-2B-hobson-v19",
-       "latency_ms": 765.928,
+       "latency_ms": 822.701,
        "question": "Which kind of operator action should be taken now?",
        "options": {
-        "hold": "change nothing and watch",
+        "hold": "do nothing and keep watching",
         "insert_rod": "insert one control rod or a group of rods",
         "withdraw_rod": "withdraw one control rod or a group of rods",
         "change_flow": "start or stop a main circulation pump, or move the throttle valves",
         "regulator": "switch the automatic power regulator on or off, or change its setpoint",
         "protection": "defeat or restore a protection or trip signal",
         "turbine_test": "start or abort the turbine rundown test",
-        "orm_print": "ask for a fresh printout of the operational reactivity margin",
+        "orm_print": "read the margin printout again (changes nothing in the plant)",
         "scram": "press AZ-5, emergency shutdown, every rod drives in"
-       }
+       },
+       "tokens": 797
       }
-     }
+     },
+     "latency_ms": 1512.482,
+     "sent_at": 1792695773.236,
+     "answered_at": 1792695774.749
     }
    ]
   },
@@ -249,14 +334,18 @@
        "expected": null,
        "backend": "pointer",
        "model": "strands-decider-2B-hobson-v19",
-       "latency_ms": 195.314,
+       "latency_ms": 248.797,
        "question": "Is reactor power falling dangerously?",
        "options": {
         "no": "",
         "yes": ""
-       }
+       },
+       "tokens": 172
       }
-     }
+     },
+     "latency_ms": 248.797,
+     "sent_at": 1792695774.756,
+     "answered_at": 1792695775.005
     },
     {
      "key": "coolant",
@@ -277,14 +366,18 @@
        "expected": null,
        "backend": "pointer",
        "model": "strands-decider-2B-hobson-v19",
-       "latency_ms": 233.593,
+       "latency_ms": 253.527,
        "question": "Is steam void feedback pushing reactor power up?",
        "options": {
         "no": "",
         "yes": ""
-       }
+       },
+       "tokens": 227
       }
-     }
+     },
+     "latency_ms": 253.527,
+     "sent_at": 1792695775.005,
+     "answered_at": 1792695775.259
     },
     {
      "key": "rods",
@@ -305,66 +398,138 @@
        "expected": null,
        "backend": "pointer",
        "model": "strands-decider-2B-hobson-v19",
-       "latency_ms": 183.118,
+       "latency_ms": 191.849,
        "question": "Is the operational reactivity margin below the 15 rod minimum?",
        "options": {
         "no": "",
         "yes": ""
-       }
+       },
+       "tokens": 187
       }
-     }
+     },
+     "latency_ms": 191.849,
+     "sent_at": 1792695775.26,
+     "answered_at": 1792695775.452
+    },
+    {
+     "key": "steam",
+     "state_sha256": "ed05b34638efd442a0638ac22f167f2517b2dab6a5a59b576ee908b91026b11e",
+     "answers": {
+      "steam": {
+       "name": "steam",
+       "kind": "noul",
+       "choice": "yes",
+       "scores": {
+        "no": 0.4850275209562493,
+        "yes": 0.5149724790437507
+       },
+       "certainty": 0.029944958087501305,
+       "abstained": false,
+       "error": "",
+       "p_true": 0.5149724790437507,
+       "expected": null,
+       "backend": "pointer",
+       "model": "strands-decider-2B-hobson-v19",
+       "latency_ms": 188.5,
+       "question": "Is a drum level or pressure reading close to its trip limit?",
+       "options": {
+        "no": "",
+        "yes": ""
+       },
+       "tokens": 178
+      }
+     },
+     "latency_ms": 188.5,
+     "sent_at": 1792695775.452,
+     "answered_at": 1792695775.641
+    },
+    {
+     "key": "protection",
+     "state_sha256": "21b869f4098b367f0f8f9b6ad6f92febdd025cc5365ac9874021684f93f6fc3f",
+     "answers": {
+      "bypass": {
+       "name": "bypass",
+       "kind": "noul",
+       "choice": "no",
+       "scores": {
+        "no": 0.8235839973502158,
+        "yes": 0.17641600264978421
+       },
+       "certainty": 0.6471679947004316,
+       "abstained": false,
+       "error": "",
+       "p_true": 0.17641600264978421,
+       "expected": null,
+       "backend": "pointer",
+       "model": "strands-decider-2B-hobson-v19",
+       "latency_ms": 143.298,
+       "question": "Is any safety system currently defeated?",
+       "options": {
+        "no": "",
+        "yes": ""
+       },
+       "tokens": 97
+      }
+     },
+     "latency_ms": 143.298,
+     "sent_at": 1792695775.641,
+     "answered_at": 1792695775.785
     },
     {
      "key": "instruments",
-     "state_sha256": "a1070ada1b943d349cf249d04653a1d1f78c4bc65a73b83c09e14b4e5a861c6e",
+     "state_sha256": "d55f9d407c5b7666fe7edb92fc38cf04da2ddcd8abcfc00bcd0e9ea56d46709e",
      "answers": {
       "inconsistent": {
        "name": "inconsistent",
        "kind": "noul",
        "choice": "no",
        "scores": {
-        "no": 0.5901022729308091,
-        "yes": 0.409897727069191
+        "no": 0.6065628528594971,
+        "yes": 0.39343714714050293
        },
-       "certainty": 0.18020454586161816,
+       "certainty": 0.21312570571899414,
        "abstained": false,
        "error": "",
-       "p_true": 0.409897727069191,
+       "p_true": 0.39343714714050293,
        "expected": null,
        "backend": "pointer",
        "model": "strands-decider-2B-hobson-v19",
-       "latency_ms": 643.405,
+       "latency_ms": 685.226,
        "question": "Do any two instrument readings contradict each other?",
        "options": {
         "no": "",
         "yes": ""
-       }
+       },
+       "tokens": 667
       }
-     }
+     },
+     "latency_ms": 685.226,
+     "sent_at": 1792695775.785,
+     "answered_at": 1792695776.47
     },
     {
      "key": "decision",
-     "state_sha256": "a1070ada1b943d349cf249d04653a1d1f78c4bc65a73b83c09e14b4e5a861c6e",
+     "state_sha256": "d55f9d407c5b7666fe7edb92fc38cf04da2ddcd8abcfc00bcd0e9ea56d46709e",
      "answers": {
       "risk": {
        "name": "risk",
        "kind": "score",
        "choice": "2",
        "scores": {
-        "1": 0.22147132543842296,
-        "2": 0.3132200638773252,
-        "3": 0.2694259711345974,
-        "4": 0.14412585478224035,
-        "5": 0.051756784767414105
+        "1": 0.23310824072090183,
+        "2": 0.3128672188900843,
+        "3": 0.26873945312026337,
+        "4": 0.13744930508149938,
+        "5": 0.0478357821872511
        },
-       "certainty": 0.14152507984665652,
+       "certainty": 0.14108402361260536,
        "abstained": true,
        "error": "",
        "p_true": null,
-       "expected": 2.4914767095628974,
+       "expected": 2.4540371691241134,
        "backend": "pointer",
        "model": "strands-decider-2B-hobson-v19",
-       "latency_ms": 805.119,
+       "latency_ms": 701.935,
        "question": "How risky is the current reactor state, from 1 (safe) to 5 (about to be damaged)?",
        "options": {
         "1": "",
@@ -372,45 +537,50 @@
         "3": "",
         "4": "",
         "5": ""
-       }
+       },
+       "tokens": 698
       },
       "class": {
        "name": "class",
        "kind": "choice",
-       "choice": "orm_print",
+       "choice": "hold",
        "scores": {
-        "hold": 0.061795188265695786,
-        "insert_rod": 0.08877554080183052,
-        "withdraw_rod": 0.01645865158741624,
-        "change_flow": 0.012137397588052708,
-        "regulator": 0.08779653447948275,
-        "protection": 0.05384886067799304,
-        "turbine_test": 0.015138213084859268,
-        "orm_print": 0.643938920030242,
-        "scram": 0.02011069348442766
+        "hold": 0.22157906206520103,
+        "insert_rod": 0.1845330340405478,
+        "withdraw_rod": 0.029062381198753012,
+        "change_flow": 0.02205629705685152,
+        "regulator": 0.15371415621575182,
+        "protection": 0.1157478995841278,
+        "turbine_test": 0.02929248864191184,
+        "orm_print": 0.1680839113693661,
+        "scram": 0.07593076982748906
        },
-       "certainty": 0.5994312850340222,
-       "abstained": false,
+       "certainty": 0.12427644482335115,
+       "abstained": true,
        "error": "",
        "p_true": null,
        "expected": null,
        "backend": "pointer",
        "model": "strands-decider-2B-hobson-v19",
-       "latency_ms": 1174.002,
+       "latency_ms": 789.621,
        "question": "Which kind of operator action should be taken now?",
        "options": {
-        "hold": "change nothing and watch",
+        "hold": "do nothing and keep watching",
         "insert_rod": "insert one control rod or a group of rods",
         "withdraw_rod": "withdraw one control rod or a group of rods",
         "change_flow": "start or stop a main circulation pump, or move the throttle valves",
         "regulator": "switch the automatic power regulator on or off, or change its setpoint",
         "protection": "defeat or restore a protection or trip signal",
         "turbine_test": "start or abort the turbine rundown test",
-        "orm_print": "ask for a fresh printout of the operational reactivity margin",
+        "orm_print": "read the margin printout again (changes nothing in the plant)",
         "scram": "press AZ-5, emergency shutdown, every rod drives in"
-       }
+       },
+       "tokens": 802
       }
-     }
+     },
+     "latency_ms": 1491.556,
+     "sent_at": 1792695776.471,
+     "answered_at": 1792695777.963
     }
    ]
   },
@@ -437,14 +607,18 @@
        "expected": null,
        "backend": "pointer",
        "model": "strands-decider-2B-hobson-v19",
-       "latency_ms": 200.083,
+       "latency_ms": 220.803,
        "question": "Is reactor power falling dangerously?",
        "options": {
         "no": "",
         "yes": ""
-       }
+       },
+       "tokens": 168
       }
-     }
+     },
+     "latency_ms": 220.803,
+     "sent_at": 1792695777.97,
+     "answered_at": 1792695778.191
     },
     {
      "key": "coolant",
@@ -465,94 +639,170 @@
        "expected": null,
        "backend": "pointer",
        "model": "strands-decider-2B-hobson-v19",
-       "latency_ms": 228.356,
+       "latency_ms": 240.56,
        "question": "Is steam void feedback pushing reactor power up?",
        "options": {
         "no": "",
         "yes": ""
-       }
+       },
+       "tokens": 227
       }
-     }
+     },
+     "latency_ms": 240.56,
+     "sent_at": 1792695778.191,
+     "answered_at": 1792695778.432
     },
     {
      "key": "rods",
-     "state_sha256": "c84ce4415dec76b9b9c204241fb823ad1e410ffaefc387d99144f144b30d2eac",
+     "state_sha256": "1c024f825347f7443f96cfc864cdeeb5af276d4826768e38386eb13fb36295d6",
      "answers": {
       "orm_low": {
        "name": "orm_low",
        "kind": "noul",
        "choice": "yes",
        "scores": {
-        "no": 0.452754719637475,
-        "yes": 0.547245280362525
+        "no": 0.38724513687952944,
+        "yes": 0.6127548631204706
        },
-       "certainty": 0.09449056072504991,
+       "certainty": 0.22550972624094112,
        "abstained": false,
        "error": "",
-       "p_true": 0.547245280362525,
+       "p_true": 0.6127548631204706,
        "expected": null,
        "backend": "pointer",
        "model": "strands-decider-2B-hobson-v19",
-       "latency_ms": 182.262,
+       "latency_ms": 201.931,
        "question": "Is the operational reactivity margin below the 15 rod minimum?",
        "options": {
         "no": "",
         "yes": ""
-       }
+       },
+       "tokens": 188
       }
-     }
+     },
+     "latency_ms": 201.931,
+     "sent_at": 1792695778.432,
+     "answered_at": 1792695778.634
+    },
+    {
+     "key": "steam",
+     "state_sha256": "0b34aa6daab0ef8e3d78964cba9fb50b13d96df1592a954075b3e179a1ba2847",
+     "answers": {
+      "steam": {
+       "name": "steam",
+       "kind": "noul",
+       "choice": "no",
+       "scores": {
+        "no": 0.5123127851579423,
+        "yes": 0.4876872148420577
+       },
+       "certainty": 0.024625570315884637,
+       "abstained": false,
+       "error": "",
+       "p_true": 0.4876872148420577,
+       "expected": null,
+       "backend": "pointer",
+       "model": "strands-decider-2B-hobson-v19",
+       "latency_ms": 218.99,
+       "question": "Is a drum level or pressure reading close to its trip limit?",
+       "options": {
+        "no": "",
+        "yes": ""
+       },
+       "tokens": 177
+      }
+     },
+     "latency_ms": 218.99,
+     "sent_at": 1792695778.635,
+     "answered_at": 1792695778.854
+    },
+    {
+     "key": "protection",
+     "state_sha256": "21b869f4098b367f0f8f9b6ad6f92febdd025cc5365ac9874021684f93f6fc3f",
+     "answers": {
+      "bypass": {
+       "name": "bypass",
+       "kind": "noul",
+       "choice": "no",
+       "scores": {
+        "no": 0.8235839973502158,
+        "yes": 0.17641600264978421
+       },
+       "certainty": 0.6471679947004316,
+       "abstained": false,
+       "error": "",
+       "p_true": 0.17641600264978421,
+       "expected": null,
+       "backend": "pointer",
+       "model": "strands-decider-2B-hobson-v19",
+       "latency_ms": 165.962,
+       "question": "Is any safety system currently defeated?",
+       "options": {
+        "no": "",
+        "yes": ""
+       },
+       "tokens": 97
+      }
+     },
+     "latency_ms": 165.962,
+     "sent_at": 1792695778.855,
+     "answered_at": 1792695779.021
     },
     {
      "key": "instruments",
-     "state_sha256": "3eb346b65c5235698b1de2bb77dff0459ffc0ad6ae9dffc66425f2a15cca4c7b",
+     "state_sha256": "207b53ca9072e0518c6e30034144f477d69d5c90b18854a3bed506cb7c909a00",
      "answers": {
       "inconsistent": {
        "name": "inconsistent",
        "kind": "noul",
        "choice": "no",
        "scores": {
-        "no": 0.584289414158779,
-        "yes": 0.41571058584122106
+        "no": 0.5956305265426636,
+        "yes": 0.4043694734573364
        },
-       "certainty": 0.168578828317558,
+       "certainty": 0.19126105308532715,
        "abstained": false,
        "error": "",
-       "p_true": 0.41571058584122106,
+       "p_true": 0.4043694734573364,
        "expected": null,
        "backend": "pointer",
        "model": "strands-decider-2B-hobson-v19",
-       "latency_ms": 637.338,
+       "latency_ms": 657.131,
        "question": "Do any two instrument readings contradict each other?",
        "options": {
         "no": "",
         "yes": ""
-       }
+       },
+       "tokens": 663
       }
-     }
+     },
+     "latency_ms": 657.131,
+     "sent_at": 1792695779.021,
+     "answered_at": 1792695779.678
     },
     {
      "key": "decision",
-     "state_sha256": "3eb346b65c5235698b1de2bb77dff0459ffc0ad6ae9dffc66425f2a15cca4c7b",
+     "state_sha256": "207b53ca9072e0518c6e30034144f477d69d5c90b18854a3bed506cb7c909a00",
      "answers": {
       "risk": {
        "name": "risk",
        "kind": "score",
        "choice": "2",
        "scores": {
-        "1": 0.22471604169748802,
-        "2": 0.3146625517804651,
-        "3": 0.27243260056586194,
-        "4": 0.14003788195621003,
-        "5": 0.04815092399997495
+        "1": 0.23820015007853956,
+        "2": 0.3078242930121509,
+        "3": 0.26958990900486435,
+        "4": 0.13772912733939668,
+        "5": 0.04665652056504847
        },
-       "certainty": 0.14332818972558137,
+       "certainty": 0.13478036626518863,
        "abstained": true,
        "error": "",
        "p_true": null,
-       "expected": 2.472245094780719,
+       "expected": 2.4468175753002637,
        "backend": "pointer",
        "model": "strands-decider-2B-hobson-v19",
-       "latency_ms": 636.253,
+       "latency_ms": 689.097,
        "question": "How risky is the current reactor state, from 1 (safe) to 5 (about to be damaged)?",
        "options": {
         "1": "",
@@ -560,45 +810,50 @@
         "3": "",
         "4": "",
         "5": ""
-       }
+       },
+       "tokens": 694
       },
       "class": {
        "name": "class",
        "kind": "choice",
-       "choice": "orm_print",
+       "choice": "hold",
        "scores": {
-        "hold": 0.06181076595000613,
-        "insert_rod": 0.09106684358692395,
-        "withdraw_rod": 0.01761059398128088,
-        "change_flow": 0.011860703004237284,
-        "regulator": 0.08325543828392627,
-        "protection": 0.05370758471485346,
-        "turbine_test": 0.014740589159357918,
-        "orm_print": 0.6459001151813274,
-        "scram": 0.02004736613808674
+        "hold": 0.24028922425282653,
+        "insert_rod": 0.1848410467810749,
+        "withdraw_rod": 0.0325779448165752,
+        "change_flow": 0.022411403525491622,
+        "regulator": 0.15086720208665144,
+        "protection": 0.10797268735469866,
+        "turbine_test": 0.030530370558389922,
+        "orm_print": 0.1583290930679882,
+        "scram": 0.07218102755630351
        },
-       "certainty": 0.6016376295789934,
-       "abstained": false,
+       "certainty": 0.14532537728442985,
+       "abstained": true,
        "error": "",
        "p_true": null,
        "expected": null,
        "backend": "pointer",
        "model": "strands-decider-2B-hobson-v19",
-       "latency_ms": 753.527,
+       "latency_ms": 849.924,
        "question": "Which kind of operator action should be taken now?",
        "options": {
-        "hold": "change nothing and watch",
+        "hold": "do nothing and keep watching",
         "insert_rod": "insert one control rod or a group of rods",
         "withdraw_rod": "withdraw one control rod or a group of rods",
         "change_flow": "start or stop a main circulation pump, or move the throttle valves",
         "regulator": "switch the automatic power regulator on or off, or change its setpoint",
         "protection": "defeat or restore a protection or trip signal",
         "turbine_test": "start or abort the turbine rundown test",
-        "orm_print": "ask for a fresh printout of the operational reactivity margin",
+        "orm_print": "read the margin printout again (changes nothing in the plant)",
         "scram": "press AZ-5, emergency shutdown, every rod drives in"
-       }
+       },
+       "tokens": 798
       }
-     }
+     },
+     "latency_ms": 1539.021,
+     "sent_at": 1792695779.679,
+     "answered_at": 1792695781.219
     }
    ]
   }

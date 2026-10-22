@@ -283,7 +283,7 @@ _BENCH_FLAGS = frozenset({
     "--reasoning-budget", "--plain-only", "--resume", "--shortlist", "--shortlist-for",
     "--margin", "--smoke", "--sample", "--short", "--trace", "--no-trace", "--temperature",
     "--top-p", "--top-k", "--min-p", "--n-predict", "--card", "--anyway", "--ceiling", "--yes",
-    "--no-selfcheck", "--no-smoke", "--per-question", "--no-queue", "--no-prefetch",
+    "--no-smoke", "--per-question", "--no-queue", "--no-prefetch",
 })
 """The ``python -m poolhouse.bench`` subcommands and flags a tool may pass: none takes a path to run, a
 store or kept file to read or write, or an endpoint to call."""

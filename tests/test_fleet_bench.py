@@ -1166,7 +1166,7 @@ def _one_machine(boxes, tmp_path, monkeypatch, *, models):
     monkeypatch.setattr(sweeps_module, "wait",
                         lambda handles: real_wait(handles, poll_s=0.1, timeout_s=20))
     kept = tmp_path / "home.ladybug"
-    line = ["sweep", "--fleet", "--plain-only", "--kept", str(kept), "--no-selfcheck",
+    line = ["sweep", "--fleet", "--plain-only", "--kept", str(kept),
             "--no-prefetch"]
     for m in models:
         line += ["--serve", m]

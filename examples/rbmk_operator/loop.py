@@ -1,4 +1,11 @@
-"""The decision loop: sense, ask the operator, pass the answer through the interlocks, advance."""
+"""The decision loop with three separate clocks.
+
+The plant steps with fixed substeps (10 s slow, 0.5 s fast) and never waits for the model. The operator is asked on its
+own cadence (every 3 slow ticks, or every 5 s in the fast regime). A model answer lands in the plant at the simulated
+time that matches its real latency (``speed`` simulated seconds per wall second), so a slow model is a late operator;
+a decision time that arrives while an answer is in flight is logged as a MODEL BUSY row, never dropped or queued
+silently. Playback speed belongs to an interface and changes none of this: a run is keyed to its applied ticks.
+"""
 
 from __future__ import annotations
 
@@ -27,28 +34,30 @@ class Result:
     events: list[dict[str, Any]] = field(default_factory=list)
     forks: dict[int, Plant] = field(default_factory=dict)
     finished: bool = False
-
-    def public(self) -> dict[str, Any]:
-        """JSON-ready rows (the forks are not part of it)."""
-        return {"scenario": self.scenario, "controller": self.controller, "trace": self.trace,
-                "decisions": self.decisions, "events": self.events, "finished": self.finished}
+    speed: float = 1.0
 
 
 def _row_of(got: Any) -> dict[str, str]:
     return {"cls": got.cls, "target": got.target, "step": got.step}
 
 
-def _decision_row(index: int, plant: Plant, text: str, prop: Any, got: Any) -> dict[str, Any]:
-    fired = [i for i in got.fired if i["severity"] == "block"]
-    flags = [i for i in got.fired if i["severity"] != "block"]
-    source = "interlock" if fired else prop.source
+def _batch(prop: Any) -> dict[str, Any]:
+    calls = [{"key": c["key"], "size": len(c["answers"]), "latency_ms": c["latency_ms"],
+              "sent_at": c["sent_at"], "answered_at": c["answered_at"],
+              "tokens_max": max((a.get("tokens", 0) for a in c["answers"].values()), default=0)} for c in prop.calls]
+    return {"calls": calls, "questions": sum(c["size"] for c in calls),
+            "latency_ms": round(sum(c["latency_ms"] for c in calls), 3)}
+
+
+def _decision_row(index: int, plant: Plant, text: str, prop: Any, delay_s: float) -> dict[str, Any]:
     risk = prop.answers.get("risk", {}).get("expected") if prop.answers else None
     return {"i": index, "kind": "decision", "tick": plant.tick, "t_s": round(plant.core.t, 1),
-            "fast": plant.fast(), "state_text": text, "state": plant.sample(), "answers": prop.answers,
-            "calls": prop.calls, "model_choice": prop.model_choice,
-            "requested": {"cls": prop.cls, "target": prop.target, "step": prop.step}, "applied": _row_of(got),
-            "source": source, "abstained": prop.source == "safety-policy", "interlocks": fired, "flags": flags,
-            "note": prop.note, "latency_ms": round(prop.latency_ms, 1), "model_risk": risk}
+            "snapshot_tick": plant.tick, "fast": plant.fast(), "state_text": text, "state": plant.sample(),
+            "answers": prop.answers, "calls": prop.calls, "batch": _batch(prop), "model_choice": prop.model_choice,
+            "requested": {"cls": prop.cls, "target": prop.target, "step": prop.step}, "applied": None,
+            "applied_tick": None, "applied_t_s": None, "delay_s": round(delay_s, 3), "source": prop.source,
+            "abstained": prop.source == "safety-policy", "interlocks": [], "flags": [], "note": prop.note,
+            "latency_ms": round(prop.latency_ms, 1), "model_risk": risk}
 
 
 def _outcomes(res: Result) -> None:
@@ -66,26 +75,61 @@ def _outcomes(res: Result) -> None:
 class Runner:
     """Runs a scenario with one operator, calling ``progress`` after each decision."""
 
-    def __init__(self, scn: Scenario, operator: Operator, progress: Callable[[Result], None] | None = None) -> None:
-        self.scn, self.operator, self.progress = scn, operator, progress
-        self.res = Result(scn.key, operator.kind)
+    def __init__(self, scn: Scenario, operator: Operator, progress: Callable[[Result], None] | None = None,
+                 speed: float = 1.0) -> None:
+        self.scn, self.operator, self.progress, self.speed = scn, operator, progress, speed
+        self.res = Result(scn.key, operator.kind, speed=speed)
         self.plant = Plant(scn)
         self.risk: float | None = None
         self.model_choice: dict[str, str] | None = None
+        self.inflight: dict[str, Any] | None = None
+
+    def _land(self) -> None:
+        """Apply the in-flight action at this simulated moment."""
+        plant, fl = self.plant, self.inflight
+        if fl is None:
+            raise RuntimeError("no action is in flight")
+        prop, row = fl["prop"], fl["row"]
+        got = plant.act(prop.cls, prop.target, prop.step)
+        fired = [i for i in got.fired if i["severity"] == "block"]
+        row.update(applied=_row_of(got), applied_tick=plant.tick, applied_t_s=round(plant.core.t, 1),
+                   interlocks=fired, flags=[i for i in got.fired if i["severity"] != "block"])
+        if fired:
+            row["source"] = "interlock"
+        self.inflight = None
+        if self.progress:
+            self.progress(self.res)
 
     def _decide(self) -> None:
-        plant, index = self.plant, len(self.res.decisions)
+        plant = self.plant
+        index = len(self.res.decisions)
         text = plant.state_text()
         fork = copy.deepcopy(plant)
+        plant.since_decision = 0
         prop = self.operator.propose(index, plant)
-        got = plant.act(prop.cls, prop.target, prop.step)
-        plant.last_source = prop.source
+        delay = prop.latency_ms / 1000.0 * self.speed
         self.risk = prop.answers["risk"]["expected"] if prop.answers else self.risk
         self.model_choice = prop.model_choice
         self.res.forks[index] = fork
-        self.res.decisions.append(_decision_row(index, plant, text, prop, got))
-        if self.progress:
-            self.progress(self.res)
+        row = _decision_row(index, plant, text, prop, delay)
+        self.res.decisions.append(row)
+        self.inflight = {"prop": prop, "row": row, "due_s": plant.core.t + delay}
+        if delay <= 1e-9:
+            self._land()
+
+    def _busy(self) -> None:
+        plant, fl = self.plant, self.inflight
+        if fl is None:
+            raise RuntimeError("no action is in flight")
+        plant.since_decision = 0
+        self.res.decisions.append({
+            "i": len(self.res.decisions), "kind": "busy", "tick": plant.tick, "t_s": round(plant.core.t, 1),
+            "fast": plant.fast(), "state_text": "", "state": plant.sample(), "answers": {}, "calls": [],
+            "model_choice": None, "requested": None, "applied": {"cls": "hold", "target": "none", "step": "1"},
+            "applied_tick": plant.tick, "applied_t_s": round(plant.core.t, 1), "source": "busy", "abstained": False,
+            "interlocks": [], "flags": [], "latency_ms": 0.0, "model_risk": self.risk,
+            "note": (f"MODEL BUSY: the answer to the request at tick {fl['row']['snapshot_tick']} lands at "
+                     f"t={fl['due_s']:.1f} s; this decision time was skipped, nothing was queued")})
 
     def _tick(self) -> None:
         plant = self.plant
@@ -93,26 +137,35 @@ class Runner:
             self.res.events.append({"tick": plant.tick, "kind": e.kind, "text": e.caption})
         plant.sense()
         if plant.due():
-            self._decide()
+            if self.inflight:
+                self._busy()
+            else:
+                self._decide()
         row = plant.sample()
-        row["model_risk"] = self.risk
-        row["tip"] = round(rx.tip_rho(plant.core), 4)
+        row["model_risk"], row["tip"] = self.risk, round(rx.tip_rho(plant.core), 4)
         self.res.trace.append(row)
-        plant.advance()
+        first = None if self.inflight is None else self.inflight["due_s"] - plant.core.t
+        if first is not None and first < plant.regime()[0]:
+            plant.advance_split(max(first, 0.0), self._land)
+        else:
+            plant.advance()
         fired = plant.trip()
         if fired:
             self.res.decisions.append({
                 "i": len(self.res.decisions), "kind": "trip", "tick": plant.tick, "t_s": round(plant.core.t, 1),
-                "fast": plant.fast(), "state_text": "", "state": plant.sample(), "answers": {},
-                "model_choice": self.model_choice, "requested": None, "applied": {"cls": "scram", "target": "none", "step": "1"},
-                "calls": [], "flags": [], "source": "interlock",
-                "abstained": False, "interlocks": fired, "note": "automatic trip, no question asked",
-                "latency_ms": 0.0, "model_risk": self.risk})
+                "fast": plant.fast(), "state_text": "", "state": plant.sample(), "answers": {}, "calls": [],
+                "model_choice": self.model_choice, "requested": None,
+                "applied": {"cls": "scram", "target": "none", "step": "1"}, "applied_tick": plant.tick,
+                "applied_t_s": round(plant.core.t, 1), "flags": [], "source": "interlock", "abstained": False,
+                "interlocks": fired, "note": "automatic trip, no question asked", "latency_ms": 0.0,
+                "model_risk": self.risk})
 
     def run(self) -> Result:
         """Run to the end of the scenario and return the rows."""
         while not self.plant.done():
             self._tick()
+        if self.inflight:
+            self.inflight["row"]["note"] += " The run ended before this action landed."
         self.plant.sense()
         last = self.plant.sample()
         last["model_risk"], last["tip"] = self.risk, 0.0
