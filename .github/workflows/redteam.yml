@@ -1,8 +1,11 @@
 name: redteam
-# The red-team tests run here; the tests and scenarios that need a model skip with the reason when no
-# llama-server and installed GGUF exist, which a hosted runner does not have. No model is faked: the
-# measurement against a real model (chat, loop, compaction, isolation, fleet's proxy) is run by hand
-# on a machine that has one and compared with `compare` (docs/redteam.md).
+# The red-team tests run here. The attacks on a real model do not: a hosted runner has no GPU and no
+# installed model, and nothing stands in for one (AGENTS.md, "Never a fake model"). The last step says so in
+# every run: a warning annotation and the run's summary name what was not run, why, and the command that
+# runs it on a machine that has the model, against docs/redteam/baseline-real-model-2026-10-22.json
+# (docs/redteam.md, "Baselines"). The tests that need a real model (tests/test_redteam_sentinel_model.py,
+# tests/test_redteam_loop.py, the end-to-end test in tests/test_redteam_lab_home.py) are marked slow and are
+# not collected here either; they fail, never skip, on a machine without the model.
 on:
   workflow_dispatch:
   schedule:
@@ -46,3 +49,22 @@ jobs:
           echo "DEV_TEST_NODE_BINARY=$binary" >> "$GITHUB_ENV"
       - name: tests
         run: python -m pytest tests/test_redteam_*.py -q --redteam -n 0
+      - name: red-team attacks against a real model are NOT RUN on this runner
+        env:
+          REASON: a hosted runner has no GPU and no installed model, and nothing stands in for one
+          PULL: poolhouse-models pull hf:lmstudio-community/Qwen3-4B-Instruct-2507-GGUF/Qwen3-4B-Instruct-2507-Q4_K_M.gguf
+          COMMAND: python -m poolhouse.redteam run --model Qwen3-4B-Instruct-2507-Q4_K_M.gguf --scenarios extraction,fleet,sentinel --against docs/redteam/baseline-real-model-2026-10-22.json --success-tolerance 0 --ttd-tolerance 1
+        run: |
+          echo "::warning title=red-team attacks against a real model were not run::$REASON. On a machine with the model ($PULL) run: $COMMAND"
+          {
+            echo "### Red-team attacks against a real model: NOT RUN on this runner"
+            echo
+            echo "$REASON."
+            echo
+            echo "On a machine that has the model, fetch it once and run the gate:"
+            echo
+            echo '```'
+            echo "$PULL"
+            echo "$COMMAND"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

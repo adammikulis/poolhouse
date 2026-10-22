@@ -8,6 +8,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import shlex
 import subprocess
 import sys
 from datetime import date, timedelta
@@ -44,25 +45,46 @@ def test_the_pip_audit_step_runs_the_gate_and_cannot_be_swallowed():
     assert last.strip().startswith("python scripts/audit_gate.py") and "||" not in last
 
 
-def test_the_redteam_attack_step_compares_with_the_committed_baseline_and_cannot_be_swallowed():
-    step = step_with("redteam.yml", "redteam", "poolhouse.redteam run")
-    assert step.get("continue-on-error") in (None, False)
-    run = step["run"]
-    assert "--against" in run and "||" not in run
-    baseline = run.split("--against")[1].split()[0]
-    assert (ROOT / baseline).is_file()
-    assert "chat" not in run.split("--scenarios")[1].split()[0], "a gullible stub always loses the chat scenario"
+def not_run_notice() -> dict:
+    """The step of the red-team workflow that says the attacks on a real model were not run."""
+    found = [s for s in steps("redteam.yml", "redteam") if "NOT RUN" in str(s.get("name", ""))]
+    assert len(found) == 1, "redteam.yml: one step must say the real-model attacks are not run on this runner"
+    return found[0]
 
 
-def test_the_weekly_redteam_run_gates_the_deterministic_scenarios_against_a_committed_baseline():
-    step = step_with("redteam.yml", "redteam", "poolhouse.redteam run")
-    run = " ".join(step["run"].split())
-    scenarios = run.split("--scenarios")[1].split()[0].split(",")
-    assert {"extraction", "fleet", "sentinel"} <= set(scenarios)
-    assert not {"chat", "loop", "compaction", "isolation"} & set(scenarios)
-    baseline = run.split("--against")[1].split()[0]
-    assert baseline.startswith("docs/redteam/baseline-deterministic") and (ROOT / baseline).is_file()
-    assert "--ttd-tolerance" in run and "--success-tolerance" in run
+def test_the_redteam_workflow_runs_no_attack_on_a_runner_that_has_no_model_and_says_so_loudly():
+    """A hosted runner has no GPU and no model, and nothing stands in for one: the attacks are not run there, and
+    the last step of every run says what was not run, why, and the command that runs it on a machine with the model."""
+    notice = not_run_notice()
+    assert notice.get("continue-on-error") in (None, False) and "if" not in notice
+    assert steps("redteam.yml", "redteam")[-1] == notice, "the notice is the last thing the run says"
+    assert "::warning" in notice["run"] and "GITHUB_STEP_SUMMARY" in notice["run"]
+    assert "no GPU" in notice["env"]["REASON"] and "nothing stands in" in notice["env"]["REASON"]
+    runs = [s for s in steps("redteam.yml", "redteam") if "poolhouse.redteam run" in str(s.get("run", ""))]
+    assert runs == [], "no step runs the attacks on this runner"
+    tests = [s for s in steps("redteam.yml", "redteam") if "pytest tests/test_redteam_" in str(s.get("run", ""))]
+    assert len(tests) == 1 and "--redteam" in tests[0]["run"] and "--slow" not in tests[0]["run"]
+
+
+def test_the_command_the_workflow_prints_reproduces_the_committed_real_model_baseline():
+    command = shlex.split(not_run_notice()["env"]["COMMAND"])
+    assert command[:4] == ["python", "-m", "poolhouse.redteam", "run"]
+    given = dict(zip(command[4::2], command[5::2], strict=True))
+    baseline = ROOT / given["--against"]
+    assert baseline.is_file() and baseline.name.startswith("baseline-real-model-")
+    meta = json.loads(baseline.read_text(encoding="utf-8"))["meta"]
+    recorded = shlex.split(meta["command"])
+    ran = dict(zip(recorded[4::2], recorded[5::2], strict=True))
+    assert given["--model"] == ran["--model"] == meta["model"] and meta["model"].endswith(".gguf")
+    assert given["--scenarios"] == ran["--scenarios"] == meta["scenarios"]
+    assert {"extraction", "fleet", "sentinel"} <= set(given["--scenarios"].split(","))
+    assert {"chat", "loop", "compaction", "isolation"}.isdisjoint(given["--scenarios"].split(","))
+    assert "stub" not in meta["command"].lower() and "--success-tolerance" in command and "--ttd-tolerance" in command
+    pull = not_run_notice()["env"]["PULL"]
+    assert pull.startswith("poolhouse-models pull hf:") and pull.endswith(meta["model"])
+
+
+def test_the_redteam_workflow_is_scheduled_and_pins_what_it_uses():
     doc = yaml.safe_load((WORKFLOWS / "redteam.yml").read_text(encoding="utf-8"))
     assert "cron" in doc[True]["schedule"][0]
     for job in doc["jobs"].values():
