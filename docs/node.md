@@ -323,8 +323,9 @@ by a session about itself, `revoked` or `forged` (an end for cause, after which 
 (a retired subagent never does); its old tokens stay refused and it is given a new one.
 
 **Idle sessions.** A session is *idle* when it is not retired and has neither made a request within 30 minutes
-(`child_beat_s`) nor holds a lease whose process still runs; `agents` marks it `idle`. No count of live sessions is kept: any number register, from one terminal or many. The node retires a session that has been idle for 24 hours (`idle_retire_s`;
-its tokens end, its leases are released and the board gets its ending identity entry) whenever it lists sessions or registers one.
+(`child_beat_s`) nor holds a lease whose process still runs; `agents` marks it `idle`. A board holds at most `live_main_sessions` main sessions that have not ended (docs/limits.md). The node retires a session that has been idle for 24 hours (`idle_retire_s`;
+its tokens end, its leases are released and the board gets its ending identity entry) whenever it lists sessions or registers one. The person's own session of a terminal (`register_person`) is also retired,
+as `done`, once every process it was registered from has ended, so a terminal that was opened and closed holds no place.
 
 **Claims** are leases of one `claim` resource taken without waiting. `reserve` takes a set of them in one call of the
 node: the set is checked against what others hold before the first is taken, so it is taken whole or refused whole (the

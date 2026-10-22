@@ -139,13 +139,10 @@ def _device(asked: str, this: str) -> str:
     return this if asked in ("", "this") else "*" if asked == "any" else asked
 
 
-POOL_GRANTS = "In a pool your phone gives standing grants: ask for one and tap approve."
-
-
 def _pool_refuses(held: grants.Listing, *actions: str) -> None:
     """Refuse, before any prompt is shown, a grant that a pool counts only from an admin key's approval on a phone."""
     if any(held.pool_wide(a) for a in actions):
-        raise Denied("denied", POOL_GRANTS)
+        raise Denied("denied", grants.POOL_GRANTS)
 
 
 def grant(args: argparse.Namespace, ctx: Ctx) -> Any:

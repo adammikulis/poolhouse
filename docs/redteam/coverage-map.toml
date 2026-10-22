@@ -231,6 +231,13 @@ tests = []
 note = "This bind call associates an existing software-owned webhook source with a subscription grant. It neither creates a socket nor listens for connections."
 
 [[group]]
+match = ["listener:fleet/conversation_routes.py:ConversationRoutes._conversations", "listener:workspace/coding_routes.py:current_catalogue"]
+status = "n/a"
+count = 2
+tests = []
+note = "setup_context.bind ties a request to the signed-in browser session and identity it came with. It neither creates a socket nor listens for connections; the routes that call it are mapped as routes."
+
+[[group]]
 match = ["route:fleet/studio_stream_routes.py:/ui/studio/sources", "route:fleet/studio_stream_routes.py:/ui/studio/subscriptions*", "route:fleet/studio_routes.py:/ui/studio/sources*", "route:fleet/studio_routes.py:/ui/studio/subscriptions*"]
 status = "covered"
 count = 4
@@ -821,11 +828,14 @@ note = "start and stop require the person's session, a loopback origin and JSON;
 [[group]]
 match = ["route:fleet/conversation_routes.py:/ui/conversations*"]
 status = "covered"
-count = 2
+count = 3
 tests = ["tests/test_fleet_conversation_settings_routes.py::test_defaults_endpoint_exposes_the_persisted_settings_source",
          "tests/test_fleet_conversation_settings_routes.py::test_conversation_mutations_require_ui_authority",
-         "tests/test_fleet_conversation_settings_routes.py::test_invalid_updates_return_400_without_changing_the_chat"]
-note = "socket requests reject missing UI authority and foreign origins; invalid settings and unknown fields preserve persisted history"
+         "tests/test_fleet_conversation_settings_routes.py::test_invalid_updates_return_400_without_changing_the_chat",
+         "tests/test_fleet_conversation_settings_routes.py::test_operation_lookup_is_get_only_and_needs_ui_authority_and_the_same_origin",
+         "tests/test_fleet_conversation_settings_routes.py::test_guarded_routes_attach_once_reconcile_and_reject_missing_key",
+         "tests/test_fleet_conversation_settings_routes.py::test_uncredentialed_and_expired_sessions_cannot_create_or_lookup"]
+note = "socket requests reject missing UI authority, foreign origins and non-GET operation lookups; invalid settings and unknown fields preserve persisted history; a creation or lookup under another identity or an expired session finds and makes nothing"
 
 [[group]]
 match = ["spawn:fleet/environment.py:Environment.build_environment"]
@@ -1170,6 +1180,18 @@ status = "covered"
 count = 1
 tests = ["tests/test_pi_harness.py::test_pi_launch_is_offline_and_uses_the_policy_extension"]
 note = "Pi runs offline with poolhouse's tool-policy extension and an explicit local model endpoint"
+
+[[group]]
+match = ["spawn:pi_tools.py:_inspect", "spawn:pi_tools.py:runtime"]
+status = "covered"
+count = 2
+tests = ["tests/test_redteam_pi_tools.py::test_inspect_passes_hostile_text_as_one_argument_with_a_minimal_environment",
+         "tests/test_redteam_pi_tools.py::test_inspect_refuses_a_report_past_the_frame_limit",
+         "tests/test_redteam_pi_tools.py::test_runtime_refuses_a_package_that_is_not_the_pi_tool_library",
+         "tests/test_redteam_pi_tools.py::test_runtime_refuses_a_node_report_that_is_not_a_list_of_absolute_paths",
+         "tests/test_redteam_pi_tools.py::test_runtime_refuses_an_oversized_node_report",
+         "tests/test_redteam_pi_tools.py::test_runtime_asks_node_with_fixed_arguments_and_reads_a_hostile_library_name_as_data"]
+note = "the Node library query and the platform inspector take one argv item per hostile name with a minimal environment and no shell; a Node report that is not a list of absolute paths, or that is too large, is refused, and a package that is not the Pi tool library never reaches Node"
 
 [[group]]
 match = ["route:fleet/routes.py:/ui/credentials"]

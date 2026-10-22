@@ -40,7 +40,8 @@ abuse by one session is not kept (the owner never asked for one). The security f
 - **Live main sessions** (`live_main_sessions`, 16). A board holds at most sixteen main sessions that have not ended: a tree's share of a
   log is a quarter (`LINEAGE_SHARE_PERCENT`), so four trees can write all of it, and sixteen is four trees of four terminals each. A
   registration that would make seventeen, or a main session that ended coming back into a full board, is refused with the limit named; an
-  ending (or the node retiring an idle session) frees a place at once. Subagents are not counted: their tree's share holds them. This is a
+  ending (or the node retiring an idle session) frees a place at once. The person's own session counts like any other while its terminal
+  runs and is retired once every process it was registered from has ended. Subagents are not counted: their tree's share holds them. This is a
   count of what exists, not a rate: a process that forks twice is its own process tree with a share of its own, and the count keeps more
   than sixteen of them from writing to a board at once. A board with more terminals than that raises the key in `write-limits.json`.
 - **Boards, rooms, subscriptions and waiting** (`MOST_BOARDS_PER_LINEAGE`, `board_grace_s`, `MOST_ROOMS_PER_LINEAGE`, `MEMBERS_PER_ROOM`,

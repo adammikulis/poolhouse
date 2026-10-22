@@ -20,6 +20,8 @@ from typing import Any
 
 from poolhouse import errors, person
 from poolhouse.board import grants
+from poolhouse.board.client import Client
+from poolhouse.board.session import Session
 from poolhouse.fleet.onboard.signing import ConfirmedKeys, KeyStoreError
 from poolhouse.log import warn
 from poolhouse.node_health import Refused, call
@@ -80,6 +82,9 @@ def provider(state: Path, *, attended: bool = False, acting: Callable[[str], tup
             return ""
         try:
             name, carrier = acting(hint["board"]) if acting is not None else (hint["name"], token)
+            if grants.listing(Session(Client(state), hint["board"], carrier, name)).pool_wide(hint["action"]):
+                warn(f"grant: {grants.POOL_GRANTS}")
+                return ""
             want = grants.Want(hint["action"], {"kind": "session", "name": name}, hint["resource"], hint["device"], LASTS_MS, 1)
             call(state, "grant_issue", grants.sign_issue(key, hint["board"], want), board=hint["board"], token=carrier)
         except (OSError, ValueError, RuntimeError, errors.Error) as err:

@@ -62,7 +62,7 @@ three-attempt retry policy. This does not replace the full-suite result above.
 
 The release serves two audiences with one build. A change that adds a visible step for either is redesigned before it lands
 (AGENTS.md, "Onboarding is the product" and "Security without friction"). **A new step is a regression**: a journey's step count only
-falls, a step that is a tap, a plain sentence or a scan never becomes a typed command, and every security step is counted in the same
+falls (the real steps get easier; none is faked or removed to lower it), a step that is a tap, a plain sentence or a scan never becomes a typed command, and every security step is counted in the same
 budget as every other.
 
 Step kinds, from `docs/pools-and-serving.md` section 3: `install`, `os-prompt` (the operating system's own one-time prompt),
