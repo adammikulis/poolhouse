@@ -3,9 +3,11 @@ to its limits, and report what the sandbox refused."""
 
 from __future__ import annotations
 
+import array
 import contextlib
 import logging
 import os
+import selectors
 import signal
 import subprocess
 import sys
@@ -18,7 +20,9 @@ from pathlib import Path
 from typing import Any
 
 if os.name == "posix":
+    import fcntl
     import resource
+    import termios
 else:
     resource = None
 
@@ -31,6 +35,7 @@ from poolhouse.sandbox.backend import (
 )
 from poolhouse.sandbox.bubblewrap import Bubblewrap
 from poolhouse.sandbox.hold import Hold
+from poolhouse.sandbox.io import CHUNK, IO, Control
 from poolhouse.sandbox.policy import AllowUnsandboxed, Limits, Policy, PolicyError
 from poolhouse.sandbox.seatbelt import Seatbelt
 
@@ -68,12 +73,13 @@ class Result:
     """The sandbox could not say what it refused, so an empty ``denials`` does not mean the run was clean."""
     denials_detail: str = ""
     """Why the refusals could not be known; empty when they could."""
+    cancelled: bool = False
     failure_unreported: bool = False
     """The run exited non-zero and the refusal log was read and carried no report of it; that does not make ``denials_unavailable``."""
 
     @property
     def ok(self) -> bool:
-        return self.returncode == 0 and not self.timed_out
+        return self.returncode == 0 and not self.timed_out and not self.cancelled and not self.truncated
 
     def check(self) -> Result:
         """This result, or `SandboxViolation` saying what was refused or that the refusals could not be read."""
@@ -130,19 +136,84 @@ def _limits(limits: Limits) -> Callable[[], None]:
 
 
 class _Capture(threading.Thread):
-    def __init__(self, stream: Any, cap: int | None) -> None:
+    def __init__(self, stream: Any, cap: int | None, control: Control, *, deliver: bool = False) -> None:
         super().__init__(daemon=True)
-        self.stream, self.cap = stream, cap
+        self.stream, self.cap, self.control, self.deliver = stream, cap, control, deliver
         self.data = bytearray()
         self.over = False
+        self.finished = threading.Event()
+        self.drain = 0
+
+    def finish(self) -> None:
+        try:
+            pending = array.array("i", [0])
+            fcntl.ioctl(self.stream.fileno(), termios.FIONREAD, pending, True)
+            self.drain = max(0, pending[0]) + CHUNK
+        except (OSError, ValueError) as error:
+            self.control.cancel(error)
+        finally:
+            self.finished.set()
 
     def run(self) -> None:
-        read = getattr(self.stream, "read1", None) or self.stream.read
-        while chunk := read(65536):
-            room = len(chunk) if self.cap is None else max(0, self.cap - len(self.data))
-            self.data += chunk[:room]
-            if room < len(chunk):
-                self.over = True
+        descriptor = self.stream.fileno()
+        try:
+            os.set_blocking(descriptor, False)
+            with selectors.DefaultSelector() as reader:
+                reader.register(descriptor, selectors.EVENT_READ)
+                while True:
+                    if self.finished.is_set() and self.drain <= 0:
+                        return
+                    if not reader.select(.01):
+                        if self.finished.is_set():
+                            return
+                        continue
+                    try:
+                        chunk = os.read(descriptor, min(CHUNK, self.drain) if self.finished.is_set() else CHUNK)
+                    except BlockingIOError:
+                        continue
+                    if not chunk:
+                        return
+                    if self.finished.is_set():
+                        self.drain -= len(chunk)
+                    room = len(chunk) if self.cap is None else max(0, self.cap - len(self.data))
+                    self.data += chunk[:room]
+                    if room < len(chunk):
+                        self.over = True
+                        self.control.cancel()
+                        return
+                    if self.deliver:
+                        self.control.emit(chunk)
+        except (OSError, ValueError) as error:
+            self.control.cancel(error)
+
+
+class _Input(threading.Thread):
+    def __init__(self, stream: Any, value: bytes, control: Control) -> None:
+        super().__init__(daemon=True)
+        self.stream, self.value, self.control = stream, value, control
+        self.finished = threading.Event()
+
+    def finish(self) -> None:
+        self.finished.set()
+
+    def run(self) -> None:
+        try:
+            descriptor, offset = self.stream.fileno(), 0
+            os.set_blocking(descriptor, False)
+            with selectors.DefaultSelector() as writer:
+                writer.register(descriptor, selectors.EVENT_WRITE)
+                while offset < len(self.value) and not self.finished.is_set() and not self.control.stopped():
+                    if writer.select(.01):
+                        try:
+                            offset += os.write(descriptor, self.value[offset:offset + CHUNK])
+                        except BlockingIOError:
+                            continue
+        except BrokenPipeError:
+            pass
+        except (OSError, ValueError) as error:
+            self.control.cancel(error)
+        finally:
+            self.stream.close()
 
 
 def _kill_group(pid: int) -> None:
@@ -150,9 +221,11 @@ def _kill_group(pid: int) -> None:
         os.killpg(pid, signal.SIGKILL)
 
 
-def _wait(proc: subprocess.Popen[bytes], deadline: float | None, *captures: _Capture) -> bool:
+def _wait(proc: subprocess.Popen[bytes], deadline: float | None, control: Control, *captures: _Capture) -> bool:
     """Wait for ``proc`` to exit, or for the deadline or an output cap; True on the deadline."""
     while proc.poll() is None:
+        if control.stopped():
+            return False
         if deadline is not None and time.time() >= deadline:
             return True
         if any(c.over for c in captures):
@@ -178,18 +251,35 @@ def _reap(proc: subprocess.Popen[bytes]) -> None:
 
 
 def _start(full: Sequence[str], argv: Sequence[str], policy: Policy, cwd: str | os.PathLike[str],  # noqa: PLR0913 - one argument per part of the start
-           piped: bool, follow: Callable[[int], None] | None = None) -> subprocess.Popen[bytes]:
+           control: Control, follow: Callable[[int], None] | None = None) -> subprocess.Popen[bytes]:
     """Start ``full`` in a process group of its own, with a pipe for its input when ``piped``. With ``follow``,
     the process runs nothing until ``follow(pid)`` has returned; when that raises, the process is ended
     before it runs anything and `_NotFollowed` is raised."""
     limits = _limits(policy.limits)
-    hold = None if follow is None else Hold(follow)
+    pipes = control.io.pipes
+    passed = () if pipes is None else pipes.check()
+    def followed(pid: int) -> None:
+        if control.stopped():
+            raise InterruptedError("The sandbox process was cancelled before execution")
+        if follow is not None:
+            follow(pid)
+        if control.stopped():
+            raise InterruptedError("The sandbox process was cancelled before execution")
+    hold = None if follow is None else Hold(followed)
     proc, failure = None, None
+    def prepare() -> None:
+        limits()
+        if pipes is not None:
+            pipes.check(inherited=True)
+        if control.stopped():
+            raise InterruptedError("The sandbox process was cancelled before execution")
+        if hold is not None:
+            hold.wait()
     try:
         proc = start_process(
-            full, stdin=subprocess.PIPE if piped else subprocess.DEVNULL,
+            full, stdin=subprocess.PIPE if control.io.input is not None else subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=HOOKS.environment(policy.env), cwd=cwd,
-            preexec_fn=limits if hold is None else lambda: (limits(), hold.wait()))
+            preexec_fn=prepare, close_fds=True, pass_fds=passed)
     except (OSError, subprocess.SubprocessError) as exc:
         failure = exc
     finally:
@@ -198,40 +288,55 @@ def _start(full: Sequence[str], argv: Sequence[str], policy: Policy, cwd: str | 
     if hold is not None and hold.error is not None:
         if proc is not None:
             _reap(proc)
+        if isinstance(hold.error, InterruptedError):
+            raise InterruptedError("The sandbox process was cancelled before execution") from hold.error
         raise _NotFollowed(f"{policy.name}: the processes of {argv[0]} could not be followed: {hold.error}") from hold.error
     if proc is None:
+        if control.stopped():
+            raise InterruptedError("The sandbox process was cancelled before execution")
         raise SandboxUnavailable(f"{policy.name}: could not start {argv[0]}: {failure}") from failure
     return proc
 
 
-def _complete(proc: subprocess.Popen[bytes], argv: Sequence[str], policy: Policy, stdin: bytes | None,
+def _complete(proc: subprocess.Popen[bytes], argv: Sequence[str], policy: Policy, control: Control,
               began: float) -> Result:
-    """Feed ``proc`` its input, hold it to the policy's limits until it ends, and return how it ended."""
+    """Feed the child, bound its output and invalidate admission before ending its group."""
     limits = policy.limits
-    out, err = _Capture(proc.stdout, limits.output_bytes), _Capture(proc.stderr, limits.output_bytes)
-    out.start()
-    err.start()
-    if stdin is not None and proc.stdin is not None:
-        with contextlib.suppress(OSError):
-            proc.stdin.write(stdin)
-            proc.stdin.close()
-    deadline = None if limits.wall_seconds is None else began + limits.wall_seconds
-    timed_out = _wait(proc, deadline, out, err)
-    capped = out.over or err.over
-    if timed_out or capped:
+    out = _Capture(proc.stdout, limits.output_bytes, control, deliver=True)
+    err = _Capture(proc.stderr, limits.output_bytes, control)
+    sender = None if control.io.input is None else _Input(proc.stdin, control.io.input, control)
+    streams = [out, err, *([] if sender is None else [sender])]
+    timed_out, capped, cancelled = False, False, False
+    try:
+        for stream in streams:
+            stream.start()
+        deadline = None if limits.wall_seconds is None else began + limits.wall_seconds
+        timed_out = _wait(proc, deadline, control, out, err)
+        capped = out.over or err.over
+        cancelled = control.stopped() and not capped
+    finally:
+        control.cancel()
         _kill_group(proc.pid)
-    proc.wait()
-    _kill_group(proc.pid)
-    out.join(2)
-    err.join(2)
+        proc.wait()
+        for stream in streams:
+            stream.finish()
+        for stream in streams:
+            if stream.ident is not None:
+                stream.join()
+        for pipe in (proc.stdin, proc.stdout, proc.stderr):
+            if pipe is not None:
+                pipe.close()
+    capped = out.over or err.over
+    if control.failure is not None:
+        raise control.failure
     return Result(list(argv), proc.returncode, bytes(out.data).decode("utf-8", "replace"),
                   bytes(err.data).decode("utf-8", "replace"), timed_out, capped,
-                  seconds=round(time.time() - began, 3))
+                  cancelled=cancelled and not timed_out, seconds=round(time.time() - began, 3))
 
 
 def run(argv: Sequence[str], policy: Policy, *,  # noqa: PLR0913 - one keyword per choice
         unsandboxed: AllowUnsandboxed | None = None,
-        cwd: str | os.PathLike[str] | None = None, stdin: bytes | None = None,
+        cwd: str | os.PathLike[str] | None = None, io: IO | None = None,
         on_event: Events | None = None, via: Backend | None = None,
         diagnose: str = "failure") -> Result:
     """Run ``argv`` under ``policy``. The environment is exactly ``policy.env``. The process
@@ -239,13 +344,25 @@ def run(argv: Sequence[str], policy: Policy, *,  # noqa: PLR0913 - one keyword p
     group and nothing else. A run that fails with the sandbox having refused something carries
     the refusals in ``Result.denials`` and reports them to ``on_event``; when the backend cannot say
     what it refused, ``Result.denials_unavailable`` is set and ``sandbox.denials-unavailable`` is reported."""
+    if io is not None and type(io) is not IO:
+        raise ValueError("Sandbox process channels require parent-owned IO")
+    control = (io or IO()).checked()
+    if unsandboxed is not None and io is not None:
+        raise PolicyError("Process channels require an operating-system sandbox")
+    if control.stopped():
+        return Result(list(argv), -1, cancelled=True)
     emit = _emitter(on_event)
+    prepared = False
     try:
         full, tag, chosen = wrapped(argv, policy, via=via, unsandboxed=unsandboxed)
+        prepared = True
     except SandboxUnavailable as exc:
         emit("sandbox.unavailable", severity="warning", command=str(argv[0]),
              policy=policy.name, reason=str(exc))
         raise
+    finally:
+        if not prepared:
+            control.cancel()
     name = chosen.name if chosen else "none"
     if chosen is None:
         emit("sandbox.unsandboxed", severity="warning", command=str(argv[0]),
@@ -254,15 +371,18 @@ def run(argv: Sequence[str], policy: Policy, *,  # noqa: PLR0913 - one keyword p
         cwd = (policy.write or policy.read or ("/",))[0]
     began = time.time()
     try:
-        proc = _start(full, argv, policy, cwd, stdin is not None, None if chosen is None else partial(chosen.started, tag))
-        result = _complete(proc, argv, policy, stdin, began)
+        proc = _start(full, argv, policy, cwd, control, None if chosen is None else partial(chosen.started, tag))
+        result = _complete(proc, argv, policy, control, began)
         result.sandboxed, result.backend = chosen is not None, name
         if chosen is not None:
             _read_denials(chosen, tag, began, diagnose, result)
+    except InterruptedError:
+        result = Result(list(argv), -1, sandboxed=chosen is not None, backend=name, cancelled=True)
     except _NotFollowed as exc:
         emit("sandbox.unavailable", severity="warning", command=str(argv[0]), policy=policy.name, reason=str(exc))
         raise
     finally:
+        control.cancel()
         if chosen is not None:
             chosen.finish(tag)
     if result.denials_unavailable:

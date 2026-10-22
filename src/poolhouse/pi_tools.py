@@ -11,6 +11,7 @@ from pathlib import Path
 from poolhouse import coding_actions, coding_policy, executable_libraries, sandbox
 from poolhouse.coding_workspace_state import CONTROL_PREFIXES
 from poolhouse.sandbox import policies
+from poolhouse.sandbox.io import IO
 
 CONTROL_PATHS = (".git/config", ".git/config.worktree", ".git/hooks", *CONTROL_PREFIXES)
 
@@ -117,7 +118,7 @@ def execute(configuration: dict, frame: dict) -> dict:
             env=policies.system_env(HOME=scratch, TMPDIR=scratch, PI_CODING_AGENT_DIR=scratch, OPENSSL_CONF=os.devnull),
             limits=sandbox.Limits(wall_seconds=120, output_bytes=coding_actions.MAX_FRAME))
         result = sandbox.run([node, configuration["worker"], configuration["module"], configuration["tool_root"]], policy,
-                             cwd=root, stdin=payload)
+                             cwd=root, io=IO(input=payload))
         if result.truncated or result.timed_out or not result.ok:
             raise ValueError("The isolated coding tool stopped: " + result.stderr[:500])
         answer = json.loads(result.stdout)
