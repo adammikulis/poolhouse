@@ -23,7 +23,7 @@ const BY_OUTSIDER: &str = "g-00000000000000f3";
 const FILE_DELETE: &str = "g-00000000000000f4";
 const LINK_READ: &str = "g-00000000000000f5";
 
-struct Pair {
+struct Joined {
     here: Dev,
     there: Dev,
     actor: String,
@@ -41,7 +41,7 @@ fn sync_both(a: &Dev, b: &Dev) {
 }
 
 /// A pool of ann and ben that `here` founded and `there` joined, with ben's phone key unknown on `here`, and `here` trusting `there`.
-fn pair() -> Pair {
+fn joined() -> Joined {
     let (here, there) = (device(), device());
     found(&here, Arc::new(RigSigner::new().with_key(ANN, "ann").with_key(BEN, "ben")), "secure");
     here.node.lock().unwrap().persons.remove(&person(BEN).fingerprint(), 1).unwrap();
@@ -50,10 +50,10 @@ fn pair() -> Pair {
     let (actor, _) = there.session("demo", "scribe");
     sync_both(&here, &there);
     here.ok("land_trust", "demo", &here.token, json!({"device": there.fp(), "trusted": true}));
-    Pair { here, there, actor, x, token }
+    Joined { here, there, actor, x, token }
 }
 
-impl Pair {
+impl Joined {
     /// Append to the log of `there` the row of ``spec`` that ``who`` signed, and let `here` hear of it.
     fn plant(&self, who: &Person, gid: &str, spec: &Spec) {
         let body = approved_row(&self.there.fp(), "demo", gid, spec, &who.fingerprint(), &|bytes| hex(&who.key.sign(bytes).to_bytes()));
@@ -74,7 +74,7 @@ impl Pair {
 
 #[test]
 fn a_portable_row_of_an_admin_whose_phone_this_device_does_not_know_is_ignored_where_a_known_phone_counts() {
-    let p = pair();
+    let p = joined();
     let spec = Spec::session(&p.x, "sync_now").device("*");
     p.plant(&person(BEN), BY_BEN, &spec);
     let (status, why) = p.state(BY_BEN);
@@ -88,7 +88,7 @@ fn a_portable_row_of_an_admin_whose_phone_this_device_does_not_know_is_ignored_w
 
 #[test]
 fn a_row_from_a_trusted_device_that_no_admin_here_signed_or_that_may_not_travel_gives_nothing() {
-    let p = pair();
+    let p = joined();
     p.plant(&person(0x55), BY_OUTSIDER, &Spec::session(&p.x, "sync_now").device("*"));
     let (status, why) = p.state(BY_OUTSIDER);
     assert_eq!(status, "ignored");
