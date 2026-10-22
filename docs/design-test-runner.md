@@ -259,7 +259,7 @@ labels, how many units have DEPS, and which steps would run.
 | `[requires]` | things a device must have, checked by probes the device owns (6.5) | none |
 | `[[unit]]` | a command unit with no LIST (5.7) | none |
 | `[preset.NAME]` | a preset defined in the project (7) | none |
-| `[list] glob, split` | the `files` preset's glob; whether a unit may be split by id | none; false |
+| `[list] glob` | the `files` preset's glob | none |
 | `[hooks] before_plan, before_run, after_run` | commands run on this machine only, never on a device | none |
 | `[events] sinks` | where canary mismatches and run endings go | `stderr`; a sink such as `board` is named here |
 
@@ -362,8 +362,13 @@ inputs.
   replaces nothing (decision 4 of `docs/design-test-selection.md`).
 - **Units that do not move.** `local` labels, labels whose `platform` no target satisfies, and units that hold a lease no target
   offers stay on the sender; the plan says why for each.
-- **A unit longer than the ideal shard** is split by id when its group rule allows it (`list.split = true`); a split unit stores no
-  per-unit pass (5.3).
+- **A unit longer than the ideal shard** is split by id automatically, from the recorded durations, in every project; there is no
+  opt-in and no test file is rewritten into smaller ones. Each shard pays the unit's module and session setup once, and the planner
+  counts that cost (measured from the history of runs of one id against the whole unit, never guessed) when it decides whether a
+  split pays off. A split unit stores no per-unit pass (5.3). Order-dependence between the tests of a split unit is detected, not
+  worked around: the planner runs the shards in an order different from the unit's own, and a test that passes in the unit's
+  order and fails in another is reported as a defect in the test. A unit whose LIST gives no ids cannot be split, and the plan
+  says so.
 - **Batch size and order** inside a shard: longest first (`testorder`'s rule, the recorded duration), `batch` ids per invocation.
 
 CI uses the same planner without a transport: `poolhouse-test plan --shards 8 --index 3` prints the ids or units of shard 3 using the
@@ -1093,9 +1098,10 @@ Product choices this document cannot settle from the code and documents. Each na
 6. **Names.** `poolhouse-test` and `ph.test` follow the existing `ph.test` and `poolhouse-test-devices`; `testfarm` stays as the
    package and the config's file name. Does the owner want the file called `testfarm.toml` or `poolhouse-test.toml`? The glossary has no
    word against either; the design uses `testfarm.toml`.
-7. **Splitting a long unit.** A unit longer than the ideal shard (the two files of 814 s and 611 s in `docs/design-test-selection.md`
-   section 3.5) can be split by id only if its tests are independent. The design makes it opt-in per project (`list.split`) and
-   stores no pass for a split unit. Whether Poolhouse's two long files should be rewritten into smaller units instead is the owner's
-   call on the tests, not the runner's.
+7. **Splitting a long unit.** Decided: the runner splits any unit longer than the ideal shard by id, automatically, from recorded
+   durations (the two files of 814 s and 611 s in `docs/design-test-selection.md` section 3.5 are split, not rewritten). The cost
+   of module and session setup per shard is measured and counted by the planner; order-dependence in a split file is found by
+   running its shards in a different order than the file's own and is reported as a defect in the test; a unit with no ids from
+   LIST is not split and the report says so. Nothing remains open.
 8. **ssh.** The transport interface leaves room for it. Whether it is built, and whether it needs the same confinement on a device
    that is not a pool member, is deferred; no step of the plan depends on it.
