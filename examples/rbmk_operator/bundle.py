@@ -50,7 +50,7 @@ def score(res: Result, scn: Scenario) -> dict[str, Any]:
     worst = max(r["hazard"] for r in res.trace)
     limits = 30.0 * max(0.0, 1.0 - max(0.0, worst - 1.0) / 0.5) if worst > 1.0 else 30.0
     risen = next((r["tick"] for r in res.trace if r["hazard"] >= 0.5), None)
-    acted = next((d["tick"] for d in res.decisions if d["applied"]["cls"] != "hold" and (risen is None or d["tick"] >= risen)), None)
+    acted = next((d["tick"] for d in res.decisions if d["applied"] and d["applied"]["cls"] != "hold" and (risen is None or d["tick"] >= risen)), None)
     early = 20.0 if risen is None else (20.0 if acted is not None and acted - risen <= 5 else 0.0)
     avoided = 0.0 if any(r["scram"] for r in res.trace) else 10.0
     total = 0.0 if any(r["damaged"] for r in res.trace) else round(in_band + limits + early + avoided, 1)
@@ -124,6 +124,9 @@ def export(res: Result, scn: Scenario, backend: dict[str, Any], with_whatif: boo
                               "seed": scn.seed, "ticks": scn.ticks, "defeated": list(scn.defeated)},
                  "controller": res.controller, "backend": backend, "finished": res.finished, "error": None},
         "limits": {"thermal_mw": rx.THERMAL_MW, "orm_min": rx.ORM_MIN, "fuel_c": rx.TF_LIMIT, "pressure_mpa": rx.P_LIMIT},
+        "clocks": {"plant_substep_s": {"slow": 10.0, "fast": 0.5}, "tick_s": {"slow": scn.slow_s, "fast": 1.0},
+                   "decision_cadence_s": {"slow": scn.decide_slow * scn.slow_s, "fast": 5.0}, "speed": res.speed,
+                   "note": "answers land at snapshot time + latency x speed; playback speed is an interface matter"},
         "classes": controls.CLASSES, "interlocks": controls.INTERLOCKS, "protections": controls.PROTECTIONS,
         "rods": _rod_map(scn), "trace": res.trace, "events": res.events, "decisions": res.decisions,
         "captions": captions(res), "outcome": outcome(res), "score": score(res, scn),
@@ -155,7 +158,9 @@ def digest(doc: dict[str, Any]) -> str:
 def recording_of(doc: dict[str, Any]) -> dict[str, Any]:
     """The recording of a run: only what the model said, with a digest of the whole run it produced."""
     calls = [{"i": d["i"], "tick": d["tick"],
-              "calls": [{"key": c["key"], "state_sha256": sha(c["state_text"]), "answers": c["answers"]} for c in d["calls"]]}
+              "calls": [{"key": c["key"], "state_sha256": sha(c["state_text"]), "answers": c["answers"],
+                        "latency_ms": c["latency_ms"], "sent_at": c["sent_at"], "answered_at": c["answered_at"]}
+                       for c in d["calls"]]}
              for d in doc["decisions"] if d["kind"] == "decision"]
     return {"schema": RECORDING, "meta": doc["meta"], "outcome": doc["outcome"], "digest": digest(doc), "decisions": calls}
 
@@ -173,8 +178,8 @@ class ReplayAsker:
         self.model = rec["meta"]["backend"]["model"]
         self.calls = {d["i"]: {c["key"]: c for c in d["calls"]} for d in rec["decisions"]}
 
-    def ask(self, index: int, key: str, text: str, qs: dict[str, Any]) -> dict[str, dict[str, Any]]:
-        """The recorded answers for this call, checked against what is being asked now."""
+    def ask(self, index: int, key: str, text: str, qs: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+        """The recorded answers and timing for this call, checked against what is being asked now."""
         call = self.calls.get(index, {}).get(key)
         if call is None:
             raise ReplayMismatch(f"the recording has no call {key!r} for decision {index}")
@@ -184,7 +189,7 @@ class ReplayAsker:
             got = call["answers"].get(name)
             if got is None or list(got["options"]) != [o.name for o in q.options] or got["question"] != q.text:
                 raise ReplayMismatch(f"decision {index} call {key!r}: question {name!r} differs from the recording")
-        return {name: call["answers"][name] for name in qs}
+        return {name: call["answers"][name] for name in qs}, {"sent_at": call["sent_at"], "answered_at": call["answered_at"]}
 
 
 def replay(rec: dict[str, Any], scn: Scenario) -> Result:
