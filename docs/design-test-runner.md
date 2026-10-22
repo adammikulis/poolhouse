@@ -254,10 +254,10 @@ labels, how many units have DEPS, and which steps would run.
 | `[[step]] name, run, inputs, tools, env, slots, timeout, keep` | a build or environment command (4.4) | `slots` and `timeout` below |
 | `[label.NAME] match, lease, serial, platform, local, reuse, slots, estimate, timeout` | what a label means (4.3); `match` globs ids that carry it | see 4.3 |
 | `[set.NAME] labels, not_labels, ids, extra, reuse` | a named selection: `poolhouse-test run @NAME` (4.5) | none |
-| `[reuse] key_env, key_tools, canary` | extra key inputs; the sampling rate | none; none; 0.05 (`CANARY_RATE`, `docs/test-reuse.md`) |
+| `[reuse] key_env, key_tools, canary` | extra key inputs; the sampling rate | none; none; none (off; the project's file sets it) |
 | `[remote] default, accept` | `auto`, `local` or `pool`; which labels may leave this machine | `auto` (section 6.1); every label except `local` |
 | `[failfirst] tests, fail_line, exempt_line, mode` | section 5.9 | `report`; the lines of `docs/agent-policy.md` |
-| `[schedule] seed, unrecorded_max` | a committed durations file used until history exists (CI); seconds assumed for a unit with no record | none; the median of the recorded ones, at most `testhistory`'s 30 s |
+| `[schedule] seed, unrecorded_max, silence_margin, total_margin, queue_wait` | a committed durations file used until history exists (CI); seconds assumed for a unit with no record; the margins of the hang guards (5.10); the queue limit | none; the median of the recorded ones; none; none (required unless every unit and step has a `timeout`: the run is refused with status 4, 5.10); none; none |
 | `[requires]` | things a device must have, checked by probes the device owns (6.5) | none |
 | `[[unit]]` | a command unit with no LIST (5.7) | none |
 | `[preset.NAME]` | a preset defined in the project (7) | none |
@@ -304,10 +304,12 @@ A step is a command the project declares to prepare a device before any unit run
 - **Its own directories.** The step receives `{cache}`, a directory keyed by the step's key and removed when idle, and `{shared}`, a
   directory that persists across keys for the same project and sender (a compiler's target folder). Both are outside the checkout and
   outside the tree a device receives; later commands read them as `{step:NAME}` (the cache) and `{shared:NAME}`.
-- **Admitted.** A step takes `slots` (default a quarter of the capacity, `testunits.JOBS_DIVISOR`) from the admission interface before it
-  starts and reports `CARGO_BUILD_JOBS`-style parallelism through `{jobs}`.
-- **Pruned.** `keep` (default three days, `testnode.IDLE_S`) removes keyed directories nobody used; a step may name `prune`, a command
-  run at most once in 24 hours (`testartifacts.EVERY_S`), for what the runner cannot see inside `{shared}`.
+- **Admitted.** A step takes the `slots` its table names, else the slots the admission interface has free when the step starts (a
+  measurement, not a fraction of the capacity), before it starts and reports `CARGO_BUILD_JOBS`-style parallelism through `{jobs}`.
+- **Pruned.** `keep` (the project's setting, no runner default) removes keyed directories not used for that long; with no `keep`, nothing
+  is removed by age and the least recently used keyed directories are removed when the volume's free disk is needed (10.6). A step may
+  name `prune`, a command run when a run starts and the free disk is short, for what the runner cannot see inside `{shared}`; there is
+  no interval.
 - **Sender-scoped on a device.** On a device that receives a shard, `{cache}` and `{shared}` are keyed by the sender's fingerprint
   as well, so one sender cannot leave a product that another sender's step key then finds (10.8, A12).
 
@@ -353,8 +355,9 @@ least finish time, ties broken by target name. The same inputs give the same pla
 inputs.
 
 - **Local with no pool.** The one target is this machine, with capacity from the admission broker (5.5). The shard is run by
-  `workers = clamp(sqrt(estimated seconds), 1, capacity)` processes pulling batches from the shard's queue (`docs/test-execution.md`:
-  each worker costs about a second of start-up); a run with no estimate takes the whole capacity.
+  `workers = clamp(sqrt(estimated seconds / start-up seconds), 1, capacity)` processes pulling batches from the shard's queue. The
+  rule is the minimum of `start-up * workers + work / workers`, and the start-up seconds are the project's own, measured: the median
+  of the recorded `setup` seconds of earlier workers in the history (5.8); with none recorded the run takes the whole capacity.
 - **A device takes a shard only when it finishes sooner.** A target's `fixed_cost_s` is measured from earlier shards on it (upload,
   unpack, tree hash, steps, start); with none recorded it is the measured local cost of the same phases. A unit goes to the target that
   finishes it first including that cost, so a short run stays local and a long run spreads, with no constant of the runner's own.
@@ -432,14 +435,14 @@ writes them). The store keeps them in the entry's **manifest** and a later hit r
 `unstorable` with a reason (a write outside the temporary roots, a skip), and then nothing is stored. The runner never infers either.
 
 The store is the one `docs/test-reuse.md` defines: entries written through a rename, a chain of row hashes, `latest/<key>`, single flight
-with `inflight/<key>.json` claims (a waiter waits up to 900 s, `testreuse_run.WAIT_S`), a store per project (origin url hash, else the
+with `inflight/<key>.json` claims (a waiter waits while the claim's holder is alive, a liveness the OS reports, and for no fixed time), a store per project (origin url hash, else the
 common git directory: `testruns.scope`), only the runner process writes it, and the state directory is outside the checkout and outside
 any root a unit may write. What it adds:
 
 - **Kinds.** An entry is `local` (this machine ran it) or `remote` (a device did, keyed by its fingerprint and platform class). A
   `remote` pass satisfies only a later run on that device and never a local run; a `local` pass satisfies this machine. Task evidence
   (`workspace.testruns.verified`) reads only `local`. The ledger `remote-results.json` is deleted; its job is the `remote` kind.
-- **Canary.** Each hit is re-executed with probability `reuse.canary` (0.05). A cached pass that fails fresh prints
+- **Canary.** Each hit is re-executed with probability `reuse.canary`, the project's setting with no runner default (with none, no hit is re-executed and the report says `canary: off`; Poolhouse's file sets it). A cached pass that fails fresh prints
   `canary mismatch`, fails the run, writes an `incident` row and a disabling record for the key, and sends one event to the sinks. The
   draw is seeded from the run id, printed in the report, so a run is repeatable with `--seed`.
 - **Never stored:** a failure, a unit with `reuse = false`, a result with `unstorable`, a run whose tree changed while it ran (status
@@ -478,10 +481,12 @@ Grant.release()
 ```
 
 The default implementation is the machine-wide, file-lock-backed broker of `testslots*.py` moved in whole: capacity is the logical CPU
-count less the reserved cores (`DEV_TEST_RESERVED_CORES`, default 1: `testslots.base_budget`, `docs/test-execution.md`), shortest
-estimated work first, aging after 600 s (`BACKGROUND_MAX_WAIT_S`), backfill after two later requests or 30 s (`BACKFILLS`,
-`BACKFILL_WAIT_S`), a class of `interactive` or `background` (background when the estimate is 180 s or more:
-`DEV_TEST_BACKGROUND_S`), one slots directory shared by every checkout and project on the machine, a dead holder's record removed at
+count less the cores the machine is measurably busy with outside the broker (load sampled when a permit is asked for) and less the
+cores the user reserves (`reserved_cores` in the user's settings, no default), shortest estimated work first, a request ages once it has waited as
+long as the estimated work ahead of it (from the history, 5.8), so it is never passed over by later shorter work for longer than the
+queue it joined; a later request backfills when it fits in the free slots and its estimate ends before the head's estimated start, so
+the head is never delayed; a class of `interactive` or `background` (background when the project's `[schedule] background_after`
+says so, no default: with none every run is interactive unless the person says `--background`), one slots directory shared by every checkout and project on the machine, a dead holder's record removed at
 once. Environment variable names become `TESTFARM_*` (Poolhouse's `DEV_TEST_*`, read by `tests/conftest.py`, move with them).
 
 A unit holds the slots its label names for the duration of its invocation. Finer admission (a permit per test inside one pytest
@@ -511,11 +516,11 @@ structure tests) is a set of command units; `gaterun.py` and `gatescope.py` are 
 ### 5.8 History and estimates
 
 Every run records per-unit CPU and wall seconds (from the invocation's rusage and the result file's `seconds`), merged under a file lock
-into the project's history in the state directory, shared by every worktree (the common git directory today), an exponentially weighted
-value per unit with a sample count and a sample clipped to three times the value once three exist (`testhistory.py`). The estimate
+into the project's history in the state directory, shared by every worktree (the common git directory today), the median of the recorded samples per
+unit with a sample count (a median is not moved by one slow outlier, so no clip is needed). The estimate
 of a run is the sum of its units' seconds divided by the workers granted, with a unit that has no record counted at the mean of the
-recorded ones with the slowest percent left out, at most `[schedule] unrecorded_max` seconds (30 in Poolhouse's file, from
-`testhistory`); a unit the store would serve costs nothing. The estimate and its class print before admission.
+recorded ones (the median, so no clip and no cap are needed), and with none recorded at all the units are placed by count and the
+estimate says `unknown`; `[schedule] unrecorded_max`, if the project sets it, caps the median; a unit the store would serve costs nothing. The estimate and its class print before admission.
 
 ### 5.9 Fail-first
 
@@ -557,16 +562,31 @@ The runner's rule, for every unit and every project:
   learn queue time.
 - **Outcomes.** A unit is `passed`, `failed`, `timed out` (it ran past its timeout: a failure that says `timed out after N s running`
   and shows the three numbers), `skipped`, `reused`, `not reported`, or **`not started`**. `not started` means the machine could not
-  admit it: it waited for a permit or lease past the queue limit (`WAIT_S`, 3600 s, `testslots.WAIT_S`; `TESTFARM_WAIT_S`), or the run was
+  admit it: it waited for a permit or lease past the project's queue limit (`[schedule] queue_wait`, no runner default; with none, the queue wait is guarded by no progress: the broker's queue position and the holders' heartbeats stop advancing for the derived stretch, status 75 naming the holder waited for), or the run was
   cancelled before its permit. It is neither a failure nor a pass, is listed apart in the report (`NOT STARTED, machine overloaded:
-  waited 3600 s for a permit`), is not stored, and gives status 75. Running the command again continues with exactly those units.
+  waited <N> s for a permit`, N measured), is not stored, and gives status 75. Running the command again continues with exactly those units.
 - **Where a timeout's value comes from.** The runner has no timeout of its own. In order: `[label.NAME] timeout` for the unit's labels
   (the largest of its labels), `[run] timeout`, then none locally. Poolhouse's file takes its value from the owner's setting: 120 s a
   unit (`pyproject.toml`, `docs/limits.md` row `pytest timeout`), and a longer unit carries a label with a longer value (the
   `@pytest.mark.timeout(N)` it has today). On a device a unit with no timeout is bounded by its shard's deadline, which is the largest unit
-  timeout the sender sent for the shard and, when no unit has one, no deadline of the runner's own (the sender's cancel and the receiver's
-  bounds, 10.6, end a runaway).
-  A build step has its own deadline (`BUILD_TIMEOUT_S`, 1800 s) and never counts in a unit's.
+  timeout the sender sent for the shard and, when no unit has one, the hang guard below.
+- **Hang guards: no progress first, a total second.** Nothing waits forever. Each unit, shard, build step and queue wait has (1) a
+  *no-progress* guard: it ends when no output, heartbeat or result row has arrived for a stretch derived from a measurement, namely the
+  longest silence its own recorded runs showed times the project's `[schedule] silence_margin`, or for a device the measured round
+  trip of the stream times that margin; and (2) a *total* guard, the unit's recorded typical duration (the median, 5.8) times the
+  project's `[schedule] total_margin`, used only when the label, step or `[run]` table names no `timeout` (which always wins). The
+  margins are the project's numbers in `testfarm.toml` with no runner default; a unit with no silence recorded of its own takes the
+  guard of its siblings: the median of the per-unit longest silences recorded across the project's other units times `silence_margin`.
+  With no history at all in the project (its first run ever), the run is guarded against the live gaps it produces itself: a silence
+  longer than the longest gap seen so far in this run times `silence_margin`, applied after at least one unit has finished, and the
+  report says `guard: bootstrapping`. **A run with no hang guard is not allowed.** When
+  neither `[schedule] silence_margin` nor an explicit `timeout` for every unit and step is set, the runner refuses to start, loudly,
+  with status 4, naming the missing key and the reason (`testfarm.toml: [schedule] silence_margin is not set, and unit tests/x.py
+  has no timeout: a run with no hang guard is not allowed`). There is no default number. `poolhouse-test init` writes the key for a
+  new project from its measured first run (the longest gap between outputs seen, divided by the median gap, rounded up) and prints it
+  for the person to read in the new file. A guard ends the work loudly, with status 124 for a unit, shard or step and 75 for a queue wait, and the
+  line names what was waited for and the derivation: `unit tests/x.py: no output for 41 s (longest silence recorded 8 s x margin 5)`.
+  A build step has its own `timeout`, else the hang guards above on the step's recorded runs, and never counts in a unit's.
 - **Overload is named, not guessed.** The report says `the machine was overloaded` only when units are `not started`; a run in which every
   unit started but some queued for a long time says `queued N s (the machine's)` and judges the units by `ran_s` alone.
 
@@ -707,6 +727,7 @@ everything = ["pyproject.toml", "tests/conftest.py", "tests/known-fixtures.txt",
 
 [schedule]
 seed = "tests/ci-durations.json"
+silence_margin = 5   # written by `poolhouse-test init` from the measured first run; without it (or a timeout on every unit and step) the run is refused, status 4
 
 [failfirst]
 mode = "enforce"
@@ -740,13 +761,13 @@ What stays in `scripts/` as Poolhouse-specific: `test_kernel_*.py`, `test_contai
 The handling that has landed [code, `testunits.py`, `tests/native_cargo.py`, `testnode.py`, `testartifacts.py`] is: build every target a
 module names in one `cargo test --no-run` call at a quarter of the cores, before the module's timer; run the executables cargo
 reported, never asking cargo again; a staged copy of the workspace at a fixed path keyed by the sources and compiler, a target folder
-keyed by `Cargo.lock` and the compiler and shared by every run; products of old snapshots pruned after three days; cargo's own lock
+keyed by `Cargo.lock` and the compiler and shared by every run; products of old snapshots pruned when the disk is needed, least recently used first; cargo's own lock
 serialising two builds.
 
 In the design this is the `cargo` preset plus a step, with the core knowing none of it:
 
-- the **step** `build` has `inputs` (the workspace files), `tools` (`rustc --version --verbose`), `slots` a quarter of capacity, its own
-  deadline (`BUILD_TIMEOUT_S`, 1800 s), `{shared}` for the target folder (so registry dependencies are built once across keys), `{cache}`
+- the **step** `build` has `inputs` (the workspace files), `tools` (`rustc --version --verbose`), `slots` (the project's, else the free slots), its own
+  `timeout` (the project's), `{shared}` for the target folder (so registry dependencies are built once across keys), `{cache}`
   for the staged workspace and the products manifest, and `prune` for the workspace-crate products (`testartifacts.prune_when_due`);
 - the preset's **list helper** names the targets the step built; its **run helper** executes the built files with the package folder as
   the working directory;
@@ -891,15 +912,17 @@ first, then the ones this design adds.
 |---|---|---|
 | 0 | every selected unit passed or was reused (an empty selection says so and is 0) | the runner's existing rule that "no tests selected" is success (`scripts/test` `clean`) |
 | 1 | at least one unit failed | pytest's failure status, the existing report |
-| 4 | refused before anything ran: invalid config, id, selector or tree; a hook refused; the tree changed during the run; a selector matched nothing | `scripts/test` argument errors and the tree-changed rule |
+| 4 | refused before anything ran: invalid config, id, selector or tree; no hang guard set (`[schedule] silence_margin`, or a `timeout` on every unit and step); a hook refused; the tree changed during the run; a selector matched nothing | `scripts/test` argument errors and the tree-changed rule |
 | 6 | busy: a whole-selection job is already live | `BUSY_EXIT` |
 | 70 | a device did not complete its part: not in the pool, refused, unreachable, vanished mid-run, missing a requirement | `test_on.NOT_RUN`, `docs/test-farm.md` |
-| 75 | at least one unit never started: it waited for a permit past the queue limit while the machine was overloaded; nothing about it failed | `EX_TEMPFAIL` of `sysexits.h`; the queue limit is `WAIT_S` (3600 s, `testslots.WAIT_S`) |
+| 75 | at least one unit never started: it waited for a permit past the queue limit while the machine was overloaded; nothing about it failed | `EX_TEMPFAIL` of `sysexits.h`; the queue limit is the project's `[schedule] queue_wait` |
 | 124 | a deadline or an output bound ended a shard | `shard_run.execute` |
 | 130 | cancelled | `scripts/test` job cancel |
 
-**A device vanishes mid-run.** The sender polls (every 2 s, `POLL_S`); a device that has not answered for 45 s (`dev.LOST_S`) ends its
-part: the report says, loudly and on stderr, `<device> stopped answering 45s ago while shard <id> ran there; its units did not finish
+**A device vanishes mid-run.** The sender holds one pinned-TLS stream per shard and the receiver reports on it as things happen,
+so there is no poll interval; a stream that fails (a reset, or the TCP keepalive timeout of the operating system), or that carries
+no result or heartbeat for the no-progress stretch (the measured round trip of the stream times the project's `silence_margin`), ends
+the device's part: the report says, loudly and on stderr, `<device> stopped answering <N>s ago (measured) while shard <id> ran there; its units did not finish
 and were not run anywhere else`, lists the units as `not run` (neither failed nor reused), and the status is 70. The other targets
 finish and are reported. Nothing re-runs on another device or locally by itself. Running the same command again continues: reuse
 serves every unit that passed, so exactly the not-run remainder runs, on whatever is reachable then. The shard on the vanished device is
@@ -920,7 +943,7 @@ the seed printed; no unit depends on another having run. Wall time and which dev
 
 ```
 pip install poolhouse                       # nothing else: the command, the Python API and the presets come with it
-poolhouse-test init                         # finds the tool's marker file, writes a four-line testfarm.toml, prints it
+poolhouse-test init                         # finds the tool's marker file, writes a testfarm.toml (the tool's four lines and, after its measured first run, `[schedule] silence_margin`), prints it
 poolhouse-test run                          # parallel on this machine under the broker, with reuse; second run reuses what passed
 poolhouse-test run --affected               # once DEPS are given (init offers the globs it can see)
 poolhouse-test devices                      # the pool's other devices, whether each takes tests, platform, free slots
@@ -1091,33 +1114,33 @@ under the module that holds them after the move; a number with no source is deri
 
 | Name | Value | Source |
 |---|---|---|
-| capacity | logical CPUs less reserved cores (default 1) | `testslots.base_budget`, `docs/test-execution.md` |
-| automatic workers | square root of the estimated seconds, between 1 and the capacity | `docs/test-execution.md` (each worker costs about a second of start-up) |
-| background class | an estimate of 180 s or more | `DEV_TEST_BACKGROUND_S`, `testclass.py` |
-| aging, backfill | 600 s; 2 later requests or 30 s | `testslots_policy.BACKGROUND_MAX_WAIT_S`, `BACKFILLS`, `BACKFILL_WAIT_S` |
-| canary rate | 0.05 | `testreuse_run.CANARY_RATE`, `docs/test-reuse.md` |
-| single-flight wait | 900 s | `testreuse_run.WAIT_S` |
-| step build deadline, parallelism, idle, prune walk | 1800 s; a quarter of the cores; 3 days; 24 h | `testnode.BUILD_TIMEOUT_S`, `testunits.JOBS_DIVISOR`, `testnode.IDLE_S`, `testartifacts.EVERY_S` |
-| sample clip in history | three times the value once three samples exist | `testhistory.py` |
+| capacity | logical CPUs less the measured outside load and the user's `reserved_cores` | the OS (CPU count), a load sample, the user's setting with no default |
+| automatic workers | `sqrt(estimated seconds / measured start-up seconds)`, between 1 and the capacity | the minimum of start-up times workers plus work divided by workers; start-up from the recorded `setup` seconds |
+| background class | the project's `[schedule] background_after` | the project's file, no runner default |
+| aging, backfill | aged by the estimated work ahead; backfilled when it ends before the head's estimated start | the history's estimates (5.8), no constant |
+| canary rate | the project's `[reuse] canary` | the project's file, no runner default; Poolhouse's file sets it |
+| single-flight wait | while the claim holder is alive | the OS's process liveness, no time |
+| hang guards | no-progress stretch: longest recorded silence or measured round trip times `silence_margin`; total: recorded median times `total_margin` | the history and the measured round trip; both margins are the project's, no runner default |
+| step build deadline, slots, idle, prune | the step's `timeout`, else the hang guards; its `slots` or the free slots; `keep` or least recently used on disk need; no interval | the project's file, or the measured free slots and free disk |
+| history sample | the median of the recorded samples | no clip |
 | fixed overhead limit | 5 s or a quarter of the wall time | AGENTS.md section 5 |
 | units per shard, slices per run | no bound of the runner's own | units: the receiver's request-size bound (10.6); slices: the plan (targets times `slices_per_target`), or the project's `slice_count`; the tool refuses what it cannot take |
-| shard deadline on a device | the largest of the units' timeouts from the project's file, or none | replaces `shard_spec.MOST_SECONDS` (3600 s), which has no source |
+| shard deadline on a device | the largest of the units' timeouts from the project's file, else the no-progress guard and the recorded-typical-times-margin total (5.10) | replaces `shard_spec.MOST_SECONDS` (3600 s), which has no source |
 | packed tree, unpacked tree, members | shares of the receiver's free scratch disk and free inodes, divided by the shards it holds | replaces `shard_tree.MOST_PACKED`, `MOST_UNPACKED`, `MOST_MEMBERS` (24 MiB, 256 MiB, 20,000), which have no source |
 | runner output, tee, result, tail, failures, message, tests, junit | shares of the same free scratch disk, divided by the shards held | replaces `shard_run.MOST_LOG`, `MOST_TEE`, `shard_routes.MOST_RESULT`, `shard_result.MOST_*`, which have no source |
 | shards held, per sender | the device's free slots at admission, and the free disk (10.6) | replaces `shard_store.MOST_KEPT`, `MOST_OWNED` (8, 4), which have no source |
 | idle upload, kept shard, grace before kill | the receiver's admission clock: an upload idle for the sender's own poll interval times missed polls; a kept shard until its result is fetched or the disk is needed; grace is the process group's own exit | replaces `shard_store.IDLE_S`, `KEPT_S`, `shard_run.GRACE_S` (600 s, 24 h, 30 s), which have no source |
-| poll, lost device | `dev.POLL_S`, `dev.LOST_S` (2 s, 45 s) | carried over in `testfarm/dev.py`; to be derived from the measured round trip of the transport, and until then the owner's values in source |
-| shard id | 128 random bits | the security strength of the pool's signatures (a collision or a guess is out of reach) |
+| poll, lost device | none: results are reported on the stream; a failed or silent stream is the loss | the transport's own failure (reset, the OS's keepalive timeout); replaces `dev.POLL_S`, `dev.LOST_S` (2 s, 45 s) |
+| shard id | 128 random bits | a security floor: guessing or colliding is out of reach (a row of `docs/limits.md`) |
 | id length | `PATH_MAX` of the sender and the receiver | the operating system headers |
 | arguments before `{idfile}` | `ARG_MAX` of the platform | `sysconf(SC_ARG_MAX)` |
 | exit statuses | 0, 1, 4, 6, 70, 75, 124, 130 | section 11 |
-| queue limit | 3600 s | `testslots.WAIT_S` |
+| queue limit | the project's `[schedule] queue_wait`, else none | the project's file, else the no-progress guard; replaces `testslots.WAIT_S` (3600 s) |
 | unit timeout in Poolhouse's file | 120 s | `pyproject.toml` `timeout`, the owner (`docs/limits.md`, `pytest timeout`) |
 
-Rows above that name a module constant with a value and no source here (aging, backfill, single-flight wait, step build deadline, idle,
-prune walk, sample clip, `unrecorded_max` 30 s, queue limit, poll, lost device) are carried over unchanged from the current code and are
-the owner's values in source; the step that moves each module either measures it (a poll is a multiple of the measured round trip, an
-unrecorded duration is the median of the recorded ones) or gives it a `docs/limits.md` row, and a number that gets neither is removed.
+`unrecorded_max` (the cap on a unit with no record) is the project's setting with no runner default, and the sample clip and `JOBS_DIVISOR`
+are gone. No row of this table has "the owner's value in code" as its source: a number is measured, set by the project's file with no
+runner default, or has a row in `docs/limits.md` with its protocol, operating system or security reason (the shard id).
 
 The Rust host's constants (`MOST_RUNNING` 2, `MOST_OPEN` 6, `MOST_KEPT` 40, `GRACE_S` 120, `KILL_AFTER` 45) have no source: the single
 receiver derives them (running shards from the device's free slots, open shards from its free disk, the kill grace from the process
