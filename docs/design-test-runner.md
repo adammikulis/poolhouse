@@ -257,7 +257,7 @@ labels, how many units have DEPS, and which steps would run.
 | `[reuse] key_env, key_tools, canary` | extra key inputs; the sampling rate | none; none; none (off; the project's file sets it) |
 | `[remote] default, accept` | `auto`, `local` or `pool`; which labels may leave this machine | `auto` (section 6.1); every label except `local` |
 | `[failfirst] tests, fail_line, exempt_line, mode` | section 5.9 | `report`; the lines of `docs/agent-policy.md` |
-| `[schedule] seed, unrecorded_max, silence_margin, total_margin, queue_wait` | a committed durations file used until history exists (CI); seconds assumed for a unit with no record; the margins of the hang guards (5.10); the queue limit | none; the median of the recorded ones; none; none (required unless every unit and step has a `timeout`: the run is refused with status 4, 5.10); none; none |
+| `[schedule] seed, unrecorded_max, silence_margin, total_margin, queue_wait` | a committed durations file used until history exists (CI); seconds assumed for a unit with no record; the margins of the hang guards (5.10); the queue limit | none; the median of the recorded ones; none, and required unless every unit and step has a `timeout` (the run is refused with status 4, 5.10); none; none |
 | `[requires]` | things a device must have, checked by probes the device owns (6.5) | none |
 | `[[unit]]` | a command unit with no LIST (5.7) | none |
 | `[preset.NAME]` | a preset defined in the project (7) | none |
