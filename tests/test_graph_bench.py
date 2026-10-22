@@ -1515,8 +1515,10 @@ def test_detach_reruns_the_command_in_its_own_session_with_a_log_of_its_own(tmp_
     argv = ["sweep", "--serve", "models/tiny.gguf", "--detach", "--also", "terse", "--smoke"]
     assert bench.main(argv) == 0
 
-    assert started["command"][:3] == [sys.executable, "-m", "poolhouse.bench"]
-    assert started["command"][3:] == [a for a in argv if a != "--detach"]
+    command = started["command"]
+    at = command.index("-m")        # the interpreter, whatever isolation flags jobs.py gives it
+    assert command[0] == sys.executable and command[at:at + 2] == ["-m", "poolhouse.bench"]
+    assert command[at + 2:] == [a for a in argv if a != "--detach"]
     kw = started["kw"]
     assert kw["start_new_session"] is True and "creationflags" not in kw
     assert kw["stdin"] is subprocess.DEVNULL and kw["stderr"] is subprocess.STDOUT
@@ -1524,7 +1526,7 @@ def test_detach_reruns_the_command_in_its_own_session_with_a_log_of_its_own(tmp_
     assert log.parent == tmp_path / "home" / "logs"
     assert log.name.startswith("sweep-tiny-") and log.suffix == ".log"
     assert len(log.stem.split("-")[-1]) == 15                       # YYYYmmddTHHMMSS
-    assert kw["env"]["PYTHONUNBUFFERED"] == "1"
+    assert "-u" in command[:at], "unbuffered, so the log is current while the run goes"
 
     held = json.loads((tmp_path / "home" / "measuring.json").read_text())
     assert held["pid"] == 4242 and held["log"] == str(log)
