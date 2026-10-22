@@ -20,7 +20,7 @@ from poolhouse.http import Options, request_json
 from poolhouse.serve import admission, broker_wire
 from poolhouse.serve.leases import lease_file, recorded_servers
 from poolhouse.serve.process import kill_process_tree, pid_exists
-from poolhouse.testing.fakes import fake_llama_binary
+from poolhouse.testing.canned import canned_binary
 from tests.model_approval import approved
 
 pytest_plugins = ["serve_node"]
@@ -67,7 +67,7 @@ broker_wire.serve()
 @pytest.fixture
 def machine(tmp_path, monkeypatch):
     """This machine's broker, running as it would, over a machine with no other servers."""
-    binary = fake_llama_binary(tmp_path)
+    binary = canned_binary(tmp_path)
     monkeypatch.delenv(broker_wire.LOCAL_ENV)
     monkeypatch.setenv("LLAMA_CPP_SERVER", str(binary))
     monkeypatch.setenv("PYTHONPATH", SRC)

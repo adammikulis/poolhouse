@@ -13,7 +13,8 @@ from poolhouse.serve import grant
 from poolhouse.serve.backend import Lease, LlamaServerBackend, ServerFailed, ServerInfo, ServerSpec
 from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.ports import free_port
-from poolhouse.testing.fakes import FakeLlamaServer, Served, fake_binary
+from poolhouse.testing.canned import Canned, CannedServer
+from poolhouse.testing.fakes import fake_binary
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -34,7 +35,8 @@ def test_a_lease_for_another_port_is_refused(tmp_path):
     port = free_port()
     with grant.broker_grant():
         wrong = Lease(port=port + 1, owner_pid=1, state_file="x")
-    with pytest.raises(ServerFailed, match="starts only on the port its record names"):
+    with grant.broker_grant(), pytest.raises(ServerFailed,
+                                             match="starts only on the port its record names"):
         LlamaServerBackend(binary=binary).start(
             ServerSpec(model=gguf, port=port), timeout=1.0, preflight=False,
             check_flags=False, lease=wrong)
@@ -135,10 +137,10 @@ def _ended(proc, within: float = 10.0) -> bool:
 @pytest.fixture
 def serving():
     """llama-servers on real sockets, closed at the end of the test."""
-    started: list[FakeLlamaServer] = []
+    started: list[CannedServer] = []
 
-    def start(model: str) -> FakeLlamaServer:
-        fake = FakeLlamaServer(Served(model=f"/models/{model}", context=4096))
+    def start(model: str) -> CannedServer:
+        fake = CannedServer(Canned(served_path=f"/models/{model}", context=4096))
         started.append(fake)
         return fake
 

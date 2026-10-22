@@ -159,14 +159,14 @@ def test_the_flags_a_person_tunes_with_are_passed(tmp_path):
 
 def test_the_template_and_the_lookup_cache_a_spec_names_are_verified_at_load(tmp_path):
     from poolhouse.serve.ports import free_port
-    from poolhouse.testing.fakes import fake_llama_binary
+    from poolhouse.testing.canned import canned_binary
 
     model = tmp_path / "model.gguf"
     model.write_bytes(b"GGUF" + b"\x00" * 64)
     approved(model)
     template = tmp_path / "chat.jinja"
     template.write_text("{{ messages }}")
-    manager = ServerManager(backend=LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
     spec = ServerSpec(model=model, chat_template_file=str(template), port=free_port())
     with pytest.raises(guarded.SentinelRefused, match=r"chat\.jinja was not downloaded"):

@@ -376,7 +376,10 @@ def _identity(served: Served, process: dict) -> tuple[Served | None, bool]:
     if model is None and params and params.model and Path(params.model).is_absolute():
         model = Path(params.model)
     observed = capabilities(model, embedding=process.get('embedding'))
-    return Served(served.port, [_name(name) for name in names], slots, served.started_at,
+    listed = [_name(name) for name in names]
+    if params and params.model and _name(params.model) not in listed:
+        listed.append(_name(params.model))  # a reported id is only a label (--alias): the file it loaded is a name too
+    return Served(served.port, listed, slots, served.started_at,
                   context, slot_context, Path(draft).name if draft else "", spec_type, state, names, observed), True
 
 

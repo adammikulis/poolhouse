@@ -27,7 +27,8 @@ from poolhouse.serve.leases import lease_file, recorded_servers
 from poolhouse.serve.manager import ServerManager, stop_all_servers
 from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import pid_exists
-from poolhouse.testing.fakes import FakeBackend, FakeLlamaServer, Served
+from poolhouse.testing.canned import Canned, CannedServer
+from poolhouse.testing.fakes import FakeBackend
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -43,10 +44,10 @@ def listener_of(**changed):
 
 @pytest.fixture
 def served():
-    made: list[FakeLlamaServer] = []
+    made: list[CannedServer] = []
 
-    def start(model: str = "model.gguf", **held) -> FakeLlamaServer:
-        made.append(FakeLlamaServer(Served(model=f"/models/{model}", context=4096, **held)))
+    def start(model: str = "model.gguf", **held) -> CannedServer:
+        made.append(CannedServer(Canned(served_path=f"/models/{model}", context=4096, **held)))
         return made[-1]
 
     yield start

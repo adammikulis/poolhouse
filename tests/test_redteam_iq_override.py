@@ -21,7 +21,7 @@ from poolhouse.serve.broker_wire import _Server, spec_from
 from poolhouse.serve.cli import COMMANDS
 from poolhouse.serve.process import kill_process_tree
 from poolhouse.serve.quant_guard import BlockedQuant
-from poolhouse.testing.fakes import fake_llama_binary
+from poolhouse.testing.canned import canned_binary
 
 STRING, U32 = 8, 4
 
@@ -93,7 +93,7 @@ def test_the_up_command_takes_no_abbreviation_of_the_flag():
 
 @pytest.fixture
 def wire(tmp_path):
-    manager = ServerManager(LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    manager = ServerManager(LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
     server = _Server(Broker(manager, idle_s=3600.0, room=lambda: None, scan=lambda: []))
     yield server

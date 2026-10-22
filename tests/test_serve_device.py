@@ -16,7 +16,7 @@ from poolhouse.serve.broker import Ask, Broker, BrokerError, Held
 from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.manager import ServerManager
 from poolhouse.serve.process import kill_process_tree, offloaded_layers
-from poolhouse.testing.fakes import FakeLlamaServer, Served, fake_llama_binary
+from poolhouse.testing.canned import Canned, CannedServer, canned_binary
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -27,7 +27,7 @@ LLAMA = {"pid": 4242, "ip": "127.0.0.1", "uid": os.getuid(), "user": "me",
 
 @pytest.fixture
 def broker(tmp_path):
-    manager = ServerManager(LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    manager = ServerManager(LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
     made = Broker(manager, idle_s=3600.0, room=lambda: None, scan=lambda: [])
     yield made
@@ -75,7 +75,7 @@ def test_the_device_is_the_one_given_else_read_off_the_layers():
 
 
 def test_a_cpu_spec_starts_a_server_with_no_layers_offloaded(tmp_path):
-    backend = LlamaServerBackend(binary=fake_llama_binary(tmp_path))
+    backend = LlamaServerBackend(binary=canned_binary(tmp_path))
     argv = backend.command(ServerSpec(model="m.gguf", device="cpu"))
     assert argv[argv.index("-ngl") + 1] == "0"
     argv = backend.command(ServerSpec(model="m.gguf"))
@@ -145,7 +145,7 @@ def test_the_command_line_says_how_many_layers_are_offloaded():
 
 @pytest.mark.parametrize(("layers", "device"), [("0", "cpu"), ("99", "gpu"), ("auto", "gpu")])
 def test_an_unmanaged_server_has_the_device_its_command_line_gives(layers, device):
-    fake = FakeLlamaServer(Served(model="/models/m.gguf", context=4096))
+    fake = CannedServer(Canned(served_path="/models/m.gguf", context=4096))
     try:
         seen = unmanaged.examine(fake.port, find=lambda _port: {**LLAMA, "n_gpu_layers": layers})
         assert seen.ok and seen.device == device
@@ -155,7 +155,7 @@ def test_an_unmanaged_server_has_the_device_its_command_line_gives(layers, devic
 
 
 def test_status_names_the_device_a_recorded_server_computes_on(monkeypatch, capsys):
-    fake = FakeLlamaServer(Served(model="/models/m.gguf", context=4096))
+    fake = CannedServer(Canned(served_path="/models/m.gguf", context=4096))
     try:
         snapshot = ops.look(fake.port, {fake.port: {"device": "cpu"}})
         assert snapshot is not None and snapshot.device == "cpu"
