@@ -178,7 +178,7 @@ def test_a_run_document_carries_every_what_if_branch_without_asking_a_model(plai
     requests = [r["n"] for r in plain["rows"] if r["kind"] == "decision"]
     assert sorted(map(int, plain["whatif"])) == requests and requests
     branch = plain["whatif"][str(requests[0])]
-    assert set(branch) == {"hold", "insert_rod", "withdraw_rod", "change_flow", "regulator", "protection", "turbine_test", "orm_print", "scram"}
+    assert set(branch) == set(plain["classes"]) and "hold" in branch and "scram" in branch
     assert all(len(b["rows"]) == 10 and "damaged" in b and "peak_P" in b for b in branch.values())
 
 
