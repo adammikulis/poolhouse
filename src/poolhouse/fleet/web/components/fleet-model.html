@@ -17,6 +17,14 @@ studio-view, pool-view, chat-view, models-view, settings-view, fit-view, data-vi
 
   M.MIN_PASS = 5;
 
+  /** A random v4 UUID on any origin: the browser's own UUID call is only on https and loopback pages, a LAN address has none. */
+  M.uuid = () => {
+    const b = crypto.getRandomValues(new Uint8Array(16));
+    b[6] = b[6] & 15 | 64; b[8] = b[8] & 63 | 128;
+    const h = Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+  };
+
   M.downloadMessage = function (g) {
     if (g.error) return g.error;
     const parts = [g.note || (g.phase === "mtp" ? "Downloading MTP head" : "Downloading model")];
