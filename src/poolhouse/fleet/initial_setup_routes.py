@@ -37,23 +37,38 @@ class InitialSetupRoutes:
         return True
 
     def _local_browser(self, *, read=False) -> bool:
+        """This computer's own window of the Poolhouse page, addressed as loopback from loopback."""
+        host = self._window_host()
+        return (host is not None and invite_routes.local(self.client_ip)
+                and host.hostname in {"localhost", "127.0.0.1", "::1"} and self._own_window(host, read=read))
+
+    def _signed_in_window(self, *, read=False) -> bool:
+        """A window of the Poolhouse page the person opened at the address they reached this daemon by, wherever
+        that is: a LAN address as much as loopback. The loopback tests of `_local_browser` are left out, and so is
+        the need for Sec-Fetch-Site: a browser sends none from a plain-http page that is not loopback."""
+        host = self._window_host()
+        return host is not None and self._own_window(host, read=read, untrusted_origin=True)
+
+    def _window_host(self):
         try:
             host = urllib.parse.urlsplit("//" + self.host_header)
-            port = 80 if host.port is None else host.port
-            active = self.handler.server.server_address[1]
+            int(host.port or 0)                  # a malformed port raises here
+            return host if type(self.handler.server.server_address[1]) is int else None
         except (ValueError, AttributeError, IndexError, TypeError):
-            return False
+            return None
+
+    def _own_window(self, host, *, read=False, untrusted_origin=False) -> bool:
+        port = 80 if host.port is None else host.port
         session = self.ui.sessions.get(parse_cookie(self.cookie))
         origin = self.header("Origin")
         origin_ok = origin in {"http://" + self.host_header, "https://" + self.host_header}
         if read is True and self.method == "GET" and not origin:
             origin_ok = True
-        return (invite_routes.local(self.client_ip) and host.hostname in {"localhost", "127.0.0.1", "::1"}
-                and host.username is None and host.password is None
+        return (host.username is None and host.password is None
                 and not host.path and not host.query and not host.fragment
-                and type(active) is int and port == active and self.ui.host_ok(self.host_header)
+                and port == self.handler.server.server_address[1] and self.ui.host_ok(self.host_header)
                 and self.header("X-Poolhouse-UI") == "1" and origin_ok
-                and self.header("Sec-Fetch-Site") == "same-origin"
+                and self.header("Sec-Fetch-Site") in (("same-origin", "") if untrusted_origin else ("same-origin",))
                 and not any(self.header(name) for name in
                             ("Authorization", "X-Poolhouse-Token", "X-Poolhouse-Agent"))
                 and (session is None or session.who != "token"))
