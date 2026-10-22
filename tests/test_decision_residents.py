@@ -456,13 +456,13 @@ def test_managed_host_cannot_be_created_without_broker_grant(monkeypatch):
 
 def test_actual_token_limit_refuses_before_any_model_forward(monkeypatch):
     from poolhouse.decide.base import Asked
-    from poolhouse.decide.pointer import MAX_TOKENS
+    from poolhouse.decide.pointer_prompt import MAX_PROMPT_TOKENS
     from poolhouse.decide.types import DecideError, Option
     from poolhouse.serve.decision_host import HostedPointer
 
     monkeypatch.setattr("poolhouse.decide.pointer._torch", lambda: SimpleNamespace())
     def tokenizer(*_args, **_kwargs):
-        return {"input_ids": SimpleNamespace(shape=(1, MAX_TOKENS + 1))}
+        return {"input_ids": SimpleNamespace(shape=(1, MAX_PROMPT_TOKENS + 1))}
     model = HostedPointer.__new__(HostedPointer)
     model._lock = threading.Lock()
     model._loaded = (tokenizer, None, None, "cpu", SimpleNamespace(temperature=1, details=None), {})

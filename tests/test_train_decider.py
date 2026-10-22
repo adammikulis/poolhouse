@@ -125,7 +125,7 @@ def run_tiny(tiny_base, tmp_path, steps=6):
     from poolhouse.train.decider import train
     from poolhouse.train.lora import Lora
     out = tmp_path / "decider"
-    settings = Settings(name="tiny", base=tiny_base, steps=steps, batch_size=4, device="cpu",
+    settings = Settings.smoke(name="tiny", base=tiny_base, steps=steps, batch_size=4, device="cpu",
                         dtype="float32", lora=Lora(4, 8, 0.0, ("q_proj", "v_proj")), lr=1e-3,
                         test_fraction=0.25, calibrate_fraction=0.25, baseline="none")
     return train(tiny_cases(), out, settings), out
@@ -164,3 +164,17 @@ def test_the_loss_falls_when_the_model_can_learn_the_rule(tiny_base, tmp_path):
     result, _ = run_tiny(tiny_base, tmp_path, steps=40)
     early, late = result.losses[:8], result.losses[-8:]
     assert sum(late) / 8 < sum(early) / 8
+
+
+def test_a_run_by_epochs_with_accumulation_and_checkpointing_takes_the_steps_the_epochs_make(
+        tiny_base, tmp_path):
+    from poolhouse.train.decider import train
+    from poolhouse.train.lora import Lora
+    settings = Settings.smoke(
+        name="epochs", base=tiny_base, steps=None, epochs=2.0, batch_size=2, grad_accum=2,
+        device="cpu", dtype="float32", lora=Lora(4, 8, 0.0, ("q_proj", "v_proj")), lr=1e-3,
+        gradient_checkpointing=True, test_fraction=0.25, calibrate_fraction=0.25, baseline="none")
+    result = train(tiny_cases(), tmp_path / "decider", settings)
+    assert len(result.losses) == settings.steps_for(result.n_train) > 4
+    assert json.loads((tmp_path / "decider" / "decider.json").read_text())["training"][
+        "grad_accum"] == 2

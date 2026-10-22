@@ -2,7 +2,7 @@
 import pytest
 from native_cargo import native_node_units, native_targets_built  # noqa: F401 (fixtures)
 
-BOARD = ('board_rows', 'sessions', 'session_profile', 'idle', 'node_attacks', 'lease', 'lease_parties', 'claims', 'claims_foreign', 'landing')
+BOARD = ('board_rows', 'sessions', 'idle', 'node_attacks', 'lease', 'lease_parties', 'claims', 'claims_foreign', 'landing')
 NATIVE_TARGETS = (*BOARD, 'worktree_evidence')
 
 

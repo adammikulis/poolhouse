@@ -12,12 +12,12 @@ from poolhouse.command import Group, flag, option
 from poolhouse.decide import dataset, metrics, registry
 from poolhouse.decide.cases import Case
 from poolhouse.decide.guards import guard_cases
-from poolhouse.decide.pins import BASES, QWEN35_0_8B_BASE, STRANDS_V19, Checkpoint
+from poolhouse.decide.pins import BASES, QWEN35_2B_BASE, STRANDS_V19, Checkpoint
 from poolhouse.decide.types import DecideError
 from poolhouse.home import expand
 from poolhouse.log import say, warn
-from poolhouse.train.decider import Settings, check_inputs, split_cases, train
-from poolhouse.train.lora import DEFAULT_TARGETS, Lora
+from poolhouse.train.decider import DECIDER_TARGETS, Settings, check_inputs, split_cases, train
+from poolhouse.train.lora import Lora
 
 __all__ = ["COMMANDS", "OPTIONS", "main", "run"]
 
@@ -32,12 +32,22 @@ def _base(value: str) -> Checkpoint | Path:
 
 
 def _settings(args: Namespace) -> Settings:
-    return Settings(
-        name=args.name, base=_base(args.base), init=STRANDS_V19 if args.init == "strands" else None,
-        steps=args.steps, batch_size=args.batch_size, lr=args.lr, seed=args.seed,
+    """The run's settings: the reference recipe, or `Settings.smoke` with ``--smoke``, and only
+    what the person gave on top of it."""
+    given = {k: v for k, v in {
+        "steps": args.steps, "epochs": args.epochs, "batch_size": args.batch_size,
+        "grad_accum": args.grad_accum, "lr": args.lr, "max_tokens": args.max_tokens}.items()
+        if v is not None}
+    if args.base:
+        given["base"] = _base(args.base)
+    if args.rank:
+        given["lora"] = Lora(args.rank, 2 * args.rank, 0.05, DECIDER_TARGETS)
+    make = Settings.smoke if args.smoke else Settings
+    return make(
+        name=args.name, init=STRANDS_V19 if args.init == "strands" else None, seed=args.seed,
         device=args.device, download=args.download, baseline=args.baseline,
         allow_worse=args.allow_worse, replace=args.replace, wait_s=args.wait,
-        floor=args.floor, allow_repo=args.allow_in_repo, lora=Lora(args.rank, 2 * args.rank, 0.05, DEFAULT_TARGETS))
+        floor=args.floor, allow_repo=args.allow_in_repo, **given)
 
 
 def _show(s: Settings, cases: Sequence[Case], eval_cases: Sequence[Case] | None, out: Path
@@ -88,8 +98,12 @@ OPTIONS = [
     flag("--name", required=True, help="the name the decider is registered under"),
     flag("--eval", default="", help="a JSONL file of held-out cases to score on; refused if "
                                     "it shares a case or group with --data"),
-    flag("--base", default=QWEN35_0_8B_BASE.name,
-         help=f"a pinned base ({', '.join(sorted(BASES))}) or a local model directory"),
+    flag("--base", default="",
+         help=f"a pinned base ({', '.join(sorted(BASES))}) or a local model directory "
+              f"(default {QWEN35_2B_BASE.name}; with --smoke the 0.8B)"),
+    flag("--smoke", action="store_true",
+         help="the pipeline-check settings (0.8B base, 60 steps of 4 cases) instead of the "
+              "reference recipe's; for tests and a first look, not for a decider you rely on"),
     flag("--baseline", default="auto",
          help="what the result must not be worse than: auto, majority, strands, none or a "
               "registered decider"),
@@ -106,9 +120,21 @@ OPTIONS = [
     flag("--allow-in-repo", action="store_true",
          help="allow --out inside a git work tree"),
     option("dry-run"),
-    flag("--steps", type=int, default=60), flag("--batch-size", type=int, default=4),
-    flag("--lr", type=float, default=2e-4), flag("--seed", type=int, default=0),
-    flag("--rank", type=int, default=16),
+    flag("--epochs", type=float, default=None,
+         help="passes over the training cases (default 1, as the reference recipe)"),
+    flag("--steps", type=int, default=None,
+         help="optimizer steps, instead of --epochs"),
+    flag("--batch-size", type=int, default=None,
+         help="cases per forward pass (default 8): lower it to use less memory"),
+    flag("--grad-accum", type=int, default=None,
+         help="forward passes per optimizer step (default 4); --batch-size times this is the "
+              "cases per step"),
+    flag("--lr", type=float, default=None, help="the adapter's learning rate (default 1e-4)"),
+    flag("--max-tokens", type=int, default=None,
+         help="refuse training cases over this many tokens, to save memory (default: the "
+              "decider's one limit, 4096)"),
+    flag("--seed", type=int, default=0),
+    flag("--rank", type=int, default=0, help="LoRA rank (default 16)"),
     flag("--init", choices=("strands",), default=None,
          help="continue from the released checkpoint instead of a fresh adapter"),
     flag("--device", default="auto"),

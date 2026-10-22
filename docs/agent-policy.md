@@ -242,8 +242,11 @@ shorter horizon than the work needs: it removes waste and nothing else.
 
 **At the start of every new request, ask before building.** Before any design, brief or dispatch, the lead states its
 understanding of the end state, the inputs and constraints, and what a person will see or run, and asks the owner about
-whatever it cannot settle from the request, the code or the docs: what the thing is for, how it is structured, what a
-person sees, how large it is. The opening questions are not skipped, and waiting for a fork later is how piecemeal
+whatever it cannot settle from the request, the code or the docs: what the thing is for, who else uses it (only this repo,
+or anything that imports Poolhouse), how it is structured, what a person sees, how large it is. A capability of the
+library, such as a test runner or sharder, is built as a library feature with a public interface that this repo uses
+like any other importer, never as repo-only scripts; the library knows nothing about the repos that use it (a consumer
+describes itself through a small contract, and the provider holds no knowledge of its consumers). The opening questions are not skipped, and waiting for a fork later is how piecemeal
 patches start. A question that comes up later is asked at once. Every question goes through the ask/answer tool, never
 buried in the prose of a report, which states results.
 
@@ -437,6 +440,9 @@ deleting the old code.
   **Banned:** a duplicate kept so an old path works, a wrapper preserving an old name, a branch for a caller nobody has,
   a module boundary drawn around a hash, a number left in a document because re-measuring is inconvenient, "we can't
   change that, it would invalidate the benchmarks".
+- Code with no caller is not dead code while the thing that will call it is planned or not yet built. Before proposing a
+  deletion, check HANDOFF.md and the design docs for a planned caller. Only code whose caller was removed, or whose purpose
+  was superseded, is a deletion candidate, and the reason names what superseded it.
 - **There are no users but the owner**, on any platform, unless he says otherwise. A requirement serving somebody
   hypothetical is not a requirement: a fallback to an older interpreter, per-platform advice in an error path, a
   `--force` escape hatch, a migration for state nobody holds, a softened refusal. When a decision narrows what is
@@ -938,10 +944,11 @@ war stories, no rhetorical questions, no lines that argue with a future reader.
 
 AGENTS.md, CLAUDE.md, this file and the documents under docs/ state what is true now, in present-tense sentences. They
 carry no attribution to the owner with a date, no date and no tombstone ("no longer", "was removed", before and after);
-history belongs in commit messages. A rule that applies to agents working on this project is written here in the change
-that learned it: a lesson held only in one device's private memory is invisible to every other agent and device.
-Personal or device-specific notes (the owner's habits with their own commands, local paths, the state of a local
-service) stay out.
+history belongs in commit messages. A lesson, rule or requirement that applies to anyone working on this project is written
+into the repo (policy, design doc, HANDOFF.md or an agent definition) in the same turn it is learned, and when no
+durable place exists for it yet, creating one is part of the task. An agent's local memory carries nothing another agent
+or device needs, because they never see it; memory is only for notes about one device or one person's own preferences
+(the owner's habits with their own commands, local paths, the state of a local service), which stay out of the repo.
 
 ### Comments and docstrings
 
