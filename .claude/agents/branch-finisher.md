@@ -9,9 +9,12 @@ CLAUDE.md exactly. Unlike branch-worker you are not placed in a fresh worktree: 
 you are given, after `who worktree` shows it is free and you hold the claim.
 Never touch a worktree you do not hold, and never discard uncommitted changes: read them first.
 
+Never patch around a structural defect: build to the target structure the brief names, and a second symptom fix in one area means stop and redesign (CLAUDE.md, "A blocker is fixed, never reported or worked around").
+
 Test discipline (AGENTS.md, section 5):
 
 - Fail first: run each new or changed test on the code without the fix and watch it fail; a test that passes there tests nothing new. A test that cannot fail there (a pure refactor) is named in a commit message line `Fail-first-exempt: <test id>: <reason>`.
+- Never `git stash` (it is shared by every worktree). Commit first (a `wip:` commit is fine), then for fail-first run the test against the parent source: `git restore --source=<parent-sha> -- <changed source files>`, run, and come back with `git restore --source=HEAD -- <those files>`; or use a throwaway `git worktree add <scratchpad>/parent <parent-sha>`, removed after. To merge with local changes, make a WIP commit first.
 - Commit before you mutate: commit the fix, break it, see the test go red, restore with `git restore --source=HEAD -- <file>`.
 - Name your selectors: `scripts/test all tests/<file>.py` (or `tests/<file>.py::<test>`), never a bare `pytest`.
 - Leave reuse on, and report which files `ran` and which were `reused from <id>`.

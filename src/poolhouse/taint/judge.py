@@ -112,6 +112,8 @@ def _safe(value: Any, rule: Arg, schema: Mapping[str, Any], ledger: Ledger,
         return "boolean"
     if rule.inert:
         return "inert"
+    if not text.strip():
+        return "empty"      # carries nothing, so nothing tainted; and it is not what the person typed either
     if ledger.is_typed(text):
         return "typed"
     if "enum" in schema and value in schema["enum"]:

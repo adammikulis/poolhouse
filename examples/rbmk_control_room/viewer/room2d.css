@@ -1,0 +1,14 @@
+#stage { overflow: hidden; background: #0f1214; }
+#scroller { position: absolute; inset: 0; overflow: auto; display: flex; }
+#frame { position: relative; margin: auto; flex: none; line-height: 0; }
+#still { width: 100%; height: 100%; display: block; user-select: none; -webkit-user-drag: none; }
+#overlay { position: absolute; inset: 0; width: 100%; height: 100%; cursor: default; touch-action: pan-x pan-y pinch-zoom; }
+#dock { position: static; max-width: none; border-radius: 0; border-width: 1px 0 0; backdrop-filter: none; flex: none; padding: 8px 16px; }
+#views { flex-wrap: wrap; }
+#views button.on { border-color: var(--accent); background: var(--accent); color: #fff; }
+#card-open { margin-top: 10px; }
+@media (max-width: 700px) {
+  #views { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+  #views button { white-space: nowrap; }
+  #card { top: auto; bottom: 8px; right: 8px; left: 8px; width: auto; max-height: 45%; }
+}

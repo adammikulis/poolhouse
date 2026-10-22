@@ -22,7 +22,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, jobs, maintenance, optional
+from poolhouse import home, jobs, maintenance, optional, spawned
 from poolhouse.files import read_json, write_json
 from poolhouse.lock import Busy, only_one
 from poolhouse.log import say as say_out
@@ -53,6 +53,11 @@ QUIET_S = 900.0
 def record_path() -> Path:
     """Where the running broker writes its pid, port and token."""
     return home.state("broker.json")
+
+
+def failure_path() -> Path:
+    """Where a broker that could not start leaves why, for the client that started it."""
+    return home.state("broker.failure.json")
 
 
 def log_path() -> Path:
@@ -313,9 +318,13 @@ def broker_for(manager: Any) -> Any:
 def serve(*, idle_s: float = IDLE_S, quiet_s: float = QUIET_S, say=say_out,
           owned=None, ready=None) -> int:
     """Run this machine's broker until a quit signal, until it has had nothing to supervise
-    for ``quiet_s``, or until its record is gone. Returns 0, also when one is running."""
+    for ``quiet_s``, or until its record is gone. Returns 0, also when one is running.
+
+    A startup that raises leaves its cause at `failure_path` before the error goes on, so the
+    client waiting for the record fails at once with it."""
+    failing = spawned.Failing(failure_path(), ignore=(Busy,))
     try:
-        with only_one(home.state("broker.lock"), wait=False, announce=say):
+        with failing, only_one(home.state("broker.lock"), wait=False, announce=say):
             broker = Broker(idle_s=idle_s)
             broker.say = lambda line: say(line, flush=True)
             scanner = guarded.arm(broker.manager, broker)
@@ -325,6 +334,7 @@ def serve(*, idle_s: float = IDLE_S, quiet_s: float = QUIET_S, say=say_out,
                                        "token": server.token, "started": time.time(),
                                        "pid_started": server.runtime["pid_started"], "runtime": server.runtime})
             private_file(record_path())
+            failing.started()
             if ready is not None:
                 ready(server)
             say(f"broker on {DEFAULT_HOST}:{server.server_address[1]} (pid {os.getpid()}), "
@@ -422,14 +432,15 @@ def _reach(*, start: bool) -> dict[str, Any]:
         record = _answering()
         if record is not None:
             return record
-        jobs.detach("poolhouse.serve.cli", ["broker"], log=log_path())
-        deadline = time.monotonic() + START_WAIT_S
-        while time.monotonic() < deadline:
-            record = _answering()
-            if record is not None:
-                return record
-            time.sleep(0.2)
-        raise BrokerError(f"the broker did not come up within {START_WAIT_S:.0f}s; see {log_path()}")
+        failure_path().unlink(missing_ok=True)
+        ran = jobs.detach("poolhouse.serve.cli", ["broker"], log=log_path())
+        try:
+            return spawned.wait(
+                spawned.child_of(ran), _answering, what="the broker", timeout_s=START_WAIT_S,
+                watch=spawned.Watch(log=log_path(), poll_s=0.2, clean_exit_ends=False,
+                                    failure=lambda: spawned.failure_in(failure_path(), 0.0, log=log_path())))
+        except spawned.StartFailed as exc:
+            raise BrokerError(str(exc)) from exc
 
 
 def running() -> int | None:

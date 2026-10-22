@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 import test_fleet_page as fleet_page
 
+from poolhouse.testing.canned import CANNED_MARKER, marked
+
 browser = fleet_page.browser
 daemon = fleet_page.daemon
 joined = fleet_page.joined
@@ -76,11 +78,11 @@ def test_phone_navigation_and_chat_do_not_overflow(joined, open_page):
 @pytest.fixture
 def serving_chat(joined, tmp_path):
     from poolhouse.fleet.serving import Serving
-    from poolhouse.testing.fakes import FakeLlamaServer, Served
+    from poolhouse.testing.canned import CANNED_MODEL_ID, Canned, CannedServer
 
-    fake = FakeLlamaServer(Served(pieces=("**Hello**", " world"), gap=0.05))
+    fake = CannedServer(Canned(pieces=("**Hello**", " world"), gap=0.05))
     joined.ui.serving = Serving(tmp_path / "serving.json")
-    joined.ui.serving.register(fake.port, [fake.served.model])
+    joined.ui.serving.register(fake.port, [CANNED_MODEL_ID])
     try:
         yield fake
     finally:
@@ -98,13 +100,14 @@ def test_chat_sends_history_and_renders_sanitized_markdown(joined, serving_chat,
     page.click("#chat-send")
     page.wait_for_selector("#chat-send:not([hidden])")
     assert page.locator(".msg.assistant strong").inner_text() == "Hello"
+    assert CANNED_MARKER in page.locator(".msg.assistant").first.inner_text(), "the page shows the reply is canned"
     page.fill("#ask", "Continue")
     page.click("#chat-send")
     page.wait_for_function("() => document.querySelectorAll('.msg.assistant').length === 2 && !document.querySelector('#chat-send').hidden")
     sent = [json.loads(raw) for method, path, raw in serving_chat.requests
             if method == "POST" and path == "/v1/chat/completions"]
     assert sent[-1]["temperature"] == 1.2
-    assert [m["content"] for m in sent[-1]["messages"]] == ["Hello", "**Hello** world", "Continue"]
+    assert [m["content"] for m in sent[-1]["messages"]] == ["Hello", marked("**Hello** world"), "Continue"]
     page.evaluate("""() => {
         const chat = document.querySelector('chat-view');
         chat.say('assistant', '<img src=x onerror="window.injected=true"><script>window.injected=true</script>');
@@ -116,9 +119,9 @@ def test_chat_sends_history_and_renders_sanitized_markdown(joined, serving_chat,
 
 
 def test_stop_closes_model_stream_and_releases_chat_controls(joined, serving_chat, open_page):
-    from poolhouse.testing.fakes import Served
+    from poolhouse.testing.canned import Canned
 
-    serving_chat.served = Served(pieces=tuple("Still writing " for _ in range(80)), gap=0.1)
+    serving_chat.canned = Canned(pieces=tuple("Still writing " for _ in range(80)), gap=0.1)
     page, errors = open_page(joined, cookie=joined.cookie, path="/ui/#chat")
     page.wait_for_selector("#chat-askrow:not([hidden])")
     page.fill("#ask", "Tell a long story")

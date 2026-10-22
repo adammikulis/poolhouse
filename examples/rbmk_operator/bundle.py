@@ -150,9 +150,19 @@ def sha(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
+READINGS = ("faults", "gauges", "orm_age")
+
+
+def _plain(row: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in row.items() if k not in READINGS}
+
+
 def digest(doc: dict[str, Any]) -> str:
-    """The digest of a run document without its what-if branches."""
-    return sha(dumps({k: v for k, v in doc.items() if k != "whatif"}))
+    """The digest of a run document: no what-if branches, and no display readings (`READINGS`) in trace rows or states."""
+    body = {k: v for k, v in doc.items() if k != "whatif"}
+    body["trace"] = [_plain(r) for r in doc["trace"]]
+    body["decisions"] = [{**d, "state": _plain(d["state"])} for d in doc["decisions"]]
+    return sha(dumps(body))
 
 
 def recording_of(doc: dict[str, Any]) -> dict[str, Any]:

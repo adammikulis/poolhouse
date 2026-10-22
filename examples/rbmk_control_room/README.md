@@ -17,6 +17,9 @@ python -m http.server 8000
 Open `http://localhost:8000/examples/rbmk_control_room/viewer/index.html` (a recorded run of the real decision model) or add
 `?feed=./feed/replay-1986-crew.json` (the demo's scripted 1986 crew, which presses AZ-5; no model in that feed).
 
+The 2D views of the same room are at `http://localhost:8000/examples/rbmk_control_room/viewer/room2d.html` (same `?feed=`);
+the header links the two pages. See "2D views" below.
+
 Controls: W A S D move, Q E down and up, Shift fast, drag to look, click the floor to walk there, click any instrument for a
 card (what it is, its range, how the demo models it, its value now). The buttons jump to named views: desk overview, AZ-5,
 rod position panel, ORM terminal, reactor dials, annunciator, decision display. On a phone (or with the button) the page
@@ -67,6 +70,42 @@ Everything else (mimic windows, rod key matrix, switches, chairs, doors, the tur
 and its card says so. A dial with no value in the feed leaves its needle at rest instead of guessing. The replay bar steps
 through a recorded run.
 
+## 2D views
+
+`viewer/room2d.html` shows the same room as fixed pictures with the live instruments drawn over them, so it needs no WebGL and
+almost no GPU. Three modes, switched from the dock (or `#plan`, `#front` and `#<panel>` in the address):
+
+- **Floor plan**: the room from above (desk sections, instrument wall, engineers' desks, doors, the window band). Each panel
+  is a dashed click target that turns amber or red when something in it is lit or out of range.
+- **Front wall**: the whole instrument wall seen straight on from the operator's side, with the desk sections at the bottom.
+  Click an instrument for its card, or a panel's outline for its close-up.
+- **Panel close-up**: reactor dials, annunciator, decision display, strip recorders, desk lamps, rod position panel, AZ-5
+  button, ORM terminal; the view fills with that panel.
+
+The pictures (`viewer/stills/*.webp`) are renders of the 3D room's own geometry from fixed cameras with the moving parts
+left out (faces, needles, rod cells, the AZ-5 cap and guard). `viewer/stills/views.json` holds, for every view, the image
+position of every instrument face, rod cell and mimic window, projected from the geometry by the same Blender run. The page
+draws what the feed says at those positions: needles (eased only while they move), lamps and annunciator tiles, the 211 rod
+cells, strip recorders, the decision display with the model's probability bars, the ORM terminal, the AZ-5 guard and button.
+Only the elements whose picture changed are redrawn, and nothing runs while the tab is hidden or nothing changed.
+
+The page reads the same `instruments.json`, feed, rules, instrument face painters, screens, rod colours, cards and header
+code as the 3D room; the dial faces and screens are the same functions drawing into canvas textures there and into the
+overlay here. A missing or malformed feed shows the NO FEED banner, dark tiles and rods, resting needles and the "NO FEED"
+screens; the header names the model and the run state as in 3D. There is no substitute data. A missing still is a loud
+banner, not a blank view.
+
+Rebuild the stills (Blender 5.3, about ten minutes on a laptop CPU; also rewrites `stills/masks/`, the flat id pictures the
+tests check the projected positions against):
+
+```
+blender --background --factory-startup --python examples/rbmk_control_room/generator/render_views.py -- \
+    --out examples/rbmk_control_room/viewer/stills [--scale 0.5 --samples 32 --only front,dials]
+```
+
+`python examples/rbmk_control_room/measure.py` reports what each page costs a browser (CPU time per process over a replay,
+the overlay's draw time per frame); measurements are kept in [docs/notes/2026-10-22-rbmk-room-2d-cost.md](../../docs/notes/2026-10-22-rbmk-room-2d-cost.md).
+
 ## How it was built
 
 `generator/` holds the generator, run inside Blender (tested with 5.3) from a clean start:
@@ -103,7 +142,11 @@ channel map.
 | `generator/` | the Blender generator (`build_room.py`, `room_shell.py`, `room_wall.py`, `room_desk.py`, `roomkit.py`) |
 | `export_feed.py` | runs a demo scenario and writes the feed |
 | `shoot.py` | screenshots named views in a headless Chromium of its own |
-| `viewer/` | the page: `index.html`, `main.js`, `drive.js`, `rules.js`, `feed.js`, `screens.js`, `paint.js`, `cards.js`, `fly.js`, `rods.js`, `style.css`, `room.glb.gz`, `feed/` |
+| `generator/render_views.py`, `generator/views.py` | the Blender renders of the 2D stills, their projected instrument positions and id masks |
+| `viewer/` | the 3D page: `index.html`, `main.js`, `drive.js`, `paint.js`, `fly.js`, `style.css`, `room.glb.gz`, `feed/` |
+| `viewer/` (both pages) | `rules.js`, `feed.js`, `header.js`, `cards.js`, `screens.js`, `faces.js`, `rods.js` |
+| `viewer/` (2D page) | `room2d.html`, `room2d.js`, `overlay.js`, `paint2d.js`, `state.js`, `loop.js`, `bench.js`, `room2d.css`, `stills/` |
+| `measure.py` | CPU time of the 2D pages and the 3D room in a headless browser |
 | `viewer/check.mjs` | prints what every lamp and dial shows for each row of a feed (used by the tests) |
 
 ## Licences of vendored files
@@ -118,10 +161,16 @@ Everything else in this directory is Poolhouse code under the repository licence
 ## Tests
 
 ```
-scripts/test all tests/test_rbmk_control_room.py
+scripts/test all tests/test_rbmk_control_room.py tests/test_rbmk_room_2d.py
 ```
 
-Covers the GLB (valid, current, a node for every instrument and rod, camera marks), the instrument list against the real
+`tests/test_rbmk_room_2d.py` covers the stills (current with the generator, under the file limit), a rect for every feed
+instrument in the front view and for all 211 rods in the rod panel, the panels against the bookmarks, the projected rects
+against the id masks rendered from the same cameras (and a shifted copy that must miss), the three modes and the cards in a
+headless browser, the NO FEED page, and that an idle or hidden page draws nothing and a feed row redraws only the changed
+elements.
+
+The 3D tests cover the GLB (valid, current, a node for every instrument and rod, camera marks), the instrument list against the real
 feed (every dial, recorder and rule field exists; interlock and protection ids are the demo's; the replay is a model run
 with no canned id), the rules evaluated in node against the feed's own values, the rod order against the demo's `Rods`,
 and the page in a headless browser (REPLAY and the model id shown; a missing feed shows NO FEED and dark instruments).

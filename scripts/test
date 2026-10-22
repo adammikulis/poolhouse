@@ -675,6 +675,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--artifact-output", action="store_true", help="macOS with --confine: keep test output in private inert artifacts")
     parser.add_argument("--confine", action="store_true", help="macOS: run pytest under the Seatbelt confinement kernel")
     args, rest = parser.parse_known_args(argv)
+    rest = testselectors.relative(rest, ROOT)           # one spelling of a test file for the store, the node build and the junit file
     REUSE["on"] = not args.no_reuse
     if args.no_reuse and not os.environ.get("DEV_TEST_JOB"):
         print(NO_REUSE_COST, file=sys.stderr, flush=True)

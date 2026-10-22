@@ -13,7 +13,11 @@ because Y"), never list problems and stop, and never route around it (an extra r
 moment "X can't because Y" is about to be written, the next action is the change that removes Y. A report to the owner says what
 was changed; when the agent is truly blocked (a person-only act, a harness permission only the owner can grant) it says what was
 tried and asks the one decision with the fix as the first option. If the concept is the flaw, the whole concept is removed, not one
-hook at a time. AGENTS.md, "Reporting a problem", "A problem comes with its fix", is the same rule for every agent.
+hook at a time. The same holds in code: a defect that shows a wrong structure (a boundary in the wrong place, hidden state
+reaching a consumer, behaviour coupled that should not be, the same area fixed twice) is fixed by redesign, never by a patch
+around it: write the target structure (layers, one-way boundaries, who may read what) first, rebuild to it, enforce it with a
+test (import, layering or type boundary) and absorb the symptom fixes into it. A second symptom fix in one area is the signal
+to stop and redesign, and a worker's brief names the target structure, not the symptom. AGENTS.md, "Reporting a problem", "A problem comes with its fix", is the same rule for every agent.
 
 ## Session start and names
 
@@ -49,7 +53,9 @@ line it gives. The commit message rules in AGENTS.md apply to the subject and bo
 
 ## Subagents and the Agent tool
 
-The Agent tool's worktree isolation provides the worktree half of a subagent brief; the brief still names the branch. The SubagentStart
+At the start of a request the lead asks the owner (AskUserQuestion) what it cannot settle itself, before any brief or dispatch (AGENTS.md,
+"Questions to the owner"), and a brief for a demo, simulation or example carries the end state and the real timing (AGENTS.md, "Briefing a demo,
+simulation or example"). The Agent tool's worktree isolation provides the worktree half of a subagent brief; the brief still names the branch. The SubagentStart
 hook registers the subagent as its own identity under a board-assigned name and delivers it in the brief; SubagentStop records its done on the board
 for the sessions subscribed to it (its parent is, by default) and retires it. A subagent prompt carries the workspace line from AGENTS.md and needs no invite or token. The
 `.claude/agents/branch-worker.md` agent is the one-branch worker: it reads AGENTS.md and this file, announces, works in its worktree,
@@ -64,8 +70,9 @@ lead does not wait for it to exit and does not read a repeat report as new work.
 ## Subagent model, effort and cost
 
 Haiku 5.5 for read-only search and narrow mechanical edits, Sonnet 5.5 for anything that writes or reviews code, Opus only
-after Sonnet has failed, Fable only when the owner asks. Set `effort` on every Agent call from the task (default `high`; `xhigh`
-for cross-module, protocol or security-adjacent work; avoid `max`). One deliverable per worker, with a budget the lead states in the brief.
+after Sonnet has failed, Fable only when the owner asks. Set `effort` on every Agent call from the task: `high` or `medium`, chosen by
+the task (`medium` for routine edits, docs, mechanical migrations and read-only audits; `high` for logic-heavy work), `xhigh` only for
+security, protocol or cross-module work, never `max`. One deliverable per worker, with a budget the lead states in the brief.
 The tables, prices and reasons are in [docs/claude-subagents.md](docs/claude-subagents.md); read it before choosing a model or effort.
 
 ## The heartbeat

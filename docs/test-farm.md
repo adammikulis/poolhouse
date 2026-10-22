@@ -15,7 +15,38 @@ poolhouse-test-devices                                  the devices: platform, f
 The exit status is the worst of the runs; 70 means a device never ran its part (not in the pool, shards off,
 unreachable, refused, Python 3.13 missing). A refused or unreachable device is named on stderr with its reason.
 
-## How the owner turns it on
+## In a pool in dev mode
+
+A member of a pool in dev mode (docs/fleet.md, "Two devices on a LAN") takes tests from the pool's other members with no step on either
+device. `scripts/test --on` and `poolhouse-test-devices` list those members beside the devices of the node's pool; a device in both is
+asked by the node first and by the pool in dev mode when the node says no. The sending machine needs nothing turned on, and a device
+takes tests until a person runs `poolhouse features disable remote-tests` there.
+
+The transport is the member's daemon over the TLS the pool pinned for it, with every request signed by the pool's key and the member's
+certificate checked against the pool's record. The routes are `GET /shards/v1/caps` (whether it takes tests and why not, its platform, Python
+and free slots), `PUT /shards/v1/ID/tree` (the packed tree, in order, 8 MB at a time with `Content-Range`, at most 24 MiB),
+`POST /shards/v1/start` (`id`, `tree_sha256`, `tier`, `files`, `timeout_s` and nothing else; the digest must match the tree held),
+`GET /shards/v1/ID?since=N` (state, the output from byte N, and the result once it has ended) and `POST /shards/v1/ID/cancel`. The tree,
+spec and result checks, the executor and the limits are those of the node's shards below; the daemon builds the one command it runs, on
+the interpreter it found (`~/.venvs/poolhouse-dev`, else its own Python, else `POOLHOUSE_SHARD_PYTHON`, which must be 3.13 and import
+pytest).
+
+A shard belongs to the member that first sent to its id. No other member writes to it, starts it, reads its status, output or result,
+cancels it, or reaches its files or its job's log and stop: they are told "no such shard" or "unknown job", and `/files/shards` is closed to
+every member. The mode that counts is that of the pool the request was signed in, so a device that is in a pool in dev mode and a pool
+that is not takes tests from the first and not from the second. A device holds at most eight shards and four of any one member; one
+that was never finished is dropped after ten minutes, a finished one after a day or when room is needed, and one that is queued or
+running never. The run is a job of the daemon's runner, so it waits for a free slot like any job, and its `by` field names the device and
+the agent that asked. When the run ends the tree is deleted and the executor ends what its runner left behind. Turning `remote-tests`
+off stops the next shard (a settings file that cannot be read counts as off); a run already going finishes or is cancelled by its sender.
+
+A member that is not in dev mode (a pool made with a passphrase or a recovery file) answers `accepts: false` with the sentence that says it
+takes tests only from devices a person named, and refuses an upload and a start with 403. Tests: `tests/test_dev_shards.py` (a real daemon
+over pinned TLS, a real executor and pytest, every refusal), `tests/test_dev_shards_hostile.py` (another member's shard, a pool that is not in
+dev mode, the disk, the settings and the text a device sends back), `tests/test_dev_pool_join.py` (a device with no pool joins the pool it
+hears, then runs a shard there) and `tests/test_windows_firewall.py`.
+
+## How the owner turns it on (devices reached through the node)
 
 Nothing runs on a device until its person says so, per device, and the default is off. There are two switches,
 both off, and both audited:

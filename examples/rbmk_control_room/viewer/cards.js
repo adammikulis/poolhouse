@@ -77,3 +77,15 @@ export function describe(key, spec, driver, feed) {
   if (s) return { title: s[0], tag: 'static', what: s[1], range: '', modelled: s[2], now: '' };
   return { title: 'Room geometry', tag: 'static', what: 'Part of the room.', range: '', modelled: 'Static geometry.', now: '' };
 }
+
+// Writes a card (from describe) into the page's card elements and shows it.
+export function fillCard($, c) {
+  $('card').hidden = false;
+  $('card-title').textContent = c.title;
+  $('card-tag').textContent = c.tag;
+  $('card-what').textContent = c.what;
+  $('card-range').textContent = c.range || 'none';
+  $('card-modelled').textContent = c.modelled;
+  $('card-now').textContent = c.now || '';
+  $('card-now-row').hidden = !c.now;
+}

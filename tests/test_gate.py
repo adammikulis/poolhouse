@@ -23,6 +23,12 @@ import pytest
 from poolhouse import gate, home, leasetable
 from poolhouse.http import Options, Server, ServerError, request_json
 from poolhouse.serve.process import kill_process_tree
+from poolhouse.testing.canned import (
+    CANNED_HEADER,
+    CANNED_HEADER_VALUE,
+    CANNED_MARKER,
+    canned_chat_reply,
+)
 
 pytest_plugins = ["node_kit"]
 
@@ -31,7 +37,7 @@ HOLD_S = 0.3
 
 
 class Recorder:
-    """A server that records when each generation began and ended."""
+    """A canned server that records when each generation began and ended; every reply says it is not a model."""
 
     def __init__(self, hold_s: float = HOLD_S) -> None:
         self.windows: list[tuple[float, float, str]] = []
@@ -50,8 +56,9 @@ class Recorder:
                 ended = time.time()
                 with recorder.lock:
                     recorder.windows.append((began, ended, self.headers.get("X-Who", "")))
-                body = b'{"choices": [{"message": {"content": "ok"}}]}'
+                _, body = canned_chat_reply("ok")
                 self.send_response(200)
+                self.send_header(CANNED_HEADER, CANNED_HEADER_VALUE)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
@@ -258,8 +265,9 @@ def test_devices_queue_apart(servers):
 def test_a_thread_holding_the_device_can_send_a_nested_request(servers):
     (one,) = servers(1, hold_s=0.01)
     with gate.turn(one.url):
-        request_json(one.url, payload={}, options=Options(timeout=5))
+        answered = request_json(one.url, payload={}, options=Options(timeout=5))
     assert len(one.windows) == 1
+    assert answered["choices"][0]["message"]["content"].startswith(CANNED_MARKER), "the server says it is canned"
 
 
 def test_the_turn_is_held_until_a_streamed_answer_is_read(servers):

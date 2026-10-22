@@ -469,14 +469,14 @@ class TestHarnessSession:
         assert not seen["home"].exists()
         assert self.agents(kit)[kit.lead.name].parent == "" and kit.board.whoami().name == kit.lead.name
 
-    def test_a_fake_endpoint_cannot_verify_a_delegated_agents_model(self, kit, monkeypatch):
-        from poolhouse.testing import FakeLlamaServer, Served
+    def test_a_canned_endpoint_cannot_verify_a_delegated_agents_model(self, kit, monkeypatch):
+        from poolhouse.testing.canned import CANNED_MODEL_ID, Canned, CannedServer
 
         monkeypatch.setenv("CLAUDECODE", "1")
         session = harnessid.invite("local-qwen", kit.project, kit.lead.name, lambda _: None)
-        endpoint = FakeLlamaServer(Served(model="qwen-27b"))
+        endpoint = CannedServer(Canned())
         try:
-            assert session.record_model("qwen-27b", "codex", endpoint.base_url)
+            assert session.record_model(CANNED_MODEL_ID, "codex", endpoint.base_url)
             assert self.agents(kit)[session.name].model_state == "claimed"
         finally:
             endpoint.close()

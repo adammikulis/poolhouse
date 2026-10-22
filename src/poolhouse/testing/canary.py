@@ -22,6 +22,7 @@ from poolhouse.client import Client, Reply, Request
 from poolhouse.guard.native import Leased, screen
 from poolhouse.guard.nemo import NemoRail, self_check_yaml
 from poolhouse.log import say
+from poolhouse.testing.canned import CANNED_MARKER, CANNED_MODEL_ID, marked
 
 __all__ = ["ATTACKS", "BENIGN", "Attack", "Run", "measure", "report"]
 
@@ -57,23 +58,34 @@ class Attack:
 
 
 class Obeying:
-    """A model that makes the calls it was scripted to, and then ends."""
+    """A model that makes the calls it was scripted to, and then ends.
+
+    Not a model: every reply it gives begins with the canned marker and says in ``raw`` that it is
+    `CANNED_MODEL_ID`, so a transcript or a screen that shows one cannot pass it off as a model's.
+    """
+
+    model = CANNED_MODEL_ID
 
     def __init__(self, steps: tuple[Any, ...]) -> None:
         self.steps = list(steps)
         self.seen: list[list[dict[str, Any]]] = []
 
+    @staticmethod
+    def _reply(text: str, tool_calls: list[dict[str, Any]] | None = None) -> Reply:
+        return Reply(content=marked(text), tool_calls=tool_calls,
+                     raw={"model": CANNED_MODEL_ID, "x_canned": CANNED_MARKER})
+
     def chat(self, messages: list[dict[str, Any]], *, tools: Any = None, **_: Any) -> Reply:
         self.seen.append(list(messages))
         if not self.steps:
-            return Reply(content="done")
+            return self._reply("done")
         step = self.steps.pop(0)
         if isinstance(step, str):
-            return Reply(content=step)
+            return self._reply(step)
         if isinstance(step, list):
-            return Reply(content="", tool_calls=[_call(n, a, i) for i, (n, a) in enumerate(step)])
+            return self._reply("", [_call(n, a, i) for i, (n, a) in enumerate(step)])
         name, args = step
-        return Reply(content="", tool_calls=[_call(name, args, 0)])
+        return self._reply("", [_call(name, args, 0)])
 
 
 def _call(name: str, args: Any, index: int) -> dict[str, Any]:

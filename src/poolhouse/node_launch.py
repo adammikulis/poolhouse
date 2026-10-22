@@ -31,6 +31,7 @@ from poolhouse import (
     runtime_git,
     runtime_store,
     runtime_unmerged,
+    spawned,
     win32,
 )
 from poolhouse.command import Group, flag
@@ -91,16 +92,30 @@ def _presence(extra: list[str] | None) -> list[str]:
     return [*out, PRESENCE_FLAG, "os"] if real else out
 
 
-def _start_supervisor(state: Path, extra: list[str]) -> None:
+def _start_supervisor(state: Path, extra: list[str]) -> spawned.Child:
     parent = "" if state == default_state() else os.environ.get(node_supervise.PARENT_ENV, "")
     argv = ["supervise", "--state", str(state), *(f"--arg={word}" for word in extra), *(["--parent-pid", parent] if parent.isdigit() else [])]
-    jobs.detach("poolhouse.node_launch", argv, log=state / "supervisor.log")
+    return spawned.child_of(jobs.detach("poolhouse.node_launch", argv, log=state / "supervisor.log"))
+
+
+def _answers_or_ends(state: Path, supervisor: spawned.Child, wait_s: float) -> dict | None:
+    """The node's health once it answers; None when ``wait_s`` passes with the supervisor still
+    running; `NodeUnavailable` the moment the supervisor ends, with the reason it last gave for
+    refusing the node."""
+    try:
+        return spawned.wait(supervisor, lambda: node_health(state), what="the node supervisor",
+                            timeout_s=wait_s, watch=spawned.Watch(log=state / "supervisor.log", poll_s=POLL_S))
+    except spawned.StartFailed as exc:
+        if exc.kind == "timeout":
+            return None
+        why = node_supervise.refusal(state, wait_s + 30)
+        raise NodeUnavailable(f"{exc}{f' ({why})' if why else ''}") from exc
 
 
 def ensure_node(state: Path | None = None, *, extra: list[str] | None = None, wait_s: float = START_WAIT_S) -> dict:
     """The node's health, after starting it under a supervisor when it was not answering.
 
-    The device's own node (the default state directory) starts on the LAN, so it joins its project's open pool or makes one
+    The device's own node (the default state directory) starts on the LAN, so it joins its project's open pool when it hears one
     (`node_pool.network_args`), but only where `lan.allowed` (the installed software on the account's real state root, never a test or a
     moved root: `--lan` is dropped there); a node in any other state directory stays local unless ``extra`` says otherwise.
     Raises `NodeUnavailable` when it still does not answer after ``wait_s``, and `node_binary.NodeBinaryError` before starting
@@ -120,9 +135,11 @@ def ensure_node(state: Path | None = None, *, extra: list[str] | None = None, wa
         with only_one(state / START_LOCK, timeout=wait_s, announce=lambda _: None, note="node start"):
             if (said := node_health(state)) is not None:
                 return said
-            if not supervised(state):
-                _start_supervisor(state, extra or [])
-            said = _until(deadline, lambda: node_health(state))
+            supervisor = None if supervised(state) else _start_supervisor(state, extra or [])
+            if supervisor is None:
+                said = _until(deadline, lambda: node_health(state))
+            else:
+                said = _answers_or_ends(state, supervisor, max(deadline - time.monotonic(), 0.0))
     except Busy as exc:
         raise NodeUnavailable(f"another client is still starting the node: {exc}") from exc
     if said is None:
@@ -278,11 +295,13 @@ def smoke(prefix: Path, *, wait_s: float = START_WAIT_S) -> dict:
         child = start_process([str(binary), "run", "--state", str(state)], stdin=subprocess.DEVNULL,
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
-            said = _until(time.monotonic() + wait_s, lambda: node_health(state))
+            said = spawned.wait(child, lambda: node_health(state), what=f"the node {binary}",
+                                timeout_s=wait_s, watch=spawned.Watch(poll_s=POLL_S))
+        except spawned.StartFailed as exc:
+            raise NodeUnavailable(f"{binary} did not answer hello within {wait_s:.0f}s"
+                                  if exc.kind == "timeout" else str(exc)) from exc
         finally:
             node_supervise.end(child, state)
-    if said is None:
-        raise NodeUnavailable(f"{binary} did not answer hello within {wait_s:.0f}s")
     return said
 
 

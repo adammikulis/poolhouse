@@ -70,9 +70,22 @@ export class Feed {
   }
 
   start() {
-    this.load().then(() => {
-      if (this.status === 'ok' && this.live && !this.finished) this.timer = setInterval(() => this.load().then(() => this.stop_if_done()), POLL_MS);
-    });
+    this.load().then(() => this.poll());
+  }
+
+  poll() {
+    if (this.timer || this.status !== 'ok' || !this.live || this.finished) return;
+    this.timer = setInterval(() => this.load().then(() => this.stop_if_done()), POLL_MS);
+  }
+
+  pause() {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  resume() {
+    if (this.status === 'ok' && this.live && !this.finished) this.load().then(() => this.poll());
+    else if (this.status === 'error') this.load().then(() => this.poll());
   }
 
   stop_if_done() {

@@ -113,3 +113,31 @@ fn a_pool_set_aside_for_a_version_change_leaves_a_floor_under_every_older_grant_
     assert_eq!(issued["ok"], true, "{issued}");
     assert_eq!(reopened.state("g-00000000000000e3").0, "live");
 }
+
+#[test]
+fn a_pool_is_never_written_into_a_directory_that_already_holds_something() {
+    let pool = found();
+    let act: poolhouse_node::gov::act::Act = serde_json::from_slice(&std::fs::read(pool.pool_dir().join("charter.json")).unwrap()).unwrap();
+    let root = tempfile::tempdir().unwrap();
+    let held = root.path().join("pools").join(pool.pool_dir().file_name().unwrap());
+    std::fs::create_dir_all(&held).unwrap();
+    std::fs::write(held.join("occupant"), b"another file").unwrap();
+    assert!(poolhouse_node::gov::pool::GovPool::create(root.path(), act).is_err(), "a directory that holds a file cannot be taken by a pool");
+    assert_eq!(std::fs::read_dir(&held).unwrap().count(), 1, "and nothing of the pool was written into it");
+}
+
+#[test]
+fn a_use_row_at_or_before_the_floor_counts_toward_no_grant() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut board = kit::board(&dir, 1);
+    let used = json!({"op": "use", "gid": "g-00000000000000f1", "action": "sync_now", "target": "*", "user": "lead"});
+    let early = board.append(Kind::Grant, "node", used.clone(), "").unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(20));
+    let late = board.append(Kind::Grant, "node", used, "").unwrap();
+    let counted = |floor: u64| {
+        let mut book = poolhouse_node::grants::book::Book::default();
+        book.refresh(&board, floor);
+        book.uses("g-00000000000000f1", &|_| true)
+    };
+    assert_eq!((counted(0), counted(early.hlc.0), counted(late.hlc.0)), (2, 1, 0), "a use counts when it is after the floor and not before");
+}

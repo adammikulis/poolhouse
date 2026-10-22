@@ -6,6 +6,7 @@
 //! The snapshot is built from the node at each call and kept nowhere.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use crate::gov::charter::{Charter, Mode};
@@ -40,6 +41,14 @@ struct Material {
 /// How many verdicts of signature checks are remembered.
 const MEMO_MOST: usize = 8192;
 
+/// How many signatures `Material::signed` has checked, in this process, rather than answered from its memo.
+static CHECKED: AtomicU64 = AtomicU64::new(0);
+
+/// How many signatures were checked rather than answered from the memo since the process began: the fold of rows it folded before checks none.
+pub fn checked() -> u64 {
+    CHECKED.load(Ordering::Relaxed)
+}
+
 impl Material {
     /// Whether ``sig`` over ``bytes`` is this key's, remembering the verdict: a check is a pure function of the key, the bytes and the signature.
     fn signed(&self, bytes: &[u8], sig: &str) -> bool {
@@ -48,6 +57,7 @@ impl Material {
         if let Some(verdict) = MEMO.lock().ok().and_then(|m| m.get(&id).copied()) {
             return verdict;
         }
+        CHECKED.fetch_add(1, Ordering::Relaxed);
         let verdict = verifies_with(&self.alg, &self.public, bytes, sig);
         if let Ok(mut memo) = MEMO.lock() {
             if memo.len() >= MEMO_MOST {
