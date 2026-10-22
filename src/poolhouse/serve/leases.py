@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
-import subprocess
 from pathlib import Path
-from typing import Any
 
 from poolhouse import home
 from poolhouse.serve.process import cmdline_digest, pid_exists, started_at
 
-__all__ = ["already_up", "lease_file", "merge_state", "orphaned", "reap_one",
-           "recorded_servers", "same_process"]
+__all__ = ["already_up", "lease_file", "merge_state", "orphaned", "recorded_servers", "same_process"]
 
 START_TOLERANCE_S = 2.0
 
@@ -33,14 +29,6 @@ def merge_state(on_disk: dict, mine: dict, owner_pid: int) -> dict:
     }
     merged.update(mine)
     return merged
-
-
-def reap_one(held: Any, *, grace_s: float) -> None:
-    """Wait on a child this process started, so its pid leaves the table."""
-    if held is None:
-        return
-    with contextlib.suppress(subprocess.TimeoutExpired, ChildProcessError, OSError):
-        held.wait(timeout=grace_s)
 
 
 def same_process(entry: dict, *, strict: bool = False) -> bool:

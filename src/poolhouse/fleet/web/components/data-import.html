@@ -67,7 +67,7 @@ data-import .dataset-import-progress {overflow-wrap:anywhere}
    const body={...selected.params,expected_preview_digest:selected.preview.preview_digest,
     row_indexes:fields.rowFields.flatMap((input,index)=>input.checked?[index]:[]),
     columns:Object.fromEntries(fields.columnFields.filter(field=>field.enabled.checked).map(field=>[field.name,field.output.value])),
-    name:fields.name.value.trim(),idempotency_key:crypto.randomUUID()};
+    name:fields.name.value.trim(),idempotency_key:M.uuid()};
    const op={epoch:this.session(),body,run:null,dataset:null,state:'submitting'};if(op.epoch===null)return;
    this.operation=op;await this.send(op);
   }

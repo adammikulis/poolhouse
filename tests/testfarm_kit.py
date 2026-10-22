@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import itertools
 import os
 import shutil
 import sys
@@ -20,18 +21,29 @@ from pathlib import Path
 
 import pytest
 import test_on
-from node_kit import STRIPPED, allow, node_binary  # noqa: F401  (a fixture the ones below use)
+from node_kit import STRIPPED, node_binary  # noqa: F401  (a fixture the ones below use)
 from pool_check import wire
 from pool_check.person import RigPerson
 from testfarm_tree import make_tree
 
-from poolhouse import features, node_binary as node_binary_module, node_launch, node_supervise
-from poolhouse.board import session as board_session
+from poolhouse import (
+    features,
+    node_binary as node_binary_module,
+    node_health,
+    node_launch,
+    node_supervise,
+)
+from poolhouse.board import grants, session as board_session
 from poolhouse.board.client import Client
 from poolhouse.testfarm.client import Shards, pool_devices
 
 BOARD = "demo"
 ROOT = Path(__file__).resolve().parents[1]
+POOL_ACTIONS = ("add_device", "join_pool", "member_remove", "sync_now", "shard_call", "shard_consent")
+"""What a test device's session does in a pool: the pool calls and the shard calls. In a governed pool each is a standing grant that an approval of the pool's admin key wrote."""
+LASTS_MS = 6 * 3_600_000
+CARRIERS = itertools.count(1)
+"""Names the sessions that carry an approval; one answers one request."""
 
 
 @dataclass
@@ -65,7 +77,6 @@ def start(binary: Path, name: str, person: RigPerson) -> Device:
     node_launch.ensure_node(state, extra=["--listen", "127.0.0.1:0", *wire.PRESENCE])
     client = Client(state)
     got = client.call("register", BOARD, "", model="claude-sonnet-5-5", harness="claude-code", session=name)
-    allow(board_session.Session(client, BOARD, got["token"], got["name"]), person.key)
     return Device(root, state, client, got["token"], got["name"], person)
 
 
@@ -74,21 +85,54 @@ def skip_unless_possible() -> None:
         pytest.skip("shards run on Python 3.13, and these node processes are POSIX")
 
 
-def join(a: Device, b: Device) -> None:
-    """Enrol ``b`` in ``a``'s pool with a join code."""
-    if a.person is None:
+def governed(device: Device) -> None:
+    """Wait until ``device`` has the pool's charter, which a joiner learns by syncing: until then it knows no admin to ask."""
+    until("the joined device to hold the pool's charter", 30, lambda: device.call("pool_status")["governance"]["mode"] == "governed")
+
+
+def approve(device: Device, *actions: str) -> None:
+    """The test pool's admin key approves what the session of ``device`` asks for, the way a person's phone does: the session asks, a second session
+    carries the signed answer (the one that asks cannot), and the node writes the standing grants. A governed pool counts no grant any other way."""
+    key = device.person.key  # the admin key of the pool and, planted by `start`, the phone key the node takes approvals from
+    asked = device.call("approval_request", BOARD, device.token, asks=[{"action": a, "resource": "*", "lasts_ms": LASTS_MS} for a in actions], note="the test farm's pool")
+    carrier = device.call("register", BOARD, "", model="claude-sonnet-5-5", harness="claude-code", session=f"{device.name}-carrier-{next(CARRIERS)}")["token"]
+    node = node_health.call(device.state, "pool_status")["fingerprint"]
+    waiting = device.call("approval_pending", "", carrier, **grants.sign_list(key, node, int(time.time() * 1000)))["approvals"]
+    request = next(a for a in waiting if a["id"] == asked["id"])
+    device.call("approval_decide", "", carrier, **grants.sign_approval(key, request, "approve"), pick=asked.get("code", ""))
+
+
+def found(device: Device) -> None:
+    """``device`` founds a governed pool the test admin key signs and is its first member, and its session holds what the tests do in a pool."""
+    if device.person is None:
         raise RuntimeError("the test pool has no admin key")
-    a.person.found(a, "secure")
-    a.person.admit(a, b, "join-code")
-    code = a.call("add_device", token=a.token, presigned=True)
-    b.call("join_pool", token=b.token, host="127.0.0.1", port=code["port"], passphrase=code["code"])
+    grants.issue(board_session.Session(device.client, BOARD, device.token, device.name), device.person.key, grants.Want("pool_create", {"kind": "session", "name": device.name}))
+    device.person.found(device, "secure")
+    approve(device, *POOL_ACTIONS)
+
+
+def join(a: Device, b: Device) -> None:
+    """Found ``a``'s pool and enrol ``b`` in it with a join code."""
+    found(a)
+    enter(a, b)
+
+
+def enter(host: Device, joiner: Device) -> None:
+    """Enrol ``joiner``, a node alone in no pool, in the pool ``host`` is in: the admin key admits its certificate (the person's yes), ``host`` makes the join
+    code, and once it is a member its session is approved for what the tests do in a pool."""
+    host.person.admit(host, joiner, "join-code")
+    approve(joiner, "join_pool")
+    code = host.call("add_device", token=host.token, presigned=True)
+    joiner.call("join_pool", token=joiner.token, host="127.0.0.1", port=code["port"], passphrase=code["code"])
+    governed(joiner)
+    approve(joiner, *(action for action in POOL_ACTIONS if action != "join_pool"))
 
 
 @contextlib.contextmanager
-def devices(binary: Path, *names: str) -> Iterator[list[Device]]:
+def devices(binary: Path, *names: str, person: RigPerson | None = None) -> Iterator[list[Device]]:
     """Nodes started one after another, each stopped and its root removed when the block ends, whichever step of the setup failed."""
     made: list[Device] = []
-    person = RigPerson()
+    person = person or RigPerson()
     try:
         for name in names:
             made.append(start(binary, name, person))
@@ -121,9 +165,16 @@ def third(node_binary):  # noqa: F811
     """A node C alone in a pool of its own, started on demand; its device and the way to stop it."""
     skip_unless_possible()
     with devices(node_binary, "c") as (c,):
-        assert c.person is not None
-        c.person.found(c, "secure")
+        found(c)
         yield c
+
+
+@pytest.fixture
+def joiner(node_binary, pool):  # noqa: F811
+    """A node alone in no pool, started on demand with the pool's person, for the tests that bring a further device into the pool of ``pool``'s B."""
+    skip_unless_possible()
+    with devices(node_binary, "d", person=pool[0].person) as (d,):
+        yield d
 
 
 def enable(b: Device) -> None:

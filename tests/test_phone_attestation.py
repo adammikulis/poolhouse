@@ -8,10 +8,12 @@ import sys
 import time
 
 import pytest
+import testunits
 
 from poolhouse.platform import start_process
 
 pytest_plugins = ["native_cargo"]
+NATIVE_TARGETS = (testunits.LIB,)
 
 
 @pytest.fixture
@@ -20,8 +22,9 @@ def native_cargo_module(request):
 
 
 @pytest.mark.slow
-def test_phone_attestation(native_node_units):
-    native_node_units.run("attestation")
+@pytest.mark.timeout(120, func_only=True)
+def test_phone_attestation(native_targets_built):
+    native_targets_built.run("attestation")
 
 
 @pytest.mark.parametrize("interrupted,reaped", [(False, False), (True, False), (True, True)])
