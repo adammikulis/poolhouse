@@ -72,13 +72,13 @@ def test_missing_sdk_disables_send_and_enter(tmp_path, playwright, monkeypatch):
 
     from poolhouse.fleet.conversations import Conversations
     from poolhouse.fleet.serving import Serving as ModelsServing
-    from poolhouse.testing.fakes import FakeLlamaServer, Served
+    from poolhouse.testing.canned import CANNED_MODEL_ID, Canned, CannedServer
 
-    fake = FakeLlamaServer(Served(model="qwen3.8-test.gguf", pieces=("hello",)))
+    fake = CannedServer(Canned(pieces=("hello",)))
     served = Serving(tmp_path)
     served.ui.settings.setup_done = True
     served.ui.serving = ModelsServing(tmp_path / "models.json")
-    served.ui.serving.register(fake.port, ["qwen3.8-test.gguf"])
+    served.ui.serving.register(fake.port, [CANNED_MODEL_ID])
     served.ui.conversations = Conversations(tmp_path / "chats")
     monkeypatch.setitem(sys.modules, "agents", None)
     browser = playwright.chromium.launch(headless=True)
