@@ -10,20 +10,21 @@ import pytest
 from poolhouse.fleet.chat import Target, reply_parts
 from poolhouse.fleet.chat_stream import Transfer, frame, release, reserve
 from poolhouse.fleet.conversations import Conversations
+from poolhouse.testing.canned import CANNED_HEADER, CANNED_HEADER_VALUE, canned_chunk, marked
 
 pytest_plugins = ["node_kit"]
 
 
 def test_reasoning_survives_conversation_reload(tmp_path):
-    raw = frame({"choices": [{"delta": {"reasoning_content": "think"}}]})
-    raw += frame({"choices": [{"delta": {"content": "answer"}}]})
+    raw = frame(canned_chunk({"reasoning_content": "think"}))
+    raw += frame(canned_chunk({"content": marked("answer")}))
     content, reasoning = reply_parts(raw)
-    assert (content, reasoning) == ("answer", "think")
+    assert (content, reasoning) == (marked("answer"), "think")
     store = Conversations(tmp_path)
     chat = store.start()
     store.append(chat.id, "assistant", content, reasoning=reasoning, status="cancelled")
     message = Conversations(tmp_path).get(chat.id).messages[0]
-    assert (message.content, message.reasoning, message.status) == ("answer", "think", "cancelled")
+    assert (message.content, message.reasoning, message.status) == (marked("answer"), "think", "cancelled")
 
 
 def test_pending_conversation_is_reserved_once():
@@ -83,8 +84,9 @@ def hanging_chat(*, headers):
             if headers:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/event-stream")
+                self.send_header(CANNED_HEADER, CANNED_HEADER_VALUE)
                 self.end_headers()
-                self.wfile.write(b'data: {"choices":[{"index":0,"delta":{"content":"first"}}]}\n\n')
+                self.wfile.write(frame(canned_chunk({"content": marked("first")})))
                 self.wfile.flush()
             received.set()
             self.connection.settimeout(4)
