@@ -63,7 +63,8 @@ Measured in this project: workers that ran 600 to 900 tool calls consumed 0.5 to
 - One slice per worker: a brief that names one deliverable with a stop condition. A worker that has made about 150 tool calls
   without reporting is stopped by the lead, its commits kept, and the rest is a new worker with a fresh context and a one-line
   summary of state (a continuation is cheaper than a longer life). The PostToolUse hook `scripts/hooks/claude-wrap-up`
-  tells a subagent at 120 and again at 140 tool calls to commit, push, clean up and report before its `maxTurns` cap of 150.
+  tells a subagent at 120 and again at 140 tool calls to commit, push, clean up and report before its `maxTurns` cap of 150,
+  and tells the lead at 100 and every 50 after (see "Tool-call milestones" below).
 - Split by deliverable, not by phase: design, code, review and fixes are separate workers; a reviewer reads, runs a few
   targeted checks and reports, with its tool calls capped near 40.
 - A reviewer is started once per batch of related changes, not once per commit, and a failure to register or to record an accept
@@ -75,4 +76,30 @@ Measured in this project: workers that ran 600 to 900 tool calls consumed 0.5 to
 - Effort follows the table above; avoid xhigh for work a clear brief makes mechanical.
 - A design is built only when the owner asked for the feature; a design nobody asked for stops at its first attack review and is
   parked, not revised through further rounds. A mechanical doc edit (a count, a name, a pointer) goes to Haiku.
+
+## Tool-call milestones
+
+The lead decides whether to extend, check in on or stop a long subagent, so it is told when each one reaches 100 tool calls and
+every 50 after (100, 150, 200, 250, ...). The interval is `POOLHOUSE_TOOL_MILESTONE_EVERY` (50, set in `.claude/settings.json`
+`env`). The notice informs; nothing in it limits or stops the subagent.
+
+**What a `PostToolUse` event carries inside a subagent** (read from a real headless run with a logging hook and a subagent that
+made three Bash calls): every field the main session's event has (`session_id`, `transcript_path`, `cwd`, `prompt_id`,
+`permission_mode`, `effort`, `hook_event_name`, `tool_name`, `tool_input`, `tool_response`, `tool_use_id`, `duration_ms`) plus
+`agent_id` and `agent_type` (for example `a72ba00f70ef2456e`, `general-purpose`). A call the main session makes has no `agent_id`,
+which is what tells them apart; the `Agent` call that starts the subagent is the main session's. `SubagentStart` carries the same
+`agent_id` and `agent_type` and no description; the description is in `<session>/subagents/agent-<agent_id>.meta.json`
+(`description`, `agentType`, `spawnDepth`) beside the transcript named by `transcript_path`. The event holds no counter.
+
+**The counter** is the wrap-up hook's: `scripts/hooks/claude-wrap-up` appends a byte to the subagent's count file for each event,
+and creates an exclusive marker per `tool_use_id`, so an event delivered twice counts once (an event without one counts as it
+arrives). At the first call at or past a milestone, one exclusive `milestone-N` marker is claimed, so parallel calls and
+repeated deliveries announce once. Only then does the hook import anything from poolhouse; an ordinary call stays one small
+file append. The `SubagentStart` hook records `started` with the subagent's record, for the elapsed time.
+
+**The notice** is a board post `milestone: NAME has made N tool calls (running 1h06m): DESCRIPTION` by the subagent itself,
+`--type status --subject milestone`, to `#general`. The lead follows each subagent in inbox mode (`child_watch`), so it arrives
+in the lead's inbox and in its `attention` text between turns. The harness gives a subagent's `additionalContext` to the subagent,
+never to the lead, so the lead is not reached that way. A refused post warns on stderr, is tried again on the next two calls,
+and after the third refusal the subagent is told (in its context) that the lead could not be told and to say so in its report.
 

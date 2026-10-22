@@ -19,9 +19,25 @@ def stem(agent_id: str) -> Path:
     return folder / hashlib.sha256(agent_id.encode()).hexdigest()[:24]
 
 
-def record(agent_id: str) -> int:
-    """Count one more tool call of this subagent (one appended byte) and return the count."""
-    descriptor = os.open(f"{stem(agent_id)}.count", os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+def mark(path: str) -> bool:
+    """Create the marker file ``path`` exclusively; False when it was already there (another call got it first)."""
+    try:
+        os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+    except FileExistsError:
+        return False
+    return True
+
+
+def record(agent_id: str, call_id: str = "") -> int:
+    """Count one more tool call of this subagent (one appended byte) and return the count.
+
+    A call named by ``call_id`` (the event's tool_use_id) is counted once however often its event is delivered; a repeat
+    returns 0 and leaves the count alone.
+    """
+    prefix = stem(agent_id)
+    if call_id and not mark(f"{prefix}.seen-{hashlib.sha256(call_id.encode()).hexdigest()[:16]}"):
+        return 0
+    descriptor = os.open(f"{prefix}.count", os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
     try:
         os.write(descriptor, b".")
         return os.fstat(descriptor).st_size
@@ -29,13 +45,9 @@ def record(agent_id: str) -> int:
         os.close(descriptor)
 
 
-def claim(agent_id: str, level: int) -> bool:
-    """Whether this call is the first to claim the warning for ``level`` (an exclusive marker file decides)."""
-    try:
-        os.close(os.open(f"{stem(agent_id)}.warned-{level}", os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
-    except FileExistsError:
-        return False
-    return True
+def claim(agent_id: str, level: int, kind: str = "warned") -> bool:
+    """Whether this call is the first to claim the ``kind`` marker for ``level`` (an exclusive marker file decides)."""
+    return mark(f"{stem(agent_id)}.{kind}-{level}")
 
 
 def warning(agent_id: str, count: int) -> str:
@@ -48,7 +60,7 @@ def warning(agent_id: str, count: int) -> str:
 
 
 def clear(agent_id: str) -> None:
-    """Forget this subagent's count and warnings."""
+    """Forget this subagent's count, call markers and warnings."""
     prefix = stem(agent_id)
     for path in prefix.parent.glob(f"{prefix.name}.*"):
         path.unlink(missing_ok=True)

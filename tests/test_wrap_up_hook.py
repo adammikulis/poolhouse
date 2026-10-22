@@ -28,10 +28,12 @@ def call(state: Path, script: str = "claude-wrap-up", **event: object):
 
 
 def preload(state: Path, agent: str, calls: int) -> None:
-    """Leave the state a subagent has after ``calls`` counted tool calls, none of them warned."""
+    """Leave the state a subagent has after ``calls`` counted tool calls, none of them warned, the lead told of each milestone."""
     target = Path(f"{stem(state, agent)}.count")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(b"." * calls)
+    for level in range(100, calls + 1, 50):
+        Path(f"{stem(state, agent)}.milestone-{level}").touch()
 
 
 def context(done) -> str:
@@ -56,6 +58,8 @@ def test_warning_is_due_exactly_at_120_and_140(tmp_path, before, warned):
 
 
 def test_a_run_of_calls_warns_once_at_120_and_once_at_140(tmp_path):
+    preload(tmp_path, AGENT, 0)
+    Path(f"{stem(tmp_path, AGENT)}.milestone-100").touch()  # the lead's notice at 100 is tests/test_tool_milestones.py's
     texts = {}
     for number in range(1, 146):
         text = context(call(tmp_path, agent_id=AGENT))
@@ -72,7 +76,7 @@ def test_each_subagent_has_its_own_count_and_the_main_session_has_none(tmp_path)
     assert context(call(tmp_path, agent_id="")) == ""
     assert context(call(tmp_path, agent_id=AGENT))
     assert Path(f"{stem(tmp_path, 'agent-other')}.count").stat().st_size == 1
-    assert len(list((tmp_path / "wrap-up").iterdir())) == 3
+    assert len(list((tmp_path / "wrap-up").iterdir())) == 4  # the subagent's count, its milestone and warning, the other's count
 
 
 def test_a_bad_event_is_ignored(tmp_path):
