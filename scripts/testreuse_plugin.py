@@ -251,7 +251,14 @@ def _note_probe(path: object, dir_fd: object) -> None:
             BUSY.pop()
 
 
-def _note_descriptor(descriptor: int, result: os.stat_result, original) -> None:
+def _outside_directory(result: os.stat_result, raw: str) -> bool:
+    """True for a directory descriptor whose canonical path lies outside the checkout, which no checkout file can alias."""
+    if not raw or not Path(raw).is_absolute() or not stat.S_ISDIR(result.st_mode):
+        return False
+    return not _under(Path(os.path.realpath(raw)), ROOT)
+
+
+def _note_descriptor(descriptor: int, result: os.stat_result, original, cleanup: bool = False) -> None:
     bucket = _entry(CURRENT[-1])
     if BUSY:
         bucket["unobserved"].add("fstat during another probe")
@@ -259,6 +266,8 @@ def _note_descriptor(descriptor: int, result: os.stat_result, original) -> None:
     BUSY.append(True)
     try:
         raw = _fd_path(descriptor)
+        if cleanup and _outside_directory(result, raw):
+            return
         path = Path(raw)
         if not raw or not path.is_absolute() or path.resolve(strict=True) != path:
             bucket["unobserved"].add("fstat without a canonical path")
@@ -296,7 +305,8 @@ def _probe_fstat(original):
             raise
         if CURRENT:
             if type(fd) is int:
-                _note_descriptor(fd, result, original)
+                caller = sys._getframe(1).f_code.co_filename
+                _note_descriptor(fd, result, original, caller == getattr(sys.modules.get("shutil"), "__file__", None))
             else:
                 _entry(CURRENT[-1])["unobserved"].add("fstat with an indirect descriptor")
         return result
