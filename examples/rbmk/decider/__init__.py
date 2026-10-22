@@ -1,1 +1,1 @@
-"""The decision loop: the controllers, the run loop and the run and recording documents."""
+"""The decision model and the scripted baselines."""

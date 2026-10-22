@@ -2,17 +2,17 @@
 
 Plain JSON, UTF-8. A reader needs nothing else from this directory.
 
-- **Recording** (`rbmk-operator-recording/2`, files in `recordings/`): what the model said, with timing, bound to the run it
+- **Recording** (`rbmk-recording/2`, files in `recordings/`): what the model said, with timing, bound to the run it
   produced by a digest. It holds no caption, title, label, verdict or score. `run.py replay FILE` re-runs the simulator with no
   model and refuses the file when the digest differs.
-- **Run** (`rbmk-operator-run/2`): the document an interface draws. `run.py export FILE --out OUT` replays a recording into it.
+- **Run** (`rbmk-run/2`): the document an interface draws. `run.py export FILE --out OUT` replays a recording into it.
   Everything in it that is not a model answer is derived from the scenario data and the recorded answers. Its `display`, `captions`
   and `outcome` keys are computed after the fact by `display/`; they are never stored in a recording and never shown to the model.
 
 ## Recording
 
 ```
-{schema: "rbmk-operator-recording/2",
+{schema: "rbmk-recording/2",
  meta: {scenario: key, seed, controller: "model", memory: "none" | "history", speed, finished,
         backend: {mode: "recorded", model, recorded_at, source, warm_up_s}, clocks},
  digest: sha256 of {trace, rows} of the run,
@@ -20,13 +20,13 @@ Plain JSON, UTF-8. A reader needs nothing else from this directory.
 ```
 
 `n` is the request number. `due_s` is the simulated time the answer was applied (a replay applies it there). `state_sha256` is the
-SHA-256 of the console text of that call. `warm_up_s` is the model load time, which is not counted as operator delay.
+SHA-256 of the console text of that call. `warm_up_s` is the model load time, which is not counted as decider delay.
 
 ## Run document
 
 | key | content |
 |---|---|
-| `schema` | `"rbmk-operator-run/2"` |
+| `schema` | `"rbmk-run/2"` |
 | `meta` | `scenario` {key, group, seed, ticks, protections_off[], fields{...}}, `controller` (`model`, `naive` or `crew`), `memory`, `backend` {mode (`recorded` or `none`), model, recorded_at, source}, `clocks`, `finished`, `error`, `digest` |
 | `display` | `{title, description}`: presentation text for the scenario |
 | `limits` | `thermal_mw`, `orm_min` |
@@ -82,5 +82,5 @@ are answered in one batched request. The decider reads the current view again as
 
 ## Index
 
-`recordings/index.json`: `{schema: "rbmk-operator-index/2", recordings: [{file, scenario, memory, model, recorded_at, digest}]}`,
+`recordings/index.json`: `{schema: "rbmk-index/2", recordings: [{file, scenario, memory, model, recorded_at, digest}]}`,
 written by `run.py index recordings`. Files are named `<scenario>[.<memory>]-<model-id>-<date>.json`.

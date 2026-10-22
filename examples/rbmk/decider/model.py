@@ -89,7 +89,7 @@ class LiveAsker:
             raise ModelStopped(f"the decision model is not available: {why}")
 
     def warm(self) -> float:
-        """Load the weights with one throwaway question so that load time is not operator delay; returns seconds."""
+        """Load the weights with one throwaway question so that load time is not decider delay; returns seconds."""
         from poolhouse.decide import questions as q
 
         began = time.perf_counter()

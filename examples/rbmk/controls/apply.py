@@ -28,7 +28,7 @@ def act(cls: str, target: str, step: str, plant: Any, sensors: Any) -> str:
     if cls in ("insert_rod", "withdraw_rod"):
         sign = 1.0 if cls == "insert_rod" else -1.0
         for r in _rods(plant, target):
-            c.rods.command([r], r.r + sign * STEPS[step], "operator")
+            c.rods.command([r], r.r + sign * STEPS[step], "decider")
         return f"{'inserted' if sign > 0 else 'withdrew'} {target.removeprefix('grp:')} by {STEP_WORDS[step]}"
     if cls == "change_flow":
         verb, _, n = target.partition(":")

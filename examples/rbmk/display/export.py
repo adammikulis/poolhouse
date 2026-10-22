@@ -12,7 +12,7 @@ from ..runner import Result
 from ..scenarios import Scenario
 from . import text
 
-SCHEMA = "rbmk-operator-run/2"
+SCHEMA = "rbmk-run/2"
 THERMAL_MW = 3200
 ORM_MIN = 15
 

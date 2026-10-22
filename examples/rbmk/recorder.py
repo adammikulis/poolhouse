@@ -16,7 +16,7 @@ from .decider.policy import ModelDecider
 from .runner import Result, Runner, RunOptions
 from .scenarios import Scenario
 
-RECORDING = "rbmk-operator-recording/2"
+RECORDING = "rbmk-recording/2"
 
 
 def dumps(doc: Any) -> str:

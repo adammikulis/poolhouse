@@ -6,20 +6,17 @@ Nothing is committed: the run is made here, in a temporary directory, and thrown
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 
 import pytest
 
 pytest_plugins = ["real_model"]
 pytestmark = pytest.mark.real_model
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "examples"))
 
-from rbmk_experiment import recorder, scenarios  # noqa: E402
-from rbmk_experiment.decider.model import LiveAsker  # noqa: E402
-from rbmk_experiment.decider.policy import ModelDecider  # noqa: E402
-from rbmk_experiment.runner import Runner  # noqa: E402
+from examples.rbmk import recorder, scenarios  # noqa: E402
+from examples.rbmk.decider.model import LiveAsker  # noqa: E402
+from examples.rbmk.decider.policy import ModelDecider  # noqa: E402
+from examples.rbmk.runner import Runner  # noqa: E402
 
 
 def test_a_tiny_real_run_records_replays_and_every_answer_is_a_complete_argmax_distribution(real):

@@ -2,14 +2,14 @@
 
 Results go to a local run store under the poolhouse state directory, never into the repository.
 
-    python examples/rbmk_experiment/run.py batch --count 300 --seed 1 --memory none history   # varied poisoned starts, resumable
-    python examples/rbmk_experiment/run.py record poisoned_a                                    # named scenarios, real model
-    python examples/rbmk_experiment/run.py live poisoned_a                                      # the same on separate clocks (asyncio)
-    python examples/rbmk_experiment/run.py replay FILE                                          # no model; checks the digest
-    python examples/rbmk_experiment/run.py export FILE --out OUT                                # replay into the full run document
-    python examples/rbmk_experiment/run.py baseline historic_1986 --out DIR                     # scripted crew or naive rule
-    python examples/rbmk_experiment/run.py summary                                              # end states by model and memory
-    python examples/rbmk_experiment/run.py selftest poisoned_a                                  # one real decision
+    python -m examples.rbmk.run batch --count 300 --seed 1 --memory none history   # varied poisoned starts, resumable
+    python -m examples.rbmk.run record poisoned_a                                    # named scenarios, real model
+    python -m examples.rbmk.run live poisoned_a                                      # the same on separate clocks (asyncio)
+    python -m examples.rbmk.run replay FILE                                          # no model; checks the digest
+    python -m examples.rbmk.run export FILE --out OUT                                # replay into the full run document
+    python -m examples.rbmk.run baseline historic_1986 --out DIR                     # scripted crew or naive rule
+    python -m examples.rbmk.run summary                                              # end states by model and memory
+    python -m examples.rbmk.run selftest poisoned_a                                  # one real decision
 """
 
 from __future__ import annotations
@@ -22,24 +22,21 @@ import sys
 from pathlib import Path
 from typing import Any
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-if (Path(__file__).resolve().parents[2] / "src").is_dir():
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
-
 from poolhouse import home
-from rbmk_experiment import recorder, scenarios, starts, whatif
-from rbmk_experiment.decider.model import LiveAsker, ModelStopped
-from rbmk_experiment.decider.policy import CrewScript, ModelDecider, NaiveDecider
-from rbmk_experiment.display import (
+
+from . import recorder, scenarios, starts, whatif
+from .decider.model import LiveAsker, ModelStopped
+from .decider.policy import CrewScript, ModelDecider, NaiveDecider
+from .display import (
     export as display,
     text,
 )
-from rbmk_experiment.runner import Result, Runner, RunOptions
+from .runner import Result, Runner, RunOptions
 
 
 def store() -> Path:
     """The local run store: under the poolhouse state directory, outside the repository."""
-    return home.state("rbmk-experiment", "runs")
+    return home.state("rbmk", "runs")
 
 
 def _write(path: Path, doc: dict[str, Any]) -> None:
@@ -125,7 +122,8 @@ def live_cmd(args: argparse.Namespace) -> int:
 
     from poolhouse.serve import gpu
     from poolhouse.serve.broker import BrokerError
-    from rbmk_experiment.live import COMPUTE, LiveRunner
+
+    from .live import COMPUTE, LiveRunner
 
     scn = scenarios.scenario(args.scenario)
     try:

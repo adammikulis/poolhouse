@@ -1,6 +1,6 @@
-"""The RBMK operator example: the toy plant, the one-way chain from plant to model to plant, and the recording replay.
+"""The RBMK engine: the toy plant, the one-way chain from plant to model to plant, and the recording replay.
 
-No test here starts a model or touches a GPU. The tests that need the model are in test_rbmk_experiment_real.py and run with --real-model.
+No test here starts a model or touches a GPU. The tests that need the model are in test_rbmk_engine_real.py and run with --real-model.
 """
 
 from __future__ import annotations
@@ -11,38 +11,34 @@ import itertools
 import json
 import math
 import re
-import sys
 import time
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "examples"))
 
-from rbmk_experiment import recorder, scenarios  # noqa: E402
-from rbmk_experiment.controls import options as desk  # noqa: E402
-from rbmk_experiment.controls.apply import act  # noqa: E402
-from rbmk_experiment.decider.model import LiveAsker, ModelStopped, call_with_timeout  # noqa: E402
-from rbmk_experiment.decider.policy import (  # noqa: E402
+from examples.rbmk import recorder, scenarios  # noqa: E402
+from examples.rbmk.controls import options as desk  # noqa: E402
+from examples.rbmk.controls.apply import act  # noqa: E402
+from examples.rbmk.decider.model import LiveAsker, ModelStopped, call_with_timeout  # noqa: E402
+from examples.rbmk.decider.policy import (  # noqa: E402
     CrewScript,
     ModelDecider,
     NaiveDecider,
     Proposal,
 )
-from rbmk_experiment.display import text  # noqa: E402
-from rbmk_experiment.live import Compute, LiveRunner  # noqa: E402
-from rbmk_experiment.plant import reactor as rx  # noqa: E402
-from rbmk_experiment.plant.plant import Plant  # noqa: E402
-from rbmk_experiment.plant.rods import Rods, worth  # noqa: E402
-from rbmk_experiment.prompt import builder  # noqa: E402
-from rbmk_experiment.prompt.provenance import PROVENANCE  # noqa: E402
-from rbmk_experiment.runner import Runner, RunOptions  # noqa: E402
-from rbmk_experiment.sensors.model import SensorModel  # noqa: E402
+from examples.rbmk.display import text  # noqa: E402
+from examples.rbmk.live import Compute, LiveRunner  # noqa: E402
+from examples.rbmk.plant import reactor as rx  # noqa: E402
+from examples.rbmk.plant.plant import Plant  # noqa: E402
+from examples.rbmk.plant.rods import Rods, worth  # noqa: E402
+from examples.rbmk.prompt import builder  # noqa: E402
+from examples.rbmk.prompt.provenance import PROVENANCE  # noqa: E402
+from examples.rbmk.runner import Runner, RunOptions  # noqa: E402
+from examples.rbmk.sensors.model import SensorModel  # noqa: E402
 
-PACKAGE = ROOT / "examples" / "rbmk_experiment"
-FIXTURE = ROOT / "tests" / "fixtures" / "rbmk_experiment" / "fixture_short.recording.json"
-RECORDINGS = PACKAGE / "recordings"
+PACKAGE = ROOT / "examples" / "rbmk"
 
 
 def view_of(key: str, memory: str = "none", **plant_changes):
@@ -205,7 +201,7 @@ def _imports(path: Path) -> set[str]:
             found.update(f"{base}.{a.name}" for a in node.names)
         elif isinstance(node, ast.Import):
             found.update(a.name for a in node.names)
-    return {name.removeprefix("rbmk_experiment.") for name in found if name.startswith("rbmk_experiment")}
+    return {name.removeprefix("examples.rbmk.") for name in found if name.startswith("examples.rbmk")}
 
 
 LAYERS = {
@@ -406,7 +402,7 @@ def test_a_slow_model_call_does_not_stop_the_plant():
     assert len(res.trace) >= 14
 
 
-def test_a_slow_model_is_a_late_operator_and_equal_applied_times_give_identical_trajectories():
+def test_a_slow_model_is_a_late_decider_and_equal_applied_times_give_identical_trajectories():
     scn = scenarios.variant(scenarios.scenario("load_follow"), ticks=14)
 
     class Latency(NaiveDecider):
