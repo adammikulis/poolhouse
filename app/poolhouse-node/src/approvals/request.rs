@@ -16,6 +16,7 @@ use crate::approvals::flags::{for_grants, Asked};
 use crate::approvals::{summary, Approval, CANCELLED, EXPIRED, GRANTS, HELD, MOST_PENDING, MOST_PENDING_PER_SESSION, MOST_REQUESTS, PENDING, REQUEST_WINDOW_MS};
 use crate::error::{Error, Result};
 use crate::fsutil::random_hex;
+use crate::grants::authority::Authority;
 use crate::identity::ModelState;
 use crate::node::Node;
 
@@ -105,6 +106,10 @@ pub fn request_from(node: &mut Node, source: &str, board: &str, token: &str, p: 
     let name = access.actor.clone();
     sweep(node)?;
     let Checked { asks, note, task, ttl } = check(node, p)?;
+    let authority = Authority::of(node);
+    if authority.governed() && !authority.any() {
+        return Err(Error::Denied("No admin phone of this pool is added to this device, so there is nobody here to ask: add the admin's phone to this device, then ask again.".into()));
+    }
     let scopes: Vec<(&str, &str)> = asks.iter().map(|a| (a.action.as_str(), a.resource.as_str())).collect();
     let same = same(board, &name, &scopes);
     if let Some(found) = node.approvals.all().iter().find(|a| a.live() && a.same == same).cloned() {

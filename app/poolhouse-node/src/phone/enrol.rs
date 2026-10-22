@@ -3,8 +3,9 @@
 //! The code is a random secret whose hash the node keeps in its memory (never a file): the first phone's is made when the person says
 //! yes to the operating system's own prompt (`presence`), a further phone's when a person's key or a session asks once a key exists,
 //! saying who asked. The first phone is enrolled on the strength of the code, the proof that its key made the request, and a time
-//! within five minutes. Every later phone waits for a key the node holds to approve it, so a code that someone else saw adds nothing
-//! by itself, and a code a session made says so on the request.
+//! within five minutes; so is a phone whose key the charter of the pool this device is in lists as a strong admin key. Every other
+//! later phone waits for a key the node holds to approve it, so a code that someone else saw adds nothing by itself, and a code a
+//! session made says so on the request.
 
 use std::net::IpAddr;
 use std::time::Duration;
@@ -19,6 +20,7 @@ use crate::approvals::request::classify;
 use crate::approvals::{summary, Approval, CANCELLED, DENIED, EXPIRED, FAILED, PENDING as APPROVAL_PENDING, PHONE_ADD};
 use crate::error::{Error, Result};
 use crate::fsutil::{random_hex, sha256_hex};
+use crate::grants::authority::{Authority, LISTED};
 use crate::grants::person::{fingerprint_of, verifies_p256, P256};
 use crate::grants::spec::SKEW_MS;
 use crate::node::Node;
@@ -157,7 +159,8 @@ pub fn add_bytes(node_fp: &str, p: &Map<String, Value>) -> Vec<u8> {
     format!("{ADD_DOMAIN}{}", canonical(&body)).into_bytes()
 }
 
-/// Add the phone that ``ip`` sent ``p`` for: the first one at once, every later one after a key the node holds approves it.
+/// Add the phone that ``ip`` sent ``p`` for: the first one at once, a phone whose key the pool's charter lists as a strong admin key at
+/// once, every other one after a key the node holds approves it.
 pub fn enrol(node: &mut Node, ip: IpAddr, p: &Map<String, Value>) -> Result<Value> {
     let now = node.now_ms();
     let (name, key, p256dh, auth) = (text(p, "name")?, text(p, "key")?.to_ascii_lowercase(), text(p, "p256dh")?.to_ascii_lowercase(), text(p, "auth")?.to_ascii_lowercase());
@@ -185,24 +188,27 @@ pub fn enrol(node: &mut Node, ip: IpAddr, p: &Map<String, Value>) -> Result<Valu
     }
     let (id, token) = (format!("ph-{}", random_hex(6)?), random_hex(32)?);
     let first = node.persons.is_empty();
-    if !first {
+    let listed = !first && Authority::of(node).would_hold(&fingerprint, &key);
+    let direct = first || listed;
+    if !direct {
         brakes(node, &by, now)?;
     }
     let phone = Phone {
         id: id.clone(), name: name.into(), fingerprint: fingerprint.clone(), key: key.clone(), token_sha256: sha256_hex(token.as_bytes()),
-        state: if first { ACTIVE } else { PENDING }.into(), push: Push { p256dh, auth, endpoint: String::new() }, added_ms: at, seen_ms: now,
+        state: if direct { ACTIVE } else { PENDING }.into(), push: Push { p256dh, auth, endpoint: String::new() }, added_ms: at, seen_ms: now,
     };
     node.phones.add(phone)?;
     let (mut approval, mut number) = (String::new(), String::new());
-    if first {
+    if direct {
         node.persons.add_phone_key(P256, &key, name, now)?;
-        let _ = node.record_event("phone.add", &fingerprint, &format!("{name}; the first key, added by a code a person asked for at this device"));
+        let how = if first { "the first key, added by a code a person asked for at this device" } else { "a strong admin key of this pool, added by a code" };
+        let _ = node.record_event("phone.add", &fingerprint, &format!("{name}; {how}"));
     } else {
         (approval, number) = ask_to_add(node, &id, (name, &key, &fingerprint), (&made_by, &by), now)?;
     }
     let me = node.cert.fingerprint();
     let device = node.members.get(&me).map(|d| d.name.clone()).unwrap_or_default();
-    Ok(json!({"phone": id, "token": token, "fingerprint": fingerprint, "words": words(&fingerprint), "state": if first { ACTIVE } else { PENDING },
+    Ok(json!({"phone": id, "token": token, "fingerprint": fingerprint, "words": words(&fingerprint), "state": if direct { ACTIVE } else { PENDING },
               "approval": approval, "number": number, "device": me, "name": device, "policy": node.members.policy.name()}))
 }
 
@@ -240,6 +246,9 @@ fn ask_to_add(node: &mut Node, id: &str, phone: (&str, &str, &str), made: (&str,
 /// (`board/name`) when one does, which a held or blocked session may not, and which the text names.
 pub fn ask_to_remove(node: &mut Node, by: &str, by_key: &str, target: &str) -> Result<String> {
     let phone = node.phones.get(target).filter(|p| p.state == ACTIVE).cloned().ok_or_else(|| Error::Invalid("That is not one of this device's phones.".into()))?;
+    if Authority::of(node).lists(&phone.fingerprint) {
+        return Err(Error::Denied(LISTED.into()));
+    }
     if node.approvals.all().iter().any(|a| a.pending() && a.action.get("phone").and_then(Value::as_str) == Some(target) && a.kind == crate::approvals::PHONE_REMOVE) {
         return Err(Error::Invalid("Removing that phone is already waiting for a fingerprint.".into()));
     }

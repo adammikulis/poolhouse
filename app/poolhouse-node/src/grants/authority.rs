@@ -22,6 +22,8 @@ const UNKNOWN_PHONE: &str = "this device does not know that key as a phone's";
 const NOT_ADMINS: &str = "this pool is not run by its admins";
 const NO_STRONG: &str = "this pool lists no strong admin key";
 const BAD_SIGNATURE: &str = "the signature is not that admin key's";
+/// Why a key the charter in force lists is not removed from this device by the device's own acts.
+pub const LISTED: &str = "That key is an admin key of this pool: it leaves through an admin removal.";
 /// Why a grant row for a pool-wide action carries no approval.
 pub const NO_APPROVAL: &str = "a pool's grants come from an approval on a phone";
 

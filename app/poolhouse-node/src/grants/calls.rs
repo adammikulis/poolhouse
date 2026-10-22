@@ -9,7 +9,7 @@ use crate::node::Node;
 use crate::row::{canonical, is_line, Kind, Row};
 use crate::rules::held_back;
 
-use super::authority::Authority;
+use super::authority::{Authority, LISTED};
 use super::book::{standing, Grant};
 use super::person::verifies;
 use super::spec::{self, signing_bytes, ACTIONS, DEVICE_LOCAL, FLOORS, PORTABLE, SKEW_MS};
@@ -252,6 +252,9 @@ fn unenrolment(fingerprint: &str, by: &str, at_ms: u64, device: &str, nonce: &st
 fn unenroll(node: &mut Node, token: &str, p: &Map<String, Value>, peer: &Peer) -> Result<Value> {
     let holder = node.tokens.resolve(token).cloned().ok_or_else(|| Error::Denied("a registered session carries the removal of a person key".into()))?;
     let (fingerprint, by) = (text(p, "fingerprint")?, text(p, "by")?);
+    if Authority::of(node).lists(fingerprint) {
+        return Err(Error::Denied(LISTED.into()));
+    }
     let at = fresh(node, p, "at_ms")?;
     let (nonce, anchor) = (nonce_of(p, "a removal")?, Anchor::signed(p)?);
     if !node.persons.signed(by, &unenrolment(fingerprint, by, at, &node.cert.fingerprint(), nonce, &anchor), text(p, "sig")?) {

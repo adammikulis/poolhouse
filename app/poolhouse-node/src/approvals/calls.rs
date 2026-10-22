@@ -7,6 +7,7 @@ use crate::approvals::decide::{agent_view, audit, count_against, decide, sweep, 
 use crate::approvals::fatigue::Cause;
 use crate::approvals::{challenge, request, Approval, CANCELLED, DEFAULT_TTL_MS, MAX_TTL_MS, MIN_TTL_MS};
 use crate::error::{Error, Result};
+use crate::grants::authority::Authority;
 use crate::grants::spec::{check_resource, grantable};
 use crate::node::Node;
 
@@ -174,6 +175,9 @@ pub fn call(node: &mut Node, method: &str, board: &str, token: &str, p: &Map<Str
             }
             let (at, now) = (p.get("at_ms").and_then(Value::as_u64).unwrap_or(0), node.now_ms());
             let signed = at.abs_diff(now) <= LIST_FRESH_MS && node.persons.signed(key, &challenge::list_bytes(&node.cert.fingerprint(), at), text(p, "sig")?);
+            if signed && !Authority::of(node).decides(key) {
+                return Err(Error::Denied("That key is not an admin key of this pool, so it reads no requests.".into()));
+            }
             if !signed {
                 return Err(Error::Denied("Only the signature of a person's key, made just now, reads every request that waits.".into()));
             }

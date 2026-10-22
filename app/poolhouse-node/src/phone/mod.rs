@@ -178,7 +178,8 @@ pub fn announce(node: &mut Node, a: &Approval) {
         payload = json!({"v": 1, "id": a.id, "title": a.title, "agent": a.session, "risk": a.risk, "urgency": urgency, "expires_ms": a.expires_ms, "more": true});
     }
     let body = payload.to_string();
-    let targets: Vec<Push> = node.phones.all().filter(|p| p.state == ACTIVE && !p.push.endpoint.is_empty()).map(|p| p.push.clone()).collect();
+    let authority = crate::grants::authority::Authority::of(node);
+    let targets: Vec<Push> = node.phones.all().filter(|p| p.state == ACTIVE && !p.push.endpoint.is_empty() && authority.decides(&p.fingerprint)).map(|p| p.push.clone()).collect();
     if targets.is_empty() {
         return;
     }
@@ -221,6 +222,9 @@ pub fn remove(node: &mut Node, a: &Approval) -> Result<()> {
     let phone = node.phones.get(id).filter(|p| p.state == ACTIVE).cloned().ok_or_else(|| Error::Invalid("That phone is not one of this device's phones.".into()))?;
     if a.action.get("fingerprint").and_then(Value::as_str) != Some(phone.fingerprint.as_str()) {
         return Err(Error::Invalid("That phone's key is not the key the request named, so nothing was removed.".into()));
+    }
+    if crate::grants::authority::Authority::of(node).lists(&phone.fingerprint) {
+        return Err(Error::Denied(crate::grants::authority::LISTED.into()));
     }
     let now = node.now_ms();
     node.persons.remove(&phone.fingerprint, now)?;

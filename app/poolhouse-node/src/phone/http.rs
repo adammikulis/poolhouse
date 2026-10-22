@@ -16,6 +16,7 @@ use serde_json::{json, Map, Value};
 use crate::approvals::calls::pending;
 use crate::approvals::decide::{decide, sweep, view, Decision};
 use crate::error::{Error, Result};
+use crate::grants::authority::Authority;
 use crate::node::Node;
 use crate::phone::enrol::{ask_to_remove, enrol, make_offer_by, offer_is_live};
 use crate::phone::gate::{Gate, Permit};
@@ -63,10 +64,15 @@ pub fn push_address(url: &str) -> bool {
     url.len() <= MOST_ENDPOINT && url.bytes().all(|b| b.is_ascii_graphic()) && !host.is_empty() && !host.contains('@') && rest.len() > host.len()
 }
 
+/// Whether the phone ``id`` holds an authority key of the pool its device is in (any phone, on a device in no pool): only such a phone reads requests.
+fn reads(node: &Node, id: &str) -> bool {
+    node.phones.get(id).is_some_and(|f| Authority::of(node).decides(&f.fingerprint))
+}
+
 fn list(node: &mut Node, me: &str) -> Value {
     let now = node.now_ms();
-    let mut shown_now = pending(node);
-    let mut done: Vec<&crate::approvals::Approval> = node.approvals.all().iter().filter(|a| !a.live()).collect();
+    let mut shown_now = if reads(node, me) { pending(node) } else { Vec::new() };
+    let mut done: Vec<&crate::approvals::Approval> = if reads(node, me) { node.approvals.all().iter().filter(|a| !a.live()).collect() } else { Vec::new() };
     done.sort_by_key(|a| std::cmp::Reverse(a.seq));
     shown_now.extend(done.into_iter().take(RECENT).map(|a| view(node, a)));
     json!({"approvals": shown_now, "phones": node.phones.all().filter(|p| p.state != crate::phone::REMOVED).map(|p| shown(p, me)).collect::<Vec<_>>(),
@@ -128,7 +134,7 @@ fn phone_op(node: &Mutex<Node>, id: &str, op: &str, p: &Map<String, Value>) -> R
     match op {
         "status" => Ok(json!({"state": ACTIVE})),
         "list" => Ok(list(&mut n, id)),
-        "get" => n.approvals.get(text(p, "id")).filter(|a| a.state != crate::approvals::HELD).cloned().map(|a| view(&n, &a)).ok_or_else(|| Error::Invalid("There is no request with that id.".into())),
+        "get" => n.approvals.get(text(p, "id")).filter(|a| a.state != crate::approvals::HELD && reads(&n, id)).cloned().map(|a| view(&n, &a)).ok_or_else(|| Error::Invalid("There is no request with that id.".into())),
         "phones" => Ok(json!({"phones": n.phones.all().filter(|f| f.state != crate::phone::REMOVED).map(|f| shown(f, id)).collect::<Vec<_>>()})),
         "push" => {
             let endpoint = text(p, "endpoint");
