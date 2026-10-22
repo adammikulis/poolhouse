@@ -35,15 +35,21 @@ no remote-tracking ref): the test files that import or name the path, directly o
 file it reads; the switch-table scan (`tests/test_documented_env_vars.py`) for a path it scans; and the tree-wide guards once any
 test runs. A deleted module selects the tests that import it. A path no rule can place (`pyproject.toml`, `budgets.json`,
 `tests/conftest.py`) runs only the tree-wide guards and is named in a warning; `scripts/test gate` and CI cover it.
-The hook then runs `scripts/test all FILES` in the pushing checkout with reuse on, so a file whose tree already passed is not
-run again and the broker admits the rest like any run. The tests run on the checked-out tree, so the pushed commit must be `HEAD`
+A test file that only a bare word in a string or a directory listing reaches (`Selection.loose`) is counted in a warning and left to
+CI; the files that import, run or name the path by its path, and the files they reach through such references, run. The hook then
+runs `scripts/test full FILES` in the pushing checkout (every test of those files not marked `slow` or `gate`; the slow
+tests and the whole-tree scans of `scripts/test gate` are the gate's and CI's) with reuse on, so a file whose tree already passed
+for the `full` tier is not run again and the broker admits the rest like any run. The tests run on the checked-out tree, so the pushed commit must be `HEAD`
 (`git push origin HEAD:refs/heads/<dev>`).
 
-A failing test refuses the push: stderr lists each `FAILED path::test` line and `run it again with: scripts/test all FILES`
-for the failing files. Nothing passes because the check could not run: a selection that raises, a push of a commit that is not
+A failing test is run again on a checkout of the commit the push is measured from (the remote's old tip, in a temporary worktree
+that is removed afterwards): one that fails there too was red before the push, is named in a warning and is not held against it.
+A test that passes there, and a test the push adds, refuses the push: stderr lists each `FAILED path::test` line and
+`run it again with: scripts/test full FILES` for the failing files. Where the old tip is not known to the repository, or cannot be
+checked out, every failure is held against the push. Nothing passes because the check could not run: a selection that raises, a push of a commit that is not
 `HEAD`, a missing `scripts/test`, and a run that ends with a nonzero status and names no failing test each refuse the push with
 the cause and the command for the same selection. The parses of the sources `affected.py` reads are kept between runs in
-`affected-references.json` in the git common directory, named by each source's text, so a run parses only what moved: the
+`affected-references.json` in the common git directory, named by each source's text, so a run parses only what moved: the
 selection takes about a second once the file exists and about ten seconds the first time.
 
 A merged worktree whose branch has nothing outside the pushed tip is named as a warning. After a good push the hook starts the CI
@@ -88,7 +94,7 @@ runs the whole suite locally; a person's terminal may.
 
 `scripts/hooks/pushed` starts `scripts/ci_watch.py SHA` detached after an agent's push of the development branch, on the
 person's machine only (`lan.on_the_persons_machine`), when `gh` is installed. The watcher asks `gh run list --commit SHA
---workflow ci` for the push's run (up to three minutes), waits for it with `gh run watch` (at most 100 minutes, longer than the
+--workflow ci` for the push's run (up to three minutes), waits for it with `gh run watch` (at most 130 minutes, longer than the
 longest job timeout in `ci.yml`) and reads the result:
 
 - Green posts nothing.

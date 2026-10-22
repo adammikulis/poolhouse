@@ -154,6 +154,11 @@ class ReferenceIndex:
     def reaching(self, rel: str) -> tuple[dict[str, str], set[str], str]:
         return _reaching(self, rel)
 
+    def firm(self, rel: str) -> tuple[set[str], set[str]]:
+        """The test files and src modules that reach ``rel`` without a reference that is only a bare word or a listing."""
+        why, modules, _ = _reaching(self, rel, firm=True)
+        return set(why), modules
+
     def script_tests(self, rel: str) -> tuple[dict[str, str], set[str], str]:
         why, modules, shared = self.reaching(rel)
         for name in self._listers:
@@ -173,9 +178,17 @@ def infrastructure(files: Mapping[str, Source]) -> dict[str, str]:
     return out
 
 
-def _reaching(index: ReferenceIndex, rel: str) -> tuple[dict[str, str], set[str], str]:
+def loose(reason: str) -> bool:
+    """Whether a reference rests on a bare word in a string or on a directory listing, which names a file by chance as often as by use."""
+    return "in a string" in reason or reason.startswith("enumerates")
+
+
+def _reaching(index: ReferenceIndex, rel: str, firm: bool = False) -> tuple[dict[str, str], set[str], str]:
     """Test files that reach ``rel`` through scripts and helpers, with why, the src modules on
-    the way and, when a file every test session runs depends on ``rel``, which one."""
+    the way and, when a file every test session runs depends on ``rel``, which one.
+
+    ``firm`` follows only references that are not :func:`loose`.
+    """
     why: dict[str, str] = {}
     modules: set[str] = set()
     infra = index._infrastructure
@@ -184,6 +197,8 @@ def _reaching(index: ReferenceIndex, rel: str) -> tuple[dict[str, str], set[str]
     while queue:
         current, pure = queue.pop()
         for name, reason in index.referrers(current):
+            if firm and loose(reason):
+                continue
             if name in infra:
                 if pure:    # its code runs in every session; a name only held by a helper may never run
                     shared = shared or f"{infra[name]} {reason} (every test session loads it)"

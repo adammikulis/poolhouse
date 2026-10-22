@@ -35,6 +35,7 @@ class Selection:
     """The test files to run, why each was chosen, and the paths that forced a full run."""
 
     files: set[str] = field(default_factory=set)
+    firm: set[str] = field(default_factory=set)
     why: dict[str, list[str]] = field(default_factory=dict)
     unmapped: list[str] = field(default_factory=list)
     ignored: list[str] = field(default_factory=list)
@@ -45,9 +46,17 @@ class Selection:
         self.unmapped.append(rel)
         self.reasons[rel] = because
 
-    def add(self, test: str, because: str) -> None:
+    def add(self, test: str, because: str, firm: bool = True) -> None:
+        """Select ``test``; ``firm=False`` says the only reason is a bare word in a string or a directory listing."""
         self.files.add(test)
         self.why.setdefault(test, []).append(because)
+        if firm:
+            self.firm.add(test)
+
+    @property
+    def loose(self) -> set[str]:
+        """The selected test files that only a bare word in a string or a directory listing reaches."""
+        return self.files - self.firm
 
 
 def module_of(rel: str) -> str | None:
@@ -203,13 +212,14 @@ MEMO_VERSION = 1
 MEMO_SLACK = 3
 
 
-def memo_path(root: Path) -> Path:
-    """Where the parsed references of ``root``'s sources are kept: beside the git directory every worktree of it shares."""
-    done = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=root,
-                          capture_output=True, text=True, check=False)
-    if done.returncode:
-        raise RuntimeError(f"git rev-parse --git-common-dir: {done.stderr.strip()}")
-    return Path(done.stdout.strip()) / MEMO_NAME
+def memo_path(root: Path) -> Path | None:
+    """Where the parsed references of ``root``'s sources are kept: beside the objects every worktree of it shares; None outside one."""
+    try:
+        done = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=root,
+                              capture_output=True, text=True, check=False)
+    except OSError:
+        return None
+    return Path(done.stdout.strip()) / MEMO_NAME if done.returncode == 0 and done.stdout.strip() else None
 
 
 def memo_key(module: str, is_package: bool, text: str) -> str:
@@ -337,13 +347,16 @@ def add_script_tests(out: Selection, scripts: rules.ReferenceIndex, rel: str, re
     if shared:
         out.unmap(rel, shared)
         return
+    firm_tests, firm_modules = scripts.firm(rel)
     direct = {n for n in why if not why[n].endswith("enumerates scripts/")}
     for test, reason in why.items():
-        out.add(test, f"{rel}: {reason}")
+        out.add(test, f"{rel}: {reason}", firm=test in firm_tests)
     names = {m for m in (module_of(x) for x in modules) if m}
-    for dependant in sorted(reach(names, reverse, DEPTH)):
-        if dependant.startswith("tests.") and f"tests/{dependant[6:]}.py" in tests:
-            out.add(f"tests/{dependant[6:]}.py", f"{rel} -> a source module that names it")
+    firm_names = {m for m in (module_of(x) for x in firm_modules) if m}
+    for is_firm, group in ((True, firm_names), (False, names - firm_names)):
+        for dependant in sorted(reach(group, reverse, DEPTH)):
+            if dependant.startswith("tests.") and f"tests/{dependant[6:]}.py" in tests:
+                out.add(f"tests/{dependant[6:]}.py", f"{rel} -> a source module that names it", firm=is_firm)
     if not (direct or names or rel.endswith(".py")):
         out.unmap(rel, "no test imports, runs or names it, so nothing says which tests it affects")
 
@@ -404,16 +417,17 @@ def reverse_graph(root: Path, known: dict[str, str], memo_file: Path | None) -> 
     return reverse, raws
 
 
-def select(root: Path, changed: list[str], deleted: frozenset[str] = frozenset(), base: str = "HEAD",
-           memo_file: Path | None = None) -> Selection:
-    """The test files within ``DEPTH`` imports of ``changed``; ``unmapped`` non-empty means run all.
+def select(root: Path, changed: list[str], deleted: frozenset[str] = frozenset(),
+           depth: int = DEPTH, base: str = "HEAD") -> Selection:
+    """The test files within ``depth`` imports of ``changed``; ``unmapped`` non-empty means run all.
 
-    ``memo_file`` keeps each source's parse between calls, named by the source's text, so a call parses only what moved.
+    Each source's parse is kept between calls in the repository's directory of ``root`` (:func:`memo_path`), named by the
+    source's text, so a call parses only what moved; a ``root`` outside a repository keeps nothing.
     """
     out = Selection()
     known = index(root)
     tests = test_files(root)
-    reverse, raws = reverse_graph(root, known, memo_file)
+    reverse, raws = reverse_graph(root, known, memo_path(root))
     scripts = None
     for rel in changed:
         name = Path(rel).name
@@ -444,17 +458,17 @@ def select(root: Path, changed: list[str], deleted: frozenset[str] = frozenset()
                 scripts = rules.ReferenceIndex(rules.corpus(root))
             add_script_tests(out, scripts, rel, reverse, tests)
             if module:
-                for dependant in sorted(reach({module}, reverse, DEPTH)):
+                for dependant in sorted(reach({module}, reverse, depth)):
                     if dependant.startswith("tests.") and f"tests/{dependant[6:]}.py" in tests:
                         out.add(f"tests/{dependant[6:]}.py", f"{rel} -> {module}")
         elif module:
-            hit = reach({module}, reverse, DEPTH)
+            hit = reach({module}, reverse, depth)
             for dependant in sorted(hit):
                 if dependant.startswith("tests.") and f"tests/{dependant[6:]}.py" in tests:
                     out.add(f"tests/{dependant[6:]}.py", f"{rel} -> {module}")
         elif rel.startswith(("src/poolhouse/", "scripts/gates/")):
             near = package_dir_modules(rel, known)
-            for dependant in sorted(reach(near, reverse, DEPTH)):
+            for dependant in sorted(reach(near, reverse, depth)):
                 if dependant.startswith("tests.") and f"tests/{dependant[6:]}.py" in tests:
                     out.add(f"tests/{dependant[6:]}.py", f"{rel} -> its package")
         else:

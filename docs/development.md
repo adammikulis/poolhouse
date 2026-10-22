@@ -197,7 +197,7 @@ integration batch before publication. The full suite runs on GitHub for pull req
 
 The main agent owns `quick`; its cold-map recording and fallback can start full runs.
 Workers use explicit affected selectors: the files they changed and the files `scripts/affected.py` selects for their diff.
-The push hook runs that selection (`scripts/test all FILES`, reuse on) and refuses the push while a selected test is red
+The push hook runs that selection (`scripts/test full FILES`, reuse on) and refuses the push while a selected test is red
 (docs/landing.md, "The push hook"); `python scripts/hooks/affected_push.py` runs the same check on `HEAD` before pushing. A
 selected file whose tree already passed is `reused from <id>`, so the check costs the files not yet run; a push that has to
 run many files can outlast a tool's default timeout, so give the push the long timeout or run it in the background. `quick` needs a per-checkout testmon map (`.testmondata`, not committed). The first `quick` in a

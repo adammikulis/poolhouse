@@ -16,6 +16,7 @@ ZERO = "0" * 40
 ASK_TIMEOUT_S = 10.0
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE.parent), str(HERE.parents[1] / "src")]
+sys.path.append(str(HERE))    # last: the hook scripts here must not shadow a module of scripts/ or src/
 try:
     import sealed_git as lg
 except ImportError as exc:

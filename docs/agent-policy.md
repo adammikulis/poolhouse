@@ -536,7 +536,7 @@ Whoever made a branch finishes it and pushes it; the lead steps in only for cros
    tests with `scripts/test all <files>`, commit by named files.
 2. **Push.** `git fetch origin`, merge `origin/<dev>` again if it moved, then `git push origin HEAD:refs/heads/<dev>`.
    No accept or lock is needed. The push check refuses Python that does not parse and data
-   files, a standing reject of that commit, and a red test: it runs `scripts/test all` on the test files
+   files, a standing reject of that commit, and a red test: it runs `scripts/test full` on the test files
    `scripts/affected.py` selects for the pushed paths, and a failure or a selection it cannot make refuses the push with the
    failing test names and the command that runs them again (docs/landing.md, "The push hook").
 3. **Watch GitHub.** GitHub runs the `gates` job on the pushed commit (the full suite runs on pull requests, on `main` and
