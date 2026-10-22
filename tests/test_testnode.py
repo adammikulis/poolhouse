@@ -257,7 +257,7 @@ def run_ci_step(script: str, tmp_path: Path, python: str) -> tuple[int, str, str
 
 def test_the_ci_step_that_builds_the_node_fails_when_the_build_fails_and_names_it_otherwise(tmp_path):
     steps = ci_node_steps()
-    assert len(steps) == 2
+    assert len(steps) == 3
     for script in steps:
         code, exported, said = run_ci_step(script, tmp_path, "#!/bin/sh\necho 'testnode: cargo build -p poolhouse-node failed' >&2\nexit 1\n")
         assert code != 0 and exported == "" and "cargo build -p poolhouse-node failed" in said
