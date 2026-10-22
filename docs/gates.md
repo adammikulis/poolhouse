@@ -60,6 +60,18 @@ single finding. A file over the limit is a file to split, never an allowance to 
 `tests/test_gates_duplicates.py` names duplicates that must still be found, so a normalisation that quietly
 tightens is caught.
 
+## Nothing listens beyond loopback in development
+
+macOS asks the person to allow every new binary that listens on every interface, and again after every rebuild or new path
+(a cargo test binary, a copy of the node in a test's temporary directory, a Python path of a new version). So development and
+test code binds `127.0.0.1` and nothing else. `wildcard-binds` (`HARD`, no number) reads `src/poolhouse`, `scripts`, `tests`,
+`examples` and `app/**/*.rs`, and fails on a listener, a `--host`/`--listen`/`--bind` word, a `(host, port)` address, a
+`host=` argument or a Docker `-p` with no address that names the wildcard (`0.0.0.0`, `::`, `''` as a host). The files in
+`scripts/gates/wildcard_binds.py` `LAN` are the network on purpose (the pool daemon's LAN mode, the node's `--lan` listener
+and beacon, `add-device`, `share`, the rig's containers), each with its reason, and they listen beyond loopback only for the
+installed software on the account's real state root (`poolhouse.lan.allowed`). `tests/network_guard.py` refuses the same
+at run time inside a test process, and `app/poolhouse-node/tests/loopback_only.rs` guards the node's default tests.
+
 ## Mutation
 
 `scripts/mutate` samples functions out of `src/poolhouse`, changes one thing each (a flipped comparison, a swapped
