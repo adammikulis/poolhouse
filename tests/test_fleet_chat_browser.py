@@ -7,6 +7,7 @@ import pytest
 from test_fleet_ui import Serving
 
 from poolhouse.fleet.conversations import Conversations
+from poolhouse.testing.canned import CANNED_HEADER, CANNED_HEADER_VALUE, canned_stream_reply, marked
 
 pytestmark = pytest.mark.slow
 
@@ -76,8 +77,9 @@ def test_one_composer_enter_sends_and_shift_enter_keeps_the_draft(chat_browser):
         calls.append(request)
         cid = request["conversation"]
         served.ui.conversations.append(cid, "user", request["messages"][-1]["content"])
-        served.ui.conversations.append(cid, "assistant", "Saved answer")
-        route.fulfill(content_type="text/event-stream", body='data: {"choices":[{"delta":{"content":"Saved answer"}}]}\n\ndata: [DONE]\n\n')
+        served.ui.conversations.append(cid, "assistant", marked("Saved answer"))
+        route.fulfill(content_type="text/event-stream", headers={CANNED_HEADER: CANNED_HEADER_VALUE},
+                      body=canned_stream_reply([{"content": "Saved answer"}])[1])
 
     page.unroute("**/ui/chat")
     page.route("**/ui/chat", model)
@@ -88,13 +90,13 @@ def test_one_composer_enter_sends_and_shift_enter_keeps_the_draft(chat_browser):
     composer.type("Second line")
     assert not calls
     composer.press("Enter")
-    expect(page.locator("chat-view #chat-messages")).to_contain_text("Saved answer")
+    expect(page.locator("chat-view #chat-messages")).to_contain_text(marked("Saved answer"))
     assert calls[0]["messages"][-1]["content"] == "First line\nSecond line"
     assert page.locator("chat-view textarea:visible").count() == 1
     expect(page.locator("chat-view poolhouse-composer .composer-recipient")).to_have_text("Message model-a")
     assert not page.locator("chat-view #chat-options").evaluate("node => node.open")
     page.reload()
-    expect(page.locator("chat-view #chat-messages")).to_contain_text("Saved answer")
+    expect(page.locator("chat-view #chat-messages")).to_contain_text(marked("Saved answer"))
 
 
 def test_shared_composer_cancel_and_failed_send_keep_the_next_draft(chat_browser):

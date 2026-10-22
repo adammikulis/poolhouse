@@ -414,6 +414,9 @@ class _Proc:
         self.pid, self.rss, self._children = pid, rss, list(children)
         self.info = {"pid": pid, "cmdline": list(cmdline)}
 
+    def as_dict(self, attrs=None, ad_value=None):
+        return dict(self.info)
+
     def memory_info(self):
         return types.SimpleNamespace(rss=self.rss)
 
@@ -485,6 +488,7 @@ def test_the_sampler_falls_back_to_the_llama_server_on_the_port(monkeypatch):
 
     server = _Proc(7000, 50 * G, cmdline=["llama-server", "--port", "8099"])
     monkeypatch.setitem(sys.modules, "psutil", _Tree([server]))
+    monkeypatch.setattr("poolhouse.procscan.psutil", sys.modules["psutil"])
     monkeypatch.setattr(process_mod, "_rusage_footprint", lambda pid: 0)
 
     class Plain:

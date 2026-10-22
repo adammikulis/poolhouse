@@ -15,7 +15,7 @@ import os
 import sys
 import threading
 import time
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler
@@ -45,8 +45,12 @@ __all__ = [
     "Turn",
     "canned_binary",
     "canned_chat_reply",
+    "canned_chunk",
+    "canned_completion_reply",
+    "canned_embedding_reply",
     "canned_from_argv",
     "canned_server",
+    "canned_stream_reply",
     "marked",
     "unmarked",
 ]
@@ -340,12 +344,69 @@ def _logprobs() -> dict[str, Any]:
     return {"content": [{**token, "top_logprobs": [dict(token)]}], _FIELD: CANNED_MARKER}
 
 
-def canned_chat_reply(text: str, *, status: int = 200, **choice: Any) -> tuple[int, bytes]:
-    """``(status, body)`` of a marked chat completion for a handler of the ``server`` fixture, which sets no headers."""
-    message = {"role": "assistant", "content": marked(text)}
-    body = {"model": CANNED_MODEL_ID, "usage": _usage(None), _FIELD: CANNED_MARKER,
-            "choices": [{"index": 0, "message": message, "finish_reason": "stop", **choice}]}
+def _said(bare: bool) -> dict[str, Any]:
+    """What a hand-written handler adds to a body whose text is bare: the statement that it is."""
+    return {"x_canned_body": "unmarked"} if bare else {}
+
+
+def canned_chat_reply(text: str, /, *, status: int = 200, bare: bool = False,
+                      message: Mapping[str, Any] | None = None, top: Mapping[str, Any] | None = None,
+                      **choice: Any) -> tuple[int, bytes]:
+    """``(status, body)`` of a marked chat completion for a handler of the ``server`` fixture, which sets no headers.
+
+    ``message`` adds fields to the assistant message (a reasoning field, tool calls), ``top`` fields beside
+    ``choices`` (timings), and ``choice`` fields to the choice itself (a finish reason). Usage carries the marker.
+    ``bare`` leaves the text unmarked, for a test whose subject is the framing text (JSON the client must parse),
+    as `CannedServer.unmarked` does: the model id and the metadata still say so, and the body adds ``x_canned_body``.
+    """
+    held = {"role": "assistant", "content": text if bare else marked(text), **(message or {})}
+    body = {"model": CANNED_MODEL_ID, "usage": _usage(None), _FIELD: CANNED_MARKER, **_said(bare),
+            **(top or {}), "choices": [{"index": 0, "message": held, "finish_reason": "stop", **choice}]}
     return status, json.dumps(body).encode()
+
+
+def canned_completion_reply(text: str, /, *, status: int = 200, bare: bool = False,
+                            **fields: Any) -> tuple[int, bytes]:
+    """``(status, body)`` of a marked ``/completion`` answer for a handler of the ``server`` fixture.
+
+    ``fields`` ride beside ``content`` (``stopped_limit``, ``truncated``); ``bare`` is as for `canned_chat_reply`.
+    """
+    body = {"model": CANNED_MODEL_ID, "content": text if bare else marked(text), "stopped_limit": False,
+            "truncated": False, _FIELD: CANNED_MARKER, **_said(bare), **fields}
+    return status, json.dumps(body).encode()
+
+
+def canned_embedding_reply(*vectors: Any, status: int = 200) -> tuple[int, bytes]:
+    """``(status, body)`` of an embeddings answer holding ``vectors`` (one row each), for a handler of the ``server`` fixture."""
+    body = {"object": "list", "model": CANNED_MODEL_ID, "usage": _usage(None), _FIELD: CANNED_MARKER,
+            "data": [{"object": "embedding", "index": n, "embedding": one} for n, one in enumerate(vectors)]}
+    return status, json.dumps(body).encode()
+
+
+def canned_chunk(delta: Mapping[str, Any] | None = None, *, finish: str | None = None, index: Any = 0,
+                 **top: Any) -> dict[str, Any]:
+    """One streamed chat chunk naming the canned model id, marked in its metadata; ``top`` rides beside ``choices``.
+
+    A ``content`` delta is the caller's text: pass it through `marked` where the chunk is meant to read as a reply.
+    """
+    choice: dict[str, Any] = {"index": index, "delta": dict(delta or {})}
+    if finish is not None:
+        choice["finish_reason"] = finish
+    return {"model": CANNED_MODEL_ID, "choices": [choice], _FIELD: CANNED_MARKER, **top}
+
+
+def canned_stream_reply(deltas: Sequence[Mapping[str, Any]], *, finish: str = "stop", bare: bool = False,
+                        **top: Any) -> tuple[int, bytes]:
+    """``(status, body)`` of a streamed chat completion: the marker first, ``deltas``, a last frame, then ``[DONE]``.
+
+    ``top`` (timings, usage) rides on the last chunk, which carries ``finish``. ``bare`` drops the leading marker
+    delta, for a test whose subject is a stream that carries no text; every chunk still names the canned id.
+    """
+    chunks = [] if bare else [canned_chunk({"content": f"{CANNED_MARKER} "})]
+    chunks += [canned_chunk(one) for one in deltas]
+    chunks[-1] = {**chunks[-1], **top}
+    chunks[-1]["choices"][0]["finish_reason"] = finish
+    return 200, b"".join(b"data: " + json.dumps(one).encode() + b"\n\n" for one in chunks) + b"data: [DONE]\n\n"
 
 
 class _Quiet(BaseHTTPRequestHandler):

@@ -20,6 +20,20 @@ from .onboard.lan import require_local
 
 ENV = "POOLHOUSE_WSL_NETWORK"
 LIMIT = 100_000
+NAT = ipaddress.ip_network("172.16.0.0/12")
+
+
+def nat_notice(address: str) -> str:
+    """The sentence for a WSL guest on Hyper-V's private network with no Windows launcher in front of it, else ''."""
+    try:
+        behind = bool(address) and ipaddress.ip_address(address) in NAT
+    except ValueError:
+        return ""
+    if not behind:
+        return ""
+    return (f"This WSL machine is on Windows' private network ({address}), so your other devices cannot find it or reach it. "
+            "Open Poolhouse from Windows, which carries the network for it, or run `python -m poolhouse.device_setup --yes` here: "
+            "it asks Windows once, switches WSL to mirrored networking and restarts WSL.")
 
 
 def disable_udp_reset(sock: socket.socket) -> None:
