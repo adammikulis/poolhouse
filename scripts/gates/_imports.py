@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+from collections.abc import Iterable
 from pathlib import Path
 
 from . import _store
@@ -30,8 +31,9 @@ def specs(source: str) -> list[Spec]:
 class Resolver:
     """Finds the files under a root that an import could bind, listing each directory once."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, extra: Iterable[str] = ()) -> None:
         self.root = root
+        self.extra = [root / e for e in extra]
         self._dirs: dict[Path, frozenset[str]] = {}
 
     def listing(self, path: Path) -> frozenset[str]:
@@ -71,7 +73,7 @@ class Resolver:
             bases = [anchor]
             found = [anchor / ("__init__" + s) for s in SUFFIXES if "__init__" + s in self.listing(anchor)]
         else:
-            bases = [self.root, self.root / "src", importer.parent]
+            bases = [self.root, self.root / "src", *self.extra, importer.parent]
             found = []
         out: set[Path] = set(found)
         for base in bases:

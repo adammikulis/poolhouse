@@ -17,7 +17,7 @@ LINE_LIMIT = 24000
 """Characters of file names one pyright command line may carry."""
 FULL_ABOVE = 0.8
 """Past this share of files stale, one whole-project run is cheaper than naming them."""
-UNSUPPORTED = {"exclude", "ignore", "extends", "executionEnvironments", "extraPaths",
+UNSUPPORTED = {"exclude", "ignore", "extends", "extraPaths",
                "stubPath", "venvPath", "venv", "pythonPath", "strict"}
 """Settings that change which files are checked or how an import resolves."""
 ENVIRONMENT = ("import sys, importlib.metadata as m\n"
@@ -41,7 +41,37 @@ def settings(root: Path) -> dict | None:
     include = found.get("include")
     if not isinstance(include, list) or any(not isinstance(i, str) or "*" in i for i in include):
         return None
+    if extra_paths(found) is None:
+        return None
     return found
+
+
+def extra_paths(config: dict) -> list[str] | None:
+    """Every extraPaths entry of the execution environments, None when one sets anything else.
+
+    An environment that only adds import roots changes where an import resolves, which the
+    import graph follows by trying each of these as a base; any other key (a Python version,
+    a platform) can change the answers and needs a whole run.
+    """
+    paths: set[str] = set()
+    for env in config.get("executionEnvironments", []):
+        listed = env.get("extraPaths", []) if isinstance(env, dict) else None
+        if (not isinstance(env, dict) or not set(env) <= {"root", "extraPaths"}
+                or not isinstance(listed, list) or not all(isinstance(p, str) for p in listed)):
+            return None
+        paths.update(listed)
+    return sorted(paths)
+
+
+def cache_home(root: Path) -> Path:
+    """The repository's shared git directory, so every worktree of it reads one cache.
+
+    The stored answers are keyed by file content and by the environment, never by the
+    checkout, so a new worktree starts from what its siblings already checked.
+    """
+    done = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=root,
+                          capture_output=True, text=True, check=False)
+    return Path(done.stdout.strip()) if done.returncode == 0 and done.stdout.strip() else root
 
 
 def project_files(root: Path, include: list[str]) -> list[Path]:
@@ -78,9 +108,9 @@ def environment(root: Path) -> str:
     return _store.digest(f"{code}\0{_pins.version('pyright')}\0{interpreter_stamp(root)}".encode())
 
 
-def graph_of(root: Path, files: list[Path], kept: dict) -> dict[Path, list[Path]]:
+def graph_of(root: Path, files: list[Path], kept: dict, extra: list[str] = ()) -> dict[Path, list[Path]]:
     """Each file reachable from files, with the files under root it imports; reuses ``kept`` specs."""
-    resolver = _imports.Resolver(root)
+    resolver = _imports.Resolver(root, extra)
     graph: dict[Path, list[Path]] = {}
     pending = list(files)
     while pending:
@@ -120,13 +150,13 @@ def findings(root: Path, run: Run) -> list[Finding]:
     if config is None:
         return run(None)
     files = project_files(root, config["include"])
-    name = "pyright-" + _store.digest(str(root).encode())[:16]
+    name = "pyright-" + _store.digest(str(cache_home(root)).encode())[:16]
     kept = {} if _store.forced() else _store.load(name)
     env = environment(root)
     if kept.get("environment") != env:
         kept = {}
     specs_kept = kept.setdefault("specs", {})
-    keys = _imports.closure_keys(graph_of(root, files, specs_kept), root)
+    keys = _imports.closure_keys(graph_of(root, files, specs_kept, extra_paths(config) or []), root)
     names = {path: rel(path, root) for path in files}
     stored = kept.get("files", {})
     stale = [names[p] for p in files if stored.get(names[p], {}).get("key") != keys[p]]

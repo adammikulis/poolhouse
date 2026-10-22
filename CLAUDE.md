@@ -19,6 +19,11 @@ around it: write the target structure (layers, one-way boundaries, who may read 
 test (import, layering or type boundary) and absorb the symptom fixes into it. A second symptom fix in one area is the signal
 to stop and redesign, and a worker's brief names the target structure, not the symptom. AGENTS.md, "Reporting a problem", "A problem comes with its fix", is the same rule for every agent.
 
+## Memory is not for project guidance
+
+Claude Code's auto-memory holds only notes about one device or one person's own preferences. A lesson or rule for anyone
+working on the project is written into the repo in the same turn (docs/agent-policy.md, section 7, "Rule files").
+
 ## Session start and names
 
 The `SessionStart` hook registers the lead, announces it and puts the inbox in its context; when the hook output is absent, the lead
