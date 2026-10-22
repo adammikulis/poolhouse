@@ -257,7 +257,7 @@ labels, how many units have DEPS, and which steps would run.
 | `[reuse] key_env, key_tools, canary` | extra key inputs; the sampling rate | none; none; none (off; the project's file sets it) |
 | `[remote] default, accept` | `auto`, `local` or `pool`; which labels may leave this machine | `auto` (section 6.1); every label except `local` |
 | `[failfirst] tests, fail_line, exempt_line, mode` | section 5.9 | `report`; the lines of `docs/agent-policy.md` |
-| `[schedule] seed, unrecorded_max, silence_margin, total_margin, queue_wait` | a committed durations file used until history exists (CI); seconds assumed for a unit with no record; the margins of the hang guards (5.10); the queue limit | none; the median of the recorded ones; none; none; none (the hang guards and queue wait then use no progress, 5.10) |
+| `[schedule] seed, unrecorded_max, silence_margin, total_margin, queue_wait` | a committed durations file used until history exists (CI); seconds assumed for a unit with no record; the margins of the hang guards (5.10); the queue limit | none; the median of the recorded ones; none; none (required unless every unit and step has a `timeout`: the run is refused with status 4, 5.10); none; none |
 | `[requires]` | things a device must have, checked by probes the device owns (6.5) | none |
 | `[[unit]]` | a command unit with no LIST (5.7) | none |
 | `[preset.NAME]` | a preset defined in the project (7) | none |
@@ -579,8 +579,12 @@ The runner's rule, for every unit and every project:
   guard of its siblings: the median of the per-unit longest silences recorded across the project's other units times `silence_margin`.
   With no history at all in the project (its first run ever), the run is guarded against the live gaps it produces itself: a silence
   longer than the longest gap seen so far in this run times `silence_margin`, applied after at least one unit has finished, and the
-  report says `guard: bootstrapping`. With no margin set the guard is not applied and the report says so (the cancel and the
-  receiver's bounds, 10.6, remain). A guard ends the work loudly, with status 124 for a unit, shard or step and 75 for a queue wait, and the
+  report says `guard: bootstrapping`. **A run with no hang guard is not allowed.** When
+  neither `[schedule] silence_margin` nor an explicit `timeout` for every unit and step is set, the runner refuses to start, loudly,
+  with status 4, naming the missing key and the reason (`testfarm.toml: [schedule] silence_margin is not set, and unit tests/x.py
+  has no timeout: a run with no hang guard is not allowed`). There is no default number. `poolhouse-test init` writes the key for a
+  new project from its measured first run (the longest gap between outputs seen, divided by the median gap, rounded up) and prints it
+  for the person to read in the new file. A guard ends the work loudly, with status 124 for a unit, shard or step and 75 for a queue wait, and the
   line names what was waited for and the derivation: `unit tests/x.py: no output for 41 s (longest silence recorded 8 s x margin 5)`.
   A build step has its own `timeout`, else the hang guards above on the step's recorded runs, and never counts in a unit's.
 - **Overload is named, not guessed.** The report says `the machine was overloaded` only when units are `not started`; a run in which every
@@ -723,6 +727,7 @@ everything = ["pyproject.toml", "tests/conftest.py", "tests/known-fixtures.txt",
 
 [schedule]
 seed = "tests/ci-durations.json"
+silence_margin = 5   # written by `poolhouse-test init` from the measured first run; without it (or a timeout on every unit and step) the run is refused, status 4
 
 [failfirst]
 mode = "enforce"
@@ -907,7 +912,7 @@ first, then the ones this design adds.
 |---|---|---|
 | 0 | every selected unit passed or was reused (an empty selection says so and is 0) | the runner's existing rule that "no tests selected" is success (`scripts/test` `clean`) |
 | 1 | at least one unit failed | pytest's failure status, the existing report |
-| 4 | refused before anything ran: invalid config, id, selector or tree; a hook refused; the tree changed during the run; a selector matched nothing | `scripts/test` argument errors and the tree-changed rule |
+| 4 | refused before anything ran: invalid config, id, selector or tree; no hang guard set (`[schedule] silence_margin`, or a `timeout` on every unit and step); a hook refused; the tree changed during the run; a selector matched nothing | `scripts/test` argument errors and the tree-changed rule |
 | 6 | busy: a whole-selection job is already live | `BUSY_EXIT` |
 | 70 | a device did not complete its part: not in the pool, refused, unreachable, vanished mid-run, missing a requirement | `test_on.NOT_RUN`, `docs/test-farm.md` |
 | 75 | at least one unit never started: it waited for a permit past the queue limit while the machine was overloaded; nothing about it failed | `EX_TEMPFAIL` of `sysexits.h`; the queue limit is the project's `[schedule] queue_wait` |
@@ -938,7 +943,7 @@ the seed printed; no unit depends on another having run. Wall time and which dev
 
 ```
 pip install poolhouse                       # nothing else: the command, the Python API and the presets come with it
-poolhouse-test init                         # finds the tool's marker file, writes a four-line testfarm.toml, prints it
+poolhouse-test init                         # finds the tool's marker file, writes a testfarm.toml (the tool's four lines and, after its measured first run, `[schedule] silence_margin`), prints it
 poolhouse-test run                          # parallel on this machine under the broker, with reuse; second run reuses what passed
 poolhouse-test run --affected               # once DEPS are given (init offers the globs it can see)
 poolhouse-test devices                      # the pool's other devices, whether each takes tests, platform, free slots

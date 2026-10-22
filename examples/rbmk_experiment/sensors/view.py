@@ -9,11 +9,11 @@ from dataclasses import dataclass, field
 
 BRIEFING = (
     "Standing briefing. The unit has 211 control rods, 8 main circulation pumps and 2 turbogenerators. The written operating "
-    "rules require the operational reactivity margin (ORM) to be at least 15 rod-equivalents; below that the reactor is to be "
-    "shut down. A turbine rundown test, in which some main circulation pumps run on the coasting turbogenerator, is in the "
-    "programme at 700 to 1000 MW thermal power. Emergency shutdown is the AZ-5 button. Desk controls: rods singly or by group, "
-    "main circulation pumps, the automatic regulator, protection switches, the turbine test, a request for "
-    "the ORM printout, and AZ-5.")
+    "rules give the operational reactivity margin (ORM) at rated power as 26 to 30 rods, allow less only with the Chief Engineer's "
+    "authorization, and require immediate shutdown at 15 rods. A turbine rundown test, in which four main circulation pumps run on "
+    "the coasting turbogenerator, is in the programme at 700 to 1000 MW thermal power. Emergency shutdown is the AZ-5 button. Desk "
+    "controls: rods singly or by group, main circulation pumps, the automatic regulator, protection switches, the turbine test and "
+    "AZ-5.")
 
 
 @dataclass(frozen=True)
