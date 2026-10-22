@@ -20,6 +20,8 @@ body { display: flex; flex-direction: column; background: var(--bg); color: var(
 .sub { color: var(--muted); font-size: 12.5px; }
 .status { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; font-size: 13.5px; }
 .badge { padding: 2px 10px; border-radius: 12px; font-weight: 700; letter-spacing: .04em; color: #fff; background: var(--warn); }
+.linkbtn { padding: 3px 10px; border: 1px solid var(--line); border-radius: 6px; color: var(--accent); text-decoration: none; font-weight: 600; }
+.linkbtn:hover { border-color: var(--accent); }
 .badge.live { background: var(--live); }
 .badge.bad { background: var(--bad); }
 #banner { margin: 0; padding: 8px 16px; background: var(--bad); color: #fff; font-weight: 600; }
