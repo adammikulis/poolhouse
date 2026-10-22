@@ -10,7 +10,7 @@ import threading
 import time
 from pathlib import Path
 
-from poolhouse import agent_dependency
+from poolhouse import agent_dependency, spawned
 from poolhouse.http import ServerError
 from poolhouse.lock import Busy, only_one
 from poolhouse.log import warn
@@ -175,7 +175,10 @@ def install(root, job):
                 executable = target / "Contents/MacOS/poolhouse-headless"
                 process = _start(target, root, port)
             queue._update(row, note="Waiting for the installed agent runtime to become ready")
-            health = wait_for_health(port, seconds=60)
+            try:
+                health = wait_for_health(port, seconds=60, child=process, clean_exit_ends=False)
+            except spawned.StartFailed as exc:
+                raise ValueError(str(exc)) from exc
             if not health or health.get("commit") != candidate["commit"]:
                 raise ValueError("The installed app did not report the selected source identity.")
             replacement_instance = health.get("launcher_control")

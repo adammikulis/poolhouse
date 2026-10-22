@@ -68,13 +68,15 @@ def test_the_markdown_lists_each_success_by_name_and_where_the_run_came_from():
 
 # -- the regression gate and the per-attack table (issue 29) ----------------------------------
 
-from poolhouse.redteam.report import gate, scenario_table  # noqa: E402
+from dataclasses import replace  # noqa: E402
+
+from poolhouse.redteam.report import gate, scenario_table, success_rates  # noqa: E402
 
 
-def watched(attack_id: str, *, succeeded=False, detected=True, ttd: int | None = 0,
-            layer="taint") -> Attempt:
-    return Attempt("sentinel", "injected-page-privileged-call", attack_id, succeeded,
-                   arm="default", layer=layer, detected=detected, ttd=ttd)
+def watched(attack_id: str, *, succeeded=False, **fields) -> Attempt:
+    """An attack the model made on the default arm that sentinel noticed at once; ``fields`` change that."""
+    got = {"arm": "default", "layer": "taint", "detected": True, "ttd": 0, "attempted": True, **fields}
+    return Attempt("sentinel", "injected-page-privileged-call", attack_id, succeeded, **got)
 
 
 def test_the_table_has_a_row_per_attack_with_the_layer_the_detection_and_the_time():
@@ -122,3 +124,23 @@ def test_a_success_rate_tolerance_lets_a_small_rise_through_but_not_a_flipped_at
     new = Report(attempts=[attempt(str(n), n == 0) for n in range(100)])
     assert gate(old, new, success_tolerance=0.02) == ["regressed: chat / system-prompt-extraction / 0"]
     assert any("success rate rose" in p for p in gate(old, new))
+
+
+def test_a_control_arm_that_a_model_fell_for_this_time_is_not_a_regression_of_the_defences():
+    """The arm with the defences off measures the model: what it does varies, so the gate ignores it."""
+    old = Report(attempts=[watched("a", arm="unwatched", detected=False, ttd=None, layer=""), watched("a")])
+    new = Report(attempts=[watched("a", arm="unwatched", succeeded=True, detected=False, ttd=None, layer=""),
+                           watched("a")])
+    assert gate(old, new) == []
+    assert success_rates(old, new)[:2] == (0.0, 0.0)
+    bare = Attempt("loop", "tool-loop", "x", True, arm="bare")
+    assert gate(Report(attempts=[replace(bare, succeeded=False)]), Report(attempts=[bare])) == []
+    defended = replace(bare, arm="web-guard")
+    assert gate(Report(attempts=[replace(defended, succeeded=False)]), Report(attempts=[defended]))
+
+
+def test_sentinel_is_not_blamed_for_an_injection_the_model_did_not_fall_for():
+    """No attack was made, so there was nothing for it to notice; one that was made and went unnoticed still fails."""
+    old = Report(attempts=[watched("a")])
+    assert gate(old, Report(attempts=[watched("a", detected=False, ttd=None, attempted=False)])) == []
+    assert gate(old, Report(attempts=[watched("a", detected=False, ttd=None, attempted=True)]))
