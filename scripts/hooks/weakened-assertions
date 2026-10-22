@@ -145,6 +145,8 @@ def merge_own(diff: str) -> str:
         theirs = run("rev-parse", "-q", "--verify", f"MERGE_HEAD:{path}").strip()
         if theirs and theirs == run("rev-parse", f":{path}").strip():
             continue
+        if not theirs and not run("ls-files", "--stage", "--", path).strip():
+            continue  # the other side deleted the file; the merge only carries the deletion
         if path in theirs_diff:
             removed = list((Counter(removed) & Counter(theirs_diff[path][0])).elements())
             added = list((Counter(added) & Counter(theirs_diff[path][1])).elements())
