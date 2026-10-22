@@ -24,7 +24,8 @@ ROOM = Path(__file__).resolve().parents[1] / "room"
 ASSETS = Path(__file__).resolve().parents[3] / "src" / "poolhouse" / "ui" / "assets"
 SHARED_ASSETS = ("three.module.js", "three.core.js", "OrbitControls.js", "RoomEnvironment.js")
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
-         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json", ".gz": "application/octet-stream"}
+         ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".json": "application/json", ".gz": "application/octet-stream",
+         ".webp": "image/webp", ".png": "image/png"}
 BODY_LIMIT = 64 << 10
 UPLOAD_LIMIT = recordings.MAX_BYTES
 KEEPALIVE_S = 10.0

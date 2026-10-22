@@ -10,9 +10,11 @@ from types import SimpleNamespace
 import pytest
 
 from poolhouse.fleet import companion_routes
+from poolhouse.fleet.chat_stream import frame
 from poolhouse.fleet.discovery import Membership, derive_token
 from poolhouse.fleet.invite_routes import ui_route
 from poolhouse.fleet.invites import Invitations, decode, proof
+from poolhouse.testing.canned import CANNED_MARKER, canned_chunk, marked
 
 POOL_KEY = base64.urlsafe_b64encode(b"x" * 32).rstrip(b"=")
 
@@ -192,14 +194,15 @@ def test_stream_delivers_actual_deltas_then_completion(enrolled, monkeypatch):
     request = handler(grant, "/companion/v1/chat", "POST")
     observed = []
     def stream(target, payload, **kwargs):
-        yield b'data: {"choices":[{"delta":{"content":"first"}}]}\n\n'
+        yield frame(canned_chunk({"content": marked("first")}))
         observed.append(request.wfile.getvalue())
-        yield b'data: {"choices":[{"delta":{"content":" second"}}]}\n\n'
+        yield frame(canned_chunk({"content": " second"}))
     monkeypatch.setattr(sdk_chat, "stream", stream)
     monkeypatch.setattr(companion_routes, "turn", lambda *a, **kw: nullcontext())
     raw = json.dumps({"model": "model-q", "messages": [{"role": "user", "content": "question"}]}).encode()
     assert companion_routes.answer(ui(store), request, raw)
     assert b'first' in observed[0] and b'second' not in observed[0]
+    assert CANNED_MARKER.encode() in observed[0], "what the phone is sent says it is not a model"
     assert b'"done":true' in request.wfile.getvalue()
 
 
@@ -210,10 +213,10 @@ def test_revocation_closes_stream_before_more_output(enrolled, monkeypatch):
     closed = []
     def stream(target, payload, **kwargs):
         try:
-            yield b'data: {"choices":[{"delta":{"content":"first"}}]}\n\n'
+            yield frame(canned_chunk({"content": marked("first")}))
             store.revoke(grant["device_id"])
             assert kwargs["control"].cancelled.is_set()
-            yield b'data: {"choices":[{"delta":{"content":"forbidden"}}]}\n\n'
+            yield frame(canned_chunk({"content": "forbidden"}))
         finally:
             closed.append(True)
     monkeypatch.setattr(sdk_chat, "stream", stream)

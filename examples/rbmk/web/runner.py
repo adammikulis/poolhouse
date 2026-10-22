@@ -3,34 +3,19 @@
 from __future__ import annotations
 
 import copy
-from collections.abc import Callable
 from typing import Any
 
 from ..decider import bundle
-from ..decider.loop import Controller, Result, Runner
 from ..decider.controllers import ModelController, Proposal
+from ..decider.loop import Controller, Result, Runner
 from ..sim import controls
 from ..sim.plant import Plant
 from ..sim.scenarios import Scenario, variant
 from .jobs import Cancelled, Job
 
 
-class Sink:
-    """The extra readings of one run, one entry per trace row. Plant copies share it."""
-
-    def __init__(self) -> None:
-        self.rows: list[dict[str, Any]] = []
-
-    def __deepcopy__(self, memo: dict[int, Any]) -> Sink:
-        return self
-
-
 class WebPlant(Plant):
-    """A `Plant` that notes, for every trace row, the gauge readings with their ages and the rod faults."""
-
-    def __init__(self, scn: Scenario, sink: Sink | None = None) -> None:
-        super().__init__(scn)
-        self.sink = sink or Sink()
+    """A `Plant` whose every sampled row also carries the gauge readings with their ages and the rod faults."""
 
     def extras(self) -> dict[str, Any]:
         """The readings the console shows, with age and fault state, and the rods whose drive is faulted."""
@@ -40,22 +25,9 @@ class WebPlant(Plant):
                            for k, g in self.gauges.items()},
                 "orm_age": round(c.t - self.orm_printed_at, 1)}
 
-    def advance(self) -> None:
-        """Note this tick's extras, then advance."""
-        self.sink.rows.append(self.extras())
-        super().advance()
-
-    def advance_split(self, first: float, act: Callable[[], None]) -> None:
-        """Note this tick's extras, then advance with ``act`` carried out ``first`` seconds in."""
-        self.sink.rows.append(self.extras())
-        super().advance_split(first, act)
-
-
-def merged(trace: list[dict[str, Any]], sink: Sink) -> list[dict[str, Any]]:
-    """The trace rows with their extras added; a trace and sink of different lengths are an error."""
-    if len(trace) != len(sink.rows):
-        raise ValueError(f"{len(trace)} trace rows but {len(sink.rows)} sets of extra readings")
-    return [{**row, **extra} for row, extra in zip(trace, sink.rows, strict=True)]
+    def sample(self) -> dict[str, Any]:
+        """The plant row with the extras added, so a trace row cannot lack them."""
+        return {**super().sample(), **self.extras()}
 
 
 class WebRunner(Runner):
@@ -68,14 +40,8 @@ class WebRunner(Runner):
         self.skip_head = self.quiet = False
         self.captioned: set[tuple[int, str, str]] = set()
 
-    @property
-    def sink(self) -> Sink:
-        """The extras of this run's plant."""
-        return self.plant.sink
-
     def _row(self, k: int) -> dict[str, Any]:
-        row = self.res.trace[k]
-        return {**row, **self.sink.rows[k]} if k < len(self.sink.rows) else row
+        return self.res.trace[k]
 
     def _push(self) -> None:
         job = self.job
@@ -123,7 +89,6 @@ class WebRunner(Runner):
     def run(self) -> Result:
         """Run to the end, pushing the last row and the finished flag."""
         res = super().run()
-        self.sink.rows.append(self.plant.extras())
         self._push()
         return res
 
@@ -168,7 +133,7 @@ def resume(fork: Plant, scn: Scenario, controller: Controller, job: Job, horizon
     plant = copy.deepcopy(fork)
     end = scn.ticks if horizon is None else min(scn.ticks, plant.tick + horizon)
     branch = variant(scn, ticks=end, events=tuple(e for e in scn.events if e.tick != plant.tick))
-    plant.scn, plant.sink = branch, Sink()
+    plant.scn = branch
     runner = WebRunner(branch, controller, job)
     runner.plant, runner.skip_head = plant, True
     return runner

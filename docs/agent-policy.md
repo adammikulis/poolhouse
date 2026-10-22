@@ -258,7 +258,12 @@ which, in one line, at once, and do every part that is not blocked.
   changed to remove it, and who is changing it: the concrete fix, or the one decision the owner must make with the fix as
   the first option. A message that lists what is wrong, or several bad designs, and stops there is wrong: the agent has
   not finished investigating. An obstacle (a guard, a rule, a refusal, a lock, a retired identity, a queue) is never
-  reported as a fact of the system; it is a thing to change, and the message names the change.
+  reported as a fact of the system; it is a thing to change, and the message names the change. A defect that shows a wrong
+  structure (a boundary in the wrong place, hidden state reaching a consumer, behaviour coupled that should not be, the same
+  area fixed twice) is fixed by redesign, never patched around: write the target structure (layers, one-way boundaries, who
+  may read what) before changing code, rebuild to it, enforce it with a test (import, layering or type boundary) and absorb
+  the symptom fixes into it. A second symptom fix in one area means stop and redesign; a brief names the target structure,
+  not the symptom.
 - **Say it short.** A few lines, result or question first, findings as a list; prose that has to be mined is work handed
   back.
 - **Dependencies and root causes.** Do not leave a relevant regression, security issue or missing prerequisite
@@ -514,6 +519,11 @@ Create worktrees beside the primary checkout, never inside it (including `.workt
 
 - A new worktree has no `dist/`, and one test builds a real environment out of it: run `python packaging/build.py` there
   before trusting a full test run.
+- Never `git stash` (any subcommand): the stash stack is shared by every worktree, so a pop or drop takes another agent's
+  work; only `git stash list` and `git stash show` are allowed. Commit work in progress first (a `wip:` commit, undone
+  with `git reset --soft HEAD~1`). Fail-first: `git restore --source=<parent-sha> -- <changed source files>`, run the test,
+  then `git restore --source=HEAD -- <those files>`, or a throwaway `git worktree add <scratchpad>/parent <parent-sha>`
+  removed after. To merge with local changes, make the WIP commit first.
 - Keep stash snapshots and superseded recovery histories out of the development branch's ancestry: preserve them in
   external Git bundles, verify each bundle's complete history and saved tips, and integrate useful changes through
   reviewed commits.

@@ -108,8 +108,8 @@ def test_feed_is_a_real_model_run_and_says_so():
     assert {i['id'] for d in FEED['decisions'] for i in d['interlocks']} <= known
 
 
-def run_check():
-    out = subprocess.run(['node', str(ROOM / 'check.mjs'), str(SPEC_FILE), str(FEED_FILE)],
+def run_check(feed_file=FEED_FILE):
+    out = subprocess.run(['node', str(ROOM / 'check.mjs'), str(SPEC_FILE), str(feed_file)],
                          capture_output=True, text=True, check=True, timeout=60).stdout
     return json.loads(out)
 

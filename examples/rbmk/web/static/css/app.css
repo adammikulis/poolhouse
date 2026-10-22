@@ -44,6 +44,7 @@ select, input[type=number] { font: inherit; padding: 5px 7px; border: 1px solid 
 .btn { font: inherit; padding: 6px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--tile); color: var(--text); cursor: pointer; }
 .btn:hover:not(:disabled) { border-color: var(--c1); } .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn.primary { background: var(--c1); border-color: var(--c1); color: #fff; }
+a.btn { text-decoration: none; display: inline-block; }
 .filebtn input { display: none; }
 .clock { font-variant-numeric: tabular-nums; color: var(--muted); }
 .check { font-size: 13px; }
@@ -160,4 +161,16 @@ body { display: flex; flex-direction: column; height: 100dvh; overflow: hidden; 
   #card { top: auto; bottom: 12px; left: 12px; right: 12px; width: auto; max-height: 45%; }
   .charts { grid-template-columns: 1fr; }
   .tiles { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+}
+[hidden] { display: none !important; }
+#scroller { position: absolute; inset: 0; overflow: auto; display: flex; background: #0f1214; }
+#frame { position: relative; margin: auto; flex: none; line-height: 0; }
+#still { width: 100%; height: 100%; display: block; user-select: none; -webkit-user-drag: none; }
+#overlay { position: absolute; inset: 0; width: 100%; height: 100%; cursor: default; touch-action: pan-x pan-y pinch-zoom; }
+#views2d button.on { border-color: var(--c1); background: var(--c1); color: #fff; }
+#card-open { margin-top: 10px; }
+#views2d { flex-wrap: wrap; }
+@media (max-width: 700px) {
+  #views2d { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; }
+  #views2d .btn { white-space: nowrap; flex: none; }
 }

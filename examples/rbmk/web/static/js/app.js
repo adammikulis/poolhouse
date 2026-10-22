@@ -130,6 +130,8 @@ window.RB = window.RB || {};
   };
 
   RB.setMode = setMode;
+  const frameHooks = [];
+  RB.onFrame = function (fn) { frameHooks.push(fn); };
   function setMode(mode) {
     S.mode = mode; S.main = null; S.naive = null; S.banner = ''; S.playing = false;
     document.body.dataset.mode = mode;
@@ -274,11 +276,21 @@ window.RB = window.RB || {};
     }
     core.draw(run && run.header ? run.header.rods : [], frame, extra);
     if (S.dirty) {
-      S.dirty = false; updateHeader(); renderState(); renderTab(S.cursor);
+      S.dirty = false; updateHeader(); renderState(); renderTab(S.cursor); frameHooks.forEach(function (fn) { fn(); });
       $('play').textContent = S.playing ? 'Pause' : 'Play'; lastCursor = Math.floor(S.cursor);
     }
-    requestAnimationFrame(loop);
+    if (needFrame()) { schedule(); } else { sleeper = setTimeout(schedule, 250); }
   }
+
+  /* The loop draws frames while something moves and otherwise wakes four times a second, so a still room costs almost nothing. */
+  let raf = 0, sleeper = 0;
+  function needFrame() { return S.dirty || S.playing || !!(S.main && S.main.live) || S.drawer === 'core' || S.drawer === 'compare'; }
+  function schedule() {
+    if (raf) { return; }
+    clearTimeout(sleeper); sleeper = 0;
+    raf = requestAnimationFrame(function (t) { raf = 0; loop(t); });
+  }
+  RB.touch = function () { S.dirty = true; schedule(); };
 
   RB.init = async function () {
     const saved = store('rbmk-theme');
@@ -298,7 +310,7 @@ window.RB = window.RB || {};
     $('drawer-close').onclick = RB.closeDrawer;
     setMode('live'); RB.openDrawer('run');
     window.addEventListener('resize', RB.touch);
-    requestAnimationFrame(loop);
+    schedule();
     setInterval(function () { if (S.main && S.main.live) { RB.touch(); } }, 500);
   };
   window.addEventListener('DOMContentLoaded', RB.init);

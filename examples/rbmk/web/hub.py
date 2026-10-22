@@ -22,7 +22,7 @@ from ..decider.controllers import (
 from ..sim import controls, scenarios
 from . import recordings
 from .jobs import Busy, Cancelled, Job
-from .runner import ForcedController, WebRunner, check_forced, divergence, merged, resume
+from .runner import ForcedController, WebRunner, check_forced, divergence, resume
 
 PINNED = "strands-decider-2B-hobson-v19"
 MAX_REPEATS = 20
@@ -126,7 +126,6 @@ class Hub:
         scn = runner.scn
         doc = bundle.export(runner.res, scn, self._backend(mode), with_whatif=False)
         failure = sys.exc_info()[1]
-        doc["trace"] = merged(doc["trace"], runner.sink)
         doc["meta"]["error"] = job.error or (f"{type(failure).__name__}: {failure}" if failure else None)
         return doc
 
@@ -216,7 +215,6 @@ class Hub:
         doc = bundle.export(runner.res, scn, meta["backend"], with_whatif=False)
         if bundle.digest(doc) != rec["digest"]:
             raise recordings.BadDocument("the recording does not reproduce: the replay differs from the run it was made from")
-        doc["trace"] = merged(doc["trace"], runner.sink)
         if name:
             self.replays[name] = (runner, scn)
         return doc

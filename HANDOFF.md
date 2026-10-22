@@ -7,6 +7,11 @@
 4. **Re-record `tests/ci-durations.json` from a complete CI run** (`scripts/ci_shards.py record --junit`): it comes from local history that counts child CPU, so shard 4 is overloaded and some files are 3 to 10 times off. This only matters for the nightly and pull-request runs.
 Not worth doing: cutting parametrized cases (under 3 percent of the time), deleting tests (the cost sits in about 150 heavy tests, not in the count), and the landing path (a push waits for nothing).
 
+## Two devices on a LAN: test shards between members of a pool in dev mode
+- **Not yet driven between two real devices.** The loopback tests cover the join over pinned TLS, the beacon, the tree, the run, the output, the cancel and every refusal (`tests/test_dev_pool_join.py`, `test_dev_shards.py`, `test_dev_shards_hostile.py`). Not covered: multicast on the owner's network, macOS Local Network permission for the daemon's Python, the Windows prompt that adds the two inbound rules, WSL in NAT against mirrored mode, a WSL device without `~/.venvs/poolhouse-dev`. The check is `scripts/test all tests/test_x.py --on NAME` from the first device once the second has updated and opened Poolhouse.
+- **The node's pool has no zero-setup form.** A node founds no pool (a pool is founded by a person's key), so two nodes pool only after a person founds an open pool, and `scripts/test --on` reaches a node's device only after `remote-tests` and `testfarm.consent`. Dev mode is the daemon's. Choosing one pool for the daemon and the node is a product decision.
+- **What dev mode trusts, accepted:** a brand-new device joins any pool in dev mode it hears at its first launch; the agent label on a job is the sender's own word; turning `remote-tests` off stops the next shard and not one already running; a member can fill its own four shard folders. `--on` takes `tests/NAME.py` files only, not node ids.
+
 ## Landing state, 2026-10-22
 Landed on `0.3dev` this session (tip `5eaddc429`): native build telemetry, the chat coding dialog with once-only conversation creation, dataset import feedback, task admission, task conversation settings, the pure-prepared completions stack, and the coding session sandbox (permissions, protected paths, receipts, the IO object for sandbox processes). Their worktrees and branches are closed. Still open:
 - **Unlanded branches:** `feat/phone-free-slice-1` (6 unique commits, 750 behind: merge `0.3dev` first, then the open points under "Redesigns and branches pending"), and `fix/studio-compute-closure`, `fix/studio-runtime-alignment`, `perf/studio-checkpoint-fingerprints` (1, 3 and 1 unique commits, 560 to 660 behind: port or drop each with `git cherry`). `fix/governed-grant-authority`: see the release blocker below.
@@ -146,10 +151,11 @@ The owner requested a usage-conscious wrap: land useful reviewed work, tidy chec
 - `tests/test_board_grants.py::test_hostile_arguments_to_the_person_commands_are_refused_before_anything_is_written` fails on 0.3dev before this branch (a quota of 16 live main sessions on the `grant` argv with a newline).
 
 ## RBMK control room (examples/rbmk): what remains
-- The frame rate on a phone is untested; a headless browser has driven the app at desktop and phone width.
+- The frame rate on a phone is untested for the 3D room and the 2D view; a headless browser (desktop and a 390 px viewport) has driven the app.
+- The 2D view was measured by process CPU time, not GPU busy time (`docs/notes/2026-10-22-rbmk-room-2d-cost.md`); no GPU timer query was available in headless Chromium.
+- The 2D view has no free zoom or pan inside a still beyond the per-panel close-ups; on a phone the front wall scrolls sideways at a fixed width.
 - No model-driven run is recorded for the 1986 scenario; `feed/replay-1986-crew.json` is the scripted crew replay, not a model's decisions.
 - The rod cells are not coloured by rod kind: the run's `rods` carries each rod's kind, but the cells are coloured by insertion only.
-- The low-power 2D views of the room (floor plan, front wall, panel zoom) are not built; the header button says so.
 - The wall dials read the plant's true values; the Readings drawer shows the lagged, stale and faulted gauges the decider reads. Wiring the gauge readings into the dials is not done.
 - The core cross-section (channel power tint, void bubbles, moved-rod rings) is a drawer; the wall carries only the rod position map.
 

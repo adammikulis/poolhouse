@@ -225,11 +225,20 @@ def test_divergence_of_identical_rows_is_none():
     assert div["first_divergence_tick"] is None and div["max_abs_dP"] == 0 and div["ticks_compared"] == 5
 
 
-def test_trace_rows_and_extras_must_line_up():
-    sink = runner.Sink()
-    sink.rows.append({"faults": {}})
-    with pytest.raises(ValueError, match="2 trace rows but 1"):
-        runner.merged([{"tick": 0}, {"tick": 1}], sink)
+class SlowNaive(NaiveController):
+    """The naive rule with a stated latency, so answers land inside ticks."""
+
+    def propose(self, index, plant):
+        prop = super().propose(index, plant)
+        prop.latency_ms = 400_000.0
+        return prop
+
+
+def test_every_trace_row_carries_the_gauge_readings_whatever_path_advanced_it():
+    scn = scenarios.variant(scenarios.scenario("load_follow"), ticks=14)
+    run = runner.WebRunner(scn, SlowNaive())
+    run.run()
+    assert len(run.res.trace) >= 14 and all("gauges" in row and "faults" in row for row in run.res.trace)
 
 
 def _good() -> dict[str, Any]:
@@ -315,7 +324,9 @@ def test_a_real_model_recording_is_replayed_and_shown_with_its_label(served):
     doc = shown["doc"]
     assert status == 200 and shown["label"] == "recorded from strands-decider-2B-hobson-v19 on 2026-10-22"
     assert doc["schema"] == bundle.SCHEMA and len(doc["trace"]) == 8 and all("gauges" in r for r in doc["trace"])
-    assert [d["source"] for d in doc["decisions"]] == ["model"] * 3
+    recorded = json.loads((FIXTURES / FIXTURE).read_text())["decisions"]
+    held = [any(a.get("abstained") for c in d["calls"] for n, a in c["answers"].items() if n == "class") for d in recorded]
+    assert [d["source"] for d in doc["decisions"] if d["kind"] == "decision"] == ["safety-policy" if h else "model" for h in held]
     first = doc["decisions"][0]["answers"]["class"]
     assert abs(sum(first["scores"].values()) - 1) < 1e-6 and first["model"] == "strands-decider-2B-hobson-v19"
 

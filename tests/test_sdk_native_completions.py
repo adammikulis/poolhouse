@@ -17,14 +17,29 @@ from poolhouse.fleet import chat_stream, sdk_chat
 from poolhouse.fleet.chat import ChatError, Target
 from poolhouse.fleet.chat_stream import Transfer, frame
 from poolhouse.http import Server
-from poolhouse.testing.fakes import FakeLlamaServer, Served
+from poolhouse.testing.canned import (
+    CANNED_HEADER,
+    CANNED_HEADER_VALUE,
+    CANNED_MODEL_ID,
+    Canned,
+    CannedServer,
+    canned_chunk,
+    marked,
+)
 
 PAYLOAD = {"model": "model", "messages": [{"role": "user", "content": "Inspect the source"}], "stream": True}
 DONE = b"data: [DONE]\n\n"
 
 
 def terminal(reason="stop"):
-    return {"choices": [{"index": 0, "delta": {}, "finish_reason": reason}]}
+    return canned_chunk({}, finish=reason)
+
+
+def two_choices():
+    """A chunk that finishes choice 0 and opens a second one, which a native stream never does."""
+    chunk = terminal()
+    chunk["choices"] += canned_chunk({}, index=1)["choices"]
+    return chunk
 
 
 @contextmanager
@@ -56,18 +71,17 @@ def endpoint(answer):
 
 def test_actual_sdk_preserves_exact_native_payload_and_separate_provider_chunks(monkeypatch):
     chunks = [
-        {"id": "native-a", "object": "chat.completion.chunk", "model": "model", "created": 1,
-         "choices": [{"index": 0, "delta": {"role": "assistant", "reasoning_content": "Inspect first",
-                     "provider_reasoning": {"signature": "opaque"}}}], "provider_top": {"position": 1}},
-        {"choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0, "id": "call-a", "type": "function",
-                       "function": {"name": "read", "arguments": '{"path":"'}}]}}]},
-        {"choices": [{"index": 0, "delta": {"tool_calls": [{"index": 0,
-                       "function": {"arguments": 'source.py"}'}}]}}]},
+        canned_chunk({"role": "assistant", "reasoning_content": "Inspect first",
+                      "provider_reasoning": {"signature": "opaque"}}, id="native-a",
+                     object="chat.completion.chunk", created=1, provider_top={"position": 1}),
+        canned_chunk({"tool_calls": [{"index": 0, "id": "call-a", "type": "function",
+                                      "function": {"name": "read", "arguments": '{"path":"'}}]}),
+        canned_chunk({"tool_calls": [{"index": 0, "function": {"arguments": 'source.py"}'}}]}),
         terminal("tool_calls"),
         {"choices": [], "usage": {"prompt_tokens": 13, "completion_tokens": 7, "total_tokens": 20}, "provider_final": True},
     ]
     wire = b"".join(frame(chunk) for chunk in chunks) + DONE
-    fake = FakeLlamaServer(Served(model="model"))
+    fake = CannedServer(Canned())
     fake.frames = lambda _body: [wire[:4], wire[4:21], wire[21:]]
     opened = []
     original = sdk.open_stream
@@ -100,6 +114,7 @@ def test_actual_sdk_preserves_exact_native_payload_and_separate_provider_chunks(
         assert len(output) == len(chunks) + 1 and output[-1] == DONE
         assert all(block.count(b"\n\n") == 1 for block in output)
         assert [json.loads(block.removeprefix(b"data: ")) for block in output[:-1]] == chunks
+        assert {chunk["model"] for chunk in chunks if chunk["choices"]} == {CANNED_MODEL_ID}, "every frame names the canned id"
         assert fake.sent_to("/v1/chat/completions") == [expected]
     finally:
         fake.close()
@@ -107,7 +122,7 @@ def test_actual_sdk_preserves_exact_native_payload_and_separate_provider_chunks(
 
 @pytest.mark.parametrize("token_key", ["max_tokens", "max_completion_tokens"])
 def test_sdk_preserves_the_selected_native_token_field(token_key):
-    fake = FakeLlamaServer(Served(model="model"))
+    fake = CannedServer(Canned())
     fake.frames = lambda _body: [frame(terminal()), DONE]
     try:
         assert list(sdk_chat.completion_stream(Target("model", fake.base_url + "/v1/chat/completions"),
@@ -146,12 +161,12 @@ def test_invalid_transport_response_limit_cannot_construct_sdk_client(monkeypatc
 
 
 @pytest.mark.parametrize("chunks", [
-    [{"choices": [{"index": 0, "delta": {"content": "partial"}}]}],
-    [{"choices": [{"index": 1, "delta": {}, "finish_reason": "stop"}]}],
-    [{"choices": [{"index": True, "delta": {}, "finish_reason": "stop"}]}],
-    [{"choices": [{"index": 0, "delta": {}, "finish_reason": "unknown"}]}],
-    [{"choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}, {"index": 1, "delta": {}}]}],
-    [terminal(), {"choices": [{"index": 0, "delta": {"content": "after terminal"}}]}],
+    [canned_chunk({"content": marked("partial")})],
+    [canned_chunk({}, finish="stop", index=1)],
+    [canned_chunk({}, finish="stop", index=True)],
+    [canned_chunk({}, finish="unknown")],
+    [two_choices()],
+    [terminal(), canned_chunk({"content": marked("after terminal")})],
     [terminal(), terminal()],
     [terminal(), {"choices": []}],
     [terminal(), {"choices": [], "usage": None}],
@@ -159,7 +174,7 @@ def test_invalid_transport_response_limit_cannot_construct_sdk_client(monkeypatc
     [terminal(), {"choices": [], "usage": {"prompt_tokens": -1, "completion_tokens": 1, "total_tokens": 0}}],
 ])
 def test_native_missing_or_conflicting_terminal_never_emits_done(chunks):
-    fake = FakeLlamaServer(Served(model="model"))
+    fake = CannedServer(Canned())
     fake.frames = lambda _body: [*(frame(chunk) for chunk in chunks), DONE]
     seen = []
     try:
@@ -173,8 +188,8 @@ def test_native_missing_or_conflicting_terminal_never_emits_done(chunks):
 
 def test_transfer_holds_coalesced_native_done_for_its_parent_commit(monkeypatch):
     monkeypatch.setattr(chat_stream, "turn", lambda *_args, **_kwargs: nullcontext())
-    fake = FakeLlamaServer(Served(model="model"))
-    fake.frames = lambda _body: [frame({"choices": [{"index": 0, "delta": {"content": "answer"}}]}) + frame(terminal()) + DONE]
+    fake = CannedServer(Canned())
+    fake.frames = lambda _body: [frame(canned_chunk({"content": marked("answer")})) + frame(terminal()) + DONE]
     output = io.BytesIO()
     try:
         transfer = Transfer(Target("model", fake.base_url + "/v1/chat/completions"),
@@ -245,6 +260,7 @@ def test_actual_sdk_identity_encoding_succeeds(encodings):
     def answer(handler):
         handler.send_response(200)
         handler.send_header("Content-Type", "text/event-stream")
+        handler.send_header(CANNED_HEADER, CANNED_HEADER_VALUE)
         for value in encodings:
             handler.send_header("Content-Encoding", value)
         handler.end_headers()
@@ -304,16 +320,17 @@ def test_oversize_unterminated_event_stops_before_sdk_decoder_receives_excess(mo
 
 
 def test_aggregate_reserialized_provider_fields_have_an_output_bound(monkeypatch):
-    monkeypatch.setattr(sdk_chat, "MOST_BODY", 512)
-    chunks = [{"choices":[{"index":0,"delta":{"content":"é" * 30}}]} for _ in range(3)] + [terminal()]
-    fake = FakeLlamaServer(Served(model="model"))
+    monkeypatch.setattr(sdk_chat, "MOST_BODY", 1536)
+    chunks = [canned_chunk({"content": marked("é" * 80)}) for _ in range(3)] + [terminal()]
+    fake = CannedServer(Canned())
     fake.frames = lambda _body: [*(b"data:" + json.dumps(chunk, ensure_ascii=False, separators=(",", ":")).encode() + b"\n\n" for chunk in chunks), DONE]
     seen = []
+    assert sum(map(len, fake.frames({}))) < 1536, "the input alone is inside the bound; the re-serialized output is not"
     try:
         with pytest.raises(ChatError, match="output exceeds"):
             for block in sdk_chat.completion_stream(Target("model", fake.base_url + "/v1/chat/completions"), sdk_chat.prepare_completion(Target("model", fake.base_url + "/v1/chat/completions"), PAYLOAD)):
                 seen.append(block)
-        assert sum(map(len, seen)) <= 512 and DONE not in seen
+        assert sum(map(len, seen)) <= 1536 and DONE not in seen
     finally:
         fake.close()
 
@@ -324,7 +341,7 @@ def test_cleanup_failure_never_exposes_native_done(monkeypatch):
         await original(self)
         raise RuntimeError("fixture cleanup failed")
     monkeypatch.setattr(sdk._Body, "aclose", broken)
-    fake = FakeLlamaServer(Served(model="model"))
+    fake = CannedServer(Canned())
     fake.frames = lambda _body: [frame(terminal()), DONE]
     seen = []
     try:

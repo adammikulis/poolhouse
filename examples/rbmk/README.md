@@ -31,7 +31,8 @@ time, wall time, decision cadence and latency). The dock under the room holds wh
 - Views: buttons that fly the camera to the desk overview, the AZ-5 button, the rod position panel, the ORM terminal, the
   reactor dials, the annunciator and the decision display. Fly with W A S D, Q and E, Shift and a drag; click the floor to walk
   there; click any instrument for a card (what it is, its range, how the simulator models it, its value now). On a phone the
-  room orbits instead. The low-power 2D views of the same room are not built yet; the header button says so.
+  room orbits instead. The header button `Low-power 2D` shows the same room as fixed pictures with the live instruments drawn
+  over them (floor plan, front wall and a close-up of each panel); it reads the same run and playhead and uses no WebGL.
 - Playback: step back, play, step, speed, a scrubber and the clock of the tick on show. Space plays and pauses, `,` and `.`
   step. The room, the log and the charts all follow this one playhead, for a live run and a recording alike.
 - Tools, each a drawer over the room: Run console (live or recorded, scenario, controller, start, stop, open a recording or
@@ -146,9 +147,7 @@ the per-rod worth map, the 20 s stroke, and the margin-dependence of the positiv
 the sequence qualitatively: 30 MW start, rods pulled with the margin falling to about 7 while the power is held near 200 MW,
 the flow dropping from 120 to 60 percent during the test, a void-driven slow rise in power, then after AZ-5 a spike
 that is about twice nominal in the toy. The real peak is estimated at tens of times nominal; the toy does not match
-it and does not claim to. The cross-checks the owner named, the browser model at
-<https://github.com/TH462/Reactor-Dynamics> and PyRK (<https://fhr.nuc.berkeley.edu>, BSD), were not run or copied from here
-and are not dependencies; comparing the xenon and power trajectories with them is open work.
+it and does not claim to. Cross-checks against other reactor-dynamics codes, a browser model and PyRK (<https://fhr.nuc.berkeley.edu>), have not been run.
 
 ## Instruments and controls
 
@@ -344,6 +343,39 @@ layouts, lettering, meter types and the number of annunciator windows differ. La
 grid of the 211 nearest cells in the simulator's own order, not the plant's channel map. Reference photographs are listed in
 [REFERENCES.md](REFERENCES.md) (links only, none copied).
 
+## Low-power 2D view
+
+The header's `Low-power 2D` button (or `#plan`, `#front` and `#<panel>` on the address, which opens the app on that view without
+ever loading the 3D room) shows the same room as fixed pictures with the live instruments drawn over them, so it needs no
+WebGL and almost no GPU. Three modes, switched from the dock:
+
+- **Floor plan**: the room from above (desk sections, instrument wall, engineers' desks, doors, the window band). Each panel
+  is a dashed click target that turns amber or red when something in it is lit or out of range.
+- **Front wall**: the whole instrument wall seen straight on from the crew's side, with the desk sections at the bottom.
+  Click an instrument for its card, or a panel's outline for its close-up.
+- **Panel close-up**: reactor dials, annunciator, decision display, strip recorders, desk lamps, rod position panel, AZ-5
+  button, ORM terminal; the view fills with that panel.
+
+The pictures (`room/stills/*.webp`) are renders of the 3D room's own geometry from fixed cameras with the moving parts left out
+(faces, needles, rod cells, the AZ-5 cap and guard). `room/stills/views.json` holds, for every view, the image position of every
+instrument face, rod cell and mimic window, projected from the geometry by the same Blender run. The view draws what the run
+says at those positions: needles (eased only while they move), lamps and annunciator tiles, the 211 rod cells, strip recorders,
+the decision display with the model's probability bars, the ORM terminal, the AZ-5 guard and button. Only the elements whose
+picture changed are redrawn, and nothing runs while the tab is hidden or nothing changed. With no run open the instruments are
+dark and the banner says NO RUN; a missing still is a loud banner, not a blank view.
+
+Rebuild the stills (Blender 5.3, about ten minutes on a laptop CPU; also rewrites `room/stills/masks/`, the flat id pictures the
+tests check the projected positions against):
+
+```sh
+blender --background --factory-startup --python examples/rbmk/generator/render_views.py -- \
+    --out examples/rbmk/room/stills [--scale 0.5 --samples 32 --only front,dials]
+```
+
+`python -m examples.rbmk.room.measure --recordings examples/rbmk/recordings --recording FILE` reports what each view costs a browser
+(CPU time per process over a replay, the overlay's draw time per frame); measurements are kept in
+[docs/notes/2026-10-22-rbmk-room-2d-cost.md](../../docs/notes/2026-10-22-rbmk-room-2d-cost.md).
+
 ## How the room is built
 
 `generator/` runs inside Blender (tested with 5.3) from a clean start:
@@ -382,8 +414,8 @@ what every lamp and dial shows for each row of a feed.
 | `sim/` | the toy plant: `reactor.py`, `rods.py`, `plant.py`, `controls.py`, `panel.py`, `scenarios.py` |
 | `decider/` | the decision loop: `loop.py`, `controllers.py` (model, naive and crew controllers), `bundle.py` (run and recording documents), `run.py` (record, replay, export, baseline, summary, calibrate, selftest) |
 | `web/` | the server (`server.py`, `hub.py`, `jobs.py`, `runner.py`, `recordings.py`) and the app's page, scripts and styles (`static/`) |
-| `room/` | the room in the browser: `main.js`, `feed.js`, `drive.js`, `screens.js`, `cards.js`, `fly.js`, `paint.js`, `rules.js`, `rods.js`, `instruments.json`, `room.glb.gz`, `vendor/`, `check.mjs`, `shoot.py` |
-| `generator/` | the Blender generator of the room |
+| `room/` | the room in the browser: `main.js` (feed, view switch), `feed.js` (the run as the instruments read it), the 3D view (`room3d.js`, `drive.js`, `fly.js`, `paint.js`), the 2D view (`room2d.js`, `overlay.js`, `paint2d.js`, `state.js`, `loop.js`, `bench.js`, `stills/`), shared `rules.js`, `rods.js`, `faces.js`, `screens.js`, `cards.js`, `instruments.json`, `room.glb.gz`, `vendor/`, and the tools `check.mjs`, `shoot.py`, `measure.py` |
+| `generator/` | the Blender generator of the room and of the 2D stills (`render_views.py`, `views.py`) |
 | `feed/` | the feed exporter and its two committed feeds |
 | `recordings/` | recordings of real model runs, their index and [SCHEMA.md](recordings/SCHEMA.md) |
 | `__main__.py` | `python -m examples.rbmk` |
@@ -403,11 +435,14 @@ Everything else in this directory is Poolhouse code under the repository licence
 ## Room and app tests
 
 ```sh
-scripts/test all tests/test_rbmk_room.py tests/test_rbmk_web.py tests/test_rbmk_app.py
+scripts/test all tests/test_rbmk_room.py tests/test_rbmk_room_2d.py tests/test_rbmk_web.py tests/test_rbmk_app.py
 ```
 
 `test_rbmk_room.py` covers the GLB (valid, current, a node for every instrument and rod, camera marks), the instrument list against
-the committed real feed, the rules evaluated in node, and the rod order against the simulator's `Rods`. `test_rbmk_web.py` covers
-the server, its routes and the documents. `test_rbmk_app.py` drives the app in a headless Chromium: no run leaves the room dark, a
-decision picked in the log is the state the room shows, a live run drives the room, a phone width holds every tool, and nothing is
-graded or given away before the run reaches it.
+the committed real feed, the rules evaluated in node, and the rod order against the simulator's `Rods`. `test_rbmk_room_2d.py` covers
+the stills (current with the generator, under the file limit), a rect for every instrument in the front view and for all 211 rods in the
+rod panel, the projected rects against the id masks rendered from the same cameras, the three modes and the cards in a headless browser,
+and that an idle or hidden view draws nothing and a row redraws only the changed elements. `test_rbmk_web.py` covers the server, its
+routes and the documents. `test_rbmk_app.py` drives the app in a headless Chromium: no run leaves the room dark, a decision picked in the
+log is the state the room shows, a live run drives the room, a phone width holds every tool, and nothing is graded or given away before
+the run reaches it.

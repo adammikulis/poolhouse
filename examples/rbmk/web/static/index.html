@@ -22,7 +22,7 @@
     <span class="muted" id="runlabel"></span>
   </div>
   <div class="topbtns">
-    <div class="seg" role="group" aria-label="Room view"><button id="view3d" class="on">3D room</button><button id="view2d" disabled title="The low-power 2D views of this room are not built yet"><span class="long">Low-power 2D: not built yet</span><span class="short">2D: not built</span></button></div>
+    <div class="seg" role="group" aria-label="Room view"><button id="view3d" class="on">3D room</button><button id="view2d" title="Fixed pictures of the room with the live instruments drawn over them: no WebGL, almost no GPU"><span class="long">Low-power 2D</span><span class="short">2D</span></button></div>
     <button id="theme" class="btn" title="Light or dark">Theme</button>
   </div>
   <span class="clocks" id="clocks">
@@ -35,6 +35,12 @@
 
 <main id="stage">
   <canvas id="view" aria-label="3D view of the control room"></canvas>
+  <div id="scroller" hidden>
+    <div id="frame">
+      <img id="still" alt="Fixed view of the control room" draggable="false">
+      <canvas id="overlay" aria-label="Live instruments over the view"></canvas>
+    </div>
+  </div>
   <div id="pending" class="pending" style="display:none"></div>
   <div id="caption" class="caption" style="display:none"></div>
   <aside id="card" hidden>
@@ -47,6 +53,7 @@
       <dt>How it is modelled</dt><dd id="card-modelled"></dd>
       <div id="card-now-row"><dt>Now</dt><dd id="card-now"></dd></div>
     </dl>
+    <button id="card-open" class="btn" hidden></button>
     <button id="card-core" class="btn" hidden>Open the full-size core map</button>
   </aside>
 
@@ -99,6 +106,7 @@
 
 <nav id="dock" aria-label="Room controls">
   <div class="dockrow" id="bookmarks"></div>
+  <div class="dockrow" id="views2d" hidden></div>
   <div class="dockrow" id="playback">
     <button id="back" class="btn" title="Back one tick (comma)">Step back</button>
     <button id="play" class="btn primary" title="Space">Play</button>
@@ -120,7 +128,7 @@
     <button class="toolbtn btn" data-drawer="dist">Poisoned starts</button>
     <button class="toolbtn btn" data-drawer="compare">Naive controller</button>
     <button id="export" class="btn">Export JSON</button>
-    <span class="hint">Fly: W A S D move, Q E down and up, Shift fast, drag to look, click the floor to walk, click an instrument for its card.</span>
+    <span class="hint" id="hint3d">Fly: W A S D move, Q E down and up, Shift fast, drag to look, click the floor to walk, click an instrument for its card.</span>
   </div>
 </nav>
 

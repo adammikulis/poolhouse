@@ -22,6 +22,13 @@ from poolhouse.client import (
     strip_thinking,
     wait_for_health,
 )
+from poolhouse.testing.canned import (
+    CANNED_MARKER,
+    CANNED_MODEL_ID,
+    canned_chat_reply,
+    canned_stream_reply,
+    marked,
+)
 
 
 class TestBuildBody:
@@ -93,30 +100,29 @@ class TestBuildBody:
         assert not [key for key in body if key.startswith("speculative.")]
 
 
+def _parsed(text="", *, bare=False, **fields):
+    """A canned chat body, parsed by `Client.normalize` with no server in between; ``fields`` ride in the message."""
+    return Client.normalize(json.loads(canned_chat_reply(text, bare=bare, message=fields)[1]))
+
+
 class TestNormalize:
     def test_lifts_a_legacy_function_call_into_tool_calls(self):
         """Some llama.cpp builds emit tool calls only in the legacy field. Callers must
         see one shape, not two."""
-        reply = Client.normalize(
-            {"choices": [{"message": {"function_call": {"name": "ping", "arguments": "{}"}}}]}
-        )
+        reply = _parsed(bare=True, content=None, function_call={"name": "ping", "arguments": "{}"})
         assert reply.tool_calls is not None
         assert reply.tool_calls[0]["function"]["name"] == "ping"
         assert reply.tool_calls[0]["type"] == "function"
 
     def test_prefers_real_tool_calls_over_the_legacy_field(self):
-        reply = Client.normalize(
-            {"choices": [{"message": {
-                "tool_calls": [{"id": "a", "type": "function",
-                                "function": {"name": "real", "arguments": "{}"}}],
-                "function_call": {"name": "legacy", "arguments": "{}"}}}]}
-        )
+        reply = _parsed(bare=True, content=None, function_call={"name": "legacy", "arguments": "{}"},
+                        tool_calls=[{"id": "a", "type": "function",
+                                     "function": {"name": "real", "arguments": "{}"}}])
         assert reply.tool_calls[0]["function"]["name"] == "real"
 
     def test_truncation_is_visible(self):
-        reply = Client.normalize({"choices": [{"message": {"content": "cut"},
-                                               "finish_reason": "length"}]})
-        assert reply.truncated
+        reply = Client.normalize(json.loads(canned_chat_reply("cut", finish_reason="length")[1]))
+        assert reply.truncated and reply.content == marked("cut")
 
     def test_rejects_a_non_dict_payload(self):
         with pytest.raises(ServerError):
@@ -124,16 +130,12 @@ class TestNormalize:
 
 
     def test_a_reasoning_field_is_carried_as_thinking(self):
-        reply = Client.normalize({"choices": [{"message": {
-            "role": "assistant", "content": "",
-            "reasoning_content": "count the people first"}, "finish_reason": "stop"}]})
+        reply = _parsed(bare=True, reasoning_content="count the people first")
         assert reply.content == "" and reply.thinking == "count the people first"
 
     def test_reasoning_and_think_tags_both_survive(self):
-        reply = Client.normalize({"choices": [{"message": {
-            "role": "assistant", "content": "<think>tags</think>42",
-            "reasoning": "field"}, "finish_reason": "stop"}]})
-        assert reply.content == "42"
+        reply = _parsed("<think>tags</think>42", reasoning="field")
+        assert reply.content == marked("42")
         assert reply.thinking == "field\ntags"
 
 
@@ -157,12 +159,8 @@ GPT_OSS_ID = "/models/gpt-oss-120b-mxfp4-00001-of-00003.gguf"
 QWEN_ID = "/models/Qwen3-4B-Instruct-Q4_K_M.gguf"
 UNKNOWN_ID = "/models/mystery-1b-Q4_K_M.gguf"
 
-
-def _completion(model, content, **message):
-    """A whole ``/v1/chat/completions`` payload, the way a served model returns one."""
-    return {"model": model,
-            "choices": [{"index": 0, "finish_reason": "stop",
-                         "message": {"role": "assistant", "content": content, **message}}]}
+HEAD = ("content", f"{CANNED_MARKER} ")
+"""The first delta every canned stream sends, which a reader of the stream reports before any other."""
 
 
 def _sse(chunks):
@@ -174,30 +172,21 @@ TIMINGS = {"prompt_n": 12, "prompt_ms": 30.5, "predicted_n": 4, "predicted_ms": 
 USAGE = {"prompt_tokens": 12, "completion_tokens": 4, "total_tokens": 16}
 
 
-def _stream_of(model, deltas, finish="stop"):
-    """Deltas as chunks carrying the served model id, the last one finishing and carrying
-    the timings and usage the way llama-server's last chunk does."""
-    out = []
-    for index, delta in enumerate(deltas):
-        chunk = {"model": model,
-                 "choices": [{"index": 0, "delta": delta, "finish_reason": None}]}
-        if index == len(deltas) - 1:
-            chunk["choices"][0]["finish_reason"] = finish
-            chunk["timings"], chunk["usage"] = TIMINGS, USAGE
-        out.append(chunk)
-    return out
+def _both_ways(server, family, content, deltas, **message):
+    """The same reply fetched whole and streamed, the family pinned on the client. Returns ``(whole, streamed, seen)``.
 
+    ``message`` is the assistant message's extra fields, but for ``finish`` and ``bare``: ``bare`` is for a reply that
+    carries no prose, which has no text to mark.
+    """
+    finish, bare = message.pop("finish", "stop"), message.pop("bare", False)
+    whole_server = server(lambda m, p, b: canned_chat_reply(
+        content, bare=bare, message=message, finish_reason=finish, top={"timings": TIMINGS, "usage": USAGE}))
+    whole = Client(whole_server.base_url, family=family).chat([{"role": "user", "content": "x"}])
 
-def _both_ways(server, model, payload, deltas, *, finish="stop"):
-    """The same reply fetched whole and streamed. Returns ``(whole, streamed, seen)``."""
-    whole_server = server(lambda m, p, b: json_reply({**payload, "timings": TIMINGS,
-                                                       "usage": USAGE}))
-    whole = Client(whole_server.base_url).chat([{"role": "user", "content": "x"}])
-
-    body = _sse(_stream_of(model, deltas, finish=finish))
-    stream_server = server(lambda m, p, b: (200, body))
+    stream = canned_stream_reply(deltas, finish=finish, bare=bare, timings=TIMINGS, usage=USAGE)
+    stream_server = server(lambda m, p, b: stream)
     seen: list[tuple[str, str]] = []
-    streamed = Client(stream_server.base_url).chat(
+    streamed = Client(stream_server.base_url, family=family).chat(
         [{"role": "user", "content": "x"}], on_delta=lambda k, t: seen.append((k, t)))
     return whole, streamed, seen
 
@@ -209,6 +198,12 @@ def _same(whole, streamed):
     assert whole.finish_reason == streamed.finish_reason
     assert whole.raw.get("timings") == streamed.raw.get("timings") == TIMINGS
     assert whole.raw.get("usage") == streamed.raw.get("usage") == USAGE
+
+
+def _chat(server, content, *, family=None, bare=False, **message):
+    """A reply fetched whole from a canned handler, with the family pinned on the client when one is named."""
+    instance = server(lambda m, p, b: canned_chat_reply(content, bare=bare, message=message))
+    return Client(instance.base_url, family=family).chat([])
 
 
 class TestFamilies:
@@ -226,134 +221,132 @@ class TestFamilies:
         with pytest.raises(ValueError, match="unknown model family"):
             family_by_name("nonesuch")
 
+    @pytest.mark.parametrize(("served", "content", "thinking"), [
+        (GPT_OSS_ID, marked("<think>a</think>b"), "c"), (QWEN_ID, marked("b"), "c\na"),
+        (UNKNOWN_ID, marked("b"), "c\na")])
+    def test_the_model_id_a_reply_names_picks_the_adapter(self, served, content, thinking):
+        """The canned server names only its own id, so the id a reply carries is set on the parsed body."""
+        sent = json.loads(canned_chat_reply("<think>a</think>b", message={"reasoning_content": "c"})[1])
+        sent["model"] = served
+        reply = Client.normalize(sent)
+        assert (reply.content, reply.thinking) == (content, thinking)
+
 
 class TestGptOssReplies:
     def test_the_answer_and_the_reasoning_both_come_through(self, server):
-        payload = _completion(GPT_OSS_ID, "4", reasoning_content="user asks 2+2, so 4")
-        instance = server(lambda m, p, b: json_reply(payload))
-        reply = Client(instance.base_url).chat([{"role": "user", "content": "2+2?"}])
-        assert reply.content == "4"
+        reply = _chat(server, "4", family="gpt-oss", reasoning_content="user asks 2+2, so 4")
+        assert reply.content == marked("4")
         assert reply.thinking == "user asks 2+2, so 4"
 
     def test_an_unfinished_turn_keeps_its_reasoning(self, server):
         """Harmony emits the analysis channel before the final one, so a turn cut short
         has text in reasoning_content and nothing in content."""
-        payload = _completion(GPT_OSS_ID, "", reasoning_content="counting the people")
-        payload["choices"][0]["finish_reason"] = "length"
-        instance = server(lambda m, p, b: json_reply(payload))
-        reply = Client(instance.base_url).chat([])
+        instance = server(lambda m, p, b: canned_chat_reply(
+            "", bare=True, message={"reasoning_content": "counting the people"}, finish_reason="length"))
+        reply = Client(instance.base_url, family="gpt-oss").chat([])
         assert reply.content == ""
         assert reply.thinking == "counting the people"
         assert reply.truncated
 
     def test_a_literal_think_tag_in_the_answer_is_left_alone(self, server):
         """Harmony carries no in-band delimiter, so the tag is the model's own text."""
-        payload = _completion(GPT_OSS_ID, "write <think> to open a block",
-                              reasoning_content="explain the syntax")
-        instance = server(lambda m, p, b: json_reply(payload))
-        reply = Client(instance.base_url).chat([])
-        assert reply.content == "write <think> to open a block"
+        reply = _chat(server, "write <think> to open a block", family="gpt-oss",
+                      reasoning_content="explain the syntax")
+        assert reply.content == marked("write <think> to open a block")
         assert reply.thinking == "explain the syntax"
 
     def test_streaming_lands_where_the_whole_reply_does(self, server):
         whole, streamed, seen = _both_ways(
-            server, GPT_OSS_ID,
-            _completion(GPT_OSS_ID, "42", reasoning_content="add them up"),
+            server, "gpt-oss", "42",
             [{"role": "assistant"}, {"reasoning_content": "add "},
              {"reasoning_content": "them up"}, {"content": "4"}, {"content": "2"}],
+            reasoning_content="add them up",
         )
-        assert whole.content == "42" and whole.thinking == "add them up"
+        assert whole.content == marked("42") and whole.thinking == "add them up"
         _same(whole, streamed)
-        assert seen == [("thinking", "add "), ("thinking", "them up"),
+        assert seen == [HEAD, ("thinking", "add "), ("thinking", "them up"),
                         ("content", "4"), ("content", "2")]
 
 
 class TestQwenReplies:
     def test_an_in_band_block_splits_and_does_not_leak(self, server):
-        payload = _completion(QWEN_ID, "<think>weigh it up</think>The answer is 4.")
-        instance = server(lambda m, p, b: json_reply(payload))
-        reply = Client(instance.base_url).chat([])
-        assert reply.content == "The answer is 4."
+        reply = _chat(server, "<think>weigh it up</think>The answer is 4.", family="qwen")
+        assert reply.content == marked("The answer is 4.")
         assert reply.thinking == "weigh it up"
         assert "<think>" not in reply.content and "weigh" not in reply.content
 
     def test_streaming_splits_a_block_broken_across_chunks(self, server):
         whole, streamed, seen = _both_ways(
-            server, QWEN_ID,
-            _completion(QWEN_ID, "<think>weigh it up</think>The answer is 4."),
+            server, "qwen", "<think>weigh it up</think>The answer is 4.",
             [{"role": "assistant"}, {"content": "<th"}, {"content": "ink>weigh "},
              {"content": "it up</thi"}, {"content": "nk>The answer "},
              {"content": "is 4."}],
         )
-        assert whole.content == "The answer is 4." and whole.thinking == "weigh it up"
+        assert whole.content == marked("The answer is 4.") and whole.thinking == "weigh it up"
         _same(whole, streamed)
-        assert seen == [("thinking", "weigh "), ("thinking", "it up"),
+        assert seen == [HEAD, ("thinking", "weigh "), ("thinking", "it up"),
                         ("content", "The answer "), ("content", "is 4.")]
 
     def test_the_block_never_reaches_the_answer_channel(self, server):
         _, _, seen = _both_ways(
-            server, QWEN_ID, _completion(QWEN_ID, "<think>secret</think>said"),
+            server, "qwen", "<think>secret</think>said",
             [{"content": "<think>sec"}, {"content": "ret</think>sa"}, {"content": "id"}],
         )
         answered = "".join(text for kind, text in seen if kind == "content")
-        assert answered == "said"
+        assert answered == marked("said")
         assert "<think>" not in answered and "secret" not in answered
 
 
 class TestGenericReplies:
     def test_a_plain_openai_reply_is_untouched(self, server):
-        instance = server(lambda m, p, b: json_reply(_completion(UNKNOWN_ID, "The answer is 4.")))
-        reply = Client(instance.base_url).chat([])
-        assert reply.content == "The answer is 4."
+        reply = _chat(server, "The answer is 4.")
+        assert reply.content == marked("The answer is 4.")
+        assert reply.raw["model"] == CANNED_MODEL_ID
         assert reply.thinking is None
         assert reply.tool_calls is None
 
     def test_streaming_a_plain_reply_matches(self, server):
         whole, streamed, seen = _both_ways(
-            server, UNKNOWN_ID, _completion(UNKNOWN_ID, "The answer is 4."),
+            server, None, "The answer is 4.",
             [{"role": "assistant"}, {"content": "The answer "}, {"content": "is 4."}],
         )
-        assert whole.content == "The answer is 4."
+        assert whole.content == marked("The answer is 4.")
         _same(whole, streamed)
-        assert seen == [("content", "The answer "), ("content", "is 4.")]
+        assert seen == [HEAD, ("content", "The answer "), ("content", "is 4.")]
 
     def test_an_unknown_model_still_gives_up_its_reasoning_field(self, server):
         """Detection is not required for correctness: the fallback reads both conventions."""
-        instance = server(lambda m, p, b: json_reply(
-            _completion(UNKNOWN_ID, "4", reasoning_content="add them up")))
-        reply = Client(instance.base_url).chat([])
-        assert reply.content == "4" and reply.thinking == "add them up"
+        reply = _chat(server, "4", reasoning_content="add them up")
+        assert reply.content == marked("4") and reply.thinking == "add them up"
 
     def test_an_unknown_model_still_gives_up_an_in_band_block(self, server):
-        instance = server(lambda m, p, b: json_reply(
-            _completion(UNKNOWN_ID, "<think>add them up</think>4")))
-        reply = Client(instance.base_url).chat([])
-        assert reply.content == "4" and reply.thinking == "add them up"
+        reply = _chat(server, "<think>add them up</think>4")
+        assert reply.content == marked("4") and reply.thinking == "add them up"
 
     def test_a_reply_with_no_model_id_at_all_still_reads(self, server):
-        payload = _completion(UNKNOWN_ID, "<think>a</think>b", reasoning_content="c")
-        payload.pop("model")
-        instance = server(lambda m, p, b: json_reply(payload))
+        sent = json.loads(canned_chat_reply("<think>a</think>b", message={"reasoning_content": "c"})[1])
+        sent.pop("model")
+        instance = server(lambda m, p, b: (200, json.dumps(sent).encode()))
         reply = Client(instance.base_url).chat([])
-        assert reply.content == "b" and reply.thinking == "c\na"
+        assert reply.content == marked("b") and reply.thinking == "c\na"
 
 
 class TestFamilyOverride:
-    def test_a_pinned_family_beats_the_model_id(self, server):
+    def test_a_pinned_family_beats_the_default(self, server):
         """gpt-oss carries no in-band delimiter, so pinning it keeps the tag as text."""
-        instance = server(lambda m, p, b: json_reply(_completion(UNKNOWN_ID, "<think>a</think>b")))
-        assert Client(instance.base_url).chat([]).content == "b"
+        instance = server(lambda m, p, b: canned_chat_reply("<think>a</think>b"))
+        assert Client(instance.base_url).chat([]).content == marked("b")
         pinned = Client(instance.base_url, family="gpt-oss").chat([])
-        assert pinned.content == "<think>a</think>b" and pinned.thinking is None
+        assert pinned.content == marked("<think>a</think>b") and pinned.thinking is None
 
-    def test_a_pinned_family_beats_the_model_id_while_streaming(self, server):
-        body = _sse(_stream_of(UNKNOWN_ID, [{"content": "<think>a</think>"}, {"content": "b"}]))
-        instance = server(lambda m, p, b: (200, body))
+    def test_a_pinned_family_beats_the_default_while_streaming(self, server):
+        stream = canned_stream_reply([{"content": "<think>a</think>"}, {"content": "b"}])
+        instance = server(lambda m, p, b: stream)
         seen: list[tuple[str, str]] = []
         pinned = Client(instance.base_url, family="gpt-oss").chat(
             [], on_delta=lambda k, t: seen.append((k, t)))
-        assert pinned.content == "<think>a</think>b"
-        assert seen == [("content", "<think>a</think>"), ("content", "b")]
+        assert pinned.content == marked("<think>a</think>b")
+        assert seen == [HEAD, ("content", "<think>a</think>"), ("content", "b")]
 
     def test_a_pinned_family_shapes_the_request(self, server):
         """A harmony template has no enable_thinking; it reads reasoning_effort."""
@@ -361,35 +354,39 @@ class TestFamilyOverride:
 
         def handler(method, path, body):
             seen["body"] = json.loads(body)
-            return json_reply(_completion(GPT_OSS_ID, "{}"))
+            return canned_chat_reply("{}", bare=True)
 
         instance = server(handler)
         Client(instance.base_url, family="gpt-oss").extract(
             "x", {"type": "object", "properties": {}})
         assert seen["body"]["chat_template_kwargs"] == {"reasoning_effort": "low"}
 
-    def test_the_served_model_id_shapes_the_request_when_nothing_is_pinned(self, server):
+    def test_the_served_model_id_shapes_the_request_when_nothing_is_pinned(self, server, monkeypatch):
+        """The id the server reports is the subject, so it is set on the client's reading of it: a canned
+        server reports only its own id, and no server here claims to be a model."""
+        from poolhouse.client import chat as chat_module
+
         seen = {}
 
         def handler(method, path, body):
-            if path == "/v1/models":
-                return json_reply({"data": [{"id": GPT_OSS_ID}]})
             seen["body"] = json.loads(body)
-            return json_reply(_completion(GPT_OSS_ID, "{}"))
+            return canned_chat_reply("{}", bare=True)
 
+        monkeypatch.setattr(chat_module, "reported_models", lambda *a, **k: [GPT_OSS_ID])
         instance = server(handler)
         Client(instance.base_url).extract("x", {"type": "object", "properties": {}})
         assert seen["body"]["chat_template_kwargs"] == {"reasoning_effort": "low"}
 
-    def test_a_generic_server_keeps_the_enable_thinking_switch(self, server):
+    def test_a_generic_server_keeps_the_enable_thinking_switch(self, server, monkeypatch):
+        from poolhouse.client import chat as chat_module
+
         seen = {}
 
         def handler(method, path, body):
-            if path == "/v1/models":
-                return json_reply({"data": [{"id": UNKNOWN_ID}]})
             seen["body"] = json.loads(body)
-            return json_reply(_completion(UNKNOWN_ID, "{}"))
+            return canned_chat_reply("{}", bare=True)
 
+        monkeypatch.setattr(chat_module, "reported_models", lambda *a, **k: [UNKNOWN_ID])
         instance = server(handler)
         Client(instance.base_url).extract("x", {"type": "object", "properties": {}})
         assert seen["body"]["chat_template_kwargs"] == {"enable_thinking": False}
@@ -397,12 +394,11 @@ class TestFamilyOverride:
 
 class TestEmptyAnswerIsLoud:
     """A response that carried text and yielded nothing is a defect in this client, and
-    names the fields it did not read."""
+    names the fields it did not read. An empty answer has no text to mark, so these replies are bare."""
 
     def test_text_in_an_unrecognised_field_is_announced(self, server, caplog):
-        payload = _completion(UNKNOWN_ID, "")
-        payload["choices"][0]["message"]["output_text"] = "the whole answer"
-        instance = server(lambda m, p, b: json_reply(payload))
+        instance = server(lambda m, p, b: canned_chat_reply(
+            "", bare=True, message={"output_text": "the whole answer"}))
         with caplog.at_level("WARNING", logger="poolhouse.client.chat"):
             reply = Client(instance.base_url).chat([])
         assert not (reply.content or "").strip()
@@ -411,9 +407,7 @@ class TestEmptyAnswerIsLoud:
         assert "the whole answer" not in said[0]
 
     def test_text_in_a_choice_level_field_is_announced(self, server, caplog):
-        payload = _completion(UNKNOWN_ID, "")
-        payload["choices"][0]["text"] = "the whole answer"
-        instance = server(lambda m, p, b: json_reply(payload))
+        instance = server(lambda m, p, b: canned_chat_reply("", bare=True, text="the whole answer"))
         with caplog.at_level("WARNING", logger="poolhouse.client.chat"):
             Client(instance.base_url).chat([])
         said = [r.getMessage() for r in caplog.records]
@@ -421,24 +415,23 @@ class TestEmptyAnswerIsLoud:
         assert "the whole answer" not in said[0]
 
     def test_a_recovered_reply_stays_quiet(self, server, caplog):
-        payload = _completion(GPT_OSS_ID, "", reasoning_content="counting the people")
-        instance = server(lambda m, p, b: json_reply(payload))
+        instance = server(lambda m, p, b: canned_chat_reply(
+            "", bare=True, message={"reasoning_content": "counting the people"}))
         with caplog.at_level("WARNING", logger="poolhouse.client.chat"):
-            reply = Client(instance.base_url).chat([])
+            reply = Client(instance.base_url, family="gpt-oss").chat([])
         assert reply.thinking == "counting the people"
         assert caplog.records == []
 
     def test_a_genuinely_empty_reply_stays_quiet(self, server, caplog):
-        instance = server(lambda m, p, b: json_reply(_completion(UNKNOWN_ID, "")))
+        instance = server(lambda m, p, b: canned_chat_reply("", bare=True))
         with caplog.at_level("WARNING", logger="poolhouse.client.chat"):
             Client(instance.base_url).chat([])
         assert caplog.records == []
 
     def test_a_tool_call_with_no_prose_stays_quiet(self, server, caplog):
-        payload = _completion(UNKNOWN_ID, "", tool_calls=[
+        instance = server(lambda m, p, b: canned_chat_reply("", bare=True, message={"tool_calls": [
             {"id": "c1", "type": "function",
-             "function": {"name": "look_up", "arguments": "{}"}}])
-        instance = server(lambda m, p, b: json_reply(payload))
+             "function": {"name": "look_up", "arguments": "{}"}}]}))
         with caplog.at_level("WARNING", logger="poolhouse.client.chat"):
             reply = Client(instance.base_url).chat([])
         assert reply.tool_calls is not None
@@ -446,9 +439,10 @@ class TestEmptyAnswerIsLoud:
 
     def test_an_unread_streamed_field_is_announced_too(self, server, caplog):
         """Streaming says the same thing the whole reply does, and keeps the text in raw."""
-        body = _sse(_stream_of(UNKNOWN_ID, [
-            {"role": "assistant"}, {"output_text": "the whole "}, {"output_text": "answer"}]))
-        instance = server(lambda m, p, b: (200, body))
+        stream = canned_stream_reply(
+            [{"role": "assistant"}, {"output_text": "the whole "}, {"output_text": "answer"}],
+            bare=True, timings=TIMINGS, usage=USAGE)
+        instance = server(lambda m, p, b: stream)
         with caplog.at_level("WARNING", logger="poolhouse.client.chat"):
             reply = Client(instance.base_url).chat([], on_delta=lambda k, t: None)
         said = [r.getMessage() for r in caplog.records]
@@ -458,18 +452,18 @@ class TestEmptyAnswerIsLoud:
 
 
 class TestStreamedToolCallsAcrossFamilies:
+    """A call carries no prose, so these replies are bare: the marker would be the only text in them."""
+
     def test_a_call_split_across_chunks_matches_the_whole_reply(self, server):
         call = {"id": "c9", "type": "function",
                 "function": {"name": "look_up", "arguments": '{"text": "iron"}'}}
-        payload = _completion(GPT_OSS_ID, "", tool_calls=[call])
-        payload["choices"][0]["finish_reason"] = "tool_calls"
         whole, streamed, _ = _both_ways(
-            server, GPT_OSS_ID, payload,
+            server, "gpt-oss", "",
             [{"role": "assistant"},
              {"tool_calls": [{"index": 0, "id": "c9",
                               "function": {"name": "look_up", "arguments": '{"te'}}]},
              {"tool_calls": [{"index": 0, "function": {"arguments": 'xt": "iron"}'}}]}],
-            finish="tool_calls",
+            finish="tool_calls", bare=True, tool_calls=[call],
         )
         assert whole.tool_calls == [call]
         _same(whole, streamed)
@@ -477,15 +471,13 @@ class TestStreamedToolCallsAcrossFamilies:
     def test_a_call_alongside_an_in_band_block_matches(self, server):
         call = {"id": "c1", "type": "function",
                 "function": {"name": "look_at", "arguments": '{"ids": []}'}}
-        payload = _completion(QWEN_ID, "<think>look first</think>", tool_calls=[call])
-        payload["choices"][0]["finish_reason"] = "tool_calls"
         whole, streamed, seen = _both_ways(
-            server, QWEN_ID, payload,
+            server, "qwen", "<think>look first</think>",
             [{"content": "<think>look "}, {"content": "first</think>"},
              {"tool_calls": [{"index": 0, "id": "c1",
                               "function": {"name": "look_at", "arguments": '{"ids'}}]},
              {"tool_calls": [{"index": 0, "function": {"arguments": '": []}'}}]}],
-            finish="tool_calls",
+            finish="tool_calls", bare=True, tool_calls=[call],
         )
         assert whole.thinking == "look first" and whole.tool_calls == [call]
         _same(whole, streamed)

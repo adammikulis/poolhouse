@@ -4,7 +4,7 @@
   "scenario": {
    "key": "full_power",
    "title": "Full power",
-   "blurb": "3200 MW thermal, equilibrium xenon, regulator on. The right answer is to hold.",
+   "blurb": "3200 MW thermal, equilibrium xenon, regulator on.",
    "group": "normal",
    "seed": 11,
    "ticks": 36,
@@ -36,7 +36,7 @@
   "interlock_rows": 0,
   "protections_defeated": 0
  },
- "digest": "0c8fe47e5815e636bde96e1597aacf746a141abc7bc8777811bed983e2b3b42a",
+ "digest": "e90874ca89ff55e961ffc1af79ed6d5f2563dc868e205f1825755369e097baa2",
  "decisions": [
   {
    "i": 0,

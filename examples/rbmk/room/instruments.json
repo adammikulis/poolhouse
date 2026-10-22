@@ -96,6 +96,16 @@
   "alarms": "Annunciator",
   "decision": "Decision display"
  },
+ "panels": {
+  "dials": {"label": "Reactor dials", "zone": "reactor_dials"},
+  "alarms": {"label": "Annunciator", "zone": "annunciator"},
+  "decision": {"label": "Decision display", "zone": "decision_wall", "alert_ids": ["L_SRC_INTERLOCK", "L_ABSTAIN"]},
+  "recorders": {"label": "Strip recorders", "zone": "desk_recorders"},
+  "lamps": {"label": "Desk lamps", "zone": "desk_lamps"},
+  "rodpanel": {"label": "Rod position panel", "ids": ["RODMAP"]},
+  "az5": {"label": "AZ-5 button", "ids": ["AZ5_BUTTON"]},
+  "orm": {"label": "ORM terminal", "ids": ["SCREEN_ORM"]}
+ },
  "instruments": [
   {
    "id": "D_POWER_A",

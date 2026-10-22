@@ -2,16 +2,12 @@
 import * as THREE from 'three';
 import { paintDial, paintTile, paintRecorder, texture, canvas, lampColor } from './paint.js';
 import { paintDecision, paintOrm } from './screens.js';
-import { ROD_ORDER } from './rods.js';
+import { ROD_ORDER, rodRGB } from './rods.js';
 import { evalRule, dialValue } from './rules.js';
 
 
 function rodColor(f) {
-  const stops = [[0.85, 0.7, 0.1], [0.2, 0.55, 0.25], [0.75, 0.12, 0.1]];
-  const k = Math.min(Math.max(f, 0), 1) * 2;
-  const i = Math.min(Math.floor(k), 1);
-  const t = k - i;
-  const c = stops[i].map((a, j) => a + (stops[i + 1][j] - a) * t);
+  const c = rodRGB(f);
   return new THREE.Color(c[0], c[1], c[2]);
 }
 

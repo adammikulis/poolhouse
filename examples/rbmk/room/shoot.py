@@ -3,7 +3,7 @@
     python -m examples.rbmk.room.shoot --out DIR --recordings DIR --recording NAME.json --row 30 overview az5 rodpanel orm decision
 
 ``--recording`` opens that file of the recordings folder as the run the room shows (a recording of a real model run);
-``--drawer NAME`` opens one of the tool drawers (run, log, charts, core, readouts, whatif, history, dist, compare) first.
+``2d-<view>`` names a 2D view (2d-plan, 2d-front, 2d-dials ...); ``--drawer NAME`` opens one of the tool drawers (run, log, charts, core, readouts, whatif, history, dist, compare) first.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ def open_page(pw, origin: str, recording: str | None = None, width: int = 1280, 
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto(f"{origin}/")
-    page.wait_for_function("window.__room && window.__room.state && window.__room.state.ready && window.RB.state.info", timeout=60000)
+    page.wait_for_function("window.__room && window.__room.ready && window.RB.state.info", timeout=60000)
     if recording:
         open_recording(page, recording)
     return browser, page, errors
@@ -55,9 +55,16 @@ def open_recording(page, name: str) -> None:
 
 
 def view(page, name: str, row: int | None = None) -> None:
-    """Move the camera to a bookmark (and the run to a row) and let a few frames render."""
+    """Show a view and let a few frames render: a 3D camera bookmark, or ``2d-<view>`` for a 2D view; ``row`` moves the playhead first."""
     if row is not None:
         page.evaluate("(r) => { window.__room.feed.playing = false; window.__room.feed.setIndex(r); }", row)
+    if name.startswith("2d-"):
+        page.evaluate("(n) => window.__room.setMode('2d', n)", name[3:])
+        page.wait_for_function("(n) => window.__room.ready && window.__room2d.shown === n", arg=name[3:], timeout=30000)
+        page.wait_for_function("!window.__room2d.loop.running", timeout=10000)
+        return
+    page.evaluate("() => window.__room.setMode('3d')")
+    page.wait_for_function("window.__room.ready && window.__room.state.ready && window.__room.mode === '3d'", timeout=60000)
     page.evaluate("(n) => window.__room.goTo(n)", name)
     page.wait_for_timeout(700)
 
