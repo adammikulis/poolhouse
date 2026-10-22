@@ -25,7 +25,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from poolhouse import errors, home, hub, jobs
+from poolhouse import errors, home, hub, jobs, spawned
 from poolhouse.files import read_json, write_json
 from poolhouse.lock import only_one
 from poolhouse.platform import stop_pid
@@ -249,11 +249,12 @@ def up(spec: ServerSpec, *, manager: Any, terms: Terms = Terms(),  # noqa: B008 
                 "port": asked_port, "weight": weight, "claim": claim, "behalf": os.getpid(),
                 "options": {"backend": manager.backend.options()}
                 if hasattr(manager.backend, "options") else {}})
+    child = None
     if adopted:
         say(f"adopted the lease {hold.id}"
             + (f" on port {hold.port}" if hold.port else f" ({hold.status})"))
     else:
-        _detach(hold.id, manager)
+        child = _detach(hold.id, manager)
 
     told, deadline = "", time.monotonic() + patience_s
     while True:
@@ -277,6 +278,12 @@ def up(spec: ServerSpec, *, manager: Any, terms: Terms = Terms(),  # noqa: B008 
         if time.monotonic() > deadline:
             raise Refusal(f"the lease holder did not answer within {patience_s:.0f}s; "
                           f"see {log_path(hold.id)}")
+        if child is not None and (code := child.poll()) is not None:
+            last = Hold.read(_path(hold.id)) or now
+            if last.status not in ("ready", "refused", "released"):
+                _path(hold.id).unlink(missing_ok=True)
+                _request_path(hold.id).unlink(missing_ok=True)
+                raise Refusal(spawned.explain(code, what="the lease holder", log=log_path(hold.id)))
         if now.pid and not now.alive() and now.status != "ready":
             raise Refusal(f"the lease holder ended before the broker answered; "
                           f"see {log_path(hold.id)}")
@@ -294,15 +301,16 @@ def _place(manager: Any, pid: int) -> str:
     return ""
 
 
-def _detach(hold_id: str, manager: Any) -> None:
-    """Start the holder: a detached process that outlives this terminal. When the broker
-    runs inside this process (``POOLHOUSE_BROKER_LOCAL=1``, the tests) no other process could
-    reach it, so the holder is a thread of this one."""
+def _detach(hold_id: str, manager: Any) -> spawned.Child | None:
+    """Start the holder: a detached process that outlives this terminal, which is returned so
+    `up` sees it end. When the broker runs inside this process (``POOLHOUSE_BROKER_LOCAL=1``,
+    the tests) no other process could reach it, so the holder is a thread of this one and
+    nothing is returned."""
     if os.environ.get(broker_wire.LOCAL_ENV) == "1":
         threading.Thread(target=run_holder, args=(hold_id,),
                          kwargs={"manager": manager, "tick_s": 0.2}, daemon=True).start()
-        return
-    jobs.detach("poolhouse.serve.cli", ["hold", hold_id], log=log_path(hold_id))
+        return None
+    return spawned.child_of(jobs.detach("poolhouse.serve.cli", ["hold", hold_id], log=log_path(hold_id)))
 
 
 # ------------------------------------------------------------------------------ the holder
