@@ -76,6 +76,23 @@ Closure of the base requirements and the `store`, `hub`, `web`, `plot`, `graph`,
 | `tzlocal` | 5.4.4 | MIT |
 | `urllib3` | 2.8.0 | MIT |
 
+## Vendored JavaScript
+
+Copied into the repository, not installed from a registry. Each example's `vendor/vendor.json` pins the version and the sha256 of its files and the licence text sits beside them; `--check` fails when a vendored file is unlisted or its bytes change. The three.js texts (Copyright (c) 2010-2026 three.js authors) are the `three.LICENSE` files in `src/poolhouse/ui/assets` and the example's `vendor`.
+
+| File | Project | Version | Licence |
+|---|---|---|---|
+| `src/poolhouse/ui/assets/marked.umd.js` | marked | 18.0.14 | MIT |
+| `src/poolhouse/ui/assets/purify.min.js` | dompurify | 3.4.16 | MPL-2.0 OR Apache-2.0 |
+| `src/poolhouse/ui/assets/three.module.js` | three | 0.186.1 | MIT |
+| `src/poolhouse/ui/assets/three.core.js` | three | 0.186.1 | MIT |
+| `src/poolhouse/ui/assets/OrbitControls.js` | three | 0.186.1 | MIT |
+| `src/poolhouse/ui/assets/RoomEnvironment.js` | three | 0.186.1 | MIT |
+| `src/poolhouse/ui/assets/RoundedBoxGeometry.js` | three | 0.186.1 | MIT |
+| `examples/rbmk_control_room/viewer/vendor/loaders/GLTFLoader.js` | three.js | 0.186.1 | MIT |
+| `examples/rbmk_control_room/viewer/vendor/utils/BufferGeometryUtils.js` | three.js | 0.186.1 | MIT |
+| `examples/rbmk_control_room/viewer/vendor/utils/SkeletonUtils.js` | three.js | 0.186.1 | MIT |
+
 ## Rust crates in the window (`app/src-tauri`)
 
 | Package | Version | Licence |

@@ -54,7 +54,8 @@ Counts: A 32, B 35, C 116, D 6 (a variable name counts once, a row naming no var
 | `POOLHOUSE_REPUTATION_RECOVER` | `reputation.store` | a damaged store is refused | a person | its own process | no | kept |
 | `POOLHOUSE_IQ` | `serve.lifecycle_cli` | `warn` | a person | its own process | no | kept |
 | `POOLHOUSE_LIVE_API`, `POOLHOUSE_LIVE_NET`, `POOLHOUSE_LAN_TESTS` | `poolhouse.testing.live`, `poolhouse.lan` | the marked tests skip | a person at the machine | **`lan_network` tests skip under an agent marker**; the other two are documented "do not set" | no | kept; `POOLHOUSE_LAN_TESTS=1` also lets a person's own run listen on the LAN (`lan.allowed`), never under an agent marker |
-| `POOLHOUSE_NET`, `POOLHOUSE_TEST_SSHD`, `POOLHOUSE_MANUAL_DIALOG`, `POOLHOUSE_TEST_GGUF`, `POOLHOUSE_POOL_CHECK` | tests and the `scripts/pool-check` rig only | the marked tests skip | a person | its own process | no | kept |
+| `POOLHOUSE_NET`, `POOLHOUSE_TEST_SSHD`, `POOLHOUSE_MANUAL_DIALOG`, `POOLHOUSE_POOL_CHECK` | tests and the `scripts/pool-check` rig only | the marked tests skip | a person | its own process | no | kept |
+| `POOLHOUSE_TEST_GGUF` | `tests/real_model.py` only | the chat model pinned there is read from the Hugging Face cache | a person | its own process | no | kept; a file named here that is missing fails the test, never skips it |
 | `POOLHOUSE_MUTATION` | `scripts/gates/_mutation.py` | normal runs | the mutation runner | its own child | no | kept |
 | `POOLHOUSE_FLEET_TLS` | nothing: removed | nothing | nobody | ignored (a test proves it) | no | removed |
 

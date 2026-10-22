@@ -1,109 +1,56 @@
 """Canaries and integrity against real GGUF files and a real llama-server, one server at a time.
 
-Runs only where a llama-server binary and two small GGUFs exist and no other llama-server is
-running; the files in the Hugging Face cache are only read, never changed.
+Runs with ``--real-model`` (tests/real_model.py): two different pinned models, the machine's llama-server and no other
+llama-server running. A model or binary that is missing fails the test and names the fetch command; the files in the
+Hugging Face cache are only read, never changed.
 """
 
 from __future__ import annotations
 
-import os
 import shutil
 import time
-from pathlib import Path
 
 import pytest
 
-from poolhouse.client import Client
 from poolhouse.sentinel import Mode, Sentinel, State, canary
-from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_port
-from poolhouse.serve.process import every_server
 
-pytest_plugins = ["serve_node"]
+pytest_plugins = ["real_model"]
 
-pytestmark = [pytest.mark.slow, pytest.mark.timeout(300)]
+pytestmark = [pytest.mark.slow, pytest.mark.real_model, pytest.mark.timeout(300)]
 
 
-BASE = "Qwen3VL-2B-Instruct-Q4_K_M.gguf"
-OTHER = "Qwen3Guard-Gen-0.6B.Q4_K_M.gguf"
-
-
-def _gguf(account: Path, name: str) -> Path | None:
-    root = account / ".cache" / "huggingface" / "hub"
-    found = sorted(root.rglob(name)) if root.is_dir() else []
-    return found[0] if found else None
-
-
-def _binary(account: Path) -> Path | None:
-    named = os.environ.get("POOLHOUSE_TEST_LLAMA_SERVER") or shutil.which("llama-server")
-    if named:
-        return Path(named)
-    builds = sorted((account / ".poolhouse" / "llama.cpp" / "builds").glob("*/llama-server"))
-    return builds[-1] if builds else None
-
-
-@pytest.fixture
-def files(_real_home):
-    account = _real_home.state.parent
-    base, other = _gguf(account, BASE), _gguf(account, OTHER)
-    if base is None or other is None:
-        pytest.skip(f"needs {BASE} and {OTHER} in the Hugging Face cache")
-    return base, other
-
-
-@pytest.fixture
-def machine(files, _real_home):
-    binary = _binary(_real_home.state.parent)
-    if binary is None:
-        pytest.skip("no llama-server binary on this machine")
-    if every_server():
-        pytest.skip("another llama-server is running; a test does not load a model beside it")
-    return binary, list(files)[::-1]
-
-
-def _asker(binary: Path, model: Path):
-    """A context manager yielding ``ask(prompt)`` against one leased server."""
-    held = ServerManager(LlamaServerBackend(binary=binary))
-    info = held.lease(ServerSpec(model=model, port=free_port(), context=512), timeout=300)
-    client = Client(info.base_url)
+def asker(served):
+    """``ask(prompt)`` against one leased server."""
+    client = served.client()
 
     def ask(prompt: str) -> str:
         reply = client.chat([{"role": "user", "content": prompt}], max_tokens=64, temperature=0.0)
         return reply.content or ""
 
-    return held, info, ask
+    return ask
 
 
-@pytest.mark.usefixtures("serve_leases")
-def test_a_real_model_passes_its_own_baseline_and_a_different_model_drifts(
-        machine, tmp_path, monkeypatch):
-    binary, models = machine
-    monkeypatch.setenv("LLAMA_CPP_SERVER", str(binary))
-    other_model, base_model = models
+def test_a_real_model_passes_its_own_baseline_and_a_different_model_drifts(real, tmp_path):
     node = Sentinel(tmp_path / "s", mode=Mode.GUARDED, roots=[tmp_path])
-    held, info, ask = _asker(binary, base_model)
-    try:
+    with real.serving("vision", context=512, mmproj=None) as served:
+        ask = asker(served)
         baseline = node.baseline("real", ask, runs=3)
         again = canary.run(ask, runs=3)
         assert not canary.compare(baseline, again).drifted
         assert node.canary("real", ask, runs=3) is None
         shared = {i: baseline.passes[i] for i in baseline.runs}
         assert sum(shared.values()) >= 0.9 * sum(baseline.runs.values())
-    finally:
-        held.release(info)
     time.sleep(3)
-    held2, info2, ask2 = _asker(binary, other_model)
-    try:
-        other = canary.run(ask2, runs=3)
-    finally:
-        held2.release(info2)
+    with real.serving("other", context=512) as served:
+        other = canary.run(asker(served), runs=3)
     drift = canary.compare(baseline, other)
     print(f"baseline passes {shared}; other passes {other.passes}; "
           f"drifted={drift.drifted} probes={drift.probes}")
     assert drift.drifted
 
 
-def test_a_real_gguf_is_hashed_pinned_and_a_single_flipped_byte_is_caught(files, tmp_path):
-    source = files[1]
+def test_a_real_gguf_is_hashed_pinned_and_a_single_flipped_byte_is_caught(real, tmp_path):
+    source = real.model("other")
     copy = tmp_path / "models" / source.name
     copy.parent.mkdir()
     shutil.copyfile(source.resolve(), copy)

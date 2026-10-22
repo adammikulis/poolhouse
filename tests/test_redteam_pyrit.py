@@ -1,19 +1,18 @@
 """The attacks sent through PyRIT itself, to a target made of this repository's own parts.
-Needs the redteam extra: run with --redteam."""
+Needs the redteam extra: run with --redteam (the one test of a real model also needs --slow --real-model)."""
 
 from __future__ import annotations
 
 import asyncio
 
 import pytest
-from real_model import real_model  # noqa: F401
 
 from poolhouse.redteam import pyrit_bridge
 from poolhouse.redteam.run import Plan, execute
 from poolhouse.redteam.scenarios import Options
 from poolhouse.redteam.targets import Answer, from_callable
 
-pytest_plugins = ["serve_node"]
+pytest_plugins = ["serve_node", "real_model"]
 pytestmark = pytest.mark.redteam
 
 
@@ -66,11 +65,13 @@ def test_the_roles_reach_the_target_as_openai_roles():
 
 
 @pytest.mark.slow
+@pytest.mark.real_model
 @pytest.mark.timeout(1800)
-def test_a_run_against_a_real_model_reports_what_that_model_did(real_model):  # noqa: F811
-    report = execute(Plan(("chat", "extraction"), str(real_model), Options(limit=3)))
+def test_a_run_against_a_real_model_reports_what_that_model_did(real):
+    model = real.prepared("chat")
+    report = execute(Plan(("chat", "extraction"), str(model), Options(limit=3)))
     chat = [a for a in report.attempts if a.target == "chat"]
-    assert report.meta["pyrit"] and report.meta["model"] == real_model.name
+    assert report.meta["pyrit"] and report.meta["model"] == model.name
     assert chat and any(not a.error and a.seconds > 0 for a in chat), \
         "the real model answered at least one attack"
     assert {a.target for a in report.attempts} >= {"chat", "indirect-web"}

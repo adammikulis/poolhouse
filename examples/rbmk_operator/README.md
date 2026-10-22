@@ -37,6 +37,16 @@ python examples/rbmk_operator/run.py baseline historic_1986 --out runs   # the s
 python examples/rbmk_operator/run.py summary examples/rbmk_operator/recordings   # recoveries and failures table
 ```
 
+The page (animated core, instrument panel, decision log, what-if, distribution, 1986 timeline, naive controller beside the
+model) is a stdlib server on 127.0.0.1 that runs the decision loop live under a GPU hold or replays a recording:
+
+```sh
+python3 examples/rbmk_operator/web/server.py --port 8765 [--wait SECONDS] [--recordings DIR]   # then open http://127.0.0.1:8765/
+```
+
+The header always shows the model id and `LIVE` or `RECORDED`; a failed model call halts the run with the error shown and
+the page never switches to a recording by itself.
+
 The JSON documents are described in [SCHEMA.md](SCHEMA.md). `recordings/*.json` are the stored answers of real runs,
 labelled with the model id and the date; they are replays, never live runs, and any interface must say so.
 
