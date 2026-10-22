@@ -11,14 +11,13 @@ file): edits that only add references to its new code and change no existing beh
 was broken, it broke no repo rule and it took a correction cleanly. The lead reviews every such diff
 to existing files before it lands.
 Haiku has a thinking effort setting, and on the owner's OSWorld 2.1 cost chart (docs/model-benchmarks.md)
-Haiku at `xhigh` (about 68%) beats Sonnet at low and medium for under half the cost, and at `max` (about 72%) it
-matches Sonnet at high (about 73%) for about 45% of it. Only Sonnet at xhigh or max (about 81% and 84%) goes
-higher. So run Haiku for well-specified code (a clear brief, tests it writes for its own code, additive
-integration edits): `xhigh` by default, `max` when `xhigh` fell short or the task is harder, passing the
-effort to the Agent tool. Use Sonnet, at the effort the task needs, when the work needs more than
-Haiku's ceiling or when judgment decides the result: design, conflict-heavy merges, cross-module
-refactors, anything near security. The chart is a computer-use benchmark, not our code: when a Haiku
-run at `xhigh` or `max` fails review, move that kind of task to Sonnet and note it here.
+Haiku at `xhigh` (about 68%) beats Sonnet at low and medium for under half the cost: effort buys real accuracy at
+Haiku's price. Haiku runs at `medium` or `high` by the effort rule below, and does no work that rule gives `xhigh`
+(security, protocol or cross-module). So run Haiku for well-specified code (a clear brief, tests it writes for its own
+code, additive integration edits), passing the effort to the Agent tool. Use Sonnet, at the effort the task needs, when
+the work needs more than Haiku's ceiling or when judgment decides the result: design, conflict-heavy merges,
+cross-module refactors, anything near security. The chart is a computer-use benchmark, not our code: when a Haiku run
+fails review, move that kind of task to Sonnet and note it here.
 Haiku never deletes or weakens a test or an assertion, edits authorization, grant, claim, guard,
 hook or red-team code, resolves a semantic merge conflict, changes anything outside its worktree
 (an install, an interpreter, a shared service), or decides that a branch is ready to land.
@@ -30,20 +29,24 @@ rules in AGENTS.md, "The main session and its agents".
 ## Subagent effort
 
 Set the effort of every subagent from the task, with the Agent tool's `effort` argument (this section is the
-instruction that allows it). Effort is a cost lever before the model is: on the owner's Terminal-Bench chart
-(docs/model-benchmarks.md, 2.6) Sonnet 5.5 goes 20, 29, 43, 61, 70 percent from low to max at about $0.7, $0.8,
-$1.9, $5.3 and $13 per attempt, so each step up is real accuracy and real cost. **Avoid max**: it is about 2.5 times the
-cost of xhigh for about nine points, and a failure at xhigh is resolved first by a sharper brief, then by a second look,
-and only then by max.
+instruction that allows it). The default is `high` or `medium`, chosen by the task: `medium` is the normal default for
+routine edits, docs, mechanical migrations and read-only audits, and `high` is for logic-heavy work. `xhigh` is only for
+security, protocol or cross-module work. Never `max`. Effort is a cost lever before the model is: on the owner's
+Terminal-Bench chart (docs/model-benchmarks.md, 2.6) Sonnet 5.5 goes 20, 29, 43, 61, 70 percent from low to max at about
+$0.7, $0.8, $1.9, $5.3 and $13 per attempt, so each step up is real accuracy and real cost; `max` is about 2.5 times the
+cost of `xhigh` for about nine points. A failure at `xhigh` is resolved first by a sharper brief, then by a second look,
+and only then by Opus at a mid effort. A large test or docs refactor is `medium` or `high`, never `xhigh`. Running agents
+keep the effort they started with.
 
 | Task | Model and effort |
 | --- | --- |
-| Read-only search, summaries, lookups | Haiku, `xhigh` (see the model order above) |
-| Narrow mechanical edits, a budget ratchet with its named metric | Haiku `xhigh`, or Sonnet `low` or `medium` |
-| A well-specified branch: code plus the tests that fail first, additive wiring | Sonnet `high` (the default) |
-| Conflict-heavy merges, cross-module refactors, protocol or node changes, anything that touches many files | Sonnet `xhigh` |
-| Security-adjacent work (authorization, grants, guards, red-team), design decisions, the hardest debugging | Sonnet `xhigh`, reviewed by a second agent |
-| xhigh failed review twice, or a design the lead cannot settle | Sonnet `max`, or Opus at a mid effort: Opus peaks near 65 percent from about $4, so its top effort adds cost and no points |
+| Read-only search, audits, summaries, lookups | Haiku `medium` or `high` |
+| Narrow mechanical edits, docs, a budget ratchet with its named metric | Haiku `medium`, or Sonnet `low` or `medium` |
+| A well-specified branch: code plus the tests that fail first, additive wiring | Sonnet `high` or `medium`, by how much logic it holds |
+| Logic-heavy work: new behaviour, design, debugging, a refactor with many call sites | Sonnet `high` |
+| Conflict-heavy merges, cross-module refactors, protocol or node changes | Sonnet `xhigh` |
+| Security-adjacent work (authorization, grants, guards, red-team) | Sonnet `xhigh`, reviewed by a second agent |
+| `xhigh` failed review twice, or a design the lead cannot settle | Opus at a mid effort: Opus peaks near 65 percent from about $4, so its top effort adds cost and no points |
 
 A reviewer subagent runs one effort step below the worker it checks, never above it, because reading is cheaper
 than writing and its job is to disagree on evidence. Record a repeated failure of a kind of task at an effort
@@ -75,7 +78,7 @@ Measured in this project: workers that ran 600 to 900 tool calls consumed 0.5 to
   affected tests, not the suite, until the one gate run.
 - The lead keeps its own context short: results are summarised once, large outputs are read from a file range, and a session
   that has grown past roughly 300k tokens of context is continued after a summary.
-- Effort follows the table above; avoid xhigh for work a clear brief makes mechanical.
+- Effort follows the table above; `xhigh` is never used for work a clear brief makes mechanical.
 - A design is built only when the owner asked for the feature; a design nobody asked for stops at its first attack review and is
   parked, not revised through further rounds. A mechanical doc edit (a count, a name, a pointer) goes to Haiku.
 

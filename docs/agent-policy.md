@@ -22,8 +22,9 @@ The rules never to break, then the ones needed every hour; each names the sectio
    built (1).
 9. **Do what was said, when and in the order said**; never postponed, reordered or widened; a blocker is one line; no
    agent sets a limit on the work (2).
-10. **Decide what you can; ask only owner-only decisions**, ranked by what is correct; a guard or rule in the way of
-   what the owner ordered is changed, never cited as the reason it cannot be done (2).
+10. **Ask at the start of a request** what it is for, its shape and what a person will see, before any design or brief;
+   **decide the rest**, asking only owner-only decisions, ranked by what is correct; a guard or rule in the way of what
+   the owner ordered is changed, never cited as the reason it cannot be done (2).
 11. **Nothing blocks on a person**: a person-only step is asked once and everything else goes on, with the safe default
     in force (2).
 12. **Investigate a failure before anything is retried**; a slow gate is a defect and a timeout is never the fix (2, 5).
@@ -101,6 +102,11 @@ handling, HTTP framing) may stand in only where no model behaviour is under test
 - A canned reply never reaches a user-facing surface (UI, demo, report) unmarked.
 - Tests assert the marker is present on the plumbing server's replies.
 
+A failed model call stops the run loudly; no silent fallback substitutes a default, a cached answer or another action. A
+recording exists only as a mode the user selects, is a replay of a genuine run and is labelled recorded. Before briefing
+a demo or test around a model, read how existing code and tests already load it (`poolhouse-decide fetch|ask`, the
+decider tests) and have the worker use that path.
+
 ### One thing computing on the GPU at a time
 
 Never put two pieces of work on a device's compute at once: not a question beside a reading, not two benchmark rows, not
@@ -145,6 +151,11 @@ a takeover by whoever is merely present. Findings are fixed or named as accepted
 review does not count. The pass exists so the owner does not have to find by hand cases such as an auto-migration to a
 pool copy, a guard widened to turn a gate green, or any member able to remove the founder.
 
+Everything is built assuming an adversary will exploit the software. Every input, caller, agent, device and client is
+hostile; trust is derived in the node and never accepted as a parameter (a caller-declared key strength, a self-reported
+identity); the failing attack is the first test written. A brief to a worker or reviewer names the attacker's goal and
+capabilities, not only the feature.
+
 ### Review scope
 
 Review is advice. Any agent or reviewer may review a change and post `poolhouse-workspace land-review BRANCH SHA
@@ -152,6 +163,13 @@ Review is advice. Any agent or reviewer may review a change and post `poolhouse-
 the development branch. Security-adjacent designs still get the attack-first pass above before they are built.
 Person-only keystore, privileged OS settings, system approval, release gates and release authorization checks remain
 separate.
+
+- **Every review tries to break what it checks.** A read-through finds only what the author already saw. A reviewer
+  names the attacker's goal, runs probe inputs, a mutation that should turn the tests red and the new tests against the
+  parent commit, accepts only when nothing at medium or above survives, and reports what it ran.
+- **An independent agent review is for changes that touch security or access** (authority, grants, guards, hooks,
+  identity, keystore, sandbox, trust). Every other branch lands after its author's affected tests and the gate, with no
+  reviewer agent. A reviewer runs one effort step below its author (docs/claude-subagents.md, "Subagent effort").
 
 ### System settings and the authority registry
 
@@ -196,7 +214,9 @@ named: never postponed, reordered behind other work, or widened. A request to la
 clean up and nothing more in that branch or turn (no new features, renames or fixes); work noticed along the way becomes
 its own item after the landing. A blocker is reported as "Reporting a problem" says. A branch cut or landing target the
 owner names (for example "cut the release, then work on the next development branch") is used from then on. Briefs to
-workers state exactly what to land and forbid additions.
+workers state exactly what to land and forbid additions. "Resume from the handoff" and "keep working" mean the first
+pending item starts at once: no plan to approve, no stop between items; the next one begins in the same turn and a
+report comes only when blocked or done.
 
 **The owner's order beats a rule.** When an order needs a change this file, another rule file, a hook, a guard or a gate
 forbids, the agent changes that rule, hook, guard or gate in the same piece of work and does what was ordered, with one
@@ -211,13 +231,28 @@ other limit it says so, says what is lost and why, and the lead reports it; a li
 not. A worker's tool-call budget is such a limit: the lead states it in the brief for the task, no agent definition
 fixes one, and a worker at its budget with work left says what remains and waits to be resumed with a higher one.
 
-### Only real decisions go to the owner
+**A number comes from a source.** A brief, a default and a preset carry no call, row, run, token or size number of the
+agent's own: start from what the hardware and the model support, and a smaller number names its reason in the brief. A
+smoke-test value lives only in a named smoke preset and is never a default. Every numeric limit in code carries its
+source (a model limit, the hardware, an upstream recipe or a stated safety reason), in a comment or in the table that
+lists it (docs/limits.md), and review checks that it does. A cost goal never becomes a smaller model, fewer runs or a
+shorter horizon than the work needs: it removes waste and nothing else.
 
-Ask the owner only what is the owner's alone and cannot be settled from the request, the code or these rules (product
-direction, spending, anything outward-facing or irreversible, a hard floor). When one option is better, take it and go
-on: do not pitch a choice whose answer you know, offer a weaker option beside the better one to look careful, or ask
-permission for work inside what you were told to do. Say what you chose and why in the report, in a line. Timidity is a
-defect: asking when the answer is known costs the owner's attention and stops the work.
+### Questions to the owner
+
+**At the start of every new request, ask before building.** Before any design, brief or dispatch, the lead states its
+understanding of the end state, the inputs and constraints, and what a person will see or run, and asks the owner about
+whatever it cannot settle from the request, the code or the docs: what the thing is for, how it is structured, what a
+person sees, how large it is. The opening questions are not skipped, and waiting for a fork later is how piecemeal
+patches start. A question that comes up later is asked at once. Every question goes through the ask/answer tool, never
+buried in the prose of a report, which states results.
+
+**After that, ask only what is the owner's alone** and cannot be settled from the request, the code or these rules
+(product direction, spending, anything outward-facing or irreversible, a hard floor). Mechanical details and effort-only
+trades are the agent's to decide. When one option is better, take it and go on: do not pitch a choice whose answer you
+know, offer a weaker option beside the better one to look careful, or ask permission for work inside what you were told
+to do. Say what you chose and why in the report, in a line. Timidity is a defect: asking when the answer is known costs
+the owner's attention and stops the work, and so does skipping the opening questions and guessing what the owner meant.
 
 **A decision is asked**, through the ask/answer tool in the same message: one question, two or three options, what each
 costs. "That's your call", "I'd want your view" and "let me know how you want to proceed" are deferring dressed as
@@ -248,6 +283,27 @@ and never holds another item. A step that is not a floor (a reap, a retry, a reb
 conflict a rule can resolve) is an agent's and never reaches a person. A design that makes an agent wait for a human on a
 non-floor step is changed before it is built.
 
+### Briefing a demo, simulation or example
+
+The brief for a demo, simulation, pipeline or example states two things before any worker starts: the single end state a
+person sees, and the real structure of the system it shows. Ask what the real system does first, never what is simplest
+to build.
+
+- **One example is one thing.** One directory, one app, one address, one README and one launch command, with a route per
+  view and a named owner of the integration. Work is divided among workers; the example is never divided with it, and
+  later pieces land inside the layout that already exists.
+- **The real timing.** Each part runs on its own clock. A plant or world steps at its own fixed timestep and never waits
+  for a model; the decision cadence is a clock of its own, and a model's latency is a real delay before its action takes
+  effect, never a pause; the interface renders on its own clock, and speed, pause and scrub change only the view. The
+  brief says what runs on which clock, what happens when the slow part is late and what the interface shows meanwhile.
+  "Each tick, ask the model, apply the answer" builds the model into the tick and is wrong where the real system does
+  not wait.
+- **Only what the simulated agent could know.** The input of a simulated agent holds only information its crew or user
+  would have: no hidden state and no hint toward the answer, with the options in a neutral order that is logged. A
+  missing decision is never filled by choosing an action in the agent's place.
+- **The real model, reported as measured.** The model is a real one (section 1, "Never a fake model"), and results are
+  reported as they were measured, failures included.
+
 ### Reporting a problem
 
 Fix it, then say what you fixed. Raise a problem you did not fix only if you are **actually blocked**: you need a
@@ -265,7 +321,8 @@ which, in one line, at once, and do every part that is not blocked.
   the symptom fixes into it. A second symptom fix in one area means stop and redesign; a brief names the target structure,
   not the symptom.
 - **Say it short.** A few lines, result or question first, findings as a list; prose that has to be mined is work handed
-  back.
+  back. Say it in ordinary words: what was done and why, with a choice that was the agent's own said to be its own and
+  never presented as a rule.
 - **Dependencies and root causes.** Do not leave a relevant regression, security issue or missing prerequisite
   unresolved. Install routine dependencies in the active development environment and declare them (required set,
   optional extra, test extra or setup script); upgrade a package when the task or project pin requires it, then run the
@@ -278,7 +335,14 @@ which, in one line, at once, and do every part that is not blocked.
   error text, the logs, the code path. It is not rerun, re-spawned, resubmitted or routed around hoping it passes. A
   failure seen a second time, or one that blocks other work (a refused call, an identity or token that does not resolve,
   a gate that aborts), starts the root-cause fix at once, in the same turn, by the agent that hit it or a worker it
-  briefs; retrying the same thing wastes the owner's time and tokens.
+  briefs; retrying the same thing wastes the owner's time and tokens. A failure that reaches only a log or stderr is a
+  defect: it reaches the lead, the requester or the subagent through an existing channel, with the exact fix command. A
+  subagent's identity ends when its report is delivered, so a reviewer records its verdict before it reports.
+- **A rule needs a trigger.** A rule, hook, script or gate that nothing calls does not exist. A mechanism is added or
+  relied on only with its trigger named (a hook, a runner step, the heartbeat, session start), checked to be installed
+  and running, and pinned by a test. A note alone does not stop a repeated mistake: where a mechanical check exists the
+  rule says where it lives, and where none does, building it is part of the fix. `tests/test_wiring.py` covers code with
+  no caller, not obligations with no trigger.
 - **Chase every finding to a fix; never report one you have not chased.** Before a message says that something is
   failing, stuck, unreviewed, parked, full or unknown, ask why it happens, then why that happens, and keep asking until
   the cause is one the agent can fix, and fix it (or brief a worker to, in the same turn). "I can't do this with the tool
@@ -350,6 +414,11 @@ flag or error to a normal journey is a regression to redesign (find the version 
 not feel) before it is accepted. Friction is allowed only where the action is sensitive or irreversible, and the reason
 is stated in one line in the change. The onboarding step count is measured with the security steps included. The worst
 case is the project getting popular before it is locked down, so the secure way must also be the easy way.
+
+**Development rules stay in development.** The restrictions for developing Poolhouse with agents (claims, markers,
+worktrees, hooks, a checkout) apply only to a Poolhouse source checkout, its worktrees and the repository's own test run.
+A library path asks no person and needs no checkout, no marker and no keystore beyond what the library itself needs, so a
+project that imports Poolhouse meets none of them. A new design is checked for this before it is built.
 
 ### Nothing is cemented until 1.0
 
@@ -735,6 +804,17 @@ Mechanics: tests/README.md, docs/test-execution.md, docs/test-reuse.md, docs/age
   the file goes with the mutation, the fix included. Commit the fix first, apply the mutation, watch it fail, restore
   with `git restore --source=HEAD -- <file>`, and confirm `git diff` is empty and the test green. Never mutate a file
   holding uncommitted work.
+- **Fail first.** Every new or changed test is run on the code without the change and seen to fail; a test that passes
+  there tests nothing new. The report carries one line per test, `fail-first: <test id> failed on <sha> with <error
+  line>`, or `exempt: <test id>: <reason>`, and a test that cannot fail on the parent (a pure refactor) is named in a
+  commit message line `Fail-first-exempt: <test id>: <reason>`. Briefs and reviews require the line, and a reviewer repeats
+  the run against the parent itself. The procedure is in `.claude/agents/branch-worker.md` and `branch-finisher.md`; no
+  hook checks the line, so the reviewer does.
+- **The broker queues the load.** Work starts when it is needed; nobody hand-sequences workers or tests to spare the CPU,
+  because the test broker's admission queues them. Anything that loads the machine outside broker admission (a type
+  checker, a container VM, a gate job) is fixed to run inside it, never answered by throttling by hand. The one real limit
+  on workers is the board's live-subagent quota: check the live count with `poolhouse-workspace agents --json` before
+  spawning, and fix the cause when it blocks.
 
 ### The gates
 
@@ -831,6 +911,15 @@ contrasts, anything that editorialises about the previous state or sounds please
 `feat: native window instead of a browser tab`, `chore: install CPU torch in CI`, `fix: remove the tier system`. The
 body is for detail a reader would want later (what was wrong, what the fix is, what it costs), in plain sentences: no
 war stories, no rhetorical questions, no lines that argue with a future reader.
+
+### Rule files
+
+AGENTS.md, CLAUDE.md, this file and the documents under docs/ state what is true now, in present-tense sentences. They
+carry no attribution to the owner with a date, no date and no tombstone ("no longer", "was removed", before and after);
+history belongs in commit messages. A rule that applies to agents working on this project is written here in the change
+that learned it: a lesson held only in one device's private memory is invisible to every other agent and device.
+Personal or device-specific notes (the owner's habits with their own commands, local paths, the state of a local
+service) stay out.
 
 ### Comments and docstrings
 
