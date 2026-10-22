@@ -122,9 +122,7 @@ the per-rod worth map, the 20 s stroke, and the margin-dependence of the positiv
 the sequence qualitatively: 30 MW start, rods pulled with the margin falling to about 7 while the power is held near 200 MW,
 the flow dropping from 120 to 60 percent during the test, a void-driven slow rise in power, then after AZ-5 a spike
 that is about twice nominal in the toy. The real peak is estimated at tens of times nominal; the toy does not match
-it and does not claim to. The cross-checks the owner named, the browser model at
-<https://github.com/TH462/Reactor-Dynamics> and PyRK (<https://fhr.nuc.berkeley.edu>, BSD), were not run or copied from here
-and are not dependencies; comparing the xenon and power trajectories with them is open work.
+it and does not claim to. Cross-checks against other reactor-dynamics codes, a browser model and PyRK (<https://fhr.nuc.berkeley.edu>), have not been run.
 
 ## Instruments and controls
 
