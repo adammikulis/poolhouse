@@ -31,7 +31,7 @@ LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
               "runtime", "runtime_launchers", "runtime_git", "runtime_bridges",
               "lock", "log", "macauth", "maintenance", "maintenance_windows", "sealing",
               "markup", "sandbox",
-              "deciders", "desktop", "devbranch", "media", "messages", "net", "node_health", "node_pool", "optional", "paths", "platform", "safenames", "redact", "sentinel",
+              "deciders", "desktop", "devbranch", "media", "messages", "net", "node_health", "node_pool", "optional", "paths", "platform", "procscan", "safenames", "redact", "sentinel",
               "real_machine", "records", "requests", "person", "private_path", "private_counters", "protectedwrites", "safetext", "secretpaths",
               "serverkeys",
               "studio_launch", "subscribers", "taint", "tar_libraries", "telemetry", "tool_schema", "trees", "ui", "unix_socket", "units", "win32", "windows_private", "worktreerules")),
