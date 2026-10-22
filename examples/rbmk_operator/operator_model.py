@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import concurrent.futures
 import math
-import random
 import time
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -33,8 +32,7 @@ class Asker(Protocol):
 
     model: str
 
-    def ask_batch(self, index: int, calls: list[tuple[str, str, dict[str, Any]]]
-                  ) -> list[tuple[dict[str, dict[str, Any]], dict[str, Any]]]: ...
+    def ask(self, index: int, key: str, text: str, qs: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]: ...
 
 
 @dataclass
@@ -50,7 +48,6 @@ class Proposal:
     calls: list[dict[str, Any]] = field(default_factory=list)
     latency_ms: float = 0.0
     note: str = ""
-    printed: bool = False
 
 
 def check(name: str, answer: dict[str, Any], want: list[str]) -> None:
@@ -108,28 +105,22 @@ class LiveAsker:
         return {name: len(tok(pointer_prompt.render(q.text, shown, q.options).text,
                               add_special_tokens=False)["input_ids"]) for name, q in qs.items()}
 
-    def ask_batch(self, index: int, calls: list[tuple[str, str, dict[str, Any]]]
-                  ) -> list[tuple[dict[str, dict[str, Any]], dict[str, Any]]]:
-        """Answers for every ``(key, text, questions)`` call in ONE batched forward pass; any failure or hang is `ModelStopped`."""
+    def ask(self, index: int, key: str, text: str, qs: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
+        """Answers for every question in ``qs`` about ``text``; raises `ModelStopped` on any failure or hang."""
         sent = time.time()
-        got = call_with_timeout(lambda: _questions().decide_batch(
-            [(text, qs) for _, text, qs in calls], config=self.config, abstain_below=self.abstain_below),
-            self.timeout, "+".join(key for key, _, _ in calls))
+        got = call_with_timeout(lambda: _questions().decide(text, qs, config=self.config,
+                                                            abstain_below=self.abstain_below), self.timeout, key)
         answered = time.time()
-        out = []
-        for (_key, text, qs), raw in zip(calls, got, strict=True):
-            answers = annotated(raw, qs)
-            ids = {a["model"] for a in answers.values()}
-            if len(ids) != 1:
-                raise ModelStopped(f"the answers came from different models: {sorted(ids)}")
-            self.model = ids.pop()
-            for name, n in self._tokens(text, qs).items():
-                if n > TOKEN_LIMIT:
-                    raise ModelStopped(f"question {name!r} prompt is {n} tokens; the limit is {TOKEN_LIMIT}")
-                answers[name]["tokens"] = n
-            out.append((answers, {"sent_at": round(sent, 3), "answered_at": round(answered, 3),
-                                  "batch_size": sum(len(qs) for _, _, qs in calls)}))
-        return out
+        answers = annotated(got, qs)
+        ids = {a["model"] for a in answers.values()}
+        if len(ids) != 1:
+            raise ModelStopped(f"the answers came from different models: {sorted(ids)}")
+        self.model = ids.pop()
+        for name, n in self._tokens(text, qs).items():
+            if n > TOKEN_LIMIT:
+                raise ModelStopped(f"question {name!r} prompt is {n} tokens; the limit is {TOKEN_LIMIT}")
+            answers[name]["tokens"] = n
+        return answers, {"sent_at": round(sent, 3), "answered_at": round(answered, 3)}
 
 
 def call_with_timeout(fn: Any, timeout: float, what: str) -> Any:
@@ -150,19 +141,6 @@ def _questions() -> Any:
     from poolhouse.decide import questions
 
     return questions
-
-
-def shuffled(options: dict[str, str], plant: Any, index: int, key: str) -> dict[str, str]:
-    """The options in a seeded random order, so no option sits first by design; the order is logged with the answer."""
-    names = list(options)
-    random.Random(f"{plant.scn.seed}:{index}:{key}").shuffle(names)  # noqa: S311
-    return {n: options[n] for n in names}
-
-
-def class_question(plant: Any, index: int, key: str = "decision") -> Any:
-    """The action-class question with its options in the seeded order."""
-    return _questions().choice("Which kind of operator action should be taken now?",
-                               shuffled(controls.CLASSES, plant, index, key))
 
 
 def situational(plant: Any) -> list[tuple[str, str, dict[str, Any]]]:
@@ -186,22 +164,14 @@ class ModelOperator:
     def __init__(self, asker: Asker) -> None:
         self.asker = asker
 
-    def _round(self, index: int, calls: list[tuple[str, str, dict[str, Any]]], prop: Proposal
-               ) -> dict[str, dict[str, dict[str, Any]]]:
-        """Ask every call of one level in one batch; returns the answers by call key."""
-        results = self.asker.ask_batch(index, calls)
-        out = {}
-        for (key, text, _), (got, timing) in zip(calls, results, strict=True):
-            latency = sum(item["latency_ms"] for item in got.values())
-            prop.calls.append({"key": key, "state_text": text, "answers": got, "latency_ms": round(latency, 3), **timing})
-            for name, item in got.items():
-                prop.answers[name] = {**item, "call": key}
-            prop.latency_ms += latency
-            out[key] = got
-        return out
-
     def _call(self, index: int, key: str, text: str, qs: dict[str, Any], prop: Proposal) -> dict[str, dict[str, Any]]:
-        return self._round(index, [(key, text, qs)], prop)[key]
+        got, timing = self.asker.ask(index, key, text, qs)
+        latency = sum(item["latency_ms"] for item in got.values())
+        prop.calls.append({"key": key, "state_text": text, "answers": got, "latency_ms": round(latency, 3), **timing})
+        for name, item in got.items():
+            prop.answers[name] = {**item, "call": key}
+        prop.latency_ms += latency
+        return got
 
     def _hold(self, prop: Proposal, name: str, ans: dict[str, Any]) -> Proposal:
         top = ans["scores"][ans["choice"]]
@@ -214,21 +184,21 @@ class ModelOperator:
         """The (class, target, step) the model's answers ask for, or the fixed safety policy on abstain."""
         q = _questions()
         prop = Proposal("hold", controls.NONE, "1", "model", None)
+        for key, text, qs in situational(plant):
+            self._call(index, key, text, qs, prop)
         full = panel.full(plant)
-        first = [(key, text, qs) for key, text, qs in situational(plant)]
-        first.append(("decision", full, {
+        got = self._call(index, "decision", full, {
             "risk": q.score("How risky is the current reactor state, from 1 (safe) to 5 (about to be damaged)?", 1, 5),
-            "class": class_question(plant, index)}))
-        got = self._round(index, first, prop)["decision"]
+            "class": q.choice("Which kind of operator action should be taken now?", controls.CLASSES)}, prop)
         cls = got["class"]
         if cls["abstained"]:
             return self._hold(prop, "class", cls)
         prop.cls = cls["choice"]
         if prop.cls == "orm_print":
             plant.print_orm()
-            prop.printed = True
             again = self._call(index, "decision_after_printout", panel.full(plant), {
-                "class_after_printout": class_question(plant, index, "decision_after_printout")}, prop)["class_after_printout"]
+                "class_after_printout": q.choice("The margin printout is now fresh. Which kind of operator action "
+                                                 "should be taken now?", controls.CLASSES)}, prop)["class_after_printout"]
             if again["abstained"]:
                 return self._hold(prop, "class_after_printout", again)
             prop.cls = again["choice"]
@@ -242,8 +212,7 @@ class ModelOperator:
             return prop
         options = controls.candidates(prop.cls, plant)
         tgt = self._call(index, "target", full + f" The operator is considering: {controls.CLASSES[prop.cls]}.",
-                         {"target": q.choice("Which target should that action be applied to?",
-                                             shuffled(options, plant, index, "target"))}, prop)["target"]
+                         {"target": q.choice("Which target should that action be applied to?", options)}, prop)["target"]
         if tgt["abstained"]:
             return self._hold(prop, "target", tgt)
         prop.target = prop.model_choice["target"] = tgt["choice"]

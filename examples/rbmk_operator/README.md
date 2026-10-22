@@ -172,18 +172,9 @@ The plant, the decider and the interface run on separate clocks and none waits f
 - Interface: draws from the exported run at its own frame rate. Speed, pause and scrub are not inputs to the run, so a
   recording replays the same plant trajectory whatever the playback speed: the actions are keyed to their applied times.
 
-The deterministic core (`reactor`, `plant`, `loop.Runner`) is plain synchronous code in simulated time, so tests and
-replays need no event loop. `live.LiveRunner` is the asyncio layer that only schedules it, and `run.py live` runs it
-against the real model. The plant task sleeps to its schedule (`speed` scales the sleep and the latency conversion, never the
-physics step) and never waits for the model. Each decision is a task that awaits the blocking forward pass on a single worker
-thread, so compute stays serialized under the lease; its answer lands in the plant at the simulated time that matches its
-real latency (`applied_t_s`, stored as `due_s`, which is what a replay uses). `LiveRunner.set_speed(x)` is the speed knob a
-web server calls; `stop()` ends a run. A forward pass cannot be cancelled: when a call times out or the run is stopped the
-request is marked dead, the run halts loudly, and an answer that arrives later is discarded and logged in `late_answers` as
-"late answer discarded after halt" with its latency. A new run refuses to start while a dead call still holds the worker
-(`Compute.state()` says so, for a header); `run.py live` exits the process after a halt with a dead call so that compute is
-released. `run.py record` is the same loop run batch-wise (it applies each answer's latency in simulated time afterwards) and
-makes the same trajectory.
+The run here is computed batch-wise (the loop does not step the plant while a call is in flight; it applies the
+latency in simulated time afterwards), which gives the same trajectory a concurrent loop would. A live interface that
+streams a run does so from this loop and sets `speed`; there is no in-process server in this directory.
 
 ## Prompt size and batching
 

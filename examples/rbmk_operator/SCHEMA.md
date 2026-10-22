@@ -33,7 +33,6 @@ An interface must show the model id and `live` or `recorded from <model> on <dat
 | `captions` | `{tick, kind, text}` plain narration at key moments (xenon pit, margin below minimum, void feedback, graphite-tip scram, damage, interlock, defeat, abstain) |
 | `outcome` | `verdict` (`recovered` / `failed`), `why`, `peak_P`, `peak_MW`, `max_hazard`, `scram`, `damaged`, `final_orm`, `final_P`, `decisions`, `abstained`, `interlock_rows`, `protections_defeated` |
 | `score` | `in_band` (0 to 40), `within_limits` (0 to 30), `reacted_early` (0 or 20), `avoided_scram` (0 or 10), `total` (0 when the core was damaged) |
-| `late_answers` | `[{request, note: "late answer discarded after halt (...)", latency_ms}]`: model answers that arrived after a timeout or a stop and were never applied |
 | `whatif` | `{decision index: {action class: branch}}`; a branch is `{applied {cls, target}, interlocks[], rows[], peak_P, end_hazard}` where `rows` are `{tick, P, hazard, orm, f, Tf, scram}` for the next 10 ticks with no further operator action (the trips stay on). Absent from recordings. |
 
 ### `trace[]` row (true plant values, plus the two power channels the operator reads)
@@ -50,10 +49,10 @@ rod-equivalents), `orm_printed` (what the stale ORM printout shows), `f` (core f
 
 | key | content |
 |---|---|
-| `i`, `n`, `kind` | row index; `n` is the request number a model decision answers (a recording is keyed by it); kind: `decision` (the operator was asked), `busy` (a decision time arrived while an earlier answer was still in flight: MODEL BUSY, skipped, nothing queued) or `trip` (an automatic trip fired, no question asked) |
+| `i`, `kind` | index; `decision` (the operator was asked), `busy` (a decision time arrived while an earlier answer was still in flight: MODEL BUSY, skipped, nothing queued) or `trip` (an automatic trip fired, no question asked) |
 | `tick`, `t_s`, `snapshot_tick`, `fast` | when the state snapshot was taken (simulated) |
-| `applied_tick`, `applied_t_s`, `due_s`, `delay_s` | when the answer landed in the plant: snapshot time plus latency times `meta` speed. `due_s` is the exact simulated time it was due (a replay lands the action there). Null if the run ended first |
-| `batch` | `{calls: [{key, size, latency_ms, sent_at, answered_at (wall epoch seconds), tokens_max}], rounds: [{keys, sent_at, answered_at, wall_ms}], questions, latency_ms}`. A round is one batched forward pass of the pointer backend: every independent question of a level (the reading questions, `risk` and `class`) goes in one pass; `target` and `step` follow as their own rounds |
+| `applied_tick`, `applied_t_s`, `delay_s` | when the answer landed in the plant: snapshot time plus latency times `meta` speed. Null if the run ended first |
+| `batch` | `{calls: [{key, size (questions in the call), latency_ms, sent_at, answered_at (wall epoch seconds), tokens_max}], questions, latency_ms}`. Each question is its own forward pass of the pointer backend; there is no batched path for it (see README) |
 | `state_text` | the whole console text the model read (all sub-panels) |
 | `state` | a trace row at that moment |
 | `calls[]` | each model call: `{key, state_text, answers{name: answer}}`. Keys: `neutron`, `coolant`, `rods`, `steam`, `protection`, `instruments`, `decision`, `decision_after_printout`, `target`, `step`. Each call shows the model only the sub-panel its question concerns. The text of a call is never clipped: a panel over the model's 4096-token limit stops the run with an error. |
@@ -76,10 +75,6 @@ rod-equivalents), `orm_printed` (what the stale ORM printout shows), `f` (core f
 (score), backend ("pointer"), model, latency_ms, question (text), options{option: description}, tokens (the decider's own token count of this question's whole prompt), call}`. `scores` always holds
 every option, in the order of `options`, and sums to 1 (a run stops with `ModelStopped` otherwise). `error` is empty in any
 stored answer: a failed answer stops the run and is never stored as an answer.
-
-`options` lists the options in the order the model saw them. For `class`, `class_after_printout` and `target` that order is a
-seeded random shuffle per request (scenario seed, request number, call key), so no option is first by design.
-Every console starts with a `KEY FACTS` line of plain numbers against their limits.
 
 ### Questions asked in a round
 
