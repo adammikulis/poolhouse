@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>RBMK control room, 2D</title>
+<meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="room2d.css">
+</head>
+<body>
+<header id="top">
+  <div class="title">
+    <strong>RBMK-1000 unit control room, 2D</strong>
+    <span class="sub">Fixed views of the interpretive reconstruction, not a survey. Educational toy reactor behind the dials.</span>
+  </div>
+  <div class="status">
+    <span id="badge" class="badge warn">LOADING</span>
+    <span id="model">model: -</span>
+    <span id="scenario"></span>
+    <a id="to3d" class="linkbtn" href="index.html">3D room</a>
+  </div>
+</header>
+<div id="banner" role="alert" hidden></div>
+<main id="stage">
+  <div id="scroller">
+    <div id="frame">
+      <img id="still" alt="Fixed view of the control room" draggable="false">
+      <canvas id="overlay" aria-label="Live instruments over the view"></canvas>
+    </div>
+  </div>
+  <aside id="card" hidden>
+    <button id="card-close" aria-label="Close card">x</button>
+    <h2 id="card-title"></h2>
+    <p class="tag" id="card-tag"></p>
+    <dl>
+      <dt>What it is</dt><dd id="card-what"></dd>
+      <dt>Range</dt><dd id="card-range"></dd>
+      <dt>How it is modelled</dt><dd id="card-modelled"></dd>
+      <div id="card-now-row"><dt>Now</dt><dd id="card-now"></dd></div>
+    </dl>
+    <button id="card-open" hidden></button>
+  </aside>
+</main>
+<nav id="dock">
+  <div id="views" class="row"></div>
+  <div id="replay" class="row" hidden>
+    <button id="playpause">Play</button>
+    <input id="scrub" type="range" min="0" max="0" value="0" aria-label="Replay position">
+    <select id="speed" aria-label="Replay speed"><option value="1">1 row/s</option><option value="2" selected>2 rows/s</option><option value="5">5 rows/s</option><option value="15">15 rows/s</option></select>
+  </div>
+</nav>
+<script type="module" src="room2d.js"></script>
+</body>
+</html>

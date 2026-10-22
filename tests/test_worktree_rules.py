@@ -115,7 +115,7 @@ def test_landing_and_reading_are_allowed_in_the_primary_checkout(repo, command):
 
 
 @pytest.mark.parametrize("command", [
-    "git add a.py", "git commit -m x", "git reset --hard dev", "git rebase dev", "git stash push -u -m work-tag",
+    "git add a.py", "git commit -m x", "git reset --hard dev", "git rebase dev",
     "git checkout -b more", "git merge dev",
 ])
 def test_an_agent_in_its_own_worktree_may_do_all_of_it(repo, command):

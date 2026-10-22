@@ -121,8 +121,9 @@ Found by reading `docs/workspace.md`, `poolhouse.jobs` and the node's ops:
   (docs/local-agent.md). Nothing starts one on another device from here.
 - **`poolhouse-jobs`** runs long commands on the device you are on only.
 
-Running tests on another device is `scripts/test TIER --on DEVICE` (docs/test-farm.md). It needs the person to turn
-it on at the device that runs the tests, below.
+Running tests on another device is `scripts/test TIER --on DEVICE` (docs/test-farm.md). A device in a pool in dev mode takes
+tests with nothing turned on (docs/fleet.md, "Two devices on a LAN"); a device reached through the node needs the person to
+turn it on at the device that runs the tests, below.
 
 ## Letting the Mac run tests on this device
 

@@ -2,6 +2,15 @@
 
 from __future__ import annotations
 
+import re
+
+CONTROLS = re.compile(r"[\x00-\x08\x0a-\x1f\x7f-\x9f]")
+
+
+def plain(text: str) -> str:
+    """``text`` with every control character, which can move a cursor or end a line, shown as a question mark; a tab stays."""
+    return CONTROLS.sub("?", text)
+
 
 def where(platform: dict, python: str | None = None) -> str:
     """``linux (WSL), python 3.13.5, 16 cpus``: a Linux that is WSL is not the Windows around it.
@@ -35,12 +44,12 @@ def show(result: dict, name: str, reused: list[str] | None = None) -> list[str]:
     if result["exit"] and not result["failures"]:
         lines += result["output_tail"].splitlines()[-20:]
     lines.append(f"{summary(result)} (exit {result['exit']}, {result['cpu_s']:.1f}s cpu, on {name})")
-    return lines
+    return [plain(line) for line in lines]
 
 
 def board_line(device: dict, tier: str, files: int, result: dict, tree: str) -> str:
     """The one line posted to the board for a run: key=value pairs a reader can grep, keyed by device."""
     n = counts(result)
-    return (f"test-result device={device['name']} fp={device['fingerprint'][:16]} tier={tier} files={files} exit={result['exit']} "
-            f"passed={n['passed']} failed={n['failed'] + n['error']} skipped={n['skipped']} wall_s={result['wall_s']:.0f} "
-            f"platform={result['platform']['system']}{'-wsl' if result['platform'].get('wsl') else ''} tree={tree[:12]}")
+    return plain(f"test-result device={device['name']} fp={device['fingerprint'][:16]} tier={tier} files={files} exit={result['exit']} "
+                 f"passed={n['passed']} failed={n['failed'] + n['error']} skipped={n['skipped']} wall_s={result['wall_s']:.0f} "
+                 f"platform={result['platform']['system']}{'-wsl' if result['platform'].get('wsl') else ''} tree={tree[:12]}")

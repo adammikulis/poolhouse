@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import ipaddress
 import json
+import os
 import time
 import urllib.parse
 from collections.abc import Callable
@@ -57,6 +58,8 @@ class Discovery:
 
 DEFAULT_DISCOVERY = Discovery()
 DEFAULT_REQUEST = Options(timeout=None)
+AGENT_ENV = "POOLHOUSE_WORKSPACE_AGENT"
+AGENT_HEADER = "X-Poolhouse-Agent"
 
 
 def device_address(member, declared: str) -> bool:
@@ -171,9 +174,11 @@ class Member:
     # -- plumbing --------------------------------------------------------
     def _request(self, method: str, path: str, *, data: bytes | None = None,
                  options: Options = DEFAULT_REQUEST) -> tuple[int, bytes, Any]:
+        agent = {AGENT_HEADER: os.environ[AGENT_ENV]} if os.environ.get(AGENT_ENV) else {}
         try:
             reply = request_bytes(f"{self.base_url}{path}", data=data, method=method,
-                                  options=replace(options, token=self.token, timeout=options.timeout or self.timeout))
+                                  options=replace(options, headers={**options.headers, **agent}, token=self.token,
+                                                  timeout=options.timeout or self.timeout))
         except ServerError as exc:
             raise _member_error(f"{method} {path}", exc) from None
         return reply.status, reply.body, reply.headers
@@ -244,6 +249,33 @@ class Member:
             if deadline and time.time() > deadline:
                 raise MemberError(f"job {job_id} still {job['state']} after timeout")
             time.sleep(poll_s)
+
+    # -- test shards -----------------------------------------------------
+    def shard_caps(self) -> dict:
+        """Whether this member takes test shards (and why not), its platform and its free slots."""
+        return self._json("GET", "/shards/v1/caps")
+
+    def shard_upload(self, shard: str, tree: bytes) -> dict:
+        """Send the packed tree of ``shard`` in order, 8 MB at a time; the last answer."""
+        total, sent, last = len(tree), 0, b"{}"
+        while sent < total:
+            chunk = tree[sent:sent + CHUNK]
+            span = {"Content-Range": f"bytes {sent}-{sent + len(chunk) - 1}/{total}"}
+            _, last, _ = self._request("PUT", f"/shards/v1/{shard}/tree", data=chunk, options=Options(headers=span, timeout=300))
+            sent += len(chunk)
+        return json.loads(last or b"{}")
+
+    def shard_start(self, header: dict) -> dict:
+        """Run the shard ``header`` names on the tree already sent with `shard_upload`."""
+        return self._json("POST", "/shards/v1/start", header)
+
+    def shard_state(self, shard: str, since: int = 0) -> dict:
+        """A shard's state, its output from byte ``since`` and, once it has ended, its result."""
+        return self._json("GET", f"/shards/v1/{shard}?since={since}")
+
+    def shard_cancel(self, shard: str) -> dict:
+        """Stop a shard and what it started."""
+        return self._json("POST", f"/shards/v1/{shard}/cancel", {})
 
     # -- speech ----------------------------------------------------------
     def speech(self) -> dict:

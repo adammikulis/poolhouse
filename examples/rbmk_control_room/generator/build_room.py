@@ -23,7 +23,7 @@ sys.path.insert(0, str(HERE))
 import room_desk  # noqa: E402
 import room_shell  # noqa: E402
 import room_wall  # noqa: E402
-from roomkit import Batch  # noqa: E402
+from roomkit import Batch, reset_materials  # noqa: E402
 
 SPEC_PATH = HERE.parent / "instruments.json"
 
@@ -52,9 +52,10 @@ def bookmarks() -> dict[str, tuple[Vector, Vector]]:
     }
 
 
-def build(out: Path) -> None:
-    """Build the whole room and export it."""
+def make_scene(chairs: bool = True) -> list[tuple[float, float]]:
+    """Build the whole room in an empty Blender scene (without the chairs when asked); returns the floor outline."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
+    reset_materials()
     spec = json.loads(SPEC_PATH.read_text())
     batch = Batch()
     room_shell.hall_material()
@@ -70,7 +71,8 @@ def build(out: Path) -> None:
     room_desk.desk(batch)
     room_desk.static_controls(batch)
     room_desk.az5(batch)
-    room_desk.chairs(batch)
+    if chairs:
+        room_desk.chairs(batch)
     room_desk.orm_terminal(batch)
     room_desk.furniture(batch)
     batch.flush()
@@ -79,6 +81,12 @@ def build(out: Path) -> None:
     scene["build_hash"] = source_hash()
     scene["interpretive"] = "Interpretive reconstruction from published descriptions; not a survey."
     scene["outline"] = json.dumps([(round(x, 3), round(y, 3)) for x, y in outline])
+    return outline
+
+
+def build(out: Path) -> None:
+    """Build the whole room and export it."""
+    make_scene()
     out.parent.mkdir(parents=True, exist_ok=True)
     raw = out.with_suffix("")
     bpy.ops.export_scene.gltf(filepath=str(raw), export_format="GLB", export_yup=True, export_apply=True,
