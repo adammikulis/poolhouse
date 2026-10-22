@@ -14,6 +14,7 @@ import threading
 import time
 
 import pytest
+from launch_support import browser
 from test_fleet_ui import WORDS, Serving as UIServing
 
 from poolhouse.fleet.api import Daemon, make_handler
@@ -157,6 +158,7 @@ class TestChattingThroughTheInterface:
                                 body={"passphrase": WORDS})
         assert ui.ui.models is None
         assert ui.ui.serving is None
+        ui.ui.root = ui.files.parent
         ui.ui.settings.download_sources = "both"
         ui.ui._members = (time.time(), [host])
         try:
@@ -251,8 +253,8 @@ class TestChattingThroughTheInterface:
 
         ui, cookie = bare
         ui.ui.conversations = Conversations(tmp_path / "bare" / "chats")
-        status, made, _ = ui.call("/ui/conversations", method="POST", cookie=cookie,
-                                  body={"model": "qwen3-4b.gguf"})
+        status, made, _ = ui.call("/ui/conversations", method="POST", cookie=cookie, headers=browser(ui),
+                                  body={"operation_id": "a" * 32, "model": "qwen3-4b.gguf"})
         assert status == 201
 
         ui.call("/ui/chat", method="POST", cookie=cookie,
@@ -271,9 +273,9 @@ class TestChattingThroughTheInterface:
 
         ui, cookie = bare
         ui.ui.conversations = Conversations(tmp_path / "bare" / "chats")
-        _, a, _ = ui.call("/ui/conversations", method="POST", cookie=cookie, body={})
+        _, a, _ = ui.call("/ui/conversations", method="POST", cookie=cookie, headers=browser(ui), body={"operation_id": "a" * 32})
         ui.ui.conversations.append(a["id"], "user", "about safetensors")
-        _, b, _ = ui.call("/ui/conversations", method="POST", cookie=cookie, body={})
+        _, b, _ = ui.call("/ui/conversations", method="POST", cookie=cookie, headers=browser(ui), body={"operation_id": "b" * 32})
         ui.ui.conversations.append(b["id"], "user", "about quantising")
 
         _, listed, _ = ui.call("/ui/conversations", cookie=cookie)
