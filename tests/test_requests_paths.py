@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import io
 import os
-import pty
 import select
 import subprocess
 import sys
@@ -14,6 +13,9 @@ import threading
 import time
 
 import pytest
+
+if sys.platform != "win32":
+    import pty
 
 from poolhouse import do, requests, rules, sentinel
 from poolhouse.inbox import cli
@@ -342,6 +344,7 @@ def test_a_child_without_a_terminal_cannot_answer_and_leaves_the_store_untouched
     assert path.read_bytes() == before and requests.get(held.id).state == "pending"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX pseudo-terminal")
 def test_a_person_at_a_real_terminal_answers_through_the_command(person_home):
     held = requests.raise_request(ask())
     master, slave = pty.openpty()

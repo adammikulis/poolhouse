@@ -11,12 +11,14 @@ from .. import scenarios
 from ..scenarios import Event, Scenario
 from . import reactor as rx
 
-POWER_TRIP = 1.2           # relative power
-DRUM_PRESSURE_TRIP = 8.0   # MPa
-DRUM_LEVEL_TRIP = 45.0     # cm from the level setpoint
+POWER_TRIP = 1.2           # relative power; the trip points of the power protection are not given in INSAG-7: unverified
+PERIOD_TRIP_S = 20.0       # reactor period below 20 s: the power-increase-rate protection signals came on at a period under 20 s (INSAG-7 annex I, table I-I, 01:23:43)
+DRUM_LEVEL_TRIP = -60.0    # cm: the low steam drum level protection at -600 mm (INSAG-7 section 3, item 6)
+DRUM_PRESSURE_TRIP = 5.4   # MPa: the drum pressure-drop protection at 55 kg/cm2 until the crew lowered it to 50 (INSAG-7 annex I, table I-I, 00:36:24)
 REG_GAIN = 2.8e-4
-DAMAGE_REPORT_S = 60.0     # seconds the run goes on after fuel damage latches, so the spike is reported whole
-STEADY_S = 1800.0          # seconds of true margin at or above 15 with steady power that count as restored and steady
+STEADY_TICKS = 2           # consecutive ticks over which power is constant within the power channels' noise (1 percent, sensors/model.py; unverified): two is the fewest that give a rate
+STEADY_TOLERANCE = 0.01
+SOURCE_FLOOR = 0.001      # relative power below which a change is not read as a change
 
 
 class Plant:
@@ -35,10 +37,9 @@ class Plant:
         self.level = 0.0
         self.stuck_gauges: dict[str, float] = {}
         self.events: list[dict[str, object]] = []
-        self.damaged_at = 0.0
         self.fast_since: float | None = None
         self.started_below = scn.orm is not None and scn.orm < rx.ORM_MIN
-        self.steady_since: float | None = None
+        self.steady = 0
         self._last_power = self.core.P
 
     # ---- clock ----------------------------------------------------------------------------------
@@ -130,29 +131,33 @@ class Plant:
             rx.substep(self.core, seconds / n)
             self._steam(seconds / n)
 
-    def end_tick(self) -> None:
+    def end_tick(self, seconds: float | None = None) -> None:
         """Count the tick, run the plant's protections and note whether the unit is steady with its margin restored."""
         self.tick += 1
-        self._protect()
+        self._protect(seconds or self.regime()[0])
         c = self.core
-        if c.damaged and not self.damaged_at:
-            self.damaged_at = c.t
-        calm = abs(c.P - self._last_power) <= 0.02 * max(c.P, 0.05)
+        calm = abs(c.P - self._last_power) <= STEADY_TOLERANCE * max(c.P, SOURCE_FLOOR)
         self._last_power = c.P
-        if self.started_below and c.orm() >= rx.ORM_MIN and not c.scram and not c.damaged and calm:
-            self.steady_since = c.t if self.steady_since is None else self.steady_since
-        else:
-            self.steady_since = None
+        restored = self.started_below and c.orm() >= rx.ORM_MIN and not c.scram and not c.damaged
+        self.steady = self.steady + 1 if restored and calm else 0
 
-    def _protect(self) -> None:
+    def _period(self, seconds: float) -> float:
+        """The reactor period over the last tick, in seconds; infinite when power is not rising."""
+        c = self.core
+        rise = math.log(max(c.P, 1e-9) / max(self._last_power, 1e-9)) / seconds
+        return 1.0 / rise if rise > 0 else math.inf
+
+    def _protect(self, seconds: float = 1.0) -> None:
         c = self.core
         if c.scram:
             return
         found = []
         if c.P > POWER_TRIP:
             found.append("POWER_HIGH")
-        if self.prot["DRUM_TRIPS"] and (c.p > DRUM_PRESSURE_TRIP or abs(self.level) > DRUM_LEVEL_TRIP):
+        if self.prot["DRUM_TRIPS"] and (c.p < DRUM_PRESSURE_TRIP or self.level < DRUM_LEVEL_TRIP):
             found.append("DRUM_TRIPS")
+        if self._period(seconds) < PERIOD_TRIP_S:
+            found.append("POWER_PERIOD")
         if self.prot["TG_TRIP"] and self.tg_disconnected:
             found.append("TG_TRIP")
         for name in found:
@@ -161,15 +166,16 @@ class Plant:
             rx.start_scram(c)
 
     def done(self) -> bool:
-        """Whether the run is over: out of ticks, damaged, or shut down and settled."""
+        """The run is over at one of three outcomes: fuel damaged, the unit shut down (AZ-5 and every free rod fully in), or the margin
+        restored with power steady. A scenario's own tick count or time bound (`max_s`, with its source beside it) also ends it."""
         c = self.core
         if self.tick >= self.scn.ticks or (self.scn.max_s is not None and c.t >= self.scn.max_s):
             return True
-        if c.damaged and c.t - self.damaged_at >= DAMAGE_REPORT_S:
+        if c.damaged:
             return True
-        if c.scram and c.scram_t > 600.0 and c.P < 0.03:
+        if c.scram and all(r.r >= 1.0 for r in c.rods.rods if r.fault != "stuck"):
             return True
-        return self.steady_since is not None and c.t - self.steady_since >= STEADY_S
+        return self.steady >= STEADY_TICKS
 
     def truth(self) -> dict[str, object]:
         """One row of true plant values for the recording's trace (display only; never shown to the model)."""

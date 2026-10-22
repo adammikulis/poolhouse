@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any
 
 from poolhouse import sentinel
-from poolhouse.decide import dataset, metrics, pointer_prompt, registry
+from poolhouse.decide import dataset, metrics, pointer_prompt, registry, window
 from poolhouse.decide.base import text_of
 from poolhouse.decide.calibrate import fit_temperature, softmax
 from poolhouse.decide.cases import Case, fingerprint
@@ -34,7 +34,6 @@ from poolhouse.decide.fetch import locate
 from poolhouse.decide.holdout import by_group
 from poolhouse.decide.pins import QWEN35_0_8B_BASE, QWEN35_2B_BASE, STRANDS_V19, Checkpoint
 from poolhouse.decide.pointer import PointerDecider, build_head, device_name, load_torso
-from poolhouse.decide.pointer_prompt import MAX_PROMPT_TOKENS, too_long
 from poolhouse.decide.sources import CONFIG, FORMAT, Source, question_key, strands_source
 from poolhouse.decide.types import DecideError
 from poolhouse.files import sha256_file, write_json
@@ -88,8 +87,9 @@ class Settings:
     seed: int = 0
     device: str = "auto"
     dtype: str = "bfloat16"  # src/strands_decider/modeling.py:79
-    max_tokens: int = MAX_PROMPT_TOKENS
-    """The longest case trained on. A smaller value is a memory trade the person chose."""
+    max_tokens: int | None = None
+    """Refuse training cases over this many tokens: a memory trade the person chooses. Unset, a case is
+    bounded by the base model's own window and by the memory free."""
     calibrate_fraction: float = 0.15
     test_fraction: float = 0.25
     download: bool = False
@@ -151,15 +151,15 @@ def _torch() -> Any:
     return torch
 
 
-def encode(tok: Any, case: Case, order: Sequence[int], max_tokens: int) -> dict[str, Any]:
-    """One case rendered with its options in ``order``: token ids and the scoring positions."""
+def encode(tok: Any, case: Case, order: Sequence[int], dim: window.Dimensions,
+           max_tokens: int | None = None) -> dict[str, Any]:
+    """One case rendered with its options in ``order``: token ids and the scoring positions. A case
+    over the model's window (``dim``), or over ``max_tokens`` when the person set one, is refused."""
     options = tuple(case.options[i] for i in order)
     text = pointer_prompt.render(case.question, _state_text(case), options)
     enc = tok(text.text, return_offsets_mapping=True, add_special_tokens=False)
-    if len(enc["input_ids"]) > max_tokens:
-        raise DecideError(too_long(len(enc["input_ids"]), f"case {case.id or case.question[:30]!r}")
-                          + ("" if max_tokens == MAX_PROMPT_TOKENS
-                             else f"; this run was given max_tokens {max_tokens}"))
+    window.within_window(len(enc["input_ids"]), dim, f"case {case.id or case.question[:30]!r}",
+                         limit=max_tokens)
     spots = pointer_prompt.positions([tuple(o) for o in enc["offset_mapping"]], text.spans)
     return {"ids": enc["input_ids"], "spots": spots, "order": list(order)}
 
@@ -285,16 +285,19 @@ def _loss(model: Any, batch: dict[str, Any]) -> Any:
     return torch.nn.functional.cross_entropy(model(batch), batch["labels"])
 
 
-def predict(net: Any, tok: Any, cases: Sequence[Case], settings: Settings, device: str
+def predict(loaded: Loaded, cases: Sequence[Case], settings: Settings, device: str
             ) -> list[list[float]]:
-    """Raw logits for every case in its own option order, in batches of ``batch_size``."""
+    """Raw logits of ``loaded.net`` for every case in its own option order, in batches of ``batch_size``."""
     torch = _torch()
+    net, tok, dim = loaded.net, loaded.tok, loaded.dim
     net.eval()
     out: list[list[float]] = []
     with torch.inference_mode():
         for start in range(0, len(cases), settings.batch_size):
             part = cases[start:start + settings.batch_size]
-            rows = [encode(tok, c, range(len(c.options)), settings.max_tokens) for c in part]
+            rows = [encode(tok, c, range(len(c.options)), dim, settings.max_tokens) for c in part]
+            window.require_room(dim, max(len(r["ids"]) for r in rows), device,
+                                "the longest case of a batch", rows=len(rows))
             logits = net(collate(torch, rows, [c.label_index for c in part], device))
             out.extend([x for x in row if x != float("-inf")] for row in logits.tolist())
     return out
@@ -492,6 +495,7 @@ class Loaded:
     tok_dir: Path
     net: Any
     start: Source | None
+    dim: window.Dimensions
 
 
 def load_model(s: Settings, device: str) -> Loaded:
@@ -519,7 +523,8 @@ def load_model(s: Settings, device: str) -> Loaded:
         head = build_head(torch, torso.config.hidden_size, 256)
     if s.gradient_checkpointing:
         enable_checkpointing(torso)
-    return Loaded(tok, tok_dir, build_net(torch, torso, head.to(device).float()), start)
+    dim = window.dimensions(torso.config.to_dict(), f"the loaded base model at {base_dir}")
+    return Loaded(tok, tok_dir, build_net(torch, torso, head.to(device).float()), start, dim)
 
 
 def fit_model(loaded: Loaded, cases: Sequence[Case], s: Settings, out: Path, device: str
@@ -539,8 +544,10 @@ def fit_model(loaded: Loaded, cases: Sequence[Case], s: Settings, out: Path, dev
             c = cases[pass_order(len(cases), s.seed, k // len(cases))[k % len(cases)]]
             order = list(range(len(c.options)))
             rng.shuffle(order)
-            rows.append(encode(tok, c, order, s.max_tokens))
+            rows.append(encode(tok, c, order, loaded.dim, s.max_tokens))
             labels.append(order.index(c.label_index))
+        window.require_room(loaded.dim, max(len(r["ids"]) for r in rows), device,
+                            "the longest case of a batch", rows=len(rows))
         return collate(torch, rows, labels, device)
 
     def batch(step: int) -> list[dict[str, Any]]:
@@ -670,9 +677,9 @@ def train(cases: Sequence[Case], out: Path | str, settings: Settings | None = No
             f"({len(cal_cases)} calibration, {len(test_cases)} test) on {device}: "
             f"{s.steps} steps of {s.batch_size * s.grad_accum} cases")
         losses = fit_model(loaded, fit_cases, s, out, device)
-        cal_logits = predict(loaded.net, loaded.tok, cal_cases, s, device)
+        cal_logits = predict(loaded, cal_cases, s, device)
         temperature, by_kind = fit_temperatures(cal_logits, cal_cases)
-        test_logits = predict(loaded.net, loaded.tok, test_cases, s, device)
+        test_logits = predict(loaded, test_cases, s, device)
         result = Result(out, len(fit_cases), len(cal_cases), len(test_cases), temperature,
                         metrics_of(test_logits, test_cases, temperature, by_kind, s.floor), base,
                         losses, time.perf_counter() - began, fingerprint(list(cases)),

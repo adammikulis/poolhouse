@@ -33,8 +33,10 @@ P_NOM_MPA = 6.9
 TAU_VOID = 1.5              # seconds
 TAU_COAST = 8.0            # seconds, pumps coasting on the turbogenerator
 TF_LIMIT, P_LIMIT = 1200.0, 8.0
-DAMAGE_TF = 1500.0
-EXCESS_LIMIT = 8.0           # nominal-power-seconds above full power that damage fuel; unverified, the toy's own
+DAMAGE_TF = 1204.0           # C. 10 CFR 50.46(b)(1) peak cladding temperature, 2200 F: a US light-water licensing figure used as an analogy; unverified for the RBMK
+SOURCE_LEVEL = 1e-6          # relative power floor that keeps the precursor groups above zero; the toy's own
+EXP_MAX = 700.0              # math.exp overflows above 709: a numerical guard on the prompt-critical growth per substep
+PROMPT_JUMP_MAX = 0.98       # dollars: the prompt-jump formula diverges at 1; above this the prompt-critical exponential takes over (numerical)
 THERMAL_MW = 3200.0
 
 
@@ -73,7 +75,6 @@ class Core:
     scram_orm0: float = 0.0
     damaged: bool = False
     peak_P: float = 0.0
-    excess: float = 0.0
 
     def orm(self) -> float:
         """Rod-equivalents inserted."""
@@ -185,12 +186,12 @@ def _thermal(c: Core, dt: float) -> None:
 
 def _kinetics(c: Core, dt: float) -> None:
     c.rho = reactivity(c)
-    capped = min(c.rho, 0.98)
+    capped = min(c.rho, PROMPT_JUMP_MAX)
     delayed = sum(lam * g for lam, g in zip(GROUP_LAMBDA, c.groups, strict=True))
     n = delayed / (1.0 - capped)
-    if c.rho > 0.98:
-        n *= math.exp(min((c.rho - 0.98) / (GEN_TIME / BETA) * dt, 4.0))
-    n = min(max(n, 1e-6), 60.0)
+    if c.rho > PROMPT_JUMP_MAX:
+        n *= math.exp(min((c.rho - PROMPT_JUMP_MAX) / (GEN_TIME / BETA) * dt, EXP_MAX))
+    n = max(n, SOURCE_LEVEL)
     c.groups = [g * math.exp(-lam * dt) + a * n * (1.0 - math.exp(-lam * dt)) / lam
                 for g, a, lam in zip(c.groups, GROUP_FRAC, GROUP_LAMBDA, strict=True)]
     c.P = n
@@ -206,8 +207,7 @@ def substep(c: Core, dt: float) -> None:
     _poisons(c, dt)
     _thermal(c, dt)
     c.t += dt
-    c.excess += max(c.P - 1.0, 0.0) * dt
-    if c.Tf > DAMAGE_TF or c.excess > EXCESS_LIMIT:
+    if c.Tf > DAMAGE_TF:
         c.damaged = True
 
 

@@ -230,7 +230,7 @@ A value upstream does not state is marked as this package's.
 | LoRA | rank 16, alpha 32, dropout 0.05, on `q_proj k_proj v_proj o_proj gate_proj up_proj down_proj in_proj_qkv in_proj_z in_proj_a in_proj_b out_proj` (the last five are the recurrent layers', without which a LoRA reaches 6 of the 24 layers) | `configs/train.yaml:43-48`, `src/strands_decider/modeling.py:105` (dropout) |
 | precision | bfloat16 | `src/strands_decider/modeling.py:79` |
 | options shuffled every pass | yes | `configs/train.yaml:61` |
-| longest prompt | 4096 tokens, the one limit (below) | `configs/train.yaml:39` |
+| longest prompt | `max_length: 4096`, the serving window saved with the checkpoint; this package sets no length (below) | `configs/train.yaml:39` |
 | calibration and test share | 15% and 25% of the cases, by whole group | this package's: upstream calibrates on one half of a held-out file and scores the other half (`training/steps.md`, "4. Calibrate") and holds out 3% of its training rows for validation (`configs/train.yaml:26`) |
 
 Upstream gives no value for training on a few hundred cases, and its own note on the learning rates
@@ -241,18 +241,25 @@ distributions on the multi-step rows (`teacher_file`) and ordinal smoothing (`or
 `reverse_score_prob: 0.5`); a run here is cross-entropy on the gold label alone. `--smoke` is the
 earlier small settings: the 0.8B base, 60 steps of 4 cases, the head at 5 times the rate, no checkpointing.
 
-**The one prompt limit.** A decider reads, and is trained on, at most
-`poolhouse.decide.pointer_prompt.MAX_PROMPT_TOKENS` = 4096 tokens: the inference check (`PointerDecider`), the
-trainer's default and the resident-memory estimate all read that one constant. It is the window the released
-checkpoint is saved with and served at: the reference recipe sets `max_length: 4096` ("the serving window saved with
-the checkpoint", `configs/train.yaml:39-40`), its model card scores JevBench "served at 4096", and the v19 checkpoint
-itself was trained at 3072 (`configs/experiments/v19.yaml:24`, because no training row is longer). The base model's own
-window is 262144 tokens (`max_position_embeddings`, Qwen3.5-2B-Base `config.json`), so 4096 is not the model's limit.
-Upstream measured the window: 1024 to 3072 moved its long-policy tasks from 0.263 to 0.368 and changed nothing else;
-3072 to 4096 changed nothing (`src/strands_decider/modeling.py:75-78`). The trainer's `--max-tokens` may lower it as a
-memory trade you choose; the refusal names the constant and says the run was given a lower number. The earlier
-1024 was written by the commit that added the trainer (63296e447) and the 4096 by the one that added the pointer decider
-(cba5fa9d5); neither commit message gives a reason, and nothing in the repository ties 1024 to a measurement.
+**Prompt length.** This package sets no maximum prompt length for a decision model. A prompt is bounded by two
+things that are true of the machine in front of it. One is the base model's own window, read from the loaded model's
+config at load time (`max_position_embeddings`, in `text_config` when the config has one; Qwen3.5-2B-Base reports
+262144): a prompt over it is refused with the number and the config it came from, and a model whose config reports no
+window is refused by the missing field, with no other number to fall back on. The other is the memory free on the
+device when the prompt arrives (`poolhouse.decide.window`): a prompt whose working memory (attention scores and
+per-layer activations, as an upper estimate) does not fit is refused with the memory it needs and the memory
+available. Inference (`PointerDecider`, the resident decision host) and training read the same two bounds. The
+broker's resident reservation is the weights and a base; a prompt's working memory is measured by the host against
+the free memory when the prompt arrives, and the broker allows the host that much on top of its reservation. The
+trainer's `--max-tokens` (`Settings.max_tokens`) is unset by default; set it to refuse training cases over that many
+tokens, as a memory trade you choose.
+
+What is known about length, as information and not a rule. The released checkpoint is saved with a serving window of
+4096 (`max_length: 4096`, "the serving window saved with the checkpoint", `configs/train.yaml:39-40`) and its model
+card scores JevBench "served at 4096"; the v19 checkpoint itself was trained at 3072 (`configs/experiments/v19.yaml:24`,
+because no training row is longer). Upstream measured the training length: 1024 to 3072 moved its long-policy tasks
+from 0.263 to 0.368 and changed nothing else; 3072 to 4096 changed nothing (`src/strands_decider/modeling.py:75-78`).
+Quality on prompts longer than the length a checkpoint was trained at has not been measured here or upstream.
 
 **Measured here** (Apple-silicon GPU, 128 GB unified memory; one training step of the default settings on the pinned
 bases, a synthetic case of the stated length; memory is the process's peak footprint from `/usr/bin/time -l`, which
@@ -272,8 +279,8 @@ includes the allocator's cache and so is an upper bound):
 | 2B | 1,002 | 8 | on | 24.6 | 11.2 GiB |
 | 2B | 3,998 | 8 | on | 110 (one of three passes 181) | 41.1 GiB |
 
-A batch is padded to its longest case, not to the limit, so raising the limit from 1024 to 4096 costs nothing
-for short cases and only matters when a case is that long. At 4096 the 2B base at the default 8 cases a forward
+A batch is padded to its longest case, so a long case costs nothing for short ones and only matters when a case is
+that long. At 4,000 tokens the 2B base at the default 8 cases a forward
 pass takes 41 GiB and 110 s a forward pass (4 of them an optimizer step) when every case is that long; with checkpointing
 off the 0.8B base at 4 cases of 4,000 tokens does not fit this machine, which is why checkpointing is on by default.
 `--batch-size 1 --grad-accum 32` is the same optimizer step in 9.3 GiB for the 2B base at 4,000 tokens.
@@ -335,7 +342,7 @@ the card prints only a reduced character set. Never commit the file you trained 
 - The baseline check compares point estimates on the test cases; with 60 test cases a gap of
   a few points is noise.
 - It trains the head and one rank-16 LoRA; it does not resume, shard or train on several
-  GPUs, and a case over 4096 tokens is refused (the one limit, above).
+  GPUs, and a case over the base model's window or the memory free is refused (prompt length, above).
 - A temperature cannot change which option wins, only how sure the decider says it is.
 - The real-model path has been run here only on a random 2-layer model on CPU (the tests); the
   same code on Qwen3.5 was last run by the earlier `python -m poolhouse.train decider` measurements above.
@@ -373,8 +380,9 @@ of anything irreversible.
 
 - A question is read less than a document: with the state and options fixed, rewording the
   question often gives the same answer. Phrase it so the obvious reading is the one meant.
-- Long multi-step documents are the weak spot of the pointer model; the prompt limit is
-  4096 tokens, for inference and for training alike.
+- Long multi-step documents are the weak spot of the pointer model; quality beyond
+  the length a checkpoint was trained at (3072 for the released one) is unmeasured; the prompt length is bounded by the
+  model's window and the memory free, not by a limit of ours.
 - Calibration is fitted on cases like the ones you will see. A temperature fitted on the
   guard set says nothing about another task.
 - The state text is untrusted input to the decider. A tool result that tells the decider how

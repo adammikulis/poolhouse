@@ -19,7 +19,6 @@ from typing import Any
 from poolhouse import bench, lock
 from poolhouse.bench.askings import sampling_from
 from poolhouse.bench.counting import PER_QUESTION
-from poolhouse.bench.keep import _commit
 from poolhouse.bench.member_runs import gather
 from poolhouse.bench.record import of
 from poolhouse.bench.score import derived
@@ -314,10 +313,9 @@ def fleet_planned(argv: Sequence[str], models: Sequence[str], *,
         raise Refused(f"error: --store {stores[-1]} is a graph store on this machine, and a "
                       f"member cannot read it; each member uses the store its own 'python -m poolhouse.bench "
                       f"prepare' built, or none with --store ''")
-    mine = _commit()
+    mine = measuring.installed_commit()
     if not mine:
-        raise Refused("error: --fleet needs to know this checkout's commit, and git would "
-                      "not say")
+        raise Refused("error: --fleet cannot identify the installed poolhouse code")
     clients = _discovered(members)
     ordered = sorted(clients.items())
     by_member = {member: name for name, member in ordered}

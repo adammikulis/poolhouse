@@ -118,7 +118,7 @@ class Runner:
             else:
                 plant.substeps(remaining, step)
                 remaining = 0.0
-        plant.end_tick()
+        plant.end_tick(seconds)
         self.sensors.observe(plant, seconds)
         self._drain()
 

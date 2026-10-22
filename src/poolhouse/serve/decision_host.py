@@ -77,7 +77,7 @@ def run() -> None:
                     response = {"ready": True, "memory": memory()}
                 elif request.get("op") == "decide" and model is not None:
                     result = model.decide(**request["record"]).public()
-                    response = {"result": result, "memory": memory()}
+                    response = {"result": result, "memory": {**memory(), "working": model.last_working}}
                 else:
                     raise ValueError("Invalid decision host operation.")
         except (ValueError, OSError, RuntimeError) as error:
