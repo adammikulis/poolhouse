@@ -15,7 +15,7 @@ from pathlib import Path
 from poolhouse.log import say, warn
 from poolhouse.platform import launch
 
-from . import discovery, runtime_wheel, wsl_network, wsl_ui
+from . import discovery, runtime_wheel, windows_firewall, wsl_network, wsl_ui
 
 __all__ = ["WSLError", "command", "prepare", "start"]
 
@@ -226,6 +226,7 @@ def start(argv: list[str], *, executable: str | None = None) -> int:
                 arguments[index] = name + "=" + value
             else:
                 arguments[index + 1] = value
+    windows_firewall.ensure()
     local_ui, bridge = _bridges(executable, arguments)
     if bridge:
         environment.append(wsl_network.ENV + "=" + bridge.config)

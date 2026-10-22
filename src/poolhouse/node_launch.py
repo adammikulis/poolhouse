@@ -100,7 +100,7 @@ def _start_supervisor(state: Path, extra: list[str]) -> None:
 def ensure_node(state: Path | None = None, *, extra: list[str] | None = None, wait_s: float = START_WAIT_S) -> dict:
     """The node's health, after starting it under a supervisor when it was not answering.
 
-    The device's own node (the default state directory) starts on the LAN, so it joins its project's open pool or makes one
+    The device's own node (the default state directory) starts on the LAN, so it joins its project's open pool when it hears one
     (`node_pool.network_args`), but only where `lan.allowed` (the installed software on the account's real state root, never a test or a
     moved root: `--lan` is dropped there); a node in any other state directory stays local unless ``extra`` says otherwise.
     Raises `NodeUnavailable` when it still does not answer after ``wait_s``, and `node_binary.NodeBinaryError` before starting

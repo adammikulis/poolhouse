@@ -26,7 +26,7 @@ from testfarm_tree import MARKERS, make_tree
 
 from poolhouse import features
 from poolhouse.fleet import shard_exec, shard_spec, shard_split, shard_tree
-from poolhouse.testfarm import consent, devices, ledger, report
+from poolhouse.testfarm import consent, devices, farm, ledger, report
 from poolhouse.testfarm.client import ShardError
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -282,11 +282,22 @@ def test_the_tiers_a_node_accepts_are_the_ones_the_runner_has():
 
 def test_nothing_is_sent_or_taken_until_the_experimental_feature_is_on(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path))
+    rows = [{"name": "somewhere", "fingerprint": "f" * 64, "via": "node", "also": []}]
+    monkeypatch.setattr(test_on, "open_farm", lambda: farm.Farm(rows, lambda: pytest.fail("a node device is not asked while the feature is off"), None))
     args = argparse.Namespace(tier="all", on="somewhere", split=False, base="main", timeout=60.0)
     assert test_on.main(args, ["tests/test_a.py"], ROOT, lambda tier, file: [], True) == 4
     assert "experimental feature" in capsys.readouterr().err
     assert features.enabled(consent.FEATURE) is False and consent.run(["on"]) == 1
     assert "poolhouse features enable remote-tests" in capsys.readouterr().out
+
+
+def test_a_person_who_turned_remote_tests_off_here_sends_nothing_to_any_device(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path))
+    features.switch(consent.FEATURE, False)
+    monkeypatch.setattr(test_on, "open_farm", lambda: pytest.fail("no device is looked for once tests were turned off here"))
+    args = argparse.Namespace(tier="all", on="somewhere", split=False, base="main", timeout=60.0)
+    assert test_on.main(args, ["tests/test_a.py"], ROOT, lambda tier, file: [], True) == 4
+    assert "turned off here" in capsys.readouterr().err
 
 
 @pytest.mark.parametrize("words", [[], ["allow"], ["deny"], ["on", "--from"], ["on", "--from", "--python"], ["off", "--from", "mac"], ["status", "mac"],

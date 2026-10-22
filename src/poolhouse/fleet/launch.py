@@ -16,7 +16,7 @@ from poolhouse import runtime
 from poolhouse.http import Options, ServerError, request_json
 from poolhouse.log import say, warn
 
-from . import launch_open
+from . import discovery, launch_open, wsl_network, wsl_registration, wsl_startup
 from .daemon_control import ControlError, request_replacement
 from .discovery import (
     DEFAULT_PORT as DISCOVERY_PORT,  # noqa: F401  (keeps ports in view)
@@ -232,6 +232,8 @@ def main(argv: list[str] | None = None, *,
             return 1
         finally:
             stopped.set()
+    if wsl_startup.guest() and wsl_registration.configuration() is None and (note := wsl_network.nat_notice(discovery.primary_ip())):
+        warn(note)
     if daemon_main is None:
         from .daemon import run as daemon_main
 
