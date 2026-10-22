@@ -1,0 +1,14 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "sync-dev",
+            "type": "shell",
+            "command": "while true; do sh ./scripts/sync-dev; sleep 300; done",
+            "isBackground": true,
+            "problemMatcher": [],
+            "presentation": {"reveal": "never", "echo": false, "focus": false, "panel": "dedicated", "showReuseMessage": false},
+            "runOptions": {"runOn": "folderOpen"}
+        }
+    ]
+}
