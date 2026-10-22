@@ -35,7 +35,8 @@ def test_a_lease_for_another_port_is_refused(tmp_path):
     port = free_port()
     with grant.broker_grant():
         wrong = Lease(port=port + 1, owner_pid=1, state_file="x")
-    with grant.broker_grant(), pytest.raises(ServerFailed, match="starts only on the port its record names"):
+    with grant.broker_grant(), pytest.raises(ServerFailed,
+                                             match="starts only on the port its record names"):
         LlamaServerBackend(binary=binary).start(
             ServerSpec(model=gguf, port=port), timeout=1.0, preflight=False,
             check_flags=False, lease=wrong)
