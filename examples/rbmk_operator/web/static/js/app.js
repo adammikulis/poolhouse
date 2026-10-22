@@ -1,0 +1,268 @@
+/* The page: header, run picker, playback, the animation loop and the tabs. */
+window.RB = window.RB || {};
+(function (RB) {
+  'use strict';
+  const S = RB.state, $ = function (id) { return document.getElementById(id); };
+  const store = function (k, v) { try { if (v === undefined) { return localStorage.getItem(k); } localStorage.setItem(k, v); } catch (e) { return null; } return v; };
+  let core, panel, chartCv = {}, chartDefs, lastCursor = -1, lastLog = '', lastDetail = '', lastCaption = -1;
+
+  /* ---------------------------------------------------------------------------------- runs */
+  RB.setMain = function (run) {
+    S.main = run; S.cursor = 0; S.selected = -1; S.naive = null; S.banner = ''; RB.notify();
+  };
+
+  RB.startRun = async function () {
+    const key = $('scenario').value, controller = $('controller').value;
+    try {
+      const job = await RB.api('/api/run', { scenario: key, controller: controller });
+      const run = new RB.Run('main'); run.origin = 'live'; run.follow(job.id);
+      RB.setMain(run); S.playing = true;
+      if ($('alsoNaive').checked && controller === 'model') {
+        const nj = await RB.api('/api/run', { scenario: key, controller: 'naive' });
+        S.naive = new RB.Run('naive'); S.naive.follow(nj.id);
+      }
+    } catch (e) { RB.fail('Run refused: ' + e.message); }
+  };
+
+  RB.stopRun = function () {
+    [S.main, S.naive].forEach(function (r) { if (r && r.live) { RB.api('/api/stop', { job: r.jobId }).catch(function (e) { RB.fail(e.message); }); } });
+  };
+
+  RB.openDocument = function (doc, label, origin, name) {
+    const run = new RB.Run('main'); run.loadDocument(doc, label, origin); run.recordingName = name || null;
+    run.jobId = null; RB.setMain(run); S.playing = false;
+  };
+
+  RB.openRecording = async function (name) {
+    try { const r = await RB.api('/api/recordings/' + encodeURIComponent(name)); RB.openDocument(r.doc, r.label, 'recorded', name); }
+    catch (e) { RB.fail('Cannot open ' + name + ': ' + e.message); }
+  };
+
+  RB.openFile = async function (file) {
+    try {
+      const res = await fetch('/api/load', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: await file.text() });
+      const data = await res.json();
+      if (!res.ok) { throw new Error(data.error); }
+      RB.openDocument(data.doc, data.label + ' (file ' + file.name + ')', 'recorded');
+    } catch (e) { RB.fail('Cannot open ' + file.name + ': ' + e.message); }
+  };
+
+  RB.seekTick = function (tick) {
+    const run = S.main; if (!run) { return; }
+    const i = run.trace.findIndex(function (r) { return r.tick >= tick; });
+    S.cursor = i < 0 ? run.last : i; RB.touch();
+  };
+  RB.pick = function (d) { S.selected = d.i; S.playing = false; RB.seekTick(d.tick); RB.notify(); };
+
+  RB.exportJson = async function () {
+    const run = S.main; if (!run) { RB.fail('Nothing to export yet.'); return; }
+    try {
+      const doc = run.jobId ? await RB.api('/api/jobs/' + run.jobId + '/document') : run.doc;
+      if (!doc) { throw new Error('this run has no document'); }
+      const name = 'rbmk-' + doc.meta.scenario.key + '-' + doc.meta.controller + '-' + (doc.meta.backend.recorded_at || 'run') + '.json';
+      const a = RB.el('a', { href: URL.createObjectURL(new Blob([JSON.stringify(doc, null, 1)], { type: 'application/json' })), download: name });
+      document.body.appendChild(a); a.click(); a.remove();
+    } catch (e) { RB.fail('Export failed: ' + e.message); }
+  };
+
+  /* ------------------------------------------------------------------------------- header */
+  function headerText() {
+    const info = S.info, m = info.model, run = S.main, live = S.mode === 'live';
+    let id, state, cls;
+    if (live) {
+      id = m.id || (m.pinned + (m.available ? ' (pinned, loads at the first run)' : ' (pinned, NOT available)'));
+      state = run && run.live ? 'LIVE, running' : 'LIVE';
+      cls = 'live';
+    } else {
+      id = run && run.model ? run.model : 'no recording open';
+      state = run ? 'RECORDED' : 'RECORDED mode';
+      cls = 'rec';
+    }
+    return { id: id, state: state, cls: cls, label: run ? run.label : '' };
+  }
+
+  function updateHeader() {
+    const h = headerText();
+    $('modelid').textContent = h.id;
+    $('modestate').textContent = h.state; $('modestate').className = 'chip ' + h.cls + (S.main && S.main.live ? ' pulse' : '');
+    $('runlabel').textContent = h.label;
+    const run = S.main;
+    let banner = S.banner;
+    if (run && run.status === 'error') { banner = 'RUN HALTED: ' + run.error + '. No action was taken after this point.'; }
+    else if (run && run.status === 'stopped') { banner = 'Run stopped by the person at tick ' + (run.trace.length ? run.trace[run.trace.length - 1].tick : 0) + '.'; }
+    else if (S.mode === 'live' && !S.info.model.available) { banner = banner || 'The decision model cannot run here: ' + S.info.model.why + '. Model runs will halt with this error; naive and crew runs and recordings still work.'; }
+    $('banner').textContent = banner; $('banner').style.display = banner ? '' : 'none';
+    $('scndesc').textContent = S.mode === 'live' ? (RB.scenarioInfo($('scenario').value) || {}).blurb || '' : '';
+  }
+  RB.scenarioInfo = function (key) { return S.info.scenarios.find(function (s) { return s.key === key; }); };
+
+  function buildPicker() {
+    const sel = $('scenario'), groups = {};
+    S.info.scenarios.forEach(function (s) { (groups[s.group] = groups[s.group] || []).push(s); });
+    const names = { normal: 'Normal states', faults: 'Faults', poisoned: 'Xenon-poisoned starts', history: '1986 replay', fixture: 'Short test run' };
+    Object.keys(groups).forEach(function (g) {
+      const og = RB.el('optgroup', { label: names[g] || g });
+      groups[g].forEach(function (s) { og.appendChild(RB.el('option', { value: s.key, text: s.title })); });
+      sel.appendChild(og);
+    });
+    sel.addEventListener('change', syncController);
+    syncController();
+  }
+
+  function syncController() {
+    const s = RB.scenarioInfo($('scenario').value), c = $('controller');
+    c.replaceChildren(RB.el('option', { value: 'model', text: 'Decision model' }), RB.el('option', { value: 'naive', text: 'Naive controller (policy code, not a model)' }));
+    if (s && s.crew) { c.appendChild(RB.el('option', { value: 'crew', text: '1986 crew script (not a model)' })); }
+    RB.touch();
+  }
+
+  RB.loadRecordings = async function () {
+    S.recordings = await RB.api('/api/recordings');
+    const sel = $('recording'); sel.replaceChildren();
+    S.recordings.filter(function (r) { return r.ok; }).forEach(function (r) {
+      sel.appendChild(RB.el('option', { value: r.name, text: r.title + ' | ' + r.label + (r.verdict ? ' | ' + r.verdict : '') }));
+    });
+    const bad = S.recordings.filter(function (r) { return !r.ok; });
+    $('badfiles').textContent = bad.length ? 'Could not show: ' + bad.map(function (r) { return r.name + ' (' + r.error + ')'; }).join('; ') : '';
+    $('norecs').textContent = S.recordings.length ? '' : 'The recordings folder (' + S.info.recordings_dir + ') has no files.';
+    RB.touch();
+  };
+
+  function setMode(mode) {
+    S.mode = mode; S.main = null; S.naive = null; S.banner = ''; S.playing = false;
+    document.body.dataset.mode = mode;
+    $('liveBar').style.display = mode === 'live' ? '' : 'none'; $('recBar').style.display = mode === 'recorded' ? '' : 'none';
+    ['modeLive', 'modeRec'].forEach(function (id) { $(id).classList.toggle('on', (id === 'modeLive') === (mode === 'live')); });
+    if (mode === 'recorded') { RB.loadRecordings().catch(function (e) { RB.fail(e.message); }); }
+    RB.notify();
+  }
+
+  /* ------------------------------------------------------------------------------ playback */
+  function controls() {
+    $('play').onclick = function () { S.playing = !S.playing; RB.touch(); };
+    $('back').onclick = function () { S.playing = false; S.cursor = Math.max(0, Math.round(S.cursor) - 1); RB.touch(); };
+    $('fwd').onclick = function () { S.playing = false; S.cursor = Math.min(S.main ? S.main.last : 0, Math.round(S.cursor) + 1); RB.touch(); };
+    $('speed').onchange = function () { S.speed = +$('speed').value; };
+    $('scrub').oninput = function () { S.playing = false; S.cursor = +$('scrub').value; RB.touch(); };
+    $('pauseCap').onchange = function () { S.pauseAtCaptions = $('pauseCap').checked; };
+    $('colormode').onchange = function () { core.mode = $('colormode').value; RB.touch(); };
+    $('export').onclick = RB.exportJson; $('start').onclick = RB.startRun; $('stop').onclick = RB.stopRun;
+    $('openrec').onclick = function () { if ($('recording').value) { RB.openRecording($('recording').value); } };
+    $('file').onchange = function () { if ($('file').files[0]) { RB.openFile($('file').files[0]); $('file').value = ''; } };
+    $('modeLive').onclick = function () { setMode('live'); }; $('modeRec').onclick = function () { setMode('recorded'); };
+    $('theme').onclick = function () {
+      const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+      document.documentElement.dataset.theme = next; store('rbmk-theme', next); RB.touch();
+    };
+    document.addEventListener('keydown', function (e) {
+      if (/INPUT|SELECT|TEXTAREA/.test((e.target || {}).tagName || '')) { return; }
+      if (e.key === ' ') { e.preventDefault(); $('play').click(); } else if (e.key === 'ArrowRight') { $('fwd').click(); } else if (e.key === 'ArrowLeft') { $('back').click(); }
+    });
+  }
+
+  function advance(dt) {
+    const run = S.main;
+    if (!run || !S.playing || !run.trace.length) { return; }
+    const prev = S.cursor, end = run.last;
+    S.cursor = Math.min(S.cursor + S.speed * dt, end);
+    if (S.pauseAtCaptions) {
+      const hit = run.captions.find(function (c) { const i = run.trace.findIndex(function (r) { return r.tick >= c.tick; }); return i > prev && i <= S.cursor; });
+      if (hit) { S.cursor = run.trace.findIndex(function (r) { return r.tick >= hit.tick; }); S.playing = false; }
+    }
+    if (S.cursor >= end && !run.live) { S.playing = false; }
+    RB.touch();
+  }
+
+  /* ---------------------------------------------------------------------------- rendering */
+  function activeDecision(run, frame) {
+    let d = null;
+    run.decisions.forEach(function (x) { if (x && x.kind === 'decision' && x.tick <= frame.tick) { d = x; } });
+    return d;
+  }
+
+  function renderState() {
+    const run = S.main, frame = run && run.trace.length ? RB.frameAt(run, S.cursor) : null;
+    panel.update(frame);
+    if (!run || !frame) { $('clock').textContent = run && run.live ? 'waiting for the GPU hold and the model...' : ''; return; }
+    $('clock').textContent = 'tick ' + frame.tick + '  |  plant time ' + RB.fmtClock(frame.t_s) + (run.live ? '  |  ' + (run.asking !== null ? 'asking the model about tick ' + run.asking : 'running') : '');
+    $('scrub').max = Math.max(run.last, 1); $('scrub').value = S.cursor;
+    RB.drawChartSet(chartCv, run, S.cursor, RB.chartDefs(run.header.rods.map(function (r) { return r.kind; })));
+    const key = run.decisions.length + ':' + run.status + ':' + (run.doc ? 1 : 0) + ':' + run.jobId;
+    if (key !== lastLog) { lastLog = key; RB.renderLog($('log'), run, RB.pick); }
+    RB.markLog($('log'), frame.tick, S.selected, S.playing || lastCursor !== Math.floor(S.cursor));
+    const dkey = (run.jobId || run.label) + ':' + S.selected + ':' + (run.doc ? 1 : 0);
+    if (dkey !== lastDetail) {
+      lastDetail = dkey;
+      RB.renderDetail($('detail'), run.decisions[S.selected], function () { showTab('whatif'); });
+    }
+    narrate(run, frame);
+  }
+
+  function narrate(run, frame) {
+    const caps = run.captions.slice().sort(function (a, b) { return a.tick - b.tick; });
+    const cur = caps.filter(function (c) { return c.tick <= frame.tick; }).pop();
+    $('caption').textContent = cur && frame.tick - cur.tick <= 6 ? cur.text : '';
+    $('caption').style.display = $('caption').textContent ? '' : 'none';
+    const key = caps.length + ':' + (cur ? cur.tick : -1);
+    if (key !== lastCaption) {
+      lastCaption = key; const box = $('captions'); box.replaceChildren();
+      caps.forEach(function (c) {
+        box.appendChild(RB.el('li', { class: c === cur ? 'now' : '', onclick: function () { S.playing = false; RB.seekTick(c.tick); } }, [RB.el('b', { text: 'tick ' + c.tick + ' ' }), c.text]));
+      });
+      if (!caps.length) { box.appendChild(RB.el('li', { class: 'muted', text: run.live ? 'Captions appear as key moments happen.' : 'No key moments in this run.' })); }
+    }
+  }
+
+  let tab = 'log';
+  function showTab(name) {
+    tab = name;
+    document.querySelectorAll('.tabbtn').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === name); });
+    document.querySelectorAll('.tabpane').forEach(function (p) { p.style.display = p.id === 'tab-' + name ? '' : 'none'; });
+    RB.touch();
+  }
+
+  function renderTab(cursor) {
+    if (tab === 'whatif') { RB.whatif.refresh(); }
+    else if (tab === 'history') { RB.history.draw(); }
+    else if (tab === 'dist') { RB.dist.draw(); }
+    else if (tab === 'compare') { RB.compare.draw(cursor); }
+  }
+
+  function loop(now) {
+    const dt = Math.min((now - (loop.last || now)) / 1000, 0.25); loop.last = now;
+    advance(dt);
+    const run = S.main, frame = run && run.trace.length ? RB.frameAt(run, S.cursor) : null;
+    const extra = { paused: !S.playing, highlight: new Set() };
+    if (run && frame) {
+      const d = activeDecision(run, frame);
+      if (d && frame.tick - d.tick <= 2) { extra.highlight = RB.movedRods(run, run.trace.findIndex(function (r) { return r.tick === d.tick; })); }
+    }
+    core.draw(run && run.header ? run.header.rods : [], frame, extra);
+    if (S.dirty) {
+      S.dirty = false; updateHeader(); renderState(); renderTab(S.cursor);
+      $('play').textContent = S.playing ? 'Pause' : 'Play'; lastCursor = Math.floor(S.cursor);
+    }
+    requestAnimationFrame(loop);
+  }
+
+  RB.init = async function () {
+    const saved = store('rbmk-theme');
+    document.documentElement.dataset.theme = saved || (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    try { S.info = await RB.api('/api/info'); } catch (e) { $('banner').textContent = 'Cannot reach the server: ' + e.message; $('banner').style.display = ''; return; }
+    core = new RB.CoreView($('core')); panel = new RB.Panel($('panel'));
+    chartDefs = RB.chartDefs([]);
+    chartDefs.forEach(function (d) { const cv = RB.el('canvas', { class: 'chart' }); chartCv[d.id] = cv; $('charts').appendChild(RB.el('div', { class: 'chartcell' }, [cv])); });
+    $('legend').replaceChildren.apply($('legend'), Object.keys(RB.KINDS).map(function (k) {
+      return RB.el('span', { class: 'lg' }, [RB.el('i', { style: 'background:' + RB.KINDS[k][1] }), RB.KINDS[k][0]]);
+    }));
+    $('toy').textContent = S.info.toy_notice;
+    buildPicker(); controls();
+    RB.whatif.build($('tab-whatif')); RB.history.build($('tab-history')); RB.dist.build($('tab-dist')); RB.compare.build($('tab-compare'));
+    document.querySelectorAll('.tabbtn').forEach(function (b) { b.onclick = function () { showTab(b.dataset.tab); }; });
+    showTab('log'); setMode('live');
+    window.addEventListener('resize', RB.touch);
+    requestAnimationFrame(loop);
+    setInterval(function () { if (S.main && S.main.live) { RB.touch(); } }, 500);
+  };
+  window.addEventListener('DOMContentLoaded', RB.init);
+})(window.RB);

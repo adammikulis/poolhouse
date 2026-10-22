@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RBMK operator</title>
+<link rel="stylesheet" href="/css/app.css">
+<script>
+  try { var t = localStorage.getItem('rbmk-theme'); if (t) { document.documentElement.dataset.theme = t; } } catch (e) { /* storage may be blocked */ }
+</script>
+</head>
+<body data-mode="live">
+<header id="top">
+  <div class="brand"><h1>RBMK operator</h1><span class="tag" id="toy"></span></div>
+  <div class="status">
+    <span class="chip" id="modestate">LIVE</span>
+    <span class="chipbox"><span class="muted">model</span> <b id="modelid">-</b></span>
+    <span class="muted" id="runlabel"></span>
+  </div>
+  <div class="topbtns">
+    <div class="seg"><button id="modeLive" class="on">Live</button><button id="modeRec">Recorded</button></div>
+    <button id="theme" class="btn" title="Light or dark">Theme</button>
+  </div>
+</header>
+<div id="banner" class="bannerbar" role="alert" style="display:none"></div>
+
+<main>
+  <section class="card runbar">
+    <div id="liveBar" class="form">
+      <label>Scenario <select id="scenario"></select></label>
+      <label>Controller <select id="controller"></select></label>
+      <label class="check"><input type="checkbox" id="alsoNaive"> also run the naive controller</label>
+      <button id="start" class="btn primary">Start run</button>
+      <button id="stop" class="btn">Stop</button>
+    </div>
+    <div id="recBar" class="form" style="display:none">
+      <label>Recording <select id="recording"></select></label>
+      <button id="openrec" class="btn primary">Open</button>
+      <label class="btn filebtn">Open a JSON file...<input type="file" id="file" accept=".json,application/json"></label>
+      <span class="muted" id="norecs"></span>
+    </div>
+    <p class="muted small" id="badfiles"></p>
+    <p class="small" id="scndesc"></p>
+  </section>
+
+  <section class="card controls">
+    <button id="back" class="btn" title="Back one tick (left arrow)">Step back</button>
+    <button id="play" class="btn primary" title="Space">Play</button>
+    <button id="fwd" class="btn" title="Forward one tick (right arrow)">Step</button>
+    <label>Speed <select id="speed"><option value="0.5">0.5 ticks/s</option><option value="1">1</option><option value="2" selected>2</option><option value="5">5</option><option value="10">10</option><option value="25">25</option></select></label>
+    <input type="range" id="scrub" min="0" max="1" step="0.01" value="0" aria-label="Replay scrubber">
+    <span id="clock" class="clock"></span>
+    <label class="check"><input type="checkbox" id="pauseCap"> pause at captions</label>
+    <button id="export" class="btn">Export JSON</button>
+  </section>
+
+  <div class="top2">
+    <section class="card corecard">
+      <h2>Core cross-section</h2>
+      <div class="corewrap"><canvas id="core" class="core" aria-label="Reactor core with 211 control rods"></canvas><div id="caption" class="caption" style="display:none"></div></div>
+      <div class="legendrow">
+        <label>Channel colour <select id="colormode"><option value="power">local power</option><option value="heat">fuel temperature</option></select></label>
+        <span id="legend" class="legend"></span>
+      </div>
+      <p class="small muted">Each tile is a channel position tinted by the layout's flux weight times reactor power (power) or by hottest-channel temperature scaled by that weight (temperature). A rod's filled disc grows with insertion. White rings mark rods the model just moved; red crossed rings are stuck, amber rings are slow drives. Bubbles scale with void fraction.</p>
+      <ol id="captions" class="captions"></ol>
+    </section>
+    <section class="card panelcard">
+      <h2>Instrument panel</h2>
+      <div id="panel" class="tiles"></div>
+    </section>
+  </div>
+
+  <section class="card"><h2>Time series</h2><div id="charts" class="charts"></div>
+    <p class="small muted">Dotted verticals mark scenario events; tick marks along each chart are decisions (amber abstained, red interlock). Thin lines are what the gauges read; thick lines are the plant's true state.</p></section>
+
+  <section class="card tabs">
+    <div class="tabbar">
+      <button class="tabbtn on" data-tab="log">Decision log</button><button class="tabbtn" data-tab="whatif">What-if</button>
+      <button class="tabbtn" data-tab="history">1986 timeline</button><button class="tabbtn" data-tab="dist">Poisoned starts</button>
+      <button class="tabbtn" data-tab="compare">Naive controller</button>
+    </div>
+    <div class="tabpane" id="tab-log"><div class="logsplit"><div id="log" class="log"></div><div id="detail" class="detail"></div></div></div>
+    <div class="tabpane" id="tab-whatif" style="display:none"></div>
+    <div class="tabpane" id="tab-history" style="display:none"></div>
+    <div class="tabpane" id="tab-dist" style="display:none"></div>
+    <div class="tabpane" id="tab-compare" style="display:none"></div>
+  </section>
+</main>
+<script src="/js/store.js"></script>
+<script src="/js/core.js"></script>
+<script src="/js/charts.js"></script>
+<script src="/js/panel.js"></script>
+<script src="/js/log.js"></script>
+<script src="/js/whatif.js"></script>
+<script src="/js/history.js"></script>
+<script src="/js/dist.js"></script>
+<script src="/js/compare.js"></script>
+<script src="/js/app.js"></script>
+</body>
+</html>
