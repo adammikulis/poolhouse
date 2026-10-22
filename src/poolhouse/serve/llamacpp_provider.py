@@ -12,7 +12,7 @@ from pathlib import Path
 
 from poolhouse import net
 from poolhouse.files import promote
-from poolhouse.hub.modelfile import Limits, scan_gguf
+from poolhouse.hub.modelfile import Limits, NotAModelFile, scan_gguf
 from poolhouse.lock import only_one
 from poolhouse.serve import grant, provider_archive
 from poolhouse.serve.backend import Lease, LlamaServerBackend, ServerFailed
@@ -52,14 +52,18 @@ def _requires(fingerprint: tuple) -> bool:
 
 
 def required(model) -> bool:
-    """Choose a fixed provider from bounded tensor metadata, never from the model name."""
+    """Choose a fixed provider from bounded tensor metadata, never from the model name.
+
+    A file whose header cannot be read as a GGUF needs no fixed provider: the stock backend
+    refuses it when it loads, and the sentinel pin check, which runs after this choice, refuses
+    a changed file first."""
     try:
         before = identity(model)
         answer = _requires(before)
         if identity(model) != before:
             raise ServerFailed('The model changed while its serving format was read')
         return answer
-    except (FileNotFoundError, IsADirectoryError):
+    except (OSError, NotAModelFile):
         return False
 
 
