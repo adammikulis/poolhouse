@@ -386,7 +386,8 @@ class TestTheChatView:
 
     def test_a_kept_conversation_is_listed_and_opens(self, joined, open_page):
         joined.call("/ui/conversations", method="POST", cookie=joined.cookie,
-                    body={"model": "thornfield-8B", "title": "about the roof"})
+                    headers={"Origin": f"http://127.0.0.1:{joined.port}", "Sec-Fetch-Site": "same-origin"},
+                    body={"operation_id": "a" * 32, "model": "thornfield-8B", "title": "about the roof"})
         page, errors = open_page(joined, cookie=joined.cookie)
         page.click(RAIL["Chat"])
         page.wait_for_selector("#chat-list .chatrow")
@@ -397,7 +398,8 @@ class TestTheChatView:
 
     def test_deleting_one_takes_it_off_the_list(self, joined, open_page):
         joined.call("/ui/conversations", method="POST", cookie=joined.cookie,
-                    body={"model": "thornfield-8B", "title": "about the roof"})
+                    headers={"Origin": f"http://127.0.0.1:{joined.port}", "Sec-Fetch-Site": "same-origin"},
+                    body={"operation_id": "a" * 32, "model": "thornfield-8B", "title": "about the roof"})
         page, errors = open_page(joined, cookie=joined.cookie)
         page.click(RAIL["Chat"])
         page.wait_for_selector("#chat-list .chatrow")
