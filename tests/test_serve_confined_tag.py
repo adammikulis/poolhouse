@@ -14,7 +14,7 @@ from poolhouse.serve import (
     free_port,
 )
 from poolhouse.serve.confined import Confined
-from poolhouse.testing.fakes import fake_llama_binary
+from poolhouse.testing.canned import canned_binary
 from tests.sandbox_kit import RecordingBackend
 
 pytest_plugins = ["serve_node"]
@@ -34,7 +34,7 @@ def test_a_healthy_confined_server_keeps_its_run_until_it_is_stopped(tmp_path, m
         list(argv), dict(env), "served", recorder, time.time(), str(tmp_path)))
     model = tmp_path / "model.gguf"
     model.write_bytes(b"GGUF" + b"\x00" * 64)
-    binary = fake_llama_binary(tmp_path)
+    binary = canned_binary(tmp_path)
     manager = ServerManager(LlamaServerBackend(binary=binary, sandboxed=True), state_file=tmp_path / "leases.json")
     info = manager.lease(ServerSpec(model=model, port=free_port(), context=512), timeout=60,
                          preflight=False, warmup_request=False)

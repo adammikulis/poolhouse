@@ -30,7 +30,7 @@ from poolhouse.serve.guarded import SentinelRefused, _first_use as FIRST_USE
 from poolhouse.serve.leases import recorded_servers
 from poolhouse.serve.ports import free_port
 from poolhouse.serve.process import kill_process_tree, pid_exists
-from poolhouse.testing.fakes import fake_llama_binary
+from poolhouse.testing.canned import canned_binary
 from tests.model_approval import approve
 
 pytest_plugins = ["serve_node"]
@@ -41,7 +41,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 @pytest.fixture
 def manager(tmp_path):
-    return ServerManager(LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    return ServerManager(LlamaServerBackend(binary=canned_binary(tmp_path)),
                          state_file=tmp_path / "servers.json")
 
 
