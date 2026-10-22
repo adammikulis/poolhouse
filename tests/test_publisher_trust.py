@@ -332,14 +332,14 @@ def test_the_download_flags_and_variables_of_llama_server_are_never_passed(monke
 # -- the projector is checked at load like the model and the draft ----------------------------
 def test_a_projector_that_is_not_pinned_waits_for_a_person_at_load(tmp_path):
     from poolhouse.serve.ports import free_port
-    from poolhouse.testing.fakes import fake_llama_binary
+    from poolhouse.testing.canned import canned_binary
 
     model = tmp_path / "model.gguf"
     model.write_bytes(b"GGUF" + b"\x00" * 64)
     approved(model)
     projector = tmp_path / "mmproj-F16.gguf"
     projector.write_bytes(b"GGUF" + b"\x01" * 64)
-    manager = ServerManager(backend=LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
     spec = ServerSpec(model=model, mmproj=projector, port=free_port())
     with pytest.raises(guarded.SentinelRefused, match=r"mmproj-F16\.gguf was not downloaded by Poolhouse"):
@@ -350,7 +350,7 @@ def test_a_projector_that_is_not_pinned_waits_for_a_person_at_load(tmp_path):
 
 def test_a_projector_that_no_longer_matches_its_pin_is_refused_at_load(tmp_path):
     from poolhouse.serve.ports import free_port
-    from poolhouse.testing.fakes import fake_llama_binary
+    from poolhouse.testing.canned import canned_binary
 
     model = tmp_path / "model.gguf"
     model.write_bytes(b"GGUF" + b"\x00" * 64)
@@ -359,7 +359,7 @@ def test_a_projector_that_no_longer_matches_its_pin_is_refused_at_load(tmp_path)
     approved(model)
     approved(projector)
     projector.write_bytes(b"GGUF" + b"\x02" * 64)
-    manager = ServerManager(backend=LlamaServerBackend(binary=fake_llama_binary(tmp_path)),
+    manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
     spec = ServerSpec(model=model, mmproj=projector, port=free_port())
     with pytest.raises(guarded.SentinelRefused, match="does not match its pin"):

@@ -15,7 +15,7 @@ from poolhouse.serve.backend import LlamaServerBackend
 from poolhouse.serve.broker import Ask, Broker
 from poolhouse.serve.leases import lease_file
 from poolhouse.serve.manager import ServerManager
-from poolhouse.testing.fakes import fake_llama_binary
+from poolhouse.testing.canned import canned_binary
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -33,7 +33,7 @@ class Machine:
 
 @pytest.fixture
 def machine(tmp_path, monkeypatch):
-    binary = fake_llama_binary(tmp_path)
+    binary = canned_binary(tmp_path)
     memory = Machine(free=65536 * MIB, budget=65536 * MIB)
     made: dict[str, ServerManager] = {}
 

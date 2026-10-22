@@ -192,6 +192,7 @@ def test_wsl_launcher_cleans_bridge_when_process_creation_fails(monkeypatch):
     monkeypatch.setattr(wsl, "_bridge", lambda *_args: bridge)
     monkeypatch.setattr(wsl, "command", lambda *args: list(args))
     monkeypatch.setattr(wsl, "_read", lambda *_args: "/linux/python")
+    monkeypatch.setattr(wsl.windows_firewall, "ensure", lambda: True)
     monkeypatch.setattr(wsl.subprocess, "run", MagicMock(return_value=SimpleNamespace(returncode=0)))
     monkeypatch.delenv("POOLHOUSE_HOME", raising=False)
     monkeypatch.delenv("POOLHOUSE_CACHE", raising=False)

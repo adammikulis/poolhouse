@@ -46,6 +46,17 @@ SKIP_HOOKS = (PUSHER + r"git\s+(-[Cc]\s+\S+\s+|--\S+\s+)*(commit|push|merge|am|c
               r"(--no-verify\b|--no-gpg-sign\b)"
               r"|" + PUSHER + r"git\s+(-[Cc]\s+\S+\s+|--\S+\s+)*commit\b[^;&|\n]*\s-[a-zA-Z]*n[a-zA-Z]*(\s|$)"
               r"|(^|[;&|]\s*|\benv\s+)SKIP_BUDGETS=")
+# Every `git stash` subcommand but the read-only `list` and `show`: the stash stack is one for all worktrees.
+STASH = RUN + r"git\s+(-[Cc]\s+\S+\s+|--\S+\s+)*stash\b(?!\s+(list|show)\b)"
+STASH_MESSAGE = (
+    "Do not use `git stash` (push, save, pop, apply, drop, clear, branch, create, store): the stash is shared by "
+    "every worktree, so one agent's pop or drop takes another agent's work. Commit work in progress to your own "
+    "branch instead (a `wip:` commit you can amend or undo with `git reset --soft HEAD~1`), or use `git worktree` "
+    "for a second copy. Read-only `git stash list` and `git stash show` are allowed.\n"
+    "Fail-first without a stash, after committing: `git restore --source=<parent-sha> -- <changed source files>`, "
+    "run the test, then `git restore --source=HEAD -- <those files>`; or a throwaway "
+    "`git worktree add <scratchpad>/parent <parent-sha>` (remove it with `git worktree remove --force` after).\n"
+    "Merging with local changes: make a WIP commit first, then `git merge origin/<dev>`.")
 HERE = Path(__file__).resolve().parent
 
 # (what it matches, what to do instead). Ordered: the first match wins.
@@ -56,13 +67,7 @@ REFUSE = [
      "whatever another agent is halfway through writing -- it committed a failing test once, "
      "under somebody else's commit message. Name the files you mean: `git add path/one.py "
      "path/two.py`."),
-    (RUN + r"git\s+stash(\s*($|[;&|])|\s+(pop|save|clear)\b|\s+(-u|--include-untracked)\b|"
-     r"\s+push(?![^;&|\n]*\s-m\b))",
-     "Do not use a bare `git stash`, `stash pop` or an untagged `stash push`. The stash stack is shared by "
-     "every worktree, so a pop can restore another agent's work over yours (and a stash with no tag cannot "
-     "be found again). Set work aside with a WIP commit instead. If you must stash: `git stash push -u -m "
-     "<unique-tag>`, find your entry's SHA with `git stash list --format='%H %gs'`, restore it with "
-     "`git stash apply <sha>`, then drop that one entry by its re-found `stash@{n}`."),
+    (STASH, STASH_MESSAGE),
     (r"until\s*!\s*pgrep|while\s+pgrep|until\s+pgrep",
      "Do not hand-write a waiter. `pgrep -f` matches the waiting shell's own command line, "
      "so the loop never exits -- two of them spun for an afternoon and the work queued "
@@ -162,7 +167,7 @@ def without_search_patterns(command: str) -> str:
     return re.sub(rf"\b({SEARCHERS})\b[^|;&\n]*", strip, command)
 
 
-HARD = (PUSH_FLAGS, PUSH_MAIN, MINT, PERSON_STORE, SKIP_HOOKS)
+HARD = (PUSH_FLAGS, PUSH_MAIN, MINT, PERSON_STORE, SKIP_HOOKS, STASH)
 """Patterns that stay in force when POOLHOUSE_GUARD=off is set: this guard only ever runs on an agent's call."""
 
 MESSAGE = re.compile(r"(-m|--message)(\s+|=)('[^']*'|\"[^\"]*\")")

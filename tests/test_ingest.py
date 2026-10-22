@@ -1,7 +1,8 @@
 """Documents into a graph: the schema, the fold, the gold scorer, resume and status.
 
-The model is a real HTTP server answering scripted JSON -- the same discipline as the rest
-of the client tests, and the reason the extraction path is exercised rather than described.
+The server is a real HTTP server on a canned socket, answering scripted JSON the extraction path must parse
+(so its text is bare, which each body says) -- the same discipline as the rest of the client tests, and the
+reason the extraction path is exercised rather than described. It is not a model, and says so.
 Every passage, concept and source here is invented; the gold fixture copies the *shape* of a
 gold set (passages with triples and aliases) and none of its words.
 """
@@ -15,11 +16,11 @@ import time
 from pathlib import Path
 
 import pytest
-from conftest import json_reply
 from test_sources_pdf import a_textbook
 
 from poolhouse import hub, ingest, jobs
 from poolhouse.contracts import grammar_for
+from poolhouse.testing.canned import canned_chat_reply
 
 pytest.importorskip("pymupdf", reason="pymupdf is the test-only PDF writer here (AGPL, opt-in): pip install pymupdf")
 
@@ -59,8 +60,7 @@ def a_model(server, script):
         said = script(prompt)
         # a string is sent verbatim, so a test can script a reply that is not JSON at all
         content = said if isinstance(said, str) else json.dumps(said)
-        return json_reply({"choices": [{"message": {"role": "assistant",
-                                                    "content": content}}]})
+        return canned_chat_reply(content, bare=True)
 
     return server(handler), asked
 
@@ -1301,7 +1301,7 @@ def test_a_run_told_to_stop_folds_what_it_read_and_ends_cleanly(tmp_path):
 
     from conftest import REPO
 
-    from poolhouse.testing.fakes import Served, fake_llama_server
+    from poolhouse.testing.canned import Canned, canned_server
 
     store = tmp_path / "sources.ladybug"
     source = a_textbook(tmp_path / "lattice.pdf")
@@ -1315,7 +1315,7 @@ def test_a_run_told_to_stop_folds_what_it_read_and_ends_cleanly(tmp_path):
             time.sleep(10)          # long enough for the stop to land inside this unit
         return json.dumps(LATTICE)
 
-    with fake_llama_server(Served(answer=extracted)) as model:
+    with canned_server(Canned(answer=extracted)) as model, model.unmarked():
         url = model.base_url
         child = subprocess.Popen(
             [sys.executable, "-m", "poolhouse.ingest", source, "--out", str(store),

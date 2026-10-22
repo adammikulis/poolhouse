@@ -18,7 +18,7 @@ from poolhouse.serve.kvcache import DEFAULT_KV_CACHE, effective
 from poolhouse.serve.mlx_tree import MlxTreeBackend, kv_bytes
 from poolhouse.serve.preflight import draft_kv_estimate_bytes
 from poolhouse.serve.profile import Profile
-from poolhouse.testing import FakeLlamaServer, Served
+from poolhouse.testing.canned import Canned, CannedServer
 from poolhouse.testing.registry import record_server
 
 META = {"general.architecture": "llama", "llama.block_count": 8,
@@ -219,7 +219,7 @@ class TestWhatIsSaid:
         return path
 
     def test_status_names_the_cache_the_server_was_started_with(self, state, capsys):
-        fake = FakeLlamaServer(Served(model="/models/m.gguf", context=4096))
+        fake = CannedServer(Canned(served_path="/models/m.gguf", context=4096))
         try:
             record_server(state, fake.port, model="m.gguf", cache_type_k="q8_0",
                           cache_type_v="f16", kv_cache="q8_0/f16",
@@ -231,7 +231,7 @@ class TestWhatIsSaid:
         assert "kv cache q8_0/f16" in out and "flash attention is off" in out
 
     def test_up_prints_the_cache_it_chose(self, state, tmp_path, monkeypatch, capsys):
-        fake = FakeLlamaServer(Served(model="/models/m.gguf", context=4096))
+        fake = CannedServer(Canned(served_path="/models/m.gguf", context=4096))
         monkeypatch.setattr(holding, "up", lambda spec, **kw: holding.Hold(
             id="lease", shape="s", model=str(spec.model), context=spec.context,
             parallel=spec.parallel, status="ready", port=fake.port,

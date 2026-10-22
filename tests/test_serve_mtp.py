@@ -17,7 +17,8 @@ import pytest
 from poolhouse import sentinel
 from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_port, mtp
 from poolhouse.serve.process import every_server, pid_exists
-from poolhouse.testing.fakes import LLAMA_SERVER_FLAGS, fake_llama_binary
+from poolhouse.testing.canned import canned_binary
+from poolhouse.testing.fakes import LLAMA_SERVER_FLAGS
 
 pytest_plugins = ["serve_node"]
 pytestmark = pytest.mark.usefixtures("serve_leases")
@@ -67,7 +68,7 @@ def snapshot(cache: Path, repo: str = "owner--model") -> Path:
 def server(tmp_path: Path, help_text: str = MTP_HELP) -> tuple[Path, ServerManager]:
     where = tmp_path / "bin"
     where.mkdir(exist_ok=True)
-    binary = fake_llama_binary(where, help_text=help_text)
+    binary = canned_binary(where, help_text=help_text)
     manager = ServerManager(LlamaServerBackend(binary=binary), state_file=tmp_path / "leases.json")
     return binary, manager
 
@@ -230,7 +231,7 @@ def test_a_head_whose_bytes_no_longer_match_its_pin_is_left_out(cache, tmp_path,
 def test_a_server_that_will_not_start_with_the_head_is_started_without(cache, tmp_path, stop):
     model = a_gguf(snapshot(cache) / "Own-Q4_K_M.gguf", layer=True)
     (tmp_path / "inner").mkdir()
-    real = fake_llama_binary(tmp_path / "inner", help_text=MTP_HELP)
+    real = canned_binary(tmp_path / "inner", help_text=MTP_HELP)
     wrapper = tmp_path / "bin" / "llama-server"
     wrapper.parent.mkdir()
     wrapper.write_text(

@@ -575,9 +575,9 @@ def test_auto_effort_thinks_for_a_plan_and_not_for_a_status(kit):
 
 # -- the prompt cache ---------------------------------------------------------------------
 def test_each_turn_extends_the_last_prompt_byte_for_byte_and_tasks_share_their_prefix(kit):
-    from poolhouse.testing.fakes import Served, fake_llama_server
+    from poolhouse.testing.canned import Canned, canned_server
 
-    with fake_llama_server(Served(answer="words only")) as fake:
+    with canned_server(Canned(answer="words only")) as fake:
         client = localloop.client_on(fake.base_url)
         with Rig(kit, client, caps=localloop.Caps(rounds=2)) as rig:
             for text in ("first task", "second task"):
@@ -692,8 +692,8 @@ def test_native_coding_start_refuses_before_model_registration_or_queue_effects(
 
 
 def test_a_shared_server_with_a_smaller_context_than_asked_is_refused():
-    from poolhouse.testing.fakes import Served, fake_llama_server
-    with fake_llama_server(Served(context=32768)) as fake:
+    from poolhouse.testing.canned import Canned, canned_server
+    with canned_server(Canned(context=32768)) as fake:
         why = localloop.check_context(262144, fake.base_url)
         assert "32K" in why and "256K" in why and "poolhouse-serve down" in why
         assert localloop.check_context(32768, fake.base_url) == ""

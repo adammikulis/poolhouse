@@ -56,8 +56,9 @@ def test_loaded_embedding_flag_overrides_decoder_metadata():
     ([], None),
 ])
 def test_process_mode_uses_observed_arguments(monkeypatch, argv, embedding):
-    instance = SimpleNamespace(info={'pid': 9876, 'name': 'llama-server', 'cmdline': argv,
-                                     'memory_info': None}, status=lambda: 'running')
+    info = {'pid': 9876, 'name': 'llama-server', 'cmdline': argv, 'memory_info': None}
+    instance = SimpleNamespace(info=info, as_dict=lambda attrs=None, ad_value=None: dict(info),
+                               status=lambda: 'running')
     monkeypatch.setattr(process.psutil, 'process_iter', lambda *_: [instance])
     assert process.every_server()[0]['embedding'] is embedding
 
