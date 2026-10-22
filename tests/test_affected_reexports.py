@@ -45,7 +45,7 @@ def pkg(tmp_path: Path) -> Path:
 
 
 def chosen(root: Path, changed: str) -> set[str]:
-    out = affected.select(root, [changed], depth=1)
+    out = affected.select(root, [changed])
     assert not out.unmapped
     return {t for t in out.files if not t.endswith(("test_layers.py", "test_wiring.py"))}
 

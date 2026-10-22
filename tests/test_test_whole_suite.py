@@ -16,7 +16,7 @@ sys.path.insert(0, str(SCRIPTS))
 
 import testjobs  # noqa: E402
 
-LINE = "the whole suite runs on a schedule and on pull requests; name the files you changed"
+LINE = "the whole suite runs on a schedule and on pull requests; name the test files your change affects"
 MARKERS = ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE")
 RUNNER = "import time\ntime.sleep(60)\n"
 GIT = ["git", "-c", "user.name=probe", "-c", "user.email=probe@example.invalid"]
