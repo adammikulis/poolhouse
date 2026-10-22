@@ -144,6 +144,11 @@ The owner requested a usage-conscious wrap: land useful reviewed work, tidy chec
 - A pool-wide ask cannot name device `*` (an approval writes the asking node's own device), so no grant of a pool is portable to another device; a session that works on two devices is approved on each. Opening `*` is a product decision for the approval card.
 - `tests/test_board_grants.py::test_hostile_arguments_to_the_person_commands_are_refused_before_anything_is_written` fails on 0.3dev before this branch (a quota of 16 live main sessions on the `grant` argv with a newline).
 
+## 3D control room (examples/rbmk_control_room): what remains
+- The frame rate on a phone is untested; only a desktop headless browser has driven the page.
+- No model-driven run is recorded for the 1986 scenario; `viewer/feed/replay-1986-crew.json` is the scripted crew replay, not a model's decisions.
+- The rod cells are not coloured by rod kind: the feed's `meta.rods` carries each rod's kind, but the cells are coloured by insertion only.
+
 ## Silent failures left (audit of 2026-10-16)
 - `scripts/test` prints the "fixed overhead" warning (`scripts/testphases.py`) and records it nowhere; a test run that starts a node pays about 20 s of bring-up each time, so the warning is on most runs. A fix needs the node kit to start faster or the warning to feed a ratchet metric.
 - A person-record hook failure is one stderr line (`person` in `scripts/hooks/workspace_hook.py`); `person-consume` then says only that no record exists, without the stage that failed.
