@@ -145,8 +145,11 @@ The owner requested a usage-conscious wrap: land useful reviewed work, tidy chec
 - A pool-wide ask cannot name device `*` (an approval writes the asking node's own device), so no grant of a pool is portable to another device; a session that works on two devices is approved on each. Opening `*` is a product decision for the approval card.
 - `tests/test_board_grants.py::test_hostile_arguments_to_the_person_commands_are_refused_before_anything_is_written` fails on 0.3dev before this branch (a quota of 16 live main sessions on the `grant` argv with a newline).
 
-## 3D control room (examples/rbmk_control_room): what remains
-- The frame rate on a phone is untested; only a desktop headless browser has driven the page.
+## 3D and 2D control room (examples/rbmk_control_room): what remains
+- The frame rate on a phone is untested for both pages; only a desktop headless browser (and a 390 px viewport) has driven them.
+- The 2D views were measured by process CPU time, not GPU busy time (`docs/notes/2026-10-22-rbmk-room-2d-cost.md`); no GPU timer query was available in headless Chromium.
+- The 2D page has no free zoom or pan inside a still beyond the per-panel close-ups; on a phone the front wall scrolls sideways at a fixed width.
+- `tests/test_rbmk_web.py::test_a_real_model_recording_is_replayed_and_shown_with_its_label` and `::test_a_recording_is_the_source_of_a_what_if` fail on 0.3dev before the 2D room branch (the recordings API answers without a `doc` for `fixture_short.recording.json`).
 - No model-driven run is recorded for the 1986 scenario; `viewer/feed/replay-1986-crew.json` is the scripted crew replay, not a model's decisions.
 - The rod cells are not coloured by rod kind: the feed's `meta.rods` carries each rod's kind, but the cells are coloured by insertion only.
 

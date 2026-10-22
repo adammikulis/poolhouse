@@ -133,13 +133,13 @@ def rod_map(batch: Batch) -> None:
     """The round rod-position map: a disc plate carrying 211 cells named ROD_R-ii-jj."""
     th, zc = ROD_CENTER
     T = wall_frame(th, zc, R_WALL, 0.0)
-    batch["plate"].cyl(T @ Matrix.Translation((0, 0, -0.07)), 1.27, 0.2, 40)
+    batch["plate"].cyl(T @ Matrix.Translation((0, 0, 0.03)), 1.27, 0.2, 40)
     root = empty("INS_RODMAP", T)
     for i, j in rod_cells():
         cell = Solid()
         cell.box(Matrix.Identity(4), 0.112, 0.112, 0.022)
         cell.build(f"ROD_R-{i:02d}-{j:02d}", material("M_rod", (0.8, 0.62, 0.08), 0.5), root,
-                   Matrix.Translation(((i - 8) * ROD_PITCH, (j - 8) * ROD_PITCH, 0.036)))
+                   Matrix.Translation(((i - 8) * ROD_PITCH, (j - 8) * ROD_PITCH, 0.14)))
 
 
 def mimic_windows(batch: Batch) -> None:
