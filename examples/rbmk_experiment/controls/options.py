@@ -14,7 +14,6 @@ CLASSES = {
     "regulator": "switch the automatic regulator on or off, or change its setpoint",
     "protection": "switch a protection or trip signal on or off",
     "turbine_test": "start or abort the turbine rundown test",
-    "orm_print": "print the reactivity margin again",
     "scram": "press AZ-5, which drives every rod in",
 }
 STEPS = {"1": 0.10, "2": 0.25, "3": 0.50}

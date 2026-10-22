@@ -11,9 +11,10 @@ from .. import scenarios
 from ..scenarios import Event, Scenario
 from . import reactor as rx
 
-POWER_TRIP = 1.2           # relative power
-DRUM_PRESSURE_TRIP = 8.0   # MPa
-DRUM_LEVEL_TRIP = 45.0     # cm from the level setpoint
+POWER_TRIP = 1.2           # relative power; the trip points of the power protection are not given in INSAG-7: unverified
+PERIOD_TRIP_S = 20.0       # reactor period below 20 s: the power-increase-rate protection signals came on at a period under 20 s (INSAG-7 annex I, table I-I, 01:23:43)
+DRUM_LEVEL_TRIP = -60.0    # cm: the low steam drum level protection at -600 mm (INSAG-7 section 3, item 6)
+DRUM_PRESSURE_TRIP = 5.4   # MPa: the drum pressure-drop protection at 55 kg/cm2 until the crew lowered it to 50 (INSAG-7 annex I, table I-I, 00:36:24)
 REG_GAIN = 2.8e-4
 STEADY_TICKS = 2           # consecutive ticks over which power is constant within the power channels' noise (1 percent, sensors/model.py; unverified): two is the fewest that give a rate
 STEADY_TOLERANCE = 0.01
@@ -130,25 +131,33 @@ class Plant:
             rx.substep(self.core, seconds / n)
             self._steam(seconds / n)
 
-    def end_tick(self) -> None:
+    def end_tick(self, seconds: float | None = None) -> None:
         """Count the tick, run the plant's protections and note whether the unit is steady with its margin restored."""
         self.tick += 1
-        self._protect()
+        self._protect(seconds or self.regime()[0])
         c = self.core
         calm = abs(c.P - self._last_power) <= STEADY_TOLERANCE * max(c.P, SOURCE_FLOOR)
         self._last_power = c.P
         restored = self.started_below and c.orm() >= rx.ORM_MIN and not c.scram and not c.damaged
         self.steady = self.steady + 1 if restored and calm else 0
 
-    def _protect(self) -> None:
+    def _period(self, seconds: float) -> float:
+        """The reactor period over the last tick, in seconds; infinite when power is not rising."""
+        c = self.core
+        rise = math.log(max(c.P, 1e-9) / max(self._last_power, 1e-9)) / seconds
+        return 1.0 / rise if rise > 0 else math.inf
+
+    def _protect(self, seconds: float = 1.0) -> None:
         c = self.core
         if c.scram:
             return
         found = []
         if c.P > POWER_TRIP:
             found.append("POWER_HIGH")
-        if self.prot["DRUM_TRIPS"] and (c.p > DRUM_PRESSURE_TRIP or abs(self.level) > DRUM_LEVEL_TRIP):
+        if self.prot["DRUM_TRIPS"] and (c.p < DRUM_PRESSURE_TRIP or self.level < DRUM_LEVEL_TRIP):
             found.append("DRUM_TRIPS")
+        if self._period(seconds) < PERIOD_TRIP_S:
+            found.append("POWER_PERIOD")
         if self.prot["TG_TRIP"] and self.tg_disconnected:
             found.append("TG_TRIP")
         for name in found:
