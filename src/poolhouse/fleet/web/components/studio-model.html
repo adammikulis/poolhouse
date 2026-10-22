@@ -10,7 +10,7 @@
       groups: {},
       layout: { nodes: {}, viewport: { x: 0, y: 0, zoom: 1 } },
     });
-    S.id = () => crypto.randomUUID();
+    S.id = () => window.fleetModel.uuid();
     S.selectionContext = (editor) => {
       const inherited = editor.context.some(
         (c) =>

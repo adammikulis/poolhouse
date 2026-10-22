@@ -2,9 +2,9 @@
 
 F1-F9 are from `baseline-2026-10-02.md`. Severity is for a machine whose daemon is reachable by devices holding the
 pool token and whose agent reads pages from the web. The bodies below describe each finding as it was
-measured on 2026-10-02. The status column is what `baseline-deterministic-2026-10-03.md` (recorded with a stand-in server that is gone; to be re-recorded against a real model)
+measured on 2026-10-02. The status column is what `baseline-real-model-2026-10-22.md` (Qwen3-4B-Instruct-2507 Q4_K_M, commit 65974b081, `extraction`, `fleet` and `sentinel`)
 shows today: F3 (`proxy-route` 0 of 8) and F4 (`malformed-request` 0 of 55) no longer succeed, `oversized-body`
-still succeeds 2 of 3 (F5, held at 2 by the weekly gate) and `hidden-text-extraction` 6 of 13 (F2, one is the
+still succeeds 2 of 3 (F5, held at 2 by the gate) and `hidden-text-extraction` 6 of 13 (F2, one is the
 visible control). F1, F6, F7 and F8 need a model or the `isolation` and `compaction` scenarios, which that
 baseline does not run, so they are not re-measured here. F10-F18 (further down) are fixed, each with its commit
 and test.

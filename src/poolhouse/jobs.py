@@ -41,6 +41,7 @@ __all__ = [
     "Job",
     "alive",
     "detach",
+    "ended",
     "home_dir",
     "main",
     "record",
@@ -79,7 +80,7 @@ def _read(path: Path) -> dict[str, Any]:
     return found if isinstance(found, dict) else {}
 
 
-def _ended(pid: int) -> bool:
+def ended(pid: int) -> bool:
     """Whether ``pid`` is gone. A process this one started is reaped on the way: a child
     that has exited answers ``kill(pid, 0)`` until somebody collects it."""
     try:
@@ -97,7 +98,7 @@ def _ended(pid: int) -> bool:
 
 def _wait_for(pid: int, seconds: float) -> bool:
     deadline = time.time() + max(seconds, 0.0)
-    while not _ended(pid):
+    while not ended(pid):
         if time.time() >= deadline:
             return False
         time.sleep(0.05)
@@ -117,7 +118,7 @@ def alive(kind: str, *, home: Path | None = None) -> int:
     pid = int(record.get("pid") or 0)
     if not pid:
         return 0
-    return 0 if _ended(pid) else pid
+    return 0 if ended(pid) else pid
 
 
 def record(kind: str, *, pid: int, argv: Sequence[str] = (), log: str = "", started: str = "",
@@ -150,6 +151,8 @@ class Detached:
     log: Path
     command: tuple[str, ...]
     started: str
+    process: subprocess.Popen | None = field(default=None, compare=False, repr=False)
+    """The child's own handle, kept so a caller can see how it ended (`poolhouse.spawned`)."""
 
 
 def detach(module: str, argv: Sequence[str], *, log: Path, lines: Sequence[str] = (),
@@ -191,7 +194,7 @@ def detach(module: str, argv: Sequence[str], *, log: Path, lines: Sequence[str] 
                                  **detached_kwargs())
     if kind:
         record(kind, pid=child.pid, argv=rest, log=str(log), started=started, home=home)
-    return Detached(pid=child.pid, log=log, command=tuple(command), started=started)
+    return Detached(pid=child.pid, log=log, command=tuple(command), started=started, process=child)
 
 
 def wait(kind: str, *, say: Callable[[str], None] = say, every: float = 60.0,
@@ -260,7 +263,7 @@ def status(*, say: Callable[[str], None] = say, home: Path | None = None) -> int
         kind = path.stem
         record = _read(path)
         pid = int(record.get("pid") or 0)
-        running = bool(pid) and not _ended(pid)
+        running = bool(pid) and not ended(pid)
         said = f"running (pid {pid})" if running else (f"ended (pid {pid})" if pid else "unknown")
         say(f"{kind}: {said} since {record.get('started', '?')}")
         argv = " ".join(str(a) for a in (record.get("argv") or ()))

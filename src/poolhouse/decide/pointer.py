@@ -31,8 +31,6 @@ from poolhouse.decide.types import (
 )
 from poolhouse.hub import admission
 
-MAX_TOKENS = 4096
-
 
 def _length_groups(lengths: list[int], spread: float = 1.3) -> list[list[int]]:
     """Indices grouped so that the longest prompt in a group is at most ``spread`` times the shortest: padding stays small."""
@@ -171,8 +169,8 @@ class PointerDecider(BaseDecider):
         rendered = pointer_prompt.render(asked.question, asked.state, asked.options)
         enc = tok(rendered.text, return_offsets_mapping=True, add_special_tokens=False, return_tensors="pt")
         length = int(enc["input_ids"].shape[1])
-        if length > MAX_TOKENS:
-            raise DecideError(f"the prompt is {length} tokens; the limit is {MAX_TOKENS}")
+        if length > pointer_prompt.MAX_PROMPT_TOKENS:
+            raise DecideError(pointer_prompt.too_long(length, "the prompt"))
         spots = pointer_prompt.positions([tuple(o) for o in enc["offset_mapping"][0].tolist()], rendered.spans)
         return enc["input_ids"][0], spots, temperature_for(files, asked.question)
 

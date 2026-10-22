@@ -411,7 +411,7 @@ def test_invalid_rpc_token_cannot_acquire_capacity(tmp_path, monkeypatch):
     rpc = _rpc_module()
     monkeypatch.setenv("DEV_TEST_SLOTS_DIR", str(tmp_path / "slots"))
     monkeypatch.setenv("DEV_TEST_BUDGET", "1")
-    server = rpc.Admission(False)
+    server = rpc.Admission()
     try:
         server.admitted.set()
         server.collected.set()
@@ -427,7 +427,7 @@ def test_disconnected_rpc_waiter_releases_its_queue_entry(tmp_path, monkeypatch)
     rpc = _rpc_module()
     monkeypatch.setenv("DEV_TEST_SLOTS_DIR", str(tmp_path / "slots"))
     monkeypatch.setenv("DEV_TEST_BUDGET", "1")
-    server = rpc.Admission(False)
+    server = rpc.Admission()
     holder = waiter = None
     holder_stream = waiter_stream = None
     try:
@@ -685,7 +685,7 @@ def test_rpc_admission_survives_a_live_incomplete_record(tmp_path, monkeypatch):
     descriptor = os.open(damaged, os.O_RDWR | os.O_CREAT, 0o600)
     assert take(descriptor)
     damaged.write_text('{}')
-    server = rpc.Admission(False)
+    server = rpc.Admission()
     try:
         server.admitted.set()
         server.collected.set()
