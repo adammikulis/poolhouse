@@ -58,6 +58,45 @@ def test_runner_defaults_to_the_brokers_automatic_pool_and_preserves_explicit_li
     assert judged == [['tests/test_test_selectors.py']]
 
 
+@pytest.mark.parametrize('spelled', [str(ROOT / 'tests' / 'test_test_selectors.py'), './tests/test_test_selectors.py',
+                                     'tests/../tests/test_test_selectors.py', str(ROOT / 'tests' / 'test_test_selectors.py') + '::test_x'])
+def test_a_test_path_in_the_checkout_reaches_the_runner_spelled_from_its_root(monkeypatch, spelled):
+    """The reuse store, the node build and the junit file name a file by its path from the checkout: a file named by an absolute path
+    ran its tests and was then reported as a run of nothing, exit 4."""
+    module = runner()
+    calls = []
+    monkeypatch.setenv('DEV_TEST_JOB', 'inline')
+    monkeypatch.setattr(sys, 'argv', ['scripts/test', 'all', spelled, '-k', 'not slow and absolute'])
+    judged = []
+    monkeypatch.setattr(module, 'build_node', lambda files=None: judged.append(files) or 0)
+    monkeypatch.setattr(module, 'run', lambda command, **kwargs: calls.append(command) or 0)
+    assert module.main() == 0
+    named = 'tests/test_test_selectors.py' + ('::test_x' if spelled.endswith('::test_x') else '')
+    assert named in calls[0] and (spelled == named or spelled not in calls[0])
+    assert calls[0][calls[0].index('-k') + 1] == 'not slow and absolute', 'a word that is no path is left as it was'
+    assert judged == ([None] if '::' in named else [['tests/test_test_selectors.py']])
+
+
+def test_a_test_path_outside_the_checkout_is_refused_before_the_broker(tmp_path):
+    """The runner's root, store and node build are this checkout's: a file of another tree would be run as if it were this one's."""
+    outside = tmp_path / 'test_outside.py'
+    outside.write_text('def test_x():\n    pass\n', encoding='utf-8')
+    result = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'test'), 'all', str(outside), '-n', '2'],
+                            cwd=ROOT, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 4
+    assert 'outside this checkout' in result.stderr
+    assert '+ ' not in result.stdout
+
+
+def test_a_rust_test_file_is_refused_before_the_broker_and_names_the_test_that_runs_it():
+    """Pytest was handed the .rs path, loaded no conftest and ended with "unrecognized arguments: --slow", exit 4, whose cause was not in it."""
+    result = subprocess.run([sys.executable, str(ROOT / 'scripts' / 'test'), 'all', 'app/poolhouse-node/tests/grants_authority.rs', '-n', '2'],
+                            cwd=ROOT, capture_output=True, text=True, timeout=30)
+    assert result.returncode == 4
+    assert 'not a Python test file' in result.stderr and 'tests/test_governed_grants_native.py' in result.stderr
+    assert '+ ' not in result.stdout
+
+
 def test_no_gate_step_writes_to_the_tree():
     """A gate only reads: a step that rewrote a tracked file dirtied the worktree it was judging."""
     module = runner()

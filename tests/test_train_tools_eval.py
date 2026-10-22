@@ -1,5 +1,8 @@
 """Pinning the tool schemas a dataset was made for, and scoring a served model on the
-held-out rows -- the model being a llama-server on a real socket that follows a script."""
+held-out rows -- the scorer reading a canned server on a real socket that follows a script.
+
+These tests exercise the scorer, not a model: the replies are scripted turns (a right call, a missing one), each
+carrying the canned marker."""
 
 from __future__ import annotations
 
@@ -7,7 +10,7 @@ import json
 
 import pytest
 
-from poolhouse.testing.tool_server import ToolCallingServer, Turn
+from poolhouse.testing.canned import CannedServer, Turn
 from poolhouse.train.tools import (
     CHAT,
     SchemaDrift,
@@ -122,7 +125,7 @@ def test_evaluate_asks_a_served_model_with_each_rows_tools() -> None:
     from poolhouse.client import Client
 
     rows = [row("find_recipe", {"words": ["a"]}), row(CHAT)]
-    server = ToolCallingServer([Turn(calls=(("find_recipe", '{"words": ["a"]}'),)),
+    server = CannedServer(turns=[Turn(calls=(("find_recipe", '{"words": ["a"]}'),)),
                                 Turn(text=("Hello.",))])
     try:
         got = evaluate(Client(server.base_url), rows)
@@ -138,7 +141,7 @@ def test_the_eval_command_scores_and_checks_drift(tmp_path, capsys) -> None:
     write_dataset(tmp_path, [row("find_recipe", {"words": ["a"]})], base="b")
     live = tmp_path / "live.json"
     live.write_text(json.dumps([FIND, SHELF]))
-    server = ToolCallingServer([Turn(calls=(("find_recipe", '{"words": ["a"]}'),))])
+    server = CannedServer(turns=[Turn(calls=(("find_recipe", '{"words": ["a"]}'),))])
     try:
         code = main(["eval", "--data", str(tmp_path), "--url", server.base_url,
                      "--tools", str(live), "--json"])

@@ -1,4 +1,7 @@
-"""The rail on its own, one argument rule at a time, with the schemas the loop would pass it."""
+"""The rail on its own, one argument rule at a time, with the schemas the loop would pass it.
+
+These tests exercise the rail and the loop, not a model: where a loop runs, the canned server replies with scripted
+turns and the worst-case `Obeying` stand-in, every reply marked as canned."""
 
 from __future__ import annotations
 
@@ -21,7 +24,7 @@ from poolhouse.taint import (
     sinks_from_mcp,
 )
 from poolhouse.testing import canary
-from poolhouse.testing.tool_server import Turn
+from poolhouse.testing.canned import Turn
 
 TOOLS = [{"type": "function", "function": {"name": "act", "parameters": {
     "type": "object", "properties": {
@@ -234,3 +237,22 @@ def test_an_address_is_found_by_the_name_of_its_argument_or_by_its_shape():
     assert isinstance(verdict(rail, context, "read_page", {"q": "see http://collect.example/x"}),
                       Confirm)
     assert isinstance(verdict(rail, context, "read_page", {"q": "plain words"}), Proceed)
+
+
+def test_a_hard_call_with_nothing_in_it_is_not_the_persons_intent():
+    """A page that names a tool, and a model that calls it with an empty or no argument, has no value the person typed."""
+    for capability in (Capability.CREDENTIAL, Capability.EXEC, Capability.EGRESS):
+        rail = rail_with(capability)
+        context = dirty(rail, task="act on fixture-7")
+        for args in ({}, {"note": ""}, {"note": "  \n"}, {"note": "", "flag": True}):
+            asked = verdict(rail, context, "act", args)
+            assert isinstance(asked, Confirm), (capability, args)
+        assert isinstance(verdict(rail, context, "act", {"note": "fixture-7"}), Proceed)
+    rail = rail_with(Capability.STATE)
+    assert isinstance(verdict(rail, dirty(rail), "act", {"note": ""}), Proceed), "a change that carries nothing is no risk"
+    joined = poolhouse_rail()
+    assert isinstance(verdict(joined, dirty(joined), "fleet_join", {"passphrase": ""}), Confirm)
+
+
+def poolhouse_rail() -> TaintRail:
+    return TaintRail(poolhouse_tools(), registries={})

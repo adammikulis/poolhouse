@@ -259,6 +259,8 @@ jobs:
         run: |
           python -m pytest -q -rfE --tb=short --slow --real-model --redteam -n 0 --timeout=1800 --junitxml=junit.xml \
             tests/test_real_model_uses.py tests/test_sentinel_real_model.py tests/test_redteam_judge_real.py \
+            tests/test_redteam_sentinel_model.py \
+            tests/test_redteam_lab_home.py::test_a_run_on_a_real_model_writes_nothing_to_the_home_it_started_in_once_the_lease_is_up \
             tests/test_serve_real_llama.py::test_a_decision_model_is_served_only_through_the_broker
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

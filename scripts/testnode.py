@@ -24,6 +24,8 @@ from typing import NamedTuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+import testartifacts
+
 from poolhouse import home, node_binary, worktreerules
 from poolhouse.files import writing
 from poolhouse.lock import only_one
@@ -178,7 +180,7 @@ def workspace_wrapper(workspace: Path) -> None:
     if any(path.is_symlink() for path in (wrapper, configuration, configuration.parent)):
         raise BuildError('Native compiler controls cannot contain links')
     controls = ((wrapper, '#!/bin/sh\nexec "$@"\n', 0o700),
-                (configuration, '[build]\nrustc-workspace-wrapper = ' + json.dumps(str(wrapper)) + '\n', 0o600))
+                (configuration, '[build]\nrustc-workspace-wrapper = ' + json.dumps(str(wrapper)) + '\nincremental = false\n', 0o600))
     for path, content, mode in controls:
         if path.exists() and not path.is_file():
             raise BuildError('Native compiler controls must be regular files')
@@ -206,6 +208,7 @@ def shared_build(app: Path, *, root: Path | None = None) -> SharedBuild:
             os.utime(folder)
         prune(base / "workspaces", key)
         prune(base / "targets", locked)
+        testartifacts.prune_when_due(target, app, files, IDLE_S)
     return SharedBuild(staged, target)
 
 
