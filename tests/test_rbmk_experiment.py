@@ -167,14 +167,36 @@ def test_the_positive_scram_effect_is_per_rod_and_depends_on_the_margin():
     assert _entering(26.0, 24) == 0.0
 
 
-def test_fuel_damage_follows_the_energy_above_full_power_not_one_sample():
+def test_fuel_damage_is_the_fuel_temperature_passing_its_limit_and_there_is_no_cap_on_power():
     core = rx.at_power(rx.nominal(), 1.0, (1.0, 1.0))
-    core.P = 5.0
     rx.substep(core, 0.5)
     assert not core.damaged
-    core.excess = rx.EXCESS_LIMIT + 0.1
+    core.Tf = rx.DAMAGE_TF + 50.0
     rx.substep(core, 0.5)
     assert core.damaged
+    big = rx.at_power(rx.nominal(), 1.0, (1.0, 1.0))
+    big.rho_ext += 3.0
+    for _ in range(12):
+        rx.substep(big, 0.5)
+    assert big.peak_P > 100.0
+
+
+def test_a_run_ends_at_damage_at_shutdown_or_with_the_margin_restored_and_steady_and_nowhere_else():
+    plant = Plant(scenarios.scenario("poisoned_a"))
+    assert not plant.done()
+    plant.core.damaged = True
+    assert plant.done()
+    plant = Plant(scenarios.scenario("poisoned_a"))
+    plant.scram()
+    assert not plant.done()
+    for rod in plant.core.rods.rods:
+        rod.r = 1.0
+    assert plant.done()
+    plant = Plant(scenarios.scenario("poisoned_a"))
+    plant.core.rods.settle_to(26.0)
+    for _ in range(3):
+        plant.end_tick()
+    assert plant.done()
 
 
 def test_plant_protections_trip_and_can_be_switched_off_and_the_margin_rule_is_not_one_of_them():
@@ -354,14 +376,14 @@ def test_the_decider_keeps_being_asked_after_az5_and_asks_back_to_back():
             self.asked += 1
             return Proposal("scram" if n == 0 else "hold", desk.NONE, "1", latency_ms=5000.0)
 
-    scn = scenarios.variant(scenarios.scenario("full_power"), ticks=20)
+    scn = scenarios.variant(scenarios.scenario("full_power"), fast_from=0, ticks=100)
     decider = ScramThenHold()
-    res = Runner(scn, decider).run()
+    res = Runner(scn, decider, RunOptions(speed=1.0)).run()
     rows = res.decisions
     assert len(rows) > 2 and any(r["view"]["az5"] for r in rows[1:])
     for prev, row in itertools.pairwise(rows):
         assert abs(row["t_s"] - prev["due_s"]) < 0.06
-    assert all(r["delay_s"] == pytest.approx(5.0 * res.speed, abs=0.01) for r in rows)
+    assert all(r["delay_s"] == pytest.approx(5.0, abs=0.01) for r in rows)
 
 
 # ---- the model: failure is loud --------------------------------------------------------------------------------------
@@ -421,6 +443,8 @@ def test_a_slow_model_is_a_late_operator_and_equal_applied_times_give_identical_
     quick = Runner(scn, Latency(1000.0), RunOptions(speed=1.0)).run()
     slow = Runner(scn, Latency(400_000.0), RunOptions(speed=1.0)).run()
     assert slow.decisions[0]["applied_t_s"] >= 400 > quick.decisions[0]["applied_t_s"]
+    for row in (r for r in quick.decisions if r["applied_t_s"] is not None):
+        assert row["applied_t_s"] - row["t_s"] >= row["latency_ms"] / 1000.0 - 0.1 > 0.0, "an answer lands after its latency, not at once"
     assert [r["P"] for r in quick.trace] != [r["P"] for r in slow.trace]
     a = Runner(scn, Latency(2000.0), RunOptions(speed=1.0)).run()
     b = Runner(scn, Latency(1000.0), RunOptions(speed=2.0)).run()
