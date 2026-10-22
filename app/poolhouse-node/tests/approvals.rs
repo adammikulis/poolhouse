@@ -574,7 +574,7 @@ fn a_grant_entry_copied_from_an_approval_and_changed_counts_for_nothing() {
     let node = rig.node.lock().unwrap();
     let approved = node.approvals.get(id).cloned().unwrap();
     let (device, key, sig) = (node.cert.fingerprint(), phone.fingerprint(), decision["sig"].as_str().unwrap().to_string());
-    let entry = || poolhouse_node::approvals::challenge::grant_entries(&approved, &device, approved.decided_ms, &key, &sig).remove(0);
+    let entry = || poolhouse_node::approvals::challenge::grant_entries(&approved, &device, approved.decided_ms, &key, &sig, "approve").remove(0);
     let whole = entry();
     assert!(parse_issue(&whole).is_ok() && node.persons.signed(&key, &signing_bytes(&whole), &sig), "the entry the node wrote is read and verifies");
 

@@ -2,11 +2,15 @@
 
 use std::sync::Arc;
 
+use ed25519_dalek::{Signer, SigningKey};
 use poolhouse_node::gov::signer::RigSigner;
+use poolhouse_node::grants::authority::Authority;
+use poolhouse_node::grants::spec::ACTIONS;
 use poolhouse_node::peer::PeerClient;
-use serde_json::json;
+use serde_json::{json, Value};
 
 use super::gov::person;
+use super::grants::{Call, Person, Spec, HOUR};
 use super::netkit::{device, Dev};
 
 pub const ANN: u8 = 1;
@@ -76,6 +80,9 @@ pub fn found_for(dev: &Dev, signer: Arc<RigSigner>, policy: &str, project: &str)
     enrol_as_phone_keys(dev, &signer);
     dev.node.lock().unwrap().set_signer(signer);
     let reply = dev.ok("pool_create", "", &dev.token, json!({"title": "home", "policy": policy, "project": project}));
+    if !dev.token.is_empty() {
+        grant(dev, "demo", &dev.token, &[]);
+    }
     reply["pool"].as_str().unwrap().to_string()
 }
 
@@ -107,4 +114,91 @@ pub fn pass(dev: &Dev, ms: i64) {
     let mut n = dev.node.lock().unwrap();
     n.members.gov().unwrap().clock.advance_ms(ms);
     n.gov_tick().unwrap();
+}
+
+/// Ask for ``actions`` (any resource, an hour, as often as needed) as the session ``token`` of ``board``, and have ``decide`` answer each request
+/// from another session: the grants a pool's phone approves. ``decide`` builds the `approval_decide` params from the request as the asking session read it.
+pub fn approved(call: Call, board: &str, token: &str, actions: &[&str], decide: &dyn Fn(&Value) -> Value) {
+    static COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    for chunk in actions.chunks(poolhouse_node::approvals::challenge::MOST_ASKS) {
+        let asks: Vec<Value> = chunk.iter().map(|a| json!({"action": a, "resource": "*", "lasts_ms": HOUR})).collect();
+        let made = call("approval_request", board, token, json!({"asks": asks}));
+        assert_eq!(made["ok"], true, "ask for {chunk:?}: {made}");
+        let id = format!("approver-{}", COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
+        let carrier = call("register", board, "", json!({"model": "claude-sonnet-5-5", "harness": "claude-code", "session": id}));
+        let carrier = carrier["result"]["token"].as_str().expect("the approving session registers").to_string();
+        let done = call("approval_decide", "", &carrier, decide(&made["result"]));
+        assert_eq!(done["ok"], true, "approve {chunk:?}: {done}");
+    }
+}
+
+/// The seed among the first 256 whose key has the fingerprint ``fingerprint``.
+fn seed_of(fingerprint: &str) -> Option<u8> {
+    (0..=255u8).find(|s| poolhouse_node::gov::keys::fingerprint_of(&RigSigner::public(*s)) == fingerprint)
+}
+
+/// The authority key of the device's pool that a seed makes, as a person; the founder's (`ANN`) is enrolled here as a phone's when the device holds
+/// none yet.
+pub fn authority_person(dev: &Dev) -> Person {
+    let mut keys = Authority::of(&dev.node.lock().unwrap()).authority();
+    if keys.is_empty() {
+        enrol_phone_key(dev, ANN);
+        keys = Authority::of(&dev.node.lock().unwrap()).authority();
+    }
+    let seed = keys.iter().find_map(|f| seed_of(f)).expect("an authority key made from a seed");
+    Person { key: SigningKey::from_bytes(&[seed; 32]) }
+}
+
+/// The pool's phone approves ``only`` (every action when empty) for the session ``token`` of ``board``, as one request for each eight.
+pub fn grant(dev: &Dev, board: &str, token: &str, only: &[&str]) {
+    let approver = authority_person(dev);
+    let actions: Vec<&str> = ACTIONS.iter().copied().filter(|a| only.is_empty() || only.contains(a)).collect();
+    approved(&mut |m, b, t, p| dev.call(m, b, t, p), board, token, &actions, &|made| approver.decision(made));
+}
+
+/// The issue row of ``spec`` as an approval writes it, for the node ``node`` and the key ``signer`` (the fingerprint the row names) that
+/// ``sign`` answers for: built by hand, so a test can place it on a device that did not approve it or sign it with a key that is no admin's.
+pub fn approved_row(node: &str, board: &str, gid: &str, spec: &Spec, signer: &str, sign: &dyn Fn(&[u8]) -> String) -> serde_json::Map<String, Value> {
+    let (at, start) = (super::grants::now_ms(), super::grants::now_ms().checked_add_signed(spec.from_ms).unwrap());
+    let lasts = (spec.until_ms - spec.from_ms) as u64;
+    let mut ask = json!({"action": spec.action, "device": spec.device, "gid": gid, "lasts_ms": lasts, "resource": spec.resource, "review": spec.review});
+    if let Some(n) = spec.uses {
+        ask["uses"] = json!(n);
+    }
+    let mut body = serde_json::Map::new();
+    for (k, v) in [("op", json!("issue")), ("board", json!(board)), ("gid", json!(gid)), ("to", spec.to.clone()), ("action", json!(spec.action)),
+                   ("scope", json!({"board": board, "device": spec.device, "resource": spec.resource})), ("at_ms", json!(start)),
+                   ("until_ms", json!(start + lasts)), ("person", json!(signer)),
+                   ("approval", json!({"id": format!("ap-{:016x}", at), "node": node, "nonce": format!("{:032x}", at), "created_ms": start - 1000, "expires_ms": start + 600_000,
+                                       "text": "The pool's phone approved this grant.", "grants": [ask], "index": 0,
+                                       "context": poolhouse_node::approvals::context::Context::default().object(), "decision": "approve"}))] {
+        body.insert(k.into(), v);
+    }
+    if let Some(n) = spec.uses {
+        body.insert("uses".into(), json!(n));
+    }
+    if spec.review {
+        body.insert("conditions".into(), json!({"review": true}));
+    }
+    let sig = sign(&poolhouse_node::approvals::challenge::grant_bytes(&body));
+    body.insert("sig".into(), json!(sig));
+    body
+}
+
+/// Append to the log of ``board`` on ``dev`` an issue row of ``spec`` that the pool's authority key approved.
+pub fn inject_approved(dev: &Dev, board: &str, gid: &str, spec: &Spec, actor: &str) {
+    let approver = authority_person(dev);
+    let body = approved_row(&dev.fp(), board, gid, spec, &approver.fingerprint(), &|bytes| poolhouse_node::fsutil::hex(&approver.key.sign(bytes).to_bytes()));
+    dev.node.lock().unwrap().host(board).unwrap().board.append_person(poolhouse_node::row::Kind::Grant, actor, Value::Object(body)).unwrap();
+}
+
+/// The test person (the key a node process founds pools of) approves ``only`` (every action when empty) for the session ``token`` of ``board`` on the
+/// node process whose state directory is ``state``.
+pub fn approve_process(state: &std::path::Path, board: &str, token: &str, only: &[&str]) {
+    let mut call = |m: &str, b: &str, t: &str, p: Value| match poolhouse_node::client::Client::connect(state).and_then(|mut c| c.call(m, b, t, p)) {
+        Ok(v) => json!({"ok": true, "result": v}),
+        Err(e) => json!({"ok": false, "error": {"code": e.code(), "message": e.to_string()}}),
+    };
+    let actions: Vec<&str> = ACTIONS.iter().copied().filter(|a| only.is_empty() || only.contains(a)).collect();
+    approved(&mut call, board, token, &actions, &|made| super::grants::person().decision(made));
 }

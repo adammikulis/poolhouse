@@ -35,6 +35,8 @@ FOLDER = "test-node"
 CARGO_FOLDER = "test-cargo"
 CARGO_ENV = "DEV_TEST_CARGO_DIR"
 """Names the shared Rust build folder instead of the account's ``~/.cache/test-cargo``."""
+FIXTURES = ("tests/fixtures/phone-approval-vectors.json",)
+"""Files of the repository, outside the Rust workspace, that a Rust test includes at compile time."""
 MEMBERS = ("Cargo.toml", "Cargo.lock", "poolhouse-node", "phone-governance-jni", "src-tauri", "poolhouse-authority")
 KEY_LENGTH = 20
 IDLE_S = 3 * 24 * 3600
@@ -129,6 +131,15 @@ def stage(app: Path, files: list[str], work: Path) -> None:
             found.unlink()
 
 
+def stage_fixtures(repository: Path, work: Path) -> None:
+    """Copy the repository files in ``FIXTURES`` beside the staged workspace, where the tests' compile-time includes look for them."""
+    for name in FIXTURES:
+        target = work / name
+        if (repository / name).is_file() and (not target.is_file() or digest(target) != digest(repository / name)):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(repository / name, target)
+
+
 def prune(base: Path, keep: str) -> None:
     """Remove the binaries nothing has asked for in ``IDLE_S`` seconds; one that goes while this looks is not an error."""
     for folder in base.iterdir():
@@ -190,6 +201,7 @@ def shared_build(app: Path, *, root: Path | None = None) -> SharedBuild:
     with only_one(base / "stage.lock", announce=lambda _text: None, note="staging the Rust workspace for the tests"):
         workspace_wrapper(staged.parent)
         stage(app, files, staged)
+        stage_fixtures(app.parent, staged.parent)
         for folder in (staged.parent, target):
             os.utime(folder)
         prune(base / "workspaces", key)

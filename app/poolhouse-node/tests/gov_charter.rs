@@ -68,7 +68,8 @@ fn a_phone_key_founds_a_pool_and_its_signature_admits_a_device() {
     sign_phone(&mut act, &phone);
     assert_eq!(take(&mut g, act), Ingest::Accepted);
     assert!(is_member(&g, &laptop), "an admit the phone signed puts the device in the pool");
-    assert!(g.admin_scope(&fingerprint_of("p256", &phone.public).unwrap()), "a grant scoped to the pools this key administers matches");
+    let fp = fingerprint_of("p256", &phone.public).unwrap();
+    assert!(g.authority_keys().iter().any(|k| k.fingerprint() == fp), "the phone's key is an authority key of the pool");
 }
 
 #[test]

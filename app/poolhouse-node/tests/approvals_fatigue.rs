@@ -950,7 +950,7 @@ fn a_grant_written_by_an_approval_carries_the_context_and_an_entry_without_or_wi
     ok(rig.phone("POST", "decide", "", decision.clone()).1);
     let node = rig.node.lock().unwrap();
     let approved = node.approvals.get(id).cloned().unwrap();
-    let entry = || poolhouse_node::approvals::challenge::grant_entries(&approved, &node.cert.fingerprint(), approved.decided_ms, &phone.fingerprint(), decision["sig"].as_str().unwrap()).remove(0);
+    let entry = || poolhouse_node::approvals::challenge::grant_entries(&approved, &node.cert.fingerprint(), approved.decided_ms, &phone.fingerprint(), decision["sig"].as_str().unwrap(), "approve").remove(0);
     assert!(parse_issue(&entry()).is_ok());
     assert_eq!(entry()["approval"]["context"], approved.context.object());
     let mut dropped = entry();

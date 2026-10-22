@@ -88,6 +88,9 @@ impl Dev {
 
     /// The test person grants the session ``name`` of ``board`` (``token`` is its own) the actions ``only`` names, or all of them.
     pub fn allow(&self, board: &str, token: &str, name: &str, only: &[&str]) {
+        if !self.node.lock().unwrap().members.is_unfounded() {
+            return super::govnode::grant(self, board, token, only);
+        }
         let mut call = |m: &str, b: &str, t: &str, p: Value| self.call(m, b, t, p);
         super::grants::enrolled(self.dir.path(), &mut call, token);
         super::grants::person().allow(&mut call, board, token, name, only);
@@ -154,7 +157,9 @@ impl Dev {
     pub fn join_with_code(&self, joiner: &Dev) -> Value {
         self.found_if_unfounded();
         let code = self.ok("add_device", "", &self.token, json!({}))["code"].as_str().unwrap().to_string();
-        joiner.ok("join_pool", "", &joiner.token, json!({"host": "127.0.0.1", "port": self.net.port, "passphrase": code}))
+        let joined = joiner.ok("join_pool", "", &joiner.token, json!({"host": "127.0.0.1", "port": self.net.port, "passphrase": code}));
+        super::govnode::grant(joiner, "demo", &joiner.token, &[]);
+        joined
     }
 }
 

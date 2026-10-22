@@ -637,15 +637,16 @@ fn a_key_that_floods_admin_acts_replaces_its_own_oldest_and_never_the_acts_of_an
 }
 
 #[test]
-fn the_scope_of_an_admin_fingerprint_matches_a_pool_only_where_the_key_is_listed_and_accepted() {
+fn the_authority_keys_of_a_pool_are_the_strong_admin_keys_listed_now_and_accepted() {
     let (_d, mut g) = pool(&[strong(A, "ann")], Policy::Secure);
     let fp = |seed: u8| poolhouse_node::gov::keys::fingerprint_of(&public(seed));
-    assert!(g.admin_scope(&fp(A)) && !g.admin_scope(&fp(B)));
+    let holds = |g: &poolhouse_node::gov::pool::GovPool, f: &str| g.authority_keys().iter().any(|k| k.fingerprint() == f);
+    assert!(holds(&g, &fp(A)) && !holds(&g, &fp(B)));
     put_add(&mut g, strong(B, "ben"), &[A]);
-    assert!(!g.admin_scope(&fp(B)), "a key asked to be listed is not listed until the add takes effect");
+    assert!(!holds(&g, &fp(B)), "a key asked to be listed is not listed until the add takes effect");
     advance(&mut g, 25 * HOUR);
-    assert!(g.admin_scope(&fp(B)));
-    assert!(!g.admin_scope(&"ab".repeat(32)));
+    assert!(holds(&g, &fp(B)));
+    assert!(!holds(&g, &"ab".repeat(32)));
 }
 
 #[test]

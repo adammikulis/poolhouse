@@ -4,6 +4,9 @@
 //! The acceptance is the key's signature over the pool it joins, the charter it follows, its algorithm, role, strength and the person it
 //! belongs to, so a key is listed only by its holder: adding a key needs the added key's signature as well as the admins'.
 
+use std::collections::BTreeMap;
+use std::sync::Mutex;
+
 use ed25519_dalek::VerifyingKey;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -17,6 +20,8 @@ const ACCEPT_DOMAIN: &str = "poolhouse/pool-accept/v2\n";
 /// The longest label and person name a key carries.
 pub const MOST_LABEL: usize = 40;
 const MOST_PERSON: usize = 64;
+/// How many verdicts of `accepted_memo` are kept.
+const MEMO_MOST: usize = 1024;
 /// Half the order of the P-256 group, rounded down: the largest `s` a canonical signature carries.
 const HALF_ORDER: [u8; 32] = [
     0x7f, 0xff, 0xff, 0xff, 0x80, 0x00, 0x00, 0x00, 0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xde, 0x73, 0x7d, 0x56, 0xd3, 0x8b, 0xcf, 0x42, 0x79, 0xdc, 0xe5, 0x61, 0x7e, 0x31,
@@ -173,6 +178,23 @@ impl AdminKey {
     /// Whether the key itself accepted this listing.
     pub fn accepted(&self, anchor: &str, prev: &str) -> bool {
         self.alg.verifies(&self.key, &self.acceptance_message(anchor, prev), &self.acceptance)
+    }
+
+    /// `accepted`, remembering the verdicts: a verification is a pure function of the key, its acceptance and what it accepts.
+    pub fn accepted_memo(&self, anchor: &str, prev: &str) -> bool {
+        static MEMO: Mutex<BTreeMap<String, bool>> = Mutex::new(BTreeMap::new());
+        let id = sha256_hex(&self.acceptance_message(anchor, prev).into_iter().chain(self.acceptance.bytes()).collect::<Vec<u8>>());
+        if let Some(verdict) = MEMO.lock().ok().and_then(|m| m.get(&id).copied()) {
+            return verdict;
+        }
+        let verdict = self.accepted(anchor, prev);
+        if let Ok(mut memo) = MEMO.lock() {
+            if memo.len() >= MEMO_MOST {
+                memo.clear();
+            }
+            memo.insert(id, verdict);
+        }
+        verdict
     }
 
     /// The shape of the entry, not its signatures.

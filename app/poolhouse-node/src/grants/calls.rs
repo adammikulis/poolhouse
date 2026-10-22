@@ -9,9 +9,10 @@ use crate::node::Node;
 use crate::row::{canonical, is_line, Kind, Row};
 use crate::rules::held_back;
 
+use super::authority::Authority;
 use super::book::{standing, Grant};
 use super::person::verifies;
-use super::spec::{self, signing_bytes, ACTIONS, FLOORS, PORTABLE, SKEW_MS};
+use super::spec::{self, signing_bytes, ACTIONS, DEVICE_LOCAL, FLOORS, PORTABLE, SKEW_MS};
 
 pub const METHODS: [&str; 7] = ["grant_issue", "grant_revoke", "grants", "grant_log", "person_enroll", "person_unenroll", "person_keys"];
 const MOST_LISTED: usize = 200;
@@ -91,6 +92,9 @@ fn issue(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> R
     whole.insert("sig".into(), json!(sig));
     let parsed = spec::parse_issue(&whole)?;
     fresh(node, p, "at_ms")?;
+    if Authority::of(node).pool_wide(&parsed.action) {
+        return Err(Error::Denied("In a pool your phone gives standing grants: ask for one and tap approve.".into()));
+    }
     if !node.persons.signed(&parsed.person, &signing_bytes(&body), sig) {
         return Err(Error::Denied("a grant counts only when a person key enrolled on this node signed it".into()));
     }
@@ -109,14 +113,18 @@ fn revoke(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> 
     whole.insert("sig".into(), json!(sig));
     let named = spec::parse_revoke(&whole)?;
     fresh(node, p, "at_ms")?;
-    if !node.persons.signed(&named.person, &signing_bytes(&body), sig) {
+    let bytes = signing_bytes(&body);
+    let authority = Authority::of(node);
+    let narrowing = authority.narrows(&named.person, &bytes, sig);
+    if !narrowing && !node.persons.signed(&named.person, &bytes, sig) {
         return Err(Error::Denied("a revocation counts only when a person key enrolled on this node signed it".into()));
     }
-    let found = standing(node, board)?.grants.iter().find(|g| g.issue.gid == named.gid).map(|g| g.status == "revoked");
+    let found = standing(node, board)?.grants.iter().find(|g| g.issue.gid == named.gid).map(|g| (g.status == "revoked", g.issue.action.clone()));
     match found {
         None => return Err(Error::Invalid("no grant of that id is on the board".into())),
-        Some(true) => return Ok(json!({"gid": named.gid, "revoked": true, "entry": ""})),
-        Some(false) => {}
+        Some((true, _)) => return Ok(json!({"gid": named.gid, "revoked": true, "entry": ""})),
+        Some((false, action)) if authority.pool_wide(&action) && !narrowing => return Err(Error::Denied("Only an admin key of this pool ends a grant of the pool.".into())),
+        Some(_) => {}
     }
     let row = write(node, board, &actor, body, sig)?;
     Ok(json!({"gid": named.gid, "revoked": true, "entry": row.id()}))
@@ -136,8 +144,12 @@ fn listing(node: &mut Node, board: &str, token: &str) -> Result<Value> {
     let rows: Vec<Value> = st.grants.iter().take(MOST_LISTED).map(|g| shown(g, super::names(registry, &access.actor, &g.issue.to))).collect();
     let ignored: Vec<Value> = st.ignored.iter().take(50).map(|(id, why)| json!({"entry": id, "why": why})).collect();
     let keys: Vec<&String> = node.persons.all().keys().collect();
-    Ok(json!({"grants": rows, "ignored": ignored, "persons": keys, "now_ms": node.now_ms(),
-              "registry": {"actions": ACTIONS, "floors": FLOORS, "portable": PORTABLE}, "device": node.cert.fingerprint()}))
+    let authority = Authority::of(node);
+    let may_issue: Vec<&String> = keys.iter().copied().filter(|_| !authority.governed()).collect();
+    let may_revoke: Vec<&String> = keys.iter().copied().filter(|f| authority.may_revoke(f)).collect();
+    Ok(json!({"grants": rows, "ignored": ignored, "persons": keys, "now_ms": node.now_ms(), "governance": if authority.governed() { "governed" } else { "unfounded" },
+              "authority": authority.authority(), "may_issue": may_issue, "may_revoke": may_revoke,
+              "registry": {"actions": ACTIONS, "floors": FLOORS, "portable": PORTABLE, "device_local": DEVICE_LOCAL}, "device": node.cert.fingerprint()}))
 }
 
 fn log(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {

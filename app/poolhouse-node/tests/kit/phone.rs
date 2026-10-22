@@ -49,6 +49,26 @@ impl FakePhone {
         hex(self.signing.sign(&SystemRandom::new(), bytes).unwrap().as_ref())
     }
 
+    /// A signature over ``bytes`` in the canonical low-`s` form that a charter's acceptance needs.
+    pub fn sign_low(&self, bytes: &[u8]) -> String {
+        loop {
+            let sig = self.sign(bytes);
+            if poolhouse_node::gov::keys::Alg::P256.sig_shape(&sig) {
+                return sig;
+            }
+        }
+    }
+
+    /// A signature over ``bytes`` in the high-`s` form, which the curve accepts and a charter does not.
+    pub fn sign_high(&self, bytes: &[u8]) -> String {
+        loop {
+            let sig = self.sign(bytes);
+            if !poolhouse_node::gov::keys::Alg::P256.sig_shape(&sig) {
+                return sig;
+            }
+        }
+    }
+
     /// The body of its `add` request for the node ``node_fp`` with the code ``secret``.
     pub fn add_body(&self, node_fp: &str, secret: &str) -> Value {
         let mut p = Map::new();

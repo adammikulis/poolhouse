@@ -218,6 +218,7 @@ fn a_charter_copied_to_another_device_makes_no_pool_and_no_member_there() {
     assert_ne!(b.pool(), founded["pool"].as_str().unwrap());
     assert_eq!(b.status()["governance"]["mode"], "unfounded");
     assert!(b.node.lock().unwrap().members.get(&a.fp()).is_none(), "and made no member of the device it names");
+    kit::govnode::grant(&a, "demo", &a.token, &["pool_create"]);
     let again = refusal(&a.call("pool_found", "", &a.token, json!({"act": act})));
     assert!(again.contains("already runs a pool"), "a replay on the device that founded it founds no second pool: {again}");
     assert_eq!(a.pool(), founded["pool"].as_str().unwrap());

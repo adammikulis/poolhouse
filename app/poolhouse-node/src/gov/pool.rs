@@ -21,7 +21,7 @@ use crate::membership::{Device, Policy, Status};
 use super::act::{Act, ActSig, SigKind, LONG_WINDOW_MS};
 use super::body::{self, Body};
 use super::chain::{self, Chain, Seen};
-use super::charter::{Charter, Class};
+use super::charter::{Charter, Class, Mode};
 use super::clock::Awake;
 use super::keys::{AdminKey, Role, Strength};
 use super::roster::{self, Roster};
@@ -422,15 +422,22 @@ impl GovPool {
         Ok(())
     }
 
-    /// Whether the key with this fingerprint is listed in the charter now in force and accepted being listed: what a grant scoped to
-    /// the pools an admin key administers (`admin:<fingerprint>`) matches.
-    pub fn admin_scope(&self, fingerprint: &str) -> bool {
+    /// The strong admin keys of the charter in force whose own acceptance verifies at the epoch they were listed at; none unless admins run the pool.
+    pub fn authority_keys(&self) -> Vec<&AdminKey> {
         let epochs = &self.state.chain.epochs;
         let accepted = |k: &AdminKey| match usize::try_from(k.since).ok().and_then(|n| n.checked_sub(2)) {
-            None => k.accepted(&self.genesis.anchor(), ""),
-            Some(before) => epochs.get(before).is_some_and(|e| k.accepted(&self.id, &e.hash)),
+            None => k.accepted_memo(&self.genesis.anchor(), ""),
+            Some(before) => epochs.get(before).is_some_and(|e| k.accepted_memo(&self.id, &e.hash)),
         };
-        epochs.last().is_some_and(|e| e.charter.admins.iter().any(|k| k.fingerprint() == fingerprint && accepted(k)))
+        match epochs.last() {
+            Some(e) if e.charter.mode == Mode::Admins => e.charter.strong().filter(|k| accepted(k)).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// The admin-role keys the pool lists now or listed in any epoch: the keys whose revocations count.
+    pub fn narrowing_keys(&self) -> Vec<&AdminKey> {
+        self.state.chain.epochs.iter().flat_map(|e| e.charter.admins.iter()).filter(|k| k.role == Role::Admin).collect()
     }
 
     /// Hand one act to the pool, ``wall_ms`` being this device's wall clock (read only to refuse an act dated in the future).

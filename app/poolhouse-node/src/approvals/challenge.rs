@@ -2,8 +2,8 @@
 //!
 //! The signed bytes are a domain line and the canonical JSON (`row::canonical`) of the challenge: the node, the board, the
 //! requesting session, the asks, the plain-words text, a nonce, the times, the decision and the key. A grant entry written by an
-//! approval carries the asks and the text in its `approval` object, so any device that holds the key rebuilds the bytes from the
-//! entry and checks the one signature the person made.
+//! approval carries the asks, the text and the decision in its `approval` object, so any device that holds the key rebuilds the
+//! bytes from the entry and checks the one signature the person made.
 
 use serde_json::{json, Map, Value};
 
@@ -20,7 +20,7 @@ pub const LIST_DOMAIN: &str = "poolhouse/approval-list/v1\n";
 /// The most bytes of text a request carries, and the most asks.
 pub const MAX_TEXT: usize = 6000;
 pub const MOST_ASKS: usize = 8;
-const APPROVAL_KEYS: [&str; 9] = ["id", "node", "nonce", "created_ms", "expires_ms", "text", "grants", "index", "context"];
+const APPROVAL_KEYS: [&str; 10] = ["id", "node", "nonce", "created_ms", "expires_ms", "text", "grants", "index", "context", "decision"];
 const ASK_KEYS: [&str; 7] = ["action", "device", "gid", "lasts_ms", "resource", "review", "uses"];
 
 /// The challenge of a request on the node whose certificate fingerprint is ``node``: everything but the decision and the key.
@@ -55,7 +55,7 @@ pub fn grant_bytes(map: &Map<String, Value>) -> Vec<u8> {
         let challenge = json!({"v": 1, "op": "approval", "id": ap.get("id")?, "node": ap.get("node")?, "board": map.get("board")?, "session": session,
                                "action": {"kind": GRANTS, "grants": ap.get("grants")?}, "text": ap.get("text")?, "nonce": ap.get("nonce")?,
                                "created_ms": ap.get("created_ms")?, "expires_ms": ap.get("expires_ms")?, "context": ap.get("context")?});
-        Some(bytes(&challenge, "approve", map.get("person")?.as_str()?))
+        Some(bytes(&challenge, ap.get("decision")?.as_str()?, map.get("person")?.as_str()?))
     };
     rebuilt().unwrap_or_else(|| b"an approval entry that cannot be read".to_vec())
 }
@@ -74,6 +74,10 @@ pub fn check_entry(map: &Map<String, Value>, issue: &Issue) -> Result<()> {
     let Some(ap) = map.get("approval").and_then(Value::as_object) else { return bad("approval is an object") };
     if ap.len() != APPROVAL_KEYS.len() || !APPROVAL_KEYS.iter().all(|k| ap.contains_key(*k)) {
         return bad("an approval names its id, node, nonce, times, text, asks and which ask this is");
+    }
+    let repeat = Context::from_object(&ap["context"]).is_some_and(|c| c.repeat > 0);
+    if ap["decision"].as_str() != Some(if repeat { "approve_repeat" } else { "approve" }) {
+        return bad("an approval is approve, or approve_repeat when the scope was declined before");
     }
     let id_ok = ap["id"].as_str().and_then(|s| s.strip_prefix("ap-")).is_some_and(|h| hex_of(&Value::String(h.into()), 16));
     let (created, expires) = (ap["created_ms"].as_u64(), ap["expires_ms"].as_u64());
@@ -105,8 +109,8 @@ pub fn check_entry(map: &Map<String, Value>, issue: &Issue) -> Result<()> {
     Ok(())
 }
 
-/// The asks of ``a`` written as the `issue` entries it approves, starting at ``at_ms`` and signed by ``signer`` with ``sig``.
-pub fn grant_entries(a: &Approval, node: &str, at_ms: u64, signer: &str, sig: &str) -> Vec<Map<String, Value>> {
+/// The asks of ``a`` written as the `issue` entries it approves with ``decision``, starting at ``at_ms`` and signed by ``signer`` with ``sig``.
+pub fn grant_entries(a: &Approval, node: &str, at_ms: u64, signer: &str, sig: &str, decision: &str) -> Vec<Map<String, Value>> {
     let asks = a.asks();
     asks.iter().enumerate().filter_map(|(index, ask)| {
         let lasts = ask["lasts_ms"].as_u64()?;
@@ -127,7 +131,7 @@ pub fn grant_entries(a: &Approval, node: &str, at_ms: u64, signer: &str, sig: &s
         }
         body.insert("person".into(), json!(signer));
         body.insert("approval".into(), json!({"id": a.id, "node": node, "nonce": a.nonce, "created_ms": a.created_ms, "expires_ms": a.expires_ms,
-                                              "text": a.text, "grants": asks, "index": index, "context": a.context.object()}));
+                                              "text": a.text, "grants": asks, "index": index, "context": a.context.object(), "decision": decision}));
         body.insert("sig".into(), json!(sig));
         Some(body)
     }).collect()

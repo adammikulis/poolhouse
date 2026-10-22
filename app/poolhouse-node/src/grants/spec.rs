@@ -14,6 +14,14 @@ pub const ACTIONS: [&str; 18] = [
 ];
 /// The actions another device's grant may cover (when that device is trusted); every other action is this device's alone.
 pub const PORTABLE: [&str; 4] = ["task_authority", "note_verify", "sync_now", "shard_call"];
+/// The actions whose whole effect stays in this device's own state; in a governed pool a key enrolled here grants them, and every other
+/// action needs an admin key of the pool.
+pub const DEVICE_LOCAL: [&str; 5] = ["link_read", "link_remove", "source_add", "quarantine_release", "pool_leave"];
+
+/// Whether ``action`` reaches beyond this device: every action that is not device-local, including one added later.
+pub fn pool_wide(action: &str) -> bool {
+    !DEVICE_LOCAL.contains(&action)
+}
 /// Never granted, whatever a board entry says, whoever signed it.
 pub const FLOORS: [&str; 14] = [
     "push_main", "merge_main", "release_main", "tag_release", "force_push", "act_as_person", "agent_is_human", "keystore", "second_gpu", "forge",
@@ -285,6 +293,17 @@ mod tests {
         }
         assert!(PORTABLE.iter().all(|a| ACTIONS.contains(a)));
         assert!(matches!(grantable("format_disk"), Err(Error::Invalid(_))));
+    }
+
+    #[test]
+    fn five_actions_are_device_local_and_every_other_action_reaches_the_pool() {
+        assert!(DEVICE_LOCAL.iter().all(|a| ACTIONS.contains(a) && !pool_wide(a)));
+        let wide: Vec<&&str> = ACTIONS.iter().filter(|a| pool_wide(a)).collect();
+        assert_eq!(wide.len(), ACTIONS.len() - 5, "{wide:?}");
+        for action in ["file_delete", "shard_consent", "shard_call", "task_authority", "note_verify", "sync_now", "land_trust", "member_remove", "add_device", "join_pool", "pool_create", "admin_manage", "link_write"] {
+            assert!(pool_wide(action), "{action}");
+        }
+        assert!(pool_wide("an_action_added_later"));
     }
 
     #[test]

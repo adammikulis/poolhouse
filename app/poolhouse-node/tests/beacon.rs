@@ -86,6 +86,7 @@ fn under_open_a_device_in_no_pool_joins_the_pool_whose_beacon_it_hears_and_syncs
     assert!(!a.pool().is_empty(), "the pool they share was founded by a person");
     let by = [a.member(&b.fp()).unwrap()["by"].clone(), b.member(&a.fp()).unwrap()["by"].clone()];
     assert!(by.contains(&json!("open")), "enrolment is recorded as automatic: {by:?}");
+    kit::govnode::grant(&b, "demo", &b.token, &["sync_now"]);
     a.ok("sync_now", "", &a.token, json!({}));
     b.ok("sync_now", "", &b.token, json!({}));
     for (d, t) in [(&a, &at), (&b, &bt)] {

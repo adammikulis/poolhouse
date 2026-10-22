@@ -6,6 +6,7 @@ use crate::approvals::fatigue::{kind_of, requester, Cause, Outcome, Requester};
 use crate::approvals::{challenge, summary, Approval, APPROVED, CANCELLED, DENIED, EXPIRED, FAILED, GRANTS, HELD, HOLD, PENDING, PHONE_ADD, PHONE_REMOVE};
 use crate::error::{Error, Result};
 use crate::fsutil::sha256_hex;
+use crate::grants::authority::Authority;
 use crate::grants::spec::parse_issue;
 use crate::node::Node;
 use crate::row::Kind;
@@ -178,6 +179,9 @@ pub fn decide(node: &mut Node, d: &Decision) -> Result<Value> {
     if node.persons.get(d.key).is_none() {
         return Err(refuse_key(node, d.key));
     }
+    if !Authority::of(node).decides(d.key) {
+        return denied("That key is not an admin key of this pool, so nothing was decided.");
+    }
     if !d.text_sha256.is_empty() && d.text_sha256 != sha256_hex(a.text.as_bytes()) {
         return denied("The text you were shown is not the text of this request, so nothing was signed.");
     }
@@ -253,7 +257,7 @@ fn approved(node: &mut Node, a: &Approval, d: &Decision, now: u64) -> Result<()>
         GRANTS => {
             // Every entry is checked before the first is written, so a refusal leaves no ask live while the agent is told none is.
             let mut entries = Vec::new();
-            for body in challenge::grant_entries(a, &node.cert.fingerprint(), now, d.key, d.sig) {
+            for body in challenge::grant_entries(a, &node.cert.fingerprint(), now, d.key, d.sig, d.decision) {
                 parse_issue(&body)?;
                 let gid = body.get("gid").and_then(Value::as_str).unwrap_or("").to_string();
                 let body = Value::Object(body);

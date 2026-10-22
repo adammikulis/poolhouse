@@ -94,8 +94,10 @@ fn a_node_killed_with_sigkill_while_taking_rows_recovers_and_converges() {
     }
     let (a_der, b_der) = (kit::govnode::cert_of(a.state.path()), kit::govnode::cert_of(b.state.path()));
     kit::govnode::found_remote(&mut |m, p| a.call(m, "", &at, p), &a_der, poolhouse_node::membership::Policy::Secure, &[b_der]);
+    kit::govnode::approve_process(a.state.path(), "demo", &at, &["add_device", "pool_create"]);
     let code = a.call("add_device", "", &at, json!({"presigned": true}))["code"].as_str().unwrap().to_string();
     b.call("join_pool", "", &bt, json!({"host": "127.0.0.1", "port": a.port(), "passphrase": code}));
+    kit::govnode::approve_process(b.state.path(), "demo", &bt, &["join_pool", "sync_now"]);
     let copy = b.log_of(&a_origin);
 
     // B starts taking A's rows; kill it the moment its copy has begun to grow.

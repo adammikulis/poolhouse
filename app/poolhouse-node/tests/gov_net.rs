@@ -357,6 +357,7 @@ fn a_window_opened_with_no_signer_on_the_node_admits_only_the_device_an_admin_al
     enrol_phone_key(&a, ANN);
     let charter = charter_for(&a, &[strong(ANN, "ann")], poolhouse_node::membership::Policy::Secure);
     a.ok("pool_found", "", &a.token, json!({"act": found_act(&charter)}));
+    kit::govnode::grant(&a, "demo", &a.token, &["add_device"]);
     let draft = a.ok("pool_draft", "", &a.token, json!({"kind": "admit", "body": admit_body(&b.net.me, "dev", "join-code", "")}));
     let mut act: Act = serde_json::from_value(draft["act"].clone()).unwrap();
     sign(&mut act, ANN);
