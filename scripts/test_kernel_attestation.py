@@ -75,7 +75,7 @@ class Attestation:
     def prepare(self, arguments: list[str]) -> None:
         from test_kernel_git import observe
         self.git_observation = observe(self.confined.control)
-        self.denied = testslots_rpc.Admission(False)
+        self.denied = testslots_rpc.Admission()
         target_code = "import signal,time,os;signal.signal(signal.SIGUSR1,signal.SIG_IGN);os.write(1,b'r');time.sleep(3600)"
         self.target = subprocess.Popen([sys.executable, "-I", "-S", "-c", target_code],
                                        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,

@@ -83,7 +83,7 @@ class TaintRail(Base):
         if sink.capability == Capability.READ:
             arguments = addresses(arguments)
             sink = Sink(Capability.EGRESS, sink.args, sink.other, sink.result)
-        if not arguments:
+        if not arguments and not needs_intent:
             return Proceed()
         found = judge(arguments, sink, schema_for(context.tools, call.name), ledger,
                       self.registries)

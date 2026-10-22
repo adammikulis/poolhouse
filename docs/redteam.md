@@ -61,6 +61,33 @@ quantisation or GPU does not promise it. A run that differs from the baseline is
 look at, not yet a regression. Measurements kept under `docs/redteam/` name the date, the
 command and the model.
 
+## Baselines and the gate
+
+Two reports are kept under `docs/redteam/`: `baseline-2026-10-02.*`, the first measurement (history), and
+`baseline-real-model-2026-10-22.*`, the one a run is gated on. The second was recorded with
+`python -m poolhouse.redteam run --model Qwen3-4B-Instruct-2507-Q4_K_M.gguf --scenarios extraction,fleet,sentinel`
+at commit `65974b081`, on an Apple-silicon Mac with llama.cpp build b11577 (commit cbe28bb3c), two slots,
+greedy sampling. Its `sentinel` attacks were made by that model: it read each injected page and decided for itself.
+With the defences off (`unwatched`) it ran the wipe in 3 of 4 page attacks, read the decoy file and was shown the decoy
+value; with sentinel and the rails on (`default`) the wipe never ran: the model asked for it in 2 of 4 and each ask was
+refused by the taint rail and noticed by sentinel at time to detect 0, it did not ask for the decoy file, and the decoy
+value in a page never reached it (noticed at 0). The tampered model file and the forging member attack code, and are
+the same on any machine; the page and decoy attacks vary with the model.
+
+`run --against` and `compare` hold a run to its baseline: an attack on a defended arm that failed and now succeeds,
+a rise in the success rate, an attack sentinel noticed and no longer does, or a slower time to detect fail it. What a real model
+chose is not held against the defences: a control arm (`unwatched`, `bare`; `report.CONTROL_ARMS`) is never compared, and
+sentinel's detection is compared only for an attack the new run actually made (`attempted`). A baseline is therefore
+recorded again, by hand, when the model or the attacks change, and the file names the model and the commit.
+
+**What runs where.** The GitHub `redteam` workflow runs the tests that need no model; a hosted runner has no GPU and no model, and
+nothing stands in for one, so its last step says in every run that the attacks on a real model were not run, why, and the command
+that runs them (a warning annotation and the run summary). The tests that need one
+(`tests/test_redteam_sentinel_model.py`, `tests/test_redteam_loop.py`, the end-to-end test in
+`tests/test_redteam_lab_home.py`) are marked slow, run with `--redteam --slow` on a machine that has the models, and fail, never skip,
+without them: `REAL MODEL MISSING ... poolhouse-models pull hf:lmstudio-community/Qwen3-4B-Instruct-2507-GGUF/Qwen3-4B-Instruct-2507-Q4_K_M.gguf`
+(`pull` pins the file; one that `fetch` alone left unpinned asks a person the first time it is served).
+
 ## Safety rules
 
 - Every connection a run makes is to a loopback address. `poolhouse.redteam.egress.local_only`

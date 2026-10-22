@@ -1,7 +1,10 @@
 """Model output is screened before it is returned or stored, a poisoned compaction summary is held
 and never fed back, a suspect credential is left out of every child's environment, and an MCP
-server sentinel holds is not connected. Real Agent loop with the scripted server, real compaction,
-real child processes, real sentinel store."""
+server sentinel holds is not connected. Real Agent loop with the canned server, real compaction,
+real child processes, real sentinel store.
+
+These tests exercise the loop and the sentinel's screens, not a model: the replies are scripted (a reply that
+carries a secret, a summary that repeats held content), each carrying the canned marker."""
 
 from __future__ import annotations
 
@@ -22,7 +25,7 @@ from poolhouse.agent.summarise import model_summarizer
 from poolhouse.agent.watched import Watch
 from poolhouse.client import Client
 from poolhouse.sentinel import Mode, Sentinel, State, human
-from poolhouse.testing.tool_server import ToolCallingServer, Turn
+from poolhouse.testing.canned import CannedServer, Turn, unmarked
 from tests.sandbox_kit import no_sandbox_here, policy, seatbelt  # noqa: F401
 
 LEAK = "here is a key: hf_aB3dE5gH7jK9mN1pQ3sT5vW7yZ9bC1dE3fG"
@@ -34,7 +37,7 @@ def person(record):
 
 
 def chat(node: Sentinel, said: str, session: str = "s-out") -> Done:
-    fake = ToolCallingServer([Turn(text=(said,))])
+    fake = CannedServer(turns=[Turn(text=(said,))])
     try:
         agent = Agent(Client(fake.base_url), FunctionTools([], {}), sentinel=Watch(node, session))
 
@@ -51,7 +54,7 @@ def test_guarded_mode_labels_a_reply_that_carries_a_secret_and_returns_the_rest_
     assert done.reason == "answer" and done.text.startswith("[sentinel: this reply")
     assert LEAK in done.text, "guarded mode labels, it does not rewrite"
     assert [e.kind for e in node.bus.recent(kind="output.suspect")]
-    assert chat(node, "Paris is the capital of France.").text == \
+    assert unmarked(chat(node, "Paris is the capital of France.").text) == \
         "Paris is the capital of France."
 
 
@@ -76,7 +79,7 @@ def summary_for(node_text: str) -> tuple[list[dict], dict]:
     for n in range(12):
         messages += [{"role": "assistant", "content": f"step {n} " + "word " * 80},
                      {"role": "user", "content": f"go on {n} " + "word " * 80}]
-    fake = ToolCallingServer([Turn(text=(node_text,))] * 12)
+    fake = CannedServer(turns=[Turn(text=(node_text,))] * 12)
     try:
         client = Client(fake.base_url)
         result = compact(messages, budget=400, strategy="summarise",

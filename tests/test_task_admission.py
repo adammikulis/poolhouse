@@ -1,7 +1,7 @@
 """Read-only task admission on actual isolated nodes."""
 
 import pytest
-from native_cargo import native_node_units  # noqa: F401
+from native_cargo import native_node_units, native_targets_built  # noqa: F401
 from node_kit import node_binary, workspace_node  # noqa: F401
 from task_kit import board
 
@@ -10,8 +10,12 @@ from poolhouse.board.client import NodeError
 __all__ = ["board"]
 
 
-def test_native_task_admission_boundaries(native_node_units):  # noqa: F811
-    native_node_units.run_targets(("tasks",))
+NATIVE_TARGETS = ("tasks",)
+
+
+@pytest.mark.timeout(120, func_only=True)
+def test_native_task_admission_boundaries(native_targets_built):  # noqa: F811
+    native_targets_built.run_targets(NATIVE_TARGETS)
 
 
 def test_python_admission_uses_canonical_task_and_current_worker(board):

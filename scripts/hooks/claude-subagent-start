@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""A SubagentStart hook: puts the worktree rule and the development branch in a subagent's context."""
+"""A SubagentStart hook: registers the subagent, records its purpose and checkout for the roster, and puts its brief, the worktree rule and the development branch in its context."""
 
 from __future__ import annotations
 
@@ -73,6 +73,30 @@ def unregistered(event: dict, parent: dict, why: str) -> str:
             "run as the session that started you: put your result in your final message and the session that started you records it.")
 
 
+def purpose_of(event: dict) -> str:
+    """What the subagent is for on one line: the description of the Agent call (the harness writes it beside the transcript, not in the event), else its type."""
+    said = event.get("description") or workspace_hook.subagent_meta(event).get("description") or event.get("agent_type")
+    return " ".join(str(said or "subagent").split())[:190]
+
+
+def checkout_of(cwd: str) -> tuple[str, str]:
+    """(the branch, the top directory) of the checkout the subagent starts in; empty strings where ``cwd`` is no checkout."""
+    if not cwd:
+        return "", ""
+    branch = workspace_hook.attempt(["git", "-C", cwd, "branch", "--show-current"], "SubagentStart")
+    top = workspace_hook.attempt(["git", "-C", cwd, "rev-parse", "--show-toplevel"], "SubagentStart")
+    return (branch.stdout.strip() if branch and not branch.returncode else "",
+            top.stdout.strip() if top and not top.returncode else cwd)
+
+
+def brief_command(event: dict, purpose: str) -> list[str]:
+    """The `brief` call that also records, as the subagent, what it is for and where it works so the roster shows it to the other sessions."""
+    branch, worktree = checkout_of(str(event.get("cwd") or ""))
+    where = [*(["--branch", branch] if branch else []), *(["--worktree", worktree] if worktree else [])]
+    return ["poolhouse-workspace", "brief", "--registered", "--purpose", purpose,
+            "--agent-type", str(event.get("agent_type") or "subagent")[:60], *where]
+
+
 def workspace_brief(event: dict) -> str:
     """Register the subagent as its own identity, subscribe its parent to it and return its brief."""
     parent = workspace_hook.parent_environment(event, "SubagentStart")
@@ -86,12 +110,11 @@ def workspace_brief(event: dict) -> str:
     environment = workspace_hook.own_environment(event, "SubagentStart")
     if environment is None:
         return ""
-    purpose = " ".join(str(event.get("description") or event.get("agent_type") or "subagent").split())[:190]
+    purpose = purpose_of(event)
     tree_watch.started("SubagentStart", str(event.get("cwd") or ""),
                        environment.get("POOLHOUSE_WORKSPACE_AGENT", ""), purpose)
     child_watch.follow(event, parent, made["id"])
-    done = workspace_hook.run(["poolhouse-workspace", "brief", "--registered"],
-                              "SubagentStart", environment=environment)
+    done = workspace_hook.run(brief_command(event, purpose), "SubagentStart", environment=environment)
     return done.stdout.strip() if done else ""
 
 
