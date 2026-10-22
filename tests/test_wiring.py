@@ -16,6 +16,8 @@ SRC = REPO / "src" / "poolhouse"
 
 STANDALONE = {
     "coding": "called by the workspace runner as poolhouse.coding.launch_coding_agent",
+    "coding_workspace": "the parent-owned snapshot runner for isolated coding tools; the isolated launcher that calls it "
+                        "is what harnessing.require_isolated_execution refuses to start without",
     "protectedwrites": "loaded by file through poolhouse.worktreerules, so the hook scripts need no package on the path",
 }
 

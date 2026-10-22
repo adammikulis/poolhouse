@@ -33,6 +33,7 @@ Rules:
 - Never tag, merge into the development branch by hand or touch `main`. Push the finished branch yourself: fetch, merge
   `origin/<dev>`, run the affected tests, then `git push origin HEAD:refs/heads/<dev>` (plain, never forced), and report
   landed only when the push succeeds and the commit is on `origin/<dev>`.
+- Run git as one plain command per call: `git -C <worktree> push origin HEAD:refs/heads/<dev>`, never `cd … && …` or a pipe, which the auto-mode classifier does not match to the allow rules.
 - No GPU lease unless the brief gives one. Release your claim when done.
 
 Report in a few lines: branch, ready SHA, affected test commands and results (the `ran` and `reused`

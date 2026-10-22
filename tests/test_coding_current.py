@@ -106,6 +106,7 @@ def test_turn_receipt_preserves_durable_workspace_and_tool_results(coding, monke
     with graph.opened(store.root) as transaction, transaction.transaction():
         transaction.put_doc(f"coding:{conversation.id}", retained)
     monkeypatch.setattr(coding_turns.coding, "launch_coding_agent", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(coding_turns.harnessing, "require_isolated_execution", lambda: None)
     manager = coding_turns.Manager(store)
     monkeypatch.setattr(manager, "_parent", lambda project: "test-parent")
     manager._run(coding_turns.Turn(conversation.id), conversation, "inspect the code")

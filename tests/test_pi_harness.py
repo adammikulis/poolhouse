@@ -43,6 +43,7 @@ def test_pi_launch_is_offline_and_uses_the_policy_extension(monkeypatch, tmp_pat
     def prepared(files, binary, root, role):
         return files.write("tool-worker.json", '{"module":"/fixed/installed-pi.js"}')
     monkeypatch.setattr(pi.pi_tools, "prepared", prepared)
+    monkeypatch.setattr(pi.harnessing, "require_isolated_execution", lambda: None)
 
     def run_pi(command, env):
         seen["command"], seen["env"] = command, env

@@ -88,14 +88,25 @@ def test_old_records_are_refused_without_implicit_policy_adoption(sessions):
 
 
 def test_guarded_ui_api_round_trips_revision_and_rejects_replayed_changes(tmp_path):
+    from launch_support import browser, signed
     from test_fleet_ui import Serving
 
     served = Serving(tmp_path)
     served.ui.settings.setup_done = True
+    served.ui.root = served.files.parent
+    signed(served)
+    call = served.call
+
+    def local(path, **options):
+        options["headers"] = {**browser(served), **options.get("headers", {})}
+        return call(path, **options)
+
+    served.call = local
     served.ui.conversations = Conversations(tmp_path / "chat")
     try:
         status, made, _ = served.call("/ui/conversations", method="POST",
-                                     body={"settings": {"harness": "pi", "permissions": "ask-dangerous"}})
+                                     body={"operation_id": "c" * 32,
+                                           "settings": {"harness": "pi", "permissions": "ask-dangerous"}})
         assert status == 201 and made["policy_revision"] == 0
         path = "/ui/conversations/" + made["id"]
         change = {"settings": {"execution_mode": "plan"}, "expected_revision": 0}
