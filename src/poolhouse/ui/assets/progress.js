@@ -1,35 +1,35 @@
-/* <ml-progress>: determinate or indeterminate progress with bytes, rate, ETA and cancel. */
-import { MlElement, define, h, uid } from "./base.js";
+/* <poolhouse-progress>: determinate or indeterminate progress with bytes, rate, ETA and cancel. */
+import { PoolhouseElement, define, h, uid } from "./base.js";
 import { clamp, duration, fmt } from "./format.js";
 
 const STYLES = `
 .head { display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
   font-size: 13px; margin-bottom: 5px; }
 .label { font-weight: 600; overflow-wrap: anywhere; }
-.stats { color: var(--ml-muted); font-family: var(--ml-mono); font-size: 12px; text-align: right; }
+.stats { color: var(--poolhouse-ui-muted); font-family: var(--poolhouse-ui-mono); font-size: 12px; text-align: right; }
 .row { display: flex; align-items: center; gap: 10px; }
 .track { flex: 1; position: relative; height: 8px; border-radius: 999px; overflow: hidden;
-  background: var(--ml-sunken); border: 1px solid var(--ml-line-strong); }
-.fill { height: 100%; width: 0; background: var(--ml-accent);
+  background: var(--poolhouse-ui-sunken); border: 1px solid var(--poolhouse-ui-line-strong); }
+.fill { height: 100%; width: 0; background: var(--poolhouse-ui-accent);
   transition: width .4s cubic-bezier(.4, 0, .2, 1); }
-.running .fill { background: var(--ml-accent); }
-.done .fill { background: var(--ml-green); }
-.failed .fill { background: var(--ml-red); }
-.paused .fill { background: var(--ml-yellow);
+.running .fill { background: var(--poolhouse-ui-accent); }
+.done .fill { background: var(--poolhouse-ui-green); }
+.failed .fill { background: var(--poolhouse-ui-red); }
+.paused .fill { background: var(--poolhouse-ui-yellow);
   background-image: repeating-linear-gradient(45deg, transparent 0 4px, rgba(0,0,0,.28) 4px 8px); }
 .indeterminate .fill { width: 38%; position: absolute; animation: slide 1.4s ease-in-out infinite; }
 @keyframes slide { from { left: -40%; } to { left: 102%; } }
-button { background: transparent; border: 1px solid var(--ml-line-strong); border-radius: 7px;
-  padding: 3px 10px; cursor: pointer; font-size: 12px; color: var(--ml-text); }
-button:hover { border-color: var(--ml-text); }
-.msg { margin-top: 5px; font-size: 12px; color: var(--ml-muted); }
-.failed .msg { color: var(--ml-red-ink); }
+button { background: transparent; border: 1px solid var(--poolhouse-ui-line-strong); border-radius: 7px;
+  padding: 3px 10px; cursor: pointer; font-size: 12px; color: var(--poolhouse-ui-text); }
+button:hover { border-color: var(--poolhouse-ui-text); }
+.msg { margin-top: 5px; font-size: 12px; color: var(--poolhouse-ui-muted); }
+.failed .msg { color: var(--poolhouse-ui-red-ink); }
 @media (prefers-reduced-motion: reduce) {
   .indeterminate .fill { animation: none; left: 0; width: 100%; opacity: .45; }
 }
 `;
 
-class MlProgress extends MlElement {
+class PoolhouseProgress extends PoolhouseElement {
   static props = {
     label: "string", done: "number", total: "number", value: "number", format: "string",
     unit: "string", rate: "number", eta: "number", state: "string", indeterminate: "bool",
@@ -42,7 +42,7 @@ class MlProgress extends MlElement {
     this.head = h("div", { class: "head" });
     this.fill = h("div", { class: "fill" });
     this.track = h("div", { class: "track", role: "progressbar" }, this.fill);
-    this.cancelBtn = h("button", { type: "button", onclick: () => this.emit("ml-cancel") });
+    this.cancelBtn = h("button", { type: "button", onclick: () => this.emit("poolhouse-cancel") });
     this.msg = h("div", { class: "msg" });
     this.wrap = h("div", {}, this.head, h("div", { class: "row" }, this.track, this.cancelBtn), this.msg);
     this.root.append(this.wrap);
@@ -98,4 +98,4 @@ class MlProgress extends MlElement {
     if (this.message) this.msg.setAttribute("role", state === "failed" ? "alert" : "status");
   }
 }
-define("ml-progress", MlProgress);
+define("poolhouse-progress", PoolhouseProgress);

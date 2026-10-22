@@ -806,7 +806,9 @@ tests = [
   "tests/test_task_coding.py::test_native_turn_and_output_limits_preserve_authority",
   "tests/test_workspace_local_agent.py::test_stop_never_releases_a_foreign_holder",
   "tests/test_workspace_local_agent.py::test_start_and_stop_refuse_a_process_an_agent_started",
-  "tests/test_workspace_local_agent.py::test_paused_coding_worker_keeps_tasks_queued_until_resume",
+  "tests/test_workspace_local_agent.py::test_paused_own_chat_worker_keeps_tasks_queued_until_resume",
+  "tests/test_workspace_local_agent.py::test_native_coding_start_refuses_before_model_registration_or_queue_effects",
+  "tests/test_workspace_local_agent.py::test_saved_native_worker_cannot_lease_or_execute_even_when_paused_or_labeled_chat",
   "tests/test_workspace_local_agent.py::test_start_and_stop_need_the_persons_session_origin_and_json",
   "tests/test_workspace_local_agent.py::test_a_token_in_a_header_starts_nothing",
   "tests/test_workspace_local_agent.py::test_the_page_start_list_and_stop_round_trip_with_hostile_input_refused",
@@ -814,7 +816,7 @@ tests = [
   "tests/test_redteam_local_agent.py::test_an_injection_in_a_persons_task_gets_a_model_that_obeys_it_nothing_beyond_its_role",
   "tests/test_redteam_local_agent.py::test_no_tool_the_model_is_offered_starts_stops_or_widens_an_agent",
   "tests/test_redteam_local_agent.py::test_start_and_stop_refuse_an_agent_process_and_leave_the_state_alone"]
-note = "start and stop need the person's session, a loopback origin and JSON; hostile names, projects, roles and efforts are refused; injections in task text and a model that obeys them gain nothing beyond the role"
+note = "start and stop require the person's session, a loopback origin and JSON; malformed own-Chat requests are refused and own-Chat pause/resume retains queued tasks; native coding is unavailable and repeated starts or saved native workers, including those labeled chat, refuse before model lookup, registration, leases or execution; injections gain nothing beyond the role"
 
 [[group]]
 match = ["route:fleet/conversation_routes.py:/ui/conversations*"]

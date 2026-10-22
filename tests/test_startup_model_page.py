@@ -275,7 +275,7 @@ def test_lost_submission_ack_attaches_same_intent_and_shows_actual_transfer_byte
         page.get_by_text('The preparation reply was interrupted.', exact=True).wait_for()
         screenshot(page, tmp_path, '01-unknown-receipt')
         page.get_by_role('button', name='Check status', exact=True).click()
-        progress = page.locator('#first-run ml-progress')
+        progress = page.locator('#first-run poolhouse-progress')
         progress.wait_for()
         assert progress.evaluate('e => [e.done,e.total]') == [25,100]
         screenshot(page, tmp_path, '02-attached-transfer-progress')

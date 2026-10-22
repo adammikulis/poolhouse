@@ -12,17 +12,15 @@ pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
-def chat_browser(tmp_path, playwright):
+def chat_browser(tmp_path, browser_owner):
     served = Serving(tmp_path)
-    served.ui.settings.setup_done = True
-    served.ui.conversations = Conversations(tmp_path / "chats")
-    browser = playwright.chromium.launch(headless=True)
-    page = browser.new_page()
-    page.route("**/ui/chat", lambda route: route.fulfill(json={"models": [{"model": "model-a", "local": True}]}))
     try:
-        yield served, page
+        served.ui.settings.setup_done = True
+        served.ui.conversations = Conversations(tmp_path / "chats")
+        with browser_owner.pages() as page:
+            page.route("**/ui/chat", lambda route: route.fulfill(json={"models": [{"model": "model-a", "local": True}]}))
+            yield served, page
     finally:
-        browser.close()
         served.close()
 
 
@@ -92,7 +90,7 @@ def test_one_composer_enter_sends_and_shift_enter_keeps_the_draft(chat_browser):
     expect(page.locator("chat-view #chat-messages")).to_contain_text("Saved answer")
     assert calls[0]["messages"][-1]["content"] == "First line\nSecond line"
     assert page.locator("chat-view textarea:visible").count() == 1
-    expect(page.locator("chat-view ml-composer .composer-recipient")).to_have_text("Message model-a")
+    expect(page.locator("chat-view poolhouse-composer .composer-recipient")).to_have_text("Message model-a")
     assert not page.locator("chat-view #chat-options").evaluate("node => node.open")
     page.reload()
     expect(page.locator("chat-view #chat-messages")).to_contain_text("Saved answer")

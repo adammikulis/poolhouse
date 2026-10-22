@@ -1,5 +1,5 @@
-/* <ml-toaster>: a live region that shows short messages and removes them. */
-import { MlElement, define, h } from "./base.js";
+/* <poolhouse-toaster>: a live region that shows short messages and removes them. */
+import { PoolhouseElement, define, h } from "./base.js";
 import { icon, normalize } from "./verdict.js";
 
 const STYLES = `
@@ -8,18 +8,18 @@ const STYLES = `
 :host([position="top"]) { inset: 16px 16px auto auto; }
 .stack { display: flex; flex-direction: column; gap: 8px; }
 .toast { pointer-events: auto; display: flex; gap: 10px; align-items: flex-start; padding: 11px 12px;
-  border-radius: 10px; background: var(--ml-surface); color: var(--ml-text);
-  border: 1px solid var(--v); box-shadow: var(--ml-shadow); animation: in .18s ease-out; }
+  border-radius: 10px; background: var(--poolhouse-ui-surface); color: var(--poolhouse-ui-text);
+  border: 1px solid var(--v); box-shadow: var(--poolhouse-ui-shadow); animation: in .18s ease-out; }
 .mark { color: var(--v-ink); padding-top: 2px; }
 .text { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13.5px; }
 .title { display: block; font-weight: 600; }
-button { background: transparent; border: 1px solid var(--ml-line-strong); color: var(--ml-text);
+button { background: transparent; border: 1px solid var(--poolhouse-ui-line-strong); color: var(--poolhouse-ui-text);
   border-radius: 7px; padding: 2px 9px; cursor: pointer; font-size: 12px; }
-button.x { border-color: transparent; color: var(--ml-muted); font-size: 16px; line-height: 1; padding: 2px 6px; }
+button.x { border-color: transparent; color: var(--poolhouse-ui-muted); font-size: 16px; line-height: 1; padding: 2px 6px; }
 @keyframes in { from { transform: translateY(6px); opacity: 0; } }
 `;
 
-class MlToaster extends MlElement {
+class PoolhouseToaster extends PoolhouseElement {
   static props = { position: "string" };
   static styles = STYLES;
   timers = new Map();
@@ -40,7 +40,7 @@ class MlToaster extends MlElement {
       h("span", { class: "mark" }, icon(v)),
       h("span", { class: "text" }, title ? h("span", { class: "title" }, title) : null, message),
       action ? h("button", { type: "button", onclick: () => {
-        this.emit("ml-action", { id }); this.dismiss(id); } }, String(action.label ?? "Undo")) : null,
+        this.emit("poolhouse-action", { id }); this.dismiss(id); } }, String(action.label ?? "Undo")) : null,
       h("button", { type: "button", class: "x", "aria-label": "Dismiss",
         onclick: () => this.dismiss(id) }, "×"));
     (v === "red" ? this.urgent : this.polite).append(node);
@@ -54,12 +54,12 @@ class MlToaster extends MlElement {
     return id;
   }
 
-  /** Remove one toast; fires `ml-dismiss`. */
+  /** Remove one toast; fires `poolhouse-dismiss`. */
   dismiss(id) {
     clearTimeout(this.timers.get(id));
     this.timers.delete(id);
     for (const n of this.root.querySelectorAll(`[data-id="${CSS.escape(id)}"]`)) n.remove();
-    this.emit("ml-dismiss", { id });
+    this.emit("poolhouse-dismiss", { id });
   }
 }
-define("ml-toaster", MlToaster);
+define("poolhouse-toaster", PoolhouseToaster);

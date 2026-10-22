@@ -7,15 +7,18 @@ import select
 import ssl
 from typing import Any
 
+from poolhouse import agent_dependency
 from poolhouse.gate import QueueTimeout, turn
 
 from .chat import ChatError, reply_text, targets
 from .onboard.lan import in_tailnet
 
-try:
-    from . import sdk_chat
-except ImportError:
-    sdk_chat = None
+
+def _runtime():
+    try:
+        return agent_dependency.chat_runtime()
+    except ImportError as exc:
+        raise ImportError("install poolhouse[agents] for Android chat") from exc
 
 
 class _Control:
@@ -76,8 +79,7 @@ def _chat(ui: Any, handler: Any, raw: bytes | None, token: str, available: list)
         if target is None:
             raise ValueError("choose an available local chat model")
         ui.invitations.permit(handler.client_address[0])
-        if sdk_chat is None:
-            raise ImportError("install poolhouse[agents] for Android chat")
+        sdk_chat = _runtime()
     except (ValueError, ImportError) as exc:
         handler._send(400, {"error": str(exc)})
         return
