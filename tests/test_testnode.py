@@ -238,9 +238,14 @@ def test_the_build_command_prints_the_binary_for_a_run_the_runner_does_not_start
     assert testnode.main(["nonsense"]) == 2
 
 
-def ci_node_steps() -> list[str]:
+NODE_JOBS = {"shards", "macos", "real-model"}
+"""The jobs of ci.yml that run pytest on the node the tests start, and so build it first."""
+
+
+def ci_node_steps() -> dict[str, str]:
+    """The script of the step that builds the test node, by the job that holds it."""
     workflow = yaml.safe_load((REPO / ".github" / "workflows" / "ci.yml").read_text())
-    return [step["run"] for job in workflow["jobs"].values() for step in job.get("steps", []) if step.get("name") == "build the node the tests start"]
+    return {name: step["run"] for name, job in workflow["jobs"].items() for step in job.get("steps", []) if step.get("name") == "build the node the tests start"}
 
 
 def run_ci_step(script: str, tmp_path: Path, python: str) -> tuple[int, str, str]:
@@ -257,8 +262,8 @@ def run_ci_step(script: str, tmp_path: Path, python: str) -> tuple[int, str, str
 
 def test_the_ci_step_that_builds_the_node_fails_when_the_build_fails_and_names_it_otherwise(tmp_path):
     steps = ci_node_steps()
-    assert len(steps) == 2
-    for script in steps:
+    assert set(steps) == NODE_JOBS
+    for script in steps.values():
         code, exported, said = run_ci_step(script, tmp_path, "#!/bin/sh\necho 'testnode: cargo build -p poolhouse-node failed' >&2\nexit 1\n")
         assert code != 0 and exported == "" and "cargo build -p poolhouse-node failed" in said
         code, exported, _ = run_ci_step(script, tmp_path, "#!/bin/sh\necho /cache/test-node/key/poolhouse-node\n")
