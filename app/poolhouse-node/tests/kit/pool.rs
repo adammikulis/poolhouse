@@ -47,19 +47,34 @@ impl Founded {
     /// This node as a device that joined the pool would hold it: the same pool, the same certificate, the typed-yes key as the only key and
     /// no phone, so the admin's phone is one this device has not been shown yet.
     pub fn joined(self) -> Founded {
+        let typed = self.typed.public();
+        let fingerprint = self.typed.fingerprint();
+        self.restarted(|root| {
+            for file in ["persons.json", "persons_removed.json", "persons_nonces.json", "phones.json"] {
+                let _ = std::fs::remove_file(root.join(file));
+            }
+            let entry = json!({"public": typed, "label": "typed yes", "at_ms": 1, "alg": "ed25519"});
+            std::fs::write(root.join("persons.json"), json!({ fingerprint: entry }).to_string()).unwrap();
+        })
+    }
+
+    /// This node stopped, its state directory changed by ``edit``, and started again with a new session.
+    pub fn restarted(self, edit: impl FnOnce(&std::path::Path)) -> Founded {
         let Founded { rig: Rig { node, dir, pushed }, phone, typed, .. } = self;
         drop(node);
-        for file in ["persons.json", "persons_removed.json", "persons_nonces.json", "phones.json"] {
-            let _ = std::fs::remove_file(dir.path().join(file));
-        }
-        let entry = json!({"public": typed.public(), "label": "typed yes", "at_ms": 1, "alg": "ed25519"});
-        std::fs::write(dir.path().join("persons.json"), json!({ typed.fingerprint(): entry }).to_string()).unwrap();
+        edit(dir.path());
         let mut reopened = super::node(dir.path());
         reopened.pusher = Box::new(pushed.clone());
         reopened.fatigue.rules.backoff_ms = 0;
         let rig = Rig { node: Mutex::new(reopened), dir, pushed };
         let (name, token) = rig.session("demo", "lead");
         Founded { rig, phone, typed, name, token }
+    }
+
+    /// The directory of the pool this node founded.
+    pub fn pool_dir(&self) -> std::path::PathBuf {
+        let id = self.rig.node.lock().unwrap().members.gov().unwrap().id.clone();
+        self.rig.dir.path().join("pools").join(id)
     }
 
     /// The reply of the phone endpoint to ``phone`` answering the request ``id`` with ``decision``.
