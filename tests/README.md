@@ -1,9 +1,10 @@
 # The test suite
 
-Nothing here serves a model, touches a GPU, reaches the Hub, or reads anything under
-`~/.poolhouse`, `~/.cache` or a real home directory — see *Nothing reads the machine* below for
-how that is enforced rather than remembered. Every person, company, place and model file is
-invented.
+Nothing here reaches the Hub, or reads or writes anything under `~/.poolhouse`, `~/.cache` or a real
+home directory, apart from the one deliberate exception: the real-model tests (*Real models* below) serve
+a real model on this machine's own llama-server and GPU under a lease, read the Hugging Face cache for
+their pinned files, and run only with `--real-model`. See *Nothing reads the machine* below for how the
+rest is enforced rather than remembered. Every person, company and place is invented.
 
 ## Running them
 
@@ -167,6 +168,57 @@ lookup beyond loopback, the LAN and link-local addresses; the test fails and nam
 `test_no_live_calls.py` also fails on an unmarked import of a paid SDK, a read of a credential
 variable, or a spawn of the `claude` command anywhere under `tests/`. Local models served through
 the broker are not remote services and are untouched by all of this.
+
+## Real models
+
+A test of what a model says, decides, ranks or calls runs a real one: no stand-in, no canned answer
+(AGENTS.md, "Never a fake model"). `tests/real_model.py` is the one way in. A test marks its module
+`pytest.mark.real_model`, names the plugin (`pytest_plugins = ["real_model"]`) and asks the `real` fixture for a
+use:
+
+```python
+def test_it(real):
+    with real.serving("embedding") as served:      # a real llama-server, leased through the broker
+        vectors = embed([...], base_url=served.url)
+```
+
+`real.serving(use)` takes the lease the normal way (`ServerManager` under the session node's lease table) and
+`real.leased(use)` the guard's own (`guard.native.Leased`); neither starts a server by hand. Each use pins the
+smallest file that can do the job:
+
+| use | model | size |
+| --- | --- | --- |
+| `chat`, `decide` | granite-4.0-h-350m Q4_K_M (shape assertions only: it is weak) | 0.2 GB |
+| `judge`, `tool_calling` | Qwen3-4B-Instruct-2507 Q4_K_M (when the answer has to be right) | 2.5 GB |
+| `embedding` | embeddinggemma-2 Q8_0 | 0.3 GB |
+| `rerank` | Qwen3-Reranker-0.6B Q8_0 | 0.6 GB |
+| `vision` | Qwen3-VL-2B-Instruct Q4_K_M and its projector | 1.9 GB |
+| `other` | Qwen3Guard-Gen-0.6B Q4_K_M, a second model to tell two apart | 0.5 GB |
+
+**Nothing here skips.** A missing model, a missing llama-server, another model already on the compute, or a machine
+without the GPU a test needs fails that test and says so: `REAL MODEL MISSING: ... fetch it once: poolhouse-models
+fetch hf:<owner>/<repo>/<file>`, `LLAMA-SERVER MISSING ... poolhouse-serve llama-cpp update`, `COMPUTE BUSY`,
+`NO GPU`. A file of the wrong size (a partial download) fails the same way. The files are looked for in the
+Hugging Face cache (`HF_HUB_CACHE`, `HF_HOME`, else `~/.cache/huggingface/hub`) and only read.
+`POOLHOUSE_TEST_GGUF` names another file for `chat`; `POOLHOUSE_TEST_LLAMA_SERVER` names another binary. The
+real home is read for these and never written (the suite's own check still fails the run if it is).
+
+Real-model tests are left out unless `--real-model` is given, as slow ones are left out without `--slow`:
+
+```sh
+scripts/test all tests/test_serve_real_llama.py --real-model     # this machine, with the models fetched
+scripts/test all tests/test_real_model_uses.py --real-model      # each use, driven with its real model
+```
+
+A named file whose every test is marked `real_model` is refused before admission when `--real-model` is missing,
+so a run never reports nothing for a test that was asked for. Such a file is never served from the reuse store
+(the marker bars it: its result depends on the models and the binary on this machine). `test_real_model_harness.py`
+runs in every tier and needs no model: it points the harness at an empty hub, a bare `PATH`, a busy machine and a
+machine without a GPU, and checks each one fails the test and names the fix.
+
+GitHub's hosted runners have no GPU and none of these models, so the `--slow` shards leave the real-model tests
+out; the `real-model` job in `.github/workflows/ci.yml` (nightly and on demand, one serial run) fetches the small
+models into a cached Hugging Face folder, installs a llama-server and runs them with `--real-model`.
 
 ## The real keystore
 

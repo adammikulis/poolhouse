@@ -23,7 +23,7 @@ import testnode
 import testreuse_facts as facts
 from testreuse_imports import ImportFacts, version
 
-NEVER_MARKS = frozenset({"live_api", "live_net", "redteam", "gpu", "model"})
+NEVER_MARKS = frozenset({"live_api", "live_net", "redteam", "real_model", "gpu", "model"})
 NEVER_WORDS = re.compile(r"\b(?:Lease|llama[-_]server|poolhouse-serve)\b")
 SPAWNS = re.compile(r"\b(?:subprocess|Popen|os\.system|os\.exec\w*|os\.spawn\w*|os\.fork\w*|multiprocessing|pexpect|"
                     r"pty|create_subprocess_\w+|ProcessPoolExecutor|runpytest_subprocess|playwright|"
