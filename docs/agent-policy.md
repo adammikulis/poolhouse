@@ -776,32 +776,33 @@ reads only what it flags.
 
 ### Scoped merge gates and background verification
 
-Agents test their own changed behavior with reviewed explicit affected selectors through `scripts/test`
-(`scripts/test all tests/<affected-file>...`): the files they changed and the files `scripts/affected.py` selects for
-their diff, which the push hook runs again before a push goes through (`python scripts/hooks/affected_push.py` runs it
-by hand). A test the change can break may not be red when it lands. The selection reaches test files an author never opened
-(a module's importers, the glossary and switch-table scans, the tree-wide guards), so a red test in an untouched file
-is the author's to fix. Include the relevant browser, subprocess and packaging tests for
-changed surfaces (the slow tests for packaging, page and Fleet changes). Report the exact tree, commands, results and
-limitations. Invalid selectors fail before admission; never replace a missing selector with an unreviewed omission.
-Documentation-only changes need consistency review and clean diffs. **The full suite is GitHub's job**: the `ci`
-workflow runs it on pull requests, on `main` and nightly (a development push runs only the `gates` job), and an agent
-never runs one locally. For an agent `scripts/test` refuses the
-`fast`, `full`, `slow` and `all` tiers when they name no test file, and neither it nor the broker admits an agent run
-that names every test file (`quick` and `gate` stay allowed). Workers do not run shared gates.
+Agents test changed behavior through `scripts/test` with reviewed explicit selectors chosen for the change.
+Use `scripts/affected.py` to identify relevant importers and checks, then choose the smallest useful scope that covers
+the changed behavior, including browser, subprocess, packaging and platform checks where relevant. Its selection
+informs that review; it does not require a transitive campaign at every checkpoint. A test the change can break may
+not be red when it lands. Report the exact tree, commands, results and limitations. Invalid selectors fail before
+admission; resolve a missing selector rather than silently dropping its coverage.
 
-- The main coordinator obtains another agent's review for each security-adjacent branch and assembles the batch in a
-  claimed checkout (an isolated worktree for concurrent work or conflicts). It runs the shared structural/security
-  checks once on the combined tree before the primary fast-forward and publication: `scripts/test gate`,
-  `scripts/budgets`, `scripts/redteam_coverage.py --check`, clean generated references, layer and wiring checks,
-  serving-bypass checks and the human-only floor. It repeats incremental affected checks when remote reconciliation or a
-  later change touches their surface and owns `scripts/test quick`. The full suite is the GitHub
-  run of a pull request, a promotion or the nightly schedule; its result, not a local run, is the end-to-end verification. Shared checks are
-  not repeated for every leaf branch or intermediate commit. Do not raise budgets to clear a check.
-- Gate cost is per batch, scaled to the diff: combine all ready leaves into one run; documentation-only diffs need a
-  clean diff and `scripts/budgets`, code diffs `scripts/test gate` and the affected selectors of the combined diff.
-  A tree that already passed a check is not checked again (`reused from <id>`); a failure that
-  also fails on the clean target is `baseline`.
+**Test the change, not the sync.** Fetching, committing, merging or pushing alone does not trigger another test run.
+Repeat checks only when new changes, reconciliation on their surface, a failure or a required plan milestone calls
+for them. The mandatory push hook guards refs only and runs no tests or builds; `scripts/hooks/affected_push.py` is an
+optional explicit affected-test helper. Documentation-only changes need consistency review, clean diffs and only the
+targeted text checks their change needs.
+
+**Broader verification belongs in CI.** The `ci` workflow runs the full suite on pull requests, on `main` and nightly;
+a development push runs only the `gates` job. An agent never runs the full suite locally, including by naming every
+test file. The available `quick` and `gate` commands serve relevant verification work, not a routine sync ceremony.
+
+- The coordinator obtains independent review for security-adjacent changes and integrates in a claimed checkout,
+  using an isolated worktree for concurrent work or conflicts. Check the combined surfaces that changed when the
+  integration introduces behavior not covered by the workers' evidence. Run structural/security checks, generated
+  reference checks and budget scans when their changed surface or a plan milestone requires them, rather than a
+  blanket campaign for each source commit. Preserve required authorization, security review and relevant tests;
+  never raise budgets to clear a check. Workers do not repeat shared checks already owned by the coordinator.
+- Plan milestones retain their relevant tests and actual installed-device proof. A focused source pass, clean merge
+  or successful push cannot replace a required native journey, hardware check or independent security review.
+  Reuse valid unchanged evidence through maintained checks; report a result as `reused from <id>` only when the
+  runner says so. A failure that also fails on the clean target is `baseline`, with evidence and an owner.
 - Known failures remain named tasks with evidence and ownership; a scoped pass is not a full-suite pass; fix a known
   relevant regression before the affected change lands. **Linux testing is active, not paused**: use the available WSL
   device and report its exact device, operating system, runtime and tested commit (a Mac result or historical Linux

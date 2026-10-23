@@ -151,9 +151,9 @@ gate.
   separately landing batches instead of carrying it. Run `git cherry <dev> <branch>` before porting and
   drop equivalent patches. Record the tree hash a gate ran on; a tree already gated is not gated again. Finish before
   starting: no new branch while your own ready branches await landing; about ten open worktrees at most per lead.
-- **The coordinator lands each verified checkpoint with git:** fetch, merge `origin/<dev>`, run the required combined
-  checks, then `git push origin HEAD:refs/heads/<dev>` (never `main`, never forced). `scripts/hooks/pushed` checks the
-  push and runs the tests it can break; the primary checkout follows origin (docs/landing.md).
+- **The coordinator lands each verified checkpoint with git:** fetch, merge `origin/<dev>`, check newly changed
+  surfaces where relevant, then `git push origin HEAD:refs/heads/<dev>` (never `main`, never forced). The mandatory push
+  hook guards refs only and runs no tests or builds; the coordinator keeps the primary checkout in sync (docs/landing.md).
 - The primary development checkout may receive reviewed changes through a fast-forward merge or authorized direct
   edits and named-file commits; resolve conflicts in an isolated worktree. The retained primary checkout is never
   removed as temporary-worktree cleanup. Coding tasks own their worktree lifecycle: assignment reserves the path and
@@ -174,13 +174,13 @@ not proof that it is disposable.
 
 ### Gate cost, Linux and the broker
 
-- Gate cost is per batch: combine all ready leaves into one run and start it whenever a leaf is ready and no gate is
-  in flight. Scale it to the diff: documentation-only or handoff-only batches need a clean diff and `scripts/budgets`.
-  A failure of the GitHub run blocks only landings touching the failing surface and gets one named owner at once.
-  Documentation-only diffs get `scripts/budgets` and a clean diff; code diffs get
-  `scripts/test gate` and the affected selectors of the diff; the whole suite runs on GitHub for pull requests, `main` and nightly
-  (docs/landing.md, "The CI run"). A tree that already passed a check is not checked again (`reused from <id>`), and a
-  failure that also fails on the clean target is `baseline`.
+- Choose reviewed explicit selectors for the changed behavior, informed by `scripts/affected.py`. Include relevant
+  integration and platform checks, without treating its import graph as a mandatory broad campaign. Run shared
+  structural/security checks when the changed surface or a plan milestone requires them; reuse valid unchanged
+  evidence through maintained checks. Documentation-only changes need consistency review, clean diffs and relevant
+  targeted text checks. Fetches and pushes trigger no test campaign; the mandatory push hook guards refs only.
+  Broader verification belongs in CI on development pushes, pull requests, `main` and nightly schedules
+  (docs/landing.md, "The CI run"). A failure that also fails on the clean target is `baseline`, with evidence and an owner.
 - Known failures remain named tasks with evidence and ownership. A scoped pass is not a full-suite pass. Fix a known
   relevant regression before the affected change lands. A missing cold selector cache does not require a full suite
   for a leaf change; use reviewed explicit affected tests.
