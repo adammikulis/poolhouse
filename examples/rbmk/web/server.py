@@ -147,6 +147,10 @@ def make_handler(hub: Hub, port_of: Any) -> type[BaseHTTPRequestHandler]:
                 job = hub.start_run(str(a["scenario"]), str(a.get("controller", "model")), str(a.get("decider", "")),
                                     str(a.get("memory", "none")), float(a.get("speed", DEFAULT_SPEED)))
                 self._json(200, job.public())
+            elif path == "/api/batch":
+                a = self._arguments()
+                job = hub.start_batch(int(a["count"]), int(a.get("seed", 1)), [str(m) for m in a["memories"]], str(a.get("decider", "")), int(a.get("first", 0)))
+                self._json(200, job.public())
             elif path == "/api/stop":
                 job = hub.job(str(self._arguments()["job"]))
                 job.cancel.set()

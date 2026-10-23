@@ -96,6 +96,11 @@ export async function start3d({ RB, feed, spec, $, state }) {
       $('card').hidden = true;
       return;
     }
+    const ins = key && spec.instruments.find((i) => i.id === key);
+    if (ins && ins.type === 'key') {
+      RB.desk.press(ins.action);
+      return;
+    }
     if (key) showCard(key);
   };
 

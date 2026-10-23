@@ -1,7 +1,7 @@
 // Drives every instrument of the room from the feed: needles, lamps, tiles, recorders, the rod map, the screens.
 import * as THREE from 'three';
 import { paintDial, paintTile, paintRecorder, texture, canvas, lampColor } from './paint.js';
-import { paintDecision, paintOrm } from './screens.js';
+import { paintDecision, paintOrm, paintRun } from './screens.js';
 import { ROD_ORDER, rodRGB } from './rods.js';
 import { evalRule, dialValue } from './rules.js';
 
@@ -41,12 +41,12 @@ export class Driver {
       const n = this.nodes.get(ins.id);
       if (!n) continue;
       if (ins.type === 'dial') this.face(n, { map: paintDial(ins), roughness: 0.5, alphaTest: 0.5 });
-      if (ins.type === 'ann' || ins.type === 'lamp') {
+      if (ins.type === 'ann' || ins.type === 'lamp' || ins.type === 'key') {
         n.tiles = [paintTile(ins, false), paintTile(ins, true)];
         this.face(n, { map: n.tiles[0] });
       }
       if (ins.type === 'recorder') this.face(n, { map: paintRecorder(ins, [], 1), emissive: 0xffffff, emissiveIntensity: 0.18 });
-      if (ins.type === 'screen') this.screens[ins.id] = { n, canvas: canvas(1024, 600), key: '' };
+      if (ins.type === 'screen') this.screens[ins.id] = { n, canvas: ins.id === 'SCREEN_RUN' ? canvas(512, 307) : canvas(1024, 600), key: '' };
     }
     const orm = this.nodes.get('SCREEN_ORM');
     if (orm) this.screens.SCREEN_ORM = { n: orm, canvas: canvas(300, 220), key: '' };
@@ -86,12 +86,13 @@ export class Driver {
       const n = this.nodes.get(ins.id);
       if (!n) continue;
       if (ins.type === 'dial') this.dial(n, ins, row, dt);
-      else if (ins.type === 'ann' || ins.type === 'lamp') this.tile(n, ins, row, dec);
+      else if (ins.type === 'ann' || ins.type === 'lamp' || ins.type === 'key') this.tile(n, ins, row, dec);
       else if (ins.type === 'button') this.az5(n, row);
     }
     this.recorders(row);
     this.rodmap(row);
     this.screen('SCREEN_DECISION', () => paintDecision(this.screens.SCREEN_DECISION.canvas, f), `${f.status}|${f.stamp}|${f.index}`);
+    this.screen('SCREEN_RUN', () => paintRun(this.screens.SCREEN_RUN.canvas, f.desk), `${f.desk.version}`);
     this.screen('SCREEN_ORM', () => paintOrm(this.screens.SCREEN_ORM.canvas, row), `${f.status}|${f.stamp}|${f.index}`);
   }
 
@@ -107,7 +108,7 @@ export class Driver {
   }
 
   tile(n, ins, row, dec) {
-    const lit = !!row && evalRule(ins.rule, row, dec);
+    const lit = ins.type === 'key' ? this.feed.desk.lit(ins.id) : !!row && evalRule(ins.rule, row, dec);
     n.lit = lit;
     if (this.shown.get(ins.id) === lit) return;
     this.shown.set(ins.id, lit);
@@ -120,7 +121,7 @@ export class Driver {
   }
 
   az5(n, row) {
-    const scram = !!row && row.scram === true;
+    const scram = !!row && row.az5 === true;
     n.cover.rotation.x = scram ? -1.7 : 0;
     n.cap.position.y = n.capY - (scram ? 0.012 : 0);
     n.lit = scram;

@@ -17,6 +17,7 @@ from .decider.policy import CrewScript, ModelDecider, NaiveDecider
 from .plant.plant import Plant
 from .scenarios import Scenario
 from .sensors.model import SensorModel
+from .sensors.view import crew_row
 
 Decider = ModelDecider | NaiveDecider | CrewScript
 MIN_DELAY_S = 0.001
@@ -97,7 +98,7 @@ class Runner:
         view = self.sensors.view(self.plant)
         row = self.plant.truth()
         row.update(chA=view.readings["chA"].value, chB=view.readings["chB"].value, orm_printed=view.orm_printout,
-                   peak_P=round(self.plant.core.peak_P, 4))
+                   peak_P=round(self.plant.core.peak_P, 4), crew=crew_row(view))
         self.res.trace.append(row)
 
     def finish_tick(self) -> None:

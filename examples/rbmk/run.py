@@ -66,7 +66,7 @@ def _where(args: argparse.Namespace, model: str, memory: str) -> Path:
     return Path(args.out) if args.out else store() / model / memory
 
 
-def _run_one(scn: scenarios.Scenario, asker: LiveAsker, warm: float, memory: str) -> tuple[Result, dict[str, Any]]:
+def run_one(scn: scenarios.Scenario, asker: LiveAsker, warm: float, memory: str) -> tuple[Result, dict[str, Any]]:
     res = Runner(scn, ModelDecider(asker, scn.seed), RunOptions(memory=memory)).run()
     return res, recorder.recording_of(res, scn, backend(asker, warm), clocks(scn, res))
 
@@ -93,7 +93,7 @@ def record(args: argparse.Namespace) -> int:
     """Run named scenarios with the real decision model and write one recording per scenario."""
     def work(asker: LiveAsker, warm: float) -> None:
         for key in args.scenarios:
-            res, rec = _run_one(scenarios.scenario(key), asker, warm, args.memory)
+            res, rec = run_one(scenarios.scenario(key), asker, warm, args.memory)
             _write(_where(args, rec["meta"]["backend"]["model"], args.memory) / f"{key}.json", rec)
             print(f"{key}: {text.outcome(res)['state']}, {len(res.decisions)} decisions", flush=True)
 
@@ -109,7 +109,7 @@ def batch(args: argparse.Namespace) -> int:
                 path = _where(args, asker.model, memory) / f"{scn.key}.json"
                 if path.exists():
                     continue
-                res, rec = _run_one(scn, asker, warm, memory)
+                res, rec = run_one(scn, asker, warm, memory)
                 _write(path, rec)
                 print(f"{scn.key} [{memory}]: {text.outcome(res)['state']}, {len(res.decisions)} decisions", flush=True)
 

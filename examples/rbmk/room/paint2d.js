@@ -1,10 +1,11 @@
 // How each live element of the 2D views is drawn into its local box (needle, tile, strip chart, screen, AZ-5, rod cell, mimic).
 import { DIAL_SIZE, MIMIC_SIZE, RECORDER_SIZE, TILE_SIZE, canvas, paintDialFace, paintMimicFace, paintRecorderFace, paintTileFace } from './faces.js';
-import { paintDecision, paintOrm } from './screens.js';
+import { paintDecision, paintOrm, paintRun } from './screens.js';
 import { rodCss } from './rods.js';
 
 const SCREEN_SIZE = [1024, 600];
 const ORM_SIZE = [300, 220];
+const RUN_SIZE = [512, 307];
 const BUTTON_SIZE = [140, 140];
 const ACCENT = '#4aa3df';
 const ALERT = ['#4aa3df', '#e8a317', '#d8362c'];
@@ -93,11 +94,15 @@ export const KINDS = {
   orm: { size: ORM_SIZE, make: (el) => { el.bmp = canvas(...ORM_SIZE); },
     refresh: (el, st) => (st.feed.status === 'loading' ? blank(el.bmp) : paintOrm(el.bmp, st.feed.status === 'ok' ? st.feed.row : null)),
     paint: (g, el) => g.drawImage(el.bmp, 0, 0, ...ORM_SIZE) },
+  run: { size: RUN_SIZE, make: (el) => { el.bmp = canvas(...RUN_SIZE); },
+    refresh: (el, st) => paintRun(el.bmp, st.feed.desk),
+    paint: (g, el) => g.drawImage(el.bmp, 0, 0, ...RUN_SIZE) },
   button: { size: BUTTON_SIZE, paint: az5 },
   mimic: { size: MIMIC_SIZE, make: (el) => { el.face = cached(`mimic${el.variant}`, () => paintMimicFace(el.variant)); },
     paint: (g, el) => g.drawImage(el.face, 0, 0, ...MIMIC_SIZE) },
 };
 KINDS.lamp = KINDS.ann;
+KINDS.key = KINDS.ann;
 
 // Raw painters draw in image pixels (the rod cells and the panel markers).
 export function paintRod(g, el) {
