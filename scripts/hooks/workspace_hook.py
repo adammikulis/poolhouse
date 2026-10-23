@@ -79,7 +79,7 @@ def refresh_runtime(stage: str, checkout: Path | None = None, agent: str = '') -
     source = Path(__file__).resolve().parents[2]
     environment = dict(worktreerules._git_environment(), PYTHONPATH=str(source / 'src'))
     try:
-        done = subprocess.run([sys.executable, '-m', 'poolhouse.runtime_cli', 'ensure', '--background',
+        done = subprocess.run([sys.executable, '-m', 'poolhouse.runtime_cli', 'ensure', '--background', '--hook-refresh',
                                '--checkout', str(checkout or primary_checkout(source)),
                                *(['--agent', agent] if agent else [])], capture_output=True,
                               text=True, timeout=6, check=False, env=environment)

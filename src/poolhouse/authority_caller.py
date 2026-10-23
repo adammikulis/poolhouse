@@ -106,8 +106,8 @@ def _selectors() -> list[tuple[str, str]]:
     return [(harness, native) for key, harness in fields if (native := os.environ.get(key, "").strip())]
 
 
-def current(*, cwd: Path | None = None, client: ClientState | None = None) -> AuthenticatedAgent:
-    """Authenticate an existing live main agent without registration or starting a node."""
+def _authenticated(*, cwd: Path | None = None, client: ClientState | None = None) -> AuthenticatedAgent:
+    """Read the authenticated identity; this alone grants no delegated authority."""
     node = ReadConnection(client.state if client else home.state("node"))
     try:
         board = os.environ.get("POOLHOUSE_BOARD", "") if cwd is None else ""
@@ -133,6 +133,22 @@ def current(*, cwd: Path | None = None, client: ClientState | None = None) -> Au
             raise ValueError("provided credential conflicts with identity")
     except (OSError, ValueError, KeyError, TypeError, CredentialError):
         raise HumanRequired("could not authenticate the current workspace session") from None
-    if identity.retired or identity.parent or identity.person:
-        raise HumanRequired("this operation requires an authenticated live main agent, not a helper or a person session")
     return AuthenticatedAgent(Admission(node, board, identity.name, token), identity)
+
+
+def current(*, cwd: Path | None = None, client: ClientState | None = None) -> AuthenticatedAgent:
+    """Authenticate an existing live main agent without registration or starting a node."""
+    actor = _authenticated(cwd=cwd, client=client)
+    if actor.identity.retired or actor.identity.parent or actor.identity.person:
+        raise HumanRequired("this operation requires an authenticated live main agent, not a helper or a person session")
+    return actor
+
+
+def is_live_child(*, cwd: Path, asserted_name: str = "") -> bool:
+    """Whether automatic work belongs to the caller's coordinator; grants no authority."""
+    try:
+        actor = _authenticated(cwd=cwd)
+    except HumanRequired:
+        return False
+    return bool(actor.identity.parent and not actor.identity.retired and not actor.identity.person and
+                (not asserted_name or asserted_name == actor.name))

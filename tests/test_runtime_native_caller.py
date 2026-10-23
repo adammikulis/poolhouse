@@ -181,3 +181,42 @@ def test_subagent_selector_alone_cannot_fall_back_to_anonymous_install_or_audit(
     runtime_trust.audit("ensure", original[4], "refused", source=str(project.root))
     assert rows[0]["actor"] == "agent:unavailable"
     assert not rows[0]["meta"]["person"]
+
+
+@pytest.mark.parametrize("mode", ["child", "root", "unknown", "conflict", "retired", "offline", "wrong-name"])
+def test_automatic_hook_refresh_only_skips_an_authenticated_live_child(native, monkeypatch, mode):
+    _project, node, parent, original = native
+    child = node.member("refresh-child", harness="codex", parent=parent)
+    monkeypatch.setenv("CODEX_THREAD_ID", parent.session if mode == "root" else child.session)
+    if mode == "unknown":
+        monkeypatch.setenv("CODEX_THREAD_ID", "unknown-child")
+    elif mode == "conflict":
+        monkeypatch.setenv(authority.AGENT_ENV, parent.name)
+    elif mode == "retired":
+        node.session(child).retire()
+    elif mode == "offline":
+        node.stop()
+        monkeypatch.setattr(node_launch, "ensure_node", lambda *_args, **_kwargs: pytest.fail("started node"))
+    args = cli_args(original)
+    args.hook_refresh = True
+    args.background = True
+    args.allow_unmerged = False
+    if mode == "wrong-name":
+        args.agent = parent.name
+    monkeypatch.setattr(runtime_cli, "_planned", lambda _args: pytest.fail("normal refresh path"))
+    if mode == "child":
+        assert runtime_cli._ensure(args) == 0
+    else:
+        with pytest.raises(pytest.fail.Exception, match="normal refresh path"):
+            runtime_cli._ensure(args)
+
+
+def test_explicit_child_refresh_still_refuses_deployment(native, monkeypatch):
+    _, node, parent, original = native
+    child = node.member("explicit-refresh-child", harness="codex", parent=parent)
+    monkeypatch.setenv("CODEX_THREAD_ID", child.session)
+    args = cli_args(original)
+    args.background = True
+    args.allow_unmerged = False
+    with pytest.raises(runtime_source.DeployError, match="admission is unavailable"):
+        runtime_cli._ensure(args)

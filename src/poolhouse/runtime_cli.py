@@ -11,6 +11,7 @@ from pathlib import Path
 
 from poolhouse import (
     authority,
+    authority_caller,
     build_update,
     jobs,
     node_launch,
@@ -128,6 +129,9 @@ def _audited(args: argparse.Namespace, command: str, plan: runtime_deploy.Plan, 
 
 
 def _ensure(args: argparse.Namespace) -> int:
+    if getattr(args, "hook_refresh", False) and authority_caller.is_live_child(
+            cwd=_checkout(args.checkout), asserted_name=args.agent):
+        return 0
     if args.settle and not args.now and not getattr(args, "automatic_from", ""):
         args.automatic_from = json.dumps(runtime_deploy.automatic_selection())
     if not args.background:
@@ -370,6 +374,7 @@ COMMON = [
 GROUP = Group("poolhouse runtime", "Build, verify and select the installed runtime from the source checkout; status; rollback.")
 GROUP.add("ensure", _reported(_ensure), help="make the checkout's commit the selected runtime", options=[
     *COMMON, flag("--ref", default="HEAD"),
+    flag("--hook-refresh", action="store_true", help=argparse.SUPPRESS),
     flag("--automatic-from", default="", help=argparse.SUPPRESS),
     flag("--boundary-wait", type=float, default=runtime_git.BOUNDARY_WAIT_S,
          help="seconds to wait for another cutover to finish; the refusal names who holds the boundary"),
