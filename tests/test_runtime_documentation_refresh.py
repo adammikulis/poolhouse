@@ -16,6 +16,7 @@ name = "poolhouse"
 version = "0.3.0-dev.1"
 readme = "README.md"
 license-files = ["LICENSE"]
+license = "Apache-2.0"
 [tool.hatch.build.targets.wheel]
 packages = ["src/poolhouse"]
 [tool.hatch.build.targets.wheel.force-include]
@@ -41,7 +42,7 @@ def save(repo, path, text="changed"):
 
 
 @pytest.fixture
-def source(tmp_path):
+def source(tmp_path, monkeypatch):
     repo = tmp_path / "source"
     repo.mkdir()
     git(repo, "init", "--quiet", "--initial-branch=dev")
@@ -55,6 +56,8 @@ def source(tmp_path):
     git(repo, "add", *files)
     git(repo, "commit", "--quiet", "--message", "chore: fixture")
     previous = git(repo, "rev-parse", "HEAD")
+    inputs = importlib.import_module("poolhouse.runtime_inputs")
+    monkeypatch.setattr(inputs, "AUDITED_BUILD", inputs.builder_fingerprint(repo, previous))
     return repo, previous
 
 
@@ -96,15 +99,43 @@ def test_documentation_path_cannot_hide_executable_or_indirect_inputs(source, mo
 @pytest.mark.parametrize("config", [PROJECT.replace('readme = "README.md"', 'readme = "docs/node-contract.md"'),
                                    PROJECT + '\n[tool.hatch.build.hooks.custom]\npath="builder.py"\n',
                                    PROJECT.replace('"contracts" =', '"docs/notes" =')])
-def test_documentation_consuming_or_custom_build_declarations_are_not_assumed_safe(source, config):
+def test_documentation_consuming_or_custom_build_declarations_are_not_assumed_safe(source, monkeypatch, config):
     repo, _ = source
     previous = save(repo, "pyproject.toml", config)
+    inputs = importlib.import_module("poolhouse.runtime_inputs")
+    monkeypatch.setattr(inputs, "AUDITED_BUILD", inputs.builder_fingerprint(repo, previous))
     assert not same(repo, previous, save(repo, "docs/notes/proof.md"))
 
 
 def test_a_custom_node_build_script_disables_automatic_documentation_reuse(source):
     repo, _ = source
     previous = save(repo, "app/poolhouse-node/build.rs", 'fn main() {}')
+    assert not same(repo, previous, save(repo, "docs/notes/proof.md"))
+
+
+@pytest.mark.parametrize("path,text", [
+    ("app/poolhouse-node/Cargo.toml", '[package]\nname="poolhouse-node"\n[target.\'cfg(unix)\'.dependencies]\nlocal={path="../local"}\n'),
+    ("app/poolhouse-node/Cargo.toml", '[package]\nname="poolhouse-node"\n[dependencies]\nlocal={workspace=true}\n'),
+    ("app/Cargo.toml", '[workspace]\n[patch.crates-io]\nlocal={path="local"}\n'),
+    ("app/poolhouse-node/Cargo.toml", '[package]\nname="poolhouse-node"\n[lib]\npath="../../docs/notes/code.md"\n'),
+    ("app/poolhouse-node/Cargo.toml", '[package]\nname="poolhouse-node"\n[[bin]]\nname="poolhouse-node"\npath="../../docs/notes/code.md"\n'),
+    ("pyproject.toml", PROJECT.replace('license = "Apache-2.0"', 'license = {file="docs/notes/license.md"}')),
+])
+def test_even_an_explicit_builder_pin_does_not_authorize_unknown_local_input_closures(source, monkeypatch, path, text):
+    repo, _ = source
+    previous = save(repo, path, text)
+    inputs = importlib.import_module("poolhouse.runtime_inputs")
+    monkeypatch.setattr(inputs, "AUDITED_BUILD", inputs.builder_fingerprint(repo, previous))
+    assert not same(repo, previous, save(repo, "docs/notes/proof.md"))
+
+
+@pytest.mark.parametrize("path,text", [
+    ("app/poolhouse-node/src/lib.rs", 'const TEXT: &str = include_str!("../../../docs/notes/proof.md");'),
+    ("src/poolhouse/fleet/runtime_wheel.py", 'from pathlib import Path\nTEXT=Path("docs/notes/proof.md").read_text()'),
+])
+def test_a_changed_builder_or_rust_reader_requires_a_new_independent_closure_review(source, path, text):
+    repo, _ = source
+    previous = save(repo, path, text)
     assert not same(repo, previous, save(repo, "docs/notes/proof.md"))
 
 
