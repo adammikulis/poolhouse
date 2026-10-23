@@ -1,4 +1,4 @@
-// Generated proposal. No dispatch or authority is implemented. Schema e00c39c5a862274de475d5940a9f500a7d7729afe3df21d929c5c92faa7dde90
+// Generated proposal. No dispatch or authority is implemented. Schema 85edabd2d8785da6dd55700a1f5c58be18b75d44082505198120758d63b3f1ed
 use super::contract::*;
 
 pub trait Operation { type Request; type Response; type Error; const NAME: &'static str; }
@@ -14,3 +14,21 @@ impl Operation for JobsList { type Request = JobListRequest; type Response = Job
 
 pub struct JobsOutputRead;
 impl Operation for JobsOutputRead { type Request = JobOutputRequest; type Response = JobOutputChunk; type Error = JobError; const NAME: &'static str = "jobs.output.read"; }
+
+pub struct AgentsGet;
+impl Operation for AgentsGet { type Request = AgentGetRequest; type Response = AgentControlSnapshot; type Error = AgentControlError; const NAME: &'static str = "agents.get"; }
+
+pub struct AgentsPause;
+impl Operation for AgentsPause { type Request = AgentControlRequest; type Response = AgentPauseResult; type Error = AgentControlError; const NAME: &'static str = "agents.pause"; }
+
+pub struct AgentsResume;
+impl Operation for AgentsResume { type Request = AgentControlRequest; type Response = AgentPauseResult; type Error = AgentControlError; const NAME: &'static str = "agents.resume"; }
+
+pub struct AgentsStop;
+impl Operation for AgentsStop { type Request = AgentControlRequest; type Response = AgentStopResult; type Error = AgentControlError; const NAME: &'static str = "agents.stop"; }
+
+pub struct AgentsTaskStart;
+impl Operation for AgentsTaskStart { type Request = AgentTaskStartRequest; type Response = AgentTaskStartResult; type Error = AgentControlError; const NAME: &'static str = "agents.task.start"; }
+
+pub struct AgentsTaskStop;
+impl Operation for AgentsTaskStop { type Request = AgentTaskStopRequest; type Response = AgentTaskStopResult; type Error = AgentControlError; const NAME: &'static str = "agents.task.stop"; }

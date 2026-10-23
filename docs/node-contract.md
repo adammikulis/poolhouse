@@ -193,3 +193,57 @@ numeric bounds, signed zero, JSON boolean/number confusion, malformed hex and
 opaque byte data. This is a representation checkpoint for platform review, not
 K acceptance or an installed operation. The other retained job/agent operations,
 state/storage, governed approval and worker contracts remain incomplete.
+
+
+## Agent control proposal
+
+`agents.get`, `agents.pause`, `agents.resume` and `agents.stop` use nominal AgentId,
+ProjectId, current project/worker generations and closed records. Mutations carry
+RequestId; durable retries bind the operation, principal, pool/installation,
+project/worker generations and payload. A label or same-name worker is never a
+replacement generation's authority. These contracts cover control observations,
+not the complete models/preferences/backlog catalogue required by agents.describe.
+
+Pause acknowledgment names the request and revision. Pause intent is distinct
+from observed state: a working task may finish while pause_requested is true.
+The node must atomically exclude new admission after pause acknowledgment. Resume
+rechecks current authority; delayed older pause/resume requests cannot reorder a
+newer control revision. Pause/resume/stop requests include expected_control_revision;
+that counter changes only on accepted control mutations, independently of progress
+snapshot revisions. New requests compare-and-swap it atomically, returning
+control_revision_conflict without effects on mismatch. Already-recorded identical
+retries reauthorize and return their recorded outcome before reapplying any CAS;
+a new stale request cannot advance or overwrite the newer intent. Clients refresh
+conflicting observations and never silently force an older intent through.
+Running is true only for a verified live execution of the
+same incarnation, false only for verified absence, and null when unknown. Steps,
+tasks, ignored counts and memory bytes also use explicit null for unavailable
+observations. No zero or readiness is invented. Snapshots contain no PID, lease,
+credential or person assertion.
+
+Stop records durable intent. Settled requires verified termination and release of
+all owned capacity; unknown ownership or failed verification requires recovery.
+Lease release and forced-stop observations can be null. Warnings are bounded safe
+messages, never arbitrary exception strings. Disconnect cancels observation only,
+not accepted stop intent. General lifecycle authority remains a protected native
+caller decision, not a public person flag or authority borrowed from project access.
+
+`agents.task.start` and `agents.task.stop` are separate from general lifecycle
+control. TaskRef binds nominal BoardId and an opaque TaskId preserved exactly;
+formatting alone proves no task exists. Task IDs are never silently normalized.
+Both operations bind task, worker and project generations. Task stop additionally
+names TaskExecutionId and its generation and may stop only that task-owned
+execution; it cannot stop a replacement worker or grant general agent-stop rights.
+
+The node rechecks the actual active task, creator/assignee relation, separate
+caller/worker sessions, same-board owned checkout, worker orders relation and no
+conflicting active task at admission and execution. Reassignment, closure, source
+change or revoked orders invalidates pending execution. No parent exception is
+inferred. Task start preserves the saved model and execution limits; none can be
+reconfigured through this request. Resource admission and current membership are
+still required. Pause prevents queued-task admission until resumed.
+
+These are generated data declarations only. Board anchor/catalogue identity,
+protected controller authority, transaction ordering, state transitions, native
+process proofs and resource release remain implementation obligations. Existing
+signed task/board records are preserved without importing legacy authority.

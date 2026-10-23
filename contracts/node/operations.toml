@@ -45,3 +45,69 @@ authorization = ["authenticated-current-principal", "current-membership-generati
 retry = "read-current-state"
 cancellation = "request-detach-only"
 subscription = "none"
+
+[[operation]]
+name = "agents.get"
+symbol = "AgentsGet"
+request = "AgentGetRequest"
+response = "AgentControlSnapshot"
+error = "AgentControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-project-generation", "agent-read-permission", "no-existence-disclosure-before-authorization"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "agents.pause"
+symbol = "AgentsPause"
+request = "AgentControlRequest"
+response = "AgentPauseResult"
+error = "AgentControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-project-generation", "authorized-agent-controller", "compare-and-swap-control-revision", "atomic-pause-versus-new-task-admission", "no-existence-disclosure-before-authorization"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-pause-versus-task-admission"
+subscription = "none"
+
+[[operation]]
+name = "agents.resume"
+symbol = "AgentsResume"
+request = "AgentControlRequest"
+response = "AgentPauseResult"
+error = "AgentControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-project-generation", "authorized-agent-controller", "compare-and-swap-control-revision", "atomic-pause-versus-new-task-admission", "no-existence-disclosure-before-authorization"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-pause-versus-task-admission"
+subscription = "none"
+
+[[operation]]
+name = "agents.stop"
+symbol = "AgentsStop"
+request = "AgentControlRequest"
+response = "AgentStopResult"
+error = "AgentControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-project-generation", "authorized-agent-controller", "compare-and-swap-control-revision", "exact-owned-process-lifetime", "verified-exit-and-capacity-release-before-settled", "no-existence-disclosure-before-authorization"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-stop-versus-launch-and-completion"
+subscription = "none"
+
+[[operation]]
+name = "agents.task.start"
+symbol = "AgentsTaskStart"
+request = "AgentTaskStartRequest"
+response = "AgentTaskStartResult"
+error = "AgentControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-project-generation", "current-task-creator-and-assignee", "caller-distinct-from-worker", "same-board-owned-checkout", "current-worker-orders-relation", "no-conflicting-active-task", "active-task-generation", "no-inferred-parent-exception", "saved-worker-model-and-limits", "reauthorize-at-admission-and-execution", "no-existence-disclosure-before-authorization"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "agents.task.stop"
+symbol = "AgentsTaskStop"
+request = "AgentTaskStopRequest"
+response = "AgentTaskStopResult"
+error = "AgentControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-project-generation", "current-task-creator-and-assignee", "caller-distinct-from-worker", "same-board-owned-checkout", "current-worker-orders-relation", "no-conflicting-active-task", "active-task-generation", "no-inferred-parent-exception", "exact-task-owned-execution-only", "reauthorize-at-admission-and-execution", "verified-exit-and-capacity-release-before-settled", "no-existence-disclosure-before-authorization"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "task-owned-stop-versus-execution"
+subscription = "none"

@@ -415,3 +415,148 @@ name = "JobOutputChunk"
 kind = "record"
 visibility = "public"
 fields = [{name = "job_id", type = "JobId"}, {name = "generation", type = "ResourceGeneration"}, {name = "stream_generation", type = "OutputGeneration"}, {name = "data", type = "JobOutputBytes"}, {name = "next_cursor", type = "JobOutputCursor"}, {name = "exhausted", type = "Boolean"}, {name = "sealed", type = "Boolean"}]
+
+[[type]]
+name = "AgentId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "TaskExecutionId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "BoardId"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "TaskId"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 256
+
+[[type]]
+name = "AgentDisplayName"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "node"
+min_bytes = 1
+max_bytes = 128
+
+[[type]]
+name = "OptionalBoolean"
+kind = "optional"
+visibility = "public"
+item = "Boolean"
+
+[[type]]
+name = "OptionalU64"
+kind = "optional"
+visibility = "public"
+item = "U64"
+
+[[type]]
+name = "AgentWarnings"
+kind = "list"
+visibility = "public"
+item = "SafeMessage"
+max_items = 16
+
+[[type]]
+name = "AgentState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "starting", type = "Empty"}, {tag = "loading", type = "Empty"}, {tag = "idle", type = "Empty"}, {tag = "working", type = "Empty"}, {tag = "paused", type = "Empty"}, {tag = "stopping", type = "Empty"}, {tag = "stopped", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "TaskExecutionState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "queued", type = "Empty"}, {tag = "admitting", type = "Empty"}, {tag = "running", type = "Empty"}, {tag = "stopping", type = "Empty"}, {tag = "succeeded", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "TaskRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "board_id", type = "BoardId"}, {name = "task_id", type = "TaskId"}]
+
+[[type]]
+name = "AgentControlSnapshot"
+kind = "record"
+visibility = "public"
+fields = [{name = "agent_id", type = "AgentId"}, {name = "generation", type = "ResourceGeneration"}, {name = "project_id", type = "ProjectId"}, {name = "project_generation", type = "ResourceGeneration"}, {name = "revision", type = "U64"}, {name = "control_revision", type = "U64"}, {name = "name", type = "AgentDisplayName"}, {name = "state", type = "AgentState"}, {name = "pause_requested", type = "Boolean"}, {name = "running", type = "OptionalBoolean"}, {name = "steps", type = "OptionalU64"}, {name = "tasks", type = "OptionalU64"}, {name = "ignored", type = "OptionalU64"}, {name = "memory_bytes", type = "OptionalU64"}]
+
+[[type]]
+name = "AgentGetRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "agent_id", type = "AgentId"}, {name = "generation", type = "ResourceGeneration"}, {name = "project_id", type = "ProjectId"}, {name = "project_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "AgentControlRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "agent_id", type = "AgentId"}, {name = "generation", type = "ResourceGeneration"}, {name = "project_id", type = "ProjectId"}, {name = "project_generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_control_revision", type = "U64"}]
+
+[[type]]
+name = "AgentPauseResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "agent", type = "AgentControlSnapshot"}, {name = "request_id", type = "RequestId"}, {name = "acknowledged_revision", type = "U64"}]
+
+[[type]]
+name = "AgentStopResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "agent", type = "AgentControlSnapshot"}, {name = "request_id", type = "RequestId"}, {name = "requested", type = "Boolean"}, {name = "settled", type = "Boolean"}, {name = "forced", type = "OptionalBoolean"}, {name = "lease_released", type = "OptionalBoolean"}, {name = "warnings", type = "AgentWarnings"}]
+
+[[type]]
+name = "AgentTaskStartRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "agent_id", type = "AgentId"}, {name = "generation", type = "ResourceGeneration"}, {name = "project_id", type = "ProjectId"}, {name = "project_generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "task", type = "TaskRef"}, {name = "task_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "AgentTaskStopRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "agent_id", type = "AgentId"}, {name = "generation", type = "ResourceGeneration"}, {name = "project_id", type = "ProjectId"}, {name = "project_generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "task", type = "TaskRef"}, {name = "task_generation", type = "ResourceGeneration"}, {name = "execution_id", type = "TaskExecutionId"}, {name = "execution_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "AgentTaskExecution"
+kind = "record"
+visibility = "public"
+fields = [{name = "agent_id", type = "AgentId"}, {name = "generation", type = "ResourceGeneration"}, {name = "project_id", type = "ProjectId"}, {name = "project_generation", type = "ResourceGeneration"}, {name = "task", type = "TaskRef"}, {name = "task_generation", type = "ResourceGeneration"}, {name = "execution_id", type = "TaskExecutionId"}, {name = "execution_generation", type = "ResourceGeneration"}, {name = "state", type = "TaskExecutionState"}]
+
+[[type]]
+name = "AgentTaskStartResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "execution", type = "AgentTaskExecution"}, {name = "request_id", type = "RequestId"}]
+
+[[type]]
+name = "AgentTaskStopResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "execution", type = "AgentTaskExecution"}, {name = "request_id", type = "RequestId"}, {name = "requested", type = "Boolean"}, {name = "settled", type = "Boolean"}, {name = "lease_released", type = "OptionalBoolean"}, {name = "warnings", type = "AgentWarnings"}]
+
+[[type]]
+name = "AgentControlError"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "invalid_request", type = "JobErrorDetails"}, {tag = "not_found", type = "JobErrorDetails"}, {tag = "forbidden", type = "JobErrorDetails"}, {tag = "stale_generation", type = "JobErrorDetails"}, {tag = "conflict", type = "JobErrorDetails"}, {tag = "recovery_required", type = "JobErrorDetails"}, {tag = "unavailable", type = "JobErrorDetails"}, {tag = "internal", type = "JobErrorDetails"}, {tag = "task_authority_changed", type = "JobErrorDetails"}, {tag = "control_revision_conflict", type = "JobErrorDetails"}]

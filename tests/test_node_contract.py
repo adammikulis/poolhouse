@@ -277,3 +277,100 @@ def test_shared_job_scalar_vectors():
         for value in row["refused"]:
             with pytest.raises(ValueError):
                 kind(value)
+
+
+def agent_control_snapshot():
+    return {"agent_id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002",
+            "project_id": "00000000-0000-4000-8000-000000000003",
+            "project_generation": "00000000-0000-4000-8000-000000000004",
+            "revision": "1", "control_revision": "3", "name": "local-worker", "state": {"kind": "working", "value": {}},
+            "pause_requested": True, "running": None, "steps": None, "tasks": "0",
+            "ignored": None, "memory_bytes": None}
+
+
+def test_agent_snapshot_distinguishes_pause_intent_and_unknown_observations():
+    value = agent_control_snapshot()
+    assert public.AgentControlSnapshot.from_wire(value).to_wire() == value
+    assert public.AgentId(value["agent_id"]) != public.JobId(value["agent_id"])
+    assert public.TaskId("task-001").value == "task-001"
+    assert public.TaskId("task:0123456789abcdef0123456789abcdef").value.startswith("task:")
+
+
+@pytest.mark.parametrize("change", ["missing_unknown", "authority", "process", "lease", "numeric_bool", "unknown_state"])
+def test_agent_snapshot_refuses_authority_process_and_ambiguous_fields(change):
+    value = agent_control_snapshot()
+    if change == "missing_unknown":
+        del value["memory_bytes"]
+    elif change == "authority":
+        value["person"] = True
+    elif change == "process":
+        value["pid"] = 42
+    elif change == "lease":
+        value["lease"] = "private-lease"
+    elif change == "numeric_bool":
+        value["running"] = 1
+    elif change == "unknown_state":
+        value["state"] = {"kind": "assume_ready", "value": {}}
+    with pytest.raises(ValueError):
+        public.AgentControlSnapshot.from_wire(value)
+
+
+def task_stop_request():
+    return {**{key: value for key, value in agent_control_snapshot().items()
+               if key in {"agent_id", "generation", "project_id", "project_generation"}},
+            "request_id": "00000000-0000-4000-8000-000000000005",
+            "task": {"board_id": "ab" * 32, "task_id": "task-001"},
+            "task_generation": "00000000-0000-4000-8000-000000000006",
+            "execution_id": "00000000-0000-4000-8000-000000000007",
+            "execution_generation": "00000000-0000-4000-8000-000000000008"}
+
+
+def test_task_stop_names_exact_execution_and_preserves_opaque_task_id():
+    from poolhouse.api.node_operations import OPERATION_TYPES
+    value = task_stop_request()
+    assert public.AgentTaskStopRequest.from_wire(value).to_wire() == value
+    assert OPERATION_TYPES["agents.task.stop"][0] is public.AgentTaskStopRequest
+    assert OPERATION_TYPES["agents.stop"][0] is public.AgentControlRequest
+    with pytest.raises(ValueError):
+        public.AgentControlRequest.from_wire(value)
+    for field in ("task_generation", "execution_id", "execution_generation", "project_generation"):
+        missing = dict(value)
+        del missing[field]
+        with pytest.raises(ValueError):
+            public.AgentTaskStopRequest.from_wire(missing)
+
+
+@pytest.mark.parametrize("change", ["project_generation", "task_generation", "execution_generation", "task_request"])
+def test_agent_operation_source_requires_generation_bindings(tmp_path, change):
+    source = tmp_path / "node"
+    shutil.copytree(ROOT / "contracts/node", source)
+    path = source / "types.toml"
+    text = path.read_text()
+    if change in {"project_generation", "task_generation", "execution_generation"}:
+        text = text.replace('{name = "' + change + '", type = "ResourceGeneration"}',
+                            '{name = "' + change + '", type = "ProjectId"}')
+        path.write_text(text)
+    else:
+        path = source / "operations.toml"
+        path.write_text(path.read_text().replace('request = "AgentTaskStopRequest"', 'request = "AgentTaskStartRequest"'))
+    with pytest.raises(ValueError, match="generation binding"):
+        load(source)
+
+
+def test_agent_control_requires_compare_and_swap_revision():
+    value = {key: value for key, value in task_stop_request().items()
+             if key in {"agent_id", "generation", "project_id", "project_generation", "request_id"}}
+    with pytest.raises(ValueError):
+        public.AgentControlRequest.from_wire(value)
+    value["expected_control_revision"] = "3"
+    assert public.AgentControlRequest.from_wire(value).to_wire() == value
+
+
+def test_agent_operation_source_refuses_missing_control_revision(tmp_path):
+    source = tmp_path / "node"
+    shutil.copytree(ROOT / "contracts/node", source)
+    path = source / "types.toml"
+    path.write_text(path.read_text().replace(', {name = "expected_control_revision", type = "U64"}', ''))
+    with pytest.raises(ValueError, match="generation binding"):
+        load(source)

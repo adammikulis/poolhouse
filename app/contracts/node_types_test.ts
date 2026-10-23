@@ -40,3 +40,13 @@ void wrongCursor;
 declare const jobPage: JobViewList;
 // @ts-expect-error generated lists are immutable
 jobPage.push({});
+
+import type { AgentId, TaskExecutionId } from "./node";
+declare const agentId: AgentId;
+// @ts-expect-error stable agent identity is not an execution identity
+const wrongExecution: TaskExecutionId = agentId;
+void wrongExecution;
+declare const taskStop: NodeOperations["agents.task.stop"]["request"];
+// @ts-expect-error task stop cannot become general agent control
+const generalStop: NodeOperations["agents.stop"]["request"] = { ...taskStop, task: taskStop.task };
+void generalStop;

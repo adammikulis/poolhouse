@@ -38,13 +38,15 @@ def load_operations(root: Path, rows: list[dict]) -> list[dict]:
                 or len(checks) != len(set(checks)) or "authenticated-current-principal" not in checks):
             raise ValueError("invalid operation authorization requirements")
         if (operation["retry"] not in {"read-current-state", "durable-principal-resource-generation-payload-bound"}
-                or operation["cancellation"] not in {"request-detach-only", "atomic-intent-versus-launch-and-completion"}
+                or operation["cancellation"] not in {"request-detach-only", "atomic-intent-versus-launch-and-completion", "atomic-pause-versus-task-admission", "atomic-stop-versus-launch-and-completion", "task-owned-stop-versus-execution"}
                 or operation["subscription"] != "none"):
             raise ValueError("unsupported operation lifecycle")
         if operation["retry"] == "durable-principal-resource-generation-payload-bound":
             members = {field["name"]: field["type"] for field in definitions[operation["request"]]["fields"]}
             if members.get("request_id") != "RequestId" or members.get("generation") != "ResourceGeneration":
                 raise ValueError("durable operation omits request or generation binding")
+        if name.startswith("agents."):
+            _agent_request(name, definitions[operation["request"]])
     if not names:
         raise ValueError("empty operation contract")
     return source["operation"]
@@ -73,3 +75,16 @@ def render_typescript(rows: list[dict], digest: str) -> str:
         output.append(f'  readonly {json.dumps(row["name"])}: {{ readonly request: {row["request"]}; readonly response: {row["response"]}; readonly error: {row["error"]} }};')
     output.append('}\n')
     return "\n".join(output)
+
+
+def _agent_request(name: str, request: dict) -> None:
+    members = {field["name"]: field["type"] for field in request["fields"]}
+    expected = {"agent_id": "AgentId", "generation": "ResourceGeneration", "project_id": "ProjectId", "project_generation": "ResourceGeneration"}
+    if name in {"agents.pause", "agents.resume", "agents.stop"}:
+        expected["expected_control_revision"] = "U64"
+    if name.startswith("agents.task."):
+        expected.update({"task": "TaskRef", "task_generation": "ResourceGeneration"})
+    if name == "agents.task.stop":
+        expected.update({"execution_id": "TaskExecutionId", "execution_generation": "ResourceGeneration"})
+    if any(members.get(field) != kind for field, kind in expected.items()):
+        raise ValueError("agent operation omits exact resource generation binding")

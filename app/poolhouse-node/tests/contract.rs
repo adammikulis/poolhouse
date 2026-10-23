@@ -158,3 +158,48 @@ fn shared_job_scalar_vectors_match_rust_decoding() {
         for value in row["refused"].as_array().unwrap() { assert!(!accepts(value), "{}: {value}", row["type"]); }
     }
 }
+
+#[test]
+fn agent_snapshot_preserves_unknowns_and_separate_pause_intent() {
+    let snapshot = json!({"agent_id": "00000000-0000-4000-8000-000000000001",
+        "generation": "00000000-0000-4000-8000-000000000002", "project_id": "00000000-0000-4000-8000-000000000003",
+        "project_generation": "00000000-0000-4000-8000-000000000004", "revision": "1", "control_revision": "3", "name": "local-worker",
+        "state": {"kind": "working", "value": {}}, "pause_requested": true, "running": null,
+        "steps": null, "tasks": "0", "ignored": null, "memory_bytes": null});
+    let decoded: AgentControlSnapshot = serde_json::from_value(snapshot.clone()).unwrap();
+    assert_eq!(serde_json::to_value(decoded).unwrap(), snapshot);
+    for field in ["running", "steps", "memory_bytes"] {
+        let mut missing = snapshot.clone(); missing.as_object_mut().unwrap().remove(field);
+        assert!(serde_json::from_value::<AgentControlSnapshot>(missing).is_err());
+    }
+    for field in ["pid", "lease", "token", "person"] {
+        let mut leaked = snapshot.clone(); leaked[field] = json!("forged");
+        assert!(serde_json::from_value::<AgentControlSnapshot>(leaked).is_err());
+    }
+}
+
+#[test]
+fn task_control_requests_require_exact_execution_and_generations() {
+    let request = json!({"agent_id": "00000000-0000-4000-8000-000000000001",
+        "generation": "00000000-0000-4000-8000-000000000002", "project_id": "00000000-0000-4000-8000-000000000003",
+        "project_generation": "00000000-0000-4000-8000-000000000004", "request_id": "00000000-0000-4000-8000-000000000005",
+        "task": {"board_id": "ab".repeat(32), "task_id": "task-001"}, "task_generation": "00000000-0000-4000-8000-000000000006",
+        "execution_id": "00000000-0000-4000-8000-000000000007", "execution_generation": "00000000-0000-4000-8000-000000000008"});
+    let decoded: AgentTaskStopRequest = serde_json::from_value(request.clone()).unwrap();
+    assert_eq!(decoded.task.task_id.as_str(), "task-001");
+    assert!(serde_json::from_value::<AgentControlRequest>(request.clone()).is_err());
+    for field in ["task_generation", "execution_id", "execution_generation", "project_generation"] {
+        let mut missing = request.clone(); missing.as_object_mut().unwrap().remove(field);
+        assert!(serde_json::from_value::<AgentTaskStopRequest>(missing).is_err());
+    }
+}
+
+#[test]
+fn general_agent_control_requires_an_expected_control_revision() {
+    let mut request = json!({"agent_id": "00000000-0000-4000-8000-000000000001",
+        "generation": "00000000-0000-4000-8000-000000000002", "project_id": "00000000-0000-4000-8000-000000000003",
+        "project_generation": "00000000-0000-4000-8000-000000000004", "request_id": "00000000-0000-4000-8000-000000000005"});
+    assert!(serde_json::from_value::<AgentControlRequest>(request.clone()).is_err());
+    request["expected_control_revision"] = json!("3");
+    assert!(serde_json::from_value::<AgentControlRequest>(request).is_ok());
+}

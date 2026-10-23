@@ -143,7 +143,20 @@ def _encode(value: Any) -> object:
 
 
 CONTRACT_VERSION = 1
-SCHEMA_SHA256 = "e00c39c5a862274de475d5940a9f500a7d7729afe3df21d929c5c92faa7dde90"
+SCHEMA_SHA256 = "85edabd2d8785da6dd55700a1f5c58be18b75d44082505198120758d63b3f1ed"
+
+
+class AgentDisplayName(_Scalar):
+    _encoding = "text"
+    _bounds = (1, 128)
+
+
+class AgentId(_Scalar):
+    _encoding = "uuid"
+
+
+class BoardId(_Scalar):
+    _encoding = "hex32"
 
 
 class Boolean(_Boolean):
@@ -242,6 +255,15 @@ class SafeMessage(_Scalar):
     _bounds = (1, 2048)
 
 
+class TaskExecutionId(_Scalar):
+    _encoding = "uuid"
+
+
+class TaskId(_Scalar):
+    _encoding = "text"
+    _bounds = (1, 256)
+
+
 class U32(_Scalar):
     _encoding = "u32"
 
@@ -252,6 +274,51 @@ class U64(_Scalar):
 
 class UnixMicros(_Scalar):
     _encoding = "u64"
+
+
+@dataclass(frozen=True)
+class AgentControlRequest(_Record):
+    agent_id: AgentId
+    generation: ResourceGeneration
+    project_id: ProjectId
+    project_generation: ResourceGeneration
+    request_id: RequestId
+    expected_control_revision: U64
+    _fields: ClassVar[dict[str, str]] = {'agent_id': 'AgentId',
+ 'generation': 'ResourceGeneration',
+ 'project_id': 'ProjectId',
+ 'project_generation': 'ResourceGeneration',
+ 'request_id': 'RequestId',
+ 'expected_control_revision': 'U64'}
+
+
+@dataclass(frozen=True)
+class AgentGetRequest(_Record):
+    agent_id: AgentId
+    generation: ResourceGeneration
+    project_id: ProjectId
+    project_generation: ResourceGeneration
+    _fields: ClassVar[dict[str, str]] = {'agent_id': 'AgentId',
+ 'generation': 'ResourceGeneration',
+ 'project_id': 'ProjectId',
+ 'project_generation': 'ResourceGeneration'}
+
+
+class AgentState(_Union):
+    _variants: ClassVar[dict[str, str]] = {'starting': 'Empty',
+ 'loading': 'Empty',
+ 'idle': 'Empty',
+ 'working': 'Empty',
+ 'paused': 'Empty',
+ 'stopping': 'Empty',
+ 'stopped': 'Empty',
+ 'failed': 'Empty',
+ 'recovery_required': 'Empty'}
+
+
+class AgentWarnings(_List):
+    _item = "SafeMessage"
+    _maximum = 16
 
 
 @dataclass(frozen=True)
@@ -333,6 +400,10 @@ class NodeIdentity(_Record):
  'contract_version': 'U32'}
 
 
+class OptionalBoolean(_Optional):
+    _item = "Boolean"
+
+
 class OptionalExitCode(_Optional):
     _item = "ExitCode"
 
@@ -341,8 +412,137 @@ class OptionalJobListCursor(_Optional):
     _item = "JobListCursor"
 
 
+class OptionalU64(_Optional):
+    _item = "U64"
+
+
 class OptionalUnixMicros(_Optional):
     _item = "UnixMicros"
+
+
+class TaskExecutionState(_Union):
+    _variants: ClassVar[dict[str, str]] = {'queued': 'Empty',
+ 'admitting': 'Empty',
+ 'running': 'Empty',
+ 'stopping': 'Empty',
+ 'succeeded': 'Empty',
+ 'failed': 'Empty',
+ 'cancelled': 'Empty',
+ 'recovery_required': 'Empty'}
+
+
+@dataclass(frozen=True)
+class TaskRef(_Record):
+    board_id: BoardId
+    task_id: TaskId
+    _fields: ClassVar[dict[str, str]] = {'board_id': 'BoardId', 'task_id': 'TaskId'}
+
+
+class AgentControlError(_Union):
+    _variants: ClassVar[dict[str, str]] = {'invalid_request': 'JobErrorDetails',
+ 'not_found': 'JobErrorDetails',
+ 'forbidden': 'JobErrorDetails',
+ 'stale_generation': 'JobErrorDetails',
+ 'conflict': 'JobErrorDetails',
+ 'recovery_required': 'JobErrorDetails',
+ 'unavailable': 'JobErrorDetails',
+ 'internal': 'JobErrorDetails',
+ 'task_authority_changed': 'JobErrorDetails',
+ 'control_revision_conflict': 'JobErrorDetails'}
+
+
+@dataclass(frozen=True)
+class AgentControlSnapshot(_Record):
+    agent_id: AgentId
+    generation: ResourceGeneration
+    project_id: ProjectId
+    project_generation: ResourceGeneration
+    revision: U64
+    control_revision: U64
+    name: AgentDisplayName
+    state: AgentState
+    pause_requested: Boolean
+    running: OptionalBoolean
+    steps: OptionalU64
+    tasks: OptionalU64
+    ignored: OptionalU64
+    memory_bytes: OptionalU64
+    _fields: ClassVar[dict[str, str]] = {'agent_id': 'AgentId',
+ 'generation': 'ResourceGeneration',
+ 'project_id': 'ProjectId',
+ 'project_generation': 'ResourceGeneration',
+ 'revision': 'U64',
+ 'control_revision': 'U64',
+ 'name': 'AgentDisplayName',
+ 'state': 'AgentState',
+ 'pause_requested': 'Boolean',
+ 'running': 'OptionalBoolean',
+ 'steps': 'OptionalU64',
+ 'tasks': 'OptionalU64',
+ 'ignored': 'OptionalU64',
+ 'memory_bytes': 'OptionalU64'}
+
+
+@dataclass(frozen=True)
+class AgentTaskExecution(_Record):
+    agent_id: AgentId
+    generation: ResourceGeneration
+    project_id: ProjectId
+    project_generation: ResourceGeneration
+    task: TaskRef
+    task_generation: ResourceGeneration
+    execution_id: TaskExecutionId
+    execution_generation: ResourceGeneration
+    state: TaskExecutionState
+    _fields: ClassVar[dict[str, str]] = {'agent_id': 'AgentId',
+ 'generation': 'ResourceGeneration',
+ 'project_id': 'ProjectId',
+ 'project_generation': 'ResourceGeneration',
+ 'task': 'TaskRef',
+ 'task_generation': 'ResourceGeneration',
+ 'execution_id': 'TaskExecutionId',
+ 'execution_generation': 'ResourceGeneration',
+ 'state': 'TaskExecutionState'}
+
+
+@dataclass(frozen=True)
+class AgentTaskStartRequest(_Record):
+    agent_id: AgentId
+    generation: ResourceGeneration
+    project_id: ProjectId
+    project_generation: ResourceGeneration
+    request_id: RequestId
+    task: TaskRef
+    task_generation: ResourceGeneration
+    _fields: ClassVar[dict[str, str]] = {'agent_id': 'AgentId',
+ 'generation': 'ResourceGeneration',
+ 'project_id': 'ProjectId',
+ 'project_generation': 'ResourceGeneration',
+ 'request_id': 'RequestId',
+ 'task': 'TaskRef',
+ 'task_generation': 'ResourceGeneration'}
+
+
+@dataclass(frozen=True)
+class AgentTaskStopRequest(_Record):
+    agent_id: AgentId
+    generation: ResourceGeneration
+    project_id: ProjectId
+    project_generation: ResourceGeneration
+    request_id: RequestId
+    task: TaskRef
+    task_generation: ResourceGeneration
+    execution_id: TaskExecutionId
+    execution_generation: ResourceGeneration
+    _fields: ClassVar[dict[str, str]] = {'agent_id': 'AgentId',
+ 'generation': 'ResourceGeneration',
+ 'project_id': 'ProjectId',
+ 'project_generation': 'ResourceGeneration',
+ 'request_id': 'RequestId',
+ 'task': 'TaskRef',
+ 'task_generation': 'ResourceGeneration',
+ 'execution_id': 'TaskExecutionId',
+ 'execution_generation': 'ResourceGeneration'}
 
 
 class JobError(_Union):
@@ -393,6 +593,55 @@ class JobSnapshot(_Record):
  'submitted_at': 'UnixMicros',
  'started_at': 'OptionalUnixMicros',
  'finished_at': 'OptionalUnixMicros'}
+
+
+@dataclass(frozen=True)
+class AgentPauseResult(_Record):
+    agent: AgentControlSnapshot
+    request_id: RequestId
+    acknowledged_revision: U64
+    _fields: ClassVar[dict[str, str]] = {'agent': 'AgentControlSnapshot', 'request_id': 'RequestId', 'acknowledged_revision': 'U64'}
+
+
+@dataclass(frozen=True)
+class AgentStopResult(_Record):
+    agent: AgentControlSnapshot
+    request_id: RequestId
+    requested: Boolean
+    settled: Boolean
+    forced: OptionalBoolean
+    lease_released: OptionalBoolean
+    warnings: AgentWarnings
+    _fields: ClassVar[dict[str, str]] = {'agent': 'AgentControlSnapshot',
+ 'request_id': 'RequestId',
+ 'requested': 'Boolean',
+ 'settled': 'Boolean',
+ 'forced': 'OptionalBoolean',
+ 'lease_released': 'OptionalBoolean',
+ 'warnings': 'AgentWarnings'}
+
+
+@dataclass(frozen=True)
+class AgentTaskStartResult(_Record):
+    execution: AgentTaskExecution
+    request_id: RequestId
+    _fields: ClassVar[dict[str, str]] = {'execution': 'AgentTaskExecution', 'request_id': 'RequestId'}
+
+
+@dataclass(frozen=True)
+class AgentTaskStopResult(_Record):
+    execution: AgentTaskExecution
+    request_id: RequestId
+    requested: Boolean
+    settled: Boolean
+    lease_released: OptionalBoolean
+    warnings: AgentWarnings
+    _fields: ClassVar[dict[str, str]] = {'execution': 'AgentTaskExecution',
+ 'request_id': 'RequestId',
+ 'requested': 'Boolean',
+ 'settled': 'Boolean',
+ 'lease_released': 'OptionalBoolean',
+ 'warnings': 'AgentWarnings'}
 
 
 @dataclass(frozen=True)
