@@ -193,6 +193,15 @@ def _planned(args: argparse.Namespace) -> runtime_deploy.Plan | None:
         return plan_from(args)
     except runtime_source.Unpublished as exc:
         if args.background:
+            if getattr(args, "hook_refresh", False) and not args.force and not args.force_build:
+                prospective = plan_from(args, deploying=False)
+                if (prospective.checkout == exc.checkout and prospective.commit == exc.commit
+                        and (same := _same_build_inputs(prospective)) is not None):
+                    detail = ("unpublished source; no deployment: same committed build inputs excluding reviewed "
+                              f"documentation; selected build remains {same.commit[:7]}")
+                    say(f"source {prospective.commit[:7]}: {detail}")
+                    _audited(args, "ensure --background", prospective, "unpublished-same-build-inputs", detail)
+                    return None
             _awaiting(args, exc)
             return None
         if not args.await_published:
