@@ -57,8 +57,8 @@ def test_a_child_started_the_ordinary_way_is_the_responsibility_of_whatever_ran_
 def test_a_disclaimed_child_is_its_own_responsible_process_and_keeps_its_output(tmp_path):
     out = tmp_path / "out.log"
     with out.open("ab") as stream:
-        pid = disclaim.spawn([sys.executable, "-c", "import sys,time; print('hello', flush=True); print('oops', file=sys.stderr, flush=True); time.sleep(30)"],
-                             {"PATH": os.environ["PATH"]}, stream.fileno())
+        pid = disclaim.spawn(["/bin/sh", "-c", "echo hello; echo oops >&2; sleep 30"], {"PATH": os.environ["PATH"]}, stream.fileno(),
+                             cwd=tmp_path)
     try:
         time.sleep(1.0)
         assert responsible(pid) == pid
@@ -113,11 +113,11 @@ def test_a_descriptor_the_caller_holds_does_not_reach_the_daemon(tmp_path):
 @pytest.mark.usefixtures("macos")
 def test_a_name_that_is_not_utf8_is_carried_as_the_system_has_it(tmp_path):
     with (tmp_path / "out.log").open("ab") as stream:
-        pid = disclaim.spawn([sys.executable, "-c", "import os; print(os.fsencode(os.environ['ODD']), flush=True)"],
+        pid = disclaim.spawn(["/bin/sh", "-c", "printf '%s' \"$ODD\"; sleep 30"],
                              {"PATH": os.environ["PATH"], "ODD": os.fsdecode(b"caf\xe9")}, stream.fileno())
     time.sleep(1.5)
     stop(pid)
-    assert "caf" in (tmp_path / "out.log").read_text()
+    assert b"caf\xe9" in (tmp_path / "out.log").read_bytes()
 
 
 # These two start /bin/sh, not Python: a process that answers for itself waits for its own consent to read Documents, and a Python run
