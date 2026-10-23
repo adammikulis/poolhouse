@@ -38,10 +38,13 @@ The rules never to break, then the ones needed every hour; each names the sectio
 17. **"If I can't use it, it's not done"**: landed, updated, driven the way a person does (2, 3, 4).
 18. **Inbox first**: read and answer it at every session start and between tasks; contact comes first (3).
 19. **Stage files by name, never `git add -A`**, in your own claimed worktree beside the primary checkout (4).
-20. **Push the development branch yourself**: fetch, merge `origin/<dev>`, run only your changed test files,
-    `git push origin HEAD:refs/heads/<dev>`; no accept or lock; clean up before reporting (4).
-21. **Test your own change with explicit `scripts/test` selectors**, any list of files and never the full suite (GitHub runs it on pull requests, on `main` and nightly; a development push runs only the `gates` job)
-    (5).
+20. **Push the development branch yourself**: fetch, merge `origin/<dev>`, `git push origin HEAD:refs/heads/<dev>`; the push
+    hook runs the tests your change can break and refuses the push while one is red; no accept or lock; clean up before
+    reporting (4).
+21. **Test your own change with explicit `scripts/test` selectors**: the tests it affects as `scripts/affected.py` selects
+    them (`python scripts/hooks/affected_push.py` names and runs them) and your changed files, never the whole suite (GitHub
+    runs it on pull requests, on `main` and nightly; a development push runs only the `gates` job). A landing is not done
+    while a test the change can break is red (5).
 
 Contents: [1 Hard floors](#1-hard-floors) | [2 How to work](#2-how-to-work) |
 [3 Workspace and coordination](#3-workspace-and-coordination) | [4 Git, worktrees and landing](#4-git-worktrees-and-landing) |
@@ -640,7 +643,9 @@ Whoever made a branch finishes it and pushes it; the lead steps in only for cros
    tests with `scripts/test all <files>`, commit by named files.
 2. **Push.** `git fetch origin`, merge `origin/<dev>` again if it moved, then `git push origin HEAD:refs/heads/<dev>`.
    No accept or lock is needed. The push check refuses Python that does not parse and data
-   files, and a standing reject of that commit; nothing else.
+   files, a standing reject of that commit, and a red test: it runs `scripts/test all --redteam` on the test files
+   `scripts/affected.py` selects for the pushed paths, and a failure or a selection it cannot make refuses the push with the
+   failing test names and the command that runs them again (docs/landing.md, "The push hook").
 3. **Watch GitHub.** GitHub runs the `gates` job on the pushed commit (the full suite runs on pull requests, on `main` and
    nightly, never on a development push). The CI watcher posts a red run to the session that pushed it, naming the failing
    job and tests, and the pusher fixes it in the same turn. GitHub CI is a signal, never a
@@ -649,7 +654,7 @@ Whoever made a branch finishes it and pushes it; the lead steps in only for cros
 
 - **A worker pushes its own branch.** The development branch is whichever branch the primary checkout is on
   (`POOLHOUSE_DEV_BRANCH` overrides it); nothing names it. A worker never reports a branch landed before its commit is
-  on `origin/<dev>`. A subagent whose changed files passed their selectors pushes it itself.
+  on `origin/<dev>`. A subagent whose affected tests passed pushes it itself.
 - **A rule-file edit the owner orders lands at once.** When the owner asks for a change to `AGENTS.md` or `CLAUDE.md`,
   the lead makes it, commits it and pushes the development branch in the same turn, then posts a milestone naming the
   commit so every agent re-reads both files. The owner's instruction is the authority; only the edit itself is made (no
@@ -777,7 +782,11 @@ reads only what it flags.
 ### Scoped merge gates and background verification
 
 Agents test their own changed behavior with reviewed explicit affected selectors through `scripts/test`
-(`scripts/test all tests/<affected-file>...`), including the relevant browser, subprocess and packaging tests for
+(`scripts/test all tests/<affected-file>...`): the files they changed and the files `scripts/affected.py` selects for
+their diff, which the push hook runs again before a push goes through (`python scripts/hooks/affected_push.py` runs it
+by hand). A test the change can break may not be red when it lands. The selection reaches test files an author never opened
+(a module's importers, the glossary and switch-table scans, the tree-wide guards), so a red test in an untouched file
+is the author's to fix. Include the relevant browser, subprocess and packaging tests for
 changed surfaces (the slow tests for packaging, page and Fleet changes). Report the exact tree, commands, results and
 limitations. Invalid selectors fail before admission; never replace a missing selector with an unreviewed omission.
 Documentation-only changes need consistency review and clean diffs. **The full suite is GitHub's job**: the `ci`

@@ -153,8 +153,8 @@ gate.
   separately landing batches instead of carrying it. Run `git cherry <dev> <branch>` before porting and
   drop equivalent patches. Record the tree hash a gate ran on; a tree already gated is not gated again. Finish before
   starting: no new branch while your own ready branches await landing; about ten open worktrees at most per lead.
-- **A worker lands its own branch with git:** fetch, merge `origin/<dev>`, run the changed tests, then
-  `git push origin HEAD:refs/heads/<dev>` (never `main`, never forced). `scripts/hooks/pushed` checks the push and the primary checkout
+- **A worker lands its own branch with git:** fetch, merge `origin/<dev>`, run the changed and affected tests, then
+  `git push origin HEAD:refs/heads/<dev>` (never `main`, never forced). `scripts/hooks/pushed` checks the push, runs the tests it can break, and the primary checkout
   follows origin (docs/landing.md).
 - The primary development checkout may receive reviewed changes through a fast-forward merge or authorized direct
   edits and named-file commits; resolve conflicts in an isolated worktree. The retained primary checkout is never

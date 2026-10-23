@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check what an agent pushes: Python parses, no data files, no commit with a standing reject, and a warning for a merged worktree that outlives a push.
+"""Check what an agent pushes: Python parses, no data files, no commit with a standing reject, the tests the push can break pass, and a warning for a merged worktree that outlives a push.
 
     pushed DEV   reads pre-push lines on stdin; DEV is the development branch
 """
@@ -16,10 +16,15 @@ ZERO = "0" * 40
 ASK_TIMEOUT_S = 10.0
 HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE.parent), str(HERE.parents[1] / "src")]
+sys.path.append(str(HERE))    # last: the hook scripts here must not shadow a module of scripts/ or src/
 try:
     import sealed_git as lg
 except ImportError as exc:
     raise SystemExit(f"pushed: the git helper could not load ({exc}); the push is refused") from None
+try:
+    import affected_push
+except ImportError as exc:
+    raise SystemExit(f"pushed: the affected-test check could not load ({exc}); the push is refused") from None
 try:
     import ci_watch
 except ImportError as exc:
@@ -60,16 +65,10 @@ def leftover_worktrees(tip: str) -> list[tuple[str, str]]:
     return out
 
 
-def unpushed_names(root: Path, tip: str) -> list[str]:
-    """The files changed by the commits of ``tip`` that no remote-tracking ref holds."""
-    done = lg.sealed(root, "log", "--format=", "--name-only", "--no-renames", "-z", "--stdin", stdin=lg.unpushed(root, tip))
-    return [n for n in done.stdout.split("\0") if n]
-
-
 def unparseable(base: str, tip: str) -> list[str]:
     """Python files changed in ``base..tip`` that do not parse at ``tip``."""
     root = Path.cwd()
-    names = lg.changed(root, base, tip, "--diff-filter=ACMR") if lg.commit_id(root, base) else unpushed_names(root, tip)
+    names = lg.changed(root, base, tip, "--diff-filter=ACMR") if lg.commit_id(root, base) else lg.unpushed_names(root, tip)
     bad = []
     for name in sorted({n for n in names if n.endswith(".py")}):
         source = lg.blob(root, tip, name)
@@ -173,6 +172,8 @@ def main(dev: str, lines: list[str]) -> int:
         if subprocess.run([sys.executable, str(HERE / "no-data-files"), "--range", base, tip],
                           check=False).returncode != 0:
             refused = failed = 1
+        if remote_ref == f"refs/heads/{dev}" and not (failed or refused):
+            refused = affected_push.check(dev, base, tip)
     if not refused:
         watch_ci(dev, tips)
         follow(dev, tips)

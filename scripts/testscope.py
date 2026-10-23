@@ -7,7 +7,7 @@ from pathlib import Path
 
 WHOLE_TIERS = ("fast", "full", "slow", "all")
 AGENT_MARKERS = ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE", "CODEX_THREAD_ID", "CODEX_SESSION_ID")
-REFUSAL = "the whole suite runs on a schedule and on pull requests; name the files you changed (scripts/test all <files>)"
+REFUSAL = "the whole suite runs on a schedule and on pull requests; name the test files your change affects (scripts/test all <files>)"
 
 
 class Refused(ValueError):
