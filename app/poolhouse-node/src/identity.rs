@@ -73,14 +73,6 @@ pub struct Ident {
     /// How far the session has read its inbox: the furthest cursor it presented when it read it, by origin.
     #[serde(default)]
     pub inbox_read: BTreeMap<String, u64>,
-    /// What the session says it is for, the branch it works on and the checkout it works in (`set_profile`): claimed text, kept on this device
-    /// only, cleaned to one short line each, so a roster of sessions lets one find another without asking the lead.
-    #[serde(default)]
-    pub purpose: String,
-    #[serde(default)]
-    pub branch: String,
-    #[serde(default)]
-    pub worktree: String,
 }
 
 /// The harness and model of the person's own session, set by `register_person` and by no other call.
@@ -110,17 +102,6 @@ pub fn clean_model(text: &str) -> Result<String> {
     let first = text.chars().next().is_some_and(|c| c.is_ascii_alphanumeric());
     let id = first && text.len() <= 80 && text.chars().all(|c| c.is_ascii_alphanumeric() || "._:/+@-".contains(c));
     Ok(if id { clean(text)? } else { String::new() })
-}
-
-/// The most characters kept of a session's purpose, branch name and checkout path.
-pub const MOST_PURPOSE: usize = 120;
-pub const MOST_BRANCH: usize = 100;
-pub const MOST_PATH: usize = 240;
-
-/// ``text`` as one harmless line of at most ``most`` characters: control characters and runs of white space become one space.
-pub fn line_of(text: &str, most: usize) -> String {
-    let flat: String = text.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
-    flat.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(most).collect()
 }
 
 /// The names of one board.
@@ -230,24 +211,6 @@ impl Registry {
         Ok(changed)
     }
 
-    /// Record what ``name`` says it is for and where it works; a field left empty keeps what was there. True when something changed.
-    pub fn set_profile(&mut self, name: &str, purpose: &str, branch: &str, worktree: &str) -> Result<bool> {
-        let ident = self.names.get_mut(name).ok_or_else(|| Error::Denied("no such session".into()))?;
-        let mut changed = false;
-        let fields = [(&mut ident.purpose, purpose, MOST_PURPOSE), (&mut ident.branch, branch, MOST_BRANCH), (&mut ident.worktree, worktree, MOST_PATH)];
-        for (slot, text, most) in fields {
-            let new = line_of(text, most);
-            if !new.is_empty() && new != *slot {
-                *slot = new;
-                changed = true;
-            }
-        }
-        if changed {
-            self.save()?;
-        }
-        Ok(changed)
-    }
-
     /// Record that the node checked ``name`` runs ``model``; only the node's own checks call this.
     pub fn verify_model(&mut self, name: &str, model: &str) -> Result<()> {
         let model = clean_model(model)?;
@@ -349,7 +312,6 @@ impl Registry {
         self.names.insert(name.clone(), Ident {
             digest: full, family: word.into(), parent: parent.into(), model, model_state: state, harness: clean(harness)?,
             retired: false, retired_reason: String::new(), person: false, seen_ms: now_ms, lineage: lineage.to_vec(), inbox_read: BTreeMap::new(),
-            purpose: String::new(), branch: String::new(), worktree: String::new(),
         });
         self.save()?;
         Ok((name, true))

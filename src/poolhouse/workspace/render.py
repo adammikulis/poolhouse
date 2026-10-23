@@ -5,11 +5,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time
 from typing import Any
 
 from poolhouse.log import say, warn
-from poolhouse.workspace import roster
 from poolhouse.workspace.modelid import describe
 from poolhouse.workspace.screen import fence
 
@@ -33,12 +31,6 @@ def _row(value: dict[str, Any]) -> str:
     return f"{value['a']} <-> {value['b']}  {value['messages']} messages, {value['unread']} unread"
 
 
-def is_roster(value: Any) -> bool:
-    """Whether ``value`` is a non-empty list of roster rows (`roster.Row.shown`)."""
-    return isinstance(value, list) and bool(value) and all(
-        isinstance(v, dict) and {"id", "purpose", "branch", "worktree", "state", "last_acted"} <= v.keys() for v in value)
-
-
 def text(value: Any) -> str:
     """``value`` as the text a person reads, by the shape of what it holds."""
     if isinstance(value, dict) and "text" in value and "seq" in value:
@@ -60,8 +52,6 @@ def text(value: Any) -> str:
     if isinstance(value, list) and value and all(
             isinstance(v, dict) and {"type", "target", "mode"} == v.keys() for v in value):
         return block([_row(v) for v in value], "subscriptions")
-    if is_roster(value):
-        return block(roster.lines(value, time.time()), "roster")
     if isinstance(value, list) and value and all(
             isinstance(v, dict) and {"id", "role", "model_state", "last_acted"} <= v.keys() for v in value):
         return block([f"{v.get('display_name', v['id'])}  {v['role']}  {describe(v['model'], v['model_state'])}"
@@ -77,7 +67,7 @@ def text(value: Any) -> str:
     if isinstance(value, list):
         return "\n".join(text(v) for v in value) or "(none)"
     if isinstance(value, dict):
-        return "\n".join(f"{k}: {text(v) if k == 'roster' and is_roster(v) else v if not isinstance(v, (dict, list)) else json.dumps(v)}"
+        return "\n".join(f"{k}: {v if not isinstance(v, (dict, list)) else json.dumps(v)}"
                          for k, v in value.items())
     return str(value)
 

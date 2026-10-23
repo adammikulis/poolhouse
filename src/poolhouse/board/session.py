@@ -85,10 +85,6 @@ class Agent:
     idle: bool = False
     person: bool = False
     """Whether the node marked this as the person's own session (`register_person`); no claim sets it."""
-    purpose: str = ""
-    branch: str = ""
-    worktree: str = ""
-    """What the session said it is for, the branch it works on and its checkout (`whoami`): claimed text the node cleaned to one line each."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,8 +146,7 @@ def _entry(raw: dict[str, Any]) -> Entry:
 def _agent(raw: dict[str, Any]) -> Agent:
     return Agent(raw["name"], raw["parent"], raw["family"], raw["model"], raw["model_state"], raw["harness"],
                  raw["retired"], raw["seen_ms"], raw.get("retired_reason", ""),
-                 bool(raw.get("idle", False)), bool(raw.get("person", False)),
-                 raw.get("purpose", ""), raw.get("branch", ""), raw.get("worktree", ""))
+                 bool(raw.get("idle", False)), bool(raw.get("person", False)))
 
 
 def _claim(raw: dict[str, Any], changed: bool = True) -> Claim:
@@ -186,10 +181,9 @@ class Session:
             self.named = str(self.call("whoami")["name"])
         return self.named
 
-    def whoami(self, model: str = "", harness: str = "", **profile: str) -> Agent:
-        """Who the token is; ``model`` and ``harness`` record what the session says it runs on, and ``profile``
-        (``purpose``, ``branch``, ``worktree``) what it says it is for and where it works."""
-        params = {k: v for k, v in (("model", model), ("harness", harness), *profile.items()) if v}
+    def whoami(self, model: str = "", harness: str = "") -> Agent:
+        """Who the token is; ``model`` and ``harness`` record what the session says it runs on."""
+        params = {k: v for k, v in (("model", model), ("harness", harness)) if v}
         got = self.call("whoami", **params)
         self.named = got["name"]
         return _agent(got["identity"])

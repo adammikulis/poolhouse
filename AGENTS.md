@@ -37,6 +37,7 @@ The rules never to break, then the ones needed every hour; each names the sectio
 16. **A budget is a debt, nothing is grandfathered, no agent raises a number**; nothing is cemented before 1.0 (2, 5).
 17. **"If I can't use it, it's not done"**: landed, updated, driven the way a person does (2, 3, 4).
 18. **Inbox first**: read and answer it at every session start and between tasks; contact comes first (3).
+    **Stay in sync**: fetch and merge `origin/<dev>` at the same moments, never waiting for a person (3).
 19. **Stage files by name, never `git add -A`**, in your own claimed worktree beside the primary checkout (4).
 20. **Push the development branch yourself**: fetch, merge `origin/<dev>`, run only your changed test files,
     `git push origin HEAD:refs/heads/<dev>`; no accept or lock; clean up before reporting (4).

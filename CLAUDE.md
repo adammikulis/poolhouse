@@ -19,6 +19,11 @@ around it: write the target structure (layers, one-way boundaries, who may read 
 test (import, layering or type boundary) and absorb the symptom fixes into it. A second symptom fix in one area is the signal
 to stop and redesign, and a worker's brief names the target structure, not the symptom. AGENTS.md, "Reporting a problem", "A problem comes with its fix", is the same rule for every agent.
 
+## Memory is not for project guidance
+
+Claude Code's auto-memory holds only notes about one device or one person's own preferences. A lesson or rule for anyone
+working on the project is written into the repo in the same turn (docs/agent-policy.md, section 7, "Rule files").
+
 ## Session start and names
 
 The `SessionStart` hook registers the lead, announces it and puts the inbox in its context; when the hook output is absent, the lead
@@ -60,9 +65,7 @@ hook registers the subagent as its own identity under a board-assigned name and 
 for the sessions subscribed to it (its parent is, by default) and retires it. A subagent prompt carries the workspace line from AGENTS.md and needs no invite or token. The
 `.claude/agents/branch-worker.md` agent is the one-branch worker: it reads AGENTS.md and this file, announces, works in its worktree,
 commits named files and reports. The harness confines it to that fresh tree, so `.claude/agents/branch-finisher.md` (no isolation) is
-the one for a branch that already has a claimed sibling worktree. The same hook records each subagent's purpose, branch and worktree
-and puts the live roster in its brief; workers find each other with `poolhouse-workspace roster` and `send` by branch, worktree or
-purpose word, and never ask the lead who a sibling is (docs/claude-subagents.md, "The roster").
+the one for a branch that already has a claimed sibling worktree.
 
 A worker that has delivered its report is stopped at once with TaskStop, and the same goes for a worker that sends a report again. The
 lead does not wait for it to exit and does not read a repeat report as new work. The branch and worktree stay; only the agent ends.

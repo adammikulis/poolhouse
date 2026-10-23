@@ -48,6 +48,7 @@ from poolhouse.fleet.sweeps import (
     wait,
 )
 from poolhouse.http import Server
+from poolhouse.platform import process_group_kwargs
 from tests.model_approval import approved
 from tests.pool_support import any_command
 
@@ -79,7 +80,7 @@ def scripted_launch(*, seconds: float = 1.5, says: str = "kept as bench:tried:20
         with log.open("ab") as out:
             out.write(f"argv: {' '.join(line)}\n".encode())
             proc = subprocess.Popen([sys.executable, "-c", code], stdout=out,
-                                    stderr=subprocess.STDOUT, start_new_session=True)
+                                    stderr=subprocess.STDOUT, **process_group_kwargs())
         threading.Thread(target=proc.wait, daemon=True).start()
         return proc.pid, log
 
@@ -636,7 +637,8 @@ def test_a_job_stopped_while_preparing_stays_stopped_when_its_pid_arrives(tmp_pa
     job = runner.hold(DaemonJob(id="j1", name="bench", argv=["python", "-m", "poolhouse.bench"],
                                 cwd=str(tmp_path)))
     runner.stop(job.id)
-    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+    proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"],
+                            **process_group_kwargs())
     try:
         job.pid = proc.pid
         runner.adopt(job)
@@ -924,7 +926,7 @@ def test_fleet_planned_and_measure_spread_real_jobs_over_discovered_members(boxe
     from poolhouse.bench import ops, runs
 
     roomy, small = boxes
-    monkeypatch.setattr(ops, "_commit", lambda root=None: COMMIT)
+    monkeypatch.setattr(ops.measuring, "installed_commit", lambda: COMMIT)
     _discovery_stub(monkeypatch, {"roomy": roomy.member, "small": small.member})
     real_wait = sweeps_module.wait
     monkeypatch.setattr(sweeps_module, "wait",
@@ -959,7 +961,7 @@ def test_fleet_planned_refuses_before_dispatch_when_the_assigned_member_is_on_an
     from poolhouse.bench.ops import Refused as OpsRefused
 
     roomy, small = boxes
-    monkeypatch.setattr(ops, "_commit", lambda root=None: "ffffff (dirty)")
+    monkeypatch.setattr(ops.measuring, "installed_commit", lambda: "ffffff (dirty)")
     _discovery_stub(monkeypatch, {"roomy": roomy.member, "small": small.member})
 
     with pytest.raises(OpsRefused) as caught:
@@ -968,12 +970,22 @@ def test_fleet_planned_refuses_before_dispatch_when_the_assigned_member_is_on_an
     assert any(line.startswith("plan:") for line in caught.value.said)
 
 
+def test_fleet_planned_refuses_missing_code_identity_before_discovery(monkeypatch):
+    from poolhouse.bench import ops
+
+    monkeypatch.setattr(ops.measuring, "installed_commit", lambda: "")
+    monkeypatch.setattr(ops, "_discovered",
+                        lambda _: pytest.fail("unidentified code reached discovery"))
+    with pytest.raises(ops.Refused, match="cannot identify the installed poolhouse code"):
+        ops.fleet_planned(["sweep", "--fleet", "--serve", "m.gguf"], ["m.gguf"])
+
+
 def test_fleet_planned_refuses_a_named_member_discovery_did_not_find(boxes, monkeypatch):
     from poolhouse.bench import ops
     from poolhouse.bench.ops import Refused as OpsRefused
 
     roomy, small = boxes
-    monkeypatch.setattr(ops, "_commit", lambda root=None: COMMIT)
+    monkeypatch.setattr(ops.measuring, "installed_commit", lambda: COMMIT)
     _discovery_stub(monkeypatch, {"roomy": roomy.member, "small": small.member})
 
     with pytest.raises(OpsRefused, match="lantern"):
@@ -987,7 +999,7 @@ def test_fleet_planned_refuses_a_store_on_this_machine_and_passes_an_empty_one(b
     from poolhouse.bench.ops import Refused as OpsRefused
 
     roomy, _ = boxes
-    monkeypatch.setattr(ops, "_commit", lambda root=None: COMMIT)
+    monkeypatch.setattr(ops.measuring, "installed_commit", lambda: COMMIT)
     _discovery_stub(monkeypatch, {"roomy": roomy.member})
 
     with pytest.raises(OpsRefused, match=r"--store /here/graph\.ladybug is a graph store"):
@@ -1002,7 +1014,7 @@ def test_fleet_planned_refuses_when_discovery_finds_nobody(monkeypatch):
     from poolhouse.bench import ops
     from poolhouse.bench.ops import Refused as OpsRefused
 
-    monkeypatch.setattr(ops, "_commit", lambda root=None: COMMIT)
+    monkeypatch.setattr(ops.measuring, "installed_commit", lambda: COMMIT)
     _discovery_stub(monkeypatch, {})
 
     with pytest.raises(OpsRefused, match="no member answered discovery"):
@@ -1159,7 +1171,7 @@ def _one_machine(boxes, tmp_path, monkeypatch, *, models):
     from poolhouse.bench import ops
 
     roomy, _ = boxes
-    monkeypatch.setattr(ops, "_commit", lambda root=None: COMMIT)
+    monkeypatch.setattr(ops.measuring, "installed_commit", lambda: COMMIT)
     _discovery_stub(monkeypatch, {"roomy": roomy.member})
     monkeypatch.setattr(bench, "home_dir", lambda: roomy.home)
     real_wait = sweeps_module.wait

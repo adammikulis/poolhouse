@@ -1,9 +1,9 @@
 """``python -m poolhouse.train decider``: fine-tune a pointer-head decision model from labelled cases.
 
-    python -m poolhouse.train decider guards --out ./my-decider --steps 200
-    python -m poolhouse.train decider cases.jsonl --out ./my-decider --init strands --download
+    python -m poolhouse.train decider --data guards --name guards --smoke
+    python -m poolhouse.train decider --data cases.jsonl --name mine --init strands --download
 
-A LoRA on a small base model plus a ~1M-parameter pointer head, trained on the cases with
+A LoRA on a base model plus a ~1M-parameter pointer head, trained on the cases with
 the options shuffled on every pass, then a temperature per question kind fitted on cases
 held apart from both training and scoring. The data is checked first, the run holds the GPU
 at the Broker, and a decider worse than its baseline on the test cases is not registered.
@@ -14,23 +14,25 @@ tokenizer files, ``decider.json`` (base pins, file hashes, temperature), ``manif
 
 from __future__ import annotations
 
+import functools
+import math
 import random
 import shutil
 import time
 from collections.abc import Sequence
 from contextlib import nullcontext
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace as with_changes
 from pathlib import Path
 from typing import Any
 
 from poolhouse import sentinel
-from poolhouse.decide import dataset, metrics, pointer_prompt, registry
+from poolhouse.decide import dataset, metrics, pointer_prompt, registry, window
 from poolhouse.decide.base import text_of
 from poolhouse.decide.calibrate import fit_temperature, softmax
 from poolhouse.decide.cases import Case, fingerprint
 from poolhouse.decide.fetch import locate
 from poolhouse.decide.holdout import by_group
-from poolhouse.decide.pins import QWEN35_0_8B_BASE, STRANDS_V19, Checkpoint
+from poolhouse.decide.pins import QWEN35_0_8B_BASE, QWEN35_2B_BASE, STRANDS_V19, Checkpoint
 from poolhouse.decide.pointer import PointerDecider, build_head, device_name, load_torso
 from poolhouse.decide.sources import CONFIG, FORMAT, Source, question_key, strands_source
 from poolhouse.decide.types import DecideError
@@ -45,7 +47,7 @@ from poolhouse.train.lora import (
     trainable_parameters,
 )
 from poolhouse.train.schedule import warmup_cosine
-from poolhouse.train.step import TorchStep
+from poolhouse.train.step import TorchStep, is_finite
 from poolhouse.train.trainer import Trainer
 
 __all__ = ["Result", "Settings", "check_inputs", "train"]
@@ -56,22 +58,38 @@ SMALL_DATA = 500
 GROUP_KEY = "id"
 
 
+DECIDER_TARGETS = (*DEFAULT_TARGETS, "in_proj_qkv", "in_proj_z", "in_proj_a", "in_proj_b", "out_proj")
+"""The projections the reference recipe puts a LoRA on: attention and MLP, plus the recurrent
+layers' own, without which a LoRA reaches only the 6 full-attention layers of 24 (configs/train.yaml:45-48)."""
+
+
 @dataclass(frozen=True)
 class Settings:
-    """What a run trains, on what, and for how long."""
+    """What a run trains, on what, and for how long. The defaults are the reference recipe's
+    (``Settings.smoke`` is the small one for tests and pipeline checks)."""
 
     name: str = "decider"
-    base: Checkpoint | Path = QWEN35_0_8B_BASE
+    base: Checkpoint | Path = QWEN35_2B_BASE  # configs/train.yaml:28
     init: Checkpoint | None = None
-    steps: int = 60
-    batch_size: int = 4
-    lr: float = 2e-4
-    head_lr_scale: float = 5.0
-    lora: Lora = field(default_factory=lambda: Lora(16, 32, 0.05, DEFAULT_TARGETS))
+    epochs: float = 1.0  # configs/train.yaml:51
+    steps: int | None = None
+    """Optimizer steps; ``None`` is ``epochs`` passes over the training cases."""
+    batch_size: int = 8  # cases per forward: micro_batch_size, configs/train.yaml:52
+    grad_accum: int = 4  # forwards per optimizer step, configs/train.yaml:53 (32 cases a step)
+    lr: float = 1e-4  # the adapter, configs/train.yaml:54
+    head_lr_scale: float | None = None
+    """The head's rate as a multiple of ``lr``: 10 for a new head (head_lr 1e-3,
+    configs/train.yaml:55), 1 when continuing the released head (skills/customize-decider/references/training.md)."""
+    weight_decay: float = 0.01  # head matrices only, configs/train.yaml:56, training/train.py:291-295
+    warmup_ratio: float = 0.03  # configs/train.yaml:57
+    gradient_checkpointing: bool = True  # configs/train.yaml:59
+    lora: Lora = field(default_factory=lambda: Lora(16, 32, 0.05, DECIDER_TARGETS))
     seed: int = 0
     device: str = "auto"
-    dtype: str = "bfloat16"
-    max_tokens: int = 1024
+    dtype: str = "bfloat16"  # src/strands_decider/modeling.py:79
+    max_tokens: int | None = None
+    """Refuse training cases over this many tokens: a memory trade the person chooses. Unset, a case is
+    bounded by the base model's own window and by the memory free."""
     calibrate_fraction: float = 0.15
     test_fraction: float = 0.25
     download: bool = False
@@ -83,6 +101,27 @@ class Settings:
     wait_s: float | None = 0.0
     floor: float = metrics.FLOOR
     allow_repo: bool = False
+
+    @classmethod
+    def smoke(cls, **changes: Any) -> Settings:
+        """A pipeline check: the 0.8B base, 60 steps of 4 cases, no checkpointing. It proves the
+        path runs; it is not a recipe."""
+        return cls(**{"base": QWEN35_0_8B_BASE, "steps": 60, "batch_size": 4, "grad_accum": 1,
+                      "lr": 2e-4, "head_lr_scale": 5.0, "warmup_ratio": 0.1, "weight_decay": 0.0,
+                      "gradient_checkpointing": False, **changes})
+
+    @property
+    def head_scale(self) -> float:
+        """The head's rate multiple: the one given, else by whether the head is already trained."""
+        if self.head_lr_scale is not None:
+            return self.head_lr_scale
+        return 1.0 if self.init is not None else 10.0
+
+    def steps_for(self, cases: int) -> int:
+        """Optimizer steps over ``cases`` training cases: ``steps``, else ``epochs`` passes."""
+        if self.steps is not None:
+            return self.steps
+        return max(1, math.ceil(cases * self.epochs / (self.batch_size * self.grad_accum)))
 
 
 @dataclass
@@ -112,14 +151,15 @@ def _torch() -> Any:
     return torch
 
 
-def encode(tok: Any, case: Case, order: Sequence[int], max_tokens: int) -> dict[str, Any]:
-    """One case rendered with its options in ``order``: token ids and the scoring positions."""
+def encode(tok: Any, case: Case, order: Sequence[int], dim: window.Dimensions,
+           max_tokens: int | None = None) -> dict[str, Any]:
+    """One case rendered with its options in ``order``: token ids and the scoring positions. A case
+    over the model's window (``dim``), or over ``max_tokens`` when the person set one, is refused."""
     options = tuple(case.options[i] for i in order)
     text = pointer_prompt.render(case.question, _state_text(case), options)
     enc = tok(text.text, return_offsets_mapping=True, add_special_tokens=False)
-    if len(enc["input_ids"]) > max_tokens:
-        raise DecideError(f"case {case.id or case.question[:30]!r} is {len(enc['input_ids'])} "
-                          f"tokens; the limit is {max_tokens}")
+    window.within_window(len(enc["input_ids"]), dim, f"case {case.id or case.question[:30]!r}",
+                         limit=max_tokens)
     spots = pointer_prompt.positions([tuple(o) for o in enc["offset_mapping"]], text.spans)
     return {"ids": enc["input_ids"], "spots": spots, "order": list(order)}
 
@@ -181,10 +221,27 @@ def build_net(torch: Any, torso: Any, head: Any) -> Any:
 
 
 class DeciderStep(TorchStep):
-    """A torch step that sets each group's rate from its ``scale`` and checkpoints only what
-    trains."""
+    """A torch step that sets each group's rate from its ``scale``, accumulates the gradient
+    over a list of micro-batches and checkpoints only what trains."""
 
     name = "torch"
+
+    def __call__(self, batch: Any) -> tuple[float, bool]:
+        import torch
+        parts = batch if isinstance(batch, list) else [batch]
+        self.model.train()
+        self.opt.zero_grad(set_to_none=True)
+        total = 0.0
+        for part in parts:
+            loss = self.loss(self.model, part) / len(parts)
+            if not is_finite(value := float(loss.detach())):
+                return value, False
+            loss.backward()
+            total += value
+        if self.clip:
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.clip)
+        self.opt.step()
+        return total, True
 
     def learning_rate(self, lr: float) -> None:
         for group in self.opt.param_groups:
@@ -194,21 +251,53 @@ class DeciderStep(TorchStep):
         return {k: v.detach().cpu() for k, v in self.model.named_parameters() if v.requires_grad}
 
 
+def build_optimizer(torch: Any, net: Any, s: Settings) -> Any:
+    """AdamW with the adapter at ``lr``, the head at ``head_scale`` times it, and weight decay on
+    the head's matrices only (a norm's gain and a bias shrink badly)."""
+    head = list(net.head.parameters())
+    groups = [{"params": [p for _, p in net.torso.named_parameters() if p.requires_grad],
+               "scale": 1.0, "weight_decay": 0.0},
+              {"params": [p for p in head if p.ndim > 1], "scale": s.head_scale,
+               "weight_decay": s.weight_decay},
+              {"params": [p for p in head if p.ndim <= 1], "scale": s.head_scale,
+               "weight_decay": 0.0}]
+    return torch.optim.AdamW([g for g in groups if g["params"]], lr=s.lr, betas=(0.9, 0.95),
+                             eps=1e-8)
+
+
+def enable_checkpointing(torso: Any) -> None:
+    """Recompute activations in the backward pass; non-reentrant, the form that works with LoRA."""
+    inner = getattr(getattr(torso, "base_model", torso), "model", torso)
+    if hasattr(inner, "gradient_checkpointing_enable"):
+        inner.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
+
+
+@functools.lru_cache(maxsize=8)
+def pass_order(n: int, seed: int, number: int) -> tuple[int, ...]:
+    """The cases ``0..n-1`` in the order pass ``number`` visits them: every case once."""
+    order = list(range(n))
+    random.Random(seed * 1_000_003 + number).shuffle(order)  # noqa: S311
+    return tuple(order)
+
+
 def _loss(model: Any, batch: dict[str, Any]) -> Any:
     torch = _torch()
     return torch.nn.functional.cross_entropy(model(batch), batch["labels"])
 
 
-def predict(net: Any, tok: Any, cases: Sequence[Case], settings: Settings, device: str
+def predict(loaded: Loaded, cases: Sequence[Case], settings: Settings, device: str
             ) -> list[list[float]]:
-    """Raw logits for every case in its own option order, in batches of ``batch_size``."""
+    """Raw logits of ``loaded.net`` for every case in its own option order, in batches of ``batch_size``."""
     torch = _torch()
+    net, tok, dim = loaded.net, loaded.tok, loaded.dim
     net.eval()
     out: list[list[float]] = []
     with torch.inference_mode():
         for start in range(0, len(cases), settings.batch_size):
             part = cases[start:start + settings.batch_size]
-            rows = [encode(tok, c, range(len(c.options)), settings.max_tokens) for c in part]
+            rows = [encode(tok, c, range(len(c.options)), dim, settings.max_tokens) for c in part]
+            window.require_room(dim, max(len(r["ids"]) for r in rows), device,
+                                "the longest case of a batch", rows=len(rows))
             logits = net(collate(torch, rows, [c.label_index for c in part], device))
             out.extend([x for x in row if x != float("-inf")] for row in logits.tolist())
     return out
@@ -380,8 +469,10 @@ def _save(out: Path, net: Any, tok_dir: Path, settings: Settings, result: Result
            "temperature_by_kind": result.temperatures, "question_kinds": result.kinds,
            "dtype": settings.dtype,
            "lora": settings.lora.as_dict(), "sha256": hashes,
-           "training": {"steps": settings.steps, "batch_size": settings.batch_size,
-                        "lr": settings.lr, "seed": settings.seed}}
+           "training": {"steps": settings.steps, "epochs": settings.epochs,
+                        "batch_size": settings.batch_size, "grad_accum": settings.grad_accum,
+                        "lr": settings.lr, "head_lr": settings.lr * settings.head_scale,
+                        "max_tokens": settings.max_tokens, "seed": settings.seed}}
     write_json(out / CONFIG, cfg)
     write_json(out / "manifest.json", {
         "data_hash": result.data_hash, "n_train": result.n_train,
@@ -404,6 +495,7 @@ class Loaded:
     tok_dir: Path
     net: Any
     start: Source | None
+    dim: window.Dimensions
 
 
 def load_model(s: Settings, device: str) -> Loaded:
@@ -429,34 +521,43 @@ def load_model(s: Settings, device: str) -> Loaded:
     else:
         torso = attach_features(load_torso(base_dir, None, s.dtype, device), s.lora)
         head = build_head(torch, torso.config.hidden_size, 256)
-    return Loaded(tok, tok_dir, build_net(torch, torso, head.to(device).float()), start)
+    if s.gradient_checkpointing:
+        enable_checkpointing(torso)
+    dim = window.dimensions(torso.config.to_dict(), f"the loaded base model at {base_dir}")
+    return Loaded(tok, tok_dir, build_net(torch, torso, head.to(device).float()), start, dim)
 
 
 def fit_model(loaded: Loaded, cases: Sequence[Case], s: Settings, out: Path, device: str
               ) -> list[float]:
-    """Train ``loaded.net`` for ``s.steps`` steps on ``cases``; returns the loss per step."""
+    """Train ``loaded.net`` for ``s.steps`` steps on ``cases``, each step ``s.grad_accum``
+    forwards of ``s.batch_size`` cases drawn in whole passes; returns the loss per step."""
     torch = _torch()
     net, tok = loaded.net, loaded.tok
-    adapter = [p for _, p in net.torso.named_parameters() if p.requires_grad]
-    optimizer = torch.optim.AdamW([{"params": adapter, "scale": 1.0},
-                                   {"params": list(net.head.parameters()),
-                                    "scale": s.head_lr_scale}], lr=s.lr, weight_decay=0.0)
+    steps = s.steps_for(len(cases))
+    per_step = s.batch_size * s.grad_accum
+    optimizer = build_optimizer(torch, net, s)
 
-    def batch(step: int) -> dict[str, Any]:
-        rng = random.Random(s.seed * 1_000_003 + step)  # noqa: S311
+    def micro(position: int) -> dict[str, Any]:
+        rng = random.Random(s.seed * 1_000_003 + position)  # noqa: S311
         rows, labels = [], []
-        for c in (cases[rng.randrange(len(cases))] for _ in range(s.batch_size)):
+        for k in range(position, position + s.batch_size):
+            c = cases[pass_order(len(cases), s.seed, k // len(cases))[k % len(cases)]]
             order = list(range(len(c.options)))
             rng.shuffle(order)
-            rows.append(encode(tok, c, order, s.max_tokens))
+            rows.append(encode(tok, c, order, loaded.dim, s.max_tokens))
             labels.append(order.index(c.label_index))
+        window.require_room(loaded.dim, max(len(r["ids"]) for r in rows), device,
+                            "the longest case of a batch", rows=len(rows))
         return collate(torch, rows, labels, device)
+
+    def batch(step: int) -> list[dict[str, Any]]:
+        return [micro(step * per_step + i * s.batch_size) for i in range(s.grad_accum)]
 
     trainer = Trainer(net, optimizer, _loss, out=out / "run",
                       step=DeciderStep(net, optimizer, _loss, clip_grad_norm=1.0))
-    report = trainer.fit(batch, steps=s.steps, schedule=warmup_cosine(
-        s.lr, total_steps=s.steps, warmup_steps=max(1, s.steps // 10)), resume=False,
-        write_checkpoints=False, log_every=1)
+    report = trainer.fit(batch, steps=steps, schedule=warmup_cosine(
+        s.lr, total_steps=steps, warmup_steps=max(1, int(steps * s.warmup_ratio)),
+        final_fraction=0.0), resume=False, write_checkpoints=False, log_every=1)
     shutil.copy(out / "run" / "metrics.jsonl", out / "train_log.jsonl")
     shutil.rmtree(out / "run", ignore_errors=True)
     return [h["loss"] for h in report.history]
@@ -571,12 +672,14 @@ def train(cases: Sequence[Case], out: Path | str, settings: Settings | None = No
         base_name, base = baseline_of(spec, fit_cases, test_cases, s)
         _torch().manual_seed(s.seed)
         loaded = load_model(s, device)
+        s = with_changes(s, steps=s.steps_for(len(fit_cases)))
         say(f"training {trainable_parameters(loaded.net)} parameters on {len(fit_cases)} cases "
-            f"({len(cal_cases)} calibration, {len(test_cases)} test) on {device}")
+            f"({len(cal_cases)} calibration, {len(test_cases)} test) on {device}: "
+            f"{s.steps} steps of {s.batch_size * s.grad_accum} cases")
         losses = fit_model(loaded, fit_cases, s, out, device)
-        cal_logits = predict(loaded.net, loaded.tok, cal_cases, s, device)
+        cal_logits = predict(loaded, cal_cases, s, device)
         temperature, by_kind = fit_temperatures(cal_logits, cal_cases)
-        test_logits = predict(loaded.net, loaded.tok, test_cases, s, device)
+        test_logits = predict(loaded, test_cases, s, device)
         result = Result(out, len(fit_cases), len(cal_cases), len(test_cases), temperature,
                         metrics_of(test_logits, test_cases, temperature, by_kind, s.floor), base,
                         losses, time.perf_counter() - began, fingerprint(list(cases)),
