@@ -22,6 +22,7 @@ def coding_browser(tmp_path, monkeypatch, browser_owner, workspace_node):  # noq
     try:
         served.ui.settings.setup_done = True
         served.ui.conversations = Conversations(tmp_path / "chats")
+        served.ui.root = served.ui.conversations.root.parent  # creating a conversation binds it to the daemon's root
         project = tmp_path / "project"
         project.mkdir()
         with browser_owner.pages() as page:
