@@ -15,7 +15,7 @@ from poolhouse.board import credentials, place
 from poolhouse.board.client import Client, Conflict, Denied
 from poolhouse.log import warn
 
-__all__ = ["AGENT_ENV", "IDENTITY_ENV", "SUBAGENT_ENV", "TOKEN_ENV", "Agent", "Claim", "Entry", "Native", "Note", "Page", "Registration",
+__all__ = ["AGENT_ENV", "SUBAGENT_ENV", "TOKEN_ENV", "Agent", "Claim", "Entry", "Native", "Note", "Page", "Registration",
            "Sent", "Session", "connect", "find", "register"]
 
 AGENT_ENV = "POOLHOUSE_WORKSPACE_AGENT"
@@ -466,11 +466,6 @@ def _named(node: Client, where: str, agent: str) -> tuple[str, str]:
 
 NATIVE_SESSIONS = (("POOLHOUSE_SESSION_HARNESS", "POOLHOUSE_SESSION_ID"), ("", "CLAUDE_CODE_SESSION_ID"))
 """Environment variables that name the native session a process runs in: the harness, then the session id; an empty harness variable means Claude Code."""
-
-IDENTITY_ENV = (place.BOARD_ENV, AGENT_ENV, SUBAGENT_ENV, TOKEN_ENV,
-                *(name for names in NATIVE_SESSIONS for name in names if name))
-"""Every environment variable by which a process names the board it works on or the session it acts as. A test run clears them all
-(``tests/conftest.py``), so the session of the agent that runs the tests never steers a hook, a command or a lookup under test."""
 
 
 def _native(node: Client, where: str) -> Session | None:
