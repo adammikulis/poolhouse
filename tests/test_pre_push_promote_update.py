@@ -1,8 +1,4 @@
-"""An agent moves an existing promote/* snapshot forward; a rewrite of it, `main` and a work branch stay refused.
-
-The change is to a protected hook, so it ships as docs/hooks-protected.patch for the owner to apply. These
-tests apply it to a copy of the hooks (or use the hooks as they are once it is applied) and push through that copy.
-"""
+"""The ref-only hook permits fast-forward promotion snapshots and refuses rewrites."""
 
 from __future__ import annotations
 

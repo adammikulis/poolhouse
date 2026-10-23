@@ -1,13 +1,14 @@
-"""The push check runs the tests a push can break, in real git repositories, and refuses the push when one fails or none can be chosen."""
+"""Explicit pre-publication validation selects affected tests; the fast Git hook does not run this helper."""
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
-from tests.test_pre_push import commit, git, push
+from tests.test_pre_push import commit, git
 
 REPO = Path(__file__).resolve().parent.parent
 RUNNER = '''#!/usr/bin/env python3
@@ -39,10 +40,16 @@ def repo(tmp_path):
     return work
 
 
-def landing(work: Path, log: Path, **env: str) -> subprocess.CompletedProcess:
-    """The agent's push of HEAD over the commit origin holds."""
+def landing(work: Path, log: Path, *, tip: str = "", **env: str) -> subprocess.CompletedProcess:
+    """Explicit validation of HEAD against the remote tip, independently of the ref-only hook."""
     old = git(work, "rev-parse", "origin/0.9dev")
-    return push(work, "0.9dev", base=old, CLAUDECODE="1", STUB_LOG=str(log), **env)
+    tip = tip or git(work, "rev-parse", "HEAD")
+    return subprocess.run([sys.executable, str(REPO / "scripts/hooks/pushed"), "0.9dev"],
+                          cwd=work, text=True, capture_output=True,
+                          input=f"refs/heads/0.9dev {tip} refs/heads/0.9dev {old}\n",
+                          env={**os.environ, "PYTHON": sys.executable,
+                               "CLAUDECODE": "1", "STUB_LOG": str(log), **env})
+
 
 
 def calls(log: Path) -> list[dict]:
@@ -173,8 +180,7 @@ def test_a_checkout_without_the_runner_refuses_the_push_with_its_cause(repo, tmp
 def test_a_push_of_a_commit_that_is_not_checked_out_is_refused_with_the_command_that_works(repo, tmp_path):
     older = git(repo, "rev-parse", "HEAD")
     commit(repo, "src/poolhouse/mod.py", "VALUE = 1\nMORE = 8\n")
-    done = push(repo, "0.9dev", sha=older, base=git(repo, "rev-parse", "origin/0.9dev"), CLAUDECODE="1",
-                STUB_LOG=str(tmp_path / "log"))
+    done = landing(repo, tmp_path / "log", tip=older)
     assert done.returncode != 0
     assert "git push origin HEAD:refs/heads/0.9dev" in done.stderr
 

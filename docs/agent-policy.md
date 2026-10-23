@@ -38,17 +38,11 @@ The rules never to break, then the ones needed every hour; each names the sectio
 17. **"If I can't use it, it's not done"**: landed, updated, driven the way a person does (2, 3, 4).
 18. **Inbox first**: read and answer it at every session start and between tasks; contact comes first (3).
 19. **Stage files by name, never `git add -A`**, in your own claimed worktree beside the primary checkout (4).
-20. **Push the development branch yourself**: fetch, merge `origin/<dev>`, `git push origin HEAD:refs/heads/<dev>`; the push
-    hook runs the tests your change can break and refuses the push while one is red; no accept or lock; clean up before
-    reporting (4).
-21. **Test your own change with explicit `scripts/test` selectors**: the tests it affects as `scripts/affected.py` selects
-    them (`python scripts/hooks/affected_push.py` names and runs them) and your changed files, never the whole suite (GitHub
-    runs it on pull requests, on `main` and nightly; a development push runs only the `gates` job). A landing is not done
-    while a test the change can break is red (5).
-
-Contents: [1 Hard floors](#1-hard-floors) | [2 How to work](#2-how-to-work) |
-[3 Workspace and coordination](#3-workspace-and-coordination) | [4 Git, worktrees and landing](#4-git-worktrees-and-landing) |
-[5 Testing and gates](#5-testing-and-gates) | [6 Models and GPU](#6-models-and-gpu) | [7 Writing rules](#7-writing-rules)
+20. **Sync continuously**: fetch and reconcile `origin/<dev>` as you commit, then push coherent increments with
+    `git push origin HEAD:refs/heads/<dev>`. The mandatory push hook guards refs only; it runs no tests or builds (4).
+21. **Test the change, not every push**: use focused `scripts/test` selectors needed for the change. Avoid repeated
+    unaffected checks and local full-suite campaigns. CI handles broader verification; plan milestones still require
+    their relevant tests and actual installed-device proof (5).
 
 ## 1. Hard floors
 
@@ -638,10 +632,9 @@ branch. Managed workers hand each checkpoint to that coordinator.
 1. **Prepare.** In your own worktree beside the primary checkout: fetch, merge `origin/<dev>`, run the change's own
    tests with `scripts/test all <files>`, commit by named files.
 2. **Push.** `git fetch origin`, merge `origin/<dev>` again if it moved, then `git push origin HEAD:refs/heads/<dev>`.
-   No accept or lock is needed. The push check refuses Python that does not parse and data
-   files, a standing reject of that commit, and a red test: it runs `scripts/test all --redteam` on the test files
-   `scripts/affected.py` selects for the pushed paths, and a failure or a selection it cannot make refuses the push with the
-   failing test names and the command that runs them again (docs/landing.md, "The push hook").
+   No accept or lock is needed. The mandatory push hook checks only destination refs, known commit objects and
+   fast-forward ancestry. It runs no tests, builds, content scans or workspace review queries. Run focused checks
+   for the change separately; broader verification belongs in CI (docs/landing.md, "The push hook").
 3. **Watch GitHub.** GitHub runs the `gates` job on the pushed commit (the full suite runs on pull requests, on `main` and
    nightly, never on a development push). The CI watcher posts a red run to the session that pushed it, naming the failing
    job and tests, and the pusher fixes it in the same turn. GitHub CI is a signal, never a

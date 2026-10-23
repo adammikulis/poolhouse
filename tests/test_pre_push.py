@@ -139,20 +139,18 @@ def test_the_installer_wires_it_up():
     assert "pre-push pre-push" in installer.read_text()
 
 
-def test_an_agents_push_of_python_that_does_not_parse_is_refused(checkout):
+def test_python_validation_is_separate_from_the_ref_guard(checkout):
     base = git(checkout, "rev-parse", "HEAD")
     commit(checkout, "pkg/broken.py", "def f(:\n")
     done = push(checkout, "0.9dev", base=base, CLAUDECODE="1")
-    assert done.returncode != 0
-    assert "pkg/broken.py" in done.stderr
+    assert done.returncode == 0 and done.stderr == ""
 
 
-def test_an_agents_push_of_a_data_file_is_refused(checkout):
+def test_data_validation_is_separate_from_the_ref_guard(checkout):
     base = git(checkout, "rev-parse", "HEAD")
     commit(checkout, "store.lbug", "x")
     done = push(checkout, "0.9dev", base=base, CLAUDECODE="1")
-    assert done.returncode != 0
-    assert "store.lbug" in done.stderr
+    assert done.returncode == 0 and done.stderr == ""
 
 
 def warnings(stderr: str) -> list[str]:
@@ -160,15 +158,14 @@ def warnings(stderr: str) -> list[str]:
     return [line for line in stderr.splitlines() if "warning" in line and "the board could not be asked" not in line]
 
 
-def test_a_merged_worktree_is_warned_about_and_never_blocks_the_development_branch(checkout):
+def test_a_merged_worktree_does_not_trigger_a_push_time_scan(checkout):
     tree = checkout.parent / "done"
     git(checkout, "worktree", "add", "-q", "-b", "done-work", str(tree))
     commit(tree, "docs/work.md", "z = 3\n")
     git(checkout, "merge", "-q", "--ff-only", "done-work")
     done = push(checkout, "0.9dev", CLAUDECODE="1")
     assert done.returncode == 0, done.stderr
-    assert warnings(done.stderr)
-    assert shlex.join(["git", "worktree", "remove", tree.as_posix()]) in done.stderr
+    assert not warnings(done.stderr)
     git(checkout, "worktree", "lock", str(tree))
     quiet = push(checkout, "0.9dev", CLAUDECODE="1")
     assert quiet.returncode == 0 and not warnings(quiet.stderr)
@@ -198,18 +195,18 @@ def test_a_fresh_worktree_with_no_commits_yet_does_not_block(checkout):
 
 
 @pytest.mark.parametrize("agent", ["", "1"])
-def test_dirty_checkout_warns_and_never_blocks_publication(checkout, agent):
+def test_dirty_checkout_does_not_trigger_a_push_time_scan(checkout, agent):
     (checkout / "pending.txt").write_text("pending")
     done = push(checkout, "0.9dev", CLAUDECODE=agent)
     assert done.returncode == 0, done.stderr
-    assert "uncommitted changes" in done.stderr
+    assert done.stderr == ""
 
 
-def test_clean_checkout_with_pending_operation_warns_and_never_blocks_publication(checkout):
+def test_pending_operation_does_not_trigger_a_push_time_scan(checkout):
     (checkout / ".git" / "CHERRY_PICK_HEAD").write_text(git(checkout, "rev-parse", "HEAD"))
     done = push(checkout, "0.9dev", CLAUDECODE="1")
     assert done.returncode == 0, done.stderr
-    assert "unresolved git operation" in done.stderr
+    assert done.stderr == ""
 
 
 def test_a_dirty_primary_and_other_worktrees_do_not_block_a_sibling_push(checkout):
@@ -222,3 +219,49 @@ def test_a_dirty_primary_and_other_worktrees_do_not_block_a_sibling_push(checkou
     tip = git(checkout, "rev-parse", "0.9dev")
     env = {"CLAUDECODE": "1", "GIT_DIR": git(tree, "rev-parse", "--absolute-git-dir")}
     assert push(tree, "0.9dev", sha=tip, **env).returncode == 0
+
+
+@pytest.mark.parametrize("ref", ["0.9dev", "promote/x"])
+def test_unknown_remote_commits_are_refused_without_fetching(checkout, ref):
+    assert push(checkout, ref, base="1" * 40, CLAUDECODE="1").returncode != 0
+
+
+def test_a_divergent_development_update_is_refused(checkout):
+    git(checkout, "checkout", "-q", "-b", "other")
+    other = commit(checkout, "other.txt", "other")
+    git(checkout, "checkout", "-q", "0.9dev")
+    commit(checkout, "mine.txt", "mine")
+    assert push(checkout, "0.9dev", base=other, CLAUDECODE="1").returncode != 0
+
+
+def test_a_noncommit_local_tip_is_refused(checkout):
+    blob = git(checkout, "rev-parse", "HEAD:README.md")
+    assert push(checkout, "0.9dev", sha=blob, CLAUDECODE="1").returncode != 0
+
+
+def test_no_validation_or_build_helper_runs_during_ref_guard(checkout, tmp_path):
+    copied = tmp_path / "hooks"
+    copied.mkdir()
+    hook = copied / "pre-push"
+    hook.write_bytes(HOOK.read_bytes())
+    for name in ("pushed", "person-consume"):
+        helper = copied / name
+        helper.write_text("#!/bin/sh\necho unexpected-helper >&2\nexit 99\n")
+        helper.chmod(0o700)
+    sha = git(checkout, "rev-parse", "HEAD")
+    result = subprocess.run(["sh", str(hook)], cwd=checkout, text=True, capture_output=True,
+                            input=f"HEAD {sha} refs/heads/0.9dev {ZERO}\n",
+                            env={**os.environ, "CLAUDECODE": "1"})
+    assert result.returncode == 0 and result.stderr == ""
+
+
+@pytest.mark.parametrize("record", ["HEAD\n", "HEAD {sha} refs/heads/0.9dev\n",
+                                    "HEAD {sha} refs/heads/0.9dev {zero} extra\n",
+                                    "HEAD {sha} refs/tags/v1 {zero}\n",
+                                    "HEAD {sha} refs/heads/promote/ {zero}\n"])
+def test_malformed_and_forbidden_records_cannot_hide_after_a_valid_ref(checkout, record):
+    sha = git(checkout, "rev-parse", "HEAD")
+    data = f"HEAD {sha} refs/heads/0.9dev {ZERO}\n" + record.format(sha=sha, zero=ZERO)
+    result = subprocess.run(["sh", str(HOOK)], cwd=checkout, input=data, text=True,
+                            capture_output=True, env={**os.environ, "CLAUDECODE": "1"})
+    assert result.returncode != 0
