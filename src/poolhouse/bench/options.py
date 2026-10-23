@@ -241,7 +241,8 @@ def drafts_options() -> tuple[Option, ...]:
                   "f16, q4_0); a label ends -kv-TYPE for anything but q8_0 and "
                   "the table's ctx column shows it"),
         flag("--port", type=int, default=8099),
-        flag("--context", type=fitcontext.context_arg, default=32768, metavar="N|fit[:MAX]"),
+        flag("--context", type=fitcontext.context_arg, default=0, metavar="N|fit[:MAX]",
+             help="total context for a --serve'd model (default: fit, the most one user holds)"),
         flag("--parallel", type=int, default=1, metavar="N",
              help="slots for a --serve'd model (default: %(default)s)"),
         flag("--binary", default="", help="a llama-server that reads this model"),
@@ -360,7 +361,7 @@ def sweep_options() -> tuple[Option, ...]:
                   "else started -- which leaves the starting, stopping and waiting "
                   "to a shell loop that dies with its terminal"),
         flag("--context", type=fitcontext.context_arg, default=0, metavar="N|fit[:MAX]",
-             help="total context for a --serve'd model (default: 32768 per slot); "
+             help="total context for a --serve'd model (default: fit); "
                   "fit is the most one user holds on this machine for each model, "
                   "its cache type and --parallel, a tenth short of it, and at most "
                   "the model's own context or MAX"),

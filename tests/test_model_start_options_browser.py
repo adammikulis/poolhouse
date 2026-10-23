@@ -12,10 +12,22 @@ from poolhouse.fleet.serving import Hosting, Served
 pytestmark = pytest.mark.slow
 
 
-def options(page):
+AUTOMATIC = 'Largest context that fits this machine'
+
+
+def choose_context(details):
+    """The picker starts automatic (the machine fits the model); a test of the slider takes the choice."""
+    box = details.get_by_label(AUTOMATIC)
+    expect(box).to_be_checked()
+    box.uncheck()
+
+
+def options(page, *, manual=True):
     details = page.locator('#chat-model-list .model-start-options')
     details.locator('summary').click()
     expect(details.locator('#ctx')).to_have_count(0)
+    if manual:
+        choose_context(details)
     return details
 
 
@@ -24,6 +36,7 @@ def options(page):
 def test_picker_context_and_output_use_actual_start_and_observed_context(inline_models, monkeypatch, width, theme):  # noqa: F811
     app, page, model, starts, current, _inventory = inline_models
     contexts = []
+    app.ui.settings.chat_max_output_tokens = 8192     # a saved choice; the default is no cap
     app.ui.settings.appearance = {"active_theme": theme, "saved_themes": []}
     pictures = Path(mkdtemp(prefix="poolhouse-start-options-png-")).resolve()
 
@@ -120,6 +133,7 @@ def test_models_primary_start_uses_visible_optional_context(inline_models, monke
     button = library.get_by_role('button', name='Start model', exact=True)
     expect(button).to_be_visible()
     library.locator('summary').filter(has_text='Context length').click()
+    choose_context(library.locator('.model-start-options'))
     slider = library.get_by_role('slider', name='Context length', exact=True)
     slider.press('Home')
     slider.press('ArrowRight')
@@ -209,6 +223,7 @@ def test_context_uses_shared_stops_and_exact_model_boundary(inline_models,maximu
 
 def test_explicit_output_endpoint_commits_once_without_rewriting_untouched_draft(inline_models):  # noqa: F811
     app,page,_model,_starts,_current,_inventory=inline_models
+    app.ui.settings.chat_max_output_tokens=8192     # a saved choice; the default is no cap
     open_picker(app,page)
     controls=options(page)
     context=controls.get_by_role('slider',name='Context length',exact=True)
@@ -233,3 +248,27 @@ def test_explicit_output_endpoint_commits_once_without_rewriting_untouched_draft
     page.mouse.up()
     assert host.evaluate('node => node.events') == {'input':0,'change':0}
     expect(host).to_have_js_property('value','42013')
+
+
+def test_a_start_with_nothing_chosen_asks_for_no_context_and_the_server_fits_the_model(inline_models, monkeypatch):  # noqa: F811
+    app, page, model, starts, current, _inventory = inline_models
+    contexts = []
+
+    def start(_host, path, settings):
+        starts.append(str(path))
+        contexts.append(settings.context)
+        served = Served(port=12345, models=[model.name], aliases=[str(model)],
+                        context=16384, slot_context=16384, capabilities={'chat': True})
+        current[:] = [served]
+        return served
+
+    monkeypatch.setattr(Hosting, 'start', start)
+    open_picker(app, page)
+    controls = options(page, manual=False)
+    expect(controls.get_by_label(AUTOMATIC)).to_be_checked()
+    expect(controls.get_by_role('slider', name='Context length', exact=True)).to_be_disabled()
+    expect(controls).to_contain_text('largest that fits this machine')
+    page.get_by_role('button', name=f'{model.name} Available Start in Chat', exact=True).click()
+    expect(page.locator('#chat-model-dialog')).not_to_be_visible()
+    assert contexts == [0] and starts == [str(model)]
+    expect(page.locator('#chat-note')).to_contain_text('Requested context: the largest that fits this machine.')

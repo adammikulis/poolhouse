@@ -9,10 +9,10 @@ from poolhouse import coding_policy
 from .project_source import project_id
 from .settings import Settings
 
+LEVELS = ("off", "low", "medium", "high")
 DEFAULTS: dict[str, Any] = {"temperature": None, "project": "", "project_id": "", "role": "",
                             "permissions": coding_policy.READ_ONLY, "execution_mode": coding_policy.EXECUTE,
-                            "effort": "off", "max_effort": "medium", "harness": "", "context": 0, "draft": "auto", "max_output_tokens": None}
-LEVELS = ("off", "low", "medium", "high")
+                            "effort": "off", "max_effort": LEVELS[-1], "harness": "", "context": 0, "draft": "auto", "max_output_tokens": None}
 
 
 def checked(settings: dict | None = None) -> dict[str, Any]:

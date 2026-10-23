@@ -17,6 +17,7 @@ from conftest import a_row
 from poolhouse.bench import runs, save, table
 from poolhouse.client import Request, Transport
 
+pytestmark = pytest.mark.usefixtures("bench_context_named")
 G = 2**30
 
 

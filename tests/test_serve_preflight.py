@@ -96,7 +96,7 @@ class TestLocalShards:
         gguf = write_gguf(tmp_path / "model.gguf", LLAMA_META)
         import poolhouse.setup as setup_module
         monkeypatch.setattr(setup_module, "_arches", lambda binary: {"llama"})
-        report = Preflight(ServerSpec(model=gguf), binary=fake_binary(tmp_path))
+        report = Preflight(ServerSpec(context=4096, model=gguf), binary=fake_binary(tmp_path))
         shards = next(c for c in report.checks if c.name == "shards")
         assert shards.ok
         assert report.weights_bytes == gguf.stat().st_size
@@ -105,7 +105,7 @@ class TestLocalShards:
         first = tmp_path / "model-00001-of-00002.gguf"
         write_gguf(first, LLAMA_META)
         # the second shard is never written
-        report = Preflight(ServerSpec(model=first), binary=fake_binary(tmp_path))
+        report = Preflight(ServerSpec(context=4096, model=first), binary=fake_binary(tmp_path))
         shards = next(c for c in report.checks if c.name == "shards")
         assert not shards.ok
         assert "model-00002-of-00002.gguf" in shards.detail
@@ -116,7 +116,7 @@ class TestLocalShards:
         second = tmp_path / "model-00002-of-00002.gguf"
         write_gguf(first, LLAMA_META)
         second.write_bytes(b"")
-        report = Preflight(ServerSpec(model=first), binary=fake_binary(tmp_path))
+        report = Preflight(ServerSpec(context=4096, model=first), binary=fake_binary(tmp_path))
         shards = next(c for c in report.checks if c.name == "shards")
         assert not shards.ok
         assert second.name in shards.detail
@@ -128,7 +128,7 @@ class TestArchitecture:
 
         monkeypatch.setattr(setup_module, "_arches", lambda binary: {"llama", "gemma4"})
         gguf = write_gguf(tmp_path / "model.gguf", LLAMA_META)
-        report = Preflight(ServerSpec(model=gguf), binary=fake_binary(tmp_path))
+        report = Preflight(ServerSpec(context=4096, model=gguf), binary=fake_binary(tmp_path))
         arch = next(c for c in report.checks if c.name == "architecture")
         assert arch.ok and arch.detail == "llama"
 
@@ -137,7 +137,7 @@ class TestArchitecture:
 
         monkeypatch.setattr(setup_module, "_arches", lambda binary: {"gemma4", "qwen3moe"})
         gguf = write_gguf(tmp_path / "model.gguf", LLAMA_META)
-        report = Preflight(ServerSpec(model=gguf), binary=fake_binary(tmp_path))
+        report = Preflight(ServerSpec(context=4096, model=gguf), binary=fake_binary(tmp_path))
         arch = next(c for c in report.checks if c.name == "architecture")
         assert not arch.ok
         assert "llama" in arch.detail and not report.ok
@@ -150,7 +150,7 @@ class TestArchitecture:
 
         monkeypatch.setattr(setup_module, "_arches", lambda binary: set())
         gguf = write_gguf(tmp_path / "model.gguf", LLAMA_META)
-        report = Preflight(ServerSpec(model=gguf), binary=fake_binary(tmp_path))
+        report = Preflight(ServerSpec(context=4096, model=gguf), binary=fake_binary(tmp_path))
         arch = next(c for c in report.checks if c.name == "architecture")
         assert arch.ok
 
@@ -163,7 +163,7 @@ class TestArchitecture:
 
         monkeypatch.setattr(setup_module, "_arches", lambda binary: {"llama"})
         gguf = write_gguf(tmp_path / "model.gguf", {"llama.block_count": 32})
-        report = Preflight(ServerSpec(model=gguf), binary=fake_binary(tmp_path))
+        report = Preflight(ServerSpec(context=4096, model=gguf), binary=fake_binary(tmp_path))
         arch = next(c for c in report.checks if c.name == "architecture")
         assert arch.ok
 
@@ -173,7 +173,7 @@ class TestArchitecture:
         monkeypatch.setattr(setup_module, "_arches", lambda binary: {"llama"})
         not_gguf = tmp_path / "model.gguf"
         not_gguf.write_bytes(b"not a real gguf file")
-        report = Preflight(ServerSpec(model=not_gguf), binary=fake_binary(tmp_path))
+        report = Preflight(ServerSpec(context=4096, model=not_gguf), binary=fake_binary(tmp_path))
         arch = next(c for c in report.checks if c.name == "architecture")
         assert arch.ok
 
@@ -237,7 +237,7 @@ class TestFit:
 
         monkeypatch.setattr(setup_module, "_arches", lambda binary: {"llama"})
         gguf = write_gguf(tmp_path / "model.gguf", LLAMA_META)
-        report = Preflight(ServerSpec(model=gguf), binary=fake_binary(tmp_path), limit_bytes=0)
+        report = Preflight(ServerSpec(context=4096, model=gguf), binary=fake_binary(tmp_path), limit_bytes=0)
         fit = next(c for c in report.checks if c.name == "fit")
         assert fit.ok and "estimated" in fit.detail
 
@@ -358,7 +358,7 @@ class TestFlags:
         monkeypatch.setattr(setup_module, "_arches", lambda binary: {"llama"})
         gguf = write_gguf(tmp_path / "model.gguf", LLAMA_META)
         binary = fake_binary(tmp_path, help_text="-m, --model FNAME  model path\n")
-        report = Preflight(ServerSpec(model=gguf, cache_type_k="q8_0"), binary=binary)
+        report = Preflight(ServerSpec(context=4096, model=gguf, cache_type_k="q8_0"), binary=binary)
         flags = next(c for c in report.checks if c.name == "flags")
         assert not flags.ok
         assert "--cache-type-k" in flags.detail
@@ -374,7 +374,7 @@ class TestHfReference:
             raise OSError("no route to host")
 
         monkeypatch.setattr(hub_module, "files", broken)
-        report = Preflight(ServerSpec(model="hf:maker/thing-GGUF/thing-Q4_K_M.gguf"),
+        report = Preflight(ServerSpec(context=4096, model="hf:maker/thing-GGUF/thing-Q4_K_M.gguf"),
                            binary=fake_binary(tmp_path))
         shards = next(c for c in report.checks if c.name == "shards")
         assert shards.ok
@@ -396,7 +396,7 @@ class TestHfReference:
         monkeypatch.setattr(preflight, "_local_index",
                             lambda: {"thing-00001-of-00002.gguf": first})
         report = Preflight(
-            ServerSpec(model="hf:maker/thing-GGUF/thing-00001-of-00002.gguf"),
+            ServerSpec(context=4096, model="hf:maker/thing-GGUF/thing-00001-of-00002.gguf"),
             binary=fake_binary(tmp_path))
         shards = next(c for c in report.checks if c.name == "shards")
         assert not shards.ok
@@ -414,7 +414,7 @@ class TestHfReference:
         write_gguf(local, LLAMA_META)
         monkeypatch.setattr(preflight, "_local_index",
                             lambda: {"thing-Q4_K_M.gguf": local})
-        report = Preflight(ServerSpec(model="hf:maker/thing-GGUF/thing-Q4_K_M.gguf"),
+        report = Preflight(ServerSpec(context=4096, model="hf:maker/thing-GGUF/thing-Q4_K_M.gguf"),
                            binary=fake_binary(tmp_path))
         shards = next(c for c in report.checks if c.name == "shards")
         assert shards.ok
@@ -426,7 +426,7 @@ class TestHfReference:
         itself -- and a preflight cannot fault a file that has not been named. (The flags
         check is left out of this assertion: it is about the fake binary's own --help,
         which is unrelated to what this test is about.)"""
-        report = Preflight(ServerSpec(model="hf:maker/thing-GGUF"), binary=fake_binary(tmp_path))
+        report = Preflight(ServerSpec(context=4096, model="hf:maker/thing-GGUF"), binary=fake_binary(tmp_path))
         by_name = {c.name: c for c in report.checks}
         assert by_name["shards"].ok
         assert by_name["architecture"].ok
@@ -439,7 +439,7 @@ class TestReportFormatting:
 
         monkeypatch.setattr(setup_module, "_arches", lambda binary: {"gemma4"})  # wrong on purpose
         gguf = write_gguf(tmp_path / "model.gguf", LLAMA_META)
-        report = Preflight(ServerSpec(model=gguf), binary=fake_binary(tmp_path))
+        report = Preflight(ServerSpec(context=4096, model=gguf), binary=fake_binary(tmp_path))
         lines = report.said().splitlines()
         assert len(lines) == len(report.checks)
         assert any(line.startswith("FAIL") for line in lines)
@@ -464,7 +464,7 @@ class TestStartRunsPreflight:
         from poolhouse.serve.ports import free_port
 
         monkeypatch.setattr(subprocess, "Popen", popen)
-        spec = ServerSpec(model=gguf, port=free_port())
+        spec = ServerSpec(context=4096, model=gguf, port=free_port())
         with pytest.raises(PreflightFailed, match="architecture"):
             leased(LlamaServerBackend(binary=binary), spec, timeout=1.0)
 
@@ -485,7 +485,7 @@ class TestStartRunsPreflight:
         monkeypatch.setattr(subprocess, "Popen", popen)
         with pytest.raises(OSError, match="stop here"):
             leased(LlamaServerBackend(binary=binary), 
-                ServerSpec(model=gguf), timeout=1.0, preflight=False)
+                ServerSpec(context=4096, model=gguf), timeout=1.0, preflight=False)
         assert reached == [True]
 
 
@@ -500,7 +500,7 @@ class TestLoadTimingAndWarmUp:
 
         monkeypatch.setattr(setup_module, "_arches", lambda binary: {"llama"})
         gguf = write_gguf(tmp_path / "model.gguf", LLAMA_META)
-        return ServerSpec(model=gguf, port=free_port())
+        return ServerSpec(context=4096, model=gguf, port=free_port())
 
     def test_load_s_and_warmup_s_are_recorded(self, tmp_path, monkeypatch):
         from poolhouse.serve.process import kill_process_tree
@@ -582,7 +582,7 @@ def test_the_flags_check_takes_a_draft_named_by_hf_file(tmp_path, monkeypatch):
     from poolhouse.serve.backend import ServerSpec
 
     monkeypatch.setattr("poolhouse.serve.backend.flags_of", lambda b, **k: frozenset({"-m", "-md", "--port", "-c", "-np", "--spec-type", "-fa", "--jinja", "--flash-attn", "--ctx-size", "--parallel", "--model", "--model-draft", "--host"}))
-    spec = ServerSpec(model=tmp_path / "m.gguf", draft="hf:owner/repo-GGUF/MTP/mtp-head-Q4_0.gguf", spec_type="draft-mtp")
+    spec = ServerSpec(context=4096, model=tmp_path / "m.gguf", draft="hf:owner/repo-GGUF/MTP/mtp-head-Q4_0.gguf", spec_type="draft-mtp")
     check = preflight._flags_check(spec, binary)
     assert check.name == "flags"
     assert "must be fetched" not in check.detail
@@ -645,7 +645,7 @@ class TestSeams:
         fails naming the flag. Mutation: have a seam short-circuit its check."""
         gguf = tmp_path / "model.gguf"   # never written; the shards fact says it is there
         report = Preflight(
-            ServerSpec(model=gguf, cache_type_k="q8_0"), binary=fake_binary(tmp_path),
+            ServerSpec(context=4096, model=gguf, cache_type_k="q8_0"), binary=fake_binary(tmp_path),
             shards_of=lambda spec: (1, gguf, preflight.Check("shards", True, "")),
             read_header=lambda path: dict(LLAMA_META), arches=lambda build: {"gemma4"},
             flags=lambda build: frozenset({"--host", "--port", "-m", "-c", "-ngl", "-fa",

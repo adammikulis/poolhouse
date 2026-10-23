@@ -1,4 +1,8 @@
-"""Which model tier this machine can actually hold."""
+"""Which model a machine starts with, and whether it can hold a model of a given size.
+
+Nothing here names a model past the starter: the best installed model for this machine is
+`poolhouse.serve.suggest.recommend` and its context is `poolhouse.serve.suggest.largest_fit`.
+"""
 
 from __future__ import annotations
 
@@ -43,14 +47,14 @@ class Budget:
 
 @dataclass(frozen=True, slots=True)
 class Tier:
-    """One rung of the ladder."""
+    """One rung of the starter ladder: what a first install on this much memory downloads."""
 
     id: str
     min_ram_gb: float
     gguf_repo: str | None
     gguf_file: str | None
     ollama: str | None
-    context: int
+    weights_gb: float = 0.0
 
     @property
     def min_ram_bytes(self) -> int:
@@ -65,12 +69,12 @@ def _parse(entry: dict[str, Any]) -> Tier:
         gguf_repo=gguf.get("repo"),
         gguf_file=gguf.get("file"),
         ollama=entry.get("ollama"),
-        context=int(entry.get("context", 4096)),
+        weights_gb=float(entry.get("weights_gb", 0.0)),
     )
 
 
 def tiers() -> list[Tier]:
-    """The ladder, largest first."""
+    """The starter ladder, largest first."""
     raw = load("model_tiers.json")
     entries = raw.get("tiers")
     if not entries:
@@ -100,13 +104,15 @@ def fits(
     return "fits" if needed <= budget.available_bytes(total_bytes) else "too_big"
 
 
-def largest_that_fits(
+def first_install_for(
     total_bytes: int,
     *,
     available: set[str] | None = None,
     profile: Profile = "desktop",
 ) -> Tier:
-    """Walk the ladder and take the first rung this machine can hold."""
+    """The rung a first install starts with on a machine with ``total_bytes`` of memory: the
+    first whose memory floor the machine meets. Past the starter the model is not chosen
+    here but by `poolhouse.serve.suggest.recommend`, from what is installed."""
     ladder = tiers()
     for tier in ladder:
         if total_bytes < tier.min_ram_bytes:

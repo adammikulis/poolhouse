@@ -149,7 +149,7 @@ def _how_said(how: Mapping[str, Any]) -> list[str]:
     served.append(f"{how.get('cache_type') or '?'} cache")
     if how.get("reasoning_budget") is not None:
         served.append(f"thinking budget {int(how['reasoning_budget'])}")
-    served.append((f"{context // 1024}k context" if context else "the model's own context")
+    served.append((f"{context // 1024}k context" if context else "the largest context that fits")
                   + f" across {slots} slot" + ("s" if slots != 1 else ""))
     return [f"  asking: {said}", "  serving: " + "; ".join(served)]
 

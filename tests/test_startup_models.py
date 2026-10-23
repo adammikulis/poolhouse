@@ -74,12 +74,14 @@ class StartupModelTests(unittest.TestCase):
                     "general.architecture": "qwen3_5", "qwen3_5.nextn_predict_layers": 1}), patch.object(
                     serving, "estimate"), patch.object(serving, "verdict", return_value="red"):
                 with self.assertRaises(serving.NoRoom):
-                    serving.start_model(directory, model, manager=manager)
+                    serving.start_model(directory, model, manager=manager,
+                                        settings=serving.ServeSettings(context=8192))
                 manager.lease.assert_not_called()
             with patch.object(serving, "read_gguf_header", return_value={
                     "general.architecture": "qwen3_5", "qwen3_5.nextn_predict_layers": 1}), patch.object(
                     serving, "estimate"), patch.object(serving, "verdict", return_value="green"):
-                started = serving.start_model(directory, model, manager=manager)
+                started = serving.start_model(directory, model, manager=manager,
+                                        settings=serving.ServeSettings(context=8192))
                 self.assertEqual(started.port, 7000)
                 spec = manager.lease.call_args.args[0]
                 self.assertEqual(spec.spec_type, "draft-mtp")

@@ -22,6 +22,7 @@ from poolhouse import hub
 from poolhouse.hub import header
 from poolhouse.hub.probe import MachineMemory
 from poolhouse.serve.kvcache import DEFAULT_KV_CACHE, flash_attention_likely
+from poolhouse.serve.largest import contexts, largest_context, trained_window
 from poolhouse.serve.preflight import _head_kv_per_token, _kv_estimate_bytes, recurrent_state_bytes
 from poolhouse.ui.verdict import THRESHOLDS, verdict_of
 
@@ -228,6 +229,16 @@ def _locate(model: str | Path) -> Path:
     return path
 
 
+def draft_cache_bytes(head: Mapping[str, object], use: Setup) -> int:
+    """The KV cache a draft head with header ``head`` keeps at ``use``'s context and slots,
+    stored as ``use.draft_cache_type``."""
+    k, v = split_kv(use.draft_cache_type)
+    context = use.context * max(use.parallel, 1)
+    return (_head_kv_per_token(head, k, v) * context
+            or (_kv_estimate_bytes(head, context, k, v, use.batch)
+                + recurrent_state_bytes(head) * max(use.parallel, 1)))
+
+
 def _sizes(path: Path, use: Setup) -> Setup:
     """``use`` with the projector and draft sizes filled in from their files."""
     projector = Path(use.mmproj) if use.mmproj else None
@@ -236,12 +247,7 @@ def _sizes(path: Path, use: Setup) -> Setup:
         projector = beside[0].mmproj if beside else None
     draft_kv = use.draft_kv_bytes
     if use.draft and not draft_kv:
-        found = read_meta(use.draft)
-        k, v = split_kv(use.draft_cache_type)
-        context = use.context * max(use.parallel, 1)
-        draft_kv = (_head_kv_per_token(found, k, v) * context
-                    or (_kv_estimate_bytes(found, context, k, v, use.batch)
-                        + recurrent_state_bytes(found) * max(use.parallel, 1)))
+        draft_kv = draft_cache_bytes(read_meta(use.draft), use)
     return replace(
         use, mmproj_bytes=use.mmproj_bytes or (_bytes_of(projector) if projector else 0),
         draft_bytes=use.draft_bytes or (_bytes_of(Path(use.draft)) if use.draft else 0),
@@ -348,19 +354,14 @@ ORDER = {"green": 0, "yellow": 1, "red": 2, "none": 3}
 
 def max_context(model: str | Path, machine: MachineMemory, setup: Setup | None = None, *,
                 max_verdict: str = "yellow", reserve_bytes: int | None = None) -> int:
-    """The longest context per slot, in steps of 256, whose estimate is at or under
-    ``max_verdict`` on ``machine``; 0 when none is, and never above the trained context."""
+    """The longest context per slot, in steps of 256 under the trained window itself, whose
+    estimate is at or under ``max_verdict`` on ``machine``; 0 when none is, and never above
+    the trained context. The search every default shares (`largest.largest_context`)."""
     path = _locate(model)
     use = _sizes(path, setup or Setup())
     found, weights = read_meta(path), _bytes_of(path)
-    arch, _ = _layers(found)
-    cap = int(found.get(f"{arch}.context_length") or 0) or 1_048_576  # type: ignore[call-overload]
-    best, low, high = 0, 1, max(1, cap // 256)
-    while low <= high:
-        mid = (low + high) // 2
-        est = estimate_meta(found, weights, use, context=mid * 256)
-        if ORDER[verdict(est, machine, reserve_bytes)] <= ORDER[max_verdict]:
-            best, low = mid * 256, mid + 1
-        else:
-            high = mid - 1
-    return best
+    cap = trained_window(found)
+    return largest_context(
+        lambda ctx: ORDER[verdict(estimate_meta(found, weights, use, context=ctx), machine,
+                                  reserve_bytes)] <= ORDER[max_verdict],
+        contexts(cap))

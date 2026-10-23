@@ -21,6 +21,7 @@ from poolhouse.serve.profile import Profile
 from poolhouse.testing.canned import Canned, CannedServer
 from poolhouse.testing.registry import record_server
 
+pytestmark = pytest.mark.usefixtures("named_context")
 META = {"general.architecture": "llama", "llama.block_count": 8,
         "llama.attention.head_count_kv": 2, "llama.attention.head_count": 8,
         "llama.attention.key_length": 128, "llama.embedding_length": 1024}
