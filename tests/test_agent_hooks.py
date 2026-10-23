@@ -33,6 +33,9 @@ timeout = 30
 
 [hooks.state]
 
+[hooks.state."fixture-existing-trust"]
+trusted_hash = "fixture-preserved-record"
+
 [agents]
 max_threads = 32
 '''
@@ -82,6 +85,7 @@ def test_codex_hooks_keep_other_settings_and_replace_fixed_actor_notifications(m
     assert "poolhouse.harnesshook post" not in text
     data = tomllib.loads(text)
     assert data["model"] == "gpt-6.1-sol" and data["agents"] == {"max_threads": 32}
+    assert data["hooks"]["state"] == tomllib.loads(CODEX_BEFORE)["hooks"]["state"]
     assert commands(data, "Stop") == ["poolhouse-workspace codex-hook", "poolhouse-workspace codex-stop"]
     assert commands(data, "UserPromptSubmit") == ["poolhouse-workspace codex-hook"]
     assert commands(data, "PostToolUse") == ["poolhouse-workspace codex-hook"]
@@ -98,6 +102,28 @@ def test_codex_hooks_write_the_post_hook_when_no_launcher_hook_nudges(machine):
     assert data["features"] == {"hooks": True}
     assert data["hooks"]["PostToolUse"][0]["matcher"] == ".*"
     assert commands(data, "PostToolUse") == ["poolhouse-workspace codex-hook"]
+
+
+@pytest.mark.parametrize("assigned", ["", "codex-fixture"])
+@pytest.mark.parametrize("with_post", [False, True])
+def test_codex_context_limits_only_apply_to_events_the_native_host_supports(assigned, with_post):
+    data = tomllib.loads(agent_hooks.codex_hooks(with_post=with_post, assigned=assigned))
+    context_events = {"SessionStart", "SubagentStart", "PostToolUse", "UserPromptSubmit"}
+    suffix = f" --assigned {assigned}" if assigned else ""
+    for event, _, _ in agent_hooks.CODEX_EVENTS:
+        if event == "PostToolUse" and not with_post:
+            assert event not in data["hooks"]
+            continue
+        handlers = data["hooks"][event][0]["hooks"]
+        notification = handlers[0]
+        assert notification["command"] == "poolhouse-workspace codex-hook" + suffix
+        assert notification["timeout"] == (3 if event == "SessionEnd" else 5)
+        if event in context_events:
+            assert notification["additionalContextLimit"] == 4000
+        else:
+            assert "additionalContextLimit" not in notification
+        if event == "Stop":
+            assert handlers[1] == {"type": "command", "command": "poolhouse-workspace codex-stop" + suffix, "timeout": 5}
 
 
 def test_codex_turns_the_hooks_feature_on_and_replaces_an_earlier_notify_nudge(machine):
