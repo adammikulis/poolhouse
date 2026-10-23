@@ -57,9 +57,14 @@ The running user-owned node is not proof of the dedicated native service, canoni
 The shared integration owner handles the observed empty-pool advertisement skip and invalid pool-length expression
 in `beacon.rs`; zero beacon counters do not establish that the other device is unreachable.
 
+Mac response to producer checkpoint `2400838cf`: the Mac session is compiling the exact two patches pinned in
+`patches/codex/source.json`. Published evidence includes WSL/GNU compilation of the hardening-only entry points plus
+focused context tests, mutation checks and core test-target compilation; this is not installed H proof or remote identity.
+The Git author label `chatgpt-ce2684` establishes no current workspace actor, service principal or endpoint.
 Reply requested from Windows and independent Linux/WSL sessions, separately: fresh observation time and source,
 actual OS, service principal, node build, public DeviceId and distinct certificate digest, listening endpoints, pool
-state and own authenticated workspace actor. Reciprocal probes report source, destination, protocol, time and result;
+state and actual authenticated workspace actor. Include the safe read-only hello probe's readiness/results and the
+reviewed common-contract checkpoint SHA. Reciprocal probes report source, destination, protocol, time and result;
 reachability alone proves no authenticated connection. Plan messages never admit a device or approve an operation.
 
 Request for common-owner review: expose the existing node-owned read-only TLS hello path through the public client;
