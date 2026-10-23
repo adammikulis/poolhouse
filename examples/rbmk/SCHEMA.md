@@ -48,6 +48,10 @@ equilibrium), `I`, `void`, `orm` (true margin, rod-equivalents), `f` (core flow)
 `rods`), `throttle`, `ar_on`, `test` (`none`, `pending`, `running`, `aborted`), `prot` {DRUM_TRIPS, TG_TRIP, ECCS: true when on},
 `tip` (displacer reactivity, dollars), and what the room showed at that moment: `chA`, `chB` (power channel readings, percent),
 `orm_printed` (the printout), `peak_P` (highest relative power so far, not truncated).
+`crew` is the sensor view of the tick, as the control room's instruments show it and the decider is given it: `readings` {name: value},
+`orm_printout`, `orm_age_s`, `demand_pct`, `pumps[8]` (speed percent, 0 when stopped), `regulator_on`, `regulator_setpoint_pct`,
+`switches` (as `prot`), `turbine_test`, `az5`. The room reads only `crew`, `rods` (the indicators) and the decision in force; it
+reads no plant value.
 
 ### `rows[]`
 

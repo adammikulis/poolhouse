@@ -51,7 +51,9 @@ def add(sub: argparse._SubParsersAction) -> None:
     for one in (fit, suggest):
         one.add_argument("--goal", choices=("agent", "chat", "long-context", "fast"),
                          default="agent")
-    fit.add_argument("--context", type=int, default=4096, help="tokens per slot")
+    fit.add_argument("--context", type=int, default=0,
+                     help="tokens per slot (default: what `poolhouse-serve up` serves, the "
+                          "largest this machine holds for the model)")
     fit.add_argument("--parallel", type=int, default=1)
     fit.add_argument("--kv", default=est.DEFAULT_KV, help="cache type, e.g. q8_0 or q8_0/f16")
     fit.add_argument("--ngl", default="auto", help="layers on the GPU, or auto")
@@ -162,7 +164,8 @@ def _which(args: argparse.Namespace) -> int:
 
 def _fit(args: argparse.Namespace) -> int:
     ngl = args.ngl if args.ngl == "auto" else int(args.ngl)
-    got = est.estimate(args.model, context=args.context, parallel=args.parallel,
+    context = args.context or pick.largest_fit(args.model, slots=args.parallel, kv=args.kv).context
+    got = est.estimate(args.model, context=context, parallel=args.parallel,
                        kv_cache_type=args.kv, n_gpu_layers=ngl, batch=args.batch)
     machine = hub.machine_memory()
     rated = est.verdict(got, machine)

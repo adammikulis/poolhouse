@@ -248,7 +248,8 @@ def panel_points(spec: dict, panel: str) -> list[Vector]:
     elif panel == "orm":
         obs = [bpy.data.objects["INS_SCREEN_ORM__face"]]
     else:
-        obs = [bpy.data.objects[f"INS_{i['id']}__face"] for i in spec["instruments"] if i["zone"] == zone]
+        ids = spec["panels"][panel].get("ids", [])
+        obs = [bpy.data.objects[f"INS_{i['id']}__face"] for i in spec["instruments"] if i["zone"] == zone or i["id"] in ids]
     pts = [p for o in obs for p in world_pts(o)]
     if panel == "az5":
         c = obs[0].matrix_world.translation

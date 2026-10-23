@@ -38,7 +38,7 @@ GB = 10**9
 # -- start and stop -----------------------------------------------------------------------
 @pytest.fixture
 def kit(team, monkeypatch):  # noqa: F811
-    monkeypatch.setattr(localmodel, "context_for", lambda pick, coding=False: 262144 if coding else 32768)
+    monkeypatch.setattr(localmodel, "context_for", lambda pick: 262144)
     return team
 
 
@@ -79,7 +79,7 @@ def test_start_registers_a_session_under_its_starter_records_the_pid_and_a_secon
         again = ls.start(kit.person, ls.Ask(), base=kit.base, pick=PICK, spawn=spawn)
         assert again.already and again.pid == got.pid and len(spawned) == 1
         row = ls.listing(kit.base)[0]
-        assert row["running"] and row["role"] == roles.DEFAULT and row["effort"] == "off" and row["max_effort"] == "medium"
+        assert row["running"] and row["role"] == roles.DEFAULT and row["effort"] == "off" and row["max_effort"] == "high"
         assert row["memory_bytes"] == 20 * GB and row["identity"] == agent.identity
     finally:
         done = ls.stop(kit.base, got.name, release=lambda lease: True, wait_s=5)
@@ -161,7 +161,9 @@ class Rig:
 
     def __init__(self, kit, model, role=roles.DEFAULT, orders=(), effort="off", **settings):
         self.kit, self.model, self.released = kit, model, []
-        self.agent = kit.worker("local-t", role=role, orders_from=orders, effort=effort)
+        ceiling = settings.pop("ceiling", None)
+        lower = {"max_effort": ceiling} if ceiling else {}   # none: the default ceiling, the top level
+        self.agent = kit.worker("local-t", role=role, orders_from=orders, effort=effort, **lower)
         self.cancel = threading.Event()
         held = localloop.Held(model, {"id": "L9"}, lambda: self.released.append("L9"))
         self.settings = localloop.Settings(cancel=self.cancel, serve=lambda agent: held,
@@ -528,6 +530,12 @@ def run_tasks(kit, model, texts, **kwargs):
     return rig
 
 
+def test_with_no_ceiling_set_the_model_may_ask_for_the_top_effort(kit):
+    model = Script([("set_effort", {"level": "high"}), done("one"), done("two")])
+    run_tasks(kit, model, ["first", "second"])
+    assert status_of(kit)["effort"] == "high" and [k["think"] for k in model.kw][-1] is True
+
+
 def test_effort_defaults_to_off_and_the_rule_table_picks_for_auto():
     from poolhouse.workspace import localeffort as le
     assert le.DEFAULT == "off" and le.pick_for("show the status", "high") == "off"
@@ -544,17 +552,18 @@ def test_the_model_raises_its_own_effort_within_the_ceiling_from_the_next_task_o
 
 
 def test_a_change_of_effort_is_told_to_the_board_and_one_refused_above_the_ceiling_is_not(kit):
-    rig = run_tasks(kit, Script([("set_effort", {"level": "medium", "reason": "hard"}), done("one")]), ["first"])
+    rig = run_tasks(kit, Script([("set_effort", {"level": "medium", "reason": "hard"}), done("one")]), ["first"],
+                    ceiling="medium")
     told = lambda: [e for e in kit.person.read_all(kind="audit") if e.fields["event"] == "agent.effort"]  # noqa: E731
     assert [(e.sender, e.fields["subject"]) for e in told()] == [(rig.identity, "medium")]
     assert "ceiling medium" in told()[0].fields["detail"] and "4 reason characters" in told()[0].fields["detail"]
-    run_tasks(kit, Script([("set_effort", {"level": "high"}), done("two")]), ["second"])
+    run_tasks(kit, Script([("set_effort", {"level": "high"}), done("two")]), ["second"], ceiling="medium")
     assert len(told()) == 1
 
 
 def test_asking_above_the_ceiling_is_refused_with_the_ceiling_and_nothing_changes(kit):
     model = Script([("set_effort", {"level": "high"}), done("one"), done("two")])
-    run_tasks(kit, model, ["first", "second"])
+    run_tasks(kit, model, ["first", "second"], ceiling="medium")
     told = " ".join(str(m.get("content")) for m in model.seen[1][0] if m.get("role") == "tool")
     assert "ceiling of medium" in told and all(k["think"] is False for k in model.kw)
     assert status_of(kit).get("effort") in (None, "off")

@@ -240,12 +240,25 @@ def test_a_suggestion_is_never_worse_than_asked_unless_nothing_fits(machine, goa
     assert got.kv_cache_type in ("q8_0", "q8_0/f16", "q4_0", "q4_0/f16")
 
 
-def test_agent_on_a_big_machine_aims_for_32k_one_slot_all_layers():
+def test_agent_on_a_big_machine_takes_the_trained_window_on_one_slot_all_layers():
     got = suggest_meta(dense(train=131072), 4 * GIB, UNIFIED_64)
-    assert (got.context, got.parallel, got.n_gpu_layers) == (32768, 1, "auto")
+    assert (got.context, got.parallel, got.n_gpu_layers) == (131072, 1, "auto")
     assert got.kv_cache_type == "q8_0" and got.batch == 2048 and got.verdict == "green"
-    assert got.reasons[0].startswith("Context 32k: the largest that stays green with ")
+    assert got.reasons[0].startswith("Context 128k: the largest that stays green with ")
+    assert "capped at the model's trained 128k" in " ".join(got.reasons)
     assert any("q8_0" in r for r in got.reasons)
+
+
+def test_every_goal_takes_the_largest_context_that_fits():
+    for goal in ("agent", "chat", "long-context", "fast"):
+        assert suggest_meta(dense(train=131072), 4 * GIB, UNIFIED_64, Want(goal)).context == 131072
+
+
+def test_a_header_with_no_context_length_is_refused_naming_it():
+    meta = dense()
+    del meta["llama.context_length"]
+    with pytest.raises(ValueError, match=r"llama\.context_length"):
+        suggest_meta(meta, 4 * GIB, UNIFIED_64)
 
 
 def test_long_context_takes_the_largest_that_fits_and_never_the_trained_limit():
@@ -263,7 +276,7 @@ def test_a_small_machine_gets_a_smaller_context_for_the_same_model():
 
 def test_nothing_fitting_returns_the_smallest_option_with_the_reason():
     got = suggest_meta(dense(), 30 * GIB, LAPTOP_8)
-    assert got.verdict == "red" and got.context == 512
+    assert got.verdict == "red" and got.context == 256
     assert "Nothing fits" in got.reasons[0] and got.kv_cache_type == "q4_0"
 
 
@@ -285,10 +298,11 @@ def test_without_flash_attention_the_v_cache_stays_f16_and_the_reason_says_so():
 
 
 def test_alternatives_offer_a_smaller_and_a_bigger_option():
-    got = suggest_meta(dense(train=131072), 4 * GIB, UNIFIED_64)
+    got = suggest_meta(dense(train=131072), 4 * GIB, UNIFIED_16)
+    assert 0 < got.context < 131072
     labels = [o.label for o in got.alternatives]
-    assert labels[0].startswith("smaller and faster: 16k")
-    assert labels[1].startswith("bigger and tighter: 64k")
+    assert labels[0].startswith(f"smaller and faster: {got.context // 2}")
+    assert labels[1].startswith("bigger and tighter: ")
     assert got.alternatives[0].verdict == "green"
 
 

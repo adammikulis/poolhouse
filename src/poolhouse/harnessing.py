@@ -163,26 +163,24 @@ def config_for(found: str, want: Want, say: Callable[[str], None]):
     port, slots, draft = want.port, want.slots, want.draft
     if isinstance(slots, bool) or not isinstance(slots, int) or slots <= 0:
         raise ValueError("slots must be a positive integer")
-    whole = chat_template.trained_context(found)
     requested = want.ctx
     fit = None
     if isinstance(requested, bool) or not isinstance(requested, int) or requested < 0:
         raise ValueError("context must be 0 (automatic) or a positive token count")
     if not requested:
-        if slots != 1:
-            raise ValueError("automatic context supports one slot; specify context for multiple slots")
-        fit = suggest.suggest(found, goal="long-context", max_verdict="yellow")
-        requested = fit.context
-        if requested <= 0 or fit.verdict not in {"green", "yellow"}:
+        fit = suggest.largest_fit(found, slots=slots)
+        if fit.context <= 0 or fit.verdict not in {"green", "yellow"}:
             raise ValueError(f"{Path(found).name} has no context that fits this device's memory")
         if "/" in fit.kv_cache_type:
             raise ValueError("automatic context requires matching K and V cache types; specify context explicitly")
         if fit.n_gpu_layers != "auto":
             raise ValueError("automatic context requires a full GPU offload fit; specify context explicitly")
-        say(f"automatically selected {requested:,} context tokens for this device and model")
-    if fit is None and requested % slots:
-        raise ValueError("explicit context must divide evenly across slots")
-    each = (min(requested, whole) if fit is not None and whole else requested) // slots
+        each = fit.context
+        say(f"automatically selected {each:,} context tokens a slot for this device and model")
+    else:
+        if requested % slots:
+            raise ValueError("explicit context must divide evenly across slots")
+        each = requested // slots
     if each <= 0:
         raise ValueError("context must provide at least one token per slot")
     measured = None if want.no_profile else profile.profile_for(found)

@@ -35,6 +35,7 @@ export function instrumentOf(object) {
 }
 
 function now(ins, driver, feed) {
+  if (ins.type === 'key') return `Press it to ${ins.action.replace('_', ' ')}.`;
   const row = feed.status === 'ok' ? feed.row : null;
   if (!row) return 'No run is open: this instrument shows nothing.';
   const n = driver.nodes.get(ins.id) || {};
@@ -42,7 +43,7 @@ function now(ins, driver, feed) {
     case 'dial': return n.value === null || n.value === undefined ? 'No value in this row of the run; the needle rests.' : `${fmt(n.value)} ${ins.unit}`;
     case 'lamp': case 'ann': return n.lit ? `LIT: ${ins.text}.` : `Dark: ${ins.text} is not true now.`;
     case 'recorder': return ins.series.map(([f]) => `${f} ${fmt(row[f], 3)}`).join(', ');
-    case 'button': return row.scram ? 'Shutdown ACTIVE: guard raised, button pressed.' : 'Not pressed: guard down.';
+    case 'button': return row.az5 ? 'Shutdown ACTIVE: guard raised, button pressed.' : 'Not pressed: guard down.';
     case 'screen': return 'Shows the run as it is now.';
     default: return '';
   }
@@ -57,7 +58,7 @@ export function describe(key, spec, driver, feed) {
       title: ins.label, tag: ins.id,
       what: ins.what,
       range: ins.range || (isRule ? `Lit when ${ins.text}.` : ''),
-      modelled: ins.modelled || `Evaluated in the viewer on each row of the run (${JSON.stringify(ins.rule)}), a limit the demo itself enforces.`,
+      modelled: ins.modelled || `Evaluated in the viewer on the crew row of each tick (${JSON.stringify(ins.rule)}): the reading the control room had, not a plant value.`,
       now: now(ins, driver, feed),
     };
   }

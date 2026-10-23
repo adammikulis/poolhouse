@@ -173,23 +173,23 @@ def test_the_2d_view_shows_the_apps_run_in_three_modes_and_opens_cards(playwrigh
             page.evaluate('(r) => { window.__room.feed.playing = false; window.__room.feed.setIndex(r); }', row)
             page.wait_for_function(SETTLED, timeout=10000)
             got = page.evaluate("""() => { const a = window.__room2d; return {
-                fuel: a.state.nodes.get('D_FUELT').value,
-                needle: a.overlay.elements.find((e) => e.id === 'D_FUELT').cur,
+                power: a.state.nodes.get('D_POWER_A').value,
+                needle: a.overlay.elements.find((e) => e.id === 'D_POWER_A').cur,
                 lit: a.overlay.elements.filter((e) => (e.kind === 'ann' || e.kind === 'lamp') && e.lit).map((e) => e.id).sort(),
                 rods: a.state.rods.filter((r) => r.value !== undefined).length } }""")
             want = doc['trace'][row]
-            assert got['fuel'] == pytest.approx(want['Tf'])
-            assert got['needle'] == pytest.approx((want['Tf'] - 200) / 1400)
+            assert got['power'] == pytest.approx(want['crew']['readings']['chA'])
+            assert got['needle'] == pytest.approx(want['crew']['readings']['chA'] / 150)
             assert got['lit'] == sorted(k for k, v in checked[row]['lit'].items() if v)
             assert got['rods'] == 211
             page.click("#views2d button[data-view='dials']")
             page.wait_for_function("window.__room2d.shown === 'dials'")
-            box = page.evaluate("""() => { const a = window.__room2d; const q = a.overlay.elements.find((e) => e.id === 'D_FUELT').q;
+            box = page.evaluate("""() => { const a = window.__room2d; const q = a.overlay.elements.find((e) => e.id === 'D_POWER_A').q;
                 const r = document.getElementById('overlay').getBoundingClientRect(); const v = a.viewData;
                 return [r.left + ((q[0] + q[4]) / 2) / v.width * r.width, r.top + ((q[1] + q[5]) / 2) / v.height * r.height]; }""")
             page.mouse.click(*box)
-            assert page.inner_text('#card-title') == 'FUEL TEMP'
-            assert 'C' in page.inner_text('#card-now')
+            assert page.inner_text('#card-title') == 'POWER CH A'
+            assert '%' in page.inner_text('#card-now')
             page.click("#views2d button[data-view='plan']")
             page.wait_for_function("window.__room2d.shown === 'plan'")
             rect = page.evaluate("""() => { const a = window.__room2d; const m = a.overlay.elements.find((e) => e.panel === 'decision');
@@ -198,6 +198,33 @@ def test_the_2d_view_shows_the_apps_run_in_three_modes_and_opens_cards(playwrigh
             page.mouse.click(*rect)
             page.wait_for_function("window.__room2d.shown === 'decision'")
             assert page.evaluate("document.getElementById('still').naturalWidth") > 0
+        finally:
+            browser.close()
+        assert not errors
+
+
+@pytest.mark.slow
+def test_the_keys_and_the_display_of_the_desk_work_in_the_2d_view(playwright, tmp_path):
+    with shoot.serving(tmp_path) as origin:
+        browser, page, errors = open2d(playwright, origin, False, 'runpanel')
+        try:
+            def click(ident):
+                box = page.evaluate("""(id) => { const a = window.__room2d; const q = a.overlay.elements.find((e) => e.id === id).q;
+                    const r = document.getElementById('overlay').getBoundingClientRect(); const v = a.viewData;
+                    return [r.left + ((q[0] + q[4]) / 2) / v.width * r.width, r.top + ((q[1] + q[5]) / 2) / v.height * r.height]; }""", ident)
+                page.mouse.click(*box)
+
+            screen = page.evaluate("() => window.__room2d.overlay.elements.find((e) => e.id === 'SCREEN_RUN').kind")
+            assert screen == 'run'
+            click('K_CONTROLLER_NEXT')
+            assert page.evaluate("window.RB.desk.options().controller") == 'naive'
+            assert 'CONTROLLER naive' in page.evaluate("window.RB.desk.lines().map((l) => l.label + ' ' + l.value).join('\\n')")
+            click('K_START')
+            page.wait_for_function("window.RB.state.main && window.RB.state.main.status === 'done'", timeout=60000)
+            page.wait_for_function(SETTLED, timeout=10000)
+            assert page.evaluate("window.__room2d.overlay.elements.find((e) => e.id === 'K_START').lit") is False
+            click('K_SOURCE')
+            page.wait_for_function("window.RB.state.mode === 'recorded' && window.__room2d.overlay.elements.find((e) => e.id === 'K_SOURCE').lit === true")
         finally:
             browser.close()
         assert not errors
@@ -213,7 +240,7 @@ def test_a_decision_picked_in_the_log_moves_the_2d_view_too(playwright, tmp_path
             rows[3].click()
             page.wait_for_function(
                 """() => { const a = window.__room2d, f = window.__room.feed;
-                    return Math.abs(a.state.nodes.get('D_FUELT').value - window.RB.state.main.trace[f.index].Tf) < 1e-9 && !a.loop.running; }""",
+                    return a.state.nodes.get('D_POWER_A').value === window.RB.state.main.trace[f.index].crew.readings.chA && !a.loop.running; }""",
                 timeout=15000)
             assert page.evaluate('window.__room.feed.decision.i') == page.evaluate('window.RB.state.selected')
         finally:
@@ -228,8 +255,8 @@ def test_the_2d_view_without_a_run_says_so_and_shows_nothing(playwright, tmp_pat
         try:
             assert 'NO RUN' in page.inner_text('#banner')
             got = page.evaluate("""() => { const a = window.__room2d;
-                return [a.state.nodes.get('D_FUELT').value, a.state.rods.filter((r) => r.value !== undefined).length,
-                  a.overlay.elements.filter((e) => (e.kind === 'ann' || e.kind === 'lamp' || e.kind === 'button') && e.lit).length,
+                return [a.state.nodes.get('D_POWER_A').value, a.state.rods.filter((r) => r.value !== undefined).length,
+                  a.overlay.elements.filter((e) => (e.kind === 'ann' || e.kind === 'lamp' || e.kind === 'button' || e.kind === 'key') && e.lit).length,
                   a.overlay.elements.filter((e) => e.kind === 'dial' && e.cur !== null).length] }""")
             assert got == [None, 0, 0, 0]
         finally:

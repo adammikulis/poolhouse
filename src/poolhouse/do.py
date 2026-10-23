@@ -652,8 +652,7 @@ def client_for(args: argparse.Namespace) -> Any:
             f"({config.serving.note}): {said(measured)}")
         config = drafted(config, "none", say=say)
     else:
-        config = Config(serving=Serving(model=found, port=args.port, slots=1, slot_context=32768,
-                              reasoning_budget=0))
+        config = Config(serving=Serving(model=found, port=args.port, slots=1, reasoning_budget=0))
         config = drafted(config, args.draft, say=say)
     return slot(config, index=0)
 

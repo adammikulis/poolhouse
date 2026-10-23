@@ -82,9 +82,10 @@ class Serving:
     port: int = 8080
     # One conversation each, with its own KV cache. The server divides the context it was
     # given between them, so what is asked for is slots x slot_context and a slot is what
-    # any one conversation actually gets.
+    # any one conversation actually gets. 0 asks for the largest the machine holds safely
+    # (`serve.fitted.fitted`, answered where the server is leased).
     slots: int = 1
-    slot_context: int = 4096
+    slot_context: int = 0
     # How the KV cache is stored: q8_0 unless a serving says otherwise (measured 2026-09-02
     # on Flash-Next: F1 unchanged, faster, half the cache); "f16" asks for the full one.
     cache_type: str = DEFAULT_CACHE

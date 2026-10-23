@@ -19,7 +19,7 @@ def test_a_worker_holding_its_slot_is_allocated_and_a_changed_configuration_or_l
     seen = {'task': board.task['id'], 'allocation_id': allocation['allocation_id'], 'allocations': stored}
     task_worker._verified(board.runner, seen)
     for fields in ({'model': 'other'}, {'harness': 'claude'}, {'ctx': 65536}, {'effort': 'high'},
-                   {'max_effort': 'high'}, {'max_output_tokens': 16384}, {'role': 'manual'}):
+                   {'max_effort': 'low'}, {'max_output_tokens': 16384}, {'role': 'manual'}):
         with pytest.raises(Refused, match='execution configuration changed'):
             task_worker._verified(replace(board.runner, **fields), seen)
     with pytest.raises(Refused, match='configuration changed'):

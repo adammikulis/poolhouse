@@ -18,7 +18,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from examples.rbmk import recorder, scenarios  # noqa: E402
+from examples.rbmk import recorder, scenarios, starts  # noqa: E402
 from examples.rbmk.controls import options as desk  # noqa: E402
 from examples.rbmk.controls.apply import act  # noqa: E402
 from examples.rbmk.decider.model import LiveAsker, ModelStopped, call_with_timeout  # noqa: E402
@@ -300,6 +300,25 @@ def test_the_prompt_is_a_function_of_the_sensor_view_only():
     plant_b.core.P = 0.5
     plant_b.core.t += 5.0
     assert builder.console(again.observe(plant_b, 1.0)).text != builder.console(a).text
+
+
+def test_each_trace_row_carries_the_sensor_view_of_its_tick_and_the_decider_was_given_the_same():
+    scn = scenarios.scenario("pump_trip")
+    res = Runner(scn, NaiveDecider()).run()
+    crew = {row["tick"]: row["crew"] for row in res.trace}
+    decisions = [r for r in res.rows if r["kind"] == "decision"]
+    assert decisions and all(len(row["crew"]["pumps"]) == 8 for row in res.trace)
+    for d in decisions:
+        assert {n: r["value"] for n, r in d["view"]["readings"].items()} == crew[d["tick"]]["readings"]
+        assert (d["view"]["orm_printout"], d["view"]["demand_pct"], d["view"]["az5"]) == (
+            crew[d["tick"]]["orm_printout"], crew[d["tick"]]["demand_pct"], crew[d["tick"]]["az5"])
+    assert not {"P", "Tf", "X", "void", "rho", "damaged", "orm"} & {k for c in crew.values() for k in c["readings"]}
+
+
+def test_a_drawn_poisoned_start_has_a_title_and_a_description():
+    scn = starts.draw(1, 0)
+    assert text.title(scn) == "Poisoned start, seed 1, number 0" and "MW" in text.description(scn)
+    assert text.title(scenarios.scenario("pump_trip")) == "Pump trip"
 
 
 def test_the_orm_comes_only_from_the_printout_which_the_computer_refreshes_every_cycle():

@@ -32,8 +32,8 @@ OPTIONS = [
     option("model", help="ask what leasing this model would do (default: whatever is "
                          "already serving)"),
     option("context", type=parse_context, default=DEFAULT_CONTEXT,
-           help=f"the context that lease would ask for -- 32768, 256k, 1m "
-                f"(default: {DEFAULT_CONTEXT})"),
+           help="the context that lease would ask for -- 32768, 256k, 1m "
+                "(default: none asked, so whatever the server holds is judged as it is)"),
     option("parallel", default=DEFAULT_PARALLEL,
            help=f"the slots that lease would ask for (default: {DEFAULT_PARALLEL})"),
     flag("--every", action="store_true",

@@ -366,7 +366,7 @@ class UI:
 
     def start_serving(self, model: Any, *, context=None, current=None) -> Any:
         """Run this model with a checked per-start context and current request proof."""
-        settings = context_settings(model.path, context, int(getattr(self.settings, "context", 0) or 8192))
+        settings = context_settings(model.path, context, int(getattr(self.settings, "context", 0) or 0))
         if current is not None and current() is not True:
             raise PermissionError('Sign in again before starting this model.')
         return self._hosting().start(model.path, replace(settings, name=model.name, current=current))

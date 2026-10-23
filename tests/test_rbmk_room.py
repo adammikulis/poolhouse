@@ -60,7 +60,7 @@ def test_glb_is_current_and_labelled_interpretive():
 def test_every_instrument_has_its_nodes():
     names = node_names()
     need = {'dial': ('face', 'needle'), 'ann': ('face',), 'lamp': ('face',), 'recorder': ('face',),
-            'screen': ('face',), 'button': ('cap', 'cover', 'label'), 'rodmap': ()}
+            'screen': ('face',), 'key': ('face',), 'button': ('cap', 'cover', 'label'), 'rodmap': ()}
     missing = [f'INS_{i["id"]}' + (f'__{part}' if part else '')
                for i in SPEC['instruments'] for part in ('', *need[i['type']]) if f'INS_{i["id"]}' + (f'__{part}' if part else '') not in names]
     assert not missing
@@ -88,26 +88,47 @@ def test_bookmarks_have_camera_nodes():
     assert sum(n.startswith('LIGHT_') for n in names) >= 4
 
 
-def test_dial_recorder_and_rule_fields_exist_in_a_run(plain):
+def test_dial_recorder_and_rule_fields_exist_in_the_crew_row(plain):
+    fields = set(run_check(plain[1])['fields'])
     known = set(SPEC['feed_trace_fields']) | set(SPEC['derived_fields'])
-    FEED = plain[0]
-    row = FEED['trace'][0]
-    assert not [f for f in SPEC['feed_trace_fields'] if f not in row and f not in ('model_risk', 'tip')]
+    assert not [f for f in SPEC['feed_trace_fields'] if f not in fields and f != 'model_risk'], 'the crew row lacks a field the spec lists'
     used = {i['field'] for i in instruments('dial')}
     used |= {s[0] for i in instruments('recorder') for s in i['series']}
-    leaves = [r for i in instruments('lamp', 'ann') for r in rule_leaves(i['rule'])]
-    used |= {r['field'] for r in leaves if r['when'] == 'trace' or r['when'] == 'index'}
+    leaves = [r for i in instruments('lamp', 'ann') for r in leaves_of(i)]
+    used |= {r['field'] for r in leaves if r['when'] in ('trace', 'index')}
     used |= {r[k] for r in leaves if r['when'] in ('diff', 'diffrow') for k in ('a', 'b')}
-    assert used <= known, used - known
-    decision_fields = set(next(r for r in FEED['rows'] if r['kind'] == 'decision'))
+    assert used <= fields | {'model_risk'}, used - fields
+    assert fields - {'tick', 't_s', 'regulator_setpoint_pct', 'orm_age_s'} <= known | used
+    decision_fields = set(next(r for r in plain[0]['rows'] if r['kind'] == 'decision'))
     assert {r['field'] for r in leaves if r['when'] == 'decision'} <= decision_fields
-    assert not [r for i in instruments('lamp', 'ann') for r in rule_leaves(i['rule']) if r['when'] == 'interlock'], 'the plant has no interlock layer'
-    prot = {r['id'] for i in instruments('lamp') for r in rule_leaves(i['rule']) if r['when'] == 'prot'}
-    assert prot <= set(row['prot'])
+    assert not [r for r in leaves if r['when'] == 'interlock'], 'the plant has no interlock layer'
+    prot = {r['id'] for i in instruments('lamp') for r in leaves_of(i) if r['when'] == 'prot'}
+    assert prot <= set(plain[0]['trace'][0]['crew']['switches'])
+
+
+def test_the_instruments_show_the_sensor_view_the_decider_is_given_and_no_plant_value(plain):
+    """Structure: every dial, recorder and rule reads a field of the crew row, and the crew row of a tick equals the decider's view of it."""
+    plant_only = {'P', 'Tf', 'X', 'I', 'void', 'rho', 'tip', 'orm', 'damaged', 'peak_P', 'throttle', 'level', 'p', 'f', 'dt', 'scram'}
+    used = {i['field'] for i in instruments('dial')} | {s[0] for i in instruments('recorder') for s in i['series']}
+    used |= {r['field'] for i in instruments('lamp', 'ann') for r in leaves_of(i) if r['when'] in ('trace', 'index')}
+    assert not used & plant_only, used & plant_only
+    by_tick = {r['tick']: r['crew'] for r in plain[0]['trace']}
+    rods = {r['tick']: r['rods'] for r in plain[0]['trace']}
+    decisions = [r for r in plain[0]['rows'] if r['kind'] == 'decision']
+    assert decisions
+    for d in decisions:
+        crew = by_tick[d['tick']]
+        assert {n: r['value'] for n, r in d['view']['readings'].items()} == crew['readings'], d['tick']
+        assert [r['indicator_pct'] for r in d['view']['rods']] == rods[d['tick']], 'the rod indicators of the room are the decider\'s'
+        assert (d['view']['orm_printout'], d['view']['demand_pct']) == (crew['orm_printout'], crew['demand_pct'])
+
+
+def leaves_of(instrument):
+    return rule_leaves(instrument['rule'])
 
 
 def rule_leaves(rule):
-    return rule['of'] if rule['when'] == 'all' else [rule]
+    return [leaf for r in rule['of'] for leaf in rule_leaves(r)] if rule['when'] in ('all', 'any') else [rule]
 
 
 @pytest.fixture
@@ -132,17 +153,18 @@ def run_check(feed_file):
     return json.loads(out)
 
 
-def test_rules_agree_with_a_runs_own_values(plain):
+def test_rules_agree_with_the_crew_rows_of_a_run(plain):
     FEED = plain[0]
     got = run_check(plain[1])
     rows = {r['tick']: r for r in got['rows']}
     for row in FEED['trace']:
+        crew = row['crew']
         lit, dials = rows[row['tick']]['lit'], rows[row['tick']]['dials']
-        assert lit['L_SCRAM'] == row['scram']
-        assert lit['A_ORM_LOW'] == (row['orm'] < 15)
-        assert all(lit[f'L_PUMP_{n + 1}'] == (row['pumps'][n] > 0.05) for n in range(8))
-        assert dials['D_FUELT'] == row['Tf'] and dials['D_PRESS'] == row['p']
-        assert abs(dials['D_POWER_A'] - row['chA']) < 1e-9
+        assert lit['L_SCRAM'] == crew['az5']
+        assert lit['A_ORM_LOW'] == (crew['orm_printout'] < 15)
+        assert all(lit[f'L_PUMP_{n + 1}'] == (crew['pumps'][n] > 5) for n in range(8))
+        assert dials['D_POWER_A'] == crew['readings']['chA'] and dials['D_PRESS'] == crew['readings']['press_l']
+        assert dials['D_ORM'] == crew['orm_printout'] and dials['D_SETPOINT'] == crew['demand_pct']
         assert abs(dials['D_ROD_BANK'] - sum(row['rods']) / 211) < 1e-9
     assert any(any(r['lit'].values()) for r in got['rows'])
 

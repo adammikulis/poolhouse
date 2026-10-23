@@ -197,8 +197,7 @@ def _located(wanted: str) -> tuple[str, str]:
 
 def _sweep(args: Any, kept: Sequence[Mapping[str, Any]]) -> list[ModelEstimate]:
     q = _questions(args)
-    context = int(getattr(args, "context", 0) or 0) or 32768 * max(
-        1, int(getattr(args, "parallel", 1) or 1))
+    context = int(getattr(args, "context", 0) or 0)
     out = []
     for wanted in getattr(args, "serve", None) or []:
         model, stem = _located(wanted)

@@ -1,8 +1,11 @@
 """The best settings for a model on a machine, and the best model for a machine.
 
-``suggest`` picks context, slots, offload, cache types and batch for one model so that
-`estimate.verdict` stays at or under a level; ``suggest_model`` ranks models for a goal.
-Both are deterministic: the same header, sizes and machine give the same answer.
+``suggest`` picks context, offload, cache types and batch for one model so that
+`estimate.verdict` stays at or under a level; ``largest_fit`` is the one question every
+serving default asks of it: the largest context per slot, for a number of slots, that
+this machine holds safely, with the model's trained window as the ceiling.
+``suggest_model`` ranks models for a goal. All are deterministic: the same header, sizes
+and machine give the same answer.
 """
 
 from __future__ import annotations
@@ -10,41 +13,38 @@ from __future__ import annotations
 import contextlib
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
-from poolhouse import hub
+from poolhouse import hub, limits
 from poolhouse.hub import naming, remote
 from poolhouse.hub.discover import ModelInfo
 from poolhouse.hub.probe import MachineMemory, machine_memory
 from poolhouse.platform import is_apple_silicon
 from poolhouse.serve import estimate as est
+from poolhouse.serve.largest import PAD, capacity, contexts, largest_context, trained_window
 from poolhouse.units import human_bytes
 
 __all__ = ["Candidate", "Choice", "Option", "Recommendation", "Suggestion", "Want",
-           "recommend", "suggest", "suggest_meta", "suggest_model"]
+           "largest_fit", "recommend", "slots_that_fit", "suggest", "suggest_meta", "suggest_model"]
 
-GOALS = {
-    "agent": (32768, 8192),
-    "chat": (16384, 4096),
-    "long-context": (1_048_576, 8192),
-    "fast": (4096, 2048),
-}
-"""``goal -> (context to aim for, the smallest context worth offering)``."""
+GOALS = ("agent", "chat", "long-context", "fast")
+"""What a suggestion is for. Every goal serves the largest context that fits (`largest_fit`);
+they differ in how models are ranked (``fast`` takes a smaller one) and in the batch."""
 
 STEPS = tuple(2**n for n in range(20, 8, -1))
+"""The powers of two the "bigger and tighter" alternative is chosen from: a menu entry, not a limit."""
 BATCHES = {"agent": (2048, 1024, 512), "long-context": (2048, 1024, 512)}
+"""``-ub`` values tried, largest first, kept while the rating holds: 2048 measured 4.7x on
+Flash-Next (the serving doc), 512 is llama.cpp's own."""
 OFFLOADS = (1.0, 0.75, 0.5, 0.25, 0.0)
+"""Shares of the layers tried on a card, the first being the whole model."""
 
 QUALITY = {"F32": 1.0, "F16": 1.0, "BF16": 1.0, "Q8": 1.0, "Q6": 0.99, "Q5": 0.97,
            "Q4": 0.93, "IQ4": 0.92, "MXFP4": 0.92, "Q3": 0.8, "IQ3": 0.78, "Q2": 0.6,
            "IQ2": 0.55, "IQ1": 0.4}
 """How much of its full-precision quality a quantisation keeps, by prefix. A rough ranking
 aid, not a measurement."""
-
-KV_PER_PARAMETER = 2.0e-5
-"""Bytes of q8_0 KV cache per token per parameter, for a model whose header is not at hand
-(fit to a 4B dense model: 78 kB a token)."""
 
 NOT_CHAT = ("bert", "embed", "clip", "whisper", "ltxv", "t5", "rerank", "bge", "minilm")
 
@@ -109,21 +109,20 @@ def tokens(count: int) -> str:
     return f"{count // 1024}k" if count >= 1024 and count % 1024 == 0 else str(count)
 
 
-def _contexts(goal: str, trained: int) -> list[int]:
-    aim = GOALS[goal][0]
-    top = min(aim, trained) if trained else aim
-    return sorted({top, *(s for s in STEPS if s < top)}, reverse=True)
-
-
 @dataclass(frozen=True, slots=True)
 class Want:
-    """What a suggestion is for: ``goal``, the worst rating accepted, and the memory kept
-    back for the system (`estimate.reserve_default` when ``None``)."""
+    """What a suggestion is for: ``goal``, the worst rating accepted, the memory kept
+    back for the system (`estimate.reserve_default` when ``None``), the ``slots`` the
+    context is for (the context asked is per slot), the KV cache type it is rated at and
+    the ``draft`` head (a path) served beside the model, whose weights and own cache count."""
 
     goal: str = "agent"
     max_verdict: str = "green"
     reserve_bytes: int | None = None
     mmproj_bytes: int = 0
+    slots: int = 1
+    kv: str = est.DEFAULT_KV
+    draft: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +132,8 @@ class _Ask:
     machine: MachineMemory
     want: Want
     flash: bool
+    head: Mapping[str, object] = field(default_factory=dict)
+    head_bytes: int = 0
 
     @property
     def trained(self) -> int:
@@ -149,9 +150,14 @@ class _Ask:
         return bool(self.machine.gpus) or self.machine.unified
 
     def kv(self, kind: str) -> str:
-        return kind if self.flash else f"{kind}/f16"
+        k, v = est.split_kv(kind)
+        v = v if self.flash else "f16"
+        return k if k == v else f"{k}/{v}"
 
     def rate(self, use: est.Setup) -> tuple[est.Estimate, str]:
+        if self.head_bytes:
+            use = replace(use, draft_bytes=self.head_bytes,
+                          draft_kv_bytes=est.draft_cache_bytes(self.head, use))
         got = est.estimate_meta(self.found, self.weights, use)
         return got, est.verdict(got, self.machine, self.want.reserve_bytes)
 
@@ -160,13 +166,14 @@ class _Ask:
 
     def pick(self, start: est.Setup, steps: list[int]
              ) -> tuple[est.Estimate, est.Setup, str] | None:
-        """The largest of ``steps`` whose rating is accepted."""
-        for ctx in steps:
-            use = replace(start, context=ctx)
-            got, rated = self.rate(use)
-            if self.within(rated):
-                return got, use, rated
-        return None
+        """The largest of ``steps`` (largest first) whose rating is accepted."""
+        best = largest_context(lambda ctx: self.within(self.rate(replace(start, context=ctx))[1]),
+                               steps)
+        if not best:
+            return None
+        use = replace(start, context=best)
+        got, rated = self.rate(use)
+        return got, use, rated
 
     def headroom(self, got: est.Estimate) -> str:
         pool, free, _ = est.headroom(got, self.machine, self.want.reserve_bytes)
@@ -174,9 +181,9 @@ class _Ask:
 
     def alternatives(self, use: est.Setup, steps: list[int]) -> tuple[Option, ...]:
         out: list[Option] = []
-        limit = self.trained or STEPS[0]
+        limit = self.trained
         larger = next((s for s in reversed(STEPS) if use.context < s <= limit), 0)
-        for label, ctx in (("smaller and faster", max(use.context // 2, 512)),
+        for label, ctx in (("smaller and faster", max(use.context // 2, PAD)),
                            ("bigger and tighter", larger)):
             if ctx and ctx != use.context:
                 got, rated = self.rate(replace(use, context=ctx))
@@ -201,9 +208,16 @@ class _Ask:
                         f"{human_bytes(got.compute_buffer_bytes)} of compute buffers")
         if use.n_gpu_layers not in ("auto", 0):
             said.append(f"{use.n_gpu_layers} layers on the GPU; the model does not fit whole")
-        if self.want.goal == "agent":
-            said.append("One slot: tool output is long, and slots divide the context")
+        if self.want.slots > 1:
+            said.append(f"{self.want.slots} slots: each has this context to itself, so the "
+                        f"server holds {self.want.slots * use.context:,} tokens in all")
         return tuple(said)
+
+    @staticmethod
+    def longest(*options: tuple[est.Estimate, est.Setup, str] | None
+                ) -> tuple[est.Estimate, est.Setup, str] | None:
+        """The option with the most context, whichever of them it is; None when there is none."""
+        return max((o for o in options if o), key=lambda o: o[1].context, default=None)
 
     def offloaded(self, base: est.Setup, steps: list[int]
                   ) -> tuple[est.Estimate, est.Setup, str] | None:
@@ -230,8 +244,15 @@ class _Ask:
         got, rated = self.rate(least)
         said = (f"Nothing fits at {self.want.max_verdict} or better: this is the smallest "
                 f"option, rated {rated}", f"The weights alone are {human_bytes(self.weights)}")
-        return Suggestion(least.context, 1, least.n_gpu_layers, least.kv_cache_type,
+        return Suggestion(least.context, least.parallel, least.n_gpu_layers, least.kv_cache_type,
                           self.flash, 512, got, rated, said, self.alternatives(least, steps))
+
+
+def _head(draft: str) -> tuple[Mapping[str, object], int]:
+    """The header and size of the draft head served beside a model, or nothing."""
+    if not draft:
+        return {}, 0
+    return est.read_meta(draft), est._bytes_of(Path(draft))
 
 
 def suggest_meta(found: Mapping[str, object], weights_bytes: int,
@@ -242,14 +263,12 @@ def suggest_meta(found: Mapping[str, object], weights_bytes: int,
     if want.goal not in GOALS:
         raise ValueError(f"goal is one of {', '.join(GOALS)}, not {want.goal!r}")
     ask = _Ask(found, weights_bytes, machine or machine_memory(), want,
-               est.flash_attention_likely(found))
-    steps = _contexts(want.goal, ask.trained)
-    big = [s for s in steps if s >= GOALS[want.goal][1]] or steps
-    base = est.Setup(kv_cache_type=ask.kv("q8_0"), flash_attn=ask.flash,
+               est.flash_attention_likely(found), *_head(want.draft))
+    steps = contexts(trained_window(found))
+    base = est.Setup(kv_cache_type=ask.kv(want.kv), flash_attn=ask.flash, parallel=max(want.slots, 1),
                      mmproj_bytes=want.mmproj_bytes, n_gpu_layers="auto" if ask.gpu else 0)
     tight = replace(base, kv_cache_type=ask.kv("q4_0"))
-    chosen = (ask.pick(base, big) or ask.offloaded(base, big) or ask.pick(base, steps)
-              or ask.pick(tight, big))
+    chosen = ask.longest(ask.pick(base, steps), ask.offloaded(base, steps)) or ask.pick(tight, steps)
     if not chosen:
         return ask.smallest(base, steps)
     got, use, rated = chosen
@@ -263,18 +282,70 @@ def suggest(model: str | Path, machine: MachineMemory | None = None, *, goal: st
             max_verdict: str = "green", reserve_bytes: int | None = None) -> Suggestion:
     """Settings for an installed model on ``machine`` (this one by default).
 
-    ``goal`` is ``agent`` (tool calling: up to 32k, one slot), ``chat`` (16k),
-    ``long-context`` (the largest that fits) or ``fast`` (4k). The answer is never rated
-    worse than ``max_verdict`` unless nothing fits, and then it is the smallest option with
-    the reason. Context never exceeds the model's trained context. Quantised KV needs
-    flash attention; where the head size or the build lacks it V stays f16.
+    Every goal takes the largest context that stays within ``max_verdict``, up to the model's
+    trained window (a header with no ``context_length`` is refused, naming the field). The
+    answer is never rated worse than ``max_verdict`` unless nothing fits, and then it is the
+    smallest option with the reason. Quantised KV needs flash attention; where the head size
+    or the build lacks it V stays f16.
     """
+    return fit_model(model, machine, Want(goal, max_verdict, reserve_bytes))
+
+
+def fit_model(model: str | Path, machine: MachineMemory | None, want: Want) -> Suggestion:
+    """`suggest` for everything ``want`` can say: slots, cache type and a draft head."""
     path = est._locate(model)
     shown = [m for m in hub.discover(formats=("gguf",)) if m.path == path]
     mm = shown[0].mmproj if shown and shown[0].mmproj else None
     return suggest_meta(est.read_meta(path), est._bytes_of(path), machine,
-                        Want(goal, max_verdict, reserve_bytes,
-                             est._bytes_of(mm) if mm else 0))
+                        replace(want, mmproj_bytes=want.mmproj_bytes or (est._bytes_of(mm) if mm else 0)))
+
+
+def largest_fit(model: str | Path, machine: MachineMemory | None = None, *, slots: int = 1,
+                kv: str = est.DEFAULT_KV, draft: str | Path = "") -> Suggestion:
+    """The largest safe context for ``model`` on ``machine`` (this one by default), per slot.
+
+    The one answer behind every default: `up`, `serve()`, the fleet app, the local agent, the
+    coding harnesses, `plan`. The ceiling is the model's trained window; the floor is the
+    memory: the GPU limit on a unified machine, a card beside its RAM otherwise, less the
+    system's reserve, rated yellow (below 95% of it) or better. The machine counts as idle
+    (`largest.capacity`), so the answer does not depend on the minute and the broker makes a
+    lease wait for memory another holds. ``slots`` is the caller's demand (one, as in
+    llama.cpp; `escalate` grows a server): ``parallel`` is that, `Suggestion.lease` the
+    arguments for a server, `slots_that_fit` how many the memory would hold.
+    """
+    return fit_model(model, _empty(machine), Want("long-context", "yellow", slots=slots, kv=kv,
+                                                  draft=str(draft or "")))
+
+
+def _empty(machine: MachineMemory | None) -> MachineMemory:
+    """``machine`` (this one by default) counted as idle and held to the limit poolhouse was
+    given: a default is for the machine, not for the minute it is asked in."""
+    return capacity(machine or machine_memory(), limits.read().memory_bytes)
+
+
+def slots_that_fit(model: str | Path, context: int, machine: MachineMemory | None = None, *,
+                   max_verdict: str = "yellow", kv: str = est.DEFAULT_KV) -> int:
+    """How many slots of ``context`` tokens each ``machine`` holds within ``max_verdict``;
+    0 when not even one does."""
+    path = est._locate(model)
+    found, weights = est.read_meta(path), est._bytes_of(path)
+    ask = _Ask(found, weights, _empty(machine), Want(max_verdict=max_verdict, kv=kv),
+               est.flash_attention_likely(found))
+    use = est.Setup(context=max(int(context), 1), kv_cache_type=ask.kv(kv), flash_attn=ask.flash,
+                    n_gpu_layers="auto" if ask.gpu else 0)
+
+    def holds(count: int) -> bool:
+        return ask.within(ask.rate(replace(use, parallel=count))[1])
+
+    if not holds(1):
+        return 0
+    good, bad = 1, 2
+    while holds(bad):
+        good, bad = bad, bad * 2
+    while bad - good > 1:
+        mid = (good + bad) // 2
+        good, bad = (mid, bad) if holds(mid) else (good, mid)
+    return good
 
 
 @dataclass(frozen=True, slots=True)
@@ -345,7 +416,8 @@ def suggest_model(candidates: Iterable[Candidate | ModelInfo],
                   ) -> list[Choice]:
     """Candidates ranked for ``goal`` on ``machine``, best first.
 
-    Models whose settings (`suggest_meta`) rate better come first. Within a rating, the
+    A model is rated by whether its weights and fixed buffers fit (the context it is then
+    served at is `largest_fit`'s, whatever fits). Models that rate better come first. Within a rating, the
     score is parameters times a quantisation quality factor (a mixture of experts counts
     half), so a larger model wins when it fits; for ``fast`` it is the smaller of the
     models of 1.5 billion parameters or more. Embedding, vision-encoder and speech models
@@ -355,17 +427,12 @@ def suggest_model(candidates: Iterable[Candidate | ModelInfo],
     """
     machine = machine or machine_memory()
     apple = is_apple_silicon()
-    floor = GOALS[goal][1]
     rows: list[Choice] = []
     for item in candidates:
         one = candidate_of(item) if isinstance(item, ModelInfo) else item
         if not _chat(one) or one.size_bytes <= 0:
             continue
-        probe = est.estimate_meta(_found_for(one), one.size_bytes, est.Setup(context=floor))
-        if not probe.kv_cache_bytes and not probe.state_bytes:
-            kv = int(KV_PER_PARAMETER * (one.parameters or one.size_bytes / 0.6) * floor)
-            probe = replace(probe, total_bytes=probe.total_bytes + kv,
-                            gpu_bytes=probe.gpu_bytes + kv)
+        probe = est.estimate_meta(_found_for(one), one.size_bytes, est.Setup(context=0))
         rated = est.verdict(probe, machine, reserve_bytes)
         score = _effective(one)
         if goal == "fast":

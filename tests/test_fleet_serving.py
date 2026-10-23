@@ -13,6 +13,7 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler
 
 import pytest
+from conftest import write_gguf
 
 from poolhouse.fleet.api import Daemon, make_handler
 from poolhouse.fleet.daemon import load_or_create_token
@@ -403,8 +404,7 @@ def manager(tmp_path, llama_binary):
 @pytest.fixture
 def gguf(tmp_path):
     path = tmp_path / "Qwen3-4B-Q4_K_M.gguf"
-    path.write_bytes(b"GGUF" + struct.pack("<IQQ", 3, 0, 0))
-    return path
+    return write_gguf(path, {"general.architecture": "llama", "llama.context_length": 8192})
 
 
 class TestStartingAModelWithoutTheInterface:
