@@ -12,8 +12,9 @@ from pathlib import Path
 
 from poolhouse.hub import installed_for
 from poolhouse.hub.probe import MachineMemory
-from poolhouse.serve import estimate as est
+from poolhouse.serve import estimate as est, kvcache, mlxfit
 from poolhouse.serve.backend import ServerSpec
+from poolhouse.serve.mlxref import is_mlx
 from poolhouse.serve.suggest import Suggestion, largest_fit
 from poolhouse.units import human_bytes
 
@@ -38,18 +39,22 @@ def fitted(spec: ServerSpec, machine: MachineMemory | None = None) -> tuple[Serv
 
     The context is per slot times the slots asked for (`ServerSpec.parallel`, one unless the
     caller said more), at the KV cache type the spec names. No number stands in for one that
-    cannot be fitted: a model with no GGUF header, or a header with no ``context_length``,
-    raises ValueError naming what is missing, and the caller passes a context.
+    cannot be fitted: a model with no readable window (a GGUF header with no
+    ``context_length``, an MLX config with no ``max_position_embeddings``, a model not yet
+    fetched whose Hub config cannot be read) raises ValueError naming what is missing, and the
+    caller passes a context. An MLX model is fitted from its config.json (`serve.mlxfit`).
     """
     if int(spec.context) > 0:
         return spec, ""
     slots = max(1, int(spec.parallel or 1))
     kv = f"{spec.cache_type_k or est.DEFAULT_KV}/{spec.cache_type_v or est.DEFAULT_KV}"
+    if is_mlx(spec.model):
+        got = mlxfit.largest_fit(spec.model, machine, slots=slots, bits=kvcache.effective(spec).bits)
+        return replace(spec, context=got.context * slots), fit_note(got, slots)
     path = Path(str(spec.model))
     if not path.is_file():
-        raise ValueError(f"no context to fit for {path.name}: it is not a GGUF file on this machine "
-                         "(an MLX folder or a model not yet downloaded has no header to read); "
-                         "pass a context")
+        raise ValueError(f"no context to fit for {path.name}: it is not a GGUF file on this machine, so its window "
+                         "is not known until it is fetched (`poolhouse-models pull`); pass a context")
     head = str(spec.draft or "")
     got = largest_fit(path, machine, slots=slots, kv=kv, draft=head if Path(head).is_file() else "")
     return replace(spec, context=got.context * slots), fit_note(got, slots)

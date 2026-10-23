@@ -26,7 +26,7 @@ from poolhouse.serve.largest import PAD, capacity, contexts, largest_context, tr
 from poolhouse.units import human_bytes
 
 __all__ = ["Candidate", "Choice", "Option", "Recommendation", "Suggestion", "Want",
-           "largest_fit", "recommend", "slots_that_fit", "suggest", "suggest_meta", "suggest_model"]
+           "largest_fit", "largest_fit_meta", "recommend", "slots_that_fit", "suggest", "suggest_meta", "suggest_model"]
 
 GOALS = ("agent", "chat", "long-context", "fast")
 """What a suggestion is for. Every goal serves the largest context that fits (`largest_fit`);
@@ -315,6 +315,14 @@ def largest_fit(model: str | Path, machine: MachineMemory | None = None, *, slot
     """
     return fit_model(model, _empty(machine), Want("long-context", "yellow", slots=slots, kv=kv,
                                                   draft=str(draft or "")))
+
+
+def largest_fit_meta(found: Mapping[str, object], weights_bytes: int, machine: MachineMemory | None = None,
+                     *, slots: int = 1, kv: str = est.DEFAULT_KV) -> Suggestion:
+    """`largest_fit` for a model whose header fields and weight size are already at hand (an MLX
+    folder's config, turned into the fields the estimate reads)."""
+    return suggest_meta(found, weights_bytes, _empty(machine),
+                        Want("long-context", "yellow", slots=slots, kv=kv))
 
 
 def _empty(machine: MachineMemory | None) -> MachineMemory:
