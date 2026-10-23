@@ -225,9 +225,12 @@ Rules, each a test:
 - `testfarm` stays in the `tools` layer of `tests/test_layers.py` and is in the wheel (`testing` is the package that leaves it).
 - **The runner's state lives outside the pool's secret root.** The store, `{cache}`, `{shared}`, scratch trees, job records, the history
   and the store's keys are under the platform's state location for the runner (a `testfarm` directory under it), never under
-  `~/.poolhouse`. The allow list that gates remote execution is kept with the pool's settings and is neither readable nor writable by any child.
-  A test pins that the state path is not under the pool's home and that every sandbox profile names it by exact path.
-- **The Owner zone is a list of paths.** The state location, the master key, the settings file, the user presets, the pool's home and allow
+  `~/.poolhouse`. The state location holds two sibling directories: `owner/` (the store, the master and project keys, the history, job
+  records and the slots directory) and `work/` (scratch trees, `{cache}` and `{shared}`, everything a child is given). `owner/` is in the Owner
+  zone and `work/` is not, so no allow rule lies inside a deny. The allow list that gates remote execution is kept with the pool's settings
+  and is neither readable nor writable by any child. A test pins that the state path is not under the pool's home and that every sandbox
+  profile names `owner/` by exact path.
+- **The Owner zone is a list of paths.** The state location's `owner/` directory, the settings file, the user presets, the pool's home and allow
   list and `~/.ssh` are returned by one function, `ph.test.owner_paths()`. The sandbox profile of every child names them by exact path (3.5,
   rule 4), and the host adds the same list to its edit and shell guards (4.8).
 - **One way to start a process, explicit limits on every call.** Every process the runner starts (LIST, `deps.command`, hooks, steps, units,
@@ -305,7 +308,7 @@ row of a closed schema.
 
 | Zone | What is in it | May read | May write |
 |---|---|---|---|
-| Owner | the files in the user's account that grant or record authority, listed by `ph.test.owner_paths()`: the runner's settings file, user presets, list of named projects, master key, derived keys, store and state location, and the pool's allow list and home and `~/.ssh` | the Runner, for the files it needs | the settings by the CLI after the host's gate said yes (4.8); the Runner's own files; nothing else. No Child, named or not, reads or writes it |
+| Owner | the files in the user's account that grant or record authority, listed by `ph.test.owner_paths()`: the runner's settings file, user presets, list of named projects, master key, derived keys, store, history and job records (the `owner/` directory of the state location), and the pool's allow list and home and `~/.ssh` | the Runner, for the files it needs | the settings by the CLI after the host's gate said yes (4.8); the Runner's own files; nothing else. No Child, named or not, reads or writes it |
 | Runner | the core, the executor, the store writer, admission | the Owner zone; verified bytes held in memory; Child-written data only through a descriptor it opened itself | the store (signed), the executor-owned directory, result descriptors |
 | Parser | a long-lived confined worker with the executor's limits: TOML, JSON and XML parsing and the tar unpack | one descriptor of bytes | one descriptor of tag-length-value records (6.6); `tree/` for the unpack and nothing else |
 | Child | steps, units, LIST, `deps.command`, hooks, the control units of 6.4 and the `[requires]` probes of an unnamed project and of every sent tree; on a device, always; in a scratch copy | the scratch copy, the toolchain paths the preset names, the executor-owned directory read-only | the scratch tree, the step directory it owns |
@@ -833,7 +836,7 @@ and the library knows no other name).
   `poolhouse.serve` in step 2, and it keeps AGENTS.md section 6: a lease is never made outside the broker's grant.
 - **Steps and single flight take no slot while they wait.** Every step a target needs finishes before the first unit is admitted there
   (4.4), and a single-flight waiter (5.3) takes nothing until the claim clears.
-- **One slots directory per user,** mode 0700, under the state location. A user's broker sees another user's load as outside load in its
+- **One slots directory per user,** mode 0700, in the `owner/` directory of the state location. A user's broker sees another user's load as outside load in its
   sample, so two users on one machine yield to each other without sharing records. Two users who ask at the same moment can still
   overload the machine; the owner accepts that (10.9).
 
@@ -1354,8 +1357,8 @@ project the user has not named is never run unconfined (10.2) and why the host g
 - **Confinement is the receiver's.** The executor wraps every step and invocation in a deny-default profile it builds itself from
   `src/poolhouse/sandbox/` (`seatbelt.py` on macOS, `bubblewrap.py` on Linux). It reads the scratch tree, `exec/` (read-only, 6.6), the
   interpreter and system libraries and the toolchain paths the preset's `[confine]` names; it writes the scratch tree and the step
-  directory a step owns; the runner's state location, the settings, the pool's home, `~/.ssh`, the keychain and the home directory are
-  denied by exact path, and the state sits outside `~/.poolhouse` so no allow rule lies inside a deny. **The network is denied by default
+  directory a step owns; the runner's `owner/` directory, the settings, the pool's home, `~/.ssh`, the keychain and the home directory are
+  denied by exact path, and none of them holds a path the profile allows, so no allow rule lies inside a deny. **The network is denied by default
   on both platforms.** On Linux the unit gets a new network namespace whose loopback is its own, so a test that binds a local server
   works. Seatbelt has no private loopback, so on a macOS device a sent unit whose label says `net = "loopback"` is refused (`not run
   (device refused)`, with the sentence, and reassigned to a Linux or WSL device) unless the receiver's policy lists the loopback ports to
@@ -1380,7 +1383,7 @@ project the user has not named is never run unconfined (10.2) and why the host g
   read-only for `git` at classification and absent from every child's profile; the scratch tree and the step directories a step owns are the
   only writable paths; results and a step's declared products come back through the runner's descriptors. [probe] A confined child with the
   checkout writable wrote an executable hook into the repository's metadata and appended to `testfarm.toml`, and the next unconfined action
-  would have run what it left; neither is reachable from a copy. There is no network, no state location, pool home, `~/.ssh`, settings file or
+  would have run what it left; neither is reachable from a copy. There is no network, no `owner/` directory, pool home, `~/.ssh`, settings file or
   other project's store, and no `.git` or home directory: a test that needs one fails until the person names the project with
   `poolhouse-test own` (4.8), one yes per project, the only step this adds. The copy's time is a line of the report (`built`). Its `launcher`
   only narrows, its children get the allowlist environment of 10.5, and it gets no lease and no loopback whatever its file says. The runner
@@ -1583,6 +1586,9 @@ Named with the owner, because each is a residue of the platform and the owner ac
    tool, on a host that does not refuse writes to `ph.test.owner_paths()`, can name its project or widen a target. A7 holds against a hostile
    repository and against an agent whose host guards those paths; the library cannot know that a person answered without a host that says so
    (4.8).
+10. **A terminal bounds the first unit only as far as a person watches it.** A process that allocates a pseudo-terminal for itself satisfies
+    "attached to a terminal" (5.10) with no person behind it; its first unit then has no bound until one duration is recorded, and the caller's
+    own tool timeout is the only end. The run is that process's own, and nothing outside it is affected.
 
 ## 11. Failure behaviour, exit codes and determinism
 
@@ -1714,7 +1720,7 @@ Each is a test in the migration steps named, each with generated neutral project
 - **I. Divide and cover.** `tests/test_testfarm_plan.py`: two machines with different stores and histories produce byte-identical
   divisions, and the toy case (units of 4, 3, 2 and 1 seconds in two shards) covers every unit once; mutants that drop the id sort, read the
   history or read the store fail it; `plan --verify-cover` fails when a digest differs or a unit is in no list or in two.
-- **J. Trust domains.** `tests/test_testfarm_store.py`: a run of a project that is not named cannot read the state location, the settings or
+- **J. Trust domains.** `tests/test_testfarm_store.py`: a run of a project that is not named cannot read the `owner/` directory of the state location, the settings or
   another project's store, cannot write or delete an entry, and leaves entries only in the `confined` domain; an entry with a bad
   signature, a wrong domain or another key is not served and is not evidence; `check` run on a fresh hostile clone executes its LIST and
   `deps.command` confined (a canary file in the home directory is not read). The identity fixtures of 4.9 are each unnamed: a `.git` file
