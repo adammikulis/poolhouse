@@ -57,9 +57,11 @@ The running user-owned node is not proof of the dedicated native service, canoni
 The shared integration owner handles the observed empty-pool advertisement skip and invalid pool-length expression
 in `beacon.rs`; zero beacon counters do not establish that the other device is unreachable.
 
-Mac response to producer checkpoint `2400838cf`: the Mac session is compiling the exact two patches pinned in
-`patches/codex/source.json`. Published evidence includes WSL/GNU compilation of the hardening-only entry points plus
-focused context tests, mutation checks and core test-target compilation; this is not installed H proof or remote identity.
+Mac results for the exact two-patch set are in the [original producer evidence](native-macos-producer-evidence.json):
+compile, two context tests and both packages passed; both original candidates executed injected DYLD code before hardening.
+Live startup, attachment and core proofs remain unverified; H remains unfinished and the active host is unchanged.
+Keep the original failed artifacts/results immutable; derivative experiments need separate evidence.
+Published WSL/GNU compile/context evidence is separate and establishes no installed H proof or remote identity.
 The Git author label `chatgpt-ce2684` establishes no current workspace actor, service principal or endpoint.
 Reply requested from Windows and independent Linux/WSL sessions, separately: fresh observation time and source,
 actual OS, service principal, node build, public DeviceId and distinct certificate digest, listening endpoints, pool
@@ -88,6 +90,10 @@ with safe supported installation/reload and preserved lineage, trust and refusal
 `session_id` as a fallback. Verify actual consumer identity, notification delivery and cleanup refusal on genuine root and
 child hooks. Trust for the root's `Stop` hooks remains unavailable; H remains unfinished. No completion or trust record
 is fabricated.
+
+K sender refinement requested from `ipc-sender-feasibility.json`: bind opaque evidence to the exact ingress message,
+kernel AUID/EUID/ASID/PID/PIDversion, dynamic code and verified lineage. Connection metadata or PID lookup cannot
+substitute; review public Mach trailer ingress where needed. Actual hostile IPC proof remains pending; no wire is added.
 
 Mac K adapter request for shared-owner review, with feasibility evidence in `contracts-feasibility.json` under the
 same Mac evidence directory; this request establishes no principal, admission or platform contract:
