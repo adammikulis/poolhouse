@@ -18,7 +18,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 
-from examples.rbmk import recorder, scenarios  # noqa: E402
+from examples.rbmk import recorder, scenarios, starts  # noqa: E402
 from examples.rbmk.controls import options as desk  # noqa: E402
 from examples.rbmk.controls.apply import act  # noqa: E402
 from examples.rbmk.decider.model import LiveAsker, ModelStopped, call_with_timeout  # noqa: E402
@@ -313,6 +313,12 @@ def test_each_trace_row_carries_the_sensor_view_of_its_tick_and_the_decider_was_
         assert (d["view"]["orm_printout"], d["view"]["demand_pct"], d["view"]["az5"]) == (
             crew[d["tick"]]["orm_printout"], crew[d["tick"]]["demand_pct"], crew[d["tick"]]["az5"])
     assert not {"P", "Tf", "X", "void", "rho", "damaged", "orm"} & {k for c in crew.values() for k in c["readings"]}
+
+
+def test_a_drawn_poisoned_start_has_a_title_and_a_description():
+    scn = starts.draw(1, 0)
+    assert text.title(scn) == "Poisoned start, seed 1, number 0" and "MW" in text.description(scn)
+    assert text.title(scenarios.scenario("pump_trip")) == "Pump trip"
 
 
 def test_the_orm_comes_only_from_the_printout_which_the_computer_refreshes_every_cycle():

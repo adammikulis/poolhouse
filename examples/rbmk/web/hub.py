@@ -183,7 +183,7 @@ class Hub:
         job = Job(uuid.uuid4().hex[:10], "run", key, controller, label)
         self.jobs[job.id] = job
         job.scn = scn
-        header = {"scenario": {"key": scn.key, "title": text.TITLES.get(scn.key, scn.key), "description": text.description(scn),
+        header = {"scenario": {"key": scn.key, "title": text.title(scn), "description": text.description(scn),
                                "group": scn.group, "seed": scn.seed, "ticks": scn.ticks}, "controller": controller, "memory": memory, "label": label,
                   "rods": rods_of(scn)}
         body = (lambda j: self._model_run(j, scn, header, decider, RunOptions(speed=speed, memory=memory))) if controller == "model" \
