@@ -39,10 +39,13 @@ The rules never to break, then the ones needed every hour; each names the sectio
 18. **Inbox first**: read and answer it at every session start and between tasks; contact comes first (3).
     **Stay in sync**: fetch and merge `origin/<dev>` at the same moments, never waiting for a person (3).
 19. **Stage files by name, never `git add -A`**, in your own claimed worktree beside the primary checkout (4).
-20. **Push the development branch yourself**: fetch, merge `origin/<dev>`, run only your changed test files,
-    `git push origin HEAD:refs/heads/<dev>`; no accept or lock; clean up before reporting (4).
-21. **Test your own change with explicit `scripts/test` selectors**, any list of files and never the full suite (GitHub runs it on pull requests, on `main` and nightly; a development push runs only the `gates` job)
-    (5).
+20. **Push the development branch yourself**: fetch, merge `origin/<dev>`, `git push origin HEAD:refs/heads/<dev>`; the push
+    hook runs the tests your change can break and refuses the push while one is red; no accept or lock; clean up before
+    reporting (4).
+21. **Test your own change with explicit `scripts/test` selectors**: the tests it affects as `scripts/affected.py` selects
+    them (`python scripts/hooks/affected_push.py` names and runs them) and your changed files, never the whole suite (GitHub
+    runs it on pull requests, on `main` and nightly; a development push runs only the `gates` job). A landing is not done
+    while a test the change can break is red (5).
 
 ## Full policy
 

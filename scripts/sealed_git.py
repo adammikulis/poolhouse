@@ -190,3 +190,9 @@ def unpushed(root: Path | str, tip: str) -> str:
     """Revisions for ``--stdin`` that select the commits reachable from ``tip`` and from no remote-tracking ref."""
     held = git(root, "for-each-ref", "--format=%(objectname)", "refs/remotes").stdout.split()
     return "".join(f"{rev}\n" for rev in [tip, *(f"^{sha}" for sha in held)])
+
+
+def unpushed_names(root: Path | str, tip: str) -> list[str]:
+    """The files changed by the commits of ``tip`` that no remote-tracking ref holds."""
+    done = sealed(root, "log", "--format=", "--name-only", "--no-renames", "-z", "--stdin", stdin=unpushed(root, tip))
+    return [n for n in done.stdout.split("\0") if n]
