@@ -1,6 +1,6 @@
 # RBMK control room: what the 2D views cost a browser, 2026-10-22
 
-Command: `python examples/rbmk_control_room/measure.py --seconds 10 --angle metal`, run from a checkout of branch
+Command (as run then; the tool is now `python -m examples.rbmk.room.measure`, and the pages below are views of the one app): `python examples/rbmk_control_room/measure.py --seconds 10 --angle metal`, run from a checkout of branch
 `feat/rbmk-control-room-2d` with the committed stills and the committed replay `viewer/feed/replay.json` (a recorded run of
 `strands-decider-2B-hobson-v19` on `pump_trip`; no model ran during the measurement).
 

@@ -14,7 +14,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import NamedTuple
 
-from poolhouse import jobs, runtime, spawned
+from poolhouse import jobs, runtime, runtime_identity, spawned
 from poolhouse.fleet import launch
 from poolhouse.runtime_deploy import Outcome
 
@@ -27,7 +27,7 @@ OLD_HOST = ("this host predates graceful replacement and cannot be restarted fro
 
 
 def _detach(module: str, argv: Sequence[str], *, log: Path) -> spawned.Child:
-    return spawned.child_of(jobs.detach(module, argv, log=log))
+    return spawned.child_of(jobs.detach(module, argv, log=log, disclaimed=True))
 
 
 def _health(port: int) -> dict | None:
@@ -51,7 +51,13 @@ def _ready(said: dict | None, target: _Target) -> bool:
     generation = said.get("launcher_control")
     return (isinstance(generation, str) and re.fullmatch("[a-f0-9]{32}", generation) is not None
             and generation != target.previous and said.get("commit") == target.commit
-            and said.get("runtime_prefix_digest") == target.prefix_digest)
+            and said.get("runtime_prefix_digest") == target.prefix_digest and _as_poolhouse(said))
+
+
+def _as_poolhouse(said: dict) -> bool:
+    """Whether the host runs as the Poolhouse executable, where a Mac's installed software must (a host that predates it does not say)."""
+    process = said.get("process")
+    return not runtime_identity.applies() or (isinstance(process, dict) and process.get("bundle_id") == runtime_identity.BUNDLE_ID)
 
 
 def _waited(port: int, target: _Target, wait_s: float, health: Callable[[int], dict | None],

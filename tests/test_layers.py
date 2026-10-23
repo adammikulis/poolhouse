@@ -28,7 +28,7 @@ LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("core", ("activity", "coding_policy", "coding_workspace", "coding_workspace_state", "executable_libraries", "agent_dependency", "agent_hooks", "agent_hooks_stale", "asking", "authority", "briefing", "checks", "command", "command_capture", "contracts", "credentials", "data",
               "entities", "errors", "extraction", "files", "files_windows", "gate", "geo", "gitstate",
               "home", "hook_bootstrap", "hook_diagnostics", "hookcheck", "http", "http_cancel", "httpguard", "installed", "interventions", "features", "jobs", "json_objects", "jsonl", "keystore", "keystore_guard", "kvtype", "lan", "leasetable", "limits",
-              "runtime", "runtime_launchers", "runtime_git", "runtime_bridges",
+              "runtime", "runtime_launchers", "runtime_git", "runtime_bridges", "runtime_identity", "app_bundle", "macho", "node_signing", "disclaim",
               "lock", "log", "macauth", "maintenance", "maintenance_windows", "sealing",
               "markup", "sandbox",
               "deciders", "desktop", "devbranch", "media", "messages", "net", "node_health", "node_pool", "optional", "paths", "platform", "safenames", "redact", "sentinel",
@@ -40,7 +40,7 @@ LAYERS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("machine", ("doctor", "fleet", "serve", "setup", "studio")),
     ("tools", ("coordination", "agent", "chat", "chatpolicy", "claude", "cli", "codex", "coding", "coding_actions", "decide_cli", "pi_tools",
                "do", "guard", "harness", "harness_claims", "harnessid", "harnessing", "harnesshook", "harnesspolicy", "mcp", "memory", "reputation", "inbox", "roles", "rules",
-               "api", "testfarm", "workspace", "pi", "features_cli", "board", "node_app", "device_host", "device_setup", "node_binary", "node_build", "node_join", "node_join_check", "node_key", "node_launch", "node_permission", "node_signing", "node_supervise", "build_update", "runtime_await", "runtime_board", "runtime_cli", "runtime_coalesce", "runtime_deploy", "runtime_host", "runtime_stale", "runtime_source", "runtime_store", "runtime_trust", "runtime_unmerged")),
+               "api", "testfarm", "workspace", "pi", "features_cli", "board", "node_app", "device_host", "device_setup", "node_binary", "node_build", "node_join", "node_join_check", "node_key", "node_launch", "node_permission", "node_supervise", "build_update", "runtime_await", "runtime_board", "runtime_cli", "runtime_coalesce", "runtime_deploy", "runtime_host", "runtime_stale", "runtime_source", "runtime_store", "runtime_trust", "runtime_unmerged")),
     ("experimental", ("backend", "bench", "datasheet", "draft", "gguf", "gym", "ingest", "redteam", "scrape", "sources", "surface",
                       "testing", "train", "vision", "walk", "web", "world")),
 )

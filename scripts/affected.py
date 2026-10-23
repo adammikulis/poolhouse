@@ -9,6 +9,9 @@ unmapped and the caller runs everything.
 from __future__ import annotations
 
 import ast
+import hashlib
+import json
+import os
 import re
 import subprocess
 from dataclasses import dataclass, field
@@ -32,6 +35,7 @@ class Selection:
     """The test files to run, why each was chosen, and the paths that forced a full run."""
 
     files: set[str] = field(default_factory=set)
+    firm: set[str] = field(default_factory=set)
     why: dict[str, list[str]] = field(default_factory=dict)
     unmapped: list[str] = field(default_factory=list)
     ignored: list[str] = field(default_factory=list)
@@ -42,9 +46,17 @@ class Selection:
         self.unmapped.append(rel)
         self.reasons[rel] = because
 
-    def add(self, test: str, because: str) -> None:
+    def add(self, test: str, because: str, firm: bool = True) -> None:
+        """Select ``test``; ``firm=False`` says the only reason is a bare word in a string or a directory listing."""
         self.files.add(test)
         self.why.setdefault(test, []).append(because)
+        if firm:
+            self.firm.add(test)
+
+    @property
+    def loose(self) -> set[str]:
+        """The selected test files that only a bare word in a string or a directory listing reaches."""
+        return self.files - self.firm
 
 
 def module_of(rel: str) -> str | None:
@@ -149,14 +161,18 @@ def forwarded(package: str, name: str, forwards: dict[tuple[str, str], str]) -> 
     return found
 
 
-def references(source: str, module: str, is_package: bool, known: dict[str, str],
-               forwards: dict[tuple[str, str], str] | None = None) -> set[str]:
-    """The modules in ``known`` that ``source`` imports or names in a string."""
+Raw = tuple[list[str], list[list[str]]]
+"""What a source names before any index is consulted: dotted names, and the ``[package, name]`` couples a package may forward."""
+
+
+def raw_references(source: str, module: str, is_package: bool) -> Raw:
+    """The dotted names ``source`` imports or mentions in a string, and the ``(package, name)`` couples it imports from a package."""
     try:
         tree = ast.parse(source)
     except SyntaxError:
-        return set()
+        return [], []
     wanted: set[str] = set()
+    asked: set[tuple[str, str]] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             wanted.update(alias.name for alias in node.names)
@@ -164,11 +180,18 @@ def references(source: str, module: str, is_package: bool, known: dict[str, str]
             base = absolute(node, module, is_package)
             wanted.add(base)
             wanted.update(f"{base}.{alias.name}" for alias in node.names)
-            wanted.update(d for alias in node.names if (d := forwarded(base, alias.name, forwards or {})))
+            asked.update((base, alias.name) for alias in node.names)
         elif isinstance(node, ast.Constant) and isinstance(node.value, str):
             wanted.update(m.group(1) for m in DOTTED.finditer(node.value))
-        else:
+        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
             wanted.update(plugin_names(node))
+    return sorted(wanted), [list(couple) for couple in sorted(asked)]
+
+
+def resolved(raw: Raw, module: str, known: dict[str, str], forwards: dict[tuple[str, str], str] | None = None) -> set[str]:
+    """The modules in ``known`` that a source's raw names reach, through the packages that forward them."""
+    wanted = set(raw[0])
+    wanted.update(d for base, name in raw[1] if (d := forwarded(base, name, forwards or {})))
     found: set[str] = set()
     for name in wanted:
         hit = resolve(name, known)
@@ -178,16 +201,78 @@ def references(source: str, module: str, is_package: bool, known: dict[str, str]
     return found
 
 
-def graph(root: Path, known: dict[str, str]) -> dict[str, set[str]]:
-    """Module to the modules it depends on, over the whole index."""
+def references(source: str, module: str, is_package: bool, known: dict[str, str],
+               forwards: dict[tuple[str, str], str] | None = None) -> set[str]:
+    """The modules in ``known`` that ``source`` imports or names in a string."""
+    return resolved(raw_references(source, module, is_package), module, known, forwards)
+
+
+MEMO_NAME = "affected-references.json"
+MEMO_VERSION = 1
+MEMO_SLACK = 3
+
+
+def memo_path(root: Path) -> Path | None:
+    """Where the parsed references of ``root``'s sources are kept: beside the objects every worktree of it shares; None outside one."""
+    try:
+        done = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"], cwd=root,
+                              capture_output=True, text=True, check=False)
+    except OSError:
+        return None
+    return Path(done.stdout.strip()) / MEMO_NAME if done.returncode == 0 and done.stdout.strip() else None
+
+
+def memo_key(module: str, is_package: bool, text: str) -> str:
+    """The name of one source's parse: a function of its module name, whether it is a package and its text."""
+    return hashlib.blake2b(f"{MEMO_VERSION}\0{module}\0{is_package}\0{text}".encode(), digest_size=16).hexdigest()
+
+
+def load_memo(path: Path | None) -> dict[str, Raw]:
+    """The parses kept at ``path``; a file that is missing or unreadable keeps none, and every source is parsed again."""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8")) if path else {}
+    except (OSError, ValueError):
+        return {}
+    return {k: (v[0], v[1]) for k, v in data.items() if isinstance(v, list) and len(v) == 2} if isinstance(data, dict) else {}
+
+
+def save_memo(path: Path | None, memo: dict[str, Raw]) -> None:
+    """Replace the file at ``path`` with ``memo`` in one rename; a failure to write only costs the next run its parses."""
+    if path is None:
+        return
+    try:
+        scratch = path.with_name(f"{path.name}.{os.getpid()}")
+        scratch.write_text(json.dumps(memo), encoding="utf-8")
+        scratch.replace(path)
+    except OSError:
+        pass
+
+
+def graph(root: Path, known: dict[str, str], memo: dict[str, Raw] | None = None,
+          raws: dict[str, Raw] | None = None) -> dict[str, set[str]]:
+    """Module to the modules it depends on, over the whole index.
+
+    ``memo`` (key to parse) is read and filled in place; ``raws``, when given, is filled with each module's parse.
+    """
     edges: dict[str, set[str]] = {}
     forwards = reexports(root, known)
+    used: dict[str, Raw] = {}
     for name, rel in known.items():
         if name == "tests.conftest":
             edges[name] = set()
             continue
         text = (root / rel).read_text(encoding="utf-8", errors="replace")
-        edges[name] = references(text, name, rel.endswith("__init__.py"), known, forwards)
+        is_package = rel.endswith("__init__.py")
+        key = memo_key(name, is_package, text)
+        raw = used[key] = (memo or {}).get(key) or raw_references(text, name, is_package)
+        edges[name] = resolved(raw, name, known, forwards)
+        if raws is not None:
+            raws[name] = raw
+    if memo is not None:
+        memo.update(used)
+        if len(memo) > MEMO_SLACK * len(used):    # the sources that moved on: drop their parses
+            memo.clear()
+            memo.update(used)
     return edges
 
 
@@ -232,6 +317,8 @@ def dynamic_tests(root: Path, tests: list[str]) -> list[str]:
     out = []
     for rel in tests:
         text = (root / rel).read_text(encoding="utf-8", errors="replace")
+        if not (SCRIPT_TABLE.search(text) or "import_module" in text or "__import__" in text):
+            continue                              # only these can import a module chosen at run time
         if SCRIPT_TABLE.search(text) or any(
                 isinstance(n, ast.Call) and ast.unparse(n.func).endswith(("import_module", "__import__"))
                 and n.args and not isinstance(n.args[0], ast.Constant)
@@ -260,15 +347,26 @@ def add_script_tests(out: Selection, scripts: rules.ReferenceIndex, rel: str, re
     if shared:
         out.unmap(rel, shared)
         return
+    firm_tests, firm_modules = scripts.firm(rel)
     direct = {n for n in why if not why[n].endswith("enumerates scripts/")}
     for test, reason in why.items():
-        out.add(test, f"{rel}: {reason}")
+        out.add(test, f"{rel}: {reason}", firm=test in firm_tests)
     names = {m for m in (module_of(x) for x in modules) if m}
-    for dependant in sorted(reach(names, reverse, DEPTH)):
-        if dependant.startswith("tests.") and f"tests/{dependant[6:]}.py" in tests:
-            out.add(f"tests/{dependant[6:]}.py", f"{rel} -> a source module that names it")
+    firm_names = {m for m in (module_of(x) for x in firm_modules) if m}
+    for is_firm, group in ((True, firm_names), (False, names - firm_names)):
+        for dependant in sorted(reach(group, reverse, DEPTH)):
+            if dependant.startswith("tests.") and f"tests/{dependant[6:]}.py" in tests:
+                out.add(f"tests/{dependant[6:]}.py", f"{rel} -> a source module that names it", firm=is_firm)
     if not (direct or names or rel.endswith(".py")):
         out.unmap(rel, "no test imports, runs or names it, so nothing says which tests it affects")
+
+
+def users_of_deleted(root: Path, rel: str, raws: dict[str, Raw], reverse: dict[str, set[str]], tests: list[str]) -> set[str]:
+    """The test files that import a deleted module (or something below it), directly or through one module, or name its path."""
+    module = module_of(rel)
+    users = {m for m, raw in raws.items() if module and any(w == module or w.startswith(f"{module}.") for w in raw[0])}
+    reached = {f"tests/{d[6:]}.py" for d in reach(users, reverse, DEPTH) if d.startswith("tests.")}
+    return (reached & set(tests)) | set(mentioning(root, rel, tests))
 
 
 GLOSSARY_TEST = "tests/test_glossary.py"
@@ -302,19 +400,48 @@ def add_tree_wide(out: Selection, root: Path, changed: list[str], deleted: froze
     scanned = [c for c in changed if c.startswith(ENV_READS)]
     if scanned and ENV_TEST in tests:
         out.add(ENV_TEST, f"{scanned[0]} is scanned for POOLHOUSE_ variables")
-    if out.files:
+    if out.files and not all(c.endswith(".md") for c in changed):    # prose cannot change a package's layers, wiring or imports
         for guard in GUARDS:
             if f"tests/{guard}" in tests:
                 out.add(f"tests/{guard}", "tree-wide guard")
 
 
+def reverse_graph(root: Path, known: dict[str, str], memo_file: Path | None) -> tuple[dict[str, set[str]], dict[str, Raw]]:
+    """Module to the modules that depend on it, and each module's parse; the parses are kept in ``memo_file`` between calls."""
+    memo = load_memo(memo_file)
+    before = set(memo)
+    raws: dict[str, Raw] = {}
+    reverse = dependants(graph(root, known, memo, raws))
+    if memo_file is not None and memo.keys() != before:
+        save_memo(memo_file, memo)
+    return reverse, raws
+
+
+COMMAND_DOCS = "docs/commands.md"
+
+
+def add_command_docs(out: Selection, root: Path, changed: list[str], deleted: frozenset[str], tests: list[str]) -> None:
+    """A changed source that defines command-line arguments moves what the command reference documents: the tests that read it run."""
+    parsers = [c for c in changed if c.endswith(".py") and c not in deleted and c.startswith(("src/", "scripts/"))
+               and "add_argument(" in (root / c).read_text(encoding="utf-8", errors="replace")]
+    if not parsers:
+        return
+    because = f"{parsers[0]} defines command-line arguments that {COMMAND_DOCS} documents"
+    for test in mentioning(root, COMMAND_DOCS, tests):
+        out.add(test, because)
+
+
 def select(root: Path, changed: list[str], deleted: frozenset[str] = frozenset(),
            depth: int = DEPTH, base: str = "HEAD") -> Selection:
-    """The test files within ``depth`` imports of ``changed``; ``unmapped`` non-empty means run all."""
+    """The test files within ``depth`` imports of ``changed``; ``unmapped`` non-empty means run all.
+
+    Each source's parse is kept between calls in the repository's directory of ``root`` (:func:`memo_path`), named by the
+    source's text, so a call parses only what moved; a ``root`` outside a repository keeps nothing.
+    """
     out = Selection()
     known = index(root)
     tests = test_files(root)
-    reverse = dependants(graph(root, known))
+    reverse, raws = reverse_graph(root, known, memo_path(root))
     scripts = None
     for rel in changed:
         name = Path(rel).name
@@ -322,6 +449,8 @@ def select(root: Path, changed: list[str], deleted: frozenset[str] = frozenset()
         script = rel.startswith("scripts/") and not rel.startswith("scripts/gates/")
         if rel in deleted and (module or script):
             out.unmap(rel, "a deleted module: anything may have used it")
+            for test in sorted(users_of_deleted(root, rel, raws, reverse, tests)):
+                out.add(test, f"{rel} was deleted and the test imports or names it")
         elif rel == "budgets.json":
             if rules.budgets_lowered(root, base):
                 for test, why in rules.budget_tests(rules.corpus(root)).items():
@@ -365,6 +494,7 @@ def select(root: Path, changed: list[str], deleted: frozenset[str] = frozenset()
     if any(Path(c).parts[:2] == ("src", "poolhouse") for c in changed):
         for rel in dynamic_tests(root, tests):
             out.add(rel, "imports a module chosen at run time")
+    add_command_docs(out, root, changed, deleted, tests)
     add_tree_wide(out, root, changed, deleted, tests)
     return out
 

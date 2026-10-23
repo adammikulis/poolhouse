@@ -27,7 +27,7 @@ For an agent (`CLAUDECODE`, `POOLHOUSE_AGENT`, `POOLHOUSE_NONINTERACTIVE` or a C
 refuses, before anything is queued, the `fast`, `full`, `slow` and `all` tiers that name no test file, and any run that names
 every test file (directories count as the test files under them); the broker (`scripts/testslots_runner.py`) admits no agent
 pytest run that names every test file; `quick` and `gate` stay allowed. The refusal reads `the whole suite runs on a schedule
-and on pull requests; name the files you changed`. A person's terminal sets none of the
+and on pull requests; name the test files your change affects`. A person's terminal sets none of the
 markers and is never refused. The main agent owns `quick`; workers use explicit affected selectors.
 
 `scripts/test <tier>` runs as a background job that the command follows: `submit` prints the job id
