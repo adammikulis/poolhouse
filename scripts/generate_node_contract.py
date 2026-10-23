@@ -20,7 +20,15 @@ def outputs(root: Path) -> dict[Path, str]:
                "device_id": {"public_key": key.hex(), "domain_utf8_hex": meta["device_id_domain"].encode().hex(),
                              "expected": hashlib.sha256(meta["device_id_domain"].encode() + key).hexdigest()},
                "integers": {"u32_max": str(2**32 - 1), "u64_max": str(2**64 - 1)},
-               "private_client_types": [row["name"] for row in rows if row["visibility"] == "private"]}
+               "private_client_types": [row["name"] for row in rows if row["visibility"] == "private"],
+               "job_scalars": [
+                   {"type": "JobPageLimit", "accepted": ["1", "100"], "refused": ["0", "101", "01", 1, True]},
+                   {"type": "JobOutputByteLimit", "accepted": ["1", "65536"], "refused": ["0", "65537", 1]},
+                   {"type": "JobOutputBytes", "accepted": ["", "00c3a90aff"], "refused": ["0", "AA", "é", False]},
+                   {"type": "ExitCode", "accepted": ["0", "-2147483648", "2147483647"],
+                    "refused": ["-0", "+1", "01", "2147483648", "-2147483649", 1]},
+                   {"type": "Boolean", "accepted": [True, False], "refused": [1, 0, "true", None]},
+               ]}
     return {
         root / "app/poolhouse-node/src/contract_operations.rs": operations.render_rust(meta["operations"], digest),
         root / "src/poolhouse/api/node_operations.py": operations.render_python(meta["operations"], digest),

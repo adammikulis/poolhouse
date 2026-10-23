@@ -265,3 +265,15 @@ def test_collection_and_numeric_source_constraints_refuse(tmp_path, change):
     path.write_text(text)
     with pytest.raises(ValueError):
         load(source)
+
+
+def test_shared_job_scalar_vectors():
+    import json
+    vectors = json.loads((ROOT / "contracts/node/vectors.json").read_text())
+    for row in vectors["job_scalars"]:
+        kind = getattr(public, row["type"])
+        for value in row["accepted"]:
+            assert kind(value).value == value
+        for value in row["refused"]:
+            with pytest.raises(ValueError):
+                kind(value)

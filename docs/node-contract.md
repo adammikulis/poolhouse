@@ -184,3 +184,12 @@ without silent restart or unauthorized existence disclosure. Frame limits must
 bound incoming allocations before decoding lists/hex. These declarations provide
 wire refusal checks only; storage, redaction, pagination and authorization are
 not implemented or proven by the generated codecs.
+
+
+The shared declaration checkpoint `986cab4b3` (integration `c26f0f375`) includes
+job inspection, cancellation, pagination and output. `vectors.json` now supplies
+common accepted/refused job scalar cases to both Rust and Python, including
+numeric bounds, signed zero, JSON boolean/number confusion, malformed hex and
+opaque byte data. This is a representation checkpoint for platform review, not
+K acceptance or an installed operation. The other retained job/agent operations,
+state/storage, governed approval and worker contracts remain incomplete.

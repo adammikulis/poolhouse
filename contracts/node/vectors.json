@@ -28,5 +28,75 @@
     "NativeParent",
     "NativeSessionContext",
     "ProcessObservation"
+  ],
+  "job_scalars": [
+    {
+      "type": "JobPageLimit",
+      "accepted": [
+        "1",
+        "100"
+      ],
+      "refused": [
+        "0",
+        "101",
+        "01",
+        1,
+        true
+      ]
+    },
+    {
+      "type": "JobOutputByteLimit",
+      "accepted": [
+        "1",
+        "65536"
+      ],
+      "refused": [
+        "0",
+        "65537",
+        1
+      ]
+    },
+    {
+      "type": "JobOutputBytes",
+      "accepted": [
+        "",
+        "00c3a90aff"
+      ],
+      "refused": [
+        "0",
+        "AA",
+        "\u00e9",
+        false
+      ]
+    },
+    {
+      "type": "ExitCode",
+      "accepted": [
+        "0",
+        "-2147483648",
+        "2147483647"
+      ],
+      "refused": [
+        "-0",
+        "+1",
+        "01",
+        "2147483648",
+        "-2147483649",
+        1
+      ]
+    },
+    {
+      "type": "Boolean",
+      "accepted": [
+        true,
+        false
+      ],
+      "refused": [
+        1,
+        0,
+        "true",
+        null
+      ]
+    }
   ]
 }

@@ -141,3 +141,20 @@ fn job_page_list_rejects_excess_items_and_untyped_data() {
     assert!(serde_json::from_value::<JobViewList>(json!([{}])).is_err());
     assert_ne!(std::any::TypeId::of::<JobListCursor>(), std::any::TypeId::of::<JobOutputCursor>());
 }
+
+#[test]
+fn shared_job_scalar_vectors_match_rust_decoding() {
+    let vectors: Value = serde_json::from_str(include_str!("../../../contracts/node/vectors.json")).unwrap();
+    for row in vectors["job_scalars"].as_array().unwrap() {
+        let accepts = |value: &Value| match row["type"].as_str().unwrap() {
+            "JobPageLimit" => serde_json::from_value::<JobPageLimit>(value.clone()).is_ok(),
+            "JobOutputByteLimit" => serde_json::from_value::<JobOutputByteLimit>(value.clone()).is_ok(),
+            "JobOutputBytes" => serde_json::from_value::<JobOutputBytes>(value.clone()).is_ok(),
+            "ExitCode" => serde_json::from_value::<ExitCode>(value.clone()).is_ok(),
+            "Boolean" => serde_json::from_value::<Boolean>(value.clone()).is_ok(),
+            other => panic!("unhandled vector type {other}"),
+        };
+        for value in row["accepted"].as_array().unwrap() { assert!(accepts(value), "{}: {value}", row["type"]); }
+        for value in row["refused"].as_array().unwrap() { assert!(!accepts(value), "{}: {value}", row["type"]); }
+    }
+}
