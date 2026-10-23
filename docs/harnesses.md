@@ -2,17 +2,17 @@
 
 `poolhouse-codex` and `poolhouse-claude` run the Codex and Claude Code command-line agents on a model
 this machine serves, with Poolhouse's rails around them: the served window, a pre-tool classifier
-hook under a role, the Requests inbox for approvals, and a workspace identity of their own. Codex is
+hook under the coding permissions, the Requests inbox for approvals, and a workspace identity of their own. Codex is
 the default coding harness (a lighter system prompt and tool list); Claude Code is there for when
 its richer hook gate matters.
 
 ```
-poolhouse-codex                                  # Qwen3.8-27B-UD-Q4_K_XL, role approve-first, this directory
-poolhouse-codex Qwen3.5-2B --role plan-and-go --project ~/work/repo -- exec "fix the failing test"
-poolhouse-claude --on http://127.0.0.1:8080 --role read-only -- -p "explain this repo"
+poolhouse-codex                                  # Qwen3.8-27B-UD-Q4_K_XL, permissions ask-dangerous, this directory
+poolhouse-codex Qwen3.5-2B --permissions yolo --project ~/work/repo -- exec "fix the failing test"
+poolhouse-claude --on http://127.0.0.1:8080 --permissions read-only -- -p "explain this repo"
 ```
 
-A program starts the same thing with `poolhouse.coding.launch_coding_agent(model, role, project,
+A program starts the same thing with `poolhouse.coding.launch_coding_agent(model, policy, project,
 harness="codex", **options)` (options: `name`, `orders_from`, `harness_args`, `say`,
 `run_codex` / `run_claude`, `context`); it returns the harness's exit code.
 
@@ -42,27 +42,31 @@ harness="codex", **options)` (options: `name`, `orders_from`, `harness_args`, `s
 
 ## The rails
 
-| role | Codex's own mode | the hook |
+| `--permissions` | Codex's own mode | the hook |
 | --- | --- | --- |
 | `read-only` | sandbox `read-only`, approvals `never` | allows reads; denies every acting call |
-| `approve-first` (default) | sandbox `workspace-write`, approvals `on-request` | allows reads; asks for every acting call |
-| `plan-and-go` | sandbox `workspace-write`, approvals `on-request` | allows reads and reversible calls; asks for destructive and unsure ones |
+| `ask-changes` | sandbox `workspace-write`, approvals `on-request` | allows reads; asks for every acting call |
+| `ask-dangerous` (default) | sandbox `workspace-write`, approvals `on-request` | allows reads and reversible calls; asks for destructive and unsure ones |
+| `yolo` | sandbox `workspace-write`, approvals `on-request` | allows reads and reversible and destructive calls; asks for unsure ones |
+
+`--execution-mode plan` (the alternative to the default `execute`) treats every profile as `read-only`:
+the session inspects and applies nothing.
 
 The hook is `python -m poolhouse.harnesshook pre`, a PreToolUse command hook that both harnesses run
 before every tool call (Claude Code: every tool; Codex: Bash, `apply_patch`, MCP and other local
 function tools). It labels the call with the destructive-action classifier
-(`docs/destructive-actions.md`, deterministic layer) and applies the role. A call the classifier
+(`docs/destructive-actions.md`, deterministic layer) and applies the permissions. A call the classifier
 cannot read, or a tool it does not know, is `unsure` and asks. An ask is a request in the Requests
 inbox (`docs/requests.md`) that the hook waits on, up to five minutes; only the person answers it
 (`poolhouse-requests`), never the model. Not answered, expired, or a request store that cannot be
 opened (the hook runs without a terminal, so it never prompts the keystore) is a denial.
 
-Denied in every role: a call whose text names the session's files or the state root, and a shell
-command that asks for an action only a person can take (answer a request, change a role, release
-quarantine; the human-only table in `chatpolicy.py`). The role, the label and the paths are on the
+Denied in every profile: a call whose text names the session's files or the state root, and a shell
+command that asks for an action only a person can take (answer a request, change a permission, release
+quarantine; the human-only table in `chatpolicy.py`). The permissions, the execution mode, the label and the paths are on the
 hook's command line, written by the launcher; nothing in the environment, the tool arguments or
 a file the model reads changes them. A hook that crashes exits 2, which both harnesses read as a
-block. The role names are those of `docs/agent-roles.md`.
+block.
 
 The hook's output is a fixed sentence per outcome, so it adds a few identical tokens to a
 conversation and nothing that changes the prompt prefix.
@@ -70,7 +74,7 @@ conversation and nothing that changes the prompt prefix.
 ### Code that arrives, and credentials
 
 A tampered model, or text it takes for an order, can write a script that downloads code and then
-run it through a tool that looks harmless. The hook reads these in every role, by fixed rules and
+run it through a tool that looks harmless. The hook reads these in every profile, by fixed rules and
 with no model, and each one asks (`unsure`, a request of kind `tool_call_destructive`) or is denied:
 
 - **A write to a file that runs by itself later** asks even when its content looks harmless: a git
@@ -110,7 +114,7 @@ with no model, and each one asks (`unsure`, a request of kind `tool_call_destruc
   pager, ssh command, filters, credential helper), a server or tunnel, and a command left running in the background.
 - **Credential files** are listed once, in `poolhouse.secretpaths` (folders such as `.ssh` and `.aws`,
   names such as `.env` and `id_ed25519`, key suffixes, the state root's keys). A read of one outside the
-  project folder is denied in every role, whichever tool or command reads it (`Read`, `Grep`, `cat`, `cp`, `curl -d @file`,
+  project folder is denied in every profile, whichever tool or command reads it (`Read`, `Grep`, `cat`, `cp`, `curl -d @file`,
   `xargs -a`, a `python -c` that opens it, a link to it); inside the project folder it asks. A wildcard that could expand to one (`cat .e*`),
   a variable that builds a path, a search of a folder that holds one (`grep -r KEY .`, `rg --hidden`, `tar` of the folder) and files another
   command picks (`find ... | xargs cat`) ask; a search of the home folder is denied. A command that prints the environment, a
@@ -134,8 +138,8 @@ classifier's reasons (up to 700 characters) beside it. Code: `poolhouse.guard.ex
 
 Codex receives a workspace-only MCP server that runs as its assigned session: the session's name, the board and the
 state folder are in the server's environment, and the token is the client's private file for that session. Inbox,
-thread, status and ownership reads follow the read role; send, claim, announce and acknowledgement follow the acting
-role. The server exposes no model administration, grant or registration tools. Workspace state stays outside the
+thread, status and ownership reads follow the read permission; send, claim, announce and acknowledgement follow the acting
+permission. The server exposes no model administration, grant or registration tools. Workspace state stays outside the
 coding sandbox; use these MCP tools instead of shell CLI commands there. The token file is deleted when the session
 ends. Shell workspace commands must explicitly name the launcher-assigned identity; other identity flags and
 token-file overrides are denied.
@@ -168,7 +172,7 @@ says the model is not recorded.
 - Codex runs hooks it has reviewed; the launcher passes `--dangerously-bypass-hook-trust` because it
   wrote the hook into a home that holds nothing else. Codex has no pre-tool hook for its web search
   tool or for model-side reasoning; those are outside the gate.
-- The Requests answer comes from the terminal or the UI, so an unattended session in `approve-first`
+- The Requests answer comes from the terminal or the UI, so an unattended session in `ask-changes`
   stops at its first acting call (denied, with the reason shown to the model).
 - Only the deterministic classifier layer runs in the hook; the model-assisted layer does not.
 - What the rules above cannot decide: code the model writes in an ordinary file in a form no rule

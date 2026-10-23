@@ -47,6 +47,7 @@ from poolhouse.serve.backend import (
     default_slot_save_path,
 )
 from poolhouse.serve.binary import BinaryNotFound
+from poolhouse.serve.children import Children, Exit
 from poolhouse.serve.escalation import (
     Escalating,
     plan_for,
@@ -61,7 +62,6 @@ from poolhouse.serve.leases import (
     lease_file,
     merge_state,
     orphaned,
-    reap_one,
     recorded_servers,
     same_process,
 )
@@ -173,7 +173,7 @@ class ServerManager(Admitting):
         self.confirm: Callable[[str], bool] | None = None
         self._leases: dict[str, ServerInfo] = {}
         self._mine: dict[str, dict] = {}
-        self._processes: dict[int, Any] = {}
+        self.children = Children()
         self._lock = threading.Lock()
         self._port_locks: dict[int, threading.Lock] = {}
         self._unavailable_until: dict[int, float] = {}
@@ -197,7 +197,7 @@ class ServerManager(Admitting):
         """A manager over ``backend`` that shares this one's records and processes."""
         other = ServerManager(backend, state_file=self.state_file, broker=self._broker,
                               stop_on_exit=self.stop_on_exit, table=self.table)
-        other._mine, other._processes = self._mine, self._processes
+        other._mine, other.children = self._mine, self.children
         other._lock, other._port_locks = self._lock, self._port_locks
         other.tree = self.tree
         return other
@@ -594,9 +594,8 @@ class ServerManager(Admitting):
 
         pid = self._recorded_pid(spec.port)
         emit(on_event, "stopping", port=spec.port, pid=pid)
-        if pid:
-            kill_process_tree(pid)
-            exit_guard.release(pid)
+        self.children.end(spec.port, pid)
+        exit_guard.release(pid)
         self._forget(spec.port)
 
         # kv_unified keeps the cache's stream count at 1 across the relaunch; any other
@@ -633,13 +632,8 @@ class ServerManager(Admitting):
         if info.adopted:
             logger.debug("not stopping %s: we adopted it", info.base_url)
             return
-        held = self._processes.pop(info.port, None)
-        if held is None:
-            held = info.process
-        if info.pid:
-            kill_process_tree(info.pid, grace_s=grace_s)
+        self.children.end(info.port, info.pid, proc=info.process, grace_s=grace_s)
         exit_guard.release(info.pid)
-        reap_one(held, grace_s=grace_s)
         self._forget(info.port)
 
     def detach(self, info: ServerInfo) -> None:
@@ -648,7 +642,7 @@ class ServerManager(Admitting):
 
     def _detach(self, info: ServerInfo) -> None:
         """Record the server under its own pid and stop tracking it in this process."""
-        self._processes.pop(info.port, None)
+        self.children.detach(info.port)
         exit_guard.release(info.pid)
         entry = self._mine.pop(str(info.port), None)
         if entry is None or not info.pid:
@@ -669,12 +663,11 @@ class ServerManager(Admitting):
         for entry in list(self._mine.values()):
             pid = entry.get("pid")
             if isinstance(pid, int) and pid_exists(pid):
-                stopped += kill_process_tree(pid, grace_s=grace_s)
+                stopped += [one.pid for one in self.children.end(int(entry.get("port") or 0), pid,
+                                                                 grace_s=grace_s)]
             exit_guard.release(pid)
             self._given_back(entry)
-        for held in list(self._processes.values()):
-            reap_one(held, grace_s=grace_s)
-        self._processes.clear()
+        self.children.stop_all(grace_s=grace_s)
         self._mine.clear()
         self._save()
         return stopped
@@ -746,12 +739,12 @@ class ServerManager(Admitting):
         }
         forget_server(info.base_url)
         if info.process is not None:
-            self._processes[info.port] = info.process
+            self.children.hold(info.port, info.process)
         self._save()
         self._bound(pending.get("lease", ""), info.pid)
 
     def _forget(self, port: int, *, grace_s: float = 5.0) -> None:
-        reap_one(self._processes.pop(port, None), grace_s=grace_s)
+        self.children.stop(port, grace_s=grace_s)
         self._given_back(self._mine.pop(str(port), None))
         self._save()
 
@@ -772,17 +765,19 @@ class ServerManager(Admitting):
                                   timeout=STATE_LOCK_TIMEOUT_S, announce=logger.debug):
             yield
 
-    def _reap(self) -> None:
-        """Drop every child of ours that has already exited, so none stays defunct."""
-        for port, held in list(self._processes.items()):
-            try:
-                if held.poll() is not None:
-                    self._processes.pop(port, None)
-            except OSError:
-                self._processes.pop(port, None)
+    def settle_exited(self) -> list[Exit]:
+        """Wait on every server of ours that died on its own and take it off the record, so it
+        is neither defunct nor still leased; returns each, once, for the caller to report."""
+        self.children.sweep()
+        gone = self.children.take_untold()
+        for one in gone:
+            exit_guard.release(one.pid)
+            if (self._mine.get(str(one.port)) or {}).get("pid") == one.pid:
+                self._forget(one.port)
+        return gone
 
     def _save(self) -> None:
-        self._reap()
+        self.children.sweep()
         with self._exclusive():
             self._write(merge_state(self._load(), self._mine, os.getpid()))
 

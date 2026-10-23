@@ -19,7 +19,7 @@ first-run .wizard-step { color:var(--muted); margin-bottom:12px; }
 (function () {
   const M = window.fleetModel, el = M.el;
   const post = (body) => ({method:'POST', body:JSON.stringify(body)});
-  const key = () => crypto.randomUUID().replaceAll('-', '');
+  const key = () => M.uuid().replaceAll('-', '');
   class FirstRun extends HTMLElement {
     connectedCallback() {
       if (this.wired) return;

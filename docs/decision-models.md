@@ -170,12 +170,13 @@ Reading it:
 
 ### Fine-tuning
 
-`python -m poolhouse.train decider guards --init strands --steps 120 --lr 5e-5 --out DIR` continued the
-released checkpoint on 248 guard cases (61 for calibration, 103 held-out test cases from
+`python -m poolhouse.train decider guards --init strands --steps 120 --lr 5e-5 --out DIR`, run before
+the defaults below were the reference recipe's (so the head trained at five times the rate, 4 cases a
+step), continued the released checkpoint on 248 guard cases (61 for calibration, 103 held-out test cases from
 whole groups, all three questions pooled) in 364 s: accuracy 0.903 to 0.951, Brier 0.230 to
 0.069, ECE 0.216 to 0.035. The cases are one author's templates, so the test cases resemble
 the training cases more than a new project's calls would; this is a pipeline check with
-a direction, not a quality claim. A fresh adapter on Qwen3.5-0.8B-Base for 30 steps reached
+a direction, not a quality claim. A fresh adapter on Qwen3.5-0.8B-Base (what `--smoke` now is) for 30 steps reached
 0.398 (the three questions pooled; a floor), in 87 s. The model card each run writes says
 which kind of run it was.
 
@@ -190,10 +191,12 @@ fine-tuning. Its three question kinds are `noul` (yes/no), `choice` and `score`,
 calibrated by a temperature per kind. `poolhouse-decide train` is this package's own
 re-implementation of that recipe for a few hundred of your own cases; it does not run the
 released scripts (the reference recipe is about 11 hours on one RTX 3090 for the full corpus).
+Its defaults are the reference recipe's (next section); `--smoke` is the small pipeline check.
 
     poolhouse-decide train --data tickets.jsonl --name tickets --dry-run
     poolhouse-decide train --data tickets.jsonl --eval held-out.jsonl --name tickets \
-        --base qwen3.5-2b-base --baseline strands --steps 300
+        --baseline strands --epochs 3
+    poolhouse-decide train --data tickets.jsonl --name try --smoke
     poolhouse-decide eval held-out.jsonl --decider tickets --decider strands
 
 **Data.** One JSON object per line (the format `export-cases` writes):
@@ -207,6 +210,84 @@ option names) are required. `group` keeps related cases on one side of every spl
 without one are grouped with the cases that say the same thing); `kind` is `noul`, `choice`
 or `score` and defaults to `noul` for two options, `choice` otherwise. `--data guards` is the
 built-in guard set.
+
+**The defaults, and where each comes from.** Read from github.com/strands-labs/strands-decider
+at commit `d942e5515db750f80a51032629ec312455a87976`, the reference recipe that trained the released checkpoint.
+A value upstream does not state is marked as this package's.
+
+| setting | default | source |
+|---|---|---|
+| base | `qwen3.5-2b-base` (Qwen/Qwen3.5-2B-Base) | `configs/train.yaml:28` |
+| epochs | 1, so the steps follow the number of cases: `ceil(cases x epochs / 32)` (`--steps` sets them instead) | `configs/train.yaml:51` |
+| cases per forward pass | 8 (`--batch-size`) | `configs/train.yaml:52` (`micro_batch_size`) |
+| forward passes per optimizer step | 4 (`--grad-accum`), 32 cases a step | `configs/train.yaml:53` |
+| learning rate, adapter | 1e-4 (`--lr`) | `configs/train.yaml:54` |
+| learning rate, head | 10 times the adapter's for a new head (1e-3); the same as the adapter's when continuing the released head (`--init strands`, 1e-4) | `configs/train.yaml:55`; `skills/customize-decider/references/training.md` ("head_lr: 0.0001 # the head is already trained") |
+| optimizer | AdamW, betas (0.9, 0.95), eps 1e-8; weight decay 0.01 on the head's matrices only, none on the adapter, norms or biases | `training/train.py:291-297`, `configs/train.yaml:56` |
+| schedule | linear warmup over 3% of the steps, then cosine decay to zero | `configs/train.yaml:57`, `training/train.py:330-334` |
+| gradient clip | 1.0 | `configs/train.yaml:58` |
+| gradient checkpointing | on, non-reentrant (what lets it work with LoRA) | `configs/train.yaml:59`, `training/train.py:527-535` |
+| LoRA | rank 16, alpha 32, dropout 0.05, on `q_proj k_proj v_proj o_proj gate_proj up_proj down_proj in_proj_qkv in_proj_z in_proj_a in_proj_b out_proj` (the last five are the recurrent layers', without which a LoRA reaches 6 of the 24 layers) | `configs/train.yaml:43-48`, `src/strands_decider/modeling.py:105` (dropout) |
+| precision | bfloat16 | `src/strands_decider/modeling.py:79` |
+| options shuffled every pass | yes | `configs/train.yaml:61` |
+| longest prompt | `max_length: 4096`, the serving window saved with the checkpoint; this package sets no length (below) | `configs/train.yaml:39` |
+| calibration and test share | 15% and 25% of the cases, by whole group | this package's: upstream calibrates on one half of a held-out file and scores the other half (`training/steps.md`, "4. Calibrate") and holds out 3% of its training rows for validation (`configs/train.yaml:26`) |
+
+Upstream gives no value for training on a few hundred cases, and its own note on the learning rates
+is that they "are starting points, not measured optima for fine-tuning" (`skills/customize-decider/references/training.md`).
+One epoch of 250 cases is 8 steps of 32; raise `--epochs` for a small file. Upstream trains with three more things this
+trainer does not have: a KL term to the frozen model's own answer (`kl_frozen_weight: 0.3`), the parent model's answer
+distributions on the multi-step rows (`teacher_file`) and ordinal smoothing (`ordinal_smoothing: 0.1`,
+`reverse_score_prob: 0.5`); a run here is cross-entropy on the gold label alone. `--smoke` is the
+earlier small settings: the 0.8B base, 60 steps of 4 cases, the head at 5 times the rate, no checkpointing.
+
+**Prompt length.** This package sets no maximum prompt length for a decision model. A prompt is bounded by two
+things that are true of the machine in front of it. One is the base model's own window, read from the loaded model's
+config at load time (`max_position_embeddings`, in `text_config` when the config has one; Qwen3.5-2B-Base reports
+262144): a prompt over it is refused with the number and the config it came from, and a model whose config reports no
+window is refused by the missing field, with no other number to fall back on. The other is the memory free on the
+device when the prompt arrives (`poolhouse.decide.window`): a prompt whose working memory (attention scores and
+per-layer activations, as an upper estimate) does not fit is refused with the memory it needs and the memory
+available. Inference (`PointerDecider`, the resident decision host) and training read the same two bounds. The
+broker's resident reservation is the weights and a base; a prompt's working memory is measured by the host against
+the free memory when the prompt arrives, and the broker allows the host that much on top of its reservation. The
+trainer's `--max-tokens` (`Settings.max_tokens`) is unset by default; set it to refuse training cases over that many
+tokens, as a memory trade you choose.
+
+What is known about length, as information and not a rule. The released checkpoint is saved with a serving window of
+4096 (`max_length: 4096`, "the serving window saved with the checkpoint", `configs/train.yaml:39-40`) and its model
+card scores JevBench "served at 4096"; the v19 checkpoint itself was trained at 3072 (`configs/experiments/v19.yaml:24`,
+because no training row is longer). Upstream measured the training length: 1024 to 3072 moved its long-policy tasks
+from 0.263 to 0.368 and changed nothing else; 3072 to 4096 changed nothing (`src/strands_decider/modeling.py:75-78`).
+Quality on prompts longer than the length a checkpoint was trained at has not been measured here or upstream.
+
+**Measured here** (Apple-silicon GPU, 128 GB unified memory; one training step of the default settings on the pinned
+bases, a synthetic case of the stated length; memory is the process's peak footprint from `/usr/bin/time -l`, which
+includes the allocator's cache and so is an upper bound):
+
+| base | tokens per case | cases per forward | checkpointing | seconds per forward and backward | peak memory |
+|---|---|---|---|---|---|
+| 0.8B | 1,002 | 1 | off | 1.8 | 10.1 GiB |
+| 0.8B | 3,998 | 1 | off | 9.5 | 34.0 GiB |
+| 0.8B | 1,002 | 1 | on | 2.5 | 3.3 GiB |
+| 0.8B | 3,998 | 1 | on | 12 to 20 | 7.4 GiB |
+| 0.8B | 1,002 | 4 | off | 7.2 | 30.4 GiB |
+| 0.8B | 3,998 | 4 | off | not finished: stopped after 12 minutes | 125.9 GiB reached, of 128 GiB |
+| 2B | 302 | 8 | on | 7.4 | 7.2 GiB |
+| 2B | 1,002 | 1 | on | 3.0 | 6.2 GiB |
+| 2B | 3,998 | 1 | on | 13.8 | 9.3 GiB |
+| 2B | 1,002 | 8 | on | 24.6 | 11.2 GiB |
+| 2B | 3,998 | 8 | on | 110 (one of three passes 181) | 41.1 GiB |
+
+A batch is padded to its longest case, so a long case costs nothing for short ones and only matters when a case is
+that long. At 4,000 tokens the 2B base at the default 8 cases a forward
+pass takes 41 GiB and 110 s a forward pass (4 of them an optimizer step) when every case is that long; with checkpointing
+off the 0.8B base at 4 cases of 4,000 tokens does not fit this machine, which is why checkpointing is on by default.
+`--batch-size 1 --grad-accum 32` is the same optimizer step in 9.3 GiB for the 2B base at 4,000 tokens.
+The whole default run on the 412 built-in guard cases (`--data guards`, 248 of them for training): 8 steps of 32
+cases, 195 s from start to written decider including loading, scoring the baseline and 164 calibration and test cases,
+peak footprint 7.0 GiB; test accuracy 0.544 against 0.398 for the majority label (a pipeline check on one author's
+templates, not a quality claim). A 2-step run of the same took 82 s.
 
 **What `train` does, in order**
 1. Checks the file: every line parses and its label is one of its options; fewer than 40 cases,
@@ -252,16 +333,16 @@ becomes a path (the name and `--out` come from the command line), a command or a
 the card prints only a reduced character set. Never commit the file you trained on.
 
 **Honest limits**
-- Time and memory are not measured for this command. The measured runs are above: 30 steps on
-  Qwen3.5-0.8B-Base in 87 s, and 120 steps continuing the released 2B checkpoint in 364 s,
-  both on one Apple-silicon GPU. The 2B base needs about 4.7 GB of weights plus activations;
-  nothing here checks that it fits next to a served model, and a held server refuses the run.
+- Time and memory of one step are measured above; a whole run is not. The runs measured
+  earlier are in "Fine-tuning": 30 steps on Qwen3.5-0.8B-Base in 87 s, and 120 steps continuing
+  the released 2B checkpoint in 364 s, both on one Apple-silicon GPU. Nothing here checks that
+  a run fits next to a served model, and a held server refuses the run.
 - A few hundred cases check the pipeline; they do not support a quality claim, and the card
   says so. A model trained on your cases is calibrated on cases like them and on nothing else.
 - The baseline check compares point estimates on the test cases; with 60 test cases a gap of
   a few points is noise.
 - It trains the head and one rank-16 LoRA; it does not resume, shard or train on several
-  GPUs, and a case over 1024 tokens is refused.
+  GPUs, and a case over the base model's window or the memory free is refused (prompt length, above).
 - A temperature cannot change which option wins, only how sure the decider says it is.
 - The real-model path has been run here only on a random 2-layer model on CPU (the tests); the
   same code on Qwen3.5 was last run by the earlier `python -m poolhouse.train decider` measurements above.
@@ -273,7 +354,7 @@ the card prints only a reduced character set. Never commit the file you trained 
 | strands-decider code, github.com/strands-labs/strands-decider | Apache-2.0 (LICENSE; GitHub reports the same) | read for the architecture; none of it is copied |
 | checkpoint `StrandsAgents/strands-decider-2B-hobson-v19` | Apache-2.0 (card metadata and LICENSE.md) | downloaded on request, pinned by commit, size and SHA-256; not redistributed |
 | base `Qwen/Qwen3.5-2B-Base` | Apache-2.0 (card and LICENSE) | same; the release is a LoRA on this model (the post's base is Qwen3.5-2B, not Qwen2.5) |
-| base `Qwen/Qwen3.5-0.8B-Base` | Apache-2.0 | the default base for `python -m poolhouse.train decider` |
+| base `Qwen/Qwen3.5-0.8B-Base` | Apache-2.0 | the base of `--smoke` runs of `python -m poolhouse.train decider` |
 | training data of the checkpoint | 29 public Hub datasets plus two author releases and teacher outputs from Qwen3.5-4B, each under its own licence; its `data/sources.md` lists them | not read or redistributed here; read that file before using the checkpoint where the data's terms matter |
 | this package | Apache-2.0 | a re-implementation of the described architecture and prompt layout; see `NOTICE` |
 
@@ -299,8 +380,9 @@ of anything irreversible.
 
 - A question is read less than a document: with the state and options fixed, rewording the
   question often gives the same answer. Phrase it so the obvious reading is the one meant.
-- Long multi-step documents are the weak spot of the pointer model; the prompt limit here is
-  4096 tokens (1024 when training).
+- Long multi-step documents are the weak spot of the pointer model; quality beyond
+  the length a checkpoint was trained at (3072 for the released one) is unmeasured; the prompt length is bounded by the
+  model's window and the memory free, not by a limit of ours.
 - Calibration is fitted on cases like the ones you will see. A temperature fitted on the
   guard set says nothing about another task.
 - The state text is untrusted input to the decider. A tool result that tells the decider how

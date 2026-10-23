@@ -227,3 +227,4 @@ abuse by one session is not kept (the owner never asked for one). The security f
 | `CHECKPOINTS` | 32 | `src/poolhouse/serve/wired.py:37` | context checkpoints per slot llama-server allocates (its own `n_ctx_checkpoints`), counted in the wiring plan | llama.cpp |
 | `CACHE_RAM_MB` | 8192 | `src/poolhouse/serve/wired.py:41` | the prompt cache llama-server holds in RAM (its own `cache_ram_mib`), counted in the wiring plan | llama.cpp |
 | `CONTEXTS` | 8K to 1M | `src/poolhouse/serve/wired.py:27` | rows of the wiring table, a display to read across; never a choice | the owner, in source |
+| shard id | 128 random bits | `docs/design-test-runner.md` section 6 (`fleet/shard_spec.py` once built) | a shard id cannot be guessed or collide, so a replayed or cross-sent result is refused: a security floor, never loosened by an agent | a security floor of the owner |

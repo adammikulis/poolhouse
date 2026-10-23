@@ -8,7 +8,7 @@
       return input;
     };
     const field = (host, label, input) => {
-      const id = 'record-field-' + crypto.randomUUID();
+      const id = 'record-field-' + window.fleetModel.uuid();
       input.id = id;
       host.append(E('label', {for: id}, label), input);
       return input;

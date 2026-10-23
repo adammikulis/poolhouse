@@ -13,7 +13,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from poolhouse.platform import start_process
+from poolhouse.platform import end_child, start_process
 from poolhouse.serve.process import kill_process_tree, started_at
 
 logger = logging.getLogger(__name__)
@@ -53,11 +53,7 @@ def release(pid: int | None) -> None:
         _guarded.pop(pid, None)
         watchdog = _watchdogs.pop(pid, None)
     if watchdog is not None:
-        watchdog.terminate()
-        try:
-            watchdog.wait(timeout=2.0)
-        except subprocess.TimeoutExpired:
-            watchdog.kill()
+        end_child(watchdog, grace_s=2.0)
 
 
 def guarded() -> dict[int, float]:
