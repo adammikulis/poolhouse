@@ -293,15 +293,21 @@ def test_digest_lists_new_announcements_and_ack_marks_them_seen(team):
     assert "nothing new" in team.cli("digest", who=team.lead).stdout
 
 
-def test_releasing_a_claim_that_is_not_held_exits_five_and_names_the_command_to_take_it_again(team):
+def test_releasing_absent_expired_or_released_claims_succeeds_without_reacquiring(team):
     me = team.lead
     never = team.cli("release", "port", "9477", "--json", who=me)
-    assert never.returncode == 5
-    said = json.loads(never.stdout)["error"]
-    assert "not held" in said and "poolhouse-workspace claim port 9477" in said
+    assert never.returncode == 0, never.stdout + never.stderr
+    assert json.loads(never.stdout) == {"kind": "port", "key": "9477", "released": False}
     assert team.cli("claim", "port", "9478", "--ttl", "1", who=me).returncode == 0
     time.sleep(2.5)
-    expired = team.cli("release", "port", "9478", who=me)
-    assert expired.returncode == 5 and "expired" in expired.stderr
+    expired = team.cli("release", "port", "9478", "--json", who=me)
+    assert expired.returncode == 0, expired.stdout + expired.stderr
+    assert json.loads(expired.stdout) == {"kind": "port", "key": "9478", "released": False}
+    assert team.session(me).claims() == []
     assert team.cli("claim", "port", "9479", who=me).returncode == 0
-    assert team.cli("release", "port", "9479", who=me).returncode == 0
+    first = team.cli("release", "port", "9479", "--json", who=me)
+    again = team.cli("release", "port", "9479", "--json", who=me)
+    assert first.returncode == again.returncode == 0, (first.stdout, again.stdout)
+    assert json.loads(first.stdout) == {"kind": "port", "key": "9479", "released": True}
+    assert json.loads(again.stdout) == {"kind": "port", "key": "9479", "released": False}
+    assert team.session(me).claims() == []
