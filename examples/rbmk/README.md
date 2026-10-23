@@ -6,7 +6,7 @@ room, and the reactor behind the dials is an educational toy, not a plant model.
 
 One app, one address, one launch command. The room is the app: the instruments and the desk are the plant and the controls the
 model uses, and the tools for looking at a run (the decision log, charts, what-if branches, the 1986 timeline, the poisoned starts)
-are drawers over the room.
+are drawers over the room, and the run controls are keys on the desk.
 
 ## Run it
 
@@ -18,9 +18,17 @@ python -m examples.rbmk [--port 8765] [--store DIR] [--wait SECONDS]
 
 It prints `RBMK control room: http://127.0.0.1:8765/` and serves that address on this machine only. Open it. You are in the
 room: the desk and the instrument wall are the controls and readings of the toy plant, and the decision display on the
-wall shows what the model last said, with the probability it gave each answer. Nothing runs until you choose a run in the
-Run console (it opens first): a scenario and a controller, or a recording of a real model run. Until then every instrument is
-dark and the banner says NO RUN.
+wall shows what the model last said, with the probability it gave each answer. Nothing runs until you start one with the
+run panel on the desk: a display and 25 keys (scenario, controller, decider, memory and clock to
+choose; SOURCE to switch between a live run and a recording; START and STOP; OPEN for a recording; BATCH; EXPORT; and
+BACK, PLAY, STEP, SPEED and END for the playback). Fly to it with the `Run panel` view, or open `#runpanel` in the 2D view. Until
+a run is chosen every instrument is dark and the banner says NO RUN.
+
+What the instruments show is what the crew's instruments showed: every dial, lamp, tile and recorder reads the sensor view
+of the tick on show (`crew` in each trace row, the same `SensorView` the decider is given), and the rod cells show the rod
+position indicators. No instrument reads a plant value; the true state is in the Charts and Core map drawers, which say so.
+BATCH starts the poisoned starts of `python -m examples.rbmk.run batch` for each memory variant under one GPU hold; a start
+already in the local run store is skipped, so pressing it again resumes, and the display shows how many are done.
 
 The room has no second page. The header always shows the model id, `LIVE` or `RECORDED`, and the three clocks (plant
 time, wall time, decision cadence and latency). The dock under the room holds what a person uses:
@@ -30,13 +38,12 @@ time, wall time, decision cadence and latency). The dock under the room holds wh
   there; click any instrument for a card (what it is, its range, how the simulator models it, its value now). On a phone the
   room orbits instead. The header button `Low-power 2D` shows the same room as fixed pictures with the live instruments drawn
   over them (floor plan, front wall and a close-up of each panel); it reads the same run and playhead and uses no WebGL.
-- Playback: step back, play, step, speed, a scrubber and the clock of the tick on show. Space plays and pauses, `,` and `.`
+- Playback: the desk's BACK, PLAY, STEP, SPEED and END keys, and a scrubber and the clock of the tick on show in the dock. Space plays and pauses, `,` and `.`
   step. The room, the log and the charts all follow this one playhead, for a live run and a recording alike.
-- Tools, each a drawer over the room: Run console (live or recorded, scenario, controller, the decider, memory variant and plant clock for a model run, start, stop, open a recording or
-  a JSON file), Decision log (every decision with the questions, the probabilities and the desk line each chose; click one
+- Tools, each a drawer over the room: Decision log (every decision with the questions, the probabilities and the desk line each chose; click one
   and the room's instruments, rods and wall display move to that moment), Charts, Core map (the full-size core cross-section,
   also opened from the card of a rod), Readings (the console as the decider was given it, beside the plant's true values), What-if (each action class applied once from a decision's state, no model asked), 1986 timeline, Poisoned starts (what each poisoned-start recording of the run store ended with) and
-  Naive controller (plain policy code beside the model, never a model). Export JSON saves the run on show.
+  Naive controller (plain policy code beside the model, never a model). The desk's EXPORT key saves the run on show as JSON, and a JSON file dropped on the page opens.
 
 A live run with the decision model asks the released Strands decider (`strands-decider-2B-hobson-v19`, pointer backend) under the
 GPU hold at the Broker. Setup, stated plainly: fetch the checkpoint once with `poolhouse-decide fetch`; the weights load on the first
@@ -213,7 +220,7 @@ grid of the 211 nearest cells in the simulator's own order, not the plant's chan
 
 The header's `Low-power 2D` button (or `#plan`, `#front` and `#<panel>` on the address, which opens the app on that view without
 ever loading the 3D room) shows the same room as fixed pictures with the live instruments drawn over them, so it needs no
-WebGL and almost no GPU. Three modes, switched from the dock:
+WebGL and almost no GPU. Three modes, switched from the dock (the keys and the display of the desk work there too, in the `Run panel` close-up):
 
 - **Floor plan**: the room from above (desk sections, instrument wall, engineers' desks, doors, the window band). Each panel
   is a dashed click target that turns amber or red when something in it is lit or out of range.
@@ -307,7 +314,6 @@ Everything else in this directory is Poolhouse code under the repository licence
 - Runs by the batch command: none are committed, and none had been run to a count when this was written.
 - Agreement of the 2B decider with the upstream implementation on the same prompts; the answer quality at 1k, 2k and 4k tokens.
 - Checking the rest of the toy's constants against INSAG-7 and against other reactor-dynamics codes.
-- The Run console is a drawer in the dock, not an object on the desk in the 3D room.
 - The 12B Gemma decider and the state memory variant are not integrated; the Decider and Memory selects list `DECIDERS` and `MEMORIES` of `decider/model.py`.
-- The wall dials read the plant's true values; the Readings drawer shows the console as the decider was given it.
+- The Charts and Core map drawers draw the plant's true state beside what the gauges read; the rod cells show the indicators, not the true rod positions.
 

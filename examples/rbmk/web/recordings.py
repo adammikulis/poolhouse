@@ -15,7 +15,7 @@ MAX_BYTES = 64 << 20
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,120}\.json$")
 CONTROLLERS = {"model": "decision model", "naive": "naive controller (plain policy code, not a model)",
                "crew": "1986 crew script (not a model)"}
-ROW_KEYS = ("tick", "t_s", "P", "X", "void", "orm", "f", "Tf", "p", "rods", "scram", "damaged", "chA", "chB", "orm_printed", "demand")
+ROW_KEYS = ("tick", "t_s", "P", "X", "void", "orm", "f", "Tf", "p", "rods", "scram", "damaged", "chA", "chB", "orm_printed", "demand", "crew")
 
 
 class BadDocument(ValueError):

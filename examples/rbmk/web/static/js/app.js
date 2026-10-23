@@ -1,4 +1,4 @@
-/* The page: header, run picker, playback, the animation loop and the tabs. */
+/* The page: header, run state, playback, the animation loop and the tools. */
 window.RB = window.RB || {};
 (function (RB) {
   'use strict';
@@ -11,16 +11,11 @@ window.RB = window.RB || {};
     S.main = run; S.cursor = 0; S.selected = -1; S.naive = null; S.banner = ''; RB.notify();
   };
 
-  RB.startRun = async function () {
-    const key = $('scenario').value, controller = $('controller').value;
+  RB.startRun = async function (opts) {
     try {
-      const job = await RB.api('/api/run', { scenario: key, controller: controller, decider: $('decider').value, memory: $('memory').value, speed: +$('speedLive').value });
+      const job = await RB.api('/api/run', opts);
       const run = new RB.Run('main'); run.origin = 'live'; run.follow(job.id);
       RB.setMain(run); S.playing = true;
-      if ($('alsoNaive').checked && controller === 'model') {
-        const nj = await RB.api('/api/run', { scenario: key, controller: 'naive' });
-        S.naive = new RB.Run('naive'); S.naive.follow(nj.id);
-      }
     } catch (e) { RB.fail('Run refused: ' + e.message); }
   };
 
@@ -83,7 +78,7 @@ window.RB = window.RB || {};
     const parts = [];
     if (S.banner) { parts.push(S.banner); }
     if (S.mode === 'live' && !S.info.model.available) { parts.push('The decision model cannot run here: ' + S.info.model.why + '. Model runs will halt with this error; naive and crew runs and recordings still work.'); }
-    if (!run) { parts.push('NO RUN: every instrument in the room is dark. Open the Run console to start a scenario or open a recording.'); }
+    if (!run) { parts.push('NO RUN: every instrument in the room is dark. Use the keys of the run panel on the desk to start a scenario or open a recording.'); }
     return parts.join(' ');
   }
 
@@ -94,50 +89,12 @@ window.RB = window.RB || {};
     $('runlabel').textContent = h.label;
     const banner = bannerText(S.main);
     $('banner').textContent = banner; $('banner').style.display = banner ? '' : 'none';
-    $('scndesc').textContent = S.mode === 'live' ? (RB.scenarioInfo($('scenario').value) || {}).description || '' : '';
   }
   RB.scenarioInfo = function (key) { return S.info.scenarios.find(function (s) { return s.key === key; }); };
 
-  function buildPicker() {
-    const sel = $('scenario'), groups = {};
-    S.info.scenarios.forEach(function (s) { (groups[s.group] = groups[s.group] || []).push(s); });
-    const names = { normal: 'Normal states', faults: 'Faults', poisoned: 'Xenon-poisoned starts', history: '1986 replay', fixture: 'Short test run' };
-    Object.keys(groups).forEach(function (g) {
-      const og = RB.el('optgroup', { label: names[g] || g });
-      groups[g].forEach(function (s) { og.appendChild(RB.el('option', { value: s.key, text: s.title })); });
-      sel.appendChild(og);
-    });
-    sel.addEventListener('change', syncController);
-    $('controller').addEventListener('change', syncModelBoxes);
-    S.info.deciders.forEach(function (d) { $('decider').appendChild(RB.el('option', { value: d.id, text: d.label })); });
-    S.info.memories.forEach(function (m) { $('memory').appendChild(RB.el('option', { value: m, text: m })); });
-    S.info.speeds.forEach(function (v) { const o = RB.el('option', { value: v, text: v + ' plant s per s' }); o.selected = v === S.info.default_speed; $('speedLive').appendChild(o); });
-    syncController();
-  }
-
-  function syncController() {
-    const s = RB.scenarioInfo($('scenario').value), c = $('controller'), keep = c.value;
-    c.replaceChildren(RB.el('option', { value: 'model', text: 'Decision model' }), RB.el('option', { value: 'naive', text: 'Naive controller (policy code, not a model)' }));
-    if (s && s.crew) { c.appendChild(RB.el('option', { value: 'crew', text: '1986 crew script (not a model)' })); }
-    if (keep && Array.from(c.options).some(function (o) { return o.value === keep; })) { c.value = keep; }
-    syncModelBoxes();
-    RB.touch();
-  }
-
-  function syncModelBoxes() {
-    ['deciderBox', 'memoryBox', 'speedBox'].forEach(function (id) { $(id).style.display = $('controller').value === 'model' ? '' : 'none'; });
-  }
-
   RB.loadRecordings = async function () {
     S.recordings = await RB.api('/api/recordings');
-    const sel = $('recording'); sel.replaceChildren();
-    S.recordings.filter(function (r) { return r.ok; }).forEach(function (r) {
-      sel.appendChild(RB.el('option', { value: r.name, text: r.title + ' | ' + r.label }));
-    });
-    const bad = S.recordings.filter(function (r) { return !r.ok; });
-    $('badfiles').textContent = bad.length ? 'Could not show: ' + bad.map(function (r) { return r.name + ' (' + r.error + ')'; }).join('; ') : '';
-    $('norecs').textContent = S.recordings.length ? '' : 'The recordings folder (' + S.info.recordings_dir + ') has no files.';
-    RB.touch();
+    RB.onRecordings();
   };
 
   RB.setMode = setMode;
@@ -146,33 +103,24 @@ window.RB = window.RB || {};
   function setMode(mode) {
     S.mode = mode; S.main = null; S.naive = null; S.banner = ''; S.playing = false;
     document.body.dataset.mode = mode;
-    $('liveBar').style.display = mode === 'live' ? '' : 'none'; $('recBar').style.display = mode === 'recorded' ? '' : 'none';
-    ['modeLive', 'modeRec'].forEach(function (id) { $(id).classList.toggle('on', (id === 'modeLive') === (mode === 'live')); });
     if (mode === 'recorded') { RB.loadRecordings().catch(function (e) { RB.fail(e.message); }); }
     RB.notify();
   }
 
   /* ------------------------------------------------------------------------------ playback */
   function controls() {
-    $('play').onclick = function () { S.playing = !S.playing; RB.touch(); };
-    $('back').onclick = function () { S.playing = false; S.cursor = Math.max(0, Math.round(S.cursor) - 1); RB.touch(); };
-    $('fwd').onclick = function () { S.playing = false; S.cursor = Math.min(S.main ? S.main.last : 0, Math.round(S.cursor) + 1); RB.touch(); };
-    $('speed').onchange = function () { S.speed = +$('speed').value; };
     $('scrub').oninput = function () { S.playing = false; S.cursor = +$('scrub').value; RB.touch(); };
-    $('pauseCap').onchange = function () { S.pauseAtCaptions = $('pauseCap').checked; };
     $('colormode').onchange = function () { core.mode = $('colormode').value; RB.touch(); };
-    $('export').onclick = RB.exportJson; $('start').onclick = RB.startRun; $('stop').onclick = RB.stopRun;
-    $('openrec').onclick = function () { if ($('recording').value) { RB.openRecording($('recording').value); } };
-    $('file').onchange = function () { if ($('file').files[0]) { RB.openFile($('file').files[0]); $('file').value = ''; } };
-    $('modeLive').onclick = function () { setMode('live'); }; $('modeRec').onclick = function () { setMode('recorded'); };
     $('theme').onclick = function () {
       const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
       document.documentElement.dataset.theme = next; store('rbmk-theme', next); RB.touch();
     };
     document.addEventListener('keydown', function (e) {
       if (/INPUT|SELECT|TEXTAREA|BUTTON/.test((e.target || {}).tagName || '')) { return; }
-      if (e.key === ' ') { e.preventDefault(); $('play').click(); } else if (e.key === '.') { $('fwd').click(); } else if (e.key === ',') { $('back').click(); }
+      if (e.key === ' ') { e.preventDefault(); RB.desk.press('play'); } else if (e.key === '.') { RB.desk.press('step'); } else if (e.key === ',') { RB.desk.press('back'); }
     });
+    document.addEventListener('dragover', function (e) { e.preventDefault(); });
+    document.addEventListener('drop', function (e) { e.preventDefault(); if (e.dataTransfer.files[0]) { RB.openFile(e.dataTransfer.files[0]); } });
   }
 
   function advance(dt) {
@@ -288,7 +236,7 @@ window.RB = window.RB || {};
     core.draw(run && run.header ? run.header.rods : [], frame, extra);
     if (S.dirty) {
       S.dirty = false; updateHeader(); renderState(); renderTab(S.cursor); frameHooks.forEach(function (fn) { fn(); });
-      $('play').textContent = S.playing ? 'Pause' : 'Play'; lastCursor = Math.floor(S.cursor);
+      lastCursor = Math.floor(S.cursor);
     }
     if (needFrame()) { schedule(); } else { sleeper = setTimeout(schedule, 250); }
   }
@@ -314,12 +262,12 @@ window.RB = window.RB || {};
       return RB.el('span', { class: 'lg' }, [RB.el('i', { style: 'background:' + RB.KINDS[k][1] }), RB.KINDS[k][0]]);
     }));
     $('toy').textContent = S.info.toy_notice + ' The room is an interpretive reconstruction from published descriptions, not a survey of any room.';
-    buildPicker(); controls();
+    controls(); RB.desk.init();
     $('toy').onclick = function () { $('toy').classList.toggle('open'); };
     RB.whatif.build($('pane-whatif')); RB.history.build($('pane-history')); RB.dist.build($('pane-dist')); RB.compare.build($('pane-compare'));
     document.querySelectorAll('.toolbtn').forEach(function (b) { b.onclick = function () { if (S.drawer === b.dataset.drawer) { RB.closeDrawer(); } else { RB.openDrawer(b.dataset.drawer); } }; });
     $('drawer-close').onclick = RB.closeDrawer;
-    setMode('live'); RB.openDrawer('run');
+    setMode('live');
     window.addEventListener('resize', RB.touch);
     schedule();
     setInterval(function () { if (S.main && S.main.live) { RB.touch(); } }, 500);

@@ -1,5 +1,8 @@
 // The run the room shows: the control room app's one run state (window.RB.state), read through the feed interface the instruments use.
-const OPTIONAL = ['model_risk', 'tip'];
+// A row of the feed is the crew row: the sensor view of the tick (what the control room's instruments show and the decider is given), never a plant value.
+import { crewRow } from './rules.js';
+
+const OPTIONAL = ['model_risk'];
 
 export class RunFeed {
   constructor(RB, traceFields) {
@@ -14,6 +17,10 @@ export class RunFeed {
 
   get S() {
     return this.RB.state;
+  }
+
+  get desk() {
+    return this.RB.desk;
   }
 
   get run() {
@@ -34,7 +41,7 @@ export class RunFeed {
   // Changes whenever the run is replaced or grows, so a painted screen knows when to repaint.
   get stamp() {
     this.data;
-    return `${this._serial}:${this._sig}:${this.S.selected}`;
+    return `${this._serial}:${this._sig}:${this.S.selected}:${this.desk.version}`;
   }
 
   get data() {
@@ -66,8 +73,10 @@ export class RunFeed {
   }
 
   validate(d) {
-    const missing = this.required.filter((k) => !(k in d.trace[0]));
-    return missing.length ? `trace rows lack the fields ${missing.join(', ')}` : '';
+    if (!d.trace[0].crew) return 'trace rows carry no crew record (the sensor view of each tick)';
+    const row = crewRow(d.trace[0], null);
+    const missing = this.required.filter((k) => !(k in row));
+    return missing.length ? `the crew record lacks the fields ${missing.join(', ')}` : '';
   }
 
   get live() {
@@ -121,17 +130,15 @@ export class RunFeed {
     const src = this.run.trace[i];
     const stamp = this.stamp;
     if (this._row.index !== i || this._row.stamp !== stamp || this._row.src !== src) {
-      const rods = src.rods;
-      const mean = Array.isArray(rods) && rods.length ? rods.reduce((a, b) => a + b, 0) / rods.length : null;
       const d = this._decisionAt(src.tick);
       const risk = d && d.answers && d.answers.risk ? d.answers.risk.expected : null;
-      this._row = { index: i, stamp, src, value: { ...src, rods_mean: mean, model_risk: risk } };
+      this._row = { index: i, stamp, src, value: crewRow(src, risk) };
     }
     return this._row.value;
   }
 
   window(n) {
-    return this.status === 'ok' ? this.run.trace.slice(Math.max(0, this.index - n + 1), this.index + 1) : [];
+    return this.status === 'ok' ? this.run.trace.slice(Math.max(0, this.index - n + 1), this.index + 1).map((r) => crewRow(r, null)) : [];
   }
 
   // The decision picked in the log when it was asked at this tick (several can be), else the latest one asked by this tick.

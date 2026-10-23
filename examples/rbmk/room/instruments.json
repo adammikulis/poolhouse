@@ -1,36 +1,33 @@
 {
  "format": 1,
- "note": "Every instrument the demo drives. The generator places a node INS_<id> for each; the viewer reads the same file to animate it. 'field' names a column of a feed trace row; 'rule' is evaluated on the feed row (trace) or the latest decision (decision).",
+ "note": "Every instrument of the room. The generator places a node INS_<id> for each; the viewer reads the same file to animate it. 'field' names a column of the crew row, the sensor view of the tick the playhead is on; 'rule' is evaluated on that row. No instrument reads a plant value the control room did not have.",
  "feed_trace_fields": [
   "tick",
   "t_s",
-  "P",
   "chA",
   "chB",
-  "X",
-  "I",
-  "void",
+  "heat",
+  "flow",
+  "level_l",
+  "level_r",
+  "press_l",
+  "press_r",
+  "header",
+  "feedwater",
+  "demand_pct",
+  "orm_printout",
   "rods",
-  "orm",
-  "orm_printed",
-  "f",
-  "Tf",
-  "p",
-  "rho",
-  "level",
-  "demand",
-  "scram",
-  "damaged",
   "pumps",
   "ar_on",
-  "test",
   "prot",
-  "model_risk",
-  "tip"
+  "test",
+  "az5",
+  "model_risk"
  ],
  "derived_fields": {
   "rods_mean": "mean of the rods array (percent inserted), computed by the viewer",
-  "model_risk": "the expected risk rating (1 to 5) of the latest decision, computed by the viewer"
+  "model_risk": "the expected risk rating (1 to 5) of the latest decision, computed by the viewer",
+  "az5, prot, test, pumps, ar_on": "the crew row: the sensor view of the tick, from the trace row's crew record"
  },
  "zones": {
   "reactor_dials": {
@@ -70,6 +67,22 @@
    "cols": 1,
    "pitch": 0,
    "rowpitch": 0
+  },
+  "run_screen": {
+   "kind": "desk",
+   "theta": 110.5,
+   "z": 1.45,
+   "cols": 1,
+   "pitch": 0.6,
+   "rowpitch": 0.0
+  },
+  "run_keys": {
+   "kind": "desk",
+   "theta": 118.2,
+   "z": 1.45,
+   "cols": 6,
+   "pitch": 0.15,
+   "rowpitch": 0.1
   }
  },
  "bookmarks": {
@@ -79,7 +92,8 @@
   "orm": "ORM terminal",
   "dials": "Reactor dials",
   "alarms": "Annunciator",
-  "decision": "Decision display"
+  "decision": "Decision display",
+  "runpanel": "Run panel"
  },
  "panels": {
   "dials": {
@@ -120,6 +134,13 @@
    "ids": [
     "SCREEN_ORM"
    ]
+  },
+  "runpanel": {
+   "label": "Run panel",
+   "ids": [
+    "SCREEN_RUN"
+   ],
+   "zone": "run_keys"
   }
  },
  "instruments": [
@@ -138,9 +159,9 @@
     120,
     150
    ],
-   "what": "Neutron power channel A, as the decider reads it, in percent of nominal.",
+   "what": "Power channel A, from the ionisation chambers, in percent of nominal.",
    "range": "0 to 150 %, red above the 120 % power trip",
-   "modelled": "chA of each feed row: the true power P with 1 % Gaussian noise, in the demo's toy reactor."
+   "modelled": "As the decider is given it: the reading of the run's sensor view at this tick."
   },
   {
    "id": "D_POWER_B",
@@ -157,9 +178,9 @@
     120,
     150
    ],
-   "what": "Neutron power channel B, an independent reading of the same power.",
+   "what": "Power channel B, from the ionisation chambers, in percent of nominal.",
    "range": "0 to 150 %, red above the 120 % power trip",
-   "modelled": "chB of each feed row. A scenario can stick this channel at a wrong value; then it disagrees with channel A."
+   "modelled": "As the decider is given it: the reading of the run's sensor view at this tick."
   },
   {
    "id": "D_SETPOINT",
@@ -167,22 +188,22 @@
    "zone": "reactor_dials",
    "slot": 2,
    "label": "DEMAND",
-   "field": "demand",
-   "scale": 100,
+   "field": "demand_pct",
+   "scale": 1,
    "min": 0,
    "max": 120,
    "unit": "%",
-   "what": "The power the crew has been told to hold, in percent of nominal.",
+   "what": "The demanded power in percent of nominal.",
    "range": "0 to 120 %",
-   "modelled": "demand of each row of the run; scenarios change it at fixed ticks."
+   "modelled": "As the decider is given it: the reading of the run's sensor view at this tick."
   },
   {
    "id": "D_ORM",
    "type": "dial",
    "zone": "reactor_dials",
    "slot": 3,
-   "label": "ORM",
-   "field": "orm",
+   "label": "ORM PRINTOUT",
+   "field": "orm_printout",
    "scale": 1,
    "min": 0,
    "max": 30,
@@ -191,9 +212,9 @@
     0,
     15
    ],
-   "what": "Operational reactivity margin: control-rod equivalents inserted in the core.",
+   "what": "The reactivity margin of the last printout of the unit computer, in rod equivalents.",
    "range": "0 to 30; the operating rule is a minimum of 15 (red below)",
-   "modelled": "orm of each feed row: 30 rod-equivalents times the bank insertion fraction in the toy reactor."
+   "modelled": "As the decider is given it: the reading of the run's sensor view at this tick."
   },
   {
    "id": "D_ROD_BANK",
@@ -206,17 +227,17 @@
    "min": 0,
    "max": 100,
    "unit": "% in",
-   "what": "Mean insertion of all 211 control rods, 0 % fully withdrawn to 100 % fully in.",
+   "what": "The mean of the 211 rod position indicators.",
    "range": "0 to 100 %",
-   "modelled": "The mean of the rods array of each feed row (the demo's 211 individual rod positions, in percent inserted)."
+   "modelled": "As the decider is given it: the reading of the run's sensor view at this tick."
   },
   {
    "id": "D_LEVEL",
    "type": "dial",
    "zone": "reactor_dials",
-   "slot": 15,
-   "label": "DRUM LEVEL",
-   "field": "level",
+   "slot": 13,
+   "label": "DRUM LVL L",
+   "field": "level_l",
    "scale": 1,
    "min": -50,
    "max": 50,
@@ -231,18 +252,18 @@
      50
     ]
    ],
-   "what": "Steam drum water level relative to its normal level.",
+   "what": "Left steam separator drum level.",
    "range": "-50 to +50 cm; the demo trips the reactor when the level is more than 45 cm out",
-   "modelled": "level of each feed row, a lagged swell of the steam drum in the demo's plant model."
+   "modelled": "As the decider is given it: the reading of the run's sensor view at this tick."
   },
   {
    "id": "D_FLOW",
    "type": "dial",
    "zone": "reactor_dials",
    "slot": 5,
-   "label": "COOLANT FLOW",
-   "field": "f",
-   "scale": 100,
+   "label": "CORE FLOW",
+   "field": "flow",
+   "scale": 1,
    "min": 0,
    "max": 150,
    "unit": "%",
@@ -250,17 +271,17 @@
     0,
     55
    ],
-   "what": "Coolant flow through the core in percent of nominal.",
+   "what": "The core flow meters, in percent of nominal.",
    "range": "0 to 150 %; below 55 % at power the demo trips",
-   "modelled": "f of each feed row: first-order lag toward the commanded flow."
+   "modelled": "As the decider is given it: the reading of the run's sensor view at this tick."
   },
   {
    "id": "D_PRESS",
    "type": "dial",
    "zone": "reactor_dials",
    "slot": 6,
-   "label": "STEAM PRESS",
-   "field": "p",
+   "label": "DRUM P L",
+   "field": "press_l",
    "scale": 1,
    "min": 0,
    "max": 12,
@@ -269,113 +290,108 @@
     8,
     12
    ],
-   "what": "Steam drum pressure.",
+   "what": "Left steam separator drum pressure.",
    "range": "0 to 12 MPa; nominal 6.9, trip above 8.0",
-   "modelled": "p of each feed row, relaxing toward a value set by the heat load."
+   "modelled": "As the decider is given it: the reading of the run's sensor view at this tick."
   },
   {
-   "id": "D_FUELT",
+   "id": "D_HEAT",
    "type": "dial",
    "zone": "reactor_dials",
    "slot": 7,
-   "label": "FUEL TEMP",
-   "field": "Tf",
+   "label": "HEAT BAL",
+   "field": "heat",
    "scale": 1,
-   "min": 200,
-   "max": 1600,
-   "unit": "C",
+   "min": 0,
+   "max": 150,
+   "unit": "%",
    "red": [
-    1200,
-    1600
+    120,
+    150
    ],
-   "what": "Fuel temperature.",
+   "what": "The heat-balance power, in percent of nominal; it lags the chambers.",
    "range": "200 to 1600 C; nominal 750, trip above 1200, damage above 1500",
-   "modelled": "Tf of each feed row: a lagged function of heat load and coolant flow."
+   "modelled": "As the decider is given it: the reading of the run's sensor view at this tick."
   },
   {
-   "id": "D_VOID",
+   "id": "D_PRESS_R",
    "type": "dial",
    "zone": "reactor_dials",
    "slot": 8,
-   "label": "STEAM VOID",
-   "field": "void",
-   "scale": 100,
+   "label": "DRUM P R",
+   "field": "press_r",
+   "scale": 1,
    "min": 0,
-   "max": 80,
-   "unit": "%",
-   "what": "Steam void fraction in the coolant channels; more voids raise reactivity in this reactor type.",
+   "max": 12,
+   "unit": "MPa",
+   "what": "Right steam separator drum pressure.",
    "range": "0 to 80 %; nominal about 25 %",
-   "modelled": "void of each feed row, from heat load and flow."
+   "modelled": "As the decider is given it: the reading of the run's sensor view at this tick.",
+   "red": [
+    8,
+    12
+   ]
   },
   {
-   "id": "D_XENON",
+   "id": "D_HEADER",
    "type": "dial",
    "zone": "reactor_dials",
    "slot": 9,
-   "label": "XENON-135",
-   "field": "X",
+   "label": "STEAM HDR",
+   "field": "header",
    "scale": 1,
    "min": 0,
-   "max": 4,
-   "unit": "index",
-   "what": "Xenon-135 poisoning index; 1.00 is the full-power equilibrium.",
+   "max": 12,
+   "unit": "MPa",
+   "what": "Main steam header pressure.",
    "range": "0 to 4",
-   "modelled": "X of each feed row, from the iodine-135 to xenon-135 chain with burnout."
+   "modelled": "As the decider is given it: the reading of the run's sensor view at this tick."
   },
   {
-   "id": "D_IODINE",
+   "id": "D_FEEDWATER",
    "type": "dial",
    "zone": "reactor_dials",
    "slot": 10,
-   "label": "IODINE-135",
-   "field": "I",
+   "label": "FEEDWATER",
+   "field": "feedwater",
    "scale": 1,
    "min": 0,
-   "max": 4,
-   "unit": "index",
-   "what": "Iodine-135 inventory index, the precursor of xenon.",
+   "max": 150,
+   "unit": "%",
+   "what": "Feedwater flow, in percent of nominal.",
    "range": "0 to 4",
-   "modelled": "I of each feed row."
+   "modelled": "As the decider is given it: the reading of the run's sensor view at this tick."
   },
   {
-   "id": "D_REACT",
+   "id": "D_LEVEL_R",
    "type": "dial",
    "zone": "reactor_dials",
    "slot": 11,
-   "label": "REACTIVITY",
-   "field": "rho",
+   "label": "DRUM LVL R",
+   "field": "level_r",
    "scale": 1,
-   "min": -2,
-   "max": 2,
-   "unit": "$",
+   "min": -50,
+   "max": 50,
+   "unit": "cm",
    "red": [
-    0.9,
-    2
+    [
+     -50,
+     -45
+    ],
+    [
+     45,
+     50
+    ]
    ],
-   "what": "Total reactivity in dollars; 0 is critical, 1 is prompt critical.",
+   "what": "Right steam separator drum level.",
    "range": "-2 to +2 $",
-   "modelled": "rho of each feed row, summed from rods, xenon, void, Doppler and the graphite tip."
-  },
-  {
-   "id": "D_TIP",
-   "type": "dial",
-   "zone": "reactor_dials",
-   "slot": 12,
-   "label": "TIP REACT",
-   "field": "tip",
-   "scale": 1,
-   "min": 0,
-   "max": 2.5,
-   "unit": "$",
-   "what": "Reactivity added by the graphite tips of the rods in the first seconds of a shutdown from withdrawn rods.",
-   "range": "0 to 2.5 $",
-   "modelled": "tip of each feed row, zero unless a shutdown is running."
+   "modelled": "As the decider is given it: the reading of the run's sensor view at this tick."
   },
   {
    "id": "D_RISK",
    "type": "dial",
    "zone": "reactor_dials",
-   "slot": 14,
+   "slot": 12,
    "label": "MODEL RISK",
    "field": "model_risk",
    "scale": 1,
@@ -398,11 +414,6 @@
    "label": "POWER",
    "series": [
     [
-     "P",
-     100,
-     "#e8e056"
-    ],
-    [
      "chA",
      1,
      "#7fd0ff"
@@ -411,6 +422,11 @@
      "chB",
      1,
      "#ff9f6b"
+    ],
+    [
+     "heat",
+     1,
+     "#e8e056"
     ]
    ],
    "min": 0,
@@ -425,17 +441,17 @@
    "type": "recorder",
    "zone": "desk_recorders",
    "slot": 1,
-   "label": "FUEL T / PRESS",
+   "label": "PRESS / FEEDWATER",
    "series": [
     [
-     "Tf",
-     0.0625,
-     "#ff7a59"
-    ],
-    [
-     "p",
+     "press_l",
      8.333,
      "#7fd0ff"
+    ],
+    [
+     "feedwater",
+     0.6667,
+     "#ff7a59"
     ]
    ],
    "min": 0,
@@ -453,7 +469,7 @@
    "label": "ORM / ROD BANK",
    "series": [
     [
-     "orm",
+     "orm_printout",
      3.3333,
      "#8be28b"
     ],
@@ -498,26 +514,11 @@
    "color": "red",
    "rule": {
     "when": "trace",
-    "field": "scram",
+    "field": "az5",
     "eq": true
    },
-   "text": "emergency shutdown (AZ-5) is active",
+   "text": "AZ-5 is pressed",
    "what": "Lit while the emergency shutdown is running."
-  },
-  {
-   "id": "L_DAMAGED",
-   "type": "lamp",
-   "zone": "desk_lamps",
-   "slot": 1,
-   "label": "CORE DAMAGE",
-   "color": "red",
-   "rule": {
-    "when": "trace",
-    "field": "damaged",
-    "eq": true
-   },
-   "text": "the toy core has been damaged (fuel temperature above 1500 C)",
-   "what": "Lit when the toy reactor has reached its damage limit."
   },
   {
    "id": "A_ORM_LOW",
@@ -528,11 +529,11 @@
    "color": "red",
    "rule": {
     "when": "trace",
-    "field": "orm",
+    "field": "orm_printout",
     "op": "<",
     "value": 15
    },
-   "text": "ORM is below 15 rod equivalents",
+   "text": "the last ORM printout is below 15 rod equivalents",
    "what": "Reactivity margin below the operating minimum."
   },
   {
@@ -543,12 +544,23 @@
    "label": "POWER > 120%",
    "color": "red",
    "rule": {
-    "when": "trace",
-    "field": "P",
-    "op": ">",
-    "value": 1.2
+    "when": "any",
+    "of": [
+     {
+      "when": "trace",
+      "field": "chA",
+      "op": ">",
+      "value": 120
+     },
+     {
+      "when": "trace",
+      "field": "chB",
+      "op": ">",
+      "value": 120
+     }
+    ]
    },
-   "text": "power is above 120 % of nominal",
+   "text": "a power channel reads above 120 % of nominal",
    "what": "Power trip condition."
   },
   {
@@ -560,11 +572,11 @@
    "color": "red",
    "rule": {
     "when": "trace",
-    "field": "f",
+    "field": "flow",
     "op": "<",
-    "value": 0.8
+    "value": 80
    },
-   "text": "coolant flow is below 80 % of nominal",
+   "text": "the core flow meters read below 80 % of nominal",
    "what": "The demo's low-flow annunciator window."
   },
   {
@@ -575,29 +587,24 @@
    "label": "HIGH PRESSURE",
    "color": "red",
    "rule": {
-    "when": "trace",
-    "field": "p",
-    "op": ">",
-    "value": 7.6
+    "when": "any",
+    "of": [
+     {
+      "when": "trace",
+      "field": "press_l",
+      "op": ">",
+      "value": 7.6
+     },
+     {
+      "when": "trace",
+      "field": "press_r",
+      "op": ">",
+      "value": 7.6
+     }
+    ]
    },
-   "text": "drum pressure is above 7.6 MPa",
+   "text": "a drum pressure reads above 7.6 MPa",
    "what": "The demo's high-pressure annunciator window."
-  },
-  {
-   "id": "A_FUEL_HI",
-   "type": "ann",
-   "zone": "annunciator",
-   "slot": 4,
-   "label": "FUEL T > 1200",
-   "color": "red",
-   "rule": {
-    "when": "trace",
-    "field": "Tf",
-    "op": ">",
-    "value": 1200
-   },
-   "text": "fuel temperature is above 1200 C",
-   "what": "Fuel temperature trip condition."
   },
   {
    "id": "A_CH_DISAGREE",
@@ -617,84 +624,20 @@
    "what": "The two power channels disagree."
   },
   {
-   "id": "A_VOID_HI",
-   "type": "ann",
-   "zone": "annunciator",
-   "slot": 6,
-   "label": "VOID > 40%",
-   "color": "amber",
-   "rule": {
-    "when": "trace",
-    "field": "void",
-    "op": ">",
-    "value": 0.4
-   },
-   "text": "steam void fraction is above 40 %",
-   "what": "Steam void fraction well above nominal."
-  },
-  {
-   "id": "A_XENON_HI",
-   "type": "ann",
-   "zone": "annunciator",
-   "slot": 7,
-   "label": "XENON HIGH",
-   "color": "amber",
-   "rule": {
-    "when": "trace",
-    "field": "X",
-    "op": ">",
-    "value": 1.5
-   },
-   "text": "xenon poisoning index is above 1.5",
-   "what": "Xenon poisoning is raised."
-  },
-  {
-   "id": "A_REACT_HI",
-   "type": "ann",
-   "zone": "annunciator",
-   "slot": 8,
-   "label": "POWER RISING",
-   "color": "amber",
-   "rule": {
-    "when": "trace",
-    "field": "rho",
-    "op": ">",
-    "value": 0.1
-   },
-   "text": "total reactivity is above 0.1 dollars",
-   "what": "The demo's power-rising annunciator window."
-  },
-  {
-   "id": "A_TIP",
-   "type": "ann",
-   "zone": "annunciator",
-   "slot": 9,
-   "label": "TIP EFFECT",
-   "color": "amber",
-   "rule": {
-    "when": "trace",
-    "field": "tip",
-    "op": ">",
-    "value": 0.05
-   },
-   "text": "graphite-tip reactivity is being added by a shutdown",
-   "what": "The positive-scram effect is active."
-  },
-  {
    "id": "A_SETPOINT_LOW",
    "type": "ann",
    "zone": "annunciator",
-   "slot": 10,
+   "slot": 6,
    "label": "POWER < DEMAND",
    "color": "amber",
    "rule": {
     "when": "diffrow",
-    "a": "demand",
-    "b": "P",
+    "a": "demand_pct",
+    "b": "heat",
     "op": ">",
-    "value": 0.1
+    "value": 10
    },
-   "text": "true power is more than 10 points under the demand",
+   "text": "the heat-balance power is more than 10 points under the demand",
    "what": "Power is below the demand."
   },
   {
@@ -705,7 +648,7 @@
    "field": "scram",
    "what": "The emergency protection button under its hinged guard. Pressing it drives every control rod in.",
    "range": "off or active",
-   "modelled": "scram of each feed row: the cap is drawn pressed while the shutdown is active. The viewer cannot press it; only the feed's reactor does."
+   "modelled": "az5 of the sensor view: true while AZ-5 is pressed."
   },
   {
    "id": "RODMAP",
@@ -721,7 +664,7 @@
    "id": "A_PROT_DEFEATED",
    "type": "ann",
    "zone": "annunciator",
-   "slot": 11,
+   "slot": 7,
    "label": "PROT DEFEATED",
    "color": "amber",
    "rule": {
@@ -734,7 +677,7 @@
    "id": "L_AR_ON",
    "type": "lamp",
    "zone": "desk_lamps",
-   "slot": 2,
+   "slot": 1,
    "label": "AUTO REG",
    "color": "green",
    "rule": {
@@ -749,7 +692,7 @@
    "id": "L_TEST",
    "type": "lamp",
    "zone": "desk_lamps",
-   "slot": 3,
+   "slot": 2,
    "label": "TG TEST",
    "color": "amber",
    "rule": {
@@ -764,7 +707,7 @@
    "id": "L_PUMP_1",
    "type": "lamp",
    "zone": "desk_lamps",
-   "slot": 4,
+   "slot": 3,
    "label": "PUMP 1",
    "color": "green",
    "rule": {
@@ -781,7 +724,7 @@
    "id": "L_PUMP_2",
    "type": "lamp",
    "zone": "desk_lamps",
-   "slot": 5,
+   "slot": 4,
    "label": "PUMP 2",
    "color": "green",
    "rule": {
@@ -798,7 +741,7 @@
    "id": "L_PUMP_3",
    "type": "lamp",
    "zone": "desk_lamps",
-   "slot": 6,
+   "slot": 5,
    "label": "PUMP 3",
    "color": "green",
    "rule": {
@@ -815,7 +758,7 @@
    "id": "L_PUMP_4",
    "type": "lamp",
    "zone": "desk_lamps",
-   "slot": 7,
+   "slot": 6,
    "label": "PUMP 4",
    "color": "green",
    "rule": {
@@ -832,7 +775,7 @@
    "id": "L_PUMP_5",
    "type": "lamp",
    "zone": "desk_lamps",
-   "slot": 8,
+   "slot": 7,
    "label": "PUMP 5",
    "color": "green",
    "rule": {
@@ -849,7 +792,7 @@
    "id": "L_PUMP_6",
    "type": "lamp",
    "zone": "desk_lamps",
-   "slot": 9,
+   "slot": 8,
    "label": "PUMP 6",
    "color": "green",
    "rule": {
@@ -866,7 +809,7 @@
    "id": "L_PUMP_7",
    "type": "lamp",
    "zone": "desk_lamps",
-   "slot": 10,
+   "slot": 9,
    "label": "PUMP 7",
    "color": "green",
    "rule": {
@@ -883,7 +826,7 @@
    "id": "L_PUMP_8",
    "type": "lamp",
    "zone": "desk_lamps",
-   "slot": 11,
+   "slot": 10,
    "label": "PUMP 8",
    "color": "green",
    "rule": {
@@ -900,7 +843,7 @@
    "id": "L_PROT_DRUM_TRIPS",
    "type": "lamp",
    "zone": "desk_lamps",
-   "slot": 12,
+   "slot": 11,
    "label": "DRUM TRIPS OFF",
    "color": "amber",
    "rule": {
@@ -915,7 +858,7 @@
    "id": "L_PROT_TG_TRIP",
    "type": "lamp",
    "zone": "desk_lamps",
-   "slot": 13,
+   "slot": 12,
    "label": "TG TRIP OFF",
    "color": "amber",
    "rule": {
@@ -930,7 +873,7 @@
    "id": "L_PROT_ECCS",
    "type": "lamp",
    "zone": "desk_lamps",
-   "slot": 14,
+   "slot": 13,
    "label": "ECCS OFF",
    "color": "amber",
    "rule": {
@@ -940,6 +883,357 @@
    },
    "text": "the ECCS protection is DEFEATED",
    "what": "Lit when this protection has been switched off."
+  },
+  {
+   "id": "A_LEVEL_OUT",
+   "type": "ann",
+   "zone": "annunciator",
+   "slot": 4,
+   "label": "DRUM LEVEL",
+   "color": "red",
+   "rule": {
+    "when": "any",
+    "of": [
+     {
+      "when": "trace",
+      "field": "level_l",
+      "op": ">",
+      "value": 45
+     },
+     {
+      "when": "trace",
+      "field": "level_l",
+      "op": "<",
+      "value": -45
+     },
+     {
+      "when": "trace",
+      "field": "level_r",
+      "op": ">",
+      "value": 45
+     },
+     {
+      "when": "trace",
+      "field": "level_r",
+      "op": "<",
+      "value": -45
+     }
+    ]
+   },
+   "text": "a drum level reads outside plus or minus 45 cm",
+   "what": "A drum level reading is outside plus or minus 45 cm."
+  },
+  {
+   "id": "K_SCENARIO_PREV",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 5,
+   "label": "SCEN-",
+   "color": "amber",
+   "action": "scenario_prev",
+   "what": "Desk key SCEN-: scenario prev on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_SCENARIO_NEXT",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 4,
+   "label": "SCEN+",
+   "color": "amber",
+   "action": "scenario_next",
+   "what": "Desk key SCEN+: scenario next on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_CONTROLLER_PREV",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 3,
+   "label": "CTRL-",
+   "color": "amber",
+   "action": "controller_prev",
+   "what": "Desk key CTRL-: controller prev on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_CONTROLLER_NEXT",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 2,
+   "label": "CTRL+",
+   "color": "amber",
+   "action": "controller_next",
+   "what": "Desk key CTRL+: controller next on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_DECIDER_PREV",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 1,
+   "label": "DECID-",
+   "color": "amber",
+   "action": "decider_prev",
+   "what": "Desk key DECID-: decider prev on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_DECIDER_NEXT",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 0,
+   "label": "DECID+",
+   "color": "amber",
+   "action": "decider_next",
+   "what": "Desk key DECID+: decider next on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_MEMORY_PREV",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 11,
+   "label": "MEM-",
+   "color": "amber",
+   "action": "memory_prev",
+   "what": "Desk key MEM-: memory prev on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_MEMORY_NEXT",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 10,
+   "label": "MEM+",
+   "color": "amber",
+   "action": "memory_next",
+   "what": "Desk key MEM+: memory next on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_CLOCK_PREV",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 9,
+   "label": "CLOCK-",
+   "color": "amber",
+   "action": "clock_prev",
+   "what": "Desk key CLOCK-: clock prev on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_CLOCK_NEXT",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 8,
+   "label": "CLOCK+",
+   "color": "amber",
+   "action": "clock_next",
+   "what": "Desk key CLOCK+: clock next on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_SOURCE",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 7,
+   "label": "SOURCE",
+   "color": "amber",
+   "action": "source",
+   "what": "Desk key SOURCE: source on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_BATCH",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 6,
+   "label": "BATCH",
+   "color": "amber",
+   "action": "batch",
+   "what": "Desk key BATCH: batch on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_RECORDING_PREV",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 17,
+   "label": "REC-",
+   "color": "amber",
+   "action": "recording_prev",
+   "what": "Desk key REC-: recording prev on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_RECORDING_NEXT",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 16,
+   "label": "REC+",
+   "color": "amber",
+   "action": "recording_next",
+   "what": "Desk key REC+: recording next on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_OPEN",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 15,
+   "label": "OPEN",
+   "color": "amber",
+   "action": "open",
+   "what": "Desk key OPEN: open on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_START",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 14,
+   "label": "START",
+   "color": "green",
+   "action": "start",
+   "what": "Desk key START: start on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_STOP",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 13,
+   "label": "STOP",
+   "color": "red",
+   "action": "stop",
+   "what": "Desk key STOP: stop on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_EXPORT",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 12,
+   "label": "EXPORT",
+   "color": "amber",
+   "action": "export",
+   "what": "Desk key EXPORT: export on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_BACK",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 23,
+   "label": "BACK",
+   "color": "amber",
+   "action": "back",
+   "what": "Desk key BACK: back on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_PLAY",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 22,
+   "label": "PLAY",
+   "color": "amber",
+   "action": "play",
+   "what": "Desk key PLAY: play on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_STEP",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 21,
+   "label": "STEP",
+   "color": "amber",
+   "action": "step",
+   "what": "Desk key STEP: step on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_SPEED_PREV",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 20,
+   "label": "SPEED-",
+   "color": "amber",
+   "action": "speed_prev",
+   "what": "Desk key SPEED-: speed prev on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_SPEED_NEXT",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 19,
+   "label": "SPEED+",
+   "color": "amber",
+   "action": "speed_next",
+   "what": "Desk key SPEED+: speed next on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "K_END",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 18,
+   "label": "END",
+   "color": "amber",
+   "action": "end",
+   "what": "Desk key END: end on the run panel.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
+  },
+  {
+   "id": "SCREEN_RUN",
+   "type": "screen",
+   "zone": "run_screen",
+   "slot": 0,
+   "label": "RUN PANEL",
+   "w": 0.62,
+   "h": 0.37,
+   "what": "The run panel display: the source, scenario, controller, decider, memory, clock, the run on show and the batch of poisoned starts.",
+   "range": "",
+   "modelled": "The state of the app's desk keys; nothing here comes from the plant."
+  },
+  {
+   "id": "K_CAPTION",
+   "type": "key",
+   "zone": "run_keys",
+   "slot": 29,
+   "label": "CAPT",
+   "color": "amber",
+   "action": "caption",
+   "what": "Desk key CAPT: pause the playback at each caption.",
+   "range": "",
+   "modelled": "A desk control of the app, not of the plant: it changes what the room shows or starts a run of the simulator."
   }
  ]
 }

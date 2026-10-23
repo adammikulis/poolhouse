@@ -323,7 +323,7 @@ Rules, each a test (checks A, H, J and L of section 13):
    component of such a path is a descriptor too (`O_NOFOLLOW` covers only the last component), and a link, a FIFO or a device found in a
    walk is recorded by its type and never opened. A local checkout is read as data and never followed out of its root, so DEPS hashing
    cannot be aimed at a private file.
-2. A configuration is parsed once, in the Parser zone, from the bytes that were hashed; the validated result (bounded by the receiver's budget
+2. A configuration is parsed once, in the Parser zone, from the bytes that were hashed; the validated result (bounded by the receiver's derived bounds
    on a device, 10.6) stays in Runner memory and the copy in the scratch tree is never consulted again.
 3. Nothing that grants authority travels in an environment variable or a file a Child can read: permits arrive on an inherited descriptor, and
    a lease is delegated by the broker to a process it identifies by a handle the operating system keeps stable for the process's life, never
@@ -970,15 +970,15 @@ The runner's rule, for every unit and every project:
   Before the first unit of a project has finished there is no recorded duration, so the run is allowed only attached to a terminal (a person can
   end it) or with `--timeout S` on the command line, a number whose source is the caller; the report says `guard: bootstrapping, terminal` or
   `guard: bootstrapping, --timeout`, and an unattended first run with neither is status 4. `poolhouse-test init`'s measured first run is that
-  run. On a device the receiver is the caller (10.6, "Time").
-- **A shard has no clock of its own; the sender bounds the sum.** A shard ends when its last unit ends. Each unit on a device has its own
-  bound (its `timeout`, else its recorded typical duration times `total_margin`) and a unit with neither is not sent to a device. The
-  sender enforces the sum of its shard's unit bounds on its own monotonic clock, counted from the device's report of the first unit's
-  start; the wait for that first start is bounded by the queue limit or the no-progress guard, and the steps before it have their own
-  bounds. At expiry the sender cancels the shard and records the units that had not ended `not run (deadline)`. The executor enforces each
-  unit's bound from the verified config and its own measurements, and units it did not start are reported `not run (device refused)`,
-  never `124`. The sender never trusts a device to end its own shard, and a device never trusts a sender to end it: the receiver's
-  own ceiling (10.6, "Time") holds whatever the sender does.
+  run. On a device the first shard is bounded by the sender's declared unit bounds (10.6, "Time").
+- **A shard has no clock of its own; both ends bound the sum.** A shard ends when its last unit ends. Each unit on a device has its own
+  declared bound (its `timeout`, else its recorded typical duration times `total_margin`; it travels as the unit's `bound`, 6.1) and a unit
+  with neither is not sent to a device. The sender enforces the sum of its shard's declared unit bounds on its own monotonic clock, counted
+  from the device's report of the first unit's start; the wait for that first start is bounded by the queue limit or the no-progress guard,
+  and the steps before it have their own bounds. At expiry the sender cancels the shard and records the units that had not ended `not run
+  (deadline)`. The executor enforces each unit's declared bound, lowered by its own measurements (10.6, "Time"), and the same sum on its own
+  clock; units it did not start are reported `not run (device refused)`, never `124`. The sender never trusts a device to end its own shard,
+  and a device never trusts a sender to end it.
 - **Overload is named, not guessed.** The report says `the machine was overloaded` only when units are `not started`; a run in which every
   unit started but some queued for a long time says `queued N s (the machine's)` and judges the units by `ran_s` alone.
 
@@ -996,8 +996,8 @@ class Transport(Protocol):
 ```
 
 A `Shard` is `{id (128 random bits), project (the sender's opaque project id), config_sha256, tree_sha256, set, nonce (128 random bits the
-sender makes per shard, for the control units of 6.4), units: [{id, labels}]}`:
-no argument vector, environment, working directory, `extra`, step list or deadline. The receiver builds every command from the config it
+sender makes per shard, for the control units of 6.4), units: [{id, labels, bound}]}` (`bound`: the sender's declared seconds for the unit, its `timeout`, else its recorded typical duration times `total_margin`; finite and positive, and the receiver may only lower it, 10.6):
+no argument vector, environment, working directory, `extra`, step list or shard deadline. The receiver builds every command from the config it
 holds at `config_sha256` (10.3): arguments, steps, timeouts and slots come from that verified file, and a label name in `units` selects a
 table in it (a name the file lacks is refused). `project` is an opaque hash the sending runner computes from the named project (4.8) and is
 the only identity of a project a device ever sees; the file's `[project] name` is never one. `Tree` is the sender's packed files and
@@ -1046,10 +1046,9 @@ refused at the connection. A protocol or build mismatch is refused with the upda
 sentence for why not`. In a pool in dev mode it allows every member while `remote-tests` is not disabled. In any other pool it allows only
 the senders on the device's allow list, empty until a person adds one. Adding is one act with one sentence, "This lets '<device>' run its
 own code on this computer, as you.": `poolhouse-test allow DEVICE` puts it to the receiving device's gate (4.8), and with none available refuses
-and prints the block for the person's own editor. With the sentence the person gives the sender's budget (10.6, "Time"): the seconds one unit
-may run, the seconds one shard may run and the slot-seconds it may hold. In a pool in dev mode, where no allow act exists, the same three
-numbers are the device's policy for the pool's members (`poolhouse-test policy`, asked through the gate at device setup), and a device with
-none refuses a sender's first shard with the sentence naming that command (`not run (device refused)`, reassigned). `deny` and removing a
+and prints the block for the person's own editor. The same gate is asked, once each, to widen what the sender may do on this device (the
+network destinations a step may use, the loopback ports, the resources it may lease; none by default). It is never asked for a time, a disk or
+a memory number: those bounds are derived from the sender's declared bounds and the device's own measurements (10.6). `deny` and removing a
 member take the sender off and cancel its runs. A phone-signed grant is the same act through another surface (open question 1).
 
 **One server, one executor.** The server half (`testfarm/transports/pool_server.py`) and the executor (`testfarm/executor.py`, L2) are
@@ -1174,7 +1173,7 @@ directories:
    ([probe]: `tomllib` used about twenty bytes of memory per input byte on tables, and 16 s of CPU for 10 MB at a load of 90); a larger input is
    status 4 naming the size and the cap. The start of a confined interpreter costs real time ([probe]: a median 62 ms against 36 ms unconfined
    for one that imports `tomllib`, `json` and `xml.etree`), so a process per result file (600 invocations, 37 s) is not allowed;
-   `tests/test_runner_overhead.py` measures the worker's start and a round trip. The validated config, bounded by the receiver's budget on a
+   `tests/test_runner_overhead.py` measures the worker's start and a round trip. The validated config, bounded by the receiver's derived bounds on a
    device, stays in the executor's memory and the copy in the scratch tree is never read again.
 5. A junit document is parsed in the worker by `xml.parsers.expat` directly, with the encoding forced to UTF-8 (the parser overrides the
    document's own declaration [doc: `xml.parsers.expat.ParserCreate`], so a UTF-16 document is a parse error) and with `StartDoctypeDeclHandler` and
@@ -1191,7 +1190,7 @@ directories:
 8. The unpack runs in the worker with write access to `tree/` only; the Runner hashes the unpacked files afterwards through descriptors it
    opens itself, after `fstat` says regular file, so the tar and gzip handling of hostile bytes (the checks of A13) is in a confined process and
    not in the daemon that holds the pool's keys.
-9. The budgets of 10.6 (time, disk, memory) are enforced here: the unit scratch volume or the polled disk floor, the polled memory share, and the
+9. The derived bounds of 10.6 (time, disk, memory) are enforced here: the unit scratch volume or the polled disk floor, the polled memory share, and the
    worker's `RLIMIT_CPU` and memory share.
 
 ## 7. Presets: tools, never repositories
@@ -1350,7 +1349,7 @@ project the user has not named is never run unconfined (10.2) and why the host g
   a member (`docs/pools-and-serving.md`). The list is per pool (`docs/design-multi-pool-devices.md`) and is kept with the pool's settings,
   where no child, confined or not, can read or write (the Owner zone, 3.5).
 - **What the policy can restrict, on the receiver, by its own settings:** controls that limit a capability: the network a step may use
-  (none by default), the slots, time, disk and memory a sender may hold (10.6), the resources a sender may lease, and the senders. A key in the sent
+  (none by default), the loopback ports, the resources a sender may lease, and the senders; the slots, time, disk and memory a sender may hold are derived, not set (10.6). A key in the sent
   `testfarm.toml` can only ask for less than the policy allows; it cannot widen it. There is no policy knob for which kinds of runner may
   be used (presets only, or any vector): a preset runs the tree's own `conftest.py`, plugins and tests, so such a knob would limit the
   shape of a command and not what runs, and a person who set it could believe it contained the risk.
@@ -1394,10 +1393,10 @@ project the user has not named is never run unconfined (10.2) and why the host g
 
 The sent tree contains code, so the receiver runs sender code; what it refuses to do is *build the command from sender text*. The receiver
 hashes the bytes of `testfarm.toml` in the tree it verified, parses those same bytes once (6.6), validates them against the schema,
-bounds `slots`, `timeout` and `env` by its budget for the sender (10.6) and its policy, and builds the argument vector from the verified
+bounds `slots`, `timeout` and `env` by its derived bounds (10.6) and its policy, and builds the argument vector from the verified
 `run.argv` and the named set: only
 `{ids}`, `{idfile}`, `{result}`, `{extra}`, `{jobs}`, `{step:NAME}` and `{shared:NAME}` are substituted, each as a separate argument,
-never through a shell. `extra` is the verified set's own: the start request carries no `extra`, no step list and no deadline, and a step
+never through a shell. `extra` is the verified set's own: the start request carries no `extra`, no step list and no shard deadline, and a step
 that rewrites the config in the scratch tree changes nothing, because the executor never reads that copy again. A `NAME` in a placeholder
 or a table, and every environment variable name, matches the grammars of section 4 or the shard is refused; `{step:../x}` is refused at
 validation. Hooks and launchers in the file are not run on a device. A shard asks for units by id and label name; the receiver checks each
@@ -1459,8 +1458,8 @@ Every bound has a source; where the source is "the owner, in source" it is a row
 host move to the Python module that now holds them. Section 15 lists them, and `poolhouse-test limits` prints the library's own table (each
 bound with the value measured now and the rule that gives it), because a project that imports the library cannot edit Poolhouse's
 `docs/limits.md`. The rule for every bound, new or carried over: derived from the device (free disk of the scratch volume, free inodes,
-logical CPUs, memory), from the operating system (the argument maximum), or set by the receiver's person or by the project's own file, never
-typed in by the runner; **a clamp with no source is not written.** The receiver owns three budgets for a sender, below, and a key in the sent
+logical CPUs, memory), from the operating system (the argument maximum), or set by the project's own file, never
+typed in by the runner; **a clamp with no source is not written.** The receiver derives three bounds for a sender, below, and a key in the sent
 file can only ask for less.
 
 **Disk.** The receiver measures its free scratch disk and free inodes when it takes a shard; the shard's share is that free amount divided by
@@ -1473,13 +1472,15 @@ below the amount measured at the start less the shard's share, polled at the han
 writes in total and `RLIMIT_FSIZE` is per file [probe], so this rule, with the sized volume where there is one, is what stops a unit that
 writes until stopped, on both backends.
 
-**Time.** A device bounds a unit by the smaller of the sent bound (the unit's `timeout`, else its recorded typical duration times
-`total_margin`, 5.10) and its own ceiling for the sender. The ceiling's sources, in order: the seconds the receiver's person gave for this
-sender, one for a unit and one for a shard, with the slot-seconds it may hold (given at the `allow` act, or as the device's policy for the
-members of a pool in dev mode, both through the gate, 4.8); else the longest wall time the device itself measured, on its own clock, for any
-unit of that project from that sender on an earlier shard. A sender with neither gets no first shard: it is refused with the sentence naming
-`poolhouse-test policy`, which is `not run (device refused)` and reassigned, so nothing waits. The sender's bound on a shard (5.10) is a
-second bound and never the receiver's.
+**Time.** The receiver asks nobody for a number. A run cannot start without a hang guard (5.10), so every unit the sender sends to a device
+carries its declared bound (`bound`, 6.1): the unit's `timeout`, else its recorded typical duration times `total_margin`, a finite positive
+number the receiver may only lower. A device bounds a unit by the smaller of that declared bound and, once it has history, the longest wall
+time its own clock measured for the same unit class (the unit's id from this sender and project; for an id it has not run, any unit of that
+project from this sender) times the verified file's `total_margin`, and by the no-progress guard of 5.10 computed from its own measurements.
+It bounds a shard by the sum of its units' declared bounds, counted on its own monotonic clock from the first unit's start, and ends the
+group at expiry. A device with no history of the sender's project accepts the declared bounds. The report names the limit that fired
+(`limit: declared bound`, `limit: longest time measured on <device>`). A person's `allow` widens what a sender may do (network destinations,
+loopback ports, resources); it never carries a time number.
 
 **Memory.** Where the platform lets a child's memory be limited (a Linux cgroup memory limit through the sandbox backend, when the device
 delegates one), the shard's memory share, the device's free memory when it takes the shard divided by the shards it holds, is that limit.
@@ -1514,7 +1515,7 @@ with no file is in `tests/test_testfarm_attacks.py`.
 | A1 | A copied or cloned pool or device: a clone with a member's key answers under its fingerprint | a signature proves a key, not a machine: the install-instance id the sender pins with the fingerprint (6.2) makes a copy of the key made without the id a second instance that gets no shard and is reported (a copy of the whole disk carries the id and is the same instance, 10.9 item 3); such a copy's `remote` pass is advice and stored only when a second source with another instance id agrees; a copied pool is a different pool id and its results are dropped | `test_testfarm_attacks.py::test_a1_a_second_instance_of_a_fingerprint_gets_no_shard` |
 | A2 | Replay of a start, an upload or a result | shard id is 128 random bits and inside the signed request and the result; requests are bound to a time, a nonce, the method, the target and the host (`sealing.request_data`, `macauth`'s nonce table); a result for another shard, tree or config fails; the echo proves freshness only (6.4) | `test_a2_a_replayed_start_and_a_result_for_another_shard_are_refused` |
 | A3 | A forged or below-threshold signature | the certificate check; results are not signed and one device's word is below any threshold for skip evidence: a device pass is stored only when a second source agrees (5.3, 6.4) and never creates `local` evidence | `test_a3_one_device_pass_is_shown_and_not_stored` |
-| A4 | A compromised or malicious member as sender: runs code, fills the disk, hogs slots, starves the owner, reads other senders' shards, aims the executor at a file | confinement with the network denied (10.2); the executor's boundary (6.6); the receiver's time, disk and memory budget for a sender (10.6), per-sender and per-device bounds, background class, kill when the admission asks for the slots back, ownership of the shard folder by the first uploader | `test_testfarm_confinement.py::test_a_step_that_links_every_executor_path_to_a_canary_file_reaches_nothing` and `::test_a_unit_cannot_connect_to_the_daemon_a_model_server_or_the_lan_gateway`, `test_testfarm_policy.py::test_a_sender_with_no_budget_gets_no_first_shard` |
+| A4 | A compromised or malicious member as sender: runs code, fills the disk, hogs slots, starves the owner, reads other senders' shards, aims the executor at a file | confinement with the network denied (10.2); the executor's boundary (6.6); the receiver's derived bounds on time, disk and memory (10.6), per-sender and per-device bounds, background class, kill when the admission asks for the slots back, ownership of the shard folder by the first uploader | `test_testfarm_confinement.py::test_a_step_that_links_every_executor_path_to_a_canary_file_reaches_nothing` and `::test_a_unit_cannot_connect_to_the_daemon_a_model_server_or_the_lan_gateway`, `test_testfarm_policy.py::test_a_unit_is_bounded_by_the_smaller_of_the_declared_bound_and_the_devices_history` |
 | A5 | A compromised member as receiver: returns a false pass, a false failure, fewer rows, rows for ids not assigned, another shard's results, an old result, a lied platform, capacity or cost, `not started` for failing units, a made-up key or `reads` | the sender checks the row set exactly and the shard, tree and config hashes; the platform class comes from the pinned member record, capacity from the sender's own observation and `fixed_cost_s` from the sender's clock; `not started` from a device is `not run (device refused)` and the units are reassigned; a failure on a device is final and is not erased by a re-run on another class (6.4); keys are never read from a result; the `remote` kind never satisfies a local run or authority | `test_a5_a_device_that_refuses_every_unit_cannot_turn_failures_into_a_retry_status` and `::test_a_failure_on_a_device_survives_a_pass_on_the_sender` |
 | A6 | A stolen phone or key; a stolen device key | removing the member refuses it at the next request and cancels its shards, a running executor included; a stolen person key adds a device only through the charter's thresholds, which this design does not change | `test_a6_a_removed_member_is_refused_and_its_shard_is_cancelled` |
 | A7 | A malicious agent on the sender asks for a run on a device it should not use, edits `testfarm.toml` to widen a run, or names a project as its own | where a tree goes is read from the user's settings and the flag and never from the project's file (4.8); a project that is not named is never sent; naming, `allow` and a widening target are answered only by the host's gate (4.8), never by a terminal; the settings are in the Owner zone, which no child reads or writes and which the host's guards refuse to an agent's tools, so the row holds against a hostile repository and against an agent whose host guards those paths (10.9 item 9); an agent holds the same authority as the user for `run` on a named project; the config can only ask for less than the receiver's policy | `test_a7_a_project_file_cannot_choose_a_target_and_an_agent_cannot_name_a_project` and `test_testfarm_settings.py::test_the_settings_are_written_only_after_the_gate_says_yes` |
@@ -1531,7 +1532,7 @@ with no file is in `tests/test_testfarm_attacks.py`.
 | A18 | Terminal injection through output: escape sequences, carriage returns, a fake `[other-device]` prefix, a fake summary or status line, direction and tag characters | 10.5; the prefix, the frames (their markers carry the run's nonce) and the summary are the sender's, for local output too | `test_a18_a_fake_prefix_or_summary_inside_output_stays_in_its_frame` |
 | A19 | The source tree is disclosed to a device | only a project the user named is sent, to the targets the user chose; the set is the tracked files plus untracked files a unit names through a glob that is not the whole tree (no `.env.local`), listed at the first send, and only to the devices the person agreed (4.8); the first send prints the file count and top-level names; `plan --show-tree` | `test_a19_untracked_files_are_not_sent_unless_named` |
 | A20 | Time-of-check to time-of-use between the hash and the run, symlink races in the scratch tree | the executor-owned `exec/` that children cannot write; descriptors held open; the config in memory; hash after unpack; no links accepted | `test_testfarm_confinement.py::test_a_step_that_links_every_executor_path_to_a_canary_file_reaches_nothing` |
-| A21 | Fork bomb, memory hog, disk fill by a shard, a `setsid` child that outlives the shard | process-group kill; PID namespace and `--die-with-parent` on Linux; a marker sweep on macOS with the residue in 10.9; the disk, memory and time budgets of 10.6 (a sized scratch volume or a polled floor, and a polled memory share on macOS with the residue in 10.9); bounded log | `test_a21_a_detached_child_does_not_survive_a_shard_on_linux` and `test_testfarm_confinement.py::test_a_unit_that_writes_until_stopped_and_one_that_allocates_until_stopped_are_ended` |
+| A21 | Fork bomb, memory hog, disk fill by a shard, a `setsid` child that outlives the shard | process-group kill; PID namespace and `--die-with-parent` on Linux; a marker sweep on macOS with the residue in 10.9; the derived disk, memory and time bounds of 10.6 (a sized scratch volume or a polled floor, and a polled memory share on macOS with the residue in 10.9); bounded log | `test_a21_a_detached_child_does_not_survive_a_shard_on_linux` and `test_testfarm_confinement.py::test_a_unit_that_writes_until_stopped_and_one_that_allocates_until_stopped_are_ended` |
 | A22 | The step or hook of a repository the user was handed runs on the sender | a project the user has not named runs LIST, `deps.command`, steps, hooks and units confined, including for `list`, `check`, `init`, `plan` and `affected` (10.2), in a scratch copy, after the project is classified from files with no git and with every git call confined (4.9); nothing sends a hook to a device | `test_a22_check_on_a_fresh_clone_runs_its_list_confined` |
 | A23 | A project's `testfarm.toml` or the reuse store reads outside the project (a symlink to a home file in `inputs`, a DEPS row with an absolute or `..` path) | such rows are refused; the runner reads only the project root and its state directory, and check B proves it under the sandbox's read profile, children included | `test_testfarm_readonly.py::test_nothing_outside_the_project_and_the_state_is_read` |
 | A24 | Takeover by whoever is merely present on the LAN | dev mode trusts every device that joined, which `docs/fleet.md` states; with the default target `local` a project's tree goes nowhere until the user names the project and chooses another target, so that trust does not reach every consumer by default; a `target` or `--on` that names a device set the person has not agreed is a widening that asks the host's gate (4.8); a pool that is not in dev mode requires the allow list; the kill switch is `remote-tests` | `test_a24_nothing_is_sent_until_the_project_is_named_and_a_target_chosen` |
@@ -1550,7 +1551,7 @@ with no file is in `tests/test_testfarm_attacks.py`.
 | A37 | A confined run writes what the next unconfined action runs: repository hooks, `testfarm.toml`, shell-integration files | an unnamed project's units run in a scratch copy and the checkout is not in their profile (10.2) | `test_testfarm_confinement.py::test_a_confined_unit_cannot_write_the_checkout_testfarm_toml_or_repository_metadata` |
 | A38 | A named unit reads the key, writes an entry of any project or edits the settings | the Owner zone is denied to every child by exact path and the key is per project (3.5, 5.3) | `test_testfarm_store.py::test_a_named_unit_cannot_read_the_key_or_write_the_store_or_the_settings` |
 | A39 | The hang guard is satisfied by `inf`, by one margin or before the first unit finishes; a unit prints a byte at a time; a spawn bypasses the guard | numbers are finite and in range; both margins are required; a byte is progress only until the total guard; the first unit needs a terminal or `--timeout`; one spawn function (4, 5.10, 3.1) | `test_testfarm_config.py::test_non_finite_and_one_sided_guards_are_refused`, `test_testfarm_timeouts.py::test_a_unit_that_prints_a_byte_at_a_time_is_ended_by_the_total_guard` and `::test_every_process_the_runner_starts_goes_through_the_one_spawn_function` |
-| A40 | A sender sends a unit with `timeout = 1e9`, or a loop that fills the disk or the memory of a device | the receiver's budget (10.6): a ceiling with a source, a share of the disk spent in order, a polled memory share, no first shard without a time budget | `test_testfarm_policy.py::test_a_sender_with_no_budget_gets_no_first_shard` and `test_testfarm_confinement.py::test_a_unit_that_writes_until_stopped_and_one_that_allocates_until_stopped_are_ended` |
+| A40 | A sender sends a unit with `timeout = 1e9`, or a loop that fills the disk or the memory of a device | the receiver's derived bounds (10.6): the declared bound lowered by the device's own history, the shard ended at the sum of the declared bounds on the device's clock, a share of the disk spent in order, a polled memory share; the gap of a device with no history is named in 10.9 item 8 | `test_testfarm_policy.py::test_a_device_with_no_history_accepts_the_declared_bound_and_a_device_with_history_lowers_it`, `::test_a_shard_is_ended_at_the_sum_of_the_declared_bounds` and `test_testfarm_confinement.py::test_a_unit_that_writes_until_stopped_and_one_that_allocates_until_stopped_are_ended` |
 | A41 | XML or TOML that ends the parser in a way the code did not list: UTF-16 without a byte-order mark, a 5000-digit integer | the refusal is made inside expat for every encoding and any end of the worker other than a clean record stream is status 4 (6.6) | `test_testfarm_confinement.py::test_xml_in_every_encoding_with_a_doctype_is_refused` and `::test_any_end_of_the_parser_worker_is_status_4` |
 | A42 | `[requires] module:NAME.sub` runs an installed package's import-time code on the device | a `module:` name holds no dot, `PathFinder.find_spec` imports nothing and every probe runs in a unit's profile (6.5) | `test_testfarm_pool.py::test_requires_never_imports_a_package` |
 | A43 | A delegated lease credited to a dead or recycled process id, or a model server that outlives its group | the broker identifies a process by handle, drops a delegation on the leader's exit and keeps the lease held while a detached server runs (5.5) | `test_serve_delegation.py::test_a_dead_connecting_process_gets_no_delegation` and `::test_a_server_that_outlives_the_group_keeps_the_lease_held` |
@@ -1580,7 +1581,10 @@ Named with the owner, because each is a residue of the platform and the owner ac
 7. **The narrow deny is a speed bump, not a wall.** A named child that asks LaunchServices to start an unconfined program (`open x.command`)
    leaves the deny [not run: it would open a Terminal window on the owner's screen]. The denial of the Owner zone stops a direct read or write
    and not a child that starts a program outside the profile's reach.
-8. **Memory of a confined child on macOS is not bounded by the platform.** The executor polls the group's resident memory and ends it over its
+8. **The receiver's bounds are derived, so two gaps remain.** A device with no history of a sender's project accepts the sender's declared
+   unit bounds, so a hostile sender that declares a large bound holds the device's background slots until its owner's work is requested
+   (10.7) or the device's history bounds its next shard, and a sender that sets `total_margin` large lifts the history bound the same way.
+   Memory of a confined child on macOS is not bounded by the platform: the executor polls the group's resident memory and ends it over its
    share, so a burst between two polls is not stopped.
 9. **No host guard, no protection for the Owner paths.** The settings are an ordinary file in the user's account. An agent with a file-write
    tool, on a host that does not refuse writes to `ph.test.owner_paths()`, can name its project or widen a target. A7 holds against a hostile
@@ -1657,8 +1661,9 @@ Steps that need a person: naming a project as one's own, one yes per project ask
 '<path>' will run as you, with access to your files except the runner's own keys and settings, and may be sent to: <devices>. Without a yes they
 run confined, in a copy."), which `init` offers as its last line and which Poolhouse's own checkout gets from its device setup; and, for a pool
 that is not in dev mode, the receiving device's person adding the sender once (`poolhouse-test allow`), asked once through the same gate with the
-sentence "This lets '<device>' run its own code on this computer, as you." and the seconds, disk and slot-seconds the sender may use. A pool in
-dev mode asks the receiving person the same budget once, at device setup. With no gate available each of these refuses, changes nothing and
+sentence "This lets '<device>' run its own code on this computer, as you." (it also asks once each to widen what the sender may do: network
+destinations, loopback ports, resources; it never asks for a time, a disk or a memory number). With no gate available each of these refuses,
+changes nothing and
 prints the block a person adds to the settings file at their own editor; the run goes on, confined and local. A repository the user was handed
 and has not named still runs, confined, in a copy: it reads its own files and the toolchain, writes the scratch tree, and uses no network, and
 nothing of it leaves the machine.
@@ -1935,7 +1940,7 @@ test is green on the step's commit and red on that mutant. Findings that change 
    blocks the rest of this step. The step lands as one branch of ordered commits (a) to (e), because two ways of sending a shard cannot rest
    side by side and nothing is reachable from `ph.test` or `scripts/test --on` until (e). (a) The receiver on the executor of step 3:
    the closed start fields, per-unit streaming, the deny-default profile with the network denied on both platforms, the allowlist
-   environment, the receiver's time, disk and memory budgets (10.6), the listed-ports rule for macOS loopback, the PID namespace on Linux
+   environment, the receiver's derived time, disk and memory bounds (10.6), the listed-ports rule for macOS loopback, the PID namespace on Linux
    and the sweep on macOS. (b) The wire: the generalised
    `/shards/v1` routes and caps (answered only to an admitted sender), the tree hash over the transported set, the project id, the shard nonce, the
    install-instance id, the sender-keyed step directories, `admit()`, the `allow` act. (c) Trust: control units, sticky suspicion,
@@ -1961,11 +1966,11 @@ test is green on the step's commit and red on that mutant. Findings that change 
    | F1 the executor on a device | `test_testfarm_confinement.py::test_a_step_that_links_every_executor_path_to_a_canary_file_reaches_nothing` and `::test_a_result_path_replaced_by_a_link_reads_nothing`, run on a sent tree |
    | F6 completed rows survive; refused is not a failure; a unit that kills devices | `test_testfarm_pool.py::test_completed_rows_survive_a_vanished_device`, `::test_a_device_that_returns_not_started_for_failing_units_is_reassigned_and_suspect`, `::test_a_unit_running_when_two_devices_vanish_is_suspected` |
    | F7 a device failure is final | `::test_a_failure_on_a_device_survives_a_pass_on_the_sender` (red on a sender that re-runs and reports the pass), `::test_a_failure_that_does_not_reproduce_twice_makes_the_device_suspect` (N18; a hostile member's false failures cost it its place) |
-   | F8 the start request | `test_testfarm_confinement.py::test_the_start_request_has_no_extra_steps_or_deadline_and_a_rewritten_config_changes_nothing` |
+   | F8 the start request | `test_testfarm_confinement.py::test_the_start_request_has_no_extra_steps_or_shard_deadline_and_a_rewritten_config_changes_nothing` |
    | F9 `{shared}` on a device | `test_testfarm_steps.py::test_a_sender_cannot_leave_a_product_another_senders_step_finds` |
    | F10 network and loopback | `test_testfarm_confinement.py::test_a_unit_cannot_connect_to_the_daemon_a_model_server_or_the_lan_gateway` on both platforms (the Linux half runs on the WSL device), `::test_a_sent_unit_with_loopback_on_macos_is_refused_unless_the_receiver_lists_ports`, `::test_a_listener_started_after_the_profile_was_built_is_not_reachable` (N15) |
    | F11 device claims steer nothing; passes are advice | `test_testfarm_pool.py::test_a_device_pass_is_shown_and_not_stored_without_a_second_source`, `::test_a_second_instance_of_a_fingerprint_gets_no_shard`, `::test_platform_and_capacity_come_from_the_senders_record`, `::test_a_control_unit_refuses_a_shard_that_ran_nothing`, `::test_a_confinement_control_unit_catches_a_sandbox_that_fails_open`, `::test_a_mismatch_is_sticky_until_allow`, `::test_a_control_unit_never_ends_a_mismatch` (N11) |
-   | F12 the sender's bound; queue time; a stalled poller | `::test_a_device_that_only_heartbeats_is_ended_by_the_sender`, `::test_a_shard_waiting_in_the_devices_queue_is_not_a_deadline`, `::test_silence_is_not_counted_across_a_sender_stall`, `::test_a_sender_that_never_cancels_does_not_extend_the_receivers_ceiling` (N7) |
+   | F12 the sender's bound; queue time; a stalled poller | `::test_a_device_that_only_heartbeats_is_ended_by_the_sender`, `::test_a_shard_waiting_in_the_devices_queue_is_not_a_deadline`, `::test_silence_is_not_counted_across_a_sender_stall`, `::test_a_sender_that_never_cancels_does_not_extend_the_receivers_shard_bound` (N7) |
    | F14 sending (decision 2) | `::test_untracked_files_are_not_sent_unless_named`, `::test_the_first_send_prints_the_file_count_and_top_level_names`, `::test_nothing_is_sent_until_the_project_is_named_and_a_target_chosen`, `::test_a_glob_for_the_whole_tree_pulls_in_no_untracked_file`, `::test_a_send_to_a_device_set_not_agreed_asks_again` (N13, N3) |
    | F15 requirements, regular expressions, descendants | `::test_requires_names_are_checked_by_the_devices_own_probes`, `::test_requires_never_imports_a_package` (`module:this.x` and `module:xml.dom.minidom`; N10), `test_testfarm_confinement.py::test_a_pattern_from_the_file_cannot_backtrack`, `::test_a_detached_child_does_not_survive_a_shard_on_linux` |
    | F17 device text | `test_testfarm_attacks.py::test_a8_invisible_and_framed_text_cannot_pose_as_the_runner` (device output) |
@@ -1974,7 +1979,7 @@ test is green on the step's commit and red on that mutant. Findings that change 
    | F25 tree set and hash | `test_testfarm_pool.py::test_the_tree_hash_has_no_colliding_concatenation`, `::test_two_users_with_different_git_settings_send_one_set`, `::test_no_directory_name_or_extension_is_special`, `::test_info_exclude_and_a_global_excludes_file_change_nothing` (N2: the exclusion rules are the tree's own `.gitignore` files) |
    | F26 the real-device proof | `scripts/pool-check` on this Mac and the WSL device, its output in the step's report with the platform not covered named; the loopback harness is the wire test |
    | F30 items 7, 8, 10, 11 (one `allow` act, Windows is a sender, caps answers only an admitted sender, the delta rules) | `test_testfarm_pool.py::test_caps_gives_a_member_it_does_not_admit_only_the_sentence` |
-   | N7 the receiver's budget | `test_testfarm_policy.py::test_a_sender_with_no_budget_gets_no_first_shard`, `::test_a_unit_is_bounded_by_the_smaller_of_the_sent_bound_and_the_receivers_ceiling`; `test_testfarm_confinement.py::test_a_unit_that_writes_until_stopped_and_one_that_allocates_until_stopped_are_ended` (both backends), `::test_the_disk_parts_of_a_shard_add_up_to_its_share` |
+   | N7 the receiver's derived bounds | `test_testfarm_policy.py::test_a_device_with_no_history_accepts_the_declared_bound_and_a_device_with_history_lowers_it`, `::test_a_shard_is_ended_at_the_sum_of_the_declared_bounds`, `::test_a_declared_bound_that_is_not_finite_and_positive_is_refused`; `test_testfarm_confinement.py::test_a_unit_that_writes_until_stopped_and_one_that_allocates_until_stopped_are_ended` (both backends), `::test_the_disk_parts_of_a_shard_add_up_to_its_share` |
    | N8 parser death | `test_testfarm_confinement.py::test_xml_in_every_encoding_with_a_doctype_is_refused`, `::test_a_toml_integer_of_5000_digits_ends_the_worker_in_status_4` |
    | N9 the unpack in the worker | `test_testfarm_pool.py::test_the_tar_is_unpacked_in_the_parser_worker_and_hashed_through_descriptors` |
    | N16 credentials in a preset's reach | `test_testfarm_presets.py::test_a_shipped_preset_names_subpaths_and_denies_known_credential_files`, `::test_a_proxy_value_is_forwarded_without_user_and_password` |
@@ -2053,7 +2058,7 @@ imports the library cannot edit Poolhouse's `docs/limits.md`.
 | hang guards | no-progress stretch: longest recorded silence or measured round trip times `silence_margin`; total: recorded median times `total_margin` | the history and the measured round trip; both margins are the project's, finite and at least 1, and both are required, no runner default |
 | a device's liveness | the measured round trip of the stream times `silence_margin`, counted across the sender's completed waits | the measured round trip; the project's margin |
 | the first unit's bound | `--timeout S` on the command line, or a terminal a person can end the run from | the caller, no default; an unattended first run with neither is refused (5.10) |
-| the receiver's time ceiling for a sender | the seconds the receiver's person gave (unit, shard, slot-seconds), else the longest wall time the device measured for any unit of the project | the receiver's person at `allow` or `policy`, or the device's own clock; no constant (10.6) |
+| the receiver's bound on a unit and on a shard | a unit: the smaller of the sender's declared bound and, once the device has history, its longest measured time for the unit class times `total_margin`; a shard: the sum of the declared bounds | the sender's file and history and the device's own clock; no constant, and no number asked of a person (10.6) |
 | the sender's bound on a shard | the sum of its units' bounds, counted from the device's report of the first unit start | each unit's `timeout`, else its recorded typical duration times `total_margin` |
 | unit and test timeouts | the unit's `timeout` and `test_timeout` are the project's; with no unit `timeout` the hang guards derive it | the project's file, or the history |
 | step build deadline, slots, idle, prune | the step's `timeout`, else the hang guards; its `slots` or the free slots; `keep` or least recently used on disk need; no interval | the project's file, or the measured free slots and free disk |
@@ -2080,7 +2085,7 @@ imports the library cannot edit Poolhouse's `docs/limits.md`.
 
 `unrecorded_max` (the cap on a unit with no record) is the project's setting with no runner default, and the sample clip and `JOBS_DIVISOR`
 are gone. No row of this table has "the owner's value in code" as its source: a number is measured, set by the project's file with no
-runner default, given by the receiver's person, or has a row in `docs/limits.md` with its protocol, operating system or security reason (the
+runner default, or has a row in `docs/limits.md` with its protocol, operating system or security reason (the
 shard id, the run id, the install-instance id, the control and frame nonces, the store master key). The small counts the text uses (a refused
 unit is reassigned once, a device is `suspect` after a second refusal, a failed canary gets one more fresh run, a run that serves a hit
 re-executes at least one) are rules and not measurements, and have no number to source. `poolhouse.sandbox.policy.Limits` carries defaults (a

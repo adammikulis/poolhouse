@@ -27,7 +27,8 @@ export class RoomState {
       const n = this.nodes.get(ins.id);
       if (ins.type === 'dial') n.value = dialValue(ins, row);
       else if (ins.type === 'ann' || ins.type === 'lamp') n.lit = !!row && evalRule(ins.rule, row, dec);
-      else if (ins.type === 'button') n.lit = !!row && row.scram === true;
+      else if (ins.type === 'key') n.lit = f.desk.lit(ins.id);
+      else if (ins.type === 'button') n.lit = !!row && row.az5 === true;
     }
     const rods = row && Array.isArray(row.rods) && row.rods.length === ROD_ORDER.length ? row.rods : null;
     this.rods.forEach((r, i) => { r.value = rods ? rods[i] / 100 : undefined; });
@@ -45,7 +46,7 @@ export class RoomState {
       if ((ins.type === 'ann' || ins.type === 'lamp') && n.lit && ins.color !== 'green') worst = Math.max(worst, RANK[ins.color] || 0);
       if (ins.type === 'dial' && inRed(ins, n.value)) worst = Math.max(worst, 2);
       if (ins.type === 'button' && n.lit) worst = 2;
-      if (ins.id === 'SCREEN_ORM' && f.row.orm < 15) worst = 2;
+      if (ins.id === 'SCREEN_ORM' && f.row.orm_printout < 15) worst = 2;
     }
     return worst;
   }

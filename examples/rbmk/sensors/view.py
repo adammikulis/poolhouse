@@ -62,3 +62,11 @@ class SensorView:
     az5: bool
     log: tuple[str, ...]
     trends: dict[str, tuple[float, ...]] = field(default_factory=dict)
+
+
+def crew_row(view: SensorView) -> dict[str, object]:
+    """What the control room's instruments show at one tick, as plain data for a trace row: the readings, the printout, the desk lamps and switches (never the rods: those are the row's own ``rods``)."""
+    return {"readings": {n: r.value for n, r in view.readings.items()}, "orm_printout": view.orm_printout, "orm_age_s": view.orm_age_s,
+            "demand_pct": view.demand_pct, "pumps": [p.speed_pct if p.running else 0 for p in view.pumps],
+            "regulator_on": view.regulator_on, "regulator_setpoint_pct": view.regulator_setpoint_pct, "switches": dict(view.switches),
+            "turbine_test": view.turbine_test, "az5": view.az5}
