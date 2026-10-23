@@ -483,13 +483,46 @@ def _native(node: Client, where: str) -> Session | None:
     return None
 
 
+def _codex(node: Client, where: str, native: str, agent: str, token_file: str) -> Session:
+    """Resolve an already registered Codex session; other selectors must corroborate it.
+
+    The native environment selects credentials, not authority. Node grants and process-lineage
+    checks remain responsible for privileged operations; this lookup never registers a session.
+    """
+    name = str(node.call("session_lookup", where, harness="codex", session=native)["name"])
+    actor = Session(node, where, credentials.load(node.state, where, name), name)
+    identity = actor.whoami()
+    if identity.name != name or identity.harness != "codex" or identity.retired:
+        raise Denied("denied", "native Codex session has no matching live registration")
+    if any(named and named != name for named in (agent, os.environ.get(AGENT_ENV, ""))):
+        raise Denied("denied", "workspace name conflicts with the native Codex session")
+    if os.environ.get(SUBAGENT_ENV, "").strip():
+        raise Denied("denied", "another harness's subagent context conflicts with the native Codex session")
+    for harness_env, id_env in NATIVE_SESSIONS:
+        if other := os.environ.get(id_env, "").strip():
+            harness = os.environ.get(harness_env, "") or SUBAGENT_HARNESS
+            if harness != "codex" or other != native:
+                raise Denied("denied", "native session selectors conflict with the native Codex session")
+    tokens = [os.environ.get(TOKEN_ENV, "").strip()]
+    if token_file:
+        tokens.append(home.expand(token_file).read_text(encoding="utf-8").strip())
+    for token in filter(None, tokens):
+        supplied = Session(node, where, token).whoami()
+        if supplied.name != name or supplied.harness != "codex" or supplied.retired:
+            raise Denied("denied", "provided credentials conflict with the native Codex session")
+    return actor
+
+
 def connect(*, token_file: str = "", agent: str = "", board: str = "", cwd: Path | None = None,
             client: Client | None = None) -> Session:
-    """The session of the caller: the subagent the harness names in $POOLHOUSE_SUBAGENT, else its token from a file,
-    the agent named (or $POOLHOUSE_WORKSPACE_AGENT), $POOLHOUSE_WORKSPACE_TOKEN or the native session it runs in,
-    on the board of the directory it runs in."""
+    """The caller's session on this directory's board. Codex resolves its registered native thread first
+    and requires supplied selectors to match. Other harnesses use their subagent context, token file,
+    named workspace session, token environment or registered native session, in that order.
+    """
     node = client or Client()
     where = place.resolve(node, cwd, board)
+    if native := os.environ.get("CODEX_THREAD_ID", "").strip():
+        return _codex(node, where, native, agent, token_file)
     if native := os.environ.get(SUBAGENT_ENV, "").strip():
         return _subagent(node, where, native, agent)
     if token_file:

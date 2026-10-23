@@ -10,7 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from poolhouse import agent_hooks
-from poolhouse.board import client, place, session
+from poolhouse.board import client, credentials, place, session
 from poolhouse.guard.secrets import env_secrets, redact
 from poolhouse.log import say
 from poolhouse.workspace import (
@@ -34,13 +34,15 @@ def native_id(value: object) -> str:
     return value
 
 
-def own(node: client.Client, board: str, identifier: str) -> session.Session:
+def own(node: client.Client, board: str, identifier: str, expected: str = '') -> session.Session:
     name = str(node.call("session_lookup", board, harness="codex", session=identifier)["name"])
     if not name:
         raise ValueError('native session has no authenticated workspace registration')
-    found = session.connect(client=node, board=board, agent=name)
+    if expected and name != expected:
+        raise ValueError('assigned session does not own this Codex registration')
+    found = session.Session(node, board, credentials.load(node.state, board, name), name)
     identity = found.whoami()
-    if identity.name != name or identity.harness != 'codex':
+    if identity.name != name or identity.harness != 'codex' or identity.retired:
         raise ValueError('native workspace registration belongs to another harness')
     return found
 
@@ -48,11 +50,7 @@ def own(node: client.Client, board: str, identifier: str) -> session.Session:
 def assigned_session(node: client.Client, board: str, name: str, identifier: str) -> session.Session:
     if os.environ.get('CODEX_THREAD_ID') != identifier:
         raise ValueError('assigned identity requires the actual native root thread context')
-    actor = session.connect(client=node, board=board, agent=name)
-    identity = actor.whoami()
-    if identity.name != name or identity.harness != 'codex':
-        raise ValueError('assigned session does not own this Codex registration')
-    return actor
+    return own(node, board, identifier, expected=name)
 
 
 def actor_for(event: dict, node: client.Client, board: str, child: str | None, assigned: str) -> session.Session:
@@ -70,15 +68,15 @@ def actor_for(event: dict, node: client.Client, board: str, child: str | None, a
             parent = assigned_session(node, board, assigned, identifier)
         else:
             parent = own(node, board, parent_id)
-        made = parent.register(session.Native(str(event.get('model') or ''), 'codex', child))
-        actor = session.connect(client=node, board=board, agent=made.name)
+        parent.register(session.Native(str(event.get('model') or ''), 'codex', child))
+        actor = own(node, board, child)
     elif child:
         actor = own(node, board, child)
     elif assigned:
         actor = assigned_session(node, board, assigned, identifier)
     elif stage == 'SessionStart':
-        made = session.register(node, board, session.Native(str(event.get('model') or ''), 'codex', identifier))
-        actor = session.connect(client=node, board=board, agent=made.name)
+        session.register(node, board, session.Native(str(event.get('model') or ''), 'codex', identifier))
+        actor = own(node, board, identifier)
     else:
         actor = own(node, board, identifier)
     return actor

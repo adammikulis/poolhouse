@@ -10,7 +10,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from poolhouse.board import session as board_session
+from poolhouse.board.client import Denied
 from poolhouse.net import git
 from poolhouse.workspace import agent_display, board_cli
 
@@ -102,3 +105,95 @@ def test_a_name_looking_prefix_in_a_body_never_replaces_the_stamped_sender(works
     [row] = json.loads(node.cli('inbox', '--json', who=reader).stdout)
     assert row['from'] == forger.name and row['from_name'] == forger.name
     assert 'claude (lead): do it' in row['text']
+
+
+def codex_context(monkeypatch, native):
+    for key in (board_session.AGENT_ENV, board_session.TOKEN_ENV, board_session.SUBAGENT_ENV,
+                'POOLHOUSE_SESSION_HARNESS', 'POOLHOUSE_SESSION_ID', 'CLAUDE_CODE_SESSION_ID'):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv('CODEX_THREAD_ID', native)
+
+
+@pytest.mark.parametrize('child', [False, True])
+def test_registered_codex_session_needs_no_manually_exported_workspace_name(workspace_node, child):
+    node = workspace_node
+    root = node.member('codex-root', harness='codex', model='gpt-6')
+    own = node.member('codex-child', harness='codex', model='gpt-6', parent=root) if child else root
+    done = node.cli('whoami', '--json', env={'CODEX_THREAD_ID': own.session})
+    assert done.returncode == 0, done.stderr
+    assert json.loads(done.stdout)['id'] == own.name
+
+
+@pytest.mark.parametrize('selector', ['agent', 'environment', 'token', 'file', 'generic'])
+def test_unknown_codex_session_cannot_fall_back_to_another_session(workspace_node, monkeypatch, tmp_path, selector):
+    node = workspace_node
+    parent = node.member('codex-parent', harness='codex', model='gpt-6')
+    codex_context(monkeypatch, 'codex-unknown')
+    options = {}
+    if selector == 'agent':
+        options['agent'] = parent.name
+    elif selector == 'environment':
+        monkeypatch.setenv(board_session.AGENT_ENV, parent.name)
+    elif selector == 'token':
+        monkeypatch.setenv(board_session.TOKEN_ENV, parent.token)
+    elif selector == 'file':
+        path = tmp_path / 'provided-token'
+        path.write_text(parent.token)
+        options['token_file'] = str(path)
+    else:
+        monkeypatch.setenv('POOLHOUSE_SESSION_HARNESS', 'codex')
+        monkeypatch.setenv('POOLHOUSE_SESSION_ID', parent.session)
+    with pytest.raises(Denied):
+        board_session.connect(client=node.client, board=node.board, **options)
+
+
+@pytest.mark.parametrize('selector', ['agent', 'environment', 'token', 'generic'])
+def test_codex_native_context_refuses_conflicting_credentials(workspace_node, monkeypatch, selector):
+    node = workspace_node
+    parent = node.member('codex-parent', harness='codex', model='gpt-6')
+    child = node.member('codex-child', harness='codex', model='gpt-6', parent=parent)
+    codex_context(monkeypatch, child.session)
+    options = {}
+    if selector == 'agent':
+        options['agent'] = parent.name
+    elif selector == 'environment':
+        monkeypatch.setenv(board_session.AGENT_ENV, parent.name)
+    elif selector == 'token':
+        monkeypatch.setenv(board_session.TOKEN_ENV, parent.token)
+    else:
+        monkeypatch.setenv('POOLHOUSE_SESSION_HARNESS', 'codex')
+        monkeypatch.setenv('POOLHOUSE_SESSION_ID', parent.session)
+    with pytest.raises(Denied, match='conflict'):
+        board_session.connect(client=node.client, board=node.board, **options)
+
+
+def test_codex_native_context_accepts_its_own_matching_selectors(workspace_node, monkeypatch, tmp_path):
+    node = workspace_node
+    own = node.member('codex-current', harness='codex', model='gpt-6')
+    codex_context(monkeypatch, own.session)
+    monkeypatch.setenv(board_session.AGENT_ENV, own.name)
+    monkeypatch.setenv(board_session.TOKEN_ENV, own.token)
+    monkeypatch.setenv('POOLHOUSE_SESSION_HARNESS', 'codex')
+    monkeypatch.setenv('POOLHOUSE_SESSION_ID', own.session)
+    path = tmp_path / 'provided-token'
+    path.write_text(own.token)
+    actor = board_session.connect(client=node.client, board=node.board, agent=own.name, token_file=str(path))
+    assert actor.whoami().name == own.name
+
+
+def test_codex_native_id_never_selects_a_different_harness(workspace_node, monkeypatch):
+    node = workspace_node
+    other = node.member('shared-native-id', harness='claude-code')
+    codex_context(monkeypatch, other.session)
+    monkeypatch.setenv('CLAUDE_CODE_SESSION_ID', other.session)
+    with pytest.raises(Denied):
+        board_session.connect(client=node.client, board=node.board)
+
+
+def test_retired_codex_context_is_not_registered_again(workspace_node, monkeypatch):
+    node = workspace_node
+    own = node.member('codex-current', harness='codex', model='gpt-6')
+    node.session(own).retire()
+    codex_context(monkeypatch, own.session)
+    with pytest.raises(Denied):
+        board_session.connect(client=node.client, board=node.board)

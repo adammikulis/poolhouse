@@ -54,9 +54,9 @@ def test_root_child_nested_are_separate_authenticated_sessions(node):
     child_name = session.find("codex", IDS["native-child"], client=node.client)
     lifecycle.handle(event("SubagentStart", agent_id="native-nested", parent_agent_id="native-child"), node=node.client)
     nested_name = session.find("codex", IDS["native-nested"], client=node.client)
-    root = session.connect(client=node.client, board=node.board, agent=root_name)
-    child = session.connect(client=node.client, board=node.board, agent=child_name)
-    nested = session.connect(client=node.client, board=node.board, agent=nested_name)
+    root = node.session(node.adopt(root_name))
+    child = node.session(node.adopt(child_name))
+    nested = node.session(node.adopt(nested_name))
     assert root.name != child.name != nested.name
     assert child.whoami().parent == root.name
     assert nested.whoami().parent == child.name
@@ -79,7 +79,7 @@ def test_child_turn_stop_keeps_authenticated_session_for_followup(node):
     lifecycle.handle(event("SessionStart"), node=node.client)
     lifecycle.handle(event("SubagentStart", agent_id="child", parent_agent_id="native-root"), node=node.client)
     child_name = session.find("codex", IDS["child"], client=node.client)
-    child = session.connect(client=node.client, board=node.board, agent=child_name)
+    child = node.session(node.adopt(child_name))
     before = child.whoami()
     for _ in range(2):
         lifecycle.handle(event("SubagentStop", agent_id="child", turn_id="turn-one"), node=node.client)
@@ -92,11 +92,11 @@ def test_explicit_retirement_still_refuses_ended_child_identity(node):
     lifecycle.handle(event("SessionStart"), node=node.client)
     lifecycle.handle(event("SubagentStart", agent_id="child", parent_agent_id="native-root"), node=node.client)
     child_name = session.find("codex", IDS["child"], client=node.client)
-    session.connect(client=node.client, board=node.board, agent=child_name).retire()
+    node.session(node.adopt(child_name)).retire()
     with pytest.raises(Exception, match=r"ended|retired|session"):
         lifecycle.handle(event("SubagentStart", agent_id="child", parent_agent_id="native-root"), node=node.client)
     name = session.find("codex", IDS["native-root"], client=node.client)
-    assert not session.connect(client=node.client, board=node.board, agent=name).whoami().retired
+    assert not node.session(node.adopt(name)).whoami().retired
 
 
 def test_root_session_end_retires_root_and_stopped_children(node):
@@ -107,17 +107,25 @@ def test_root_session_end_retires_root_and_stopped_children(node):
     lifecycle.handle(event("SessionEnd"), node=node.client)
     for name in names:
         with pytest.raises(Exception, match=r"token|ended|retired|session"):
-            session.connect(client=node.client, board=node.board, agent=name).whoami()
+            node.session(node.adopt(name)).whoami()
 
 
 def test_assigned_launcher_identity_is_not_replaced_and_child_not_parent(node):
-    assigned = node.member("launcher-native", harness="codex", model="gpt-6.1-sol")
+    assigned = node.member(IDS["native-root"], harness="codex", model="gpt-6.1-sol")
     result = lifecycle.handle(event("SessionStart"), assigned.name, node=node.client)
     assert assigned.name in result["hookSpecificOutput"]["additionalContext"]
-    assert session.find("codex", IDS["native-root"], client=node.client) == ""
+    assert session.find("codex", IDS["native-root"], client=node.client) == assigned.name
     lifecycle.handle(event("SubagentStart", agent_id="child", parent_agent_id="native-root"), assigned.name, node=node.client)
     lifecycle.handle(event("SubagentStop", agent_id="child"), assigned.name, node=node.client)
     assert not node.session(assigned).whoami().retired
+
+
+def test_assigned_identity_must_match_the_registered_native_thread(node):
+    lifecycle.handle(event("SessionStart"), node=node.client)
+    unrelated = node.member("unrelated-launcher", harness="codex", model="gpt-6.1-sol")
+    with pytest.raises(ValueError, match="does not own"):
+        lifecycle.handle(event("SessionStart"), unrelated.name, node=node.client)
+    assert not node.session(unrelated).whoami().retired
 
 
 def test_unregistered_child_does_not_use_assigned_or_inherited_parent(node, monkeypatch):
@@ -155,7 +163,7 @@ def test_documented_child_event_uses_actual_header_parent(node):
     lifecycle.handle(event("SubagentStart", agent_id="native-nested"), node=node.client)
     parent_name = session.find("codex", IDS["native-child"], client=node.client)
     nested_name = session.find("codex", IDS["native-nested"], client=node.client)
-    assert session.connect(client=node.client, board=node.board, agent=nested_name).whoami().parent == parent_name
+    assert node.session(node.adopt(nested_name)).whoami().parent == parent_name
 
 
 def test_spoofed_parent_field_and_native_header_id_are_refused(node):
@@ -193,7 +201,7 @@ def test_child_notification_without_agent_id_uses_actual_child(node, monkeypatch
     if result:
         assert child_name in result["hookSpecificOutput"]["additionalContext"]
     lifecycle.handle(event("SessionEnd"), root_name, node=node.client)
-    assert not session.connect(client=node.client, board=node.board, agent=root_name).whoami().retired
+    assert not node.session(node.adopt(root_name)).whoami().retired
     retired = {actor.name: actor.retired for actor in node.session(node.adopt(root_name)).agents(retired=True)}
     assert retired[child_name]
 
