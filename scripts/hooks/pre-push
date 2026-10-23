@@ -1,21 +1,6 @@
 #!/bin/sh
-# Refuse an agent's push of anything but the development branch, then check what it pushes
-# with scripts/hooks/pushed. An agent is a process under CLAUDECODE or under a harness process;
-# a person's terminal is neither. The development branch is the one the primary checkout is on,
-# and `main` is never it. An agent's push of `main` is allowed only as one fast-forward to a
-# commit the person approved through the approval question (person-consume); tags, forced
-# pushes and deletions are never allowed. A new branch named promote/* passes: it is the snapshot a promotion
-# pull request is opened from.
-# A dirty tree or a half-finished operation does not change the commits being pushed, so they
-# are reported and never block: other agents leave files in the primary checkout.
-if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
-    echo "pre-push: warning: working tree has uncommitted changes (not part of this push)" >&2
-fi
-for state in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD rebase-merge rebase-apply sequencer; do
-    if [ -e "$(git rev-parse --git-path "$state")" ]; then
-        echo "pre-push: warning: unresolved git operation: $state (not part of this push)" >&2
-    fi
-done
+# Development publication guards refs only. Validation and CI run separately.
+set -eu
 
 self=$0
 while [ -L "$self" ]; do
@@ -26,57 +11,39 @@ while [ -L "$self" ]; do
     esac
 done
 here=$(cd "$(dirname "$self")" && pwd)
-python="${PYTHON:-python3}"
-if [ -z "$CLAUDECODE" ] && ! "$python" "$here/person-consume" harness </dev/null 2>/dev/null; then
+if [ -z "${CLAUDECODE-}${POOLHOUSE_AGENT-}${POOLHOUSE_WORKSPACE_AGENT-}${CODEX_THREAD_ID-}${CODEX_SESSION_ID-}" ] &&
+   ! "${PYTHON:-python3}" "$here/person-consume" harness </dev/null 2>/dev/null; then
     exit 0
 fi
-input=$(cat)
-
 primary=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")
-# git exports GIT_DIR to a hook: without unsetting it this reads the pushing worktree, not the primary
 dev=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git -C "$primary" branch --show-current)
 zero=0000000000000000000000000000000000000000
 
-refused=""
-pushes_main=""
-while read -r local_ref local_sha remote_ref remote_sha; do
-    [ -z "$remote_ref" ] && continue
-    if [ "$local_sha" = "$zero" ]; then
-        refused="$refused $remote_ref"
-    elif [ "$remote_ref" = refs/heads/main ]; then
-        pushes_main=yes
-    elif [ -n "$dev" ] && [ "$remote_sha" = "$zero" ] && [ "${remote_ref#refs/heads/promote/}" != "$remote_ref" ]; then
-        continue
-    elif [ -z "$dev" ] || [ "$dev" = main ] || [ "$remote_ref" != "refs/heads/$dev" ]; then
-        refused="$refused $remote_ref"
+refuse() {
+    echo "pre-push: refused: ${remote_ref:-malformed record} ($1)" >&2
+    echo "Push development with git push origin ${dev:-<development branch>}; release through refs/heads/promote/<date>." >&2
+    exit 1
+}
+
+while read -r local_ref local_sha remote_ref remote_sha extra ||
+      [ -n "$local_ref$local_sha$remote_ref$remote_sha$extra" ]; do
+    [ -n "$local_ref$local_sha$remote_ref$remote_sha$extra" ] || continue
+    [ -n "$local_ref" ] && [ -n "$local_sha" ] && [ -n "$remote_ref" ] &&
+        [ -n "$remote_sha" ] && [ -z "$extra" ] || refuse "malformed record"
+    [ "$local_sha" != "$zero" ] || refuse "deletions are not development pushes"
+    [ -n "$dev" ] && [ "$dev" != main ] || refuse "no development branch"
+    case "$remote_ref" in
+        "refs/heads/$dev"|refs/heads/promote/?*) ;;
+        *) refuse "only development and promotion snapshots are allowed" ;;
+    esac
+    git check-ref-format "$remote_ref" >/dev/null 2>&1 || refuse "invalid destination ref"
+    case "$local_sha$remote_sha" in *[!0-9a-f]*) refuse "invalid commit identifier" ;; esac
+    [ "$(git --no-replace-objects cat-file -t "$local_sha" 2>/dev/null || true)" = commit ] ||
+        refuse "local tip is not a known commit"
+    if [ "$remote_sha" != "$zero" ]; then
+        [ "$(git --no-replace-objects cat-file -t "$remote_sha" 2>/dev/null || true)" = commit ] ||
+            refuse "fetch the remote commit before pushing"
+        git --no-replace-objects merge-base --is-ancestor "$remote_sha" "$local_sha" ||
+            refuse "the update is not a fast-forward"
     fi
-done <<EOF
-$input
-EOF
-
-if [ -z "$refused" ]; then
-    printf '%s\n' "$input" | "$python" "$here/pushed" "$dev" || exit 1
-    [ -z "$pushes_main" ] && exit 0
-    if used=$(printf '%s\n' "$input" | "$python" "$here/person-consume" consume "$1" 2>&1); then
-        echo "pre-push: main released with the person's approval (authorization $used)" >&2
-        exit 0
-    fi
-    refused=" refs/heads/main ($used)"
-fi
-cat >&2 <<WHY
-pre-push: refused:$refused
-
-An agent pushes the development branch, a new promote/* snapshot branch and, with the person's approval, one fast-forward of
-\`main\`. release-please reads the commit subjects on \`main\`, so a push there moves the release
-pull request and publishes every commit on it at once.
-
-Land your branch into the development branch the primary checkout is on, then push it by
-name: git push origin ${dev:-<development branch>}
-
-To release \`main\`, print the approval question with scripts/hooks/person-consume propose
-and ask it with AskUserQuestion, word for word. The person's answer approves that one commit.
-Tags, forced pushes and deletions are the owner's.
-A promotion where \`main\` is protected on the server is a pull request: push a snapshot branch
-(git push origin ${dev:-<development branch>}:refs/heads/promote/<date>) and open the pull request from it.
-WHY
-exit 1
+done

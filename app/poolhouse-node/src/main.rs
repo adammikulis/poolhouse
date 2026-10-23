@@ -130,18 +130,48 @@ fn supplied_key(args: &[String]) -> Result<Option<Supplied>, String> {
     let mut line = String::new();
     std::io::stdin().lock().take(130).read_line(&mut line).map_err(|e| format!("the key on standard input: {e}"))?;
     let seed: [u8; 32] = unhex(line.trim()).and_then(|b| b.try_into().ok()).ok_or("standard input did not hold a key: 64 hex digits and a newline")?;
-    no_core_dumps();
+    no_core_dumps().map_err(|e| format!("cannot disable core dumps: {e}"))?;
     Ok(Some(Supplied { seed, custody }))
 }
 
 /// A node that holds a key it was given leaves no core file behind, which would hold the key.
-fn no_core_dumps() {
+fn no_core_dumps() -> std::io::Result<()> {
     #[cfg(unix)]
     {
         let none = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
         // SAFETY: setrlimit reads the one plain-data struct it is given.
-        unsafe { libc::setrlimit(libc::RLIMIT_CORE, &none) };
+        if unsafe { libc::setrlimit(libc::RLIMIT_CORE, &none) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        let mut actual = none;
+        // SAFETY: getrlimit writes the one plain-data struct it is given.
+        if unsafe { libc::getrlimit(libc::RLIMIT_CORE, &mut actual) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        if actual.rlim_cur != 0 || actual.rlim_max != 0 {
+            return Err(std::io::Error::other("core dump limit remains nonzero"));
+        }
     }
+    Ok(())
+}
+
+/// Protect Linux node memory before reading any key or authority state. This does not protect mutable installation files.
+#[cfg(target_os = "linux")]
+fn protect_process() -> std::io::Result<()> {
+    let zero: libc::c_ulong = 0;
+    // SAFETY: these prctl operations take only integer arguments and no pointers.
+    if unsafe { libc::prctl(libc::PR_SET_DUMPABLE, zero, zero, zero, zero) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    // SAFETY: PR_GET_DUMPABLE takes no additional arguments or pointers.
+    let dumpable = unsafe { libc::prctl(libc::PR_GET_DUMPABLE, zero, zero, zero, zero) };
+    if dumpable < 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    if dumpable != 0 {
+        return Err(std::io::Error::other("process remains dumpable"));
+    }
+    no_core_dumps()
 }
 
 fn run(state: &Path, args: &[String]) -> Result<(), String> {
@@ -181,6 +211,11 @@ fn probe(args: &[String]) -> Result<String, String> {
 }
 
 fn main() -> ExitCode {
+    #[cfg(target_os = "linux")]
+    if let Err(error) = protect_process() {
+        eprintln!("poolhouse-node: cannot protect process memory: {error}");
+        return ExitCode::FAILURE;
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     let state = state_dir(&args);
     let result = match args.first().map(String::as_str) {
@@ -210,7 +245,15 @@ fn main() -> ExitCode {
 mod tests {
     #[test]
     fn a_node_that_holds_a_given_key_cannot_write_a_core_file() {
-        super::no_core_dumps();
+        const CHILD: &str = "POOLHOUSE_CORE_LIMIT_TEST_CHILD";
+        if std::env::var_os(CHILD).is_none() {
+            let status = std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "tests::a_node_that_holds_a_given_key_cannot_write_a_core_file"])
+                .env(CHILD, "1").status().unwrap();
+            assert!(status.success());
+            return;
+        }
+        super::no_core_dumps().unwrap();
         let mut now = libc::rlimit { rlim_cur: 1, rlim_max: 1 };
         // SAFETY: getrlimit writes the one plain-data struct it is given.
         assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_CORE, &mut now) }, 0);
