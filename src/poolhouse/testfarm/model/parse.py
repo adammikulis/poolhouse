@@ -76,12 +76,14 @@ def _resolve(raw: dict) -> tuple[dict, str | None, tuple[str, ...]]:
     if raw.get("schema") != 1 or isinstance(raw.get("schema"), bool):
         raise k.fail("schema", "must be 1 (the schema version this runner reads)" if "schema" in raw else "is required: write schema = 1")
     name = raw.get("preset")
+    defined = raw.get("presets", {})
+    if not isinstance(defined, dict):
+        raise k.fail("presets", "must be a table")
     if name is None:
         k.strict("top level", raw, TOP)
         return raw, None, ()
     k.name("preset", name)
     k.strict("top level", raw, TOP)
-    defined = raw.get("presets", {})
     if name not in defined:
         have = ", ".join(sorted(defined)) or "none"
         raise k.fail("preset", f"{name!r} is not a preset this install ships or this file defines under [presets.NAME] (defined here: {have})")

@@ -369,3 +369,11 @@ def test_a_step_input_and_a_unit_input_that_match_no_file_are_check_errors(tmp_p
         root = shell_project(tmp_path / table[:6].strip("[]\n"), SHELL_CONFIG + table)
         with pytest.raises(ConfigError, match=r"'src/\*\*' matches no file"):
             project.check(root, tmp_path)
+
+
+@pytest.mark.parametrize("value", ["1", "['mine']", "'mine'", "true"])
+@pytest.mark.parametrize("selected", [False, True])
+def test_presets_must_be_a_table_even_when_no_preset_is_selected(value, selected):
+    source = 'schema = 1\n' + ('preset = "mine"\n' if selected else '') + f'presets = {value}\n' + SHELL_CONFIG.split('schema = 1', 1)[1]
+    with pytest.raises(ConfigError, match=r"presets.*table"):
+        parse(source.encode())

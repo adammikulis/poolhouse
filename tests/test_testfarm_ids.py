@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from poolhouse.testfarm.model import ConfigError, ListSpec, exitcodes, ids
+from poolhouse.testfarm.model import Config, ConfigError, ListSpec, exitcodes, ids, units_of
 from poolhouse.testfarm.model.units import read_rows
 
 HOSTILE = ["a\u2028--evil", "a\u2029--evil", "a\u0085--evil", "a\U000e0041b", "a\u200bb", "a\u202eb", "a\u2066b", "a\x00b", "a\x07b", "a\x1bb",
@@ -73,3 +73,11 @@ def test_the_status_is_one_when_anything_failed_and_otherwise_the_highest_cause(
     assert s.status_of([s.NOT_STARTED, s.FAILED, s.NOT_RUN]) == 1 and s.status_of([s.NOT_RUN]) == 70
     assert s.status_of([s.NOT_RUN, s.NOT_STARTED]) == 75 and s.status_of([s.REFUSED, s.NOT_RUN]) == 70
     assert [s.OK, s.FAILED, s.REFUSED, s.BUSY, s.NOT_RUN, s.NOT_STARTED, s.TIMED_OUT, s.CANCELLED] == [0, 1, 4, 6, 70, 75, 124, 130]
+
+
+@pytest.mark.parametrize("text", ["safe\nPASS forged\x1b[31m", "a\rforged", "a\u202eb", "e\u0301", "-option", "a\ud800b"])
+def test_jsonl_group_names_cannot_bypass_the_id_grammar(text):
+    line = json.dumps({"id": "ordinary", "group": text})
+    with pytest.raises(ConfigError, match=r"^LIST (line 1|group): "):
+        rows, _ = read_rows(line.encode(), ListSpec(format="jsonl"))
+        units_of(rows, Config(sha256="review"))

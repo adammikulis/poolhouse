@@ -9,6 +9,7 @@ from testfarm_project import SHELL_CONFIG, project, shell_project
 
 from poolhouse.testfarm import cli
 from poolhouse.testfarm.core import project as project_core
+from poolhouse.testfarm.model import parse
 
 
 def run(*args, capsys):
@@ -73,3 +74,21 @@ def test_the_root_is_the_first_directory_up_with_a_file_or_a_git_entry_and_the_w
     assert project_core.find_root(below) == repo.resolve()
     (repo / "app" / ".git").mkdir()
     assert project_core.find_root(below) == (repo / "app").resolve(), "the walk stops at the nearer .git and never climbs into the parent"
+
+
+def test_init_refuses_a_dangling_link_without_creating_its_target(tmp_path, capsys):
+    root = project(tmp_path, None)
+    target = tmp_path / "outside.toml"
+    (root / "testfarm.toml").symlink_to(target)
+    status, _, err = run("init", "--root", str(root), capsys=capsys)
+    assert status == 4 and "is left as it is" in err
+    assert not target.exists() and (root / "testfarm.toml").is_symlink()
+
+
+def test_check_report_keeps_project_names_and_paths_on_one_plain_line(tmp_path):
+    root = project(tmp_path / "path\nPASS claimed\x1b[31m", None)
+    config = parse(b'schema = 1\n[project]\nname = "project\\nPASS claimed\\u001b[31m"\n[[unit]]\nname = "check"\nrun = ["sh", "check.sh"]\ntimeout = 1\n')
+    lines = project_core.report(root, config, project_core.Listed((), 0, 0), root / "state")
+    assert all("\n" not in line and "\r" not in line and "\x1b" not in line for line in lines)
+    assert any("PASS claimed" in line for line in lines), "the name remains visible as data"
+    assert len("\n".join(lines).splitlines()) == len(lines)

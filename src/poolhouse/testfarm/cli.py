@@ -12,7 +12,7 @@ from poolhouse import home
 from poolhouse.command import Group, flag, option
 from poolhouse.log import say, warn
 from poolhouse.testfarm.core import project, select, state
-from poolhouse.testfarm.model import ConfigError, exitcodes
+from poolhouse.testfarm.model import ConfigError, exitcodes, ids
 
 SKELETON = """schema = 1
 
@@ -46,11 +46,13 @@ def _root(args: argparse.Namespace) -> Path:
 def init(args: argparse.Namespace) -> int:
     """Write a testfarm.toml to fill in; an existing file is never overwritten."""
     target = Path(args.root).resolve() / project.CONFIG_NAME
-    if target.exists():
-        warn(f"poolhouse-test: {target} exists and is left as it is")
+    try:
+        with target.open("x", encoding="utf-8") as stream:
+            stream.write(SKELETON)
+    except FileExistsError:
+        warn(ids.one_line(f"poolhouse-test: {target} exists and is left as it is"))
         return exitcodes.REFUSED
-    target.write_text(SKELETON, encoding="utf-8")
-    say(f"wrote {target}: put your own LIST and RUN commands in it, then run `poolhouse-test check`")
+    say(ids.one_line(f"wrote {target}: put your own LIST and RUN commands in it, then run `poolhouse-test check`"))
     return exitcodes.OK
 
 
@@ -59,7 +61,7 @@ def check(args: argparse.Namespace) -> int:
     try:
         say("\n".join(project.check(_root(args), state_location())))
     except ConfigError as error:
-        warn(f"poolhouse-test: {error}")
+        warn(ids.one_line(f"poolhouse-test: {error}"))
         return error.status
     return exitcodes.OK
 
@@ -70,7 +72,7 @@ def listing(args: argparse.Namespace) -> int:
         config = project.load(_root(args))
         chosen = select.select(project.list_units(_root(args), config).units, config, args.select)
     except ConfigError as error:
-        warn(f"poolhouse-test: {error}")
+        warn(ids.one_line(f"poolhouse-test: {error}"))
         return error.status
     if args.json:
         say(json.dumps([dataclasses.asdict(unit) for unit in chosen], indent=2))

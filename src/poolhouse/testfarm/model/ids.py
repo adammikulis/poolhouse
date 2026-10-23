@@ -7,7 +7,7 @@ import shutil
 import unicodedata
 from collections.abc import Iterable
 
-__all__ = ["BANNED", "plain", "refusal"]
+__all__ = ["BANNED", "one_line", "plain", "refusal"]
 
 BANNED = frozenset({"Cc", "Cf", "Zl", "Zp", "Co", "Cs", "Cn"})
 """The Unicode general categories no id and no printed text holds."""
@@ -43,3 +43,8 @@ def plain(text: str, *, width: int | None = None) -> str:
         kept = "".join(char for char in line if char == "\t" or unicodedata.category(char) not in BANNED)
         lines.append(kept if len(kept) <= columns else kept[:columns - 1] + "…")
     return "\n".join(lines)
+
+
+def one_line(text: str) -> str:
+    """Text with controls and invisible characters escaped on one line."""
+    return "".join(ascii(char)[1:-1] if unicodedata.category(char) in BANNED else char for char in text)

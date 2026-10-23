@@ -73,6 +73,8 @@ def _jsonl(number: int, line: str, refuse: Sequence[str]) -> Row:
     for key in ("group", "def"):
         if key in record and (not isinstance(record[key], str) or not record[key] or "\x00" in record[key]):
             raise _refused(number, f"{key} is non-empty text")
+    if "group" in record and (reason := ids.refusal(record["group"])) is not None:
+        raise _refused(number, f"group: {reason}")
     return Row(record["id"], labels, tuple(_tree_path(number, item) for item in deps), record.get("group"), record.get("def"),
                None if seconds is None else float(seconds))
 
@@ -109,9 +111,14 @@ def read_rows(output: bytes, spec: ListSpec, refuse_prefix: Sequence[str] = ()) 
 
 def _group(row: Row, spec: ListSpec | None) -> str:
     if row.group is not None:
+        if (reason := ids.refusal(row.group)) is not None:
+            raise ConfigError(f"LIST group: {reason}")
         return row.group
     if spec is not None and spec.group and spec.group in row.id:
-        return row.id.split(spec.group, 1)[0]
+        group = row.id.split(spec.group, 1)[0]
+        if (reason := ids.refusal(group)) is not None:
+            raise ConfigError(f"LIST group: {reason}")
+        return group
     return row.id
 
 

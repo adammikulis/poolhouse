@@ -93,7 +93,7 @@ def report(root: Path, config: Config, listed: Listed, state: Path) -> list[str]
                               if config.steps else "none"))
     lines += [f"note: {note}" for note in config.notes]
     lines.append(f"state: {state}")
-    return lines
+    return [ids.one_line(line) for line in lines]
 
 
 def check(root: Path, state: Path) -> list[str]:
