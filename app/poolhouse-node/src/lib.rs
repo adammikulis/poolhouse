@@ -9,6 +9,7 @@ pub mod board;
 pub mod build;
 pub mod cert;
 pub mod claims;
+pub mod contract;
 pub mod client;
 pub mod device;
 pub mod error;
