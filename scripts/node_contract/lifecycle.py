@@ -27,6 +27,7 @@ def lifecycle(root: Path) -> dict:
             raise ValueError("invalid lifecycle requirements")
     for domain in ("session", "invocation"):
         _domain(value[domain], requirements)
+        _semantics(domain, value[domain], requirements)
     if "atomic-single-consumer" not in requirements["consume"] or "single-use-hold" not in requirements["release"]:
         raise ValueError("lifecycle omits single-use ownership")
     return value
@@ -56,12 +57,41 @@ def _domain(value: dict, requirements: dict) -> None:
         raise ValueError("unreachable lifecycle state")
 
 
+
+def _semantics(domain: str, value: dict, requirements: dict) -> None:
+    if domain == "session":
+        states, initial, terminal = {"opening", "live", "retired"}, "opening", {"retired"}
+        expected = {("opening", "admit", "live"), ("opening", "retire", "retired"), ("live", "retire", "retired")}
+    else:
+        states = {"reserved", "bound", "released", "consumed", "cancelled", "invalidated"}
+        initial, terminal = "reserved", {"consumed", "cancelled", "invalidated"}
+        expected = {("reserved", "bind", "bound"), ("bound", "release", "released"), ("released", "consume", "consumed")}
+        expected.update((state, event, target) for state in ("reserved", "bound", "released")
+                        for event, target in (("cancel", "cancelled"), ("invalidate", "invalidated")))
+    actual = {(row["from"], row["event"], row["to"]) for row in value["transitions"]}
+    if (set(value["states"]) != states or value["initial"] != initial or set(value["terminal"]) != terminal
+            or len(value["terminal"]) != len(terminal) or actual != expected):
+        raise ValueError("unsupported lifecycle v1 state or transition semantics")
+    required_checks = {
+        "admit": {"authenticated-producer", "actual-native-birth", "validated-root-and-direct-parent", "current-generations"},
+        "reserve": {"live-session", "current-generations", "immutable-actor-context", "event-and-purpose", "exact-payload-digest"},
+        "bind": {"actual-held-process", "live-exact-process-handle", "reservation-owner", "current-generations", "no-prior-binding"},
+        "release": {"live-session", "current-generations", "unchanged-context-purpose-and-digest", "exact-live-bound-process", "single-use-hold"},
+        "consume": {"live-session", "current-generations", "exact-live-bound-caller", "matching-event-purpose-and-digest", "required-cleanup-evidence", "atomic-single-consumer"},
+        "cancel": {"authorized-caller", "atomic-terminal-race", "close-capabilities-before-termination"},
+        "retire": {"invalidate-outstanding-descendants-and-invocations", "close-channels-before-reaping", "new-generation-to-reopen"},
+        "invalidate": {"bind-failure-or-process-exit-or-lost-producer-or-lost-holder-or-restart", "no-process-reassignment"},
+    }
+    if any(set(requirements[event]) != checks for event, checks in required_checks.items()):
+        raise ValueError("unsupported lifecycle v1 authorization requirements")
+
 def adapters(root: Path) -> dict:
     value = tomllib.loads((root / "adapters.toml").read_text())
-    fields = {"version", "trait", "binding", "serialization", "handles", "errors", "requirements", "method"}
+    fields = {"version", "trait", "binding", "serialization", "spawn_plan", "handles", "errors", "requirements", "method"}
     keys(value, fields, fields)
     if (value["version"] != 1 or type(value["version"]) is not int or value["trait"] != "NativeCallerPlatform"
-            or value["binding"] != "node-owned-runtime-handle" or value["serialization"] != "forbidden"):
+            or value["binding"] != "node-owned-runtime-handle" or value["serialization"] != "forbidden"
+            or value["spawn_plan"] != "node-owned-immutable-measured-plan"):
         raise ValueError("unsupported adapter contract")
     for name in ("handles", "errors"):
         items = value[name]
@@ -83,12 +113,17 @@ def adapters(root: Path) -> dict:
         for argument in method["arguments"]:
             keys(argument, {"name", "type", "ownership"}, {"name", "type", "ownership"})
             if (not isinstance(argument["name"], str) or argument["name"] in parameters or not FIELD.fullmatch(argument["name"]) or argument["name"] in RESERVED
-                    or argument["type"] not in {*value["handles"], "Binding"} or argument["ownership"] not in {"borrow", "move"}):
+                    or argument["type"] not in {*value["handles"], "Binding", "SpawnPlan"} or argument["ownership"] not in {"borrow", "move"}):
                 raise ValueError("invalid adapter argument")
             parameters.add(argument["name"])
         methods[name] = method
     if set(methods) != {"verify_installation", "verify_bootstrap", "authenticate_producer", "hold_spawn", "observe_held", "release", "inspect_caller", "caller_observation", "is_live", "cancel_hold", "terminate"}:
         raise ValueError("incomplete native caller adapter")
+    if methods["hold_spawn"]["arguments"] != [
+            {"name": "producer", "type": "AdmittedProducer", "ownership": "borrow"},
+            {"name": "bootstrap", "type": "VerifiedBootstrap", "ownership": "borrow"},
+            {"name": "plan", "type": "SpawnPlan", "ownership": "borrow"}]:
+        raise ValueError("hold_spawn requires an immutable node-owned spawn plan")
     release = methods["release"]
     if release["arguments"] != [{"name": "held", "type": "HeldProcess", "ownership": "move"}, {"name": "binding", "type": "Binding", "ownership": "borrow"}]:
         raise ValueError("release must consume its hold with a node binding")
@@ -104,12 +139,12 @@ def render(value: dict, adapter: dict) -> str:
             checks = ", ".join('"' + check + '"' for check in value["requirements"][row["event"]])
             output.append(f'Transition {{ domain: "{domain}", from: "{row["from"]}", event: "{row["event"]}", to: "{row["to"]}", checks: &[{checks}] }},')
     output.append('];\n#[derive(Debug)]\npub enum NativeAdapterError { ' + ", ".join(adapter["errors"]) + ' }\n')
-    output.append('/// Opaque runtime handles are never wire DTOs or proof supplied by a caller.\npub trait NativeCallerPlatform<Binding> {')
+    output.append('/// Opaque runtime handles are never wire DTOs or proof supplied by a caller.\npub trait NativeCallerPlatform<Binding, SpawnPlan> {')
     output.extend('    type ' + name + ';' for name in adapter["handles"])
     for method in adapter["method"]:
         arguments = []
         for argument in method["arguments"]:
-            kind = argument["type"] if argument["type"] == "Binding" else "Self::" + argument["type"]
+            kind = argument["type"] if argument["type"] in {"Binding", "SpawnPlan"} else "Self::" + argument["type"]
             arguments.append(argument["name"] + ": " + ("&" if argument["ownership"] == "borrow" else "") + kind)
         result = method["result"]
         result = "()" if result == "unit" else result if result in {"bool", "ProcessObservation"} else "Self::" + result
