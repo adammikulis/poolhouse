@@ -165,11 +165,11 @@ def test_a_second_launcher_waits_for_the_claim_of_the_first(tmp_path):
     assert order == ["first done", "second"]
 
 
+@pytest.mark.skipif(os.name == "nt", reason="a shell kills itself with a signal")
 @pytest.mark.parametrize("disclaimed", [False, True])
 def test_a_process_that_was_killed_is_reported_as_killed_not_as_ended(tmp_path, disclaimed):
     with (tmp_path / "out").open("ab") as out:
-        started = jobs.start([sys.executable, "-I", "-S", "-c", "import os, signal; os.kill(os.getpid(), signal.SIGKILL)"], out=out,
-                             disclaimed=disclaimed)
+        started = jobs.start(["/bin/sh", "-c", "kill -KILL $$"], out=out, disclaimed=disclaimed)
     child = spawned.child_of(started)
     deadline = time.monotonic() + 120
     while child.poll() is None and time.monotonic() < deadline:

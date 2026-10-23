@@ -120,6 +120,8 @@ def test_a_name_that_is_not_utf8_is_carried_as_the_system_has_it(tmp_path):
     assert "caf" in (tmp_path / "out.log").read_text()
 
 
+# These two start /bin/sh, not Python: a process that answers for itself waits for its own consent to read Documents, and a Python run
+# from a virtual environment kept there (or with editable installs there) reads it at start.
 def _printed(path: Path) -> str:
     deadline = time.monotonic() + 120
     while time.monotonic() < deadline and not path.read_text().strip():
@@ -132,8 +134,7 @@ def test_a_disclaimed_child_starts_in_the_directory_it_is_given_not_the_callers(
     where = tmp_path / "elsewhere"
     where.mkdir()
     with (tmp_path / "out.log").open("ab") as stream:
-        pid = disclaim.spawn([sys.executable, "-I", "-S", "-c", "import os; print(os.getcwd(), flush=True)"],
-                             {"PATH": os.environ["PATH"]}, stream.fileno(), cwd=where)
+        pid = disclaim.spawn(["/bin/sh", "-c", "pwd -P"], {"PATH": os.environ["PATH"]}, stream.fileno(), cwd=where)
     try:
         assert Path(_printed(tmp_path / "out.log")).resolve() == where.resolve()
     finally:
@@ -146,7 +147,7 @@ def test_a_job_started_as_its_own_responsible_process_starts_in_the_state_root_n
     answer nobody sees; so the directory the caller happens to be in (often a checkout there) is never the one it starts in."""
     monkeypatch.setenv("POOLHOUSE_HOME", str(tmp_path / "state"))
     with (tmp_path / "out.log").open("ab") as stream:
-        ran = jobs.start([sys.executable, "-I", "-S", "-c", "import os; print(os.getcwd(), flush=True)"], out=stream, disclaimed=True)
+        ran = jobs.start(["/bin/sh", "-c", "pwd -P"], out=stream, disclaimed=True)
     try:
         assert Path(_printed(tmp_path / "out.log")).resolve() == (tmp_path / "state").resolve()
     finally:
