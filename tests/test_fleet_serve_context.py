@@ -92,7 +92,7 @@ def test_exact_context_reaches_existing_lease_without_mutating_defaults(model, t
     settings = replace(serving.context_settings(model, 6144), name='Context test')
     serving.start_model(tmp_path, model, settings=settings, manager=manager)
     assert captured[0].context == 6144 and captured[0].parallel == 1
-    assert serving.ServeSettings().context == 8192
+    assert serving.ServeSettings().context == 0
 
 
 @pytest.fixture

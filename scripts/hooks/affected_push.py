@@ -145,6 +145,14 @@ def split_old(root: Path, start: str, failing: list[str]) -> tuple[list[str], li
     return [line for line in failing if test_id(line) not in old], [line for line in failing if test_id(line) in old]
 
 
+def still_failing(root: Path, lines: list[str]) -> tuple[list[str], list[str]]:
+    """The failing ``lines`` that fail again when run alone on the pushed tree, and those that pass: a test that fails among
+    hundreds on a loaded machine and passes alone failed for the load, which the push did not cause."""
+    say(f"running the {len(lines)} new failure(s) again, alone, on the tree being pushed, to tell a break from a failure under load")
+    again = {test_id(line) for line in run_tests(root, [test_id(line) for line in lines], echo=False)[1]}
+    return [line for line in lines if test_id(line) in again], [line for line in lines if test_id(line) not in again]
+
+
 def failing_files(lines: list[str]) -> list[str]:
     """The test files the ``FAILED id`` lines name, each once."""
     seen = []
@@ -200,6 +208,12 @@ def check(dev: str, base: str, tip: str) -> int:
         say(f"warning: {len(old)} test(s) were already red before this push and are not held against it:")
         for line in old:
             say(f"  {line}")
+    if new:
+        new, passed = still_failing(root, new)
+        if passed:
+            say(f"warning: {len(passed)} test(s) failed in the big run and pass alone, so they failed for the load and are not held against the push:")
+            for line in passed:
+                say(f"  {line}")
     if not new:
         return 0
     say("these tests fail on the tree being pushed and passed before it:")

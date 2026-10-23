@@ -90,6 +90,7 @@ def test_browser_sends_sdk_chat_and_reloads_saved_answer(tmp_path, sdk_playwrigh
     fake = CannedServer(Canned(served_path="qwen-sdk.gguf", pieces=("A live ", "SDK answer"), gap=2.0))
     served = Serving(tmp_path)
     served.ui.settings.setup_done = True
+    served.ui.settings.context = 8192            # a saved choice: the output slider's top is the context
     served.ui.root = tmp_path
     served.ui.serving = ModelsServing(tmp_path / "models.json")
     served.ui.serving.register(fake.port, ["qwen-sdk.gguf"])
@@ -162,6 +163,7 @@ def test_output_tokens_selected_while_the_chat_page_loads_are_kept(tmp_path, sdk
 
     served = Serving(tmp_path)
     served.ui.settings.setup_done = True
+    served.ui.settings.context = 8192            # a saved choice: the output slider's top is the context
     held = []
     browser = sdk_playwright.chromium.launch(headless=True)
     try:

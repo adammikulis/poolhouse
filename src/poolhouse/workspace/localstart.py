@@ -54,7 +54,7 @@ class Ask:
     name: str = ""
     role: str = roles.DEFAULT
     effort: str = "off"
-    max_effort: str = "medium"
+    max_effort: str = le.DEFAULT_MAX
     profile: str = "chat"
     ctx: int = 0
     project: str = ""
@@ -165,7 +165,7 @@ def start(s: Session, ask: Ask, **options: Unpack[StartOptions]) -> Started:
     _check_board(s, folder_)
     if not ctx:
         try:
-            ctx = localmodel.context_for(chosen, coding=prof.name == 'coding')
+            ctx = localmodel.context_for(chosen)
         except (OSError, ValueError) as error:
             raise Unavailable(str(error)) from error
     problem, hint = lp.admit(chosen.ref or chosen.name, ctx)

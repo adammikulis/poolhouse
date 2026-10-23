@@ -44,7 +44,8 @@ output-token-slider { display:block; min-width:0; }
       if (!this.slider) return;
       const context = this.options.context ?? M.preferences.context;
       const valid = value => Number.isSafeInteger(value) && value > 0;
-      const maximum = Math.min(valid(context) ? context : 8192,
+      const longest = M.CTX_STEPS[M.CTX_STEPS.length - 1];
+      const maximum = Math.min(valid(context) ? context : longest,
         valid(this.options.maximum) ? this.options.maximum : Infinity);
       const minimum = this.options.nullable ? 0 : this.options.minimum;
       const stops = [minimum];

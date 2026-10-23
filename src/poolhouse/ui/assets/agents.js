@@ -83,7 +83,7 @@ class PoolhouseAgents extends PoolhouseElement {
     this.harness = h("poolhouse-select", { label:"Harness", value:"poolhouse-agent" });
     this.profile.addEventListener("change", event => { if (event.detail?.value) { this.update(); } });
     this.ceiling = h("poolhouse-select", { label: "Maximum reasoning effort", hint: "It can raise its own effort up to this",
-      value: "medium" });
+      value: "high" });
     this.go = h("button", { class: "go", type: "button", onclick: () => this.start() }, "Start a local agent");
     this.note = h("span", { class: "note", role: "status", "aria-live": "polite" });
     this.preview = h("p", { class: "note" });
@@ -180,7 +180,7 @@ class PoolhouseAgents extends PoolhouseElement {
     try {
       const got = await this.call("start", {
         model: this.modelField.value.trim() || "auto", name: this.nameField.value.trim(),
-        role: this.roleControl.value, profile: this.profile.value || "chat", effort: this.effort.value || "off", max_effort: this.ceiling.value || "medium", project: this.projectField.value.trim(),
+        role: this.roleControl.value, profile: this.profile.value || "chat", effort: this.effort.value || "off", max_effort: this.ceiling.value || "high", project: this.projectField.value.trim(),
         harness:this.harness.value, ctx:this.contextField.value.trim(), max_output_tokens:this.outputField.value === "" ? null : Number(this.outputField.value),
         task_caps:Object.fromEntries(Object.entries(this.capFields).map(([key, field]) => [key, field.value === "" ? null : Number(field.value)])) });
       this.say(got.already ? `${line(got.name, 48)} is already running.` : `${line(got.name, 48)} started.`, false);

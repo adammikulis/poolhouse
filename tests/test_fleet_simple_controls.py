@@ -13,6 +13,7 @@ pytestmark = pytest.mark.slow
 
 
 def test_context_length_uses_tokens_and_saves_the_chosen_limit(joined, open_page):
+    joined.call('/ui/settings', method='POST', cookie=joined.cookie, body={'context': 8192})
     page, errors = open_page(joined, cookie=joined.cookie, path='/ui/#settings')
     page.get_by_role('tab', name='Appearance & advanced').click()
     slider = page.get_by_role('slider', name='Context length')
@@ -178,6 +179,8 @@ def test_settings_backend_validation_error_stays_visible(joined, open_page):
 def test_central_output_default_saves_and_survives_reloading(joined, open_page):
     from playwright.sync_api import expect
 
+    joined.call('/ui/settings', method='POST', cookie=joined.cookie,
+                body={'context': 8192, 'chat_max_output_tokens': 8192})
     page, errors = open_page(joined, cookie=joined.cookie, path='/ui/#settings')
     page.get_by_role('tab', name='Appearance & advanced').click()
     output = page.get_by_label('Default maximum output tokens', exact=True)
@@ -205,6 +208,8 @@ def test_central_output_default_saves_and_survives_reloading(joined, open_page):
 def test_settings_switch_sections_without_losing_unsaved_values(joined, open_page):
     from playwright.sync_api import expect
 
+    joined.call('/ui/settings', method='POST', cookie=joined.cookie,
+                body={'context': 8192, 'chat_max_output_tokens': 8192})
     page, errors = open_page(joined, cookie=joined.cookie, path='/ui/#settings')
     panels = page.locator('settings-view [data-pane]:visible')
     expect(panels).to_have_count(1)

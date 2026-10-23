@@ -65,7 +65,7 @@ class RoomRoutes:
                 row = next((m for m in installed if name in (m.id, m.name, str(m.path))), None)
                 if row is None:
                     raise FileNotFoundError(f"{name} is not installed")
-                ask = wired.Ask(int(self.asked("ctx", "131072")), self.asked("kv", "q8_0"),
+                ask = wired.Ask(int(self.asked("ctx", "0")), self.asked("kv", "q8_0"),
                                 self.asked("mtp", "1") not in ("0", "false", "off"))
                 out["plan"] = wired.plan(str(row.path), ask, hooks).as_dict()
             except (FileNotFoundError, ValueError) as no:

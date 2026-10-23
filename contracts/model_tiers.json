@@ -1,13 +1,16 @@
 {
   "$comment": [
-    "The RAM -> model ladder, largest first, so 'the first that fits' and 'the largest",
-    "that fits' are the same walk. Ordering is asserted by the test suite against",
-    "min_ram_gb; an entry inserted in the wrong place fails there rather than quietly",
-    "returning a smaller model than the machine could have run.",
-    "This file is DATA. No code lives here, so a non-Python host can read it directly."
+    "Which model a machine STARTS with, and how much of a machine one model may claim.",
+    "This file is DATA. No code lives here, so a non-Python host can read it directly.",
+    "It names no model above the starter. A fixed ladder from 70 GB down (gpt-oss-120b, Qwen3-32B,",
+    "Qwen3-30B-A3B, each with a context) went stale as the models installed here moved on, and a",
+    "context written beside a model is a guess the machine can answer: the model past the starter is",
+    "the best installed one `poolhouse.serve.suggest.recommend` rates for this machine, and the",
+    "context it is served at is `poolhouse.serve.suggest.largest_fit` (the trained window, as much",
+    "of it as the memory holds)."
   ],
 
-  "version": 1,
+  "version": 2,
 
   "budget": {
     "$comment": [
@@ -39,64 +42,30 @@
 
   "tiers": [
     {
-      "id": "xl",
-      "min_ram_gb": 70,
-      "gguf": { "repo": "unsloth/gpt-oss-120b-GGUF", "file": null },
-      "ollama": "gpt-oss:120b",
-      "context": 32768
-    },
-    {
-      "id": "lg",
-      "min_ram_gb": 45,
-      "gguf": { "repo": "unsloth/Qwen3-32B-GGUF", "file": "Qwen3-32B-Q5_K_M.gguf" },
-      "ollama": "qwen3:32b",
-      "context": 32768
-    },
-    {
-      "id": "md",
-      "min_ram_gb": 28,
-      "gguf": { "repo": "unsloth/Qwen3-30B-A3B-GGUF", "file": null },
-      "ollama": "qwen3:30b-a3b",
-      "context": 32768
-    },
-    {
-      "id": "sm",
-      "min_ram_gb": 14,
-      "gguf": { "repo": "unsloth/gpt-oss-20b-GGUF", "file": null },
-      "ollama": "gpt-oss:20b",
-      "context": 16384
-    },
-    {
-      "id": "xs",
-      "min_ram_gb": 8,
-      "gguf": {
-        "repo": "unsloth/gemma-4-E4B-it-GGUF",
-        "file": "gemma-4-E4B-it-Q4_K_M.gguf"
-      },
-      "ollama": "hf.co/unsloth/gemma-4-E4B-it-GGUF:Q4_K_M",
-      "context": 8192
-    },
-    {
-      "id": "xxs",
-      "min_ram_gb": 4,
+      "id": "starter",
+      "min_ram_gb": 5.2,
+      "weights_gb": 2.6,
       "gguf": {
         "repo": "unsloth/gemma-4-E2B-it-GGUF",
         "file": "gemma-4-E2B-it-Q4_K_M.gguf"
       },
       "ollama": "hf.co/unsloth/gemma-4-E2B-it-GGUF:Q4_K_M",
-      "context": 8192,
       "$comment": [
-        "The text-only build, deliberately. A vision-fused variant of the same language",
-        "model can be more than twice the size, and some fused builds are packaged for",
-        "a different runtime and will not load in llama.cpp at all."
+        "The first install on a machine with little memory: the smallest thing that still",
+        "answers, so the first thing a person does finishes while they are still watching",
+        "(2.6 GB, about 1.5 s a question, measured: fleet/autostart_models.py DEFAULT_MODEL).",
+        "min_ram_gb is the least total memory whose desktop budget above holds weights_gb with",
+        "its overhead (the weights plus the 1 GiB floor, at 0.7 of the total: 3.6 GiB / 0.7 =",
+        "5.2 GiB); a test checks it. The text-only build, deliberately: a vision-fused variant",
+        "of the same language model can be more than twice the size, and some fused builds are",
+        "packaged for a different runtime and will not load in llama.cpp."
       ]
     },
     {
       "id": "device",
-      "min_ram_gb": 1,
+      "min_ram_gb": 0,
       "gguf": { "repo": null, "file": null },
       "ollama": null,
-      "context": 2048,
       "$comment": [
         "The floor rung: whatever the target was built with. An embedded image supplies",
         "its own GGUF, so there is no download and no network requirement."

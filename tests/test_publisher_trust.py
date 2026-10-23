@@ -296,7 +296,7 @@ def test_other_bytes_under_a_new_commit_ask_a_person_and_the_same_bytes_do_not(s
 # -- llama-server downloads nothing ----------------------------------------------------------
 def test_a_draft_from_an_unlisted_publisher_is_refused_before_the_server_is_started(stand, tmp_path):
     stand({**repos("unsloth/thing-GGUF"), **repos("maker/head-GGUF", file="head-Q8_0.gguf")})
-    spec = ServerSpec(model="/m/w.gguf", draft="hf:maker/head-GGUF")
+    spec = ServerSpec(context=4096, model="/m/w.gguf", draft="hf:maker/head-GGUF")
     with pytest.raises(ServerFailed, match=r"could not fetch the draft.*This model is from maker"):
         LlamaServerBackend.resolved_draft(spec)
     approve("model_publisher")
@@ -308,10 +308,10 @@ def test_a_draft_from_an_unlisted_publisher_is_refused_before_the_server_is_star
 
 def test_an_unfetched_reference_never_reaches_the_command_line(tmp_path):
     backend = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=""))
-    for spec in (ServerSpec(model="hf:maker/x-GGUF/w.gguf"),
-                 ServerSpec(model="/m/w.gguf", draft="hf:maker/x-GGUF"),
-                 ServerSpec(model="/m/w.gguf", draft="hf:maker/x-GGUF/h.gguf"),
-                 ServerSpec(model="/m/w.gguf", mmproj="hf:maker/x-GGUF/mmproj-F16.gguf")):
+    for spec in (ServerSpec(context=4096, model="hf:maker/x-GGUF/w.gguf"),
+                 ServerSpec(context=4096, model="/m/w.gguf", draft="hf:maker/x-GGUF"),
+                 ServerSpec(context=4096, model="/m/w.gguf", draft="hf:maker/x-GGUF/h.gguf"),
+                 ServerSpec(context=4096, model="/m/w.gguf", mmproj="hf:maker/x-GGUF/mmproj-F16.gguf")):
         with pytest.raises(ServerFailed, match="must be fetched before serving"):
             backend.command(spec)
 
@@ -341,7 +341,7 @@ def test_a_projector_that_is_not_pinned_waits_for_a_person_at_load(tmp_path):
     projector.write_bytes(b"GGUF" + b"\x01" * 64)
     manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
-    spec = ServerSpec(model=model, mmproj=projector, port=free_port())
+    spec = ServerSpec(context=4096, model=model, mmproj=projector, port=free_port())
     with pytest.raises(guarded.SentinelRefused, match=r"mmproj-F16\.gguf was not downloaded by Poolhouse"):
         manager.lease(spec, roam=False, timeout=30.0, check_flags=False, preflight=False,
                       warmup_request=False)
@@ -361,7 +361,7 @@ def test_a_projector_that_no_longer_matches_its_pin_is_refused_at_load(tmp_path)
     projector.write_bytes(b"GGUF" + b"\x02" * 64)
     manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
-    spec = ServerSpec(model=model, mmproj=projector, port=free_port())
+    spec = ServerSpec(context=4096, model=model, mmproj=projector, port=free_port())
     with pytest.raises(guarded.SentinelRefused, match="does not match its pin"):
         manager.lease(spec, roam=False, timeout=30.0, check_flags=False, preflight=False,
                       warmup_request=False)

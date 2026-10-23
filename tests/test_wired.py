@@ -141,10 +141,18 @@ def test_the_mtp_head_adds_only_its_own_layer_when_it_lives_in_the_weights(tmp_p
     assert any("shares the main model's weights" in n for n in on.notes)
 
 
-@pytest.mark.parametrize("bad", [{"kv": "q5_0"}, {"context": 0}, {"context": True}])
+@pytest.mark.parametrize("bad", [{"kv": "q5_0"}, {"context": -1}, {"context": 100}, {"context": True}])
 def test_an_unknown_cache_type_or_context_is_refused(tmp_path, bad):
     with pytest.raises(ValueError):
         wired.plan(str(model(tmp_path, GIB)), wired.Ask(**bad), facts(64))
+
+
+def test_no_context_asked_is_the_models_whole_trained_window(tmp_path):
+    from poolhouse.serve import estimate as est
+
+    path = model(tmp_path, GIB)
+    got = wired.plan(str(path), wired.Ask(), facts(64))
+    assert got.context == est.read_meta(path)["llama.context_length"]
 
 
 def test_a_model_that_is_not_installed_is_an_error_not_a_command(tmp_path):
