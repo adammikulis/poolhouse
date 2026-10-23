@@ -22,7 +22,7 @@ Transition { domain: "invocation", from: "released", event: "invalidate", to: "i
 pub enum NativeAdapterError { InvalidInstallation, MissingChannel, WrongPrincipal, StaleProcess, UnprotectedProcess, ConfinementUnavailable, BindingMismatch, Cancelled, Io }
 
 /// Opaque runtime handles are never wire DTOs or proof supplied by a caller.
-pub trait NativeCallerPlatform<Binding> {
+pub trait NativeCallerPlatform<Binding, SpawnPlan> {
     type VerifiedInstallation;
     type RawChannel;
     type AdmittedProducer;
@@ -33,7 +33,7 @@ pub trait NativeCallerPlatform<Binding> {
     fn verify_installation(&mut self) -> Result<Self::VerifiedInstallation, NativeAdapterError>;
     fn verify_bootstrap(&mut self, installation: &Self::VerifiedInstallation) -> Result<Self::VerifiedBootstrap, NativeAdapterError>;
     fn authenticate_producer(&mut self, channel: Self::RawChannel, installation: &Self::VerifiedInstallation) -> Result<Self::AdmittedProducer, NativeAdapterError>;
-    fn hold_spawn(&mut self, producer: &Self::AdmittedProducer, bootstrap: &Self::VerifiedBootstrap) -> Result<Self::HeldProcess, NativeAdapterError>;
+    fn hold_spawn(&mut self, producer: &Self::AdmittedProducer, bootstrap: &Self::VerifiedBootstrap, plan: &SpawnPlan) -> Result<Self::HeldProcess, NativeAdapterError>;
     fn observe_held(&mut self, held: &Self::HeldProcess) -> Result<ProcessObservation, NativeAdapterError>;
     fn release(&mut self, held: Self::HeldProcess, binding: &Binding) -> Result<Self::RunningProcess, NativeAdapterError>;
     fn inspect_caller(&mut self, channel: Self::RawChannel, installation: &Self::VerifiedInstallation) -> Result<Self::KernelCaller, NativeAdapterError>;
