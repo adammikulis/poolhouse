@@ -495,6 +495,34 @@ These receipts concern task-created review/worker checkouts, not a global cleanu
 
 E-MAC retains `claim-release-review.json`, `codex-selector-review.json` and `macos-candidate-author/cleanup.json`. Current ref/worktree state outside these scoped receipts is unknown here. The original inventory and later external source/package/probe artifacts are separate from the closed helper checkout; that closure does not certify their present availability. Storage metadata, agent coordination messages and receipts cannot grant authority or establish protected custody.
 
+## Independent committed-history restore supplement
+
+Independent reviewer `bootstrap_audit` restored all 14 original bundles (320404416 bytes total) into separate fresh
+empty bare repositories under one CPU admission, taking 44.112 seconds. Each bundle matched the original
+`E-MAC/artifacts.json` digest and retained its stat/hash after verification. Each restore passed bundle verification,
+unbundle, advertised-ref installation and exact equality, `git fsck --full --strict --no-reflogs`, and commit-object
+head checks. No shared alternates, global configuration, remotes or hooks supplied missing objects.
+
+Opaque evidence handle `E-RESTORE` identifies the private review directory. `evidence.json` records original bundle
+filenames, full digests, exact advertised heads/refs, isolated restore locators, timings and results. Its finalization
+mtime is `2026-10-23T22:53:01.581258Z`, not an independently logged run-start timestamp.
+
+| Evidence | SHA-256 |
+| --- | --- |
+| `E-RESTORE/evidence.json` | `b1d980ed0470c6e6e58903db0f108146b2f1e4f18d506786792cd6b77e7e86e5` |
+| `E-RESTORE/summary.json` | `8fbf61af4530e443b8f13209f66c5b3df8550614d3311ad795e4803327a59ef5` |
+
+The existing paused ref `refs/remotes/origin/feat/decider-gemma4` at
+`8120e9a11cf73b665b322236af49a86bb70d6f90` now also has a complete-history standalone bundle in
+`H-MAC/paused-gemma4-preserved/paused-decider-gemma4.bundle` (opaque locator): 8618385 bytes, SHA-256
+`c5eb93e58b715cbdeb585d3d06df6f34fd99fc8389f84202b8d083470b340ecc`, parent mode 0700 and file mode 0600.
+An independent fresh bare restore passed full strict fsck and exact advertised paused ref/head checks. Original
+bundles and the paused source ref remained unchanged; no model resumed and no public endpoint or fetch was used.
+
+This establishes local committed-history object availability only. Dirty/index/untracked/ignored files, model caches
+and asset bytes were not backed up by these bundles. Behavior disposition, protected custody, actual transfer to the
+other device and H/K acceptance remain unproven. Evidence and restored objects remain private; this note transfers no bytes.
+
 ## Remaining handoff gaps
 
-The coordinator must assign behavior/disposition owners, map unique source to native implementations and real tests, establish byte preservation for original dirty/untracked and non-rebuildable assets, confirm paused-model external custody, and arrange independently verified transfer where needed. Full bundle/ref object availability on the other device and unresolved launch-ticket evidence in the linked ledger remain open. No new archive campaign, broad test suite, credential read, model execution or native acceptance was performed to publish this ledger.
+The coordinator must assign behavior/disposition owners, map unique source to native implementations and real tests, establish byte preservation for original dirty/untracked and non-rebuildable assets, confirm paused-model non-history asset custody, and arrange independently verified transfer where needed. Full bundle/ref object availability on the other device and unresolved launch-ticket evidence in the linked ledger remain open. No new archive campaign, broad test suite, credential read, model execution or native acceptance was performed to publish this ledger.
