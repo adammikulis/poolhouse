@@ -71,6 +71,23 @@ No boards or work cross this probe. Candidate pins remain observations, not admi
 path at `net.rs:243–260` attempts automatic joining; the shared owner must provide bounded untrusted candidate
 observations rather than widen authority. This is a request to expose existing behavior, not a new wire definition.
 
+Mac K adapter request for shared-owner review, with feasibility evidence in `contracts-feasibility.json` under the
+same Mac evidence directory; this request establishes no principal, admission or platform contract:
+
+- IPC connect/accept needs opaque verified caller evidence: actual kernel principal, PID/start identity, lineage,
+  owner/node/helper role and fresh channel-bound code identity. Expected principals remain separate from observations.
+- Lifecycle inspect/apply/cancel needs one installation/service identity, requested/effective Boot/Login/Neither,
+  transaction revision and prior effective state; storage-unavailable, consent-required, denied and ready stay distinct.
+- Approval request/inspect/cancel/watch needs immutable operation bytes/digest with pool/anchor/target/signer/governance,
+  nonce/expiry/generation. Protected helper challenges/results stay private, connection/owner-session/code bound and
+  atomically consumed or cancelled; no public approval boolean or arbitrary-digest signing.
+- Node-admitted worker launch needs bounded job/lease/membership generation, verified executable/assets, directional
+  computation handles, startup receipt/provenance and cancellation/removal/teardown. No control/authority handles or
+  OS-only descriptor/confinement artifacts become public wire types.
+
+Publish reviewed common adapter signatures, generated types, exact K commit and denial/cancellation vectors before
+macOS adapts. `Helper.swift` remains unavailable; a prototype approval card must not become a macOS wire fork.
+
 Ordinary launch and connection to an authorized pool must automatically start or attach, discover, connect and
 reconnect without owner commands, typed addresses or token handling. The macOS session owns implementation and
 installed proof for its half.
