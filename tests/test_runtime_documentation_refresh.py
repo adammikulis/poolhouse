@@ -8,6 +8,9 @@ import pytest
 
 from poolhouse import runtime, runtime_cli, runtime_deploy, runtime_git, runtime_store
 
+REAL_PLANNED = runtime_cli._planned
+pytest_plugins = ["node_kit"]
+
 PROJECT = '''[build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -226,5 +229,90 @@ def test_source_admission_still_precedes_an_automatic_noop(automatic, monkeypatc
         raise runtime_deploy.DeployError("source refused")
     monkeypatch.setattr(runtime_cli, "_planned", refuse)
     with pytest.raises(runtime_deploy.DeployError, match="source refused"):
+        runtime_cli._ensure(args)
+    assert starts == []
+
+
+@pytest.fixture
+def unpublished(workspace_node, automatic, monkeypatch):
+    from poolhouse import authority, node_launch, person
+    from poolhouse.board import place
+
+    args, plan, chosen, starts, snapshot = automatic
+    repo = plan.checkout
+    monkeypatch.setattr(node_launch, "default_state", lambda: workspace_node.state)
+    git(repo, "update-ref", "refs/remotes/origin/dev", chosen.commit)
+    monkeypatch.delenv("POOLHOUSE_BOARD", raising=False)
+    workspace_node.board = place.resolve(workspace_node.client, repo)
+    monkeypatch.setenv("POOLHOUSE_BOARD", workspace_node.board)
+    actor = workspace_node.member("unpublished-docs-root", harness="codex")
+    for name in (*person.AGENT_MARKERS, authority.AGENT_ENV, authority.SUBAGENT_ENV,
+                 "POOLHOUSE_SESSION_HARNESS", "POOLHOUSE_SESSION_ID", "POOLHOUSE_WORKSPACE_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("CODEX_THREAD_ID", actor.session)
+    monkeypatch.setenv("POOLHOUSE_DEV_BRANCH", "dev")
+    runtime_store.write_state({"checkout": str(repo)})
+    monkeypatch.setattr(runtime_cli, "_planned", REAL_PLANNED)
+    return args, plan, chosen, starts, snapshot
+
+
+def test_real_unpublished_documentation_hook_does_not_start_a_publication_waiter(unpublished, capsys):
+    from poolhouse import runtime_source
+
+    args, plan, chosen, starts, _snapshot = unpublished
+    with pytest.raises(runtime_source.Unpublished) as refused:
+        runtime_cli.plan_from(args)
+    assert refused.value.checkout == plan.checkout and refused.value.commit == plan.commit
+    assert runtime_cli._ensure(args) == 0
+    assert starts == []
+    output = capsys.readouterr().out
+    assert "unpublished" in output and "no deployment" in output
+    assert chosen.commit[:7] in output and chosen.commit != plan.commit
+
+
+@pytest.mark.parametrize("change", ["code", "force", "force-build", "explicit", "rejected", "floor", "selection"])
+def test_nonmatching_unpublished_hooks_keep_the_normal_publication_waiter(unpublished, monkeypatch, change):
+    args, plan, chosen, starts, snapshot = unpublished
+    if change == "code":
+        save(plan.checkout, "src/poolhouse/__init__.py", "VALUE = 2")
+    elif change == "force":
+        args.force = True
+    elif change == "force-build":
+        args.force_build = True
+    elif change == "explicit":
+        args.hook_refresh = False
+    elif change == "rejected":
+        monkeypatch.setattr(runtime_store, "rejected", lambda prefix: True)
+    elif change == "floor":
+        save(plan.checkout, "packaging/runtime-floor", "2")
+    else:
+        seen = []
+        def switched():
+            seen.append(1)
+            return snapshot if len(seen) == 1 else (*snapshot[:1], "e" * 40, *snapshot[2:])
+        monkeypatch.setattr(runtime_deploy, "automatic_selection", switched)
+    assert runtime_cli._ensure(args) == 0
+    assert len(starts) == 1 and "--await-published" in starts[0]
+    assert chosen.commit == snapshot[1]
+
+
+def test_unpublished_prospective_mismatch_never_enters_deployment(unpublished, monkeypatch):
+    from dataclasses import replace
+
+    args, plan, _chosen, starts, _snapshot = unpublished
+    original = runtime_cli.plan_from
+
+    def moved(args, *, deploying=True):
+        return original(args) if deploying else replace(plan, commit="e" * 40)
+
+    monkeypatch.setattr(runtime_cli, "plan_from", moved)
+    assert runtime_cli._ensure(args) == 0
+    assert len(starts) == 1 and "--await-published" in starts[0]
+
+
+def test_unpublished_noop_still_validates_automatic_baseline(unpublished):
+    args, _plan, _chosen, starts, _snapshot = unpublished
+    args.automatic_from = "{}"
+    with pytest.raises(runtime_deploy.DeployError):
         runtime_cli._ensure(args)
     assert starts == []
