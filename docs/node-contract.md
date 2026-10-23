@@ -56,3 +56,16 @@ audit-token word order and pid-version/birth semantics, and the planned opaque
 native adapter boundary. Windows review includes binary SID and FILETIME handling.
 Platform implementation waits for K. Linux launcher preparation history is
 preserved separately while these contracts are settled.
+
+The proposal checkpoint is `a7c7977a7`; its schema digest is
+`d472c6141f2d81c22de630ab5184984ce8e444000ba033d95ca5d7510902fb79`.
+Focused Python/Rust checks and strict TypeScript checking pass. Removing private
+closure checks, Rust unknown-field refusal or TypeScript nominal separation each
+fails its probe; the restored artifacts pass and match the generator.
+
+Mac preservation evidence is also required for K: exact original full SHAs,
+verified bundle manifests, paused remote-model history, tracked/untracked edits,
+non-rebuildable ignored metadata and live ownership. The Windows launch-ticket
+row's five modified/two untracked files remain unlocated in the local preservation
+ledger. Replies and platform feasibility findings travel through Git checkpoints
+until authenticated pool messaging works; no observation or Git label grants trust.
