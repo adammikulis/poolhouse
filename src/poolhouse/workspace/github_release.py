@@ -206,6 +206,7 @@ def push_development(checkout: Path) -> dict[str, str]:
             raise remote.Failed("the remote development tip changed before publication")
         revalidate(caller)
         token = github_app.mint(who, PERMISSIONS, who.repo)["token"]
+        revalidate(caller)
         remote.push(remote.GitPush(who.repo, selected.branch, selected.commit, token), directory, env)
     after = _commit_ref(remote.request("GET", path, bearer=token))
     if after != selected.commit:

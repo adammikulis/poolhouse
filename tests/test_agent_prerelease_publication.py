@@ -466,3 +466,27 @@ def test_changed_caller_snapshot_never_mints_or_pushes(push_case, monkeypatch, c
     with pytest.raises(net.Failed, match="publication caller changed"):
         holder.push_development(selected.checkout)
     assert state["mint"] == state["push"] == 0
+
+
+@pytest.mark.parametrize("change", ["actor", "state", "selection"])
+def test_mint_wait_revalidates_before_irreversible_push(push_case, monkeypatch, change):
+    selected, state = push_case
+    original = github_app.mint
+
+    def changed(*args):
+        token = original(*args)
+        caller = state["caller"]
+        if change == "actor":
+            state["caller"] = replace(caller, identity=replace(caller.identity, name="other-agent"))
+        elif change == "state":
+            state["caller"] = replace(caller, state=caller.state.parent / "other-node")
+        else:
+            def unavailable(_action):
+                raise net.Failed("GitHub publication uses the selected installed credential holder")
+            monkeypatch.setattr(holder, "authorize", unavailable)
+        return token
+
+    monkeypatch.setattr(github_app, "mint", changed)
+    with pytest.raises(net.Failed, match=r"publication caller changed|selected installed credential holder"):
+        holder.push_development(selected.checkout)
+    assert state["mint"] == 1 and state["push"] == 0
