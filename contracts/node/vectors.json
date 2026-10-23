@@ -1,0 +1,32 @@
+{
+  "schema_sha256": "d472c6141f2d81c22de630ab5184984ce8e444000ba033d95ca5d7510902fb79",
+  "decoded_values": "untrusted-data",
+  "device_id": {
+    "public_key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+    "domain_utf8_hex": "706f6f6c686f7573652f6465766963652f656432353531392f763100",
+    "expected": "0f07b8d8b26c20d886acd011b84ea3b45f501e094a7ea1320a0c75d334c8c864"
+  },
+  "integers": {
+    "u32_max": "4294967295",
+    "u64_max": "18446744073709551615"
+  },
+  "private_client_types": [
+    "AuditToken",
+    "BootId",
+    "InvocationId",
+    "NativeThreadId",
+    "NoParent",
+    "PayloadDigest",
+    "ReceiptId",
+    "SessionLease",
+    "WindowsSid",
+    "LinuxCredentials",
+    "MacProcessObservation",
+    "ParentThread",
+    "WindowsProcessObservation",
+    "LinuxProcessObservation",
+    "NativeParent",
+    "NativeSessionContext",
+    "ProcessObservation"
+  ]
+}
