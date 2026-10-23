@@ -33,6 +33,19 @@ pipes; they own no product control listener or independent scheduler.
    behavior. The shared plan records a bypassing wrapper and child-substitution findings on Windows/WSL; inspect
    the Mac independently. Supply platform evidence, not a competing identity fix.
 
+## Recover the existing repository App before creating one
+
+The private GitHub App named poolhouse-agents already exists. Its credential may be on this Mac; that location is
+unverified. The Windows/WSL device reports no configured App identity, and its duplicate creation attempt is stopped.
+Inspect the selected installed credential holder through the supported agent-identity status/setup/publication flow.
+Verify the existing App, repository installation, required scoped permissions, and holder readiness; do not infer
+ownership from its name or public page. Reuse the valid existing configuration where available. Keep signing keys
+inside the holder; never print, copy to another device, or substitute a personal GitHub/CLI credential.
+If account consent or keystore authentication is required, prepare the concrete native operation and ask once.
+If no valid credential remains, preserve the existing App and report the recovery choice before replacement or
+creating another App. Resolve globally unique naming in maintained setup tooling rather than repeatedly submitting
+the colliding name. Verify publication uses the software-owned App and normal reviewed development checks.
+
 ## Contracts and dependency gates
 
 The Shared contracts section of the integration plan is the canonical coordination definition. Review its feasibility
