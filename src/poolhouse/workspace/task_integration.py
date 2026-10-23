@@ -177,7 +177,7 @@ class DevelopmentIntegration:
         self._claim('worktree', str(self.candidate))
         owner = _owner(self.s, 'worktree', str(self.source))
         worker = self.worktree['worker']
-        if owner == worker:
+        if owner == worker and owner != self.s.name:
             if self.s.name != _parent(self.s, worker):
                 raise Denied('the current child worktree claim requires its registered parent to return it')
             self.s.release('worktree', str(self.source), held_by=worker)
