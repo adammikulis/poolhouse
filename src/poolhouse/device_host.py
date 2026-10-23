@@ -16,7 +16,7 @@ from poolhouse.home import user_home
 from poolhouse.node_join import DEFAULT_BEACON_PORT, DEFAULT_PORT
 
 HYPERV_ID = "{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}"
-RULES = (("poolhouse-node", "TCP", DEFAULT_PORT), ("poolhouse-beacon", "UDP", DEFAULT_BEACON_PORT))
+RULES = (("Poolhouse node", "TCP", DEFAULT_PORT), ("Poolhouse node discovery", "UDP", DEFAULT_BEACON_PORT))
 POWERSHELL = "powershell.exe"
 RUSTUP_URL = "https://sh.rustup.rs"
 TIMEOUT = 600
@@ -49,8 +49,8 @@ def _powershell(script: str) -> str:
 
 def rules_script() -> str:
     """PowerShell that adds each missing inbound rule and lets the WSL VM receive them."""
-    adds = "; ".join(f"if (-not (Get-NetFirewallRule -DisplayName {name} -ErrorAction SilentlyContinue)) "
-                     f"{{ New-NetFirewallRule -DisplayName {name} -Direction Inbound -Action Allow -Profile Private -Protocol {proto} -LocalPort {port} | Out-Null }}"
+    adds = "; ".join(f"if (-not (Get-NetFirewallRule -DisplayName '{name}' -ErrorAction SilentlyContinue)) "
+                     f"{{ New-NetFirewallRule -DisplayName '{name}' -Direction Inbound -Action Allow -Profile Private -Protocol {proto} -LocalPort {port} | Out-Null }}"
                      for name, proto, port in RULES)
     return f"{adds}; if ({_HYPERV_PRESENT}) {{ Set-NetFirewallHyperVVMSetting -Name '{HYPERV_ID}' -DefaultInboundAction Allow }}"
 

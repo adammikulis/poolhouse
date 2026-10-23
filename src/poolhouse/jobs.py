@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from poolhouse import runtime, sentinel
+from poolhouse import disclaim, runtime, sentinel
 from poolhouse.command import Group, flag
 from poolhouse.home import expand, state
 from poolhouse.lock import Busy
@@ -155,16 +155,26 @@ class Detached:
     """The child's own handle, kept so a caller can see how it ended (`poolhouse.spawned`)."""
 
 
+def _start(command: list[str], environment: dict[str, str], out: Any, disclaimed: bool) -> tuple[int, subprocess.Popen | None]:
+    """Start ``command`` detached with its output in ``out``: its pid, and its handle unless it was started with its own
+    responsibility (macOS, `poolhouse.disclaim`), which gives a pid only."""
+    if disclaimed and disclaim.available():
+        return disclaim.spawn(command, environment, out.fileno()), None
+    from poolhouse.platform import detached_kwargs
+
+    child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT, env=environment, **detached_kwargs())
+    return child.pid, child
+
+
 def detach(module: str, argv: Sequence[str], *, log: Path, lines: Sequence[str] = (),
-           kind: str = "", home: Path | None = None, same_interpreter: bool = False) -> Detached:
+           kind: str = "", home: Path | None = None, same_interpreter: bool = False, disclaimed: bool = False) -> Detached:
     """Run ``python -m module argv`` owned by no terminal, its output appended to ``log``,
     whose header is its ``argv:`` and ``started:`` lines and then ``lines``.
 
     With a ``kind`` the run is recorded under ``home``, so `status`, `wait` and `stop`
-    find it; without one the caller keeps whatever record it keeps.
+    find it; without one the caller keeps whatever record it keeps. ``disclaimed`` makes a
+    process macOS holds responsible for itself, not for the terminal or app that ran this.
     """
-    from poolhouse.platform import detached_kwargs
-
     started = time.strftime("%FT%T")
     rest = [str(a) for a in argv]
     if same_interpreter and getattr(sys, 'frozen', False):
@@ -188,13 +198,10 @@ def detach(module: str, argv: Sequence[str], *, log: Path, lines: Sequence[str] 
     with log.open("ab") as out:
         out.write(("\n".join(head) + "\n").encode("utf-8"))
         out.flush()
-        child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=out,
-                                 stderr=subprocess.STDOUT,
-                                 env=sentinel.default().scrub_env(environment),
-                                 **detached_kwargs())
+        pid, child = _start(command, sentinel.default().scrub_env(environment), out, disclaimed)
     if kind:
-        record(kind, pid=child.pid, argv=rest, log=str(log), started=started, home=home)
-    return Detached(pid=child.pid, log=log, command=tuple(command), started=started, process=child)
+        record(kind, pid=pid, argv=rest, log=str(log), started=started, home=home)
+    return Detached(pid=pid, log=log, command=tuple(command), started=started, process=child)
 
 
 def wait(kind: str, *, say: Callable[[str], None] = say, every: float = 60.0,

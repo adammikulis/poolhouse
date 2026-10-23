@@ -139,6 +139,27 @@ def test_old_finished_jobs_are_pruned_and_live_ones_kept(table):
     jobs.cancel(live, "bob")
 
 
+def test_a_job_another_run_pruned_meanwhile_does_not_stop_this_prune(table, monkeypatch):
+    jobs, _, _ = table
+    old = start(table, ["tests/x.py", "0.1", "0"])
+    jobs.wait(old, 20)
+    status = jobs.read(old)
+    status["finished"] = time.time() - testjobs.KEEP_S - 10
+    jobs.write(old, "status.json", status)
+    real = jobs.state
+
+    def state_then_lose_the_job(job):
+        found = real(job)
+        for child in jobs.path(job).iterdir():
+            child.unlink()
+        jobs.path(job).rmdir()
+        return found
+
+    monkeypatch.setattr(jobs, "state", state_then_lose_the_job)
+    jobs.prune()
+    assert old not in jobs.ids()
+
+
 def test_job_ids_cannot_escape_the_job_table(table):
     jobs, _, _ = table
     with pytest.raises(testjobs.Refused):

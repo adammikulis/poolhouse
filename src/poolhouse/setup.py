@@ -20,7 +20,7 @@ from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, distribution
 from pathlib import Path
 
-from poolhouse import agent_hooks, home
+from poolhouse import agent_hooks, home, runtime_identity
 from poolhouse.checks import Finding, ask, checkout, tilde
 from poolhouse.installed import standard
 from poolhouse.log import say
@@ -255,6 +255,8 @@ def _fleet_findings(*, port: int | None = None, discovery_port: int | None = Non
         else:
             out.append(Finding(name="fleet: daemon", good=True,
                                said=f"'{me.get('name', '?')}' answers on {port}"))
+            if runtime_identity.applies():
+                out.append(identity_finding(me))
             try:
                 rows = members(pool_key_path=pool_key_path, port=discovery_port,
                             self_machine=str(me.get("machine") or ""))
@@ -274,6 +276,18 @@ def _fleet_findings(*, port: int | None = None, discovery_port: int | None = Non
                          "every member"))
     out.append(_ports_finding(port, discovery_port, me))
     return out
+
+
+def identity_finding(me: dict) -> Finding:
+    """macOS names a program in its firewall list and its prompts by its executable: the daemon must run as Poolhouse's, not as Python."""
+    process = me.get("process") if isinstance(me.get("process"), dict) else {}
+    ours = process.get("bundle_id") == runtime_identity.BUNDLE_ID
+    return Finding(
+        name="fleet: daemon runs as", good=ours,
+        said=f"Poolhouse ({process.get('executable')})" if ours else f"{process.get('executable') or 'an unknown program'}",
+        fix=[] if ours else ["poolhouse", "runtime", "ensure"],
+        note="" if ours else "macOS asks about this program by that name, and the answer belongs to every program that uses it; "
+                             "an update makes the daemon run as Poolhouse")
 
 
 def _store_finding(path: Path | None = None) -> Finding:

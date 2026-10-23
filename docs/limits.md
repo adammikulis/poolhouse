@@ -198,7 +198,7 @@ abuse by one session is not kept (the owner never asked for one). The security f
 | `REFUSALS` | 2 | `scripts/hooks/stop_landed.py:16` | stops of one subagent refused for work development lacks before it may stop; the stop hook's other refusal is a test job it could not cancel (`scripts/hooks/stop_jobs.py`) | the owner |
 | `ci_watch WAIT_S` | 180 | `scripts/ci_watch.py:34` | seconds the watcher waits for a run to appear | the owner |
 | `ci_watch POLL_S` | 60 | `scripts/ci_watch.py:35` | seconds between asks of GitHub while a run is watched | the owner |
-| `ci_watch RUN_TIMEOUT_S` | 100 * 60 | `scripts/ci_watch.py:36` | seconds a run is watched before the watcher gives up | the owner |
+| `ci_watch RUN_TIMEOUT_S` | 130 * 60 | `scripts/ci_watch.py:36` | seconds a run is watched before the watcher gives up | the owner |
 | `ci_watch WARN_S` | 25 * 60 | `scripts/ci_watch.py:37` | seconds into a run when the watcher says it is slow | the owner |
 | `ci_watch BLOCK_S` | 35 * 60 | `scripts/ci_watch.py:38` | seconds into a run when the watcher says it is stuck | the owner |
 | `ci_watch MIN_WATCH_S` | 60.0 | `scripts/ci_watch.py:39` | the shortest a run is watched | the owner |

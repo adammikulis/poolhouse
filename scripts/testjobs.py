@@ -7,6 +7,7 @@ import fcntl
 import json
 import os
 import secrets
+import shutil
 import signal
 import subprocess
 import sys
@@ -150,9 +151,7 @@ class Jobs:
         for job in self.ids():
             status = self.state(job)
             if status.get("state") in TERMINAL and time.time() - status.get("finished", time.time()) > KEEP_S:
-                for child in self.path(job).iterdir():
-                    child.unlink(missing_ok=True)
-                self.path(job).rmdir()
+                shutil.rmtree(self.path(job), ignore_errors=True)    # another run's prune may have taken it already
 
     def submit(self, argv: list[str], owner: dict, root: Path, script: Path, extra: dict) -> str:
         """Record a job and start its detached runner; returns the id."""
