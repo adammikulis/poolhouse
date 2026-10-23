@@ -75,7 +75,7 @@ def primary_for(supplied: Path, *, deploying: bool = True, delegated: bool = Fal
     if recorded is None:
         raise DeployError("no source repository is recorded: a person, or a lead agent while `runtime.deploy` is delegated, "
                           "runs `poolhouse runtime ensure --checkout PATH`")
-    raise DeployError(f"{supplied} is not a worktree of the recorded repository {recorded}; only a person at a terminal may deploy another repository")
+    raise DeployError(f"{supplied} is not a worktree of the recorded repository {recorded}; another source repository requires person authentication")
 
 
 def _git(primary: Path, *words: str) -> subprocess.CompletedProcess:
@@ -98,11 +98,23 @@ def floor(primary: Path) -> int:
 
 
 def ignore_redirects() -> list[str]:
-    """Remove the variables that move the state or cache root from an agent-started process; returns their names."""
+    """Remove agent redirects; return only those that differ from the account's state root."""
     if not person.marked():
         return []
     names = [home.ROOT_ENV, home.CACHE_ENV, *home.OVERRIDES.values()]
-    return [name for name in names if os.environ.pop(name, None)]
+    warnings = []
+    for name in names:
+        value = os.environ.pop(name, None)
+        if not value:
+            continue
+        if name == home.ROOT_ENV:
+            try:
+                if home.expand(value).resolve() == home.account_roots()[0].resolve():
+                    continue
+            except (OSError, RuntimeError, ValueError):
+                pass
+        warnings.append(name)
+    return warnings
 
 
 def authorize(command: str) -> str:

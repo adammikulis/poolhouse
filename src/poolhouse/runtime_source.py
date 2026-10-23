@@ -24,7 +24,7 @@ def resolve_commit(checkout: Path, ref: str = "HEAD") -> str:
     """The full commit a ref names in a checkout."""
     if ref.startswith("-"):
         raise DeployError(f"{ref!r} is not a ref")
-    commit = git(checkout, "rev-parse", "--verify", f"{ref}^{{commit}}")
+    commit = git(checkout, "rev-parse", "--verify", "--end-of-options", f"{ref}^{{commit}}")
     if not COMMIT.fullmatch(commit):
         raise DeployError(f"{ref} does not name a commit")
     return commit
@@ -41,10 +41,10 @@ def admit(checkout: Path, commit: str, *, allow_unmerged: bool | runtime_unmerge
     if allow_unmerged:
         if person.marked():
             if not isinstance(allow_unmerged, runtime_unmerged.Approval):
-                raise DeployError("an agent needs an exact reviewed runtime approval; a person at a terminal may confirm directly")
+                raise DeployError("an agent needs an exact reviewed runtime approval")
             runtime_unmerged.validate(allow_unmerged, checkout, commit)
         elif not person.is_terminal(sys.stdin) or not person.is_terminal(sys.stdout):
-            raise DeployError("only a person at a terminal may deploy an unmerged commit")
+            raise DeployError("unpublished source needs person authentication through a supported approval route")
         return
     for ref in (f"refs/heads/{branch}", f"refs/remotes/origin/{branch}"):
         published = resolve_commit(checkout, ref)
