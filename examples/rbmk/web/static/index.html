@@ -59,34 +59,12 @@
 
   <aside id="drawer" hidden aria-label="Tools">
     <div class="drawerhead"><h2 id="drawer-title"></h2><button id="drawer-close" class="btn" aria-label="Close this panel">Close</button></div>
-    <section class="pane" id="pane-run" data-title="Run console">
-      <div class="seg modeseg" role="group" aria-label="Source of the run"><button id="modeLive" class="on">Live</button><button id="modeRec">Recorded</button></div>
-      <div id="liveBar" class="form">
-        <label>Scenario <select id="scenario"></select></label>
-        <label>Controller <select id="controller"></select></label>
-        <label id="deciderBox">Decider <select id="decider"></select></label>
-        <label id="memoryBox">Memory <select id="memory"></select></label>
-        <label id="speedBox">Clock <select id="speedLive"></select></label>
-        <label class="check"><input type="checkbox" id="alsoNaive"> also run the naive controller</label>
-        <button id="start" class="btn primary">Start run</button>
-        <button id="stop" class="btn">Stop</button>
-      </div>
-      <div id="recBar" class="form" style="display:none">
-        <label>Recording <select id="recording"></select></label>
-        <button id="openrec" class="btn primary">Open</button>
-        <label class="btn filebtn">Open a JSON file...<input type="file" id="file" accept=".json,application/json"></label>
-        <span class="muted" id="norecs"></span>
-      </div>
-      <p class="muted small" id="badfiles"></p>
-      <p class="small" id="scndesc"></p>
-      <p class="small muted">Live runs the decision model (or a plain-code controller) on a scenario now. Recorded replays a real model run from a file. Whatever is chosen here is what the room shows.</p>
-    </section>
     <section class="pane" id="pane-log" data-title="Decision log">
       <div class="logsplit"><div id="log" class="log"></div><div id="detail" class="detail"></div></div>
     </section>
     <section class="pane" id="pane-charts" data-title="Time series">
       <div id="charts" class="charts"></div>
-      <p class="small muted">Dotted verticals mark scenario events; tick marks along each chart are decisions (amber abstained, red interlock). Thin lines are what the gauges read; thick lines are the plant's true state.</p>
+      <p class="small muted">Dotted verticals mark scenario events; tick marks along each chart are decisions. Thin lines are what the gauges read; thick lines are the plant's true state.</p>
     </section>
     <section class="pane" id="pane-core" data-title="Core cross-section">
       <div class="corewrap"><canvas id="core" class="core" aria-label="Reactor core with 211 control rods"></canvas></div>
@@ -111,17 +89,11 @@
   <div class="dockrow" id="bookmarks"></div>
   <div class="dockrow" id="views2d" hidden></div>
   <div class="dockrow" id="playback">
-    <button id="back" class="btn" title="Back one tick (comma)">Step back</button>
-    <button id="play" class="btn primary" title="Space">Play</button>
-    <button id="fwd" class="btn" title="Forward one tick (period)">Step</button>
-    <label><span class="lbl">Speed</span> <select id="speed"><option value="0.5">0.5 ticks/s</option><option value="1">1</option><option value="2" selected>2</option><option value="5">5</option><option value="10">10</option><option value="25">25</option></select></label>
-    <input type="range" id="scrub" min="0" max="1" step="0.01" value="0" aria-label="Replay scrubber">
+    <input type="range" id="scrub" min="0" max="1" step="0.01" value="0" aria-label="Replay position">
     <span id="clock" class="clock"></span>
-    <label class="check"><input type="checkbox" id="pauseCap"> pause at captions</label>
   </div>
   <div class="dockrow" id="tools">
     <button id="mode" class="btn">Switch to orbit</button>
-    <button class="toolbtn btn" data-drawer="run">Run console</button>
     <button class="toolbtn btn" data-drawer="log">Decision log</button>
     <button class="toolbtn btn" data-drawer="charts">Charts</button>
     <button class="toolbtn btn" data-drawer="core">Core map</button>
@@ -130,12 +102,12 @@
     <button class="toolbtn btn" data-drawer="history">1986 timeline</button>
     <button class="toolbtn btn" data-drawer="dist">Poisoned starts</button>
     <button class="toolbtn btn" data-drawer="compare">Naive controller</button>
-    <button id="export" class="btn">Export JSON</button>
-    <span class="hint" id="hint3d">Fly: W A S D move, Q E down and up, Shift fast, drag to look, click the floor to walk, click an instrument for its card.</span>
+    <span class="hint" id="hint3d">Fly: W A S D move, Q E down and up, Shift fast, drag to look, click the floor to walk, click an instrument for its card, press the keys of the run panel on the desk.</span>
   </div>
 </nav>
 
 <script src="/js/store.js"></script>
+<script src="/js/desk.js"></script>
 <script src="/js/core.js"></script>
 <script src="/js/charts.js"></script>
 <script src="/js/panel.js"></script>

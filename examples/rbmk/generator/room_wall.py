@@ -106,7 +106,7 @@ def instruments(batch: Batch, spec: dict) -> None:
     for name, z in zones.items():
         if name in ("annunciator", "reactor_dials"):
             _plate(batch, z, rows_of[name], R_WALL, 0.14, 0.14)
-        if name in ("desk_lamps", "desk_recorders"):
+        if name in ("desk_lamps", "desk_recorders", "run_keys", "run_screen"):
             batch["paint"].box(wall_frame(z["theta"], 1.4, R_UPRIGHT, -0.04), z["cols"] * z["pitch"] + 0.2, 0.62, 0.08)
             batch["desk_kick"].box(wall_frame(z["theta"], 1.04, R_UPRIGHT, -0.04), z["cols"] * z["pitch"] + 0.24, 0.1, 0.12)
     for ins in items:
@@ -123,10 +123,12 @@ def instruments(batch: Batch, spec: dict) -> None:
             _tile(batch, ins, T, 0.235, 0.13)
         elif kind == "lamp":
             _tile(batch, ins, T, 0.14, 0.08)
+        elif kind == "key":
+            _tile(batch, ins, T, 0.13, 0.075)
         elif kind == "recorder":
             _recorder(batch, ins, T)
         elif kind == "screen":
-            _screen(batch, ins, T, 2.4, 1.4)
+            _screen(batch, ins, T, ins.get("w", 2.4), ins.get("h", 1.4), 0.08 if "w" not in ins else 0.03)
 
 
 def rod_map(batch: Batch) -> None:

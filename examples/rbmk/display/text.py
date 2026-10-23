@@ -36,6 +36,14 @@ EVENTS = {
 }
 
 
+def title(scn: Any) -> str:
+    """The title of a scenario; a drawn poisoned start is named by its seed and number."""
+    if scn.key in TITLES:
+        return TITLES[scn.key]
+    _, seed, k = scn.key.split("_")
+    return f"Poisoned start, seed {seed}, number {k}"
+
+
 def description(scn: Any) -> str:
     """The description of a scenario; poisoned starts state their numbers."""
     if scn.group == "poisoned":

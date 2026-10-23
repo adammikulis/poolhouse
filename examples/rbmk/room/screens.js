@@ -159,21 +159,37 @@ export function paintOrm(c, row) {
   g.fillText('ORM  REACTIVITY MARGIN', 10, 30);
   if (!row) {
     g.font = 'bold 26px monospace';
-    g.fillText('NO RUN', 100, 120);
+    g.fillText('NO RUN', 90, 120);
     return;
   }
   g.font = '19px monospace';
-  g.fillText(`PRINTED     ${row.orm_printed.toFixed(1)} R.E.`, 10, 66);
-  g.fillText(`TRUE        ${row.orm.toFixed(1)} R.E.`, 10, 92);
+  g.fillText(`PRINTOUT    ${row.orm_printout.toFixed(1)} R.E.`, 10, 66);
+  g.fillText(`PRINTED     ${(row.orm_age_s / 60).toFixed(0)} MIN AGO`, 10, 92);
   g.fillText('MINIMUM     15.0', 10, 118);
-  g.fillText(`SCRAM       ${row.scram ? 'ACTIVE' : 'no'}`, 10, 144);
+  g.fillText(`AZ-5        ${row.az5 ? 'PRESSED' : 'no'}`, 10, 144);
   g.strokeStyle = '#5cf08a';
   g.strokeRect(10, 164, 280, 22);
-  g.fillRect(10, 164, 280 * Math.min(Math.max(row.orm / 30, 0), 1), 22);
+  g.fillRect(10, 164, 280 * Math.min(Math.max(row.orm_printout / 30, 0), 1), 22);
   g.fillStyle = '#ff6a5a';
   g.fillRect(10 + 140 - 1, 160, 3, 30);
-  if (row.orm < 15) {
+  if (row.orm_printout < 15) {
     g.font = 'bold 20px monospace';
     g.fillText('BELOW MINIMUM', 70, 214);
   }
+}
+
+// The run panel's display: the desk keys' state in plain lines.
+export function paintRun(c, desk) {
+  const g = c.getContext('2d');
+  g.fillStyle = '#031208';
+  g.fillRect(0, 0, c.width, c.height);
+  g.fillStyle = '#5cf08a';
+  g.textBaseline = 'alphabetic';
+  g.font = 'bold 24px monospace';
+  g.fillText('RUN PANEL', 12, 32);
+  g.font = '17px monospace';
+  desk.lines().forEach((l, i) => {
+    g.fillStyle = l.alert ? '#ff9a7a' : '#5cf08a';
+    g.fillText(`${l.label.padEnd(10)} ${l.value}`, 12, 58 + i * 24, c.width - 24);
+  });
 }
