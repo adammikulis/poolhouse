@@ -33,18 +33,15 @@ pipes; they own no product control listener or independent scheduler.
    behavior. The shared plan records a bypassing wrapper and child-substitution findings on Windows/WSL; inspect
    the Mac independently. Supply platform evidence, not a competing identity fix.
 
-## Recover the existing repository App before creating one
+## Development publication and optional App recovery
 
-The private GitHub App named poolhouse-agents already exists. Its credential may be on this Mac; that location is
-unverified. The Windows/WSL device reports no configured App identity, and its duplicate creation attempt is stopped.
-Inspect the selected installed credential holder through the supported agent-identity status/setup/publication flow.
-Verify the existing App, repository installation, required scoped permissions, and holder readiness; do not infer
-ownership from its name or public page. Reuse the valid existing configuration where available. Keep signing keys
-inside the holder; never print, copy to another device, or substitute a personal GitHub/CLI credential.
-If account consent or keystore authentication is required, prepare the concrete native operation and ask once.
-If no valid credential remains, preserve the existing App and report the recovery choice before replacement or
-creating another App. Resolve globally unique naming in maintained setup tooling rather than repeatedly submitting
-the colliding name. Verify publication uses the software-owned App and normal reviewed development checks.
+Push tested increments to `0.3dev` using the repository's existing configured Git authentication on this device.
+No GitHub App, designated publisher, or holder on another device is required. Preserve agent authorship and the
+maintained development checks; fetch and reconcile before each push. App recovery never blocks synchronization.
+
+The existing poolhouse-agents App may still be recovered separately when its software-owned operations are needed.
+Use its supported installed holder; keep keys there and never print or copy them to another device. Do not create a
+duplicate App to unblock ordinary development. Release signing and person-only approval remain separate.
 
 ## Contracts and dependency gates
 
