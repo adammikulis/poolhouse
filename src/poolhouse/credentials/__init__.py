@@ -29,6 +29,7 @@ from poolhouse.credentials.reading import (
 )
 from poolhouse.credentials.writing import write
 from poolhouse.files import read_json, reading, write_json
+from poolhouse.json_objects import unique_object
 
 __all__ = ["FILE_ENV", "INSECURE_ENV", "CredentialError", "Secret", "WrappedCredentialError", "child_environment",
            "describe", "file_path", "get", "set", "status", "unset"]
@@ -135,20 +136,11 @@ def wrapped_path() -> Path:
     return home.state("keystore", "credentials.json")
 
 
-def _unique_fields(fields: list[tuple[str, Any]]) -> dict[str, Any]:
-    record: dict[str, Any] = {}
-    for key, value in fields:
-        if key in record:
-            raise ValueError("duplicate encrypted credential field")
-        record[key] = value
-    return record
-
-
 def _wrapped(*, strict: bool = False) -> dict[str, str]:
     if strict:
         try:
             with reading(wrapped_path()) as source:
-                record = json.load(source, object_pairs_hook=_unique_fields)
+                record = json.load(source, object_pairs_hook=unique_object)
         except FileNotFoundError:
             if wrapped_path().is_symlink():
                 raise WrappedCredentialError("invalid_wrapped") from None
