@@ -94,7 +94,7 @@
     "api": "prepare(package, absent_output)",
     "cli": "python3 patches/codex/macos/prepare_candidate.py <CANONICAL_PACKAGE> <ABSENT_OUTPUT>",
     "compute": "CLI automatically acquired one CPU admission per invocation",
-    "integration": "Internal macOS build orchestration calls the API for fixed signing; no person terminal or signing step."
+    "integration": "Internal build tooling can call prepare or its CPU-admitted two-path CLI; actual verification used the CLI. Shipping installer/CI orchestration is not established."
   },
   "prior_records": {
     "native-macos-producer-evidence.json": "50b7238a25ca485263aaac31fb1ab78ae2ae76f2019fe952a7717d6be60d0aa5",
@@ -104,6 +104,7 @@
     "Both prepared entrypoint digests equal the separately observed derivative bytes. Only those prior short --version observations are reused; no fresh boundary probes were run.",
     "Original source packages and every nonproducer payload remained unchanged. Original server DYLD failures remain immutable.",
     "No installation, startup, publisher authentication, protected custody, node admission or H/K/P acceptance is established.",
-    "Live executable identity, server protection, attachment, core and genuine root/child completion proofs remain unverified."
+    "Live executable identity, server protection, attachment, core and genuine root/child completion proofs remain unverified.",
+    "No shipping installer or CI caller integration is established by this CLI verification."
   ]
 }
