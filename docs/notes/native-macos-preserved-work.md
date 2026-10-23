@@ -470,9 +470,25 @@ Two non-rebuildability candidates have recorded content digests; each recorded o
 
 Other specific metadata: M01 local settings (2533 bytes), scheduling lock (130), `.full-tier-last.json` (87), 250 `app/` candidates and three vendor files; M16 `.testmondata` (17088512), SHM (65536) and WAL (3543232); M17 ten generated binary/schema/permission entries including a zero-byte native binary placeholder; M23/M51 each retain three vendor files (1313897, 279706, 20968 bytes). Nested worktree directories in M01 are locators, not independent backups. Local settings and runtime state contents were neither read nor copied; no runtime state may be replayed as authority. Other model caches/datasets and excluded sensitive stores were not inventoried by this evidence.
 
+## Scoped current-byte preservation
+
+A later, separately scoped capture completed at **2026-10-23T23:02:33.882397+00:00**. Local handle **W-MAC** resolves to private external custody outside all original worktrees. It records exactly the 39 source paths and two GLBs listed above, preserving available declared bytes, scoped index blobs, metadata, capture code and archive-only reconstruction. No private configuration or credential-store paths were included. Original files and indexes were not written. The capture made no network calls, ran no broad tests, and executed neither model work nor archived source.
+
+Of the 39 listed source paths, **38 current files** were copied; M06's original `tests/test_claim_release.py` and tree were absent. The archive does not recover that missing original. Available source copies have current SHA-256 values and per-file consistency checks, but the baseline recorded no source byte hashes, so historical dirty-byte identity remains unproven. Capture observations showed unchanged HEAD/scoped-index state in six available trees; **35 scoped index entries** were reconstructed from archived blob bytes. These checks are not a globally atomic snapshot or a copy of the complete original indexes.
+
+Both listed GLBs were copied and match their recorded baseline sizes and SHA-256 values exactly. The capture contains **72 unique content objects, 6,678,684 bytes**. The capturing agent reconstructed 40 files and 35 scoped index entries from archive data alone. A separate non-author verification at **2026-10-23T23:04:39.875717+00:00** checked all 72 objects, all 40 reconstructed files, both asset baseline matches, and the 35 scoped index entries and actual Git blob bytes, without reading originals. Its receipt is retained with the archive.
+
+| Local custody evidence | Bytes | SHA-256 |
+| --- | --- | --- |
+| `W-MAC/manifest.json` | 53685 | `8e5af876292cff77c94ea28b70bb70dfe79829d65af1605700171334692cc697` |
+| `W-MAC/proof.json` | 550 | `c1e7cad2abaac4fc096f964fe900155a2111f8f3cec5cd17b427059ab64918f7` |
+| `W-MAC/independent-verification.json` | 498 | `d88157d8a5c5ee5440185b440d4b5295d4f4bdc8515a19388a3e8607b36a8912` |
+
+The custody root is private (0700); captured objects and receipts are 0600. The pattern filter used during capture is limited; source bytes are not published by this ledger. This checkpoint narrows custody gaps only: it grants no cleanup, execution, identity, pool adoption, native acceptance or K approval. Other ignored candidates and original source behavior/disposition mappings remain pending.
+
 ## Paused remote model and behavior ownership
 
-Paused work is retained exactly as `refs/remotes/origin/feat/decider-gemma4` = `8120e9a11cf73b665b322236af49a86bb70d6f90`, with **13 unique commits** against the original baseline. No model work was resumed. No listed bundle advertises this ref/head; inclusion in any bundle’s internal object history was not established. A separate offline copy, remote object availability now, required behavior mapping and resumption owner remain unverified. This is not permission to fetch a model, start a server or migrate trust.
+At the original baseline, paused work was retained exactly as `refs/remotes/origin/feat/decider-gemma4` = `8120e9a11cf73b665b322236af49a86bb70d6f90`, with **13 unique commits**. No model work was resumed. At that checkpoint none of B01–B14 advertised this ref/head, and an independent offline copy was unverified. The later [committed-history restore supplement](#independent-committed-history-restore-supplement) records the now-verified local standalone bundle and fresh restore. Current remote object availability, non-history model assets, required behavior mapping and resumption owner remain unverified. This is not permission to fetch a model, start a server or migrate trust.
 
 | Source group | Known retained evidence | Outstanding owner / behavior mapping |
 | --- | --- | --- |
@@ -480,7 +496,7 @@ Paused work is retained exactly as `refs/remotes/origin/feat/decider-gemma4` = `
 | M12/M40 visual assets | Original Git heads and two GLB digests above | Asset custodian/replacement mapping unassigned; establish another verified copy before cleanup. |
 | M37 native-service work | Original head e97621879dac95bd7f70a17352a4f0ab8db82923; baseline installed process used ordinary UID, not dedicated service identity | Native lifecycle/service owner must prove actual replacement behavior; historical branch title is not acceptance. |
 | B01–B14 studio/native/worker branches | Complete-history bundles and advertised heads retained | Per-bundle behavior owner and mapping to the common native plan remain unassigned. Bundle validity does not prove native replacements. |
-| Paused remote model | Exact ref/head and 13 unique commits retained | Resumption, independent preservation and native behavior disposition require coordination; remains paused. |
+| Paused remote model | Exact ref/head and 13 unique commits retained | Resumption, remote transfer, non-history assets and native behavior disposition require coordination; remains paused. |
 | Cross-device source requests | This Mac ledger and the linked other-device ledger are real Git handoff data | No authenticated device/API connection or pool adoption is established; unresolved source custody/behavior gaps remain part of K. |
 
 ## Later scoped closures, separate from originals
@@ -525,4 +541,4 @@ other device and H/K acceptance remain unproven. Evidence and restored objects r
 
 ## Remaining handoff gaps
 
-The coordinator must assign behavior/disposition owners, map unique source to native implementations and real tests, establish byte preservation for original dirty/untracked and non-rebuildable assets, confirm paused-model non-history asset custody, and arrange independently verified transfer where needed. Full bundle/ref object availability on the other device and unresolved launch-ticket evidence in the linked ledger remain open. The original metadata publication and scoped history-preservation supplement performed no global re-inventory, broad test suite, credential read, model execution or native acceptance. The later standalone paused-history bundle is recorded explicitly above.
+The coordinator must assign behavior/disposition owners, map unique source to native implementations and real tests, resolve historical dirty-source identity, the missing M06 path and remaining ignored-asset custody, confirm paused-model non-history asset custody, and arrange independently verified transfer where needed. Full bundle/ref object availability on the other device and unresolved launch-ticket evidence in the linked ledger remain open. The original metadata publication and scoped history-preservation supplement performed no global re-inventory, broad test suite, credential read, model execution or native acceptance. The later standalone paused-history bundle is recorded explicitly above. The later W-MAC current-byte/asset copy is separately scoped above and does not establish original dirty-source identity.

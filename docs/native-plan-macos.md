@@ -120,6 +120,26 @@ its untrusted data representation only; K remains unaccepted. The [shared propos
   Current unsupported-version refusal describes schema loading; raw `NodeIdentity` data can hold any U32 version or
   inconsistent key/DeviceId. Authenticated version and derived-ID consistency validation remains future integration work.
 
+Targeted Mac review of adapter/lifecycle proposal `6b4da1e4e` through `f27924b38` accepts publication of incomplete
+declarations only. K remains unaccepted; canonical-owner follow-up must establish:
+
+- `RawChannel` encapsulates the exact received kernel-authenticated message envelope and receiver/connection identity.
+  `authenticate_producer` and `inspect_caller` consume that envelope; `KernelCaller` stays tied to its message. A cached
+  connection or `caller_observation` cannot admit later frames. Check fresh principal, code, PID-version and lineage at consume.
+- Sealed node-owned `Binding`/`SpawnPlan` constructors retain measured executable/assets and immutable argv, environment,
+  working directory, confinement and inherited handles. Generic trait parameters alone enforce no opaque construction.
+  Release compares the exact held plan, invocation and generation against that binding.
+- Consuming the held process on release must retain fail-closed kill/reap ownership on every error or partial release.
+  Define `RunningProcess` drop, holder-loss teardown, termination-error handling, completed reaping and descendant cleanup
+  with retained process identity; a failed release must leave no orphan or lost handle, and PID-only killing is insufficient.
+- Native adapters check birth/token/process consistency and actual protected native lineage separately from raw observations.
+  Lifecycle cancellation, invalidation and atomic terminal metadata describes requirements, not enforcement.
+
+Actual Mac sender proof is still absent: `mach-startup-control/result.json`, observed `2026-10-23T23:09:51.208449Z`,
+records successful inert-control compilation followed by SIGABRT before its main marker under the same deny-default
+profile. The exact failure site is unknown; no profile weakening or observer derivative is established by this result.
+Actual kernel sender, hostile-message, exec/descriptor-transfer and distinct-service proofs remain pending.
+
 The [Mac preservation ledger](notes/native-macos-preserved-work.md) is published separately. Please return the exact
 reviewed canonical adapter and retained-operation checkpoint plus fresh, separately sourced Windows and Linux/WSL
 workspace actors, public node IDs and endpoints requested above. No live sender semantics or connection is proven here.

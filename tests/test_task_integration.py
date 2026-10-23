@@ -558,3 +558,35 @@ def test_cleanup_refuses_a_foreign_worktree_lock(board, project):
     result = integrate(board)
     assert result['state'] == 'blocked' and 'lock owned by another operation' in result['reason']
     assert source.exists() and locked.read_text().strip() == 'foreign live operation'
+
+
+def test_authenticated_worker_integrates_with_its_own_live_source_claims_without_manual_release(board, project, monkeypatch):
+    source = str(project['source'])
+    branch = project['worktree']['branch']
+    assert claims_of(board)[('worktree', source)] == board.worker_id
+    assert claims_of(board)[('branch', branch)] == board.worker_id
+    board.board.review(board.task['id'], accepted())
+    release = type(board.child).release
+
+    def own_release(session, kind, key, held_by=''):
+        if session is board.child:
+            assert held_by != board.worker_id, 'same-actor integration tried to return its own session as a child'
+        return release(session, kind, key, held_by)
+
+    monkeypatch.setattr(type(board.child), 'release', own_release)
+    result = integrate(board, who=board.child)
+    assert result['state'] == 'completed', result.get('reason', result)
+    assert not project['source'].exists()
+    assert ('worktree', source) not in claims_of(board)
+    assert ('branch', branch) not in claims_of(board)
+    assert not any(row['state'] == 'scope_returned' for row in detail(board)['integration_events'])
+
+
+def test_independent_reviewer_cannot_return_another_workers_live_source_claim(board, project):
+    Tasks(board.reviewer).review(board.task['id'], accepted())
+    result = integrate(board, who=board.reviewer)
+    assert result['state'] == 'blocked'
+    assert 'registered parent' in result['reason']
+    assert project['source'].exists()
+    assert claims_of(board)[('worktree', str(project['source']))] == board.worker_id
+    assert claims_of(board)[('branch', project['worktree']['branch'])] == board.worker_id
