@@ -108,7 +108,11 @@ def test_id(line: str) -> str:
 
 
 def failing_at(root: Path, commit: str, ids: list[str]) -> set[str]:
-    """Which of the test ``ids`` fail on a checkout of ``commit``, made beside ``root``'s repository and removed again."""
+    """Which of the test ``ids`` fail on a checkout of ``commit``, made beside ``root``'s repository and removed again. A test of a file
+    ``commit`` does not hold cannot fail there, and it is left out of the run, which would otherwise end naming no test."""
+    ids = [one for one in ids if lg.blob(root, commit, one.split("::", 1)[0]) is not None]
+    if not ids:
+        return set()
     with tempfile.TemporaryDirectory(prefix="affected-base-") as scratch:
         where = Path(scratch) / "base"
         lg.git(root, "worktree", "add", "--detach", str(where), commit)

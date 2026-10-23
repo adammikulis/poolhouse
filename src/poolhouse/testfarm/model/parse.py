@@ -106,7 +106,8 @@ def _run_spec(table: dict) -> RunSpec | None:
     if "run" not in table:
         return None
     values = _fields("[run]", table["run"], "run")
-    spec = RunSpec(**values)
+    denied = values.pop("sandbox", {})
+    spec = RunSpec(**values, sandbox_deny_read=denied.get("deny_read", ()), sandbox_deny_write=denied.get("deny_write", ()))
     if spec.argv is None and spec.slice is None:
         raise k.fail("[run]", "needs argv (the command that runs the ids)")
     if spec.slice is not None:

@@ -57,6 +57,10 @@ launcher = ["env", "-i"]
 [run.env]
 WIDGETS_MODE = "test"
 
+[run.sandbox]
+deny_read = ["secrets/**"]
+deny_write = ["dist/**"]
+
 [deps]
 globs = { "tests/**" = ["src/**", "tests/**"] }
 command = ["sh", "tests/deps.sh"]
@@ -148,6 +152,7 @@ def test_a_file_that_uses_every_key_of_the_schema_parses_into_values():
     assert config.preset == "mine" and config.run.test_timeout == 5.0 and config.run.timeout == 60.0
     assert config.list.format == "jsonl" and config.list.allow_empty and config.list.timeout == 30.0
     assert config.run.refuse_prefix == ("@", "+") and config.run.slice_base == 0 and config.run.env == (("WIDGETS_MODE", "test"),)
+    assert config.run.sandbox_deny_read == ("secrets/**",) and config.run.sandbox_deny_write == ("dist/**",)
     assert config.deps.globs == (("tests/**", ("src/**", "tests/**")),) and config.deps.self_files == ("tests/deps.sh",)
     assert config.steps[0].prune == ("sh", "prune.sh", "{shared}") and config.steps[0].keep == 86400.0
     assert config.labels[0].lease == (("gpu", None), ("memory", 8192)) and config.labels[0].net == "loopback"
@@ -165,7 +170,7 @@ def design_keys() -> set[str]:
     for row in re.findall(r"^\| ([^|]+) \|", block, re.M)[2:]:
         table = ""
         for item in re.findall(r"`([^`]+)`", row):
-            header = re.match(r"\[\[?([a-z]+)(?:\.NAME)?\]\]?\s*(.*)", item)
+            header = re.match(r"\[\[?([a-z]+(?:\.[a-z]+)?)(?:\.NAME)?\]\]?\s*(.*)", item)
             if header:
                 table, item = header.group(1), header.group(2)
             found |= {f"{table}.{key.strip()}" for key in item.split(",") if key.strip()}

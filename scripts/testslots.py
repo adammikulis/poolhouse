@@ -30,7 +30,7 @@ HEAVY_MODULES = frozenset({
     "test_graph_store_scale", "test_real_model_uses", "test_redteam_judge_real", "test_redteam_loop",
     "test_redteam_pyrit", "test_sandbox_gpu", "test_serve_llamacpp_real",
     "test_agent_real_model", "test_rbmk_app", "test_rbmk_engine_real", "test_rbmk_room", "test_rbmk_web",
-    "test_redteam_lab_home", "test_redteam_sentinel_model",
+    "test_redteam_lab_home", "test_redteam_sentinel_model", "test_serve_fit_real",
 })
 """Test modules that take a heavy lane (a real model server, a benchmark, a fleet daemon); every real_model module is in it."""
 

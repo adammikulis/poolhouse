@@ -90,6 +90,17 @@ def test_an_old_red_test_does_not_hide_a_test_the_push_breaks(repo, tmp_path):
     assert "tests/test_red.py" not in done.stderr.split("run it again with:")[1]
 
 
+def test_a_new_failing_test_file_does_not_make_an_old_red_test_look_new(repo, tmp_path):
+    commit(repo, "tests/test_red.py", "from poolhouse import mod\n\n\ndef test_was_red():\n    assert mod.VALUE == 99\n")
+    git(repo, "push", "-q", "origin", "0.9dev")
+    commit(repo, "tests/test_fresh.py", "from poolhouse import mod\n\n\ndef test_fresh():\n    assert mod.VALUE == 99\n")
+    commit(repo, "src/poolhouse/mod.py", "VALUE = 1\nMORE = 9\n")
+    done = landing(repo, tmp_path / "log")
+    assert done.returncode != 0
+    assert "already red before this push" in done.stderr and "FAILED tests/test_red.py::test_was_red" in done.stderr
+    assert "run it again with: scripts/test all tests/test_fresh.py --redteam" in done.stderr
+
+
 def test_a_new_test_that_fails_is_a_failure_of_the_push(repo, tmp_path):
     commit(repo, "tests/test_fresh.py", "from poolhouse import mod\n\n\ndef test_fresh():\n    assert mod.VALUE == 99\n")
     done = landing(repo, tmp_path / "log")

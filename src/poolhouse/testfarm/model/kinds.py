@@ -12,7 +12,7 @@ from poolhouse.testfarm.model import globs
 from poolhouse.testfarm.model.config import ConfigError
 
 __all__ = ["Kind", "argv", "argvs", "boolean", "choice", "env_names", "envmap", "exe_list", "fail", "file_glob", "file_globs", "glob_map", "lease",
-           "literal", "margin", "name", "names", "positive_int", "rate", "seconds", "slice_count", "strict", "strings", "template", "text", "version",
+           "literal", "margin", "name", "names", "positive_int", "rate", "sandbox", "seconds", "slice_count", "strict", "strings", "template", "text", "version",
            "word_list"]
 
 Kind = Callable[[str, object], object]
@@ -197,6 +197,12 @@ def glob_map(where: str, value: object) -> tuple[tuple[str, tuple[str, ...]], ..
     if not isinstance(value, dict):
         raise fail(where, "must be a table of id patterns to arrays of file globs")
     return tuple((text(f"{where}.{key}", key), file_globs(f"{where}[{key!r}]", item)) for key, item in value.items())
+
+
+def sandbox(where: str, value: object) -> dict[str, tuple[str, ...]]:
+    """``[run.sandbox]``: paths the project asks to deny to its own children, which can only narrow the runner's profile."""
+    table = strict(where, value, ("deny_read", "deny_write"))
+    return {key: file_globs(f"{where}.{key}", item) for key, item in table.items()}
 
 
 def envmap(where: str, value: object) -> tuple[tuple[str, str], ...]:

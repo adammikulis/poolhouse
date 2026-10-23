@@ -53,6 +53,8 @@ class RunSpec:
     env: tuple[tuple[str, str], ...] = ()
     launcher: Argv | None = None
     needs: tuple[str, ...] | None = None
+    sandbox_deny_read: tuple[str, ...] = ()
+    sandbox_deny_write: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
