@@ -197,6 +197,7 @@ fn releasing_for(node: &mut Node, board: &str, caller: &crate::identity::Holder,
 
 fn release(node: &mut Node, board: &str, token: &str, p: &Map<String, Value>) -> Result<Value> {
     let (kind, key) = (kind_of(p, true)?, text(p, "key")?);
+    Resource::Claim { kind: kind.into(), name: key.into() }.check()?;
     let name = held_as(kind, board, key);
     let access = node.access(token, board, true)?;
     let holder = format!("{board}/{}", releasing_for(node, board, &access.holder, text(p, "held_by")?)?);
