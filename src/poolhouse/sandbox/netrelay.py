@@ -27,6 +27,18 @@ NAME = re.compile(r"poolhouse-net-(\d+)-(\d+)-\w+")
 left by a process that was killed can be told from one a live process still uses."""
 
 
+SOCKET_PATH_MOST = 103
+"""The longest path a Unix socket can be bound to on either system (`sun_path` is 104 bytes on macOS and 108 on Linux, each with its end)."""
+
+
+def _base(name: str) -> str:
+    """Where a relay directory is made: the temporary directory, unless a socket in it would have too long a path (macOS temporary
+    directories are long), then `/tmp`."""
+    base = os.path.realpath(tempfile.gettempdir())
+    longest = len(base) + 1 + len(name) + len("/p65535.sock")
+    return base if longest <= SOCKET_PATH_MOST else "/tmp"  # noqa: S108 - a short fallback, the directory itself is private
+
+
 def _alive(pid: int, started: int) -> bool:
     try:
         return int(psutil.Process(pid).create_time()) == started
@@ -37,8 +49,8 @@ def _alive(pid: int, started: int) -> bool:
 def sweep() -> None:
     """Remove the relay directories of processes that no longer exist (a hard kill leaves them). Only this user's plain directories whose
     name is exactly a relay directory's are touched."""
-    root = Path(tempfile.gettempdir())
-    for entry in root.glob("poolhouse-net-*"):
+    roots = {Path(tempfile.gettempdir()), Path("/tmp")}  # noqa: S108 - where `_base` falls back to
+    for entry in (candidate for root in roots for candidate in root.glob("poolhouse-net-*")):
         found = NAME.fullmatch(entry.name)
         try:
             info = entry.lstat()
@@ -66,7 +78,8 @@ class Relay:
     def __init__(self, ports: tuple[int, ...]) -> None:
         sweep()
         started = int(psutil.Process().create_time())
-        self.directory = os.path.realpath(tempfile.mkdtemp(prefix=f"poolhouse-net-{os.getpid()}-{started}-"))
+        prefix = f"poolhouse-net-{os.getpid()}-{started}-"
+        self.directory = os.path.realpath(tempfile.mkdtemp(prefix=prefix, dir=_base(prefix + "xxxxxxxx")))
         self._stopping = threading.Event()
         self._listeners: list[socket.socket] = []
         self._threads: list[threading.Thread] = []

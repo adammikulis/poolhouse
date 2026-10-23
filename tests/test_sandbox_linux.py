@@ -27,7 +27,7 @@ from poolhouse import sandbox
 from poolhouse.sandbox import Limits, Net, Policy, PolicyError, bubblewrap, netforward, netrelay
 from poolhouse.sandbox.bubblewrap import Bubblewrap, arguments
 from poolhouse.sandbox.policies import SYSTEM_EXEC, runtime_reads
-from tests.sandbox_kit import FORKS, THREADS
+from tests.process_kit import FORKS, THREADS
 
 pytestmark = pytest.mark.slow
 
