@@ -28,7 +28,7 @@ def test_invalid_interface_preference_does_not_change_other_settings(tmp_path, v
     ui.settings_path = path
     result = ui.apply_prefs({"always_show_advanced": value, "context": 16384})
     assert "boolean" in result["error"]
-    assert settings.context == 8192
+    assert settings.context == Settings().context
     assert settings.always_show_advanced is False
     assert not path.exists()
 
@@ -53,7 +53,7 @@ def test_invalid_output_default_does_not_apply_other_preferences(tmp_path, limit
     result = ui.apply_prefs({"chat_max_output_tokens": limit, "always_show_advanced": True})
     assert "positive integer" in result["error"]
     assert ui.settings.always_show_advanced is False
-    assert ui.settings.chat_max_output_tokens == 8192
+    assert ui.settings.chat_max_output_tokens is None
 
 
 @pytest.mark.parametrize("limit", [1, 32, 128])

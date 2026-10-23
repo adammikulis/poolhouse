@@ -304,6 +304,10 @@ A failed build or smoke removes the new tree, records the failure and leaves the
 
 The commands a lead runs to deploy and restart after a landing: `poolhouse runtime ensure --agent NAME`, then `poolhouse runtime restart-host --agent NAME`.
 
+Only the installed software can sign and bind the Poolhouse executable. `ensure`, `rollback` and `restart-host` run from anything else (a checkout, an editable install, a worktree) still select and
+restart the runtime, and end their line with `NOT bound to the Poolhouse executable: <why>`, naming the host's current program and the one command that does it:
+`~/.poolhouse/bin/poolhouse runtime ensure` (the launcher directory in use), run from the installed command.
+
 `status` prints:
 
 ```

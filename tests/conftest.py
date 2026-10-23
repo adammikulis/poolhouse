@@ -462,6 +462,46 @@ def scored_rows(label: str, *, questions: int, hits: int, seconds: float, **cont
     return out
 
 
+# -- a context named, for tests of what a flag does and not of what fits ------------------
+
+@pytest.fixture
+def named_context(monkeypatch):
+    """Serve every spec that names no context at 4096, in the places that would fit one.
+
+    For tests whose model is a stand-in file with no header: they are about a flag, a lease or
+    a profile, not about the context, which `tests/test_serve_largest_fit.py` covers on real
+    headers. Nothing outside the test module that asks for this fixture changes."""
+    from dataclasses import replace
+
+    from poolhouse.serve import lifecycle_cli, manager, public
+
+    def named(spec, machine=None):
+        return (spec if spec.context else replace(spec, context=4096)), ""
+
+    for module in (lifecycle_cli, manager, public):
+        monkeypatch.setattr(module, "fitted", named)
+
+
+@pytest.fixture
+def bench_context_named(monkeypatch):
+    """A bench run with no ``--context`` serves 32768 a slot, for stand-in model files with no header.
+
+    The benchmark's default is the fit (`bench/fitcontext.py`, covered on real headers by
+    `tests/test_bench_context_levels.py`); a test of sweeps, labels or the serving seam does not
+    want to build a header to get past it."""
+    from poolhouse.bench import fitcontext
+
+    real = fitcontext.total_for
+
+    def named(args, model, *, kv, default=0, headed=False):
+        given = getattr(args, "context", 0)
+        if getattr(given, "fit", False):
+            return real(args, model, kv=kv, default=default, headed=headed)
+        return int(given or 0) or default or 32768 * max(1, int(getattr(args, "parallel", 1) or 1)), ""
+
+    monkeypatch.setattr(fitcontext, "total_for", named)
+
+
 # -- the fit records, pointed away from the ones this repository ships -------------------
 
 @pytest.fixture

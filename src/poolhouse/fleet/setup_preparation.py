@@ -11,6 +11,7 @@ from poolhouse.hub.probe import machine_memory
 from poolhouse.serve.broker import BrokerError
 from poolhouse.serve.estimate import Setup, estimate
 from poolhouse.serve.process import every_server
+from poolhouse.serve.suggest import largest_fit
 from poolhouse.studio.store import digest
 
 from . import llama, model_components, setup_jobs, setup_probe, startup_models
@@ -141,8 +142,9 @@ class Preparation:
         if row is None:
             raise ValueError('The selected installed model changed before starting.')
         maximum = row.get('context_length')
-        default = int(getattr(self.ui.settings, 'context', 0) or startup_models.CONTEXT)
-        return min(default, maximum) if type(maximum) is int and maximum > 0 else None
+        default = int(getattr(self.ui.settings, 'context', 0) or 0)
+        # no preference saved: None, and the start fits the model (`fitted_settings`)
+        return min(default, maximum) if default and type(maximum) is int and maximum > 0 else None
 
     def _obtain(self, selection, progress):
         if selection['model_id'].startswith('installed:'):
@@ -319,6 +321,15 @@ def _running(ui):
             if row['port'] in live and not row['defunct'] and Path(row['model']).is_absolute()}
 
 
+def _fitted_context(row, maximum):
+    """The largest context this machine holds for an installed model; 0 (none claimed) when its
+    header cannot be fitted."""
+    try:
+        return largest_fit(model_components.effective(Path(row['path']))).context
+    except (OSError, ValueError):
+        return 0
+
+
 def _estimate(row, context, free):
     try:
         model = model_components.effective(Path(row['path']))
@@ -340,7 +351,7 @@ def choices_for(ui):
     for row in installed:
         path = str(Path(row['path']).resolve())
         maximum = row.get('context_length')
-        context = min(startup_models.CONTEXT, maximum) if type(maximum) is int and maximum > 0 else startup_models.CONTEXT
+        context = _fitted_context(row, maximum)
         active = str(model_components.effective(Path(path)).resolve()) in running
         rows.append({'model_id': _model_id(row), 'name': row['name'], 'file': Path(path).name,
                      'installed': True, 'running': active, 'download_bytes': 0,

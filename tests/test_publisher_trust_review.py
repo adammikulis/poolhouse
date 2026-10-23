@@ -147,14 +147,14 @@ def test_a_flag_that_is_not_on_the_list_is_not_passed_to_llama_server(tmp_path, 
     backend = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=""))
     for argv in ((flag, "/tmp/evil.gguf"), (f"{flag}=/tmp/evil.gguf",), (f"{flag}/tmp/evil.gguf",)):
         with pytest.raises(ServerFailed, match="is not a flag Poolhouse passes"):
-            backend.command(ServerSpec(model="/m/w.gguf", extra_args=argv))
+            backend.command(ServerSpec(context=4096, model="/m/w.gguf", extra_args=argv))
 
 
 def test_the_flags_a_person_tunes_with_are_passed(tmp_path):
     backend = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=""))
     given = ("-ub", "2048", "-b", "8192", "-lv", "4", "--no-warmup", "--cache-reuse", "256",
              "--draft-max", "3", "-fa", "on", "--threads=8", "-1")
-    assert list(given) == backend.command(ServerSpec(model="/m/w.gguf", extra_args=given))[-len(given):]
+    assert list(given) == backend.command(ServerSpec(context=4096, model="/m/w.gguf", extra_args=given))[-len(given):]
 
 
 def test_the_template_and_the_lookup_cache_a_spec_names_are_verified_at_load(tmp_path):
@@ -168,7 +168,7 @@ def test_the_template_and_the_lookup_cache_a_spec_names_are_verified_at_load(tmp
     template.write_text("{{ messages }}")
     manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
-    spec = ServerSpec(model=model, chat_template_file=str(template), port=free_port())
+    spec = ServerSpec(context=4096, model=model, chat_template_file=str(template), port=free_port())
     with pytest.raises(guarded.SentinelRefused, match=r"chat\.jinja was not downloaded"):
         manager.lease(spec, roam=False, timeout=30.0, check_flags=False, preflight=False,
                       warmup_request=False)
@@ -207,10 +207,10 @@ def test_an_engine_that_downloads_by_repository_name_is_given_a_path_or_nothing(
     for engine in (VllmBackend(), SGLangBackend()):
         for model in ("owner/repo", "hf:owner/repo", "https://example.test/x"):
             with pytest.raises(ServerFailed, match="must be fetched before serving"):
-                engine.command(ServerSpec(model=model))
-        assert str(tmp_path) in engine.command(ServerSpec(model=str(tmp_path)))
+                engine.command(ServerSpec(context=4096, model=model))
+        assert str(tmp_path) in engine.command(ServerSpec(context=4096, model=str(tmp_path)))
         with pytest.raises(ServerFailed, match="is not a flag Poolhouse passes"):
-            engine.command(ServerSpec(model=str(tmp_path), extra_args=("--lora-modules", "a=/tmp/x")))
+            engine.command(ServerSpec(context=4096, model=str(tmp_path), extra_args=("--lora-modules", "a=/tmp/x")))
 
 
 def test_an_engine_never_downloads_for_itself(monkeypatch):

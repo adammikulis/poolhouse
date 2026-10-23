@@ -101,6 +101,15 @@ finishes while the daemon is down keeps its exit code, which the job's own launc
 its log. A process whose identity cannot be verified is reported `interrupted` and keeps holding its slot. `poolhouse` without the option still replaces a daemon only at its idle
 boundary when its commit differs.
 
+A replacement always ends with a daemon answering on the port. The launcher that asks the old daemon to stop does not become the new
+one: it starts the new daemon as a process of its own and stays until it answers (its exit status is 0 only then). A new daemon that
+ends first is answered by starting the old one again from the command its control record kept (`launch`), and the launcher says so in
+its log and exits 1; one that is still starting after two minutes is left running and reported. One launcher at a time replaces or
+starts the daemon on a port (`launcher-control/<port>.handover.lock`), so a second restart waits for the first to be proved. A daemon
+told to stop is waited for however long it takes, because giving up then would leave nothing. A process started to answer for itself
+on macOS (`poolhouse runtime restart-host`) starts in the state root, not where it was run from, because a process that answers for itself
+waits for its own consent to read Documents, Desktop and Downloads.
+
 ## What the daemon is called
 
 A firewall list, a Local Network prompt and the list of background items name a program by its executable, so the daemon runs

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import socket
 import sys
 import threading
@@ -17,11 +18,12 @@ from poolhouse.http import Options, ServerError, request_json
 from poolhouse.log import say, warn
 
 from . import discovery, launch_open, wsl_network, wsl_registration, wsl_startup
-from .daemon_control import ControlError, request_replacement
+from .daemon_control import ControlError, launch_of, request_replacement
 from .discovery import (
     DEFAULT_PORT as DISCOVERY_PORT,  # noqa: F401  (keeps ports in view)
     memberships,
 )
+from .handover import claim, finish
 from .measuring import same_commit
 from .pool_modes import notice
 from .runtime_paths import default_root
@@ -193,35 +195,72 @@ def _reuse(running: dict[str, Any], known: argparse.Namespace, rest: list[str]) 
     return 0
 
 
-def main(argv: list[str] | None = None, *,
-         daemon_main: Callable[[list[str]], int] | None = None) -> int:
-    daemon_main is None and runtime.forward("poolhouse.fleet.launch", list(sys.argv[1:] if argv is None else argv))
-    known, rest = _arguments(argv)
+def _replace(known: argparse.Namespace, rest: list[str], running: dict[str, Any], expected: str,
+             release: Callable[[], None]) -> int | None:
+    """Ask the running daemon to stop and put another in its place. On Windows the daemon is the WSL one: its exit is waited for and
+    None comes back, for the caller to start it. Elsewhere the successor is started and proved here (`handover`), so the exit status
+    says whether a daemon answers."""
+    previous = None
+    try:
+        if sys.platform == "win32":
+            replace_running(rest, known.port, running, expected, restart="preserve")
+        else:
+            previous = launch_of(_root(rest), known.port)
+            answer = request_replacement(_root(rest), known.port, running, expected, restart="preserve")
+            if isinstance(answer, dict) and answer.get("preserved"):
+                say(f"Restart preserves jobs: {answer['preserved']}")
+    except (ControlError, ServerError, WSLError, OSError, ValueError) as exc:
+        warn(str(exc))
+        return 1
+    while not _wait_for_exit(known.port):
+        say("The previous daemon was told to stop and is still exiting; waiting for it.")
+    if sys.platform == "win32":
+        return None
+    code = finish(_daemon_arguments(known, rest), previous, lambda: _health(known.port), release)
+    if code == 0 and not known.no_browser:
+        webbrowser.open(launch_open.page_url(known.port, _root(rest)))
+    return code
 
-    linux_executable = None
+
+def _daemon_arguments(known: argparse.Namespace, rest: list[str]) -> list[str]:
+    arguments = ["--port", str(known.port), *rest]
+    if not known.no_browser:
+        arguments.append("--initial-setup")
+    return arguments
+
+
+def _settle(known: argparse.Namespace, rest: list[str], release: Callable[[], None]) -> int | None:
+    """What the launcher does about the daemon already on the port: an exit status when that settles it, None when none runs."""
     running = already_running(known.port)
     if running is None and port_held(known.port):
         running = _held_health(known.port)
         if running is None:
             warn(f"Something holds port {known.port} and did not answer /health; not starting a second daemon. Retry shortly.")
             return 1
+    if running is None:
+        return None
     expected = str(state().get("commit") or "")
-    if running is not None and (known.restart or not same_commit(str(running.get("commit") or ""), expected)):
-        try:
-            if sys.platform == "win32":
-                replace_running(rest, known.port, running, expected, restart="preserve")
-            else:
-                answer = request_replacement(_root(rest), known.port, running, expected, restart="preserve")
-                if isinstance(answer, dict) and answer.get("preserved"):
-                    say(f"Restart preserves jobs: {answer['preserved']}")
-            if not _wait_for_exit(known.port):
-                raise ControlError("The previous daemon is still exiting; retry shortly.")
-            running = None
-        except (ControlError, ServerError, WSLError, OSError, ValueError) as exc:
-            warn(str(exc))
-            return 1
-    if running is not None:
-        return _reuse(running, known, rest)
+    if known.restart or not same_commit(str(running.get("commit") or ""), expected):
+        return _replace(known, rest, running, expected, release)
+    return _reuse(running, known, rest)
+
+
+def main(argv: list[str] | None = None, *,
+         daemon_main: Callable[[list[str]], int] | None = None) -> int:
+    daemon_main is None and runtime.forward("poolhouse.fleet.launch", list(sys.argv[1:] if argv is None else argv))
+    known, rest = _arguments(argv)
+
+    linux_executable = None
+    try:
+        with contextlib.ExitStack() as held:
+            if sys.platform != "win32":
+                held.enter_context(claim(_root(rest), known.port))
+            settled = _settle(known, rest, held.close)
+    except ControlError as exc:
+        warn(str(exc))
+        return 1
+    if settled is not None:
+        return settled
 
     if sys.platform == "win32" and linux_executable is None:
         try:
@@ -233,9 +272,7 @@ def main(argv: list[str] | None = None, *,
     stopped = threading.Event()
     threading.Thread(target=_open_when_ready,
                      args=(known.port, not known.no_browser, stopped, _root(rest)), daemon=True).start()
-    arguments = ["--port", str(known.port), *rest]
-    if not known.no_browser:
-        arguments.append("--initial-setup")
+    arguments = _daemon_arguments(known, rest)
     if sys.platform == "win32":
         try:
             return start(arguments, executable=linux_executable)

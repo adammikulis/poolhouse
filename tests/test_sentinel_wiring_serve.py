@@ -111,7 +111,7 @@ def test_a_tampered_model_is_refused_through_the_manager_too(manager, model):
     node.manifest.pin(model, "model", source="hf://org/repo@rev")
     model.write_bytes(b"GGUF" + b"\x01" * 4096)
     with pytest.raises(SentinelRefused, match="pin"):
-        manager.lease(ServerSpec(model=str(model), port=free_port()), roam=False, timeout=5)
+        manager.lease(ServerSpec(context=4096, model=str(model), port=free_port()), roam=False, timeout=5)
     assert recorded_servers(manager.state_file) == {}
 
 

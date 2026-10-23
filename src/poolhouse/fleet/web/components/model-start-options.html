@@ -9,10 +9,19 @@
   M.ModelStartOptions = class {
     constructor(model, output) {
       this.maximum = Number.isSafeInteger(model.context_length) && model.context_length > 0 ? model.context_length : null;
-      const preferred = Number.isSafeInteger(M.preferences.context) && M.preferences.context > 0 ? M.preferences.context : 8192;
-      this.context = this.maximum ? Math.min(preferred, this.maximum) : preferred;
+      const saved = Number.isSafeInteger(M.preferences.context) && M.preferences.context > 0 ? M.preferences.context : 0;
+      // No saved choice: the machine chooses. The server fits the model to its memory when it
+      // starts (the largest context that holds), so the slider only matters once a person takes it.
+      this.auto = !saved;
+      this.locked = false;
+      const top = this.maximum || M.CTX_STEPS[M.CTX_STEPS.length - 1];
+      this.context = saved ? Math.min(saved, top) : top;
       this.element = M.el('details', {class:'model-start-options'}, M.el('summary', {},
         output === undefined ? 'Context length' : 'Context length and output'));
+      this.autoBox = M.el('input', {type:'checkbox'});
+      this.autoBox.checked = this.auto;
+      this.autoBox.onchange = () => { this.auto = this.autoBox.checked; this.paint(); };
+      this.element.append(M.el('label', {class:'hint'}, this.autoBox, ' Largest context that fits this machine'));
       this.contextPicker = M.contextPicker(this.context, value => { this.context = value; this.paint(); }, {maximum:this.maximum});
       this.slider = this.contextPicker.querySelector('poolhouse-slider');
       this.slider.removeAttribute('id');
@@ -34,18 +43,19 @@
     paint() {
       if (!this.contextPicker) return;
       this.contextPicker.configure(this.context, this.maximum);
-      this.slider.valueText = `${this.context.toLocaleString()} tokens requested`;
+      this.slider.disabled = this.auto || this.locked;
+      this.slider.valueText = this.auto ? 'largest that fits this machine' : `${this.context.toLocaleString()} tokens requested`;
       this.note.textContent = this.maximum
         ? `Model maximum: ${this.maximum.toLocaleString()} tokens. Larger context uses more memory.`
         : 'The model maximum is not reported. Supported context is checked when starting.';
-      this.output?.configure({context:this.context});
+      this.output?.configure({context:this.auto ? (this.maximum || this.context) : this.context});
     }
-    set disabled(value) { this.slider.disabled = value; if (this.output) this.output.disabled = value; }
+    set disabled(value) { this.locked = !!value; this.autoBox.disabled = !!value; if (this.output) this.output.disabled = value; this.paint(); }
     snapshot() {
-      if (!Number.isSafeInteger(this.context) || this.context < 1 || (this.maximum && this.context > this.maximum))
+      if (!this.auto && (!Number.isSafeInteger(this.context) || this.context < 1 || (this.maximum && this.context > this.maximum)))
         throw Error('Choose a context length within this model’s supported limit.');
       if (this.output && !this.output.checkValidity()) throw Error('Maximum output tokens must be a positive integer or no cap.');
-      return Object.freeze({context:this.context, ...(this.output ? {output:this.output.value} : {})});
+      return Object.freeze({...(this.auto ? {} : {context:this.context}), ...(this.output ? {output:this.output.value} : {})});
     }
   };
 })();

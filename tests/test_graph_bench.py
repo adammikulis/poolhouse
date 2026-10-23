@@ -21,6 +21,8 @@ from poolhouse.bench import Row, _hit, missed, runs, save, table
 from poolhouse.client import Request, Transport
 from poolhouse.testing.fakes import FakeConverse, FakePreflight, FakeServe, fake_serve
 
+pytestmark = pytest.mark.usefixtures("bench_context_named")
+
 
 def test_hit_is_how_well_what_was_shown_matched_what_was_wanted():
     """F1, not recall. Recall alone made a 2B model look more accurate than a 120B, because
@@ -3498,7 +3500,8 @@ def test_the_estimate_is_seconds_per_question_from_the_kept_run_at_the_same_cont
                          at="2026-09-01T16:00:00")]
     args = bench._parser().parse_args(["sweep", "--serve", "models/quill.gguf", "--also",
                                        "terse", "--questions", _twelve(tmp_path),
-                                       "--no-smoke", "--kept", str(tmp_path / "none")])
+                                       "--no-smoke", "--kept", str(tmp_path / "none"),
+                                       "--context", "32768"])
     got = estimate(args, kept)
     assert len(got.models) == 1
     one = got.models[0]
@@ -3518,7 +3521,7 @@ def test_the_estimate_is_seconds_per_question_from_the_kept_run_at_the_same_cont
     # (--on) has no load to pay and is matched by the name its labels start with
     args = bench._parser().parse_args(["sweep", "--serve", "models/quill.gguf", "--on",
                                        "lantern=http://127.0.0.1:1", "--plain-only",
-                                       "--questions", _twelve(tmp_path)])
+                                       "--questions", _twelve(tmp_path), "--context", "32768"])
     got = estimate(args, kept)
     assert [(m.name, m.questions, m.askings, m.load_s) for m in got.models] == [
         ("quill", 14, 1, 41.6), ("lantern", 14, 1, 0.0)]

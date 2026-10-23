@@ -26,6 +26,7 @@ from poolhouse import (
     node_app,
     node_signing,
     platform as poolhouse_platform,
+    real_machine,
     runtime,
     runtime_deploy,
     runtime_host,
@@ -36,6 +37,7 @@ from poolhouse.home import home
 
 SHA1 = "4E2F3980AC138E86B7532FF4E3460EF53D0E7B23"
 COMMIT = "a" * 40
+NOWHERE = runtime_deploy.Plan(Path("/nowhere"), COMMIT, None)
 
 
 def load_command(name: str) -> bytes:
@@ -401,7 +403,7 @@ def test_a_runtime_that_already_runs_as_poolhouse_costs_ensure_no_start_of_pytho
     monkeypatch.setattr(runtime_deploy.runtime_identity, "applies", lambda: True)
     monkeypatch.setattr(runtime_deploy.runtime_identity, "bound", lambda prefix, identity=None: True)
     monkeypatch.setattr(runtime_deploy.runtime, "available", lambda: pytest.fail("the interpreter was started to look"))
-    assert runtime_deploy._selection_identity() == []
+    assert runtime_deploy._selection_identity(NOWHERE) == []
 
 
 def test_a_host_that_does_not_run_as_poolhouse_is_replaced_even_on_the_selected_commit(monkeypatch):
@@ -500,11 +502,66 @@ def test_a_failed_attempt_to_run_as_poolhouse_is_recorded_and_not_repeated_at_on
     monkeypatch.setattr(runtime_deploy.runtime_identity, "bound", lambda prefix, identity=None: False)
     monkeypatch.setattr(runtime_deploy.runtime, "available", lambda: chosen)
     monkeypatch.setattr(runtime_deploy.runtime_identity, "adopt", refuse)
-    first = runtime_deploy._selection_identity()
+    first = runtime_deploy._selection_identity(NOWHERE)
     assert len(attempts) == 1 and "keychain is locked" in first[0]
     assert runtime_deploy.runtime_store.read_state()["identity_failure"]["commit"] == COMMIT
-    again = runtime_deploy._selection_identity()
+    again = runtime_deploy._selection_identity(NOWHERE)
     assert len(attempts) == 1 and "keychain is locked" in again[0] and "tried again after" in again[0], "no prompt every time ensure runs"
     monkeypatch.setattr(runtime_deploy.runtime_identity, "adopt", lambda picked: "")
     runtime_deploy.runtime_store.write_state({"identity_failure": None})
-    assert runtime_deploy._selection_identity() == []
+    assert runtime_deploy._selection_identity(NOWHERE) == []
+
+
+def unbound_world(tmp_path, monkeypatch):
+    """A Mac, a selected runtime that still runs as its bare Python, and a process that is not the installed software."""
+    chosen = built_runtime(tmp_path)
+    (chosen.prefix / "bin").mkdir(parents=True)
+    (chosen.prefix / "bin" / "python").symlink_to(sys.executable)
+    monkeypatch.setattr(runtime_identity, "_mac", lambda: True)
+    monkeypatch.setattr(runtime_deploy.runtime_store, "selection", lambda root=None: {"prefix": str(chosen.prefix)})
+    monkeypatch.setattr(runtime_deploy.runtime, "available", lambda: chosen)
+    return chosen
+
+
+@pytest.mark.parametrize("path", ["settled", "healthy"])
+def test_ensure_run_from_software_that_is_not_installed_says_it_did_not_bind_and_the_one_command_that_does(tmp_path, monkeypatch, path):
+    chosen = unbound_world(tmp_path, monkeypatch)
+    plan = runtime_deploy.Plan(tmp_path, COMMIT, tmp_path / "bin")
+    monkeypatch.setattr(runtime_deploy, "settled", lambda _plan: "current" if path == "settled" else "")
+    if path == "healthy":
+        monkeypatch.setattr(runtime_deploy, "healthy", lambda _plan: chosen)
+        monkeypatch.setattr(runtime_deploy.runtime_store, "collect", lambda keep: None)
+    outcome = runtime_deploy.ensure(plan)
+    assert outcome.action == "current"
+    assert "NOT bound to the Poolhouse executable" in outcome.detail
+    assert real_machine.refusal() in outcome.detail and Path(sys.executable).name in outcome.detail, "it says why, and what the host stays"
+    assert f"run `{tmp_path / 'bin' / 'poolhouse'} runtime ensure`" in outcome.detail
+
+
+def test_a_runtime_switched_to_from_software_that_is_not_installed_says_it_is_not_bound(tmp_path, monkeypatch):
+    chosen = unbound_world(tmp_path, monkeypatch)
+    plan = runtime_deploy.Plan(tmp_path, "b" * 40, tmp_path / "bin")
+    monkeypatch.setattr(runtime_deploy, "healthy", lambda _plan: None)
+    monkeypatch.setattr(runtime_deploy, "_recovered", lambda _plan, _who: (None, []))
+    monkeypatch.setattr(runtime_deploy, "acting", lambda _plan: None)
+    monkeypatch.setattr(runtime_deploy, "build_and_switch", lambda *a, **k: chosen)
+    for name in ("_note", "_reject_below_floor"):
+        monkeypatch.setattr(runtime_deploy, name, lambda *a, **k: None)
+    monkeypatch.setattr(runtime_deploy.runtime_store, "collect", lambda keep: None)
+    outcome = runtime_deploy._ensured(plan, False, False, runtime_deploy.build)
+    assert outcome.action == "switched" and "NOT bound to the Poolhouse executable" in outcome.detail
+    assert f"{tmp_path / 'bin' / 'poolhouse'} runtime ensure" in outcome.detail
+
+
+def test_nothing_is_said_where_there_is_nothing_to_bind(tmp_path, monkeypatch):
+    chosen = unbound_world(tmp_path, monkeypatch)
+    command = "poolhouse runtime ensure"
+    assert runtime_identity.unbound_note(chosen, command)
+    monkeypatch.setattr(runtime_identity, "_mac", lambda: False)
+    assert runtime_identity.unbound_note(chosen, command) == "", "another system has no executable to bind"
+    monkeypatch.setattr(runtime_identity, "_mac", lambda: True)
+    monkeypatch.setattr(runtime_identity, "bound", lambda prefix, identity=None: True)
+    assert runtime_identity.unbound_note(chosen, command) == "", "a runtime that already runs as Poolhouse has nothing left undone"
+    monkeypatch.setattr(runtime_identity, "bound", lambda prefix, identity=None: False)
+    monkeypatch.setattr(runtime_identity, "applies", lambda: True)
+    assert runtime_identity.unbound_note(chosen, command) == "", "the installed software binds it or fails with the reason"

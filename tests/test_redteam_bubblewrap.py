@@ -43,6 +43,7 @@ def test_hostile_binary_name_is_literal_and_probe_is_single_flight(executable, t
     argv = json.loads(rows[0])
     assert argv[:4] == ['--unshare-all', '--die-with-parent', '--new-session', '--clearenv']
     assert '--share-net' not in argv and '--bind' not in argv
+    assert {'--unshare-user', '--disable-userns'} <= set(argv) and argv[argv.index('--cap-drop') + 1] == 'ALL'
     assert not any(left == '--ro-bind' and right == '/' for left, right in pairwise(argv))
     assert argv[-2:] == ['--', os.path.realpath('/usr/bin/true')]
     assert not (tmp_path / 'escaped').exists()

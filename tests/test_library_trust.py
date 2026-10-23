@@ -266,9 +266,9 @@ def test_serving_a_reference_asks_and_a_spec_cannot_carry_a_trust(stand, tmp_pat
     server = stand({**repos("unsloth/thing-GGUF"), **repos("maker/head-GGUF", file="head-Q8_0.gguf")})
     assert "trust" not in {f.name for f in dataclasses.fields(ServerSpec)}
     with pytest.raises(TypeError):
-        ServerSpec(model="/m/w.gguf", draft="hf:maker/head-GGUF", trust=LIBRARY)  # type: ignore[call-arg]
+        ServerSpec(context=4096, model="/m/w.gguf", draft="hf:maker/head-GGUF", trust=LIBRARY)  # type: ignore[call-arg]
     with pytest.raises(ServerFailed, match=r"could not fetch the draft.*This model is from maker"):
-        LlamaServerBackend.resolved_draft(ServerSpec(model="/m/w.gguf", draft="hf:maker/head-GGUF"))
+        LlamaServerBackend.resolved_draft(ServerSpec(context=4096, model="/m/w.gguf", draft="hf:maker/head-GGUF"))
     assert "maker/head-GGUF" not in " ".join(server.downloads)
 
 
@@ -445,7 +445,7 @@ def test_serving_a_model_pulled_under_library_by_path_starts_no_server_until_a_p
     manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(tmp_path)), state_file=state)
     try:
         with pytest.raises(guarded.SentinelRefused, match="This model is from maker"):
-            manager.lease(ServerSpec(model=got, port=free_port()), roam=False, timeout=30.0, check_flags=False,
+            manager.lease(ServerSpec(context=4096, model=got, port=free_port()), roam=False, timeout=30.0, check_flags=False,
                           preflight=False, warmup_request=False)
     finally:
         for entry in recorded_servers(state).values():

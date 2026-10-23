@@ -246,6 +246,8 @@ def test_settings_auth_loss_rejects_old_save_completion(feedback_page):
 def test_settings_token_controls_share_chrome_and_lead_preferences(feedback_page, theme, width):
     served, page, errors = feedback_page
     page.set_viewport_size({'width': width, 'height': 1000})
+    served.ui.settings.context = 8192            # a saved choice: the default is the machine's fit
+    served.ui.settings.chat_max_output_tokens = 8192
     open_preferences(served, page)
     page.evaluate('theme => fleetModel.setPreferences({...fleetModel.preferences,resolved_theme:theme})', PRESETS[theme])
     context = page.get_by_role('slider', name='Context length', exact=True)

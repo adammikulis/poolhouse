@@ -18,7 +18,7 @@ from poolhouse.serve.manager import ServerManager
 from poolhouse.testing.canned import canned_binary
 
 pytest_plugins = ["serve_node"]
-pytestmark = pytest.mark.usefixtures("serve_leases")
+pytestmark = pytest.mark.usefixtures("serve_leases", "named_context")
 
 MIB = 1024 * 1024
 Q4_K_XL = "Qwen3.8-27B-UD-Q4_K_XL.gguf"

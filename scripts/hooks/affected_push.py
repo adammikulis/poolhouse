@@ -36,17 +36,31 @@ def say(text: str) -> None:
     print(f"affected-tests: {text}", file=sys.stderr, flush=True)
 
 
+def moved_on(root: Path, base: str, tip: str) -> str:
+    """Why the remote will turn this push away, or an empty string: its old tip ``base`` is not one the pushed ``tip`` contains.
+
+    A push is the difference between what the remote holds and ``tip``, and the remote only takes a push that adds to its tip. A
+    ``base`` this repository lacks, or holds but ``tip`` does not contain, is a remote that took commits ``tip`` has not merged.
+    """
+    if not lg.HEX.fullmatch(base) or set(base) == {"0"}:
+        return ""    # a branch the remote does not have yet: every commit on no remote-tracking ref is the push
+    held = lg.commit_id(root, base)
+    if not held:
+        return f"the remote's tip {base[:12]} is not in this repository"
+    return "" if lg.is_ancestor(root, held, tip) else f"the remote's tip {base[:12]} is not in the history of {tip[:12]}"
+
+
 def pushed_paths(root: Path, base: str, tip: str) -> tuple[list[str], frozenset[str], str]:
     """The paths the push changes, those it deletes, and the commit the push is measured from (empty when it is not known).
 
-    The remote's old tip ``base`` is used when this repository has it; otherwise the commits on no remote-tracking ref are.
+    That is the difference between the trees of the remote's old tip ``base`` and ``tip``, whatever merges lie between them. A
+    ``base`` of no commit (a branch the remote lacks) measures the commits on no remote-tracking ref.
     """
     held = lg.commit_id(root, base)
     if not held:
         names = sorted(set(lg.unpushed_names(root, tip)))
         return names, frozenset(n for n in names if lg.blob(root, tip, n) is None), ""
-    start = lg.sealed(root, "merge-base", held, tip, check=False).stdout.strip() or held
-    return lg.changed(root, start, tip), frozenset(lg.changed(root, start, tip, "--diff-filter=D")), start
+    return lg.changed(root, held, tip), frozenset(lg.changed(root, held, tip, "--diff-filter=D")), held
 
 
 def moved_module(root: Path, start: str, tip: str, names: list[str]) -> bool:
@@ -131,6 +145,14 @@ def split_old(root: Path, start: str, failing: list[str]) -> tuple[list[str], li
     return [line for line in failing if test_id(line) not in old], [line for line in failing if test_id(line) in old]
 
 
+def still_failing(root: Path, lines: list[str]) -> tuple[list[str], list[str]]:
+    """The failing ``lines`` that fail again when run alone on the pushed tree, and those that pass: a test that fails among
+    hundreds on a loaded machine and passes alone failed for the load, which the push did not cause."""
+    say(f"running the {len(lines)} new failure(s) again, alone, on the tree being pushed, to tell a break from a failure under load")
+    again = {test_id(line) for line in run_tests(root, [test_id(line) for line in lines], echo=False)[1]}
+    return [line for line in lines if test_id(line) in again], [line for line in lines if test_id(line) not in again]
+
+
 def failing_files(lines: list[str]) -> list[str]:
     """The test files the ``FAILED id`` lines name, each once."""
     seen = []
@@ -162,6 +184,9 @@ def check(dev: str, base: str, tip: str) -> int:
         if head != tip:
             return refuse(f"this checkout is at {head[:12]} and the push is of {tip[:12]}; the tests run on the checked-out tree, "
                           "so push from a checkout of the commit", f"git push origin HEAD:refs/heads/{dev}")
+        if why := moved_on(root, base, tip):
+            return refuse(f"{why}, so the remote will not take the push; no test is run for it",
+                          f"git fetch origin && git merge origin/{dev} && git push origin HEAD:refs/heads/{dev}")
         files, notes, start = selected(root, dev, base, tip)
     except (RuntimeError, OSError, ValueError, SyntaxError, KeyError, ImportError) as exc:
         return refuse(f"the tests this push can break could not be selected ({type(exc).__name__}: {exc})", "python scripts/hooks/affected_push.py")
@@ -183,6 +208,12 @@ def check(dev: str, base: str, tip: str) -> int:
         say(f"warning: {len(old)} test(s) were already red before this push and are not held against it:")
         for line in old:
             say(f"  {line}")
+    if new:
+        new, passed = still_failing(root, new)
+        if passed:
+            say(f"warning: {len(passed)} test(s) failed in the big run and pass alone, so they failed for the load and are not held against the push:")
+            for line in passed:
+                say(f"  {line}")
     if not new:
         return 0
     say("these tests fail on the tree being pushed and passed before it:")

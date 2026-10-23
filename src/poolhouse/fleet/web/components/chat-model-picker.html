@@ -208,7 +208,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
         let started = null;
         if (!this.unconfirmed.has(path)) {
           this.unconfirmed.add(path);
-          started = await M.api('/ui/serving', {method:'POST', body:JSON.stringify({path, context:operation.options.context})});
+          started = await M.api('/ui/serving', {method:'POST', body:JSON.stringify({path, ...(operation.options.context === undefined ? {} : {context:operation.options.context})})});
           if (!current()) return;
           if (M.refused(started)) return;
           if (!started.ok) throw Error(started.error || "Could not start this model.");
@@ -231,7 +231,7 @@ chat-view #chat-activity-output { max-height:240px; overflow:auto; white-space:p
         this.startMessage = '';
         const actual = started?.slot_context ?? started?.context;
         chat.note.replaceChildren(M.el('p', {class:'hint', role:'status'},
-          `Requested context: ${operation.options.context.toLocaleString()} tokens. ` +
+          `Requested context: ${operation.options.context === undefined ? 'the largest that fits this machine' : operation.options.context.toLocaleString() + ' tokens'}. ` +
           (Number.isSafeInteger(actual) ? `Running context: ${actual.toLocaleString()} tokens.` : 'Running context has not been reported.')));
         this.dialog.close();
       } catch (error) {
