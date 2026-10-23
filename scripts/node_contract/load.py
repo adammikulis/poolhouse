@@ -55,10 +55,10 @@ def load(root: Path) -> tuple[dict, list[dict], str]:
 def _definition(row: dict, definitions: dict[str, dict]) -> None:
     kind = row.get("kind") if isinstance(row, dict) else None
     shape = {"name", "kind", "visibility"}
-    extra = {"scalar": {"encoding", "issuer", "secret", "min_bytes", "max_bytes"}, "record": {"fields"}, "union": {"tag", "variants"}, "optional": {"item"}}
+    extra = {"scalar": {"encoding", "issuer", "secret", "min_bytes", "max_bytes", "minimum", "maximum"}, "record": {"fields"}, "union": {"tag", "variants"}, "optional": {"item"}, "list": {"item", "max_items"}}
     if kind not in extra:
         raise ValueError("unsupported type kind")
-    keys(row, shape | extra[kind], shape | (extra[kind] - {"secret", "min_bytes", "max_bytes"}))
+    keys(row, shape | extra[kind], shape | (extra[kind] - {"secret", "min_bytes", "max_bytes", "minimum", "maximum"}))
     name = row["name"]
     if (not isinstance(name, str) or not IDENTIFIER.fullmatch(name) or name in definitions
                 or name in GENERATED_TYPES or keyword.iskeyword(name)
@@ -67,19 +67,12 @@ def _definition(row: dict, definitions: dict[str, dict]) -> None:
     if row["visibility"] not in {"public", "private"}:
         raise ValueError("invalid type visibility")
     if kind == "scalar":
-        if row["encoding"] not in ENCODINGS or row["issuer"] not in ISSUERS or type(row.get("secret", False)) is not bool:
-            raise ValueError("invalid scalar definition")
-        if row.get("secret") and row["visibility"] != "private":
-            raise ValueError("secret data is not a public client type")
-        if row["encoding"] == "text":
-            if (type(row.get("min_bytes")) is not int or type(row.get("max_bytes")) is not int
-                    or not 0 <= row["min_bytes"] <= row["max_bytes"] <= 65536):
-                raise ValueError("invalid text byte bounds")
-        elif "min_bytes" in row or "max_bytes" in row:
-            raise ValueError("byte bounds apply only to text")
-    elif kind == "optional":
+        _scalar(row)
+    elif kind in {"optional", "list"}:
         if not isinstance(row["item"], str):
-            raise ValueError("invalid optional type reference")
+            raise ValueError("invalid collection type reference")
+        if kind == "list" and (type(row["max_items"]) is not int or not 1 <= row["max_items"] <= 1024):
+            raise ValueError("invalid list bound")
     else:
         members = row["fields" if kind == "record" else "variants"]
         if not isinstance(members, list) or (kind == "union" and not members):
@@ -102,6 +95,26 @@ def _definition(row: dict, definitions: dict[str, dict]) -> None:
     definitions[name] = row
 
 
+
+def _scalar(row: dict) -> None:
+    encoding = row["encoding"]
+    if encoding not in ENCODINGS or row["issuer"] not in ISSUERS or type(row.get("secret", False)) is not bool:
+        raise ValueError("invalid scalar definition")
+    if row.get("secret") and row["visibility"] != "private":
+        raise ValueError("secret data is not a public client type")
+    if encoding in {"text", "bytes"}:
+        if (type(row.get("min_bytes")) is not int or type(row.get("max_bytes")) is not int
+                or not 0 <= row["min_bytes"] <= row["max_bytes"] <= 65536):
+            raise ValueError("invalid scalar byte bounds")
+    elif "min_bytes" in row or "max_bytes" in row:
+        raise ValueError("byte bounds apply only to text or bytes")
+    if "minimum" in row or "maximum" in row:
+        ranges = {"u32": (0, 2**32 - 1), "u64": (0, 2**64 - 1), "i32": (-2**31, 2**31 - 1)}
+        if (encoding not in ranges or type(row.get("minimum")) is not int or type(row.get("maximum")) is not int
+                or not ranges[encoding][0] <= row["minimum"] <= row["maximum"] <= ranges[encoding][1]):
+            raise ValueError("invalid scalar numeric bounds")
+
+
 def _ordered(definitions: dict[str, dict]) -> list[dict]:
     ordered = []
     pending = dict(sorted(definitions.items()))
@@ -109,7 +122,7 @@ def _ordered(definitions: dict[str, dict]) -> list[dict]:
         available = {row["name"] for row in ordered}
         ready = []
         for name, row in pending.items():
-            references = ([row["item"]] if row["kind"] == "optional" else
+            references = ([row["item"]] if row["kind"] in {"optional", "list"} else
                           [member["type"] for member in row.get("fields", row.get("variants", []))])
             if any(ref not in definitions for ref in references):
                 raise ValueError("dangling type reference")

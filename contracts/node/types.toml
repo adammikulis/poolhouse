@@ -309,4 +309,109 @@ name = "JobError"
 kind = "union"
 visibility = "public"
 tag = "kind"
-variants = [{tag = "invalid_request", type = "JobErrorDetails"}, {tag = "not_found", type = "JobErrorDetails"}, {tag = "forbidden", type = "JobErrorDetails"}, {tag = "stale_generation", type = "JobErrorDetails"}, {tag = "conflict", type = "JobErrorDetails"}, {tag = "recovery_required", type = "JobErrorDetails"}, {tag = "unavailable", type = "JobErrorDetails"}, {tag = "internal", type = "JobErrorDetails"}]
+variants = [{tag = "invalid_request", type = "JobErrorDetails"}, {tag = "not_found", type = "JobErrorDetails"}, {tag = "forbidden", type = "JobErrorDetails"}, {tag = "stale_generation", type = "JobErrorDetails"}, {tag = "conflict", type = "JobErrorDetails"}, {tag = "recovery_required", type = "JobErrorDetails"}, {tag = "unavailable", type = "JobErrorDetails"}, {tag = "internal", type = "JobErrorDetails"}, {tag = "cursor_expired", type = "JobErrorDetails"}]
+
+[[type]]
+name = "ListSnapshotId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "OutputGeneration"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "JobListCursor"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "JobOutputCursor"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "OptionalJobListCursor"
+kind = "optional"
+visibility = "public"
+item = "JobListCursor"
+
+[[type]]
+name = "JobPageLimit"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "caller"
+minimum = 1
+maximum = 100
+
+[[type]]
+name = "JobOutputByteLimit"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "caller"
+minimum = 1
+maximum = 65536
+
+[[type]]
+name = "JobOutputBytes"
+kind = "scalar"
+visibility = "public"
+encoding = "bytes"
+issuer = "node"
+min_bytes = 0
+max_bytes = 65536
+
+[[type]]
+name = "JobViewList"
+kind = "list"
+visibility = "public"
+item = "JobView"
+max_items = 100
+
+[[type]]
+name = "JobListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "project_id", type = "ProjectId"}, {name = "cursor", type = "OptionalJobListCursor"}, {name = "limit", type = "JobPageLimit"}]
+
+[[type]]
+name = "JobListResponse"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot_id", type = "ListSnapshotId"}, {name = "snapshot_at", type = "UnixMicros"}, {name = "jobs", type = "JobViewList"}, {name = "next_cursor", type = "OptionalJobListCursor"}]
+
+[[type]]
+name = "JobOutputResume"
+kind = "record"
+visibility = "public"
+fields = [{name = "cursor", type = "JobOutputCursor"}]
+
+[[type]]
+name = "JobOutputPosition"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "beginning", type = "Empty"}, {tag = "tail", type = "Empty"}, {tag = "resume", type = "JobOutputResume"}]
+
+[[type]]
+name = "JobOutputRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "job_id", type = "JobId"}, {name = "generation", type = "ResourceGeneration"}, {name = "position", type = "JobOutputPosition"}, {name = "max_bytes", type = "JobOutputByteLimit"}]
+
+[[type]]
+name = "JobOutputChunk"
+kind = "record"
+visibility = "public"
+fields = [{name = "job_id", type = "JobId"}, {name = "generation", type = "ResourceGeneration"}, {name = "stream_generation", type = "OutputGeneration"}, {name = "data", type = "JobOutputBytes"}, {name = "next_cursor", type = "JobOutputCursor"}, {name = "exhausted", type = "Boolean"}, {name = "sealed", type = "Boolean"}]

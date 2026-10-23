@@ -10,7 +10,9 @@ def render(meta: dict, rows: list[dict], digest: str) -> str:
         if row["visibility"] != "public":
             continue
         name = row["name"]
-        if row["kind"] == "optional":
+        if row["kind"] == "list":
+            output.append(f'export type {name} = ReadonlyArray<{row["item"]}> & {{ readonly __{name}: unique symbol }};\n')
+        elif row["kind"] == "optional":
             output.append(f'export type {name} = {row["item"]} | null;\n')
         elif row["kind"] == "scalar":
             primitive = "boolean" if row["encoding"] == "bool" else "string"

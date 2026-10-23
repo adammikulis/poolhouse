@@ -214,3 +214,54 @@ def test_source_refuses_nested_nullable_values(tmp_path):
     path.write_text(path.read_text().replace('item = "ExitCode"', 'item = "OptionalUnixMicros"'))
     with pytest.raises(ValueError, match="nonnullable"):
         load(source)
+
+
+def test_job_lists_and_output_are_bounded_and_nominal():
+    view = {"job": job_snapshot(), "cancellation": {"requested": False, "settled": False}}
+    page = public.JobViewList.from_wire([view] * 100)
+    assert len(page.items) == 100
+    assert page.to_wire() == [view] * 100
+    with pytest.raises(ValueError):
+        public.JobViewList.from_wire([view] * 101)
+    with pytest.raises(ValueError):
+        public.JobViewList.from_wire({})
+    with pytest.raises(ValueError):
+        public.JobViewList([public.JobView.from_wire(view)])
+    assert public.JobListCursor("ab" * 32) != public.JobOutputCursor("ab" * 32)
+    assert public.JobOutputBytes("00c3a90aff").value == "00c3a90aff"
+    assert public.JobOutputBytes("ff" * 65536).value == "ff" * 65536
+    assert public.JobPageLimit("100").value == "100"
+    assert public.JobOutputByteLimit("65536").value == "65536"
+
+
+@pytest.mark.parametrize("kind,value", [
+    (public.JobPageLimit, "0"), (public.JobPageLimit, "101"),
+    (public.JobPageLimit, "01"), (public.JobPageLimit, 1),
+    (public.JobOutputByteLimit, "0"), (public.JobOutputByteLimit, "65537"),
+    (public.JobOutputBytes, "0"), (public.JobOutputBytes, "AA"),
+    (public.JobOutputBytes, "ff" * 65537),
+])
+def test_job_page_and_output_scalar_refusals(kind, value):
+    with pytest.raises(ValueError):
+        kind(value)
+
+
+@pytest.mark.parametrize("change", ["list_bound", "list_private", "range_type", "range_order", "range_overflow"])
+def test_collection_and_numeric_source_constraints_refuse(tmp_path, change):
+    source = tmp_path / "node"
+    shutil.copytree(ROOT / "contracts/node", source)
+    path = source / "types.toml"
+    text = path.read_text()
+    if change == "list_bound":
+        text = text.replace('max_items = 100', 'max_items = 0')
+    elif change == "list_private":
+        text = text.replace('item = "JobView"', 'item = "SessionLease"')
+    elif change == "range_type":
+        text = text.replace('minimum = 1', 'minimum = true')
+    elif change == "range_order":
+        text = text.replace('maximum = 100', 'maximum = 0')
+    elif change == "range_overflow":
+        text = text.replace('maximum = 100', 'maximum = 4294967296')
+    path.write_text(text)
+    with pytest.raises(ValueError):
+        load(source)

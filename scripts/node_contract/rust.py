@@ -36,7 +36,9 @@ def render(meta: dict, rows: list[dict], digest: str) -> str:
         output.append("fn required_optional<'de, D: serde::Deserializer<'de>, T: serde::Deserialize<'de>>(d: D) -> Result<T, D::Error> { T::deserialize(d) }\n")
     for row in rows:
         name = row["name"]
-        if row["kind"] == "optional":
+        if row["kind"] == "list":
+            output.append(render_list(row))
+        elif row["kind"] == "optional":
             output.append(f'#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub Option<{row["item"]}>);\n')
         elif row["kind"] == "scalar" and row["encoding"] == "bool":
             output.append(f'#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub bool);\n')
@@ -45,6 +47,10 @@ def render(meta: dict, rows: list[dict], digest: str) -> str:
             validation = f'valid("{row["encoding"]}", &value)'
             if row["encoding"] == "text":
                 validation = f'value.len() >= {row["min_bytes"]} && value.len() <= {row["max_bytes"]} && !value.chars().any(char::is_control)'
+            if row["encoding"] == "bytes":
+                validation = f"""value.len() >= {row['min_bytes'] * 2} && value.len() <= {row['max_bytes'] * 2} && value.len() % 2 == 0 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))"""
+            if "minimum" in row:
+                validation += f' && value.parse::<{row["encoding"]}>().is_ok_and(|n| ({row["minimum"]}..={row["maximum"]}).contains(&n))'
             output.append(f'''#[derive(Clone, PartialEq, Eq, Hash{debug}, serde::Serialize, serde::Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct {name}(String);
@@ -59,7 +65,7 @@ impl From<{name}> for String {{ fn from(value: {name}) -> Self {{ value.0 }} }}
 ''')
             if row.get("secret"):
                 output.append(f'impl std::fmt::Debug for {name} {{ fn fmt(&self, f: &mut std::fmt::Formatter<\'_>) -> std::fmt::Result {{ f.write_str("{name}([redacted])") }} }}\n')
-            if row["encoding"] in {"u32", "u64"}:
+            if row["encoding"] in {"u32", "u64"} and "minimum" not in row:
                 primitive = row["encoding"]
                 output.append(f'impl From<{primitive}> for {name} {{ fn from(value: {primitive}) -> Self {{ Self(value.to_string()) }} }}\n')
         elif row["kind"] == "record":
@@ -80,3 +86,19 @@ impl From<{name}> for String {{ fn from(value: {name}) -> Self {{ value.0 }} }}
 }
 ''')
     return "\n".join(output)
+
+
+def render_list(row: dict) -> str:
+    name, item, maximum = row["name"], row["item"], row["max_items"]
+    return f'''#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(try_from = "Vec<{item}>", into = "Vec<{item}>")]
+pub struct {name}(Vec<{item}>);
+impl {name} {{ pub fn as_slice(&self) -> &[{item}] {{ &self.0 }} }}
+impl TryFrom<Vec<{item}>> for {name} {{
+    type Error = &'static str;
+    fn try_from(value: Vec<{item}>) -> Result<Self, Self::Error> {{
+        if value.len() <= {maximum} {{ Ok(Self(value)) }} else {{ Err("too many {name} items") }}
+    }}
+}}
+impl From<{name}> for Vec<{item}> {{ fn from(value: {name}) -> Self {{ value.0 }} }}
+'''

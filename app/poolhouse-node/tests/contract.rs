@@ -113,3 +113,31 @@ fn operation_markers_bind_the_declared_job_types_without_dispatch() {
     assert_eq!(JobsGet::NAME, "jobs.get"); assert_eq!(JobsCancel::NAME, "jobs.cancel");
     assert_eq!(std::any::TypeId::of::<<JobsCancel as Operation>::Request>(), std::any::TypeId::of::<JobCancelRequest>());
 }
+
+#[test]
+fn job_page_and_output_bounds_use_decoded_units() {
+    for value in ["0", "101", "01", "4294967296"] { assert!(JobPageLimit::try_from(value.to_owned()).is_err()); }
+    assert!(JobPageLimit::try_from("100".to_owned()).is_ok());
+    assert!(JobOutputByteLimit::try_from("65536".to_owned()).is_ok());
+    assert!(JobOutputByteLimit::try_from("65537".to_owned()).is_err());
+    assert!(JobOutputBytes::try_from("00c3a90aff".to_owned()).is_ok());
+    assert!(JobOutputBytes::try_from("ff".repeat(65536)).is_ok());
+    for value in ["0".to_owned(), "AA".to_owned(), "ff".repeat(65537)] { assert!(JobOutputBytes::try_from(value).is_err()); }
+    assert!(serde_json::from_value::<JobOutputPosition>(json!({"kind": "resume", "value": {"cursor": "ab".repeat(32)}})).is_ok());
+    assert!(serde_json::from_value::<JobOutputPosition>(json!({"kind": "resume", "value": {}})).is_err());
+}
+
+#[test]
+fn job_page_list_rejects_excess_items_and_untyped_data() {
+    let make_view = || serde_json::from_value::<JobView>(json!({"job": {
+        "job_id": "00000000-0000-4000-8000-000000000001",
+        "generation": "00000000-0000-4000-8000-000000000002", "revision": "1",
+        "project_id": "00000000-0000-4000-8000-000000000003", "name": "A run",
+        "operation": "models.inspect", "state": {"kind": "preparing", "value": {}},
+        "return_code": null, "submitted_at": "1", "started_at": null, "finished_at": null},
+        "cancellation": {"requested": false, "settled": false}})).unwrap();
+    assert_eq!(JobViewList::try_from(vec![make_view(); 100]).unwrap().as_slice().len(), 100);
+    assert!(JobViewList::try_from(vec![make_view(); 101]).is_err());
+    assert!(serde_json::from_value::<JobViewList>(json!([{}])).is_err());
+    assert_ne!(std::any::TypeId::of::<JobListCursor>(), std::any::TypeId::of::<JobOutputCursor>());
+}

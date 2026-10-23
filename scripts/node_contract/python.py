@@ -14,6 +14,8 @@ from typing import Any, ClassVar, Self
 def _valid(kind: str, value: str) -> bool:
     if type(value) is not str:
         return False
+    if kind == "bytes":
+        return re.fullmatch(r"(?:[0-9a-f]{2})*", value) is not None
     if kind == "hex32":
         return re.fullmatch(r"[0-9a-f]{64}", value) is not None
     if kind == "uuid":
@@ -35,10 +37,16 @@ class _Scalar:
     _encoding: ClassVar[str]
     _bounds: ClassVar[tuple[int, int]] = (0, 65536)
 
+    _numeric_bounds: ClassVar[tuple[int, int] | None] = None
+
     def __post_init__(self) -> None:
         if (not _valid(self._encoding, self.value)
                 or (self._encoding == "text" and not self._bounds[0] <= len(self.value.encode("utf-8")) <= self._bounds[1])):
             raise ValueError("invalid " + type(self).__name__)
+        if self._encoding == "bytes" and not self._bounds[0] <= len(self.value) // 2 <= self._bounds[1]:
+            raise ValueError("invalid byte length")
+        if self._numeric_bounds is not None and not self._numeric_bounds[0] <= int(self.value) <= self._numeric_bounds[1]:
+            raise ValueError("invalid numeric bound")
 
     def __str__(self) -> str:
         return self.value
@@ -89,6 +97,27 @@ class _Optional:
 
 
 @dataclass(frozen=True)
+class _List:
+    items: tuple
+    _item: ClassVar[str]
+    _maximum: ClassVar[int]
+
+    def __post_init__(self) -> None:
+        if (type(self.items) is not tuple or len(self.items) > self._maximum
+                or any(type(item) is not globals()[self._item] for item in self.items)):
+            raise ValueError("invalid list")
+
+    @classmethod
+    def from_wire(cls, value: object) -> Self:
+        if type(value) is not list or len(value) > cls._maximum:
+            raise ValueError("invalid list")
+        return cls(tuple(_decode(cls._item, item) for item in value))
+
+    def to_wire(self) -> list[object]:
+        return [_encode(item) for item in self.items]
+
+
+@dataclass(frozen=True)
 class _Union:
     kind: str
     value: object
@@ -125,14 +154,18 @@ def render(meta: dict, rows: list[dict], digest: str) -> str:
         if row["visibility"] != "public":
             continue
         name = row["name"]
-        if row["kind"] == "optional":
+        if row["kind"] == "list":
+            output.append(f'class {name}(_List):\n    _item = "{row["item"]}"\n    _maximum = {row["max_items"]}\n')
+        elif row["kind"] == "optional":
             output.append(f'class {name}(_Optional):\n    _item = "{row["item"]}"\n')
         elif row["kind"] == "scalar" and row["encoding"] == "bool":
             output.append(f'class {name}(_Boolean):\n    pass\n')
         elif row["kind"] == "scalar":
             if row["encoding"] == "sid-hex":
                 raise ValueError("SID observations remain private")
-            bounds = f'    _bounds = ({row["min_bytes"]}, {row["max_bytes"]})\n' if row["encoding"] == "text" else ""
+            bounds = f'    _bounds = ({row["min_bytes"]}, {row["max_bytes"]})\n' if row["encoding"] in {"text", "bytes"} else ""
+            if "minimum" in row:
+                bounds += f'    _numeric_bounds = ({row["minimum"]}, {row["maximum"]})\n'
             output.append(f'class {name}(_Scalar):\n    _encoding = "{row["encoding"]}"\n{bounds}')
         elif row["kind"] == "record":
             fields = "\n".join(f'    {field["name"]}: {field["type"]}' for field in row["fields"])

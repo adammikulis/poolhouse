@@ -1,4 +1,4 @@
-// Generated proposal. No dispatch or authority is implemented. Schema e887358b9319b84157e7b99ea7129db0a86daf6c0e61d5e6c80ef4f59bfe79e8
+// Generated proposal. No dispatch or authority is implemented. Schema e00c39c5a862274de475d5940a9f500a7d7729afe3df21d929c5c92faa7dde90
 use super::contract::*;
 
 pub trait Operation { type Request; type Response; type Error; const NAME: &'static str; }
@@ -8,3 +8,9 @@ impl Operation for JobsGet { type Request = JobGetRequest; type Response = JobVi
 
 pub struct JobsCancel;
 impl Operation for JobsCancel { type Request = JobCancelRequest; type Response = JobView; type Error = JobError; const NAME: &'static str = "jobs.cancel"; }
+
+pub struct JobsList;
+impl Operation for JobsList { type Request = JobListRequest; type Response = JobListResponse; type Error = JobError; const NAME: &'static str = "jobs.list"; }
+
+pub struct JobsOutputRead;
+impl Operation for JobsOutputRead { type Request = JobOutputRequest; type Response = JobOutputChunk; type Error = JobError; const NAME: &'static str = "jobs.output.read"; }

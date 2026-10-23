@@ -31,3 +31,12 @@ void noExitCode;
 // @ts-expect-error JSON integer cannot replace a boolean
 const wrongBoolean: NodeBoolean = 1;
 void wrongBoolean;
+
+import type { JobListCursor, JobOutputCursor, JobViewList } from "./node";
+declare const listCursor: JobListCursor;
+// @ts-expect-error list cursor cannot resume output
+const wrongCursor: JobOutputCursor = listCursor;
+void wrongCursor;
+declare const jobPage: JobViewList;
+// @ts-expect-error generated lists are immutable
+jobPage.push({});

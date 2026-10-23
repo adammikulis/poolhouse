@@ -23,3 +23,25 @@ authorization = ["authenticated-current-principal", "current-membership-generati
 retry = "durable-principal-resource-generation-payload-bound"
 cancellation = "atomic-intent-versus-launch-and-completion"
 subscription = "none"
+
+[[operation]]
+name = "jobs.list"
+symbol = "JobsList"
+request = "JobListRequest"
+response = "JobListResponse"
+error = "JobError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "authorized-project-job-read", "snapshot-project-order-and-filter-bound", "reauthorize-each-page-and-job", "no-existence-disclosure-before-authorization"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "jobs.output.read"
+symbol = "JobsOutputRead"
+request = "JobOutputRequest"
+response = "JobOutputChunk"
+error = "JobError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "job-read-permission", "exact-resource-generation", "redact-before-chunking", "cursor-stream-generation-bound", "reauthorize-before-delivery", "no-existence-disclosure-before-authorization"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"

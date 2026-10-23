@@ -147,3 +147,40 @@ never durable execution. The proposed interrupted/recovery_required states are
 not terminal merely because they differ from queued/running. Actual state
 transitions, owner/delegate storage, durable retry transactions and refusal tests
 remain required before implementation/cutover; this declaration adds none.
+
+
+## Job pagination and output proposal
+
+`jobs.list` returns a bounded page of at most 100 JobViews for an authorized
+project. JobPageLimit accepts decimal strings from 1 through 100. The first page
+freezes a node-owned snapshot ordered by submitted time then JobId; subsequent
+pages use that same snapshot, project and filters, avoiding concurrent insert
+skips/duplicates. The response names ListSnapshotId and its UTC snapshot time.
+Snapshot expiry or an invalidated authorization generation returns cursor_expired;
+the client explicitly requests a new first page. Each page and each job are
+reauthorized before delivery. Snapshot data is observation, never current control
+authority; get/cancel check live state and exact resource generation.
+
+`jobs.output.read` takes explicit beginning, tail or resume position and a
+JobOutputByteLimit from 1 through 65536. It returns at most 65536 decoded bytes as
+lowercase hexadecimal, a distinct JobOutputCursor, and OutputGeneration. Cursor
+positions count stored redacted-stream bytes. Redaction happens before storage
+and chunking, including secret matches spanning input boundaries. A changed
+redaction projection changes OutputGeneration and expires old cursors. Clients
+never compute cursor advancement. Log bytes and metric rows have separate cursor
+domains; metrics remain a future operation rather than an invented shared index.
+
+`exhausted` means that chunk reaches the current end; a running producer may append
+later. `sealed` means that generation can no longer append. A sealed stream can
+still have unread bytes. Tail starts at at most the requested bytes before the
+current end; beginning starts at zero; resume uses the issued cursor. Byte chunks
+can split UTF-8 sequences, so clients decode incrementally. Rendering must treat
+output as untrusted text, never markup or terminal control instructions.
+
+Both cursor types are opaque node-issued data, not credentials. They bind caller,
+authorized scope, resource/snapshot and generation, projection, ordering, position
+and expiry in checked node state. Reauthorize use and delivery; expiry refuses
+without silent restart or unauthorized existence disclosure. Frame limits must
+bound incoming allocations before decoding lists/hex. These declarations provide
+wire refusal checks only; storage, redaction, pagination and authorization are
+not implemented or proven by the generated codecs.

@@ -9,6 +9,8 @@ from typing import Any, ClassVar, Self
 def _valid(kind: str, value: str) -> bool:
     if type(value) is not str:
         return False
+    if kind == "bytes":
+        return re.fullmatch(r"(?:[0-9a-f]{2})*", value) is not None
     if kind == "hex32":
         return re.fullmatch(r"[0-9a-f]{64}", value) is not None
     if kind == "uuid":
@@ -30,10 +32,16 @@ class _Scalar:
     _encoding: ClassVar[str]
     _bounds: ClassVar[tuple[int, int]] = (0, 65536)
 
+    _numeric_bounds: ClassVar[tuple[int, int] | None] = None
+
     def __post_init__(self) -> None:
         if (not _valid(self._encoding, self.value)
                 or (self._encoding == "text" and not self._bounds[0] <= len(self.value.encode("utf-8")) <= self._bounds[1])):
             raise ValueError("invalid " + type(self).__name__)
+        if self._encoding == "bytes" and not self._bounds[0] <= len(self.value) // 2 <= self._bounds[1]:
+            raise ValueError("invalid byte length")
+        if self._numeric_bounds is not None and not self._numeric_bounds[0] <= int(self.value) <= self._numeric_bounds[1]:
+            raise ValueError("invalid numeric bound")
 
     def __str__(self) -> str:
         return self.value
@@ -84,6 +92,27 @@ class _Optional:
 
 
 @dataclass(frozen=True)
+class _List:
+    items: tuple
+    _item: ClassVar[str]
+    _maximum: ClassVar[int]
+
+    def __post_init__(self) -> None:
+        if (type(self.items) is not tuple or len(self.items) > self._maximum
+                or any(type(item) is not globals()[self._item] for item in self.items)):
+            raise ValueError("invalid list")
+
+    @classmethod
+    def from_wire(cls, value: object) -> Self:
+        if type(value) is not list or len(value) > cls._maximum:
+            raise ValueError("invalid list")
+        return cls(tuple(_decode(cls._item, item) for item in value))
+
+    def to_wire(self) -> list[object]:
+        return [_encode(item) for item in self.items]
+
+
+@dataclass(frozen=True)
 class _Union:
     kind: str
     value: object
@@ -114,7 +143,7 @@ def _encode(value: Any) -> object:
 
 
 CONTRACT_VERSION = 1
-SCHEMA_SHA256 = "e887358b9319b84157e7b99ea7129db0a86daf6c0e61d5e6c80ef4f59bfe79e8"
+SCHEMA_SHA256 = "e00c39c5a862274de475d5940a9f500a7d7729afe3df21d929c5c92faa7dde90"
 
 
 class Boolean(_Boolean):
@@ -156,9 +185,40 @@ class JobId(_Scalar):
     _encoding = "uuid"
 
 
+class JobListCursor(_Scalar):
+    _encoding = "hex32"
+
+
+class JobOutputByteLimit(_Scalar):
+    _encoding = "u32"
+    _numeric_bounds = (1, 65536)
+
+
+class JobOutputBytes(_Scalar):
+    _encoding = "bytes"
+    _bounds = (0, 65536)
+
+
+class JobOutputCursor(_Scalar):
+    _encoding = "hex32"
+
+
+class JobPageLimit(_Scalar):
+    _encoding = "u32"
+    _numeric_bounds = (1, 100)
+
+
+class ListSnapshotId(_Scalar):
+    _encoding = "uuid"
+
+
 class OperationName(_Scalar):
     _encoding = "text"
     _bounds = (1, 128)
+
+
+class OutputGeneration(_Scalar):
+    _encoding = "uuid"
 
 
 class PoolId(_Scalar):
@@ -222,6 +282,30 @@ class JobGetRequest(_Record):
     _fields: ClassVar[dict[str, str]] = {'job_id': 'JobId', 'generation': 'ResourceGeneration'}
 
 
+@dataclass(frozen=True)
+class JobOutputChunk(_Record):
+    job_id: JobId
+    generation: ResourceGeneration
+    stream_generation: OutputGeneration
+    data: JobOutputBytes
+    next_cursor: JobOutputCursor
+    exhausted: Boolean
+    sealed: Boolean
+    _fields: ClassVar[dict[str, str]] = {'job_id': 'JobId',
+ 'generation': 'ResourceGeneration',
+ 'stream_generation': 'OutputGeneration',
+ 'data': 'JobOutputBytes',
+ 'next_cursor': 'JobOutputCursor',
+ 'exhausted': 'Boolean',
+ 'sealed': 'Boolean'}
+
+
+@dataclass(frozen=True)
+class JobOutputResume(_Record):
+    cursor: JobOutputCursor
+    _fields: ClassVar[dict[str, str]] = {'cursor': 'JobOutputCursor'}
+
+
 class JobState(_Union):
     _variants: ClassVar[dict[str, str]] = {'queued': 'Empty',
  'preparing': 'Empty',
@@ -253,6 +337,10 @@ class OptionalExitCode(_Optional):
     _item = "ExitCode"
 
 
+class OptionalJobListCursor(_Optional):
+    _item = "JobListCursor"
+
+
 class OptionalUnixMicros(_Optional):
     _item = "UnixMicros"
 
@@ -265,7 +353,20 @@ class JobError(_Union):
  'conflict': 'JobErrorDetails',
  'recovery_required': 'JobErrorDetails',
  'unavailable': 'JobErrorDetails',
- 'internal': 'JobErrorDetails'}
+ 'internal': 'JobErrorDetails',
+ 'cursor_expired': 'JobErrorDetails'}
+
+
+@dataclass(frozen=True)
+class JobListRequest(_Record):
+    project_id: ProjectId
+    cursor: OptionalJobListCursor
+    limit: JobPageLimit
+    _fields: ClassVar[dict[str, str]] = {'project_id': 'ProjectId', 'cursor': 'OptionalJobListCursor', 'limit': 'JobPageLimit'}
+
+
+class JobOutputPosition(_Union):
+    _variants: ClassVar[dict[str, str]] = {'beginning': 'Empty', 'tail': 'Empty', 'resume': 'JobOutputResume'}
 
 
 @dataclass(frozen=True)
@@ -295,8 +396,37 @@ class JobSnapshot(_Record):
 
 
 @dataclass(frozen=True)
+class JobOutputRequest(_Record):
+    job_id: JobId
+    generation: ResourceGeneration
+    position: JobOutputPosition
+    max_bytes: JobOutputByteLimit
+    _fields: ClassVar[dict[str, str]] = {'job_id': 'JobId',
+ 'generation': 'ResourceGeneration',
+ 'position': 'JobOutputPosition',
+ 'max_bytes': 'JobOutputByteLimit'}
+
+
+@dataclass(frozen=True)
 class JobView(_Record):
     job: JobSnapshot
     cancellation: JobCancellation
     _fields: ClassVar[dict[str, str]] = {'job': 'JobSnapshot', 'cancellation': 'JobCancellation'}
+
+
+class JobViewList(_List):
+    _item = "JobView"
+    _maximum = 100
+
+
+@dataclass(frozen=True)
+class JobListResponse(_Record):
+    snapshot_id: ListSnapshotId
+    snapshot_at: UnixMicros
+    jobs: JobViewList
+    next_cursor: OptionalJobListCursor
+    _fields: ClassVar[dict[str, str]] = {'snapshot_id': 'ListSnapshotId',
+ 'snapshot_at': 'UnixMicros',
+ 'jobs': 'JobViewList',
+ 'next_cursor': 'OptionalJobListCursor'}
 
