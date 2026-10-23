@@ -2,9 +2,10 @@ version = 1
 trait = "NativeCallerPlatform"
 binding = "node-owned-runtime-handle"
 serialization = "forbidden"
+spawn_plan = "node-owned-immutable-measured-plan"
 handles = ["VerifiedInstallation", "RawChannel", "AdmittedProducer", "VerifiedBootstrap", "HeldProcess", "RunningProcess", "KernelCaller"]
 errors = ["InvalidInstallation", "MissingChannel", "WrongPrincipal", "StaleProcess", "UnprotectedProcess", "ConfinementUnavailable", "BindingMismatch", "Cancelled", "Io"]
-requirements = ["no-caller-selected-authority", "no-serde-or-public-constructors", "actual-principal-and-process-lifetime", "held-drop-kills-and-reaps", "release-consumes-hold-once", "node-validates-caller-observations", "terminate-without-pid-reuse", "no-unsupported-platform-fallback"]
+requirements = ["no-caller-selected-authority", "no-serde-or-public-constructors", "actual-principal-and-process-lifetime", "held-drop-kills-and-reaps", "release-consumes-hold-once", "node-validates-caller-observations", "terminate-without-pid-reuse", "no-unsupported-platform-fallback", "plan-binds-invocation-and-generation", "retain-measured-executable-and-assets", "immutable-arguments-environment-directory-and-confinement", "explicit-handle-ownership-and-inheritance", "release-binding-matches-held-plan"]
 
 [[method]]
 name = "verify_installation"
@@ -23,7 +24,7 @@ result = "AdmittedProducer"
 
 [[method]]
 name = "hold_spawn"
-arguments = [{name = "producer", type = "AdmittedProducer", ownership = "borrow"}, {name = "bootstrap", type = "VerifiedBootstrap", ownership = "borrow"}]
+arguments = [{name = "producer", type = "AdmittedProducer", ownership = "borrow"}, {name = "bootstrap", type = "VerifiedBootstrap", ownership = "borrow"}, {name = "plan", type = "SpawnPlan", ownership = "borrow"}]
 result = "HeldProcess"
 
 [[method]]

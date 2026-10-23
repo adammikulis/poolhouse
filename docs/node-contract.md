@@ -95,3 +95,14 @@ loader checks declared terminal states and reachability, but does not enforce
 every permitted edge against a fixed semantic transition set. Runtime refusal
 tests and stronger semantic validation remain required; passing structural
 checks proves neither admission nor single-consumer execution.
+
+The follow-up closes those two declaration gaps: `NativeCallerPlatform` now
+borrows an opaque node-owned `SpawnPlan` when holding a process. The plan must
+bind the invocation/generation and retain measured executable/assets, immutable
+arguments, environment, directory and confinement, with explicit handle
+ownership/inheritance. Release must match that same plan and generation. The
+lifecycle v1 loader now refuses changed initial/terminal states, missing or extra
+transitions, shortcut consumption and altered required checks. These semantics
+require an explicit contract-version change to revise. Independent attack review
+approved this scope; protected constructors and actual atomic enforcement remain
+implementation and installed-proof obligations.
