@@ -96,3 +96,37 @@ def test_source_refuses_ambiguous_and_authority_bearing_definitions(tmp_path, ch
     path.write_text(text)
     with pytest.raises(ValueError):
         load(source)
+
+
+@pytest.mark.parametrize("change", ["terminal", "duplicate", "atomic", "hold", "borrow", "handle", "error", "shortcut", "initial", "terminals", "checks", "spawn_plan"])
+def test_lifecycle_and_adapter_refusals(tmp_path, change):
+    source = tmp_path / "node"
+    shutil.copytree(ROOT / "contracts/node", source)
+    lifecycle = source / "lifecycle.toml"
+    adapter = source / "adapters.toml"
+    if change == "terminal":
+        lifecycle.write_text(lifecycle.read_text().replace('from = "released", event = "consume"', 'from = "consumed", event = "consume"'))
+    elif change == "duplicate":
+        lifecycle.write_text(lifecycle.read_text().replace('from = "bound", event = "release", to = "released"', 'from = "reserved", event = "bind", to = "released"'))
+    elif change == "atomic":
+        lifecycle.write_text(lifecycle.read_text().replace('"atomic-single-consumer"', '"unchecked-consumer"'))
+    elif change == "hold":
+        lifecycle.write_text(lifecycle.read_text().replace('"single-use-hold"', '"reusable-hold"'))
+    elif change == "borrow":
+        adapter.write_text(adapter.read_text().replace('type = "HeldProcess", ownership = "move"', 'type = "HeldProcess", ownership = "borrow"'))
+    elif change == "handle":
+        adapter.write_text(adapter.read_text().replace('"KernelCaller"', '"ProcessObservation"'))
+    elif change == "shortcut":
+        lifecycle.write_text(lifecycle.read_text().replace('from = "released", event = "consume"', 'from = "reserved", event = "consume"'))
+    elif change == "initial":
+        lifecycle.write_text(lifecycle.read_text().replace('initial = "reserved"', 'initial = "bound"'))
+    elif change == "terminals":
+        lifecycle.write_text(lifecycle.read_text().replace('terminal = ["consumed", "cancelled", "invalidated"]', 'terminal = ["consumed", "cancelled"]'))
+    elif change == "checks":
+        lifecycle.write_text(lifecycle.read_text().replace('"current-generations", ', ''))
+    elif change == "spawn_plan":
+        adapter.write_text(adapter.read_text().replace(', {name = "plan", type = "SpawnPlan", ownership = "borrow"}', ''))
+    elif change == "error":
+        adapter.write_text(adapter.read_text().replace('"Io"', '"Self"'))
+    with pytest.raises(ValueError):
+        load(source)

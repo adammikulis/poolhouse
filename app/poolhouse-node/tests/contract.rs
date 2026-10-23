@@ -57,3 +57,21 @@ fn private_lease_diagnostics_do_not_expose_values() {
     assert!(display.contains("redacted"));
     assert!(!display.contains(&secret));
 }
+
+#[test]
+fn lifecycle_metadata_keeps_terminal_states_closed_and_consumption_atomic() {
+    use poolhouse_node::contract_lifecycle::TRANSITIONS;
+    for transition in TRANSITIONS {
+        assert!(!["retired", "consumed", "cancelled", "invalidated"].contains(&transition.from));
+        if transition.event == "consume" {
+            assert_eq!(transition.from, "released");
+            assert_eq!(transition.to, "consumed");
+            assert!(transition.checks.contains(&"atomic-single-consumer"));
+            assert!(transition.checks.contains(&"exact-live-bound-caller"));
+        }
+        if transition.event == "release" {
+            assert!(transition.checks.contains(&"single-use-hold"));
+        }
+    }
+    assert_eq!(TRANSITIONS.iter().filter(|row| row.event == "consume").count(), 1);
+}

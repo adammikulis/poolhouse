@@ -8,28 +8,25 @@ import re
 import tomllib
 from pathlib import Path
 
+from .common import (
+    ENCODINGS,
+    FIELD,
+    GENERATED_MEMBERS,
+    GENERATED_TYPES,
+    IDENTIFIER,
+    ISSUERS,
+    RESERVED,
+    keys,
+    variant_name,
+)
+from .lifecycle import adapters, lifecycle
+
 META = {"version", "status", "unsigned_encoding", "device_id_algorithm", "device_id_domain",
         "device_public_key_encoding", "unknown_fields", "decoded_values"}
-ENCODINGS = {"hex32", "uuid", "u32", "u64", "sid-hex"}
-ISSUERS = {"data", "node", "installer", "caller", "producer", "kernel-adapter"}
-IDENTIFIER = re.compile(r"[A-Z][A-Za-z0-9]*\Z")
-FIELD = re.compile(r"[a-z][a-z0-9_]*\Z")
-RESERVED = {"self", "type", "match", "enum", "struct", "impl", "crate", "super", "pub", "ref", "mod", "move"}
-GENERATED_MEMBERS = {"to_wire", "from_wire"}
-GENERATED_TYPES = {"Self", "String", "Option", "Result", "Vec", "ClassVar", "From", "TryFrom", "Clone", "PartialEq", "Eq", "Hash", "Debug"}
-
-
-def variant_name(tag: str) -> str:
-    return tag.title().replace("_", "")
-
-
-def keys(value: dict, allowed: set[str], required: set[str]) -> None:
-    if not isinstance(value, dict) or value.keys() - allowed or required - value.keys():
-        raise ValueError("unknown or missing contract fields")
 
 
 def load(root: Path) -> tuple[dict, list[dict], str]:
-    if {path.name for path in root.glob("*.toml")} != {"contract.toml", "types.toml"}:
+    if {path.name for path in root.glob("*.toml")} != {"contract.toml", "types.toml", "lifecycle.toml", "adapters.toml"}:
         raise ValueError("unrecognized contract source file")
     meta = tomllib.loads((root / "contract.toml").read_text())
     keys(meta, META, META)
@@ -47,6 +44,8 @@ def load(root: Path) -> tuple[dict, list[dict], str]:
     for row in source["type"]:
         _definition(row, definitions)
     ordered = _ordered(definitions)
+    meta["lifecycle"] = lifecycle(root)
+    meta["adapters"] = adapters(root)
     canonical = json.dumps({"meta": meta, "types": ordered}, sort_keys=True, separators=(",", ":")).encode()
     return meta, ordered, hashlib.sha256(canonical).hexdigest()
 
