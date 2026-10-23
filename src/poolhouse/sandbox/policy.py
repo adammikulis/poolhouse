@@ -149,16 +149,19 @@ class Net:
 @dataclass(frozen=True, slots=True)
 class Limits:
     """Ceilings on one run. ``wall_seconds`` kills the process group; the others are rlimits
-    the child starts with. ``None`` is no ceiling."""
+    the child starts with. ``None`` is no ceiling. ``processes`` is how many more processes
+    the run may start than the user has when it starts: the kernel refuses the fork that crosses
+    it (the limit counts every process of the user, so the ceiling is that count plus this)."""
 
     wall_seconds: float | None = 60.0
     cpu_seconds: int | None = None
     file_bytes: int | None = None
     open_files: int | None = None
     output_bytes: int | None = 1_000_000
+    processes: int | None = None
 
     def __post_init__(self) -> None:
-        for name in ("wall_seconds", "cpu_seconds", "file_bytes", "open_files", "output_bytes"):
+        for name in ("wall_seconds", "cpu_seconds", "file_bytes", "open_files", "output_bytes", "processes"):
             value = getattr(self, name)
             if value is not None and (isinstance(value, bool) or value <= 0):
                 raise PolicyError(f"limits: {name} must be positive or None, not {value!r}")

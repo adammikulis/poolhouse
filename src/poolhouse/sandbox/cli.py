@@ -67,8 +67,9 @@ def test() -> list[dict[str, Any]]:
         with socket.socket() as server:
             server.bind(("127.0.0.1", 0))
             server.listen(4)
-            dial = [os.path.realpath("/usr/bin/nc"), "-z", "-w", "2", "127.0.0.1", str(server.getsockname()[1])]
-            check("a loopback connection works when the policy allows it", dial, True,
-                  replace(pol, net=Net.loopback()))
+            port = server.getsockname()[1]
+            dial = [os.path.realpath("/usr/bin/nc"), "-z", "-w", "2", "127.0.0.1", str(port)]
+            check("a connection to a port the policy names works", dial, True, replace(pol, net=Net.only(port)))
+            check("a connection to a port it does not name is refused", dial, False, replace(pol, net=Net.only(port % 65535 + 1)))
             check("the same connection is refused when the network is denied", dial, False)
     return rows

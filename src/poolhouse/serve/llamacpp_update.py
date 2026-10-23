@@ -69,7 +69,7 @@ def _number(tag: str, sha: str, upstream: Upstream, pipeline: net.Pipeline) -> i
 def _version(binary: Path) -> str:
     """The first line ``binary --version`` prints, run under a policy with no network or GPU."""
     policy = policies.model_server(binary, binary.parent, gpu=False)
-    policy = replace(policy, exec=(*policy.exec, *policies.SYSTEM_EXEC),
+    policy = replace(policy, exec=(*policy.exec, *policies.SYSTEM_EXEC), net=sandbox.Net.deny(),
                      limits=replace(policy.limits, wall_seconds=60.0))
     done = sandbox.run([str(binary), "--version"], policy, cwd=str(binary.parent))
     lines = [ln for ln in ((done.stdout or "") + (done.stderr or "")).splitlines() if "version" in ln]
