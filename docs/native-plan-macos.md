@@ -101,6 +101,9 @@ is fabricated.
 K sender refinement requested from `ipc-sender-feasibility.json`: bind opaque evidence to the exact ingress message,
 kernel AUID/EUID/ASID/PID/PIDversion, dynamic code and verified lineage. Connection metadata or PID lookup cannot
 substitute; review public Mach trailer ingress where needed. Actual hostile IPC proof remains pending; no wire is added.
+The separate [unconfined own-process ABI baseline](notes/native-macos-ipc-abi-evidence.md) supplies redacted
+representation/lifecycle observations only. Strict sandbox failures remain failed; sender admission and H/K/P
+acceptance are unchanged.
 
 ### Mac review of the K representation proposal
 
