@@ -47,7 +47,7 @@ files are under `/private/tmp/poolhouse-mac-native-inventory/` on the Mac.
 |---|---|
 | OS and process | macOS 26.6, arm64; node PID `68696`, user UID `501` |
 | Installed node source | `c5ee5a122c516c5cb99e88b834a195221fd0b209` |
-| Reported public-key-derived DeviceId | `aa547af9b1e1b768dbce6b4e5844b0fb4240f1e26c325fd918e2f9619b925e5c` |
+| Observed legacy raw-key SHA-256 (not proposed canonical DeviceId) | `aa547af9b1e1b768dbce6b4e5844b0fb4240f1e26c325fd918e2f9619b925e5c` |
 | Distinct certificate digest | `524934712872c289dbdc5043e486a4d6fa442f0a15fb2212bacee9910a4a32ca` |
 | Observed LAN endpoints | `en1`, IPv4 `192.168.2.27`; TLS listener TCP `7447`, discovery UDP `7448`; `en0` has no IPv4 |
 | Observed pool state | Secure, unfounded pool of one; no admins or other members; beacons sent/heard `0/0` |
@@ -101,6 +101,28 @@ is fabricated.
 K sender refinement requested from `ipc-sender-feasibility.json`: bind opaque evidence to the exact ingress message,
 kernel AUID/EUID/ASID/PID/PIDversion, dynamic code and verified lineage. Connection metadata or PID lookup cannot
 substitute; review public Mach trailer ingress where needed. Actual hostile IPC proof remains pending; no wire is added.
+
+### Mac review of the K representation proposal
+
+Mac review of proposal `a7c7977a7642c09e31e706fe45b99c1ee76697cd` (integration `433332dcd`) accepts
+its untrusted data representation only; K remains unaccepted. The [shared proposal](node-contract.md) still needs:
+
+- Explicit versioned DeviceId cutover/mapping: UTF-8 domain plus NUL plus raw 32-byte Ed25519 key differs from the
+  observed legacy raw-key SHA-256 above. Preserve that observation and import no historical trust.
+- Named audit-token word order and a non-palindromic eight-word little-endian vector. PID and pid-version must match
+  the same received kernel message token. U32 pid-version preserves the unsigned bits of `audit_token_to_pidversion`;
+  it is not a timestamp. Sender evidence remains fresh and bound to that exact ingress message.
+- Checked `seconds * 1000000 + microseconds` birth conversion from `pbi_start_tvsec`/`pbi_start_tvusec`: reject
+  microseconds outside 0..999999, overflow and stale PID-version races. Wall-clock birth is neither monotonic nor
+  unique and establishes no executable identity.
+- A sealed opaque native adapter validating message-origin principal, PID-version, code, lineage, role and cross-field
+  consistency. Private data closure and secret omission do not turn raw Rust/Python/TypeScript observations into grants.
+  Current unsupported-version refusal describes schema loading; raw `NodeIdentity` data can hold any U32 version or
+  inconsistent key/DeviceId. Authenticated version and derived-ID consistency validation remains future integration work.
+
+The [Mac preservation ledger](notes/native-macos-preserved-work.md) is published separately. Please return the exact
+reviewed canonical adapter and retained-operation checkpoint plus fresh, separately sourced Windows and Linux/WSL
+workspace actors, public node IDs and endpoints requested above. No live sender semantics or connection is proven here.
 
 Mac K adapter request for shared-owner review, with feasibility evidence in `contracts-feasibility.json` under the
 same Mac evidence directory; this request establishes no principal, admission or platform contract:

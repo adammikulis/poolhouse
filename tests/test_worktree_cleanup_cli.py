@@ -1,6 +1,7 @@
 """Owned checkout cleanup reserves and releases its exact scopes without user claim steps."""
 
 import argparse
+from pathlib import Path
 
 import pytest
 from test_worktree_lifecycle import claim, setup as _setup
@@ -119,3 +120,28 @@ def test_completed_cleanup_retry_does_not_release_new_reservations_for_future_wo
     fresh = kit.s.reserve([('worktree', str(kit.checkout.resolve())), ('branch', 'worker/change')])
     assert cleanup(kit) == result
     assert held(kit) == {(row.kind, row.key): row.lease for row in fresh}
+
+
+def test_cleanup_preserves_an_unrelated_unavailable_worktree_registration(setup):
+    kit = setup
+    claim(kit)
+    other = kit.primary.parent / 'unavailable'
+    repo.git(kit.primary, 'worktree', 'add', '-b', 'foreign/unavailable', str(other), 'HEAD')
+    registration = Path((other / '.git').read_text().split('gitdir:', 1)[1].strip())
+    before = {path.name: path.read_bytes() for path in registration.iterdir() if path.is_file()}
+    other.rename(other.with_name('preserved-away'))
+    cleanup(kit)
+    assert f'worktree {other.resolve()}\n' in repo.git(kit.primary, 'worktree', 'list', '--porcelain')
+    assert {path.name: path.read_bytes() for path in registration.iterdir() if path.is_file()} == before
+    assert repo.git(kit.primary, 'rev-parse', 'refs/heads/foreign/unavailable')
+
+
+def test_completed_cleanup_ignores_a_nested_future_ref_and_preserves_its_lease(setup):
+    kit = setup
+    claim(kit)
+    result = cleanup(kit)
+    repo.git(kit.primary, 'branch', 'worker/change/future', 'HEAD')
+    future = kit.s.claim('branch', 'worker/change/future')
+    assert cleanup(kit) == result
+    assert held(kit) == {('branch', 'worker/change/future'): future.lease}
+    assert repo.git(kit.primary, 'rev-parse', 'refs/heads/worker/change/future') == result['commit']
