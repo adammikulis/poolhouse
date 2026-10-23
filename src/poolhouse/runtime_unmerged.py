@@ -24,6 +24,22 @@ class Approval:
     actor: str
 
 
+def reviewed_branch(own: board.session.Session, primary: Path, commit: str) -> str:
+    """Find a still-current local branch from the commit's standing independent reviews."""
+    found = landing.accepts(own, commit)
+    if landing.rejected(own, found):
+        raise DeployError("an independent reviewer rejected the runtime commit")
+    branches = sorted({row["branch"] for row in found["reviews"] if row.get("verdict") == "accept"})
+    for branch in branches:
+        if git(primary, "rev-parse", "--verify", "--end-of-options", f"refs/heads/{branch}", check=False) != commit:
+            continue
+        specific = landing.accepts(own, commit, branch)
+        matching = {**specific, "reviews": [row for row in specific["reviews"] if row["branch"] == branch]}
+        if not landing.standing(own, specific) and not landing.standing(own, matching):
+            return branch
+    raise DeployError("the runtime commit has no standing independent approval on a current local branch")
+
+
 def validate(approval: Approval, primary: Path, commit: str) -> None:
     """Revalidate an exact source decision against its authenticated node."""
     if approval.primary != primary.resolve() or approval.commit != commit or not COMMIT.fullmatch(commit):
@@ -44,18 +60,26 @@ def validate(approval: Approval, primary: Path, commit: str) -> None:
         authority.require(GATE, f"runtime deploy {commit} from {primary} review {approval.branch}")
         if landing.standing(own, landing.accepts(own, commit, approval.branch)):
             raise DeployError("the runtime commit has no standing independent approval")
-        if git(primary, "rev-parse", "--verify", f"refs/heads/{approval.branch}") != commit:
+        if git(primary, "rev-parse", "--verify", "--end-of-options", f"refs/heads/{approval.branch}") != commit:
             raise DeployError("the reviewed runtime branch changed")
     except (board.client.NodeError, OSError, KeyError, TypeError, ValueError) as exc:
         raise DeployError(f"reviewed runtime admission is unavailable: {exc}") from exc
 
 
-def approve(primary: Path, commit: str, branch: str) -> Approval:
+def approve(primary: Path, commit: str, branch: str = "") -> Approval:
     """Return the checked source decision for the caller's exact commit of ``branch``."""
     try:
-        board_id = str(board.client.Client(autostart=False).call("project_resolve", path=str(primary.resolve()))["board"])
+        client = board.client.Client(autostart=False)
+        board_id = str(client.call("project_resolve", path=str(primary.resolve()))["board"])
+        actor = os.environ.get(authority.AGENT_ENV, "")
+        if not branch:
+            own = board.session.connect(agent=actor, board=board_id, client=client)
+            me = own.whoami()
+            if not actor or me.name != actor or me.parent or me.retired:
+                raise DeployError("reviewed runtime deployment needs a live lead agent")
+            branch = reviewed_branch(own, primary, commit)
     except (board.client.NodeError, OSError, KeyError, TypeError, ValueError) as exc:
         raise DeployError(f"reviewed runtime admission is unavailable: {exc}") from exc
-    approval = Approval(primary.resolve(), commit, board_id, branch, os.environ.get(authority.AGENT_ENV, ""))
+    approval = Approval(primary.resolve(), commit, board_id, branch, actor)
     validate(approval, primary, commit)
     return approval

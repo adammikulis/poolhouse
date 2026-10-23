@@ -131,7 +131,7 @@ def test_a_commit_before_the_tip_is_admitted_and_one_beside_it_is_not(world):
     runtime_deploy.admit(world.repo, world.base)
     with pytest.raises(runtime_deploy.DeployError, match="development branch"):
         runtime_deploy.admit(world.repo, world.evil)
-    with pytest.raises(runtime_deploy.DeployError, match="person at a terminal"):
+    with pytest.raises(runtime_deploy.DeployError, match="person authentication"):
         runtime_deploy.admit(world.repo, world.evil, allow_unmerged=True)
 
 
@@ -291,10 +291,10 @@ def test_integration_checkout_cannot_supply_runtime_admission(world):
         runtime_deploy.admit(integration, world.tip)
 
 
-def test_unmerged_exception_requires_the_existing_actual_person_terminal(world, monkeypatch):
+def test_unmerged_boolean_never_bypasses_agent_review(world, monkeypatch):
     monkeypatch.setattr(runtime_source.person, "is_terminal", lambda _stream: True)
     monkeypatch.setattr(runtime_source.person, "marked", lambda: True)
-    with pytest.raises(runtime_deploy.DeployError, match="person at a terminal"):
+    with pytest.raises(runtime_deploy.DeployError, match="exact reviewed runtime approval"):
         runtime_deploy.admit(world.repo, world.evil, allow_unmerged=True)
     monkeypatch.setattr(runtime_source.person, "marked", lambda: False)
     runtime_deploy.admit(world.repo, world.evil, allow_unmerged=True)
