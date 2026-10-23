@@ -135,15 +135,14 @@ def test_install_names_every_agent_it_is_told_to(machine):
     assert agent_hooks.install_report()[0].startswith("claude-code: message-board hooks (PostToolUse, Stop")
 
 
-def test_the_install_command_follows_the_registry(machine, monkeypatch):
+def test_the_install_command_follows_the_registry(machine, monkeypatch, workspace_node):  # noqa: F811
     args = argparse.Namespace(settings=str(machine / "s.json"), codex_config="", only=[], agent="")
+    monkeypatch.setenv("POOLHOUSE_HOME", str(workspace_node.state.parent))
+    monkeypatch.setenv("POOLHOUSE_BOARD", workspace_node.board)
+    lead = workspace_node.member("hooks-lead")
     authority.set_state(["workspace.setup"], authority.PERSON, by="lead")
-    folder = machine / "state" / "node" / "client" / "board"
-    folder.mkdir(parents=True)
-    (folder / "agent-lead01.token").write_text("t\n", encoding="utf-8")
-    (folder / "agent-lead01.parent").write_text("\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDECODE", "1")
-    monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", "agent-lead01")
+    monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", lead.name)
     with pytest.raises(HumanRequired):
         hooks_cli.install(args)
     assert not (machine / "s.json").exists()
