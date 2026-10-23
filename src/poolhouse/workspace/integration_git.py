@@ -151,7 +151,6 @@ def remove_merged(primary: Path, path: Path, branch: str, landed: str, *, lock_r
         if not ancestor(primary, tip, landed):
             raise Denied(f'{branch} still has unique commits')
         git(primary, 'branch', '-d', branch)
-    git(primary, 'worktree', 'prune')
     if path.exists() or any(line.startswith('worktree ') and Path(line[9:]).resolve() == path.resolve()
                            for line in git(primary, 'worktree', 'list', '--porcelain').splitlines()):
         raise Denied(f'{path} remains after task cleanup')

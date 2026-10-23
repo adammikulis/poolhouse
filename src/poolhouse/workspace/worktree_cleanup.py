@@ -50,8 +50,9 @@ def _finished(target: Path, scope: dict[str, Any]) -> dict[str, Any]:
     proof = scope.get('cleanup', {})
     primary = Path(scope['primary'])
     registered = repo.git(primary, 'worktree', 'list', '--porcelain').splitlines()
-    branch = repo.git(primary, 'for-each-ref', '--format=%(refname)', f"refs/heads/{scope['branch']}")
-    if (target.exists() or not proof or branch or
+    exact_ref = f"refs/heads/{scope['branch']}"
+    branches = repo.git(primary, 'for-each-ref', '--format=%(refname)', exact_ref).splitlines()
+    if (target.exists() or not proof or exact_ref in branches or
             any(line.startswith('worktree ') and Path(line[9:]).resolve() == target for line in registered) or
             not repo.ancestor(primary, proof['commit'], proof['landed'])):
         raise Denied('cleanup requires this worker\'s existing attributed checkout or verified cleanup proof')
