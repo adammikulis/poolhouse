@@ -6,11 +6,15 @@ import plistlib
 import subprocess
 import types
 import zipfile
+from dataclasses import replace
 
 import pytest
 
+from poolhouse.authority_caller import Identity
 from poolhouse.net import github_release as net
 from poolhouse.workspace import github_app, github_release as holder
+
+pytest_plugins = ["node_kit"]
 
 VERSION = '0.3.0-dev.1'
 REPO = 'demo/project'
@@ -175,20 +179,32 @@ def test_clean_git_view_ignores_hostile_source_configuration(built, tmp_path):
     assert holder.local(view, 'show', f'{selected.commit}:version.txt') == VERSION
 
 
-@pytest.mark.parametrize('identity_case', [
-    ('chatgpt-parent', False, 'gpt-6.1-sol', 'chatgpt-lead'),
-    ('', True, 'gpt-6.1-sol', 'chatgpt-lead'), ('', False, 'gpt-6.1-sol', 'chatgpt-impostor'),
-])
-def test_holder_refuses_helper_ended_and_mismatched_session(tmp_path, monkeypatch, identity_case):
-    parent, retired, model, name = identity_case
-    monkeypatch.setattr(holder.real_machine, 'require', lambda action: None)
+@pytest.fixture
+def holder_actor(workspace_node, monkeypatch):
+    actor = workspace_node.member("holder-root", harness="codex")
+    current = holder.authority.current_agent
+    monkeypatch.setattr(holder.authority, "current_agent", lambda: current(client=workspace_node.client))
+    monkeypatch.setenv("CODEX_THREAD_ID", actor.session)
+    monkeypatch.delenv("POOLHOUSE_WORKSPACE_AGENT", raising=False)
+    monkeypatch.delenv("POOLHOUSE_AGENT", raising=False)
+    return workspace_node, actor
+
+
+@pytest.mark.parametrize("identity_case", ["child", "retired", "mismatch"])
+def test_holder_refuses_helper_ended_and_mismatched_session(tmp_path, monkeypatch, holder_actor, identity_case):
+    node, actor = holder_actor
+    monkeypatch.setattr(holder.real_machine, "require", lambda action: None)
     _selected_holder(tmp_path, monkeypatch)
-    who = types.SimpleNamespace(parent=parent, retired=retired, model=model, name=name)
-    monkeypatch.setattr(holder, 'connect', lambda: types.SimpleNamespace(whoami=lambda: who))
-    monkeypatch.setenv('POOLHOUSE_WORKSPACE_AGENT', 'chatgpt-lead')
-    monkeypatch.setattr(holder.authority, 'require', lambda *a, **k: pytest.fail('unexpected gate use'))
-    with pytest.raises(net.Failed, match='authenticated live lead'):
-        holder.authorize('fixed publication')
+    if identity_case == "child":
+        child = node.member("holder-child", harness="codex", parent=actor)
+        monkeypatch.setenv("CODEX_THREAD_ID", child.session)
+    elif identity_case == "retired":
+        node.session(actor).retire()
+    else:
+        monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", "chatgpt-impostor")
+    monkeypatch.setattr(holder.authority, "require", lambda *a, **k: pytest.fail("unexpected gate use"))
+    with pytest.raises(net.Failed, match="authenticated live lead"):
+        holder.authorize("fixed publication")
 
 
 def _selected_holder(tmp_path, monkeypatch):
@@ -212,7 +228,7 @@ def test_holder_refuses_unselected_or_mismatched_runtime_before_credentials(tmp_
 
     _, package = _selected_holder(tmp_path, monkeypatch)
     monkeypatch.setattr(holder.real_machine, 'require', lambda action: None)
-    monkeypatch.setattr(holder, 'connect', lambda: pytest.fail('unexpected session access'))
+    monkeypatch.setattr(holder.authority, 'current_agent', lambda: pytest.fail('unexpected session access'))
     monkeypatch.setattr(holder.credentials, '_open', lambda *a: pytest.fail('unexpected credential access'))
     monkeypatch.setattr(holder.github_app, 'mint', lambda *a, **k: pytest.fail('unexpected mint'))
     if case == 'unselected':
@@ -229,16 +245,14 @@ def test_holder_refuses_unselected_or_mismatched_runtime_before_credentials(tmp_
         holder.authorize('fixed publication')
 
 
-def test_selected_holder_reaches_authenticated_lead_gate(tmp_path, monkeypatch):
+def test_selected_holder_reaches_authenticated_lead_gate(tmp_path, monkeypatch, holder_actor):
+    _node, actor = holder_actor
     _selected_holder(tmp_path, monkeypatch)
-    monkeypatch.setattr(holder.real_machine, 'require', lambda action: None)
-    who = types.SimpleNamespace(parent='', retired=False, model='gpt-6.1-sol', name='chatgpt-lead')
-    monkeypatch.setattr(holder, 'connect', lambda: types.SimpleNamespace(whoami=lambda: who))
-    monkeypatch.setenv('POOLHOUSE_WORKSPACE_AGENT', who.name)
+    monkeypatch.setattr(holder.real_machine, "require", lambda action: None)
     seen = []
-    monkeypatch.setattr(holder.authority, 'require', lambda *args: seen.append(args))
-    assert holder.authorize('fixed publication') is who
-    assert seen == [('github.release', 'fixed publication')]
+    monkeypatch.setattr(holder.authority, "require", lambda *args: seen.append(args))
+    assert holder.authorize("fixed publication").name == actor.name
+    assert seen == [("github.release", "fixed publication")]
 
 
 def test_credential_open_is_exact_item_without_generic_lookup(monkeypatch):
@@ -333,10 +347,11 @@ def push_case(built, monkeypatch):
     git(old.checkout, 'add', 'new.py')
     git(old.checkout, '-c', 'user.name=Codex', '-c', 'user.email=codex@agents.invalid', 'commit', '-qm', 'fix: fixture')
     selected = holder.source(old.checkout, REPO)
-    monkeypatch.setattr(holder, 'authorize', lambda action: None)
+    caller = holder.Caller(Identity('fixture-agent', '', 'codex', False, False), 'demo', selected.checkout / 'state/node')
+    monkeypatch.setattr(holder, 'authorize', lambda action: state.get('caller', caller))
     monkeypatch.setattr(holder, 'identity', lambda: github_app.Identity(REPO, 7, 'client', 'app', 'not-a-key', 9))
     monkeypatch.setattr(holder.authority, 'require', lambda *a, **k: None)
-    state = {'mint': 0, 'push': 0, 'gets': 0, 'hook_status': 0, 'race': False}
+    state = {'mint': 0, 'push': 0, 'gets': 0, 'hook_status': 0, 'race': False, 'caller': caller}
 
     def hooks(selected, directory):
         path = directory / 'trusted-hooks'
@@ -391,3 +406,63 @@ def test_matching_checked_push_has_one_private_mint(push_case):
     selected, state = push_case
     assert holder.push_development(selected.checkout) == {'sha': selected.commit}
     assert state['mint'] == state['push'] == 1
+
+
+def test_native_only_transport_context_is_derived_from_authenticated_caller(tmp_path, monkeypatch, holder_actor):
+    node, actor = holder_actor
+    _selected_holder(tmp_path, monkeypatch)
+    monkeypatch.setattr(holder.real_machine, "require", lambda action: None)
+    monkeypatch.setattr(holder.authority, "require", lambda *args: None)
+    caller = holder.authorize("fixed publication")
+    env = holder.environment(tmp_path, caller)
+    assert env["POOLHOUSE_WORKSPACE_AGENT"] == actor.name
+    assert env["POOLHOUSE_BOARD"] == node.board
+    assert env["POOLHOUSE_HOME"] == str(node.state.parent)
+    assert env["CODEX_THREAD_ID"] == actor.session
+    assert env["POOLHOUSE_AGENT"] == "1"
+    assert "POOLHOUSE_WORKSPACE_TOKEN" not in env
+    assert actor.token not in json.dumps(env) + repr(caller)
+    monkeypatch.setattr(holder.authority, "current_agent", lambda: pytest.fail("read-only Git requested authority"))
+    holder.environment(tmp_path)
+
+
+def test_changed_native_actor_refuses_publication_revalidation(tmp_path, monkeypatch, holder_actor):
+    node, actor = holder_actor
+    _selected_holder(tmp_path, monkeypatch)
+    monkeypatch.setattr(holder.real_machine, "require", lambda action: None)
+    monkeypatch.setattr(holder.authority, "require", lambda *args: None)
+    caller = holder.authorize("fixed publication")
+    child = node.member("late-holder-child", harness="codex", parent=actor)
+    monkeypatch.setenv("CODEX_THREAD_ID", child.session)
+    with pytest.raises(net.Failed, match="authenticated live lead"):
+        holder.revalidate(caller)
+
+
+@pytest.mark.parametrize("change", ["name", "board", "state", "retired", "person", "harness"])
+def test_changed_caller_snapshot_never_mints_or_pushes(push_case, monkeypatch, change):
+    selected, state = push_case
+    original = net.request
+
+    def changed(method, path, **options):
+        reply = original(method, path, **options)
+        if state["gets"] == 2:
+            caller = state["caller"]
+            if change == "name":
+                caller = replace(caller, identity=replace(caller.identity, name="other-agent"))
+            elif change == "board":
+                caller = replace(caller, board="other")
+            elif change == "state":
+                caller = replace(caller, state=caller.state.parent / "other-node")
+            elif change == "retired":
+                caller = replace(caller, identity=replace(caller.identity, retired=True))
+            elif change == "person":
+                caller = replace(caller, identity=replace(caller.identity, person=True))
+            else:
+                caller = replace(caller, identity=replace(caller.identity, harness="other"))
+            state["caller"] = caller
+        return reply
+
+    monkeypatch.setattr(net, "request", changed)
+    with pytest.raises(net.Failed, match="publication caller changed"):
+        holder.push_development(selected.checkout)
+    assert state["mint"] == state["push"] == 0
