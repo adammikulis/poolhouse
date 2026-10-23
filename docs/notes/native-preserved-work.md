@@ -42,16 +42,18 @@ in A1 `original-refs.json` and `original-worktrees.json`; no refs or worktrees w
 ## Original worktrees
 
 All 12 directories exist. All current tracked/untracked source statuses are clean except W10.
-Initial heads are in A0; every full initial SHA was verified in the restored mirror. “In development”
-means ancestry at the comparison checkpoint, not proof that the native implementation retains a behavior.
+Initial heads are in A0; every full initial SHA was verified in the restored mirror. Ancestry below
+is stated separately for initial and changed current heads against the comparison checkpoint;
+it is not proof that the native implementation retains a behavior. For unchanged heads,
+“in development” means that shared initial/current head is an ancestor of the checkpoint.
 
 | Handle | Relative path | Original full HEAD | Current change / ancestry |
 | --- | --- | --- | --- |
-| W1 | `.` | `90c120c389cfdeaac3423bf11f7a7f23e85217a7` | now `2400838cf4f4bcd447aee479c6138ab29913765e`; in development |
+| W1 | `.` | `90c120c389cfdeaac3423bf11f7a7f23e85217a7` | initial head is an ancestor; current `2400838cf4f4bcd447aee479c6138ab29913765e` is also an ancestor |
 | W2 | `../ml-stack-agent-connect` | `cc8f8eaf2bee315b70ac985b18e2bbb5c0e60ce2` | same; not an ancestor |
 | W3 | `../ml-stack-fleet-bench-process-group` | `b9510a5c45cae1be804405d9cbeee14d187958ce` | same; not an ancestor |
 | W4 | `../poolhouse-native-device-plan` | `90c120c389cfdeaac3423bf11f7a7f23e85217a7` | same; in development |
-| W5 | `../poolhouse-native-hooks` | `90c120c389cfdeaac3423bf11f7a7f23e85217a7` | now `718d935d2223a8111943744287fa8982b73941ed`; in development |
+| W5 | `../poolhouse-native-hooks` | `90c120c389cfdeaac3423bf11f7a7f23e85217a7` | initial head is an ancestor; current `718d935d2223a8111943744287fa8982b73941ed` is not an ancestor; unpublished, preserved in A0 hook bundle |
 | W6 | `../poolhouse-one-pool` | `3cb435349a01bc6298e8106f66afb517f39dabad` | same; in development |
 | W7 | `.claude/worktrees/agent-a028c4a8ee250f4f9` | `daa6a4e9dcbedbe29cec652f3543ddbd7efb9543` | same; not an ancestor |
 | W8 | `.claude/worktrees/agent-a4454410272ccde80` | `3f3841f575ca5305cfcff3ebeb803de593357277` | same; not an ancestor |
