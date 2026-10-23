@@ -630,7 +630,8 @@ Create worktrees beside the primary checkout, never inside it (including `.workt
 
 ### Landing
 
-Whoever made a branch finishes it and pushes it; the lead steps in only for cross-branch conflicts and release.
+The author finishes each branch; one coordinator integrates and pushes verified checkpoints for the shared development
+branch. Managed workers hand each checkpoint to that coordinator.
 
 **Landing, step by step.** These steps are the whole procedure, in this order.
 
@@ -654,31 +655,30 @@ Whoever made a branch finishes it and pushes it; the lead steps in only for cros
   maintained checks. Do not extract, print or copy credentials, redirect the remote, or bypass checks. App availability
   never blocks development synchronization. Release signing, promotion of `main`, and person-only approvals stay separate.
 
-- **A worker pushes its own branch.** The development branch is whichever branch the primary checkout is on
-  (`POOLHOUSE_DEV_BRANCH` overrides it); nothing names it. A worker never reports a branch landed before its commit is
-  on `origin/<dev>`. A subagent whose affected tests passed pushes it itself.
+- **One coordinator publishes the shared branch.** The development branch is whichever branch the primary checkout is
+  on (`POOLHOUSE_DEV_BRANCH` overrides it); nothing names it. Workers immediately hand verified checkpoints to its
+  coordinator, who integrates and pushes each one. A branch is landed only when its commit is on `origin/<dev>`.
 - **A rule-file edit the owner orders lands at once.** When the owner asks for a change to `AGENTS.md` or `CLAUDE.md`,
   the lead makes it, commits it and pushes the development branch in the same turn, then posts a milestone naming the
   commit so every agent re-reads both files. The owner's instruction is the authority; only the edit itself is made (no
   other change rides along).
-- **Agents merge.** A worker merges `origin/<development>` into its branch before every push, and again whenever a
-  milestone announces a landing that touches files it edits; a branch more than a few commits behind is merged before
-  anything else is done on it.
-- **The agents push; the owner does not.** Pushing the development branch is part of landing, done by whoever finished
-  the change, immediately and without asking, with no wait for a designated publisher: whoever integrates pushes it
-  themselves. Never leave a landed commit for the owner to push, ask whether to push it,
+- **Agents sync after every commit.** Immediately after every completed bounded commit, fetch `origin` and reconcile
+  `origin/<development>` in the agent's own claimed checkout at a safe boundary, before starting the next piece. Do the
+  same before publication and when a landing touches files being edited. The coordinator alone updates the shared
+  development checkout; workers preserve active jobs and unrelated work in their own checkouts.
+- **The agents push; the owner does not.** The coordinator pushes each verified integration immediately and without
+  asking; publication never waits for the owner. Never leave a landed commit for the owner to push, ask whether to push it,
   report one as "unpushed, the owner's to push", or answer a question about who publishes with "the owner"; the owner
   never has to check a device for unpushed work. Agents push everything with the agent identity, workflow files included
   (docs/github-protection.md). Only `main` waits on the owner (section 1).
-- **Integrate continuously.** Commit completed, verified, bounded pieces promptly; get another agent's
-  review for security-adjacent work and affected checks promptly. Fetch before preparing each batch and again
-  immediately before pushing; reconcile upstream advancement in an isolated integration worktree and run the incremental
-  affected gates before landing the exact tree; if the remote moved, fetch, reconcile, gate the new changes and retry.
-  Every agent starting a task, finishing one or returning from a wait fetches and fast-forwards development first; a
-  local-only commit on it is not left past the end of its task. Do not accumulate ready branches, wait for every worker,
-  impose broad development holds, or defer publication or the update behind unrelated development or work, another
-  feature, refactoring, cleanup or the GitHub run; keep authorization and required checks intact. A push that is
-  refused because the remote moved is merged and pushed again at once.
+- **Integrate continuously.** After each completed bounded commit, sync as above and immediately hand the exact SHA,
+  affected-check results and required independent security review to the shared branch's coordinator. The coordinator
+  integrates and pushes each verified checkpoint promptly after its required combined gates; no ready branch or
+  local-only commit waits for session end, other workers, cleanup or unrelated work. Fetch before each integration and
+  again before pushing; reconcile upstream advancement in an isolated integration worktree and run incremental affected
+  gates on the exact tree. If the remote moved, fetch, reconcile, check the new changes and push again. At task start,
+  task finish and return from a wait, fetch and reconcile the agent's own checkout. Preserve authorization, required
+  checks, active work and the coordinator's exclusive publication of the shared development branch.
 - **Keep landing short.** A ready branch lands the moment it is verified and never waits for a day, an hour or
   another task. Run `git cherry <dev> <branch>` before porting and drop equivalent patches; a tree already gated is not
   gated again (section 5, "Scoped merge gates and background verification"). Finish before starting: no new branch while your own ready branches await landing, about ten open
