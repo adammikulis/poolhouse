@@ -21,7 +21,7 @@ from poolhouse.client import is_healthy, reported_models
 from poolhouse.client.chat import forget_server
 from poolhouse.client.health import serving_params
 from poolhouse.files import write_json
-from poolhouse.hub import free_memory, installed_for, room as machine_room
+from poolhouse.hub import free_memory, room as machine_room
 from poolhouse.limits import read as limits_read
 from poolhouse.lock import only_one
 from poolhouse.serve import (
@@ -56,6 +56,7 @@ from poolhouse.serve.escalation import (
     summarise,
 )
 from poolhouse.serve.events import Caller, Event, Growth, emit
+from poolhouse.serve.fitted import fitted, reusing_installed
 from poolhouse.serve.leases import (
     lease_file,
     merge_state,
@@ -148,19 +149,6 @@ class Starting:
                 "warmup_request": self.warmup_request}
 
 
-def reusing_installed(spec: ServerSpec) -> ServerSpec:
-    """``spec`` with each ``hf:owner/repo/file`` model, projector and draft that is already
-    installed -- from the Hub cache, llama.cpp's cache, LM Studio or Ollama -- replaced by
-    the file, so it is not downloaded again."""
-    changes: dict[str, str] = {}
-    for field in ("model", "mmproj", "draft"):
-        value = getattr(spec, field)
-        found = installed_for(value) if isinstance(value, str) and value.startswith("hf:") else None
-        if found:
-            changes[field] = str(found.path)
-    return replace(spec, **changes) if changes else spec
-
-
 class ServerManager(Admitting):
     """Leases model servers, one per (model, port), shared across this machine."""
 
@@ -236,7 +224,7 @@ class ServerManager(Admitting):
         with the machine's broker. The rest of the arguments are those of
         :meth:`_start_server`.
         """
-        spec = reusing_installed(spec)
+        spec, _fit = fitted(reusing_installed(spec))
         wanted = quant_guard.mode(iq or self.iq)
         if wanted == "block":
             quant_guard.enforce(spec.model, gpu_layers=spec.n_gpu_layers, asked=wanted)
@@ -841,7 +829,7 @@ def serve(
     model: str | Path,
     *,
     port: int | None = None,
-    context: int = 4096,
+    context: int = 0,
     timeout: float | None = None,
     manager: ServerManager | None = None,
     roam: bool = True,

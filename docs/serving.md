@@ -79,6 +79,22 @@ poolhouse-serve status
 poolhouse-serve down Qwen3.8-27B
 ```
 
+**A context nobody names is the largest this machine holds.** `up`, `serve()`, `public.up`, the Fleet app, the local agent, the
+coding harnesses and `plan` ask one function, `serve.suggest.largest_fit(model, machine=None, *, slots=1, kv, draft)`, and it
+answers per slot: the model's trained window (read off the GGUF header) as the ceiling, and as the floor the memory the
+machine can give a model, which is the unified-memory GPU limit on Apple silicon and a card plus RAM elsewhere (less the
+system's reserve, rated yellow, below 95%, or better). The machine is counted as idle, so the same model gets the same answer
+whatever else is running, and the broker is what makes a lease wait for memory another lease holds; a limit set with
+`poolhouse-serve limits` is honoured. A server spec's `context` of 0 means "fit" and is answered where the server is leased
+(`serve.fitted.fitted`), so no caller carries a context of its own; a context given is used as given. Slots are the caller's
+demand and default to one, as in llama.cpp, with `escalate` growing a running server; `suggest.slots_that_fit` says how many
+slots of a context the memory would hold. Nothing stands in for a number that cannot be derived: a model with no readable GGUF
+header (an MLX folder, a file that is not a GGUF), or a header with no `<architecture>.context_length`, is refused naming what is
+missing, and the person passes `--context`. One slot is the only fixed default, as in llama.cpp. A measured profile's context and
+slots were measured for one workload, so `up` applies them only when `--workload` names it and says so otherwise; the profile's
+build, draft, cache type and flags still apply. `poolhouse-models fit MODEL` with no `--context` costs exactly what `up` would
+serve, and `poolhouse-serve up` prints the line that says what was chosen and what it needs.
+
 **`up` is a lease from the broker, and nothing else starts a server.** The command resolves
 what was asked (the measured profile where there is one, the shape the broker would use
 where there is not, and it says which), then asks the machine's broker for a lease with that
@@ -784,8 +800,9 @@ poolhouse-serve plan MODEL --vram 12 --ram 32 --context 262144 --cache-type-k q8
 poolhouse-serve up MODEL --plan auto                           # the same, for this machine
 ```
 
-`--context` defaults to 131072, the least a coding profile needs. `up --plan auto` raises a
-context left at the `up` default to 131072, detects the card and RAM through
+`--context` defaults to the most this placement holds on the machine, up to the model's trained window (the same search as every
+other default, over this placement's own memory model, so experts held in RAM count). `up --plan auto` fits a context left unset
+the same way, detects the card and RAM through
 `poolhouse.hub.probe.machine_memory`, sets `--on-cpu` / `--n-cpu-moe` / `--cpu-moe` (or
 `--n-gpu-layers 0` with no card) to what fits, and prints what it chose. A placement flag given
 on the command line (`--on-cpu`, `--cpu-moe`, `--n-cpu-moe`) wins and nothing is set. When

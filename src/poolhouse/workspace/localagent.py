@@ -24,6 +24,7 @@ from poolhouse.board.session import Agent as Registered, Session
 from poolhouse.chatpolicy import APPROVE_FIRST, PLAN_AND_GO, READ_ONLY
 from poolhouse.files import read_json, write_json
 from poolhouse.serve.process import pid_exists, started_at
+from poolhouse.workspace import localeffort as le
 
 __all__ = ["APPROVE_FIRST", "DEFAULT_ORDERS_FROM", "ORDER_KINDS", "PLAN_AND_GO", "READ_ONLY",
            "Agent", "Status", "alive", "check_name", "check_orders", "check_project", "folder",
@@ -97,9 +98,9 @@ class Agent:
     role: str = roles.DEFAULT
     profile: str = "chat"
     harness: str = "poolhouse-agent"
-    ctx: int = 32768
+    ctx: int = 0
     effort: str = "off"
-    max_effort: str = "medium"
+    max_effort: str = le.DEFAULT_MAX
     project: str = ""
     orders_from: tuple[str, ...] = DEFAULT_ORDERS_FROM
     started: float = 0.0

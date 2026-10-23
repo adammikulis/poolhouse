@@ -101,7 +101,7 @@ class TestCommand:
     def test_uses_long_flags_only(self, binary, gguf):
         """Short forms are ambiguous across llama-server versions -- `-a` is `--alias`,
         so a stale short flag misconfigures silently instead of erroring."""
-        argv = LlamaServerBackend(binary=binary).command(ServerSpec(model=gguf, port=1234))
+        argv = LlamaServerBackend(binary=binary).command(ServerSpec(context=4096, model=gguf, port=1234))
         assert "--host" in argv and "--port" in argv
         assert "-a" not in argv and "-p" not in argv
         assert argv[argv.index("--port") + 1] == "1234"
@@ -109,40 +109,40 @@ class TestCommand:
     def test_binds_loopback_not_all_interfaces(self, binary, gguf):
         """A local model server on 0.0.0.0 is an unauthenticated inference endpoint on
         every network the machine is attached to."""
-        argv = LlamaServerBackend(binary=binary).command(ServerSpec(model=gguf))
+        argv = LlamaServerBackend(binary=binary).command(ServerSpec(context=4096, model=gguf))
         assert argv[argv.index("--host") + 1] == "127.0.0.1"
 
     def test_hf_reference_is_refused_rather_than_downloaded_by_the_server(self, binary):
         """llama-server is handed paths only; the reference is fetched through `poolhouse.hub`."""
         with pytest.raises(ServerFailed, match="must be fetched before serving"):
             LlamaServerBackend(binary=binary).command(
-                ServerSpec(model="hf:owner/repo/weights-Q4_K_M.gguf"))
+                ServerSpec(context=4096, model="hf:owner/repo/weights-Q4_K_M.gguf"))
 
     def test_hf_reference_without_a_file_is_refused_too(self, binary):
         with pytest.raises(ServerFailed, match="must be fetched before serving"):
-            LlamaServerBackend(binary=binary).command(ServerSpec(model="hf:owner/repo"))
+            LlamaServerBackend(binary=binary).command(ServerSpec(context=4096, model="hf:owner/repo"))
 
     def test_a_download_flag_in_the_extra_arguments_is_refused(self, binary, gguf):
         for flag in ("-hf", "--hf-repo", "-hfd", "--model-url", "--mmproj-url=http://x/y.gguf"):
             with pytest.raises(ServerFailed, match="is not a flag Poolhouse passes"):
                 LlamaServerBackend(binary=binary).command(
-                    ServerSpec(model=gguf, extra_args=(flag, "owner/repo")))
+                    ServerSpec(context=4096, model=gguf, extra_args=(flag, "owner/repo")))
 
     def test_malformed_hf_reference_is_rejected(self, binary):
         with pytest.raises(ServerFailed, match="malformed HF reference"):
-            LlamaServerBackend(binary=binary).command(ServerSpec(model="hf:justowner"))
+            LlamaServerBackend(binary=binary).command(ServerSpec(context=4096, model="hf:justowner"))
 
     def test_embedding_mode_drops_the_chat_template(self, binary, gguf):
         """An embedding server has no chat turn to template."""
         argv = LlamaServerBackend(binary=binary).command(
-            ServerSpec(model=gguf, embedding=True)
+            ServerSpec(context=4096, model=gguf, embedding=True)
         )
         assert "--embeddings" in argv
         assert "--jinja" not in argv
 
     def test_extra_args_land_last_so_they_can_override(self, binary, gguf):
         argv = LlamaServerBackend(binary=binary).command(
-            ServerSpec(model=gguf, extra_args=("--cache-reuse", "256"))
+            ServerSpec(context=4096, model=gguf, extra_args=("--cache-reuse", "256"))
         )
         assert argv[-2:] == ["--cache-reuse", "256"]
 
@@ -153,7 +153,7 @@ class TestStartGuards:
         reader looking for a slow load that never happened."""
         backend = LlamaServerBackend(binary=binary)
         with pytest.raises(ServerFailed, match="no model file at"):
-            leased(backend, ServerSpec(model=tmp_path / "absent.gguf"))
+            leased(backend, ServerSpec(context=4096, model=tmp_path / "absent.gguf"))
 
     def test_a_foreign_process_on_the_port_is_refused_not_killed(self, binary, gguf):
         """The port check matches our own binary names; anything else is somebody's
@@ -165,7 +165,7 @@ class TestStartGuards:
 
             backend = LlamaServerBackend(binary=binary)
             with pytest.raises(ServerFailed, match="not one of ours"):
-                leased(backend, ServerSpec(model=gguf, port=port), timeout=1.0)
+                leased(backend, ServerSpec(context=4096, model=gguf, port=port), timeout=1.0)
 
             # Still listening: we refused rather than reclaiming.
             assert held.fileno() != -1
@@ -181,7 +181,7 @@ class TestStartGuards:
         assert not save_path.exists()
         backend = LlamaServerBackend(binary=binary)
         with pytest.raises(ServerFailed):
-            leased(backend, ServerSpec(model=gguf, slot_save_path=save_path),
+            leased(backend, ServerSpec(context=4096, model=gguf, slot_save_path=save_path),
                   timeout=1.0, preflight=False)
         assert save_path.is_dir()
 
@@ -359,13 +359,13 @@ class TestAdoption:
 
     def test_nothing_running_means_nothing_to_adopt(self, tmp_path, binary):
         manager = self._manager(tmp_path, binary)
-        assert manager.adopt(ServerSpec(model="m.gguf", port=free_port())) is None
+        assert manager.adopt(ServerSpec(context=4096, model="m.gguf", port=free_port())) is None
 
     def test_a_matching_server_is_adopted(self, server, tmp_path, binary):
         instance = server(lambda m, p, b: json_reply({"data": [{"id": "model.gguf"}]}))
         manager = self._manager(tmp_path, binary, instance)
 
-        info = manager.adopt(ServerSpec(model="model.gguf", port=instance.port))
+        info = manager.adopt(ServerSpec(context=4096, model="model.gguf", port=instance.port))
         assert info is not None and info.adopted
 
     def test_a_server_with_different_weights_is_refused(self, server, tmp_path, binary):
@@ -375,7 +375,7 @@ class TestAdoption:
         manager = self._manager(tmp_path, binary, instance)
 
         with pytest.raises(ServerFailed, match="model: asked for 'model.gguf'"):
-            manager.adopt(ServerSpec(model="model.gguf", port=instance.port))
+            manager.adopt(ServerSpec(context=4096, model="model.gguf", port=instance.port))
 
     @staticmethod
     def _repo_handler(model_path: str):
@@ -400,7 +400,7 @@ class TestAdoption:
         manager = self._manager(tmp_path, binary, instance)
 
         with pytest.raises(ServerFailed, match="model:"):
-            manager.adopt(ServerSpec(
+            manager.adopt(ServerSpec(context=4096, 
                 model="hf:unsloth/gpt-oss-20b-GGUF/gpt-oss-20b-F16.gguf", port=instance.port))
 
     def test_a_server_reporting_only_its_repository_is_adopted_for_the_file_it_loaded(
@@ -410,7 +410,7 @@ class TestAdoption:
         instance = server(self._repo_handler("/models/gpt-oss-20b-Q4_K_M.gguf"))
         manager = self._manager(tmp_path, binary, instance)
 
-        info = manager.adopt(ServerSpec(
+        info = manager.adopt(ServerSpec(context=4096, 
             model="hf:unsloth/gpt-oss-20b-GGUF/gpt-oss-20b-Q4_K_M.gguf", port=instance.port))
         assert info is not None and info.adopted
 
@@ -419,7 +419,7 @@ class TestAdoption:
         instance = server(lambda m, p, b: json_reply({"data": [{"id": "model.gguf"}]}))
         manager = self._manager(tmp_path, binary, instance)
 
-        info = manager.adopt(ServerSpec(model="model.gguf", port=instance.port))
+        info = manager.adopt(ServerSpec(context=4096, model="model.gguf", port=instance.port))
         manager.release(info)
 
         assert instance.base_url  # still answering; nothing was killed
@@ -440,7 +440,7 @@ class TestNegativeCache:
         manager = ServerManager(
             LlamaServerBackend(binary=binary), state_file=tmp_path / "s.json"
         )
-        spec = ServerSpec(model=tmp_path / "absent.gguf", port=free_port())
+        spec = ServerSpec(context=4096, model=tmp_path / "absent.gguf", port=free_port())
 
         with pytest.raises(ServerFailed, match="no model file"):
             manager.lease(spec, timeout=1.0)
@@ -482,7 +482,7 @@ class TestScaledTimeout:
     def test_an_explicit_timeout_is_passed_through_untouched(self, tmp_path):
         started: list[float] = []
         manager = ServerManager(self._fake_backend(started), state_file=tmp_path / "s.json")
-        manager.lease(ServerSpec(model=tmp_path / "big.gguf", port=free_port()), timeout=12.5)
+        manager.lease(ServerSpec(context=4096, model=tmp_path / "big.gguf", port=free_port()), timeout=12.5)
         assert started == [12.5]
 
     def test_none_scales_from_the_weights_already_on_disk(self, tmp_path, monkeypatch):
@@ -492,7 +492,7 @@ class TestScaledTimeout:
         monkeypatch.setattr(manager_module, "weight_of", lambda model: 200 * 1024**3)
         started: list[float] = []
         manager = ServerManager(self._fake_backend(started), state_file=tmp_path / "s.json")
-        manager.lease(ServerSpec(model=tmp_path / "big.gguf", port=free_port()))
+        manager.lease(ServerSpec(context=4096, model=tmp_path / "big.gguf", port=free_port()))
         assert started == [scaled_timeout(200 * 1024**3)]
         assert started[0] > 300.0
 
@@ -528,7 +528,7 @@ class TestStateFile:
         manager = ServerManager(LlamaServerBackend(binary=binary), state_file=state)
         info = ServerInfo(base_url="http://127.0.0.1:9999", port=9999, pid=1,
                           backend="llama.cpp", load_s=12.5, warmup_s=0.8)
-        manager._record(ServerSpec(model="m.gguf", port=9999), info)
+        manager._record(ServerSpec(context=4096, model="m.gguf", port=9999), info)
 
         entry = json.loads(state.read_text())["9999"]
         assert entry["load_s"] == 12.5
@@ -546,7 +546,7 @@ class TestDetach:
         try:
             info = ServerInfo(base_url="http://127.0.0.1:9101", port=9101, pid=proc.pid,
                               backend="llama.cpp")
-            manager._record(ServerSpec(model="m.gguf", port=9101), info)
+            manager._record(ServerSpec(context=4096, model="m.gguf", port=9101), info)
             manager.detach(info)
 
             assert recorded_servers(state)[9101]["owner_pid"] == proc.pid
@@ -565,7 +565,7 @@ class TestDetach:
         try:
             info = ServerInfo(base_url="http://127.0.0.1:9102", port=9102, pid=proc.pid,
                               backend="llama.cpp")
-            manager._record(ServerSpec(model="m.gguf", port=9102), info)
+            manager._record(ServerSpec(context=4096, model="m.gguf", port=9102), info)
             manager.detach(info)
 
             assert manager.stop_all() == []
@@ -584,7 +584,7 @@ class TestRecord:
         chat._NO_SPECULATIVE.add(url)
         manager = ServerManager(LlamaServerBackend(binary=binary),
                                 state_file=tmp_path / "servers.json")
-        manager._record(ServerSpec(model="m.gguf", port=9105),
+        manager._record(ServerSpec(context=4096, model="m.gguf", port=9105),
                         ServerInfo(base_url=url, port=9105, pid=None, backend="llama.cpp"))
 
         assert url not in chat._FAMILY_BY_URL
@@ -599,7 +599,7 @@ class TestClose:
             with ServerManager(LlamaServerBackend(binary=binary), state_file=state) as manager:
                 info = ServerInfo(base_url="http://127.0.0.1:9103", port=9103, pid=proc.pid,
                                   backend="llama.cpp", process=proc)
-                manager._record(ServerSpec(model="m.gguf", port=9103), info)
+                manager._record(ServerSpec(context=4096, model="m.gguf", port=9103), info)
             assert proc.wait(timeout=10) is not None
             assert 9103 not in recorded_servers(state)
         finally:
@@ -737,7 +737,7 @@ class TestAdoptingTheWrongShape:
         monkeypatch.setattr(mod, "reported_models", lambda *a, **k: ["a-model.gguf"])
         monkeypatch.setattr(mod, "serving_params", lambda *a, **k: None)
         record_server(lease_file(), 8099, model="a-model.gguf")
-        assert ServerManager().adopt(ServerSpec(model="a-model.gguf", port=8099, parallel=4))
+        assert ServerManager().adopt(ServerSpec(context=4096, model="a-model.gguf", port=8099, parallel=4))
 
 
 class TestDrafting:
@@ -756,7 +756,7 @@ class TestDrafting:
 
     def test_a_local_draft_is_passed_as_a_path(self, tmp_path):
         argv = self.backend(tmp_path).command(
-            ServerSpec(model=tmp_path / "big.gguf", draft=tmp_path / "small.gguf"))
+            ServerSpec(context=4096, model=tmp_path / "big.gguf", draft=tmp_path / "small.gguf"))
         assert "-md" in argv and argv[argv.index("-md") + 1].endswith("small.gguf")
 
     def test_a_draft_named_by_reference_is_refused_until_it_is_fetched(self, tmp_path):
@@ -764,19 +764,19 @@ class TestDrafting:
         through `poolhouse.hub` first (`LlamaServerBackend.resolved_draft`) and served by path."""
         for draft in ("hf:unsloth/gemma-4-E2B-it-qat-GGUF", "hf:unsloth/gemma-4-E2B-it-qat-GGUF/small.gguf"):
             with pytest.raises(ServerFailed, match="must be fetched before serving"):
-                self.backend(tmp_path).command(ServerSpec(
+                self.backend(tmp_path).command(ServerSpec(context=4096, 
                     model=tmp_path / "big.gguf", draft=draft))
-        argv = self.backend(tmp_path).command(ServerSpec(
+        argv = self.backend(tmp_path).command(ServerSpec(context=4096, 
             model=tmp_path / "big.gguf", draft=tmp_path / "small.gguf"))
         assert "-hfd" not in argv and "-md" in argv
 
     def test_no_draft_asks_for_none(self, tmp_path):
-        argv = self.backend(tmp_path).command(ServerSpec(model=tmp_path / "big.gguf"))
+        argv = self.backend(tmp_path).command(ServerSpec(context=4096, model=tmp_path / "big.gguf"))
         assert "-md" not in argv and "-hfd" not in argv
 
     def test_a_malformed_reference_says_so_rather_than_serving_without_it(self, tmp_path):
         with pytest.raises(ServerFailed, match="malformed HF reference"):
-            self.backend(tmp_path).command(ServerSpec(model="m.gguf", draft="hf:onlyowner"))
+            self.backend(tmp_path).command(ServerSpec(context=4096, model="m.gguf", draft="hf:onlyowner"))
 
 
 class TestServingBeside:
@@ -806,7 +806,7 @@ class TestServingBeside:
         instance = serving("somethingelse.gguf")
         started: list[ServerSpec] = []
         held = self.manager(tmp_path, started)
-        info = held.lease(ServerSpec(model=tmp_path / "mine.gguf", port=instance.port))
+        info = held.lease(ServerSpec(context=4096, model=tmp_path / "mine.gguf", port=instance.port))
         assert info.port != instance.port, "it should have moved rather than refused"
         assert started and started[0].port == info.port
         from poolhouse.client import is_healthy
@@ -817,7 +817,7 @@ class TestServingBeside:
         instance = serving("somethingelse.gguf")
         held = self.manager(tmp_path, [])
         with pytest.raises(ServerFailed, match="poolhouse did not start"):
-            held.lease(ServerSpec(model=tmp_path / "mine.gguf", port=instance.port), roam=False)
+            held.lease(ServerSpec(context=4096, model=tmp_path / "mine.gguf", port=instance.port), roam=False)
 
     def test_it_refuses_when_the_machine_has_no_room(self, serving, tmp_path, monkeypatch):
         """Starting a load that will be killed halfway is worse than saying no."""
@@ -827,7 +827,7 @@ class TestServingBeside:
         monkeypatch.setattr("poolhouse.serve.manager.free_memory", lambda: 1024)
         held = self.manager(tmp_path, [])
         with pytest.raises(ServerFailed, match="poolhouse did not start"):
-            held.lease(ServerSpec(model=big, port=instance.port))
+            held.lease(ServerSpec(context=4096, model=big, port=instance.port))
 
 
 def test_a_projector_reference_is_refused_and_a_path_stays_a_path(binary):
@@ -838,14 +838,14 @@ def test_a_projector_reference_is_refused_and_a_path_stays_a_path(binary):
     backend = LlamaServerBackend(binary=binary)
 
     with pytest.raises(ServerFailed, match=r"projector.*must be fetched before serving"):
-        backend.command(ServerSpec(model="/m/w.gguf", port=1,
+        backend.command(ServerSpec(context=4096, model="/m/w.gguf", port=1,
                                    mmproj="hf:maker/thing-GGUF/mmproj-F32.gguf"))
 
-    argv = backend.command(ServerSpec(model="/m/w.gguf", port=1, mmproj="/m/mmproj-F32.gguf"))
+    argv = backend.command(ServerSpec(context=4096, model="/m/w.gguf", port=1, mmproj="/m/mmproj-F32.gguf"))
     assert "--mmproj-url" not in argv
     assert argv[argv.index("--mmproj") + 1] == "/m/mmproj-F32.gguf"
 
-    assert "--mmproj" not in backend.command(ServerSpec(model="/m/w.gguf", port=1))
+    assert "--mmproj" not in backend.command(ServerSpec(context=4096, model="/m/w.gguf", port=1))
 
 
 def test_the_most_precise_projector_is_taken_not_the_first_alphabetically():
@@ -878,12 +878,12 @@ def test_the_speculative_knobs_reach_the_command_line_and_stay_off_until_asked(b
 
     backend = LlamaServerBackend(binary=binary)
 
-    bare = backend.command(ServerSpec(model="/m/w.gguf", port=1))
+    bare = backend.command(ServerSpec(context=4096, model="/m/w.gguf", port=1))
     for flag in ("--spec-type", "--spec-draft-n-max", "--spec-ngram-mod-n-min",
                  "--spec-draft-ngl"):
         assert flag not in bare, f"{flag} should not appear unless asked for"
 
-    argv = backend.command(ServerSpec(
+    argv = backend.command(ServerSpec(context=4096, 
         model="/m/w.gguf", port=1, spec_type="ngram-mod", spec_draft_max=5,
         spec_draft_min=1, spec_ngram_min=32, spec_ngram_max=64, spec_draft_ngl=99))
     pairs = dict(zip(argv, argv[1:], strict=False))
@@ -895,7 +895,7 @@ def test_the_speculative_knobs_reach_the_command_line_and_stay_off_until_asked(b
 
     # zero is a choice and must survive, where None means "leave the server's default"
     assert "--spec-draft-n-min" in backend.command(
-        ServerSpec(model="/m/w.gguf", port=1, spec_draft_min=0))
+        ServerSpec(context=4096, model="/m/w.gguf", port=1, spec_draft_min=0))
 
 
 def test_the_lookup_cache_reaches_the_command_line(binary):
@@ -904,10 +904,10 @@ def test_the_lookup_cache_reaches_the_command_line(binary):
     from poolhouse.serve.backend import LlamaServerBackend, ServerSpec
 
     backend = LlamaServerBackend(binary=binary)
-    bare = backend.command(ServerSpec(model="/m/w.gguf", port=1, spec_type="ngram-simple"))
+    bare = backend.command(ServerSpec(context=4096, model="/m/w.gguf", port=1, spec_type="ngram-simple"))
     assert "--lookup-cache-dynamic" not in bare and "--lookup-cache-static" not in bare
 
-    argv = backend.command(ServerSpec(model="/m/w.gguf", port=1, spec_type="ngram-cache",
+    argv = backend.command(ServerSpec(context=4096, model="/m/w.gguf", port=1, spec_type="ngram-cache",
                                       lookup_static="/c/seed.bin",
                                       lookup_dynamic="/c/learnt.bin"))
     pairs = dict(zip(argv, argv[1:], strict=False))
@@ -923,10 +923,10 @@ def test_tensors_can_be_kept_off_the_gpu_by_pattern(binary):
     from poolhouse.serve.backend import LlamaServerBackend, ServerSpec
 
     backend = LlamaServerBackend(binary=binary)
-    bare = backend.command(ServerSpec(model="/m/w.gguf", port=1))
+    bare = backend.command(ServerSpec(context=4096, model="/m/w.gguf", port=1))
     assert "--override-tensor" not in bare and "--cpu-moe" not in bare
 
-    argv = backend.command(ServerSpec(model="/m/w.gguf", port=1,
+    argv = backend.command(ServerSpec(context=4096, model="/m/w.gguf", port=1,
                                       override_tensor=("ngram.*=CPU", "blk.0.*=CPU"),
                                       n_cpu_moe=12))
     assert argv.count("--override-tensor") == 2
@@ -934,7 +934,7 @@ def test_tensors_can_be_kept_off_the_gpu_by_pattern(binary):
     assert argv[argv.index("--n-cpu-moe") + 1] == "12"
 
     assert "--cpu-moe" in backend.command(
-        ServerSpec(model="/m/w.gguf", port=1, cpu_moe=True))
+        ServerSpec(context=4096, model="/m/w.gguf", port=1, cpu_moe=True))
 
 
 def test_the_serving_knobs_that_shorten_a_run(binary):
@@ -949,7 +949,7 @@ def test_the_serving_knobs_that_shorten_a_run(binary):
     from poolhouse.serve.backend import LlamaServerBackend, ServerSpec
 
     backend = LlamaServerBackend(binary=binary)
-    bare = backend.command(ServerSpec(model="/m/w.gguf", port=1))
+    bare = backend.command(ServerSpec(context=4096, model="/m/w.gguf", port=1))
     for flag in ("--cache-reuse", "--no-warmup", "--kv-unified-per-slot"):
         assert flag not in bare, f"{flag} must be asked for, not assumed"
 
@@ -962,10 +962,10 @@ def test_the_serving_knobs_that_shorten_a_run(binary):
 
     # warmup on is the server's own default and passes no flag either way
     assert "--no-warmup" not in backend.command(
-        ServerSpec(model="/m/w.gguf", port=1, warmup=True))
+        ServerSpec(context=4096, model="/m/w.gguf", port=1, warmup=True))
     # zero is a choice: reuse nothing, which is not the same as leaving it unset
     assert "--cache-reuse" in backend.command(
-        ServerSpec(model="/m/w.gguf", port=1, cache_reuse=0))
+        ServerSpec(context=4096, model="/m/w.gguf", port=1, cache_reuse=0))
 
 
 def test_already_up_names_the_recorded_server_that_holds_the_same_weights(tmp_path, monkeypatch):
@@ -1017,7 +1017,7 @@ def running(tmp_path):
     model.write_bytes(b"GGUF" + b"\x00" * 64)
     manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=tmp_path / "servers.json")
-    info = manager.lease(ServerSpec(model=model, port=free_port()), roam=False,
+    info = manager.lease(ServerSpec(context=4096, model=model, port=free_port()), roam=False,
                          timeout=30.0, check_flags=False, preflight=False,
                          warmup_request=False)
     try:
@@ -1052,7 +1052,7 @@ class TestTheStartedProcess:
         model.write_bytes(b"GGUF" + b"\x00" * 64)
         manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(tmp_path)),
                                 state_file=tmp_path / "servers.json")
-        info = manager.lease(ServerSpec(model=model, port=free_port()), roam=False,
+        info = manager.lease(ServerSpec(context=4096, model=model, port=free_port()), roam=False,
                              timeout=30.0, check_flags=False, preflight=False,
                              warmup_request=False)
         try:
@@ -1104,7 +1104,7 @@ manager = ServerManager(state_file=state)
 while time.time() < start_at:
     time.sleep(0.01)
 with grant.broker_grant():  # a Lease, which `_pending` hands back, exists only inside the broker's grant
-    manager._pending(ServerSpec(model="/models/quince-2b.gguf", port=port))
+    manager._pending(ServerSpec(context=4096, model="/models/quince-2b.gguf", port=port))
 time.sleep(2.0)
 """
 

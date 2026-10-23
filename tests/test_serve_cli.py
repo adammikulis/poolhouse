@@ -35,7 +35,7 @@ from poolhouse.testing.canned import Canned, CannedServer
 from poolhouse.testing.registry import record_server
 
 pytest_plugins = ["serve_node"]
-pytestmark = pytest.mark.usefixtures("serve_leases")
+pytestmark = pytest.mark.usefixtures("serve_leases", "named_context")
 
 MODEL = "tinyfixture-4B-Q4_K_M.gguf"
 
@@ -210,7 +210,7 @@ class TestUp:
         spec = seen["spec"]
         default = ServerSpec(model="")
         assert spec.port == 0, "the caller does not pick the port; the broker does"
-        assert spec.context == default.context
+        assert default.context == 0, "no context of its own: the fit answers it where the server is leased"
         assert spec.parallel == default.parallel
         assert str(spec.model) == MODEL
 

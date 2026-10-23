@@ -27,7 +27,7 @@ def catalogue() -> dict:
     context = 0
     if preferred.ok:
         with suppress(OSError, ValueError):
-            context = localmodel.context_for(preferred, coding=True)
+            context = localmodel.context_for(preferred)
     return {"can_start": can_start, "enforcement_error": enforcement_error,
             "harnesses": [{"name": name, "available": bool(harnessing.binary_for(name))} for name in coding.HARNESSES],
             "roles": localagent.role_choices(), "default_role": roles.DEFAULT,

@@ -89,7 +89,7 @@ def test_generation_node_uses_slider_in_inspector_and_canvas(generation_page):
     page, _state, errors = generation_page
     add(page, 'Generate')
     cap = page.locator('.studio-inspector').get_by_role('slider', name='max_tokens', exact=True)
-    assert cap.evaluate('node => node.getRootNode().host.stops.at(-1)') == 8192
+    assert cap.evaluate('node => node.getRootNode().host.stops.at(-1)') == 32768, "the node's own maximum, no context to shorten it"
     expect(page.locator('.studio-node').get_by_role('slider', name='max_tokens', exact=True)).to_be_visible()
     cap.press('Home')
     assert page.locator('studio-view').evaluate('editor => editor.graph.nodes[0].parameters.max_tokens') == 1

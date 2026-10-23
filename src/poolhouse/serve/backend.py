@@ -233,9 +233,15 @@ class ServerSpec:
 
     model: str | Path
     port: int = 8080
-    context: int = 4096
+    # Tokens across all slots. 0 asks for the largest the machine holds safely for this model
+    # and these slots (`serve.fitted.fitted`), answered where the server is leased, before
+    # anything reads the number; a context given is used as given. A spec that is never fitted
+    # tells llama-server nothing, and it uses its own default.
+    context: int = 0
     n_gpu_layers: int | str = "auto"
     device: str = ""
+    # Conversations at once. One is llama.cpp's own default (common_params.n_parallel) and
+    # what a single caller needs; `poolhouse-serve escalate` grows a running server.
     parallel: int = 1
     embedding: bool = False
     # A reranker (llama-server --reranking, serving /v1/rerank): it scores a query against
@@ -584,7 +590,8 @@ class LlamaServerBackend(ServerBackend):
     def _model_source_argv(spec: ServerSpec) -> list[str]:
         """The model itself: where it comes from, its context, layers and slots."""
         argv: list[str] = ["-m", str(never_downloaded(spec.model, "model"))]
-        argv += ["-c", str(spec.context)]
+        if spec.context > 0:      # 0 says nothing, and llama-server decides (-c 0 is its default)
+            argv += ["-c", str(spec.context)]
 
         if spec.device == "cpu":
             argv += ["-ngl", "0"]

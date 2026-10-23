@@ -43,7 +43,7 @@ def test_auto_includes_dense_qwen_and_skips_models_that_do_not_fit_requested_con
 
     rows = [row(dense, dense_path), row(moe, moe_path)]
     monkeypatch.setattr(localmodel, "_ranked", lambda *_: rows)
-    monkeypatch.setattr(localmodel.suggest, "suggest", lambda path, **_: NS(
+    monkeypatch.setattr(localmodel.suggest, "largest_fit", lambda path, **_: NS(
         context=65536 if path == str(dense_path) else 131072, verdict="green"))
 
     pick = localmodel.choose(localmodel.AUTO, installed=[dense, moe],
@@ -60,7 +60,7 @@ def test_auto_selects_a_dense_qwen_when_it_fits_and_no_moe_is_available(tmp_path
     row = NS(candidate=NS(name=dense.name, ref=dense.id, path=model_path,
                           size_bytes=dense.size_bytes), verdict="green", reason="fits")
     monkeypatch.setattr(localmodel, "_ranked", lambda *_: [row])
-    monkeypatch.setattr(localmodel.suggest, "suggest", lambda *_args, **_kwargs:
+    monkeypatch.setattr(localmodel.suggest, "largest_fit", lambda *_args, **_kwargs:
                         NS(context=131072, verdict="green"))
 
     pick = localmodel.choose(localmodel.AUTO, installed=[dense],
@@ -140,3 +140,32 @@ def test_model_identity_keeps_valid_claims_and_bounds_display_names(name, expect
     from poolhouse.workspace.modelid import clean_model
     assert localmodel.model_identity(name) == expected
     assert clean_model(localmodel.model_identity(name)) == expected
+
+
+def test_a_local_agent_is_served_at_the_largest_context_its_model_and_machine_allow(tmp_path, monkeypatch):
+    from conftest import write_gguf
+
+    from poolhouse.hub.probe import GIB
+    from poolhouse.serve import largest, suggest
+
+    path = write_gguf(tmp_path / "agent-Q4_K_M.gguf", {
+        "general.architecture": "llama", "llama.block_count": 32, "llama.context_length": 131072,
+        "llama.attention.head_count": 32, "llama.attention.head_count_kv": 8,
+        "llama.attention.key_length": 128, "llama.attention.value_length": 128})
+    os.truncate(path, 4 * GIB)
+    machine = MachineMemory(16 * GIB, 8 * GIB, True, 8 * GIB, (), "Darwin")
+    monkeypatch.setattr(suggest, "machine_memory", lambda: machine)
+    pick = localmodel.Pick(ref=str(path), name="agent")
+    got = localmodel.context_for(pick)
+    assert got == suggest.largest_fit(path, machine).context
+    assert largest.PAD <= got < 131072 and got % largest.PAD == 0
+    assert localmodel.Selection().context == 0
+
+
+def test_no_ceiling_is_set_on_how_hard_an_agent_may_think_or_how_much_it_may_say():
+    from poolhouse.workspace import localagent, localeffort, localstart
+
+    assert localeffort.DEFAULT_MAX == localeffort.LEVELS[-1] == "high"
+    assert localstart.Ask().max_effort == localagent.Agent(name="a", model="m").max_effort == "high"
+    assert localstart.Ask().max_output_tokens is None and localagent.Agent(name="a", model="m").ctx == 0
+    assert localeffort.clamp("high", localeffort.DEFAULT_MAX) == "high"

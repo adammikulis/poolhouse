@@ -824,8 +824,8 @@ def main(argv: list[str] | None = None) -> int:
                                          "the best measured models go to the most users")
     plan_p.add_argument("--users", type=int, required=True,
                         help="how many conversations at once, across the pool")
-    plan_p.add_argument("--context", type=int, default=16384,
-                        help="tokens each conversation gets (default: 16384)")
+    plan_p.add_argument("--context", type=int, required=True,
+                        help="tokens each conversation gets (you say how much a conversation needs)")
     plan_p.add_argument("--prefer", choices=sorted(PREFERENCES), default="quality",
                         help="what each member serves: 'quality' the best measured model "
                              "that fits there (default), 'slots' the model that slots "

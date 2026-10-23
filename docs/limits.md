@@ -217,3 +217,13 @@ abuse by one session is not kept (the owner never asked for one). The security f
 | `DEV_TEST_RESERVED_CORES` | 1 | `scripts/testslots.py:68` | logical cores the test budget leaves to the machine | the owner, in the environment |
 | `DEV_TEST_BUDGET` | logical cores minus the reserved ones, at least 1 | `docs/test-execution.md:86` | CPU permits the test broker grants at once | the owner, in the environment |
 | `hook timeout` | 15 s | `.claude/settings.json:61` | a harness hook that hangs | the owner |
+| `parallel` (serving default) | 1 slot | `src/poolhouse/serve/backend.py` (`ServerSpec.parallel`) | the only fixed serving default: llama.cpp's own (`common_params.n_parallel`); slots beyond it are the caller's demand, `escalate` grows a running server | the person, `--parallel` |
+| `context` (serving default) | none: 0 asks for the fit | `src/poolhouse/serve/fitted.py`, `serve/suggest.py::largest_fit` | derived, never defaulted: the model's header `context_length` as the ceiling, the memory the machine can give a model (rated yellow, below 95%) as the floor; no header or no `context_length` is refused naming the field | the person, `--context` |
+| `PAD` | 256 | `src/poolhouse/serve/largest.py:17` | the step a context is searched in: llama.cpp pads each sequence to a multiple of it (`GGML_PAD(n_ctx, 256)`) | the owner, in source |
+| `STEPS` | 2^9 to 2^20 | `src/poolhouse/serve/suggest.py:35` | the menu of the "bigger and tighter" alternative `models suggest` prints; not a limit | the owner, in source |
+| `BATCHES` | 2048, 1024, 512 | `src/poolhouse/serve/suggest.py:37` | `-ub` values tried, largest first, kept while the memory rating holds: 2048 measured 4.7x on Flash-Next, 512 is llama.cpp's own | the owner, in source |
+| `OFFLOADS` | 1.0 to 0.0 in quarters | `src/poolhouse/serve/suggest.py:40` | shares of a model's layers tried on a card that cannot hold it whole | the owner, in source |
+| `MARGIN` | 0.10 | `src/poolhouse/bench/fitcontext.py:26` | the tenth of a measured fit record's longest context left unused, so a longer conversation than the one measured does not swap | the owner, in source |
+| `CHECKPOINTS` | 32 | `src/poolhouse/serve/wired.py:37` | context checkpoints per slot llama-server allocates (its own `n_ctx_checkpoints`), counted in the wiring plan | llama.cpp |
+| `CACHE_RAM_MB` | 8192 | `src/poolhouse/serve/wired.py:41` | the prompt cache llama-server holds in RAM (its own `cache_ram_mib`), counted in the wiring plan | llama.cpp |
+| `CONTEXTS` | 8K to 1M | `src/poolhouse/serve/wired.py:27` | rows of the wiring table, a display to read across; never a choice | the owner, in source |

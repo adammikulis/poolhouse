@@ -257,7 +257,7 @@ class TestCommand:
         daemons.append(FakeDaemon(small, raw, udp, name="small", device=_device(24 * G)))
         monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(udp))
         code = main(["--pool-key", str(key), "--port", str(small), "plan", "--users", "4",
-                     "--timeout", "1"])
+                     "--context", "16384", "--timeout", "1"])
         out = capsys.readouterr().out
         assert code == 1
         assert "MEMBER" in out and "small" in out and MID in out
@@ -291,7 +291,8 @@ class TestCommand:
         assert "3 of 3 user(s) placed at 16384 tokens each" in out
 
     def test_in_no_pool_it_says_join(self, tmp_path, capsys):
-        assert main(["--pool-key", str(tmp_path / "none.key"), "plan", "--users", "1"]) == 1
+        assert main(["--pool-key", str(tmp_path / "none.key"), "plan", "--users", "1",
+                 "--context", "16384"]) == 1
         assert "poolhouse-pool join" in capsys.readouterr().err
 
 
@@ -361,7 +362,7 @@ class TestServeRoute:
         assert [s.port for s in d.serving.live(force=True)] == [served["port"]]
         argv = json.loads((tmp_path / "argv.json").read_text())
         assert argv[argv.index("-np") + 1] == "2"
-        assert argv[argv.index("-c") + 1] == "16384"
+        assert argv[argv.index("-c") + 1] == "32768", "16384 a slot, two slots: the server is asked for the total"
         health = d.client.health()
         assert health["serving"][0]["slots"] == 2
 
@@ -372,7 +373,7 @@ class TestServeRoute:
         first = d.client._json("POST", "/serve", {"model": MID, "context": 16384,
                                                   "parallel": 2})
         status, body, _ = d.client._request(
-            "POST", "/serve", data=json.dumps({"model": MID, "parallel": 1}).encode(),
+            "POST", "/serve", data=json.dumps({"model": MID, "context": 16384, "parallel": 1}).encode(),
             options=Options(headers={"Content-Type": "application/json"}))
         assert status == 200 and json.loads(body)["port"] == first["port"]
         assert len(d.hosting.leases) == 1
@@ -382,7 +383,7 @@ class TestServeRoute:
         daemons.append(d)
         d.model.write_bytes(d.model.read_bytes()[:-1] + b"\x01")
         with pytest.raises(MemberError, match="does not match its pin"):
-            d.client._json("POST", "/serve", {"model": MID, "parallel": 1})
+            d.client._json("POST", "/serve", {"model": MID, "context": 16384, "parallel": 1})
         assert d.hosting.leases == {}
 
     def test_a_model_it_does_not_hold_is_404(self, tmp_path, llama_binary, daemons):
@@ -442,7 +443,7 @@ class TestApply:
         daemons.append(d)
         monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(udp))
         main(["--pool-key", str(key), "--port", str(d.port), "plan", "--users", "2",
-              "--apply", "--json", "--timeout", "1"])
+              "--context", "16384", "--apply", "--json", "--timeout", "1"])
         got = json.loads(capsys.readouterr().out)
         assert got["applied"][0]["status"] == 201
         assert got["applied"][0]["served"]["slots"] == 2
@@ -460,7 +461,7 @@ class TestApply:
             [Fit(model=BIG, weights_gpu=G, compute=0, per_token=1024)]))
         monkeypatch.setenv("POOLHOUSE_DISCOVERY_PORT", str(udp))
         code = main(["--pool-key", str(key), "--port", str(d.port), "plan", "--users",
-                     "1", "--apply", "--json", "--timeout", "1"])
+                     "1", "--context", "16384", "--apply", "--json", "--timeout", "1"])
         got = json.loads(capsys.readouterr().out)
         assert code == 0
         assert got["applied"][0]["status"] == 404

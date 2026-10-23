@@ -191,7 +191,7 @@ def cmd_drafts(args: Any) -> int:
                       smoke=sample(everything, SMOKE) if wants_smoke(args) else ())
     total_context, _ = fitcontext.total_for(
         args, model, kv=getattr(args, "serve_kv", "") or DEFAULT_KV_CACHE,
-        default=int(args.context), headed=any(heads.heads))
+        headed=any(heads.heads))
     rows = drafts(ops.swept(args, model, None, context=total_context, head=None)
                   .over(port=int(args.port)), heads, asked, invented(), loading)
     say()
@@ -328,7 +328,7 @@ def _served_by_the_sweep(args: Any, questions: Any, graph: Any, already: Any,
               or DEFAULT_KV_CACHE)
         try:
             total_context, fitted = fitcontext.total_for(
-                args, model, kv=kv, default=32768 * max(1, args.parallel), headed=bool(head))
+                args, model, kv=kv, headed=bool(head))
         except fitcontext.DoesNotFit as why:
             say(f"{model}: {why}")
             unmeasured.append(f"{Path(model).name}: {why}")
@@ -381,7 +381,7 @@ def _measured_on(args: Any, named: Sequence[tuple[str, str]], questions: Any, gr
                  already: Any) -> list[str]:
     """Every ``--on`` server measured both halves; the keys of the runs it kept."""
     saved: list[str] = []
-    total_context = args.context or 32768 * max(1, args.parallel)
+    total_context = int(args.context or 0)   # 0: the server is measured as it stands
     for name, url in named:
         for suffix, shortlist in halves(args, name):
             label = f"{name}-{suffix}"
@@ -441,7 +441,7 @@ def cmd_sweep(args: Any) -> int:
         standing.serve = []
         smoke_first(standing)
     already = (resumable(args.kept, questions=len(questions),
-                         context=args.context or 32768 * max(1, args.parallel),
+                         context=int(args.context or 0),
                          parallel=getattr(args, "parallel", 1), since=args.since)
                if args.resume else None)
     try:

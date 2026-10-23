@@ -384,7 +384,7 @@ def resumable(store: str | Path, *, questions: int, context: int, parallel: int,
             if (one.get("label") == label
                     and str(one.get("at", "")) >= floor
                     and len(one.get("rows") or ()) == questions
-                    and int(server.get("context") or 0) == per_slot
+                    and (not per_slot or int(server.get("context") or 0) == per_slot)
                     and int(server.get("slots") or 0) == parallel):
                 return one
         return None

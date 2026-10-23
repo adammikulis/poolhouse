@@ -24,6 +24,7 @@ from poolhouse.serve import LlamaServerBackend, ServerManager, ServerSpec, free_
 from poolhouse.serve.estimate import DEFAULT_KV, Setup, estimate, verdict
 from poolhouse.serve.preflight import read_gguf_header
 from poolhouse.serve.process import every_server
+from poolhouse.serve.suggest import largest_fit
 from poolhouse.units import human_bytes
 
 from . import model_components
@@ -39,6 +40,7 @@ __all__ = [
     "Started",
     "context_settings",
     "discover_serving",
+    "fitted_settings",
     "start_model",
     "stop_model",
 ]
@@ -168,7 +170,8 @@ class ServeSettings:
     """Model identity, context, slots, memory room and escalation preferences."""
 
     name: str = ''
-    context: int = 8192
+    context: int = 0
+    """Tokens a slot holds; 0 is the largest this machine holds for the model (`largest_fit`)."""
     parallel: int = 1
     room: int = 0
     port: int | None = None
@@ -178,8 +181,9 @@ class ServeSettings:
 
 
 
-def context_settings(model_path, context, default=8192):
-    """Validate an explicit per-start context against the selected effective GGUF."""
+def context_settings(model_path, context, default=0):
+    """Validate an explicit per-start context against the selected effective GGUF. No context
+    asked gives ``default`` (0, the largest fit, unless the person's saved preference says more)."""
     if context is None:
         return ServeSettings(context=default)
     if type(context) is not int or context <= 0:
@@ -204,10 +208,24 @@ def _check_context_model(path, settings):
     if settings.model_identity and (str(Path(path).resolve()), stat_signature(Path(path).stat())) != settings.model_identity:
         raise ValueError('The selected model changed. Select it again before starting.')
 
+def fitted_settings(model_path: Path | str, settings: ServeSettings) -> ServeSettings:
+    """``settings`` with a context of 0 answered: the largest this machine holds for the model
+    beside its draft head, for ``settings.parallel`` slots. A context given is kept."""
+    if int(settings.context) > 0:
+        return settings
+    path = model_components.effective(Path(model_path))
+    draft = draft_beside(path)
+    try:
+        got = largest_fit(path, slots=max(1, int(settings.parallel)), draft=draft or "")
+    except (OSError, ValueError) as error:
+        raise ValueError(f"{path.name}: no context could be fitted ({error}); choose one") from error
+    return replace(settings, context=got.context)
+
+
 def start_model(root: Path | str, model_path: Path | str, *, settings: ServeSettings | None = None,
                 manager: Any = None, serving: Serving | None = None) -> Started:
     """Lease the configured model and optionally register its serving endpoint."""
-    settings = settings or ServeSettings()
+    settings = fitted_settings(model_path, settings or ServeSettings())
     port = free_port() if settings.port is None else settings.port
     parallel = max(1, int(settings.parallel))
     context = int(settings.context)
@@ -233,7 +251,7 @@ def start_model(root: Path | str, model_path: Path | str, *, settings: ServeSett
     if verdict(sizing, machine_memory()) == "red":
         raise NoRoom(f"{Path(model_path).name}: not enough free memory for the model, head and context")
     _check_context_model(model_path, settings)
-    lease = manager.lease(ServerSpec(model=model_path, port=port, context=int(context),
+    lease = manager.lease(ServerSpec(model=model_path, port=port, context=int(context) * parallel,
                                      parallel=parallel, draft=str(draft) if draft else None,
                                      mmproj=str(projector) if projector else None,
                                      cache_type_k=DEFAULT_KV, cache_type_v=DEFAULT_KV,
@@ -303,7 +321,7 @@ class Hosting:
     def start(self, model_path: Path | str, settings: ServeSettings | None = None) -> Served:
         """Serve the configured model, admitting its memory and slot requirements."""
         with self._lock:
-            settings = settings or ServeSettings()
+            settings = fitted_settings(model_path, settings or ServeSettings())
             name = settings.name or Path(model_path).name
             why = self.fits_in(name, context=int(settings.context), parallel=int(settings.parallel), room=int(settings.room))
             if why:
