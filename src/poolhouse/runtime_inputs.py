@@ -12,7 +12,7 @@ DOCUMENTS = frozenset({"docs/native-plan-macos.md", "docs/native-plan-windows-li
 FORCE_INCLUDE = {"contracts": "poolhouse/contracts/_data", "patches": "poolhouse/serve/_patches"}
 # The independently reviewed fixed builder closure. Source changes disable this optimization
 # until their closure is reviewed and this digest is updated; this is never learned from a runtime.
-AUDITED_BUILD = "ef34adfdf47aebc5f4c514d2c671a72e4f945252fd85087efa2bd4c046fabfc4"
+AUDITED_BUILD = "12990e5e11bee33cd9d185d5c78e04a78fc76eea59794194ace705d2e966c6b1"
 
 
 def _documentation(path: str) -> bool:
