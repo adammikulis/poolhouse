@@ -92,8 +92,6 @@ def _text(path: Path) -> str:
 def test_a_restart_whose_successor_cannot_start_leaves_the_previous_daemon_answering(world):
     first, _ = world.launch()
     before = world.up(first)
-    command = daemon_control.launch_of(world.root, world.port)
-    assert command is not None and command[0] == sys.executable and "--restart" not in command, "the daemon recorded how it was started"
 
     restart, log = world.launch("--restart", "--mode", "bogus")
     assert restart.wait(timeout=UP_S) == 1, "a restart that did not happen says so in its status"
@@ -102,6 +100,14 @@ def test_a_restart_whose_successor_cannot_start_leaves_the_previous_daemon_answe
     assert after is not None, "NOTHING answers on the port after a restart whose successor could not start:\n" + _text(log)[-1500:]
     assert after["launcher_control"] != before["launcher_control"], "the previous daemon was started again, it is not the one that was told to stop"
     assert "the previous daemon answers again" in _text(log)
+
+
+def test_a_daemon_records_how_it_was_started_so_a_failed_replacement_can_start_it_again(world):
+    first, _ = world.launch("--restart")
+    world.up(first)
+    command = daemon_control.launch_of(world.root, world.port)
+    assert command is not None and command[0] == sys.executable and "--port" in command
+    assert "--restart" not in command, "a restart is not replayed as one"
 
 
 def test_a_restart_ends_once_the_new_daemon_answers_and_a_second_restart_replaces_that_one(world):
