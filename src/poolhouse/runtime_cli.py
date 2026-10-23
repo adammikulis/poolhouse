@@ -24,6 +24,7 @@ from poolhouse import (
     runtime_deploy,
     runtime_git,
     runtime_host,
+    runtime_inputs,
     runtime_launchers,
     runtime_source,
     runtime_stale,
@@ -148,6 +149,12 @@ def _ensure(args: argparse.Namespace) -> int:
         return 0
     if args.background:
         settled = runtime_deploy.settled(plan)
+        if (not settled and getattr(args, "hook_refresh", False) and not args.force and not args.force_build
+                and (same := _same_build_inputs(plan)) is not None):
+            detail = f"same committed build inputs excluding reviewed documentation; selected build remains {same.commit[:7]}"
+            say(f"source {plan.commit[:7]}: {detail}")
+            _audited(args, "ensure --background", plan, "same-build-inputs", detail)
+            return 0
         if settled:
             say(f"runtime {plan.commit[:7]} is {settled}")
         elif _building():
@@ -162,6 +169,22 @@ def _ensure(args: argparse.Namespace) -> int:
     if args.settle and not args.now:
         return _settled(args)
     return 0 if _run(args, plan).ok else 1
+
+
+def _same_build_inputs(plan: runtime_deploy.Plan) -> runtime.Runtime | None:
+    """A healthy unchanged selection whose source inputs match; this creates no deployment or source claim."""
+    chosen = runtime_deploy.healthy(plan)
+    if chosen is None or chosen.commit == plan.commit:
+        return None
+    before = runtime_deploy.automatic_selection()
+    expected = (str(chosen.prefix), chosen.commit, chosen.version, chosen.identity, str(runtime_store.epoch_of(chosen.prefix)))
+    if (before != expected or (plan.automatic_from is not None and plan.automatic_from != before)
+            or not runtime_inputs.same(plan.checkout, chosen.commit, plan.commit)):
+        return None
+    if (runtime_deploy.resolve_commit(plan.checkout) != plan.commit or runtime_deploy.automatic_selection() != before
+            or runtime_deploy.healthy(plan) != chosen):
+        return None
+    return chosen
 
 
 def _planned(args: argparse.Namespace) -> runtime_deploy.Plan | None:
@@ -296,6 +319,8 @@ def _verdict(plan: runtime_deploy.Plan) -> str:
     settled = runtime_deploy.settled(plan)
     if settled == "held":
         return f"held, ensure will not build {plan.commit[:7]} until the branch moves"
+    if not settled and (same := _same_build_inputs(plan)) is not None:
+        return f"same committed build inputs excluding reviewed documentation; built from {same.commit[:7]}"
     return "yes" if settled else f"no, ensure would build {plan.commit[:7]}"
 
 
