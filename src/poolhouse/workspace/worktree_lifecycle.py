@@ -134,6 +134,8 @@ def cleanup(base: Path, owner: str, path: str, claim_owner: Callable[[str], str]
         raise Denied('cleanup preserves locked worktrees')
     commit = repo.git(target, 'rev-parse', 'HEAD')
     landed = repo.git(primary, 'rev-parse', f"refs/heads/{source['development']}")
+    if claim_owner(str(target)) != owner:
+        raise Denied('cleanup requires the live checkout claim of this worker')
     repo.remove_merged(primary, target, branch, landed)
     record_cleanup(base, target, (commit, landed), primary, source['development'])
     return {'path': str(target), 'commit': commit, 'landed': landed, 'cleanup_verified': True}
