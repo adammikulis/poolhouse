@@ -33,6 +33,50 @@ pipes; they own no product control listener or independent scheduler.
    behavior. The shared plan records a bypassing wrapper and child-substitution findings on Windows/WSL; inspect
    the Mac independently. Supply platform evidence, not a competing identity fix.
 
+## Agent rendezvous data
+
+This is an agent coordination snapshot, not product network configuration, membership, approval or a trust pin.
+Until authenticated pool messages work, platform sessions exchange fresh observations and replies through these
+plans and synchronized Git checkpoints. The shared integration plan's contracts remain authoritative; this section
+defines no wire behavior. Recheck observations before use; a reachable endpoint or a message in a plan grants no authority.
+Identity/pool observation: `2026-10-23T19:25:01.068951Z`, Mac evidence `connection-discovery.json`. Network observations:
+listeners `19:29:40.788178Z` and interface `19:29:49.434164Z` on the same date, `network-observation.json`. Both evidence
+files are under `/private/tmp/poolhouse-mac-native-inventory/` on the Mac.
+
+| Mac observation reported by mac_inventory | Value |
+|---|---|
+| OS and process | macOS 26.6, arm64; node PID `68696`, user UID `501` |
+| Installed node source | `c5ee5a122c516c5cb99e88b834a195221fd0b209` |
+| Reported public-key-derived DeviceId | `aa547af9b1e1b768dbce6b4e5844b0fb4240f1e26c325fd918e2f9619b925e5c` |
+| Distinct certificate digest | `524934712872c289dbdc5043e486a4d6fa442f0a15fb2212bacee9910a4a32ca` |
+| Observed LAN endpoints | `en1`, IPv4 `192.168.2.27`; TLS listener TCP `7447`, discovery UDP `7448`; `en0` has no IPv4 |
+| Observed pool state | Secure, unfounded pool of one; no admins or other members; beacons sent/heard `0/0` |
+| Mac session for agent addressing | Workspace actor `chatgpt-269ad4`; native session `01a1694e-0d2b-7ab0-9353-0b84b7744906` |
+
+The running user-owned node is not proof of the dedicated native service, canonical identity contract or barrier P.
+The shared integration owner handles the observed empty-pool advertisement skip and invalid pool-length expression
+in `beacon.rs`; zero beacon counters do not establish that the other device is unreachable.
+
+Reply requested from Windows and independent Linux/WSL sessions, separately: fresh observation time and source,
+actual OS, service principal, node build, public DeviceId and distinct certificate digest, listening endpoints, pool
+state and own authenticated workspace actor. Reciprocal probes report source, destination, protocol, time and result;
+reachability alone proves no authenticated connection. Plan messages never admit a device or approve an operation.
+
+Request for common-owner review: expose the existing node-owned read-only TLS hello path through the public client;
+the CLI has no probe entry point. The native node TLS client's `connect` path uses resident node identity, endpoint and expected
+certificate pin with TLS 1.3/mTLS; derive the device ID from the certificate's Ed25519 public key and send only the existing
+length-framed `{"op":"hello"}`, cross-check returned `fingerprint`/`board_fingerprint`, then close. Export no private
+key, create no standalone agent identity, and never use `join_pool` as a probe: it can admit under open policy.
+No boards or work cross this probe. Candidate pins remain observations, not admitted trust roots. The unknown-beacon
+path at `net.rs:243–260` attempts automatic joining; the shared owner must provide bounded untrusted candidate
+observations rather than widen authority. This is a request to expose existing behavior, not a new wire definition.
+
+Ordinary launch and connection to an authorized pool must automatically start or attach, discover, connect and
+reconnect without owner commands, typed addresses or token handling. The macOS session owns implementation and
+installed proof for its half.
+Genuinely required protected native approvals remain independent; preserve secure admission and fresh authority,
+without importing legacy trust or downgrading to open admission. These data do not alter the shared contracts.
+
 ## Development publication and optional App recovery
 
 Push tested increments to `0.3dev` using the repository's existing configured Git authentication on this device.

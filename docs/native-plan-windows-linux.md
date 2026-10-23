@@ -28,6 +28,14 @@ The two planning documents may land before step 2. Platform sessions can inspect
 while prerequisites are unresolved. Neither implements security-sensitive architecture ahead of the required review
 and proofs. A contract checkpoint is a reviewed development commit, not a statement that behavior runs.
 
+## Cross-device agent rendezvous
+
+The canonical [agent rendezvous data](native-plan-macos.md#agent-rendezvous-data) records the Mac observation and
+requests separate fresh Windows and Linux/WSL replies with reciprocal probe results. Use synchronized plan checkpoints
+for agent coordination until authenticated pool messages work. These observations grant no membership, approval or
+trust, and are not product network configuration. Ordinary launch and authorized-pool connection require no owner
+commands, typed addresses or token handling; the shared contracts and native proof requirements remain unchanged.
+
 ## First prerequisite: truthful hooks and automatic caller identity
 
 Bind each lifecycle event to the actual native emitting session, including root and nested children. Missing,
