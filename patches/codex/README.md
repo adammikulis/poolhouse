@@ -3,6 +3,11 @@
 `source.json` pins the maintained Codex source and patch bytes. The patch invokes
 Codex’s existing process hardening constructor in both the CLI entry point
 (`codex`, including its app-server command) and standalone `codex-app-server`.
+A second patch retains immutable actor, root and direct-parent identifiers from
+native Session construction through hook cloning and reconfiguration. It exports
+no context through JSON or environment variables. Resumed root/parent metadata is
+context data; it grants no authority without independent node validation.
+
 The lock records the release source’s 0.164.0 workspace version and the two added
 workspace dependencies; third-party resolutions and checksums are unchanged.
 
@@ -10,8 +15,10 @@ Apply to a fresh checkout of the pinned revision:
 
 ```sh
 git checkout --detach 6aaac694803004a63c6f393d153c96d22521a6b9
-git apply --check /path/to/poolhouse/patches/codex/0001-harden-producer-entrypoints.patch
-git apply /path/to/poolhouse/patches/codex/0001-harden-producer-entrypoints.patch
+git apply --check /path/to/poolhouse/patches/codex/0001-harden-producer-entrypoints.patch \
+  /path/to/poolhouse/patches/codex/0002-retain-native-session-context.patch
+git apply /path/to/poolhouse/patches/codex/0001-harden-producer-entrypoints.patch \
+  /path/to/poolhouse/patches/codex/0002-retain-native-session-context.patch
 cargo +1.99.1 check --locked --manifest-path codex-rs/Cargo.toml \
   -p codex-cli --bin codex -p codex-app-server --bin codex-app-server
 ```

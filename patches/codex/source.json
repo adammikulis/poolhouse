@@ -6,6 +6,10 @@
     {
       "path": "0001-harden-producer-entrypoints.patch",
       "sha256": "fa8b66bdc178b9649fc1f30dd9d65a6f626536f4f6d0bf1f3e4ee43fcd4ac022"
+    },
+    {
+      "path": "0002-retain-native-session-context.patch",
+      "sha256": "8ab2fdc96d34ab5c8e5acf51b9b4addeb3a6c879b1a3dc76636669ab53200578"
     }
   ],
   "rust_toolchain": "1.99.1",
@@ -33,6 +37,57 @@
     "exit_code": 0,
     "profile": "dev",
     "lock_sha256": "c043b6b7e67bb2f0ae4b1b8dd485cd6a24bd1cb7ef3a42752d303bc5e5ca4be1",
-    "runtime_proof": false
+    "runtime_proof": false,
+    "patch_sha256s": [
+      "fa8b66bdc178b9649fc1f30dd9d65a6f626536f4f6d0bf1f3e4ee43fcd4ac022"
+    ]
+  },
+  "context_validation": {
+    "patch_sha256s": [
+      "fa8b66bdc178b9649fc1f30dd9d65a6f626536f4f6d0bf1f3e4ee43fcd4ac022",
+      "8ab2fdc96d34ab5c8e5acf51b9b4addeb3a6c879b1a3dc76636669ab53200578"
+    ],
+    "unit_test_command": [
+      "cargo",
+      "+1.99.1",
+      "test",
+      "--locked",
+      "--manifest-path",
+      "codex-rs/Cargo.toml",
+      "-p",
+      "codex-hooks",
+      "--lib",
+      "native_session_context"
+    ],
+    "unit_tests_passed": 2,
+    "core_compile_check": {
+      "command": [
+        "cargo",
+        "+1.99.1",
+        "check",
+        "--locked",
+        "--manifest-path",
+        "codex-rs/Cargo.toml",
+        "-p",
+        "codex-core",
+        "--tests"
+      ],
+      "exit_code": 0,
+      "tests_executed": false
+    },
+    "installed_proof": false,
+    "mutations": [
+      {
+        "mutation": "actor-substituted-with-root",
+        "exit_code": 101,
+        "result": "test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 182 filtered out; finished in 0.00s"
+      },
+      {
+        "mutation": "reconfiguration-drops-parent",
+        "exit_code": 101,
+        "result": "test result: FAILED. 0 passed; 2 failed; 0 ignored; 0 measured; 182 filtered out; finished in 0.00s"
+      }
+    ],
+    "restored_unit_tests_passed": 2
   }
 }
