@@ -761,6 +761,15 @@ def test_record_removed_after_identity_check_is_republished_locked(tmp_path, mon
     assert not list((tmp_path / "slots").glob("*.slot"))
 
 
+def test_the_wait_for_a_slot_is_outside_the_per_test_timeout():
+    """A test queued behind other runs (the broker's queue is long when many agents test) must not be timed out for waiting: the
+    admission wrapper runs first, so pytest-timeout's clock starts when the slot is held."""
+    import testslots_pytest
+
+    assert testslots_pytest.pytest_runtest_protocol.pytest_impl["tryfirst"] is True
+    assert testslots_pytest.pytest_runtest_protocol.pytest_impl["hookwrapper"] is True
+
+
 def test_a_long_node_id_is_admitted_with_a_bounded_label(monkeypatch):
     import contextlib
     import types

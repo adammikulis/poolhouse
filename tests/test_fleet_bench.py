@@ -571,7 +571,7 @@ def test_a_real_bench_that_refuses_its_only_model_is_failed_with_the_refusal(tmp
     host.poll_s = 0.2
     binary = canned_binary(tmp_path)
     job = Job(argv=("sweep", "--serve", str(tmp_path / "absent.gguf"), "--plain-only",
-                    "--no-smoke", "--store", "", "--binary", str(binary)),
+                    "--no-smoke", "--store", "", "--binary", str(binary), "--context", "4096"),
               models=("absent.gguf",), commit=host.commit)
     try:
         (handle,) = dispatch({Local(host): job}, log=lambda _l: None)
@@ -1040,6 +1040,7 @@ _FLEET_LLAMA_META = {
     "llama.block_count": 2,
     "llama.attention.head_count_kv": 2,
     "llama.attention.key_length": 8,
+    "llama.context_length": 4096,
 }
 
 

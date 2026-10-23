@@ -294,17 +294,19 @@ a card's free VRAM for the GPU part, so 95% of it is the real limit. The two num
 `poolhouse.ui.verdict` uses. `meters(estimate, machine)` gives one `Meter` per pool with `segments`
 (`[{label, value}]` in bytes), `capacity_bytes` and `verdict`, which `<poolhouse-meter>` takes as `segments`,
 `capacity` and `verdict`. `max_context(model, machine, setup, max_verdict="yellow")` is the longest
-context in steps of 256.
+context in steps of 256 (the same halving search, `serve.largest.largest_context`, that every default uses).
 
 The KV cache is `q8_0` by default: 34 bytes per 32 values, 53% of f16, near-lossless for chat and
 tool use. `q4_0` saves more and costs quality, so it is a last resort. llama.cpp accepts a
 quantised V cache only with flash attention; where the head size or the build lacks it, V stays f16
 and K stays q8_0 (`"q8_0/f16"`).
 
-`serve.suggest.suggest(model, machine=None, goal="agent", max_verdict="green")` picks context
-(`agent` up to 32k and one slot, `chat` 16k, `long-context` the largest, `fast` 4k; never past the
-trained context), offload, cache types and batch (2048 for `agent` and `long-context` when it keeps
-the rating), with `reasons` and a smaller and a bigger `alternatives`. `lease()` gives `ServerSpec`
+`serve.suggest.suggest(model, machine=None, *, goal="agent", max_verdict="green")` picks context
+(every goal but `fast` takes the largest that keeps the rating, up to the trained window; `fast` aims at 4k),
+offload, cache types and batch (2048 for `agent` and `long-context` when it keeps
+the rating), with `reasons` and a smaller and a bigger `alternatives`. `largest_fit(model, machine=None, *, slots=1, kv,
+draft)` is the one question the serving defaults ask (the machine counted as idle, yellow or better; docs/serving.md, "A
+context nobody names"). `lease()` gives `ServerSpec`
 keywords. `suggest_model(candidates, machine, goal)` ranks models: rating first, then parameters
 times a quantisation quality factor (a mixture of experts counts half); `fast` takes the smaller of
 the models over 1.5 billion parameters. No benchmark scores are used. `recommend(machine, goal,

@@ -54,14 +54,17 @@ class Settings:
     fetch_slots: int = 2
     autodownload_models: bool = True
     download_sources: str = ""
-    chat_max_output_tokens: int | None = 8192
+    chat_max_output_tokens: int | None = None
+    """Tokens a reply may run to; None is the model's own window."""
     always_show_advanced: bool = False
     studio_undo_steps: int = 32
     """The nearest editing states retained independently for Studio undo and redo (1-128)."""
     appearance: dict[str, Any] = field(default_factory=default_appearance)
     appearance_initialized: bool = False
-    context: int = 8192
-    """How much of a conversation a model is given to read. Costs memory per token."""
+    context: int = 0
+    """How much of a conversation a model is given to read, per slot. Costs memory per token.
+    0 is the largest this machine holds for each model (`serve.suggest.largest_fit`); a number
+    is the person's choice."""
     features: dict[str, bool] = field(default_factory=dict)
     """Experimental features this machine turned on or off by name (`poolhouse.features`); off when absent."""
 
@@ -211,7 +214,8 @@ def apply_preferences(settings: Settings, request: dict[str, Any]) -> str:
               if key in request}
     if "context" in request:
         try:
-            values["context"] = max(512, min(1 << 20, int(request["context"])))
+            asked = int(request["context"])
+            values["context"] = max(asked, 0)
         except (TypeError, ValueError, OverflowError):
             return "Context length must be an integer."
     if "appearance" in request:

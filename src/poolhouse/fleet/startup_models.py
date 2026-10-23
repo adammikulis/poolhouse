@@ -6,15 +6,15 @@ from collections.abc import Iterable
 from typing import Any
 
 from poolhouse.hub.probe import GIB, MachineMemory, machine_memory
-from poolhouse.serve.estimate import DEFAULT_KV, Setup, estimate_meta
+from poolhouse.serve.estimate import DEFAULT_KV, RED_AT, Setup, estimate_meta
 from poolhouse.serve.fit import records
+from poolhouse.serve.largest import contexts, largest_context
 from poolhouse.serve.preflight import _head_kv_per_token
 
 from .catalogue import SUGGESTED, Suggestion
 
-CONTEXT = 8192
 QWEN_27B_HEADER = {
-    "general.architecture": "qwen3_5", "qwen3_5.block_count": 64,
+    "general.architecture": "qwen3_5", "qwen3_5.block_count": 64, "qwen3_5.context_length": 262144,
     "qwen3_5.attention.head_count": 24, "qwen3_5.attention.head_count_kv": 4,
     "qwen3_5.attention.key_length": 256, "qwen3_5.attention.value_length": 256,
     "qwen3_5.full_attention_interval": 4, "qwen3_5.nextn_predict_layers": 1,
@@ -34,8 +34,10 @@ def memory_pool(machine: MachineMemory) -> tuple[str, int, int]:
     return "RAM", machine.total_ram, machine.available_ram
 
 
-def memory_need(pick: Suggestion, context: int = CONTEXT) -> int:
-    """Estimated bytes for weights, prediction head and one chat context."""
+def memory_need(pick: Suggestion, context: int = 0) -> int:
+    """Estimated bytes for weights, prediction head and the cache of ``context`` tokens. A model
+    not yet downloaded has no header to fit, so it is offered by what its weights need (context 0);
+    the context it is served at is the fit of the file once it is installed."""
     measured = [row for row in records() if row.model == pick.file
                 and row.cache_type == "q8_0" and bool(row.spec) == bool(pick.draft_ref)]
     if measured:
@@ -61,15 +63,15 @@ def choices(*, machine: MachineMemory | None = None, disk_gb: float = 0,
         if pick.params_b == 27 and tier < 24:
             continue
         need = memory_need(pick)
-        if not capacity or need >= capacity * 0.95:
+        if not capacity or need >= capacity * RED_AT:
             continue
         if disk_gb and pick.file not in here and (pick.mtp_gb or pick.gb) + pick.draft_gb > disk_gb:
             continue
         rows.append({**pick.public(), "installed": pick.file in here,
-                     "memory_gb": round(need / GIB, 1), "fits_now": need < free * 0.95,
-                     "estimated_context": max((tokens for tokens in
-                        (8192, 16384, 32768, 65536, 131072, 262144)
-                        if memory_need(pick, tokens) <= capacity * 0.9), default=0)
+                     "memory_gb": round(need / GIB, 1), "fits_now": need < free * RED_AT,
+                     "estimated_context": largest_context(
+                        lambda tokens, pick=pick: memory_need(pick, tokens) < capacity * RED_AT,
+                        contexts(QWEN_27B_HEADER["qwen3_5.context_length"]))
                         if pick.params_b == 27 else 0,
                      "recommended": False})
     preferred = next((row for row in rows if row["params_b"] == 27 and "UD-Q4_K_XL" in row["file"]), None)
@@ -80,4 +82,4 @@ def choices(*, machine: MachineMemory | None = None, disk_gb: float = 0,
     if preferred is not None:
         preferred["recommended"] = True
     return {"ok": True, "models": rows, "memory": {"pool": pool, "capacity_gb": round(capacity / GIB, 1),
-                                        "free_gb": round(free / GIB, 1)}, "context": CONTEXT}
+                                        "free_gb": round(free / GIB, 1)}, "context": 0}

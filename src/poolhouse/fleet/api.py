@@ -803,7 +803,7 @@ def make_handler(daemon: Daemon) -> type[BaseHTTPRequestHandler]:
                 try:
                     req = self._object(body)
                     wanted = str(req.get("model") or "")
-                    context = int(req.get("context") or 8192)
+                    context = int(req.get("context") or 0)
                     parallel = max(1, int(req.get("parallel") or 1))
                 except (TypeError, ValueError) as e:
                     self._send(400, {"error": str(e)})

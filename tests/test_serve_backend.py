@@ -176,31 +176,31 @@ class TestConversationCacheFlags:
 
     def test_none_on_every_field_emits_nothing(self, tmp_path):
         argv = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP)).command(
-            ServerSpec(model="m.gguf"))
+            ServerSpec(context=4096, model="m.gguf"))
         for flag in ("--kv-unified", "--no-kv-unified", "--cache-ram", "--cache-idle-slots",
                      "--no-cache-idle-slots", "--slot-prompt-similarity", "--slot-save-path"):
             assert flag not in argv, flag
 
     def test_true_and_false_emit_the_flag_and_its_no_form(self, tmp_path):
         backend_ = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP))
-        on = backend_.command(ServerSpec(model="m.gguf", kv_unified=True, cache_idle_slots=True))
+        on = backend_.command(ServerSpec(context=4096, model="m.gguf", kv_unified=True, cache_idle_slots=True))
         assert "--kv-unified" in on and "--cache-idle-slots" in on
         assert "--no-kv-unified" not in on and "--no-cache-idle-slots" not in on
-        off = backend_.command(ServerSpec(model="m.gguf", kv_unified=False,
+        off = backend_.command(ServerSpec(context=4096, model="m.gguf", kv_unified=False,
                                           cache_idle_slots=False))
         assert "--no-kv-unified" in off and "--no-cache-idle-slots" in off
         assert "--kv-unified" not in off and "--cache-idle-slots" not in off
 
     def test_the_valued_flags_carry_their_values(self, tmp_path):
         argv = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP)).command(
-            ServerSpec(model="m.gguf", cache_ram_mb=4096, slot_prompt_similarity=0.25,
+            ServerSpec(context=4096, model="m.gguf", cache_ram_mb=4096, slot_prompt_similarity=0.25,
                        slot_save_path=tmp_path / "slots"))
         assert argv[argv.index("--cache-ram") + 1] == "4096"
         assert argv[argv.index("--slot-prompt-similarity") + 1] == "0.25"
         assert argv[argv.index("--slot-save-path") + 1] == str(tmp_path / "slots")
         # nought is a choice, not an absence: --cache-ram 0 disables the cache
         argv = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP)).command(
-            ServerSpec(model="m.gguf", cache_ram_mb=0, slot_prompt_similarity=0.0))
+            ServerSpec(context=4096, model="m.gguf", cache_ram_mb=0, slot_prompt_similarity=0.0))
         assert argv[argv.index("--cache-ram") + 1] == "0"
         assert argv[argv.index("--slot-prompt-similarity") + 1] == "0.0"
 
@@ -210,7 +210,7 @@ class TestConversationCacheFlags:
         assert {"--kv-unified", "--no-kv-unified", "--cache-ram", "--cache-idle-slots",
                 "--no-cache-idle-slots", "--slot-prompt-similarity", "--slot-save-path"} <= known
         argv = LlamaServerBackend(binary=binary).command(
-            ServerSpec(model="m.gguf", kv_unified=False, cache_ram_mb=8192,
+            ServerSpec(context=4096, model="m.gguf", kv_unified=False, cache_ram_mb=8192,
                        cache_idle_slots=True, slot_prompt_similarity=0.5,
                        slot_save_path="slots"))
         assert unknown_flags(argv, known) == []
@@ -220,7 +220,7 @@ class TestConversationCacheFlags:
             line for line in HELP.splitlines()
             if "kv-unified," not in line and "cache-ram" not in line) + "\n")
         argv = LlamaServerBackend(binary=older).command(
-            ServerSpec(model="m.gguf", kv_unified=True, cache_ram_mb=8192))
+            ServerSpec(context=4096, model="m.gguf", kv_unified=True, cache_ram_mb=8192))
         lacking = dict(unknown_flags(argv, flags_of(older)))
         assert set(lacking) == {"--kv-unified", "--cache-ram"}
 
@@ -253,12 +253,12 @@ class TestSpeculativePMin:
 
     def test_a_value_is_passed_to_the_server(self, tmp_path):
         argv = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP)).command(
-            ServerSpec(model="m.gguf", spec_p_min=0.5))
+            ServerSpec(context=4096, model="m.gguf", spec_p_min=0.5))
         assert argv[argv.index("--spec-draft-p-min") + 1] == "0.5"
 
     def test_none_passes_no_flag(self, tmp_path):
         argv = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP)).command(
-            ServerSpec(model="m.gguf"))
+            ServerSpec(context=4096, model="m.gguf"))
         assert "--spec-draft-p-min" not in argv
 
 
@@ -267,19 +267,19 @@ class TestDraftTree:
 
     def test_a_width_is_passed_to_the_server(self, tmp_path):
         argv = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP + "--spec-tree W\n")).command(
-            ServerSpec(model="m.gguf", spec_type="draft-mtp", spec_draft_max=12, spec_tree=3))
+            ServerSpec(context=4096, model="m.gguf", spec_type="draft-mtp", spec_draft_max=12, spec_tree=3))
         assert argv[argv.index("--spec-tree") + 1] == "3"
         assert argv[argv.index("--spec-draft-n-max") + 1] == "12"
 
     def test_no_width_passes_no_flag(self, tmp_path):
         argv = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP)).command(
-            ServerSpec(model="m.gguf", spec_type="draft-mtp", spec_draft_max=12))
+            ServerSpec(context=4096, model="m.gguf", spec_type="draft-mtp", spec_draft_max=12))
         assert "--spec-tree" not in argv
 
     def test_a_build_without_the_flag_is_refused_before_the_load(self, tmp_path):
         server = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP))
         with pytest.raises(UnknownFlag):
-            server.checked(server.command(ServerSpec(model="m.gguf", spec_tree=3)))
+            server.checked(server.command(ServerSpec(context=4096, model="m.gguf", spec_tree=3)))
 
 
 class TestMemoryFlags:
@@ -289,14 +289,14 @@ class TestMemoryFlags:
 
     def test_a_spec_that_names_nothing_gets_the_default_cache_and_no_load_mode(self, tmp_path):
         argv = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP)).command(
-            ServerSpec(model="m.gguf"))
+            ServerSpec(context=4096, model="m.gguf"))
         assert "--load-mode" not in argv
         assert argv[argv.index("--cache-type-k") + 1] == "q8_0"
         assert argv[argv.index("--cache-type-v") + 1] == "q8_0"
 
     def test_cache_types_carry_their_values(self, tmp_path):
         argv = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP)).command(
-            ServerSpec(model="m.gguf", cache_type_k="q8_0", cache_type_v="q4_0"))
+            ServerSpec(context=4096, model="m.gguf", cache_type_k="q8_0", cache_type_v="q4_0"))
         assert argv[argv.index("--cache-type-k") + 1] == "q8_0"
         assert argv[argv.index("--cache-type-v") + 1] == "q4_0"
 
@@ -305,7 +305,7 @@ class TestMemoryFlags:
         backend_ = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP))
 
         def mode(**over):
-            argv = backend_.command(ServerSpec(model="m.gguf", **over))
+            argv = backend_.command(ServerSpec(context=4096, model="m.gguf", **over))
             return argv[argv.index("--load-mode") + 1] if "--load-mode" in argv else ""
 
         assert mode() == mode(mmap=True) == mode(mlock=False) == ""
@@ -320,20 +320,20 @@ class TestReasoningBudget:
 
     def test_a_budget_is_emitted_with_its_value(self, tmp_path):
         argv = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP)).command(
-            ServerSpec(model="m.gguf", reasoning_budget=2048))
+            ServerSpec(context=4096, model="m.gguf", reasoning_budget=2048))
         assert argv[argv.index("--reasoning-budget") + 1] == "2048"
 
     def test_none_emits_nothing_and_minus_one_is_unlimited_not_nothing(self, tmp_path):
         backend_ = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP))
-        assert "--reasoning-budget" not in backend_.command(ServerSpec(model="m.gguf"))
-        argv = backend_.command(ServerSpec(model="m.gguf", reasoning_budget=-1))
+        assert "--reasoning-budget" not in backend_.command(ServerSpec(context=4096, model="m.gguf"))
+        argv = backend_.command(ServerSpec(context=4096, model="m.gguf", reasoning_budget=-1))
         assert argv[argv.index("--reasoning-budget") + 1] == "-1", "llama.cpp's own unlimited"
 
     def test_a_build_without_the_flag_is_told_before_anything_starts(self, tmp_path):
         """The fake help has no --reasoning-budget, like a release from before it existed."""
         binary = fake_binary(tmp_path, help_text=HELP)
         argv = LlamaServerBackend(binary=binary).command(
-            ServerSpec(model="m.gguf", reasoning_budget=512))
+            ServerSpec(context=4096, model="m.gguf", reasoning_budget=512))
         assert "--reasoning-budget" in dict(unknown_flags(argv, flags_of(binary)))
 
 
@@ -343,7 +343,7 @@ class TestRopeYarnFlags:
 
     def test_none_on_every_field_emits_nothing(self, tmp_path):
         argv = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP)).command(
-            ServerSpec(model="m.gguf"))
+            ServerSpec(context=4096, model="m.gguf"))
         for flag in ("--rope-scaling", "--rope-scale", "--yarn-orig-ctx",
                      "--yarn-ext-factor", "--yarn-attn-factor", "--yarn-beta-fast",
                      "--yarn-beta-slow"):
@@ -351,7 +351,7 @@ class TestRopeYarnFlags:
 
     def test_every_field_carries_its_value(self, tmp_path):
         argv = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP)).command(
-            ServerSpec(model="m.gguf", rope_scaling="yarn", rope_scale=8.0,
+            ServerSpec(context=4096, model="m.gguf", rope_scaling="yarn", rope_scale=8.0,
                        yarn_orig_ctx=131072, yarn_ext_factor=1.0, yarn_attn_factor=1.0,
                        yarn_beta_fast=32.0, yarn_beta_slow=1.0))
         assert argv[argv.index("--rope-scaling") + 1] == "yarn"
@@ -365,7 +365,7 @@ class TestRopeYarnFlags:
     def test_a_build_without_them_names_them_before_the_load(self, tmp_path):
         binary = fake_binary(tmp_path, help_text=HELP)
         argv = LlamaServerBackend(binary=binary).command(
-            ServerSpec(model="m.gguf", rope_scaling="yarn", rope_scale=4.0,
+            ServerSpec(context=4096, model="m.gguf", rope_scaling="yarn", rope_scale=4.0,
                        yarn_orig_ctx=32768))
         lacking = dict(unknown_flags(argv, flags_of(binary)))
         assert {"--rope-scaling", "--rope-scale", "--yarn-orig-ctx"} <= set(lacking)
@@ -478,7 +478,7 @@ class TestLaunchRefusal:
             raise AssertionError("a process was started")
 
         monkeypatch.setattr(subprocess, "Popen", popen)
-        spec = ServerSpec(model=gguf, extra_args=("--draft-max", "3"))
+        spec = ServerSpec(context=4096, model=gguf, extra_args=("--draft-max", "3"))
 
         with pytest.raises(UnknownFlag) as caught:
             leased(LlamaServerBackend(binary=binary), spec, timeout=1.0)
@@ -492,7 +492,7 @@ class TestLaunchRefusal:
                             lambda *a, **k: (_ for _ in ()).throw(AssertionError("started")))
         gguf = tmp_path / "model.gguf"
         gguf.write_bytes(b"GGUF" + b"\x00" * 64)
-        spec = ServerSpec(model=gguf, extra_args=("--draft-max", "3", "--swa-full", "1"))
+        spec = ServerSpec(context=4096, model=gguf, extra_args=("--draft-max", "3", "--swa-full", "1"))
         with pytest.raises(UnknownFlag) as caught:
             leased(LlamaServerBackend(binary=binary), spec, timeout=1.0)
         assert str(caught.value).splitlines() == [
@@ -520,7 +520,7 @@ class TestLaunchRefusal:
         monkeypatch.setattr(subprocess, "Popen", popen)
         gguf = tmp_path / "model.gguf"
         gguf.write_bytes(b"GGUF" + b"\x00" * 64)
-        spec = ServerSpec(model=gguf, extra_args=("--draft-max", "3"), mtp=False)
+        spec = ServerSpec(context=4096, model=gguf, extra_args=("--draft-max", "3"), mtp=False)
         with pytest.raises(OSError, match="stop here"):
             leased(LlamaServerBackend(binary=binary),
                    spec, timeout=1.0, check_flags=False, preflight=False)
@@ -539,7 +539,7 @@ class TestLaunchRefusal:
             # preflight=False: this stand-in gguf carries no real metadata, and what this
             # test is about is the flag check, not the preflight one.
             leased(LlamaServerBackend(binary=silent), 
-                ServerSpec(model=gguf, extra_args=("--draft-max", "3")), timeout=1.0,
+                ServerSpec(context=4096, model=gguf, extra_args=("--draft-max", "3")), timeout=1.0,
                 preflight=False)
 
 
@@ -566,14 +566,14 @@ def test_a_draft_named_by_file_is_fetched_and_served_by_path(monkeypatch, tmp_pa
     head.write_bytes(b"GGUF")
     asked = []
     monkeypatch.setattr("poolhouse.hub.fetch", lambda ref, trust=None: asked.append(ref) or head)
-    spec = be.ServerSpec(model=tmp_path / "m.gguf", draft="hf:owner/repo-GGUF/MTP/mtp-head-BF16.gguf")
+    spec = be.ServerSpec(context=4096, model=tmp_path / "m.gguf", draft="hf:owner/repo-GGUF/MTP/mtp-head-BF16.gguf")
     resolved = be.LlamaServerBackend.resolved_draft(spec)
     assert asked == ["hf:owner/repo-GGUF/MTP/mtp-head-BF16.gguf"]
     argv = be.LlamaServerBackend(binary=binary).command(resolved)
     assert argv[argv.index("-md") + 1] == str(head)
     with pytest.raises(be.ServerFailed, match="fetched before serving"):
         be.LlamaServerBackend(binary=binary).command(spec)
-    quant = be.ServerSpec(model=tmp_path / "m.gguf", draft="hf:owner/repo-GGUF")
+    quant = be.ServerSpec(context=4096, model=tmp_path / "m.gguf", draft="hf:owner/repo-GGUF")
     with pytest.raises(be.ServerFailed, match="must be fetched before serving"):
         be.LlamaServerBackend(binary=binary).command(quant)
 
@@ -590,7 +590,7 @@ def test_a_model_named_by_file_is_fetched_and_served_by_path(monkeypatch, tmp_pa
     weights.write_bytes(b"GGUF")
     asked, trusts = [], []
     monkeypatch.setattr("poolhouse.hub.fetch", lambda ref, trust=None: trusts.append(trust) or asked.append(ref) or weights)
-    spec = be.ServerSpec(model="hf:owner/thing-GGUF/thing-Q4_K_M.gguf")
+    spec = be.ServerSpec(context=4096, model="hf:owner/thing-GGUF/thing-Q4_K_M.gguf")
     resolved = be.LlamaServerBackend.resolved_model(spec)
     assert asked == ["hf:owner/thing-GGUF/thing-Q4_K_M.gguf"] and trusts == [PERSON]
     argv = be.LlamaServerBackend(binary=binary).command(resolved)
@@ -598,7 +598,7 @@ def test_a_model_named_by_file_is_fetched_and_served_by_path(monkeypatch, tmp_pa
     assert "--hf-repo" not in argv
     pulled = []
     monkeypatch.setattr("poolhouse.hub.pull", lambda ref, trust=None: pulled.append((ref, trust)) or weights)
-    repo_only = be.ServerSpec(model="hf:owner/thing-GGUF")
+    repo_only = be.ServerSpec(context=4096, model="hf:owner/thing-GGUF")
     served = be.LlamaServerBackend.resolved_model(repo_only)
     assert pulled == [("hf:owner/thing-GGUF", PERSON)] and served.model == str(weights)
     assert asked == ["hf:owner/thing-GGUF/thing-Q4_K_M.gguf"]
@@ -631,7 +631,7 @@ def test_start_fetches_the_model_before_preflight(monkeypatch, tmp_path):
     binary.chmod(0o755)
     backend = be.LlamaServerBackend(binary=binary)
     with pytest.raises(pf.PreflightFailed):
-        leased(backend, be.ServerSpec(model="hf:owner/thing-GGUF/thing-Q4_K_M.gguf"),
+        leased(backend, be.ServerSpec(context=4096, model="hf:owner/thing-GGUF/thing-Q4_K_M.gguf"),
                check_flags=False)
     assert seen == [str(weights)]
 
@@ -673,7 +673,7 @@ class TestDraftCacheType:
         model = write_gguf(tmp_path / "model.gguf", {})
         head = write_gguf(tmp_path / "draft.gguf", {})
         argv = LlamaServerBackend(binary=fake_binary(tmp_path, help_text=HELP)).command(
-            ServerSpec(model=model, draft=head, spec_draft_type_k="q4_0",
+            ServerSpec(context=4096, model=model, draft=head, spec_draft_type_k="q4_0",
                        spec_draft_type_v="q5_1"))
         assert argv[argv.index("--spec-draft-type-k") + 1] == "q4_0"
         assert argv[argv.index("--spec-draft-type-v") + 1] == "q5_1"
@@ -682,7 +682,7 @@ class TestDraftCacheType:
         from poolhouse.serve.preflight import wrong_cache_types
 
         binary = fake_binary(tmp_path, help_text=HELP)
-        spec = ServerSpec(model=write_gguf(tmp_path / "model.gguf", {}),
+        spec = ServerSpec(context=4096, model=write_gguf(tmp_path / "model.gguf", {}),
                           draft=write_gguf(tmp_path / "draft.gguf", {}),
                           spec_draft_type_k="q3_K", spec_draft_type_v="q8_0")
         said = wrong_cache_types(spec, binary, values=values_of)
@@ -693,7 +693,7 @@ class TestDraftCacheType:
     def test_a_cache_type_the_build_takes_passes(self, tmp_path):
         from poolhouse.serve.preflight import wrong_cache_types
 
-        spec = ServerSpec(model=write_gguf(tmp_path / "model.gguf", {}),
+        spec = ServerSpec(context=4096, model=write_gguf(tmp_path / "model.gguf", {}),
                           cache_type_k="q8_0", cache_type_v="q8_0",
                           spec_draft_type_k="q4_0", spec_draft_type_v="q4_0")
         assert wrong_cache_types(spec, fake_binary(tmp_path, help_text=HELP), values=values_of) == []
@@ -723,7 +723,7 @@ def test_start_fetches_the_projector_and_the_server_gets_a_path(monkeypatch, tmp
     binary.chmod(0o755)
     with pytest.raises(be.ServerFailed, match="stop here"):
         leased(be.LlamaServerBackend(binary=binary),
-               be.ServerSpec(model="hf:owner/thing-GGUF/thing-Q4_K_M.gguf",
+               be.ServerSpec(context=4096, model="hf:owner/thing-GGUF/thing-Q4_K_M.gguf",
                              mmproj="hf:owner/thing-GGUF/mmproj-thing-F16.gguf"),
                check_flags=False)
     assert seen[0].mmproj == str(projector) and seen[0].model == str(weights)
@@ -743,5 +743,5 @@ def test_thinkingcap_launch_native_effort_defaults(tmp_path, overrides):
         assert sum(arg.split("=", 1)[0] == "--chat-template-kwargs" for arg in argv) == 1
     else:
         assert argv[argv.index("--chat-template-kwargs") + 1] == '{"enable_thinking":true,"reasoning_effort":"xhigh"}'
-    ordinary = server.command(ServerSpec(model="Qwen3.8-27B.gguf"))
+    ordinary = server.command(ServerSpec(context=4096, model="Qwen3.8-27B.gguf"))
     assert "--chat-template-kwargs" not in ordinary

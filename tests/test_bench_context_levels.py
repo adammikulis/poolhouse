@@ -14,7 +14,6 @@ from conftest import write_gguf
 
 from poolhouse.bench import fitcontext, thinking
 from poolhouse.bench.serve import _suffix
-from poolhouse.serve.estimate import Setup, estimate_meta, read_meta
 from poolhouse.serve.fit import Fit
 from poolhouse.serve.serving import Config, Serving
 
@@ -62,21 +61,27 @@ def test_a_record_for_another_cache_type_is_not_used(fit_files, tmp_path):
     assert got.source == "estimated from the header"
 
 
-def test_fit_falls_back_to_the_header_and_says_so(fit_files, tmp_path):
-    room = 1 * GIB
-    fit_files([], room=room)
-    path = model_file(tmp_path)
+def test_fit_falls_back_to_the_header_and_says_so(fit_files, tmp_path, monkeypatch):
+    from poolhouse.hub.probe import MachineMemory
+    from poolhouse.serve import suggest
+
+    fit_files([], room=1 * GIB)
+    machine = MachineMemory(8 * GIB, 8 * GIB, True, 6 * GIB, (), "Darwin")
+    monkeypatch.setattr(suggest, "machine_memory", lambda: machine)
+    path = model_file(tmp_path, **{"testarch.context_length": 1_000_000})
     got = fitcontext.resolve(path, kv="q8_0")
     assert got.source == "estimated from the header"
     assert got.said() == f"context fit: {got.per_slot} (estimated from the header)"
-    assert got.per_slot > 0 and got.per_slot % 256 == 0
-    header, weights = read_meta(path), (tmp_path / MODEL).stat().st_size
+    assert got.per_slot == suggest.largest_fit(path, machine, kv="q8_0").context
+    assert 0 < got.per_slot < 1_000_000 and got.per_slot % 256 == 0
 
-    def total(context):
-        return estimate_meta(header, weights, Setup(context=context, kv_cache_type="q8_0")
-                             ).total_bytes
-    assert total(got.per_slot) <= room
-    assert total(int(got.per_slot / 0.9) + 1024) > room, "what is left over is a tenth, not more"
+
+def test_a_header_with_no_context_length_cannot_be_fitted_and_says_which_field(fit_files, tmp_path):
+    fit_files([record()], room=11_000_000_000)
+    meta = {k: v for k, v in HEADER.items() if k != "testarch.context_length"}
+    path = str(write_gguf(tmp_path / MODEL, meta))
+    with pytest.raises(fitcontext.DoesNotFit, match=r"testarch\.context_length"):
+        fitcontext.resolve(path, kv="q8_0")
 
 
 def test_fit_stops_at_the_models_own_context(fit_files, tmp_path):
@@ -234,7 +239,7 @@ def _sweep(monkeypatch, tmp_path, *flags, template=QWEN_TEMPLATE):
     code = bench._main(["sweep", "--serve", str(path), "--plain-only", "--graph", str(graph),
                         "--kept", str(tmp_path / "runs.ladybug"), "--no-prefetch",
                         "--no-smoke", "--no-profile", "--serve-label", "tf",
-                        *flags])
+                        *(flags if "--context" in flags else ("--context", "32768", *flags))])
     return code, loads
 
 

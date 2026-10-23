@@ -134,7 +134,7 @@ class Profile:
     mmproj: str = ""                     # a path, or "auto" to find it beside the weights
     extra_args: tuple[str, ...] = ()     # -ub 2048
     spec_p_min: float | None = None      # the draft's confidence floor
-    slot_context: int = 32768            # what one conversation gets
+    slot_context: int = 0                # what one conversation got when measured; 0 not recorded
     parallel: int = 1                    # how many conversations at once
 
     # -- serving, per request -----------------------------------------------------------

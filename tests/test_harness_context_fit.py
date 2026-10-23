@@ -24,20 +24,20 @@ def configured(monkeypatch):
 
 @pytest.mark.parametrize("rating", ["red", "none"])
 def test_positive_context_does_not_admit_an_unsafe_verdict(monkeypatch, configured, rating):
-    monkeypatch.setattr(harnessing.suggest, "suggest", lambda *a, **k: fit(verdict=rating))
+    monkeypatch.setattr(harnessing.suggest, "largest_fit", lambda *a, **k: fit(verdict=rating))
     with pytest.raises(ValueError, match="no context that fits"):
         configured()
 
 
 def test_automatic_context_preserves_memory_profile(monkeypatch, configured):
-    monkeypatch.setattr(harnessing.suggest, "suggest", lambda *a, **k: fit())
+    monkeypatch.setattr(harnessing.suggest, "largest_fit", lambda *a, **k: fit())
     selected = configured().serving
     assert (selected.context, selected.cache_type, selected.flash_attn, selected.extra_args) == (
         8192, "q4_0", True, ("-ub", "1024"))
 
 
 def test_partial_offload_fit_is_refused(monkeypatch, configured):
-    monkeypatch.setattr(harnessing.suggest, "suggest", lambda *a, **k: fit(n_gpu_layers=12))
+    monkeypatch.setattr(harnessing.suggest, "largest_fit", lambda *a, **k: fit(n_gpu_layers=12))
     with pytest.raises(ValueError, match="full GPU offload"):
         configured()
 
@@ -71,21 +71,24 @@ def test_measured_memory_settings_are_replaced_by_the_fit(monkeypatch, configure
                                      extra_args=("-ub", "4096")))
     monkeypatch.setattr(harnessing.profile, "profile_for", lambda _: SimpleNamespace(config=lambda **k: measured))
     monkeypatch.setattr(harnessing.profile, "said", lambda _: "fixture")
-    monkeypatch.setattr(harnessing.suggest, "suggest", lambda *a, **k: fit())
+    monkeypatch.setattr(harnessing.suggest, "largest_fit", lambda *a, **k: fit())
     selected = configured().serving
     assert (selected.cache_type, selected.flash_attn, selected.extra_args) == (
         "q4_0", True, ("-ub", "1024"))
 
 
-def test_automatic_fit_requires_the_estimated_single_slot(monkeypatch, configured):
-    with pytest.raises(ValueError, match="supports one slot"):
-        harnessing.config_for("fixture.gguf", harnessing.Want(ctx=0, slots=2), lambda _: None)
+def test_automatic_fit_serves_the_slots_it_was_fitted_for(monkeypatch, configured):
+    asked = []
+    monkeypatch.setattr(harnessing.suggest, "largest_fit", lambda *a, **k: asked.append(k) or fit())
+    selected = harnessing.config_for("fixture.gguf", harnessing.Want(ctx=0, slots=2), lambda _: None).serving
+    assert asked[0]["slots"] == 2
+    assert (selected.slots, selected.slot_context, selected.context) == (2, 8192, 16384)
 
 
 def test_automatic_fit_refuses_unestimated_profile_flags(monkeypatch, configured):
     measured = Config(serving=Serving(model="fixture.gguf", extra_args=("-b", "8192")))
     monkeypatch.setattr(harnessing.profile, "profile_for", lambda _: SimpleNamespace(config=lambda **k: measured))
     monkeypatch.setattr(harnessing.profile, "said", lambda _: "fixture")
-    monkeypatch.setattr(harnessing.suggest, "suggest", lambda *a, **k: fit())
+    monkeypatch.setattr(harnessing.suggest, "largest_fit", lambda *a, **k: fit())
     with pytest.raises(ValueError, match="cannot estimate measured server flags"):
         configured()

@@ -78,7 +78,7 @@ def _lease_elsewhere(tmp_path, state, **kw):
     model.write_bytes(b"GGUF" + b"\x00" * 64)
     manager = ServerManager(backend=LlamaServerBackend(binary=canned_binary(tmp_path)),
                             state_file=state, **kw)
-    info = manager.lease(ServerSpec(model=model, port=free_port()), roam=False, timeout=30.0,
+    info = manager.lease(ServerSpec(context=4096, model=model, port=free_port()), roam=False, timeout=30.0,
                          check_flags=False, preflight=False, warmup_request=False)
     return manager, info
 
@@ -99,7 +99,7 @@ def test_the_next_start_stops_a_verified_orphan_on_another_port(tmp_path, childr
     manager.say = told.append
     model = tmp_path / "model.gguf"
     model.write_bytes(b"GGUF" + b"\x00" * 64)
-    info = manager.lease(ServerSpec(model=model, port=free_port()), roam=False, timeout=30.0,
+    info = manager.lease(ServerSpec(context=4096, model=model, port=free_port()), roam=False, timeout=30.0,
                          check_flags=False, preflight=False, warmup_request=False)
     try:
         deadline = time.monotonic() + 10
