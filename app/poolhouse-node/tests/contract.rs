@@ -75,3 +75,41 @@ fn lifecycle_metadata_keeps_terminal_states_closed_and_consumption_atomic() {
     }
     assert_eq!(TRANSITIONS.iter().filter(|row| row.event == "consume").count(), 1);
 }
+
+#[test]
+fn job_wire_requires_explicit_null_and_rejects_sensitive_fields() {
+    let job = json!({"job_id": "00000000-0000-4000-8000-000000000001",
+        "generation": "00000000-0000-4000-8000-000000000002", "revision": "1",
+        "project_id": "00000000-0000-4000-8000-000000000003", "name": "A run",
+        "operation": "models.inspect", "state": {"kind": "preparing", "value": {}},
+        "return_code": null, "submitted_at": "1700000000000000", "started_at": null, "finished_at": null});
+    let decoded: JobSnapshot = serde_json::from_value(job.clone()).unwrap();
+    assert_eq!(serde_json::to_value(decoded).unwrap(), job);
+    for field in ["return_code", "started_at", "finished_at"] {
+        let mut missing = job.clone();
+        missing.as_object_mut().unwrap().remove(field);
+        assert!(serde_json::from_value::<JobSnapshot>(missing).is_err(), "{field}");
+    }
+    for field in ["env", "cwd", "argv", "pid"] {
+        let mut leaked = job.clone(); leaked[field] = json!("private");
+        assert!(serde_json::from_value::<JobSnapshot>(leaked).is_err());
+    }
+}
+
+#[test]
+fn job_scalars_preserve_exact_boolean_text_and_signed_code_encodings() {
+    assert!(serde_json::from_str::<Boolean>("true").is_ok());
+    for value in ["1", "0", "null", "\"true\""] { assert!(serde_json::from_str::<Boolean>(value).is_err()); }
+    for value in ["-0", "+1", "01", "2147483648", "-2147483649"] { assert!(ExitCode::try_from(value.to_owned()).is_err()); }
+    assert!(ExitCode::try_from("-2147483648".to_owned()).is_ok());
+    assert!(JobDisplayName::try_from("é".repeat(128)).is_ok());
+    assert!(JobDisplayName::try_from("é".repeat(129)).is_err());
+    assert!(JobDisplayName::try_from("bad\0text".to_owned()).is_err());
+}
+
+#[test]
+fn operation_markers_bind_the_declared_job_types_without_dispatch() {
+    use poolhouse_node::contract_operations::{JobsCancel, JobsGet, Operation};
+    assert_eq!(JobsGet::NAME, "jobs.get"); assert_eq!(JobsCancel::NAME, "jobs.cancel");
+    assert_eq!(std::any::TypeId::of::<<JobsCancel as Operation>::Request>(), std::any::TypeId::of::<JobCancelRequest>());
+}

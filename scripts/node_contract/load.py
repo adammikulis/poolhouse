@@ -20,13 +20,14 @@ from .common import (
     variant_name,
 )
 from .lifecycle import adapters, lifecycle
+from .operations import load_operations
 
 META = {"version", "status", "unsigned_encoding", "device_id_algorithm", "device_id_domain",
         "device_public_key_encoding", "unknown_fields", "decoded_values"}
 
 
 def load(root: Path) -> tuple[dict, list[dict], str]:
-    if {path.name for path in root.glob("*.toml")} != {"contract.toml", "types.toml", "lifecycle.toml", "adapters.toml"}:
+    if {path.name for path in root.glob("*.toml")} != {"contract.toml", "types.toml", "lifecycle.toml", "adapters.toml", "operations.toml"}:
         raise ValueError("unrecognized contract source file")
     meta = tomllib.loads((root / "contract.toml").read_text())
     keys(meta, META, META)
@@ -46,6 +47,7 @@ def load(root: Path) -> tuple[dict, list[dict], str]:
     ordered = _ordered(definitions)
     meta["lifecycle"] = lifecycle(root)
     meta["adapters"] = adapters(root)
+    meta["operations"] = load_operations(root, ordered)
     canonical = json.dumps({"meta": meta, "types": ordered}, sort_keys=True, separators=(",", ":")).encode()
     return meta, ordered, hashlib.sha256(canonical).hexdigest()
 
@@ -53,10 +55,10 @@ def load(root: Path) -> tuple[dict, list[dict], str]:
 def _definition(row: dict, definitions: dict[str, dict]) -> None:
     kind = row.get("kind") if isinstance(row, dict) else None
     shape = {"name", "kind", "visibility"}
-    extra = {"scalar": {"encoding", "issuer", "secret"}, "record": {"fields"}, "union": {"tag", "variants"}}
+    extra = {"scalar": {"encoding", "issuer", "secret", "min_bytes", "max_bytes"}, "record": {"fields"}, "union": {"tag", "variants"}, "optional": {"item"}}
     if kind not in extra:
         raise ValueError("unsupported type kind")
-    keys(row, shape | extra[kind], shape | (extra[kind] - {"secret"}))
+    keys(row, shape | extra[kind], shape | (extra[kind] - {"secret", "min_bytes", "max_bytes"}))
     name = row["name"]
     if (not isinstance(name, str) or not IDENTIFIER.fullmatch(name) or name in definitions
                 or name in GENERATED_TYPES or keyword.iskeyword(name)
@@ -69,6 +71,15 @@ def _definition(row: dict, definitions: dict[str, dict]) -> None:
             raise ValueError("invalid scalar definition")
         if row.get("secret") and row["visibility"] != "private":
             raise ValueError("secret data is not a public client type")
+        if row["encoding"] == "text":
+            if (type(row.get("min_bytes")) is not int or type(row.get("max_bytes")) is not int
+                    or not 0 <= row["min_bytes"] <= row["max_bytes"] <= 65536):
+                raise ValueError("invalid text byte bounds")
+        elif "min_bytes" in row or "max_bytes" in row:
+            raise ValueError("byte bounds apply only to text")
+    elif kind == "optional":
+        if not isinstance(row["item"], str):
+            raise ValueError("invalid optional type reference")
     else:
         members = row["fields" if kind == "record" else "variants"]
         if not isinstance(members, list) or (kind == "union" and not members):
@@ -98,9 +109,12 @@ def _ordered(definitions: dict[str, dict]) -> list[dict]:
         available = {row["name"] for row in ordered}
         ready = []
         for name, row in pending.items():
-            references = [member["type"] for member in row.get("fields", row.get("variants", []))]
+            references = ([row["item"]] if row["kind"] == "optional" else
+                          [member["type"] for member in row.get("fields", row.get("variants", []))])
             if any(ref not in definitions for ref in references):
                 raise ValueError("dangling type reference")
+            if row["kind"] == "optional" and definitions[row["item"]]["kind"] not in {"scalar", "record"}:
+                raise ValueError("optional items must be nonnullable scalars or records")
             if row["visibility"] == "public" and any(definitions[ref]["visibility"] != "public" for ref in references):
                 raise ValueError("private type escapes through a public DTO")
             if all(ref in available for ref in references):

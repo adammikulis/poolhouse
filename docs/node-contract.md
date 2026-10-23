@@ -106,3 +106,44 @@ transitions, shortcut consumption and altered required checks. These semantics
 require an explicit contract-version change to revise. Independent attack review
 approved this scope; protected constructors and actual atomic enforcement remain
 implementation and installed-proof obligations.
+
+
+## Jobs operation proposal
+
+`operations.toml` now declares `jobs.get` and `jobs.cancel`. The generator emits
+Rust associated request/response/error types, a Python type catalogue and a
+TypeScript operation map. These are declaration proposals, with no dispatch or
+runtime authorization. Other retained jobs/agent operations remain uncontracted;
+the full inventory and K acceptance remain open.
+
+Both requests bind a distinct JobId and ResourceGeneration. Cancellation also
+requires RequestId. The node must bind a durable retry to the authenticated
+principal, pool/installation, operation, job generation and canonical payload
+digest. Conflicting reuse refuses; identical retries recheck current permission
+without repeating effects. UUIDs, labels and public request fields grant no
+ownership, membership or execution authority.
+
+JobView projects only job ID, generation, revision, project ID, display name,
+operation, explicit state, return code, timestamps and cancellation state. No
+working directory, environment, argv, PID or internal execution handle appears.
+Job ownership and delegated control remain private checked state. Read and cancel
+permissions are separate; project visibility alone cannot cancel work. Refusal
+must authorize scope before revealing whether another principal's job exists.
+
+Required optional keys encode absence as JSON null. Boolean fields accept only
+JSON booleans. ExitCode is a canonical signed i32 decimal string, refusing `+1`,
+`-0`, leading zeroes and overflow. UnixMicros is the nonnegative number of UTC
+microseconds since the Unix epoch, encoded as a U64 decimal string. Display text
+bounds count UTF-8 bytes and refuse Unicode control characters and malformed
+Unicode; display names allow zero through 256 bytes. ResourceGeneration and
+ProjectId are distinct UUID data types; node state owns their scope and lifetime.
+
+`requested` records accepted cancellation intent. `settled` requires that intent,
+verified process termination and verified capacity release. Completion can win
+an atomic race without changing its final result to cancelled. Cancellation must
+atomically prevent a pending launch; uncertain ownership enters recovery and
+cannot release capacity optimistically. Disconnect/detach cancels observation,
+never durable execution. The proposed interrupted/recovery_required states are
+not terminal merely because they differ from queued/running. Actual state
+transitions, owner/delegate storage, durable retry transactions and refusal tests
+remain required before implementation/cutover; this declaration adds none.

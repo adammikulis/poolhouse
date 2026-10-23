@@ -13,6 +13,7 @@ fn valid(kind: &str, value: &str) -> bool {
         "uuid" => value.len() == 36 && value.bytes().enumerate().all(|(i, b)| {
             if [8, 13, 18, 23].contains(&i) { b == b'-' } else { b.is_ascii_digit() || (b'a'..=b'f').contains(&b) }
         }),
+        "i32" => value.parse::<i32>().is_ok_and(|n| n.to_string() == value),
         "u32" | "u64" => !value.is_empty() && (value == "0" || !value.starts_with('0'))
             && value.bytes().all(|b| b.is_ascii_digit())
             && if kind == "u32" { value.parse::<u32>().is_ok() } else { value.parse::<u64>().is_ok() },
@@ -30,10 +31,20 @@ def render(meta: dict, rows: list[dict], digest: str) -> str:
               f'pub const CONTRACT_VERSION: u32 = {meta["version"]};\n'
               f'pub const SCHEMA_SHA256: &str = "{digest}";\n'
               f'pub const DEVICE_ID_DOMAIN: &[u8] = b{domain};\n', VALIDATE]
+    optional = {row["name"] for row in rows if row["kind"] == "optional"}
+    if optional:
+        output.append("fn required_optional<'de, D: serde::Deserializer<'de>, T: serde::Deserialize<'de>>(d: D) -> Result<T, D::Error> { T::deserialize(d) }\n")
     for row in rows:
         name = row["name"]
-        if row["kind"] == "scalar":
+        if row["kind"] == "optional":
+            output.append(f'#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub Option<{row["item"]}>);\n')
+        elif row["kind"] == "scalar" and row["encoding"] == "bool":
+            output.append(f'#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n#[serde(transparent)]\npub struct {name}(pub bool);\n')
+        elif row["kind"] == "scalar":
             debug = "" if row.get("secret") else ", Debug"
+            validation = f'valid("{row["encoding"]}", &value)'
+            if row["encoding"] == "text":
+                validation = f'value.len() >= {row["min_bytes"]} && value.len() <= {row["max_bytes"]} && !value.chars().any(char::is_control)'
             output.append(f'''#[derive(Clone, PartialEq, Eq, Hash{debug}, serde::Serialize, serde::Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct {name}(String);
@@ -41,7 +52,7 @@ impl {name} {{ pub fn as_str(&self) -> &str {{ &self.0 }} }}
 impl TryFrom<String> for {name} {{
     type Error = &'static str;
     fn try_from(value: String) -> Result<Self, Self::Error> {{
-        if valid("{row['encoding']}", &value) {{ Ok(Self(value)) }} else {{ Err("invalid {name}") }}
+        if {validation} {{ Ok(Self(value)) }} else {{ Err("invalid {name}") }}
     }}
 }}
 impl From<{name}> for String {{ fn from(value: {name}) -> Self {{ value.0 }} }}
@@ -52,7 +63,8 @@ impl From<{name}> for String {{ fn from(value: {name}) -> Self {{ value.0 }} }}
                 primitive = row["encoding"]
                 output.append(f'impl From<{primitive}> for {name} {{ fn from(value: {primitive}) -> Self {{ Self(value.to_string()) }} }}\n')
         elif row["kind"] == "record":
-            fields = "\n".join(f'    pub {field["name"]}: {field["type"]},' for field in row["fields"])
+            fields = "\n".join(('    #[serde(deserialize_with = "required_optional")]\n' if field["type"] in optional else "")
+                               + f'    pub {field["name"]}: {field["type"]},' for field in row["fields"])
             output.append(f'#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]\n#[serde(deny_unknown_fields)]\npub struct {name} {{\n{fields}\n}}\n')
         else:
             variants = "\n".join(f'    #[serde(rename = "{variant["tag"]}")]\n    {variant_name(variant["tag"])}({variant["type"]}),' for variant in row["variants"])

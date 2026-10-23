@@ -15,3 +15,19 @@ const narrowedSequence: U32 = sequence;
 const numericSequence: U64 = 1;
 
 void [publicId, version, substitutedDevice, narrowedSequence, numericSequence];
+
+import type { NodeOperations } from "./node_operations";
+import type { JobId, ResourceGeneration, ProjectId, OptionalExitCode, Boolean as NodeBoolean } from "./node";
+declare const jobId: JobId;
+declare const generation: ResourceGeneration;
+declare const projectId: ProjectId;
+const cancelRequest: NodeOperations["jobs.cancel"]["request"] = {job_id: jobId, generation, request_id: "00000000-0000-4000-8000-000000000001" as import("./node").RequestId};
+void cancelRequest;
+// @ts-expect-error project identity cannot replace a resource generation
+const wrongGeneration: ResourceGeneration = projectId;
+void wrongGeneration;
+const noExitCode: OptionalExitCode = null;
+void noExitCode;
+// @ts-expect-error JSON integer cannot replace a boolean
+const wrongBoolean: NodeBoolean = 1;
+void wrongBoolean;

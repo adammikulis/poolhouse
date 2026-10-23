@@ -180,3 +180,133 @@ kind = "union"
 visibility = "private"
 tag = "platform"
 variants = [{tag = "linux", type = "LinuxProcessObservation"}, {tag = "windows", type = "WindowsProcessObservation"}, {tag = "macos", type = "MacProcessObservation"}]
+
+[[type]]
+name = "ResourceGeneration"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ProjectId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "JobDisplayName"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "node"
+min_bytes = 0
+max_bytes = 256
+
+[[type]]
+name = "OperationName"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "node"
+min_bytes = 1
+max_bytes = 128
+
+[[type]]
+name = "SafeMessage"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "node"
+min_bytes = 1
+max_bytes = 2048
+
+[[type]]
+name = "Boolean"
+kind = "scalar"
+visibility = "public"
+encoding = "bool"
+issuer = "data"
+
+[[type]]
+name = "ExitCode"
+kind = "scalar"
+visibility = "public"
+encoding = "i32"
+issuer = "node"
+
+[[type]]
+name = "UnixMicros"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "node"
+
+[[type]]
+name = "OptionalExitCode"
+kind = "optional"
+visibility = "public"
+item = "ExitCode"
+
+[[type]]
+name = "OptionalUnixMicros"
+kind = "optional"
+visibility = "public"
+item = "UnixMicros"
+
+[[type]]
+name = "Empty"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "JobState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "queued", type = "Empty"}, {tag = "preparing", type = "Empty"}, {tag = "launching", type = "Empty"}, {tag = "running", type = "Empty"}, {tag = "cancelling", type = "Empty"}, {tag = "interrupted", type = "Empty"}, {tag = "recovery_required", type = "Empty"}, {tag = "done", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "cancelled", type = "Empty"}]
+
+[[type]]
+name = "JobSnapshot"
+kind = "record"
+visibility = "public"
+fields = [{name = "job_id", type = "JobId"}, {name = "generation", type = "ResourceGeneration"}, {name = "revision", type = "U64"}, {name = "project_id", type = "ProjectId"}, {name = "name", type = "JobDisplayName"}, {name = "operation", type = "OperationName"}, {name = "state", type = "JobState"}, {name = "return_code", type = "OptionalExitCode"}, {name = "submitted_at", type = "UnixMicros"}, {name = "started_at", type = "OptionalUnixMicros"}, {name = "finished_at", type = "OptionalUnixMicros"}]
+
+[[type]]
+name = "JobCancellation"
+kind = "record"
+visibility = "public"
+fields = [{name = "requested", type = "Boolean"}, {name = "settled", type = "Boolean"}]
+
+[[type]]
+name = "JobView"
+kind = "record"
+visibility = "public"
+fields = [{name = "job", type = "JobSnapshot"}, {name = "cancellation", type = "JobCancellation"}]
+
+[[type]]
+name = "JobGetRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "job_id", type = "JobId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "JobCancelRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "job_id", type = "JobId"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}]
+
+[[type]]
+name = "JobErrorDetails"
+kind = "record"
+visibility = "public"
+fields = [{name = "message", type = "SafeMessage"}]
+
+[[type]]
+name = "JobError"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "invalid_request", type = "JobErrorDetails"}, {tag = "not_found", type = "JobErrorDetails"}, {tag = "forbidden", type = "JobErrorDetails"}, {tag = "stale_generation", type = "JobErrorDetails"}, {tag = "conflict", type = "JobErrorDetails"}, {tag = "recovery_required", type = "JobErrorDetails"}, {tag = "unavailable", type = "JobErrorDetails"}, {tag = "internal", type = "JobErrorDetails"}]

@@ -1,0 +1,25 @@
+version = 1
+status = "proposal"
+authorization = "node-checked-code"
+
+[[operation]]
+name = "jobs.get"
+symbol = "JobsGet"
+request = "JobGetRequest"
+response = "JobView"
+error = "JobError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "job-read-permission", "exact-resource-generation", "no-existence-disclosure-before-authorization"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "jobs.cancel"
+symbol = "JobsCancel"
+request = "JobCancelRequest"
+response = "JobView"
+error = "JobError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "job-owner-or-explicit-controller", "exact-resource-generation", "no-existence-disclosure-before-authorization"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-intent-versus-launch-and-completion"
+subscription = "none"

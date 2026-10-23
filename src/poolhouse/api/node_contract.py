@@ -13,6 +13,11 @@ def _valid(kind: str, value: str) -> bool:
         return re.fullmatch(r"[0-9a-f]{64}", value) is not None
     if kind == "uuid":
         return re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", value) is not None
+    if kind == "i32":
+        return (re.fullmatch(r"0|-?[1-9][0-9]*", value) is not None and len(value) <= 11
+                and -(2**31) <= int(value) <= 2**31 - 1)
+    if kind == "text":
+        return not any(ord(c) < 32 or 127 <= ord(c) <= 159 or 0xD800 <= ord(c) <= 0xDFFF for c in value)
     if kind in {"u32", "u64"}:
         return (re.fullmatch(r"0|[1-9][0-9]*", value) is not None and len(value) <= 20
                 and int(value) <= (2 ** (32 if kind == "u32" else 64) - 1))
@@ -23,9 +28,11 @@ def _valid(kind: str, value: str) -> bool:
 class _Scalar:
     value: str
     _encoding: ClassVar[str]
+    _bounds: ClassVar[tuple[int, int]] = (0, 65536)
 
     def __post_init__(self) -> None:
-        if not _valid(self._encoding, self.value):
+        if (not _valid(self._encoding, self.value)
+                or (self._encoding == "text" and not self._bounds[0] <= len(self.value.encode("utf-8")) <= self._bounds[1])):
             raise ValueError("invalid " + type(self).__name__)
 
     def __str__(self) -> str:
@@ -50,17 +57,68 @@ class _Record:
         return {field.name: _encode(getattr(self, field.name)) for field in fields(self)}
 
 
+@dataclass(frozen=True)
+class _Boolean:
+    value: bool
+
+    def __post_init__(self) -> None:
+        if type(self.value) is not bool:
+            raise ValueError("invalid boolean")
+
+
+@dataclass(frozen=True)
+class _Optional:
+    value: object
+    _item: ClassVar[str]
+
+    def __post_init__(self) -> None:
+        if self.value is not None and type(self.value) is not globals()[self._item]:
+            raise ValueError("invalid optional value")
+
+    @classmethod
+    def from_wire(cls, value: object) -> Self:
+        return cls(None if value is None else _decode(cls._item, value))
+
+    def to_wire(self) -> object:
+        return None if self.value is None else _encode(self.value)
+
+
+@dataclass(frozen=True)
+class _Union:
+    kind: str
+    value: object
+    _variants: ClassVar[dict[str, str]]
+
+    def __post_init__(self) -> None:
+        if type(self.kind) is not str or self.kind not in self._variants or type(self.value) is not globals()[self._variants[self.kind]]:
+            raise ValueError("invalid union variant")
+
+    @classmethod
+    def from_wire(cls, value: object) -> Self:
+        if (type(value) is not dict or set(value) != {"kind", "value"}
+                or type(value["kind"]) is not str or value["kind"] not in cls._variants):
+            raise ValueError("invalid union record")
+        return cls(value["kind"], _decode(cls._variants[value["kind"]], value["value"]))
+
+    def to_wire(self) -> dict[str, object]:
+        return {"kind": self.kind, "value": _encode(self.value)}
+
+
 def _decode(kind: str, value: object) -> Any:
     cls = globals()[kind]
-    return cls(value) if issubclass(cls, _Scalar) else cls.from_wire(value)
+    return cls(value) if issubclass(cls, (_Scalar, _Boolean)) else cls.from_wire(value)
 
 
-def _encode(value: _Scalar | _Record) -> object:
-    return value.value if isinstance(value, _Scalar) else value.to_wire()
+def _encode(value: Any) -> object:
+    return value.value if isinstance(value, (_Scalar, _Boolean)) else value.to_wire()
 
 
 CONTRACT_VERSION = 1
-SCHEMA_SHA256 = "23b12f45ae4be29aa7f93f0a7a592727b553d6b21c7ef6425ba1b9d5b97bdb4e"
+SCHEMA_SHA256 = "e887358b9319b84157e7b99ea7129db0a86daf6c0e61d5e6c80ef4f59bfe79e8"
+
+
+class Boolean(_Boolean):
+    pass
 
 
 class CertificateDigest(_Scalar):
@@ -75,20 +133,53 @@ class Ed25519PublicKey(_Scalar):
     _encoding = "hex32"
 
 
+@dataclass(frozen=True)
+class Empty(_Record):
+
+    _fields: ClassVar[dict[str, str]] = {}
+
+
+class ExitCode(_Scalar):
+    _encoding = "i32"
+
+
 class InstallationId(_Scalar):
     _encoding = "uuid"
+
+
+class JobDisplayName(_Scalar):
+    _encoding = "text"
+    _bounds = (0, 256)
 
 
 class JobId(_Scalar):
     _encoding = "uuid"
 
 
+class OperationName(_Scalar):
+    _encoding = "text"
+    _bounds = (1, 128)
+
+
 class PoolId(_Scalar):
     _encoding = "hex32"
 
 
+class ProjectId(_Scalar):
+    _encoding = "uuid"
+
+
 class RequestId(_Scalar):
     _encoding = "uuid"
+
+
+class ResourceGeneration(_Scalar):
+    _encoding = "uuid"
+
+
+class SafeMessage(_Scalar):
+    _encoding = "text"
+    _bounds = (1, 2048)
 
 
 class U32(_Scalar):
@@ -97,6 +188,51 @@ class U32(_Scalar):
 
 class U64(_Scalar):
     _encoding = "u64"
+
+
+class UnixMicros(_Scalar):
+    _encoding = "u64"
+
+
+@dataclass(frozen=True)
+class JobCancelRequest(_Record):
+    job_id: JobId
+    generation: ResourceGeneration
+    request_id: RequestId
+    _fields: ClassVar[dict[str, str]] = {'job_id': 'JobId', 'generation': 'ResourceGeneration', 'request_id': 'RequestId'}
+
+
+@dataclass(frozen=True)
+class JobCancellation(_Record):
+    requested: Boolean
+    settled: Boolean
+    _fields: ClassVar[dict[str, str]] = {'requested': 'Boolean', 'settled': 'Boolean'}
+
+
+@dataclass(frozen=True)
+class JobErrorDetails(_Record):
+    message: SafeMessage
+    _fields: ClassVar[dict[str, str]] = {'message': 'SafeMessage'}
+
+
+@dataclass(frozen=True)
+class JobGetRequest(_Record):
+    job_id: JobId
+    generation: ResourceGeneration
+    _fields: ClassVar[dict[str, str]] = {'job_id': 'JobId', 'generation': 'ResourceGeneration'}
+
+
+class JobState(_Union):
+    _variants: ClassVar[dict[str, str]] = {'queued': 'Empty',
+ 'preparing': 'Empty',
+ 'launching': 'Empty',
+ 'running': 'Empty',
+ 'cancelling': 'Empty',
+ 'interrupted': 'Empty',
+ 'recovery_required': 'Empty',
+ 'done': 'Empty',
+ 'failed': 'Empty',
+ 'cancelled': 'Empty'}
 
 
 @dataclass(frozen=True)
@@ -111,4 +247,56 @@ class NodeIdentity(_Record):
  'installation_id': 'InstallationId',
  'public_key': 'Ed25519PublicKey',
  'contract_version': 'U32'}
+
+
+class OptionalExitCode(_Optional):
+    _item = "ExitCode"
+
+
+class OptionalUnixMicros(_Optional):
+    _item = "UnixMicros"
+
+
+class JobError(_Union):
+    _variants: ClassVar[dict[str, str]] = {'invalid_request': 'JobErrorDetails',
+ 'not_found': 'JobErrorDetails',
+ 'forbidden': 'JobErrorDetails',
+ 'stale_generation': 'JobErrorDetails',
+ 'conflict': 'JobErrorDetails',
+ 'recovery_required': 'JobErrorDetails',
+ 'unavailable': 'JobErrorDetails',
+ 'internal': 'JobErrorDetails'}
+
+
+@dataclass(frozen=True)
+class JobSnapshot(_Record):
+    job_id: JobId
+    generation: ResourceGeneration
+    revision: U64
+    project_id: ProjectId
+    name: JobDisplayName
+    operation: OperationName
+    state: JobState
+    return_code: OptionalExitCode
+    submitted_at: UnixMicros
+    started_at: OptionalUnixMicros
+    finished_at: OptionalUnixMicros
+    _fields: ClassVar[dict[str, str]] = {'job_id': 'JobId',
+ 'generation': 'ResourceGeneration',
+ 'revision': 'U64',
+ 'project_id': 'ProjectId',
+ 'name': 'JobDisplayName',
+ 'operation': 'OperationName',
+ 'state': 'JobState',
+ 'return_code': 'OptionalExitCode',
+ 'submitted_at': 'UnixMicros',
+ 'started_at': 'OptionalUnixMicros',
+ 'finished_at': 'OptionalUnixMicros'}
+
+
+@dataclass(frozen=True)
+class JobView(_Record):
+    job: JobSnapshot
+    cancellation: JobCancellation
+    _fields: ClassVar[dict[str, str]] = {'job': 'JobSnapshot', 'cancellation': 'JobCancellation'}
 

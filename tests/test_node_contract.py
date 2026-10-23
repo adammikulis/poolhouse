@@ -130,3 +130,87 @@ def test_lifecycle_and_adapter_refusals(tmp_path, change):
         adapter.write_text(adapter.read_text().replace('"Io"', '"Self"'))
     with pytest.raises(ValueError):
         load(source)
+
+
+def job_snapshot():
+    return {"job_id": "00000000-0000-4000-8000-000000000001",
+            "generation": "00000000-0000-4000-8000-000000000002", "revision": "1",
+            "project_id": "00000000-0000-4000-8000-000000000003",
+            "name": "A run", "operation": "models.inspect",
+            "state": {"kind": "preparing", "value": {}}, "return_code": None,
+            "submitted_at": "1700000000000000", "started_at": None, "finished_at": None}
+
+
+def test_job_projection_and_operation_types_are_closed_data():
+    from poolhouse.api.node_operations import OPERATION_TYPES
+    value = job_snapshot()
+    assert public.JobSnapshot.from_wire(value).to_wire() == value
+    assert OPERATION_TYPES["jobs.cancel"] == (public.JobCancelRequest, public.JobView, public.JobError)
+    assert public.ResourceGeneration(value["generation"]) != public.ProjectId(value["generation"])
+    assert public.ExitCode("-2147483648").value == "-2147483648"
+    assert public.Boolean(True).value is True
+
+
+@pytest.mark.parametrize("change", ["missing_null", "process", "environment", "state", "state_extra", "control", "surrogate", "bytes", "exit_zero", "exit_plus", "exit_range"])
+def test_job_projection_refuses_ambiguous_or_sensitive_fields(change):
+    value = job_snapshot()
+    if change == "missing_null":
+        del value["started_at"]
+    elif change == "process":
+        value["pid"] = 42
+    elif change == "environment":
+        value["env"] = {"TOKEN": "should-not-be-public"}
+    elif change == "state":
+        value["state"] = {"kind": "unknown", "value": {}}
+    elif change == "state_extra":
+        value["state"]["value"] = {"authority": True}
+    elif change == "control":
+        value["name"] = "run\x00name"
+    elif change == "surrogate":
+        value["name"] = "\ud800"
+    elif change == "bytes":
+        value["name"] = "é" * 129
+    elif change == "exit_zero":
+        value["return_code"] = "-0"
+    elif change == "exit_plus":
+        value["return_code"] = "+1"
+    elif change == "exit_range":
+        value["return_code"] = "2147483648"
+    with pytest.raises(ValueError):
+        public.JobSnapshot.from_wire(value)
+
+
+@pytest.mark.parametrize("value", [0, 1, "true", None])
+def test_job_cancellation_boolean_is_strict(value):
+    with pytest.raises(ValueError):
+        public.JobCancellation.from_wire({"requested": value, "settled": False})
+
+
+@pytest.mark.parametrize("change", ["private", "duplicate", "durable", "authority", "unknown"])
+def test_operation_source_refuses_missing_types_and_unsafe_shapes(tmp_path, change):
+    source = tmp_path / "node"
+    shutil.copytree(ROOT / "contracts/node", source)
+    path = source / "operations.toml"
+    text = path.read_text()
+    if change == "private":
+        text = text.replace('response = "JobView"', 'response = "SessionLease"')
+    elif change == "duplicate":
+        text = text.replace('name = "jobs.cancel"', 'name = "jobs.get"')
+    elif change == "durable":
+        text = text.replace('retry = "read-current-state"', 'retry = "durable-principal-resource-generation-payload-bound"')
+    elif change == "authority":
+        text = text.replace('"authenticated-current-principal"', '"caller-claims-person"')
+    elif change == "unknown":
+        text += '\ntrust_payload = true\n'
+    path.write_text(text)
+    with pytest.raises(ValueError):
+        load(source)
+
+
+def test_source_refuses_nested_nullable_values(tmp_path):
+    source = tmp_path / "node"
+    shutil.copytree(ROOT / "contracts/node", source)
+    path = source / "types.toml"
+    path.write_text(path.read_text().replace('item = "ExitCode"', 'item = "OptionalUnixMicros"'))
+    with pytest.raises(ValueError, match="nonnullable"):
+        load(source)

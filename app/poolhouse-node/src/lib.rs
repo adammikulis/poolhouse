@@ -11,6 +11,7 @@ pub mod cert;
 pub mod claims;
 pub mod contract;
 pub mod contract_lifecycle;
+pub mod contract_operations;
 pub mod client;
 pub mod device;
 pub mod error;
