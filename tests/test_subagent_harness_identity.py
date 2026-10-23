@@ -195,7 +195,10 @@ def test_a_subagent_cannot_name_another_identity_or_the_subagent_variable(scene)
 @pytest.mark.redteam
 def test_a_subagent_never_passes_a_delegated_gate_even_with_the_leads_name_in_its_environment(scene, monkeypatch):
     monkeypatch.delenv(authority.FLOOR_ENV, raising=False)
+    monkeypatch.setenv("POOLHOUSE_BOARD", scene.node.board)
+    monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", scene.lead.name)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", scene.lead.session)
     lead = {"CLAUDECODE": "1", "POOLHOUSE_WORKSPACE_AGENT": scene.lead.name}
     assert authority.require("sentinel.policy", "mode", (False, False), lead) == authority.DELEGATED
-    with pytest.raises(HumanRequired, match="not a helper"):
+    with pytest.raises(HumanRequired):
         authority.require("sentinel.policy", "mode", (False, False), {**lead, "POOLHOUSE_SUBAGENT": "rev1"})

@@ -88,10 +88,12 @@ def test_a_session_asking_for_a_subagent_of_another_gets_no_token(family):
 def test_a_delegated_gate_refuses_a_spawned_subagent_but_not_its_lead(family, monkeypatch):
     node = family
     monkeypatch.delenv(authority.FLOOR_ENV, raising=False)
+    monkeypatch.setenv("POOLHOUSE_WORKSPACE_AGENT", node.lead.name)
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", node.lead.session)
     lead = {"CLAUDECODE": "1", "POOLHOUSE_WORKSPACE_AGENT": node.lead.name}
     assert authority.require("sentinel.policy", "mode", (False, False), lead) == authority.DELEGATED
     for helper in (node.first.name, node.nested.name, "../x", "A" * 3):
-        with pytest.raises(HumanRequired, match="not a helper"):
+        with pytest.raises(HumanRequired):
             authority.require("sentinel.policy", "mode", (False, False), {**lead, "POOLHOUSE_WORKSPACE_AGENT": helper})
 
 

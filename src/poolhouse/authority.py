@@ -4,18 +4,34 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from poolhouse import home, person
+from poolhouse.authority_caller import current as current_agent
 from poolhouse.files import read_json, write_json
 from poolhouse.person import HumanRequired, require_person
 
-__all__ = ["DELEGATED", "FLOOR_ENV", "GATES", "PERSON", "PRESETS", "Asking", "Scope", "audit_rows", "record",
-           "require", "resolve", "set_state", "show", "state_of"]
+__all__ = [
+    "DELEGATED",
+    "FLOOR_ENV",
+    "GATES",
+    "PERSON",
+    "PRESETS",
+    "Asking",
+    "Scope",
+    "audit_rows",
+    "current_agent",
+    "record",
+    "require",
+    "resolve",
+    "set_state",
+    "show",
+    "state_of",
+]
 
 DELEGATED = "delegated"
 PERSON = "person"
@@ -134,6 +150,7 @@ class Scope:
 
     project: str = ""
     preset: str = ""
+    cwd: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,40 +198,22 @@ def set_state(names: Iterable[str], new: str, *, by: str, scope: Scope | None = 
     return changes
 
 
-def _parents(name: str) -> list[str] | None:
-    """The parent records the node kept beside the tokens of session ``name``, one per board; None when they cannot be read
-    or ``name`` is not a session name."""
-    if not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,47}", name):
-        return None
-    try:
-        boards = (home.state("node") / "client").glob(f"*/{name}.token")
-        return [path.with_suffix(".parent").read_text("utf-8").strip() for path in boards]
-    except (OSError, ValueError):
-        return None
-
-
-def workspace_lead(name: str) -> bool:
-    """Whether the node's record names ``name`` as a main session: a token on at least one board and no parent on any."""
-    parents = _parents(name) if name else None
-    return bool(parents) and not any(parents)
-
-
 def require(gate: str, action: str, terminal: tuple[bool, bool] | None = None,
-            env: Mapping[str, str] | None = None, *, project: str = "") -> str:
-    """Pass a person at a terminal, or a lead agent when ``gate`` is delegated; returns who passed.
+            env: Mapping[str, str] | None = None, *, scope: Scope | None = None) -> str:
+    """Authenticate a delegated main agent; keep person authorization separate.
     Raises `HumanRequired` otherwise; each delegated pass is audited."""
-    if state_of(gate, project) == PERSON:
+    scope = scope or Scope()
+    if state_of(gate, scope.project) == PERSON:
         require_person(action, terminal, env)
         return PERSON
     found = os.environ if env is None else env
-    marker = next((m for m in DELEGATING if found.get(m)), "")
-    if not marker:
+    context = (*person.AGENT_MARKERS, AGENT_ENV, SUBAGENT_ENV, "POOLHOUSE_WORKSPACE_TOKEN", "POOLHOUSE_SESSION_ID")
+    if not any(os.environ.get(key) or found.get(key) for key in context):
         require_person(action, terminal, env)
         return PERSON
-    who = found.get(AGENT_ENV, "")
-    if found.get(SUBAGENT_ENV) or not workspace_lead(who):
-        raise HumanRequired(f"{action} is delegated to a lead agent the node has a session for, not a helper or an unnamed process")
-    _log({"event": "authority.use", "gate": gate, "action": action, "agent": who or marker,
-          "project": project})
+    caller = current_agent(cwd=scope.cwd)
+    if (found.get(SUBAGENT_ENV) or any(found.get(key) and found[key] != caller.name for key in (AGENT_ENV,))):
+        raise HumanRequired(f"{action}: supplied workspace identity conflicts with the authenticated caller")
+    _log({"event": "authority.use", "gate": gate, "action": action, "agent": caller.name,
+          "project": scope.project})
     return DELEGATED
-
