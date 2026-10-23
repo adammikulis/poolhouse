@@ -1,22 +1,25 @@
-"""The RBMK 2D room: fixed stills of the 3D room, the projected instrument rects, and the live overlay page."""
+"""The RBMK room's low-power 2D view: fixed stills of the 3D room, the projected instrument rects, and the live overlay."""
+
 import json
 import re
 
 import pytest
-from test_rbmk_control_room import FEED, SPEC, VIEWER, run_check, source_hash
+from test_rbmk_app import start_run
+from test_rbmk_room import ROOM, SPEC, run_check, source_hash
 
-STILLS = VIEWER / 'stills'
+from examples.rbmk.room import shoot
+
+STILLS = ROOM / 'stills'
 DOC = json.loads((STILLS / 'views.json').read_text())
 VIEWS = DOC['views']
-PAGE = '/examples/rbmk_control_room/viewer/room2d.html'
-READY = "window.__room2d && window.__room2d.ready && window.__room2d.feed.status !== 'loading'"
+SETTLED = '!window.RB.state.dirty && !window.__room2d.loop.running'
 
 MASK_CHECK = """async ([views, maskIds, shift]) => {
   const out = {};
   for (const [name, v] of Object.entries(views)) {
     if (name === 'plan') continue;
     const img = new Image();
-    img.src = `./stills/masks/${name}.png`;
+    img.src = `/room/stills/masks/${name}.png`;
     await img.decode();
     const c = document.createElement('canvas');
     c.width = img.width; c.height = img.height;
@@ -46,14 +49,15 @@ MASK_CHECK = """async ([views, maskIds, shift]) => {
 }"""
 
 
-def open2d(pw, origin, feed='./feed/replay.json', view='front', size=(1280, 800)):
-    browser = pw.chromium.launch(headless=True)
-    page = browser.new_context(viewport={'width': size[0], 'height': size[1]}).new_page()
-    errors = []
-    page.on('console', lambda m: errors.append(m.text) if m.type == 'error' and 'Failed to load resource' not in m.text else None)
-    page.on('pageerror', lambda e: errors.append(str(e)))
-    page.goto(f'{origin}{PAGE}?feed={feed}#{view}')
-    page.wait_for_function(READY, timeout=30000)
+def open2d(pw, origin, run=False, view='front', size=(1280, 800)):
+    """The app opened in a Chromium of its own, then switched to a 2D view; returns (browser, page, errors)."""
+    browser, page, errors = shoot.open_page(pw, origin, None, size[0], size[1])
+    if run:
+        start_run(page)
+        page.evaluate('window.RB.closeDrawer()')
+    page.evaluate('(v) => window.__room.setMode("2d", v)', view)
+    page.wait_for_function(f"window.__room.ready && window.__room2d.shown === '{view}'", timeout=30000)
+    page.wait_for_function(SETTLED, timeout=10000)
     return browser, page, errors
 
 
@@ -76,7 +80,7 @@ def test_every_feed_instrument_has_a_rect_in_the_front_view():
 
 
 def test_the_rod_panel_shows_every_rod():
-    from examples.rbmk_operator.rods import Rods
+    from examples.rbmk.plant.rods import Rods
 
     rods = {r.id for r in Rods().rods}
     assert set(VIEWS['rodpanel']['rods']) == rods
@@ -96,28 +100,27 @@ def test_the_panels_cover_the_bookmarks_and_each_has_a_view():
 
 
 def read(name):
-    return (VIEWER / name).read_text()
+    return (ROOM / name).read_text()
 
 
-def test_both_viewers_read_the_one_definition():
-    for page in ('main.js', 'room2d.js'):
-        assert re.search(r"import \{[^}]*loadSpec[^}]*\} from './header.js'", read(page)), page
-        assert 'instruments.json' not in read(page)
-    for module in ('main.js', 'room2d.js'):
-        for shared in ("'./feed.js'", "'./cards.js'"):
-            assert shared in read(module), (module, shared)
+def test_both_views_share_one_definition_and_the_2d_view_needs_no_webgl():
+    for page in ('main.js', 'room2d.js', 'room3d.js'):
+        assert 'instruments.json' not in read(page) or page == 'main.js', page
+    for module in ('room3d.js', 'room2d.js'):
+        assert "'./cards.js'" in read(module), module
     assert "'./faces.js'" in read('paint.js') and "'./faces.js'" in read('paint2d.js')
     assert "'./rods.js'" in read('drive.js') and "'./rods.js'" in read('paint2d.js')
     assert "'./screens.js'" in read('drive.js') and "'./screens.js'" in read('paint2d.js')
-    assert "'three'" not in ''.join(read(f) for f in ('room2d.js', 'overlay.js', 'paint2d.js', 'faces.js', 'state.js', 'loop.js'))
+    assert "'three'" not in ''.join(read(f) for f in ('main.js', 'room2d.js', 'overlay.js', 'paint2d.js', 'faces.js', 'state.js', 'loop.js', 'feed.js'))
+    assert re.search(r"import\('\./room3d\.js'\)", read('main.js')), 'the 3D room is loaded only when it is shown'
 
 
-def test_the_operator_page_links_to_the_room_and_serves_only_the_room(tmp_path):
+def test_the_stills_and_their_masks_are_served_with_their_types(tmp_path):
     import http.client
     import threading
 
-    from examples.rbmk_operator.web import server
-    from examples.rbmk_operator.web.hub import Hub
+    from examples.rbmk.web import server
+    from examples.rbmk.web.hub import Hub
 
     srv = server.serve(Hub(tmp_path), 0)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -126,32 +129,23 @@ def test_the_operator_page_links_to_the_room_and_serves_only_the_room(tmp_path):
         conn = http.client.HTTPConnection('127.0.0.1', srv.server_address[1], timeout=30)
         conn.request('GET', path)
         res = conn.getresponse()
-        body = res.read()
+        res.read()
         conn.close()
-        return res.status, res.getheader('Content-Type', ''), body
+        return res.status, res.getheader('Content-Type', '')
 
     try:
-        status, _, page = get('/')
-        assert status == 200 and b'/room/examples/rbmk_control_room/viewer/room2d.html' in page
-        room = '/room/examples/rbmk_control_room/'
-        assert get(f'{room}viewer/room2d.html')[0] == 200
-        assert get(f'{room}viewer/stills/front.webp')[1] == 'image/webp'
-        assert get(f'{room}viewer/room.glb.gz')[1] == 'application/gzip'
-        assert get(f'{room}instruments.json')[0] == 200
-        assert get('/room/src/poolhouse/ui/assets/three.module.js')[0] == 200
-        for path in ('/room/../../../etc/passwd', '/room/pyproject.toml', '/room/examples/rbmk_operator/web/server.py',
-                     '/room/examples/rbmk_control_room/../rbmk_operator/web/server.py', '/room/src/poolhouse/serve/gpu.py'):
-            assert get(path)[0] == 404, path
+        assert get('/room/stills/front.webp') == (200, 'image/webp')
+        assert get('/room/stills/masks/front.png') == (200, 'image/png')
+        assert get('/room/stills/views.json') == (200, 'application/json')
+        assert get('/room/stills/../../web/server.py')[0] == 404
     finally:
         srv.shutdown()
         srv.server_close()
 
 
 @pytest.mark.slow
-def test_projected_rects_match_the_render(playwright):
-    import shoot
-
-    with shoot.serving() as origin:
+def test_projected_rects_match_the_render(playwright, tmp_path):
+    with shoot.serving(tmp_path) as origin:
         browser, page, _ = open2d(playwright, origin)
         try:
             args = [VIEWS, DOC['mask_ids']]
@@ -166,28 +160,29 @@ def test_projected_rects_match_the_render(playwright):
 
 
 @pytest.mark.slow
-def test_page_shows_the_feed_in_three_modes_and_opens_cards(playwright):
-    import shoot
-
-    with shoot.serving() as origin:
-        browser, page, errors = open2d(playwright, origin)
+def test_the_2d_view_shows_the_apps_run_in_three_modes_and_opens_cards(playwright, tmp_path):
+    with shoot.serving(tmp_path) as origin:
+        browser, page, errors = open2d(playwright, origin, True)
         try:
-            page.wait_for_function("document.getElementById('badge').textContent === 'REPLAY'", timeout=30000)
-            assert FEED['meta']['model'] in page.inner_text('#model')
-            row = next(i for i, r in enumerate(run_check()['rows']) if any(r['lit'].values()))
-            page.evaluate('(r) => { const a = window.__room2d; a.feed.playing = false; a.feed.setIndex(r); }', row)
-            page.wait_for_function('!window.__room2d.loop.running', timeout=10000)
+            assert page.inner_text('#modestate') == 'LIVE run finished'
+            doc = page.evaluate('() => ({ trace: window.RB.state.main.trace, decisions: window.RB.state.main.decisions.filter(Boolean) })')
+            feed = tmp_path / 'feed.json'
+            feed.write_text(json.dumps(doc))
+            checked = run_check(feed)['rows']
+            row = next(i for i, r in enumerate(checked) if any(r['lit'].values()))
+            page.evaluate('(r) => { window.__room.feed.playing = false; window.__room.feed.setIndex(r); }', row)
+            page.wait_for_function(SETTLED, timeout=10000)
             got = page.evaluate("""() => { const a = window.__room2d; return {
                 fuel: a.state.nodes.get('D_FUELT').value,
                 needle: a.overlay.elements.find((e) => e.id === 'D_FUELT').cur,
                 lit: a.overlay.elements.filter((e) => (e.kind === 'ann' || e.kind === 'lamp') && e.lit).map((e) => e.id).sort(),
                 rods: a.state.rods.filter((r) => r.value !== undefined).length } }""")
-            want = FEED['trace'][row]
+            want = doc['trace'][row]
             assert got['fuel'] == pytest.approx(want['Tf'])
             assert got['needle'] == pytest.approx((want['Tf'] - 200) / 1400)
-            assert got['lit'] == sorted(k for k, v in run_check()['rows'][row]['lit'].items() if v)
+            assert got['lit'] == sorted(k for k, v in checked[row]['lit'].items() if v)
             assert got['rods'] == 211
-            page.click("#views button[data-view='dials']")
+            page.click("#views2d button[data-view='dials']")
             page.wait_for_function("window.__room2d.shown === 'dials'")
             box = page.evaluate("""() => { const a = window.__room2d; const q = a.overlay.elements.find((e) => e.id === 'D_FUELT').q;
                 const r = document.getElementById('overlay').getBoundingClientRect(); const v = a.viewData;
@@ -195,7 +190,7 @@ def test_page_shows_the_feed_in_three_modes_and_opens_cards(playwright):
             page.mouse.click(*box)
             assert page.inner_text('#card-title') == 'FUEL TEMP'
             assert 'C' in page.inner_text('#card-now')
-            page.click("#views button[data-view='plan']")
+            page.click("#views2d button[data-view='plan']")
             page.wait_for_function("window.__room2d.shown === 'plan'")
             rect = page.evaluate("""() => { const a = window.__room2d; const m = a.overlay.elements.find((e) => e.panel === 'decision');
                 const r = document.getElementById('overlay').getBoundingClientRect(); const v = a.viewData;
@@ -209,14 +204,29 @@ def test_page_shows_the_feed_in_three_modes_and_opens_cards(playwright):
 
 
 @pytest.mark.slow
-def test_page_without_a_feed_says_so_and_shows_nothing(playwright):
-    import shoot
-
-    with shoot.serving() as origin:
-        browser, page, errors = open2d(playwright, origin, './feed/missing.json')
+def test_a_decision_picked_in_the_log_moves_the_2d_view_too(playwright, tmp_path):
+    with shoot.serving(tmp_path) as origin:
+        browser, page, errors = open2d(playwright, origin, True, 'dials')
         try:
-            page.wait_for_function("document.getElementById('badge').textContent === 'NO FEED'", timeout=30000)
-            assert 'NO FEED' in page.inner_text('#banner')
+            page.click('[data-drawer=log]')
+            rows = page.query_selector_all('#log .drow.decision')
+            rows[3].click()
+            page.wait_for_function(
+                """() => { const a = window.__room2d, f = window.__room.feed;
+                    return Math.abs(a.state.nodes.get('D_FUELT').value - window.RB.state.main.trace[f.index].Tf) < 1e-9 && !a.loop.running; }""",
+                timeout=15000)
+            assert page.evaluate('window.__room.feed.decision.i') == page.evaluate('window.RB.state.selected')
+        finally:
+            browser.close()
+        assert not errors
+
+
+@pytest.mark.slow
+def test_the_2d_view_without_a_run_says_so_and_shows_nothing(playwright, tmp_path):
+    with shoot.serving(tmp_path) as origin:
+        browser, page, errors = open2d(playwright, origin)
+        try:
+            assert 'NO RUN' in page.inner_text('#banner')
             got = page.evaluate("""() => { const a = window.__room2d;
                 return [a.state.nodes.get('D_FUELT').value, a.state.rods.filter((r) => r.value !== undefined).length,
                   a.overlay.elements.filter((e) => (e.kind === 'ann' || e.kind === 'lamp' || e.kind === 'button') && e.lit).length,
@@ -228,30 +238,52 @@ def test_page_without_a_feed_says_so_and_shows_nothing(playwright):
 
 
 @pytest.mark.slow
-def test_page_redraws_only_what_changed_and_stops_when_idle_or_hidden(playwright):
-    import shoot
-
-    with shoot.serving() as origin:
-        browser, page, _ = open2d(playwright, origin)
+def test_a_page_opened_on_a_2d_view_never_loads_the_3d_room_and_can_switch_to_it(playwright, tmp_path):
+    with shoot.serving(tmp_path) as origin:
+        browser = playwright.chromium.launch(headless=True, args=shoot.GL_ARGS)
+        page = browser.new_page(viewport={'width': 1280, 'height': 800})
+        errors = []
+        page.on('pageerror', lambda e: errors.append(str(e)))
         try:
-            page.evaluate('() => { window.__room2d.feed.playing = false; window.__room2d.feed.setIndex(10); }')
-            page.wait_for_function('!window.__room2d.loop.running', timeout=10000)
+            page.goto(f'{origin}/#rodpanel')
+            page.wait_for_function("window.__room && window.__room.ready && window.__room2d.shown === 'rodpanel'", timeout=30000)
+            loaded = page.evaluate("performance.getEntriesByType('resource').map((r) => r.name)")
+            assert not [n for n in loaded if n.endswith(('room.glb.gz', 'three.module.js', 'room3d.js'))], loaded
+            assert page.evaluate("window.__room.mode") == '2d' and page.is_hidden('#view')
+            page.click('#view3d')
+            page.wait_for_function("window.__room.mode === '3d' && window.__room.ready && window.__room.state.ready", timeout=60000)
+            assert page.is_visible('#view') and page.is_hidden('#scroller')
+            page.click('#view2d')
+            page.wait_for_function("window.__room.mode === '2d' && window.__room.ready", timeout=30000)
+        finally:
+            browser.close()
+        assert not errors
+
+
+@pytest.mark.slow
+def test_the_2d_view_redraws_only_what_changed_and_stops_when_idle_or_hidden(playwright, tmp_path):
+    with shoot.serving(tmp_path) as origin:
+        browser, page, _ = open2d(playwright, origin, True)
+        try:
+            page.evaluate('() => { window.__room.feed.playing = false; window.__room.feed.setIndex(10); }')
+            page.wait_for_function(SETTLED, timeout=10000)
+
             def draws():
                 return page.evaluate('window.__room2d.drawStats.draws')
 
             settled = draws()
             page.wait_for_timeout(600)
-            assert draws() == settled, 'an idle page must not redraw'
+            assert draws() == settled, 'an idle view must not redraw'
             before = page.evaluate('window.__room2d.drawStats.elements')
-            page.evaluate('() => window.__room2d.feed.setIndex(11)')
+            page.evaluate('() => window.__room.feed.setIndex(11)')
             page.wait_for_function(f'window.__room2d.drawStats.draws > {settled}')
-            page.wait_for_function('!window.__room2d.loop.running', timeout=10000)
+            page.wait_for_function(SETTLED, timeout=10000)
             redrawn = page.evaluate('window.__room2d.drawStats.elements') - before
             assert 0 < redrawn < 0.5 * page.evaluate('window.__room2d.overlay.elements.length')
             page.evaluate("""() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
                 document.dispatchEvent(new Event('visibilitychange')); }""")
             settled = draws()
-            page.evaluate('() => window.__room2d.feed.setIndex(40)')
+            page.evaluate('() => window.__room.feed.setIndex(40)')
             page.wait_for_timeout(500)
             assert draws() == settled and not page.evaluate('window.__room2d.loop.running'), 'a hidden page must not draw'
             page.evaluate("""() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });

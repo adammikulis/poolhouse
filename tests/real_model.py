@@ -265,10 +265,14 @@ class Real:
         from poolhouse.decide.pins import STRANDS_V19
         from poolhouse.serve import gpu
 
+        cache = self.roots[-1]
+        if cache.is_dir():
+            self.monkeypatch.setenv("HF_HUB_CACHE", str(cache))
         why = router.unavailable("pointer", router.Config(backend="pointer"))
         stop(f"REAL MODEL MISSING: the Strands decider {STRANDS_V19.name} cannot run here ({why}). A test of a model never runs on a "
              "stand-in and never skips; fetch it once: poolhouse-decide fetch" if why else "")
         self.idle()
+        self.request.getfixturevalue("serve_leases")
         with gpu.hold("test of the Strands decider", wait_s=BUSY_WAIT_S):
             yield STRANDS_V19.name
 

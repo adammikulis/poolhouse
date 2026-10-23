@@ -79,7 +79,7 @@ path = "src/poolhouse/ui/assets/*"
 reason = "vendored three.js, DOMPurify and their relatives"
 
 [[exclude]]
-path = "examples/rbmk_control_room/viewer/vendor/*"
+path = "examples/rbmk/room/vendor/*"
 reason = "vendored three.js loaders and utilities, kept as their authors wrote them"
 
 [[exclude]]
@@ -202,8 +202,8 @@ reason = "the guard reads other programs' arguments: a Kubernetes cluster name a
 path = ["src/poolhouse/fleet/web/components/gym-scene.html", "src/poolhouse/fleet/web/components/gym-drone-geometry.html",
         "tests/test_gym_scene_browser.py", "tests/test_gym_drone.py", "src/poolhouse/gym/drone_sensors.py",
         "docs/studio-gym.md", "src/poolhouse/data/tidy-gold.json", "src/poolhouse/world/names.py",
-        "examples/rbmk_control_room/generator/roomkit.py", "examples/rbmk_control_room/viewer/drive.js",
-        "examples/rbmk_control_room/viewer/main.js"]
+        "examples/rbmk/generator/roomkit.py", "examples/rbmk/room/drive.js",
+        "examples/rbmk/room/room3d.js"]
 words = ["mesh"]
 reason = "a 3D mesh (three.js Mesh, MeshStandardMaterial, Blender's bpy.data.meshes) in the drone simulator, the control-room generator and viewer and their pages; graphics, not a network"
 

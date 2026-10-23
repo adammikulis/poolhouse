@@ -150,13 +150,17 @@ The owner requested a usage-conscious wrap: land useful reviewed work, tidy chec
 - A pool-wide ask cannot name device `*` (an approval writes the asking node's own device), so no grant of a pool is portable to another device; a session that works on two devices is approved on each. Opening `*` is a product decision for the approval card.
 - `tests/test_board_grants.py::test_hostile_arguments_to_the_person_commands_are_refused_before_anything_is_written` fails on 0.3dev before this branch (a quota of 16 live main sessions on the `grant` argv with a newline).
 
-## 3D and 2D control room (examples/rbmk_control_room): what remains
-- The frame rate on a phone is untested for both pages; only a desktop headless browser (and a 390 px viewport) has driven them.
-- The 2D views were measured by process CPU time, not GPU busy time (`docs/notes/2026-10-22-rbmk-room-2d-cost.md`); no GPU timer query was available in headless Chromium.
-- The 2D page has no free zoom or pan inside a still beyond the per-panel close-ups; on a phone the front wall scrolls sideways at a fixed width.
-- 18 tests in `tests/test_rbmk_web.py` (the recording fixture and every shipped recording) fail on 0.3dev before the 2D room branch: replaying a recording raises "8 trace rows but 5 sets of extra readings" (`examples/rbmk_operator/web/runner.py`, `merged`).
-- No model-driven run is recorded for the 1986 scenario; `viewer/feed/replay-1986-crew.json` is the scripted crew replay, not a model's decisions.
-- The rod cells are not coloured by rod kind: the feed's `meta.rods` carries each rod's kind, but the cells are coloured by insertion only.
+## RBMK control room (examples/rbmk): what remains
+- The frame rate on a phone is untested for the 3D room and the 2D view; a headless browser (desktop and a 390 px viewport) has driven the app.
+- The 2D view was measured by process CPU time, not GPU busy time (`docs/notes/2026-10-22-rbmk-room-2d-cost.md`); no GPU timer query was available in headless Chromium.
+- The 2D view has no free zoom or pan inside a still beyond the per-panel close-ups; on a phone the front wall scrolls sideways at a fixed width.
+- No model-driven run of the 1986 scenario exists; the crew run is the scripted crew, not a model's decisions.
+- The rod cells are not coloured by rod kind: the run's `rods` carries each rod's kind, but the cells are coloured by insertion only.
+- The wall dials read the plant's true values; the Readings drawer shows the console as the decider was given it. Wiring the sensor readings into the dials is not done.
+- The core cross-section (channel power tint, void bubbles, moved-rod rings) is a drawer; the wall carries only the rod position map. Stuck and slow rod drives are not drawn: the run's trace carries no per-rod fault.
+- The Run console is a drawer in the dock, not an object on the desk in the 3D room; a desk console needs a node in the generator and a rebuild of the room and the stills.
+- The Decider and Memory selects list `DECIDERS` and `MEMORIES` of `examples/rbmk/decider/model.py`: the Strands 2B decider, and memory `none` and `history`. The 12B Gemma decider and the state memory variant are not integrated.
+- The Poisoned starts drawer lists the poisoned-start recordings of the local run store; starting a batch is `python -m examples.rbmk.run batch`, not a button.
 
 ## Silent failures left (audit of 2026-10-16)
 - `scripts/test` prints the "fixed overhead" warning (`scripts/testphases.py`) and records it nowhere; a test run that starts a node pays about 20 s of bring-up each time, so the warning is on most runs. A fix needs the node kit to start faster or the warning to feed a ratchet metric.
