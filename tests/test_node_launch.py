@@ -281,6 +281,28 @@ def test_swap_to_a_new_binary_keeps_the_board_and_the_socket(home, built):
     assert node_launch.swap(state)["action"] == "current"
 
 
+
+def test_swap_accepts_a_supervisor_replacement_between_initial_observations(home, built, monkeypatch):
+    install_runtime(built, "a")
+    state = home / "node"
+    old = node_launch.ensure_node(state)
+    newer = home / "node-v2"
+    shutil.copyfile(built, newer)
+    with newer.open("ab") as stream:
+        stream.write(b"\0" * 16)
+    newer.chmod(0o700)
+    selected = install_runtime(newer, "b")
+    now = waited("the supervisor replacement", lambda: selected_node(state, selected))
+    assert now["pid"] != old["pid"]
+    healthy = node_launch.node_health
+    observations = iter([old])
+    monkeypatch.setattr(node_launch, "node_health", lambda scope: next(observations, None) or healthy(scope))
+    monkeypatch.setattr(node_launch, "_rollback_pointer", lambda *_args: pytest.fail("rolled back a healthy selected node"))
+    done = node_launch.swap(state, wait_s=0.2, boundary_wait_s=5)
+    assert done["action"] in {"current", "swapped"}, done
+    assert selected_node(state, selected)["pid"] == now["pid"]
+
+
 def test_swap_to_an_unhealthy_binary_rolls_back_to_the_old_one(home, built):
     first = install_runtime(built, "a")
     state = home / "node"
@@ -404,3 +426,10 @@ def test_actual_binary_checksum_is_bound_by_its_owned_exec_wrapper(home, built):
     with pytest.raises(node_launch.NodeUnavailable):
         node_launch.smoke(prefix, wait_s=2)
     assert node_health(home / "node") is None and processes(home / "node") == []
+
+
+@pytest.mark.parametrize("sha,pid", [("wrong-target", 17), ("selected-target", 18)])
+def test_swap_completion_refuses_a_wrong_digest_or_mismatched_process(home, monkeypatch, sha, pid):
+    monkeypatch.setattr(node_launch, "node_health", lambda _state: {"pid": 17})
+    monkeypatch.setattr(node_supervise, "running", lambda _state: {"pid": pid, "sha256": sha})
+    assert node_launch._answers_as(home / "node", "selected-target") is None

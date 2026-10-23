@@ -185,10 +185,10 @@ def status(state: Path | None = None) -> dict:
             "pinned": bool(node_supervise.pointer(state))}
 
 
-def _answers_as(state: Path, sha: str, not_pid: int) -> dict | None:
+def _answers_as(state: Path, sha: str) -> dict | None:
     said = node_health(state)
     run = node_supervise.running(state)
-    return said if said and run.get("sha256") == sha and said.get("pid") == run.get("pid") != not_pid else None
+    return said if said and run.get("sha256") == sha and said.get("pid") == run.get("pid") else None
 
 
 def swap(state: Path | None = None, *, wait_s: float = SWAP_WAIT_S, allow_unmerged_commit: str | runtime_unmerged.Approval = "",
@@ -232,7 +232,7 @@ def swap(state: Path | None = None, *, wait_s: float = SWAP_WAIT_S, allow_unmerg
                 try:
                     stop_node(state)
                     _start_supervisor(state, [])
-                    came = _until(time.monotonic() + wait_s, lambda: _answers_as(state, new_sha, int(run.get("pid", -1))))
+                    came = _until(time.monotonic() + wait_s, lambda: _answers_as(state, new_sha))
                 except (OSError, subprocess.SubprocessError):
                     came = None
                 if came is not None:
@@ -242,12 +242,12 @@ def swap(state: Path | None = None, *, wait_s: float = SWAP_WAIT_S, allow_unmerg
         return {"action": "deferred", "detail": "node replacement waits for the runtime cutover"}
     except (OSError, ValueError, RuntimeError) as exc:
         return {"action": "failed", "detail": f"node replacement is refused: {exc}"}
-    came = _until(time.monotonic() + wait_s, lambda: _answers_as(state, new_sha, int(run.get("pid", -1))))
+    came = _until(time.monotonic() + wait_s, lambda: _answers_as(state, new_sha))
     if came is not None:
         return {"action": "swapped", "detail": f"node {came['pid']} runs {new_sha[:12]}"}
     try:
         with runtime_git.crossing(Path(source), wait_s=boundary_wait_s, note="node rollback"):
-            if current := _answers_as(state, new_sha, int(run.get("pid", -1))):
+            if current := _answers_as(state, new_sha):
                 return {"action": "swapped", "detail": f"node {current['pid']} runs {new_sha[:12]}"}
             rollback = _rollback_pointer(state, pin, new_sha)
     except Busy:
@@ -272,7 +272,7 @@ def _rollback_pointer(state: Path, pin: dict, new_sha: str) -> tuple[Path, str] 
 
 def _rollback_answer(state: Path, rollback: tuple[Path, str], new_sha: str, wait_s: float) -> dict:
     _, sha = rollback
-    back = _until(time.monotonic() + wait_s, lambda: _answers_as(state, sha, -1))
+    back = _until(time.monotonic() + wait_s, lambda: _answers_as(state, sha))
     return {"action": "failed", "detail": f"the new node ({new_sha[:12]}) did not answer; "
             + (f"node {back['pid']} runs the previous binary again" if back else "the previous binary did not answer either")}
 
