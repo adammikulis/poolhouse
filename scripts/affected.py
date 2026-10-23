@@ -400,7 +400,7 @@ def add_tree_wide(out: Selection, root: Path, changed: list[str], deleted: froze
     scanned = [c for c in changed if c.startswith(ENV_READS)]
     if scanned and ENV_TEST in tests:
         out.add(ENV_TEST, f"{scanned[0]} is scanned for POOLHOUSE_ variables")
-    if out.files and not all(c.endswith(".md") for c in changed):    # prose cannot change a package's layers, wiring or imports
+    if out.files and not all(c.endswith(".md") or c in rules.GENERATED for c in changed):    # prose and generated pages: no layer or import
         for guard in GUARDS:
             if f"tests/{guard}" in tests:
                 out.add(f"tests/{guard}", "tree-wide guard")

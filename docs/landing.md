@@ -30,12 +30,17 @@ the development branch `scripts/hooks/pushed` runs these checks on the commits t
 
 **The tests a push can break.** `scripts/hooks/affected_push.py` (called by `pushed` for the development branch, after the parse
 and data-file checks and before any watcher starts) selects test files with `scripts/affected.py`, the selection
-`scripts/test quick` makes, from every path the push changes (the net difference from the remote's old tip, or the commits on
-no remote-tracking ref): the test files that import or name the path, directly or through one module; the glossary scan for any
+`scripts/test quick` makes, from every path the push changes (the difference between the trees of the remote's old tip and the pushed
+commit, so a merge of `origin/<dev>` adds nothing; for a branch the remote does not have yet, the commits on no remote-tracking ref):
+the test files that import or name the path, directly or through one module; the glossary scan for any
 file it reads; the switch-table scan (`tests/test_documented_env_vars.py`) for a path it scans; and the tree-wide guards once any
-test runs, unless every changed path is prose (`.md`); the guards also run for a push that adds, deletes or renames a Python or Rust
+test runs, unless every changed path is prose (`.md`) or a generated page; the guards also run for a push that adds, deletes or renames a Python or Rust
 source, whatever else it selects. A source that defines command-line arguments (`add_argument(`) selects the tests that read
-`docs/commands.md` (`tests/test_cli_help.py`, `tests/test_cli_reference.py`). A deleted module selects the tests that import it. A
+`docs/commands.md` (`tests/test_cli_help.py`, `tests/test_cli_reference.py`). A changed generated page (`docs/commands.md`,
+`docs/redteam/coverage.json`) is prose: it selects the tests that name it and those that name its generator, never the tests that
+only reach the generator through helpers or a bare word. A remote tip the pushed commit does not contain (the remote took commits
+since the last merge) is refused at once, before any test runs, because the remote would turn the push away: fetch, merge
+`origin/<dev>` and push again. A deleted module selects the tests that import it. A
 path no rule can place (`pyproject.toml`, `budgets.json`, `tests/conftest.py`) runs only the tree-wide guards and is named in a
 warning; `scripts/test gate` and CI cover it.
 A test file that only a bare word in a string or a directory listing reaches (`Selection.loose`) is counted in a warning and left to
@@ -49,7 +54,7 @@ file is named in a warning and the gate and CI run it. The tests run on the chec
 A failing test is run again on a checkout of the commit the push is measured from (the remote's old tip, in a temporary worktree
 that is removed afterwards): one that fails there too was red before the push, is named in a warning and is not held against it.
 A test that passes there, and a test the push adds, refuses the push: stderr lists each `FAILED path::test` line and
-`run it again with: scripts/test all FILES --redteam` for the failing files. Where the old tip is not known to the repository, or cannot be
+`run it again with: scripts/test all FILES --redteam` for the failing files. Where the push makes a branch the remote lacks (no old tip), or the old tip cannot be
 checked out, every failure is held against the push. Nothing passes because the check could not run: a selection that raises, a push of a commit that is not
 `HEAD`, a missing `scripts/test`, and a run that ends with a nonzero status and names no failing test each refuse the push with
 the cause and the command for the same selection. The parses of the sources `affected.py` reads are kept between runs in
