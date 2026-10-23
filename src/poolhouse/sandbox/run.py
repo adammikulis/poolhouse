@@ -26,6 +26,7 @@ if os.name == "posix":
 else:
     resource = None
 
+from poolhouse import procscan
 from poolhouse.platform import start_process
 from poolhouse.sandbox.backend import (
     SILENT_REFUSAL_LOG,
@@ -39,7 +40,7 @@ from poolhouse.sandbox.io import CHUNK, IO, Control
 from poolhouse.sandbox.policy import AllowUnsandboxed, Limits, Policy, PolicyError
 from poolhouse.sandbox.seatbelt import Seatbelt
 
-__all__ = ["Events", "Result", "SandboxViolation", "backend", "run", "wrapped"]
+__all__ = ["Events", "Result", "SandboxViolation", "backend", "fair_share", "run", "wrapped"]
 
 logger = logging.getLogger("poolhouse.sandbox")
 
@@ -122,15 +123,59 @@ def wrapped(argv: Sequence[str], policy: Policy, *, via: Backend | None = None,
     return list(argv), "", None
 
 
+def _tasks_of_user() -> int:
+    """What the kernel counts against the user's process limit: the user's processes, and on Linux every thread of each (macOS counts
+    only processes)."""
+    threads = sys.platform.startswith("linux")
+    count = 0
+    for _proc, info in procscan.readable(["uids", "num_threads"] if threads else ["uids"]):
+        if info["uids"] is not None and info["uids"].real == os.getuid():
+            count += (info.get("num_threads") or 1) if threads else 1
+    return count
+
+
+_LIVE = [0]
+_LIVE_LOCK = threading.Lock()
+
+
+def fair_share() -> int | None:
+    """How many more processes a run may start: the room the system leaves the user (its per-user process limit, or on Linux the highest
+    pid when the limit is none, less what the user has now) divided by the runs of this process alive now plus one for the person
+    (docs/design-isolated-launcher.md, "Numbers and their sources"). None where the platform has no such limit."""
+    if resource is None:
+        return None
+    top = resource.getrlimit(resource.RLIMIT_NPROC)[1]
+    if top == resource.RLIM_INFINITY:
+        try:
+            top = int(Path("/proc/sys/kernel/pid_max").read_text())
+        except (OSError, ValueError):
+            return None
+    with _LIVE_LOCK:
+        live = _LIVE[0]
+    return max(1, (top - _tasks_of_user()) // (live + 1))
+
+
+def _ceiling(limits: Limits) -> int | None:
+    """The process limit the child starts with: what the user has now plus ``limits.processes``, never above what the system allows.
+    The allowance covers the run's own helpers (bubblewrap makes a few) as well as the command's processes."""
+    if limits.processes is None:
+        return None
+    top = resource.getrlimit(resource.RLIMIT_NPROC)[1]
+    wanted = _tasks_of_user() + limits.processes
+    return wanted if top == resource.RLIM_INFINITY else min(wanted, top)
+
+
 def _limits(limits: Limits) -> Callable[[], None]:
     if resource is None:
         raise SandboxUnavailable("process resource limits require a POSIX platform; command was not run")
+    ceiling = _ceiling(limits)
     def apply() -> None:
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
         for which, value in ((resource.RLIMIT_CPU, limits.cpu_seconds),
                              (resource.RLIMIT_FSIZE, limits.file_bytes),
-                             (resource.RLIMIT_NOFILE, limits.open_files)):
-            if value is not None:
+                             (resource.RLIMIT_NOFILE, limits.open_files),
+                             (getattr(resource, "RLIMIT_NPROC", None), ceiling)):
+            if value is not None and which is not None:
                 resource.setrlimit(which, (value, value))
     return apply
 
@@ -370,6 +415,8 @@ def run(argv: Sequence[str], policy: Policy, *,  # noqa: PLR0913 - one keyword p
     if cwd is None:
         cwd = (policy.write or policy.read or ("/",))[0]
     began = time.time()
+    with _LIVE_LOCK:
+        _LIVE[0] += 1
     try:
         proc = _start(full, argv, policy, cwd, control, None if chosen is None else partial(chosen.started, tag))
         result = _complete(proc, argv, policy, control, began)
@@ -382,22 +429,30 @@ def run(argv: Sequence[str], policy: Policy, *,  # noqa: PLR0913 - one keyword p
         emit("sandbox.unavailable", severity="warning", command=str(argv[0]), policy=policy.name, reason=str(exc))
         raise
     finally:
+        with _LIVE_LOCK:
+            _LIVE[0] -= 1
         control.cancel()
         if chosen is not None:
             chosen.finish(tag)
-    if result.denials_unavailable:
-        emit("sandbox.denials-unavailable", severity="warning", command=str(argv[0]), policy=policy.name,
-             backend=name, detail=result.denials_detail)
-    if result.failure_unreported:
-        emit("sandbox.failure-unreported", severity="notice", command=str(argv[0]), policy=policy.name,
-             backend=name, detail=UNREPORTED_FAILURE_LOG)
-    if result.denials:
-        emit("sandbox.denied", severity="warning", command=str(argv[0]), policy=policy.name,
-             count=len(result.denials), first=result.denials[0], backend=name)
-    if result.timed_out:
-        emit("sandbox.timeout", severity="notice", command=str(argv[0]), policy=policy.name,
-             seconds=policy.limits.wall_seconds)
+    _report(emit, argv, policy, name, result)
     return result
+
+
+def _report(emit: Callable[..., None], argv: Sequence[str], policy: Policy, backend_name: str, result: Result) -> None:
+    """Tell the caller and the sentinel what the run showed: refusals that could not be read, failures with no report, refusals, a timeout."""
+    command = str(argv[0])
+    if result.denials_unavailable:
+        emit("sandbox.denials-unavailable", severity="warning", command=command, policy=policy.name,
+             backend=backend_name, detail=result.denials_detail)
+    if result.failure_unreported:
+        emit("sandbox.failure-unreported", severity="notice", command=command, policy=policy.name,
+             backend=backend_name, detail=UNREPORTED_FAILURE_LOG)
+    if result.denials:
+        emit("sandbox.denied", severity="warning", command=command, policy=policy.name,
+             count=len(result.denials), first=result.denials[0], backend=backend_name)
+    if result.timed_out:
+        emit("sandbox.timeout", severity="notice", command=command, policy=policy.name,
+             seconds=policy.limits.wall_seconds)
 
 
 def _read_denials(chosen: Backend, tag: str, began: float, diagnose: str, result: Result) -> None:
