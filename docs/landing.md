@@ -4,7 +4,8 @@ A worker puts its branch on the development branch itself, with git. The develop
 checkout is on (`POOLHOUSE_DEV_BRANCH` overrides it) and never `main`. A push takes no accept, no claim and no lock.
 
 1. **Prepare.** In the branch's own worktree beside the primary checkout: `git fetch origin`, merge `origin/<dev>`, run the
-   change's own tests with `scripts/test all <files>`, commit by named files.
+   change's own tests with `scripts/test all <files>`, commit by named files. `python scripts/hooks/affected_push.py` runs the
+   tests the push hook will run, so a red one is found before the push.
 2. **Push.** `git fetch origin`, merge `origin/<dev>` again if it moved, then `git push origin HEAD:refs/heads/<dev>` (plain,
    never forced). A push refused because the remote moved is merged and pushed again.
 3. **Watch GitHub.** The `ci` workflow runs on the pushed commit ("The CI run" below).
@@ -18,6 +19,7 @@ the development branch `scripts/hooks/pushed` runs these checks on the commits t
 
 - every Python file the push changes parses;
 - `scripts/hooks/no-data-files --range` finds no data or weights file;
+- every test the pushed paths can break passes (below);
 - no added commit has a standing reject: `poolhouse-workspace land-review BRANCH SHA --verdict reject` by a live session of this
   board (not retired as revoked or forged) stops a push that carries that exact commit, and the same
   reviewer's later accept of it lifts the reject. A commit on top of a rejected commit leaves it in the push; replacing the
@@ -25,6 +27,34 @@ the development branch `scripts/hooks/pushed` runs these checks on the commits t
   call. A push with no session to ask as, a node that is not running or does not answer, and a reply that cannot be read are each a
   warning on stderr and the push goes on; an error on one commit leaves the rejects found on the others, and a node that stops
   answering ends the questions.
+
+**The tests a push can break.** `scripts/hooks/affected_push.py` (called by `pushed` for the development branch, after the parse
+and data-file checks and before any watcher starts) selects test files with `scripts/affected.py`, the selection
+`scripts/test quick` makes, from every path the push changes (the net difference from the remote's old tip, or the commits on
+no remote-tracking ref): the test files that import or name the path, directly or through one module; the glossary scan for any
+file it reads; the switch-table scan (`tests/test_documented_env_vars.py`) for a path it scans; and the tree-wide guards once any
+test runs, unless every changed path is prose (`.md`); the guards also run for a push that adds, deletes or renames a Python or Rust
+source, whatever else it selects. A source that defines command-line arguments (`add_argument(`) selects the tests that read
+`docs/commands.md` (`tests/test_cli_help.py`, `tests/test_cli_reference.py`). A deleted module selects the tests that import it. A
+path no rule can place (`pyproject.toml`, `budgets.json`, `tests/conftest.py`) runs only the tree-wide guards and is named in a
+warning; `scripts/test gate` and CI cover it.
+A test file that only a bare word in a string or a directory listing reaches (`Selection.loose`) is counted in a warning and left to
+CI; the files that import, run or name the path by its path, and the files they reach through such references, run. The hook then
+runs `scripts/test all FILES --redteam` in the pushing checkout: every test of those files, the `slow` tests, the whole-tree scans and
+the red-team tests included, with the node binary and what else they need built through the broker, and with reuse on, so a file whose
+tree already passed is not run again. A test marked `real_model` needs a served model under a lease, which a push never takes: its
+file is named in a warning and the gate and CI run it. The tests run on the checked-out tree, so the pushed commit must be `HEAD`
+(`git push origin HEAD:refs/heads/<dev>`).
+
+A failing test is run again on a checkout of the commit the push is measured from (the remote's old tip, in a temporary worktree
+that is removed afterwards): one that fails there too was red before the push, is named in a warning and is not held against it.
+A test that passes there, and a test the push adds, refuses the push: stderr lists each `FAILED path::test` line and
+`run it again with: scripts/test all FILES --redteam` for the failing files. Where the old tip is not known to the repository, or cannot be
+checked out, every failure is held against the push. Nothing passes because the check could not run: a selection that raises, a push of a commit that is not
+`HEAD`, a missing `scripts/test`, and a run that ends with a nonzero status and names no failing test each refuse the push with
+the cause and the command for the same selection. The parses of the sources `affected.py` reads are kept between runs in
+`affected-references.json` in the common git directory, named by each source's text, so a run parses only what moved: the
+selection takes about a second once the file exists and about ten seconds the first time.
 
 A merged worktree whose branch has nothing outside the pushed tip is named as a warning. After a good push the hook starts the CI
 watcher and the primary checkout sync, both detached.
@@ -68,7 +98,7 @@ runs the whole suite locally; a person's terminal may.
 
 `scripts/hooks/pushed` starts `scripts/ci_watch.py SHA` detached after an agent's push of the development branch, on the
 person's machine only (`lan.on_the_persons_machine`), when `gh` is installed. The watcher asks `gh run list --commit SHA
---workflow ci` for the push's run (up to three minutes), waits for it with `gh run watch` (at most 100 minutes, longer than the
+--workflow ci` for the push's run (up to three minutes), waits for it with `gh run watch` (at most 130 minutes, longer than the
 longest job timeout in `ci.yml`) and reads the result:
 
 - Green posts nothing.
@@ -92,6 +122,8 @@ longest job timeout in `ci.yml`) and reads the result:
 
 ## Not covered
 
-The hook cannot know that tests ran; CI is the backstop. A reject is seen only when the board answers. The interpreter that runs the
+The hook runs the tests the import graph and the name scans reach; a test that reaches the change in a way neither sees (a
+subprocess that runs another script by a computed name, a data file only a runtime reads) is CI's, as are the paths above
+that no rule places. A reject is seen only when the board answers. The interpreter that runs the
 hook reads `PYTHONPATH` and the other `PYTHON*` variables of the pushing environment. The credential that pushes is whoever runs the
 command (docs/github-protection.md).

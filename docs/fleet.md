@@ -101,6 +101,21 @@ finishes while the daemon is down keeps its exit code, which the job's own launc
 its log. A process whose identity cannot be verified is reported `interrupted` and keeps holding its slot. `poolhouse` without the option still replaces a daemon only at its idle
 boundary when its commit differs.
 
+## What the daemon is called
+
+A firewall list, a Local Network prompt and the list of background items name a program by its executable, so the daemon runs
+under the same name on every system, and the name is Poolhouse:
+
+| | the process | the firewall |
+|---|---|---|
+| macOS | `Poolhouse`, the executable in `~/.poolhouse/apps/runtime/<platform>-<machine>-<python>/Poolhouse.app`, bundle id `app.poolhouse.runtime`, signed with the local certificate (docs/node.md, "The runtime's identity on macOS") | one entry, "Poolhouse", asked once; the launchd unit and the Login Items list say Poolhouse too |
+| Linux and WSL | `poolhouse` (what `ps` and `ss -p` print; the daemon names itself with `prctl`) | the rules are by port, never by program: TCP 8770 and UDP 8771, comment them "Poolhouse" |
+| Windows | `python.exe` of the runtime (the file name and the version resource are Python's, and the path changes with every runtime, so a rule that names the program would be asked again at every update) | inbound rules by port named "Poolhouse" (TCP 8770) and "Poolhouse discovery" (UDP 8771), added with one administrator prompt |
+
+`/health` says which program answered: `process` holds its `executable` (relative to the state root when it is inside it, else its
+name alone), its `name` and its `bundle_id` (empty when it is not Poolhouse's own). `poolhouse-setup` shows "fleet: daemon runs as",
+and `poolhouse runtime restart-host` replaces a host on the selected commit that is not yet running as Poolhouse.
+
 ## Joining a pool
 
 Development is the default mode. Start the pool daemon on each device with

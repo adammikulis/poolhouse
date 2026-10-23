@@ -20,6 +20,7 @@ from poolhouse import (
     runtime,
     runtime_bridges,
     runtime_git,
+    runtime_identity,
     runtime_launchers,
     runtime_store,
     runtime_unmerged,
@@ -169,7 +170,7 @@ def host_python() -> Path:
     found = Environment(runtime.directory() / "bootstrap").host_python()
     if found is None:
         raise OSError("install Python 3.13 to prepare an isolated runtime")
-    return found
+    return runtime_identity.unbound(found)
 
 
 def build(plan: Plan, stage: Path, prefix: Path) -> runtime.Runtime:
@@ -178,6 +179,7 @@ def build(plan: Plan, stage: Path, prefix: Path) -> runtime.Runtime:
     target = runtime_wheel.Target(prefix, creator, host_python())
     built = runtime_wheel.build(plan.checkout, plan.commit, stage, timeout=plan.timeout, target=target)
     try:
+        runtime_identity.adopt(built)
         node_build.add_to(built, stage / "source", plan.commit, timeout=plan.timeout)
     except RECOVERABLE:
         runtime_store.discard(built.prefix)
@@ -243,6 +245,7 @@ def switch(chosen: runtime.Runtime, plan: Plan, *, claimed: frozenset[Path] = fr
         bridges = runtime_bridges.snapshot(expected, claimed)
         published = False
         try:
+            runtime_identity.adopt(chosen)
             if plan.launchers is not None:
                 if plan.launchers == runtime_launchers.directory():
                     runtime.plain(plan.launchers)
@@ -386,7 +389,7 @@ def ensure(plan: Plan, *, force: bool = False, force_build: bool = False, builde
     state = "" if force else settled(plan)
     if state:
         held = runtime_store.read_state().get("held") or {}
-        return Outcome(state, plan.commit, str(held.get("reason", "")) if state == "held" else "")
+        return Outcome(state, plan.commit, "; ".join(filter(None, [str(held.get("reason", "")) if state == "held" else "", *_selection_identity()])))
     root = prepare_root()
     try:
         if plan.boundary_wait_s > 0:
@@ -417,6 +420,29 @@ def _recovered(plan: Plan, who: session.Session | None) -> tuple[runtime.Runtime
     return chosen, [f"selected {chosen.commit[:7]} in place of a broken selection"]
 
 
+def _identity(chosen: runtime.Runtime) -> list[str]:
+    """What it took to make the selected runtime run as Poolhouse, or why it cannot; a failure never takes a working runtime down."""
+    try:
+        done = runtime_identity.adopt(chosen)
+    except runtime_identity.IdentityError as exc:
+        _note({"identity_failure": {"commit": chosen.commit, "at": time.time(), "detail": str(exc)[-1000:]}})
+        return [f"not running as Poolhouse: {exc}"]
+    _note({"identity_failure": None})
+    return [done] if done else []
+
+
+def _selection_identity() -> list[str]:
+    """`_identity` for the selected runtime, which costs a start of the interpreter only while it does not run as Poolhouse yet."""
+    row = runtime_store.selection()
+    if not runtime_identity.applies() or runtime_identity.bound(Path(str(row.get("prefix", ""))), runtime.identity()):
+        return []
+    failure = runtime_store.read_state().get("identity_failure")
+    if isinstance(failure, dict) and time.time() - float(failure.get("at", 0.0)) < BACKOFF_S:
+        return [f"not running as Poolhouse: {failure.get('detail', '')} (tried again after {BACKOFF_S:.0f}s)"]
+    chosen = runtime.available()
+    return _identity(chosen) if chosen is not None else []
+
+
 def _failed_recently(plan: Plan) -> bool:
     failure = runtime_store.read_state().get("last_failure")
     return (isinstance(failure, dict) and failure.get("commit") == plan.commit
@@ -431,7 +457,7 @@ def _ensured(plan: Plan, force: bool, force_build: bool, builder: Builder) -> Ou
     held = runtime_store.read_state().get("held")
     if not force and chosen is not None and chosen.commit == plan.commit:
         runtime_store.collect({chosen.prefix})
-        return Outcome("recovered" if steps else "current", plan.commit, "; ".join(steps))
+        return Outcome("recovered" if steps else "current", plan.commit, "; ".join([*steps, *_identity(chosen)]))
     if not force and chosen is not None and isinstance(held, dict) and held.get("commit") == plan.commit:
         return Outcome("recovered" if steps else "held", plan.commit, "; ".join([*steps, str(held.get("reason", ""))]))
     if not force_build and _failed_recently(plan):

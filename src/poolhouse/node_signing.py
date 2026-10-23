@@ -88,15 +88,24 @@ def ensure_certificate() -> str:
     return certificate_sha1() or create_certificate()
 
 
+def sign_with_certificate(bundle: Path, identifier: str, requirement_for: Callable[[str], str]) -> str:
+    """Sign ``bundle`` with the certificate, making it first when the keychain has none; there is no other signature to fall to.
+
+    Raises `SigningError` (or `real_machine.Refused` outside the installed software) when the certificate cannot be had, so a caller
+    that must not run unsigned stops there. Returns "certificate".
+    """
+    fingerprint = ensure_certificate()
+    if not fingerprint:
+        raise SigningError("the certificate is not in the login keychain after making it")
+    _run(sign_command(bundle, identifier, requirement_for(fingerprint)))
+    return "certificate"
+
+
 def sign(bundle: Path, identifier: str, requirement_for: Callable[[str], str], ad_hoc: str) -> str:
     """Sign ``bundle``: with the certificate when it can be had ("certificate"), else ad hoc with ``ad_hoc`` ("ad-hoc")."""
     try:
-        fingerprint = ensure_certificate()
-        if not fingerprint:
-            raise SigningError("the certificate is not in the login keychain after making it")
-        _run(sign_command(bundle, identifier, requirement_for(fingerprint)))
+        return sign_with_certificate(bundle, identifier, requirement_for)
     except (SigningError, OSError, subprocess.SubprocessError) as exc:
         warn(f"node app: signing with {CERT_NAME!r} failed ({exc}); signing ad hoc, so the permission may be asked again after a rebuild")
         _run(sign_command(bundle, identifier, ad_hoc, identity="-"))
         return "ad-hoc"
-    return "certificate"

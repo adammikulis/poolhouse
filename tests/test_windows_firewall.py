@@ -38,22 +38,22 @@ class Windows:
 
 
 def test_the_rules_are_the_daemons_port_and_the_beacons_port():
-    assert firewall.rules() == [("poolhouse traind", "TCP", DEFAULT_HTTP_PORT), ("poolhouse discovery", "UDP", default_port())]
+    assert firewall.rules() == [("Poolhouse", "TCP", DEFAULT_HTTP_PORT), ("Poolhouse discovery", "UDP", default_port())]
 
 
 def test_with_both_rules_held_nothing_is_asked_of_windows(capsys):
-    windows = Windows(held=["poolhouse traind", "poolhouse discovery"])
+    windows = Windows(held=["Poolhouse", "Poolhouse discovery"])
     assert firewall.ensure(windows) is True
     assert not any("-Verb RunAs" in s for s in windows.sent) and capsys.readouterr().out == ""
 
 
 def test_missing_rules_are_added_by_one_elevated_prompt_that_says_so_first(capsys):
-    windows = Windows(held=["poolhouse traind"])
+    windows = Windows(held=["Poolhouse"])
     assert firewall.ensure(windows) is True
     assert "press Yes" in capsys.readouterr().out
     added = windows.elevated()
-    assert "poolhouse discovery" in added and f"-Protocol UDP -LocalPort {default_port()}" in added and "-Profile Private" in added
-    assert "poolhouse traind" not in added, "a rule that is held is not added again"
+    assert "-DisplayName 'Poolhouse discovery'" in added and f"-Protocol UDP -LocalPort {default_port()}" in added and "-Profile Private" in added
+    assert "-DisplayName 'Poolhouse' " not in added, "a rule that is held is not added again"
     assert firewall.missing(windows) == []
 
 
@@ -64,7 +64,7 @@ def test_a_prompt_that_was_declined_is_said_in_a_sentence_and_nothing_is_claimed
 
 
 def test_a_network_windows_calls_public_is_named_with_the_setting_to_change(capsys):
-    windows = Windows(held=["poolhouse traind", "poolhouse discovery"], categories="Public")
+    windows = Windows(held=["Poolhouse", "Poolhouse discovery"], categories="Public")
     assert firewall.ensure(windows) is False
     assert "choose Private" in capsys.readouterr().err
     assert firewall.public_only(Windows(categories="Public,Private")) is False

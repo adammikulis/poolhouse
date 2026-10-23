@@ -20,6 +20,10 @@ import testslots_policy
 from test_kernel_endpoint import connection, private_directory, socket_identity, verify_socket
 
 
+class AdmissionWaitExpired(RuntimeError):
+    """The admission server ended a request because its wait limit passed before a permit was free."""
+
+
 def _read(stream) -> dict:
     value = stream.readline(65537)
     if not value or len(value) > 65536:
@@ -271,7 +275,10 @@ class Handler(socketserver.StreamRequestHandler):
             finally:
                 testslots.CHECK_CANCELLED.reset(cancel)
                 testslots.EXPORT_LEASE.reset(export)
-        except (OSError, ValueError, RuntimeError, TimeoutError) as error:
+        except testslots.WaitExpired as error:
+            with contextlib.suppress(OSError):
+                _write(self.wfile, {"error": str(error), "expired": True})
+        except (OSError, ValueError, RuntimeError) as error:
             with contextlib.suppress(OSError):
                 _write(self.wfile, {"error": str(error)})
 
@@ -284,7 +291,7 @@ class Handler(socketserver.StreamRequestHandler):
 
     def check_connection(self):
         if time.monotonic() >= self.deadline:
-            raise TimeoutError("testslots: admission caller wait expired")
+            raise testslots.WaitExpired("testslots: admission caller wait expired")
         if self.server.stopped.is_set():
             raise ConnectionAbortedError("testslots: supervisor stopped")
         if select.select([self.connection], [], [], 0)[0] and not self.connection.recv(1, socket.MSG_PEEK):
@@ -299,6 +306,8 @@ def request(operation: str, *, label: str = "pytest", phase: str = "test", heavy
             _write(stream, {"operation": operation, "token": os.environ["DEV_TEST_PYTEST_TOKEN"],
                             "parent": os.environ.get("DEV_TEST_REMOTE_LEASE"), "label": label, "phase": phase, "heavy": heavy})
             response = _read(stream)
+            if response.get("expired"):
+                raise AdmissionWaitExpired(response["error"])
             if "error" in response:
                 raise RuntimeError(response["error"])
             previous = os.environ.get("DEV_TEST_REMOTE_LEASE")
