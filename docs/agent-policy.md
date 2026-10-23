@@ -22,9 +22,9 @@ The rules never to break, then the ones needed every hour; each names the sectio
    built (1).
 9. **Do what was said, when and in the order said**; never postponed, reordered or widened; a blocker is one line; no
    agent sets a limit on the work (2).
-10. **Ask at the start of a request** what it is for, its shape and what a person will see, before any design or brief;
-   **decide the rest**, asking only owner-only decisions, ranked by what is correct; a guard or rule in the way of what
-   the owner ordered is changed, never cited as the reason it cannot be done (2).
+10. **Minimise user steps**: infer intent from the request and available evidence; ask only unresolved owner-only
+    decisions. Routine coordination is automatic; product setup and recovery use native UI, with authenticated
+    approval only where necessary. Change a rule in the way of what the owner ordered (2).
 11. **Nothing blocks on a person**: a person-only step is asked once and everything else goes on, with the safe default
     in force (2).
 12. **Investigate a failure before anything is retried**; a slow gate is a defect and a timeout is never the fix (2, 5).
@@ -180,25 +180,23 @@ A machine setting (wired memory limit `iogpu.wired_limit_mb`, sentinel policy, q
 request answer) changes only through a named gate in one registry, `poolhouse.authority`, each `person` or `delegated`
 (`poolhouse-workspace authority show|set|preset`: docs/workspace.md, "Authority").
 
-- `person` passes only a person at a terminal. `delegated` passes a person or a lead agent on the owner's instruction
-  (`CLAUDECODE` or `POOLHOUSE_AGENT` set, not a spawned subagent, no `parent/name` identity), each agent use logged in
-  the authority audit log. A helper or child identity never passes a delegated gate or flips the registry; each flip is
-  logged (who, gates, from, to).
+- `person` requires the person's authenticated approval of the exact action. Product setup and recovery provide a
+  protected native route to that approval; a terminal is not a product prerequisite. `delegated` passes a person or an
+  authenticated live lead agent on the owner's instruction, each agent use logged in the authority audit log. A helper
+  or child identity never passes a delegated gate or flips the registry; each flip is logged (who, gates, from, to).
 - Default preset `dev`: every delegable gate delegated, enforcement `open`. `prod` leaves workspace setup, model
   recording and local agent verbs delegated, makes every other gate a person's, enforcement `strict`.
   `POOLHOUSE_AUTHORITY_FLOOR=person` reads every gate as a person's; it only tightens, and the test suite sets it.
 - A person's whatever the registry says, and not in it: the keystore and secrets (unlock, pool passphrase and token,
-  signing keys), a passwordless `sudoers` rule (Poolhouse never installs one), the human prompt confirming a privileged
-  operating-system step. The one machine setting an agent may request is the wired memory limit (gate
-  `serve.wired-limit`): through macOS's administrator dialog, Poolhouse never sees or stores the password, `sudo` still
-  needs a terminal. The review screen also stays a person's.
-- Boot and login units (launchd, systemd, Windows tasks): tooling prepares, a person installs (docs/install.md,
-  "Starting at login and keeping the runtime current").
-  `python -m poolhouse.fleet.autostart prepare --role pool-daemon|runtime-ensure` is safe for an agent: it writes unit
-  files and a `manifest.json` under the state root, prints the one `install --manifest` command, and never writes to
-  `LaunchAgents`, `~/.config/systemd` or a system directory. `install` and `rollback` refuse every agent marker and any
-  process without a terminal; `status` and `verify` are read-only and an agent reports a drift, never repairs it. There
-  is no landing unit: landing needs an agent identity (claims, board posts, push rules) and stays session-driven.
+  signing keys), a passwordless `sudoers` rule (Poolhouse never installs one), and OS authentication for a privileged
+  step. The machine setting an agent may request is the wired memory limit (`serve.wired-limit`). An agent prepares
+  the exact operation; the person authenticates through the protected native OS journey. Poolhouse never sees or
+  stores the password. The review screen also stays a person's.
+- Boot and login units (launchd, systemd, Windows tasks): tooling prepares and verifies the exact installation or
+  rollback; the person approves necessary privileges through native UI (docs/install.md, "Starting at login and keeping
+  the runtime current"). Agents do not perform person-only installation or impersonate a person at a terminal. An
+  unavailable native route remains unfinished product work; its replacement preserves the independent installation,
+  authorization and rollback checks. There is no landing unit: landing stays session-driven.
 
 Repository App setup and publication are the scoped exception for software-owned credentials: on the owner's explicit
 instruction for that operation, the installed `agent-identity setup`, `publish-release` and `push-development` holder may
@@ -243,22 +241,16 @@ shorter horizon than the work needs: it removes waste and nothing else.
 
 ### Questions to the owner
 
-**At the start of every new request, ask before building.** Before any design, brief or dispatch, the lead states its
-understanding of the end state, the inputs and constraints, and what a person will see or run, and asks the owner about
-whatever it cannot settle from the request, the code or the docs: what the thing is for, who else uses it (only this repo,
-or anything that imports Poolhouse), how it is structured, what a person sees, how large it is. A capability of the
-library, such as a test runner or sharder, is built as a library feature with a public interface that this repo uses
-like any other importer, never as repo-only scripts; the library knows nothing about the repos that use it (a consumer
-describes itself through a small contract, and the provider holds no knowledge of its consumers). The opening questions are not skipped, and waiting for a fork later is how piecemeal
-patches start. A question that comes up later is asked at once. Every question goes through the ask/answer tool, never
-buried in the prose of a report, which states results.
+**Minimise user steps.** State the intended outcome and infer its purpose, shape, callers and visible behavior from
+what the owner said and available evidence. Ask only a decision that remains the owner's alone; a clear request needs
+no opening questionnaire or repeated confirmation. Mechanical details and effort-only trades are the agent's to
+settle. A library capability has a public interface that this repo uses like any other importer; its consumers describe
+themselves through a small contract rather than the library knowing their repositories.
 
-**After that, ask only what is the owner's alone** and cannot be settled from the request, the code or these rules
-(product direction, spending, anything outward-facing or irreversible, a hard floor). Mechanical details and effort-only
-trades are the agent's to decide. When one option is better, take it and go on: do not pitch a choice whose answer you
-know, offer a weaker option beside the better one to look careful, or ask permission for work inside what you were told
-to do. Say what you chose and why in the report, in a line. Timidity is a defect: asking when the answer is known costs
-the owner's attention and stops the work, and so does skipping the opening questions and guessing what the owner meant.
+**Prepare before asking.** Complete the authorized reversible work so any necessary approval concerns an exact,
+reviewable action. Existing authorization carries forward. Ask only unresolved product direction, spending, an
+outward-facing or irreversible choice, or the person's authentication. When one option is correct, take it and go on;
+state the choice and reason in the report. Every necessary question goes through the ask/answer tool.
 
 **A decision is asked**, through the ask/answer tool in the same message: one question, two or three options, what each
 costs. "That's your call", "I'd want your view" and "let me know how you want to proceed" are deferring dressed as
@@ -273,13 +265,14 @@ boundary: if so it is named the weaker one. A guard that stands in the way of wh
 removed by the agent, and the commit message says which guard and which order. An agent never asks the owner whether to
 loosen a guard the owner has already said to loosen.
 
-**Never hand the owner a command an agent can run.** "Please run this" is the exception, not a way to finish a task. An
-agent runs every command it can, restarts what it stops, and fixes a service that needs a person's step after a normal
-stop (that is a defect in the service). It asks the owner to type a command only when the tooling itself refuses an
-agent for that command (a person-only gate: the keystore, a passphrase, the administrator prompt, a grant, `main`), and
-then only after running it and quoting the refusal, with the one command and why. A script the owner must run infers what
-it can (the repository from `gh`, the branch from git) and names the next step in its error, so it never fails on a
-missing argument or leaves the owner to read the docs. A list of commands for the owner is a sign the work is not done.
+**Product setup and recovery use native UI.** Agents execute routine work and handle registration, coordination,
+updates and recovery automatically. A terminal, copied token, exported marker or manual claim is not a step for the
+person. When OS authentication or consent is necessary, prepare the protected native operation and ask once for that
+specific action, with fresh owner authentication. Bind approval to verified operation bytes, target, nonce, expiry, authority and owner-session
+generation; revalidate and consume it atomically once. Cancellation, disconnect or session loss refuses the operation.
+Duplicate callers attach to the same pending request; denial or cancellation never starts another prompt automatically.
+A missing native authorization route is unfinished work to implement and verify, never permission to accept a generic
+dialog boolean, fabricate approval, relax a person-only check or make the person type a command.
 
 **Nothing blocks on a person.** The owner may not notice or answer for hours or days, so no queue, batch, landing
 request, gate, design or agent stops to wait for a human yes. A person-only step (a floor in section 1) is asked once,
@@ -371,8 +364,6 @@ which, in one line, at once, and do every part that is not blocked.
   checkpoint; one that has run about an hour without reporting is asked to report, and the lead finds out why it is
   stuck instead of leaving it running. A worker ends every background task it started (monitors, polling loops,
   test jobs) before it reports, so that it exits; the lead stops a finished worker that still lists background work.
-- **When the owner must run something, give the whole command**: one line that runs as pasted, with the `cd`, absolute
-  paths and every argument, never a snippet to adapt.
 
 ### Saying that something works
 
@@ -421,10 +412,11 @@ not feel) before it is accepted. Friction is allowed only where the action is se
 is stated in one line in the change. The onboarding step count is measured with the security steps included. The worst
 case is the project getting popular before it is locked down, so the secure way must also be the easy way.
 
-**Development rules stay in development.** The restrictions for developing Poolhouse with agents (claims, markers,
-worktrees, hooks, a checkout) apply only to a Poolhouse source checkout, its worktrees and the repository's own test run.
-A library path asks no person and needs no checkout, no marker and no keystore beyond what the library itself needs, so a
-project that imports Poolhouse meets none of them. A new design is checked for this before it is built.
+**Development rules stay in development.** Maintained tooling derives development context from the checkout and
+actual caller; an arbitrary marker is not an authorization opt-out. Source-development coordination (claims, markers,
+worktrees, hooks and a checkout) adds no requirement to a project importing Poolhouse. Pure library import starts no
+service or registration. Library operations need only their own documented resources and authorization, with no manual
+workspace setup or claim ceremony. Check this boundary before building a feature and exercise it outside the checkout.
 
 ### Nothing is cemented until 1.0
 
@@ -536,13 +528,14 @@ human").
 
 ### Shared ownership before mutation
 
-Shared claims are enforced by maintained tooling, not advisory messages. Before editing a shared file area, using a
-worktree or port, changing an installed runtime, or reserving model/compute resources, acquire the authenticated claim
-(`claim KIND KEY`) or broker allocation, for only the area you need. Claims never grant project permissions, bypass
-person approval or permit another agent's credentials; broker-controlled resources use the broker's lease, not an
-informal GPU lock. An expired claim or dead worker needs verified recovery or an explicit task-scoped handoff before
-mutation: never infer permission from an old PID or steal a live claim. Heartbeat while working, release when idle,
-never hold a claim across a wait. Read-only inspection needs no claim. Detail: docs/agent-rules.md, "Shared ownership".
+Maintained mutation and launch tooling acquires the authenticated scoped claim atomically with its ownership check,
+renews it while the work uses the resource, and releases it when idle or finished. Repeated work under the same live
+ownership attaches to that claim; manual `claim` and `heartbeat` commands are diagnostic or exceptional tools, not a
+step before every action. Keep actual ownership conflicts visible and actionable. Missing automation is a tooling
+defect to fix, not permission for an unclaimed mutation. Claims never grant project permissions, bypass person approval
+or permit another agent's credentials; broker-controlled compute uses the broker's authoritative lease. Expired claims
+need verified recovery or an authenticated task-scoped handoff before mutation. Read-only inspection needs no claim.
+Detail: docs/agent-rules.md, "Shared ownership".
 
 ### The main session and its agents
 
@@ -865,8 +858,7 @@ no shape this repository has decided to live with. Budgets and red-team debt onl
   split. **Banned as a reason to leave something alone:** "pre-existing", "not introduced by this change", "already over
   budget", "grandfathered", "out of scope for this branch", "the budget allows it", "it was already like that".
 - Leave every number you touched lower than you found it, and say by how much. A number never rises on its own and no
-  agent raises one at all: `--allow-increase` is refused whenever `CLAUDECODE` is set, so raising one is the owner's, at
-  his own terminal.
+  agent raises one at all: raising one remains the owner's explicit authenticated decision.
 - **And say what you found.** A tolerated violation you noticed and did not fix goes in the message where you found it,
   not into a budget file for the owner to discover. Reporting a tolerance as a good state ("holding at nineteen") is
   worse than not mentioning it.
