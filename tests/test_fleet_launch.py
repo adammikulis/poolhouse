@@ -135,9 +135,9 @@ def test_new_launcher_replaces_owned_older_idle_daemon_before_start(monkeypatch,
     monkeypatch.setattr(launch, "state", lambda: {"commit": "new"})
     monkeypatch.setattr(launch, "request_replacement", lambda *args, **kwargs: calls.append(("replace", args)))
     monkeypatch.setattr(launch, "_wait_for_exit", lambda _port: True)
-    monkeypatch.setattr(launch, "_open_when_ready", lambda *_args: None)
+    monkeypatch.setattr(launch, "finish", lambda argv, previous, probe, release: calls.append(("start", argv)) or 0)
     assert launch.main(["--no-browser", "--root", str(tmp_path)],
-                       daemon_main=lambda argv: calls.append(("start", argv)) or 0) == 0
+                       daemon_main=lambda argv: pytest.fail("the launcher became the daemon")) == 0
     assert [row[0] for row in calls] == ["replace", "start"]
     assert calls[0][1][0] == tmp_path
 
@@ -179,17 +179,30 @@ def test_launcher_waits_for_tcp_close_when_health_is_unavailable(monkeypatch):
     assert len(connections) == 3
 
 
-def test_explicit_restart_replaces_same_commit_without_passing_flag_to_daemon(monkeypatch):
+def test_explicit_restart_replaces_same_commit_and_hands_the_successor_to_the_proof_without_the_flag(monkeypatch):
     flag = '--restart'
-    calls = []
+    calls, proved = [], []
     monkeypatch.setattr(launch, 'already_running', lambda _port: {'commit': 'a' * 40})
     monkeypatch.setattr(launch, 'state', lambda: {'commit': 'a' * 40})
     monkeypatch.setattr(launch, 'request_replacement', lambda *args, **kwargs: calls.append(kwargs) or {'preserved': {'queued': 1, 'running': 1}})
+    monkeypatch.setattr(launch, 'launch_of', lambda _root, _port: ['/old/python', '-m', 'poolhouse.fleet.launch'])
     monkeypatch.setattr(launch, '_wait_for_exit', lambda _port: True)
-    monkeypatch.setattr(launch, '_open_when_ready', lambda *_args: None)
-    assert launch.main([flag, '--no-browser'], daemon_main=lambda args: calls.append(args) or 0) == 0
+    monkeypatch.setattr(launch, 'finish', lambda arguments, previous, probe, release: proved.append((arguments, previous)) or 0)
+    assert launch.main([flag, '--no-browser'], daemon_main=lambda args: pytest.fail('the launcher became the daemon')) == 0
     assert calls[0]['restart'] == 'preserve'
-    assert flag not in calls[1]
+    [(arguments, previous)] = proved
+    assert flag not in arguments and previous == ['/old/python', '-m', 'poolhouse.fleet.launch']
+
+
+def test_a_replaced_daemon_that_is_slow_to_exit_is_waited_for_not_given_up_on(monkeypatch, capsys):
+    waits = iter([False, False, True])
+    monkeypatch.setattr(launch, 'already_running', lambda _port: {'commit': 'a' * 40})
+    monkeypatch.setattr(launch, 'state', lambda: {'commit': 'a' * 40})
+    monkeypatch.setattr(launch, 'request_replacement', lambda *args, **kwargs: {})
+    monkeypatch.setattr(launch, '_wait_for_exit', lambda _port: next(waits))
+    monkeypatch.setattr(launch, 'finish', lambda *_args: 0)
+    assert launch.main(['--restart', '--no-browser']) == 0, 'the daemon was told to stop, so the launcher stays until it has, then starts the next'
+    assert capsys.readouterr().out.count('still exiting') == 2
 
 
 def test_launcher_refuses_the_removed_force_restart_flag_as_a_daemon_option(monkeypatch):
@@ -272,7 +285,7 @@ def test_the_restart_the_autostart_path_builds_is_accepted_by_the_launcher_and_t
     monkeypatch.setattr(launch, 'state', lambda: {'commit': 'a' * 40})
     monkeypatch.setattr(launch, 'request_replacement', lambda *_a, **_kw: {})
     monkeypatch.setattr(launch, '_wait_for_exit', lambda _port: True)
-    monkeypatch.setattr(launch, '_open_when_ready', lambda *_args: None)
+    monkeypatch.setattr(launch, 'finish', lambda arguments, previous, probe, release: daemon.run(arguments))
     with pytest.raises(Parsed) as accepted:
         launch.main(argv, daemon_main=daemon.run)
     assert accepted.value.args[0].port == 8770

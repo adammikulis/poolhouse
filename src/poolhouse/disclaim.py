@@ -37,9 +37,13 @@ def _array(words: Sequence[str]) -> ctypes.Array:
     return (ctypes.c_char_p * (len(words) + 1))(*[os.fsencode(word) for word in words], None)
 
 
-def spawn(argv: Sequence[str], environment: Mapping[str, str], out: int) -> int:
+def spawn(argv: Sequence[str], environment: Mapping[str, str], out: int, cwd: str | os.PathLike[str] | None = None) -> int:
     """Start ``argv`` in a session of its own with its own responsibility, standard input empty and standard output and error
-    written to the open descriptor ``out``; returns its pid. The caller reaps it or lets it be adopted."""
+    written to the open descriptor ``out``, in directory ``cwd`` (the caller's when not given); returns its pid. The caller reaps it
+    or lets it be adopted.
+
+    A process that answers for itself asks macOS for its own access to the Documents, Desktop and Downloads folders and waits,
+    for ever when nobody can answer, at the first read there; so a caller gives it a directory that is not one of them."""
     libc = ctypes.CDLL(None, use_errno=True)
     if not hasattr(libc, "responsibility_spawnattrs_setdisclaim"):
         raise DisclaimError("this system cannot start a process that answers for itself")
@@ -51,6 +55,8 @@ def spawn(argv: Sequence[str], environment: Mapping[str, str], out: int) -> int:
         _check(libc.posix_spawnattr_setflags(ctypes.byref(attr), flags), "posix_spawnattr_setflags")
         _check(libc.responsibility_spawnattrs_setdisclaim(ctypes.byref(attr), 1), "responsibility_spawnattrs_setdisclaim")
         _check(libc.posix_spawn_file_actions_addopen(ctypes.byref(actions), 0, os.fsencode(os.devnull), READ_ONLY, 0), "addopen")
+        if cwd is not None:
+            _check(libc.posix_spawn_file_actions_addchdir_np(ctypes.byref(actions), os.fsencode(cwd)), "addchdir")
         for target in (1, 2):
             _check(libc.posix_spawn_file_actions_adddup2(ctypes.byref(actions), out, target), "adddup2")
         words = _array(list(argv))

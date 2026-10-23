@@ -14,11 +14,11 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import NamedTuple
 
-from poolhouse import jobs, runtime, runtime_identity, spawned
-from poolhouse.fleet import launch
+from poolhouse import jobs, runtime, runtime_identity, runtime_launchers, spawned
+from poolhouse.fleet import handover, launch
 from poolhouse.runtime_deploy import Outcome
 
-RESTART_WAIT_S = 120.0
+RESTART_WAIT_S = handover.START_WAIT_S
 POLL_S = 0.5
 HEALTH_TRIES = 3
 """A loaded machine can miss one answer; nothing is declared not running on a single miss."""
@@ -62,20 +62,29 @@ def _as_poolhouse(said: dict) -> bool:
 
 def _waited(port: int, target: _Target, wait_s: float, health: Callable[[int], dict | None],
             child: spawned.Child | None = None) -> bool:
-    """Whether the host reports ``target`` within ``wait_s``; `spawned.StartFailed` when the
-    restart process (``child``) ends with an error first."""
+    """Whether the host reports ``target`` within ``wait_s``; `spawned.StartFailed` when the restart process (``child``) ends
+    first, however it ends, without the host having reported it (the process proves its successor before it ends)."""
     deadline = time.monotonic() + wait_s
     while True:
         said = health(port)
         if _ready(said, target):
             return True
         code = child.poll() if child is not None else None
-        if code:
+        if code is not None:
+            if _ready(health(port), target):
+                return True
             raise spawned.StartFailed(spawned.explain(
                 code, what="the restart of the host", log=runtime.directory() / "restart.log"), "exited")
         if time.monotonic() >= deadline:
             return False
         time.sleep(POLL_S)
+
+
+def _standing(port: int, said: dict | None) -> str:
+    """What answers on the port, in words, for an outcome that did not end with the selected runtime answering."""
+    if said is None:
+        return f"NOTHING answers on port {port}"
+    return f"port {port} is answered by commit {str(said.get('commit') or '?')[:7]}, host generation {str(said.get('launcher_control') or '?')[:7]}"
 
 
 class Seams(NamedTuple):
@@ -116,7 +125,7 @@ def restart(port: int, root: Path, *, wait_s: float = RESTART_WAIT_S, force: boo
     try:
         confirmed = _waited(port, target._replace(previous=previous), wait_s, health, child)
     except spawned.StartFailed as exc:
-        return Outcome("failed", chosen.commit, str(exc))
+        return Outcome("failed", chosen.commit, f"{exc}; {_standing(port, health(port))}")
     if confirmed:
-        return Outcome("restarted", chosen.commit, f"the host on port {port} runs it")
-    return Outcome("failed", chosen.commit, f"the host on port {port} still runs its previous generation or has not confirmed the selected runtime after {wait_s:.0f}s; see restart.log")
+        return Outcome("restarted", chosen.commit, "; ".join(filter(None, [f"the host on port {port} runs it", runtime_identity.unbound_note(chosen, f"{runtime_launchers.directory() / 'poolhouse'} runtime ensure")])))
+    return Outcome("failed", chosen.commit, f"the host on port {port} still runs its previous generation or has not confirmed the selected runtime after {wait_s:.0f}s; see restart.log; {_standing(port, health(port))}")
