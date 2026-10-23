@@ -18,15 +18,15 @@ independent discovery, admission, roster, product control listener, scheduler, o
 
 1. Read the authenticated inbox and current repository policy, fetch origin, and reconcile 0.3dev in a claimed checkout.
 2. Repair and independently review native lifecycle context, install through supported configuration and trust,
-   and verify actual root and subagent completion before architecture implementation.
+   and verify actual root and subagent completion before orchestration port/cutover.
 3. Inventory and preserve outstanding work; settle and review the shared contracts below.
 4. Prove native prerequisites on each platform before moving application orchestration.
 5. Implement shared node domains and public clients; move retained product behavior; switch native shells.
 6. Delete competing implementations with their callers, package/install native artifacts, and run joint acceptance.
 
-The two planning documents may land before step 2. Platform sessions can inspect their devices and preserve artifacts
-while prerequisites are unresolved. Neither implements security-sensitive architecture ahead of the required review
-and proofs. A contract checkpoint is a reviewed development commit, not a statement that behavior runs.
+The dependency rules in Deconfliction and integration govern overlap between steps 2–4. Contract engineering and
+restricted H prerequisites may proceed while H proof is pending under those rules. Device inspection and preservation
+remain available. A contract checkpoint is a reviewed development commit, not a statement that behavior runs.
 
 ## Cross-device agent rendezvous
 
@@ -107,9 +107,19 @@ it in the common contract, regenerate once, then refresh adapters. No local wire
 
 Use four commit barriers: H = installed hook proof; K = reviewed common contracts and preserved-work ledger;
 P = reviewed native prerequisite proofs for the relevant platform; I = installed cross-device acceptance.
-H precedes architecture work, K precedes platform implementation, and P precedes orchestration port/cutover on that
-platform. Platform proofs may proceed independently after K. No shipped cutover is complete before all required P
-and I evidence exists. Record each barrier SHA and proof artifact, never infer it from branch names.
+Shared contract/schema/generator definition, building and independent review may proceed while H proof is pending;
+K can be accepted from its required evidence before H. K still precedes platform adapter implementation.
+
+Engineering needed to prove H is limited to independently attack-reviewed protected producer/measured launch,
+immutable actor/root/direct-parent context, native caller/private node admission and single-consumer completion
+components. Coordinate this scope with the common owner behind reviewed canonical adapter contracts; K precedes any
+platform adapter implementation within it. This allowance establishes no accepted barrier and admits no broader
+orchestration or computation slice before its prerequisites.
+
+Full orchestration port/cutover requires H, K and the relevant P; platform proofs may proceed independently after K;
+H caller admission is distinct from the bounded computation/private-worker slice proved for P. No shipped cutover is
+complete before all required P and I evidence exists. Record each barrier SHA and actual installed proof artifact,
+never infer acceptance from branch names, a contract build or a prerequisite component.
 
 ## Preserve outstanding work before reconciliation
 
@@ -142,10 +152,10 @@ unblock development, or call a local commit published. App recovery is separate 
 
 ## Windows and Linux implementation batches
 
-After H/K and independent review, build the smallest production node admission/private-worker slice needed for
-native proof. This slice is part of P, not the later orchestration port; Python broker authority cannot stand in
-for node admission. Prove authenticated service IPC, protected storage, transaction-bound approval, confined execution,
-and before-login operation first. Windows uses SCM, actual SID/PID/lineage checks, AppContainer plus Job Objects, minimal directional
+After H/K and independent review, build the smallest production bounded computation admission/private-worker slice
+needed for P. This is distinct from the restricted H caller-admission components above and from the later
+orchestration port; Python broker authority cannot stand in for node admission. Prove authenticated service IPC,
+protected storage, transaction-bound approval, confined execution and before-login operation first. Windows uses SCM, actual SID/PID/lineage checks, AppContainer plus Job Objects, minimal directional
 handles, no breakaway, and kill-on-job-close. Workers inherit no node/authority handles or LAN/localhost exemption.
 Prove native CUDA on the available RTX 3090 Ti while WSL is stopped and invocation denied. AppContainer documentation
 alone is not GPU compatibility proof. A failed proof requires native backend/confinement engineering.

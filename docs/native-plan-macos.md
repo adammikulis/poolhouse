@@ -136,16 +136,20 @@ merge its reviewed generated result before adapting macOS.
 
 | Barrier | Evidence needed before proceeding |
 |---|---|
-| H: hooks | Reviewed producer/consumer identity binding, supported installation/trust, actual root and subagent completed turns, cleanup refusal, missing/forged/parent context refusal. Architecture implementation waits. |
+| H: hooks | Reviewed producer/consumer identity binding, supported installation/trust, actual root and subagent completed turns, cleanup refusal, missing/forged/parent context refusal. Orchestration port/cutover waits; restricted H engineering follows the shared dependency rules below. |
 | K: contracts | Shared contract commit, resolved independent findings, native adapter signatures, and preserved-work ledger. Platform implementation waits. |
 | P: native prerequisites | Authenticated service IPC, service-owned protected storage, transaction-bound approval, native confined execution, and before-login proof on macOS. Orchestration port/cutover waits. |
 | I: installed integration | Actual native artifacts and joint bidirectional acceptance with Windows and independent Linux/WSL. Overall completion waits. |
 
-Read-only inspection, historical preservation, feasibility review, and proof planning can proceed while H/K are
-pending. After K, macOS P can run alongside Windows/Linux P without concurrent shared-file edits. After H/K and independent review, build the minimal production node admission/private-worker slice needed to
-establish P. That slice is a prerequisite proof component, not the later orchestration port. Python broker authority
-cannot stand in for node admission. Failed native proofs require native engineering, never unconfined execution
-or an alternate desktop authority.
+The [shared dependency rules](native-plan-windows-linux.md#deconfliction-and-integration) govern contract engineering
+and the restricted components needed to prove H while its acceptance is pending. K remains required before macOS
+platform adapters are implemented.
+Read-only inspection, preservation, feasibility review and proof planning remain available while H/K are pending.
+After K, macOS P can run alongside Windows/Linux P without concurrent shared-file edits. After H/K and independent
+review, build the minimal production bounded computation admission/private-worker slice needed to establish P;
+H caller admission does not satisfy this distinct computation proof or the later orchestration port. Python broker
+authority cannot stand in for node admission. Failed native proofs require native engineering, never unconfined
+execution or an alternate desktop authority.
 
 ## Ownership and landing
 
