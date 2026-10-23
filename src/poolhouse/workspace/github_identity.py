@@ -99,10 +99,14 @@ def load(check: Callable[[], None] | None = None) -> Identity | None:
     """The stored identity, or None when nothing is stored. Only the keychain is read."""
     if check is not None:
         check()
-        held = credentials._open(ITEM)
+        held = open_stored()
         if held is None and ITEM in credentials._wrapped():
             raise Failed("the configured repository App could not be opened; its identity was preserved")
         return decode(held) if held is not None else None
+    try:
+        credentials._wrapped(strict=True)
+    except credentials.WrappedCredentialError as exc:
+        raise Failed(f"repository App: {exc}; the existing App identity was preserved") from None
     state = credentials.status(ITEM)
     if state.get("error"):
         raise Failed(f"{state['error']}; fix that and run the command again")
@@ -111,11 +115,18 @@ def load(check: Callable[[], None] | None = None) -> Identity | None:
     if state["source"] != "keychain":
         raise Failed(f"{ITEM} is set in the {state['source']}; the identity is read from the keychain only, "
                      "so remove it there")
-    held = credentials.get(ITEM)
+    held = open_stored()
     if held is None:
-        raise Failed("the keychain holds the identity but did not open it; run `poolhouse-security unlock` "
-                     "and try again")
+        raise Failed("the repository App changed while it was being opened; its existing configuration was preserved")
     return decode(str(held))
+
+
+def open_stored() -> str | None:
+    """Open the exact App item without conflating unreadable state with first setup."""
+    try:
+        return credentials._open(ITEM, strict=True)
+    except credentials.WrappedCredentialError as exc:
+        raise Failed(f"repository App: {exc}; the existing App identity was preserved") from None
 
 
 def save(who: Identity, undo: str, check: Callable[[], None] | None = None, expected: Identity | None = None) -> None:

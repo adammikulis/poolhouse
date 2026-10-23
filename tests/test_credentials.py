@@ -218,6 +218,67 @@ def test_an_entry_that_is_not_a_string_is_refused(isolated):
 def test_a_value_that_is_not_one_printable_line_is_refused(isolated, value):
     with pytest.raises(CredentialError):
         credentials.set("WIDGET_KEY", value)
+
+
+@pytest.mark.parametrize("held", ["not-base64!", 7, None])
+def test_strict_wrapped_read_distinguishes_an_absent_item_from_an_invalid_record(isolated, monkeypatch, held):
+    monkeypatch.setattr(credentials, "_wrapped", lambda **options: {"WIDGET_KEY": held})
+    with pytest.raises(credentials.WrappedCredentialError) as refused:
+        credentials._open("WIDGET_KEY", strict=True)
+    assert refused.value.reason == "invalid_wrapped"
+    assert credentials._open("ABSENT_KEY", strict=True) is None
+    assert refused.value.__cause__ is None
+
+
+@pytest.mark.parametrize("error,reason", [
+    (keystore.KeystoreLocked, "locked"), (keystore.KeystoreDenied, "denied"),
+    (keystore.KeystoreBusy, "busy"), (keystore.KeystoreMissing, "missing_master"),
+    (keystore.KeystoreUnavailable, "unavailable"), (keystore.KeystoreError, "cannot_open"),
+])
+def test_strict_wrapped_read_uses_fixed_diagnostics_without_backend_text(isolated, monkeypatch, error, reason, caplog):
+    import base64
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(credentials, "_wrapped", lambda **options: {"WIDGET_KEY": base64.b64encode(b"envelope").decode()})
+    calls = []
+
+    def refuse(*args):
+        calls.append(args)
+        raise error(SECRET)
+
+    monkeypatch.setattr(keystore, "default", lambda: SimpleNamespace(unwrap=refuse))
+    with caplog.at_level(logging.DEBUG), pytest.raises(credentials.WrappedCredentialError) as refused:
+        credentials._open("WIDGET_KEY", strict=True)
+    assert refused.value.reason == reason and refused.value.__cause__ is None
+    assert SECRET not in str(refused.value) + repr(refused.value) + caplog.text
+    assert len(calls) == 1
+    assert credentials._open("WIDGET_KEY") is None
+
+
+def test_strict_wrapped_read_reports_authentication_failure_without_changing_the_record(isolated, ring):
+    credentials.set("WIDGET_KEY", SECRET, keychain=True)
+    original = credentials.wrapped_path().read_bytes()
+    store = keystore.default()
+    store.lock()
+    ring.held.clear()
+    store.provision()
+    with pytest.raises(credentials.WrappedCredentialError) as refused:
+        credentials._open("WIDGET_KEY", strict=True)
+    assert refused.value.reason == "cannot_open"
+    assert credentials.wrapped_path().read_bytes() == original
+    assert "unlock" not in str(refused.value) and SECRET not in str(refused.value)
+
+
+@pytest.mark.parametrize("plain", [b"\xff", b"two\nlines"])
+def test_strict_wrapped_read_does_not_expose_invalid_decrypted_text(isolated, monkeypatch, plain):
+    import base64
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(credentials, "_wrapped", lambda **options: {"WIDGET_KEY": base64.b64encode(b"envelope").decode()})
+    monkeypatch.setattr(keystore, "default", lambda: SimpleNamespace(unwrap=lambda *args: plain))
+    with pytest.raises(credentials.WrappedCredentialError) as refused:
+        credentials._open("WIDGET_KEY", strict=True)
+    assert refused.value.reason == "invalid_wrapped"
     assert not (isolated / "home" / "credentials.toml").exists()
 
 

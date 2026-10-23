@@ -243,11 +243,23 @@ def test_selected_holder_reaches_authenticated_lead_gate(tmp_path, monkeypatch):
 
 def test_credential_open_is_exact_item_without_generic_lookup(monkeypatch):
     seen = []
-    monkeypatch.setattr(holder.credentials, '_open', lambda name: seen.append(name))
+    monkeypatch.setattr(holder.credentials, '_open', lambda name, **options: seen.append((name, options)))
     monkeypatch.setattr(holder.credentials, 'get', lambda *a: pytest.fail('generic credential lookup'))
     with pytest.raises(net.Failed, match='initial setup'):
         holder.identity()
-    assert seen == ['POOLHOUSE_AGENT_APP']
+    assert seen == [('POOLHOUSE_AGENT_APP', {'strict': True})]
+
+
+def test_unreadable_app_is_not_reported_as_missing_or_replaced(monkeypatch):
+    def unreadable(name, *, strict):
+        assert name == 'POOLHOUSE_AGENT_APP' and strict
+        raise holder.credentials.WrappedCredentialError('cannot_open')
+
+    monkeypatch.setattr(holder.credentials, '_open', unreadable)
+    with pytest.raises(net.Failed, match='current encryption key or credential context') as refused:
+        holder.identity()
+    assert 'preserved' in str(refused.value)
+    assert all(word not in str(refused.value) for word in ('initial setup', 'unlock', 'unset'))
 
 
 def test_all_existing_asset_conflicts_refuse_before_missing_upload(publication):

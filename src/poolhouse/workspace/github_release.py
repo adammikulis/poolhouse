@@ -94,7 +94,10 @@ def authorize(action: str):
 
 def identity() -> github_app.Identity:
     """Open only the configured repository App item inside the credential holder."""
-    held = credentials._open(github_app.ITEM)
+    try:
+        held = credentials._open(github_app.ITEM, strict=True)
+    except credentials.WrappedCredentialError as exc:
+        raise remote.Failed(f"repository App: {exc}; the existing App identity was preserved") from None
     if held is None:
         raise remote.Failed("the repository App is not configured; an authorized agent can prepare its initial setup")
     who = github_app.decode(held)

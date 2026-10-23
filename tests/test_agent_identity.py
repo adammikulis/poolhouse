@@ -651,7 +651,7 @@ def test_installed_lead_setup_uses_only_own_app_holder_and_no_terminal(ai, insta
 @pytest.mark.parametrize('refusal', ['child', 'actor', 'selection', 'module', 'repo', 'gate'])
 def test_delegated_setup_refuses_before_app_load_api_or_browser(ai, installed_setup, monkeypatch, workspace_node, refusal):
     selected, actor, _ = installed_setup
-    monkeypatch.setattr(credentials, '_open', lambda *a: pytest.fail('credential access before admission'))
+    monkeypatch.setattr(credentials, '_open', lambda *a, **k: pytest.fail('credential access before admission'))
     if refusal == 'child':
         child = workspace_node.member('bootstrap-child', parent=actor)
         monkeypatch.setattr(github_release, 'connect', lambda: workspace_node.session(child))
@@ -745,10 +745,46 @@ def test_delegated_setup_refuses_expired_preparation_and_locked_app(ai, installe
     prepared = ai.Preparation.capture(None)
     with pytest.raises(ai.Failed, match='expired'):
         dataclasses.replace(prepared, deadline=0).check()
-    monkeypatch.setattr(credentials, '_open', lambda *a: None)
-    monkeypatch.setattr(credentials, '_wrapped', lambda: {ai.ITEM: 'wrapped-ciphertext'})
+    monkeypatch.setattr(credentials, '_open', lambda *a, **k: None)
+    monkeypatch.setattr(credentials, '_wrapped', lambda **options: {ai.ITEM: 'wrapped-ciphertext'})
     assert ai.command(['setup'], (False, False)) == 1
     assert ai.gh.log == [] and ai.browser.opened == []
+
+
+def test_wrapped_app_authentication_failure_is_not_an_unlock_or_initial_setup_request(ai, installed_setup, ring, capsys):
+    credentials.set(ai.ITEM, "existing-app-record", keychain=True)
+    original = credentials.wrapped_path().read_bytes()
+    store = credentials.keystore.default()
+    store.lock()
+    ring.held.clear()
+    store.provision()
+    assert ai.command(["check"], (False, False)) == 1
+    assert ai.command(["setup"], (False, False)) == 1
+    output = capsys.readouterr()
+    for line in (output.out, output.err):
+        assert "current encryption key or credential context" in line
+        assert "preserved" in line
+        assert all(word not in line for word in ("unlock", "unset", "initial setup", "existing-app-record"))
+    assert ai.gh.log == [] and ai.browser.opened == []
+    assert credentials.wrapped_path().read_bytes() == original
+
+
+@pytest.mark.parametrize("record", [b"not-json", b"[]", b"null", b'{"schema_version":2,"values":{}}',
+                                   b'{"schema_version":true,"values":{}}', b'{"schema_version":1,"values":null}',
+                                   b'{"schema_version":1,"schema_version":1,"values":{}}',
+                                   b'{"schema_version":1,"values":{"POOLHOUSE_AGENT_APP":"held"},"values":{}}',
+                                   b'{"schema_version":1,"values":{"POOLHOUSE_AGENT_APP":"held","POOLHOUSE_AGENT_APP":null}}'])
+def test_damaged_wrapped_app_container_never_becomes_initial_setup(ai, installed_setup, capsys, record):
+    path = credentials.wrapped_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(record)
+    assert ai.command(["check"], (False, False)) == 1
+    assert ai.command(["setup"], (False, False)) == 1
+    output = capsys.readouterr()
+    assert "valid encrypted credential record" in output.out + output.err
+    assert "preserved" in output.out + output.err
+    assert ai.gh.log == [] and ai.browser.opened == []
+    assert path.read_bytes() == record
 
 
 @pytest.mark.parametrize('bearer', ['', ' fixture-token '])
