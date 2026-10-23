@@ -58,6 +58,18 @@ def test_a_push_that_breaks_a_test_it_did_not_touch_is_refused(repo, tmp_path):
     assert "the push breaks the tests above" in done.stderr
 
 
+def test_a_test_that_fails_once_under_load_and_passes_alone_is_named_and_not_held_against_the_push(repo, tmp_path):
+    flaky = ("import os\nfrom pathlib import Path\n\nfrom poolhouse import mod\n\nSEEN = Path(os.environ['STUB_LOG']).with_suffix('.seen')\n\n\n"
+             "def test_value():\n    first = not SEEN.exists()\n    SEEN.touch()\n    assert mod.VALUE == 1 and not first\n")
+    commit(repo, "tests/test_untouched.py", flaky)
+    git(repo, "push", "-q", "origin", "0.9dev")
+    commit(repo, "src/poolhouse/mod.py", "VALUE = 1\nMORE = 10\n")
+    done = landing(repo, tmp_path / "log")
+    assert done.returncode == 0, done.stderr
+    assert "failed for the load and are not held against the push" in done.stderr
+    assert "FAILED tests/test_untouched.py::test_value" in done.stderr
+
+
 def test_a_test_that_was_already_red_before_the_push_is_named_and_not_held_against_it(repo, tmp_path):
     commit(repo, "tests/test_red.py", "from poolhouse import mod\n\n\ndef test_was_red():\n    assert mod.VALUE == 99\n")
     git(repo, "push", "-q", "origin", "0.9dev")
