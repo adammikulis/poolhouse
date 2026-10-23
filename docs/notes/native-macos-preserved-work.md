@@ -1,4 +1,5 @@
 # Mac preserved work ledger
+
 This is the Mac response to the missing-source request in [the cross-device preservation ledger](native-preserved-work.md). It publishes recorded identities and custody metadata through Git. It grants no execution authority, pool membership, cleanup permission or K acceptance. The devices do not yet have an authenticated pool/API connection; a Git note does not establish one.
 
 ## Evidence checkpoints
@@ -22,7 +23,7 @@ Custody handles: `repo/` is the Mac primary checkout; `repo-parent/` is its cont
 
 ## Original worktrees
 
-Each full SHA is the original head. Counts `B/U` mean commits only on the original baseline / only on this head, from the recorded `rev-list --left-right --count baseline...head`. `U=0` establishes ancestry only, not behavior retention or a deletion decision. Unique commits remain pending source/behavior review. All rows retain original custody unless a later explicit closure below says otherwise; present-day state was not re-inventoried.
+Each full SHA is the original head. Counts `B/U` mean commits only on the original baseline / only on this head, from the recorded `rev-list --left-right --count baseline...head`. `U=0` establishes ancestry only, not behavior retention or a deletion decision. Unique commits remain pending source/behavior review. All rows were retained in the listed custody at the baseline. This handoff authorizes no original removal. Present-day physical availability outside the later scoped closures was not re-inventoried and remains unknown.
 
 | ID | Original custody locator | Full original head | Ref ID | B/U | Tracked edits / untracked / ignored paths | Observed claim owner |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -400,7 +401,7 @@ Custody: `H-MAC/studio-watch-replacement-20261020.bundle`; 23189644 bytes; SHA-2
 
 ## Dirty and untracked custody
 
-Seven original trees contain 39 nonempty porcelain records. These are metadata-only identities below; no patch, index image, untracked-file content archive or independent apply-check was made by this inventory. The original working directories/indexes are their byte custody. Rows must not be represented as externally backed up, merged, disposable or currently unchanged. Index and worktree status letters are retained separately.
+Seven original trees contain 39 nonempty porcelain records. These are metadata-only identities below; no patch, index image, untracked-file content archive or independent apply-check was made by this inventory. The original working directories/indexes were the observed byte custody at the baseline; current byte identity and availability were not rechecked. Rows must not be represented as externally backed up, merged, disposable or currently unchanged. Index and worktree status letters are retained separately.
 
 | Tree | Porcelain XY | Relative path | Custody / gap |
 | --- | --- | --- | --- |
@@ -460,7 +461,7 @@ The ignored-path counts in the worktree table are recursive Git ignored path ent
 | M40 | `examples`: 1 | 1 | retained locally; classification/copy/rebuildability pending |
 | M51 | `tests`: 3 | 3 | retained locally; classification/copy/rebuildability pending |
 
-Two non-rebuildability candidates have recorded content digests; each original remains the only custody established by this evidence:
+Two non-rebuildability candidates have recorded content digests; each recorded original is the only custody established at the baseline; present availability was not rechecked:
 
 | Tree | Relative asset | Bytes | Recorded SHA-256 |
 | --- | --- | --- | --- |
@@ -492,7 +493,7 @@ These receipts concern task-created review/worker checkouts, not a global cleanu
 | review/codex-native-session | 6edfb392d61f167cf42ac7e889f4176034e358a0 | Review tree removed after clean restoration; no review-only edits. Does not close original M07 custody gaps. |
 | feat/macos-producer-candidate | 24c46d8ae687f064fd75dc994e5931ee29a1ac63 | 2026-10-23T22:10:06.035806+00:00 receipt verifies directory, registration and branch removed, all own claims released. Source landed; actual two-package preparation verified by coordinator. Explicitly UNTRUSTED, no H/K/P acceptance. |
 
-E-MAC retains `claim-release-review.json`, `codex-selector-review.json` and `macos-candidate-author/cleanup.json`. Current ref/worktree state outside these scoped receipts is unknown here. Original physical work, external bundles, source checkout and package/probe artifacts remain outside the closed helper checkout. Storage metadata, agent coordination messages and receipts cannot grant authority or establish protected custody.
+E-MAC retains `claim-release-review.json`, `codex-selector-review.json` and `macos-candidate-author/cleanup.json`. Current ref/worktree state outside these scoped receipts is unknown here. The original inventory and later external source/package/probe artifacts are separate from the closed helper checkout; that closure does not certify their present availability. Storage metadata, agent coordination messages and receipts cannot grant authority or establish protected custody.
 
 ## Remaining handoff gaps
 
