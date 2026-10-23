@@ -250,6 +250,11 @@ def _no_machine_state(monkeypatch, tmp_path):
 
     import importlib
 
+    # The agent that runs the suite is itself a session on a board, and its shell exports the names of both. Left in place they decide
+    # which board a hook resolves and whose token it looks for, so a rig that registers no session was denied only in an agent's shell.
+    for name in importlib.import_module("poolhouse.testing.identity").IDENTITY_ENV:
+        monkeypatch.delenv(name, raising=False)
+
     progress = sys.modules.get("poolhouse.bench.progress") or importlib.import_module(
         "poolhouse.bench.progress")
     unmanaged = sys.modules.get("poolhouse.serve.unmanaged") or importlib.import_module(
