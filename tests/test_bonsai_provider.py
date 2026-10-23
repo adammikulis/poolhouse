@@ -30,7 +30,7 @@ def weights(path, kind=142):
 def test_actual_pq2_type_never_selects_stock_runtime(tmp_path):
     model = weights(tmp_path / 'weights')
     stock = LlamaServerBackend(binary=tmp_path / 'stock-llama-server')
-    chosen = ServerManager(stock, state_file=tmp_path / 'servers.json').backend_for(ServerSpec(model=model))
+    chosen = ServerManager(stock, state_file=tmp_path / 'servers.json').backend_for(ServerSpec(context=4096, model=model))
     assert getattr(chosen, 'provider', '') == 'prism', 'PQ2 tensor type142 needs its verified Prism runtime'
 
 
@@ -80,14 +80,14 @@ def test_only_format_metadata_selects_provider_and_lookup_never_installs(tmp_pat
     _, root, downloaded = release
     model = weights(tmp_path / 'ordinary-name', kind)
     manager = ServerManager(state_file=tmp_path / 'servers.json')
-    selected = manager.backend_for(ServerSpec(model=model))
+    selected = manager.backend_for(ServerSpec(context=4096, model=model))
     assert selected.provider == 'prism'
-    assert manager.backend_for(ServerSpec(model=model)) is selected
+    assert manager.backend_for(ServerSpec(context=4096, model=model)) is selected
     with pytest.raises(BinaryNotFound):
         assert selected.binary
     assert not root.exists() and downloaded == []
     stock_model = weights(tmp_path / 'Bonsai-PQ2.gguf', 2)
-    assert manager.backend_for(ServerSpec(model=stock_model)) is manager.backend
+    assert manager.backend_for(ServerSpec(context=4096, model=stock_model)) is manager.backend
 
 
 class Captured(RuntimeError):
@@ -105,7 +105,7 @@ def prepare(tmp_path, monkeypatch, release, model=None):
         raise Captured('existing admitted launch reached')
     monkeypatch.setattr(LlamaServerBackend, '_start_native', existing_start)
     with pytest.raises(Captured, match='existing admitted launch'):
-        leased(LlamaServerBackend(binary=tmp_path / 'unselected-stock'), ServerSpec(model=model),
+        leased(LlamaServerBackend(binary=tmp_path / 'unselected-stock'), ServerSpec(context=4096, model=model),
                preflight=False, check_flags=False, warmup_request=False)
     return model
 
@@ -141,7 +141,7 @@ def test_reuse_refuses_changed_code_and_never_downloads_over_it(tmp_path, monkey
 
 def test_preparation_without_actual_broker_grant_never_writes(tmp_path, release):
     with pytest.raises(grant.NoGrant):
-        provider.PrismBackend().start(ServerSpec(model=weights(tmp_path / 'model')), lease=None)
+        provider.PrismBackend().start(ServerSpec(context=4096, model=weights(tmp_path / 'model')), lease=None)
     assert not release[1].parent.exists()
 
 
@@ -258,9 +258,9 @@ def test_prism_selected_model_still_applies_strict_iq_policy(tmp_path, monkeypat
     model.write_bytes(header + bytes((-len(header)) % 32) + bytes(128 + 13600))
     monkeypatch.setattr(quant_guard, 'is_apple_silicon', lambda: True)
     manager = ServerManager(state_file=tmp_path / 'servers.json')
-    assert manager.backend_for(ServerSpec(model=model)).provider == 'prism'
+    assert manager.backend_for(ServerSpec(context=4096, model=model)).provider == 'prism'
     with pytest.raises(quant_guard.BlockedQuant, match='IQ4_XS'):
-        manager._quant_guard(ServerSpec(model=model), Starting(iq='block'))
+        manager._quant_guard(ServerSpec(context=4096, model=model), Starting(iq='block'))
 
 
 def test_model_changed_during_format_scan_never_fills_format_cache(tmp_path, monkeypatch):
@@ -297,7 +297,7 @@ def test_concurrent_admitted_preparation_downloads_one_fixed_dependency(tmp_path
     monkeypatch.setattr(LlamaServerBackend, '_start_native', existing_start)
     def request(_):
         with pytest.raises(Captured):
-            leased(LlamaServerBackend(), ServerSpec(model=model), preflight=False,
+            leased(LlamaServerBackend(), ServerSpec(context=4096, model=model), preflight=False,
                    check_flags=False, warmup_request=False)
     with ThreadPoolExecutor(max_workers=2) as threads:
         list(threads.map(request, range(2)))
