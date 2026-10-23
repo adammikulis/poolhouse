@@ -1,14 +1,20 @@
 # A test runner and sharder that any project uses
 
 Status: design. Nothing here is built. Claims carry a tag: **[code]** read in this tree (`0.3dev` at `ab63ced7b`), **[doc]** stated in
-a document of this repository, **[report]** reported by workers and not re-measured here, **[plan]** a proposal. The owner ordered it: one general runner and sharder, a feature of the
+a document of this repository, **[report]** reported by workers and not re-measured here, **[probe]** run in the second break-it pass
+(`docs/design-test-runner-breakit-2.md`) on macOS 26.6 arm64 with Python 3.14.7, git 2.51.2 and expat 2.7.4 at a load average of 87 to 93, so
+a time is an upper bound and a byte count or a pass or fail is not, **[plan]** a proposal. The owner ordered it: one general runner and
+sharder, a feature of the
 Poolhouse library, that any repository that installs Poolhouse uses for its own tests; Poolhouse's own repository is the first project
 that uses it, through the same public interface and nothing private. `docs/design-test-selection.md` is the design of the selection
 and evidence rules for Poolhouse's tests; this document generalises its mechanisms (sections 4, 5 and the shard description of 6.1 to
 6.5 become the analyzers, the soundness rules and the pool transport below) and replaces its build plan.
 
-A written break-it pass by a non-author (`docs/design-test-runner-breakit.md`) is absorbed in the text below. Section 14 lists, for each
-build step, the findings it absorbs and the test that proves each one, and step 8 needs a second written pass on section 10 before it is built.
+Two written break-it passes by a non-author, `docs/design-test-runner-breakit.md` (findings F1 to F30) and `docs/design-test-runner-breakit-2.md`
+(findings N1 to N18), are absorbed in the text below. Section 14 lists, for each build step, the findings it absorbs and the test that proves
+each one. The findings that decide who is trusted (N1 to N6: the project's identity, git, the person's yes, the Owner zone, the scratch copy and
+the hang guard) are absorbed in sections 3.5, 4.8, 4.9, 5.10 and 10.2, and step 3 builds the local run, `own` and the settings to them; step 8
+needs a non-author's re-read of sections 4.8, 4.9, 5.10, 6.3, 6.4, 6.6, 10.2, 10.3 and 10.6 before it is built.
 
 ## 0. The dependency direction, and the whole design in a page
 
@@ -40,13 +46,16 @@ does is the same for every file.
   Poolhouse never reaches a repository that imports it (section 3.3).
 - **Where tests run is the user's choice and never the project's.** The target comes from the user's own settings and the `--on` flag and is
   `local` unless the user sets another. A project file lists what it needs (tools, labels, files, requirements) and cannot name a device, a
-  pool or a place to run. A tree is sent to a device only for a project the user has named as their own (sections 4.8 and 6.1).
-- **Handed code runs confined.** Local runs, LIST, steps, hooks and units of a project the user has not named as their own run under the same
-  sandbox a sent tree does. Naming a project is one typed yes per project and is the only step this adds; Poolhouse's own checkout is named by
-  its device setup (section 10.2).
+  pool or a place to run. A tree is sent to a device only for a project the user has named as their own, and only to the devices the person's
+  yes named (sections 4.8 and 6.1).
+- **Handed code runs confined, in a copy.** Local runs, LIST, steps, hooks and units of a project the user has not named as their own run under
+  the same sandbox a sent tree does, in a scratch copy of the transported set. A project is named by what the person pointed at, read from files
+  and without git (section 4.9). Naming a project is one yes per project and is the only step this adds; the yes comes only from evidence the
+  host supplies through one gate, never from a terminal (section 4.8); Poolhouse's own checkout is named by its device setup (section 10.2).
 - **Trust is zones with one-way boundaries** (section 3.5). The executor never reads or writes by name a path a test can write; a
-  configuration is parsed once, from the bytes that were hashed; the store signs what it holds and records the trust domain of the run that
-  wrote it; nothing that grants authority travels in an environment variable.
+  configuration is parsed once, from the bytes that were hashed; the Owner zone (keys, store, settings) is denied to every child, named or not;
+  the store signs what it holds under a key per project and records the trust domain of the run that wrote it; git runs only confined, from a
+  closed list; nothing that grants authority travels in an environment variable.
 - **Time is accounted, not mixed.** A unit's timeout counts from the moment it starts running; queue wait and build time are reported
   apart (`queued`, `built`, `ran`), and a unit that never started because the machine was overloaded is `not started`, not failed
   (section 5.10).
@@ -60,9 +69,9 @@ does is the same for every file.
 
 Numbers in sample commands and sample output lines in this document (`queued 12 s`, `slice 5/8`, `--shards 8 --index 3`, and the like) show
 the shape of a line or an argument; they are not values the runner uses. A real run prints its measured numbers, and a value that
-configures the runner is either shown as generated by the tool or has its source beside it. The sample files below leave out the two keys
-`poolhouse-test init` writes from a project's first measured run, `[schedule] silence_margin` and `[reuse] canary`: a file without the first
-is refused (5.10) and a file without the second runs with reuse off (5.3).
+configures the runner is either shown as generated by the tool or has its source beside it. The sample files below leave out the keys
+`poolhouse-test init` writes from a project's measured first runs, `[schedule] silence_margin` and `total_margin` and `[reuse] canary`: a file
+without the margins is refused (5.10) and a file without the third runs with reuse off (5.3).
 
 A project supplies three things and the runner needs no more.
 
@@ -180,12 +189,12 @@ Arrows point from importer to imported, and only downward. The layering test (se
        testfarm/presets/      tool presets: pytest, cargo, npm, files   (TOML tables, plus the helper programs a table runs)
        testfarm/transports/   local, pool (client and server; also the pool modules named below), later ssh
        testfarm/resources/    resource providers: the lease table of a device's pool (also the lease modules named below)
-       poolhouse.workspace    board event sink, task evidence, owner identity   (named in the user's settings; reads the store)
+       poolhouse.workspace    board event sink, task evidence, owner identity, person gate   (named in the user's settings; reads the store)
  ----------------------------------------------------------------------------------------------------------------
  L2  testfarm core                                           imports L1 and the L0 list
        select  divide  assign  schedule  merge  report  exit status
        reuse store (signed, with a trust domain)   admission (slots, resources)   steps   jobs   history   failfirst
-       executor and its zones (parser process, child sandbox)   user settings   the runner's state location
+       executor and its zones (parser worker, child sandbox)   user settings   the runner's state location
  ----------------------------------------------------------------------------------------------------------------
  L1  testfarm model                                          standard library only
        config schema, parser and validator; Unit, Label, Plan, Shard, Result, Report; id grammar; exit codes
@@ -205,7 +214,8 @@ Rules, each a test:
   layering test lists them by name. A resource provider imports L2, L1 and the lease modules it adapts (`poolhouse.leases`,
   `poolhouse.serve.grant`). Nothing else under `testfarm` imports `scripts/`, `tests/`, `poolhouse.board`, `poolhouse.serve` or
   `poolhouse.workspace`.
-- `poolhouse.workspace` imports `testfarm.store` (to read evidence) and is loaded as a sink by name from the user's settings; `testfarm`
+- `poolhouse.workspace` imports `testfarm.store` (to read evidence) and is loaded as a sink and as the person gate by name from the user's
+  settings; `testfarm`
   never imports `workspace`.
 - The daemon mounts the pool transport's server routes by name through `poolhouse.optional` (`tests/test_layers.py` prescribes that
   reach for upward edges); `fleet/shard_*.py` and their `KNOWN` entries disappear.
@@ -214,15 +224,26 @@ Rules, each a test:
   (AGENTS.md section 5: fixed overhead above 5 seconds or a quarter of the wall time is a defect).
 - `testfarm` stays in the `tools` layer of `tests/test_layers.py` and is in the wheel (`testing` is the package that leaves it).
 - **The runner's state lives outside the pool's secret root.** The store, `{cache}`, `{shared}`, scratch trees, job records, the history
-  and the store's signing key are under the platform's state location for the runner (a `testfarm` directory under it), never under
-  `~/.poolhouse`. The allow list that gates remote execution is kept with the pool's settings and is not writable by any confined profile.
+  and the store's keys are under the platform's state location for the runner (a `testfarm` directory under it), never under
+  `~/.poolhouse`. The allow list that gates remote execution is kept with the pool's settings and is neither readable nor writable by any child.
   A test pins that the state path is not under the pool's home and that every sandbox profile names it by exact path.
+- **The Owner zone is a list of paths.** The state location, the master key, the settings file, the user presets, the pool's home and allow
+  list and `~/.ssh` are returned by one function, `ph.test.owner_paths()`. The sandbox profile of every child names them by exact path (3.5,
+  rule 4), and the host adds the same list to its edit and shell guards (4.8).
+- **One way to start a process, explicit limits on every call.** Every process the runner starts (LIST, `deps.command`, hooks, steps, units,
+  the control units of 6.4, the Parser worker, the `[requires]` probes, `prune`, `git`, the launcher) is started by one spawn function in L2. It
+  takes the hang guard (5.10), the sandbox profile, the exact list of descriptors the child keeps and explicit `sandbox.Limits` as required
+  arguments: no call inherits the defaults `poolhouse.sandbox.policy.Limits` carries, a wall time and an output size with no source here. A test
+  fails when any code under `testfarm` starts a process another way or calls the executor without limits (check A).
+- **Two modes of the L0 `sandbox` module are the runner's to ask for:** an open profile that denies exact paths (the Own child's narrow deny, 10.2)
+  and `Net.loopback_except(ports)`, loopback with the named ports denied (10.2). Each is added to `src/poolhouse/sandbox/` with its own tests in
+  the step that first uses it (step 3(b)).
 
 ### 3.2 Public and internal
 
 | | Public (documented in `docs/api.md` and `docs/commands.md`, pinned in `tests/api-signatures.json`) | Internal |
 |---|---|---|
-| Python | `ph.test`: `config(root)`, `units(root, select)`, `plan(root, on, select, cover)`, `divide(root, shards, index)`, `run(select, *, root, on, reuse, test_timeout_s, unit_timeout_s, cover)`, `affected(root, base)`, `devices()`, `failfirst(root, base)`; the frozen dataclasses `Config`, `Unit`, `Plan`, `Shard`, `Device`, `Result`, `Failure`; the protocol `Transport` and `Target` | every other name under `poolhouse.testfarm` |
+| Python | `ph.test`: `config(root)`, `units(root, select)`, `plan(root, on, select, cover)`, `divide(root, shards, index)`, `run(select, *, root, on, reuse, test_timeout_s, unit_timeout_s, cover)`, `affected(root, base)`, `devices()`, `failfirst(root, base)`, `owner_paths()`; the frozen dataclasses `Config`, `Unit`, `Plan`, `Shard`, `Device`, `Result`, `Failure`; the protocols `Transport`, `Target` and `PersonGate` | every other name under `poolhouse.testfarm` |
 | Command | `poolhouse-test init, check, list, plan, run, affected, devices, submit, status, wait, result, cancel, allow, deny, policy, own, target, reuse, failfirst, record` | the helper programs presets run; the receiver's server entry |
 | File | `testfarm.toml`, `schema = 1`; the preset tables; the user's settings file; the result `jsonl` and the LIST `jsonl` row shapes | the store layout, the wire routes, the state directory |
 | Wire | none: the routes are versioned and checked by a handshake (section 6.2) but carry no promise to a third party | all |
@@ -234,8 +255,9 @@ under `poolhouse.testfarm` that `ph.test` does not export, and no script reads t
 `ph.test` exists today (`poolhouse.api.remote_tests`: `devices()`, `run(tier, *, on, root, files, timeout_s)`, `Device`, `Result`).
 The new `run` takes a selection (a set name such as `@fast`, ids, or globs) in place of `tier`, `on` takes `local`, `auto`, `pool`, a
 device name or a fingerprint (its default is the user's setting, `local` when there is none, 4.8), and `Result` gains `reused`, `not_run`
-and `devices`. `own` and `allow` are commands only and have no function in `ph.test`: each asks a person, and a Python call cannot answer
-for one. Before 1.0 a minor release may change the surface (`docs/api.md`, "Versions"), and the change is a deliberate edit of
+and `devices`. `own`, `allow` and a `target` or `on` that widens (4.8) ask a person through the host's `PersonGate`; no function of `ph.test`
+takes an answer, and a Python call cannot answer for a person. Before 1.0 a minor release may change the surface (`docs/api.md`,
+"Versions"), and the change is a deliberate edit of
 `tests/api-signatures.json`.
 
 ### 3.3 Development rules stay in development
@@ -251,8 +273,10 @@ Nothing that matters only for developing Poolhouse is in the library. Each item 
 | `heavy-modules.txt`, `seatbelt-modules.txt`, the redteam, `live_api`, `live_net`, `real_model` markers | `[label.NAME]` tables and the pytest preset's marker-to-label rule |
 | The lease vocabulary (`cpu_slots`, `memory_mb`, `gpu`, `model_slot`, `claim`, the node's lease table, `HEAVY_MODULES`' heavy lane) | the resource provider Poolhouse's setup names (4.3, 5.5); the core knows resource names and amounts and nothing about what they are |
 | The `Fail-first:` report line and the `Fail-first-exempt:` commit line of `docs/agent-policy.md` | `[failfirst]` keys in Poolhouse's file; the library has no default line (5.9) |
-| The split between an agent's store and the owner's (`DEV_TEST_REUSE_DIR`) | the trust domain and signing key of the store (5.3); the library has no environment name for it |
-| Task evidence, landing and release (`workspace.testruns.verified`) | readers of the store in `poolhouse.workspace`, which ask for domain `named` and kind `local`; the store has attributes and no workflow |
+| The split between an agent's store and the owner's (`DEV_TEST_REUSE_DIR`) | the trust domain, the key per project and the denial of the Owner zone to every child (5.3); the library has no environment name for it |
+| Task evidence, landing and release (`workspace.testruns.verified`) | readers of the store in `poolhouse.workspace`, which ask for domain `named`, kind `local`, the exact tree and a run by a session other than the task's author (5.3); the store has attributes (`domain`, `kind`, `by`) and no workflow |
+| A person's yes for `own`, `allow` and a widening target (the structured approval question, `person-consume`) | the host's `PersonGate` in `poolhouse.workspace` (4.8); the library asks it and reads no terminal, agent marker or environment name |
+| The edit and shell guards of the agent harness | the host's guards read `ph.test.owner_paths()` and refuse an agent's write or command that names those paths (4.8) |
 | The budget, red-team coverage, command reference and layer checks (the gate) | command units (section 5.7) in a set named `gate` |
 | The ratchet on the full tier's time, `scripts/test heavy` | scripts that read `ph.test` results and the public history, not part of the library |
 | The queue doctor, reaping the node processes Poolhouse's tests start, the board events of a canary mismatch | `[hooks]` and the `workspace` sink named in the user's settings |
@@ -268,7 +292,9 @@ device in it, a **lease** is permission to use a limited resource, **capacity** 
 software `poolhouse-node`. It uses no word that `docs/glossary.md` bans. The words this design adds are **unit** (the
 scheduling and reuse granule), **id**, **shard** (the part of a run sent to one target), **target** (a place a shard can run),
 **transport**, **preset**, **step**, **set** (a named selection, where the old tiers were), **label**, **DEPS**, **analyzer**, **named**
-(a project the user has said is their own, 4.8), **domain** (the trust a run had when it wrote a store entry, 5.3) and **zone** (3.5). The
+(a project the user has said is their own, 4.8), **domain** (the trust a run had when it wrote a store entry, 5.3), **zone** (3.5), **gate**
+(the host's `PersonGate`, through which a person's yes arrives, 4.8) and **control unit** (a generated unit the executor runs to test itself
+and its profile, 6.4; the glossary's **sentinel** is the open-join safety and is not used for it). The
 package keeps its name `testfarm`; `farm` is not a glossary word and is not banned. `tests/test_glossary.py` covers this document and
 the code the way it covers the rest.
 
@@ -279,33 +305,50 @@ row of a closed schema.
 
 | Zone | What is in it | May read | May write |
 |---|---|---|---|
-| Owner | the user's account: the settings file, the list of named projects, the store's signing key, the pool's allow list | its own files | the settings by the CLI after a person's yes; nothing else |
+| Owner | the files in the user's account that grant or record authority, listed by `ph.test.owner_paths()`: the runner's settings file, user presets, list of named projects, master key, derived keys, store and state location, and the pool's allow list and home and `~/.ssh` | the Runner, for the files it needs | the settings by the CLI after the host's gate said yes (4.8); the Runner's own files; nothing else. No Child, named or not, reads or writes it |
 | Runner | the core, the executor, the store writer, admission | the Owner zone; verified bytes held in memory; Child-written data only through a descriptor it opened itself | the store (signed), the executor-owned directory, result descriptors |
-| Parser | a confined subprocess with the executor's limits: TOML, JSON and XML parsing | one descriptor of bytes | one descriptor of rows of a closed schema |
-| Child | steps, units, LIST, `deps.command` and hooks of an unnamed project and of every sent tree; on a device, always | the tree, the toolchain paths the preset names, the executor-owned directory read-only | the scratch tree, the step directory it owns |
-| Own child | the same commands of a named project, on this machine only | the user's account | the user's account |
+| Parser | a long-lived confined worker with the executor's limits: TOML, JSON and XML parsing and the tar unpack | one descriptor of bytes | one descriptor of tag-length-value records (6.6); `tree/` for the unpack and nothing else |
+| Child | steps, units, LIST, `deps.command`, hooks, the control units of 6.4 and the `[requires]` probes of an unnamed project and of every sent tree; on a device, always; in a scratch copy | the scratch copy, the toolchain paths the preset names, the executor-owned directory read-only | the scratch tree, the step directory it owns |
+| Own child | the same commands of a named project, on this machine only, in the checkout | the user's account except the Owner zone | the user's account except the Owner zone |
 
-Rules, each a test (checks H, I and J of section 13):
+Rules, each a test (checks A, H, J and L of section 13):
 
 1. The Runner never writes through, or reads by name, a path a Child can change. Everything it writes for a child (`{idfile}`, argument
    lists, the config copy) is in a directory the Child cannot write; the only thing it creates in a place a Child can write is a result
-   file, with exclusive no-follow create, and it keeps the descriptor; everything it reads that a Child wrote it reads through a
-   descriptor it opened itself, after `fstat` says regular file, with the size capped on the descriptor.
-2. A configuration is parsed once, in the Parser zone, from the bytes that were hashed; the validated, clamped result stays in Runner
-   memory and the copy in the scratch tree is never consulted again.
-3. Nothing that grants authority travels in an environment variable or a file a Child can read: permits arrive on an inherited
-   descriptor, leases are delegated by the broker to a process group it verifies.
-4. A Child cannot read the Owner zone: the profile denies the state location, the settings, the pool's home and `~/.ssh` by exact path.
-5. The store holds signed entries with a domain; a reader verifies the signature and filters on the domain (5.3).
-6. Where a tree goes is read only from the Owner zone: the settings and the command line (4.8).
+   file, with exclusive no-follow create through a held directory descriptor, and it keeps the descriptor; everything it reads that a Child
+   wrote it reads through a descriptor it opened itself, after `fstat` says regular file, with the size capped on the descriptor. Every
+   component of such a path is a descriptor too (`O_NOFOLLOW` covers only the last component), and a link, a FIFO or a device found in a
+   walk is recorded by its type and never opened. A local checkout is read as data and never followed out of its root, so DEPS hashing
+   cannot be aimed at a private file.
+2. A configuration is parsed once, in the Parser zone, from the bytes that were hashed; the validated result (bounded by the receiver's budget
+   on a device, 10.6) stays in Runner memory and the copy in the scratch tree is never consulted again.
+3. Nothing that grants authority travels in an environment variable or a file a Child can read: permits arrive on an inherited descriptor, and
+   a lease is delegated by the broker to a process it identifies by a handle the operating system keeps stable for the process's life, never
+   by a process id alone (5.5). The child keeps no descriptor beyond the ones it is given.
+4. A Child cannot read or write the Owner zone, named or not. The profile of an unnamed or sent child is deny-default and names its reads;
+   the profile of a named child is open with a narrow deny of the Owner paths by exact path, with `(deny file-link)` (10.2).
+5. The store holds signed entries with a domain, under a key per project; a reader verifies the signature and filters on the domain and on
+   the run's `by` (5.3).
+6. Where a tree goes is read only from the Owner zone: the settings and the command line (4.8). A setting or flag that widens it needs the
+   host's gate.
+7. A project is classified from files, with no git, before anything of it runs, and every `git` call is confined and from a closed list (4.9).
+8. Every number the project's file supplies is finite and in range, a hang guard is two margins and a total guard, and no bound is the runner's
+   own (4, 5.10, 15).
 
 ## 4. The config schema
 
 One file, `testfarm.toml`, at the project root, parsed with `tomllib` in the Parser zone (3.5), strictly: an unknown key is an error that
-names the key and the nearest known one, a wrong type is an error, nesting deeper than the schema itself is an error, and nothing is
-defaulted from the project's identity. `schema = 1` is required. Paths in the file are relative to it and cannot leave its directory. Names
-(sets, labels, steps, units, and the `NAME` of `{step:NAME}` and `{shared:NAME}`) match `[a-z0-9_-]+`; environment variable names match
-`[A-Za-z_][A-Za-z0-9_]*` and their values hold no NUL byte; anything else is refused at validation, on the sender and again on a device.
+names the key and the nearest known one, a wrong type is an error, nesting deeper than the schema itself is an error, an integer past the
+parser's digit limit is a validation error, and nothing is defaulted from the project's identity. `schema = 1` is required. Paths in the file
+are relative to it and cannot leave its directory. Names (sets, labels, steps, units, and the `NAME` of `{step:NAME}` and `{shared:NAME}`)
+match `[a-z0-9_-]+`; environment variable names match `[A-Za-z_][A-Za-z0-9_]*` and their values hold no NUL byte; anything else is refused at
+validation, on the sender and again on a device. **The project root** is found from the working directory (or the path a command names) by
+walking up to the first directory that holds a `testfarm.toml` or a `.git` entry and stopping there: the walk never climbs into a parent
+repository, and a stop at a `.git` with no `testfarm.toml` is status 4 with the `init` hint (4.9). **Numbers are finite and in range:**
+`silence_margin`, `total_margin`, every `timeout`, `test_timeout`, `queue_wait`, `estimate`, `unrecorded_max` and `keep` are finite and greater
+than zero, a margin is at least 1, `slots`, `batch`, `slice_count` and `slices_per_target` are positive integers and `canary` is in (0, 1]. TOML
+parses `inf`, `nan` and `1e999` as floats [probe], so the validator refuses each of them, and zero and a negative number, with status 4 naming
+the key.
 `poolhouse-test check` validates it, runs LIST, and prints the units, the labels, how many units have DEPS, and which steps would run.
 
 ### 4.1 Reference
@@ -315,14 +358,14 @@ defaulted from the project's identity. `schema = 1` is required. Paths in the fi
 | `schema` | the schema version | required |
 | `preset` | a tool preset to start from (section 7); any key below overrides it | none |
 | `[project] name` | a label in reports only | the directory name; never an identity |
-| `[tree] include`, `exclude` | globs of untracked files to send in addition to the tracked ones; globs left out of the tree sent to a device | none; none. The sent set is the tracked files (`git ls-files` run with the system and global git configuration disabled) plus the untracked files a unit's DEPS or `include` names; never `.git`, never a link (6.3) |
+| `[tree] include`, `exclude` | globs of untracked files to send in addition to the tracked ones; globs left out of the tree sent to a device | none; none. The sent set is the tracked files (`git ls-files`, a confined call, 4.9) plus the untracked files a unit's DEPS or `include` names through a glob that is not the whole tree; never `.git`, never a link (6.3) |
 | `[list] run` | the LIST argument vector | none: without it the run is split by slice or not at all (5.2, "Three split modes") |
 | `[list] format`, `starts`, `ends`, `group` | `lines` or `jsonl`; the literal strings an id line begins and ends with; the group separator | `lines`; none (every non-empty line is an id); each id is a unit |
 | `[list] allow_empty`, `timeout` | whether a LIST with no unit is a run; seconds LIST may run | `false`; none: the hang guard (5.10) |
 | `[run] argv` | the RUN template | required unless the preset gives it; with LIST it receives ids, without LIST it runs the whole selection once |
 | `[run] ids_after`, `refuse_prefix` | an argument placed before `{ids}` (such as `--`); first characters of an id the runner refuses besides `-` (`@` and `+` for tools that read them as options) | none; none |
 | `[run] slice` | the RUN-slice template for a tool that cannot list its tests but can run a share of them (`--shard {slice_index}/{slice_count}`); an array of strings with exactly one `{slice_index}` and one `{slice_count}` | none; read only when there is no `[list]` (5.2) |
-| `[run] slice_base`, `slice_count`, `slices_per_target`, `slice_results` | whether the tool counts slices from 0 or 1; the number of slices, or `auto`; for `auto`, slices per target; what a slice reports (`exit`, `jsonl` or `junit`, as for `results`) | `1` (a tool's own first index is the project's to say, 1 is the common reading of "slice 1 of N"); `auto`; `1` (one slice per target is the least that uses every target); `exit` |
+| `[run] slice_base`, `slice_count`, `slices_per_target`, `slice_results` | whether the tool counts slices from 0 or 1; the number of slices, or `auto`; for `auto`, slices per target; what a slice reports (`exit`, `jsonl` or `junit`, as for `results`) | none, required whenever `slice` is set (a tool's own first index is the project's to say); `auto`; `1` (one slice per target is the least that uses every target); `exit` |
 | `[run] results`, `junit_id`, `batch` | `exit`, `jsonl` or `junit`; how junit rows map to ids; ids per invocation | `exit`; `1` for `exit`, all of a unit's ids otherwise |
 | `[run] reuse` | `"exit"` lets a project whose results are `exit` store passes | not set: only `jsonl` and `junit` results are stored (5.3) |
 | `[run] test_timeout` | seconds one id may run, handed to the tool's own per-test timer by the preset | none |
@@ -336,9 +379,9 @@ defaulted from the project's identity. `schema = 1` is required. Paths in the fi
 | `[[step]] name, run, inputs, tools, env, slots, timeout, keep, prune` | a build or environment command (4.4) | `slots` and `timeout` below |
 | `[label.NAME] match, lease, serial, platform, local, net, reuse, slots, estimate, timeout, needs` | what a label means (4.3); `match` globs ids that carry it | see 4.3 |
 | `[set.NAME] labels, not_labels, ids, extra, reuse` | a named selection: `poolhouse-test run @NAME` (4.5) | none |
-| `[reuse] key_env, key_tools, canary` | extra key inputs; the sampling rate of canary re-runs | none; none; none, and with no `canary` reuse is off and the report says so (5.3) |
+| `[reuse] key_env, key_tools, canary` | extra key inputs; the sampling rate of canary re-runs, in (0, 1] | none; none; none, and with no `canary` reuse is off and the report says so (5.3) |
 | `[failfirst] tests, line, exempt, mode` | globs of test files, a template over `{id}`, `{sha}` and `{error}` for the printed line, the literal prefix of an exempting commit-message line, the mode (5.9) | none; the runner's own line; none (no exempt route); `report` |
-| `[schedule] seed, unrecorded_max, silence_margin, total_margin, queue_wait, background_after` | a committed durations file used by `divide` and until history exists; the most seconds assumed for a unit with no record; the margins of the hang guards (5.10); the queue limit; the estimated work after which a run takes the `background` class (5.5) | none; none (the median of the recorded ones, uncapped); none, and required unless every command the runner starts has a `timeout` (the run is refused with status 4, 5.10); none; none; none (every run is interactive unless the person says `--background`) |
+| `[schedule] seed, unrecorded_max, silence_margin, total_margin, queue_wait, background_after` | a committed durations file used by `divide` and until history exists; the most seconds assumed for a unit with no record; the margins of the hang guards (5.10); the queue limit; the estimated work after which a run takes the `background` class (5.5) | none; none (the median of the recorded ones, uncapped); none, and both margins required unless every command the runner starts has a `timeout` (the run is refused with status 4, 5.10); none; none; none (every run is interactive unless the person says `--background`) |
 | `[requires]` | things a device must have, checked by probes the device owns (6.5) | none |
 | `[[unit]]` | a command unit with no LIST (5.7) | none |
 | `[preset.NAME]` | a preset defined in the project (7) | none |
@@ -364,7 +407,7 @@ A label is a word on a unit. Its table maps it to the runner's generic machinery
 | `serial = "NAME"` | at most one unit with this serial name runs at a time on a device (a long serial group, a benchmark) |
 | `platform = ["macos"]` | the unit goes only to a target whose platform class includes these |
 | `local = true` | the unit never leaves the sender; a restriction, and the only thing a project says about where a unit goes |
-| `net = "deny"` or `"loopback"` | the network the unit's sandbox allows: nothing (the default) or this machine's loopback; anything wider is a receiver policy that names destinations (10.2) |
+| `net = "deny"` or `"loopback"` | the network the unit's sandbox allows: nothing (the default) or this machine's loopback; anything wider is a receiver policy that names destinations, and on a macOS device a sent `loopback` needs the receiver's listed ports (10.2) |
 | `reuse = false` | a pass is not stored (a unit that reaches a live service) |
 | `slots = N` | the unit holds N CPU slots (default 1) |
 | `timeout = S` | seconds the unit may run, counted from the moment it starts (5.10); the largest of a unit's labels applies |
@@ -374,9 +417,8 @@ A label is a word on a unit. Its table maps it to the runner's generic machinery
 Labels come from LIST rows (`labels`), from `match` globs, or from the preset's rules (pytest markers become labels). The project decides
 what `gpu` or `model` means; the provider says which resource names exist. A label that asks for a capability (`lease`, or `net =
 "loopback"`) is honoured for a named project on this machine and, on a device, only as far as the receiver's policy names it; a project
-the user has not named gets no lease and no loopback whatever its file says. A unit that needs a model uses a lease the runner delegates
-to the unit's process group (5.5); the fixed default of a model lease is one llama-server slot (`docs/agent-policy.md`, section 1), and the
-runner never raises it.
+the user has not named gets no lease and no loopback whatever its file says. A unit that needs a model uses a lease the runner delegates to
+the unit's invocation (5.5); the runner starts no server and passes no slot count.
 
 ### 4.4 Steps: environment and build commands
 
@@ -391,10 +433,16 @@ A step is a command the project declares to prepare a device before any unit run
 - **Its own directories, written by the step alone.** The step receives `{cache}`, a directory keyed by the step's key and removed when
   idle, and `{shared}`, a directory that persists across keys for the same project and sender (a compiler's target folder). Both are
   outside the checkout and outside the tree a device receives. Units and later steps read them as `{step:NAME}` (the cache) and
-  `{shared:NAME}` and receive them **read-only** in their sandbox; only the step that owns a key writes that exact directory. When a step
-  ends the runner records a manifest of the directory (path, mode, size, content hash); before every reuse it compares each entry's
-  metadata with the manifest and re-hashes any entry whose metadata differs, and a mismatch removes the directory and runs the step again.
-  A `complete` marker proves nothing about contents and is not what a hit checks.
+`{shared:NAME}` and receive them **read-only** in their sandbox; only the step that owns a key writes that exact directory. **The manifest covers
+`{cache}`.** When a step ends the runner walks the directory through descriptors: it holds a descriptor for the directory and for every component
+below it, opens each entry with `openat` and `O_NOFOLLOW|O_NONBLOCK`, takes `fstat` before any read, and records a link, a FIFO or a device by
+its type and never opens it; the manifest holds path, type, mode, size and content hash, with the entry count and byte total taken from the
+descriptors. Before every reuse it walks the same way, re-hashes any entry whose metadata differs, and a mismatch removes the directory and runs
+the step again. **`{shared}` is covered by what a unit read from it.** It is a compiler's target folder, and a walk of it before every reuse is a
+fixed cost against the 5-second rule (an `lstat` walk of this repository's cargo target directory, 10,942 entries, took 2.3 to 3.6 s at a load
+of 90 [probe]), so the manifest of a `{shared}` entry is the digest of the files a unit read there, its `reads` (5.3), checked at reuse; an
+entry no unit read is not checked, and units receive the directory read-only. A `complete` marker proves nothing about contents and is not what
+a hit checks.
 - **Admitted.** A step is a request like any other (5.5): it takes the `slots` its table names, else the slots the admission interface has
   free when the step starts (a measurement, not a fraction of the capacity), and reports `CARGO_BUILD_JOBS`-style parallelism through
   `{jobs}`.
@@ -418,7 +466,8 @@ selected units that match the selector. A project with no sets runs `@all`, ever
 
 ### 4.6 Hooks
 
-`before_plan`, `before_run` and `after_run` are argument vectors run on the sender only, in the project's trust state (confined for a
+`before_plan`, `before_run` and `after_run` are argument vectors run on the sender only, in the project's trust state (confined, in the
+scratch copy, for a
 project the user has not named, 4.8); a nonzero `before_plan` ends the run with status 4 and its output (an agent policy, a queue check).
 They are never sent to a device and are not part of any key, and each has a hang guard (5.10). The hook table is the only place a project
 runs code the runner did not derive from LIST, RUN, a step or a command unit.
@@ -434,40 +483,94 @@ widen what the sandbox allows. A device that receives a shard ignores any launch
 
 Where a run goes, which projects are the user's own and what the user lets confined children read are the user's, kept in one file in the
 user's config directory (`~/.config/poolhouse/testfarm-settings.toml`), outside every project and outside the pool's secret root. A
-project's `testfarm.toml` is never consulted for any of it.
+project's `testfarm.toml` is never consulted for any of it. The settings file and the user presets file are in the Owner zone (3.5): no child
+of any run reads or writes them, `ph.test.owner_paths()` lists them with the rest of the zone, and the host adds that list to its edit and
+shell guards, so an agent's file-write tool or shell command that names one is refused (for Poolhouse, `claude-edit-guard` and
+`claude-bash-guard`). The commands below write the file only after the gate answers yes. `check` reports a settings file that the user does not
+own, that is a link, or that group or others can write, and prints every key that widens what a run may do (`named`, `agree`, `target`,
+`confine.read`, `resources`, `events.sinks`, `person_gate`) so a person reads them.
 
 | Key | Meaning | Default and its source |
 |---|---|---|
 | `target` | where tests run: `local`, `auto` (every target the enabled transports list), `pool`, a device name or a fingerprint | `local` |
-| `[project."ID"] target` | the same for one named project | the global `target` |
-| `named` | the projects the user has named as their own: the realpath of a repository's git common directory (the project root without git) | none; written only by `poolhouse-test own` |
+| `[project."ID"] target` | the same for one named project; `ID` is the digest of the project's identity record (4.9) | the global `target` |
+| `[[named]]` | the projects the user has named as their own, each an identity record (4.9): the root's realpath and `(st_dev, st_ino)`, the `.git` directory and, for a linked worktree, its administrative directory | none; written only by `poolhouse-test own` |
+| `[[agree]]` | the devices a named project's tests may be sent to, as the person agreed them (below) | none: nothing is sent |
 | `reserved_cores` | cores the runner leaves to the machine | none |
 | `confine.read` | extra read-only paths a confined child may read, as a shipped preset's `[confine]` names for its own tool | none |
 | `events.sinks` | where canary mismatches and run endings go | `stderr`; device setup adds `board` |
 | `resources` | the resource providers (4.3) | none: a label naming a resource is refused |
+| `person_gate` | the host's gate (below) | none: every ask is `unavailable` |
 | `presets` | the file of user presets (section 7) | `~/.config/poolhouse/testfarm-presets.toml` |
 
 The command line overrides `target` for one run: `--on local`, `--on auto`, `--on pool`, `--on DEVICE`. `poolhouse-test target
-local|auto|pool|DEVICE [--project]` writes the setting; it asks nobody, because it is the user's own preference and a flag says the same
-for one run.
+local|auto|pool|DEVICE [--project]` writes the setting. `local`, and a device set the person already agreed for the project, ask nobody; a
+`target` or `--on` that names a device the project has no agreement for is a widening and asks the gate (below), once for that set.
 
-**Naming a project.** `poolhouse-test own [PATH]` asks a person once, with the sentence "The tests and build commands in '<path>' will
-run as you, with access to your files, and may be sent to your devices. Without a yes they run confined." and records the repository's
-git common directory, so every worktree of that repository is named and a clone elsewhere with the same remote is not. An agent that runs
-`own` gets the same question put to the person through the question tool; with no person to answer, the project stays confined and the
-run goes on, so nothing waits on the person. Poolhouse's own checkout is named by its device setup, never by its project file. A project
-that is not named runs confined (10.2) and is never sent: `--on pool` for it is refused with status 4 and the sentence "this project is not
-named as yours: run `poolhouse-test own` to let it leave this machine".
+**The person's yes.** `own`, `allow` and a widening `target` ask one function, `person_gate(question)`, that the host supplies and the settings
+name; it returns `yes`, `no` or `unavailable`. A `question` carries the act, the sentence exactly as the person will read it and a digest of its
+subject (the identity record, the sender's fingerprint, the device set); a `yes` is host evidence that a person answered that exact question,
+and the library accepts nothing else. For Poolhouse the host is `poolhouse.workspace`: it puts the sentence through the structured approval
+question and consumes the harness's evidence with `person-consume`, as it does for `release-main` (`docs/person-delegation.md`, sections 7 and
+12); the closed registry of that document gains the kinds `test-own`, `test-allow` and `test-widen`, each with a derived target, one use and an
+expiry. The library has no terminal prompt for any of the three. A controlling terminal, an answer read from standard input, an environment
+variable, a flag and a file are never accepted as a person's yes: [probe] an agent that starts a child under `script(1)` gives it a controlling
+terminal and types the answer, and the child read `yes`. With no gate named, or one that answers `unavailable`, the command refuses, changes
+nothing and prints what a person does at their own terminal and editor: the exact block (an array-of-tables entry, valid wherever the file
+ends) and the one-line shell command that appends it to the settings file, with the file's path. A person's own edit of a file the host guards
+is the only act with no gate in it. Nothing waits: `unavailable` keeps the safe default (confined, `local`) and the run goes on.
+
+**Naming a project.** `poolhouse-test own [PATH]` puts one sentence to the gate: "The tests and build commands in '<path>' will run as you, with
+access to your files except the runner's own keys and settings, and may be sent to: <devices>. Without a yes they run confined, in a copy."
+`<devices>` lists the devices the current target would use for the project, by name and fingerprint (`none` for `local`). The path and the
+names go through `report.plain` (a directory name may hold a newline, a quote or a right-to-left override; macOS allows all three [reasoned]).
+A yes records the project's identity record (4.9) and the agreed device set. A later send to a device outside that set asks the same gate
+again, once, with the new list. Poolhouse's own checkout is named by its device setup, never by its project file. A project that is not
+named runs confined (10.2) and is never sent: `--on pool` for it is refused with status 4 and the sentence "this project is not named as
+yours: run `poolhouse-test own` to let it leave this machine".
+
+### 4.9 A project's identity, its root and the git calls
+
+A project is what the person pointed at, read without git. Whether a project is named is decided before anything of it runs, from files only.
+
+- **The identity record.** The realpath of the root, the `(st_dev, st_ino)` of the root directory and, for a repository, the directory
+  `<root>/.git` itself when it is a directory that holds `HEAD`, `objects` and no `commondir` file. A linked worktree (`<root>/.git` is a file)
+  is accepted only when `<gitdir>/gitdir` names that `.git` file back (git writes the back-pointer at `worktree add`) and `<gitdir>` lies
+  under `<common>/worktrees/`; the record then holds the worktree's administrative directory and the common directory, the common directory
+  checked by the rule above. A check that fails makes the project unnamed and is not an error, and a renamed, moved or restored directory has another realpath or
+  inode and is another project until it is named again. [probe] Asking git instead is defeated by a
+  directory whose `.git` file reads `gitdir: <a named repository>/.git`, by a `.git` directory whose `commondir` file names one, by a directory
+  below a parent repository and by `GIT_DIR` in the caller's environment: each printed the named repository's common directory.
+- **The root is a work-tree top-level** (`<root>/.git` exists), found by the walk of section 4. A root below a repository is a project of its
+  own, named only by naming it, so a person who names `~/Downloads/app` while the home directory is a repository names that directory and
+  not the repository above it.
+- **Named means the identity record is in the settings** (4.8) and matches. The store's project scope is the digest of the record's repository
+  part (the common directory, or the root for a project outside git), so every worktree of a repository shares one scope and one key, and a
+  clone elsewhere is another project. Naming binds a repository, not a branch (10.9 item 6).
+- **Classification runs no git.** The record, the top-level test, named or not, the scope and the root are read from files.
+- **Every `git` call the runner makes** (the tracked list, the untracked list, a REF's tree, the merge-base, the objects `affected` compares)
+  runs inside the profile of a Child (read-only, no network, 10.2), named projects included, because a named repository's configuration is as
+  writable by its own tests as by anyone. The repository's own configuration is code: `core.fsmonitor` is "the pathname of the fsmonitor hook
+  command" and, set to `true`, starts a long-lived daemon for the work tree [doc: `git-config(1)`], and `core.hooksPath`, filter drivers and
+  `diff.external` are the same class. So each call carries `-c core.fsmonitor=false -c core.hooksPath=<an empty directory the runner owns>
+  -c core.untrackedCache=false -c protocol.allow=never`, `--no-pager`, and `--no-ext-diff --no-textconv` where the subcommand takes them; its
+  environment is `PATH`, `LANG=C`, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CEILING_DIRECTORIES=<the root's parent>` and
+  `GIT_OPTIONAL_LOCKS=0`, and every other `GIT_*` variable is removed. The subcommands are a closed list: `ls-files --cached`, `ls-files
+  --others --exclude-per-directory=.gitignore`, `ls-tree`, `rev-parse --verify`, `merge-base`, `diff-tree` between two commits, and
+  `cat-file`. None applies a content filter, a textconv or an external diff, because none reads the working tree through git; the working-tree
+  side of a comparison is the runner's own hash of the file read through a descriptor (5.4), so a clean filter can only make a file look changed.
 
 ## 5. The core
 
 ### 5.1 The run, start to end
 
 ```
-config → LIST → units → select (set, selector, affected) → divide → assign → reuse lookup → steps → schedule → execute → merge → report → status
+classify → config → LIST → units → select (set, selector, affected) → divide → assign → reuse lookup → steps → schedule → execute → merge → report → status
 ```
 
-1. Load and validate the config, once (3.5, rule 2); run `before_plan`. 2. Run LIST on this machine under its hang guard (a LIST that
+0. Classify the project (4.9: the identity record, named or not, from files and with no git) and, for a project that is not named, make the
+   scratch copy of the transported set (10.2). 1. Load and validate the config, once (3.5, rule 2); run `before_plan`. 2. Run LIST on this
+   machine under its hang guard (a LIST that
 fails or prints no unit ends the run with status 4, section 1); build units, labels, DEPS. 3. Select: a set, ids or globs, optionally the
 affected units; a selection that matches nothing is status 4. 4. Divide: with `--shards N --index I` the units are divided by the pure
 function of 5.2 and this run keeps shard I; with no division asked there is one shard. 5. Assign the shard's units to targets (5.2).
@@ -589,23 +692,32 @@ writes them). The store keeps them in the entry's **manifest** and a later hit r
 `unstorable` with a reason (a write outside the temporary roots, a skip), and then nothing is stored. The runner never infers either, so a
 pass is stored only for results formats that can say it: `jsonl` and `junit`. A pass in `exit` format is shown (`passed, exit status only:
 skips and side effects are not seen`) and is stored only when the project sets `[run] reuse = "exit"`, and then the report says `reused
-(exit status only: skips and side effects are not seen)`. The runner also stamps the transported file set (path, mode, size, modification
-time) before and after each serial invocation and stores nothing when it changed; concurrent invocations fall back to the whole-run rule.
+(exit status only: skips and side effects are not seen)`. The runner also stamps the files a unit's DEPS name (path, mode, size, modification
+time, read through descriptors) before and after each invocation and stores nothing when one changed. A unit with no DEPS depends on the whole
+tree, whose stamp is one walk at the start and one at the end of the run and not one per invocation: a change between them stores nothing and,
+with no failure, is status 4. A project that is not named runs in a scratch copy its units cannot write back, so its stamp is of the copy.
 
 The store is the one `docs/test-reuse.md` defines: entries written through a rename, a chain of row hashes, `latest/<key>`, single flight
 with `inflight/<key>.json` claims, only the runner process writes it, and the state directory is outside the checkout and outside any root
 a unit may write. What it adds:
 
-- **A directory per project and per domain.** The project scope is the origin url hash, else the common git directory
-  (`testruns.scope`); the domain is the trust the run had (below). Both name the directory, so a repository that names another project's
-  url as its origin writes a directory of its own.
-- **Signed entries with a domain.** Every entry and every chain row carries an HMAC under a key of 256 random bits that the runner
-  generates on first use in a file under the state location, readable by the user's account and denied to every confined child (the
-  children of a named project run as the user and are trusted, 10.2), and a `domain`: `named` when every command of the run ran as the user because the project is named (4.8), `confined` when it was not. The
-  runner sets the domain from the settings, never from anything a child can reach. A reader verifies the signature and asks for a domain;
-  evidence readers accept `named` entries signed with the owner's key and nothing else, and a reader's state root comes from the user's
-  settings, never from an environment variable. A runner process that cannot read the owner's key (it runs inside a sandbox of its own)
-  writes under a key and a directory of its own, and its entries are never in the owner's domain.
+- **A directory per project and per domain.** The project scope is the digest of the identity record's repository part (4.9: the common git
+  directory, or the root for a project outside git); the domain is the trust the run had (below). Both name the directory, so a repository that
+  copies another project's remote url writes a directory of its own, and every worktree of one repository shares one.
+- **Signed entries with a domain, under a key per project.** The runner generates a master key of 256 random bits on first use, in a file in the
+  Owner zone. The profile of every child, named or not, denies it by exact path (3.5, rule 4): [probe] a profile that is open except
+  `(deny file-read* file-write* (subpath <owner zone>))` refused a child the key on read and on append, left it unchanged and refused a hard link
+  and an APFS clone of it, so no test, build script or `conftest.py` of any project reads it. The runner is the only reader. Every entry and every
+  chain row carries an HMAC under a key the runner derives from the master key and the project's identity record (4.9), so one project's key signs
+  nothing of another's; a `domain`: `named` when the project was named (4.8), `confined` when it was not, set from the settings and never from
+  anything a child can reach; and `by`, an opaque label the host's event sink supplies for the session that started the run (Poolhouse's sink
+  derives it from the workspace's session identity, never from a flag or an environment variable), signed with the entry. A reader verifies the
+  signature and asks for a domain; evidence readers accept `named` entries signed under the project's key and nothing else, and a reader's state
+  root comes from the user's settings, never from an environment variable. **What a `named` entry proves** is that the runner, holding a key no
+  child can read, ran this exact tree and recorded this result. It does not prove the code is right. A task is credited from a run of the exact
+  tree by a session that did not author the task: the reader compares the entry's tree hash with the landing tree and its `by` with the task's
+  author. A runner process that cannot read the master key (it runs inside a sandbox of its own) writes under a key and a directory of its own,
+  and its entries are never in the owner's domain.
 - **Single flight.** A waiter waits while the claim's holder is alive, a liveness the OS reports, and for no fixed time; it holds no slot
   or lease while it waits, and when the claim clears without a result it runs the unit itself.
 - **Kinds.** An entry is `local` (this machine ran it) or `remote` (a device did, keyed by its fingerprint and platform class). A device
@@ -614,7 +726,8 @@ a unit may write. What it adds:
   `remote` pass satisfies only a later run on the device that produced it and never a local run. A reader asks the store for a domain and a
   kind and decides what they mean (Poolhouse's workspace sink asks for `named` and `local` when it reports task evidence, 3.3); the store has
   attributes and no workflow. The ledger `remote-results.json` is deleted; its job is the `remote` kind.
-- **Canary.** `reuse.canary` is the project's sampling rate with no runner default. With none set, reuse is off (nothing is served, nothing
+- **Canary.** `reuse.canary` is the project's sampling rate, in (0, 1], with no runner default; whatever the rate, a run that serves any hit
+  re-executes at least one, so a tiny rate cannot turn detection off. With none set, reuse is off (nothing is served, nothing
   is stored) and the report says `reuse: off, [reuse] canary is not set`; `poolhouse-test init` writes it with the reuse, from the project's
   own first run (one re-executed hit per run on average: `1 / units`), and prints the derivation. The draw takes its seed from the
   operating system's entropy, after the lookup, and prints it so a run can be repeated with `--seed`; two runs of one tree sample different
@@ -644,8 +757,11 @@ selection intersects with the changed paths.
 working tree (tracked changes, untracked files, deletions), plus every unit when a path in `deps.everything` changed, plus every unit
 without DEPS. `--explain` prints the reason per unit. A REF the clone does not have (a shallow clone) selects every unit and prints
 `REF is unknown here (shallow clone): every unit selected`; a REF that exists with nothing changed since it selects nothing, prints
-`nothing changed since REF` and is status 0. Git and a history that holds REF are assumed by `affected` and by the store scope, and a
-project outside git uses its root as the scope and has no `affected`.
+`nothing changed since REF` and is status 0. A path is changed when git's record of it at REF (`ls-tree`, an object read) differs from the
+runner's own hash of the file in the working tree, read through a descriptor (git's blob hash, so a clean filter or `autocrlf` can only make a
+file look changed and select more units), when it is untracked (`ls-files --others`, 4.9) or when a tracked path is absent. `affected` assumes
+git and a history that holds REF; the store scope reads no git (4.9), and a project outside git uses its root as the scope and has no
+`affected`.
 
 DEPS come from three places and the core only intersects them:
 
@@ -692,19 +808,29 @@ and the library knows no other name).
 - **Per-test permits are sub-grants.** A finer permit per test inside one pytest process (`testslots_pytest.py`) is a pytest preset
   helper, and it takes `Grant.sub(n)` out of the slots its invocation already holds; it never makes a request of its own. Permits reach the
   helper on an inherited descriptor the executor holds (`TESTFARM_PERMIT_FD`), so a confined child needs no broker endpoint and no path.
-  A `poolhouse-test` started inside an environment with that variable refuses to run, and a command started inside a live permit fails
-  promptly instead of queueing behind its parent (`docs/test-execution.md`).
+  The spawn function (3.1) closes every other descriptor in the child: it keeps exactly 0, 1, 2, the permit and the result descriptor, because
+  a descriptor the runner leaves open is a capability ([probe]: with `pass_fds` including one opened on a file outside the profile, the confined
+  child read it). A `poolhouse-test` started inside a live permit refuses to run, and a command started inside one fails promptly instead of
+  queueing behind its parent (`docs/test-execution.md`); the test is the broker's ancestor test (below), the same code `serve up` uses, and not
+  the variable, which the child can unset. A nested run whose parent has already exited is not found by the test and queues until a guard ends it.
 - **Resources.** A resource a label names is requested, in the same request, from the provider the user's settings name; the provider says
   which names exist, how much of each there is and which are exclusive. Poolhouse's provider takes them from the pool's lease table
   (`ph.leases`) when a device answers, else from the broker's own heavy lane (`HEAVY_MODULES` today), and marks `gpu` exclusive: one piece
   of work on a device's GPU at a time is a hard floor (AGENTS.md section 1). The core knows only names, amounts and exclusivity.
 - **Delegation, not inheritance.** When a unit's own command needs the resource the runner holds for it (`poolhouse-serve up` under a
-  `gpu` label), the runner asks the broker to delegate the lease to the process group of the invocation. `serve up` finds an ancestor of its
-  caller among the delegated groups (the broker checks the process tree it reads from the operating system, or the operating system's
-  record of which process owns the other end of the local connection) and uses that lease instead of queueing for a second one; the
-  delegation ends with the group; no lease id travels in the environment, and a process outside the group that presents the same text gets
-  nothing. The model server of such a unit runs with one slot (`--parallel 1`, `docs/agent-policy.md` section 1) and the runner never raises
-  it. This is a change to `poolhouse.serve` in step 2, and it keeps AGENTS.md section 6: a lease is never made outside the broker's grant.
+  `gpu` label), the runner asks the broker to delegate the lease to the process group of the invocation. **The broker identifies a process by a
+  handle, never by a process id alone.** A handle is a `pidfd` on Linux and, on macOS, the two values (process id, start time) read from the operating
+  system with a `kqueue` exit registration (`NOTE_EXIT`) made after the start time is checked; a process id names a dead process once its
+  process ends and a different one once the id is recycled. [probe] `LOCAL_PEERPID` on macOS is the process that made the connection: after it
+  forked a child that kept the connection and exited, the server read its id and the process was dead. The broker refuses a request whose
+  connecting process cannot be turned into a live handle (it fails closed; the client connects again from the process that speaks) and drops a
+  delegation on the exit notification of the group leader's handle. `serve up` finds an ancestor of its caller among the delegated groups, each
+  ancestor identified by handle and checked against the delegation's own, and uses that lease instead of queueing for a second one; no lease id
+  travels in the environment, and a process outside the group that presents the same text gets nothing. The model server a delegated lease
+  starts is a member of the group and ends with it; one that detaches keeps the lease held until it exits, so the next unit's lease is never a
+  second piece of work on the compute (AGENTS.md section 1). The server keeps the slot default of `poolhouse.serve` (one, `--parallel 1`,
+  `docs/agent-policy.md` section 1 and `docs/limits.md`); the runner starts no server and passes no slot count. This is a change to
+  `poolhouse.serve` in step 2, and it keeps AGENTS.md section 6: a lease is never made outside the broker's grant.
 - **Steps and single flight take no slot while they wait.** Every step a target needs finishes before the first unit is admitted there
   (4.4), and a single-flight waiter (5.3) takes nothing until the claim clears.
 - **One slots directory per user,** mode 0700, under the state location. A user's broker sees another user's load as outside load in its
@@ -755,9 +881,11 @@ A new test is run on the code without the change and seen to fail. The library m
   on the working tree. For each id it writes an evidence entry `{id, def, base tree, result at base, first error line}` to the store. It
   prints `[failfirst] line` filled in (default: `failfirst: <id> failed at <sha>: <error line>`); a project whose reports use another
   sentence sets the template, and the library has no sentence of any project's policy.
-- Evidence is produced only by the runner and carries the store's signature (5.3); an entry written by anything else does not verify.
+- Evidence is produced only by the runner and carries the store's signature under the project's key (5.3); an entry written by anything else
+  does not verify, and a new test cannot write one, because its import-time code is a child of the run and no child reads the key.
 - `poolhouse-test failfirst check --range A..B` is the mechanical check: for every new or changed id in the range's tip it finds either
-  an evidence entry for the same `def` whose `base tree` equals the tree of the range's start (or the merge-base), or an exempting line
+  an evidence entry for the same `def` whose `base tree` equals the tree of A, the range's start as the caller gave it (a range in which A
+  is not an ancestor of B is status 4, `the range is not linear: merge A first`, so there is no second base to choose), or an exempting line
   in a commit message of the range (a line that begins with the literal prefix `[failfirst] exempt` names, then an id of the range and a
   reason), and fails listing
   the ids with neither and the command that makes the evidence. It reads commit messages only for the exempt lines. A project with no
@@ -806,8 +934,10 @@ The runner's rule, for every unit and every project:
   `@pytest.mark.timeout(N)` does today. The report names the limit that fired: `test timed out after 120 s running (test_timeout)` or
   `unit timed out after N s running (limit: recorded typical duration x total_margin)`. Rows an invocation had written when it was killed
   keep their outcomes and are stored as 5.3 says.
-- **Hang guards: no progress first, a total second.** Nothing waits forever. Every command the runner starts (LIST, `deps.command`, a hook,
-  a build step, a unit) and every queue wait has (1) a *no-progress* guard: it ends when no child output, result row or unit start or end
+- **Hang guards: no progress first, a total second.** Nothing waits forever. Every command the runner starts (every call of the one spawn
+  function, 3.1: LIST, `deps.command`, a hook, `git`, the
+  Parser worker, a `[requires]` probe, `prune`, a control unit, a build step, a unit) and every queue wait has (1) a *no-progress* guard: it
+  ends when no child output, result row or unit start or end
   has arrived for a stretch derived from a measurement, namely the longest silence its own recorded runs showed times the project's
   `[schedule] silence_margin`, or for a device the measured round trip of the stream times that margin; and (2) a *total* guard, the
   unit's recorded typical duration (the median, 5.8) times the project's `[schedule] total_margin`, used only when the label, step or
@@ -816,24 +946,36 @@ The runner's rule, for every unit and every project:
   `testfarm.toml` with no runner default; a unit with no silence recorded of its own takes the guard of its siblings: the median of the
   per-unit longest silences recorded across the project's other units times `silence_margin`. With no history at all in the project (its
   first run ever), the run is guarded against the live gaps it produces itself: a silence longer than the longest gap seen so far in this
-  run times `silence_margin`, applied after at least one unit has finished, and the report says `guard: bootstrapping`. **A run with no
-  hang guard is not allowed.** When neither `[schedule] silence_margin` nor an explicit `timeout` for every command the runner starts is
-  set, the runner refuses to start, loudly, with status 4, naming the missing key and the reason (`testfarm.toml: [schedule] silence_margin
+  run times `silence_margin`, applied after at least one unit has finished (the first unit is bounded as the next bullet says), and the
+  report says `guard: bootstrapping` with its source. **A run with no hang guard is not allowed.** Unless the project sets both
+  `[schedule] silence_margin` and `total_margin`, or an explicit `timeout` on every command the runner starts, the runner refuses to start,
+  loudly, with status 4, naming the missing key and the reason (`testfarm.toml: [schedule] silence_margin
   is not set, and unit tests/x.py has no timeout: a run with no hang guard is not allowed`). There is no default number. `poolhouse-test
-  init` writes the key for a new project from its measured first run (the longest gap between outputs seen, divided by the median gap,
-  rounded up) and prints it for the person to read in the new file. A guard ends the work loudly and the line names what was waited for
+  init` writes both margins for a new project from its measured first runs (`silence_margin`: the longest gap between outputs seen, divided
+  by the median gap, rounded up; `total_margin`: the largest ratio between a unit's slower and faster time over two runs of the selection,
+  rounded up) and prints both for the person to read in the new file. A guard ends the work loudly and the line names what was waited for
   and the derivation: `unit tests/x.py: no output for <N> s (longest silence recorded <S> s x margin <M>), all three measured`. A unit
   ended by its guard is `timed out`, status 1; a build step ended by its guard, or a shard ended by the sender's bound below, is status
   124; a queue wait is 75. A build step has its own `timeout`, else the hang guards above on the step's recorded runs, and never counts in
   a unit's. A probe a device runs for `[requires]` lives as long as the request that asked for it: the sender's guard ends the request
-  and closing the connection kills the probe.
+  and closing the connection kills the probe, which runs in the profile of a unit (6.5).
+- **A number is not a guard, the first unit has none, and a byte of output is not progress for ever.** Every number of the project's file is
+  finite and in range (section 4), so `inf`, `nan` and `1e999` never satisfy the refusal, and both margins are required because one is half
+  a guard. A byte of unit output
+  counts as progress only until
+  the total guard fires, and the total guard exists once any duration is recorded, so a unit that prints a byte every few seconds is ended by it.
+  Before the first unit of a project has finished there is no recorded duration, so the run is allowed only attached to a terminal (a person can
+  end it) or with `--timeout S` on the command line, a number whose source is the caller; the report says `guard: bootstrapping, terminal` or
+  `guard: bootstrapping, --timeout`, and an unattended first run with neither is status 4. `poolhouse-test init`'s measured first run is that
+  run. On a device the receiver is the caller (10.6, "Time").
 - **A shard has no clock of its own; the sender bounds the sum.** A shard ends when its last unit ends. Each unit on a device has its own
   bound (its `timeout`, else its recorded typical duration times `total_margin`) and a unit with neither is not sent to a device. The
   sender enforces the sum of its shard's unit bounds on its own monotonic clock, counted from the device's report of the first unit's
   start; the wait for that first start is bounded by the queue limit or the no-progress guard, and the steps before it have their own
   bounds. At expiry the sender cancels the shard and records the units that had not ended `not run (deadline)`. The executor enforces each
   unit's bound from the verified config and its own measurements, and units it did not start are reported `not run (device refused)`,
-  never `124`. The sender never trusts a device to end its own shard.
+  never `124`. The sender never trusts a device to end its own shard, and a device never trusts a sender to end it: the receiver's
+  own ceiling (10.6, "Time") holds whatever the sender does.
 - **Overload is named, not guessed.** The report says `the machine was overloaded` only when units are `not started`; a run in which every
   unit started but some queued for a long time says `queued N s (the machine's)` and judges the units by `ran_s` alone.
 
@@ -850,24 +992,28 @@ class Transport(Protocol):
     def cancel(self, handle) -> None
 ```
 
-A `Shard` is `{id (128 random bits), project (the sender's opaque project id), config_sha256, tree_sha256, set, units: [{id, labels}]}`:
+A `Shard` is `{id (128 random bits), project (the sender's opaque project id), config_sha256, tree_sha256, set, nonce (128 random bits the
+sender makes per shard, for the control units of 6.4), units: [{id, labels}]}`:
 no argument vector, environment, working directory, `extra`, step list or deadline. The receiver builds every command from the config it
 holds at `config_sha256` (10.3): arguments, steps, timeouts and slots come from that verified file, and a label name in `units` selects a
 table in it (a name the file lacks is refused). `project` is an opaque hash the sending runner computes from the named project (4.8) and is
 the only identity of a project a device ever sees; the file's `[project] name` is never one. `Tree` is the sender's packed files and
 their hash over the transported set (6.3).
 
-`local` is the transport of this machine: `start` forks the shard in the checkout itself (no copy, the warm caches, the project's
-launcher) under the same executor code a device runs, so a project that is not named runs there inside the same sandbox. `pool` is the
+`local` is the transport of this machine, under the same executor code a device runs. For a named project `start` forks the shard in the
+checkout itself (no copy, the warm caches, the project's launcher). For a project that is not named it runs the shard in a scratch copy of the
+transported set inside the same sandbox, exactly as a device does (10.2).
 pool of this device (6.2). `ssh` later implements the same four calls over an ssh channel and stays a plugin.
 
 **The target is the user's.** It is read from the user's settings and the `--on` flag (4.8), never from the project's file, and it is
 `local` unless the user chose another. `local` uses this machine; `auto` uses this machine and every accepting target the enabled
-transports list for this user; `pool`, a device name or a fingerprint uses those. A tree is sent only for a project the user has named, so
+transports list for this user; `pool`, a device name or a fingerprint uses those. A tree is sent only for a project the user has named, to
+devices the person agreed (4.8), so
 a repository handed to the user cannot send anything anywhere. What a transport lists is that transport's own definition: the pool
 transport lists the accepting members of a pool in dev mode, where every member already runs tests for every other member (`docs/fleet.md`,
 "Two devices on a LAN"), and the members of another pool whose allow list holds the sender; `poolhouse features disable remote-tests` is
-the receiver's switch. The first send of a project to a device prints the file count and the top-level names of the transported set;
+the receiver's switch. The first send of a project to a device prints the file count, the top-level names of the transported set and every
+untracked file in it;
 `plan --show-tree` prints them without sending.
 
 ### 6.2 The pool transport
@@ -882,10 +1028,12 @@ The wire is the shard routes of a pool in dev mode, generalised from a fixed com
 | state | `GET /shards/v1/ID?since=N` | state, output from byte N, unit rows as they land, result once ended |
 | cancel | `POST /shards/v1/ID/cancel` | the shard and its process tree |
 
-Changes: the start fields become `id, project, config_sha256, tree_sha256, set, units` (a closed set; an unknown field is refused); caps
+Changes: the start fields become `id, project, config_sha256, tree_sha256, set, nonce, units` (a closed set; an unknown field is refused); caps
 adds `protocol`, the build, `requires` satisfied (6.5), the install-instance id (128 random bits made when the runner is installed on
-the device, which the sender pins with the fingerprint on first contact: a second instance answering the same fingerprint, a clone with
-the key, gets no shard and is reported) and the policy under which the sender is admitted. A member the receiver does not admit receives
+the device, which the sender pins with the fingerprint on first contact: a second instance answering the same fingerprint, which is a copy of
+the key made without the id, gets no shard and is reported; a copy of the whole disk, a snapshot restore or a backup restore carries the id and
+is the same instance, so the id separates a stolen key from the original only while the original also contacts the sender) and the policy under
+which the sender is admitted. A member the receiver does not admit receives
 the sentence for why not and no capacity, platform or toolchain list. Transport and authentication are unchanged: requests are signed
 with the pool's key over TLS 1.3 pinned to the certificate the pool recorded for the member, the sender is that certificate and never a
 field, a shard belongs to the member that first uploaded to its id and every other member is told "no such shard", and a removed member is
@@ -894,14 +1042,19 @@ refused at the connection. A protocol or build mismatch is refused with the upda
 **Admission by the receiver.** One function, supplied by the pool transport, decides: `admit(sender fingerprint, policy) → allow | the
 sentence for why not`. In a pool in dev mode it allows every member while `remote-tests` is not disabled. In any other pool it allows only
 the senders on the device's allow list, empty until a person adds one. Adding is one act with one sentence, "This lets '<device>' run its
-own code on this computer, as you.": `poolhouse-test allow DEVICE` puts it to a person as a typed yes at a terminal, and through the
-question tool when an agent ran the command; `deny` and removing a member take it off and cancel its runs. A phone-signed grant is the same
-act through another surface (open question 1).
+own code on this computer, as you.": `poolhouse-test allow DEVICE` puts it to the receiving device's gate (4.8), and with none available refuses
+and prints the block for the person's own editor. With the sentence the person gives the sender's budget (10.6, "Time"): the seconds one unit
+may run, the seconds one shard may run and the slot-seconds it may hold. In a pool in dev mode, where no allow act exists, the same three
+numbers are the device's policy for the pool's members (`poolhouse-test policy`, asked through the gate at device setup), and a device with
+none refuses a sender's first shard with the sentence naming that command (`not run (device refused)`, reassigned). `deny` and removing a
+member take the sender off and cancel its runs. A phone-signed grant is the same act through another surface (open question 1).
 
 **One server, one executor.** The server half (`testfarm/transports/pool_server.py`) and the executor (`testfarm/executor.py`, L2) are
 the only receiver code; `fleet/shard_*.py` and the Rust shard host are deleted in favour of them. The executor, in this order: checks the
-header; hashes the config bytes and parses those same bytes once, in the Parser zone (6.6); checks the tree (6.3); makes a scratch tree in a
-directory it owns; runs the steps, then the units, each in the sandbox the receiver builds; streams per-unit rows and bounded output as
+header; hashes the config bytes and parses those same bytes once, in the Parser zone (6.6); makes a scratch tree in a
+directory it owns; has the Parser worker unpack the tree into `tree/` and checks it by hashing the unpacked files through descriptors it
+opens afterwards (6.3, 6.6); runs the steps, then the units, each in the sandbox the receiver builds; streams per-unit rows and bounded
+output as
 they land; ends a unit at its bound and a shard's process tree at a cancel; returns a result of bounded size; removes the scratch tree. It
 takes slots from the device's admission, class `background`, and yields to the device's own work: a shard queues behind the device's
 interactive work and is killed when the device's own admission says its owner's work has been requested (10.7). A native Windows machine is
@@ -910,15 +1063,20 @@ receives through its WSL device, which is a Linux receiver, and nothing here spe
 
 ### 6.3 The tree
 
-The sender packs the transported set into a gzip tar of plain files, mode normalised. The set is the tracked files plus the untracked files
-a unit's DEPS or `[tree] include` names, minus `[tree] exclude`, never `.git` and never a link (4.1). The runner lists tracked files by
-running `git` with the system and global configuration disabled (`GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL` empty, `core.excludesFile`
-unset, a fixed environment), so two users at one commit send one set; no directory name, extension or file name is special to the runner.
+The sender packs the transported set into a gzip tar of plain files, mode normalised to the two modes git records (regular, and executable
+when the owner-execute bit is set). The set is the tracked files plus the untracked files a unit's DEPS or `[tree] include` names, minus
+`[tree] exclude`, never `.git` and never a link (4.1). The tracked list is `git ls-files --cached` and the untracked candidates are `git
+ls-files --others --exclude-per-directory=.gitignore`, both confined calls of 4.9: the exclusion rules are the tree's own `.gitignore` files
+[doc: `git-ls-files(1)`], and no user, system or repository-local setting (`core.excludesFile`, `.git/info/exclude`) enters the set, so two
+users at one commit send one set. An untracked file joins only through a glob that is not the whole tree (`**`, `*` or the empty set; a unit
+with no DEPS depends on the whole tree and pulls in no untracked file), and the first send lists each one (6.1). No directory name,
+extension or file name is special to the runner.
 
 **One hash** covers exactly the transported files: for each file, in order of its NFC UTF-8 path bytes, the record `len(path) | path |
 mode | len(content) | content`, lengths as fixed-width integers, by a function both ends call. A test hashes colliding concatenations
 (`a` with `bc` against `ab` with `c`) and a non-ASCII name. The upload is checked by its digest, the unpacked files are re-hashed and
-compared with `tree_sha256`, and `config_sha256` must be the hash of `testfarm.toml` in that tree. Limits are the receiver's (10.6). The
+compared with `tree_sha256`, and `config_sha256` must be the hash of `testfarm.toml` in that tree. Limits are the receiver's (10.6), and the
+unpack runs in the Parser worker, not in the daemon (6.6). The
 first version sends the whole tree. A later step may send a delta against a base commit fetched by SHA only; it must have the receiver
 pin the remote itself, disable the `ext::` and `fd::` transports and `--upload-pack`, and use none of the device's git credentials,
 because a sender-supplied remote is code execution (`design-test-selection` 6.1).
@@ -938,16 +1096,25 @@ key or digest in a result, and a `reads` list from a device is kept in a `remote
 
 - **A failure on a device is final.** It is reported `failed on <device>`. The sender may run the unit again only on a target of the same
   platform class, and only to add the line `reproduced` or `did not reproduce on <class>`; the status never changes, so a failure that is
-  real on one platform class cannot be erased by a pass on another.
+  real on one platform class cannot be erased by a pass on another. A failure that did not reproduce is run once more on the device itself
+  (the two-run rule of a canary, 5.3): when the device fails again and the same-class target passed, the device gave a mismatch and is
+  `suspect`; when it passes, the unit is `flaky` and nothing is counted. A hostile member's false failures therefore cost it its place in
+  every plan.
 - **A pass from a device is advice.** It is shown (`passed on <device>, not stored`), stored as a `remote` entry only when a second source
   agrees (5.3), and a `remote` entry is never evidence of a run the sender made: a reader that decides landing, release or any other claim
   from the store reads `local` entries only (`design-test-selection` 6.5).
-- **Sentinels and suspicion.** Every shard carries two generated command units the executor runs itself: one that must fail with a message
-  holding a nonce, one that must pass echoing it. A shard that comes back without that failure and that value is refused and counted
-  against the device. The sentinel tests the executor, not the project's tool: it catches an honest executor that ran nothing and not a
-  device that reads the nonce. A device that fails a sentinel, a canary or a second-source comparison is `suspect`: it is planned only
-  generated sentinel units until one sentinel shard comes back right, its `remote` entries are demoted until a second source confirms
-  each, and the report says so.
+- **Control units and suspicion.** Every shard carries three generated command units the executor runs itself, called *control units* (the
+  glossary's *sentinel* is the open-join safety and is not used for these). One must fail with a message holding the shard's nonce, a start
+  field the sender made (6.1); one must pass echoing it; one tests the confinement: the executor creates a canary file outside the scratch tree
+  and outside the profile, and the unit, run inside the unit profile, tries to read it and must be refused. A device whose sandbox failed open
+  reads it, so "the device says it can confine" (A25) becomes a measured result. A shard that comes back without the failure, the value and the
+  refusal is refused and counted against the device. Control units test the executor and its profile, not the project's tool: they catch an
+  honest executor that ran nothing or confined nothing, and not a device that recognises them, so the canary and the second source carry the
+  rest (10.9 item 5). A device that gives a **mismatch** is `suspect (mismatch)` and stays out of every plan until a person adds it again with `allow`
+  (4.8); the pool's other devices run on, and nothing waits. A mismatch is a failed control unit, a canary mismatch, a second-source comparison
+  that disagrees, or a failure that did not reproduce (below). Its `remote` entries are demoted until a second source confirms each, and the
+  report says so. A device that only *refuses* units (more than once, or an executor error) is `suspect (bad executor)`: it is planned only
+  control units until one control-only shard comes back right; a control unit never ends a mismatch.
 - **A unit that kills its device.** A unit that was running when a device vanished, and again when a second device vanished, is reported
   `suspected: ended its device` with status 1 and is not planned again until the person selects it. One lost device is infrastructure; the
   same unit twice is the unit.
@@ -955,11 +1122,17 @@ key or digest in a result, and a `reads` list from a device is kept in a `remote
 ### 6.5 Capabilities and requirements
 
 A project cannot ask a device to run a probe command. `[requires]` names things the device checks itself with probes it owns:
-`python>=3.13`, `module:pytest`, `exe:cargo`, `exe:node>=20`. A name matches `[A-Za-z0-9_.-]+` and does not begin with `-` or `.`. The
+`python>=3.13`, `module:pytest`, `exe:cargo`, `exe:node>=20`. A name matches `[A-Za-z0-9_.-]+`, does not begin with `-` or `.`, and a
+`module:` name holds no dot. The
 list travels with the caps request (in its query, bounded by the request-size bound) and is evaluated before any tree exists, on the
-device's own `PATH` with `shutil.which` and with `importlib.util.find_spec` under `python -I` from a working directory outside every
+device's own `PATH` with `shutil.which` and with `importlib.machinery.PathFinder.find_spec` of the name under `python -I`, from a working
+directory outside every
 tree; a version string comes from a table of the device's own probe commands keyed by program, never from the name, so the sender picks
-which program on the device is asked and never which command runs. Caps lists which are satisfied; a device missing one takes no shard
+which program on the device is asked and never which command runs. A `module:` probe imports nothing: `find_spec` of a dotted name imports
+every parent package, so a dotted name would let the sender pick which installed package's import-time code runs on the device ([probe]:
+`find_spec('this.x')` ran the module and `find_spec('xml.dom.minidom')` loaded three), and `PathFinder.find_spec` of a top-level name finds
+the spec and loads nothing. Every probe, the version commands included, runs inside the profile of a unit, started by the spawn function
+under the request's guard. Caps lists which are satisfied; a device missing one takes no shard
 and says which, in one sentence an agent can relay. Provisioning (installing what is missing) is a person's or the device setup's act,
 not the runner's: `python -m poolhouse.device_setup --yes` on the device, or the project's own steps within the confinement.
 
@@ -978,23 +1151,45 @@ directories:
 
 1. Everything the executor writes for a child is under `exec/`. The sandbox profile lets a child read `exec/` and denies every write to
    it, so no child can aim an executor-written path at a file of the device user's.
-2. A result channel is a file the executor created in `out/` with exclusive, no-follow create and holds open. The child writes the path
+2. A result channel is a file the executor created in `out/` with `openat` on a held directory descriptor, exclusive and no-follow
+   (`O_NOFOLLOW` covers only the last component, so a path through a directory a child could replace with a link is never used), and holds
+   open. The child writes the path
    it was given; the executor reads through its held descriptor and never reopens a path a child can write. A child that swaps the name for
    a link changes where its own writes go, leaves the executor's file empty, and its units are `not reported`. The log is read the same
    way, through the descriptor the executor created for the child's output.
 3. Every read of a thing a child wrote does `fstat` for a regular file, caps the size on the descriptor, and reports a malformed row by row
    number and rule, never by echoing its content.
-4. The configuration is hashed and parsed once, from the same bytes. The Parser zone is a confined subprocess started with the executor's
-   limits (memory and CPU derived from the device and the guard, one input descriptor, no network, no files); it parses the TOML config, the
-   JSON rows and the junit XML, catches `RecursionError` and `MemoryError`, checks the byte size first, and returns rows of a closed schema.
-   The validated, clamped config stays in the executor's memory and the copy in the scratch tree is never read again.
-5. A junit document is refused before parsing unless it decodes as UTF-8 and holds neither `<!DOCTYPE` nor `<!ENTITY`; the standard
-   parser's own handling of DTDs is not relied on and no dependency is added.
+4. The configuration is hashed and parsed once, from the same bytes. The Parser zone is **one long-lived confined worker per shard** (or per
+   local run), started with the executor's limits (memory budget and `RLIMIT_CPU` from 10.6, one input descriptor, no network, write access to
+   `tree/` for the unpack and to nothing else) and restarted after any error. It parses the TOML config, the JSON rows and the junit XML, and
+   unpacks the tar of a sent tree. **Its output is a flat stream of tag-length-value records**: a fixed set of tags, a fixed bound per tag,
+   decoded by one function with no recursion and no `loads`; the Runner imports no deserialiser (`json`, `pickle`, `marshal`) to read it, so
+   nothing a hostile input nests can reach the Runner as a structure. **Any end of the worker other than a complete record stream followed by a
+   clean exit is status 4 naming the rule**: an exception of any class (`RecursionError`, `MemoryError`, the `ValueError` a 5000-digit TOML
+   integer raises [probe], an expat error), a signal, a timeout, a short read. The input size is checked first against a cap, the worker's
+   memory budget divided by the amplification a test measures once per release by parsing a generated table and reading resident memory
+   ([probe]: `tomllib` used about twenty bytes of memory per input byte on tables, and 16 s of CPU for 10 MB at a load of 90); a larger input is
+   status 4 naming the size and the cap. The start of a confined interpreter costs real time ([probe]: a median 62 ms against 36 ms unconfined
+   for one that imports `tomllib`, `json` and `xml.etree`), so a process per result file (600 invocations, 37 s) is not allowed;
+   `tests/test_runner_overhead.py` measures the worker's start and a round trip. The validated config, bounded by the receiver's budget on a
+   device, stays in the executor's memory and the copy in the scratch tree is never read again.
+5. A junit document is parsed in the worker by `xml.parsers.expat` directly, with the encoding forced to UTF-8 (the parser overrides the
+   document's own declaration [doc: `xml.parsers.expat.ParserCreate`], so a UTF-16 document is a parse error) and with `StartDoctypeDeclHandler` and
+   `EntityDeclHandler` set to refuse, and a document that holds a NUL byte is refused (valid XML decoded from any encoding has none). The
+   refusal is made inside the parser for every encoding, because a check of the bytes outside it misses
+   what the parser decodes: [probe] a UTF-16LE document without a byte-order mark passed a check for the strings `<!DOCTYPE` and `<!ENTITY`, and
+   the standard parser auto-detected it and expanded nested entities. The refusal does not rely on the parser's own limits on entity expansion (a
+   device's system expat may be older), and no dependency is added.
 6. Patterns the sender wrote (`list.starts`, `list.ends`, the group separator, globs) are literal strings and the core's linear glob
    matcher, so no sender text becomes a backtracking expression in the daemon.
 7. Process ends: on Linux the sandbox's PID namespace and `--die-with-parent` end every descendant with the shard; on macOS the executor
    ends the process group and then sweeps for processes carrying the shard's marker (an identifier in the child's environment and never an
    authority), and a descendant that left both is an accepted risk (10.9).
+8. The unpack runs in the worker with write access to `tree/` only; the Runner hashes the unpacked files afterwards through descriptors it
+   opens itself, after `fstat` says regular file, so the tar and gzip handling of hostile bytes (the checks of A13) is in a confined process and
+   not in the daemon that holds the pool's keys.
+9. The budgets of 10.6 (time, disk, memory) are enforced here: the unit scratch volume or the polled disk floor, the polled memory share, and the
+   worker's `RLIMIT_CPU` and memory share.
 
 ## 7. Presets: tools, never repositories
 
@@ -1002,10 +1197,13 @@ A preset is a TOML table with the same keys as a project file (`list`, `run`, op
 optional `[confine]` table. It is named after a tool and holds no knowledge of any repository. It lives in `testfarm/presets/NAME.toml`; the
 helper programs it runs (`testfarm/presets/NAME/*.py`) are ordinary Python modules that import only the core. A project may define
 `[preset.NAME]` in its own file or in the user's `~/.config/poolhouse/testfarm-presets.toml`, which wins over a shipped one; the resolved
-table, whichever file it came from, is what the reuse key hashes (5.3). `[confine]` names `read` (paths the tool needs to read, such as a
-package registry or a toolchain) and `env` (variable names the tool needs, such as `VIRTUAL_ENV`, `CARGO_HOME`, `RUSTUP_HOME`, `JAVA_HOME`,
-proxy and certificate variables). It is honoured from a shipped preset and from the user's preset file and is ignored in a project's own
-`[preset.NAME]`, because it widens a sandbox and a project must not widen its own.
+table, whichever file it came from, is what the reuse key hashes (5.3). `[confine]` names `read` (subpaths the tool needs to read, such as a
+package registry or the toolchains: a shipped preset names `registry` and `toolchains` below a tool's home and never the home itself, because a
+home also holds credentials), `deny` (exact paths of credential files inside an allowed subpath, such as a registry publish token, which the
+profile denies by exact path; the list is the preset's knowledge and never the core's) and `env` (variable names the tool needs, such as
+`VIRTUAL_ENV`, `CARGO_HOME`, `RUSTUP_HOME`, `JAVA_HOME`, proxy and certificate variables; a variable whose value is a URL is forwarded with its
+user and password removed, host and port only). It is honoured from a shipped preset and from the user's preset file and is ignored in a
+project's own `[preset.NAME]`, because it widens a sandbox and a project must not widen its own.
 
 | Preset | LIST | RUN | Results | Group and labels | DEPS |
 |---|---|---|---|---|---|
@@ -1059,7 +1257,7 @@ everything = ["pyproject.toml", "tests/conftest.py", "tests/known-fixtures.txt",
 
 [schedule]
 seed = "tests/ci-durations.json"
-# silence_margin is not shown: `poolhouse-test init` generates it from Poolhouse's own measured first run and it is committed after that run
+# silence_margin and total_margin are not shown: `poolhouse-test init` generates them from Poolhouse's own measured first runs and they are committed after those runs
 
 [reuse]
 # canary is not shown for the same reason: init writes it with the reuse, from the same first run
@@ -1135,9 +1333,9 @@ the same machine; a network attacker on the LAN.
 
 Not defended: a sender that sends its own code to its own pool on purpose to harm the pool's devices is limited by confinement and
 consent, not by anything about the code; a receiver that lies about results it ran (it can only affect passes it reports for itself, and
-those are advice, 6.4); the code of a project the user has named as their own, which runs as the user; a same-user attacker with
-filesystem access to the state directory, which is exactly what an unconfined hostile repository would be, and is why a project the user
-has not named is never run unconfined (10.2); the residues named in 10.9.
+those are advice, 6.4); the code of a project the user has named as their own, which runs as the user and cannot reach the Owner zone (3.5); a
+same-user attacker with filesystem access to the Owner zone, which is exactly what an unconfined hostile repository would be, and is why a
+project the user has not named is never run unconfined (10.2) and why the host guards the Owner paths (4.8); the residues named in 10.9.
 
 ### 10.2 Authentication and who may run what
 
@@ -1147,9 +1345,9 @@ has not named is never run unconfined (10.2); the residues named in 10.9.
 - **The receiver's policy decides.** `admit()` (6.2) in a pool in dev mode: every member, until `remote-tests` is disabled on the
   device. In any other pool: the allow list, empty until a person adds a sender, never widened by joining, by `inbound_consent` or by being
   a member (`docs/pools-and-serving.md`). The list is per pool (`docs/design-multi-pool-devices.md`) and is kept with the pool's settings,
-  where no confined profile can write.
+  where no child, confined or not, can read or write (the Owner zone, 3.5).
 - **What the policy can restrict, on the receiver, by its own settings:** controls that limit a capability: the network a step may use
-  (none by default), the slots and disk a sender may hold, the resources a sender may lease, and the senders. A key in the sent
+  (none by default), the slots, time, disk and memory a sender may hold (10.6), the resources a sender may lease, and the senders. A key in the sent
   `testfarm.toml` can only ask for less than the policy allows; it cannot widen it. There is no policy knob for which kinds of runner may
   be used (presets only, or any vector): a preset runs the tree's own `conftest.py`, plugins and tests, so such a knob would limit the
   shape of a command and not what runs, and a person who set it could believe it contained the risk.
@@ -1159,27 +1357,42 @@ has not named is never run unconfined (10.2); the residues named in 10.9.
   directory a step owns; the runner's state location, the settings, the pool's home, `~/.ssh`, the keychain and the home directory are
   denied by exact path, and the state sits outside `~/.poolhouse` so no allow rule lies inside a deny. **The network is denied by default
   on both platforms.** On Linux the unit gets a new network namespace whose loopback is its own, so a test that binds a local server
-  works. Seatbelt has no private loopback, so a unit whose label says `net = "loopback"` gets this machine's loopback with the device's
-  own service ports (the daemon's, the lease broker's, the workspace host's and any model server's, each known to the device) denied by
-  number and unix sockets denied; the loopback services of third parties are the residue named in 10.9. A sent test therefore cannot
-  reach the owner's model server, which would be a second piece of work on the device's compute. A device with no confinement available
-  takes no shard. A tree's own scripts and `launcher` never choose the profile. This is `design-test-selection` slice 6, and it is a hard
-  prerequisite of sending a tree to any other device through the generalised path (migration step 8).
-- **Local runs.** A project the user has named as their own runs on this machine as the user: its LIST, `deps.command`, hooks, steps and
-  units use the project's `launcher` and the user's account. **A project the user has not named runs confined by default.** Its LIST,
-  `deps.command`, steps, hooks and units, and the commands that run them (`list`, `check`, `init`, `plan` and `affected` among them),
-  execute under the same sandbox backend with the project and the toolchain paths readable, the project directory and the scratch tree
-  writable, no network, and no state location, pool home, `~/.ssh`, settings file or other project's store readable; its `launcher` only
-  narrows, its children get the allowlist environment of 10.5, and it gets no lease and no loopback whatever its file says. A test of such
-  a project that needs the home directory fails until the user names the project with `poolhouse-test own` (4.8): one typed yes per
-  project, the only step this adds. The runner learns that a project is named from the user's settings and from nowhere else. The store
-  entries of a confined run are in the `confined` domain, which no evidence reader accepts (5.3).
+  works. Seatbelt has no private loopback, so on a macOS device a sent unit whose label says `net = "loopback"` is refused (`not run
+  (device refused)`, with the sentence, and reassigned to a Linux or WSL device) unless the receiver's policy lists the loopback ports to
+  allow, which the profile grants by number (`sandbox.Net.only`): an allow list, because a deny list is a snapshot ([probe]: with the
+  device's service ports denied by number the daemon stand-in was refused on IPv4 and IPv6, and a listener started after the profile was
+  built was reachable). A local run of a named project on macOS gets loopback with the device's own service ports (the daemon's, the lease
+  broker's, the workspace host's and any model server's, each known to the device) denied by number and unix sockets denied, a list the
+  runner builds again when each unit starts and not once per run, in a new `sandbox.Net` mode, `loopback_except(ports)`; the loopback
+  services of third parties are the residue named in 10.9. A sent test therefore cannot reach the owner's model server, which would be a
+  second piece of work on the device's compute. A device with no confinement available takes no shard. A tree's own scripts and
+  `launcher` never choose the profile. This is `design-test-selection` slice 6, and it is a hard prerequisite of sending a tree to any
+  other device through the generalised path (migration step 8).
+- **Local runs: classify, then confine.** The runner reads the project's identity from files and decides named or not (4.9) before it starts
+  anything of the project. A project the user has named runs on this machine in the checkout, as the user, under an **open profile with a
+  narrow deny**: the user's account for everything except the Owner zone (3.5), which is denied to read and write by exact path, with
+  `(deny file-link)`. [probe] A profile that is open except `(deny file-read* file-write* (subpath <owner zone>))` refused a child the key on
+  read and on append and refused a hard link and an APFS clone of it. Its LIST, `deps.command`, hooks, steps and units use the project's
+  `launcher`. The narrow deny is a speed bump and not a wall (10.9 item 7). **A project the user has not named runs confined, in a scratch
+  copy.** Its LIST, `deps.command`, steps, hooks and units, and the commands that run them (`list`, `check`, `init`, `plan` and `affected`
+  among them), execute under the same sandbox backend and on the same executor a device's do, in a copy of the transported set that the runner
+  makes (APFS `clonefile` where the volume has it, a copy otherwise) from regular files it opens without following links. The checkout is
+  read-only for `git` at classification and absent from every child's profile; the scratch tree and the step directories a step owns are the
+  only writable paths; results and a step's declared products come back through the runner's descriptors. [probe] A confined child with the
+  checkout writable wrote an executable hook into the repository's metadata and appended to `testfarm.toml`, and the next unconfined action
+  would have run what it left; neither is reachable from a copy. There is no network, no state location, pool home, `~/.ssh`, settings file or
+  other project's store, and no `.git` or home directory: a test that needs one fails until the person names the project with
+  `poolhouse-test own` (4.8), one yes per project, the only step this adds. The copy's time is a line of the report (`built`). Its `launcher`
+  only narrows, its children get the allowlist environment of 10.5, and it gets no lease and no loopback whatever its file says. The runner
+  learns that a project is named from the user's settings and the identity check of 4.9 and from nowhere else. The store entries of a confined
+  run are in the `confined` domain, which no evidence reader accepts (5.3).
 
 ### 10.3 What a sent configuration and test list can do
 
 The sent tree contains code, so the receiver runs sender code; what it refuses to do is *build the command from sender text*. The receiver
 hashes the bytes of `testfarm.toml` in the tree it verified, parses those same bytes once (6.6), validates them against the schema,
-clamps `slots`, `timeout` and `env` to its policy, and builds the argument vector from the verified `run.argv` and the named set: only
+bounds `slots`, `timeout` and `env` by its budget for the sender (10.6) and its policy, and builds the argument vector from the verified
+`run.argv` and the named set: only
 `{ids}`, `{idfile}`, `{result}`, `{extra}`, `{jobs}`, `{step:NAME}` and `{shared:NAME}` are substituted, each as a separate argument,
 never through a shell. `extra` is the verified set's own: the start request carries no `extra`, no step list and no deadline, and a step
 that rewrites the config in the scratch tree changes nothing, because the executor never reads that copy again. A `NAME` in a placeholder
@@ -1205,7 +1418,8 @@ hang guard), duplicate ids, a nonzero exit and an empty result are errors that n
 Every number read from LIST, a result row or a device is checked against its range, or the row is an error that names its number:
 `seconds` is finite and between zero and the wall time of the invocation that produced it (for a device unit, the interval the sender
 measured), counts and capacities are non-negative integers, and `deps` entries are normalised tree-relative paths. NaN, infinity and a
-negative number are refused; none reaches a sort, a deadline or the history.
+negative number are refused; none reaches a sort, a deadline or the history. The numbers of the project's own file are checked the same way
+(section 4).
 
 A slice index and count (5.2) are never read from a result, a device or the environment: the runner computes them as positive integers (the count at
 least 1, the index from `slice_base` to `slice_count + slice_base - 1`, with no fixed maximum), formats them in decimal with no sign or padding, and substitutes
@@ -1218,20 +1432,23 @@ vector with ids from this grammar and refuses anything else.
 - **Output is data.** Every byte a unit, a LIST, a hook or a device sends (output, messages, names), local and remote alike, is decoded as
   UTF-8 with replacement, stripped of ANSI/OSC/CSI escapes, carriage-return line overwrites, other control characters (except newline and
   tab) and every character of the categories Cf, Zl, Zp, Co, Cs and Cn (direction overrides and isolates, zero-width characters, tag
-  characters), truncated per line and in total, and printed inside a frame the sender prints (`--- <name>: untrusted output ---` and
-  `--- end ---`) with a `[device]` prefix the *sender* adds on every line, so a device cannot forge another device's line, a summary line
+  characters), truncated per line and in total, and printed inside a frame the sender prints (`--- <name>: untrusted output <nonce> ---` and
+  `--- end <nonce> ---`, the nonce 128 random bits made for the run and printed in the first line of the report, so an end marker forged in
+  a unit's text does not match) with a `[device]` prefix the *sender* adds on every line, so a device cannot forge another device's line, a
+  summary line
   or an exit status, and an agent that reads the report can tell the runner's text from a test's. The summary and the status are printed
   after the frames and never inside one. A name is sanitised the same way (`report.plain`). Result messages and failure texts are bounded
   by the receiver's result bound (10.6), shared among the fields. `--json` puts that text in fields named `untrusted_*`.
 - **The child environment** depends on where the command runs. The children of a named project on this machine inherit the user's
   environment minus the runner's own names and receive the permit descriptor variable. A confined child of an unnamed project, and every
   child on a device, gets an allowlist, not today's denylist (`shard_run.DROPPED`): `PATH`, `LANG`, `LC_*`, `TZ`, `TMPDIR` (a scratch
-  path), `HOME` (a scratch path), the names the preset's `[confine] env` lists, the names the verified file's `run.env` sets, and the
+  path), `HOME` (a scratch path), the names the preset's `[confine] env` lists (a URL-valued one without user and password), the names the
+  verified file's `run.env` sets, and the
   permit descriptor variable; nothing else, so agent markers, tokens and the sender's variables do not arrive. `run.env` may set `PATH` or
   `LD_PRELOAD` for its own children, which is inside the confinement and acceptable.
-- **Sender bytes are parsed in the Parser zone** (6.6): XML with a DOCTYPE or an ENTITY is refused before parsing, a nesting deep enough
-  to raise `RecursionError` or `MemoryError` ends the parse as an error that names the rule, and a junit or JSON result larger than the
-  receiver's result bound (10.6) is refused.
+- **Sender bytes are parsed in the Parser zone** (6.6): XML with a DOCTYPE or an ENTITY is refused by the parser itself in every encoding, any
+  end of the worker other than a complete record stream and a clean exit (an exception of any class, a signal, a timeout, a short read) is an
+  error that names the rule, and a junit or JSON result larger than the receiver's result bound (10.6) is refused.
 
 ### 10.6 Resource bounds and where they come from
 
@@ -1239,13 +1456,40 @@ Every bound has a source; where the source is "the owner, in source" it is a row
 host move to the Python module that now holds them. Section 15 lists them, and `poolhouse-test limits` prints the library's own table (each
 bound with the value measured now and the rule that gives it), because a project that imports the library cannot edit Poolhouse's
 `docs/limits.md`. The rule for every bound, new or carried over: derived from the device (free disk of the scratch volume, free inodes,
-logical CPUs, memory) or from the operating system (the argument maximum), or set by the project's own file, never typed in by the runner.
-The request, result, log, junit, member, unit and output bounds are all shares of the free scratch disk the receiver measures when it
-takes a shard. Examples: the packed-tree limit a receiver accepts is at most its free scratch disk divided by the shards it holds open;
-slots granted to one sender are at most the device's free slots at admission; the output kept is the executor's bounded log; the
-slices a sender builds are at most its free memory divided by the measured size of one planned unit; the store, the history and the
-evidence stay inside the volume's free space through the idle rule of 5.3. A runaway shard (output over the receiver's log bound, time over
-the sender's bound, tree over the bound) is cancelled with a defined status (124) and the group is killed.
+logical CPUs, memory), from the operating system (the argument maximum), or set by the receiver's person or by the project's own file, never
+typed in by the runner; **a clamp with no source is not written.** The receiver owns three budgets for a sender, below, and a key in the sent
+file can only ask for less.
+
+**Disk.** The receiver measures its free scratch disk and free inodes when it takes a shard; the shard's share is that free amount divided by
+the shards it holds, this one included. The share is one budget spent in a fixed order, so the parts cannot add up to more than it: the packed
+tree is accepted up to the share and its measured size is subtracted; the unpacked tree is accepted up to what is left, measured as it
+unpacks, and subtracted; of what is left the output files (log, tee, result, junit) take equal parts, their count being the number of those
+files, and the unit scratch takes the rest. The unit's scratch is a volume of that size where the platform makes one (Linux `tmpfs` with
+`size=`, macOS a sized sparse image); where it cannot be, the executor ends the process group when `statfs` shows the volume's free space
+below the amount measured at the start less the shard's share, polled at the hang guard's cadence. Seatbelt cannot limit the bytes a child
+writes in total and `RLIMIT_FSIZE` is per file [probe], so this rule, with the sized volume where there is one, is what stops a unit that
+writes until stopped, on both backends.
+
+**Time.** A device bounds a unit by the smaller of the sent bound (the unit's `timeout`, else its recorded typical duration times
+`total_margin`, 5.10) and its own ceiling for the sender. The ceiling's sources, in order: the seconds the receiver's person gave for this
+sender, one for a unit and one for a shard, with the slot-seconds it may hold (given at the `allow` act, or as the device's policy for the
+members of a pool in dev mode, both through the gate, 4.8); else the longest wall time the device itself measured, on its own clock, for any
+unit of that project from that sender on an earlier shard. A sender with neither gets no first shard: it is refused with the sentence naming
+`poolhouse-test policy`, which is `not run (device refused)` and reassigned, so nothing waits. The sender's bound on a shard (5.10) is a
+second bound and never the receiver's.
+
+**Memory.** Where the platform lets a child's memory be limited (a Linux cgroup memory limit through the sandbox backend, when the device
+delegates one), the shard's memory share, the device's free memory when it takes the shard divided by the shards it holds, is that limit.
+macOS has none: `setrlimit(RLIMIT_AS)` and `RLIMIT_DATA` fail with `EINVAL` and a 6 GiB anonymous map was not stopped [probe]; there the
+executor polls the group's resident memory at the hang guard's cadence and ends the group over its share, and 10.9 states that the platform
+does not bound a confined child's memory. The Parser worker's memory budget is a share of the same kind and its time is `RLIMIT_CPU`, which
+works on macOS [probe]; its input cap follows from the budget (6.6).
+
+The other bounds are parts or consequences of these: the packed-tree limit a receiver accepts is at most its share as above; slots granted to
+one sender are at most the device's free slots at admission; the output kept is the executor's bounded log; the slices a sender builds are at
+most its free memory divided by the measured size of one planned unit; the store, the history and the evidence stay inside the volume's free
+space through the idle rule of 5.3. A runaway shard (output over the receiver's log bound, time over a bound, tree over the bound) is
+cancelled with a defined status (124) and the group is killed.
 
 ### 10.7 Not starving the device's owner
 
@@ -1264,40 +1508,50 @@ with no file is in `tests/test_testfarm_attacks.py`.
 
 | # | Attack | Where it is answered | Test |
 |---|---|---|---|
-| A1 | A copied or cloned pool or device: a clone with a member's key answers under its fingerprint | a signature proves a key, not a machine: the install-instance id the sender pins with the fingerprint (6.2) makes a clone a second instance that gets no shard and is reported; a clone's `remote` pass is advice and stored only when a second source with another instance id agrees; a copied pool is a different pool id and its results are dropped | `test_testfarm_attacks.py::test_a1_a_second_instance_of_a_fingerprint_gets_no_shard` |
+| A1 | A copied or cloned pool or device: a clone with a member's key answers under its fingerprint | a signature proves a key, not a machine: the install-instance id the sender pins with the fingerprint (6.2) makes a copy of the key made without the id a second instance that gets no shard and is reported (a copy of the whole disk carries the id and is the same instance, 10.9 item 3); such a copy's `remote` pass is advice and stored only when a second source with another instance id agrees; a copied pool is a different pool id and its results are dropped | `test_testfarm_attacks.py::test_a1_a_second_instance_of_a_fingerprint_gets_no_shard` |
 | A2 | Replay of a start, an upload or a result | shard id is 128 random bits and inside the signed request and the result; requests are bound to a time, a nonce, the method, the target and the host (`sealing.request_data`, `macauth`'s nonce table); a result for another shard, tree or config fails; the echo proves freshness only (6.4) | `test_a2_a_replayed_start_and_a_result_for_another_shard_are_refused` |
 | A3 | A forged or below-threshold signature | the certificate check; results are not signed and one device's word is below any threshold for skip evidence: a device pass is stored only when a second source agrees (5.3, 6.4) and never creates `local` evidence | `test_a3_one_device_pass_is_shown_and_not_stored` |
-| A4 | A compromised or malicious member as sender: runs code, fills the disk, hogs slots, starves the owner, reads other senders' shards, aims the executor at a file | confinement with the network denied (10.2); the executor's boundary (6.6); per-sender and per-device bounds, background class, kill when the admission asks for the slots back, ownership of the shard folder by the first uploader | `test_testfarm_confinement.py::test_a_step_that_links_every_executor_path_to_a_canary_file_reaches_nothing` and `::test_a_unit_cannot_connect_to_the_daemon_a_model_server_or_the_lan_gateway` |
+| A4 | A compromised or malicious member as sender: runs code, fills the disk, hogs slots, starves the owner, reads other senders' shards, aims the executor at a file | confinement with the network denied (10.2); the executor's boundary (6.6); the receiver's time, disk and memory budget for a sender (10.6), per-sender and per-device bounds, background class, kill when the admission asks for the slots back, ownership of the shard folder by the first uploader | `test_testfarm_confinement.py::test_a_step_that_links_every_executor_path_to_a_canary_file_reaches_nothing` and `::test_a_unit_cannot_connect_to_the_daemon_a_model_server_or_the_lan_gateway`, `test_testfarm_policy.py::test_a_sender_with_no_budget_gets_no_first_shard` |
 | A5 | A compromised member as receiver: returns a false pass, a false failure, fewer rows, rows for ids not assigned, another shard's results, an old result, a lied platform, capacity or cost, `not started` for failing units, a made-up key or `reads` | the sender checks the row set exactly and the shard, tree and config hashes; the platform class comes from the pinned member record, capacity from the sender's own observation and `fixed_cost_s` from the sender's clock; `not started` from a device is `not run (device refused)` and the units are reassigned; a failure on a device is final and is not erased by a re-run on another class (6.4); keys are never read from a result; the `remote` kind never satisfies a local run or authority | `test_a5_a_device_that_refuses_every_unit_cannot_turn_failures_into_a_retry_status` and `::test_a_failure_on_a_device_survives_a_pass_on_the_sender` |
 | A6 | A stolen phone or key; a stolen device key | removing the member refuses it at the next request and cancels its shards, a running executor included; a stolen person key adds a device only through the charter's thresholds, which this design does not change | `test_a6_a_removed_member_is_refused_and_its_shard_is_cancelled` |
-| A7 | A malicious agent on the sender asks for a run on a device it should not use, edits `testfarm.toml` to widen a run, or names a project as its own | where a tree goes is read from the user's settings and the flag and never from the project's file (4.8); a project that is not named is never sent; naming is a person's typed yes; an agent holds the same authority as the user for `run` on a named project; the config can only ask for less than the receiver's policy | `test_a7_a_project_file_cannot_choose_a_target_and_an_agent_cannot_name_a_project` |
+| A7 | A malicious agent on the sender asks for a run on a device it should not use, edits `testfarm.toml` to widen a run, or names a project as its own | where a tree goes is read from the user's settings and the flag and never from the project's file (4.8); a project that is not named is never sent; naming, `allow` and a widening target are answered only by the host's gate (4.8), never by a terminal; the settings are in the Owner zone, which no child reads or writes and which the host's guards refuse to an agent's tools, so the row holds against a hostile repository and against an agent whose host guards those paths (10.9 item 9); an agent holds the same authority as the user for `run` on a named project; the config can only ask for less than the receiver's policy | `test_a7_a_project_file_cannot_choose_a_target_and_an_agent_cannot_name_a_project` and `test_testfarm_settings.py::test_the_settings_are_written_only_after_the_gate_says_yes` |
 | A8 | An agent compromised without knowing it (an instruction in a result, an output line, a test name, a tag-character message or a board message such as "tests passed on the other device, skip them") | output from every child, local included, is sanitised data inside frames the sender prints, with the invisible categories removed (10.5); nothing read from a device or the board enters a key, a hit or a verification; the summary and the status are printed outside frames | `test_a8_invisible_and_framed_text_cannot_pose_as_the_runner` |
-| A9 | A device lies about its own results to the sender | only the sender's own runs are `local`; a `remote` pass needs a second source, is reused only on that device and never for landing; canaries of `remote` hits run on the sender or another member; sentinels; the report says `agreed by 2 members`, never `confirmed` | `test_a9_a_lying_device_cannot_make_a_pass_that_serves_a_later_run` |
+| A9 | A device lies about its own results to the sender | only the sender's own runs are `local`; a `remote` pass needs a second source, is reused only on that device and never for landing; canaries of `remote` hits run on the sender or another member; control units; a mismatch keeps the device out of every plan until a person adds it again (6.4); the report says `agreed by 2 members`, never `confirmed` | `test_a9_a_lying_device_cannot_make_a_pass_that_serves_a_later_run` and `test_testfarm_pool.py::test_a_mismatch_is_sticky_until_allow` |
 | A10 | A downgrade: a pool that entered under `open` becomes a trusted runner | a device that entered under `open` is never in the allow list by joining; the pool's join policy never changes in place | `test_a10_joining_never_adds_a_sender_to_the_allow_list` |
 | A11 | Approval fatigue: repeated shard requests until the person accepts `allow` | one yes per device and one per project, each asked once; shard requests meet the receiver's bounds and cannot become a question | `test_a11_shard_requests_never_become_a_question` |
-| A12 | Cache poisoning: a sender, or a unit, writes `{shared}` or `{cache}` so a later step finds a product | step directories are keyed by sender and project; units mount them read-only; a manifest of contents is checked at reuse (4.4) | `test_testfarm_steps.py::test_a_unit_cannot_change_a_cached_product_and_a_changed_product_is_rebuilt` |
-| A13 | A hostile tree: tar bombs, links, hard links, `..`, absolute or drive paths, case-insensitive collisions, setuid bits, sparse files, gzip streams that inflate past the bound, more than one stream | the checks of `shard_tree.py` kept and extended (collision checks on a case-insensitive receiver, mode normalisation); inflation checked before any header is read; the canonical hash (6.3); there is no Windows receiver (6.2) | `test_a13_every_hostile_tree_is_refused` |
-| A14 | A hostile `testfarm.toml`: unknown keys, huge arrays, deep nesting, type confusion, a `run.argv` with a shell, a path that leaves the tree, placeholders in the wrong place, a regular expression, a name with `..` | the strict schema; parsed once in the Parser zone with `RecursionError` and `MemoryError` caught and sizes bounded first; only listed placeholders; name and environment grammars; no key takes a regular expression; the config is never read again | `test_a14_a_config_rewritten_after_the_hash_changes_nothing` and `test_testfarm_config.py::test_every_hostile_file` |
+| A12 | Cache poisoning: a sender, or a unit, writes `{shared}` or `{cache}` so a later step finds a product | step directories are keyed by sender and project; units mount them read-only; a manifest of `{cache}` and the digest of what a unit read from `{shared}` are checked at reuse, walked by descriptor (4.4) | `test_testfarm_steps.py::test_a_unit_cannot_change_a_cached_product_and_a_changed_product_is_rebuilt` |
+| A13 | A hostile tree: tar bombs, links, hard links, `..`, absolute or drive paths, case-insensitive collisions, setuid bits, sparse files, gzip streams that inflate past the bound, more than one stream | the unpack runs in the Parser worker (6.6); the checks of `shard_tree.py` kept and extended (collision checks on a case-insensitive receiver, mode normalisation); inflation checked before any header is read; the canonical hash (6.3); there is no Windows receiver (6.2) | `test_a13_every_hostile_tree_is_refused` |
+| A14 | A hostile `testfarm.toml`: unknown keys, huge arrays, deep nesting, type confusion, a `run.argv` with a shell, a path that leaves the tree, placeholders in the wrong place, a regular expression, a name with `..` | the strict schema; parsed once in the Parser zone with any end of the worker other than a complete record stream and a clean exit refused as status 4, and sizes bounded first; only listed placeholders; name and environment grammars; no key takes a regular expression; the config is never read again | `test_a14_a_config_rewritten_after_the_hash_changes_nothing` and `test_testfarm_config.py::test_every_hostile_file` |
 | A15 | Argument injection through an id (`--option`, a path that escapes, a newline, a line separator) | the id grammar by Unicode category in normal form C; NUL-separated `{idfile}`; `ids_after`; `refuse_prefix` (10.4) | `test_a15_ids_with_line_separators_and_prefixes_stay_one_argument` |
 | A16 | A LIST that prints a huge or infinite output, binary data, nothing, a nonzero exit, or ids that do not exist | bounded output and hang guard; a failed or empty LIST is status 4; `ignored N lines` is printed; the receiver checks the grammar, the set and the bounds, which are its own, and does not trust a LIST comparison made by the sender's own code | `test_a16_a_failed_empty_or_filtered_list_is_not_a_green_run` |
-| A17 | Result files: junit entity expansion, a result for ids not assigned, duplicates, a path in `reads` that escapes the tree, a giant `message`, a link in place of the file | read through descriptors the executor opened, regular files only, size capped; XML with a DOCTYPE or ENTITY refused; exact row set; validated numbers; `reads` normalised to tree paths or dropped | `test_testfarm_confinement.py::test_a_result_path_replaced_by_a_link_reads_nothing` |
-| A18 | Terminal injection through output: escape sequences, carriage returns, a fake `[other-device]` prefix, a fake summary or status line, direction and tag characters | 10.5; the prefix, the frames and the summary are the sender's, for local output too | `test_a18_a_fake_prefix_or_summary_inside_output_stays_in_its_frame` |
-| A19 | The source tree is disclosed to a device | only a project the user named is sent, to the targets the user chose; the set is the tracked files plus untracked files a unit names (no `.env.local`); the first send prints the file count and top-level names; `plan --show-tree` | `test_a19_untracked_files_are_not_sent_unless_named` |
+| A17 | Result files: junit entity expansion, a result for ids not assigned, duplicates, a path in `reads` that escapes the tree, a giant `message`, a link in place of the file | read through descriptors the executor opened, regular files only, size capped; XML with a DOCTYPE or ENTITY refused by the parser itself in every encoding; exact row set; validated numbers; `reads` normalised to tree paths or dropped | `test_testfarm_confinement.py::test_a_result_path_replaced_by_a_link_reads_nothing` |
+| A18 | Terminal injection through output: escape sequences, carriage returns, a fake `[other-device]` prefix, a fake summary or status line, direction and tag characters | 10.5; the prefix, the frames (their markers carry the run's nonce) and the summary are the sender's, for local output too | `test_a18_a_fake_prefix_or_summary_inside_output_stays_in_its_frame` |
+| A19 | The source tree is disclosed to a device | only a project the user named is sent, to the targets the user chose; the set is the tracked files plus untracked files a unit names through a glob that is not the whole tree (no `.env.local`), listed at the first send, and only to the devices the person agreed (4.8); the first send prints the file count and top-level names; `plan --show-tree` | `test_a19_untracked_files_are_not_sent_unless_named` |
 | A20 | Time-of-check to time-of-use between the hash and the run, symlink races in the scratch tree | the executor-owned `exec/` that children cannot write; descriptors held open; the config in memory; hash after unpack; no links accepted | `test_testfarm_confinement.py::test_a_step_that_links_every_executor_path_to_a_canary_file_reaches_nothing` |
-| A21 | Fork bomb, memory hog, disk fill by a shard, a `setsid` child that outlives the shard | process-group kill; PID namespace and `--die-with-parent` on Linux; a marker sweep on macOS with the residue in 10.9; memory and disk bounds derived from the device; bounded log | `test_a21_a_detached_child_does_not_survive_a_shard_on_linux` |
-| A22 | The step or hook of a repository the user was handed runs on the sender | a project the user has not named runs LIST, `deps.command`, steps, hooks and units confined, including for `list`, `check`, `init`, `plan` and `affected` (10.2); nothing sends a hook to a device | `test_a22_check_on_a_fresh_clone_runs_its_list_confined` |
+| A21 | Fork bomb, memory hog, disk fill by a shard, a `setsid` child that outlives the shard | process-group kill; PID namespace and `--die-with-parent` on Linux; a marker sweep on macOS with the residue in 10.9; the disk, memory and time budgets of 10.6 (a sized scratch volume or a polled floor, and a polled memory share on macOS with the residue in 10.9); bounded log | `test_a21_a_detached_child_does_not_survive_a_shard_on_linux` and `test_testfarm_confinement.py::test_a_unit_that_writes_until_stopped_and_one_that_allocates_until_stopped_are_ended` |
+| A22 | The step or hook of a repository the user was handed runs on the sender | a project the user has not named runs LIST, `deps.command`, steps, hooks and units confined, including for `list`, `check`, `init`, `plan` and `affected` (10.2), in a scratch copy, after the project is classified from files with no git and with every git call confined (4.9); nothing sends a hook to a device | `test_a22_check_on_a_fresh_clone_runs_its_list_confined` |
 | A23 | A project's `testfarm.toml` or the reuse store reads outside the project (a symlink to a home file in `inputs`, a DEPS row with an absolute or `..` path) | such rows are refused; the runner reads only the project root and its state directory, and check B proves it under the sandbox's read profile, children included | `test_testfarm_readonly.py::test_nothing_outside_the_project_and_the_state_is_read` |
-| A24 | Takeover by whoever is merely present on the LAN | dev mode trusts every device that joined, which `docs/fleet.md` states; with the default target `local` a project's tree goes nowhere until the user names the project and chooses another target, so that trust does not reach every consumer by default; a pool that is not in dev mode requires the allow list; the kill switch is `remote-tests` | `test_a24_nothing_is_sent_until_the_project_is_named_and_a_target_chosen` |
-| A25 | An old build on one device (a downgrade of the protocol) | caps carries `protocol` and the build; a mismatch is refused, never run; the device's statement that it can confine is its own build's, and a device that lies is a compromised receiver (A5) | `test_a25_a_protocol_or_build_mismatch_is_refused` |
-| A26 | A sender queues work or sets tiny timeouts to make a device's own work look failed or late | the device's own work is admitted first (background class); the network denial keeps a sent test from the owner's model server; a device's refusal is reported to the sender only | `test_a26_a_sent_test_cannot_prompt_the_owners_model_server` |
+| A24 | Takeover by whoever is merely present on the LAN | dev mode trusts every device that joined, which `docs/fleet.md` states; with the default target `local` a project's tree goes nowhere until the user names the project and chooses another target, so that trust does not reach every consumer by default; a `target` or `--on` that names a device set the person has not agreed is a widening that asks the host's gate (4.8); a pool that is not in dev mode requires the allow list; the kill switch is `remote-tests` | `test_a24_nothing_is_sent_until_the_project_is_named_and_a_target_chosen` |
+| A25 | An old build on one device (a downgrade of the protocol) | caps carries `protocol` and the build; a mismatch is refused, never run; the device's statement that it can confine is its own build's and is measured by the confinement control unit of 6.4; a device that lies is a compromised receiver (A5) | `test_a25_a_protocol_or_build_mismatch_is_refused` |
+| A26 | A sender queues work or sets tiny timeouts to make a device's own work look failed or late | the device's own work is admitted first (background class); the network denial keeps a sent test from the owner's model server, and on a macOS device a sent `loopback` unit is refused unless the receiver lists ports (10.2); a device's refusal is reported to the sender only | `test_a26_a_sent_test_cannot_prompt_the_owners_model_server` |
 | A27 | Slice injection: a hostile index or count (`--slices '8; rm -rf'`, `-1`, `1e9`, a count that makes the tool run one slice out of range, a slice template that smuggles a flag), or a device that reports slices the sender did not assign | the index and count are integers the runner makes, positive, decimal only, with the count bounded by the sender's memory (10.6), put in as whole arguments (10.4); `--slices` is parsed as an integer or refused with status 4; the template allows exactly the two placeholders; the sender checks the slice set it received (exactly the slices it assigned, once each) as it checks ids (A5) | `test_a27_a_hostile_slice_count_or_index_is_refused` |
 | A28 | A slice count change used to keep a stale pass (slice 3 of 8 satisfying slice 3 of 6), a hidden gap where the tool's partition skips tests, or slices partitioned differently on two devices | the count and index are in every slice key (5.2); the plan states that coverage is the tool's partition and not checked; slices of one run go only to targets of one class with equal tool digests | `test_a28_a_changed_slice_count_invalidates_every_slice` |
-| A29 | A hostile repository, run by the user, forges a pass in the store of the user's real project (the directory is named by a public url and the key is an unkeyed hash) | the repository is not named, so its tests are confined and cannot reach the state location; entries are signed with a key they cannot read and carry a domain, in a directory per project and domain (5.3); no evidence reader accepts `confined` | `test_testfarm_store.py::test_a_confined_run_cannot_write_or_disable_an_entry_of_another_project` |
+| A29 | A hostile repository, run by the user, forges a pass in the store of the user's real project (the directory is named by a public url and the key is an unkeyed hash) | the project's identity is read from files, so a `.git` that points at a named repository is not named (4.9); no child of any run, named or not, reaches the state location or the key (3.5); entries are signed with a key per project and carry a domain, in a directory per project and domain (5.3); no evidence reader accepts `confined` | `test_testfarm_store.py::test_a_confined_run_cannot_write_or_disable_an_entry_of_another_project` and `::test_a_named_unit_cannot_read_the_key_or_write_the_store_or_the_settings` |
 | A30 | A device or a unit keeps a shard alive with heartbeats and no progress | a heartbeat is not progress; the sender bounds a shard by the sum of its units' bounds on its own clock; a unit with no bound is not sent (5.10) | `test_testfarm_pool.py::test_a_device_that_only_heartbeats_is_ended_by_the_sender` |
 | A31 | A unit that skips and exits 0 is stored as a pass | `exit` results are not stored unless the project opts in; `jsonl` and `junit` carry `skip` and `unstorable` (5.3) | `test_testfarm_reuse.py::test_an_exit_result_that_skipped_is_not_stored` |
-| A32 | Fail-first evidence written by hand, or for another base | evidence is produced by the runner and signed; the check recomputes the range's base and compares trees; a fixture-only change makes units `unverified` (5.9) | `test_testfarm_failfirst.py::test_forged_and_wrong_base_evidence_is_refused` |
+| A32 | Fail-first evidence written by hand, or for another base | evidence is produced by the runner and signed under a key no child of any run can read, so a new test cannot forge its own (5.3); the check compares trees against the one base, the range's start (5.9); a fixture-only change makes units `unverified` (5.9) | `test_testfarm_failfirst.py::test_forged_and_wrong_base_evidence_is_refused` |
 | A33 | A CI shard job drops a unit: shards divided from each machine's store or history | `divide` reads only the sorted LIST, the config and the seed; `--verify-cover` fails unless every unit is in exactly one list (5.2) | `test_testfarm_plan.py::test_two_machines_with_different_stores_divide_alike` |
 | A34 | A forged entry survives because the canary draw is predictable | the draw comes from the operating system's entropy; a `remote` entry's first reuse is always a canary on the sender or another member (5.3) | `test_testfarm_reuse.py::test_two_runs_of_one_tree_sample_different_hits` |
+| A35 | A directory made "named" without the person naming it: a `.git` file or directory that points at a named repository, a stray `.git` above the directory, `GIT_DIR` in the caller's environment | the identity record is read from files with no git, requires the work-tree top-level, the back-pointer of a linked worktree and no `commondir` in a `.git` directory; the root walk never climbs into a parent repository (4.9) | `test_testfarm_settings.py::test_a_directory_that_points_at_a_named_repository_is_not_named` |
+| A36 | A repository's own git configuration is code: `core.fsmonitor`, `core.hooksPath`, a filter driver, `diff.external` | classification runs no git; every git call runs in the read-only profile with fixed overrides and environment, from a closed list of subcommands that apply no filter (4.9) | `test_testfarm_confinement.py::test_a_repository_whose_git_configuration_runs_a_program_runs_nothing` |
+| A37 | A confined run writes what the next unconfined action runs: repository hooks, `testfarm.toml`, shell-integration files | an unnamed project's units run in a scratch copy and the checkout is not in their profile (10.2) | `test_testfarm_confinement.py::test_a_confined_unit_cannot_write_the_checkout_testfarm_toml_or_repository_metadata` |
+| A38 | A named unit reads the key, writes an entry of any project or edits the settings | the Owner zone is denied to every child by exact path and the key is per project (3.5, 5.3) | `test_testfarm_store.py::test_a_named_unit_cannot_read_the_key_or_write_the_store_or_the_settings` |
+| A39 | The hang guard is satisfied by `inf`, by one margin or before the first unit finishes; a unit prints a byte at a time; a spawn bypasses the guard | numbers are finite and in range; both margins are required; a byte is progress only until the total guard; the first unit needs a terminal or `--timeout`; one spawn function (4, 5.10, 3.1) | `test_testfarm_config.py::test_non_finite_and_one_sided_guards_are_refused`, `test_testfarm_timeouts.py::test_a_unit_that_prints_a_byte_at_a_time_is_ended_by_the_total_guard` and `::test_every_process_the_runner_starts_goes_through_the_one_spawn_function` |
+| A40 | A sender sends a unit with `timeout = 1e9`, or a loop that fills the disk or the memory of a device | the receiver's budget (10.6): a ceiling with a source, a share of the disk spent in order, a polled memory share, no first shard without a time budget | `test_testfarm_policy.py::test_a_sender_with_no_budget_gets_no_first_shard` and `test_testfarm_confinement.py::test_a_unit_that_writes_until_stopped_and_one_that_allocates_until_stopped_are_ended` |
+| A41 | XML or TOML that ends the parser in a way the code did not list: UTF-16 without a byte-order mark, a 5000-digit integer | the refusal is made inside expat for every encoding and any end of the worker other than a clean record stream is status 4 (6.6) | `test_testfarm_confinement.py::test_xml_in_every_encoding_with_a_doctype_is_refused` and `::test_any_end_of_the_parser_worker_is_status_4` |
+| A42 | `[requires] module:NAME.sub` runs an installed package's import-time code on the device | a `module:` name holds no dot, `PathFinder.find_spec` imports nothing and every probe runs in a unit's profile (6.5) | `test_testfarm_pool.py::test_requires_never_imports_a_package` |
+| A43 | A delegated lease credited to a dead or recycled process id, or a model server that outlives its group | the broker identifies a process by handle, drops a delegation on the leader's exit and keeps the lease held while a detached server runs (5.5) | `test_serve_delegation.py::test_a_dead_connecting_process_gets_no_delegation` and `::test_a_server_that_outlives_the_group_keeps_the_lease_held` |
+| A44 | A descriptor the runner leaves open is read by a confined child | the spawn function keeps exactly 0, 1, 2, the permit and the result descriptor (5.5) | `test_testfarm_confinement.py::test_a_confined_child_holds_only_its_own_descriptors` |
 
 ### 10.9 Accepted risks
 
@@ -1308,28 +1562,44 @@ Named with the owner, because each is a residue of the platform and the owner ac
    survives the shard. It stays inside the same sandbox profile. The stricter unit is an endpoint-level process-tree watch.
 2. **Several users on one machine.** The slots directory is per user and each user's broker counts the other's load as outside load, but two
    users who ask at the same moment can overload the machine. The tool is a developer tool on a machine its user owns.
-3. **Two members counted as two sources.** The install-instance id separates a clone from its original; one person who runs two instances
-   under two fingerprints on one machine (dev mode lets a joiner join twice) can make two members agree. The effect is a `remote` entry
-   that serves that device only and counts for no authority.
-4. **Third-party loopback services on macOS.** Seatbelt has no private loopback; the device's own service ports are denied by number and
-   a service the device does not know of is reachable from a unit whose label asks for loopback. The stricter unit is a Linux or WSL device
-   for such labels.
-5. **A sentinel catches an executor that ran nothing, not a device that reads the nonce.** Corroboration by a second source is the
-   defence.
+3. **Two members counted as two sources.** The install-instance id separates a copy of the key made without it from the original, and only
+   while the original also contacts the sender; a copy of the whole disk, a snapshot restore or a backup restore carries the id and is the
+   same instance, which is the device. One person who runs two instances under two fingerprints on one machine (dev mode lets a joiner join
+   twice) can make two members agree. The effect is a `remote` entry that serves that device only and counts for no authority.
+4. **Third-party loopback services on macOS.** Seatbelt has no private loopback and its port rules are a snapshot. A sent unit's
+   `net = "loopback"` is refused on a macOS device unless the receiver lists the ports to allow, and such labels go to a Linux or WSL device; a
+   local run of a named project gets the device's own service ports denied by number as of the unit's start, and a service started later, or
+   one the device does not know of, is reachable.
+5. **A control unit catches an executor that ran nothing or confined nothing, not a device that recognises it.** The canary and the second
+   source are the defence, and a mismatch from either keeps the device out of every plan until a person adds it again.
+6. **Naming binds a repository, not a branch.** A hostile branch checked out in a worktree of a named repository runs as the user. The Owner
+   zone is denied to it, so it reaches no key, store or settings (3.5).
+7. **The narrow deny is a speed bump, not a wall.** A named child that asks LaunchServices to start an unconfined program (`open x.command`)
+   leaves the deny [not run: it would open a Terminal window on the owner's screen]. The denial of the Owner zone stops a direct read or write
+   and not a child that starts a program outside the profile's reach.
+8. **Memory of a confined child on macOS is not bounded by the platform.** The executor polls the group's resident memory and ends it over its
+   share, so a burst between two polls is not stopped.
+9. **No host guard, no protection for the Owner paths.** The settings are an ordinary file in the user's account. An agent with a file-write
+   tool, on a host that does not refuse writes to `ph.test.owner_paths()`, can name its project or widen a target. A7 holds against a hostile
+   repository and against an agent whose host guards those paths; the library cannot know that a person answered without a host that says so
+   (4.8).
 
 ## 11. Failure behaviour, exit codes and determinism
 
 **Exit status** is derived from the causes present, and a failure outranks every other cause: the status is 1 whenever any unit failed
-(a failed, `timed out`, `not reported` or `suspected: ended its device` unit); otherwise it is the numerically highest of the other causes
+(a failed, `timed out`, `not reported` or `suspected: ended its device` unit, or a `canary mismatch`); otherwise it is the numerically
+highest of the other causes
 present. The report and `--json` always carry the full cause set and the per-unit outcomes, so a wrapper that checks for 1 never misses a
 failure and a wrapper that retries on 70 or 75 never retries a run that had one. `not run` (a device did not finish: status 70) and
-`not started` (this machine was overloaded: status 75) are different outcomes and are never merged:
+`not started` (this machine was overloaded: status 75) are different outcomes and are never merged. A `flaky` unit (a cached pass that
+failed fresh and passed on one more fresh run) is a pass and is reported `flaky`. A shard refused because a control unit failed is `not run
+(device refused)` and gives 70 like any refusal. The table:
 
 | Status | Meaning | Source |
 |---|---|---|
 | 0 | every selected unit passed or was reused; an `--affected` selection that is empty because nothing changed since REF is 0 and says `nothing changed since REF` | the runner's existing rule that "no tests selected" because nothing changed is success (`scripts/test` `clean`) |
 | 1 | at least one unit failed, whatever else happened | pytest's failure status, the existing report |
-| 4 | refused before anything ran, or nothing ran: invalid config, id, selector or tree; LIST failed or printed no unit (unless `[list] allow_empty`); a selector or set that matched nothing; no hang guard set (`[schedule] silence_margin`, or a `timeout` on every command the runner starts); a hook refused; a send asked for a project the user has not named; no unit passed or was reused and at least one skipped or ran no tests (`nothing ran`); the tree changed during the run and nothing failed | `scripts/test` argument errors and the tree-changed rule |
+| 4 | refused before anything ran, or nothing ran: invalid config, id, selector or tree; LIST failed or printed no unit (unless `[list] allow_empty`); a selector or set that matched nothing; no hang guard set (`[schedule] silence_margin`, or a `timeout` on every command the runner starts); a hook refused; a number in the project's file outside its range (section 4); the first unit of a project with no bound (5.10); a send asked for a project the user has not named; no unit passed or was reused and at least one skipped or ran no tests (`nothing ran`); the tree changed during the run and nothing failed | `scripts/test` argument errors and the tree-changed rule |
 | 6 | busy: a whole-selection job is already live | `BUSY_EXIT` |
 | 70 | a device did not complete its part: not in the pool, refused, unreachable, vanished mid-run, missing a requirement | `test_on.NOT_RUN`, `docs/test-farm.md` |
 | 75 | at least one unit never started on this machine: it waited for a permit or a resource past the queue limit while the machine was overloaded; nothing about it failed | `EX_TEMPFAIL` of `sysexits.h`; the queue limit is the project's `[schedule] queue_wait` |
@@ -1369,21 +1639,24 @@ which device ran a unit may vary only through what is measured (durations, obser
 
 ```
 pip install poolhouse                       # nothing else: the command, the Python API and the presets come with it
-poolhouse-test init                         # finds the tool's marker file, writes a testfarm.toml (the tool's four lines and, after its measured first run, `[schedule] silence_margin` and `[reuse] canary`), prints it, and asks once whether the project is yours
-poolhouse-test run                          # parallel on this machine under the broker (confined while the project is not named as yours), with reuse; the second run reuses what passed
+poolhouse-test init                         # finds the tool's marker file, writes a testfarm.toml (the tool's four lines and, after its measured first runs, `[schedule] silence_margin`, `total_margin` and `[reuse] canary`), prints it, and offers once to ask whether the project is yours (a question put through the host's gate)
+poolhouse-test run                          # parallel on this machine under the broker (confined, in a copy, while the project is not named as yours), with reuse; the second run reuses what passed
 poolhouse-test run --affected               # once DEPS are given (init offers the globs it can see)
 poolhouse-test devices                      # the pool's other devices, whether each takes tests, platform, free slots
-poolhouse-test target auto                  # once, to use the pool's devices for your named projects (or --on auto for one run)
+poolhouse-test target auto                  # once, to use the pool's devices for your named projects, after the gate agrees the device list (or --on auto for one run)
 poolhouse-test run                          # the same command, sharded over them
 ```
 
-Steps that need a person: naming a project as one's own, one typed yes per project asked once ("The tests and build commands in
-'<path>' will run as you, with access to your files, and may be sent to your devices. Without a yes they run confined."), which
-`init` offers as its last line and which Poolhouse's own checkout gets from its device setup; and, for a pool that is not in dev mode, the
-receiving device's person adding the sender once (`poolhouse-test allow`), asked once through the question tool with the sentence "This lets
-'<device>' run its own code on this computer, as you." A repository the user was handed and has not named still runs, confined: it reads
-its own files and the toolchain, writes its own directory and the scratch tree, and uses no network, and nothing of it leaves the machine.
-Security adds no other visible step to this journey. A repository in any language adopts by writing its two commands: for tests that are
+Steps that need a person: naming a project as one's own, one yes per project asked once through the host's gate ("The tests and build commands in
+'<path>' will run as you, with access to your files except the runner's own keys and settings, and may be sent to: <devices>. Without a yes they
+run confined, in a copy."), which `init` offers as its last line and which Poolhouse's own checkout gets from its device setup; and, for a pool
+that is not in dev mode, the receiving device's person adding the sender once (`poolhouse-test allow`), asked once through the same gate with the
+sentence "This lets '<device>' run its own code on this computer, as you." and the seconds, disk and slot-seconds the sender may use. A pool in
+dev mode asks the receiving person the same budget once, at device setup. With no gate available each of these refuses, changes nothing and
+prints the block a person adds to the settings file at their own editor; the run goes on, confined and local. A repository the user was handed
+and has not named still runs, confined, in a copy: it reads its own files and the toolchain, writes the scratch tree, and uses no network, and
+nothing of it leaves the machine.
+Security adds no other visible step to the sender's journey. A repository in any language adopts by writing its two commands: for tests that are
 executable files, `preset = "files"`; for anything else, `[list]` and `[run]` in the sentence of section 1. DEPS can be added any time
 and only make the runner faster.
 
@@ -1400,14 +1673,17 @@ Each is a test in the migration steps named, each with generated neutral project
   core imports no preset, transport, resource provider or plugin; a preset imports only L2 and L1; L1 imports only the standard library; the
   L0 list is exact (`files`, `lock`, `platform`, `redact`, `sandbox`, `errors`, `log`) and the pool transport and the lease provider import
   only the Poolhouse modules the test names; nothing under `testfarm` imports `scripts`, `tests`, `board`, `workspace` or the pool's home and
-  state-root modules; the runner's state path is not under the pool's home; `import poolhouse.testfarm` loads no `fleet`, `board`, `numpy`
+  state-root modules; the runner's state path is not under the pool's home; every executor call passes explicit `Limits`, no code under
+  `testfarm` starts a process except through the one spawn function (3.1), and `import poolhouse.testfarm` loads no `fleet`, `board`,
+  `numpy`
   or `pytest`.
 - **B. The runner reads only its project and its state.** A test generates a neutral project in a temporary directory, makes every
   other directory under the temporary root absent or unreadable, and runs `poolhouse-test check`, `list`, `run` and `affected` under the
   deny-default read profile of `src/poolhouse/sandbox/` that allows exactly the project root, the runner's state directory, the
   interpreter and system libraries. The profile covers every process the runner starts, children included (`git`, LIST, RUN), so a read
-  of the home directory, a parent directory, a sibling repository or a git configuration file fails the test; the runner runs `git` with
-  the system and global configuration disabled. A `sys.addaudithook` recording of the runner process's own `open`, `stat` and `listdir`
+  of the home directory, a parent directory, a sibling repository or a git configuration file fails the test; the runner runs `git` only as
+  4.9 says, with
+  the fixed overrides and environment. A `sys.addaudithook` recording of the runner process's own `open`, `stat` and `listdir`
   stays as a second witness for that process only.
 - **C. Neutral projects only.** Every test of the runner builds its project with the generator `tests/testfarm_project.py` (a
   temporary directory, invented names such as `widgets`); a static test fails when a runner test names the repository root, `scripts/`
@@ -1431,17 +1707,29 @@ Each is a test in the migration steps named, each with generated neutral project
   names, the result file, the log) to canary files outside the scratch tree, and the canaries are neither read nor written and no byte of
   them reaches the sender; a step rewrites `testfarm.toml` and the units' argument vectors are those of the first parse; `{step:../x}` is
   refused at validation; a unit cannot write `{step:NAME}` or `{shared:NAME}`; a unit connects to the pool daemon's port, a model server's
-  port and the LAN gateway on both platforms and none answers; on Linux a `setsid` child does not outlive the shard.
+  port and the LAN gateway on both platforms and none answers; on Linux a `setsid` child does not outlive the shard. A confined unit cannot
+  write the checkout, `testfarm.toml` or the repository's metadata, because its profile holds a copy; a confined child's open descriptors
+  are exactly `0`, `1`, `2`, the permit and the result descriptor; a unit that writes until stopped and one that allocates until stopped are
+  ended on both backends; the Parser worker ends in status 4 on a UTF-16 DOCTYPE document, a 5000-digit integer and a nested document.
 - **I. Divide and cover.** `tests/test_testfarm_plan.py`: two machines with different stores and histories produce byte-identical
   divisions, and the toy case (units of 4, 3, 2 and 1 seconds in two shards) covers every unit once; mutants that drop the id sort, read the
   history or read the store fail it; `plan --verify-cover` fails when a digest differs or a unit is in no list or in two.
 - **J. Trust domains.** `tests/test_testfarm_store.py`: a run of a project that is not named cannot read the state location, the settings or
   another project's store, cannot write or delete an entry, and leaves entries only in the `confined` domain; an entry with a bad
   signature, a wrong domain or another key is not served and is not evidence; `check` run on a fresh hostile clone executes its LIST and
-  `deps.command` confined (a canary file in the home directory is not read).
+  `deps.command` confined (a canary file in the home directory is not read). The identity fixtures of 4.9 are each unnamed: a `.git` file
+  whose `gitdir:` names a named repository, a `.git` directory with a `commondir` file naming one, a directory below a parent repository and
+  a `GIT_DIR` in the environment. A repository whose `.git/config` sets `core.fsmonitor` and `core.hooksPath` to programs that write a
+  canary leaves it unwritten through `list`, `check`, `plan` and `affected`. A named unit that reads the key, appends to the store and edits
+  the settings fails on each, and a worktree's unit cannot write an entry for another project.
 - **K. Status and outcomes.** `tests/test_testfarm_run.py`: the status is a function of the causes present (a failed unit and a lost device
   give 1, a lost device alone gives 70); a LIST that fails, prints nothing or is filtered away is 4; a run of only skips is `nothing ran`;
   an `exit` result that skipped is not stored.
+- **L. One spawn function.** `tests/test_testfarm_spawn.py`: every process the runner starts (LIST, `deps.command`, hooks, steps, units, control
+  units, the Parser worker, `[requires]` probes, `prune`, `git`, the launcher) goes through the one spawn function of 3.1, which refuses a call
+  without a hang guard, a profile, a descriptor list and explicit limits; a static test fails when code under `testfarm` starts a process
+  another way; a unit that prints a byte at a time and one that never prints are both ended; `git` runs with the overrides and environment of
+  4.9, and a repository whose configuration names a program runs none.
 
 The second-repo test (section 14, step 10): a throwaway repository generated in a temporary directory, depending on the installed
 wheel of Poolhouse in a fresh virtual environment, with a small pytest suite and a non-Python test (a shell script), named as the user's own
@@ -1469,7 +1757,9 @@ module's name and its imports updated; its assertions are not weakened (`scripts
 design's slices are absorbed: its slice 1 is step 5, slices 3 and 4 are the analyzers inside step 5, slice 6 is step 8, and slices 7 to 9
 are steps 8 and 9.
 
-**Findings per step.** The written break-it pass (`docs/design-test-runner-breakit.md`, findings F1 to F30) is absorbed in the text of
+**Findings per step.** The written break-it passes (`docs/design-test-runner-breakit.md`, findings F1 to F30, and
+`docs/design-test-runner-breakit-2.md`, findings N1 to N18, which found F5, F7, F10 to F15, F18, F21 and F25 absorbed in part) are absorbed
+in the text of
 sections 1 to 13. Each step below lists the findings it must absorb and, for each, the test that proves it. The test is written before
 the code it proves and is run first against the parent commit or against the naive implementation the row names (a mutant that
 reproduces the finding), and the step's commit carries the `Fail-first:` line with the error it showed. A finding is absorbed when its
@@ -1510,11 +1800,16 @@ test is green on the step's commit and red on that mutant. Findings that change 
    | F18 numbers | `::test_nan_infinity_negative_and_oversized_seconds_are_refused` |
    | F23 state location | `test_testfarm_layers.py::test_the_state_path_is_not_under_the_pool_home` |
    | F30 items 3, 5, 6 (schema keys the text uses, one median, the plugin import rule) | `test_testfarm_config.py::test_the_schema_has_every_key_of_the_design_table` (red when a key of 4.1 is missing from the schema); `test_testfarm_layers.py::test_a_plugin_imports_only_the_modules_the_test_names` |
+   | N6 numbers of the project's file (F18 in part) | `test_testfarm_config.py::test_non_finite_zero_negative_and_out_of_range_numbers_are_refused` (`silence_margin = inf`, `nan`, `1e999`, `0`, a margin below 1, `canary = 0` and `canary = 2`; red on a check that tests only that the value is a float) |
+   | N6 half a guard (F12 in part) | `::test_a_run_with_one_margin_is_refused` (red on a refusal that needs only `silence_margin`) |
+   | N17 `slice_base` has no default | `::test_slice_base_is_required_with_slice` |
+   | N8 a TOML integer past the digit limit | `::test_a_toml_integer_of_5000_digits_is_a_validation_error` (red on a handler that catches only `TOMLDecodeError`, `RecursionError` and `MemoryError`) |
 
 2. **Admission.** `git mv` `scripts/testslots{,_policy,_rpc,_runner}.py` and `testqueue.py` to `testfarm/admission/` (and
    `testslots_pytest.py` to the pytest preset's helpers; `AdmissionUnreachable`, imported today from the confinement file `test_kernel_endpoint.py`, moves with the admission interface), the `Admission` interface (`acquire` all or nothing, `Grant.sub`, `Grant.delegate`), the
    `DEV_TEST_*` names renamed `TESTFARM_*` (`tests/conftest.py` and `scripts/test` updated in the same commit), the permit descriptor, and
-   the change to `poolhouse.serve` that lets `serve up` use a lease delegated to an ancestor process group of its caller. Tests move:
+   the change to `poolhouse.serve` that lets `serve up` use a lease delegated to an ancestor process group of its caller, each process
+   identified by a handle (5.5). Tests move:
    `tests/test_testslots*.py`; new `tests/test_testfarm_admission.py` (a neutral command under the broker) and
    `tests/test_serve_delegation.py`. Proves: a general command is admitted like a pytest run, the nested-run refusal holds, a model-needing
    unit does not deadlock behind the lease its runner holds, and the fixed cost of `scripts/test` is unchanged
@@ -1527,12 +1822,18 @@ test is green on the step's commit and red on that mutant. Findings that change 
    | F13 the runner's lease against the unit's own | `test_serve_delegation.py::test_a_unit_under_a_runner_held_gpu_lease_serves_without_queueing`, `::test_a_process_outside_the_group_gets_no_delegated_lease`, `::test_no_lease_id_is_in_the_environment` (red on the parent: `serve up` queues behind the runner) |
    | F24 permits without an endpoint | `::test_a_child_receives_the_permit_descriptor_and_a_nested_run_refuses` |
    | F28 several users | `::test_the_slots_directory_is_per_user_and_mode_0700` |
+   | N12 delegation keyed on a handle (F13 in part) | `test_serve_delegation.py::test_a_dead_connecting_process_gets_no_delegation`, `::test_a_recycled_process_id_with_another_start_time_matches_nothing`, `::test_a_delegation_ends_on_the_leaders_exit_notification` |
+   | N12 a model server that outlives its group | `::test_a_server_that_outlives_the_group_keeps_the_lease_held` |
+   | N12 the nested-run refusal | `test_testfarm_admission.py::test_a_nested_run_is_refused_by_the_brokers_ancestor_test_with_the_variable_unset` (red on a refusal keyed on `TESTFARM_PERMIT_FD`) |
 
 3. **Local run core, the executor and its zones, confined local runs, and Poolhouse's file.** The largest step; it lands as one branch of
-   ordered commits (a) to (d), each green. (a) Divide, assign, schedule, merge, report with the time accounting of 5.10 and the outcomes and
+   ordered commits (a) to (d), each green; N1 to N6 are in the text before it starts. (a) Divide, assign, schedule, merge, report with the
+   time accounting of 5.10 and the outcomes and
    status of section 11, `poolhouse-test run|plan` for any LIST and RUN, `ph.test.run/plan/divide`; the `pytest` and `files` presets and the
    pytest result plugin. (b) The `local` transport and the executor with its boundary (6.6: the executor-owned directories, descriptors
-   held open, the Parser zone, one parse of the config) and the sandbox for a project that is not named. (c) The user's settings, `own`,
+   held open, the Parser worker, one parse of the config), the one spawn function, the git calls of 4.9, the scratch copy and the sandbox
+   for a project that is not named, the Owner-zone deny for a named one and the two `sandbox` modes of 3.1. (c) The user's settings, the
+   identity record, `owner_paths()`, the `PersonGate` seam with Poolhouse's gate plugin and the guards that read the paths, `own`,
    `target`, `--on`, the default target `local`, and the state location outside the pool's home. (d) The first `testfarm.toml` of
    Poolhouse (`preset = "pytest"`, the sets of the tiers). Files: `testfarm/{core,transports/local,presets}/`, `testfarm.toml`,
    `tests/test_testfarm_run.py`, `test_testfarm_plan.py`, `test_testfarm_presets.py`, `test_testfarm_timeouts.py` (a neutral unit
@@ -1547,17 +1848,27 @@ test is green on the step's commit and red on that mutant. Findings that change 
    | F2 a pure division | `test_testfarm_plan.py::test_two_machines_with_different_stores_divide_alike` and `::test_the_toy_case_covers_every_unit_once` (red on a planner that reads the store or the history, or drops the id sort) |
    | F3 failed, empty and filtered LIST; skips | `test_testfarm_run.py::test_a_filtered_list_prints_ignored_n_lines`, `::test_a_run_of_only_skips_is_nothing_ran`, `::test_an_empty_affected_selection_is_zero_with_its_line` |
    | F4 presets know no dependencies | `test_testfarm_presets.py::test_files_and_npm_give_a_unit_the_whole_tree` (red on a preset whose DEPS are the unit itself) |
-   | F5 handed code runs confined (decision 1) | `test_testfarm_confinement.py::test_a_project_that_is_not_named_runs_list_steps_hooks_and_units_confined`, `::test_check_on_a_hostile_clone_reads_no_home_file`; `test_testfarm_settings.py::test_naming_a_project_is_one_question_and_an_agent_cannot_answer_it` |
+   | F5 handed code runs confined (decision 1) | `test_testfarm_confinement.py::test_a_project_that_is_not_named_runs_list_steps_hooks_and_units_confined`, `::test_check_on_a_hostile_clone_reads_no_home_file`; `test_testfarm_settings.py::test_naming_a_project_asks_only_the_hosts_gate_and_an_agent_cannot_answer_it`; F5 was absorbed in part, and the N rows below finish it |
    | F6 the status ranks a failure first | `test_testfarm_run.py::test_a_failure_outranks_every_other_cause` (red on "numerically highest") |
    | F8 one parse of the config | `test_testfarm_confinement.py::test_a_step_that_rewrites_the_config_changes_no_argument_vector` |
    | F10 default network (local half) | `::test_a_confined_local_unit_has_no_network` |
-   | F14 the target is the user's (decision 2) | `test_testfarm_settings.py::test_the_default_target_is_local`, `::test_the_target_is_never_read_from_the_project_file`, `::test_a_project_that_is_not_named_is_never_sent` |
-   | F15 parse in a confined process | `test_testfarm_confinement.py::test_xml_with_a_doctype_is_refused`, `::test_a_junit_file_nested_to_recursionerror_is_an_error_not_a_crash` |
+   | F14 the target is the user's (decision 2) | `test_testfarm_settings.py::test_the_default_target_is_local`, `::test_the_target_is_never_read_from_the_project_file`, `::test_a_project_that_is_not_named_is_never_sent`, `::test_a_widening_target_asks_the_gate` (F14 was absorbed in part: N1, N3, N13) |
+   | F15 parse in a confined process | `test_testfarm_confinement.py::test_xml_in_every_encoding_with_a_doctype_is_refused` (UTF-8, UTF-16LE without a byte-order mark, UTF-16 with one), `::test_a_junit_file_nested_to_recursionerror_is_an_error_not_a_crash`, `::test_any_end_of_the_parser_worker_is_status_4` (N8) |
    | F17 text is data in frames | `test_testfarm_attacks.py::test_a8_invisible_and_framed_text_cannot_pose_as_the_runner` (local output) |
    | F23 state outside the pool's home | `test_testfarm_confinement.py::test_every_profile_names_the_state_location_by_exact_path` |
    | F24 environment | `test_testfarm_settings.py::test_a_named_child_inherits_the_environment_and_a_confined_child_gets_the_allowlist` |
    | F29 two timeouts | `test_testfarm_timeouts.py::test_a_file_of_fifty_five_second_tests_is_not_killed_by_the_per_test_value`, `::test_the_report_names_the_limit_that_fired`, `::test_rows_of_a_killed_invocation_are_reported` |
    | F30 item 4 (wall seconds are the unit), item 8 (a native Windows machine is a sender only) | `test_testfarm_plan.py::test_the_planner_uses_wall_seconds_times_slots` |
+   | N1 the project is named by what the person pointed at | `test_testfarm_settings.py::test_a_directory_that_points_at_a_named_repository_is_not_named` (four fixtures: a `.git` file reading `gitdir: <named>/.git`, a `.git` directory with a `commondir` file naming it, a directory below a parent repository, `GIT_DIR` in the environment; red on an implementation that asks `git rev-parse --git-common-dir`), `::test_a_linked_worktree_is_named_only_with_its_back_pointer`, `::test_the_root_walk_stops_at_the_first_testfarm_toml_or_git_entry` |
+   | N2 git is code (F25 in part) | `test_testfarm_confinement.py::test_a_repository_whose_git_configuration_runs_a_program_runs_nothing` (`.git/config` sets `core.fsmonitor` and `core.hooksPath` to programs that write a canary; `list`, `check`, `plan` and `affected` leave it unwritten; red on a runner that runs `git` in the checkout unconfined), `::test_git_runs_only_from_the_closed_list_with_the_fixed_overrides_and_environment` |
+   | N3 the person's yes | `test_testfarm_settings.py::test_own_allow_and_a_widening_target_ask_only_the_gate`, `::test_no_gate_refuses_and_prints_the_block_for_a_persons_editor`, `::test_a_terminal_answer_is_never_accepted` (a child under `script(1)` types `yes`), `::test_the_settings_are_written_only_after_the_gate_says_yes`, `::test_the_sentence_lists_the_devices_and_a_new_device_set_asks_again`, `::test_the_path_in_the_sentence_is_plain`, `::test_owner_paths_lists_every_file_the_cli_writes`, `::test_check_reports_a_settings_file_the_user_does_not_own_or_others_can_write`; `tests/test_person_guards.py::test_the_guards_refuse_the_test_runners_owner_paths` and `tests/test_person_release.py::test_the_test_kinds_are_in_the_closed_registry` |
+   | N4 the Owner zone is denied to every child | `test_testfarm_confinement.py::test_a_named_child_is_refused_the_owner_zone_by_exact_path` (read, append, hard link and clone of the key; red on an open profile with no deny) |
+   | N5 a confined run cannot write what the next action runs | `test_testfarm_confinement.py::test_a_confined_unit_cannot_write_the_checkout_testfarm_toml_or_repository_metadata` (red on a profile with the project directory writable) |
+   | N6 the guard cannot be bypassed | `test_testfarm_timeouts.py::test_a_unit_that_prints_a_byte_at_a_time_is_ended_by_the_total_guard`, `::test_the_first_unit_needs_a_terminal_or_a_timeout_flag`, `::test_every_process_the_runner_starts_goes_through_the_one_spawn_function` (red when a `subprocess` call bypasses it) |
+   | N9 the Parser worker | `test_testfarm_confinement.py::test_the_parser_worker_starts_once_per_shard_and_its_output_is_tag_length_value`, `test_runner_overhead.py::test_the_parser_worker_start_is_not_paid_per_result_file`, `test_testfarm_layers.py::test_the_runner_imports_no_deserialiser_for_the_worker_stream` |
+   | N12 descriptors, N14 the result channel | `test_testfarm_confinement.py::test_a_confined_child_holds_only_its_own_descriptors`, `::test_a_result_file_is_created_through_a_held_directory_descriptor` (a directory component swapped for a link is not followed) |
+   | N17 explicit limits | `test_testfarm_layers.py::test_every_executor_call_passes_explicit_limits` (red on a call that inherits the `Limits` defaults) |
+   | N15 the local loopback mode (F10 in part) | `tests/test_sandbox_net.py::test_loopback_except_denies_the_named_ports_when_each_unit_starts` |
 
 4. **Jobs, history, classes.** Move `testjobs`, `testclass`, `testprelude`, `testphases`, `testhistory`, `testdurations`, `testorder`,
    `testtime` into the core. Tests move: `tests/test_testjobs*.py`, `test_testclass.py`, `test_testphases.py`, `test_testorder.py`,
@@ -1588,6 +1899,11 @@ test is green on the step's commit and red on that mutant. Findings that change 
    | F20 canary | `::test_two_runs_of_one_tree_sample_different_hits`, `::test_a_flaky_canary_is_not_poison`, `::test_a_canary_run_carries_no_marker`, `::test_reuse_is_off_without_a_canary_rate` |
    | F27 store retention | `test_testfarm_store.py::test_unreachable_entries_are_pruned_on_the_idle_rule`; `test_testfarm_config.py::test_check_prints_the_share_of_unstable_ids` |
    | Section 5 table, last row (git assumed) | `test_testfarm_select.py::test_an_unknown_ref_selects_every_unit_and_says_why` |
+   | N2 the working-tree side of `affected` | `test_testfarm_select.py::test_a_clean_filter_can_only_make_a_file_look_changed` |
+   | N4 a key per project, the reader's rule (F21 in part) | `test_testfarm_store.py::test_the_key_of_one_project_signs_nothing_of_another`, `::test_a_task_is_credited_only_from_a_run_of_the_exact_tree_by_another_session` (in `tests/test_workspace_testruns.py`) |
+   | N14 the stamp | `test_testfarm_reuse.py::test_a_whole_tree_unit_is_stamped_once_per_run_and_not_once_per_invocation` |
+   | N17 the canary range (F20 in part) | `::test_a_run_that_serves_a_hit_re_executes_at_least_one` |
+   | N18 statuses and outcomes | `test_testfarm_run.py::test_a_canary_mismatch_is_status_1_a_flaky_unit_is_a_pass_and_a_refused_shard_is_70` |
 
 6. **Steps and the cargo preset.** Core `[[step]]` (key, cache, shared, admission, outside the timer, prune); the `cargo` preset helpers
    by moving `testunits.py` and `testartifacts.py`; `tests/native_cargo.py` calls the preset; Poolhouse's node and app builds stay in
@@ -1599,6 +1915,7 @@ test is green on the step's commit and red on that mutant. Findings that change 
    |---|---|
    | F9 products a unit can rewrite; directories shared across projects | `test_testfarm_steps.py::test_a_unit_cannot_change_a_cached_product_and_a_changed_product_is_rebuilt`, `::test_two_projects_of_one_sender_do_not_share_a_cache_directory` |
    | F13 steps against units | `::test_every_step_finishes_before_the_first_unit_is_admitted` |
+   | N14 the manifest walks by descriptor | `test_testfarm_steps.py::test_a_manifest_records_a_link_a_fifo_and_a_device_without_opening_them`, `::test_a_directory_component_swapped_for_a_link_is_not_followed`, `::test_shared_is_covered_by_the_digest_of_what_a_unit_read` |
 
 7. **Command units and the gate.** `[[unit]]` tables; move `gaterun.py`; `gatescope.py` becomes dependency sets. Tests:
    `tests/test_gaterun*.py`, `tests/test_gates_incremental.py`. Proves: the gate's steps are reused by input hash.
@@ -1607,13 +1924,16 @@ test is green on the step's commit and red on that mutant. Findings that change 
    |---|---|
    | F4 an empty `inputs` match | `test_gaterun.py::test_an_inputs_glob_that_matches_nothing_is_a_check_error` |
 
-8. **Pool transport, the receiver, one wire.** First a second written break-it pass by a non-author on the revised section 10, which
+8. **Pool transport, the receiver, one wire.** The second written break-it pass (`docs/design-test-runner-breakit-2.md`) is absorbed in this
+   text; a non-author re-reads the edited 4.8, 4.9, 5.10, 6.3, 6.4, 6.6, 10.2, 10.3 and 10.6, which
    blocks the rest of this step. The step lands as one branch of ordered commits (a) to (e), because two ways of sending a shard cannot rest
    side by side and nothing is reachable from `ph.test` or `scripts/test --on` until (e). (a) The receiver on the executor of step 3:
    the closed start fields, per-unit streaming, the deny-default profile with the network denied on both platforms, the allowlist
-   environment, the sandbox's port denial on macOS, the PID namespace on Linux and the sweep on macOS. (b) The wire: the generalised
-   `/shards/v1` routes and caps (answered only to an admitted sender), the tree hash over the transported set, the project id, the
-   install-instance id, the sender-keyed step directories, `admit()`, the `allow` act. (c) Trust: sentinels, second-source storage of the
+   environment, the receiver's time, disk and memory budgets (10.6), the listed-ports rule for macOS loopback, the PID namespace on Linux
+   and the sweep on macOS. (b) The wire: the generalised
+   `/shards/v1` routes and caps (answered only to an admitted sender), the tree hash over the transported set, the project id, the shard nonce, the
+   install-instance id, the sender-keyed step directories, `admit()`, the `allow` act. (c) Trust: control units, sticky suspicion,
+   second-source storage of the
    `remote` kind, `suspect`, the sender's bound on a shard, the loss rule, reassignment of refused units. (d) Sending: the user's target,
    the named-project gate, the first-send file listing, `--cover`. (e) Everything the generalised path replaces is deleted in this same
    commit: `fleet/shard_{routes,host,store,spec,tree,run,exec,result,split}.py`, the node carrier's client and the carrier of a pool in dev
@@ -1634,20 +1954,24 @@ test is green on the step's commit and red on that mutant. Findings that change 
    |---|---|
    | F1 the executor on a device | `test_testfarm_confinement.py::test_a_step_that_links_every_executor_path_to_a_canary_file_reaches_nothing` and `::test_a_result_path_replaced_by_a_link_reads_nothing`, run on a sent tree |
    | F6 completed rows survive; refused is not a failure; a unit that kills devices | `test_testfarm_pool.py::test_completed_rows_survive_a_vanished_device`, `::test_a_device_that_returns_not_started_for_failing_units_is_reassigned_and_suspect`, `::test_a_unit_running_when_two_devices_vanish_is_suspected` |
-   | F7 a device failure is final | `::test_a_failure_on_a_device_survives_a_pass_on_the_sender` (red on a sender that re-runs and reports the pass) |
+   | F7 a device failure is final | `::test_a_failure_on_a_device_survives_a_pass_on_the_sender` (red on a sender that re-runs and reports the pass), `::test_a_failure_that_does_not_reproduce_twice_makes_the_device_suspect` (N18; a hostile member's false failures cost it its place) |
    | F8 the start request | `test_testfarm_confinement.py::test_the_start_request_has_no_extra_steps_or_deadline_and_a_rewritten_config_changes_nothing` |
    | F9 `{shared}` on a device | `test_testfarm_steps.py::test_a_sender_cannot_leave_a_product_another_senders_step_finds` |
-   | F10 network and loopback | `test_testfarm_confinement.py::test_a_unit_cannot_connect_to_the_daemon_a_model_server_or_the_lan_gateway` on both platforms (the Linux half runs on the WSL device) |
-   | F11 device claims steer nothing; passes are advice | `test_testfarm_pool.py::test_a_device_pass_is_shown_and_not_stored_without_a_second_source`, `::test_a_second_instance_of_a_fingerprint_gets_no_shard`, `::test_platform_and_capacity_come_from_the_senders_record`, `::test_a_sentinel_refuses_a_shard_that_ran_nothing` |
-   | F12 the sender's bound; queue time; a stalled poller | `::test_a_device_that_only_heartbeats_is_ended_by_the_sender`, `::test_a_shard_waiting_in_the_devices_queue_is_not_a_deadline`, `::test_silence_is_not_counted_across_a_sender_stall` |
-   | F14 sending (decision 2) | `::test_untracked_files_are_not_sent_unless_named`, `::test_the_first_send_prints_the_file_count_and_top_level_names`, `::test_nothing_is_sent_until_the_project_is_named_and_a_target_chosen` |
-   | F15 requirements, regular expressions, descendants | `::test_requires_names_are_checked_by_the_devices_own_probes`, `test_testfarm_confinement.py::test_a_pattern_from_the_file_cannot_backtrack`, `::test_a_detached_child_does_not_survive_a_shard_on_linux` |
+   | F10 network and loopback | `test_testfarm_confinement.py::test_a_unit_cannot_connect_to_the_daemon_a_model_server_or_the_lan_gateway` on both platforms (the Linux half runs on the WSL device), `::test_a_sent_unit_with_loopback_on_macos_is_refused_unless_the_receiver_lists_ports`, `::test_a_listener_started_after_the_profile_was_built_is_not_reachable` (N15) |
+   | F11 device claims steer nothing; passes are advice | `test_testfarm_pool.py::test_a_device_pass_is_shown_and_not_stored_without_a_second_source`, `::test_a_second_instance_of_a_fingerprint_gets_no_shard`, `::test_platform_and_capacity_come_from_the_senders_record`, `::test_a_control_unit_refuses_a_shard_that_ran_nothing`, `::test_a_confinement_control_unit_catches_a_sandbox_that_fails_open`, `::test_a_mismatch_is_sticky_until_allow`, `::test_a_control_unit_never_ends_a_mismatch` (N11) |
+   | F12 the sender's bound; queue time; a stalled poller | `::test_a_device_that_only_heartbeats_is_ended_by_the_sender`, `::test_a_shard_waiting_in_the_devices_queue_is_not_a_deadline`, `::test_silence_is_not_counted_across_a_sender_stall`, `::test_a_sender_that_never_cancels_does_not_extend_the_receivers_ceiling` (N7) |
+   | F14 sending (decision 2) | `::test_untracked_files_are_not_sent_unless_named`, `::test_the_first_send_prints_the_file_count_and_top_level_names`, `::test_nothing_is_sent_until_the_project_is_named_and_a_target_chosen`, `::test_a_glob_for_the_whole_tree_pulls_in_no_untracked_file`, `::test_a_send_to_a_device_set_not_agreed_asks_again` (N13, N3) |
+   | F15 requirements, regular expressions, descendants | `::test_requires_names_are_checked_by_the_devices_own_probes`, `::test_requires_never_imports_a_package` (`module:this.x` and `module:xml.dom.minidom`; N10), `test_testfarm_confinement.py::test_a_pattern_from_the_file_cannot_backtrack`, `::test_a_detached_child_does_not_survive_a_shard_on_linux` |
    | F17 device text | `test_testfarm_attacks.py::test_a8_invisible_and_framed_text_cannot_pose_as_the_runner` (device output) |
    | F22 the policy lists capability limits | `test_testfarm_policy.py::test_the_policy_lists_only_capability_limits` (red when a "presets only" knob exists) and `::test_a_sent_tree_cannot_ask_the_receiver_to_run_list` |
    | F23 profiles | `test_testfarm_confinement.py::test_every_profile_names_the_state_location_by_exact_path` on a device |
-   | F25 tree set and hash | `test_testfarm_pool.py::test_the_tree_hash_has_no_colliding_concatenation`, `::test_two_users_with_different_git_settings_send_one_set`, `::test_no_directory_name_or_extension_is_special` |
+   | F25 tree set and hash | `test_testfarm_pool.py::test_the_tree_hash_has_no_colliding_concatenation`, `::test_two_users_with_different_git_settings_send_one_set`, `::test_no_directory_name_or_extension_is_special`, `::test_info_exclude_and_a_global_excludes_file_change_nothing` (N2: the exclusion rules are the tree's own `.gitignore` files) |
    | F26 the real-device proof | `scripts/pool-check` on this Mac and the WSL device, its output in the step's report with the platform not covered named; the loopback harness is the wire test |
    | F30 items 7, 8, 10, 11 (one `allow` act, Windows is a sender, caps answers only an admitted sender, the delta rules) | `test_testfarm_pool.py::test_caps_gives_a_member_it_does_not_admit_only_the_sentence` |
+   | N7 the receiver's budget | `test_testfarm_policy.py::test_a_sender_with_no_budget_gets_no_first_shard`, `::test_a_unit_is_bounded_by_the_smaller_of_the_sent_bound_and_the_receivers_ceiling`; `test_testfarm_confinement.py::test_a_unit_that_writes_until_stopped_and_one_that_allocates_until_stopped_are_ended` (both backends), `::test_the_disk_parts_of_a_shard_add_up_to_its_share` |
+   | N8 parser death | `test_testfarm_confinement.py::test_xml_in_every_encoding_with_a_doctype_is_refused`, `::test_a_toml_integer_of_5000_digits_ends_the_worker_in_status_4` |
+   | N9 the unpack in the worker | `test_testfarm_pool.py::test_the_tar_is_unpacked_in_the_parser_worker_and_hashed_through_descriptors` |
+   | N16 credentials in a preset's reach | `test_testfarm_presets.py::test_a_shipped_preset_names_subpaths_and_denies_known_credential_files`, `::test_a_proxy_value_is_forwarded_without_user_and_password` |
 
 9. **Fail-first.** `failfirst run|check`, the evidence entries, the `exempt` prefix parsing, the pytest preset's `def` digests. Tests:
    `tests/test_testfarm_failfirst.py` (a generated git repository: a new test that fails on the base passes the check; one that passes on
@@ -1656,6 +1980,8 @@ test is green on the step's commit and red on that mutant. Findings that change 
    | Finding | Proof |
    |---|---|
    | F21 forgeable evidence, no base binding, fixtures, inline tests | `test_testfarm_failfirst.py::test_forged_and_wrong_base_evidence_is_refused`, `::test_a_fixture_only_change_makes_units_unverified`, `::test_an_exempt_line_must_name_an_id_of_the_range` |
+   | N4 a new test cannot forge evidence at import time (F21 in part) | `::test_a_new_test_that_reads_the_key_at_import_time_writes_no_evidence` |
+   | N18 one base | `::test_the_range_start_is_the_only_base_and_a_non_linear_range_is_status_4` |
 
 10. **The second-repo test** (section 13, last paragraph) and the read-confinement check B. Needs steps 1 to 9. Proves that a repository
     that is not Poolhouse shards and reuses with a few lines of config.
@@ -1663,6 +1989,7 @@ test is green on the step's commit and red on that mutant. Findings that change 
     | Finding | Proof |
     |---|---|
     | F26 the proof is real devices | `scripts/pool-check` with the second repository on this Mac and the WSL device; `tests/test_testfarm_second_repo.py` is the wire form on loopback and names the platform not covered |
+    | N1 identity fixtures in the second repository | `tests/test_testfarm_second_repo.py::test_a_copy_whose_git_file_points_at_the_named_repository_is_not_named` (the throwaway repository is named; a copy of it with that `.git` file is not) |
 
 **Phase B: Poolhouse's scripts as config**
 
@@ -1713,12 +2040,14 @@ imports the library cannot edit Poolhouse's `docs/limits.md`.
 | automatic workers | `sqrt(estimated seconds / measured start-up seconds)`, between 1 and the capacity | the minimum of start-up times workers plus work divided by workers; start-up from the recorded `setup` seconds |
 | background class | the project's `[schedule] background_after` | the project's file, no runner default |
 | aging, backfill | aged by the estimated work ahead; backfilled when it ends before the head's estimated start | the history's estimates (5.8), no constant |
-| canary rate | the project's `[reuse] canary`; `init` writes `1 / units` and prints the derivation; with none, reuse is off | the project's file, no runner default; Poolhouse's file sets it |
+| canary rate | the project's `[reuse] canary`, in (0, 1]; `init` writes `1 / units` and prints the derivation; with none, reuse is off; a run that serves any hit re-executes at least one | the project's file, no runner default; Poolhouse's file sets it |
 | canary seed, run id, job key | operating-system entropy (seed, run id); the argument vector and tree hash (job key) | no constant |
 | first reuse of a `remote` entry | always a canary | a rule, no number |
 | single-flight wait | while the claim holder is alive | the OS's process liveness, no time |
-| hang guards | no-progress stretch: longest recorded silence or measured round trip times `silence_margin`; total: recorded median times `total_margin` | the history and the measured round trip; both margins are the project's, no runner default |
+| hang guards | no-progress stretch: longest recorded silence or measured round trip times `silence_margin`; total: recorded median times `total_margin` | the history and the measured round trip; both margins are the project's, finite and at least 1, and both are required, no runner default |
 | a device's liveness | the measured round trip of the stream times `silence_margin`, counted across the sender's completed waits | the measured round trip; the project's margin |
+| the first unit's bound | `--timeout S` on the command line, or a terminal a person can end the run from | the caller, no default; an unattended first run with neither is refused (5.10) |
+| the receiver's time ceiling for a sender | the seconds the receiver's person gave (unit, shard, slot-seconds), else the longest wall time the device measured for any unit of the project | the receiver's person at `allow` or `policy`, or the device's own clock; no constant (10.6) |
 | the sender's bound on a shard | the sum of its units' bounds, counted from the device's report of the first unit start | each unit's `timeout`, else its recorded typical duration times `total_margin` |
 | unit and test timeouts | the unit's `timeout` and `test_timeout` are the project's; with no unit `timeout` the hang guards derive it | the project's file, or the history |
 | step build deadline, slots, idle, prune | the step's `timeout`, else the hang guards; its `slots` or the free slots; `keep` or least recently used on disk need; no interval | the project's file, or the measured free slots and free disk |
@@ -1729,23 +2058,27 @@ imports the library cannot edit Poolhouse's `docs/limits.md`.
 | slices per run | the plan (targets times `slices_per_target`) or the project's `slice_count`, at most the sender's free memory divided by the measured size of one planned unit | the project's file, the plan, measured memory |
 | id size | an id carried as an argument fits the argument space of the invocation on its target; ids in `{idfile}` fit the request-size share | `sysconf(SC_ARG_MAX)` less the measured environment and other arguments, and the platform's longest single argument; the receiver's free scratch disk |
 | shard deadline on a device | none of its own: the sender's bound above | replaces `shard_spec.MOST_SECONDS` (3600 s), which has no source |
-| packed tree, unpacked tree, members | shares of the receiver's free scratch disk and free inodes, divided by the shards it holds | replaces `shard_tree.MOST_PACKED`, `MOST_UNPACKED`, `MOST_MEMBERS` (24 MiB, 256 MiB, 20,000), which have no source |
-| runner output, tee, result, tail, failures, message, tests, junit | shares of the same free scratch disk, divided by the shards held | replaces `shard_run.MOST_LOG`, `MOST_TEE`, `shard_routes.MOST_RESULT`, `shard_result.MOST_*`, which have no source |
-| the parser's limits | memory: a share of the device's free memory divided by the shards held; time: the hang guard of the request that asked | measured memory; the guard |
+| packed tree, unpacked tree, members | parts of one budget: the receiver's free scratch disk and free inodes divided by the shards it holds, spent in a fixed order (10.6) | replaces `shard_tree.MOST_PACKED`, `MOST_UNPACKED`, `MOST_MEMBERS` (24 MiB, 256 MiB, 20,000), which have no source |
+| runner output, tee, result, tail, failures, message, tests, junit | equal parts of what the packed and unpacked trees leave of the same share (10.6) | replaces `shard_run.MOST_LOG`, `MOST_TEE`, `shard_routes.MOST_RESULT`, `shard_result.MOST_*`, which have no source |
+| the parser's limits | memory: a share of the device's free memory divided by the shards held; time: `RLIMIT_CPU` from the hang guard of the request that asked; input cap: the memory share divided by the amplification a test measures once per release | measured memory; the guard; a measurement |
 | shards held, per sender | the device's free slots at admission, and the free disk (10.6) | replaces `shard_store.MOST_KEPT`, `MOST_OWNED` (8, 4), which have no source |
 | idle upload, kept shard, grace before kill | the receiver's admission clock: an upload idle for the sender's own round trip times the missed round trips; a kept shard until its result is fetched or the disk is needed; grace is the process group's own exit | replaces `shard_store.IDLE_S`, `KEPT_S`, `shard_run.GRACE_S` (600 s, 24 h, 30 s), which have no source |
 | poll, lost device | none: unit rows are reported on the stream; a failed or silent stream is the loss | the transport's own failure (reset, the OS's keepalive timeout) and the liveness row above; replaces `dev.POLL_S`, `dev.LOST_S` (2 s, 45 s) |
 | shard id, run id, install-instance id | 128 random bits each | a security floor: guessing or colliding is out of reach (rows of `docs/limits.md`) |
-| store signing key | 256 random bits | a security floor: the HMAC key of the store (a row of `docs/limits.md`) |
-| model server slots | 1 (`--parallel 1`) | `docs/agent-policy.md` section 1 (a row of `docs/limits.md`); the runner never raises it |
+| control nonce, frame nonce | 128 random bits each | a security floor (rows of `docs/limits.md`) |
+| store master key, key per project | 256 random bits; each project's key is derived from the master key and the project's identity record | a security floor: the key each project's HMAC key comes from (a row of `docs/limits.md`); no constant |
+| model server slots | not a runner number | `poolhouse.serve` keeps its default of one (`docs/limits.md`, `docs/agent-policy.md` section 1); the runner starts no server and passes no slot count |
 | exit statuses | 0, 1, 4, 6, 70, 75, 124, 130 | section 11 |
 | queue limit | the project's `[schedule] queue_wait`, else none | the project's file, else the no-progress guard; replaces `testslots.WAIT_S` (3600 s) |
 | `test_timeout` in Poolhouse's file | 120 s | `pyproject.toml` `timeout`, the owner (`docs/limits.md`, `pytest timeout`) |
 
 `unrecorded_max` (the cap on a unit with no record) is the project's setting with no runner default, and the sample clip and `JOBS_DIVISOR`
 are gone. No row of this table has "the owner's value in code" as its source: a number is measured, set by the project's file with no
-runner default, or has a row in `docs/limits.md` with its protocol, operating system or security reason (the shard id, the run id, the
-install-instance id, the store key, the one model server slot).
+runner default, given by the receiver's person, or has a row in `docs/limits.md` with its protocol, operating system or security reason (the
+shard id, the run id, the install-instance id, the control and frame nonces, the store master key). The small counts the text uses (a refused
+unit is reassigned once, a device is `suspect` after a second refusal, a failed canary gets one more fresh run, a run that serves a hit
+re-executes at least one) are rules and not measurements, and have no number to source. `poolhouse.sandbox.policy.Limits` carries defaults (a
+wall time and an output size) with no source in this document, so the runner passes explicit limits on every call (3.1).
 
 The Rust host's constants (`MOST_RUNNING` 2, `MOST_OPEN` 6, `MOST_KEPT` 40, `GRACE_S` 120, `KILL_AFTER` 45) have no source: the single
 receiver derives them (running shards from the device's free slots, open shards from its free disk, the kill grace from the process
@@ -1759,7 +2092,7 @@ Product choices this document cannot settle from the code and documents. Each na
    daemon; pools with charters, grants and phone approvals are served by `poolhouse-node`, whose `shard_consent` grant is the only
    place a person's signed yes for "this sender may run code here" exists. The design makes one server and one wire. Option A: delete the
    Rust shard host and its two grants and keep the allow list as a device setting changed by `poolhouse-test allow` (one act with one
-   sentence: a typed yes at a terminal, or the question tool when an agent ran the command), valid for every pool mode
+   sentence, put to the host's gate, 4.8), valid for every pool mode
    (`docs/agent-policy.md` says there are no production users and pools are not preserved). Option B: keep the grant as the way the allow
    list is written and have the node bind its member operations to the same Python server, so a phone signs the same act. The design
    takes A unless the owner wants a phone-signed grant for it.
@@ -1788,3 +2121,9 @@ Product choices this document cannot settle from the code and documents. Each na
    LIST is not split and the report says so. Nothing remains open.
 8. **ssh.** The transport interface leaves room for it. Whether it is built, and whether it needs the same confinement on a device
    that is not a pool member, is deferred; no step of the plan depends on it.
+9. **How a person's yes reaches `own`, `allow` and a widening `target`.** Decided: only host evidence through the one `PersonGate` the host
+   supplies (for Poolhouse, the `person-consume` evidence); with none available the command refuses and prints what a person does at their own
+   editor; a controlling-terminal answer is never accepted; the host guards the settings paths; the sentence lists the devices (4.8). Nothing
+   remains open.
+10. **What `named` means for evidence.** Decided: the Owner zone is denied to every child by exact path, the signing key is per project, and a
+    task is credited from a run of the exact tree by a session that did not author it (5.3). Nothing remains open.
