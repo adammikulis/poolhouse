@@ -1473,8 +1473,8 @@ are steps 8 and 9.
 sections 1 to 13. Each step below lists the findings it must absorb and, for each, the test that proves it. The test is written before
 the code it proves and is run first against the parent commit or against the naive implementation the row names (a mutant that
 reproduces the finding), and the step's commit carries the `Fail-first:` line with the error it showed. A finding is absorbed when its
-test is green on the step's commit and red on that mutant. Findings that change prose only (F30) are listed where they land: items 1, 2, 9 and 13 are the text of sections 11, 6.1, 10.3, 11 and 16, and
-item 14 is the green state of `tests/test_glossary.py`.
+test is green on the step's commit and red on that mutant. Findings that change prose only (F30) are listed where they land: items 1, 2,
+9 and 13 are the text of sections 11, 6.1 and 10.3, 11 and 16, and item 14 is the green state of `tests/test_glossary.py`.
 
 **Phase A: the library** (steps 0 to 10)
 
@@ -1501,7 +1501,7 @@ item 14 is the green state of `tests/test_glossary.py`.
 
    | Finding | Proof |
    |---|---|
-   | F3 LIST keys and statuses | `test_testfarm_config.py::test_a_run_with_no_hang_guard_is_refused`, `::test_list_has_allow_empty_and_a_timeout_key`; `test_testfarm_run.py::test_a_list_that_fails_or_prints_nothing_is_status_4` (red on a build that reads LIST's output only) |
+   | F3 LIST keys and statuses | `test_testfarm_config.py::test_a_run_with_no_hang_guard_is_refused`, `::test_list_has_allow_empty_and_a_timeout_key`; `test_testfarm_list.py::test_a_list_that_fails_or_prints_nothing_is_status_4` (red on a build that reads LIST's output only) |
    | F4 empty and self-less DEPS | `::test_check_fails_a_deps_glob_that_matches_no_file_and_a_set_without_the_units_own_file` |
    | F8 grammar of every name | `::test_names_and_environment_variables_outside_their_grammar_are_refused` (`{step:../x}`, a name with `=`, a value with NUL) |
    | F14 no key chooses a target | `::test_a_remote_or_target_key_in_the_project_file_is_an_unknown_key` |
