@@ -41,7 +41,8 @@ carry no right to change the server's rules. What the red-team pass found:
 
 ## Order of work
 
-Nothing after step 1 constrains an agent that still holds the owner's credentials, so step 1 comes first.
+The steps below configure optional separation through a repository App and release protection. They are not
+prerequisites for ordinary development pushes, which use the repository's existing configured Git authentication.
 
 1. `scripts/agent-identity setup` ([Agent identity](#agent-identity)) gives agents their own identity; start the
    harness with the token `scripts/agent-identity token` prints.
@@ -63,8 +64,8 @@ deletes merged branches on its own (the target sets `delete_branch_on_merge` to 
 
 ## Agent identity
 
-Agents authenticate as something other than the owner, and push everything with it, workflow files included. The
-identity is a GitHub App installed on this repository only, with Contents, Pull requests and Workflows read and write,
+Agents keep their own commit authorship. Development pushes may use existing repository-configured Git
+authentication on every device. An optional software-owned identity is a GitHub App installed on this repository only, with Contents, Pull requests and Workflows read and write,
 and Metadata read. No Administration, no Secrets, no Environments. An installation token lasts an hour; whatever
 launches the harness mints a fresh one.
 
@@ -145,67 +146,14 @@ Rollback: unset the variables; the harness falls back to the owner's `gh` login.
 
 ## Push credential
 
-One device pushes to the development branch: the lander, the device that holds the push credential and pushes for its agents
-(`git push`, [landing.md](landing.md)). Every other device that runs agents holds no push credential; it fetches with
-none or with a read-only one.
+Every working device may push its own completed development increments using the repository's existing configured
+Git authentication. A GitHub App, designated lander or holder on another device is not required. Use Git's configured
+helper without extracting, printing or copying credentials; retain synthetic agent authorship and push the explicit
+current development ref to the configured `origin`, fast-forward, with the maintained checks.
 
-- The lander's credential is the App's installation token, minted from the App's key for an hour. `scripts/agent-identity
-  token` mints it ([Agent identity](#agent-identity)); the key stays in the lander's keystore, and whatever launches the
-  lander's harness runs the command for each landing batch.
-- **`--lander` is a self-attestation.** Nothing on the device, the board or GitHub says which device is the lander; the
-  person or agent running the check says so, and a device that does not say it is held to the rule for a device that is
-  not. The check does not detect the lander.
-- `scripts/github-protection --check --agent` is the mode of a device that is not the lander. It reads the
-  repository with the credentials in use and reports `credential.push` when they hold `push`, `maintain` or `admin`,
-  and `credential.unknown` when the reply does not say what they may do (no `permissions`, or `null`). When the
-  credentials are read-only it goes on to judge what git can still push with (below).
-- With `gh` signed out (exit 4) or not installed no remote setting is read: the repository is the origin remote's when
-  its host is exactly `github.com` (an https address, optionally with port 443, an `ssh://` address, or
-  an scp-style address with a user; an owner or name of `.` or `..`, a control character or a look-alike host names no repository),
-  and what git can push with is judged at once. A device without `gh` is told so in one line of output and is not
-  treated as signed in. `--repo OTHER` on such a device cannot read OTHER; the checkout's git configuration is judged
-  and the output says so.
-- `credential.unverified` means git may push from this checkout and the check cannot confirm it either way. It reads
-  `git config`, `git remote get-url`, the environment and the names in `~/.netrc` only; it runs neither `ssh` nor
-  `git credential fill`, runs no helper, makes no network call and prints no value. It is reported for:
-  - an ssh push address (`ssh://`, `git+ssh://`, `ssh+git://`, `user@host:path` or `host:path`, which includes an
-    ssh-config alias; whatever its host), for the remote `git push` uses from the current branch (`branch.<name>.pushRemote`,
-    else `remote.pushDefault`, else `branch.<name>.remote`, else `origin`) and for `origin`, after `pushurl` and
-    `pushInsteadOf`;
-  - a push address that carries a login (a token as the username of an https address, or a user and password);
-  - an `Authorization` header in `http.extraHeader`, unscoped or scoped to github.com;
-  - an askpass program (`core.askPass`, `GIT_ASKPASS`, `SSH_ASKPASS`);
-  - a `machine github.com` line in `~/.netrc`;
-  - with `gh` signed out or not installed, a credential helper git would ask for github.com: unscoped, or scoped to
-    github.com (`credential.https://github.com.helper`, also with `:443`), after git's own resets (an empty
-    `credential.helper =` clears every helper before it; a helper scoped to another host or port is not counted).
-    With `gh` signed in no helper is judged: the unscoped macOS Keychain helper and `~/.git-credentials` (the `store`
-    helper) can hold a token the check does not read, and the check does not look at either.
-- A device clears `credential.unverified` with an https origin that has no login, no ssh push address, no
-  `Authorization` header, askpass program or `~/.netrc` entry for github.com and, signed out, no helper for github.com.
-  macOS's system git configuration sets `osxkeychain`; with that helper alone the check cannot tell whether a token is
-  stored in the Keychain, so a Mac clears it only with `git config --global credential.helper ""` or by signing in to
-  `gh`.
-- `scripts/github-protection --check --agent --lander` is the lander's mode. It reports `credential.no-expiry` for
-  credentials with no readable expiry (a classic token, a fine-grained token with none, or an installation token whose
-  header is missing or malformed), `credential.expired` for an expiry in the past and `credential.long-lived` for
-  credentials that outlast an hour. The expiry is the `GitHub-Authentication-Token-Expiration` response header. The
-  kind of token does not bound its life: the `GITHUB_TOKEN` of a workflow run is also an installation token and lives
-  up to 24 hours, so an installation token passes on its header alone. A lander whose `gh` holds no credential is not
-  cleared.
-- Every `gh api` request is a GET (`--include` for the repository read). `gh repo view` is the one POST, a read-only
-  GraphQL query.
-- What the check does not see:
-  - that a token was minted for the batch in hand (it sees the expiry, not the minting);
-  - while `gh` is signed in, any credential helper: the unscoped macOS Keychain helper and `~/.git-credentials` are not
-    judged, and neither is a helper that answers from the environment, such as the one under
-    [Agent identity](#agent-identity);
-  - ssh keys, in an agent or in `~/.ssh`: a push to an ssh address typed on the command line, or to a remote other
-    than the two judged, needs no configuration;
-  - a `default` entry in `~/.netrc`, and a `netrc` other than the one in the home directory;
-  - a `gh` login under another `GH_CONFIG_DIR` than the one the check runs with;
-  - an ssh address is reported whatever its host, so one that cannot reach GitHub is a false report, not a gap;
-  - the credentials of other processes and of other users of the device.
+A scoped App remains available for stronger credential separation and its existing software-owned operations.
+Its setup, availability and diagnostic modes do not gate ordinary development synchronization. Release signing,
+server-side protection, promotion of `main`, and person-only approval remain separate.
 
 ## Rulesets
 
