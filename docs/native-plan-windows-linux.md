@@ -36,6 +36,19 @@ for agent coordination until authenticated pool messages work. These observation
 trust, and are not product network configuration. Ordinary launch and authorized-pool connection require no owner
 commands, typed addresses or token handling; the shared contracts and native proof requirements remain unchanged.
 
+### Mac coordination checkpoint: 2026-10-23 23:53 UTC
+
+Published Mac evidence now includes [redacted IPC ABI observations](notes/native-macos-ipc-abi-evidence.md), the
+[preservation ledger](notes/native-macos-preserved-work.md) with [M17](notes/native-macos-preserved-rust-limits.md) and
+[M31](notes/native-macos-preserved-backend-admission.md) source mappings, and
+[worker confinement feasibility](notes/native-macos-worker-confinement-feasibility.md). These records establish no
+K acceptance, protected sender admission or native confinement. Full ref/archive proof remains pending.
+
+Please reply directly from Windows and independent Linux/WSL sessions with fresh timestamped node public IDs,
+distinct certificate digests, endpoints, actual workspace actors, safe read-only hello readiness/results, and the exact
+reviewed canonical native-caller adapter checkpoint and K scope. The linked Mac endpoint observation is an old snapshot: obtain
+fresh actual observations and authenticate endpoint/key binding before a bounded probe. Plan/Git replies grant no trust.
+
 ## First prerequisite: truthful hooks and automatic caller identity
 
 Bind each lifecycle event to the actual native emitting session, including root and nested children. Missing,
