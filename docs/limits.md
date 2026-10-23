@@ -217,3 +217,4 @@ abuse by one session is not kept (the owner never asked for one). The security f
 | `DEV_TEST_RESERVED_CORES` | 1 | `scripts/testslots.py:68` | logical cores the test budget leaves to the machine | the owner, in the environment |
 | `DEV_TEST_BUDGET` | logical cores minus the reserved ones, at least 1 | `docs/test-execution.md:86` | CPU permits the test broker grants at once | the owner, in the environment |
 | `hook timeout` | 15 s | `.claude/settings.json:61` | a harness hook that hangs | the owner |
+| shard id | 128 random bits | `docs/design-test-runner.md` section 6 (`fleet/shard_spec.py` once built) | a shard id cannot be guessed or collide, so a replayed or cross-sent result is refused: a security floor, never loosened by an agent | a security floor of the owner |

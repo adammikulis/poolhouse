@@ -245,8 +245,11 @@ shorter horizon than the work needs: it removes waste and nothing else.
 
 **At the start of every new request, ask before building.** Before any design, brief or dispatch, the lead states its
 understanding of the end state, the inputs and constraints, and what a person will see or run, and asks the owner about
-whatever it cannot settle from the request, the code or the docs: what the thing is for, how it is structured, what a
-person sees, how large it is. The opening questions are not skipped, and waiting for a fork later is how piecemeal
+whatever it cannot settle from the request, the code or the docs: what the thing is for, who else uses it (only this repo,
+or anything that imports Poolhouse), how it is structured, what a person sees, how large it is. A capability of the
+library, such as a test runner or sharder, is built as a library feature with a public interface that this repo uses
+like any other importer, never as repo-only scripts; the library knows nothing about the repos that use it (a consumer
+describes itself through a small contract, and the provider holds no knowledge of its consumers). The opening questions are not skipped, and waiting for a fork later is how piecemeal
 patches start. A question that comes up later is asked at once. Every question goes through the ask/answer tool, never
 buried in the prose of a report, which states results.
 
@@ -440,6 +443,9 @@ deleting the old code.
   **Banned:** a duplicate kept so an old path works, a wrapper preserving an old name, a branch for a caller nobody has,
   a module boundary drawn around a hash, a number left in a document because re-measuring is inconvenient, "we can't
   change that, it would invalidate the benchmarks".
+- Code with no caller is not dead code while the thing that will call it is planned or not yet built. Before proposing a
+  deletion, check HANDOFF.md and the design docs for a planned caller. Only code whose caller was removed, or whose purpose
+  was superseded, is a deletion candidate, and the reason names what superseded it.
 - **There are no users but the owner**, on any platform, unless he says otherwise. A requirement serving somebody
   hypothetical is not a requirement: a fallback to an older interpreter, per-platform advice in an error path, a
   `--force` escape hatch, a migration for state nobody holds, a softened refusal. When a decision narrows what is
@@ -576,6 +582,28 @@ owner to set up another device, run `scripts/pool-check` (docs/pool-check.md) an
 different operating system, kernel and network stack, joined through the real join path, PASS or FAIL per step). Two
 nodes on one machine over loopback is not tested; what the check cannot cover (a real Windows device, a beacon on a real
 network, a firewall prompt) is said, not implied.
+
+### Staying in sync across devices
+
+Every device keeps in step with the development branch by the agents on it, and no agent waits for a person to fetch,
+pull, push or remind it.
+
+- **When.** At session start, between tasks, at least every 15 minutes in longer work, and before the final report:
+  `git fetch origin`, check whether local or `origin/<dev>` advanced, and merge `origin/<dev>` into the branch worked on.
+  The inbox is read at the same moments (3, "The workspace").
+- **Whose checkout.** The main session fast-forwards its clean claimed development checkout when upstream advances; a
+  worker refreshes its own claimed worktree at a safe boundary. Never change another agent's checkout or interrupt a
+  running job to synchronize. Divergence is reconciled in an isolated sibling worktree, with review and the affected
+  tests before it lands.
+- **What the merge changes.** Re-read `CLAUDE.md` and `AGENTS.md` after a merge changes them, and read the updated source
+  before reporting a feature missing. Synchronized source is not proof that the installed application runs it; record
+  the installed version separately.
+- **Pushing.** Fetch again right before every development push, and publish normally after reconciling if another
+  device advanced upstream. Ready work is not held behind unrelated tasks or background suites. Never force push, push
+  `main` or tags, delete a remote ref, or discard local work to get a clean sync.
+- **Reporting.** Say the development commit and the upstream state in the final report. If access or a required
+  approval blocks the sync, name that one blocker and keep the responsibility; routine synchronization is never handed
+  back to the owner.
 
 ## 4. Git, worktrees and landing
 
@@ -925,10 +953,11 @@ war stories, no rhetorical questions, no lines that argue with a future reader.
 
 AGENTS.md, CLAUDE.md, this file and the documents under docs/ state what is true now, in present-tense sentences. They
 carry no attribution to the owner with a date, no date and no tombstone ("no longer", "was removed", before and after);
-history belongs in commit messages. A rule that applies to agents working on this project is written here in the change
-that learned it: a lesson held only in one device's private memory is invisible to every other agent and device.
-Personal or device-specific notes (the owner's habits with their own commands, local paths, the state of a local
-service) stay out.
+history belongs in commit messages. A lesson, rule or requirement that applies to anyone working on this project is written
+into the repo (policy, design doc, HANDOFF.md or an agent definition) in the same turn it is learned, and when no
+durable place exists for it yet, creating one is part of the task. An agent's local memory carries nothing another agent
+or device needs, because they never see it; memory is only for notes about one device or one person's own preferences
+(the owner's habits with their own commands, local paths, the state of a local service), which stay out of the repo.
 
 ### Comments and docstrings
 

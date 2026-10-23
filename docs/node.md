@@ -198,7 +198,7 @@ Request `{"v":1, "id":…, "method":…, "board":…, "token":…, "params":{…
 | `register` | board | `model, harness, session` (token = parent, or the session's own token) | `{name, token, created, parent, origin}`; a main session already registered is answered only to its lineage, and the token it gets is bound to the lineage it registers from |
 | `register_person` | board | `session` (token = none, or the person's own session's token) | as `register`, for the person's own main session (harness `poolhouse-ui`, model `person`), which the node marks `person`; `register` and `whoami` refuse the harness `poolhouse-ui` |
 | `rebind` | board | `harness, session, anchor`, and in no pool `at_ms, nonce, by, sig` (a person key's signature), in a pool `approval` (the id of the request) | `{name, moved, tokens_ended}`; in a pool the request with its `id` and `code`, then `{state, moved}` until the phone answers |
-| `whoami` | board, token | `model, harness` (claim what you run on), `purpose, branch, worktree` (say what you are for and where you work) | `{name, board, target, identity}`; `identity` carries `purpose`, `branch` and `worktree` too |
+| `whoami` | board, token | `model, harness` (claim what you run on) | `{name, board, target, identity}` |
 | `session_lookup` | board | `harness, session` | `{name}` (denied when none is registered) |
 | `agents` | board, token | `retired` | `{agents: [{name, parent, family, model, model_state, harness, retired, retired_reason, person, seen_ms, idle}]}`; retires the sessions idle for a day first |
 | `retire` | board, token | `target` (empty = yourself), `reason` (`done`, the default, `revoked` or `forged`) | `{name, retired, reason, by, tokens_revoked, leases_released, subagents_retired}` |
@@ -311,7 +311,7 @@ subagent has none. The node removes a session's expired folders whenever it list
 **Sessions.** `register` records the model id and harness (`model_state` `claimed`; a subagent that names no
 model gets its parent's, `inherited`, and the name's family comes from it; the node itself may mark
 one `verified`, and a claim can never lower a verified one); `whoami` with `model`/`harness`
-changes the claim. `whoami` with `purpose`/`branch`/`worktree` (the session's own only; an empty one keeps what was said) keeps each as one clean line of at most 120, 100 and 240 characters on this device and lists it in `agents` for the roster; none of it is an identity entry, none grants anything, and a reader treats it as data from the agent. A change of the model or the harness is an identity entry; a change of only the model state (`inherited` to `claimed`) is not. Registering a session that has a parent without
+changes the claim. A change of the model or the harness is an identity entry; a change of only the model state (`inherited` to `claimed`) is not. Registering a session that has a parent without
 that parent's token, or under another parent, is `denied`, and so is registering a retired subagent.
 `retire` revokes every token of the session, ends its leases (written to the board), marks the
 identity retired and writes one identity entry that says who ended it (`retired_by`) and what that released (`detail`). A session retires itself, and a main session takes its subagents with it;

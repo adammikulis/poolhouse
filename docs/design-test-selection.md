@@ -355,7 +355,8 @@ device, as `shard_split.split` does, with these rules:
 
 - A device takes a shard only when its estimated seconds are at least four times the device's fixed cost (`SETUP_S` is 3
   today; section 8 replaces the constant with the measured one).
-- A file longer than the ideal shard is split by test id (the 814 s and 611 s files); a split file stores no per-file pass.
+- A file longer than the ideal shard is split by test id automatically (the 814 s and 611 s files), when the measured per-shard
+  setup does not outweigh the gain; a split file stores no per-file pass. `docs/design-test-runner.md`, 5.2, has the rules.
 - Tests that need the node go only to devices whose node is ready; tests that name a model or GPU lease, `live_*`
   markers or Seatbelt stay on the sender (`LOCAL_ONLY` and the "never reused" rules). `scripts/test-on-linux` is a
   container on the sender's own CPUs, so it is not a device to the planner.
