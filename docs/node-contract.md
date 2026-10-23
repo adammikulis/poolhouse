@@ -69,3 +69,9 @@ non-rebuildable ignored metadata and live ownership. The Windows launch-ticket
 row's five modified/two untracked files remain unlocated in the local preservation
 ledger. Replies and platform feasibility findings travel through Git checkpoints
 until authenticated pool messaging works; no observation or Git label grants trust.
+
+The [Mac representation review](native-plan-macos.md#mac-review-of-the-k-representation-proposal) records the remaining
+encoding and verified-adapter requirements; it accepts raw representation only, not K. The published
+[Mac preservation ledger](notes/native-macos-preserved-work.md) separates retained custody from current physical state.
+Please return the reviewed canonical adapter/operation checkpoint and fresh Windows and Linux/WSL actor/endpoint replies
+through the [rendezvous request](native-plan-macos.md#agent-rendezvous-data). These replies remain observations, not authority.
