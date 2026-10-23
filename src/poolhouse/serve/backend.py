@@ -499,16 +499,17 @@ def launch(  # noqa: PLR0913 - the independent facts of one spawn; a bundle type
     if lease.stop_on_exit:
         exit_guard.protect(process.pid)
     base_url = f"http://{DEFAULT_HOST}:{port}"
-    if not wait_for_health(base_url, timeout=timeout, is_alive=lambda: process.poll() is None):
+    healthy = False
+    try:
+        healthy = wait_for_health(base_url, timeout=timeout, is_alive=lambda: process.poll() is None)
+    finally:    # a timer, an interrupt or an error while it loads hands the server to no one, so it ends here too
         code = process.poll()
-        end_child(process, grace_s=5.0)
-        exit_guard.release(process.pid)
-        raise ServerFailed(
-            f"{Path(argv[0]).name} did not become healthy on {base_url}"
-            + (f" (exited {code})" if code is not None else f" within {timeout:.0f}s")
-            + f"\n--- {log_path} ---\n"
-            + tail(log_path)
-        )
+        if not healthy:
+            end_child(process, grace_s=5.0)
+            exit_guard.release(process.pid)
+    if not healthy:
+        how = f" (exited {code})" if code is not None else f" within {timeout:.0f}s"
+        raise ServerFailed(f"{Path(argv[0]).name} did not become healthy on {base_url}{how}\n--- {log_path} ---\n{tail(log_path)}")
     return process, base_url, time.monotonic() - started_at
 
 
