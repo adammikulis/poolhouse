@@ -125,6 +125,18 @@ def test_a_restart_ends_once_the_new_daemon_answers_and_a_second_restart_replace
         assert record["instance"] == said["launcher_control"], "the answering daemon owns the launcher control record"
 
 
+def test_two_restarts_started_together_are_both_carried_out_one_after_the_other(world):
+    first, _ = world.launch()
+    generations = [world.up(first)["launcher_control"]]
+    one, log_one = world.launch("--restart")
+    other, log_other = world.launch("--restart")
+    assert one.wait(timeout=UP_S) == 0 and other.wait(timeout=UP_S) == 0, _text(log_one)[-800:] + _text(log_other)[-800:]
+    said = world.answering()
+    assert said is not None and said["launcher_control"] not in generations
+    answers = _text(log_one).count("the replacement daemon answers") + _text(log_other).count("the replacement daemon answers")
+    assert answers == 2, "each restart replaced the daemon and proved its successor, the second after the first:\n" + _text(log_one) + _text(log_other)
+
+
 def test_a_second_launcher_waits_for_the_claim_of_the_first(tmp_path):
     order = []
     held = threading.Event()
