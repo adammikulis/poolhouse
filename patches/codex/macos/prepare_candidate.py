@@ -32,17 +32,40 @@ unique_object = runpy.run_path(str(ROOT / "src/poolhouse/json_objects.py"))["uni
 
 @functools.lru_cache(maxsize=1)
 def _acl_guard():
-    temporary = tempfile.TemporaryDirectory(prefix="poolhouse-codex-acl-")
+    namespace = Path("/private/tmp")
+    info = namespace.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or not info.st_mode & stat.S_ISVTX:
+        raise ValueError("native validation staging namespace is unsupported")
+    temporary = tempfile.TemporaryDirectory(prefix="poolhouse-codex-acl-", dir=namespace)
     directory = Path(temporary.name)
-    _tool(["/bin/chmod", "-N", str(directory)])
-    wrapper, library = directory / "guard.c", directory / "guard.dylib"
-    wrapper.write_text('#include "Capture.c"\nbool ph_candidate_acl(int fd) { return clean_acl(fd); }\n')
-    _tool(["/usr/bin/clang", "-dynamiclib", "-I", str(ROOT / "app/native-host"), str(wrapper), "-o", str(library)])
-    guard = ctypes.CDLL(str(library))
-    guard.ph_candidate_acl.argtypes = [ctypes.c_int]
-    guard.ph_candidate_acl.restype = ctypes.c_bool
-    guard.temporary = temporary
-    return guard
+    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | NOFOLLOW)
+    try:
+        staged = os.fstat(descriptor)
+        if staged.st_uid != os.getuid() or stat.S_IMODE(staged.st_mode) != 0o700:
+            raise ValueError("native validation staging is not private")
+        _tool(["/bin/chmod", "-N", str(directory)])
+        wrapper, library = directory / "guard.c", directory / "guard.dylib"
+        wrapper.write_text('#include "Capture.c"\nbool ph_candidate_acl(int fd) { return clean_acl(fd); }\n')
+        _tool(["/usr/bin/clang", "-dynamiclib", "-I", str(ROOT / "app/native-host"), str(wrapper), "-o", str(library)])
+        library.chmod(0o700)
+        named = directory.lstat()
+        if (named.st_dev, named.st_ino, named.st_uid, stat.S_IMODE(named.st_mode)) != (staged.st_dev, staged.st_ino, os.getuid(), 0o700):
+            raise ValueError("native validation staging identity changed")
+        with os.fdopen(os.open(library, os.O_RDONLY | NOFOLLOW), "rb") as held:
+            before = os.fstat(held.fileno())
+            if not stat.S_ISREG(before.st_mode) or before.st_uid != os.getuid() or before.st_nlink != 1 or stat.S_IMODE(before.st_mode) != 0o700:
+                raise ValueError("native validator is not a private single file")
+            if _fingerprint(library.lstat()) != _fingerprint(before):
+                raise ValueError("native validator name changed")
+            guard = ctypes.CDLL(str(library))
+            if _fingerprint(library.lstat()) != _fingerprint(before) or _fingerprint(os.fstat(held.fileno())) != _fingerprint(before):
+                raise ValueError("native validator changed while loading")
+        guard.ph_candidate_acl.argtypes = [ctypes.c_int]
+        guard.ph_candidate_acl.restype = ctypes.c_bool
+        guard.temporary = temporary
+        return guard
+    finally:
+        os.close(descriptor)
 
 
 def _clean_acl(descriptor):

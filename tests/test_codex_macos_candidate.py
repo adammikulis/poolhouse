@@ -268,3 +268,17 @@ def test_owned_tool_group_closes_descendant(builder, tmp_path):
         time.sleep(.01)
     else:
         pytest.fail("owned build-tool descendant survived cleanup")
+
+
+def test_native_validator_ignores_hostile_tmpdir(builder, tmp_path, monkeypatch):
+    hostile = tmp_path / "foreign-writable"
+    hostile.mkdir(mode=0o777)
+    hostile.chmod(0o777)
+    monkeypatch.setenv("TMPDIR", str(hostile))
+    monkeypatch.setattr(builder.tempfile, "tempdir", str(hostile))
+    builder._acl_guard.cache_clear()
+    guard = builder._acl_guard()
+    staging = Path(guard.temporary.name)
+    assert staging.parent == Path("/private/tmp")
+    assert staging.stat().st_mode & 0o777 == 0o700
+    assert list(hostile.iterdir()) == []
