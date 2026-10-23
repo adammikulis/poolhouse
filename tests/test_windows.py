@@ -547,8 +547,8 @@ class TestDiscoveryAndTheFirewall:
         from poolhouse.fleet.discovery import windows_firewall_line, windows_firewall_rules
 
         rules = dict(windows_firewall_rules())
-        assert rules["poolhouse traind"].endswith("protocol=TCP localport=8770")
-        assert rules["poolhouse discovery"].endswith("protocol=UDP localport=8771")
+        assert rules["Poolhouse"].endswith("protocol=TCP localport=8770")
+        assert rules["Poolhouse discovery"].endswith("protocol=UDP localport=8771")
         line = windows_firewall_line()
         assert line.count("netsh advfirewall firewall add rule") == 2 and " && " in line
         assert "\n" not in line, "one line, for one administrator's prompt"
@@ -592,7 +592,7 @@ class TestDiscoveryAndTheFirewall:
         assert len(found) == 1
         finding = found[0]
         assert not finding.good and finding.root
-        assert "poolhouse traind" in finding.said and "poolhouse discovery" in finding.said
+        assert "Poolhouse discovery" in finding.said and "Poolhouse," in finding.said
         assert finding.fix[:2] == ["cmd", "/c"]
         assert "protocol=TCP localport=8770" in finding.fix[2]
         assert "protocol=UDP localport=8771" in finding.fix[2]
@@ -603,7 +603,7 @@ class TestDiscoveryAndTheFirewall:
 
         monkeypatch.setattr(setup, "_arches", lambda binary, known=None: set())
         monkeypatch.setattr(setup.subprocess, "run",
-                            lambda argv, **k: _ok(0, stdout="Rule Name: poolhouse traind\n"))
+                            lambda argv, **k: _ok(0, stdout="Rule Name: Poolhouse\n"))
 
         finding = next(f for f in setup.look() if f.name == "firewall")
         assert finding.good and not finding.fix

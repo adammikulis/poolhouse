@@ -89,8 +89,8 @@ poolhouse runs on Python $python. Install it with:
 # the fleet. Names and ports match poolhouse.fleet.discovery. One approval prompt.
 function Open-Firewall {
     $rules = @(
-        @{ Name = "poolhouse traind";    Protocol = "TCP"; Port = 8770 },
-        @{ Name = "poolhouse discovery"; Protocol = "UDP"; Port = 8771 }
+        @{ Name = "Poolhouse";           Protocol = "TCP"; Port = 8770 },
+        @{ Name = "Poolhouse discovery"; Protocol = "UDP"; Port = 8771 }
     )
     $missing = @($rules | Where-Object {
         -not (Get-NetFirewallRule -DisplayName $_.Name -ErrorAction SilentlyContinue) })

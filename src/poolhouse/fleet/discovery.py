@@ -414,8 +414,8 @@ def _say(sock: socket.socket | wsl_network.DiscoverySocket, data: bytes, group: 
 
 
 # -- what a firewall has to let in ---------------------------------------
-FIREWALL_RULE_HTTP = "poolhouse traind"
-FIREWALL_RULE_DISCOVERY = "poolhouse discovery"
+FIREWALL_RULE_HTTP = "Poolhouse"
+FIREWALL_RULE_DISCOVERY = "Poolhouse discovery"
 
 
 def windows_firewall_rules(http_port: int = DEFAULT_HTTP_PORT,
