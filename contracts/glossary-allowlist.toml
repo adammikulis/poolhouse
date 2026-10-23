@@ -232,8 +232,3 @@ reason = "quotes Claude Code's own messaging field value `turnOrigin = peer`"
 path = ["src/poolhouse/coordination/verify.py"]
 words = ["cluster"]
 reason = "literal Kubernetes kubeconfig wire-schema keys; Poolhouse objects remain pools"
-
-[[allow]]
-path = "contracts/node/retained-features.json"
-words = ["peer"]
-reason = "source-commit inventory quotes exact legacy transport/principal identifiers and caller expressions; these are historical evidence, not new public vocabulary"
