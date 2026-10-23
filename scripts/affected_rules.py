@@ -263,8 +263,15 @@ def budget_tests(files: dict[str, Source]) -> dict[str, str]:
 
 
 def generated_tests(files: dict[str, Source], rel: str) -> dict[str, str]:
-    """Test files that check the generated ``rel`` or its generator; the gate checks the rest."""
+    """Test files that read the generated ``rel`` or run its generator themselves; the gate checks the rest.
+
+    A generated file is prose in a push: what it can break is a test that reads it or one that regenerates it and compares. A
+    test that only reaches the generator through helpers, or by a bare word, reads neither, and following those chains selects
+    nearly every test (a changed generator is :func:`script_tests`' case, where a chain is followed).
+    """
     why = {n: f"{n} names {rel}" for n, s in files.items()
            if is_test(n) and Path(rel).name in s.text}
-    why.update(reaching(files, GENERATED[rel])[0])
+    for name, reason in ReferenceIndex(files).referrers(GENERATED[rel]):
+        if is_test(name) and not loose(reason):
+            why.setdefault(name, f"{name} {reason}")
     return why
