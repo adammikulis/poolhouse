@@ -4,7 +4,7 @@ Design. Nothing in this document is built. Owner order: build the isolated launc
 and `poolhouse.coding.launch_coding_agent` start again, with isolation the operating system enforces on macOS, Linux and WSL, and
 Windows; a platform that cannot enforce what is claimed refuses to start, with the exact reason, and never starts unisolated. The
 unconditional refusal `harnessing.require_isolated_execution` is replaced by a capability report and by the launch itself. The
-non-author attack pass of AGENTS.md section 1 has not run; section 14 is its input.
+non-author attack pass of AGENTS.md section 1 has not run; section 14 is its input. Every question the design raised is decided in section 18; nothing remains open.
 
 Code read at `bf17c71cd`, an ancestor of development (the files this document names are identical on `2807a9005`). A statement about
 code was read, not run. A statement about an operating system carries one of three labels: **VERIFIED** (run on a named device while
@@ -29,7 +29,7 @@ the escape run of section 10. The **capability report** is the per-guarantee sta
 **In short.** A launch builds one confinement, proves it, and only then starts the harness inside it. The confinement holds the
 agent's copy of the project and a private home; it reaches the model only through a parent-run bridge, and the person's state
 (hooks, board, approvals) only through a second bridge. Nothing else exists for it: not the home directory, not other loopback
-services, not the network. When the session ends the parent checks what the agent changed, applies it to the person's project, and
+services, not the network. After each turn and when the session ends the parent checks what the agent changed, applies it to the person's project, and
 asks about anything that would run by itself later. A platform that cannot do this refuses to start, in one sentence, and nothing
 is started unisolated.
 
@@ -40,17 +40,17 @@ is started unisolated.
 | I1 | The harness process and everything it starts run inside one confinement the launcher builds; no code path starts a coding harness outside it. | The harness vendors' own sandboxes cover less (Claude Code's covers shell commands only; its file tools, MCP servers and hooks run outside it, and it does not run on native Windows: `code.claude.com/docs/en/sandboxing`) and cannot nest (VERIFIED: `sandbox_apply: Operation not permitted` inside a Seatbelt run). |
 | I2 | One choke point: `isolation.prepare(spec)` returns a `Confinement`; a launcher's runner starts the harness only through `Confinement.popen`. `harnessing.require_isolated_execution` and its 14 call sites are deleted. | A refusal at 14 places is a policy nobody can prove complete; one place that builds the only argv that exists is. |
 | I3 | Default reach: the stage (read, write), a private agent home (read, write), the harness's own install tree and the system toolchain (read, execute), and one model bridge. Nothing else: no home directory, keystore, other repository, other loopback service, LAN, internet, unix socket, GPU or other process. | The owner's decision. |
-| I4 | The parent-owned workspace is the project the agent sees. The agent never writes the person's checkout; the parent publishes verified changes, and every change to a path that runs by itself later is shown to the person whichever tool wrote it. | A confinement bounds what the agent can reach; it cannot bound what the agent leaves behind for the person's tools to run. Only the parent, comparing bytes, can. |
-| I5 | Writing the person's checkout in place is a named grant typed by a person, never a fallback. A project that cannot be staged refuses with its reason and names that grant. | No silent fallbacks. |
+| I4 | The parent-owned workspace is the project the agent sees. The agent never writes the person's checkout; the parent publishes verified changes after each completed assistant turn, and every change to a path that runs by itself later is shown to the person whichever tool wrote it. | A confinement bounds what the agent can reach; it cannot bound what the agent leaves behind for the person's tools to run. Only the parent, comparing bytes, can. |
+| I5 | Writing the person's checkout in place is a named grant typed by a person, never a fallback. Staging has no project size ceiling; the one reason a project cannot be staged is that the stage volume lacks the free bytes, and the launch then refuses with the figures and names that grant. | No silent fallbacks. |
 | I6 | The model is reached through a parent-owned bridge that allows a fixed set of routes, pins the model, and swaps a per-session token for the server's key. The model server's own port is in no profile. | `--on URL` servers carry whatever flags the person started them with; llama-server's slot, props and tool routes are not a coding agent's to call. |
 | I7 | Hooks and workspace verbs run in the parent. The command inside the confinement is a client of one session bridge; the confinement never sees the state root, the node socket, the Requests store or a token. | A hook inside the boundary it polices is not a gate. |
 | I8 | Guarantees are a typed report per platform. A launch needs every guarantee of the default reach; any that is not enforced refuses with its own sentence. | The owner's decision. |
 | I9 | Every launch proves its confinement: a probe program runs inside the same profile, tries to escape and must fail, and positive controls must pass; the live harness process is then attested. A deviation stops the launch. | Enforcement is the claim; the proof is the evidence, on this machine, now. |
-| I10 | Linux and WSL need bubblewrap namespaces (user, mount, pid, net, ipc, uts, with nested user namespaces disabled and no capabilities). Landlock and seccomp are added inside when present. Landlock alone never suffices. Native Windows needs a proven loopback rule; otherwise the harness runs inside WSL2 or the launch refuses. | Section 5. |
+| I10 | Linux and WSL need bubblewrap namespaces (user, mount, pid, net, ipc, uts, with nested user namespaces disabled and no capabilities). Landlock and seccomp are added inside when present. Landlock alone never suffices. Native Windows refuses until an enforceable per-port loopback rule is shown; the WSL2 route is supported; there is no weaker mode. A Linux host that restricts user namespaces gets an AppArmor profile Poolhouse ships and installs at setup. | Section 5. |
 | I11 | The environment is built from an allow-list. Nothing is inherited. The harness holds a bridge token, never a server key. | `claude.environment` and `codex.environment` copy the whole of `os.environ` today. |
 | I12 | Widening is a grant of four kinds (read, toolchain, network host, in-place), issued only by a person, scoped to the session, logged. Network grants act at once through the egress proxy; file grants act at the next launch. | A profile is fixed when the process starts. |
 | I13 | The permission profiles do not move the operating-system boundary, except that `read-only` and `plan` mount the stage read-only. `yolo` asks less; it does not widen. | `tests/test_coding_permissions.py` already holds that `yolo` opens no launcher control. |
-| I14 | What the operating system cannot bound per session (process count and memory on macOS, and on Linux without a delegated cgroup; disk everywhere) a parent watchdog bounds, and the report says "watched", not "enforced". | The report must match the mechanism. |
+| I14 | What the operating system cannot bound per session (process count and memory on macOS, and on Linux without a delegated cgroup; disk everywhere) a parent watchdog bounds, which kills the session loudly on crossing a limit derived from the machine and is never silent; the report says "watched", not "enforced". | The report must match the mechanism. |
 | I15 | `coding_workspace` stays and gets its caller (section 16). Nothing is deleted that this design does not supersede (section 15). | The owner's order. |
 | I16 | Landing order: harden the backends first (they already protect every sandbox user), then the library, the bridges, the workspace, the wiring, the platforms. | Section 15. |
 
@@ -115,17 +115,17 @@ This design builds the second, because it is the one the owner named; the first 
 
 ### 1.4 Defects found while reading and measuring
 
-Each is fixed by a slice of section 15.
+F1 and F2 (which holds two defects: the shared host network and the open nested user namespaces) are being fixed now on branch `fix/sandbox-holes-and-harness-denial` and are not part of the launcher build; every other finding is fixed by a slice of section 15.
 
 | # | Finding | Evidence |
 |---|---|---|
 | F1 | A process inside a Seatbelt run reads the full argument vector and environment of its parent and of any other non-platform process of the same user (`KERN_PROCARGS2`). The launcher's environment, a ticket, a token in a board session's environment are readable. | VERIFIED 5.6 (M-proc). This answers probe P2 of `docs/design-session-capabilities.md` for macOS: yes. |
 | F2 | On Linux `Net.loopback()` and `Net.only(...)` run with `--share-net`, which shares the whole host network (not loopback): VERIFIED that a port the policy did not name connects. `docs/sandbox.md` says so. The bubblewrap backend also leaves nested user namespaces enabled (VERIFIED: `unshare --user --map-root-user` yields uid 0 inside) and keeps capabilities. | VERIFIED 5.6 (B-ns, B-userns). |
 | F3 | The bubblewrap backend refuses `deny_read` and `deny_write`; there is no way to freeze a control path inside a writable tree on Linux, and no Windows backend (`SandboxUnavailable`). `Pipes` exist on darwin only. | code |
-| F4 | `Workspace` takes 16.0 s to construct, 9.2 s for `begin()` and 19.3 s for `finish()` on this repository (3,710 files, 39.6 MiB), against 1.9 s for a plain copy of the same files, 0.15 s to hash them and 0.5 s for an APFS clone. The time is spent in per-path ancestry validation (270,990 `lstat` calls), per-path secret-name matching (3.4 s) and git subprocess waits (4.3 s). | VERIFIED 5.6 (W-time), cProfile. |
+| F4 | `Workspace` takes 16.0 s to construct, 9.2 s for `begin()` and 19.3 s for `finish()` on this repository (3,710 files, 39.6 MiB), against 1.9 s for a plain copy of the same files, 0.15 s to hash them and 0.5 s for an APFS clone. The time is spent in per-path ancestry validation (270,990 `lstat` calls), per-path secret-name matching (3.4 s) and git subprocess waits (4.3 s). It is a defect of the build, fixed there; it is not a reason to edit in place. | VERIFIED 5.6 (W-time), cProfile. |
 | F5 | `actual_git()` on macOS accepts only Homebrew's git (`/opt/homebrew/opt/git`, `/usr/local/opt/git`) and refuses Apple's shim; a Mac without Homebrew git cannot build a workspace. | code |
 | F6 | `SourceSnapshot` refuses a whole capture on one tracked symlink, one group-writable file (the default umask on Ubuntu is 002), one hard link or one submodule, with "capture requires owned protected regular files". It is POSIX-only (`getuid`, `O_NOFOLLOW`, `dir_fd`, `fwalk`). | code |
-| F7 | Its bounds (16 MiB a file, 256 MiB in all, 30 s) have no recorded source (AGENTS.md section 2). | code |
+| F7 | Its bounds (16 MiB a file, 256 MiB in all, 30 s) have no recorded source (AGENTS.md section 2); they are removed (W4, 18.2). | code |
 | F8 | The stage has no ignored files (`.venv`, `node_modules`, build output), so a project's tests cannot run in it as they are. | code |
 | F9 | Nothing applies stage changes to the person's checkout; `result()` feeds the task proposal pipeline only. | code |
 | F10 | A hook runs as a child of the harness (`python -m poolhouse.harnesshook ...`) and needs the state root, the node socket and the Requests store; none of these can be inside the confinement. | code, I7 |
@@ -207,16 +207,17 @@ spawn sites.
 3. The model is leased through the broker (`harnessing.serving`, unchanged). `harnessing.opened` registers the session and writes
    its settings and brief (unchanged except the hook command, section 7).
 4. The stage: `Workspace` is constructed or reopened and `begin()` runs (section 4). A project that cannot be staged raises
-   `IsolationRefused` naming the in-place grant.
+   `IsolationRefused` (only when the stage volume lacks the free bytes) naming the in-place grant.
 5. The services start: the model bridge, the session bridge, the egress proxy. Each binds before the next step; a service that
    cannot start refuses the launch.
 6. `Profile` is built; its digest is recorded.
 7. The proof runs (section 10). A deviation raises `IsolationFailed` naming the first attempt that got through. Nothing else starts.
 8. The runner is called with the `Confinement`. The runner starts the harness with `Confinement.popen(...)`, which starts the
    wrapped argv and, before returning, attests the live process (section 10.3).
-9. During the session the bridges serve, the watchdog counts (5.2 and 5.3, G11), and the harness's own hooks call the session
-   bridge.
-10. At exit (or cancel): the harness's tree is ended and the barrier of 4.3 is passed, `Workspace.finish` publishes under the
+9. During the session the bridges serve, the watchdog counts (5.2 and 5.3, G11), the harness's own hooks call the session
+   bridge, and after each completed assistant turn (the harness's `Stop` event in an interactive session, the end of a headless
+   run) the parent publishes what verified (4.2 item 1).
+10. At exit (or cancel): the harness's tree is ended and the barrier of 4.3 is passed, `Workspace.finish` publishes the rest under the
     policy guard, the services stop, the stage's physical directory is removed. The activity log records the launch (profile
     digest, grants, proof digest) and the end (exit status, what was published, what was refused).
 
@@ -287,21 +288,21 @@ a sentence that names print mode.
 ### 4.2 What the launcher adds
 
 1. **Session granularity.** The unit today is one tool call (`run(execute, guard, writable)`). A native harness is one process
-   tree, so the unit becomes one launch: `begin()` at step 4 of 3.3, `finish()` at step 10. The `workspace` alias path is the
+   tree, so the unit becomes one launch with a publication after each completed assistant turn, in interactive sessions too: `begin()` at step 4 of 3.3, a verified `publish_turn()` at each `Stop` event that reaches the session bridge, and `finish()` at step 10. A turn-end capture does not end the tree, so it is race-checked as `finish` is: a path whose identity changed between the two reads of the capture is held back and reconsidered at the next turn or at exit, never applied unverified, so a background process that still writes delays a path and never corrupts a publication. The base advances to the published state after each turn, so the three-way check of 4.4 compares against the last publication. The `workspace` alias path is the
    harness's working directory, so it is stable across the turns of one conversation (a resumed Claude Code session keys its
    transcript by working directory) when the workspace is reopened and not rebuilt.
 2. **The profile gets the stage.** The stage and the agent home are the only write grants. The five control names are
    `deny_write` inside the stage even though they are absent, so a harness that tries to create `.claude/settings.local.json` gets
    an error at the write (VERIFIED on Seatbelt: creating `.claude`, `.Claude` and `CTL/hooks/x` all fail, and so do renaming an
    ancestor of a protected path and hard-linking a protected file into the project), not a rejected session at the end.
-3. **A quiescence barrier before `finish()`.** The stage is captured only after the confined tree is gone: the harness's process
+3. **A quiescence barrier before `finish()`.** The final capture, at exit, is taken only after the confined tree is gone: the harness's process
    group is ended, the backend's follower (`sandbox.process_tree` on macOS) reports no live member, and on Linux and Windows the
    namespace and the job are gone. A process that cannot be ended makes the launch report it and skip publication; capture of a
    directory something still writes cannot be trusted and `finish` fails closed on the identity check anyway.
 4. **The environment links.** Ignored directories a project needs (`.venv`, `venv`, `node_modules`, and the toolchain a project
    declares) are not in a stage. The parent creates them in the stage as symlinks to the person's own directories, read-only in the
    profile (a read grant of that exact directory). They are ignored by git, so no capture ever sees them (a symlink is not
-   source content), and a project declaring a directory outside the launcher's own list of toolchain roots (3.4, 8.2) gets nothing
+   source content), and a declaration that does not resolve to a toolchain directory under the rules of 8.2 gets nothing
    from it. On Linux the stage is bound at the person's project path inside the mount namespace, so absolute paths in a virtual
    environment's scripts resolve with no link at all.
 5. **Publication to the checkout** (`Workspace.apply`, new): section 4.4.
@@ -315,10 +316,10 @@ a sentence that names print mode.
 
 | # | Finding | Change |
 |---|---|---|
-| W1 | Too slow to launch (F4): 16.0 s, 9.2 s, 19.3 s on a 40 MiB project; the launch budget is 5 s (AGENTS.md section 5, "A run's fixed cost is budgeted"). | Validate each distinct parent directory once per capture (cache by device and inode); match secret names on names, once; one `git ls-files` set; clone the master into the stage (`clonefile` on APFS, reflink where the filesystem has it, a copy otherwise). A test bounds `begin()` and `finish()` on a fixture of the size of this repository to 5 s, and to the time of `cp -R` plus hashing the same files, measured in the test. |
+| W1 | Too slow to launch (F4), a defect of the build that is fixed in the build: 16.0 s, 9.2 s, 19.3 s on a 40 MiB project; the launch budget is 5 s (AGENTS.md section 5, "A run's fixed cost is budgeted"). | Validate each distinct parent directory once per capture (cache by device and inode); match secret names on names, once; one `git ls-files` set; clone the master into the stage (`clonefile` on APFS, reflink where the filesystem has it, a copy otherwise). A test bounds `begin()` and `finish()` on a fixture of the size of this repository to 5 s, and to the time of `cp -R` plus hashing the same files, measured in the test. |
 | W2 | POSIX-only primitives and a macOS git that must be Homebrew's (F5, F6). | Accept the git of Apple's command-line developer tools (`/Library/Developer/CommandLineTools/usr/bin/git`, root-owned Mach-O, ancestry checked), never the `/usr/bin/git` shim. A Windows capture uses `CreateFile` with `FILE_FLAG_OPEN_REPARSE_POINT`, file ids and link counts; until it exists the Windows tier stages inside WSL2 (5.4, route A). |
 | W3 | One tracked symlink, one group-writable file, one hard link or one submodule fails the whole capture (F6). | Classify, do not abort. A tracked symlink whose target is relative and stays inside the tree is carried as a symlink and listed; any other is left out and listed. A group-writable file is copied with the group and world write bits cleared and listed. A hard-linked or foreign-owned file is left out and listed. A submodule is left out and listed. The list is shown in the first line of the session ("N files left out of the working copy: ..."). |
-| W4 | Bounds with no source (F7). | Replace them with the derived bounds of 17. The 30 s deadline goes: the build is judged by progress (bytes advanced), not by a clock, so a slow disk is not a failure and a stalled one is. |
+| W4 | Bounds with no source (F7). | Remove them: there is no project size ceiling and no per-file cap, and the only size bound is the stage volume's free bytes (17), a fact of the machine. The 30 s deadline goes too: the build is judged by progress (bytes advanced), not by a clock, so a slow disk is not a failure and a stalled one is. |
 | W5 | The stage has no ignored files (F8). | 4.2 item 4. |
 | W6 | `finish` is all or nothing: one control path discards a whole session. A harness writes its own `.claude` in the project when nothing stops it. | Control names are denied at write time (4.2 item 2); at publication a control path, credential name or special file in the stage is **left out and reported**, and the rest is published. The session is not discarded for what the profile already refuses. A control path that appears despite the profile is an escape of the profile and is reported to the sentinel. |
 | W7 | No apply (F9). | 4.4. |
@@ -367,15 +368,15 @@ path and no way to protect a name that does not exist without leaving a placehol
 five names are created empty and read-only by the launcher and removed at the end if they were absent; Windows: a deny ACE for the
 container). Credentials in the project (`.env`) are readable, and the grant's sentence says so. There is no publication step; the
 parent captures the checkout before and after and asks about auto-run changes afterwards, which is detection and not prevention, and
-says so in the same sentence. The grant is logged (8.2). It is the only mode a project too large to stage can use; it is never
-chosen by the launcher.
+says so in the same sentence. The grant is logged (8.2). It covers one project, and a session never has a second writable project (8.2). It is never
+chosen by the launcher and never a fallback for size.
 
 ## 5. Enforcement per platform
 
 ### 5.1 The twelve guarantees
 
 The capability report (section 9) names these. A launch needs all twelve. Two of them (G10, G11) may be **watched** (the parent
-enforces by watching, and the report says so); no other may.
+enforces by watching, and the report says so); no other may. A watcher counts only if it kills the session loudly on crossing a limit derived from the machine (17) and names the limit; a watcher that only logs or warns is `unenforceable`.
 
 | Id | Guarantee |
 |---|---|
@@ -405,7 +406,7 @@ public interface, so the proof (section 10) is what notices a change.
 
 | # | Delta | Reason |
 |---|---|---|
-| D1 | `(deny process-info-pidinfo)` in every profile, not only this one | closes F1; VERIFIED that it makes `KERN_PROCARGS2` fail for the launcher and for another process of the same user, that denying the sysctl names, `process-info*` for other targets or all `sysctl-read` does not, that Claude Code still starts, and that `psutil` on the process itself (`memory_info`, `cpu_times`, `cmdline`, `environ`) works the same with and without it; the engine's own suites run against it in L1 |
+| D1 | `(deny process-info-pidinfo)` in every profile, not only this one | closes F1 (being fixed now on `fix/sandbox-holes-and-harness-denial`, not part of this build); VERIFIED that it makes `KERN_PROCARGS2` fail for the launcher and for another process of the same user, that denying the sysctl names, `process-info*` for other targets or all `sysctl-read` does not, that Claude Code still starts, and that `psutil` on the process itself (`memory_info`, `cpu_times`, `cmdline`, `environ`) works the same with and without it; the engine's own suites run against it in L1 |
 | D2 | `signal_children`: `(allow signal (target children))` | a harness ends its own children; VERIFIED that signals to the launcher and to an unrelated process of the same user stay refused |
 | D3 | `Net.only(bridge_port)` plus the proxy port, and `unix_sockets=(session socket,)` | G4, G5 |
 | D4 | `strict=True`, `deny_write` of the five control names and their ancestors' unlink, `file-link` and `file-clone` denied | G3; already in the engine, used by `pi_tools` |
@@ -420,13 +421,14 @@ refusal log is complete (it is advisory, `docs/design-fail-closed-harness.md`).
 reports when the count passes the process bound, when the stage or the agent home passes the disk bound, or when the
 confinement's resident memory passes the memory bound (all three derived in 17, from the machine and the number of live
 confinements). The process count is read on each fork the follower is told of; disk and memory are sampled at the interval 17
-derives. This detects; it does not prevent.
+derives. A crossing kills the group and names the limit that was passed; it is never silent.
 
 **Already inside a sandbox.** A launcher that is itself sandboxed (an agent session under `docs/agent-sandbox.md`) cannot apply a
 profile (VERIFIED, nested `sandbox_apply` refused). `sandbox_check(pid, NULL, 0)` from `libsystem_sandbox` answers 0 for an
 unsandboxed process and 1 for one under `sandbox-exec` (VERIFIED), so the launcher detects this and refuses with a sentence.
-Whether `scripts/agent_sandbox_profile.py` adds `poolhouse-claude` and `poolhouse-codex` to `sandbox.excludedCommands` (they
-confine themselves; the exclusion would trust the launcher's code and not its arguments, T17, 8.3) is Q11.
+`scripts/agent_sandbox_profile.py` adds `poolhouse-claude` and `poolhouse-codex` to the managed `sandbox.excludedCommands`, so an
+agent in the owner's sandbox can run them. They run unsandboxed as the person only until they confine themselves at their first
+step; their arguments come from the agent, so 8.3 applies to every flag (T17).
 
 ### 5.3 Linux and WSL
 
@@ -460,7 +462,7 @@ P-seccomp shows the harness and its tools run under the filter).
 |---|---|---|
 | bubblewrap with `--disable-userns` and `--cap-drop` | `bwrap --version` and a probe run; 0.9.0 has both (VERIFIED); 0.9.0 has no `--overlay` | Ubuntu 24.04 ships 0.9.0 |
 | unprivileged user namespaces allowed | the namespace probe the backend already runs (3 s, cached by binary identity and user namespace) | WSL: the launcher already checks it (`docs/windows-runtime.md`) |
-| Ubuntu desktop (not WSL): `kernel.apparmor_restrict_unprivileged_userns` | read it; when 1, `bwrap` fails with `setting up uid map: Permission denied` | PREDICTED; needs one change by a person with root (the dialog pattern of `docs/compromised-agents.md` 2.1) |
+| Ubuntu desktop (not WSL): `kernel.apparmor_restrict_unprivileged_userns` | read it; when 1, `bwrap` fails with `setting up uid map: Permission denied` | Poolhouse ships an AppArmor profile that allows `bwrap` its namespaces and installs it at setup with the single administrator prompt (the dialog pattern of `docs/compromised-agents.md` 2.1); without it the launch refuses and names the one-line fix (section 9). PREDICTED; PROBE P-ubuntu |
 | WSL2 virtual-machine architecture, project inside the WSL filesystem | the kernel string; the project's mount type; a project under `/mnt/c` is refused: DrvFs has no owner or mode, so G2 and the capture cannot hold | PREDICTED; PROBE P-drvfs |
 | Landlock ABI, seccomp | `landlock_create_ruleset(NULL, 0, VERSION)` (VERIFIED returns 8 here); WSL's kernel enabled Landlock in release 5.15.57.1 (Microsoft's kernel release notes) | PROBE P-wsl reads the WSL device's ABI |
 
@@ -491,10 +493,11 @@ accepted. Native Windows here is:
 | Network, G4 | an AppContainer without the network capabilities has no network, loopback included (Microsoft: loopback is restricted by network isolation). Loopback is opened per container with `CheckNetIsolation LoopbackExempt -a -n=<container>`, which opens every loopback port, not one. A per-port rule is a filter for the container SID in the Windows Filtering Platform (user mode, no driver) or a firewall rule scoped to the container. | **PROBE P-win-loopback: whether either needs elevation and whether the filter can name one port** | UNVERIFIED |
 | Git, shell | Claude Code on Windows needs Git for Windows; its tree is a derived read-and-execute grant | no | PREDICTED |
 
-Until P-win-loopback shows an enforceable per-port rule, route B refuses with "this Windows computer cannot confine the network of
-a coding agent to the model" and, when WSL2 is present, names route A. If the probe shows the rule needs an elevated one-time
-setup, that setup is one system dialog for a fixed container profile (the exemption and the filter are installed once, not per
-session), the capability report says "not set up" until it ran, and the proof still must show a non-bridge loopback port refused.
+Route B refuses, loudly, until an enforceable per-port loopback rule is shown (P-win-loopback): "this Windows computer cannot confine
+the network of a coding agent to the model" and, when WSL2 is present, it names route A. The WSL2 route (A) is supported. There is
+no silent weaker mode: no Codex `unelevated` mode, no loopback exemption of every port, no start with the network unconfined.
+Route B is built only after the probe has shown such a rule; the capability report then says "not set up" until its one-time
+setup ran, and the proof still must show a non-bridge loopback port refused.
 The mechanisms above are written for a Python parent with `ctypes` and the `pywin32` that `windows_private.py` already imports.
 
 Considered and not used: a low integrity level alone (it blocks writes to higher-integrity objects and leaves reads open, so G1
@@ -641,7 +644,7 @@ and the mount enforces what `--sandbox read-only` meant. The OS boundary is the 
 | Kind | What it adds | Takes effect | The sentence the person reads |
 |---|---|---|---|
 | `read PATH` | a read-only mount or read grant of one directory (not a file under `~/.ssh` or any `secretpaths` name, not an ancestor of the state root) | next launch | "Let this coding session read PATH (it cannot change it)?" |
-| `toolchain PATH` | read and execute of one toolchain directory from the launcher's list of roots (`~/.pyenv/versions/*`, `~/.rustup/toolchains/*`, `~/.nvm/versions/node/*`, `~/.cargo/bin`, `/opt/homebrew`, `/usr/local`, `/Library/Frameworks/Python.framework`, and the same on Linux and Windows); also granted **without a question** when a project declares one (`.python-version`, `.venv/pyvenv.cfg`, `rust-toolchain`, `.nvmrc`) and the declared directory is under such a root | next launch | "Let this coding session run the Python at PATH?" |
+| `toolchain PATH` | read and execute of one toolchain version directory. A directory the project itself declares (`.python-version`, `.venv/pyvenv.cfg`, `rust-toolchain`, `.nvmrc`, `.tool-versions`) is granted at launch without a question; one the project does not declare is asked | next launch | "Let this coding session run the Python at PATH?" |
 | `net HOST` | an exact host on the egress proxy's list | at once | "Let this coding session reach HOST (download only)?" |
 | `workspace in-place` | 4.5 | next launch | "Let this coding session change your files directly in PROJECT? Files like .env in that folder become readable to it, and nothing checks the changes before they land." |
 
@@ -652,8 +655,11 @@ trees `sandbox/seatbelt.py` already lists, `/Library/Developer/CommandLineTools`
 execute. The **harness's own install tree** is added from the resolved binary.
 
 No grant carries a credential, an environment variable, a GPU, a device or a pool authority; a second writable project is not
-offered (Q12). A project's own files only ever select among the launcher's fixed toolchain roots; a `pyvenv.cfg` that names
-`~/.ssh` gets nothing, and the report lists it.
+offered: a session has one writable project. The list of toolchain roots is derived from the project's own files, not fixed: the
+launcher resolves each declaration to the real path of the version directory the person's own version manager installed (the
+prefix of the interpreter or compiler the declaration selects) and grants that one directory, never its parent. A directory is
+refused, and the report lists it, when it is a credential location (`secretpaths`), an ancestor of the state root or of the
+person's home, or holds no executable of the declared kind; a `pyvenv.cfg` that names `~/.ssh` gets nothing.
 
 **Logging.** Every grant is an activity record of kind `isolation.grant` (`docs/activity-log.md`): session, conversation, kind,
 subject, scope, issuer (the person's request fingerprint, or the typed flag), the profile digest it widened, and the sentence the
@@ -696,11 +702,11 @@ The sentences are what an agent relays to a person (AGENTS.md section 2, "Onboar
 | Linux, no bubblewrap | "This computer cannot confine coding agents until bubblewrap is installed." |
 | Linux, bubblewrap without `--disable-userns` | "The installed bubblewrap cannot stop a coding agent from starting its own sandboxes (it lacks the option that turns that off)." |
 | User namespaces off | "This computer's security settings stop coding agents from being confined (unprivileged user namespaces are off)." |
-| AppArmor restriction | "This computer's security rules block the sandbox tool; one change by an administrator allows it." |
+| AppArmor restriction | "This computer's security rules block the sandbox tool; run `poolhouse security sandbox install` once as an administrator to allow it." |
 | WSL 1 | "Coding agents need WSL 2; this is WSL 1." |
 | Project on a Windows drive under WSL | "This folder is on a Windows drive; coding agents can only be confined for folders inside WSL." |
 | Native Windows network | "This Windows computer cannot keep a coding agent's network to the model alone; run it in WSL 2." |
-| Project too large to stage | "This project is `N` MB and the working copy limit here is `M` MB; it can only be opened with `--workspace in-place`, which lets the agent change your files directly." |
+| The stage volume is too small | "This computer has `M` MB free for the working copy and this project needs `N` MB; free some space, or open it with `--workspace in-place`, which lets the agent change your files directly." |
 | No trusted git | "Coding agents need git, and none was found that Poolhouse can trust." |
 | `--on` names a non-loopback server | "A coding agent can only use a model server on this computer; `URL` is not." |
 | Interactive mode before L6 | "Interactive mode is not available yet; run it with its print option, for example `poolhouse-claude -- -p 'your request'`." |
@@ -780,10 +786,10 @@ owner listed, here, now, and that the services it needs are up.
 | A service cannot start | the launch stops; services already started are stopped | same | nothing |
 | Proof deviates | `IsolationFailed`; no harness | same, plus the sentinel and the activity log | the stage is removed |
 | The attestation fails | the process is killed at once | same | the stage is removed, nothing published |
-| Model bridge dies mid-session | the harness's next request fails and the harness stops | the turn ends `failed` with the sentence | stage published only if the exit was clean |
+| Model bridge dies mid-session | the harness's next request fails and the harness stops | the turn ends `failed` with the sentence | stage published as for any exit (below) |
 | Session bridge dies | every hook fails, which blocks the tool call; the harness cannot act | same | as above |
 | A bridge sees a forbidden route, field or verb | refused locally and counted; a burst reports to the sentinel as probing | the sentinel | session continues |
-| Watchdog bound passed (G10, G11) | the group is ended | the turn ends `failed` naming the bound | nothing published |
+| Watchdog bound passed (G10, G11) | the group is killed, loudly | the turn ends `failed` naming the bound | nothing of the turn in progress published |
 | The harness exits non-zero or is cancelled | the tree is ended, the barrier passed; **publication still runs** on what verified: the stage is the person's work in progress, and the checks decide, not the exit status | the person sees what was applied and what was held | per 4.4 |
 | A process survives the barrier (macOS orphan) | publication is skipped, the survivor's pid is reported, the stage is kept until the survivor is gone or the conversation ends | the person | the stage |
 | Publication refused by the policy guard (permissions changed, project withdrawn, revision moved) | nothing applied; the previous receipt stands | the person | `test_revocation_after_child_returns_rejects_its_captured_edits` |
@@ -801,17 +807,17 @@ The normal journey adds no step, prompt, flag or wait a person notices (AGENTS.m
 - The turn ends: "Applied N changes. Held one for your answer: `Makefile`." One Requests item with the diff, answered like any
   other. If the person edited the same file meanwhile: "Kept your version of `src/x.py`; the agent's is saved with this
   conversation."
-- A Linux user whose system restricts user namespaces meets one system dialog once, written by the helper, for the one change
-  (the dialog pattern of `docs/compromised-agents.md` 2.1); everyone else meets none.
+- A Linux user whose system restricts user namespaces meets one administrator prompt once, at setup, which installs the shipped
+  AppArmor profile (the dialog pattern of `docs/compromised-agents.md` 2.1); everyone else meets none.
 - A Windows user with WSL 2 runs route A with no new step. Without it, the sentence of section 9 and nothing else.
 - The agent asks for the network to install a package: one question, "Let this coding session reach pypi.org (download only)?",
   once for the session; before this design the same install asked per command.
 - Fewer questions overall: auto-run file writes are asked once per turn with the whole diff, not once per tool call.
 - Refusals are one sentence an agent relays. No refusal asks a person to open a terminal or edit a file.
 
-Added visible cost, with its reason: a project gets a working copy, so edits reach the checkout at the end of a turn and not
-as they happen (the person's editor does not show them mid-turn), and a launch of a very large project refuses and names the
-in-place grant. Both are the price of I4.
+Added visible cost, with its reason: a project gets a working copy, so edits reach the checkout after each completed turn and not
+as they happen (the person's editor does not show them mid-turn). That is the price of I4; the working copy is made by clone or
+reflink where the filesystem has it, so it costs neither time nor, usually, space.
 
 ## 13. Tests
 
@@ -979,13 +985,13 @@ test. The order is dependency first; nothing is turned on before the thing that 
 | Slice | Delivers | First red (against its parent) |
 |---|---|---|
 | **L0** the hook rig (independent of isolation) | `test_harness_exec_chain`, `_more` and `test_harness_hook_outages` get a verified board session, or the hook's behaviour for "no session" is decided (see 15.3); the 10 tests pass | the 10 tests |
-| **L1** the engine | macOS D1 and D2; bubblewrap `--unshare-user --disable-userns --cap-drop ALL`, `deny_read` and `deny_write` by read-only binds, `Net.only` by net namespace and relay, `Net.loopback` refused on Linux (the `mcp_server` policy names its ports); `Pipes` outside darwin refuse clearly; a Windows backend that reports unavailable with the reason of 5.4. Closes F1 and F2 for every sandbox user and the Linux half of F3. | the marker variable readable (M-proc), another host port reachable under `Net.only` (B-ns), `uid=0` in a nested namespace (B-userns) |
+| **L1** the engine | starting from the result of `fix/sandbox-holes-and-harness-denial` (macOS D1, the net namespace instead of `--share-net`, `--unshare-user --disable-userns --cap-drop ALL`, which are not part of this build): macOS D2; bubblewrap `deny_read` and `deny_write` by read-only binds, `Net.only` with a relay and forwarder for the bridge, `Net.loopback` refused on Linux (the `mcp_server` policy names its ports); `Pipes` outside darwin refuse clearly; a Windows backend that reports unavailable with the reason of 5.4. Closes the Linux half of F3. | the read-only-bind and `Net.only` relay tests; the marker, host-port and nested-namespace tests of F1 and F2 are the other branch's and are only re-run here |
 | **L2** the library | `isolation` package: `capability`, `profile`, `grants` (the model, not the bridge), `proof` and the probe, the environment builder, the attestation, the refusal sentences; the package in the tools layer. No call site changes. | the sentence tests with an unavailable backend; the weakened-profile mutants |
 | **L3** the bridges | model bridge, session bridge, egress proxy and the client module, each standalone | the route, smuggling, SSRF and forged-frame tests |
 | **L4** the workspace | W1 to W11 of 4.3: the launch budget, Apple's git, classification, the session API, the barrier, `apply` with its checks and intent log, the environment links, the Linux bind hook. | the budget test, the symlink, umask and submodule fixtures, the apply races |
 | **L5** turn it on, macOS | `claude.py`, `codex.py`, `pi.py`, `coding.py`, `Manager._process`, `TaskManager`, `harnessing.opened` use `isolation`; the environment allow-list; Codex flags; the catalogue; `require_isolated_execution` and its 14 sites are deleted; `coding_workspace` leaves `STANDALONE`; the refusal-asserting tests are rewritten; the real-model run on this Mac (Claude Code and Codex, one turn each through the lease, writing a file in the stage, publication applying it); `subprocess-spawns` falls. Needs L1 to L4. | the 17 launcher and route tests; the 3 browser tests |
 | **L6** interactive | the pty relay; P-tty | an interactive launch draws, reads keys, and cannot reach the person's terminal |
-| **L7** Linux and WSL | the tier proven on the WSL device; the CI step; the AppArmor change and its dialog; cgroup limits and seccomp where the probes pass | the whole Linux suite, red until the step exists |
+| **L7** Linux and WSL | the tier proven on the WSL device; the CI step; the shipped AppArmor profile installed at setup with its one administrator prompt; cgroup limits and seccomp where the probes pass | the whole Linux suite, red until the step exists |
 | **L8** Windows | route A check; route B by the probes P-win-* on the owner's PC, or the standing refusal of 5.4 | `test_redteam_isolation_windows` |
 | **L9** close | `docs/harnesses.md` ("What is not covered") and `docs/agent-sandbox.md` ("Local-model harness") rewritten, `docs/limits.md` rows, `scripts/agent_sandbox_profile.py` exclusions, the red-team rows, budgets lowered, `HANDOFF.md` pruned | |
 
@@ -1002,7 +1008,7 @@ test. The order is dependency first; nothing is turned on before the thing that 
 | `Net.loopback()` on Linux as `--share-net` | the net namespace and relay (L1) |
 
 Not deleted: `coding_workspace` and its tests (16); `coding_actions`, the ledger methods of `Conversations` and `pi_tools` (the
-tool-proxy model, kept; Q10); `SandboxedBash` and the agent loop's policies (other harness).
+tool-proxy model, kept until the native path is proven; 18.10); `SandboxedBash` and the agent loop's policies (other harness).
 
 ### 15.3 The failing tests
 
@@ -1032,7 +1038,7 @@ which is the point.
 ### 15.4 `HANDOFF.md`
 
 The two entries about the isolated launcher and `coding_workspace` are rewritten in the commit that lands this document: the
-launcher is designed and the slices above are pending; the 30 failures are split into the three causes; the alternative "or the
+launcher is designed and the slices above are pending; the tool-proxy stack (`coding_actions`, the ledger methods of `Conversations`, `pi_tools`) is carried as one pending entry: kept, with no caller today and not dead, until the native path is proven; the 30 failures are split into the three causes; the alternative "or the
 module and about 800 lines of tests are deleted" is removed.
 
 ## 16. `coding_workspace`: keep, with its caller
@@ -1054,7 +1060,7 @@ it has an importer outside `tests/`. `("fleet", "coding_actions")` in `tests/tes
 touched.
 
 **Truly superseded: nothing in it.** `Workspace.run` and the per-call epoch API stay: they are the tool-proxy model's entry
-(Q10). The per-launch API is added beside them.
+(18.10). The per-launch API is added beside them.
 
 ## 17. Numbers and their sources
 
@@ -1068,8 +1074,8 @@ confinements" is the count the parent holds of confinements running now; the per
 | Proof duration | inside the same 5 s, shared by its 21 attempts | the same rule |
 | Processes in a confinement | (the system's per-user limit, `kern.maxprocperuid` on macOS, `pid_max` on Linux, minus the user's processes now) divided by (live confinements plus one); on Windows the job's active-process limit takes the same value | the machine's limit and the live count, read at launch |
 | Resident memory of a confinement | the memory the broker reports unadmitted, divided by (live confinements plus one) | the broker's admission figure (`poolhouse-serve status`), read at launch |
-| Stage volume (project copy and everything the agent writes) | the free bytes of the stage volume divided by (the peak number of full copies `Workspace` holds at once, times (live confinements plus one)) | the volume; the peak copy count (master, before, stage, result and current capture at `finish`) is counted by the L4 test, not assumed. Replaces the 16 MiB, 256 MiB and 30 s of `source_snapshot` (F7), which have no recorded source (Q2) |
-| Disk and memory sampling interval | the stage volume budget divided by the write throughput measured while the stage was copied (the time the budget would take to fill) | a measurement made at each launch |
+| Stage volume (project copy and everything the agent writes) | the free bytes of the stage volume divided by (the peak number of full copies `Workspace` holds at once, times (live confinements plus one)) | the volume; the peak copy count (master, before, stage, result and current capture at `finish`) is counted by the L4 test, not assumed. Replaces the 16 MiB, 256 MiB and 30 s of `source_snapshot` (F7), which are removed (18.2); this is the machine's free space, not a project ceiling or a per-file cap |
+| Disk and memory sampling interval | the stage volume budget divided by the write throughput measured while the stage was copied (the time the budget would take to fill) | a measurement made at each launch; a crossing kills the session loudly (5.1) |
 | Model request body | the served window times 4 bytes | UTF-8 encodes a code point in at most 4 bytes (RFC 3629) and a token is at least one code point, so a larger text cannot fit the window |
 | Session bridge frame | the served window times 4 bytes | a tool input is model output, which the window bounds; replaces `coding_actions.MAX_FRAME` for this channel |
 | Requests in flight to the model server | the lease's slot count | one conversation per slot (`docs/harnesses.md`) |
@@ -1082,41 +1088,30 @@ confinements" is the count the parent holds of confinements running now; the per
 Every number the slices name beyond these is read from the machine at launch (free bytes, process limit, window, slots) or
 measured by a test of the slice.
 
-## 18. Open questions
+## 18. Decisions taken
 
-1. **Default workspace.** This design stages a copy and publishes verified changes at the end of a turn (I4). The alternative is
-   the person's checkout in place under the same operating-system boundary. Staged: the checkout cannot be touched by the
-   agent, credentials in the project stay out, every auto-run change is judged by bytes; costs: a working copy (a launch budget,
-   a size ceiling), no ignored files unless linked, edits arrive at turn end, commits are the parent's. In place: the normal
-   developer workflow with no copy; costs: `.env` readable, nothing checks what lands, the planted-file class is detected after
-   the fact. Which is the default when a person starts `poolhouse-claude` in their own project?
-2. **Project size ceiling and per-file cap.** The existing 16 MiB, 256 MiB and 30 s have no source. This design derives one bound
-   from the stage volume's free bytes and the peak number of copies (17) and drops the per-file cap and the clock. Does a project
-   over the bound refuse and name in-place, stage only part of itself, or get a different mechanism (a read-only overlay on Linux,
-   a clone on APFS)?
-3. **When edits reach the checkout in an interactive session.** At exit only, or after each completed assistant turn (the harness's
-   `Stop` hook) when the confinement is quiet? The second shows work as it happens and risks a capture of a directory that
-   background processes still write.
-4. **Conflicts.** The person's version wins and the agent's copy is kept (4.4). Alternatives: refuse the whole publication, or a
-   three-way text merge.
-5. **Native Windows.** Refuse until P-win-loopback shows an enforceable per-port rule, and then install it with one elevated
-   dialog (5.4); or support only route A (WSL 2) permanently and say so?
-6. **Linux hosts that restrict user namespaces** (a stock Ubuntu desktop). One administrator change through the system-dialog
-   pattern of `docs/compromised-agents.md` 2.1, or a plain refusal that names the change, or an AppArmor profile shipped with the
-   package?
-7. **Toolchains.** Is it acceptable that a project's declaration of a toolchain (`.python-version`, `.venv/pyvenv.cfg`) grants
-   read and execute of that version directory without a question, when the directory is under the launcher's fixed list of roots?
-   Which roots belong on the list?
-8. **`watched` for G10 and G11.** On macOS the operating system cannot cap a confinement's processes or memory, and on Linux
-   without a delegated cgroup it cannot either. Is a parent watchdog, reported as "watched", acceptable, or does the launch refuse
-   there?
-9. **Task commits.** Native tasks must leave a commit. This design has the parent commit the published change set and the prompt
-   stop saying "commit". Alternative: keep agent commits by giving a task worktree's git directory (minus hooks and config) to the
-   confinement, with the branch-ref exposure that implies (every branch file in the shared `.git` is writable on Linux).
-10. **The tool-proxy stack.** `coding_actions`, the ledger methods of `Conversations` and `pi_tools` have no caller either. Should Pi be wired
-    to them (per-action receipts, per-call stages) for the harnesses with a tool-override hook, or delete them once the native path
-    is proven? This design leaves them.
-11. **Excluded commands.** Add `poolhouse-claude` and `poolhouse-codex` to `sandbox.excludedCommands` of the owner's managed
-    settings, so an agent in the owner's sandbox can run them (macOS cannot nest sandboxes)? They would run unsandboxed as the person
-    until they confine themselves, and their arguments come from the agent (T17).
-12. **A second writable project** for one session. Not offered here; every extra write reach is an in-place grant of one project.
+Every question this design raised is decided. Each statement below is built in the section it names.
+
+1. **Default workspace.** A staged copy is the default (I4, 4). It is made by an APFS clone or a reflink where the filesystem
+   supports one, and a plain copy otherwise. The 16 s construct of `coding_workspace.Workspace` (F4) is a defect fixed in the build
+   (W1), not a reason to edit in place; in-place stays a typed grant (4.5).
+2. **No project size ceiling and no per-file cap.** No invented limits. The 16 MiB, 256 MiB and 30 s constants of
+   `source_snapshot` are removed (W4); the only size bound is the stage volume's free bytes, a fact of the machine (17).
+3. **When edits reach the checkout.** After each completed assistant turn, verified, in interactive sessions too (3.3, 4.2 item 1);
+   a path still changing during the capture is held to the next turn or to exit, never applied unverified.
+4. **Conflicts.** The person's version wins; the agent's copy is kept and named (4.4).
+5. **Native Windows.** It refuses loudly until an enforceable per-port loopback rule is shown; the WSL2 route is supported; there
+   is no silent weaker mode (5.4).
+6. **Linux hosts that restrict user namespaces.** Poolhouse ships an AppArmor profile, installed at setup with the single
+   administrator prompt; without it the launch refuses and names the one-line fix (5.3, 9).
+7. **Toolchains.** The project's declared toolchain version directories are readable and executable without a question; the list
+   of roots is derived from the project's own files (8.2).
+8. **`watched` for G10 and G11.** Acceptable for process count, memory and disk only when the watcher kills the session loudly on
+   crossing a limit derived from the machine; never silent (5.1, 5.2, 17).
+9. **Task commits.** The parent commits the published change set; the task prompt stops saying "commit" (4.2 item 6).
+10. **The tool-proxy stack.** `coding_actions`, the ledger methods of `Conversations` and `pi_tools` are kept until the native path
+    is proven; no caller is not dead; `HANDOFF.md` carries the entry (15.4, 16).
+11. **Excluded commands.** `poolhouse-claude` and `poolhouse-codex` are added to the managed `sandbox.excludedCommands` (5.2).
+12. **A second writable project.** None: a session has one writable project (8.2).
+
+Nothing remains open.
