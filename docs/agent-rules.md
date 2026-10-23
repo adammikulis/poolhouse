@@ -126,22 +126,21 @@ gate.
 
 ### Landing in detail
 
-- **Commit, merge and sync continuously.** Every agent commits completed, bounded pieces by named files in its
-  own branch and promptly obtains independent review and affected checks. Authorized main agents integrate and
-  push their reviewed batches themselves; no designated publisher or coordinator acknowledgment is required.
-  Fetch before integration and again before push, reconcile remote advancement, and run the required combined gates;
-  a push takes no claim and no lock. Managed subagents
-  retain their assigned permissions and send ready commits to their parent; the parent carries integration and
-  pushing through without waiting for another publisher. Do not accumulate ready branches or local-only commits until
-  the end of a session, wait for every worker to finish, or defer publication behind cleanup, unrelated work or
-  the GitHub run. After publication, promptly complete the merged branch's maintained worktree cleanup.
+- **Commit, merge and sync continuously.** Immediately after every completed bounded commit by named files, fetch
+  `origin` and reconcile `origin/<dev>` in the agent's own claimed checkout at a safe boundary, before the next piece.
+  Hand the exact SHA, affected-check results and required independent security review to the shared development
+  branch's single coordinator immediately. The coordinator integrates and pushes each verified checkpoint after its
+  required combined gates, without waiting for session end, other workers, cleanup or unrelated work. Fetch before
+  integration and again before push and reconcile remote advancement; a push takes no claim and no lock. Managed
+  workers retain their assigned permissions and never race the coordinator to publish the shared branch. After
+  publication, promptly complete the merged branch's maintained worktree cleanup.
 - **Pull and push as work lands.** Fetch before preparing each integration batch and again immediately before
   pushing. Reconcile upstream advancement, conflicts included, in an isolated integration worktree, review the
   resulting changes and run the incremental affected gates before landing the exact tree; equivalent recovered
   patches do not require repeated tests. Push the development branch normally after its batch gates pass; if another
   device advances the remote before the push succeeds, fetch, reconcile and gate the new changes, then retry a normal
-  push. Every agent that starts a task, finishes a task or returns from a wait fetches and fast-forwards the
-  development branch first, so no one works on history another device has already moved. Keep local and upstream
+  push. Every agent that starts a task, finishes a task or returns from a wait fetches and reconciles its own claimed
+  checkout first, so no one works on history another device has already moved. Keep local and upstream
   development synchronized throughout landing batches and cleanup; report the resulting commit and final upstream
   state.
 - **Keep landing short.** Throughput is limited by unlanded work, not typing speed. Branches are cut from
@@ -152,9 +151,9 @@ gate.
   separately landing batches instead of carrying it. Run `git cherry <dev> <branch>` before porting and
   drop equivalent patches. Record the tree hash a gate ran on; a tree already gated is not gated again. Finish before
   starting: no new branch while your own ready branches await landing; about ten open worktrees at most per lead.
-- **A worker lands its own branch with git:** fetch, merge `origin/<dev>`, run the changed and affected tests, then
-  `git push origin HEAD:refs/heads/<dev>` (never `main`, never forced). `scripts/hooks/pushed` checks the push, runs the tests it can break, and the primary checkout
-  follows origin (docs/landing.md).
+- **The coordinator lands each verified checkpoint with git:** fetch, merge `origin/<dev>`, run the required combined
+  checks, then `git push origin HEAD:refs/heads/<dev>` (never `main`, never forced). `scripts/hooks/pushed` checks the
+  push and runs the tests it can break; the primary checkout follows origin (docs/landing.md).
 - The primary development checkout may receive reviewed changes through a fast-forward merge or authorized direct
   edits and named-file commits; resolve conflicts in an isolated worktree. The retained primary checkout is never
   removed as temporary-worktree cleanup. Coding tasks own their worktree lifecycle: assignment reserves the path and
