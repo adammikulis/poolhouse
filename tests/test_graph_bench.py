@@ -3521,7 +3521,7 @@ def test_the_estimate_is_seconds_per_question_from_the_kept_run_at_the_same_cont
     # (--on) has no load to pay and is matched by the name its labels start with
     args = bench._parser().parse_args(["sweep", "--serve", "models/quill.gguf", "--on",
                                        "lantern=http://127.0.0.1:1", "--plain-only",
-                                       "--questions", _twelve(tmp_path)])
+                                       "--questions", _twelve(tmp_path), "--context", "32768"])
     got = estimate(args, kept)
     assert [(m.name, m.questions, m.askings, m.load_s) for m in got.models] == [
         ("quill", 14, 1, 41.6), ("lantern", 14, 1, 0.0)]

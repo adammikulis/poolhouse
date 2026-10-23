@@ -323,7 +323,7 @@ class FakeServe:
         model: str | Path,
         *,
         port: int | None = None,
-        context: int = 4096,
+        context: int = 0,
         timeout: float | None = None,
         manager: ServerManager | None = None,
         **spec_kwargs: object,
