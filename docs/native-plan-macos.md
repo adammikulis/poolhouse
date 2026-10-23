@@ -324,6 +324,9 @@ Record exact commit, artifact/digest, contract SHA, macOS/runtime, service princ
 and inspected screenshot paths. Capture and open each meaningful setup/theme/download, discovery, approval,
 connection, result, removal/refusal, Settings and recovery transition. Browser fixtures are supplementary evidence.
 
+The [worker confinement feasibility review](notes/native-macos-worker-confinement-feasibility.md) records supported
+platform routes and remaining engineering/proof; feasibility establishes neither confinement nor P acceptance.
+
 | Scenario | Required installed proof |
 |---|---|
 | First launch | Double-click installed native app, complete setup without commands or separate node launch; no conflicting theme first frame. |
