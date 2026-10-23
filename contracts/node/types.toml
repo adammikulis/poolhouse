@@ -1,0 +1,182 @@
+[[type]]
+name = "U32"
+kind = "scalar"
+encoding = "u32"
+issuer = "data"
+visibility = "public"
+
+[[type]]
+name = "U64"
+kind = "scalar"
+encoding = "u64"
+issuer = "data"
+visibility = "public"
+
+[[type]]
+name = "DeviceId"
+kind = "scalar"
+encoding = "hex32"
+issuer = "node"
+visibility = "public"
+
+[[type]]
+name = "CertificateDigest"
+kind = "scalar"
+encoding = "hex32"
+issuer = "node"
+visibility = "public"
+
+[[type]]
+name = "InstallationId"
+kind = "scalar"
+encoding = "uuid"
+issuer = "installer"
+visibility = "public"
+
+[[type]]
+name = "PoolId"
+kind = "scalar"
+encoding = "hex32"
+issuer = "node"
+visibility = "public"
+
+[[type]]
+name = "RequestId"
+kind = "scalar"
+encoding = "uuid"
+issuer = "caller"
+visibility = "public"
+
+[[type]]
+name = "JobId"
+kind = "scalar"
+encoding = "uuid"
+issuer = "node"
+visibility = "public"
+
+[[type]]
+name = "Ed25519PublicKey"
+kind = "scalar"
+encoding = "hex32"
+issuer = "node"
+visibility = "public"
+
+[[type]]
+name = "NativeThreadId"
+kind = "scalar"
+encoding = "uuid"
+issuer = "producer"
+visibility = "private"
+
+[[type]]
+name = "SessionLease"
+secret = true
+kind = "scalar"
+encoding = "hex32"
+issuer = "node"
+visibility = "private"
+
+[[type]]
+name = "InvocationId"
+kind = "scalar"
+encoding = "uuid"
+issuer = "node"
+visibility = "private"
+
+[[type]]
+name = "ReceiptId"
+secret = true
+kind = "scalar"
+encoding = "hex32"
+issuer = "node"
+visibility = "private"
+
+[[type]]
+name = "PayloadDigest"
+kind = "scalar"
+encoding = "hex32"
+issuer = "producer"
+visibility = "private"
+
+[[type]]
+name = "BootId"
+kind = "scalar"
+encoding = "uuid"
+issuer = "kernel-adapter"
+visibility = "private"
+
+[[type]]
+name = "AuditToken"
+kind = "scalar"
+encoding = "hex32"
+issuer = "kernel-adapter"
+visibility = "private"
+
+[[type]]
+name = "WindowsSid"
+kind = "scalar"
+encoding = "sid-hex"
+issuer = "kernel-adapter"
+visibility = "private"
+
+[[type]]
+name = "NodeIdentity"
+kind = "record"
+visibility = "public"
+fields = [{name = "device_id", type = "DeviceId"}, {name = "certificate_digest", type = "CertificateDigest"}, {name = "installation_id", type = "InstallationId"}, {name = "public_key", type = "Ed25519PublicKey"}, {name = "contract_version", type = "U32"}]
+
+[[type]]
+name = "LinuxCredentials"
+kind = "record"
+visibility = "private"
+fields = [{name = "real_uid", type = "U32"}, {name = "effective_uid", type = "U32"}, {name = "saved_uid", type = "U32"}, {name = "filesystem_uid", type = "U32"}, {name = "real_gid", type = "U32"}, {name = "effective_gid", type = "U32"}, {name = "saved_gid", type = "U32"}, {name = "filesystem_gid", type = "U32"}]
+
+[[type]]
+name = "LinuxProcessObservation"
+kind = "record"
+visibility = "private"
+fields = [{name = "pid", type = "U32"}, {name = "start_ticks", type = "U64"}, {name = "boot_id", type = "BootId"}, {name = "credentials", type = "LinuxCredentials"}]
+
+[[type]]
+name = "WindowsProcessObservation"
+kind = "record"
+visibility = "private"
+fields = [{name = "pid", type = "U32"}, {name = "creation_filetime_100ns", type = "U64"}, {name = "owner_sid", type = "WindowsSid"}]
+
+[[type]]
+name = "MacProcessObservation"
+kind = "record"
+visibility = "private"
+fields = [{name = "pid", type = "U32"}, {name = "pid_version", type = "U32"}, {name = "audit_token", type = "AuditToken"}, {name = "birth_unix_microseconds", type = "U64"}]
+
+[[type]]
+name = "NoParent"
+kind = "record"
+visibility = "private"
+fields = []
+
+[[type]]
+name = "ParentThread"
+kind = "record"
+visibility = "private"
+fields = [{name = "thread_id", type = "NativeThreadId"}]
+
+[[type]]
+name = "NativeParent"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "none", type = "NoParent"}, {tag = "thread", type = "ParentThread"}]
+
+[[type]]
+name = "NativeSessionContext"
+kind = "record"
+visibility = "private"
+fields = [{name = "actor", type = "NativeThreadId"}, {name = "root", type = "NativeThreadId"}, {name = "direct_parent", type = "NativeParent"}]
+
+[[type]]
+name = "ProcessObservation"
+kind = "union"
+visibility = "private"
+tag = "platform"
+variants = [{tag = "linux", type = "LinuxProcessObservation"}, {tag = "windows", type = "WindowsProcessObservation"}, {tag = "macos", type = "MacProcessObservation"}]

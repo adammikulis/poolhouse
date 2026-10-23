@@ -1,0 +1,8 @@
+version = 1
+status = "proposal"
+unsigned_encoding = "canonical-decimal-string"
+device_id_algorithm = "sha256"
+device_id_domain = "poolhouse/device/ed25519/v1\u0000"
+device_public_key_encoding = "raw-ed25519-32-bytes"
+unknown_fields = "reject"
+decoded_values = "untrusted-data"

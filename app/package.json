@@ -4,12 +4,14 @@
   "description": "The Tauri CLI that bundles the window. There is no frontend here: the window opens on the interface the daemon serves.",
   "scripts": {
     "build": "tauri build",
-    "dev": "tauri dev"
+    "dev": "tauri dev",
+    "contract:check": "tsc --noEmit --strict --target es2022 --module esnext --moduleResolution bundler --lib es2022 contracts/node_types_test.ts"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.11.4",
     "esbuild": "0.28.2",
-    "jolt-physics": "1.1.0"
+    "jolt-physics": "1.1.0",
+    "typescript": "7.0.2"
   },
   "dependencies": {
     "dompurify": "3.4.16",
