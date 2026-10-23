@@ -127,6 +127,14 @@ they never disable admission. A command started
 inside a live test permit fails promptly instead of queuing behind its parent.
 Run an independent suite after the parent releases its permit.
 
+A test's permit is taken before the test timer starts (`testslots_pytest.py` is the outermost wrapper of
+`pytest_runtest_protocol`), so `pytest-timeout` counts only the time the test runs. The seconds a test waited are its
+`admission_wait` property in the junit file and part of the `queued for CPU` total. A test whose wait reaches the wait limit
+(`DEV_TEST_WAIT_S`) is skipped and listed under `not started` as `NOT STARTED, machine overloaded: waited N s for a permit`, and the
+later tests of that process are listed the same way without waiting again. It is neither a failure nor a pass: a run in which
+nothing failed ends with status 75, and a failure keeps status 1. A test that runs past its timeout fails with `test timed out after N s
+running (the test timeout)`, followed by the seconds it waited for its permit.
+
 Admission is one pass over the directory under its mutex, and a pass grants every request that fits, in
 grant order. A request runs a pass when it arrives (unless the last pass left every worker busy), when it
 releases its permit, and when it waits and no pass has run for 0.3 to 0.6 s (holders that died, aged

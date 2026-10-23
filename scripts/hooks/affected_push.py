@@ -19,6 +19,7 @@ HERE = Path(__file__).resolve().parent
 sys.path[:0] = [str(HERE.parent), str(HERE.parents[1] / "src")]
 import affected  # noqa: E402
 import sealed_git as lg  # noqa: E402
+import testselectors  # noqa: E402
 
 SHOWN = 8
 """How many test files the opening line names before it only counts them."""
@@ -59,6 +60,15 @@ def needing_a_model(root: Path, files: list[str]) -> list[str]:
     return [f for f in files if "real_model" in (root / f).read_text(encoding="utf-8", errors="replace")]
 
 
+def whole_file_needs_a_model(root: Path, name: str) -> bool:
+    """Whether every test of ``name`` is marked ``real_model``, which the runner refuses to run without ``--real-model``."""
+    try:
+        testselectors.refuse_unrequested(root / name, name, [])
+    except ValueError:
+        return True
+    return False
+
+
 def selected(root: Path, dev: str, base: str, tip: str) -> tuple[list[str], list[str], str]:
     """The test files to run, the notes (a path no rule could place, files left to CI or the gate) and the start commit, for ``tip``."""
     names, gone, start = pushed_paths(root, base, tip)
@@ -74,6 +84,7 @@ def selected(root: Path, dev: str, base: str, tip: str) -> tuple[list[str], list
     if held := needing_a_model(root, sorted(files)):
         notes.append(f"{', '.join(held)} hold tests marked real_model, which need a served model under a lease; this check does not "
                      "run them, the gate and CI do")
+        files -= {name for name in held if whole_file_needs_a_model(root, name)}    # the runner refuses a file that is only those
     return sorted(files), notes, start
 
 

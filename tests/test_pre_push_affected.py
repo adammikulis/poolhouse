@@ -206,6 +206,23 @@ def test_a_test_that_needs_a_served_model_is_named_as_not_run(repo, tmp_path):
     assert "tests/test_untouched.py hold tests marked real_model" in done.stderr
 
 
+def test_a_file_whose_every_test_needs_a_served_model_is_left_out_of_the_run_and_the_rest_runs(repo, tmp_path):
+    whole = ("import pytest\nfrom poolhouse import mod\n\npytestmark = pytest.mark.real_model\n\n\n"
+             "def test_value():\n    assert mod.VALUE == 1\n")
+    mixed = ("import pytest\nfrom poolhouse import mod\n\n\ndef test_plain():\n    assert mod.VALUE\n\n\n"
+             "@pytest.mark.real_model\ndef test_served():\n    assert mod.VALUE\n")
+    commit(repo, "tests/test_untouched.py", whole)
+    commit(repo, "tests/test_mixed.py", mixed)
+    git(repo, "push", "-q", "origin", "0.9dev")
+    commit(repo, "src/poolhouse/mod.py", "VALUE = 1\nMORE = 10\n")
+    log = tmp_path / "log"
+    done = landing(repo, log)
+    assert done.returncode == 0, done.stderr
+    asked = calls(log)[0]["argv"]
+    assert "tests/test_mixed.py" in asked and "tests/test_untouched.py" not in asked
+    assert "tests/test_untouched.py" in done.stderr and "hold tests marked real_model" in done.stderr
+
+
 def test_the_real_runner_takes_the_tier_and_flags_the_check_runs():
     sys.path.insert(0, str(REPO / "scripts" / "hooks"))
     import affected_push
