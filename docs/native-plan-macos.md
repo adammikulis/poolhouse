@@ -71,6 +71,19 @@ No boards or work cross this probe. Candidate pins remain observations, not admi
 path at `net.rs:243–260` attempts automatic joining; the shared owner must provide bounded untrusted candidate
 observations rather than widen authority. This is a request to expose existing behavior, not a new wire definition.
 
+Mac H observation at installed source `33e7b2821` and native host `0.164.0`: genuine root PostToolUse completed with
+exit 0 and empty entries at `2026-10-23T19:42:11.033Z`; genuine child SubagentStop
+completed with exit 0 and empty entries at `19:44:34.743686Z`. Evidence: `host-hooks-live-events.jsonl` in the Mac
+evidence directory. Command completion is neither consumer delivery nor successful cleanup verification.
+Source evidence shows the consumer can refuse missing actor context, emit a warning and return 0; the exact host
+producer emits no root `agent_id` and replays a daemon environment snapshot without per-invocation actor injection.
+The missing-context path is a likely cause, not an observed daemon environment or captured stderr refusal.
+Request common-owner review of maintained producer/host injection of the actual invoking actor for roots and children,
+with safe supported installation/reload and preserved lineage, trust and refusal checks. Do not infer the actor from
+`session_id` as a fallback. Verify actual consumer identity, notification delivery and cleanup refusal on genuine root and
+child hooks. Trust for the root's `Stop` hooks remains unavailable; H remains unfinished. No completion or trust record
+is fabricated.
+
 Mac K adapter request for shared-owner review, with feasibility evidence in `contracts-feasibility.json` under the
 same Mac evidence directory; this request establishes no principal, admission or platform contract:
 
