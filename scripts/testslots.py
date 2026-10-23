@@ -29,6 +29,8 @@ HEAVY_MODULES = frozenset({
     "test_fleet_join", "test_fleet_bench", "test_graph_bench", "test_graph_bench_animate",
     "test_graph_store_scale", "test_real_model_uses", "test_redteam_judge_real", "test_redteam_loop",
     "test_redteam_pyrit", "test_sandbox_gpu", "test_serve_llamacpp_real",
+    "test_agent_real_model", "test_rbmk_app", "test_rbmk_engine_real", "test_rbmk_room", "test_rbmk_web",
+    "test_redteam_lab_home", "test_redteam_sentinel_model",
 })
 """Test modules that take a heavy lane (a real model server, a benchmark, a fleet daemon); every real_model module is in it."""
 
@@ -41,6 +43,11 @@ REFRESH_S = 0.3
 """The longest a waiter lets the admission pass go unrun while it waits (load, holders that died, aged requests)."""
 ALIVE_EVERY_S, STABLE_S, SCAN = 0.25, 0.05, 64
 """Seconds between liveness checks of one record, the age at which a record may be cached, candidates tried per grant."""
+
+
+class WaitExpired(TimeoutError):
+    """A request waited as long as the wait limit and was not granted."""
+
 
 EXPORT_LEASE = contextvars.ContextVar("export_test_lease", default=True)
 CHECK_CANCELLED = contextvars.ContextVar("check_test_cancelled", default=lambda: None)
@@ -592,7 +599,7 @@ def lease(want: int, minimum: int | None = None, label: str = "tests", say=lambd
                 owned = _own(path)
             now = time.monotonic()
             if now > deadline:
-                raise TimeoutError(f"testslots: waited {now - t0:.0f}s for {minimum} of {cap} workers ({used} in use); the wait limit is "
+                raise WaitExpired(f"testslots: waited {now - t0:.0f}s for {minimum} of {cap} workers ({used} in use); the wait limit is "
                                    f"{wait_limit():.0f} s (DEV_TEST_WAIT_S, default {WAIT_S:.0f}); see `python scripts/testslots.py status`")
             if now - notes.at >= 1:
                 used, ahead = _view(d, path.name)
