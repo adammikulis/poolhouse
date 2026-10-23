@@ -15,7 +15,7 @@ from pathlib import Path
 from packaging.version import InvalidVersion, Version
 
 from poolhouse import authority, credentials, real_machine, runtime, runtime_git, worktreerules
-from poolhouse.board.session import connect
+from poolhouse.authority_caller import Identity
 from poolhouse.net import github_release as remote
 from poolhouse.workspace import github_app
 
@@ -32,7 +32,18 @@ class Source:
     repo: str
 
 
-def environment(directory: Path) -> dict[str, str]:
+@dataclass(frozen=True)
+class Caller:
+    identity: Identity
+    board: str
+    state: Path
+
+    @property
+    def name(self) -> str:
+        return self.identity.name
+
+
+def environment(directory: Path, caller: Caller | None = None) -> dict[str, str]:
     """Return a private Git environment without ambient configuration or credentials."""
     env = {"PATH": os.defpath, "HOME": str(directory), "XDG_CONFIG_HOME": str(directory),
            "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": os.devnull,
@@ -41,6 +52,14 @@ def environment(directory: Path) -> dict[str, str]:
         if os.environ.get(name):
             env[name] = os.environ[name]
     env["POOLHOUSE_NONINTERACTIVE"] = "1"
+    if caller is not None:
+        env.update({"POOLHOUSE_WORKSPACE_AGENT": caller.name, "POOLHOUSE_AGENT": "1",
+                    "POOLHOUSE_BOARD": caller.board,
+                    "POOLHOUSE_HOME": str(caller.state.parent)})
+        for name in ("CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "POOLHOUSE_SESSION_ID",
+                     "POOLHOUSE_SESSION_HARNESS", "POOLHOUSE_SUBAGENT"):
+            if os.environ.get(name):
+                env[name] = os.environ[name]
     return env
 
 
@@ -84,12 +103,19 @@ def authorize(action: str):
             raise ValueError("holder does not match runtime selection")
     except (OSError, ValueError, TypeError, KeyError, subprocess.SubprocessError):
         raise remote.Failed("GitHub publication uses the selected installed credential holder") from None
-    session = connect()
-    who = session.whoami()
-    if who.retired or who.parent or who.name != os.environ.get("POOLHOUSE_WORKSPACE_AGENT"):
-        raise remote.Failed("GitHub publication requires the authenticated live lead session")
+    try:
+        caller = authority.current_agent()
+    except authority.HumanRequired:
+        raise remote.Failed("GitHub publication requires the authenticated live lead session") from None
     authority.require("github.release", action)
-    return who
+    return Caller(caller.identity, caller.session.board, caller.session.client.state.resolve())
+
+
+def revalidate(caller: Caller) -> None:
+    """Keep the publication bound to the same live caller, project and node."""
+    fresh = authorize("continue the exact reviewed development publication")
+    if fresh != caller:
+        raise remote.Failed("the authenticated publication caller changed")
 
 
 def identity() -> github_app.Identity:
@@ -151,7 +177,7 @@ def _commit_ref(reply: object) -> str:
 
 def push_development(checkout: Path) -> dict[str, str]:
     """Push one exact development tip through the installed repository App."""
-    authorize("push the exact reviewed development tip")
+    caller = authorize("push the exact reviewed development tip")
     who = identity()
     selected = source(checkout, who.repo)
     authority.require("github.release", json.dumps({"operation": "push-development", "repo": who.repo,
@@ -166,7 +192,7 @@ def push_development(checkout: Path) -> dict[str, str]:
         directory = Path(temporary)
         _view(selected, directory)
         hooks = _hooks(selected, directory)
-        env = environment(directory)
+        env = environment(directory, caller)
         line = f"refs/heads/{selected.branch} {selected.commit} refs/heads/{selected.branch} {before}\n"
         checked = subprocess.run(["/bin/sh", str(hooks / "pre-push"), "origin",
                                   f"https://github.com/{who.repo}.git"], cwd=directory, env=env,
@@ -178,7 +204,9 @@ def push_development(checkout: Path) -> dict[str, str]:
         latest = _commit_ref(remote.request("GET", path))
         if latest != before:
             raise remote.Failed("the remote development tip changed before publication")
+        revalidate(caller)
         token = github_app.mint(who, PERMISSIONS, who.repo)["token"]
+        revalidate(caller)
         remote.push(remote.GitPush(who.repo, selected.branch, selected.commit, token), directory, env)
     after = _commit_ref(remote.request("GET", path, bearer=token))
     if after != selected.commit:

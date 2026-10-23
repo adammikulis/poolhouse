@@ -21,7 +21,8 @@ __all__ = ["AGENT_MARKERS", "HumanRequired", "confirm", "controlling_terminal", 
 
 _MSVCRT = importlib.import_module("msvcrt") if sys.platform == "win32" else None
 
-AGENT_MARKERS = ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE")
+AGENT_MARKERS = ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE", "CODEX_THREAD_ID",
+                 "CLAUDE_CODE_SESSION_ID", "POOLHOUSE_SESSION_ID")
 """Environment variables whose presence means an agent started this process."""
 
 
@@ -30,9 +31,9 @@ class HumanRequired(PermissionError):
 
 
 def marked(env: Mapping[str, str] | None = None) -> str:
-    """The first agent marker set in ``env`` (the process's when not given), else an empty string."""
-    env = os.environ if env is None else env
-    return next((name for name in AGENT_MARKERS if env.get(name)), "")
+    """The first agent marker in the process or supplied context; supplied data cannot hide the process."""
+    found = os.environ if env is None else env
+    return next((name for name in AGENT_MARKERS if found.get(name) or os.environ.get(name)), "")
 
 
 

@@ -619,7 +619,8 @@ def installed_setup(ai, tmp_path, monkeypatch, workspace_node):
     monkeypatch.setattr(ai, '__file__', str(package / 'workspace/github_identity.py'))
     monkeypatch.setattr(github_release.real_machine, 'require', lambda action: None)
     actor = workspace_node.member('bootstrap-lead')
-    monkeypatch.setattr(github_release, 'connect', lambda: workspace_node.session(actor))
+    current = github_release.authority.current_agent
+    monkeypatch.setattr(github_release.authority, 'current_agent', lambda: current(client=workspace_node.client))
     monkeypatch.setenv('POOLHOUSE_WORKSPACE_AGENT', actor.name)
     monkeypatch.setenv('POOLHOUSE_AGENT', 'codex')
     gates = []
@@ -654,7 +655,6 @@ def test_delegated_setup_refuses_before_app_load_api_or_browser(ai, installed_se
     monkeypatch.setattr(credentials, '_open', lambda *a, **k: pytest.fail('credential access before admission'))
     if refusal == 'child':
         child = workspace_node.member('bootstrap-child', parent=actor)
-        monkeypatch.setattr(github_release, 'connect', lambda: workspace_node.session(child))
         monkeypatch.setenv('POOLHOUSE_WORKSPACE_AGENT', child.name)
     elif refusal == 'actor':
         monkeypatch.setenv('POOLHOUSE_WORKSPACE_AGENT', 'other-agent')
