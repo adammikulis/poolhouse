@@ -1,0 +1,110 @@
+{
+  "observed_utc": "2026-10-23T22:09:56.349118+00:00",
+  "poolhouse_revision": "24c46d8ae687f064fd75dc994e5931ee29a1ac63",
+  "helper_sha256": "a10a09dc990edf61efe5ae3f83ddb0aeda925f246138e6cc81c32a27b1c68ba1",
+  "H": "unfinished",
+  "installed": false,
+  "active_host_replaced": false,
+  "variants": [
+    {
+      "variant": "codex",
+      "cli_exit": 0,
+      "source_originals_unchanged": true,
+      "nonproducer_payloads_unchanged": true,
+      "candidate_entrypoint_sha256": "385f219934714b0a95a74967792ee2ad7ecb750195bfaf2ce135ed46b6a728f4",
+      "matches_already_probed_derivative": true,
+      "fresh_probes_run": false,
+      "output_mode": "0700",
+      "signature": {
+        "flags": "0x10002",
+        "entitlements": "absent document"
+      },
+      "receipt_sha256": "0dc0f1b16bfc5236fbfee2c941cad67990a2a4c0ed9966c7f8ad9ee35fc049f0",
+      "receipt_filename": "poolhouse-untrusted-build.json",
+      "manifest": {
+        "layoutVersion": 1,
+        "version": "0.164.0",
+        "target": "aarch64-apple-darwin",
+        "variant": "codex",
+        "entrypoint": "bin/codex",
+        "resourcesDir": "codex-resources",
+        "pathDir": "codex-path"
+      },
+      "original_sha256": {
+        "bin/codex": "40a7769c664a5ac81a848830636b75b08c5cc2ea74b9dc2cab26cd3579380412",
+        "bin/codex-code-mode-host": "454609589b784925d81ecd8a358bd4ee9d0789e0f394bbb7587bd049f7f3308a",
+        "codex-package.json": "c77eb3abe21da837655153670c53ccbb89c26995ba3ccad2b72204b4670e1ad8",
+        "codex-path/rg": "a326a1fb48074202e9ad41e4cd1e389eeea372c8c6f7d7e80da81176d5d9430e"
+      },
+      "candidate_sha256": {
+        "bin/codex": "385f219934714b0a95a74967792ee2ad7ecb750195bfaf2ce135ed46b6a728f4",
+        "bin/codex-code-mode-host": "454609589b784925d81ecd8a358bd4ee9d0789e0f394bbb7587bd049f7f3308a",
+        "codex-package.json": "c77eb3abe21da837655153670c53ccbb89c26995ba3ccad2b72204b4670e1ad8",
+        "codex-path/rg": "a326a1fb48074202e9ad41e4cd1e389eeea372c8c6f7d7e80da81176d5d9430e"
+      },
+      "receipt_status": "UNTRUSTED build candidate",
+      "admission": false,
+      "protected_custody": false
+    },
+    {
+      "variant": "codex-app-server",
+      "cli_exit": 0,
+      "source_originals_unchanged": true,
+      "nonproducer_payloads_unchanged": true,
+      "candidate_entrypoint_sha256": "e70b23215ca48f937ae4bf95d736e724cfe3fbf39863a58bcb5c14ad749b3c75",
+      "matches_already_probed_derivative": true,
+      "fresh_probes_run": false,
+      "output_mode": "0700",
+      "signature": {
+        "flags": "0x10002",
+        "entitlements": "absent document"
+      },
+      "receipt_sha256": "9a40858a159626262fde5861c49dfe1769041cd0df27b73acf9e79521cf1699f",
+      "receipt_filename": "poolhouse-untrusted-build.json",
+      "manifest": {
+        "layoutVersion": 1,
+        "version": "0.164.0",
+        "target": "aarch64-apple-darwin",
+        "variant": "codex-app-server",
+        "entrypoint": "bin/codex-app-server",
+        "resourcesDir": "codex-resources",
+        "pathDir": "codex-path"
+      },
+      "original_sha256": {
+        "bin/codex-app-server": "cd0c7ccff1eb965f0852521533159d3105ca8c729f3ccea26a8946a856ec3a9c",
+        "bin/codex-code-mode-host": "454609589b784925d81ecd8a358bd4ee9d0789e0f394bbb7587bd049f7f3308a",
+        "codex-package.json": "670975f440d9c6f972c538b7d4fff7af0191c8598d176398453c41b68561530f",
+        "codex-path/rg": "a326a1fb48074202e9ad41e4cd1e389eeea372c8c6f7d7e80da81176d5d9430e"
+      },
+      "candidate_sha256": {
+        "bin/codex-app-server": "e70b23215ca48f937ae4bf95d736e724cfe3fbf39863a58bcb5c14ad749b3c75",
+        "bin/codex-code-mode-host": "454609589b784925d81ecd8a358bd4ee9d0789e0f394bbb7587bd049f7f3308a",
+        "codex-package.json": "670975f440d9c6f972c538b7d4fff7af0191c8598d176398453c41b68561530f",
+        "codex-path/rg": "a326a1fb48074202e9ad41e4cd1e389eeea372c8c6f7d7e80da81176d5d9430e"
+      },
+      "receipt_status": "UNTRUSTED build candidate",
+      "admission": false,
+      "protected_custody": false
+    }
+  ],
+  "record_scope": "Preparation verification only; prior exact-byte observations reused, not rerun.",
+  "source_evidence": "macos-candidate-preparation-verification.json",
+  "helper_path": "patches/codex/macos/prepare_candidate.py",
+  "build_flow": {
+    "api": "prepare(package, absent_output)",
+    "cli": "python3 patches/codex/macos/prepare_candidate.py <CANONICAL_PACKAGE> <ABSENT_OUTPUT>",
+    "compute": "CLI automatically acquired one CPU admission per invocation",
+    "integration": "Internal build tooling can call prepare or its CPU-admitted two-path CLI; actual verification used the CLI. Shipping installer/CI orchestration is not established."
+  },
+  "prior_records": {
+    "native-macos-producer-evidence.json": "50b7238a25ca485263aaac31fb1ab78ae2ae76f2019fe952a7717d6be60d0aa5",
+    "native-macos-producer-derivative-evidence.json": "efcc5a75ecd1b55a911fe762541aa95dd8249decabf83718f4f3e777a240e962"
+  },
+  "limitations": [
+    "Both prepared entrypoint digests equal the separately observed derivative bytes. Only those prior short --version observations are reused; no fresh boundary probes were run.",
+    "Original source packages and every nonproducer payload remained unchanged. Original server DYLD failures remain immutable.",
+    "No installation, startup, publisher authentication, protected custody, node admission or H/K/P acceptance is established.",
+    "Live executable identity, server protection, attachment, core and genuine root/child completion proofs remain unverified.",
+    "No shipping installer or CI caller integration is established by this CLI verification."
+  ]
+}
