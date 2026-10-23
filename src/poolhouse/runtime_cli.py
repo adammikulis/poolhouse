@@ -66,14 +66,15 @@ def plan_from(args: argparse.Namespace, *, deploying: bool = True) -> runtime_de
     primary = runtime_trust.primary_for(_checkout(args.checkout), deploying=deploying,
                                         delegated=getattr(args, "via", "") == authority.DELEGATED)
     exception = getattr(args, "allow_unmerged", False)
-    if exception and person.marked() and (not runtime_unmerged.COMMIT.fullmatch(args.ref)
-                                         or (args.agent and args.agent != os.environ.get(authority.AGENT_ENV))):
-        raise runtime_deploy.DeployError("reviewed runtime deployment needs the full commit SHA and the caller's own identity")
     commit = runtime_deploy.resolve_commit(primary, getattr(args, "ref", "HEAD"))
+    if exception and person.marked() and args.agent and args.agent != os.environ.get(authority.AGENT_ENV):
+        raise runtime_deploy.DeployError("reviewed runtime deployment needs the caller's own identity")
     if exception and person.marked():
-        exception = runtime_unmerged.approve(primary, commit, args.review_branch)
+        exception = getattr(args, "_reviewed_approval", None) or runtime_unmerged.approve(primary, commit, args.review_branch)
     if deploying:
         runtime_deploy.admit(primary, commit, allow_unmerged=exception)
+    if isinstance(exception, runtime_unmerged.Approval):
+        args.ref, args.review_branch, args._reviewed_approval = commit, exception.branch, exception
     baseline = json.loads(args.automatic_from) if getattr(args, "automatic_from", "") else None
     if baseline is not None and (not isinstance(baseline, list) or len(baseline) not in (0, 5)
                                  or any(not isinstance(value, str) for value in baseline)):
@@ -367,8 +368,8 @@ GROUP.add("ensure", _reported(_ensure), help="make the checkout's commit the sel
          help="seconds to wait for another cutover to finish; the refusal names who holds the boundary"),
     flag("--await-published", type=float, default=0.0, help=argparse.SUPPRESS),
     flag("--force", action="store_true", help="rebuild even when held or current"),
-    flag("--allow-unmerged", action="store_true", help="deploy an exact independently reviewed source commit while delegated, or confirm at a terminal"),
-    flag("--review-branch", default="", help="the branch whose exact commit an independent review accepted, for a delegated source deployment"),
+    flag("--allow-unmerged", action="store_true", help="deploy the exact source commit using its standing independent approval"),
+    flag("--review-branch", default="", help="the reviewed branch (default: find a standing review of the exact commit)"),
     flag("--force-build", action="store_true", help="build again at once after a failed build (needs an agent)"),
     flag("--now", action="store_true", help="skip the stability delay before a background build"),
     flag("--settle", action="store_true", help="wait until the tip has been unchanged for a few minutes, then build only the newest tip"),

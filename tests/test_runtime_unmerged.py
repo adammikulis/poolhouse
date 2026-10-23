@@ -209,9 +209,10 @@ def test_cli_builds_a_typed_exact_reviewed_plan(reviewed):
     assert plan.allow_unmerged.commit == plan.commit == reviewed[4]
 
 
-@pytest.mark.parametrize("extra", [("--ref", "HEAD"), ("--ref", "a" * 7), ("--agent", "another-agent")])
-def test_cli_rejects_aliases_short_shas_and_other_actors(reviewed, extra):
-    with pytest.raises(runtime_source.DeployError, match="full commit SHA"):
+@pytest.mark.parametrize("extra,reason", [(("--ref", "missing-runtime-ref"), "git rev-parse failed"),
+                                        (("--agent", "another-agent"), "caller's own identity")])
+def test_cli_rejects_unknown_refs_and_other_actors(reviewed, extra, reason):
+    with pytest.raises(runtime_source.DeployError, match=reason):
         runtime_cli.plan_from(cli_args(reviewed, *extra))
 
 
