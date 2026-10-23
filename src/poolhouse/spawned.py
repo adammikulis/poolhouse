@@ -45,12 +45,25 @@ class Child(Protocol):
 
 
 class _Pid:
-    """A started process known only by its pid."""
+    """A started process known only by its pid: how it ended is seen when it is this process's own child (the status is collected),
+    and not seen when it is somebody else's."""
 
     def __init__(self, pid: int) -> None:
         self.pid = pid
+        self.code: int | None = None
 
     def poll(self) -> int | None:
+        if self.code is None:
+            self.code = self._collected()
+        return self.code
+
+    def _collected(self) -> int | None:
+        try:
+            collected, status = os.waitpid(self.pid, os.WNOHANG)
+        except (OSError, ValueError):
+            return UNKNOWN_EXIT if jobs.ended(self.pid) else None
+        if collected:
+            return os.waitstatus_to_exitcode(status)
         return UNKNOWN_EXIT if jobs.ended(self.pid) else None
 
 

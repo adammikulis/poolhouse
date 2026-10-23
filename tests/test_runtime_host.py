@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
@@ -142,6 +143,28 @@ def test_a_behind_host_is_replaced_through_the_job_preserving_restart_on_its_por
     assert log == runtime.directory() / "restart.log"
 
     assert runtime.available() == installed_runtime
+
+def test_a_restart_from_software_that_is_not_installed_says_the_host_is_not_bound(selected_runtime, host, monkeypatch):
+    from poolhouse import runtime_identity
+
+    (selected_runtime.prefix / "bin").mkdir()
+    (selected_runtime.prefix / "bin" / "python").symlink_to(sys.executable)
+    monkeypatch.setattr(runtime_identity, "_mac", lambda: True)
+    running = host()
+    spawn = Spawner(serving=running, becomes=selected_runtime.commit)
+    out = runtime_host.restart(running.port, Path("/r"), seams=runtime_host.Seams(spawn=spawn), wait_s=10)
+    assert out.action == "restarted"
+    assert "NOT bound to the Poolhouse executable" in out.detail and "poolhouse runtime ensure" in out.detail
+
+
+def test_a_restart_process_that_ends_before_the_host_answers_is_reported_with_how_it_ended_and_what_answers(selected_runtime, host):
+    running = host()
+    ended = SimpleNamespace(poll=lambda: 0)
+    spawn = lambda *a, **k: ended  # noqa: E731 - the process that ended without the new host answering
+    out = runtime_host.restart(running.port, Path("/r"), seams=runtime_host.Seams(spawn=spawn), wait_s=30)
+    assert out.action == "failed" and "exited with status 0" in out.detail, "a clean end is still an end without the new host"
+    assert f"port {running.port} is answered by commit" in out.detail, "what is left on the port is said"
+
 
 def test_a_replacement_that_does_not_show_up_is_reported_not_forced(selected_runtime, host):
     running, spawn = host(), Spawner()

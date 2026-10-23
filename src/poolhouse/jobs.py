@@ -22,7 +22,7 @@ from typing import Any
 
 from poolhouse import disclaim, runtime, sentinel
 from poolhouse.command import Group, flag
-from poolhouse.home import expand, state
+from poolhouse.home import expand, home, state
 from poolhouse.lock import Busy
 from poolhouse.log import say, warn
 from poolhouse.paths import source_checkout
@@ -46,6 +46,7 @@ __all__ = [
     "main",
     "record",
     "recorded",
+    "start",
     "status",
     "stop",
     "wait",
@@ -157,13 +158,23 @@ class Detached:
 
 def _start(command: list[str], environment: dict[str, str], out: Any, disclaimed: bool) -> tuple[int, subprocess.Popen | None]:
     """Start ``command`` detached with its output in ``out``: its pid, and its handle unless it was started with its own
-    responsibility (macOS, `poolhouse.disclaim`), which gives a pid only."""
+    responsibility (macOS, `poolhouse.disclaim`), which gives a pid only and starts it in the state root."""
     if disclaimed and disclaim.available():
-        return disclaim.spawn(command, environment, out.fileno()), None
+        where = home()
+        where.mkdir(parents=True, exist_ok=True)  # a process of its own never starts inside a folder macOS asks consent for
+        return disclaim.spawn(command, environment, out.fileno(), cwd=where), None
     from poolhouse.platform import detached_kwargs
 
     child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT, env=environment, **detached_kwargs())
     return child.pid, child
+
+
+def start(command: Sequence[str], *, out: Any, disclaimed: bool = False) -> Detached:
+    """Run exactly ``command`` owned by no terminal, its output going to the open file ``out`` (a caller whose own output is a
+    log passes its own, so the child's lines follow its own); no record is kept."""
+    environment = sentinel.default().scrub_env({**os.environ, "PYTHONUNBUFFERED": "1"})
+    pid, child = _start([str(a) for a in command], environment, out, disclaimed)
+    return Detached(pid=pid, log=Path(), command=tuple(str(a) for a in command), started=time.strftime("%FT%T"), process=child)
 
 
 def detach(module: str, argv: Sequence[str], *, log: Path, lines: Sequence[str] = (),

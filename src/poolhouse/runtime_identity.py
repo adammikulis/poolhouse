@@ -48,9 +48,13 @@ class IdentityError(OSError):
     """A runtime could not be made to run as Poolhouse; nothing was left half-changed."""
 
 
+def _mac() -> bool:
+    return sys.platform == "darwin"
+
+
 def applies() -> bool:
     """Whether this process is the installed software on a Mac, the only place that signs or binds anything."""
-    return sys.platform == "darwin" and not real_machine.refusal()
+    return _mac() and not real_machine.refusal()
 
 
 def _real(path: Path | str) -> Path:
@@ -337,6 +341,16 @@ def adopt(chosen: runtime.Runtime) -> str:
     was = bound(chosen.prefix, chosen.identity)
     bind(chosen)
     return "" if was else f"{chosen.commit[:7]} now runs as Poolhouse"
+
+
+def unbound_note(chosen: runtime.Runtime, command: str) -> str:
+    """A sentence saying a Mac runtime was left running as its bare Python and why, with the one ``command`` that binds it; '' when
+    nothing is left undone (bound already, a system with nothing to bind, or this process is the installed software, where `adopt`
+    binds it or raises)."""
+    if not _mac() or applies() or bound(chosen.prefix, chosen.identity):
+        return ""
+    return (f"NOT bound to the Poolhouse executable: {real_machine.refusal()}. This process can sign and bind only as the installed "
+            f"Poolhouse, so the host keeps running as {interpreter_of(chosen.prefix).name}. To bind it run `{command}`")
 
 
 def unit_problem() -> str:
