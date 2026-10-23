@@ -117,6 +117,20 @@ def _imports() -> dict[tuple[str, str], set[str]]:
     return found
 
 
+def imported(path: Path) -> set[str]:
+    """The absolute module names a file imports; ``from poolhouse.x import y`` counts as ``poolhouse.x`` and ``poolhouse.x.y``."""
+    found: set[str] = set()
+    for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"), str(path))):
+        if isinstance(node, ast.Import):
+            found |= {alias.name for alias in node.names}
+        elif isinstance(node, ast.ImportFrom):
+            assert not node.level, f"{path}: a relative import"
+            if node.module != "poolhouse":
+                found.add(node.module or "")
+            found |= {f"{node.module}.{alias.name}" for alias in node.names}
+    return found
+
+
 def _packages() -> set[str]:
     return {_package_of_file(path) for path in ROOT.rglob("*.py") if path != ROOT / "__init__.py"}
 
@@ -128,6 +142,15 @@ def _violations(edges: dict[tuple[str, str], set[str]]) -> set[tuple[str, str]]:
         if RANK[source] < RANK[target] or (RANK[source] == RANK[target] and (target, source) in edges):
             out.add((source, target))
     return out
+
+
+def test_the_testfarm_model_imports_only_the_standard_library() -> None:
+    files = sorted((ROOT / "testfarm" / "model").glob("*.py"))
+    assert files, "poolhouse.testfarm.model holds no module"
+    for path in files:
+        outside = {name for name in imported(path)
+                   if name.split(".")[0] not in sys.stdlib_module_names and not name.startswith("poolhouse.testfarm.model")}
+        assert not outside, f"{path.relative_to(REPO)} imports {sorted(outside)}; the model is standard library only"
 
 
 def test_every_package_is_placed_in_a_layer() -> None:

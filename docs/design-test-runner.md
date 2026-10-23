@@ -341,7 +341,7 @@ defaulted from the project's identity. `schema = 1` is required. Paths in the fi
 | `[schedule] seed, unrecorded_max, silence_margin, total_margin, queue_wait, background_after` | a committed durations file used by `divide` and until history exists; the most seconds assumed for a unit with no record; the margins of the hang guards (5.10); the queue limit; the estimated work after which a run takes the `background` class (5.5) | none; none (the median of the recorded ones, uncapped); none, and required unless every command the runner starts has a `timeout` (the run is refused with status 4, 5.10); none; none; none (every run is interactive unless the person says `--background`) |
 | `[requires]` | things a device must have, checked by probes the device owns (6.5) | none |
 | `[[unit]]` | a command unit with no LIST (5.7) | none |
-| `[preset.NAME]` | a preset defined in the project (7) | none |
+| `[presets.NAME]` | a preset defined in the project (7); the table is `presets` because `preset` is the key that names one, and a TOML key cannot be a text and a table | none |
 | `[list] glob` | the `files` preset's glob | none |
 | `[hooks] before_plan, before_run, after_run, timeout` | commands run on this machine only, never on a device; seconds each may run | none; the hang guard |
 
@@ -1001,11 +1001,11 @@ directories:
 A preset is a TOML table with the same keys as a project file (`list`, `run`, optionally `deps`, `label` rules, `[requires]`) and an
 optional `[confine]` table. It is named after a tool and holds no knowledge of any repository. It lives in `testfarm/presets/NAME.toml`; the
 helper programs it runs (`testfarm/presets/NAME/*.py`) are ordinary Python modules that import only the core. A project may define
-`[preset.NAME]` in its own file or in the user's `~/.config/poolhouse/testfarm-presets.toml`, which wins over a shipped one; the resolved
+`[presets.NAME]` in its own file or in the user's `~/.config/poolhouse/testfarm-presets.toml`, which wins over a shipped one; the resolved
 table, whichever file it came from, is what the reuse key hashes (5.3). `[confine]` names `read` (paths the tool needs to read, such as a
 package registry or a toolchain) and `env` (variable names the tool needs, such as `VIRTUAL_ENV`, `CARGO_HOME`, `RUSTUP_HOME`, `JAVA_HOME`,
 proxy and certificate variables). It is honoured from a shipped preset and from the user's preset file and is ignored in a project's own
-`[preset.NAME]`, because it widens a sandbox and a project must not widen its own.
+`[presets.NAME]`, because it widens a sandbox and a project must not widen its own.
 
 | Preset | LIST | RUN | Results | Group and labels | DEPS |
 |---|---|---|---|---|---|

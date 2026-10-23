@@ -16,10 +16,12 @@ from poolhouse import errors, features
 from poolhouse.api import _node
 from poolhouse.fleet.shard_spec import TEST_FILE
 from poolhouse.testfarm import report
+from poolhouse.testfarm.api import config, units
 from poolhouse.testfarm.client import ShardError, Shards, choose, pool_devices
 from poolhouse.testfarm.consent import FEATURE
+from poolhouse.testfarm.model import Config, Unit
 
-__all__ = ["Device", "Result", "devices", "run"]
+__all__ = ["Config", "Device", "Result", "Unit", "config", "devices", "run", "units"]
 
 TIERS = ("fast", "full", "slow", "all", "gate")
 

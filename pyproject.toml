@@ -196,6 +196,7 @@ poolhouse-device-setup = "poolhouse.device_setup:main"
 # the long commands this machine has recorded: what is running, waiting on one, stopping it
 poolhouse-jobs = "poolhouse.jobs:main"
 # the other devices of the pool that take tests (scripts/test TIER --on DEVICE): platform, free slots, last result
+poolhouse-test = "poolhouse.testfarm.cli:command"
 poolhouse-test-devices = "poolhouse.testfarm.devices:command"
 # agents coordinating: messages, notes, scratch folders and claims, all data and no authority
 poolhouse-workspace = "poolhouse.workspace.cli:main"

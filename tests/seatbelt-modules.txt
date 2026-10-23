@@ -31,3 +31,7 @@ test_serve_llamacpp.py
 test_serve_llamacpp_ccache.py
 test_test_kernel_isolation.py
 test_test_write_deny.py
+test_testfarm_config.py
+test_testfarm_list.py
+test_testfarm_cli.py
+test_api_project.py

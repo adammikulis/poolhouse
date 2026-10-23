@@ -36,6 +36,28 @@ cancels its job. Jobs use the admission below and are owned by the submitting wo
 which `scripts/testslots.py status` shows beside each lease. A run that names test files reuses
 earlier passes of unchanged files and says so per file ([test-reuse.md](test-reuse.md)).
 
+## `poolhouse-test`: a project describes its tests
+
+A repository describes its tests to the runner in one file, `testfarm.toml` (`docs/design-test-runner.md` is the design; schema 1). It gives
+a LIST command that prints the test ids, a RUN template that runs a subset of ids, and optionally which files each id depends on.
+`poolhouse-test init` writes a file to fill in and never overwrites one. `poolhouse-test check` validates the file and runs LIST;
+`poolhouse-test list [SELECTOR...]` prints the units. `ph.test.config(root)` and `ph.test.units(root, select)` are the same for a program.
+
+- **Strict.** An unknown key is named with the nearest known one. A command is an array of arguments, never a shell string. A number
+  is finite and above zero (a margin at least 1, `canary` above 0 and at most 1) and no more seconds than the platform's timers take. A
+  name matches `[a-z0-9_-]+`, an environment variable name `[A-Za-z_][A-Za-z0-9_]*`, a glob holds `*`, `**` and `?` only and stays
+  inside the project directory, and no key takes a regular expression. A command line has the placeholders of its place and no other.
+  A file that gives neither both `[schedule]` margins nor a `timeout` on every command the runner starts is refused: a run with no
+  hang guard is not allowed.
+- **An id** is text in normal form C with no control, format, separator or private-use character, not beginning with `-` or with a
+  prefix `[run] refuse_prefix` names. LIST output is split at newlines only.
+- **LIST runs confined**: no network, the project readable and not writable, a scratch directory the only place it writes, an
+  allowlist environment, and the time limit `[list] timeout` gives. A LIST that exits nonzero, is ended by its limit, prints text that
+  is not UTF-8 or prints no unit (unless `[list] allow_empty = true`) is exit status 4 with a sentence naming why.
+- **Exit status 4** is a refusal; 0 is success. `poolhouse.testfarm.model.exitcodes` holds the whole table of the design.
+- The runner keeps what it remembers under the platform's state location (`~/Library/Application Support/poolhouse-testfarm` on a Mac,
+  `$XDG_STATE_HOME/poolhouse-testfarm` on Linux), never under the pool's home.
+
 ## Reuse is the default
 
 A run that names test files reuses every unchanged file's stored pass; nothing asks for it and a brief never says

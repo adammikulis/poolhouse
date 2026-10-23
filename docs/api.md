@@ -212,7 +212,9 @@ only after a person turned remote tests on there and named the devices it takes 
 |---|---|
 | `ph.test.devices()` | The other devices as `Device`s: `name`, `connected`, `accepts`, `reason` (why not), `platform`, `free_slots`. |
 | `ph.test.run(tier, *, on, root=".", files=(), timeout_s=1800)` | Send the checkout at `root` to the device `on` (name or fingerprint), run `tier` (`fast`, `full`, `slow`, `all`, `gate`) and return its `Result`: `exit_code`, `passed`, `failed`, `skipped`, `failures`, `summary`. Failing tests are a result, not an exception. |
-| `ph.test.Device`, `ph.test.Result` | The frozen dataclasses. |
+| `ph.test.config(root=".")` | The project's `testfarm.toml` at `root`, validated, as a `Config`: the LIST, RUN and DEPS the project gives, its labels, steps, sets and schedule. Raises `Error` with one sentence when the file is missing or wrong. |
+| `ph.test.units(root=".", select=())` | The project's units as `Unit`s (`name`, `ids`, `labels`, `deps`, `seconds`): its LIST is run confined (no network, the project read-only), and `select` narrows them by `@SET`, an id, a glob over ids or a unit name. Raises `Error` when LIST fails or prints nothing, or nothing matches. |
+| `ph.test.Device`, `ph.test.Result`, `ph.test.Config`, `ph.test.Unit` | The frozen dataclasses. |
 
 ```python
 for d in ph.test.devices():
