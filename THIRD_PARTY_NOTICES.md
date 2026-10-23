@@ -89,9 +89,9 @@ Copied into the repository, not installed from a registry. Each example's `vendo
 | `src/poolhouse/ui/assets/OrbitControls.js` | three | 0.186.1 | MIT |
 | `src/poolhouse/ui/assets/RoomEnvironment.js` | three | 0.186.1 | MIT |
 | `src/poolhouse/ui/assets/RoundedBoxGeometry.js` | three | 0.186.1 | MIT |
-| `examples/rbmk_control_room/viewer/vendor/loaders/GLTFLoader.js` | three.js | 0.186.1 | MIT |
-| `examples/rbmk_control_room/viewer/vendor/utils/BufferGeometryUtils.js` | three.js | 0.186.1 | MIT |
-| `examples/rbmk_control_room/viewer/vendor/utils/SkeletonUtils.js` | three.js | 0.186.1 | MIT |
+| `examples/rbmk/room/vendor/loaders/GLTFLoader.js` | three.js | 0.186.1 | MIT |
+| `examples/rbmk/room/vendor/utils/BufferGeometryUtils.js` | three.js | 0.186.1 | MIT |
+| `examples/rbmk/room/vendor/utils/SkeletonUtils.js` | three.js | 0.186.1 | MIT |
 
 ## Rust crates in the window (`app/src-tauri`)
 

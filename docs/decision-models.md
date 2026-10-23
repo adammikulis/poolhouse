@@ -55,8 +55,8 @@ The same from a shell, with `--json` printing `{name: answer}`:
 - Each question is a separate model call: questions about one state share no computation yet, so
   ten questions cost ten calls.
 - This returns categories, probabilities and an expected value. It does not write text.
-- A worked example: [`examples/rbmk_operator`](../examples/rbmk_operator/README.md) operates a toy RBMK-1000 with the released
-  decider, hierarchical named questions, interlocks and a logged, replayable decision record.
+- A worked example: [`examples/rbmk`](../examples/rbmk/README.md) is a 3D control room of a toy RBMK-1000 whose controls the released
+  decider uses, with hierarchical named questions, interlocks and a logged, replayable decision record.
 
 
 ## Shared-state System One server batches
