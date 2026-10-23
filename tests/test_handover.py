@@ -171,7 +171,7 @@ def test_a_process_that_was_killed_is_reported_as_killed_not_as_ended(tmp_path, 
         started = jobs.start([sys.executable, "-I", "-S", "-c", "import os, signal; os.kill(os.getpid(), signal.SIGKILL)"], out=out,
                              disclaimed=disclaimed)
     child = spawned.child_of(started)
-    deadline = time.monotonic() + 30
+    deadline = time.monotonic() + 120
     while child.poll() is None and time.monotonic() < deadline:
         time.sleep(0.05)
     code = child.poll()

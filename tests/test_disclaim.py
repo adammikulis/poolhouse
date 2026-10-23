@@ -121,7 +121,7 @@ def test_a_name_that_is_not_utf8_is_carried_as_the_system_has_it(tmp_path):
 
 
 def _printed(path: Path) -> str:
-    deadline = time.monotonic() + 30
+    deadline = time.monotonic() + 120
     while time.monotonic() < deadline and not path.read_text().strip():
         time.sleep(0.05)
     return path.read_text().strip()

@@ -51,7 +51,7 @@
  "decide.Calibration": "(temperature: 'float' = 1.0, knots: 'tuple[tuple[float, float], ...]' = <factory>, n: 'int' = 0) -> None",
  "decide.Calibration.apply": "(self, probs: 'Sequence[float]') -> 'list[float]'",
  "decide.Calibration.public": "(self) -> 'dict[str, Any]'",
- "decide.Config": "(backend: 'str' = 'auto', url: 'str' = '', model: 'str' = '', token: 'str' = '', embed_url: 'str' = '', embed_head: 'str' = '', pointer: 'str' = '', calibration: 'Calibration | None' = None, rules: 'RulesDecider | None' = None, download: 'bool' = False, order: 'tuple[str, ...]' = ('pointer', 'logprob', 'embed', 'rules')) -> None",
+ "decide.Config": "(backend: 'str' = 'auto', url: 'str' = '', model: 'str' = '', token: 'str' = '', embed_url: 'str' = '', embed_head: 'str' = '', pointer: 'str' = '', calibration: 'Calibration | None' = None, rules: 'RulesDecider | None' = None, download: 'bool' = False, batched: 'bool' = False, order: 'tuple[str, ...]' = ('pointer', 'logprob', 'embed', 'rules')) -> None",
  "decide.DecideError": "__new__(*args, **kwargs); __init__(self, /, *args, **kwargs)",
  "decide.Decision": "(choice: 'str', scores: 'Mapping[str, float]', margin: 'float', abstained: 'bool' = False, latency_ms: 'float' = 0.0, backend: 'str' = '', model: 'str' = '', details: 'Mapping[str, object]' = <factory>) -> None",
  "decide.Decision.public": "(self) -> 'dict[str, object]'",
