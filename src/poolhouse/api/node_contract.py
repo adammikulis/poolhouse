@@ -60,7 +60,7 @@ def _encode(value: _Scalar | _Record) -> object:
 
 
 CONTRACT_VERSION = 1
-SCHEMA_SHA256 = "d472c6141f2d81c22de630ab5184984ce8e444000ba033d95ca5d7510902fb79"
+SCHEMA_SHA256 = "6868ce8fa0c5112efd3e71c824c0fec2e1ddb42aedbd33e553bae5195256dd28"
 
 
 class CertificateDigest(_Scalar):

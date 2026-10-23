@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from .load import variant_name
+from .common import variant_name
 
 VALIDATE = r'''
 fn valid(kind: &str, value: &str) -> bool {

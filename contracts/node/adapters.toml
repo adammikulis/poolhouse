@@ -1,0 +1,62 @@
+version = 1
+trait = "NativeCallerPlatform"
+binding = "node-owned-runtime-handle"
+serialization = "forbidden"
+handles = ["VerifiedInstallation", "RawChannel", "AdmittedProducer", "VerifiedBootstrap", "HeldProcess", "RunningProcess", "KernelCaller"]
+errors = ["InvalidInstallation", "MissingChannel", "WrongPrincipal", "StaleProcess", "UnprotectedProcess", "ConfinementUnavailable", "BindingMismatch", "Cancelled", "Io"]
+requirements = ["no-caller-selected-authority", "no-serde-or-public-constructors", "actual-principal-and-process-lifetime", "held-drop-kills-and-reaps", "release-consumes-hold-once", "node-validates-caller-observations", "terminate-without-pid-reuse", "no-unsupported-platform-fallback"]
+
+[[method]]
+name = "verify_installation"
+arguments = []
+result = "VerifiedInstallation"
+
+[[method]]
+name = "verify_bootstrap"
+arguments = [{name = "installation", type = "VerifiedInstallation", ownership = "borrow"}]
+result = "VerifiedBootstrap"
+
+[[method]]
+name = "authenticate_producer"
+arguments = [{name = "channel", type = "RawChannel", ownership = "move"}, {name = "installation", type = "VerifiedInstallation", ownership = "borrow"}]
+result = "AdmittedProducer"
+
+[[method]]
+name = "hold_spawn"
+arguments = [{name = "producer", type = "AdmittedProducer", ownership = "borrow"}, {name = "bootstrap", type = "VerifiedBootstrap", ownership = "borrow"}]
+result = "HeldProcess"
+
+[[method]]
+name = "observe_held"
+arguments = [{name = "held", type = "HeldProcess", ownership = "borrow"}]
+result = "ProcessObservation"
+
+[[method]]
+name = "release"
+arguments = [{name = "held", type = "HeldProcess", ownership = "move"}, {name = "binding", type = "Binding", ownership = "borrow"}]
+result = "RunningProcess"
+
+[[method]]
+name = "inspect_caller"
+arguments = [{name = "channel", type = "RawChannel", ownership = "move"}, {name = "installation", type = "VerifiedInstallation", ownership = "borrow"}]
+result = "KernelCaller"
+
+[[method]]
+name = "caller_observation"
+arguments = [{name = "caller", type = "KernelCaller", ownership = "borrow"}]
+result = "ProcessObservation"
+
+[[method]]
+name = "is_live"
+arguments = [{name = "running", type = "RunningProcess", ownership = "borrow"}]
+result = "bool"
+
+[[method]]
+name = "cancel_hold"
+arguments = [{name = "held", type = "HeldProcess", ownership = "move"}]
+result = "unit"
+
+[[method]]
+name = "terminate"
+arguments = [{name = "running", type = "RunningProcess", ownership = "move"}]
+result = "unit"

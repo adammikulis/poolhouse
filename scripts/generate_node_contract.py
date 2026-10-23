@@ -7,7 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from node_contract import python, rust, typescript
+from node_contract import lifecycle, python, rust, typescript
 from node_contract.load import load
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -23,6 +23,7 @@ def outputs(root: Path) -> dict[Path, str]:
                "private_client_types": [row["name"] for row in rows if row["visibility"] == "private"]}
     return {
         root / "app/poolhouse-node/src/contract.rs": rust.render(meta, rows, digest),
+        root / "app/poolhouse-node/src/contract_lifecycle.rs": lifecycle.render(meta["lifecycle"], meta["adapters"]),
         root / "src/poolhouse/api/node_contract.py": python.render(meta, rows, digest),
         root / "app/contracts/node.ts": typescript.render(meta, rows, digest),
         root / "contracts/node/vectors.json": json.dumps(vectors, indent=2) + "\n",

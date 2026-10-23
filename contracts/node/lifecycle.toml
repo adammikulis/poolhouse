@@ -1,0 +1,41 @@
+version = 1
+authorization = "node-checked-code"
+repeated_completion = "return-identical-result-without-effects"
+cancellation_race = "first-atomic-terminal-transition-wins"
+restart = "invalidate-prior-ephemeral-generations"
+
+[session]
+states = ["opening", "live", "retired"]
+initial = "opening"
+terminal = ["retired"]
+transitions = [
+  {from = "opening", event = "admit", to = "live"},
+  {from = "opening", event = "retire", to = "retired"},
+  {from = "live", event = "retire", to = "retired"},
+]
+
+[invocation]
+states = ["reserved", "bound", "released", "consumed", "cancelled", "invalidated"]
+initial = "reserved"
+terminal = ["consumed", "cancelled", "invalidated"]
+transitions = [
+  {from = "reserved", event = "bind", to = "bound"},
+  {from = "bound", event = "release", to = "released"},
+  {from = "released", event = "consume", to = "consumed"},
+  {from = "reserved", event = "cancel", to = "cancelled"},
+  {from = "bound", event = "cancel", to = "cancelled"},
+  {from = "released", event = "cancel", to = "cancelled"},
+  {from = "reserved", event = "invalidate", to = "invalidated"},
+  {from = "bound", event = "invalidate", to = "invalidated"},
+  {from = "released", event = "invalidate", to = "invalidated"},
+]
+
+[requirements]
+admit = ["authenticated-producer", "actual-native-birth", "validated-root-and-direct-parent", "current-generations"]
+reserve = ["live-session", "current-generations", "immutable-actor-context", "event-and-purpose", "exact-payload-digest"]
+bind = ["actual-held-process", "live-exact-process-handle", "reservation-owner", "current-generations", "no-prior-binding"]
+release = ["live-session", "current-generations", "unchanged-context-purpose-and-digest", "exact-live-bound-process", "single-use-hold"]
+consume = ["live-session", "current-generations", "exact-live-bound-caller", "matching-event-purpose-and-digest", "required-cleanup-evidence", "atomic-single-consumer"]
+cancel = ["authorized-caller", "atomic-terminal-race", "close-capabilities-before-termination"]
+retire = ["invalidate-outstanding-descendants-and-invocations", "close-channels-before-reaping", "new-generation-to-reopen"]
+invalidate = ["bind-failure-or-process-exit-or-lost-producer-or-lost-holder-or-restart", "no-process-reassignment"]

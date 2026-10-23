@@ -75,3 +75,14 @@ encoding and verified-adapter requirements; it accepts raw representation only, 
 [Mac preservation ledger](notes/native-macos-preserved-work.md) separates retained custody from current physical state.
 Please return the reviewed canonical adapter/operation checkpoint and fresh Windows and Linux/WSL actor/endpoint replies
 through the [rendezvous request](native-plan-macos.md#agent-rendezvous-data). These replies remain observations, not authority.
+
+The next proposal adds `lifecycle.toml` and `adapters.toml` to the canonical
+schema digest. Generated Rust transition metadata records terminal states,
+atomic completion/cancellation, generation invalidation, and exact process
+binding requirements. Metadata does not implement or authorize a transition.
+The generated `NativeCallerPlatform` trait uses opaque associated runtime handles;
+release consumes a held process and borrows the node-owned binding. These handles
+are neither generated wire records nor proof accepted from a client. Platform
+implementations, protected construction, drop cleanup, and installed hostile
+caller evidence remain required. The earlier checkpoint digest above identifies
+that historical type-only proposal, rather than the extended schema.
