@@ -102,8 +102,10 @@ def pytest_collection_finish(session):
         _ready("collected")
 
 
-@pytest.hookimpl(hookwrapper=True)
+@pytest.hookimpl(hookwrapper=True, tryfirst=True)
 def pytest_runtest_protocol(item, nextitem):
+    # Outermost, so pytest-timeout's clock starts after the wait for a slot: a test queued behind other runs is not timed out for
+    # being queued, and the timeout cannot fire inside the wait and end the whole run with an internal error.
     heavy = Path(str(item.path)).stem in testslots.HEAVY_MODULES
     with slot(label=item.nodeid[-256:], heavy=heavy):
         item.user_properties.append((WAIT_PROPERTY, take_waited()))
