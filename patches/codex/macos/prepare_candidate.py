@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import ctypes
+import functools
 import hashlib
 import json
 import os
@@ -10,16 +12,42 @@ from pathlib import Path
 import platform
 import plistlib
 import re
+import runpy
 import selectors
 import shutil
+import signal
 import stat
 import struct
 import subprocess
+import sys
+import tempfile
 import time
 
 NOFOLLOW = os.O_NOFOLLOW | os.O_CLOEXEC
-TARGETS = {"arm64": ("aarch64-apple-darwin", 0x100000C), "x86_64": ("x86_64-apple-darwin", 0x1000007)}
+TARGETS = {"arm64": ("aarch64-apple-darwin", 0x100000C, 0), "x86_64": ("x86_64-apple-darwin", 0x1000007, 3)}
 RECEIPT = "poolhouse-untrusted-build.json"
+ROOT = Path(__file__).resolve().parents[3]
+unique_object = runpy.run_path(str(ROOT / "src/poolhouse/json_objects.py"))["unique_object"]
+
+
+@functools.lru_cache(maxsize=1)
+def _acl_guard():
+    temporary = tempfile.TemporaryDirectory(prefix="poolhouse-codex-acl-")
+    directory = Path(temporary.name)
+    _tool(["/bin/chmod", "-N", str(directory)])
+    wrapper, library = directory / "guard.c", directory / "guard.dylib"
+    wrapper.write_text('#include "Capture.c"\nbool ph_candidate_acl(int fd) { return clean_acl(fd); }\n')
+    _tool(["/usr/bin/clang", "-dynamiclib", "-I", str(ROOT / "app/native-host"), str(wrapper), "-o", str(library)])
+    guard = ctypes.CDLL(str(library))
+    guard.ph_candidate_acl.argtypes = [ctypes.c_int]
+    guard.ph_candidate_acl.restype = ctypes.c_bool
+    guard.temporary = temporary
+    return guard
+
+
+def _clean_acl(descriptor):
+    if not _acl_guard().ph_candidate_acl(descriptor):
+        raise ValueError("ACL grants mutation or cannot be verified")
 
 
 def _path(value: Path) -> Path:
@@ -33,10 +61,12 @@ def _path(value: Path) -> Path:
 def _directory(path: Path):
     descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY | NOFOLLOW)
     try:
+        _clean_acl(descriptor)
         for part in path.parts[1:]:
             child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | NOFOLLOW, dir_fd=descriptor)
             os.close(descriptor)
             descriptor = child
+            _clean_acl(descriptor)
             info = os.fstat(descriptor)
             if info.st_uid not in (0, os.getuid()) or info.st_mode & 0o022 and not info.st_mode & stat.S_ISVTX:
                 raise ValueError("directory ancestry is writable by another owner")
@@ -51,6 +81,7 @@ def _fingerprint(info):
 
 
 def _read(descriptor, destination=None):
+    _clean_acl(descriptor)
     before = os.fstat(descriptor)
     if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_uid != os.getuid() or before.st_mode & 0o022:
         raise ValueError("payload must be an owned, singly linked regular file")
@@ -69,6 +100,7 @@ def _scan(root: Path):
     entries = {}
 
     def visit(descriptor, prefix):
+        _clean_acl(descriptor)
         info = os.fstat(descriptor)
         if info.st_uid != os.getuid() or info.st_mode & 0o022:
             raise ValueError("package directories must be owned and private from other writers")
@@ -111,13 +143,13 @@ def _manifest(root, entries):
         raw = stream.read(16385)
     if hashlib.sha256(raw).hexdigest() != entries["codex-package.json"]["sha256"]:
         raise ValueError("manifest changed")
-    manifest = json.loads(raw)
+    manifest = json.loads(raw, object_pairs_hook=unique_object)
     if not isinstance(manifest, dict):
         raise ValueError("package manifest must be an object")
     variant = manifest.get("variant")
     if variant not in ("codex", "codex-app-server"):
         raise ValueError("unsupported producer variant")
-    target, cpu = TARGETS[platform.machine()]
+    target, cpu, subtype = TARGETS[platform.machine()]
     expected = {"layoutVersion": 1, "version": manifest.get("version"), "target": target,
                 "variant": variant, "entrypoint": f"bin/{variant}",
                 "resourcesDir": "codex-resources", "pathDir": "codex-path"}
@@ -131,18 +163,32 @@ def _manifest(root, entries):
         raise ValueError("unsupported package layout")
     for name in payloads - {"codex-package.json"}:
         data = entries[name]
-        if len(bytes.fromhex(data["header"])) < 16 or struct.unpack("<4I", bytes.fromhex(data["header"])[:16])[:2] != (0xFEEDFACF, cpu):
-            raise ValueError("unsupported Mach-O architecture")
-        if struct.unpack("<4I", bytes.fromhex(data["header"])[:16])[3] != 2 or not data["identity"][3] & 0o100:
+        header = bytes.fromhex(data["header"])
+        if len(header) < 16 or struct.unpack("<4I", header[:16]) != (0xFEEDFACF, cpu, subtype, 2):
+            raise ValueError("unsupported canonical Mach-O architecture")
+        if not data["identity"][3] & 0o100:
             raise ValueError("package executable is not a native executable")
+
     return manifest
+
+
+def _only_unreaped_leader(group):
+    library = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+    library.proc_listpids.argtypes = [ctypes.c_uint32, ctypes.c_uint32, ctypes.c_void_p, ctypes.c_int]
+    library.proc_listpids.restype = ctypes.c_int
+    members = (ctypes.c_int * 128)()
+    count = library.proc_listpids(2, group, members, ctypes.sizeof(members))
+    if count <= 0 or count >= ctypes.sizeof(members) or count % ctypes.sizeof(ctypes.c_int):
+        return False
+    return set(members[:count // ctypes.sizeof(ctypes.c_int)]) <= {0, group}
 
 
 def _tool(arguments):
     environment = {"PATH": "/usr/bin:/bin", "LANG": "C"}
     proc = subprocess.Popen(arguments, env=environment, stdin=subprocess.DEVNULL,
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
     selector, output = selectors.DefaultSelector(), {"stdout": bytearray(), "stderr": bytearray()}
+    completed = None
     try:
         for name, stream in (("stdout", proc.stdout), ("stderr", proc.stderr)):
             os.set_blocking(stream.fileno(), False)
@@ -159,16 +205,32 @@ def _tool(arguments):
                     output[key.data].extend(block)
                     if len(output[key.data]) > 32768:
                         raise ValueError("macOS build tool output exceeded its bound")
-        if proc.wait(timeout=max(.01, deadline - time.monotonic())):
+        completed = None
+        while completed is None and time.monotonic() < deadline:
+            completed = os.waitid(os.P_PID, proc.pid, os.WEXITED | os.WNOWAIT | os.WNOHANG)
+            if completed is None:
+                time.sleep(.01)
+        if completed is None or completed.si_code != os.CLD_EXITED or completed.si_status != 0:
             raise ValueError("macOS build tool refused candidate")
         return {name: bytes(value) for name, value in output.items()}
     finally:
-        if proc.poll() is None:
-            proc.kill()
-        proc.wait()
-        selector.close()
-        proc.stdout.close()
-        proc.stderr.close()
+        # WNOWAIT above keeps the leader PID reserved until its owned group is closed.
+        try:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            except PermissionError:
+                # Darwin rejects signaling a group containing only its reserved zombie leader.
+                if completed is None or not _only_unreaped_leader(proc.pid):
+                    raise
+        finally:
+            try:
+                proc.wait(timeout=2)
+            finally:
+                selector.close()
+                proc.stdout.close()
+                proc.stderr.close()
 
 
 def _entitlements(binary):
@@ -191,6 +253,13 @@ def _sign(binary):
     return {"flags": flags.group(1).decode(), "entitlements": _entitlements(binary)}
 
 
+def _same_directory(path, descriptor):
+    with _directory(path) as named:
+        current, captured = os.fstat(named), os.fstat(descriptor)
+        if (current.st_dev, current.st_ino) != (captured.st_dev, captured.st_ino):
+            raise ValueError("captured directory lineage changed")
+
+
 def prepare(package: Path, output: Path) -> dict:
     """Copy a canonical package into an absent output and return its UNTRUSTED build receipt."""
     if platform.system() != "Darwin" or platform.machine() not in TARGETS:
@@ -198,19 +267,26 @@ def prepare(package: Path, output: Path) -> dict:
     package, output = _path(package), _path(output)
     if package == output or package in output.parents or output in package.parents:
         raise ValueError("source and output overlap")
-    with _directory(output.parent):
+    with _directory(output.parent) as parent_fd, _directory(package) as source_fd:
         if os.path.lexists(output):
             raise ValueError("output already exists")
+        return _prepare(package, output, parent_fd, source_fd)
+
+
+def _prepare(package, output, parent_fd, source_fd):
     original = _scan(package)
     manifest = _manifest(package, original)
     producer = manifest["entrypoint"]
     original_entitlements = _entitlements(package / producer)
     if _scan(package) != original:
         raise ValueError("source changed before copying")
-    output.mkdir(mode=0o700)
-    owned = output.stat()
+    os.mkdir(output.name, mode=0o700, dir_fd=parent_fd)
+    owned = os.stat(output.name, dir_fd=parent_fd, follow_symlinks=False)
+    stack = contextlib.ExitStack()
     try:
+        _same_directory(output.parent, parent_fd)
         _tool(["/bin/chmod", "-N", str(output)])
+        output_fd = stack.enter_context(_directory(output))
         for name, data in sorted(original.items()):
             if not name:
                 continue
@@ -227,8 +303,23 @@ def prepare(package: Path, output: Path) -> dict:
                     raise ValueError("source changed during copy")
             finally:
                 os.close(descriptor)
-        signature = _sign(output / producer)
+        _same_directory(package, source_fd)
+        _same_directory(output.parent, parent_fd)
+        _same_directory(output, output_fd)
+        with os.fdopen(_open_file(output, producer), "rb") as held:
+            _clean_acl(held.fileno())
+            captured = _read(held.fileno())
+            named = os.stat(output / producer, follow_symlinks=False)
+            if captured["sha256"] != original[producer]["sha256"] or (named.st_dev, named.st_ino) != captured["identity"][:2]:
+                raise ValueError("copied producer changed before signing")
+            # codesign atomically replaces this file; its captured parent/root must stay bound.
+            signature = _sign(output / producer)
+        _same_directory(package, source_fd)
+        _same_directory(output.parent, parent_fd)
+        _same_directory(output, output_fd)
         candidate = _scan(output)
+        if _manifest(output, candidate) != manifest:
+            raise ValueError("candidate package metadata changed")
         before = {name: data["sha256"] for name, data in original.items() if "sha256" in data}
         after = {name: data["sha256"] for name, data in candidate.items() if "sha256" in data}
         if set(candidate) != set(original) or set(before) != set(after) or any(after[name] != digest for name, digest in before.items() if name != producer):
@@ -245,12 +336,14 @@ def prepare(package: Path, output: Path) -> dict:
         return receipt
     except BaseException:
         try:
-            current = output.lstat()
+            current = os.stat(output.name, dir_fd=parent_fd, follow_symlinks=False)
         except FileNotFoundError:
             current = None
         if current is not None and (current.st_dev, current.st_ino) == (owned.st_dev, owned.st_ino):
-            shutil.rmtree(output)
+            shutil.rmtree(output.name, dir_fd=parent_fd)
         raise
+    finally:
+        stack.close()
 
 
 def main():
@@ -258,8 +351,12 @@ def main():
     parser.add_argument("package", type=Path)
     parser.add_argument("output", type=Path)
     arguments = parser.parse_args()
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import testslots
+
     try:
-        print(json.dumps(prepare(arguments.package, arguments.output)))
+        with testslots.lease(1, label="macOS Codex candidate preparation"):
+            print(json.dumps(prepare(arguments.package, arguments.output)))
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
         parser.exit(1, "Cannot prepare this untrusted macOS build candidate.\n")
 
