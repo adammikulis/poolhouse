@@ -41,10 +41,11 @@ earlier passes of unchanged files and says so per file ([test-reuse.md](test-reu
 A repository describes its tests to the runner in one file, `testfarm.toml` (`docs/design-test-runner.md` is the design; schema 1). It gives
 a LIST command that prints the test ids, a RUN template that runs a subset of ids, and optionally which files each id depends on.
 `poolhouse-test init` writes a file to fill in and never overwrites one. `poolhouse-test check` validates the file and runs LIST;
-`poolhouse-test list [SELECTOR...]` prints the units. `ph.test.config(root)` and `ph.test.units(root, select)` are the same for a program.
+`poolhouse-test list [SELECTOR...]` prints the units. `ph.test.config(root)` and `ph.test.units(root, select)` are the same for a program. The project root is the first directory at or above the
+working directory (or the path a command names) that holds a `testfarm.toml` or a `.git` entry; the walk never climbs into a parent repository.
 
 - **Strict.** An unknown key is named with the nearest known one. A command is an array of arguments, never a shell string. A number
-  is finite and above zero (a margin at least 1, `canary` above 0 and at most 1) and no more seconds than the platform's timers take. A
+  is finite and above zero (a margin at least 1, `canary` above 0 and at most 1), an integer longer than the parser reads is refused, `slice_base` has no default and no more seconds than the platform's timers take. A
   name matches `[a-z0-9_-]+`, an environment variable name `[A-Za-z_][A-Za-z0-9_]*`, a glob holds `*`, `**` and `?` only and stays
   inside the project directory, and no key takes a regular expression. A command line has the placeholders of its place and no other.
   A file that gives neither both `[schedule]` margins nor a `timeout` on every command the runner starts is refused: a run with no

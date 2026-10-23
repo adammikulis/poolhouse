@@ -9,7 +9,7 @@ from poolhouse.testfarm.core import spawn, tree
 from poolhouse.testfarm.model import Config, ConfigError, Unit, ids, parse, units_of
 from poolhouse.testfarm.model.units import read_rows
 
-__all__ = ["CONFIG_NAME", "Listed", "check", "list_units", "load", "report"]
+__all__ = ["CONFIG_NAME", "Listed", "check", "find_root", "list_units", "load", "report"]
 
 CONFIG_NAME = "testfarm.toml"
 
@@ -21,6 +21,14 @@ class Listed:
     units: tuple[Unit, ...]
     ids: int
     ignored: int
+
+
+def find_root(start: Path) -> Path:
+    """The project root for ``start``: the first directory at or above it that holds a testfarm.toml or a ``.git`` entry. The walk stops
+    there and never climbs into a parent repository; with neither anywhere above, ``start`` itself."""
+    start = Path(start).resolve()
+    return next((directory for directory in (start, *start.parents)
+                 if (directory / CONFIG_NAME).is_file() or (directory / ".git").exists()), start)
 
 
 def load(root: Path) -> Config:

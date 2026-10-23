@@ -254,18 +254,46 @@ def test_nan_infinity_negative_and_oversized_seconds_are_refused():
     head = 'schema = 1\n[run]\nargv = ["sh", "{ids}"]\n'
     for value in ("nan", "+nan", "inf", "-inf", "0", "-3", "1e999", "1e12", "true", '"5"', "[5]"):
         _refused(head + f"timeout = {value}\n", "timeout")
+    assert parse((head + f"timeout = {threading.TIMEOUT_MAX}\n").encode()).run.timeout == threading.TIMEOUT_MAX
+
+
+def test_non_finite_zero_negative_and_out_of_range_numbers_are_refused():
+    head = 'schema = 1\n[run]\nargv = ["sh", "{ids}"]\ntimeout = 5\n'
     for table, key in [("[schedule]", "silence_margin"), ("[schedule]", "total_margin"), ("[schedule]", "queue_wait"),
                        ("[schedule]", "unrecorded_max"), ("[schedule]", "background_after"), ("[reuse]", "canary"),
-                       ("[label.x]", "estimate"), ("[label.x]", "timeout"), ("[label.x]", "slots")]:
-        for value in ("nan", "inf", "-1", "0"):
-            _refused(head + f"timeout = 5\n{table}\n{key} = {value}\n", key)
-    for key in ("test_timeout", "batch", "slices_per_target"):
-        for value in ("nan", "inf", "-1", "0"):
-            _refused(head + f"timeout = 5\n{key} = {value}\n", key)
-    _refused(head + "timeout = 5\n[schedule]\nsilence_margin = 0.5\n", "at least 1")
-    _refused(head + "timeout = 5\n[reuse]\ncanary = 1.5\n", "at most 1")
-    _refused(head + "timeout = 5\nslice_base = 2\n", "slice_base")
-    assert parse((head + f"timeout = {threading.TIMEOUT_MAX}\n").encode()).run.timeout == threading.TIMEOUT_MAX
+                       ("[label.x]", "estimate"), ("[label.x]", "timeout"), ("[label.x]", "slots"), ("[hooks]", "timeout"),
+                       ("[[step]]\nname = 's'\nrun = ['sh']\ntimeout = 5", "keep"), ("[[step]]\nname = 's'\nrun = ['sh']\ntimeout = 5", "slots")]:
+        for value in ("nan", "inf", "-inf", "1e999", "-1", "0"):
+            _refused(head + f"{table}\n{key} = {value}\n", key)
+    for key in ("test_timeout", "batch", "slices_per_target", "slice_count"):
+        for value in ("nan", "inf", "-1", "0", "1e999"):
+            _refused(head + f"{key} = {value}\n", key)
+    for value in ("0.5", "0", "-1", "inf"):
+        _refused(head + f"[schedule]\nsilence_margin = {value}\n", "silence_margin")
+    for value in ("0", "2", "1.5", "-0.1", "nan", "inf"):
+        _refused(head + f"[reuse]\ncanary = {value}\n", "canary")
+    assert parse((head + "[reuse]\ncanary = 1\n[schedule]\nsilence_margin = 1\ntotal_margin = 1.5\n").encode()).reuse.canary == 1.0
+    _refused(head + "slice_base = 2\n", "slice_base")
+
+
+def test_a_run_with_one_margin_is_refused():
+    base = 'schema = 1\n[list]\nrun = ["sh", "list.sh"]\n[run]\nargv = ["sh", "{ids}"]\n'
+    for margins in ("silence_margin = 3", "total_margin = 4"):
+        _refused(base + f"[schedule]\n{margins}\n", "silence_margin and total_margin are not both set")
+    assert parse((base + "[schedule]\nsilence_margin = 3\ntotal_margin = 4\n").encode()).schedule.silence_margin == 3.0
+
+
+def test_slice_base_is_required_with_slice():
+    base = 'schema = 1\n[run]\ntimeout = 5\nslice = ["tool", "--shard", "{slice_index}/{slice_count}"]\n'
+    _refused(base, "[run] slice_base: is required whenever slice is set")
+    assert parse((base + "slice_base = 1\n").encode()).run.slice_base == 1
+    assert parse((base + "slice_base = 0\n").encode()).run.slice_base == 0
+    assert parse(b'schema = 1\n[run]\nargv = ["sh", "{ids}"]\ntimeout = 5\n').run.slice_base is None
+
+
+def test_a_toml_integer_of_5000_digits_is_a_validation_error():
+    _refused("schema = 1\nnumber = " + "9" * 5000, "longer than the parser reads")
+    _refused('schema = 1\n[run]\nargv = ["sh"]\ntimeout = ' + "9" * 5000, "longer than the parser reads")
 
 
 def test_toml_nesting_that_raises_recursionerror_is_a_validation_error():

@@ -41,6 +41,8 @@ def _read(data: bytes) -> dict:
         raise ConfigError(f"testfarm.toml: not valid TOML: {error}") from None
     except (RecursionError, MemoryError):
         raise ConfigError("testfarm.toml: nested too deeply to read") from None
+    except ValueError:
+        raise ConfigError("testfarm.toml: a number is longer than the parser reads") from None
 
 
 def _fields(where: str, table: object, section: str) -> dict:
@@ -112,6 +114,8 @@ def _run_spec(table: dict) -> RunSpec | None:
         for holder in wanted:
             if sum(part.count(holder) for part in spec.slice) != 1:
                 raise k.fail("[run] slice", f"must hold exactly one {holder}")
+    if spec.slice is not None and spec.slice_base is None:
+        raise k.fail("[run] slice_base", "is required whenever slice is set: 0 or 1, where the project's tool starts counting its slices")
     if "list" in table and spec.argv is not None and not any(part == "{ids}" or "{idfile}" in part for part in spec.argv):
         raise k.fail("[run] argv", "must hold {ids} or {idfile} so the ids reach the command when there is a [list]")
     return spec

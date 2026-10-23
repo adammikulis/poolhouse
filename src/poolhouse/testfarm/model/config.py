@@ -40,7 +40,7 @@ class RunSpec:
     ids_after: str | None = None
     refuse_prefix: tuple[str, ...] = ()
     slice: Argv | None = None
-    slice_base: int = 1
+    slice_base: int | None = None
     slice_count: int | str = "auto"
     slices_per_target: int = 1
     slice_results: str = "exit"

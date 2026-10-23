@@ -8,6 +8,7 @@ import sys
 from testfarm_project import SHELL_CONFIG, project, shell_project
 
 from poolhouse.testfarm import cli
+from poolhouse.testfarm.core import project as project_core
 
 
 def run(*args, capsys):
@@ -52,3 +53,23 @@ def test_the_command_runs_as_a_module_and_its_help_names_the_three_commands(tmp_
     done = subprocess.run([sys.executable, "-m", "poolhouse.testfarm.cli", "check", "--root", str(root)], capture_output=True, text=True,
                           timeout=120)
     assert done.returncode == 0 and "units: 2 from 2 ids" in done.stdout, done.stderr
+
+
+def test_the_root_is_the_first_directory_up_with_a_file_or_a_git_entry_and_the_walk_stops_there(tmp_path, capsys):
+    root = shell_project(tmp_path)
+    deep = root / "tests" / "nested"
+    deep.mkdir()
+    assert project_core.find_root(deep) == root.resolve()
+    status, out, _ = run("check", "--root", str(deep), capsys=capsys)
+    assert status == 0 and "units: 2 from 2 ids" in out
+    repo = tmp_path / "other"
+    (repo / ".git").mkdir(parents=True)
+    below = repo / "app" / "src"
+    below.mkdir(parents=True)
+    assert project_core.find_root(below) == repo.resolve()
+    status, _, err = run("check", "--root", str(below), capsys=capsys)
+    assert status == 4 and "poolhouse-test init" in err
+    (repo / "testfarm.toml").write_text("schema = 1\n")
+    assert project_core.find_root(below) == repo.resolve()
+    (repo / "app" / ".git").mkdir()
+    assert project_core.find_root(below) == (repo / "app").resolve(), "the walk stops at the nearer .git and never climbs into the parent"

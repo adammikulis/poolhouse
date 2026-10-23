@@ -39,12 +39,13 @@ def state_location() -> Path:
 
 
 def _root(args: argparse.Namespace) -> Path:
-    return Path(args.root).resolve()
+    """The project root: the first directory at or above ``--root`` with a testfarm.toml or a .git entry."""
+    return project.find_root(Path(args.root))
 
 
 def init(args: argparse.Namespace) -> int:
     """Write a testfarm.toml to fill in; an existing file is never overwritten."""
-    target = _root(args) / project.CONFIG_NAME
+    target = Path(args.root).resolve() / project.CONFIG_NAME
     if target.exists():
         warn(f"poolhouse-test: {target} exists and is left as it is")
         return exitcodes.REFUSED
