@@ -10,6 +10,7 @@ pub mod build;
 pub mod cert;
 pub mod claims;
 pub mod contract;
+pub mod contract_lifecycle;
 pub mod client;
 pub mod device;
 pub mod error;

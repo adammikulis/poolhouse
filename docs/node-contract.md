@@ -75,3 +75,34 @@ encoding and verified-adapter requirements; it accepts raw representation only, 
 [Mac preservation ledger](notes/native-macos-preserved-work.md) separates retained custody from current physical state.
 Please return the reviewed canonical adapter/operation checkpoint and fresh Windows and Linux/WSL actor/endpoint replies
 through the [rendezvous request](native-plan-macos.md#agent-rendezvous-data). These replies remain observations, not authority.
+
+The next proposal adds `lifecycle.toml` and `adapters.toml` to the canonical
+schema digest. Generated Rust transition metadata records terminal states,
+atomic completion/cancellation, generation invalidation, and exact process
+binding requirements. Metadata does not implement or authorize a transition.
+The generated `NativeCallerPlatform` trait uses opaque associated runtime handles;
+release consumes a held process and borrows the node-owned binding. These handles
+are neither generated wire records nor proof accepted from a client. Platform
+implementations, protected construction, drop cleanup, and installed hostile
+caller evidence remain required. The earlier checkpoint digest above identifies
+that historical type-only proposal, rather than the extended schema.
+
+Independent review of `457235724` found no blocker to publishing these incomplete
+declarations. Before K acceptance, `hold_spawn` needs an opaque node-owned spawn
+plan binding the invocation, command and approved executable/assets; its current
+producer/bootstrap arguments are insufficient for implementation. The lifecycle
+loader checks declared terminal states and reachability, but does not enforce
+every permitted edge against a fixed semantic transition set. Runtime refusal
+tests and stronger semantic validation remain required; passing structural
+checks proves neither admission nor single-consumer execution.
+
+The follow-up closes those two declaration gaps: `NativeCallerPlatform` now
+borrows an opaque node-owned `SpawnPlan` when holding a process. The plan must
+bind the invocation/generation and retain measured executable/assets, immutable
+arguments, environment, directory and confinement, with explicit handle
+ownership/inheritance. Release must match that same plan and generation. The
+lifecycle v1 loader now refuses changed initial/terminal states, missing or extra
+transitions, shortcut consumption and altered required checks. These semantics
+require an explicit contract-version change to revise. Independent attack review
+approved this scope; protected constructors and actual atomic enforcement remain
+implementation and installed-proof obligations.
