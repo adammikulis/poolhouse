@@ -49,6 +49,7 @@ def bookmarks() -> dict[str, tuple[Vector, Vector]]:
         "dials": (Vector((2.75, 6.3, 2.1)), Vector((3.66, 8.22, 2.3))),
         "alarms": (Vector((-1.0, 5.9, 2.0)), Vector((-2.9, 8.5, 2.45))),
         "decision": (Vector((-3.75, 4.65, 1.9)), Vector((-5.9, 6.8, 2.2))),
+        "runpanel": (Vector((-2.28, 5.0, 1.55)), Vector((-3.09, 6.78, 1.45))),
     }
 
 

@@ -22,7 +22,7 @@ from ..decider.model import DECIDERS, MEMORIES, LiveAsker, ModelStopped
 from ..decider.policy import CrewScript, ModelDecider, NaiveDecider
 from ..display import export as display, text
 from ..live import LiveRunner
-from ..run import clocks, rods_of, scenario_of, store
+from ..run import clocks, rods_of, run_one, scenario_of, store
 from ..runner import Runner, RunOptions
 from . import recordings
 from .jobs import Busy, Cancelled, Job
@@ -183,10 +183,10 @@ class Hub:
         job = Job(uuid.uuid4().hex[:10], "run", key, controller, label)
         self.jobs[job.id] = job
         job.scn = scn
-        header = {"scenario": {"key": scn.key, "title": text.TITLES.get(scn.key, scn.key), "description": text.description(scn),
+        header = {"scenario": {"key": scn.key, "title": text.title(scn), "description": text.description(scn),
                                "group": scn.group, "seed": scn.seed, "ticks": scn.ticks}, "controller": controller, "memory": memory, "label": label,
                   "rods": rods_of(scn)}
-        body = (lambda j: self._model_run(j, scn, header, decider, memory, speed)) if controller == "model" \
+        body = (lambda j: self._model_run(j, scn, header, decider, RunOptions(speed=speed, memory=memory))) if controller == "model" \
             else (lambda j: self._plain_run(j, scn, header, controller))
         self._spawn(job, body, controller == "model")
         return job
@@ -209,13 +209,44 @@ class Hub:
         finally:
             self._close(job, feeder)
 
-    def _model_run(self, job: Job, scn: scenarios.Scenario, header: dict[str, Any], decider: str, memory: str, speed: float) -> None:
+    def start_batch(self, count: int, seed: int, memories: list[str], decider: str = "", first: int = 0) -> Job:
+        """Run ``count`` varied poisoned starts (`starts.draw`) for each memory variant with the model, skipping any already in the run store."""
+        if count < 1:
+            raise ValueError("count must be at least 1")
+        if decider not in {d["id"] for d in DECIDERS}:
+            raise ValueError(f"unknown decider {decider!r}")
+        if not memories or any(m not in MEMORIES for m in memories):
+            raise ValueError(f"memories must be some of {', '.join(MEMORIES)}")
+        job = Job(uuid.uuid4().hex[:10], "batch", "poisoned starts", "model", f"batch: {count} poisoned starts, seed {seed}")
+        self.jobs[job.id] = job
+
+        def body(j: Job) -> None:
+            asker = self._asker(decider)
+            j.emit(type="warming")
+            warm = asker.warm()
+            self.model_id = asker.model or self.model_id
+            plan = [(starts.draw(seed, k), m) for k in range(first, first + count) for m in memories]
+            todo = [(scn, m) for scn, m in plan if not (self.folder / asker.model / m / f"{scn.key}.json").exists()]
+            j.emit(type="plan", total=len(plan), skipped=len(plan) - len(todo))
+            for scn, memory in todo:
+                if j.cancel.is_set():
+                    raise Cancelled("stopped by the person")
+                res, rec = run_one(scn, asker, warm, memory)
+                path = self.folder / asker.model / memory / f"{scn.key}.json"
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(recorder.dumps(rec) + "\n")
+                j.emit(type="item_done", name=scn.key, memory=memory, state=text.outcome(res)["state"], decisions=len(res.decisions))
+
+        self._spawn(job, body, True)
+        return job
+
+    def _model_run(self, job: Job, scn: scenarios.Scenario, header: dict[str, Any], decider: str, opts: RunOptions) -> None:
         asker = self._asker(decider)
         job.emit(type="warming")
         warm = asker.warm()
         self.model_id = asker.model or self.model_id
-        runner = Runner(scn, ModelDecider(asker, scn.seed), RunOptions(speed=speed, memory=memory))
-        live = LiveRunner(runner, speed=speed, timeout=asker.timeout)
+        runner = Runner(scn, ModelDecider(asker, scn.seed), opts)
+        live = LiveRunner(runner, speed=opts.speed, timeout=asker.timeout)
         job.runner, job.backend = runner, self._backend("live", asker, warm)
         feeder = Feeder(job, runner, header)
 
@@ -245,7 +276,7 @@ class Hub:
         finally:
             self._close(job, feeder)
             if job.status == "running" and runner.res.finished and not job.cancel.is_set():
-                self._save(job, scn, memory)
+                self._save(job, scn, opts.memory)
 
     def _close(self, job: Job, feeder: Feeder) -> None:
         feeder.flush()

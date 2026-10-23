@@ -27,7 +27,7 @@ def export(res: Result, scn: Scenario, meta: dict[str, Any], rods: list[dict[str
                                                                                 if f.name not in ("events", "extra")}},
                  "controller": res.controller, "memory": res.memory, "backend": meta["backend"], "clocks": meta["clocks"],
                  "finished": res.finished, "error": None, "digest": recorder.digest(res)},
-        "display": {"title": text.TITLES[scn.key], "description": text.description(scn)},
+        "display": {"title": text.title(scn), "description": text.description(scn)},
         "limits": {"thermal_mw": THERMAL_MW, "orm_min": ORM_MIN},
         "classes": desk.CLASSES, "protections": desk.PROTECTIONS, "provenance": PROVENANCE,
         "rods": rods,

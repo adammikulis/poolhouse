@@ -116,6 +116,15 @@ def test_bad_requests_are_refused_with_the_reason(served):
     assert hub.jobs == {}, "a refused request starts nothing"
 
 
+def test_a_bad_batch_request_is_refused_and_starts_nothing(served):
+    hub, port = served
+    assert call(port, "POST", "/api/batch", {"count": 0, "memories": ["none"]})[0] == 400
+    assert call(port, "POST", "/api/batch", {"count": 2, "memories": []})[0] == 400
+    assert call(port, "POST", "/api/batch", {"count": 2, "memories": ["state"]})[0] == 400
+    assert call(port, "POST", "/api/batch", {"count": 2, "memories": ["none"], "decider": "nothing"})[0] == 400
+    assert hub.jobs == {}, "a refused request starts nothing"
+
+
 def test_the_info_names_every_scenario_the_decider_and_the_memory_variants(served):
     _, port = served
     status, info = call(port, "GET", "/api/info")
@@ -276,3 +285,28 @@ def test_a_real_model_run_is_saved_or_says_why_and_a_recording_replays_to_its_di
     (tmp_path / "changed.json").write_text(json.dumps(rec))
     with pytest.raises(recordings.BadDocument, match="does not replay"):
         hub.recording("changed.json")
+
+
+@pytest.mark.real_model
+@pytest.mark.timeout(2400)
+def test_a_batch_runs_poisoned_starts_with_the_real_model_saves_each_and_resumes_without_repeating(tmp_path, real):
+    with real.pointer():
+        hub = Hub(tmp_path, wait_s=900, hold=already_held)
+        first = hub.start_batch(1, 1, ["none"])
+        while first.status == "running":
+            threading.Event().wait(0.5)
+        assert first.status == "done", first.error
+        plan = next(e for e in first.events if e["type"] == "plan")
+        done = [e for e in first.events if e["type"] == "item_done"]
+        assert plan["total"] == 1 and plan["skipped"] == 0 and len(done) == 1
+        saved = sorted(tmp_path.glob("*/none/start_1_0.json"))
+        assert len(saved) == 1 and done[0]["name"] == "start_1_0"
+        doc = hub.recording(f"{saved[0].parent.parent.name}/none/start_1_0.json")
+        assert doc["meta"]["scenario"]["key"] == "start_1_0" and doc["meta"]["backend"]["model"]
+        again = hub.start_batch(1, 1, ["none"])
+        while again.status == "running":
+            threading.Event().wait(0.5)
+        assert again.status == "done", again.error
+        replan = next(e for e in again.events if e["type"] == "plan")
+        assert (replan["total"], replan["skipped"]) == (1, 1)
+        assert not [e for e in again.events if e["type"] == "item_done"], "a start already in the run store is not run again"

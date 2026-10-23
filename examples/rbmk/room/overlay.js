@@ -50,7 +50,7 @@ export class Overlay {
   }
 
   add(ins, id, q) {
-    const kind = id === 'SCREEN_ORM' ? 'orm' : ins.type;
+    const kind = id === 'SCREEN_ORM' ? 'orm' : id === 'SCREEN_RUN' ? 'run' : ins.type;
     this.elements.push(this.make({ kind, id, ins, q }));
   }
 
@@ -96,7 +96,7 @@ export class Overlay {
         el.cur = this.ease(el.cur, target, snap, dt);
         moving = moving || (target !== null && el.cur !== target);
         key = el.cur === null ? 'none' : Math.round(el.cur / NEEDLE_STEP);
-      } else if (el.kind === 'ann' || el.kind === 'lamp') {
+      } else if (el.kind === 'ann' || el.kind === 'lamp' || el.kind === 'key') {
         el.lit = st.nodes.get(el.id).lit;
         key = el.lit;
       } else if (el.kind === 'button') {

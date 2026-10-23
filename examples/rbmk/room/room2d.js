@@ -77,6 +77,7 @@ export function start2d({ RB, feed, spec, $, app }) {
     const hit = overlay.hit(...pointer(e));
     if (!hit) return closeCard();
     if (hit.kind === 'marker') return goView(hit.panel);
+    if (hit.kind === 'key') return RB.desk.press(hit.ins.action);
     return showCard(hit);
   };
 
