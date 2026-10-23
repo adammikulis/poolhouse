@@ -61,6 +61,9 @@ Mac results for the exact two-patch set are in the [original producer evidence](
 compile, two context tests and both packages passed; both original candidates executed injected DYLD code before hardening.
 Live startup, attachment and core proofs remain unverified; H remains unfinished and the active host is unchanged.
 Keep the original failed artifacts/results immutable; derivative experiments need separate evidence.
+A separate [version comparison](native-macos-producer-derivative-evidence.json) records copies signed ad hoc with the
+runtime option. All eight `--version` cases exited 0; injected code ran in originals and produced no marker in copies.
+Short exits establish no live identity, server protection or H acceptance. Original server failures remain unchanged.
 Published WSL/GNU compile/context evidence is separate and establishes no installed H proof or remote identity.
 The Git author label `chatgpt-ce2684` establishes no current workspace actor, service principal or endpoint.
 Reply requested from Windows and independent Linux/WSL sessions, separately: fresh observation time and source,
