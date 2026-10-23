@@ -33,10 +33,10 @@ is not restated here except where the detail adds to it; where the two meet, AGE
 Shared claims are enforced by maintained mutation and launch tooling, not advisory board messages (docs/workspace.md,
 "Mutation ownership").
 
-- Before editing a shared file area, using a worktree or port, changing an installed runtime, or reserving
-  model/compute resources, acquire the applicable authenticated claim or broker allocation. File areas use
-  repository identity plus relative path across worktrees; physical worktree claims stay separate. Claim only the
-  required area, not an entire repository that would serialize unrelated changes.
+- Mutation and launch tooling acquires only the required authenticated claim or broker allocation automatically.
+  Canonical file areas use repository identity plus relative path across worktrees; physical worktree claims stay
+  separate. Atomic overlap checking and acquisition preserve concurrent unrelated work. Manual claim commands serve
+  diagnostics and exceptional recovery, rather than a recurring step in normal work.
 - A clean checkout can fast-forward or switch to an exact independently reviewed commit under its physical worktree
   and branch claims. Do not reserve every incoming source file for that baseline move, and preserve unique branch
   history before switching. New source edits, custom staging and conflict resolutions still require their named
@@ -46,13 +46,12 @@ Shared claims are enforced by maintained mutation and launch tooling, not adviso
 - Claims never grant project permissions, bypass person approval or permit another agent's credentials; tool policy
   and registry/project scope remain required. Broker-controlled resources use that broker's authoritative lease, not
   a parallel informal GPU lock.
-- A claim covers a step: heartbeat while working, release when idle, never hold one across a wait. Ask a stale
-  claim's owner once, then use the documented recovery. Refresh active claims before expiry. An expired claim or dead worker needs verified recovery or an explicit
-  task-scoped handoff before mutation; do not infer permission from an old PID or steal a live claim. Use
-  authenticated task-scoped handoffs rather than stealing, preserve checkpoints and exact task/resource identity
-  during recovery, and do not let released or expired ownership race a new reservation. Read-only inspection needs
-  no mutation claim; ambiguous destructive commands are refused or confined to the explicitly claimed authorized
-  project.
+- Tooling renews only a live claim still owned by its authenticated session and releases it when the resource is idle
+  or the work finishes. Repeated cleanup succeeds when ownership is already absent and never reacquires it. An expired
+  claim or dead worker needs verified recovery or an authenticated task-scoped handoff before mutation; preserve
+  checkpoints and exact task/resource identity, and atomically exclude a competing reservation. An old PID or a
+  caller-supplied label establishes no ownership. Read-only inspection needs no mutation claim; ambiguous destructive
+  commands are refused or confined to the explicitly claimed authorized project.
 
 ### Delegation, accounts and limits
 
