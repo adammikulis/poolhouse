@@ -88,9 +88,11 @@ whatever else is running, and the broker is what makes a lease wait for memory a
 `poolhouse-serve limits` is honoured. A server spec's `context` of 0 means "fit" and is answered where the server is leased
 (`serve.fitted.fitted`), so no caller carries a context of its own; a context given is used as given. Slots are the caller's
 demand and default to one, as in llama.cpp, with `escalate` growing a running server; `suggest.slots_that_fit` says how many
-slots of a context the memory would hold. Nothing stands in for a number that cannot be derived: a model with no readable GGUF
-header (an MLX folder, a file that is not a GGUF), or a header with no `<architecture>.context_length`, is refused naming what is
-missing, and the person passes `--context`. One slot is the only fixed default, as in llama.cpp. A measured profile's context and
+slots of a context the memory would hold. Nothing stands in for a number that cannot be derived. An MLX model is fitted the same way from its own `config.json`
+(`max_position_embeddings`, read as `decide.window` reads it; the cache is sized at the width MLX stores it), a model not on this
+machine from the Hub's config before anything is fetched (`serve.mlxfit`). A model that reports no window (a header with no
+`<architecture>.context_length`, a config with no `max_position_embeddings`, a file that is not a model, a GGUF not yet fetched, a
+Hub config that cannot be read) is refused naming what is missing, and the person passes `--context`. One slot is the only fixed default, as in llama.cpp. A measured profile's context and
 slots were measured for one workload, so `up` applies them only when `--workload` names it and says so otherwise; the profile's
 build, draft, cache type and flags still apply. `poolhouse-models fit MODEL` with no `--context` costs exactly what `up` would
 serve, and `poolhouse-serve up` prints the line that says what was chosen and what it needs.
