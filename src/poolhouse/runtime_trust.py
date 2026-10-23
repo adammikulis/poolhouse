@@ -124,14 +124,15 @@ def authorize(command: str, *, cwd: Path | None = None) -> str:
     A launcher or login unit carries no agent marker, so it is not gated; the `authority.use` row this writes for a
     delegated pass names the agent.
     """
-    if not person.marked():
+    if not (person.marked() or os.environ.get(authority.SUBAGENT_ENV)):
         return authority.PERSON
     return authority.require(GATE, f"runtime {command}", scope=authority.Scope(cwd=recorded_primary() or cwd))
 
 
 def audit(command: str, commit: str, result: str, *, agent: str = "", detail: str = "", **passed: str) -> bool:
     """Append a sealed activity record for one deploy command; True when it was written."""
-    context = bool(person.marked() or agent or os.environ.get(AGENT_ENV) or os.environ.get("POOLHOUSE_WORKSPACE_TOKEN"))
+    context = bool(person.marked() or agent or os.environ.get(AGENT_ENV) or os.environ.get("POOLHOUSE_WORKSPACE_TOKEN") or
+                   os.environ.get(authority.SUBAGENT_ENV))
     who = ""
     if context:
         try:

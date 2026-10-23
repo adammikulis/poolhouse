@@ -114,7 +114,8 @@ def source_epoch(source: Path) -> int:
 
 
 def _agent_context(agent: str = "") -> bool:
-    return bool(agent or os.environ.get(session.AGENT_ENV) or os.environ.get(session.TOKEN_ENV) or person.marked())
+    return bool(agent or os.environ.get(session.AGENT_ENV) or os.environ.get(session.TOKEN_ENV) or
+                os.environ.get(session.SUBAGENT_ENV) or person.marked())
 
 
 def acting(plan: Plan) -> session.Session | None:

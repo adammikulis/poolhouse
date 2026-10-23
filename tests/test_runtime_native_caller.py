@@ -165,3 +165,19 @@ def test_readonly_runtime_plan_needs_no_workspace_registration(native, monkeypat
     args = runtime_cli.GROUP.parser().parse_args(["status", "--checkout", str(project.root)])
     plan = runtime_cli.plan_from(args, deploying=False)
     assert plan.checkout == project.root and plan.agent == ""
+
+
+def test_subagent_selector_alone_cannot_fall_back_to_anonymous_install_or_audit(native, monkeypatch):
+    project, _, _, original = native
+    for name in (*person.AGENT_MARKERS, authority.AGENT_ENV, "POOLHOUSE_WORKSPACE_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(authority.SUBAGENT_ENV, "unknown-child")
+    plan = runtime_deploy.Plan(project.root, original[4], None)
+    monkeypatch.setattr(runtime_deploy, "prepare_root", lambda: pytest.fail("mutated runtime state"))
+    with pytest.raises(runtime_source.DeployError, match="authenticated workspace"):
+        runtime_deploy.ensure(plan, builder=lambda *_args: pytest.fail("built without authority"))
+    rows = []
+    monkeypatch.setattr(writer, "record", lambda _kind, **row: not rows.append(row))
+    runtime_trust.audit("ensure", original[4], "refused", source=str(project.root))
+    assert rows[0]["actor"] == "agent:unavailable"
+    assert not rows[0]["meta"]["person"]
