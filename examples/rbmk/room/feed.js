@@ -34,7 +34,7 @@ export class RunFeed {
   // Changes whenever the run is replaced or grows, so a painted screen knows when to repaint.
   get stamp() {
     this.data;
-    return `${this._serial}:${this._sig}`;
+    return `${this._serial}:${this._sig}:${this.S.selected}`;
   }
 
   get data() {
@@ -134,7 +134,15 @@ export class RunFeed {
     return this.status === 'ok' ? this.run.trace.slice(Math.max(0, this.index - n + 1), this.index + 1) : [];
   }
 
+  // The decision picked in the log when it was asked at this tick (several can be), else the latest one asked by this tick.
+  _picked(tick) {
+    const d = this.run && this.run.rows[this.S.selected];
+    return d && d.kind === 'decision' && d.tick === tick ? d : null;
+  }
+
   _decisionAt(tick) {
+    const picked = this._picked(tick);
+    if (picked) return picked;
     let best = null;
     for (const d of this.data.decisions) {
       if (d.tick <= tick) best = d;
@@ -150,6 +158,8 @@ export class RunFeed {
   get modelDecision() {
     if (this.status !== 'ok') return null;
     const tick = this.row.tick;
+    const picked = this._picked(tick);
+    if (picked && picked.answers && Object.keys(picked.answers).length) return picked;
     let best = null;
     for (const d of this.data.decisions) {
       if (d.tick > tick) break;

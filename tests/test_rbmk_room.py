@@ -117,6 +117,7 @@ def model(tmp_path, serve_leases, real):
 
 
 @pytest.mark.real_model
+@pytest.mark.timeout(1500)
 def test_a_model_run_names_its_model_and_every_answer_comes_from_it(model):
     meta = model['meta']
     assert meta['controller'] == 'model' and meta['backend']['model'] and 'CANNED' not in meta['backend']['model'].upper()

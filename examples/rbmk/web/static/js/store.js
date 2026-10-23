@@ -42,6 +42,7 @@ window.RB = window.RB || {};
       else if (ev.type === 'row') { this.addRow(ev.row); }
       else if (ev.type === 'landed') { Object.assign(this.rows[ev.i], { applied_tick: ev.applied_tick, applied_t_s: ev.applied_t_s, log_line: ev.log_line }); }
       else if (ev.type === 'caption') { this.captions.push(ev.row); }
+      else if (ev.type === 'warning') { RB.fail(ev.text); }
       else if (ev.type === 'asking') { this.asking = ev.tick; this.askedAt = performance.now(); }
       else if (ev.type === 'model') { this.model = ev.id; RB.state.info.model.id = ev.id; }
       else if (ev.type === 'document') { this.fetchDocument(); }

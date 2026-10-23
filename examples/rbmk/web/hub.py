@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import datetime
+import json
 import threading
 import uuid
 from collections.abc import Callable
@@ -253,9 +254,14 @@ class Hub:
             job.emit(type="document", index=0)
 
     def _save(self, job: Job, scn: scenarios.Scenario, memory: str) -> None:
-        """A finished model run goes to the local run store as a recording, the way `run.py record` writes it."""
+        """A finished model run goes to the local run store as a recording, the way `run.py record` writes it, if it replays."""
         res = job.runner.res
         rec = recorder.recording_of(res, scn, {**job.backend, "mode": "recorded"}, clocks(scn, res))
+        try:
+            recorder.replay(json.loads(json.dumps(rec)), scn)
+        except recorder.ReplayMismatch as exc:
+            job.emit(type="warning", text=f"This run was not saved to the run store: its recording does not replay ({exc}).")
+            return
         path = self.folder / job.backend["model"] / memory / f"{scn.key}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(recorder.dumps(rec) + "\n")

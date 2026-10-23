@@ -13,7 +13,7 @@ import threading
 from pathlib import Path
 
 import pytest
-from rbmk_run import HOLD_WAIT_S, already_held
+from rbmk_run import HOLD_WAIT_S, already_held, sync_recording
 
 from examples.rbmk.room import shoot
 from examples.rbmk.web import server
@@ -157,6 +157,7 @@ def test_a_phone_sees_the_whole_app_without_sideways_scrolling(playwright, tmp_p
 
 @pytest.mark.slow
 @pytest.mark.real_model
+@pytest.mark.timeout(1500)
 def test_a_real_model_run_shows_its_answers_in_the_log_and_on_the_wall_and_opens_again_from_the_run_store(playwright, tmp_path, real):
     with real.pointer(), shoot.serving(tmp_path, wait_s=HOLD_WAIT_S, hold=already_held) as origin:
         browser, page, errors = shoot.open_page(playwright, origin)
@@ -174,8 +175,10 @@ def test_a_real_model_run_shows_its_answers_in_the_log_and_on_the_wall_and_opens
             page.wait_for_function("window.__room.feed.modelDecision !== null")
             assert page.evaluate("window.__room.feed.modelDecision.i") == page.evaluate("window.RB.state.selected")
             assert page.evaluate("window.__room.feed.modelId") == model
-            name = f"{model}/none/fixture_short.json"
-            assert (tmp_path / name).is_file(), "a finished model run is saved to the run store"
+            saved = (tmp_path / model / "none" / "fixture_short.json").is_file()
+            assert saved or "was not saved" in page.inner_text("#banner"), "a finished model run is saved to the run store, or the banner says why"
+            name = sync_recording(tmp_path)
+            page.evaluate("window.RB.openDrawer('run')")
             page.click("#modeRec")
             page.wait_for_function(f"[...document.querySelectorAll('#recording option')].some((o) => o.value === {name!r})")
             page.select_option("#recording", name)

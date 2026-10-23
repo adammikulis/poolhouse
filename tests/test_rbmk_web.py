@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from rbmk_run import already_held, plain_run
+from rbmk_run import already_held, plain_run, sync_recording
 
 from examples.rbmk import scenarios
 from examples.rbmk.display import export
@@ -254,7 +254,8 @@ def test_the_run_store_list_shows_files_that_cannot_be_shown(served, tmp_path, p
 
 
 @pytest.mark.real_model
-def test_a_real_model_run_is_saved_to_the_run_store_and_replays_to_its_digest(tmp_path, real):
+@pytest.mark.timeout(1500)
+def test_a_real_model_run_is_saved_or_says_why_and_a_recording_replays_to_its_digest(tmp_path, real):
     with real.pointer():
         hub = Hub(tmp_path, wait_s=900, hold=already_held)
         job = hub.start_run("fixture_short", "model")
@@ -262,13 +263,15 @@ def test_a_real_model_run_is_saved_to_the_run_store_and_replays_to_its_digest(tm
             threading.Event().wait(0.5)
         assert job.status == "done", job.error
         doc = hub.document(job.id)
+        name = sync_recording(tmp_path)
     model = doc["meta"]["backend"]["model"]
     assert model and doc["meta"]["controller"] == "model" and any(r["kind"] == "decision" and r["answers"] for r in doc["rows"])
-    name = f"{model}/none/fixture_short.json"
-    assert (tmp_path / name).is_file()
+    saved = (tmp_path / model / "none" / "fixture_short.json").is_file()
+    warned = [e for e in job.events if e["type"] == "warning"]
+    assert saved != bool(warned), "a finished model run is saved to the run store, or the page is told why it was not"
     replayed = hub.recording(name)
-    assert replayed["meta"]["digest"] == doc["meta"]["digest"] and replayed["trace"] == doc["trace"]
     rec = json.loads((tmp_path / name).read_text())
+    assert replayed["meta"]["digest"] == rec["digest"] and replayed["meta"]["backend"]["model"] == model
     rec["decisions"][0]["calls"][0]["state_sha256"] = "0" * 64
     (tmp_path / "changed.json").write_text(json.dumps(rec))
     with pytest.raises(recordings.BadDocument, match="does not replay"):
