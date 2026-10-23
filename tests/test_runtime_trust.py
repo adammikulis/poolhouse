@@ -7,12 +7,16 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
+from node_kit import WorkspaceNode
 
 from poolhouse import (
     keystore,
+    node_binary as node_binary_module,
+    node_supervise,
     runtime,
     runtime_deploy,
     runtime_source,
@@ -21,13 +25,15 @@ from poolhouse import (
 )
 from poolhouse.activity import writer
 from poolhouse.activity.schema import Entry
+from poolhouse.board import client, place
+
+pytest_plugins = ["node_kit"]
 
 pty = importlib.import_module("pty") if sys.platform != "win32" else None
 ROOT = Path(__file__).resolve().parent
 SRC = str(ROOT.parent / "src")
 GIT_ENV = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.org",
            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.org"}
-LEAD = "agent-lead01"
 
 
 def git(repo, *words):
@@ -45,12 +51,14 @@ def commit(repo, name, text="x"):
 
 
 class World:
-    def __init__(self, tmp_path: Path, monkeypatch) -> None:
+    def __init__(self, tmp_path: Path, monkeypatch, node) -> None:
         self.tmp = tmp_path
-        self.user = tmp_path / "user"
-        self.home = self.user / ".poolhouse"
+        self.node, self.started, self._lead = node, False, None
+        self._monkeypatch = monkeypatch
+        self.home = node.state.parent
+        self.user = self.home.parent
         self.keyring = tmp_path / "keyring.json"
-        for name in ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE", "POOLHOUSE_WORKSPACE_AGENT"):
+        for name in ("CLAUDECODE", "POOLHOUSE_AGENT", "POOLHOUSE_NONINTERACTIVE", "POOLHOUSE_WORKSPACE_AGENT", "POOLHOUSE_BOARD"):
             monkeypatch.delenv(name, raising=False)
         monkeypatch.setenv("POOLHOUSE_HOME", str(self.home))
         monkeypatch.setenv("POOLHOUSE_TEST_KEYRING", str(self.keyring))
@@ -67,10 +75,17 @@ class World:
         git(self.repo, "update-ref", "refs/remotes/origin/dev", self.tip)
         runtime_deploy.prepare_root()
         runtime_store.write_state({"checkout": str(self.repo)})
-        folder = self.home / "node" / "client" / "board"
-        folder.mkdir(parents=True)
-        (folder / f"{LEAD}.token").write_text("t\n", encoding="utf-8")
-        (folder / f"{LEAD}.parent").write_text("\n", encoding="utf-8")
+
+    @property
+    def lead(self):
+        if not self.started:
+            self._monkeypatch.setenv("PYTHONPATH", os.pathsep.join([SRC, str(ROOT)]))
+            self.node.start()
+            self.started = True
+            self.node.board = place.resolve(self.node.client, self.repo)
+            self._monkeypatch.setenv("POOLHOUSE_BOARD", self.node.board)
+            self._lead = self.node.member("runtime-owner")
+        return self._lead
 
     def env(self, **extra) -> dict:
         env = {key: value for key, value in os.environ.items()
@@ -80,7 +95,8 @@ class World:
                 "POOLHOUSE_TEST_KEYRING": str(self.keyring), "PIP_NO_INDEX": "1", **extra}
 
     def cli(self, *argv: str, agent: bool = True, **extra) -> subprocess.CompletedProcess:
-        marked = {"CLAUDECODE": "1", "POOLHOUSE_WORKSPACE_AGENT": LEAD} if agent else {}
+        marked = ({"CLAUDECODE": "1", **({"POOLHOUSE_WORKSPACE_AGENT": self.lead.name}
+                                       if argv[0] != "status" else {})} if agent else {})
         env = self.env(**{**marked, **extra})
         return subprocess.run([sys.executable, "-m", "poolhouse.runtime_cli", *argv], capture_output=True,
                               text=True, timeout=120, env=env, stdin=subprocess.DEVNULL)
@@ -92,17 +108,24 @@ class World:
 
 
 @pytest.fixture
-def world(tmp_path, monkeypatch):
+def world(tmp_path, monkeypatch, node_binary):
     import keyring
     from onboard_support import FileKeyring
-    made = World(tmp_path, monkeypatch)
-    before = keyring.get_keyring()
-    keyring.set_keyring(FileKeyring())
-    # A person makes the master key once (`unlock`); an agent-marked child never may, so the
-    # sealed activity writer in the child finds it here instead of refusing and leaving no record.
-    keystore.default().provision()
-    yield made
-    keyring.set_keyring(before)
+    with tempfile.TemporaryDirectory(prefix="u", dir="/tmp" if os.name == "posix" else None) as user:
+        state = Path(user).resolve() / ".poolhouse" / "node"
+        state.parent.mkdir(mode=0o700)
+        state.mkdir(mode=0o700)
+        node_supervise.point(state, node_binary, node_binary_module.sha256(node_binary))
+        made = World(tmp_path, monkeypatch, WorkspaceNode(state, client.Client(state), node_binary))
+        before = keyring.get_keyring()
+        keyring.set_keyring(FileKeyring())
+        try:
+            keystore.default().provision()
+            yield made
+        finally:
+            if made.started:
+                made.node.stop()
+            keyring.set_keyring(before)
 
 
 def test_an_agent_cannot_deploy_a_commit_that_is_not_on_the_development_branch(world):
@@ -112,16 +135,16 @@ def test_an_agent_cannot_deploy_a_commit_that_is_not_on_the_development_branch(w
 
 
 def test_a_refused_deploy_leaves_an_audit_record(world):
-    world.cli("ensure", "--ref", world.evil, "--agent", "worker-1")
+    world.cli("ensure", "--ref", world.evil, "--agent", world.lead.name)
     [entry] = world.audited()
     assert (entry.subject, entry.outcome, entry.meta["command"]) == (world.evil[:12] if False else world.evil, "refused", "ensure")
-    assert entry.meta["agent"] == "worker-1" and entry.meta["person"] is False
-    assert "development branch" in entry.meta["detail"] and entry.actor == "agent:worker-1"
+    assert entry.meta["agent"] == world.lead.name and entry.meta["person"] is False
+    assert "development branch" in entry.meta["detail"] and entry.actor == f"agent:{world.lead.name}"
 
 
 def test_an_agent_child_never_makes_the_master_key_for_its_audit(world):
     world.keyring.unlink()
-    done = world.cli("ensure", "--ref", world.evil, "--agent", "worker-1")
+    done = world.cli("ensure", "--ref", world.evil, "--agent", world.lead.name)
     assert done.returncode == 1 and "not on the development branch" in done.stderr
     assert not world.keyring.exists(), "an agent-marked process made the encryption key itself"
 
@@ -166,8 +189,9 @@ def test_only_a_delegated_lead_records_the_first_repository_on_a_machine_with_no
 
 
 def test_a_helper_agent_cannot_record_the_first_repository(world):
+    helper = world.node.member("runtime-helper", parent=world.lead)
     (runtime.directory() / runtime_store.STATE).unlink()
-    done = world.cli("ensure", "--checkout", str(world.repo), POOLHOUSE_WORKSPACE_AGENT="lead/helper")
+    done = world.cli("ensure", "--checkout", str(world.repo), POOLHOUSE_WORKSPACE_AGENT=helper.name)
     assert done.returncode != 0 and "not a helper" in done.stderr
     assert not (runtime.directory() / runtime_store.STATE).exists() and not (runtime.directory() / world.tip).exists()
 
@@ -184,7 +208,7 @@ def test_background_ensure_of_the_tip_needs_no_agent_identity(world):
     lock = runtime.directory() / "deploy.lock"
     from poolhouse.lock import only_one
     with only_one(lock, note="busy"):
-        done = world.cli("ensure", "--background")
+        done = world.cli("ensure", "--background", agent=False)
     assert done.returncode == 0 and "already running" in done.stdout
     assert [e.outcome for e in world.audited()] == ["building"]
 
@@ -192,7 +216,7 @@ def test_background_ensure_of_the_tip_needs_no_agent_identity(world):
 def test_unmerged_deploys_are_refused_to_an_agent_even_at_a_terminal(world):
     master, slave = pty.openpty()
     child = subprocess.Popen([sys.executable, "-m", "poolhouse.runtime_cli", "ensure", "--ref", world.evil, "--allow-unmerged"],
-                             env=world.env(CLAUDECODE="1", POOLHOUSE_WORKSPACE_AGENT=LEAD), stdin=slave, stdout=slave, stderr=slave, close_fds=True)
+                             env=world.env(CLAUDECODE="1", POOLHOUSE_WORKSPACE_AGENT=world.lead.name), stdin=slave, stdout=slave, stderr=slave, close_fds=True)
     os.close(slave)
     assert child.wait(timeout=60) != 0
     os.close(master)

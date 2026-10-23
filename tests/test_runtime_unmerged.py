@@ -34,6 +34,7 @@ def reviewed(tmp_path, monkeypatch, workspace_node):
     Project.commit(project.root, "chore: runtime source marker")
     monkeypatch.delenv("POOLHOUSE_BOARD", raising=False)
     board = place.resolve(workspace_node.client, project.root)
+    monkeypatch.chdir(project.root)
     workspace_node.board = board
     reviewer = workspace_node.member("source-reviewer")
     lead = workspace_node.member("runtime-owner")

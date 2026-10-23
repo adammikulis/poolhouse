@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from poolhouse import (
+    authority,
     node_build,
     person,
     runtime,
@@ -26,7 +27,7 @@ from poolhouse import (
     runtime_unmerged,
 )
 from poolhouse.board import session
-from poolhouse.board.client import Conflict, NodeError
+from poolhouse.board.client import Client, Conflict, NodeError
 from poolhouse.files import writing
 from poolhouse.fleet import runtime_wheel
 from poolhouse.fleet.environment import Environment
@@ -112,21 +113,29 @@ def source_epoch(source: Path) -> int:
     return parse_epoch(path.read_text(encoding="utf-8")) if path.is_file() else 0
 
 
+def _agent_context(agent: str = "") -> bool:
+    return bool(agent or os.environ.get(session.AGENT_ENV) or os.environ.get(session.TOKEN_ENV) or
+                os.environ.get(session.SUBAGENT_ENV) or person.marked())
+
+
 def acting(plan: Plan) -> session.Session | None:
     """The session of the workspace agent running this command, on the board of the plan's checkout; None when there
     is no agent or the node does not know its session."""
-    name = plan.agent or os.environ.get(session.AGENT_ENV, "")
-    if not name:
+    if not _agent_context(plan.agent):
         return None
     try:
-        held = session.connect(agent=name, cwd=plan.checkout)
-        return held if held.whoami().name == name else None
+        caller = authority.current_agent(cwd=plan.checkout)
+        if plan.agent and plan.agent != caller.name:
+            return None
+        node = Client(caller.session.client.state, autostart=False)
+        held = session.connect(agent=caller.name, board=caller.session.board, client=node)
+        return held if held.whoami().name == caller.name else None
     except (NodeError, OSError, ValueError):
         return None
 
 
-def _needs_session(who: session.Session | None) -> None:
-    if who is None and person.marked():
+def _needs_session(who: session.Session | None, agent: str = "") -> None:
+    if who is None and _agent_context(agent):
         raise DeployError("runtime deployment needs an authenticated workspace agent for its install claims")
 
 
@@ -230,6 +239,7 @@ def _record(plan: Plan) -> None:
 
 def switch(chosen: runtime.Runtime, plan: Plan, *, claimed: frozenset[Path] = frozenset()) -> None:
     """Prepare owned commands and atomically publish the selected runtime."""
+    _needs_session(acting(plan), plan.agent)
     with runtime_git.crossing(plan.checkout, note="runtime cutover"):
         _automatic(plan)
         admit(plan.checkout, chosen.commit, allow_unmerged=plan.allow_unmerged if chosen.commit == plan.commit else False)
@@ -296,8 +306,13 @@ def _restore(directory: Path | None, original: dict[Path, tuple[bytes, int]]) ->
 def build_and_switch(plan: Plan, builder: Builder = build, who: session.Session | None = None) -> runtime.Runtime:
     """Build, smoke and select the plan's commit; the install claims are taken for the cutover only, so a build that fails,
     or a cutover that finds the boundary held, writes no row. A failure before the selection keeps the previous runtime."""
-    who = who or acting(plan)
-    _needs_session(who)
+    caller = acting(plan)
+    if who is not None and (caller is None or not who.named or
+                            (who.named, who.board, who.client.state) !=
+                            (caller.named, caller.board, caller.client.state)):
+        raise DeployError("runtime caller changed before the build")
+    who = caller
+    _needs_session(who, plan.agent)
     prefix = runtime.directory() / plan.commit / uuid.uuid4().hex
     with tempfile.TemporaryDirectory(prefix="poolhouse-runtime-") as temporary:
         stage = Path(temporary).resolve()
@@ -386,6 +401,7 @@ def prepare_root() -> Path:
 def ensure(plan: Plan, *, force: bool = False, force_build: bool = False, builder: Builder = build,
            after_wait: Callable[[], None] | None = None) -> Outcome:
     """Make the plan's commit the selected runtime, recovering a broken selection first; ``after_wait`` runs once the boundary wait is over."""
+    _needs_session(acting(plan), plan.agent)
     state = "" if force else settled(plan)
     if state:
         held = runtime_store.read_state().get("held") or {}
@@ -462,8 +478,9 @@ def _failed_recently(plan: Plan) -> bool:
 
 def _ensured(plan: Plan, force: bool, force_build: bool, builder: Builder) -> Outcome:
     who = acting(plan)
+    _needs_session(who, plan.agent)
     if force_build and who is None:
-        raise DeployError("--force-build needs an authenticated agent: pass --agent or set POOLHOUSE_WORKSPACE_AGENT")
+        raise DeployError("--force-build requires an authenticated agent")
     chosen, steps = (healthy(plan), []) if plan.automatic_from is not None else _recovered(plan, who)
     held = runtime_store.read_state().get("held")
     if not force and chosen is not None and chosen.commit == plan.commit:
@@ -491,12 +508,15 @@ def _ensured(plan: Plan, force: bool, force_build: bool, builder: Builder) -> Ou
 
 def rollback(plan: Plan, to: str = "") -> Outcome:
     """Select an earlier verified runtime and hold the commit that was selected."""
+    who = acting(plan)
+    if who is None:
+        raise DeployError("rollback requires an authenticated agent")
     root = prepare_root()
     try:
         with only_one(root / "deploy.lock", wait=False, note="rollback"):
             who = acting(plan)
             if who is None:
-                raise DeployError("rollback needs an authenticated agent: pass --agent or set POOLHOUSE_WORKSPACE_AGENT")
+                raise DeployError("rollback requires an authenticated agent")
             now = runtime_store.selection(root)
             target = next((c for c in runtime_store.candidates(root)
                            if str(c.prefix) != now.get("prefix") and (not to or c.commit.startswith(to))), None)
