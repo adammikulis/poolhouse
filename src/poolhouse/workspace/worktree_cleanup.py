@@ -66,10 +66,7 @@ def cleanup(s: Session, base: Path, path: str) -> dict[str, Any]:
     with only_one(base / 'cleanup' / f'{key}.lock', wait=False, note='owned checkout cleanup'):
         scope = _scope(base, owner, target)
         if not target.exists():
-            result = _finished(target, scope)
-            _release(s, [row for row in s.claims() if row.owner == owner and
-                         (row.kind, row.key) in {('worktree', str(target)), ('branch', scope['branch'])}])
-            return result
+            return _finished(target, scope)
         bound = _binding(target, scope)
         rows = s.reserve([('worktree', str(target)), ('branch', bound[0])], pid=os.getpid())
         completed = False

@@ -110,3 +110,12 @@ def test_cleanup_rechecks_bound_identity_and_exact_leases_before_removal(setup, 
     assert kit.checkout.exists()
     if replacement:
         assert any(row.lease == replacement[0].lease for row in kit.s.claims())
+
+
+def test_completed_cleanup_retry_does_not_release_new_reservations_for_future_work(setup):
+    kit = setup
+    claim(kit)
+    result = cleanup(kit)
+    fresh = kit.s.reserve([('worktree', str(kit.checkout.resolve())), ('branch', 'worker/change')])
+    assert cleanup(kit) == result
+    assert held(kit) == {(row.kind, row.key): row.lease for row in fresh}
