@@ -64,6 +64,10 @@ Keep the original failed artifacts/results immutable; derivative experiments nee
 A separate [version comparison](native-macos-producer-derivative-evidence.json) records copies signed ad hoc with the
 runtime option. All eight `--version` cases exited 0; injected code ran in originals and produced no marker in copies.
 Short exits establish no live identity, server protection or H acceptance. Original server failures remain unchanged.
+The landed [macOS preparation helper](../patches/codex/macos/prepare_candidate.py) exposes `prepare(package, absent_output)`
+and a two-path CLI for internal build tooling. Mac build orchestration owns its fixed signing and automatic compute admission;
+people gain no manual signing or terminal step. [Preparation verification](native-macos-preparation-evidence.json) binds both
+outputs and receipts to the prior exact-byte observations; no probes were rerun, installation or H acceptance established.
 Published WSL/GNU compile/context evidence is separate and establishes no installed H proof or remote identity.
 The Git author label `chatgpt-ce2684` establishes no current workspace actor, service principal or endpoint.
 Reply requested from Windows and independent Linux/WSL sessions, separately: fresh observation time and source,
