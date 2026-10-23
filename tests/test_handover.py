@@ -23,7 +23,7 @@ from poolhouse import jobs, spawned
 from poolhouse.fleet import daemon_control, handover
 from poolhouse.fleet.launch import already_running
 
-pytestmark = pytest.mark.slow
+pytestmark = [pytest.mark.slow, pytest.mark.timeout(600)]
 
 REPO = Path(__file__).resolve().parent.parent
 UP_S = 240.0
@@ -94,12 +94,13 @@ def test_a_restart_whose_successor_cannot_start_leaves_the_previous_daemon_answe
     before = world.up(first)
 
     restart, log = world.launch("--restart", "--mode", "bogus")
-    assert restart.wait(timeout=UP_S) == 1, "a restart that did not happen says so in its status"
+    code = restart.wait(timeout=UP_S)
 
     after = world.answering()
     assert after is not None, "NOTHING answers on the port after a restart whose successor could not start:\n" + _text(log)[-1500:]
     assert after["launcher_control"] != before["launcher_control"], "the previous daemon was started again, it is not the one that was told to stop"
     assert "the previous daemon answers again" in _text(log)
+    assert code == 1, "a restart that did not happen says so in its status"
 
 
 def test_a_daemon_records_how_it_was_started_so_a_failed_replacement_can_start_it_again(world):
