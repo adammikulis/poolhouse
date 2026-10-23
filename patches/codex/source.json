@@ -9,5 +9,30 @@
     }
   ],
   "rust_toolchain": "1.99.1",
-  "installed_proof": null
+  "installed_proof": null,
+  "compile_check": {
+    "command": [
+      "cargo",
+      "+1.99.1",
+      "check",
+      "--locked",
+      "--manifest-path",
+      "codex-rs/Cargo.toml",
+      "-p",
+      "codex-cli",
+      "--bin",
+      "codex",
+      "-p",
+      "codex-app-server",
+      "--bin",
+      "codex-app-server"
+    ],
+    "target": "x86_64-unknown-linux-gnu",
+    "kernel": "6.6.87.2-microsoft-standard-WSL2",
+    "rustc": "rustc 1.99.1 (58cf8f9c3 2026-10-13)",
+    "exit_code": 0,
+    "profile": "dev",
+    "lock_sha256": "c043b6b7e67bb2f0ae4b1b8dd485cd6a24bd1cb7ef3a42752d303bc5e5ca4be1",
+    "runtime_proof": false
+  }
 }
