@@ -1,0 +1,13 @@
+{
+  "upstream": "https://github.com/openai/codex.git",
+  "revision": "6aaac694803004a63c6f393d153c96d22521a6b9",
+  "tag": "rust-v0.164.0",
+  "patches": [
+    {
+      "path": "0001-harden-producer-entrypoints.patch",
+      "sha256": "fa8b66bdc178b9649fc1f30dd9d65a6f626536f4f6d0bf1f3e4ee43fcd4ac022"
+    }
+  ],
+  "rust_toolchain": "1.99.1",
+  "installed_proof": null
+}
