@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import ctypes
 import os
 import platform as _platform
 import re
@@ -19,6 +20,7 @@ __all__ = [
     "is_apple_silicon",
     "is_windows",
     "launch",
+    "name_process",
     "on_quit",
     "private_dir",
     "private_file",
@@ -35,6 +37,7 @@ __all__ = [
 CREATE_NEW_PROCESS_GROUP = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
 DETACHED_PROCESS = getattr(subprocess, "DETACHED_PROCESS", 0x00000008)
 CTRL_BREAK_EVENT = getattr(signal, "CTRL_BREAK_EVENT", 1)
+PR_SET_NAME = 15
 
 
 def is_windows() -> bool:
@@ -45,6 +48,19 @@ def is_windows() -> bool:
 def is_apple_silicon() -> bool:
     """Read when asked: a Mac with an arm64 CPU, the machines llama.cpp's Metal backend runs on."""
     return _platform.system() == "Darwin" and _platform.machine() == "arm64"
+
+
+def name_process(name: str) -> bool:
+    """Linux and WSL: what `ps` and `ss -p` call this process, so a listener is Poolhouse and not python (15 bytes at most). True when set.
+
+    macOS names a process by its executable (`runtime_identity`) and Windows by its file; neither takes a name set from inside.
+    """
+    if not sys.platform.startswith("linux"):
+        return False
+    try:
+        return ctypes.CDLL(None, use_errno=True).prctl(PR_SET_NAME, name.encode()[:15], 0, 0, 0) == 0
+    except (OSError, AttributeError):
+        return False
 
 
 def applescript_quote(text: str) -> str:

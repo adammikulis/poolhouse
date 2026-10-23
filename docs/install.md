@@ -37,6 +37,7 @@ while you are logged in; the fourth is per machine:
 | runs | while you are logged in | at boot, before anyone logs in |
 | as | you | still you — see below |
 | the Windows firewall | one approval prompt, once | the same, in the same step |
+| the macOS firewall and Local Network prompts | name "Poolhouse" (never python3.13), asked once; the answer belongs to Poolhouse alone | the same |
 | the macOS wired limit | `sudo` once, offered by the app's first run and by `poolhouse-setup` | applied in the same step, since it already has the rights |
 | the model cache | yours, `~/.cache/huggingface` | **the same one.** One cache per machine, shared, never duplicated |
 
@@ -141,7 +142,7 @@ daemon's TCP 8770 and its UDP 8771 beacons inbound by default**, so `poolhouse-m
 another machine sees nothing until, in a prompt opened as administrator:
 
 ```
-netsh advfirewall firewall add rule name="poolhouse traind" dir=in action=allow protocol=TCP localport=8770 && netsh advfirewall firewall add rule name="poolhouse discovery" dir=in action=allow protocol=UDP localport=8771
+netsh advfirewall firewall add rule name="Poolhouse" dir=in action=allow protocol=TCP localport=8770 && netsh advfirewall firewall add rule name="Poolhouse discovery" dir=in action=allow protocol=UDP localport=8771
 ```
 
 `poolhouse-setup` prints that line as a finding until both rules exist. The first time on a

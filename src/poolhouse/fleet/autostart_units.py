@@ -6,6 +6,8 @@ import plistlib
 import subprocess
 import xml.etree.ElementTree as ET
 
+from poolhouse import runtime_identity
+
 from .autostart_manifest import ROLE_INFO, SCHEDULED, Role
 
 __all__ = ["render"]
@@ -16,7 +18,7 @@ _NS = "http://schemas.microsoft.com/windows/2004/02/mit/task"
 def _plist(role: Role, scope: str, user: str) -> bytes:
     restart, logs = role.restart, role.logs
     unit: dict[str, object] = {
-        "Label": role.label, "ProgramArguments": list(role.argv), "RunAtLoad": True,
+        "Label": role.label, "ProgramArguments": runtime_identity.launch_argv(list(role.argv)), "RunAtLoad": True,
         "WorkingDirectory": role.workdir, "EnvironmentVariables": dict(role.environment),
         "StandardOutPath": logs["stdout"], "StandardErrorPath": logs["stderr"],
         "ThrottleInterval": restart["backoff_s"], "ExitTimeOut": 30, "ProcessType": "Background",

@@ -18,14 +18,14 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from poolhouse import home, lan as lan_policy, macauth, sentinel
+from poolhouse import home, lan as lan_policy, macauth, runtime_identity, sentinel
 from poolhouse.files import write_text
 from poolhouse.fleet.onboard.requests import Devices
 from poolhouse.hub import default_roots
 from poolhouse.limits import read as limits_read
 from poolhouse.lock import only_one
 from poolhouse.log import say, warn
-from poolhouse.platform import private_file, quitting
+from poolhouse.platform import name_process, private_file, quitting
 from poolhouse.serve import canaries, guarded
 from poolhouse.serve.leases import lease_file
 from poolhouse.serve.reclaim import watching
@@ -525,6 +525,7 @@ class DaemonRuntime:
             "autostart": autostart_check.state_word(),
             "launcher_control": self.control.instance if hasattr(self, "control") else "",
             "runtime_prefix_digest": hashlib.sha256(str(Path(sys.prefix).resolve()).encode()).hexdigest(),
+            "process": runtime_identity.process_report(),
             "speech": list(self.heard),
         }
 
@@ -658,6 +659,7 @@ class DaemonRuntime:
 
 
 def serve(options: DaemonOptions) -> None:
+    name_process("poolhouse")
     runtime = DaemonRuntime(options)
     runtime.configure()
     with autostart_guard.running(runtime.root) as sole:
