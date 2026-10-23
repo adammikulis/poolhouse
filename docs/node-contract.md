@@ -86,3 +86,12 @@ are neither generated wire records nor proof accepted from a client. Platform
 implementations, protected construction, drop cleanup, and installed hostile
 caller evidence remain required. The earlier checkpoint digest above identifies
 that historical type-only proposal, rather than the extended schema.
+
+Independent review of `457235724` found no blocker to publishing these incomplete
+declarations. Before K acceptance, `hold_spawn` needs an opaque node-owned spawn
+plan binding the invocation, command and approved executable/assets; its current
+producer/bootstrap arguments are insufficient for implementation. The lifecycle
+loader checks declared terminal states and reachability, but does not enforce
+every permitted edge against a fixed semantic transition set. Runtime refusal
+tests and stronger semantic validation remain required; passing structural
+checks proves neither admission nor single-consumer execution.
