@@ -117,7 +117,7 @@ def ignore_redirects() -> list[str]:
     return warnings
 
 
-def authorize(command: str) -> str:
+def authorize(command: str, *, cwd: Path | None = None) -> str:
     """Who may run a deploy command here: "person" for a process no agent started, "delegated" for a lead agent
     while the owner has delegated the `runtime.deploy` gate; HumanRequired for an agent while it is the person's.
 
@@ -126,12 +126,20 @@ def authorize(command: str) -> str:
     """
     if not person.marked():
         return authority.PERSON
-    return authority.require(GATE, f"runtime {command}")
+    return authority.require(GATE, f"runtime {command}", scope=authority.Scope(cwd=recorded_primary() or cwd))
 
 
 def audit(command: str, commit: str, result: str, *, agent: str = "", detail: str = "", **passed: str) -> bool:
     """Append a sealed activity record for one deploy command; True when it was written."""
-    who = agent or os.environ.get(AGENT_ENV, "")
-    return writer.record(KIND, actor=f"agent:{who}" if who else None, subject=commit, outcome=result,
-                         meta={"command": command, "agent": who, "person": is_person(), "authority": passed.get("via", ""),
+    context = bool(person.marked() or agent or os.environ.get(AGENT_ENV) or os.environ.get("POOLHOUSE_WORKSPACE_TOKEN"))
+    who = ""
+    if context:
+        try:
+            source = Path(passed["source"]) if passed.get("source") else recorded_primary()
+            who = authority.current_agent(cwd=source).name
+        except (OSError, ValueError):
+            pass
+    actor = f"agent:{who}" if who else "agent:unavailable" if context else "person" if is_person() else "system:runtime"
+    return writer.record(KIND, actor=actor, subject=commit, outcome=result,
+                         meta={"command": command, "agent": who, "person": not context and is_person(), "authority": passed.get("via", ""),
                                "detail": detail[:DETAIL_LIMIT]})

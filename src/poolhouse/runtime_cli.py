@@ -67,8 +67,14 @@ def plan_from(args: argparse.Namespace, *, deploying: bool = True) -> runtime_de
                                         delegated=getattr(args, "via", "") == authority.DELEGATED)
     exception = getattr(args, "allow_unmerged", False)
     commit = runtime_deploy.resolve_commit(primary, getattr(args, "ref", "HEAD"))
-    if exception and person.marked() and args.agent and args.agent != os.environ.get(authority.AGENT_ENV):
-        raise runtime_deploy.DeployError("reviewed runtime deployment needs the caller's own identity")
+    if deploying and person.marked():
+        requested, args.agent = args.agent, ""
+        args.agent = runtime_unmerged.current_actor(primary).name
+        previous = getattr(args, "_reviewed_approval", None)
+        if isinstance(previous, runtime_unmerged.Approval) and previous.actor != args.agent:
+            raise runtime_deploy.DeployError("the runtime approval belongs to another agent")
+        if requested and requested != args.agent:
+            raise runtime_deploy.DeployError("runtime deployment needs the caller's own identity")
     if exception and person.marked():
         exception = getattr(args, "_reviewed_approval", None) or runtime_unmerged.approve(primary, commit, args.review_branch)
     if deploying:
@@ -117,14 +123,15 @@ def _again(args: argparse.Namespace) -> list[str]:
 
 def _audited(args: argparse.Namespace, command: str, plan: runtime_deploy.Plan, result: str, detail: str = "") -> None:
     verb = f"{command} --force-build" if getattr(args, "force_build", False) else command
-    runtime_trust.audit(verb, plan.commit, result, agent=args.agent, detail=detail, via=getattr(args, "via", ""))
+    runtime_trust.audit(verb, plan.commit, result, agent=args.agent, detail=detail,
+                        via=getattr(args, "via", ""), source=str(plan.checkout))
 
 
 def _ensure(args: argparse.Namespace) -> int:
     if args.settle and not args.now and not getattr(args, "automatic_from", ""):
         args.automatic_from = json.dumps(runtime_deploy.automatic_selection())
     if not args.background:
-        args.via = runtime_trust.authorize("ensure")
+        args.via = runtime_trust.authorize("ensure", cwd=_checkout(args.checkout))
     if args.allow_unmerged:
         if args.background:
             raise runtime_deploy.DeployError("--allow-unmerged builds in the foreground")
@@ -172,7 +179,7 @@ def _awaited(args: argparse.Namespace) -> runtime_deploy.Plan:
         plan = runtime_await.following(lambda: plan_from(args), args.await_published)
     except Busy:
         raise runtime_deploy.DeployError("not built: another runtime build is already waiting for a push") from None
-    args.via = runtime_trust.authorize("ensure")
+    args.via = runtime_trust.authorize("ensure", cwd=plan.checkout)
     return plan
 
 
@@ -210,7 +217,7 @@ def _pin(args: argparse.Namespace) -> int:
 def _run(args: argparse.Namespace, plan: runtime_deploy.Plan) -> runtime_deploy.Outcome:
     previous = str(runtime_store.selection().get("commit", ""))
     outcome = runtime_deploy.ensure(plan, force=args.force, force_build=args.force_build,
-                                    after_wait=lambda: runtime_trust.authorize("ensure"))
+                                    after_wait=lambda: runtime_trust.authorize("ensure", cwd=plan.checkout))
     if outcome.action in ("switched", "recovered"):
         allowed = (plan.allow_unmerged if isinstance(plan.allow_unmerged, runtime_unmerged.Approval) else plan.commit) \
             if plan.allow_unmerged and outcome.commit == plan.commit else ""
@@ -240,7 +247,7 @@ def _settled(args: argparse.Namespace) -> int:
 
 
 def _rollback(args: argparse.Namespace) -> int:
-    args.via = runtime_trust.authorize("rollback")
+    args.via = runtime_trust.authorize("rollback", cwd=_checkout(args.checkout))
     previous = str(runtime_store.selection().get("commit", ""))
     plan = plan_from(args)
     outcome = runtime_deploy.rollback(plan, args.to)

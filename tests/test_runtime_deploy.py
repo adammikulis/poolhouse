@@ -24,7 +24,7 @@ from poolhouse import (
     runtime_launchers,
     runtime_store,
 )
-from poolhouse.board import session as board_session
+from poolhouse.board import place, session as board_session
 from poolhouse.board.client import Denied, Quota
 from poolhouse.board.session import AGENT_ENV
 from poolhouse.fleet import runtime_wheel
@@ -65,7 +65,6 @@ def world(request, tmp_path, monkeypatch):
     workspace_node = request.getfixturevalue("workspace_node")
     monkeypatch.setenv("PIP_NO_INDEX", "1")
     monkeypatch.delenv("POOLHOUSE_RUNTIME_ENSURE", raising=False)
-    monkeypatch.setenv(AGENT_ENV, workspace_node.member("runtime-agent").name)
     monkeypatch.setitem(NODE, "binary", workspace_node.binary)
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -74,6 +73,11 @@ def world(request, tmp_path, monkeypatch):
     (repo / "src" / "poolhouse" / "__init__.py").write_text("")
     launchers = tmp_path / "bin"
     launchers.mkdir(mode=0o700)
+    monkeypatch.delenv("POOLHOUSE_BOARD", raising=False)
+    workspace_node.board = place.resolve(workspace_node.client, repo)
+    monkeypatch.setenv("POOLHOUSE_BOARD", workspace_node.board)
+    monkeypatch.setenv(AGENT_ENV, workspace_node.member("runtime-agent").name)
+    monkeypatch.chdir(repo)
     return repo, launchers, tmp_path
 
 
@@ -705,9 +709,9 @@ def test_the_acting_session_is_only_one_the_node_knows_on_the_board_of_the_check
     assert (got.name, got.board) == (agent.name, workspace_node.board)
     assert runtime_deploy.acting(plan_for(repo, launchers, agent="no-such-agent")) is None
     helper = workspace_node.member("helper", parent=agent)
-    assert runtime_deploy.acting(plan_for(repo, launchers, agent=helper.name)).name == helper.name
+    assert runtime_deploy.acting(plan_for(repo, launchers, agent=helper.name)) is None
     monkeypatch.setenv("POOLHOUSE_BOARD", "another-board")
-    assert runtime_deploy.acting(plan_for(repo, launchers)) is None
+    assert runtime_deploy.acting(plan_for(repo, launchers)).name == agent.name
     monkeypatch.setenv("POOLHOUSE_BOARD", workspace_node.board)
     workspace_node.session(helper).retire()
     assert runtime_deploy.acting(plan_for(repo, launchers, agent=helper.name)) is None
