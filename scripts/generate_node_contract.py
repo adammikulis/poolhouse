@@ -7,7 +7,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from node_contract import lifecycle, operations, python_package, rust, typescript
+from node_contract import lifecycle, operations, python_package, rust, service_lifecycle, typescript
 from node_contract.load import load_with_ownership
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -82,7 +82,8 @@ def outputs(root: Path) -> dict[Path, str]:
         root / "app/poolhouse-node/src/contract_operations.rs": operations.render_rust(meta["operations"], digest),
         root / "src/poolhouse/api/node_operations.py": operations.render_python(meta["operations"], digest),
         root / "app/contracts/node_operations.ts": operations.render_typescript(meta["operations"], digest),
-        root / "app/poolhouse-node/src/contract_lifecycle.rs": lifecycle.render(meta["lifecycle"], meta["adapters"]),
+        root / "app/poolhouse-node/src/contract_lifecycle.rs": lifecycle.render(meta["lifecycle"], meta["adapters"])
+            + service_lifecycle.render(meta["service_lifecycle"]),
         root / "app/contracts/node.ts": typescript.render(meta, rows, digest),
         root / "contracts/node/vectors.json": json.dumps(vectors, indent=2) + "\n",
     }
