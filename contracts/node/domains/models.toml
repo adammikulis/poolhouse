@@ -1226,7 +1226,7 @@ tag = "kind"
 variants = [{tag = "known", type = "ModelKnownRatio"}, {tag = "unknown", type = "ModelUnknown"}]
 
 [[type]]
-name = "ModelPositiveByteShortfall"
+name = "ModelPositiveRatioNumerator"
 kind = "scalar"
 visibility = "public"
 encoding = "u64"
@@ -1235,11 +1235,17 @@ minimum = 1
 maximum = 18446744073709551615
 
 [[type]]
+name = "ModelStrictlyPositiveRatio"
+kind = "record"
+visibility = "public"
+fields = [{name = "numerator", type = "ModelPositiveRatioNumerator"}, {name = "denominator", type = "ModelPositiveDenominator"}]
+
+[[type]]
 name = "ModelByteMargin"
 kind = "union"
 visibility = "public"
 tag = "kind"
-variants = [{tag = "surplus", type = "U64"}, {tag = "shortfall", type = "ModelPositiveByteShortfall"}]
+variants = [{tag = "surplus", type = "ModelExactRatio"}, {tag = "shortfall", type = "ModelStrictlyPositiveRatio"}]
 
 [[type]]
 name = "ModelKnownMargin"
@@ -1339,7 +1345,7 @@ symbol = "ModelsDomainModelsFit"
 request = "ModelFitRequest"
 response = "ModelFitAssessment"
 error = "ModelDomainError"
-authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-model-and-resource-read", "exact-asset-digests-backend-build-settings-placement-and-freshness-bound", "no-record-or-stale-measurement-is-unknown", "fit-is-not-admission-authority", "do-not-sum-shared-physical-resource-aliases", "node-checks-canonical-asset-placement-and-reference-identity-uniqueness", "exact-rational-coefficients-no-silent-rounding-or-clamping", "signed-surplus-or-shortfall-preserved", "raw-operands-required-to-claim-recovered-exact-coefficients", "effective-context-slots-kv-and-placement-binding", "ceil-only-at-documented-physical-admission-boundary", "checked-rational-arithmetic", "node-normalizes-reduced-ratio-zero-as-zero-over-one-and-zero-margin-as-surplus-zero"]
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-model-and-resource-read", "exact-asset-digests-backend-build-settings-placement-and-freshness-bound", "no-record-or-stale-measurement-is-unknown", "fit-is-not-admission-authority", "do-not-sum-shared-physical-resource-aliases", "node-checks-canonical-asset-placement-and-reference-identity-uniqueness", "exact-rational-coefficients-no-silent-rounding-or-clamping", "signed-surplus-or-shortfall-preserved", "raw-operands-required-to-claim-recovered-exact-coefficients", "effective-context-slots-kv-and-placement-binding", "ceil-only-at-documented-physical-admission-boundary", "checked-rational-arithmetic", "unrepresentable-reduced-ratio-is-explicit-unknown-or-typed-error-never-wrap-round-clamp", "node-normalizes-reduced-ratios-zero-as-zero-over-one-and-zero-margin-as-surplus-zero-over-one"]
 retry = "read-current-state"
 cancellation = "request-detach-only"
 subscription = "none"
@@ -1504,7 +1510,7 @@ symbol = "ModelsDomainServingAcquire"
 request = "ModelServingAcquireRequest"
 response = "ModelServingAcquireResult"
 error = "ModelDomainError"
-authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-model-serving-and-project", "top-generation-equals-model-generation", "exact-project-generation", "current-asset-verification-and-required-approval", "node-only-atomic-resource-admission", "reauthorize-at-admission-and-worker-start", "recompute-current-resource-and-policy-revisions", "exact-model-backend-config-context-components-placement-sharing-compatibility", "checked-context-slot-and-memory-arithmetic-no-overflow", "exact-owned-process-lifetime", "windows-wsl-shared-physical-exclusion-until-proof", "unknown-capacity-never-optimistic-admission", "lease-custody-survives-observer-detach", "durable-orphan-expiry-and-restart-reconciliation", "request-id-principal-scope-generation-and-payload-bound", "reauthorize-at-domain-commit", "durable-cancel-versus-domain-commit-single-winner", "no-cancelled-after-committed-effect", "generation-binds-exact-model", "node-checks-canonical-asset-placement-and-reference-identity-uniqueness", "exact-rational-coefficients-no-silent-rounding-or-clamping", "signed-surplus-or-shortfall-preserved", "raw-operands-required-to-claim-recovered-exact-coefficients", "effective-context-slots-kv-and-placement-binding", "ceil-only-at-documented-physical-admission-boundary", "checked-rational-arithmetic", "node-normalizes-reduced-ratio-zero-as-zero-over-one-and-zero-margin-as-surplus-zero"]
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-model-serving-and-project", "top-generation-equals-model-generation", "exact-project-generation", "current-asset-verification-and-required-approval", "node-only-atomic-resource-admission", "reauthorize-at-admission-and-worker-start", "recompute-current-resource-and-policy-revisions", "exact-model-backend-config-context-components-placement-sharing-compatibility", "checked-context-slot-and-memory-arithmetic-no-overflow", "exact-owned-process-lifetime", "windows-wsl-shared-physical-exclusion-until-proof", "unknown-capacity-never-optimistic-admission", "lease-custody-survives-observer-detach", "durable-orphan-expiry-and-restart-reconciliation", "request-id-principal-scope-generation-and-payload-bound", "reauthorize-at-domain-commit", "durable-cancel-versus-domain-commit-single-winner", "no-cancelled-after-committed-effect", "generation-binds-exact-model", "node-checks-canonical-asset-placement-and-reference-identity-uniqueness", "exact-rational-coefficients-no-silent-rounding-or-clamping", "signed-surplus-or-shortfall-preserved", "raw-operands-required-to-claim-recovered-exact-coefficients", "effective-context-slots-kv-and-placement-binding", "ceil-only-at-documented-physical-admission-boundary", "checked-rational-arithmetic", "unrepresentable-reduced-ratio-is-explicit-unknown-or-typed-error-never-wrap-round-clamp", "node-normalizes-reduced-ratios-zero-as-zero-over-one-and-zero-margin-as-surplus-zero-over-one"]
 retry = "durable-principal-resource-generation-payload-bound"
 cancellation = "atomic-cancel-versus-domain-commit"
 subscription = "none"
