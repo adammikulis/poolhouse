@@ -279,3 +279,15 @@ separates proposed behavior from current transport, records semantic differences
 and lists remaining omissions. Metrics callers remain explicitly uncontracted;
 the log OutputCursor does not cover metrics. A focused cross-artifact check keeps
 request/result/error and lifecycle declarations aligned with that mapping.
+
+## Canonical domain files
+
+Domain declarations live in `contracts/node/domains/*.toml`, with closed fields
+version, status, type and operation. Version 1 requires proposal status and explicit
+arrays; at least one array is nonempty. Files are regular, lowercase ASCII-named
+TOML; symlinks, nested directories and unknown entries refuse. Parsed snapshots
+are read once, merged deterministically, then checked by the same global duplicate,
+reference, privacy and cycle rules as the root declarations. Domain filenames and
+versions enter the schema digest along with all combined definitions. An absent
+or empty domains directory preserves the root-only output. These files introduce
+no dispatch, native proof issuer or accepted barrier.

@@ -19,6 +19,7 @@ from .common import (
     keys,
     variant_name,
 )
+from .fragments import load_fragments
 from .lifecycle import adapters, lifecycle
 from .operations import load_operations
 
@@ -41,13 +42,16 @@ def load(root: Path) -> tuple[dict, list[dict], str]:
     keys(source, {"type"}, {"type"})
     if not isinstance(source["type"], list) or not source["type"]:
         raise ValueError("contract has no types")
+    fragments = load_fragments(root)
     definitions: dict[str, dict] = {}
-    for row in source["type"]:
+    for row in [*source["type"], *(row for _, fragment in fragments for row in fragment["type"])]:
         _definition(row, definitions)
     ordered = _ordered(definitions)
     meta["lifecycle"] = lifecycle(root)
     meta["adapters"] = adapters(root)
-    meta["operations"] = load_operations(root, ordered)
+    meta["operations"] = load_operations(root, ordered, [row for _, fragment in fragments for row in fragment["operation"]])
+    if fragments:
+        meta["domains"] = [{"file": name, "version": fragment["version"], "status": fragment["status"]} for name, fragment in fragments]
     canonical = json.dumps({"meta": meta, "types": ordered}, sort_keys=True, separators=(",", ":")).encode()
     return meta, ordered, hashlib.sha256(canonical).hexdigest()
 
