@@ -37,6 +37,10 @@ use crate::sys::{try_lock, Lock};
 #[allow(dead_code)] // Partial accounting; no production drain/controller or complete writer inventory.
 pub(crate) mod update_activity;
 
+#[path = "managed_jobs/mod.rs"]
+#[allow(dead_code)] // Private pending data only; no RPC, caller issuer or execution consumer.
+mod managed_jobs;
+
 pub const INSTANCE_LOCK: &str = "node.lock";
 
 pub const READ_DEFAULT: usize = 200;
@@ -129,6 +133,7 @@ pub struct Node {
     /// When a person last said no to a kind of act: the same kind is not asked again for ten minutes.
     pub declined: BTreeMap<String, Instant>,
     pub(crate) activity: update_activity::Registry,
+    pending_jobs: Option<managed_jobs::Book>,
     /// Last field: exclusive storage custody outlives every writable field and shared Node owner.
     _instance: Lock,
 }
@@ -162,6 +167,19 @@ impl Access {
 }
 
 impl Node {
+    #[allow(dead_code)]
+    fn pending_jobs(&mut self) -> std::result::Result<&mut managed_jobs::Book, managed_jobs::Failure> {
+        if self.pending_jobs.is_none() {
+            #[cfg(unix)] {
+                let parent=self._instance.checked_parent(&self.dir,INSTANCE_LOCK)
+                    .map_err(|e|managed_jobs::Failure::Io(e.kind()))?;
+                self.pending_jobs=Some(managed_jobs::Book::open(parent,self.activity.clone())?);
+            }
+            #[cfg(not(unix))] return Err(managed_jobs::Failure::Io(std::io::ErrorKind::Unsupported));
+        }
+        self.pending_jobs.as_mut().ok_or(managed_jobs::Failure::Invalid)
+    }
+
     /// Open the node whose state lives in ``dir`` (a directory only its owner can enter).
     pub fn open(dir: &Path) -> Result<Node> {
         Node::open_with(dir, None)
@@ -186,7 +204,7 @@ impl Node {
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
             projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir, activity.clone())?, rates: Rates::default(), board_grace_ms: writes.board_grace_s * 1000, writes, log_bounds: crate::logbounds::Bounds::default(), log_rotate_percent: crate::logbounds::ROTATE_PERCENT, asking: Asking::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(), folds: 0,
-            build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, key_binding: KeyBinding::File, declined: BTreeMap::new(), activity, _instance: instance,
+            build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, key_binding: KeyBinding::File, declined: BTreeMap::new(), activity, pending_jobs:None, _instance: instance,
         };
         let root = dir.join("boards");
         if root.is_dir() {

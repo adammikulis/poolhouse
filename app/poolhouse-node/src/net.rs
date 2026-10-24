@@ -74,6 +74,15 @@ pub struct Net {
     this: OnceLock<Weak<Net>>,
 }
 
+/// Cleanup follows the owned setup even through unwind, without counting an idle connection as work.
+struct AttachCleanup<'a> { net: &'a Net, fingerprint: &'a str }
+impl Drop for AttachCleanup<'_> {
+    fn drop(&mut self) {
+        let Ok(_cleanup)=self.net.activity.maintenance(Source::Network) else { return };
+        if let Ok(mut kept)=locked(&self.net.attaching) { kept.remove(self.fingerprint); }
+    }
+}
+
 fn locked<T>(m: &Mutex<T>) -> Result<MutexGuard<'_, T>> {
     m.lock().map_err(|_| Error::Damaged("node poisoned".into()))
 }
@@ -496,7 +505,7 @@ impl Net {
     /// NAT, where the member cannot dial it but this device can dial the member. Returns the thread that keeps it, None when one is kept.
     pub fn attach(&self, fp: &str, addr: SocketAddr) -> Option<std::thread::JoinHandle<()>> {
         let net = self.this.get().and_then(Weak::upgrade)?;
-        let admitted = self.activity.new_effect(Source::Network).ok()?;
+        let admitted = self.activity.admit_effect(Source::Network,EffectFlow::Attach).ok()?;
         let mut kept = locked(&self.attaching).ok()?;
         if kept.contains_key(fp) {
             return None;
@@ -506,14 +515,12 @@ impl Net {
         let fp = fp.to_string();
         Some(std::thread::spawn(move || {
             let _ = net.attach_run(&fp, addr, admitted);
-            let Ok(_cleanup) = net.activity.maintenance(Source::Network) else { return };
-            if let Ok(mut kept) = locked(&net.attaching) {
-                kept.remove(&fp);
-            }
         }))
     }
 
-    fn attach_run(&self, fp: &str, addr: SocketAddr, admitted: Writer) -> Result<()> {
+    fn attach_run(&self, fp: &str, addr: SocketAddr, admitted: AdmittedEffect) -> Result<()> {
+        let setup=self.activity.continue_effect(&admitted,Source::Network,EffectFlow::Attach).map_err(activity_error)?;
+        let _cleanup=AttachCleanup { net:self, fingerprint:fp };
         if !self.is_member(fp) {
             return Ok(());
         }
@@ -523,6 +530,7 @@ impl Net {
         }
         c.call(&json!({"op": "attach"}))?;
         self.session_opened(fp);
+        drop(setup);
         drop(admitted);
         let ended = c.serve(self, addr.ip());
         self.session_closed(fp);
@@ -830,6 +838,51 @@ mod activity_tests {
             assert_eq!(reply["error"]["code"],"update_pending","{reply}");
         }
         assert!(net.window.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn attach_continuation_validates_scope_and_reaches_only_existing_member_policy() {
+        let owned=running(); let net=&owned.net;
+        let wrong=net.activity.admit_effect(Source::Network,EffectFlow::Join).unwrap();
+        let foreign_registry=Registry::new();
+        let foreign=foreign_registry.admit_effect(Source::Network,EffectFlow::Attach).unwrap();
+        let admitted=net.activity.admit_effect(Source::Network,EffectFlow::Attach).unwrap();
+        let addr=SocketAddr::from(([127,0,0,1],1)); let unknown="0".repeat(64);
+        net.activity.drain_for_test();
+        assert_eq!(net.attach_run(&unknown,addr,wrong).unwrap_err().code(),"update_pending");
+        assert_eq!(net.attach_run(&unknown,addr,foreign).unwrap_err().code(),"update_pending");
+        assert!(net.attaching.lock().unwrap().is_empty());
+        // A valid existing operation reaches the unchanged nonmember refusal without dialing.
+        assert!(net.attach_run(&unknown,addr,admitted).is_ok());
+        assert_eq!(net.activity.active_writer_count_for_test(),0);
+        assert!(net.attach(&unknown,addr).is_none());
+        assert!(net.attaching.lock().unwrap().is_empty());
+        assert!(!net.stop.load(Ordering::SeqCst));
+    }
+    #[test]
+    fn owned_attach_worker_cleans_slot_and_parent_after_policy_declines_setup() {
+        let owned=running(); let net=&owned.net;
+        let addr=SocketAddr::from(([127,0,0,1],1)); let unknown="0".repeat(64);
+        let worker=net.attach(&unknown,addr).unwrap();
+        worker.join().unwrap();
+        assert!(net.attaching.lock().unwrap().is_empty());
+        assert_eq!(net.activity.active_writer_count_for_test(),0);
+    }
+
+    #[test]
+    fn attach_cleanup_unwind_keeps_parent_custody_until_slot_is_removed() {
+        fn fail_setup(net: &Net, fp: &str, admitted: AdmittedEffect) {
+            let _setup=net.activity.continue_effect(&admitted,Source::Network,EffectFlow::Attach).unwrap();
+            let _cleanup=AttachCleanup { net, fingerprint:fp };
+            panic!("owned setup fault");
+        }
+        let owned=running(); let net=owned.net.clone(); let fp="0".repeat(64);
+        let parent=net.activity.admit_effect(Source::Network,EffectFlow::Attach).unwrap();
+        net.attaching.lock().unwrap().insert(fp.clone(),None);
+        let worker=net.clone();
+        assert!(std::thread::spawn(move || fail_setup(&worker,&fp,parent)).join().is_err());
+        assert!(net.attaching.lock().unwrap().is_empty());
+        assert_eq!(net.activity.active_writer_count_for_test(),0);
     }
 
 }
