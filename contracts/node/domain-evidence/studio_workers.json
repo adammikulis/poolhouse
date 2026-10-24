@@ -1,0 +1,6079 @@
+{
+  "version": 1,
+  "status": "proposal",
+  "domain": "studio_workers",
+  "scope": "private-retained-studio-worker-catalog-data-only",
+  "source_commit": "d8517468c4e92daccfb7a498f0ffadc315023da9",
+  "operations": [],
+  "sources": [
+    {
+      "path": "src/poolhouse/studio/catalog.py",
+      "sha256": "e716bd3d7c2035a36f0cf99e545b537a78886241576e877baa839d91f881dc51",
+      "git_blob": "c8178272cfca0b2e47affdff2549490bdecad653",
+      "symbols": [
+        {
+          "name": "is_model_type",
+          "line": 12,
+          "end_line": 14
+        },
+        {
+          "name": "_schema",
+          "line": 17,
+          "end_line": 18
+        },
+        {
+          "name": "_node",
+          "line": 21,
+          "end_line": 27
+        },
+        {
+          "name": "node_catalog",
+          "line": 30,
+          "end_line": 149
+        },
+        {
+          "name": "_model_ports",
+          "line": 152,
+          "end_line": 165
+        },
+        {
+          "name": "node_spec",
+          "line": 168,
+          "end_line": 175
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/studio/worker.py",
+      "sha256": "348773855379e15bdde61aaf6badf51913dc8d36b78d7f64ff83259c4f7964a6",
+      "git_blob": "7895737cd11e5184a40d2457c449fdd67d2c5e8c",
+      "symbols": [
+        {
+          "name": "rows_of",
+          "line": 38,
+          "end_line": 51
+        },
+        {
+          "name": "dataset",
+          "line": 54,
+          "end_line": 58
+        },
+        {
+          "name": "_decision",
+          "line": 61,
+          "end_line": 74
+        },
+        {
+          "name": "_predict_record",
+          "line": 77,
+          "end_line": 82
+        },
+        {
+          "name": "_train",
+          "line": 85,
+          "end_line": 103
+        },
+        {
+          "name": "_checkpoint_evaluate",
+          "line": 106,
+          "end_line": 136
+        },
+        {
+          "name": "_native_generate",
+          "line": 139,
+          "end_line": 163
+        },
+        {
+          "name": "_generate",
+          "line": 166,
+          "end_line": 190
+        },
+        {
+          "name": "_prepare_data",
+          "line": 193,
+          "end_line": 222
+        },
+        {
+          "name": "_gym",
+          "line": 225,
+          "end_line": 247
+        },
+        {
+          "name": "_export",
+          "line": 250,
+          "end_line": 281
+        },
+        {
+          "name": "execute",
+          "line": 284,
+          "end_line": 334
+        },
+        {
+          "name": "_resident_record",
+          "line": 337,
+          "end_line": 351
+        },
+        {
+          "name": "run",
+          "line": 354,
+          "end_line": 362
+        },
+        {
+          "name": "predict",
+          "line": 79,
+          "end_line": 81
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/studio/adapters.py",
+      "sha256": "4e941ce82059ad7a0984528e08afc17f6d19288249bd3a45f09399946ed355be",
+      "git_blob": "862fcb6d60046ee7313ba4fbb0553f063a6766f8",
+      "symbols": [
+        {
+          "name": "needs_compute",
+          "line": 23,
+          "end_line": 27
+        },
+        {
+          "name": "confined",
+          "line": 30,
+          "end_line": 35
+        },
+        {
+          "name": "response_schema",
+          "line": 38,
+          "end_line": 55
+        },
+        {
+          "name": "tool_catalog",
+          "line": 61,
+          "end_line": 64
+        },
+        {
+          "name": "governed_tool",
+          "line": 67,
+          "end_line": 78
+        },
+        {
+          "name": "_parameter_errors",
+          "line": 81,
+          "end_line": 104
+        },
+        {
+          "name": "Adapters",
+          "line": 107,
+          "end_line": 355
+        },
+        {
+          "name": "_mlx_serving",
+          "line": 358,
+          "end_line": 362
+        },
+        {
+          "name": "check",
+          "line": 43,
+          "end_line": 53
+        },
+        {
+          "name": "__init__",
+          "line": 110,
+          "end_line": 114
+        },
+        {
+          "name": "dependency_fingerprint",
+          "line": 116,
+          "end_line": 154
+        },
+        {
+          "name": "cacheable_outputs",
+          "line": 156,
+          "end_line": 159
+        },
+        {
+          "name": "availability",
+          "line": 161,
+          "end_line": 166
+        },
+        {
+          "name": "validate_resources",
+          "line": 168,
+          "end_line": 228
+        },
+        {
+          "name": "validate",
+          "line": 230,
+          "end_line": 270
+        },
+        {
+          "name": "immediate",
+          "line": 272,
+          "end_line": 295
+        },
+        {
+          "name": "_dataset_resource",
+          "line": 297,
+          "end_line": 305
+        },
+        {
+          "name": "supports_authorized",
+          "line": 307,
+          "end_line": 308
+        },
+        {
+          "name": "execute_authorized",
+          "line": 310,
+          "end_line": 313
+        },
+        {
+          "name": "prepare",
+          "line": 315,
+          "end_line": 346
+        },
+        {
+          "name": "collect",
+          "line": 348,
+          "end_line": 355
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/studio/resources.py",
+      "sha256": "05e43d0557c4faadb43fef90ff7e376d475f5c86a505369e9fb70641966a2c6c",
+      "git_blob": "e83a762d91978e1c5847571e8cd6425d9caf90c4",
+      "symbols": [
+        {
+          "name": "model_resource",
+          "line": 29,
+          "end_line": 42
+        },
+        {
+          "name": "training_base",
+          "line": 45,
+          "end_line": 64
+        },
+        {
+          "name": "model_files",
+          "line": 67,
+          "end_line": 121
+        },
+        {
+          "name": "model_fingerprint",
+          "line": 124,
+          "end_line": 126
+        },
+        {
+          "name": "materialize_checkpoint",
+          "line": 132,
+          "end_line": 151
+        },
+        {
+          "name": "checkpoint_base",
+          "line": 154,
+          "end_line": 171
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/studio/decisions.py",
+      "sha256": "c02976b27de47a267a9ab91f7aa3dc89265e67c52e5df983cc630511989a91cc",
+      "git_blob": "13e602346551974d142d1b345e81b23743a28086",
+      "symbols": [
+        {
+          "name": "_invalid_constant",
+          "line": 22,
+          "end_line": 23
+        },
+        {
+          "name": "parse_record",
+          "line": 26,
+          "end_line": 35
+        },
+        {
+          "name": "parameters",
+          "line": 38,
+          "end_line": 74
+        },
+        {
+          "name": "_decision",
+          "line": 77,
+          "end_line": 94
+        },
+        {
+          "name": "route",
+          "line": 97,
+          "end_line": 110
+        },
+        {
+          "name": "canonical_record",
+          "line": 113,
+          "end_line": 136
+        },
+        {
+          "name": "assess",
+          "line": 139,
+          "end_line": 193
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/studio/record_ops.py",
+      "sha256": "067ead1db7eb1b9ef981dbc4a534b3ea0fb13eaec84f0d209ea9972ead1b2784",
+      "git_blob": "bd5936a0d2516d08e686ba798671624c16bcdbfc",
+      "symbols": [
+        {
+          "name": "_json",
+          "line": 15,
+          "end_line": 31
+        },
+        {
+          "name": "_field",
+          "line": 34,
+          "end_line": 37
+        },
+        {
+          "name": "_keys",
+          "line": 40,
+          "end_line": 42
+        },
+        {
+          "name": "parameters",
+          "line": 45,
+          "end_line": 77
+        },
+        {
+          "name": "_equal",
+          "line": 80,
+          "end_line": 89
+        },
+        {
+          "name": "_map",
+          "line": 92,
+          "end_line": 101
+        },
+        {
+          "name": "_condition",
+          "line": 104,
+          "end_line": 116
+        },
+        {
+          "name": "execute",
+          "line": 119,
+          "end_line": 130
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/studio/record_context.py",
+      "sha256": "5e8acf846b7b410318aa6beca09c1e6191c023dba38faa7668035ff6c948e1d2",
+      "git_blob": "8b311d9e452334fcdb48a16ae43021142c45f6b2",
+      "symbols": [
+        {
+          "name": "literal_fields",
+          "line": 11,
+          "end_line": 19
+        },
+        {
+          "name": "_json",
+          "line": 22,
+          "end_line": 28
+        },
+        {
+          "name": "record_view",
+          "line": 31,
+          "end_line": 39
+        },
+        {
+          "name": "role_view",
+          "line": 42,
+          "end_line": 52
+        },
+        {
+          "name": "generation_parameters",
+          "line": 55,
+          "end_line": 69
+        },
+        {
+          "name": "generation_context",
+          "line": 72,
+          "end_line": 84
+        },
+        {
+          "name": "generation_outputs",
+          "line": 87,
+          "end_line": 90
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/studio/decision_models.py",
+      "sha256": "d716539cae664f7e0d43f22379f3d85176a98fada4cb62055395124ce4187d42",
+      "git_blob": "a715de94f9a82f9a7679d8950e1d23163a0c81de",
+      "symbols": [
+        {
+          "name": "_clean",
+          "line": 21,
+          "end_line": 29
+        },
+        {
+          "name": "_copy",
+          "line": 32,
+          "end_line": 38
+        },
+        {
+          "name": "_adapter",
+          "line": 41,
+          "end_line": 54
+        },
+        {
+          "name": "_runtime_assets",
+          "line": 57,
+          "end_line": 62
+        },
+        {
+          "name": "source",
+          "line": 65,
+          "end_line": 123
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/fleet/studio_worker_launch.py",
+      "sha256": "0f086d25f8ff71bf071d95da102ee4deb5d366a5ed7253b25a5630cae18e8ba9",
+      "git_blob": "5a45463ca5e9e5079575618201919ead47e3e80c",
+      "symbols": [
+        {
+          "name": "LaunchProof",
+          "line": 66,
+          "end_line": 132
+        },
+        {
+          "name": "__init__",
+          "line": 69,
+          "end_line": 75
+        },
+        {
+          "name": "setup",
+          "line": 77,
+          "end_line": 79
+        },
+        {
+          "name": "descriptors",
+          "line": 82,
+          "end_line": 83
+        },
+        {
+          "name": "_deadline",
+          "line": 85,
+          "end_line": 89
+        },
+        {
+          "name": "admit",
+          "line": 91,
+          "end_line": 117
+        },
+        {
+          "name": "live",
+          "line": 119,
+          "end_line": 122
+        },
+        {
+          "name": "verifies",
+          "line": 124,
+          "end_line": 128
+        },
+        {
+          "name": "close",
+          "line": 130,
+          "end_line": 132
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/fleet/studio_dispatch.py",
+      "sha256": "47ac47e74dec9a19ce03999dfe5dfe09b22a7f27063c03f686494d1722fe71dd",
+      "git_blob": "1ac2bee33795773693d0c0284c6ea450aaa98088",
+      "symbols": [
+        {
+          "name": "DeviceDispatch",
+          "line": 19,
+          "end_line": 178
+        },
+        {
+          "name": "__init__",
+          "line": 22,
+          "end_line": 27
+        },
+        {
+          "name": "devices",
+          "line": 29,
+          "end_line": 35
+        },
+        {
+          "name": "is_remote",
+          "line": 37,
+          "end_line": 38
+        },
+        {
+          "name": "member",
+          "line": 40,
+          "end_line": 47
+        },
+        {
+          "name": "_pool",
+          "line": 49,
+          "end_line": 53
+        },
+        {
+          "name": "identity",
+          "line": 55,
+          "end_line": 58
+        },
+        {
+          "name": "validate",
+          "line": 60,
+          "end_line": 73
+        },
+        {
+          "name": "fingerprint",
+          "line": 75,
+          "end_line": 77
+        },
+        {
+          "name": "_node",
+          "line": 80,
+          "end_line": 81
+        },
+        {
+          "name": "_allowed",
+          "line": 83,
+          "end_line": 85
+        },
+        {
+          "name": "start",
+          "line": 87,
+          "end_line": 105
+        },
+        {
+          "name": "_status",
+          "line": 107,
+          "end_line": 124
+        },
+        {
+          "name": "poll",
+          "line": 126,
+          "end_line": 143
+        },
+        {
+          "name": "cancel",
+          "line": 145,
+          "end_line": 147
+        },
+        {
+          "name": "resume",
+          "line": 149,
+          "end_line": 153
+        },
+        {
+          "name": "authorize_execution",
+          "line": 155,
+          "end_line": 175
+        },
+        {
+          "name": "close",
+          "line": 177,
+          "end_line": 178
+        },
+        {
+          "name": "submit",
+          "line": 88,
+          "end_line": 100
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/fleet/studio_execution.py",
+      "sha256": "31b24df4035d65c7b835a1b65ebd8082553430cd1ed8310e190255ad4bde4d18",
+      "git_blob": "e0aea2263a7bffbc6f0c08b05222ac83bc482214",
+      "symbols": [
+        {
+          "name": "checked_node",
+          "line": 23,
+          "end_line": 35
+        },
+        {
+          "name": "checked_inputs",
+          "line": 38,
+          "end_line": 48
+        },
+        {
+          "name": "DeviceExecutions",
+          "line": 51,
+          "end_line": 217
+        },
+        {
+          "name": "__init__",
+          "line": 54,
+          "end_line": 65
+        },
+        {
+          "name": "_get",
+          "line": 67,
+          "end_line": 73
+        },
+        {
+          "name": "validate",
+          "line": 75,
+          "end_line": 78
+        },
+        {
+          "name": "_implementation",
+          "line": 80,
+          "end_line": 82
+        },
+        {
+          "name": "submit",
+          "line": 84,
+          "end_line": 118
+        },
+        {
+          "name": "_inputs",
+          "line": 120,
+          "end_line": 138
+        },
+        {
+          "name": "_resolved_model",
+          "line": 141,
+          "end_line": 144
+        },
+        {
+          "name": "_context",
+          "line": 146,
+          "end_line": 150
+        },
+        {
+          "name": "_gate",
+          "line": 152,
+          "end_line": 164
+        },
+        {
+          "name": "status",
+          "line": 166,
+          "end_line": 176
+        },
+        {
+          "name": "result",
+          "line": 178,
+          "end_line": 189
+        },
+        {
+          "name": "cancel",
+          "line": 191,
+          "end_line": 195
+        },
+        {
+          "name": "resume",
+          "line": 197,
+          "end_line": 205
+        },
+        {
+          "name": "authorize_read",
+          "line": 207,
+          "end_line": 210
+        },
+        {
+          "name": "_public",
+          "line": 213,
+          "end_line": 214
+        },
+        {
+          "name": "close",
+          "line": 216,
+          "end_line": 217
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/fleet/studio_transfer.py",
+      "sha256": "54514a039ab63cbd6dc0cc34f24a46455b67ffcff3414374989a4324ee718e93",
+      "git_blob": "7f8975a1a219aa2b8ab0e2557de18b60890c1232",
+      "symbols": [
+        {
+          "name": "_digest",
+          "line": 27,
+          "end_line": 28
+        },
+        {
+          "name": "_name",
+          "line": 31,
+          "end_line": 37
+        },
+        {
+          "name": "_directory",
+          "line": 40,
+          "end_line": 55
+        },
+        {
+          "name": "_open",
+          "line": 58,
+          "end_line": 75
+        },
+        {
+          "name": "_checksum",
+          "line": 78,
+          "end_line": 88
+        },
+        {
+          "name": "manifest",
+          "line": 91,
+          "end_line": 113
+        },
+        {
+          "name": "checked_manifest",
+          "line": 116,
+          "end_line": 145
+        },
+        {
+          "name": "resource_handle",
+          "line": 148,
+          "end_line": 157
+        },
+        {
+          "name": "resource_ports",
+          "line": 160,
+          "end_line": 163
+        },
+        {
+          "name": "TransferStore",
+          "line": 166,
+          "end_line": 392
+        },
+        {
+          "name": "__init__",
+          "line": 168,
+          "end_line": 174
+        },
+        {
+          "name": "_prefix",
+          "line": 176,
+          "end_line": 181
+        },
+        {
+          "name": "directory",
+          "line": 183,
+          "end_line": 187
+        },
+        {
+          "name": "_parts",
+          "line": 189,
+          "end_line": 192
+        },
+        {
+          "name": "_manifest",
+          "line": 194,
+          "end_line": 200
+        },
+        {
+          "name": "begin",
+          "line": 202,
+          "end_line": 225
+        },
+        {
+          "name": "put",
+          "line": 227,
+          "end_line": 263
+        },
+        {
+          "name": "finish",
+          "line": 265,
+          "end_line": 285
+        },
+        {
+          "name": "inputs",
+          "line": 287,
+          "end_line": 314
+        },
+        {
+          "name": "result",
+          "line": 316,
+          "end_line": 349
+        },
+        {
+          "name": "_result_base",
+          "line": 351,
+          "end_line": 362
+        },
+        {
+          "name": "discard",
+          "line": 364,
+          "end_line": 378
+        },
+        {
+          "name": "read",
+          "line": 380,
+          "end_line": 392
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/fleet/studio_decision_issuer.py",
+      "sha256": "8e6d8092e0f1a4e437d278c3ff7990e3b6ea35d9952a35eb80a152f162c579d7",
+      "git_blob": "8701c3bd7a62fb2b324ca2d8f50b51d6e41bac27",
+      "symbols": [
+        {
+          "name": "DecisionIssuer",
+          "line": 18,
+          "end_line": 198
+        },
+        {
+          "name": "__init__",
+          "line": 25,
+          "end_line": 36
+        },
+        {
+          "name": "_snapshot",
+          "line": 38,
+          "end_line": 104
+        },
+        {
+          "name": "_model",
+          "line": 106,
+          "end_line": 112
+        },
+        {
+          "name": "mint",
+          "line": 114,
+          "end_line": 142
+        },
+        {
+          "name": "_current",
+          "line": 144,
+          "end_line": 154
+        },
+        {
+          "name": "close",
+          "line": 156,
+          "end_line": 161
+        },
+        {
+          "name": "launch_context",
+          "line": 163,
+          "end_line": 176
+        },
+        {
+          "name": "authorize",
+          "line": 178,
+          "end_line": 198
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/studio_launch.py",
+      "sha256": "0d4d2a7b5e10517334a80f87c3f18f54c3812441153431cb7785033f922678ad",
+      "git_blob": "db1ed259419742eefdb7a8e1393aeed26dc525fb",
+      "symbols": [
+        {
+          "name": "LaunchInterrupted",
+          "line": 18,
+          "end_line": 19
+        },
+        {
+          "name": "send_frame",
+          "line": 22,
+          "end_line": 26
+        },
+        {
+          "name": "receive_frame",
+          "line": 29,
+          "end_line": 52
+        },
+        {
+          "name": "validate_context",
+          "line": 55,
+          "end_line": 73
+        },
+        {
+          "name": "worker_context",
+          "line": 76,
+          "end_line": 100
+        },
+        {
+          "name": "exact",
+          "line": 31,
+          "end_line": 42
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/client/chat.py",
+      "sha256": "c208c527bbbc5fac41892c002a70a47aee49a7199995ee1087dca05a4cdf71a5",
+      "git_blob": "f25c0cff701ab51cc53bfd19dbe6128efb0071ab",
+      "symbols": [
+        {
+          "name": "parse_url",
+          "line": 50,
+          "end_line": 66
+        },
+        {
+          "name": "forget_speculative",
+          "line": 74,
+          "end_line": 76
+        },
+        {
+          "name": "forget_families",
+          "line": 84,
+          "end_line": 86
+        },
+        {
+          "name": "forget_server",
+          "line": 89,
+          "end_line": 93
+        },
+        {
+          "name": "GrammarBudgetError",
+          "line": 96,
+          "end_line": 97
+        },
+        {
+          "name": "GrammarUnsupportedError",
+          "line": 100,
+          "end_line": 101
+        },
+        {
+          "name": "Reply",
+          "line": 105,
+          "end_line": 114
+        },
+        {
+          "name": "strip_thinking",
+          "line": 117,
+          "end_line": 119
+        },
+        {
+          "name": "Client",
+          "line": 122,
+          "end_line": 658
+        },
+        {
+          "name": "_warn_if_nothing_read",
+          "line": 661,
+          "end_line": 673
+        },
+        {
+          "name": "_Gathered",
+          "line": 677,
+          "end_line": 702
+        },
+        {
+          "name": "gather_stream",
+          "line": 705,
+          "end_line": 762
+        },
+        {
+          "name": "_port_of",
+          "line": 765,
+          "end_line": 772
+        },
+        {
+          "name": "_is_zombie",
+          "line": 775,
+          "end_line": 781
+        },
+        {
+          "name": "_port_in",
+          "line": 784,
+          "end_line": 793
+        },
+        {
+          "name": "_rejection",
+          "line": 796,
+          "end_line": 799
+        },
+        {
+          "name": "strict_schema",
+          "line": 802,
+          "end_line": 815
+        },
+        {
+          "name": "_with_rejection",
+          "line": 818,
+          "end_line": 824
+        },
+        {
+          "name": "_fresh_seed",
+          "line": 827,
+          "end_line": 832
+        },
+        {
+          "name": "truncated",
+          "line": 113,
+          "end_line": 114
+        },
+        {
+          "name": "__init__",
+          "line": 125,
+          "end_line": 141
+        },
+        {
+          "name": "family",
+          "line": 146,
+          "end_line": 164
+        },
+        {
+          "name": "sampling",
+          "line": 167,
+          "end_line": 179
+        },
+        {
+          "name": "speculative",
+          "line": 182,
+          "end_line": 194
+        },
+        {
+          "name": "_served_depth",
+          "line": 196,
+          "end_line": 205
+        },
+        {
+          "name": "card",
+          "line": 208,
+          "end_line": 220
+        },
+        {
+          "name": "_from_gguf",
+          "line": 222,
+          "end_line": 238
+        },
+        {
+          "name": "temperature",
+          "line": 241,
+          "end_line": 243
+        },
+        {
+          "name": "_is_hosted_openai",
+          "line": 246,
+          "end_line": 247
+        },
+        {
+          "name": "_headers",
+          "line": 249,
+          "end_line": 251
+        },
+        {
+          "name": "build_body",
+          "line": 253,
+          "end_line": 327
+        },
+        {
+          "name": "chat",
+          "line": 331,
+          "end_line": 377
+        },
+        {
+          "name": "complete",
+          "line": 379,
+          "end_line": 422
+        },
+        {
+          "name": "extract",
+          "line": 424,
+          "end_line": 490
+        },
+        {
+          "name": "_raw_extractor",
+          "line": 492,
+          "end_line": 508
+        },
+        {
+          "name": "_chat_extractor",
+          "line": 510,
+          "end_line": 539
+        },
+        {
+          "name": "_completion",
+          "line": 541,
+          "end_line": 543
+        },
+        {
+          "name": "_sent",
+          "line": 545,
+          "end_line": 554
+        },
+        {
+          "name": "assert_grammar_support",
+          "line": 556,
+          "end_line": 569
+        },
+        {
+          "name": "tokenize",
+          "line": 571,
+          "end_line": 575
+        },
+        {
+          "name": "detokenize",
+          "line": 577,
+          "end_line": 581
+        },
+        {
+          "name": "served_by",
+          "line": 585,
+          "end_line": 609
+        },
+        {
+          "name": "processes",
+          "line": 611,
+          "end_line": 629
+        },
+        {
+          "name": "normalize",
+          "line": 634,
+          "end_line": 658
+        },
+        {
+          "name": "payload",
+          "line": 688,
+          "end_line": 702
+        },
+        {
+          "name": "walk",
+          "line": 805,
+          "end_line": 814
+        },
+        {
+          "name": "streamed",
+          "line": 364,
+          "end_line": 368
+        },
+        {
+          "name": "ask",
+          "line": 500,
+          "end_line": 503
+        },
+        {
+          "name": "reject",
+          "line": 505,
+          "end_line": 506
+        },
+        {
+          "name": "ask",
+          "line": 522,
+          "end_line": 533
+        },
+        {
+          "name": "reject",
+          "line": 535,
+          "end_line": 537
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/client/families.py",
+      "sha256": "fc7a66d861484e76d8ee0b02c874059f4cdec47afbc97a60db309cd08002c1e7",
+      "git_blob": "46488fa3d136011c1cee203290f1570bfa95a525",
+      "symbols": [
+        {
+          "name": "openai_tool_calls",
+          "line": 26,
+          "end_line": 31
+        },
+        {
+          "name": "openai_tool_delta",
+          "line": 34,
+          "end_line": 45
+        },
+        {
+          "name": "enable_thinking",
+          "line": 50,
+          "end_line": 52
+        },
+        {
+          "name": "thinkingcap_defaults",
+          "line": 55,
+          "end_line": 60
+        },
+        {
+          "name": "reasoning_effort",
+          "line": 62,
+          "end_line": 65
+        },
+        {
+          "name": "Sampling",
+          "line": 71,
+          "end_line": 99
+        },
+        {
+          "name": "Family",
+          "line": 103,
+          "end_line": 116
+        },
+        {
+          "name": "by_name",
+          "line": 158,
+          "end_line": 165
+        },
+        {
+          "name": "for_model_id",
+          "line": 168,
+          "end_line": 176
+        },
+        {
+          "name": "for_model_ids",
+          "line": 179,
+          "end_line": 185
+        },
+        {
+          "name": "resolve",
+          "line": 188,
+          "end_line": 192
+        },
+        {
+          "name": "split_inline",
+          "line": 197,
+          "end_line": 204
+        },
+        {
+          "name": "split",
+          "line": 207,
+          "end_line": 221
+        },
+        {
+          "name": "unread_text_fields",
+          "line": 224,
+          "end_line": 233
+        },
+        {
+          "name": "inline_splitter",
+          "line": 238,
+          "end_line": 264
+        },
+        {
+          "name": "_marker_tail",
+          "line": 267,
+          "end_line": 274
+        },
+        {
+          "name": "asked",
+          "line": 95,
+          "end_line": 99
+        },
+        {
+          "name": "feed",
+          "line": 243,
+          "end_line": 262
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/train/run.py",
+      "sha256": "9b6095a6e5ff5b85f36eb0e8bddaf69a967d93c1a09b3d0cd15fb2b541c5fa80",
+      "git_blob": "cc5b63caa26621d818d89186b0a7065972633a27",
+      "symbols": [
+        {
+          "name": "home_dir",
+          "line": 53,
+          "end_line": 55
+        },
+        {
+          "name": "_jobs_home",
+          "line": 58,
+          "end_line": 60
+        },
+        {
+          "name": "running",
+          "line": 63,
+          "end_line": 65
+        },
+        {
+          "name": "current",
+          "line": 68,
+          "end_line": 70
+        },
+        {
+          "name": "detach",
+          "line": 73,
+          "end_line": 77
+        },
+        {
+          "name": "wait",
+          "line": 80,
+          "end_line": 85
+        },
+        {
+          "name": "stop",
+          "line": 88,
+          "end_line": 91
+        },
+        {
+          "name": "status",
+          "line": 94,
+          "end_line": 97
+        },
+        {
+          "name": "parity",
+          "line": 100,
+          "end_line": 109
+        },
+        {
+          "name": "_base_of",
+          "line": 112,
+          "end_line": 119
+        },
+        {
+          "name": "plan_for",
+          "line": 122,
+          "end_line": 137
+        },
+        {
+          "name": "run",
+          "line": 140,
+          "end_line": 212
+        },
+        {
+          "name": "Rounds",
+          "line": 215,
+          "end_line": 265
+        },
+        {
+          "name": "_finish_lora",
+          "line": 268,
+          "end_line": 328
+        },
+        {
+          "name": "imported",
+          "line": 331,
+          "end_line": 337
+        },
+        {
+          "name": "_config_of",
+          "line": 340,
+          "end_line": 361
+        },
+        {
+          "name": "_parser",
+          "line": 364,
+          "end_line": 412
+        },
+        {
+          "name": "main",
+          "line": 415,
+          "end_line": 457
+        },
+        {
+          "name": "__init__",
+          "line": 218,
+          "end_line": 224
+        },
+        {
+          "name": "left",
+          "line": 226,
+          "end_line": 230
+        },
+        {
+          "name": "fit",
+          "line": 232,
+          "end_line": 245
+        },
+        {
+          "name": "phases",
+          "line": 247,
+          "end_line": 265
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/train/trainer.py",
+      "sha256": "5c9d484036d4e8ace13c010b292ea56f7414a199e0fce235cedef2a3235aba05",
+      "git_blob": "85c1a88f842e18f736d634bb44b360541ac6ec30",
+      "symbols": [
+        {
+          "name": "Hook",
+          "line": 41,
+          "end_line": 46
+        },
+        {
+          "name": "TrainReport",
+          "line": 50,
+          "end_line": 68
+        },
+        {
+          "name": "batches_from",
+          "line": 71,
+          "end_line": 100
+        },
+        {
+          "name": "run_hooks",
+          "line": 103,
+          "end_line": 112
+        },
+        {
+          "name": "Trainer",
+          "line": 115,
+          "end_line": 300
+        },
+        {
+          "name": "steps_per_second",
+          "line": 67,
+          "end_line": 68
+        },
+        {
+          "name": "next_batch",
+          "line": 92,
+          "end_line": 98
+        },
+        {
+          "name": "__init__",
+          "line": 118,
+          "end_line": 127
+        },
+        {
+          "name": "framework",
+          "line": 130,
+          "end_line": 131
+        },
+        {
+          "name": "save_checkpoint",
+          "line": 134,
+          "end_line": 143
+        },
+        {
+          "name": "resume",
+          "line": 145,
+          "end_line": 159
+        },
+        {
+          "name": "_stop_reason",
+          "line": 161,
+          "end_line": 168
+        },
+        {
+          "name": "fit",
+          "line": 171,
+          "end_line": 300
+        },
+        {
+          "name": "slice_batch",
+          "line": 80,
+          "end_line": 85
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/train/lora.py",
+      "sha256": "d301565dcbbbd22fcb1a8178c75fa3f9ae166a6392b1e448829e1b54f164d774",
+      "git_blob": "ac63c3af1c16efae412f3939352dde93afa08877",
+      "symbols": [
+        {
+          "name": "ceiling_default",
+          "line": 71,
+          "end_line": 76
+        },
+        {
+          "name": "OverCeiling",
+          "line": 98,
+          "end_line": 99
+        },
+        {
+          "name": "Lora",
+          "line": 106,
+          "end_line": 130
+        },
+        {
+          "name": "require_peft",
+          "line": 133,
+          "end_line": 139
+        },
+        {
+          "name": "attach",
+          "line": 142,
+          "end_line": 154
+        },
+        {
+          "name": "trainable_parameters",
+          "line": 157,
+          "end_line": 158
+        },
+        {
+          "name": "adapter_tensors",
+          "line": 161,
+          "end_line": 165
+        },
+        {
+          "name": "LoraStep",
+          "line": 168,
+          "end_line": 211
+        },
+        {
+          "name": "save_adapter",
+          "line": 214,
+          "end_line": 222
+        },
+        {
+          "name": "merge",
+          "line": 225,
+          "end_line": 250
+        },
+        {
+          "name": "managed_source",
+          "line": 256,
+          "end_line": 267
+        },
+        {
+          "name": "parameters_b",
+          "line": 270,
+          "end_line": 298
+        },
+        {
+          "name": "Fit",
+          "line": 302,
+          "end_line": 380
+        },
+        {
+          "name": "plan",
+          "line": 383,
+          "end_line": 411
+        },
+        {
+          "name": "fingerprint",
+          "line": 417,
+          "end_line": 443
+        },
+        {
+          "name": "converter",
+          "line": 449,
+          "end_line": 471
+        },
+        {
+          "name": "quantizer",
+          "line": 474,
+          "end_line": 494
+        },
+        {
+          "name": "export_gguf",
+          "line": 497,
+          "end_line": 509
+        },
+        {
+          "name": "preflight_export",
+          "line": 512,
+          "end_line": 533
+        },
+        {
+          "name": "summarise",
+          "line": 536,
+          "end_line": 540
+        },
+        {
+          "name": "refuse_over_ceiling",
+          "line": 543,
+          "end_line": 546
+        },
+        {
+          "name": "of",
+          "line": 115,
+          "end_line": 122
+        },
+        {
+          "name": "said",
+          "line": 124,
+          "end_line": 126
+        },
+        {
+          "name": "as_dict",
+          "line": 128,
+          "end_line": 130
+        },
+        {
+          "name": "parameters",
+          "line": 180,
+          "end_line": 181
+        },
+        {
+          "name": "restore",
+          "line": 183,
+          "end_line": 211
+        },
+        {
+          "name": "tokens_per_step",
+          "line": 320,
+          "end_line": 322
+        },
+        {
+          "name": "seconds",
+          "line": 325,
+          "end_line": 326
+        },
+        {
+          "name": "epochs",
+          "line": 329,
+          "end_line": 330
+        },
+        {
+          "name": "resident_gb",
+          "line": 333,
+          "end_line": 337
+        },
+        {
+          "name": "over",
+          "line": 340,
+          "end_line": 341
+        },
+        {
+          "name": "lines",
+          "line": 343,
+          "end_line": 364
+        },
+        {
+          "name": "refusal",
+          "line": 366,
+          "end_line": 370
+        },
+        {
+          "name": "as_dict",
+          "line": 372,
+          "end_line": 380
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/train/decider.py",
+      "sha256": "bf9b5e00128130747e75db4203d93ae2bffaa914cf31f1bc4be594a392c20bc1",
+      "git_blob": "79004d0fa1d4fcbe583214ce687d3f42f858b442",
+      "symbols": [
+        {
+          "name": "Settings",
+          "line": 67,
+          "end_line": 124
+        },
+        {
+          "name": "Result",
+          "line": 128,
+          "end_line": 146
+        },
+        {
+          "name": "_torch",
+          "line": 149,
+          "end_line": 151
+        },
+        {
+          "name": "encode",
+          "line": 154,
+          "end_line": 164
+        },
+        {
+          "name": "_state_text",
+          "line": 167,
+          "end_line": 168
+        },
+        {
+          "name": "collate",
+          "line": 171,
+          "end_line": 188
+        },
+        {
+          "name": "attach_features",
+          "line": 191,
+          "end_line": 198
+        },
+        {
+          "name": "build_net",
+          "line": 201,
+          "end_line": 220
+        },
+        {
+          "name": "DeciderStep",
+          "line": 223,
+          "end_line": 251
+        },
+        {
+          "name": "build_optimizer",
+          "line": 254,
+          "end_line": 265
+        },
+        {
+          "name": "enable_checkpointing",
+          "line": 268,
+          "end_line": 272
+        },
+        {
+          "name": "pass_order",
+          "line": 276,
+          "end_line": 280
+        },
+        {
+          "name": "_loss",
+          "line": 283,
+          "end_line": 285
+        },
+        {
+          "name": "predict",
+          "line": 288,
+          "end_line": 303
+        },
+        {
+          "name": "metrics_of",
+          "line": 306,
+          "end_line": 314
+        },
+        {
+          "name": "splits",
+          "line": 317,
+          "end_line": 325
+        },
+        {
+          "name": "fit_temperatures",
+          "line": 332,
+          "end_line": 348
+        },
+        {
+          "name": "question_kinds",
+          "line": 351,
+          "end_line": 357
+        },
+        {
+          "name": "majority_rows",
+          "line": 360,
+          "end_line": 369
+        },
+        {
+          "name": "baseline_of",
+          "line": 372,
+          "end_line": 387
+        },
+        {
+          "name": "_safe",
+          "line": 390,
+          "end_line": 393
+        },
+        {
+          "name": "_row",
+          "line": 396,
+          "end_line": 398
+        },
+        {
+          "name": "_write_card",
+          "line": 401,
+          "end_line": 442
+        },
+        {
+          "name": "_base_entry",
+          "line": 445,
+          "end_line": 452
+        },
+        {
+          "name": "_save",
+          "line": 455,
+          "end_line": 486
+        },
+        {
+          "name": "Loaded",
+          "line": 490,
+          "end_line": 498
+        },
+        {
+          "name": "load_model",
+          "line": 501,
+          "end_line": 527
+        },
+        {
+          "name": "fit_model",
+          "line": 530,
+          "end_line": 563
+        },
+        {
+          "name": "work_tree",
+          "line": 566,
+          "end_line": 571
+        },
+        {
+          "name": "pin_files",
+          "line": 578,
+          "end_line": 591
+        },
+        {
+          "name": "unpin_files",
+          "line": 594,
+          "end_line": 598
+        },
+        {
+          "name": "_gate",
+          "line": 601,
+          "end_line": 606
+        },
+        {
+          "name": "check_inputs",
+          "line": 609,
+          "end_line": 636
+        },
+        {
+          "name": "split_cases",
+          "line": 639,
+          "end_line": 645
+        },
+        {
+          "name": "train",
+          "line": 648,
+          "end_line": 699
+        },
+        {
+          "name": "smoke",
+          "line": 106,
+          "end_line": 111
+        },
+        {
+          "name": "head_scale",
+          "line": 114,
+          "end_line": 118
+        },
+        {
+          "name": "steps_for",
+          "line": 120,
+          "end_line": 124
+        },
+        {
+          "name": "Net",
+          "line": 205,
+          "end_line": 218
+        },
+        {
+          "name": "__call__",
+          "line": 229,
+          "end_line": 244
+        },
+        {
+          "name": "learning_rate",
+          "line": 246,
+          "end_line": 248
+        },
+        {
+          "name": "parameters",
+          "line": 250,
+          "end_line": 251
+        },
+        {
+          "name": "fit_on",
+          "line": 337,
+          "end_line": 340
+        },
+        {
+          "name": "micro",
+          "line": 540,
+          "end_line": 551
+        },
+        {
+          "name": "batch",
+          "line": 553,
+          "end_line": 554
+        },
+        {
+          "name": "__init__",
+          "line": 206,
+          "end_line": 208
+        },
+        {
+          "name": "forward",
+          "line": 210,
+          "end_line": 218
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/decide/metrics.py",
+      "sha256": "cc933addf818829846613f8fe4de6554a187550be62b8cb156a957ec5cf7f6d9",
+      "git_blob": "19bf1eed6628f137f4aa8937d5410c22ad984b9d",
+      "symbols": [
+        {
+          "name": "Metrics",
+          "line": 16,
+          "end_line": 38
+        },
+        {
+          "name": "of_rows",
+          "line": 41,
+          "end_line": 52
+        },
+        {
+          "name": "worse_than",
+          "line": 55,
+          "end_line": 64
+        },
+        {
+          "name": "fit_temperature_ece",
+          "line": 67,
+          "end_line": 76
+        },
+        {
+          "name": "public",
+          "line": 31,
+          "end_line": 33
+        },
+        {
+          "name": "line",
+          "line": 35,
+          "end_line": 38
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/gym/training.py",
+      "sha256": "f2bb4a706d6cc7db3e3c486d105c7c54e2c1918666c480ebb9fad52a5355d132",
+      "git_blob": "94e31a51df7cdc24a1cd910dbc3b8fe898dfffdf",
+      "symbols": [
+        {
+          "name": "load_policy",
+          "line": 12,
+          "end_line": 24
+        },
+        {
+          "name": "matching_policy",
+          "line": 27,
+          "end_line": 53
+        },
+        {
+          "name": "train",
+          "line": 56,
+          "end_line": 88
+        },
+        {
+          "name": "evaluate",
+          "line": 91,
+          "end_line": 116
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/gym/adapters.py",
+      "sha256": "7ff3a300de724479c215e82d8177c97bbe9bf73a1b16b6b3ede16735c4847e6f",
+      "git_blob": "52714af72f9dbe983ca6336a26a18075ab8345c0",
+      "symbols": [
+        {
+          "name": "make_environment",
+          "line": 19,
+          "end_line": 45
+        },
+        {
+          "name": "actions",
+          "line": 48,
+          "end_line": 59
+        },
+        {
+          "name": "render_state",
+          "line": 62,
+          "end_line": 94
+        },
+        {
+          "name": "png_frame",
+          "line": 97,
+          "end_line": 104
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/train/tools/evaluate.py",
+      "sha256": "7a61c33c08613629e41001440e4b48c78ab935b2ab7b1c9e4fe4a521f11dfec5",
+      "git_blob": "6fc7840ddf095d0e45689f41a74728948db44d99",
+      "symbols": [
+        {
+          "name": "_required",
+          "line": 17,
+          "end_line": 21
+        },
+        {
+          "name": "_expected_arguments",
+          "line": 24,
+          "end_line": 26
+        },
+        {
+          "name": "_one",
+          "line": 29,
+          "end_line": 45
+        },
+        {
+          "name": "score",
+          "line": 48,
+          "end_line": 67
+        },
+        {
+          "name": "evaluate",
+          "line": 70,
+          "end_line": 77
+        },
+        {
+          "name": "mean",
+          "line": 60,
+          "end_line": 61
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/train/recipes/__init__.py",
+      "sha256": "1dbf20e38416fb4bc0cc0ffb38d286e8aa3ec4cfc7c340ebb28770f76c9d676b",
+      "git_blob": "f9bc8e3ecc63a97acd1dbfe6c4a6cd343acaafe7",
+      "symbols": [
+        {
+          "name": "specs",
+          "line": 44,
+          "end_line": 46
+        },
+        {
+          "name": "spec",
+          "line": 49,
+          "end_line": 54
+        },
+        {
+          "name": "known",
+          "line": 57,
+          "end_line": 58
+        },
+        {
+          "name": "register",
+          "line": 61,
+          "end_line": 69
+        },
+        {
+          "name": "validate",
+          "line": 72,
+          "end_line": 117
+        },
+        {
+          "name": "build",
+          "line": 120,
+          "end_line": 124
+        },
+        {
+          "name": "_built",
+          "line": 127,
+          "end_line": 134
+        },
+        {
+          "name": "_checkpoint",
+          "line": 137,
+          "end_line": 142
+        },
+        {
+          "name": "validate_base",
+          "line": 145,
+          "end_line": 156
+        },
+        {
+          "name": "load",
+          "line": 159,
+          "end_line": 179
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/train/recipes/classify_text.py",
+      "sha256": "28ce892248ce39bfb2db17a011f33900121781dfc823b8931ae0d1d0569435df",
+      "git_blob": "12488da2c1a74c9d1e2c29f974c63ed09236b89c",
+      "symbols": [
+        {
+          "name": "_classes",
+          "line": 21,
+          "end_line": 30
+        },
+        {
+          "name": "build_classifier",
+          "line": 33,
+          "end_line": 103
+        },
+        {
+          "name": "predict",
+          "line": 80,
+          "end_line": 84
+        },
+        {
+          "name": "loss",
+          "line": 54,
+          "end_line": 57
+        },
+        {
+          "name": "probabilities",
+          "line": 59,
+          "end_line": 61
+        },
+        {
+          "name": "loss",
+          "line": 73,
+          "end_line": 75
+        },
+        {
+          "name": "probabilities",
+          "line": 77,
+          "end_line": 78
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/train/recipes/text_lm.py",
+      "sha256": "e8aab59fe68200852d759564d1d2e546882892c41e457866e9e1d8fb99f3134d",
+      "git_blob": "638a3b23bc5feab8200af7c89fd019b0ec33ec03",
+      "symbols": [
+        {
+          "name": "build_text_lm",
+          "line": 20,
+          "end_line": 91
+        },
+        {
+          "name": "predict",
+          "line": 68,
+          "end_line": 74
+        },
+        {
+          "name": "loss",
+          "line": 40,
+          "end_line": 44
+        },
+        {
+          "name": "last_logits",
+          "line": 46,
+          "end_line": 48
+        },
+        {
+          "name": "loss",
+          "line": 59,
+          "end_line": 63
+        },
+        {
+          "name": "last_logits",
+          "line": 65,
+          "end_line": 66
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/train/recipes/tool_calls.py",
+      "sha256": "7b7bd5b89742591cbceb61d28f1d359bf2d1882c376ce82abfc4797e6e41fb4c",
+      "git_blob": "eff087102f6dad1f66ca76241c043997d3f5676f",
+      "symbols": [
+        {
+          "name": "device_for",
+          "line": 38,
+          "end_line": 48
+        },
+        {
+          "name": "load_base",
+          "line": 53,
+          "end_line": 80
+        },
+        {
+          "name": "frozen_dtype",
+          "line": 83,
+          "end_line": 92
+        },
+        {
+          "name": "build_tool_caller",
+          "line": 97,
+          "end_line": 174
+        },
+        {
+          "name": "save_pretrained",
+          "line": 177,
+          "end_line": 201
+        },
+        {
+          "name": "rendered",
+          "line": 119,
+          "end_line": 127
+        },
+        {
+          "name": "loss",
+          "line": 138,
+          "end_line": 140
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/train/recipes/tool_calls_mlx.py",
+      "sha256": "fd8539fc12e2e6fa5e4b6353b6da01fa9f889b88bd4055e81913b751373053ae",
+      "git_blob": "90c06a52c5f9c5914df48f677d6dd1fb4e69be92",
+      "symbols": [
+        {
+          "name": "local_base",
+          "line": 22,
+          "end_line": 32
+        },
+        {
+          "name": "base_identity",
+          "line": 35,
+          "end_line": 38
+        },
+        {
+          "name": "AdapterStep",
+          "line": 41,
+          "end_line": 71
+        },
+        {
+          "name": "masked_loss",
+          "line": 74,
+          "end_line": 84
+        },
+        {
+          "name": "attach",
+          "line": 87,
+          "end_line": 105
+        },
+        {
+          "name": "save_adapter",
+          "line": 108,
+          "end_line": 119
+        },
+        {
+          "name": "build",
+          "line": 122,
+          "end_line": 163
+        },
+        {
+          "name": "Plan",
+          "line": 166,
+          "end_line": 184
+        },
+        {
+          "name": "plan",
+          "line": 187,
+          "end_line": 192
+        },
+        {
+          "name": "Outcome",
+          "line": 196,
+          "end_line": 204
+        },
+        {
+          "name": "finish",
+          "line": 207,
+          "end_line": 228
+        },
+        {
+          "name": "__init__",
+          "line": 42,
+          "end_line": 44
+        },
+        {
+          "name": "validate_checkpoint",
+          "line": 46,
+          "end_line": 48
+        },
+        {
+          "name": "__call__",
+          "line": 50,
+          "end_line": 52
+        },
+        {
+          "name": "eval_loss",
+          "line": 54,
+          "end_line": 56
+        },
+        {
+          "name": "parameters",
+          "line": 58,
+          "end_line": 61
+        },
+        {
+          "name": "restore",
+          "line": 63,
+          "end_line": 71
+        },
+        {
+          "name": "resident_gb",
+          "line": 168,
+          "end_line": 169
+        },
+        {
+          "name": "as_dict",
+          "line": 171,
+          "end_line": 178
+        },
+        {
+          "name": "lines",
+          "line": 180,
+          "end_line": 184
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/train/recipes/built.py",
+      "sha256": "2d85cc0baf961de49d7bddf9f3d490709f4bbbd077a1bc91431d406f2764c889",
+      "git_blob": "9b61ff647d20b584b74133347dc32a4ed1482796",
+      "symbols": [
+        {
+          "name": "Phase",
+          "line": 16,
+          "end_line": 23
+        },
+        {
+          "name": "Built",
+          "line": 27,
+          "end_line": 44
+        }
+      ]
+    },
+    {
+      "path": "src/poolhouse/train/recipes/base.py",
+      "sha256": "54aea23b1ee14d1ef0c4678680446181db9bd2539ae0fbdd1bf9ce3e5574bb19",
+      "git_blob": "c2ea7c874d46fc611b72f9bdabb85b1a8b9c42b0",
+      "symbols": [
+        {
+          "name": "resolve_base",
+          "line": 6,
+          "end_line": 13
+        }
+      ]
+    },
+    {
+      "path": "contracts/recipes/classify-text.json",
+      "sha256": "0fbd315b722374a545d23b6abb72e9ca953fe694cafae8c8e97ce555b11a4b36",
+      "git_blob": "45867826928067005c588d01e2334f1cc4b290b4"
+    },
+    {
+      "path": "contracts/recipes/text-lm.json",
+      "sha256": "0859165a8a6935dd85baecdc5e168623690f54e95a5bae3e97476a4dfa613628",
+      "git_blob": "37666c2302df0bce4a64aa90aede0b5b77fab0b5"
+    },
+    {
+      "path": "contracts/recipes/tool-calls.json",
+      "sha256": "f3a6b0990474f50e107d7d6448dfe3989e6d25d6d123436978f60247602eedc1",
+      "git_blob": "f403a09f857638899bf1a5468024f7bdcbc041ef"
+    },
+    {
+      "path": "contracts/node/domains/workers.toml",
+      "sha256": "e2e8728b4bccb59d34a9412d00591e0a12e10d5bee1b3bc83a34042509699b61",
+      "git_blob": "3a635cc56933664ccb2f52c9b7c5ace531f11913"
+    },
+    {
+      "path": "scripts/node_contract/load.py",
+      "sha256": "b2800ec0675e470fc941739d15a36f9a66271e3fa4cd742196a39af258c36f41",
+      "git_blob": "d705d461f73f463d4364a59eae928e8c2fb50cfb",
+      "symbols": [
+        {
+          "name": "load",
+          "line": 30,
+          "end_line": 56
+        },
+        {
+          "name": "_definition",
+          "line": 59,
+          "end_line": 101
+        },
+        {
+          "name": "_scalar",
+          "line": 105,
+          "end_line": 125
+        },
+        {
+          "name": "_ordered",
+          "line": 128,
+          "end_line": 148
+        }
+      ]
+    },
+    {
+      "path": "scripts/node_contract/fragments.py",
+      "sha256": "97ba1eaf901127d47998f471bd9a248320d506750d5b64e1a3531d1dbcc087e7",
+      "git_blob": "a54350ab4bc023500fb92a1ca958cf0ad7d02e35",
+      "symbols": [
+        {
+          "name": "load_fragments",
+          "line": 11,
+          "end_line": 31
+        }
+      ]
+    },
+    {
+      "path": "scripts/node_contract/rust.py",
+      "sha256": "a6b8f1b0ee614cdcb38dd59b472089f77244a824a6aa20690fe828bdbb3fbab7",
+      "git_blob": "3d5b7797ece602bb7aa0264be941edb928540b24",
+      "symbols": [
+        {
+          "name": "render",
+          "line": 30,
+          "end_line": 94
+        },
+        {
+          "name": "render_list",
+          "line": 97,
+          "end_line": 116
+        },
+        {
+          "name": "scalar_helpers",
+          "line": 119,
+          "end_line": 161
+        }
+      ]
+    },
+    {
+      "path": "scripts/node_contract/python.py",
+      "sha256": "10be6767bddf778e97fe9904ea09a615c56eb86f9ebfd727a513a2da726d3731",
+      "git_blob": "e9c5f706a5b6e189869b31f22d9c2d8cba2ae96a",
+      "symbols": [
+        {
+          "name": "render",
+          "line": 205,
+          "end_line": 211
+        },
+        {
+          "name": "render_type",
+          "line": 214,
+          "end_line": 246
+        }
+      ]
+    },
+    {
+      "path": "scripts/node_contract/typescript.py",
+      "sha256": "bf2eb666177d03f1fcfb8b9329a7fbcae733c0ffa10384c7ac4517785b5b1d88",
+      "git_blob": "6149145f08823bf01133a8486717335f0847c408",
+      "symbols": [
+        {
+          "name": "render",
+          "line": 5,
+          "end_line": 39
+        },
+        {
+          "name": "finite_helpers",
+          "line": 42,
+          "end_line": 59
+        },
+        {
+          "name": "content_helper",
+          "line": 62,
+          "end_line": 77
+        }
+      ]
+    }
+  ],
+  "prior_evidence": {
+    "commit": "2cd1cac949a9e02b8f71cad30d89cc6d8fd66f43",
+    "manifest_sha256": "17af5a249122a08c14ec93ae6c591534720762df3f789363de7d03c3e13cf91a",
+    "studio_and_recipe_source_blobs_unchanged": true
+  },
+  "common_worker_source": "64eb17d5e883b86877197bff31bd420c039ba7ba",
+  "declarations": {
+    "private_types": 263,
+    "catalog_kinds": 31,
+    "private_worker_kinds": 22,
+    "type_names": [
+      "StudioWorkerProfileId",
+      "StudioWorkerProfile",
+      "StudioWorkerInteger",
+      "StudioWorkerNumber",
+      "StudioWorkerNonFinite",
+      "StudioWorkerObservedNumber",
+      "StudioWorkerNullableFiniteF64",
+      "StudioWorkerNullableInput",
+      "StudioWorkerStream",
+      "StudioWorkerText",
+      "StudioWorkerLiteralRole",
+      "StudioWorkerLiteral",
+      "StudioWorkerLiteralField",
+      "StudioWorkerAssignmentField",
+      "StudioWorkerAssignmentSource",
+      "StudioWorkerAssignment",
+      "StudioWorkerAssignments",
+      "StudioWorkerMapControls",
+      "StudioWorkerExistsCondition",
+      "StudioWorkerComparison",
+      "StudioWorkerCompareCondition",
+      "StudioWorkerConditionControls",
+      "StudioWorkerRecipe",
+      "StudioWorkerOptionalRecipe",
+      "StudioWorkerFramework",
+      "StudioWorkerModelKind",
+      "StudioWorkerDatasetInput",
+      "StudioWorkerModelInput",
+      "StudioWorkerOptionalModelInput",
+      "StudioWorkerMedia",
+      "StudioWorkerOutputCandidate",
+      "StudioWorkerDatasetCandidate",
+      "StudioWorkerModelCandidate",
+      "StudioWorkerOptionalModelCandidate",
+      "StudioWorkerOptionalOutputCandidate",
+      "StudioWorkerManifestEntry",
+      "StudioWorkerGate",
+      "StudioWorkerValidationReport",
+      "StudioWorkerHoldoutMetrics",
+      "StudioWorkerToolMetrics",
+      "StudioWorkerPerToolMetric",
+      "StudioWorkerDecisionEvalMetrics",
+      "StudioWorkerDecisionTrainMetrics",
+      "StudioWorkerTrainStop",
+      "StudioWorkerTrainingMetrics",
+      "StudioWorkerTrainingPhase",
+      "StudioWorkerPreparedPhase",
+      "StudioWorkerNamedMetric",
+      "StudioWorkerLoraSettings",
+      "StudioWorkerLoraPlan",
+      "StudioWorkerMlxLoraPlan",
+      "StudioWorkerTorchLoraResult",
+      "StudioWorkerMlxLoraResult",
+      "StudioWorkerLoraResult",
+      "StudioWorkerOptionalLora",
+      "StudioWorkerEnvironment",
+      "StudioWorkerGymConfiguration",
+      "StudioWorkerPackageVersions",
+      "StudioWorkerGymTrainMetrics",
+      "StudioWorkerGymEpisode",
+      "StudioWorkerGymEvalMetrics",
+      "StudioWorkerMetrics",
+      "StudioWorkerCompareReport",
+      "StudioWorkerChartReport",
+      "StudioWorkerCalibrationStatus",
+      "StudioWorkerScoreSemantics",
+      "StudioWorkerPointerBackend",
+      "StudioWorkerCalibration",
+      "StudioWorkerAdvisoryDecision",
+      "StudioWorkerNullableAdvisoryDecision",
+      "StudioWorkerRoute",
+      "StudioWorkerRouteReport",
+      "StudioWorkerCoverage",
+      "StudioWorkerCoverageScope",
+      "StudioWorkerAssessmentMode",
+      "StudioWorkerReasonCode",
+      "StudioWorkerInjectionSignal",
+      "StudioWorkerToolCallKind",
+      "StudioWorkerToolArguments",
+      "StudioWorkerToolCall",
+      "StudioWorkerToolCalls",
+      "StudioWorkerGenerationResponse",
+      "StudioWorkerGenerationSourceReport",
+      "StudioWorkerProvidedSources",
+      "StudioWorkerAdvisoryProtection",
+      "StudioWorkerReport",
+      "StudioWorkerOptionalLiteral",
+      "StudioWorkerOpStreamRecordParameters",
+      "StudioWorkerOpStreamRecordInput",
+      "StudioWorkerOpStreamRecordResult",
+      "StudioWorkerOpStreamRecordOperation",
+      "StudioWorkerOpRecordMapParameters",
+      "StudioWorkerOpRecordMapInput",
+      "StudioWorkerOpRecordMapResult",
+      "StudioWorkerOpRecordMapOperation",
+      "StudioWorkerOpRecordIfParameters",
+      "StudioWorkerOpRecordIfInput",
+      "StudioWorkerOpRecordIfResult",
+      "StudioWorkerOpRecordIfOperation",
+      "StudioWorkerOpDatasetInput",
+      "StudioWorkerOpDatasetResult",
+      "StudioWorkerOpDatasetOperation",
+      "StudioWorkerOpDataHfPreviewParameters",
+      "StudioWorkerOpDataHfPreviewInput",
+      "StudioWorkerOpDataHfPreviewResult",
+      "StudioWorkerOpDataHfPreviewOperation",
+      "StudioWorkerOpModelInput",
+      "StudioWorkerOpModelResult",
+      "StudioWorkerOpModelOperation",
+      "StudioWorkerOpDataValidateInput",
+      "StudioWorkerOpDataValidateResult",
+      "StudioWorkerOpDataValidateOperation",
+      "StudioWorkerOpDataSplitParameters",
+      "StudioWorkerOpDataSplitInput",
+      "StudioWorkerOpDataSplitResult",
+      "StudioWorkerOpDataSplitOperation",
+      "StudioWorkerOpPromptParameters",
+      "StudioWorkerOpPromptInput",
+      "StudioWorkerOpPromptResult",
+      "StudioWorkerOpPromptOperation",
+      "StudioWorkerOpGenerateMaxTokens",
+      "StudioWorkerOpGenerateParameters",
+      "StudioWorkerOpGenerateInput",
+      "StudioWorkerOpGenerateResult",
+      "StudioWorkerOpGenerateOperation",
+      "StudioWorkerOpEvaluateSuiteChoice",
+      "StudioWorkerOpEvaluateRecipeChoice",
+      "StudioWorkerOpEvaluateFrameworkChoice",
+      "StudioWorkerOpEvaluateParameters",
+      "StudioWorkerOpEvaluateInput",
+      "StudioWorkerOpEvaluateResult",
+      "StudioWorkerOpEvaluateOperation",
+      "StudioWorkerOpCompareInput",
+      "StudioWorkerOpCompareResult",
+      "StudioWorkerOpCompareOperation",
+      "StudioWorkerOpChartInput",
+      "StudioWorkerOpChartResult",
+      "StudioWorkerOpChartOperation",
+      "StudioWorkerOpExportFormatChoice",
+      "StudioWorkerOpExportParameters",
+      "StudioWorkerOpExportInput",
+      "StudioWorkerOpExportResult",
+      "StudioWorkerOpExportOperation",
+      "StudioWorkerOpReportInput",
+      "StudioWorkerOpReportResult",
+      "StudioWorkerOpReportOperation",
+      "StudioWorkerOpToolsCallParameters",
+      "StudioWorkerOpToolsCallInput",
+      "StudioWorkerOpToolsCallResult",
+      "StudioWorkerOpToolsCallOperation",
+      "StudioWorkerOpDataSynthesizeInput",
+      "StudioWorkerOpDataSynthesizeResult",
+      "StudioWorkerOpDataSynthesizeOperation",
+      "StudioWorkerOpDataHarvestInput",
+      "StudioWorkerOpDataHarvestResult",
+      "StudioWorkerOpDataHarvestOperation",
+      "StudioWorkerOpGymRecordingsInput",
+      "StudioWorkerOpGymRecordingsResult",
+      "StudioWorkerOpGymRecordingsOperation",
+      "StudioWorkerOpGymTrainEnvironmentChoice",
+      "StudioWorkerOpGymTrainParameters",
+      "StudioWorkerOpGymTrainInput",
+      "StudioWorkerOpGymTrainResult",
+      "StudioWorkerOpGymTrainOperation",
+      "StudioWorkerOpGymEvaluateParameters",
+      "StudioWorkerOpGymEvaluateInput",
+      "StudioWorkerOpGymEvaluateResult",
+      "StudioWorkerOpGymEvaluateOperation",
+      "StudioWorkerOpGenerateRecordMaxTokens",
+      "StudioWorkerOpGenerateRecordParameters",
+      "StudioWorkerOpGenerateRecordInput",
+      "StudioWorkerOpGenerateRecordResult",
+      "StudioWorkerOpGenerateRecordOperation",
+      "StudioWorkerOpGenerateStructuredMaxTokens",
+      "StudioWorkerOpGenerateStructuredParameters",
+      "StudioWorkerOpGenerateStructuredInput",
+      "StudioWorkerOpGenerateStructuredResult",
+      "StudioWorkerOpGenerateStructuredOperation",
+      "StudioWorkerOpTrainDecisionParameters",
+      "StudioWorkerOpTrainDecisionInput",
+      "StudioWorkerOpTrainDecisionResult",
+      "StudioWorkerOpTrainDecisionOperation",
+      "StudioWorkerOpEvaluateDecisionInput",
+      "StudioWorkerOpEvaluateDecisionResult",
+      "StudioWorkerOpEvaluateDecisionOperation",
+      "StudioWorkerOpDecisionPredictParameters",
+      "StudioWorkerOpDecisionPredictInput",
+      "StudioWorkerOpDecisionPredictResult",
+      "StudioWorkerOpDecisionPredictOperation",
+      "StudioWorkerOpDecisionRouteParameters",
+      "StudioWorkerOpDecisionRouteInput",
+      "StudioWorkerOpDecisionRouteResult",
+      "StudioWorkerOpDecisionRouteOperation",
+      "StudioWorkerOpGuardInjectionModeChoice",
+      "StudioWorkerOpGuardInjectionParameters",
+      "StudioWorkerOpGuardInjectionInput",
+      "StudioWorkerOpGuardInjectionResult",
+      "StudioWorkerOpGuardInjectionOperation",
+      "StudioWorkerOpTrainClassifyTextSteps",
+      "StudioWorkerOpTrainClassifyTextContext",
+      "StudioWorkerOpTrainClassifyTextBatchSize",
+      "StudioWorkerOpTrainClassifyTextSizeChoice",
+      "StudioWorkerOpTrainClassifyTextFrameworkChoice",
+      "StudioWorkerOpTrainClassifyTextModeChoice",
+      "StudioWorkerOpTrainClassifyTextParameters",
+      "StudioWorkerOpTrainClassifyTextInput",
+      "StudioWorkerOpTrainClassifyTextResult",
+      "StudioWorkerOpTrainClassifyTextOperation",
+      "StudioWorkerOpTrainTextLmSteps",
+      "StudioWorkerOpTrainTextLmContext",
+      "StudioWorkerOpTrainTextLmBatchSize",
+      "StudioWorkerOpTrainTextLmSizeChoice",
+      "StudioWorkerOpTrainTextLmFrameworkChoice",
+      "StudioWorkerOpTrainTextLmModeChoice",
+      "StudioWorkerOpTrainTextLmParameters",
+      "StudioWorkerOpTrainTextLmInput",
+      "StudioWorkerOpTrainTextLmResult",
+      "StudioWorkerOpTrainTextLmOperation",
+      "StudioWorkerOpTrainToolCallsSteps",
+      "StudioWorkerOpTrainToolCallsContext",
+      "StudioWorkerOpTrainToolCallsBatchSize",
+      "StudioWorkerOpTrainToolCallsLoraRank",
+      "StudioWorkerOpTrainToolCallsLoraAlpha",
+      "StudioWorkerOpTrainToolCallsSizeChoice",
+      "StudioWorkerOpTrainToolCallsFrameworkChoice",
+      "StudioWorkerOpTrainToolCallsModeChoice",
+      "StudioWorkerOpTrainToolCallsParameters",
+      "StudioWorkerOpTrainToolCallsInput",
+      "StudioWorkerOpTrainToolCallsResult",
+      "StudioWorkerOpTrainToolCallsOperation",
+      "StudioWorkerCatalogOperation",
+      "StudioWorkerOperation",
+      "StudioWorkerCatalogResult",
+      "StudioWorkerResult",
+      "WorkerKind",
+      "StudioWorkerCatalogKind",
+      "StudioWorkerExecutionRoute",
+      "StudioWorkerNodeSnapshot",
+      "StudioWorkerStart",
+      "StudioWorkerDescriptor",
+      "StudioWorkerDescriptorValue",
+      "StudioWorkerStreamEnd",
+      "StudioWorkerStreamCredit",
+      "StudioWorkerNodeCommand",
+      "StudioWorkerStartupCandidate",
+      "StudioWorkerAcceptedCandidate",
+      "StudioWorkerResultCandidate",
+      "StudioWorkerEvent",
+      "StudioWorkerFrameScope",
+      "StudioWorkerNodeFrame",
+      "StudioWorkerEventFrame",
+      "StudioWorkerOutputReservation",
+      "StudioWorkerUtf8Candidate",
+      "StudioWorkerUtf8Reference",
+      "StudioWorkerLiteralCandidate",
+      "StudioWorkerLiteralReference",
+      "StudioWorkerCandidateInteger",
+      "StudioWorkerGateReason",
+      "StudioWorkerNodeDescriptor",
+      "StudioWorkerNodeDescriptorValue",
+      "StudioWorkerOutputChunk",
+      "StudioWorkerOutputEnd",
+      "StudioWorkerFiniteObservedNumber"
+    ],
+    "public_operations": [],
+    "not_capabilities": true
+  },
+  "catalog_mapping": [
+    {
+      "operation": "stream.record",
+      "tag": "stream_record",
+      "input_type": "StudioWorkerOpStreamRecordInput",
+      "parameter_type": "StudioWorkerOpStreamRecordParameters",
+      "result_type": "StudioWorkerOpStreamRecordResult",
+      "execution": "node-only",
+      "source": {
+        "operation": "stream.record",
+        "line": 34,
+        "inputs": {},
+        "outputs": {
+          "record": "json"
+        },
+        "parameters": {
+          "sample": {
+            "type": "string",
+            "default": "{}"
+          }
+        },
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {
+        "sample": {}
+      },
+      "retained_catalog_specification": {
+        "type": "stream.record",
+        "version": 1,
+        "title": "Record",
+        "family": "Inputs",
+        "inputs": [],
+        "outputs": [
+          {
+            "name": "record",
+            "type": "json"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "sample": {
+              "type": "string",
+              "default": "{}"
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [],
+        "bindings": {},
+        "adapter": "stream.record",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/stream.record/1"
+      },
+      "execution_category": "node-immediate",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "record.map",
+      "tag": "record_map",
+      "input_type": "StudioWorkerOpRecordMapInput",
+      "parameter_type": "StudioWorkerOpRecordMapParameters",
+      "result_type": "StudioWorkerOpRecordMapResult",
+      "execution": "node-only",
+      "source": {
+        "operation": "record.map",
+        "line": 36,
+        "inputs": {
+          "record": "json"
+        },
+        "outputs": {
+          "record": "json"
+        },
+        "parameters": {
+          "controls": {
+            "type": "object",
+            "format": "record-map",
+            "default": {
+              "keep_other": true,
+              "assignments": []
+            }
+          }
+        },
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {
+        "controls": {}
+      },
+      "retained_catalog_specification": {
+        "type": "record.map",
+        "version": 1,
+        "title": "Map record fields",
+        "family": "Data",
+        "inputs": [
+          {
+            "name": "record",
+            "type": "json",
+            "required": true
+          }
+        ],
+        "outputs": [
+          {
+            "name": "record",
+            "type": "json"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "controls": {
+              "type": "object",
+              "format": "record-map",
+              "default": {
+                "keep_other": true,
+                "assignments": []
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [],
+        "bindings": {},
+        "adapter": "record.map",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/record.map/1"
+      },
+      "execution_category": "node-immediate",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "record.if",
+      "tag": "record_if",
+      "input_type": "StudioWorkerOpRecordIfInput",
+      "parameter_type": "StudioWorkerOpRecordIfParameters",
+      "result_type": "StudioWorkerOpRecordIfResult",
+      "execution": "node-only",
+      "source": {
+        "operation": "record.if",
+        "line": 39,
+        "inputs": {
+          "record": "json"
+        },
+        "outputs": {
+          "record": "json",
+          "true": "gate",
+          "false": "gate"
+        },
+        "parameters": {
+          "controls": {
+            "type": "object",
+            "format": "record-condition",
+            "default": {
+              "field": "value",
+              "operator": "exists"
+            }
+          }
+        },
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {
+        "controls": {}
+      },
+      "retained_catalog_specification": {
+        "type": "record.if",
+        "version": 1,
+        "title": "If record matches",
+        "family": "Control",
+        "inputs": [
+          {
+            "name": "record",
+            "type": "json",
+            "required": true
+          }
+        ],
+        "outputs": [
+          {
+            "name": "record",
+            "type": "json"
+          },
+          {
+            "name": "true",
+            "type": "gate"
+          },
+          {
+            "name": "false",
+            "type": "gate"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "controls": {
+              "type": "object",
+              "format": "record-condition",
+              "default": {
+                "field": "value",
+                "operator": "exists"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [],
+        "bindings": {},
+        "adapter": "record.if",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/record.if/1"
+      },
+      "execution_category": "node-immediate",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "dataset",
+      "tag": "dataset",
+      "input_type": "StudioWorkerOpDatasetInput",
+      "parameter_type": null,
+      "result_type": "StudioWorkerOpDatasetResult",
+      "execution": "node-only",
+      "source": {
+        "operation": "dataset",
+        "line": 43,
+        "inputs": {},
+        "outputs": {
+          "dataset": "dataset"
+        },
+        "parameters": {},
+        "resource_bindings": {
+          "dataset": "dataset"
+        },
+        "origin_only_explicitly_rejected_by_checked_node": true
+      },
+      "fractional_binary64_bits": {},
+      "retained_catalog_specification": {
+        "type": "dataset",
+        "version": 1,
+        "title": "Dataset",
+        "family": "Inputs",
+        "inputs": [],
+        "outputs": [
+          {
+            "name": "dataset",
+            "type": "dataset"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "capabilities": [],
+        "bindings": {
+          "dataset": {
+            "kind": "dataset",
+            "required": true
+          }
+        },
+        "adapter": "dataset",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/dataset/1"
+      },
+      "execution_category": "origin-only",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "data.hf-preview",
+      "tag": "data_hf_preview",
+      "input_type": "StudioWorkerOpDataHfPreviewInput",
+      "parameter_type": "StudioWorkerOpDataHfPreviewParameters",
+      "result_type": "StudioWorkerOpDataHfPreviewResult",
+      "execution": "node-only",
+      "source": {
+        "operation": "data.hf-preview",
+        "line": 44,
+        "inputs": {},
+        "outputs": {
+          "dataset": "dataset",
+          "artifact": "artifact"
+        },
+        "parameters": {
+          "request_id": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {
+        "request_id": {}
+      },
+      "retained_catalog_specification": {
+        "type": "data.hf-preview",
+        "version": 1,
+        "title": "Import selected preview rows",
+        "family": "Data",
+        "inputs": [],
+        "outputs": [
+          {
+            "name": "dataset",
+            "type": "dataset"
+          },
+          {
+            "name": "artifact",
+            "type": "artifact"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "request_id": {
+              "type": "string",
+              "default": ""
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [],
+        "bindings": {},
+        "adapter": "data.hf-preview",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/data.hf-preview/1"
+      },
+      "execution_category": "node-import",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "model",
+      "tag": "model",
+      "input_type": "StudioWorkerOpModelInput",
+      "parameter_type": null,
+      "result_type": "StudioWorkerOpModelResult",
+      "execution": "node-only",
+      "source": {
+        "operation": "model",
+        "line": 46,
+        "inputs": {},
+        "outputs": {
+          "model": "model"
+        },
+        "parameters": {},
+        "resource_bindings": {
+          "model": "model"
+        },
+        "origin_only_explicitly_rejected_by_checked_node": true
+      },
+      "fractional_binary64_bits": {},
+      "retained_catalog_specification": {
+        "type": "model",
+        "version": 1,
+        "title": "Model",
+        "family": "Inputs",
+        "inputs": [],
+        "outputs": [
+          {
+            "name": "model",
+            "type": "model"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "capabilities": [],
+        "bindings": {
+          "model": {
+            "kind": "model",
+            "required": true
+          }
+        },
+        "adapter": "model",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/model/1"
+      },
+      "execution_category": "origin-only",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "data.validate",
+      "tag": "data_validate",
+      "input_type": "StudioWorkerOpDataValidateInput",
+      "parameter_type": null,
+      "result_type": "StudioWorkerOpDataValidateResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "data.validate",
+        "line": 47,
+        "inputs": {
+          "dataset": "dataset"
+        },
+        "outputs": {
+          "dataset": "dataset",
+          "report": "report"
+        },
+        "parameters": {},
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {},
+      "retained_catalog_specification": {
+        "type": "data.validate",
+        "version": 1,
+        "title": "Validate data",
+        "family": "Data",
+        "inputs": [
+          {
+            "name": "dataset",
+            "type": "dataset",
+            "required": true
+          }
+        ],
+        "outputs": [
+          {
+            "name": "dataset",
+            "type": "dataset"
+          },
+          {
+            "name": "report",
+            "type": "report"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "capabilities": [],
+        "bindings": {},
+        "adapter": "data.validate",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/data.validate/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "data.split",
+      "tag": "data_split",
+      "input_type": "StudioWorkerOpDataSplitInput",
+      "parameter_type": "StudioWorkerOpDataSplitParameters",
+      "result_type": "StudioWorkerOpDataSplitResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "data.split",
+        "line": 48,
+        "inputs": {
+          "dataset": "dataset"
+        },
+        "outputs": {
+          "train": "dataset",
+          "test": "dataset"
+        },
+        "parameters": {
+          "fraction": {
+            "type": "number",
+            "default": 0.8,
+            "exclusiveMinimum": 0,
+            "exclusiveMaximum": 1
+          },
+          "seed": {
+            "type": "integer",
+            "default": 0
+          }
+        },
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {
+        "fraction": {
+          "default": "3fe999999999999a",
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "seed": {
+          "default": 0
+        }
+      },
+      "retained_catalog_specification": {
+        "type": "data.split",
+        "version": 1,
+        "title": "Split data",
+        "family": "Data",
+        "inputs": [
+          {
+            "name": "dataset",
+            "type": "dataset",
+            "required": true
+          }
+        ],
+        "outputs": [
+          {
+            "name": "train",
+            "type": "dataset"
+          },
+          {
+            "name": "test",
+            "type": "dataset"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "fraction": {
+              "type": "number",
+              "default": 0.8,
+              "exclusiveMinimum": 0,
+              "exclusiveMaximum": 1
+            },
+            "seed": {
+              "type": "integer",
+              "default": 0
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [],
+        "bindings": {},
+        "adapter": "data.split",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/data.split/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "prompt",
+      "tag": "prompt",
+      "input_type": "StudioWorkerOpPromptInput",
+      "parameter_type": "StudioWorkerOpPromptParameters",
+      "result_type": "StudioWorkerOpPromptResult",
+      "execution": "node-only",
+      "source": {
+        "operation": "prompt",
+        "line": 51,
+        "inputs": {},
+        "outputs": {
+          "prompt": "text"
+        },
+        "parameters": {
+          "template": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "origin_only_explicitly_rejected_by_checked_node": true
+      },
+      "fractional_binary64_bits": {
+        "template": {}
+      },
+      "retained_catalog_specification": {
+        "type": "prompt",
+        "version": 1,
+        "title": "Prompt template",
+        "family": "Inference",
+        "inputs": [],
+        "outputs": [
+          {
+            "name": "prompt",
+            "type": "text"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "template": {
+              "type": "string",
+              "default": ""
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [],
+        "bindings": {},
+        "adapter": "prompt",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/prompt/1"
+      },
+      "execution_category": "origin-only",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "generate",
+      "tag": "generate",
+      "input_type": "StudioWorkerOpGenerateInput",
+      "parameter_type": "StudioWorkerOpGenerateParameters",
+      "result_type": "StudioWorkerOpGenerateResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "generate",
+        "line": 52,
+        "inputs": {
+          "model": "model",
+          "prompt": "text"
+        },
+        "outputs": {
+          "text": "text",
+          "response": "json"
+        },
+        "parameters": {
+          "temperature": {
+            "type": "number",
+            "default": 0.7,
+            "minimum": 0,
+            "maximum": 2
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32768,
+            "default": 512
+          }
+        },
+        "capabilities": [
+          "inference"
+        ],
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {
+        "temperature": {
+          "default": "3fe6666666666666",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "max_tokens": {
+          "minimum": 1,
+          "maximum": 32768,
+          "default": 512
+        }
+      },
+      "retained_catalog_specification": {
+        "type": "generate",
+        "version": 1,
+        "title": "Generate",
+        "family": "Inference",
+        "inputs": [
+          {
+            "name": "model",
+            "type": "model",
+            "required": true,
+            "accepted_types": [
+              "model",
+              "language-model"
+            ]
+          },
+          {
+            "name": "prompt",
+            "type": "text",
+            "required": true
+          }
+        ],
+        "outputs": [
+          {
+            "name": "text",
+            "type": "text"
+          },
+          {
+            "name": "response",
+            "type": "json"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "temperature": {
+              "type": "number",
+              "default": 0.7,
+              "minimum": 0,
+              "maximum": 2
+            },
+            "max_tokens": {
+              "type": "integer",
+              "default": 512,
+              "minimum": 1,
+              "maximum": 32768
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [
+          "inference"
+        ],
+        "bindings": {},
+        "adapter": "generate",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/generate/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "evaluate",
+      "tag": "evaluate",
+      "input_type": "StudioWorkerOpEvaluateInput",
+      "parameter_type": "StudioWorkerOpEvaluateParameters",
+      "result_type": "StudioWorkerOpEvaluateResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "evaluate",
+        "line": 54,
+        "inputs": {
+          "model": "model",
+          "dataset": "dataset"
+        },
+        "outputs": {
+          "metrics": "metrics",
+          "report": "report"
+        },
+        "parameters": {
+          "suite": {
+            "type": "string",
+            "enum": [
+              "holdout",
+              "tool-calls"
+            ],
+            "default": "holdout"
+          },
+          "recipe": {
+            "type": "string",
+            "enum": [
+              "classify-text",
+              "text-lm",
+              "tool-calls"
+            ],
+            "default": "tool-calls"
+          },
+          "framework": {
+            "type": "string",
+            "enum": [
+              "",
+              "mlx",
+              "torch"
+            ],
+            "default": ""
+          },
+          "temperature": {
+            "type": "number",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 2
+          }
+        },
+        "capabilities": [
+          "evaluation"
+        ],
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {
+        "suite": {},
+        "recipe": {},
+        "framework": {},
+        "temperature": {
+          "default": 0,
+          "minimum": 0,
+          "maximum": 2
+        }
+      },
+      "retained_catalog_specification": {
+        "type": "evaluate",
+        "version": 1,
+        "title": "Evaluate model",
+        "family": "Evaluation",
+        "inputs": [
+          {
+            "name": "model",
+            "type": "model",
+            "required": true,
+            "accepted_types": [
+              "model",
+              "language-model",
+              "classifier-model"
+            ]
+          },
+          {
+            "name": "dataset",
+            "type": "dataset",
+            "required": true
+          }
+        ],
+        "outputs": [
+          {
+            "name": "metrics",
+            "type": "metrics"
+          },
+          {
+            "name": "report",
+            "type": "report"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "suite": {
+              "type": "string",
+              "enum": [
+                "holdout",
+                "tool-calls"
+              ],
+              "default": "holdout"
+            },
+            "recipe": {
+              "type": "string",
+              "enum": [
+                "classify-text",
+                "text-lm",
+                "tool-calls"
+              ],
+              "default": "tool-calls"
+            },
+            "framework": {
+              "type": "string",
+              "enum": [
+                "",
+                "mlx",
+                "torch"
+              ],
+              "default": ""
+            },
+            "temperature": {
+              "type": "number",
+              "default": 0,
+              "minimum": 0,
+              "maximum": 2
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [
+          "evaluation"
+        ],
+        "bindings": {},
+        "adapter": "evaluate",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/evaluate/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "compare",
+      "tag": "compare",
+      "input_type": "StudioWorkerOpCompareInput",
+      "parameter_type": null,
+      "result_type": "StudioWorkerOpCompareResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "compare",
+        "line": 59,
+        "inputs": {
+          "base": "metrics",
+          "trained": "metrics"
+        },
+        "outputs": {
+          "metrics": "metrics",
+          "report": "report"
+        },
+        "parameters": {},
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {},
+      "retained_catalog_specification": {
+        "type": "compare",
+        "version": 1,
+        "title": "Compare metrics",
+        "family": "Results",
+        "inputs": [
+          {
+            "name": "base",
+            "type": "metrics",
+            "required": true
+          },
+          {
+            "name": "trained",
+            "type": "metrics",
+            "required": true
+          }
+        ],
+        "outputs": [
+          {
+            "name": "metrics",
+            "type": "metrics"
+          },
+          {
+            "name": "report",
+            "type": "report"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "capabilities": [],
+        "bindings": {},
+        "adapter": "compare",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/compare/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "chart",
+      "tag": "chart",
+      "input_type": "StudioWorkerOpChartInput",
+      "parameter_type": null,
+      "result_type": "StudioWorkerOpChartResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "chart",
+        "line": 60,
+        "inputs": {
+          "metrics": "metrics"
+        },
+        "outputs": {
+          "report": "report"
+        },
+        "parameters": {},
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {},
+      "retained_catalog_specification": {
+        "type": "chart",
+        "version": 1,
+        "title": "Metrics chart",
+        "family": "Results",
+        "inputs": [
+          {
+            "name": "metrics",
+            "type": "metrics",
+            "required": true
+          }
+        ],
+        "outputs": [
+          {
+            "name": "report",
+            "type": "report"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "capabilities": [],
+        "bindings": {},
+        "adapter": "chart",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/chart/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "export",
+      "tag": "export",
+      "input_type": "StudioWorkerOpExportInput",
+      "parameter_type": "StudioWorkerOpExportParameters",
+      "result_type": "StudioWorkerOpExportResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "export",
+        "line": 61,
+        "inputs": {
+          "model": "model"
+        },
+        "outputs": {
+          "artifact": "artifact"
+        },
+        "parameters": {
+          "format": {
+            "type": "string",
+            "enum": [
+              "checkpoint",
+              "adapter"
+            ],
+            "default": "checkpoint"
+          }
+        },
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {
+        "format": {}
+      },
+      "retained_catalog_specification": {
+        "type": "export",
+        "version": 1,
+        "title": "Export model",
+        "family": "Results",
+        "inputs": [
+          {
+            "name": "model",
+            "type": "model",
+            "required": true,
+            "accepted_types": [
+              "model",
+              "language-model",
+              "classifier-model"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "artifact",
+            "type": "artifact"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "format": {
+              "type": "string",
+              "enum": [
+                "checkpoint",
+                "adapter"
+              ],
+              "default": "checkpoint"
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [],
+        "bindings": {},
+        "adapter": "export",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/export/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "report",
+      "tag": "report",
+      "input_type": "StudioWorkerOpReportInput",
+      "parameter_type": null,
+      "result_type": "StudioWorkerOpReportResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "report",
+        "line": 63,
+        "inputs": {
+          "report": "report"
+        },
+        "outputs": {
+          "artifact": "artifact"
+        },
+        "parameters": {},
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {},
+      "retained_catalog_specification": {
+        "type": "report",
+        "version": 1,
+        "title": "Report",
+        "family": "Results",
+        "inputs": [
+          {
+            "name": "report",
+            "type": "report",
+            "required": true
+          }
+        ],
+        "outputs": [
+          {
+            "name": "artifact",
+            "type": "artifact"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "capabilities": [],
+        "bindings": {},
+        "adapter": "report",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/report/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "tools.call",
+      "tag": "tools_call",
+      "input_type": "StudioWorkerOpToolsCallInput",
+      "parameter_type": "StudioWorkerOpToolsCallParameters",
+      "result_type": "StudioWorkerOpToolsCallResult",
+      "execution": "node-only",
+      "source": {
+        "operation": "tools.call",
+        "line": 64,
+        "inputs": {
+          "arguments": "json"
+        },
+        "outputs": {
+          "result": "json"
+        },
+        "parameters": {
+          "tool": {
+            "type": "string",
+            "default": ""
+          }
+        },
+        "capabilities": [
+          "tools"
+        ],
+        "side_effects": true,
+        "origin_only_explicitly_rejected_by_checked_node": true
+      },
+      "fractional_binary64_bits": {
+        "tool": {}
+      },
+      "retained_catalog_specification": {
+        "type": "tools.call",
+        "version": 1,
+        "title": "Authorized tool",
+        "family": "Inference",
+        "inputs": [
+          {
+            "name": "arguments",
+            "type": "json",
+            "required": true
+          }
+        ],
+        "outputs": [
+          {
+            "name": "result",
+            "type": "json"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "tool": {
+              "type": "string",
+              "default": ""
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [
+          "tools"
+        ],
+        "bindings": {},
+        "adapter": "tools.call",
+        "side_effects": true,
+        "implementation": "poolhouse.studio/tools.call/1"
+      },
+      "execution_category": "origin-only",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "data.synthesize",
+      "tag": "data_synthesize",
+      "input_type": "StudioWorkerOpDataSynthesizeInput",
+      "parameter_type": null,
+      "result_type": "StudioWorkerOpDataSynthesizeResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "data.synthesize",
+        "line": 66,
+        "inputs": {
+          "model": "model",
+          "dataset": "dataset"
+        },
+        "outputs": {
+          "dataset": "dataset"
+        },
+        "parameters": {},
+        "capabilities": [
+          "inference"
+        ],
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {},
+      "retained_catalog_specification": {
+        "type": "data.synthesize",
+        "version": 1,
+        "title": "Synthesize tool examples",
+        "family": "Data",
+        "inputs": [
+          {
+            "name": "model",
+            "type": "model",
+            "required": true,
+            "accepted_types": [
+              "model",
+              "language-model"
+            ]
+          },
+          {
+            "name": "dataset",
+            "type": "dataset",
+            "required": true
+          }
+        ],
+        "outputs": [
+          {
+            "name": "dataset",
+            "type": "dataset"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "capabilities": [
+          "inference"
+        ],
+        "bindings": {},
+        "adapter": "data.synthesize",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/data.synthesize/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "data.harvest",
+      "tag": "data_harvest",
+      "input_type": "StudioWorkerOpDataHarvestInput",
+      "parameter_type": null,
+      "result_type": "StudioWorkerOpDataHarvestResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "data.harvest",
+        "line": 67,
+        "inputs": {},
+        "outputs": {
+          "dataset": "dataset"
+        },
+        "parameters": {},
+        "resource_bindings": {
+          "traces": "dataset"
+        },
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {},
+      "retained_catalog_specification": {
+        "type": "data.harvest",
+        "version": 1,
+        "title": "Harvest benchmark traces",
+        "family": "Data",
+        "inputs": [],
+        "outputs": [
+          {
+            "name": "dataset",
+            "type": "dataset"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "capabilities": [],
+        "bindings": {
+          "traces": {
+            "kind": "dataset",
+            "required": true
+          }
+        },
+        "adapter": "data.harvest",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/data.harvest/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "gym.recordings",
+      "tag": "gym_recordings",
+      "input_type": "StudioWorkerOpGymRecordingsInput",
+      "parameter_type": null,
+      "result_type": "StudioWorkerOpGymRecordingsResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "gym.recordings",
+        "line": 68,
+        "inputs": {},
+        "outputs": {
+          "dataset": "dataset"
+        },
+        "parameters": {},
+        "capabilities": [
+          "gym"
+        ],
+        "resource_bindings": {
+          "trajectory": "dataset",
+          "reviews": "dataset"
+        },
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {},
+      "retained_catalog_specification": {
+        "type": "gym.recordings",
+        "version": 1,
+        "title": "Reviewed Gym recordings",
+        "family": "Data",
+        "inputs": [],
+        "outputs": [
+          {
+            "name": "dataset",
+            "type": "dataset"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "capabilities": [
+          "gym"
+        ],
+        "bindings": {
+          "trajectory": {
+            "kind": "dataset",
+            "required": true
+          },
+          "reviews": {
+            "kind": "dataset",
+            "required": true
+          }
+        },
+        "adapter": "gym.recordings",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/gym.recordings/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "gym.train",
+      "tag": "gym_train",
+      "input_type": "StudioWorkerOpGymTrainInput",
+      "parameter_type": "StudioWorkerOpGymTrainParameters",
+      "result_type": "StudioWorkerOpGymTrainResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "gym.train",
+        "line": 69,
+        "inputs": {},
+        "outputs": {
+          "model": "gym-policy",
+          "metrics": "metrics"
+        },
+        "parameters": {
+          "environment": {
+            "type": "string",
+            "enum": [
+              "warehouse",
+              "drone",
+              "car",
+              "traffic-driving",
+              "traffic"
+            ],
+            "default": "warehouse",
+            "required": true
+          },
+          "timesteps": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2048
+          },
+          "seed": {
+            "type": "integer",
+            "default": 0
+          }
+        },
+        "capabilities": [
+          "gym"
+        ],
+        "side_effects": true,
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {
+        "environment": {},
+        "timesteps": {
+          "minimum": 1,
+          "default": 2048
+        },
+        "seed": {
+          "default": 0
+        }
+      },
+      "retained_catalog_specification": {
+        "type": "gym.train",
+        "version": 1,
+        "title": "Gym policy training",
+        "family": "Training",
+        "inputs": [],
+        "outputs": [
+          {
+            "name": "model",
+            "type": "gym-policy"
+          },
+          {
+            "name": "metrics",
+            "type": "metrics"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "environment": {
+              "type": "string",
+              "enum": [
+                "warehouse",
+                "drone",
+                "car",
+                "traffic-driving",
+                "traffic"
+              ],
+              "default": "warehouse"
+            },
+            "timesteps": {
+              "type": "integer",
+              "default": 2048,
+              "minimum": 1
+            },
+            "seed": {
+              "type": "integer",
+              "default": 0
+            }
+          },
+          "required": [
+            "environment"
+          ]
+        },
+        "capabilities": [
+          "gym"
+        ],
+        "bindings": {},
+        "adapter": "gym.train",
+        "side_effects": true,
+        "implementation": "poolhouse.studio/gym.train/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "gym.evaluate",
+      "tag": "gym_evaluate",
+      "input_type": "StudioWorkerOpGymEvaluateInput",
+      "parameter_type": "StudioWorkerOpGymEvaluateParameters",
+      "result_type": "StudioWorkerOpGymEvaluateResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "gym.evaluate",
+        "line": 70,
+        "inputs": {
+          "model": "model"
+        },
+        "outputs": {
+          "metrics": "metrics",
+          "report": "report"
+        },
+        "parameters": {
+          "episodes": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 5
+          }
+        },
+        "capabilities": [
+          "gym"
+        ],
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {
+        "episodes": {
+          "minimum": 1,
+          "default": 5
+        }
+      },
+      "retained_catalog_specification": {
+        "type": "gym.evaluate",
+        "version": 1,
+        "title": "Evaluate Gym policy",
+        "family": "Evaluation",
+        "inputs": [
+          {
+            "name": "model",
+            "type": "model",
+            "required": true,
+            "accepted_types": [
+              "model",
+              "gym-policy"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "metrics",
+            "type": "metrics"
+          },
+          {
+            "name": "report",
+            "type": "report"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "episodes": {
+              "type": "integer",
+              "default": 5,
+              "minimum": 1
+            }
+          }
+        },
+        "capabilities": [
+          "gym"
+        ],
+        "bindings": {},
+        "adapter": "gym.evaluate",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/gym.evaluate/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "generate.record",
+      "tag": "generate_record",
+      "input_type": "StudioWorkerOpGenerateRecordInput",
+      "parameter_type": "StudioWorkerOpGenerateRecordParameters",
+      "result_type": "StudioWorkerOpGenerateRecordResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "generate.record",
+        "line": 73,
+        "inputs": {
+          "model": "model",
+          "record": "json"
+        },
+        "outputs": {
+          "text": "text",
+          "response": "json",
+          "report": "report"
+        },
+        "parameters": {
+          "trusted_task": {
+            "type": "string",
+            "default": ""
+          },
+          "question_field": {
+            "type": "string",
+            "default": "question"
+          },
+          "sources_field": {
+            "type": "string",
+            "default": "retrieved_sources"
+          },
+          "temperature": {
+            "type": "number",
+            "default": 0,
+            "minimum": 0,
+            "maximum": 2
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32768,
+            "default": 512
+          }
+        },
+        "capabilities": [
+          "inference"
+        ],
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {
+        "trusted_task": {},
+        "question_field": {},
+        "sources_field": {},
+        "temperature": {
+          "default": 0,
+          "minimum": 0,
+          "maximum": 2
+        },
+        "max_tokens": {
+          "minimum": 1,
+          "maximum": 32768,
+          "default": 512
+        }
+      },
+      "retained_catalog_specification": {
+        "type": "generate.record",
+        "version": 1,
+        "title": "Generate from assessed sources",
+        "family": "Inference",
+        "inputs": [
+          {
+            "name": "model",
+            "type": "model",
+            "required": true,
+            "accepted_types": [
+              "model",
+              "language-model"
+            ]
+          },
+          {
+            "name": "record",
+            "type": "json",
+            "required": true
+          }
+        ],
+        "outputs": [
+          {
+            "name": "text",
+            "type": "text"
+          },
+          {
+            "name": "response",
+            "type": "json"
+          },
+          {
+            "name": "report",
+            "type": "report"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "trusted_task": {
+              "type": "string",
+              "default": ""
+            },
+            "question_field": {
+              "type": "string",
+              "default": "question"
+            },
+            "sources_field": {
+              "type": "string",
+              "default": "retrieved_sources"
+            },
+            "temperature": {
+              "type": "number",
+              "default": 0,
+              "minimum": 0,
+              "maximum": 2
+            },
+            "max_tokens": {
+              "type": "integer",
+              "default": 512,
+              "minimum": 1,
+              "maximum": 32768
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [
+          "inference"
+        ],
+        "bindings": {},
+        "adapter": "generate.record",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/generate.record/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "generate.structured",
+      "tag": "generate_structured",
+      "input_type": "StudioWorkerOpGenerateStructuredInput",
+      "parameter_type": "StudioWorkerOpGenerateStructuredParameters",
+      "result_type": "StudioWorkerOpGenerateStructuredResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "generate.structured",
+        "line": 79,
+        "inputs": {
+          "model": "model",
+          "prompt": "text"
+        },
+        "outputs": {
+          "text": "text",
+          "response": "json"
+        },
+        "parameters": {
+          "temperature": {
+            "type": "number",
+            "default": 0.7,
+            "minimum": 0,
+            "maximum": 2
+          },
+          "json_schema": {
+            "type": "string",
+            "default": "{\"type\":\"object\"}"
+          },
+          "max_tokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32768,
+            "default": 512
+          }
+        },
+        "capabilities": [
+          "inference"
+        ],
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {
+        "temperature": {
+          "default": "3fe6666666666666",
+          "minimum": 0,
+          "maximum": 2
+        },
+        "json_schema": {},
+        "max_tokens": {
+          "minimum": 1,
+          "maximum": 32768,
+          "default": 512
+        }
+      },
+      "retained_catalog_specification": {
+        "type": "generate.structured",
+        "version": 1,
+        "title": "Structured response",
+        "family": "Inference",
+        "inputs": [
+          {
+            "name": "model",
+            "type": "model",
+            "required": true,
+            "accepted_types": [
+              "model",
+              "language-model"
+            ]
+          },
+          {
+            "name": "prompt",
+            "type": "text",
+            "required": true
+          }
+        ],
+        "outputs": [
+          {
+            "name": "text",
+            "type": "text"
+          },
+          {
+            "name": "response",
+            "type": "json"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "temperature": {
+              "type": "number",
+              "default": 0.7,
+              "minimum": 0,
+              "maximum": 2
+            },
+            "json_schema": {
+              "type": "string",
+              "default": "{\"type\":\"object\"}"
+            },
+            "max_tokens": {
+              "type": "integer",
+              "default": 512,
+              "minimum": 1,
+              "maximum": 32768
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [
+          "inference"
+        ],
+        "bindings": {},
+        "adapter": "generate.structured",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/generate.structured/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "train.decision",
+      "tag": "train_decision",
+      "input_type": "StudioWorkerOpTrainDecisionInput",
+      "parameter_type": "StudioWorkerOpTrainDecisionParameters",
+      "result_type": "StudioWorkerOpTrainDecisionResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "train.decision",
+        "line": 82,
+        "inputs": {
+          "model": "model",
+          "dataset": "dataset"
+        },
+        "outputs": {
+          "model": "decision-model",
+          "metrics": "metrics",
+          "checkpoint": "artifact"
+        },
+        "parameters": {
+          "steps": {
+            "type": "integer",
+            "default": 60,
+            "minimum": 1
+          },
+          "batch_size": {
+            "type": "integer",
+            "default": 4,
+            "minimum": 1
+          },
+          "lr": {
+            "type": "number",
+            "default": 0.0002,
+            "exclusiveMinimum": 0
+          },
+          "max_tokens": {
+            "type": "integer",
+            "default": 1024,
+            "minimum": 1
+          }
+        },
+        "capabilities": [
+          "training"
+        ],
+        "side_effects": true,
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {
+        "steps": {
+          "default": 60,
+          "minimum": 1
+        },
+        "batch_size": {
+          "default": 4,
+          "minimum": 1
+        },
+        "lr": {
+          "default": "3f2a36e2eb1c432d",
+          "exclusiveMinimum": 0
+        },
+        "max_tokens": {
+          "default": 1024,
+          "minimum": 1
+        }
+      },
+      "retained_catalog_specification": {
+        "type": "train.decision",
+        "version": 1,
+        "title": "Train decision model",
+        "family": "Training",
+        "inputs": [
+          {
+            "name": "model",
+            "type": "model",
+            "required": true,
+            "accepted_types": [
+              "model",
+              "language-model"
+            ]
+          },
+          {
+            "name": "dataset",
+            "type": "dataset",
+            "required": true
+          }
+        ],
+        "outputs": [
+          {
+            "name": "model",
+            "type": "decision-model"
+          },
+          {
+            "name": "metrics",
+            "type": "metrics"
+          },
+          {
+            "name": "checkpoint",
+            "type": "artifact"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "steps": {
+              "type": "integer",
+              "default": 60,
+              "minimum": 1
+            },
+            "batch_size": {
+              "type": "integer",
+              "default": 4,
+              "minimum": 1
+            },
+            "lr": {
+              "type": "number",
+              "default": 0.0002,
+              "exclusiveMinimum": 0
+            },
+            "max_tokens": {
+              "type": "integer",
+              "default": 1024,
+              "minimum": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [
+          "training"
+        ],
+        "bindings": {},
+        "adapter": "train.decision",
+        "side_effects": true,
+        "implementation": "poolhouse.studio/train.decision/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "evaluate.decision",
+      "tag": "evaluate_decision",
+      "input_type": "StudioWorkerOpEvaluateDecisionInput",
+      "parameter_type": null,
+      "result_type": "StudioWorkerOpEvaluateDecisionResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "evaluate.decision",
+        "line": 87,
+        "inputs": {
+          "model": "model",
+          "dataset": "dataset"
+        },
+        "outputs": {
+          "metrics": "metrics",
+          "report": "report"
+        },
+        "parameters": {},
+        "capabilities": [
+          "evaluation"
+        ],
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {},
+      "retained_catalog_specification": {
+        "type": "evaluate.decision",
+        "version": 1,
+        "title": "Evaluate decision model",
+        "family": "Evaluation",
+        "inputs": [
+          {
+            "name": "model",
+            "type": "model",
+            "required": true,
+            "accepted_types": [
+              "model",
+              "decision-model"
+            ]
+          },
+          {
+            "name": "dataset",
+            "type": "dataset",
+            "required": true
+          }
+        ],
+        "outputs": [
+          {
+            "name": "metrics",
+            "type": "metrics"
+          },
+          {
+            "name": "report",
+            "type": "report"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        },
+        "capabilities": [
+          "evaluation"
+        ],
+        "bindings": {},
+        "adapter": "evaluate.decision",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/evaluate.decision/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "decision.predict",
+      "tag": "decision_predict",
+      "input_type": "StudioWorkerOpDecisionPredictInput",
+      "parameter_type": "StudioWorkerOpDecisionPredictParameters",
+      "result_type": "StudioWorkerOpDecisionPredictResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "decision.predict",
+        "line": 97,
+        "inputs": {
+          "record": "json",
+          "model": "decision-model"
+        },
+        "outputs": {
+          "decision": "decision",
+          "record": "json",
+          "report": "report"
+        },
+        "parameters": {
+          "question": {
+            "type": "string",
+            "default": "Which option best describes this record?"
+          },
+          "options": {
+            "type": "string",
+            "default": "[\"accept\",\"review\"]"
+          },
+          "abstain_below": {
+            "type": "number",
+            "default": 0.8,
+            "minimum": 0,
+            "maximum": 1
+          },
+          "min_margin": {
+            "type": "number",
+            "default": 0.2,
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "capabilities": [
+          "inference"
+        ],
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {
+        "question": {},
+        "options": {},
+        "abstain_below": {
+          "default": "3fe999999999999a",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "min_margin": {
+          "default": "3fc999999999999a",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "retained_catalog_specification": {
+        "type": "decision.predict",
+        "version": 1,
+        "title": "Decide on a record",
+        "family": "Inference",
+        "inputs": [
+          {
+            "name": "record",
+            "type": "json",
+            "required": true
+          },
+          {
+            "name": "model",
+            "type": "decision-model",
+            "required": true,
+            "accepted_types": [
+              "model",
+              "decision-model"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "decision",
+            "type": "decision"
+          },
+          {
+            "name": "record",
+            "type": "json"
+          },
+          {
+            "name": "report",
+            "type": "report"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "question": {
+              "type": "string",
+              "default": "Which option best describes this record?"
+            },
+            "options": {
+              "type": "string",
+              "default": "[\"accept\",\"review\"]"
+            },
+            "abstain_below": {
+              "type": "number",
+              "default": 0.8,
+              "minimum": 0,
+              "maximum": 1
+            },
+            "min_margin": {
+              "type": "number",
+              "default": 0.2,
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [
+          "inference"
+        ],
+        "bindings": {},
+        "adapter": "decision.predict",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/decision.predict/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "decision.route",
+      "tag": "decision_route",
+      "input_type": "StudioWorkerOpDecisionRouteInput",
+      "parameter_type": "StudioWorkerOpDecisionRouteParameters",
+      "result_type": "StudioWorkerOpDecisionRouteResult",
+      "execution": "node-only",
+      "source": {
+        "operation": "decision.route",
+        "line": 100,
+        "inputs": {
+          "decision": "decision"
+        },
+        "outputs": {
+          "allow": "gate",
+          "review": "gate",
+          "block": "gate",
+          "report": "report"
+        },
+        "parameters": {
+          "label": {
+            "type": "string",
+            "default": "accept"
+          }
+        },
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {
+        "label": {}
+      },
+      "retained_catalog_specification": {
+        "type": "decision.route",
+        "version": 1,
+        "title": "Route a decision",
+        "family": "Inference",
+        "inputs": [
+          {
+            "name": "decision",
+            "type": "decision",
+            "required": true
+          }
+        ],
+        "outputs": [
+          {
+            "name": "allow",
+            "type": "gate"
+          },
+          {
+            "name": "review",
+            "type": "gate"
+          },
+          {
+            "name": "block",
+            "type": "gate"
+          },
+          {
+            "name": "report",
+            "type": "report"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "label": {
+              "type": "string",
+              "default": "accept"
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [],
+        "bindings": {},
+        "adapter": "decision.route",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/decision.route/1"
+      },
+      "execution_category": "node-immediate",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "guard.injection",
+      "tag": "guard_injection",
+      "input_type": "StudioWorkerOpGuardInjectionInput",
+      "parameter_type": "StudioWorkerOpGuardInjectionParameters",
+      "result_type": "StudioWorkerOpGuardInjectionResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "guard.injection",
+        "line": 103,
+        "inputs": {
+          "record": "json",
+          "model": "decision-model"
+        },
+        "outputs": {
+          "signal": "json",
+          "record": "json",
+          "report": "report",
+          "allow": "gate",
+          "review": "gate",
+          "block": "gate"
+        },
+        "parameters": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "direct",
+              "indirect"
+            ],
+            "default": "indirect"
+          },
+          "trusted_task": {
+            "type": "string",
+            "default": ""
+          },
+          "input_fields": {
+            "type": "string",
+            "default": "[]",
+            "title": "Literal record fields (JSON list; [] assesses all)"
+          },
+          "allow_threshold": {
+            "type": "number",
+            "default": 0.8,
+            "minimum": 0.5,
+            "maximum": 1
+          },
+          "block_threshold": {
+            "type": "number",
+            "default": 0.8,
+            "minimum": 0.5,
+            "maximum": 1
+          },
+          "min_margin": {
+            "type": "number",
+            "default": 0.2,
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "capabilities": [
+          "inference"
+        ],
+        "origin_only_explicitly_rejected_by_checked_node": false
+      },
+      "fractional_binary64_bits": {
+        "mode": {},
+        "trusted_task": {},
+        "input_fields": {},
+        "allow_threshold": {
+          "default": "3fe999999999999a",
+          "minimum": "3fe0000000000000",
+          "maximum": 1
+        },
+        "block_threshold": {
+          "default": "3fe999999999999a",
+          "minimum": "3fe0000000000000",
+          "maximum": 1
+        },
+        "min_margin": {
+          "default": "3fc999999999999a",
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "retained_catalog_specification": {
+        "type": "guard.injection",
+        "version": 1,
+        "title": "Assess prompt injection",
+        "family": "Inference",
+        "inputs": [
+          {
+            "name": "record",
+            "type": "json",
+            "required": true
+          },
+          {
+            "name": "model",
+            "type": "decision-model",
+            "required": true,
+            "accepted_types": [
+              "model",
+              "decision-model"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "signal",
+            "type": "json"
+          },
+          {
+            "name": "record",
+            "type": "json"
+          },
+          {
+            "name": "report",
+            "type": "report"
+          },
+          {
+            "name": "allow",
+            "type": "gate"
+          },
+          {
+            "name": "review",
+            "type": "gate"
+          },
+          {
+            "name": "block",
+            "type": "gate"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "direct",
+                "indirect"
+              ],
+              "default": "indirect"
+            },
+            "trusted_task": {
+              "type": "string",
+              "default": ""
+            },
+            "input_fields": {
+              "type": "string",
+              "default": "[]",
+              "title": "Literal record fields (JSON list; [] assesses all)"
+            },
+            "allow_threshold": {
+              "type": "number",
+              "default": 0.8,
+              "minimum": 0.5,
+              "maximum": 1
+            },
+            "block_threshold": {
+              "type": "number",
+              "default": 0.8,
+              "minimum": 0.5,
+              "maximum": 1
+            },
+            "min_margin": {
+              "type": "number",
+              "default": 0.2,
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [
+          "inference"
+        ],
+        "bindings": {},
+        "adapter": "guard.injection",
+        "side_effects": false,
+        "implementation": "poolhouse.studio/guard.injection/1"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "train.classify-text",
+      "tag": "train_classify_text",
+      "input_type": "StudioWorkerOpTrainClassifyTextInput",
+      "parameter_type": "StudioWorkerOpTrainClassifyTextParameters",
+      "result_type": "StudioWorkerOpTrainClassifyTextResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "train.classify-text",
+        "source": "contracts/recipes/classify-text.json",
+        "inputs": {
+          "dataset": "dataset",
+          "model": {
+            "type": "model",
+            "required": false
+          }
+        },
+        "outputs": {
+          "model": "classifier-model",
+          "metrics": "metrics",
+          "checkpoint": "artifact"
+        },
+        "parameter_fields": [
+          {
+            "name": "steps",
+            "type": "int",
+            "default": 1000,
+            "min": 20,
+            "max": 200000,
+            "label": "How long to train"
+          },
+          {
+            "name": "context",
+            "type": "int",
+            "default": 128,
+            "min": 32,
+            "max": 2048,
+            "label": "How much of each document it reads"
+          },
+          {
+            "name": "batch_size",
+            "type": "int",
+            "default": 32,
+            "min": 1,
+            "max": 512,
+            "label": "Examples per step"
+          },
+          {
+            "name": "learning_rate",
+            "type": "float",
+            "default": 0.001,
+            "min": 1e-05,
+            "max": 0.1,
+            "label": "Learning rate"
+          }
+        ],
+        "size_names": [
+          "small",
+          "medium"
+        ],
+        "common_parameters": {
+          "size": [
+            "",
+            "small",
+            "medium"
+          ],
+          "framework": [
+            "",
+            "torch",
+            "mlx"
+          ],
+          "mode": [
+            "train",
+            "smoke"
+          ]
+        }
+      },
+      "fractional_binary64_bits": {
+        "steps": {
+          "default": 1000,
+          "min": 20,
+          "max": 200000
+        },
+        "context": {
+          "default": 128,
+          "min": 32,
+          "max": 2048
+        },
+        "batch_size": {
+          "default": 32,
+          "min": 1,
+          "max": 512
+        },
+        "learning_rate": {
+          "default": "3f50624dd2f1a9fc",
+          "min": "3ee4f8b588e368f1",
+          "max": "3fb999999999999a"
+        },
+        "size": {},
+        "framework": {},
+        "mode": {}
+      },
+      "retained_catalog_specification": {
+        "type": "train.classify-text",
+        "version": 1,
+        "title": "Sort my documents into categories",
+        "family": "Training",
+        "inputs": [
+          {
+            "name": "dataset",
+            "type": "dataset",
+            "required": true
+          },
+          {
+            "name": "model",
+            "type": "model",
+            "required": false,
+            "accepted_types": [
+              "model",
+              "language-model"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "model",
+            "type": "classifier-model"
+          },
+          {
+            "name": "metrics",
+            "type": "metrics"
+          },
+          {
+            "name": "checkpoint",
+            "type": "artifact"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "steps": {
+              "type": "integer",
+              "title": "How long to train",
+              "default": 1000,
+              "minimum": 20,
+              "maximum": 200000
+            },
+            "context": {
+              "type": "integer",
+              "title": "How much of each document it reads",
+              "default": 128,
+              "minimum": 32,
+              "maximum": 2048
+            },
+            "batch_size": {
+              "type": "integer",
+              "title": "Examples per step",
+              "default": 32,
+              "minimum": 1,
+              "maximum": 512
+            },
+            "learning_rate": {
+              "type": "number",
+              "title": "Learning rate",
+              "default": 0.001,
+              "minimum": 1e-05,
+              "maximum": 0.1
+            },
+            "size": {
+              "type": "string",
+              "enum": [
+                "",
+                "small",
+                "medium"
+              ],
+              "default": ""
+            },
+            "framework": {
+              "type": "string",
+              "enum": [
+                "",
+                "torch",
+                "mlx"
+              ],
+              "default": ""
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "train",
+                "smoke"
+              ],
+              "default": "train"
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [
+          "training"
+        ],
+        "bindings": {},
+        "adapter": "train.classify-text",
+        "side_effects": true,
+        "implementation": "poolhouse.studio/train.classify-text/1",
+        "recipe": "classify-text"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "train.text-lm",
+      "tag": "train_text_lm",
+      "input_type": "StudioWorkerOpTrainTextLmInput",
+      "parameter_type": "StudioWorkerOpTrainTextLmParameters",
+      "result_type": "StudioWorkerOpTrainTextLmResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "train.text-lm",
+        "source": "contracts/recipes/text-lm.json",
+        "inputs": {
+          "dataset": "dataset",
+          "model": {
+            "type": "model",
+            "required": false
+          }
+        },
+        "outputs": {
+          "model": "language-model",
+          "metrics": "metrics",
+          "checkpoint": "artifact"
+        },
+        "parameter_fields": [
+          {
+            "name": "steps",
+            "type": "int",
+            "default": 2000,
+            "min": 20,
+            "max": 1000000,
+            "label": "How long to train",
+            "help": "More is usually better up to a point. Watch the held-out score."
+          },
+          {
+            "name": "context",
+            "type": "int",
+            "default": 256,
+            "min": 32,
+            "max": 4096,
+            "label": "How much it reads at once",
+            "help": "Characters of context. Longer costs memory and time."
+          },
+          {
+            "name": "batch_size",
+            "type": "int",
+            "default": 16,
+            "min": 1,
+            "max": 512,
+            "label": "Examples per step"
+          },
+          {
+            "name": "learning_rate",
+            "type": "float",
+            "default": 0.003,
+            "min": 1e-05,
+            "max": 0.1,
+            "label": "Learning rate",
+            "help": "How big a step it takes. Too high and the loss goes to NaN."
+          }
+        ],
+        "size_names": [
+          "small",
+          "medium",
+          "large"
+        ],
+        "common_parameters": {
+          "size": [
+            "",
+            "small",
+            "medium",
+            "large"
+          ],
+          "framework": [
+            "",
+            "torch",
+            "mlx"
+          ],
+          "mode": [
+            "train",
+            "smoke"
+          ]
+        }
+      },
+      "fractional_binary64_bits": {
+        "steps": {
+          "default": 2000,
+          "min": 20,
+          "max": 1000000
+        },
+        "context": {
+          "default": 256,
+          "min": 32,
+          "max": 4096
+        },
+        "batch_size": {
+          "default": 16,
+          "min": 1,
+          "max": 512
+        },
+        "learning_rate": {
+          "default": "3f689374bc6a7efa",
+          "min": "3ee4f8b588e368f1",
+          "max": "3fb999999999999a"
+        },
+        "size": {},
+        "framework": {},
+        "mode": {}
+      },
+      "retained_catalog_specification": {
+        "type": "train.text-lm",
+        "version": 1,
+        "title": "Teach a model to write text like my documents",
+        "family": "Training",
+        "inputs": [
+          {
+            "name": "dataset",
+            "type": "dataset",
+            "required": true
+          },
+          {
+            "name": "model",
+            "type": "model",
+            "required": false,
+            "accepted_types": [
+              "model",
+              "language-model"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "model",
+            "type": "language-model"
+          },
+          {
+            "name": "metrics",
+            "type": "metrics"
+          },
+          {
+            "name": "checkpoint",
+            "type": "artifact"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "steps": {
+              "type": "integer",
+              "title": "How long to train",
+              "default": 2000,
+              "minimum": 20,
+              "maximum": 1000000
+            },
+            "context": {
+              "type": "integer",
+              "title": "How much it reads at once",
+              "default": 256,
+              "minimum": 32,
+              "maximum": 4096
+            },
+            "batch_size": {
+              "type": "integer",
+              "title": "Examples per step",
+              "default": 16,
+              "minimum": 1,
+              "maximum": 512
+            },
+            "learning_rate": {
+              "type": "number",
+              "title": "Learning rate",
+              "default": 0.003,
+              "minimum": 1e-05,
+              "maximum": 0.1
+            },
+            "size": {
+              "type": "string",
+              "enum": [
+                "",
+                "small",
+                "medium",
+                "large"
+              ],
+              "default": ""
+            },
+            "framework": {
+              "type": "string",
+              "enum": [
+                "",
+                "torch",
+                "mlx"
+              ],
+              "default": ""
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "train",
+                "smoke"
+              ],
+              "default": "train"
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [
+          "training"
+        ],
+        "bindings": {},
+        "adapter": "train.text-lm",
+        "side_effects": true,
+        "implementation": "poolhouse.studio/train.text-lm/1",
+        "recipe": "text-lm"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    },
+    {
+      "operation": "train.tool-calls",
+      "tag": "train_tool_calls",
+      "input_type": "StudioWorkerOpTrainToolCallsInput",
+      "parameter_type": "StudioWorkerOpTrainToolCallsParameters",
+      "result_type": "StudioWorkerOpTrainToolCallsResult",
+      "execution": "private-worker",
+      "source": {
+        "operation": "train.tool-calls",
+        "source": "contracts/recipes/tool-calls.json",
+        "inputs": {
+          "dataset": "dataset",
+          "model": {
+            "type": "model",
+            "required": true
+          }
+        },
+        "outputs": {
+          "model": "language-model",
+          "metrics": "metrics",
+          "checkpoint": "artifact"
+        },
+        "parameter_fields": [
+          {
+            "name": "base",
+            "type": "text",
+            "default": "",
+            "label": "Base model ID or local directory",
+            "help": "Installed Hugging Face or MLX chat model directory or ID. Empty uses the dataset manifest base, then the selected size."
+          },
+          {
+            "name": "steps",
+            "type": "int",
+            "default": 300,
+            "min": 20,
+            "max": 100000,
+            "label": "How long to train",
+            "help": "A few hundred steps over a few hundred conversations is a pass or two. Watch the held-out score. One pass over 4,000 harvested turns at batch 4 is 1,000 steps."
+          },
+          {
+            "name": "context",
+            "type": "int",
+            "default": 2048,
+            "min": 64,
+            "max": 32768,
+            "label": "Longest conversation it reads",
+            "help": "Tokens. The tool declarations are rendered into every row: the five graph tools with their worked examples measured 1,080 tokens through the Gemma 4 template, and a row the context cuts off is dropped, not taught."
+          },
+          {
+            "name": "batch_size",
+            "type": "int",
+            "default": 8,
+            "min": 1,
+            "max": 128,
+            "label": "Conversations per step"
+          },
+          {
+            "name": "learning_rate",
+            "type": "float",
+            "default": 2e-05,
+            "min": 1e-07,
+            "max": 0.01,
+            "label": "Learning rate",
+            "help": "A full fine-tune of a pretrained model wants a small one; 3e-3 is for training from scratch, and a LoRA wants about 1e-4 because only the adapter moves."
+          },
+          {
+            "name": "lora",
+            "type": "bool",
+            "default": false,
+            "label": "Train an adapter instead of every weight",
+            "help": "Two small matrices on each projection, the base frozen: ~0.5% of the weights train, and an 8B model fits where a full fine-tune of it would need ~128G of optimizer state. Needs peft: pip install 'poolhouse[train-lora]'."
+          },
+          {
+            "name": "lora_rank",
+            "type": "int",
+            "default": 16,
+            "min": 1,
+            "max": 256,
+            "label": "Adapter rank",
+            "help": "How much the adapter can express, and what it costs. 16 is the usual answer for teaching a format and a habit; 64 is for teaching new knowledge, which this is not."
+          },
+          {
+            "name": "lora_alpha",
+            "type": "int",
+            "default": 32,
+            "min": 1,
+            "max": 1024,
+            "label": "Adapter scale",
+            "help": "The adapter's update is scaled by alpha/rank, so alpha = 2 x rank keeps that scale at 2 whatever the rank is."
+          },
+          {
+            "name": "lora_dropout",
+            "type": "float",
+            "default": 0.05,
+            "min": 0.0,
+            "max": 0.5,
+            "label": "Adapter dropout"
+          },
+          {
+            "name": "lora_targets",
+            "type": "text",
+            "default": "",
+            "label": "Which projections get an adapter",
+            "help": "Comma-separated module names; empty means q_proj,k_proj,v_proj,o_proj,gate_proj,up_proj,down_proj -- attention and MLP both, because a tool caller is being taught what to say and not only what to attend to."
+          }
+        ],
+        "size_names": [
+          "e4b",
+          "qwen27b"
+        ],
+        "common_parameters": {
+          "size": [
+            "",
+            "e4b",
+            "qwen27b"
+          ],
+          "framework": [
+            "",
+            "torch",
+            "mlx"
+          ],
+          "mode": [
+            "train",
+            "smoke"
+          ]
+        }
+      },
+      "fractional_binary64_bits": {
+        "base": {},
+        "steps": {
+          "default": 300,
+          "min": 20,
+          "max": 100000
+        },
+        "context": {
+          "default": 2048,
+          "min": 64,
+          "max": 32768
+        },
+        "batch_size": {
+          "default": 8,
+          "min": 1,
+          "max": 128
+        },
+        "learning_rate": {
+          "default": "3ef4f8b588e368f1",
+          "min": "3e7ad7f29abcaf48",
+          "max": "3f847ae147ae147b"
+        },
+        "lora": {
+          "default": false
+        },
+        "lora_rank": {
+          "default": 16,
+          "min": 1,
+          "max": 256
+        },
+        "lora_alpha": {
+          "default": 32,
+          "min": 1,
+          "max": 1024
+        },
+        "lora_dropout": {
+          "default": "3fa999999999999a",
+          "min": "0000000000000000",
+          "max": "3fe0000000000000"
+        },
+        "lora_targets": {},
+        "size": {},
+        "framework": {},
+        "mode": {}
+      },
+      "retained_catalog_specification": {
+        "type": "train.tool-calls",
+        "version": 1,
+        "title": "Teach a model to call my tools",
+        "family": "Training",
+        "inputs": [
+          {
+            "name": "dataset",
+            "type": "dataset",
+            "required": true
+          },
+          {
+            "name": "model",
+            "type": "model",
+            "required": true,
+            "accepted_types": [
+              "model",
+              "language-model"
+            ]
+          }
+        ],
+        "outputs": [
+          {
+            "name": "model",
+            "type": "language-model"
+          },
+          {
+            "name": "metrics",
+            "type": "metrics"
+          },
+          {
+            "name": "checkpoint",
+            "type": "artifact"
+          }
+        ],
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "steps": {
+              "type": "integer",
+              "title": "How long to train",
+              "default": 300,
+              "minimum": 20,
+              "maximum": 100000
+            },
+            "context": {
+              "type": "integer",
+              "title": "Longest conversation it reads",
+              "default": 2048,
+              "minimum": 64,
+              "maximum": 32768
+            },
+            "batch_size": {
+              "type": "integer",
+              "title": "Conversations per step",
+              "default": 8,
+              "minimum": 1,
+              "maximum": 128
+            },
+            "learning_rate": {
+              "type": "number",
+              "title": "Learning rate",
+              "default": 2e-05,
+              "minimum": 1e-07,
+              "maximum": 0.01
+            },
+            "lora": {
+              "type": "boolean",
+              "title": "Train an adapter instead of every weight",
+              "default": false
+            },
+            "lora_rank": {
+              "type": "integer",
+              "title": "Adapter rank",
+              "default": 16,
+              "minimum": 1,
+              "maximum": 256
+            },
+            "lora_alpha": {
+              "type": "integer",
+              "title": "Adapter scale",
+              "default": 32,
+              "minimum": 1,
+              "maximum": 1024
+            },
+            "lora_dropout": {
+              "type": "number",
+              "title": "Adapter dropout",
+              "default": 0.05,
+              "minimum": 0.0,
+              "maximum": 0.5
+            },
+            "lora_targets": {
+              "type": "string",
+              "title": "Which projections get an adapter",
+              "default": ""
+            },
+            "size": {
+              "type": "string",
+              "enum": [
+                "",
+                "e4b",
+                "qwen27b"
+              ],
+              "default": ""
+            },
+            "framework": {
+              "type": "string",
+              "enum": [
+                "",
+                "torch",
+                "mlx"
+              ],
+              "default": ""
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "train",
+                "smoke"
+              ],
+              "default": "train"
+            }
+          },
+          "additionalProperties": false
+        },
+        "capabilities": [
+          "training"
+        ],
+        "bindings": {},
+        "adapter": "train.tool-calls",
+        "side_effects": true,
+        "implementation": "poolhouse.studio/train.tool-calls/1",
+        "recipe": "tool-calls"
+      },
+      "execution_category": "private-worker",
+      "source_field_mapping": {
+        "path_values": "Node-frozen input and node-reserved candidate slots, never raw paths.",
+        "record.if_ports": "true/false remain true_gate/false_gate DTO fields with same semantics.",
+        "recipe_base": "Recipe source base is retained metadata but catalog excludes it; tool-calls base DTO is resolved from exact node-authorized input model.",
+        "numbers": "Int-vs-float and finite binary64 source values preserved; semantic source bounds remain separate validation."
+      }
+    }
+  ],
+  "directions": {
+    "node_to_worker": "StudioWorkerNodeFrame only; start/descriptors/input/credit/cancel originate from retained node admission.",
+    "worker_to_node": "StudioWorkerEventFrame only; startup/accepted/output chunks/descriptors/result/failure/cancel/end are untrusted candidates.",
+    "frozen_vs_candidate": "Common WorkerFrozenInput/WorkerUtf8Input are only existing immutable input references. Distinct StudioWorkerOutputReservation, Utf8Candidate, LiteralCandidate, OutputCandidate, OutputChunk/End bind produced data to pre-existing staging reservations."
+  },
+  "invariants": [
+    "Catalog metadata and all31 operation field/parameter/result shapes are retained; only22 private worker variants exist. Source-evidenced values/defaults/choices and binary64 bits are preserved in catalog_mapping, not treated as validators.",
+    "Origin dataset/model/prompt/tools.call, node import data.hf-preview, and immediate stream.record/record.map/record.if/decision.route remain outside private-worker start/result tags. No tool/network capability follows from their catalog data.",
+    "Original request content remains frozen on the node for audit/source-equivalence. Only its digest crosses NodeSnapshot; it is never a second parse, dispatch, parameter or configuration override. Node-selected catalog kind, operation, route, typed result and measured implementation must agree.",
+    "Bound source fields using existing limits preserve those limits: record field UTF8 bytes256 and assignment count256; record_ops depth16 and len(json.dumps(ensure_ascii=False,allow_nan=False).encode()) <=200000; record_context uses separately sorted compact JSON character-count200000. These are distinct metrics, not interchangeable byte bounds.",
+    "Some source fields have no demonstrated length/count/expanded-workload limits. Individual frozen/chunked references and streamed descriptors add no invented aggregate cap. Node-admitted profile source evidence and resource/expansion validation remain unresolved before runtime decoding or enablement.",
+    "Integer sign+magnitude is exact source integer data, not a guessed32/64-bit seed. Before conversion require canonical ASCII decimal magnitude, no leading zeros except0, no negative zero, and the operation source parser plus node-admitted resource profile. Finite fractions use FiniteF64 with no clamp/round; metadata bits preserve actual rounded source values.",
+    "The NaN observation tag is restricted to exactly training final_loss (initial unobserved NaN) and decision training answered_accuracy (no answered cases). It cannot enter admitted controls, probabilities, budgets or arbitrary metrics. Other nonfinite source behavior is an unresolved unsupported runtime profile, never fake0 or a finite fallback.",
+    "MLX and Torch LoRA results/plans remain distinct. MLX cached_base_gb is fractional cached-weight storage, total_memory_measured must remain false, unmeasured timing fields remain null. No cache size or engine echo proves actual process peak/working memory.",
+    "Every stream slot has one node-fixed direction, purpose/profile, exact expected descriptor variant and exact attempt; indexes are contiguous, counts/bytes/digest match End, slot graphs are acyclic and expanded bytes/resources admitted before decode. Mixed toolcall/metric/reservation descriptors cannot retag or replace slot purpose. No arbitrary list cap is added.",
+    "OutputReservation names an existing node-assigned staging slot, exact attempt, fixed media/profile and actual admitted byte/item ceilings. It has no future digest or fabricated completed size. Candidate UTF8/literal/integer/asset bytes must match that exact reservation; worker cannot mint an immutable input or operational handle.",
+    "Utf8Reference/LiteralReference immutable_input branches may only echo exact existing node-frozen slots. Newly produced values use candidate branches with distinct direction/custody; node-to-worker descriptors must use immutable references exclusively and may not smuggle candidate slots.",
+    "All ancillary transfers authenticate exact slot+attempt+direction+handle; reject duplicate/extra handles while retaining rejected-handle cleanup. No arbitrary paths, URLs, module strings or worker-selected filesystem publication destination are represented. Manifest names are data, not reopen authority; node rejects traversal/symlinks/foreign content.",
+    "Every frame binds protocol version/request/job/worker generation/attempt/binding digest/sequence to retained node state. These DTO IDs/digests and profiles are observations, never opaque Binding or proof constructors. No alias to decision-specific common frames/resident proof exists.",
+    "Startup/runtime/engine/parser/model/config/temperature/memory messages are candidates only. Node/holder must verify actual selected workload and immutable configuration, not echoes or reported allowances. Worker working memory cannot increase admission.",
+    "Input assets require immutable snapshots; read-only worker descriptors alone do not freeze other writers. For output publication node freezes/snapshots exact bytes or revokes ALL writers before hashing/schema checks, then publishes those same frozen bytes after current authorization/attempt/cancellation checks.",
+    "Worker output-end/hash, End, success label, toolcall, candidate memory and cancel-observed are not publication, domain completion, cleanup success, scheduling or lease authority. Node alone validates any proposed tool effect through separate authorization.",
+    "No data/progress/result after End. One final result only; identical duplicates yield existing disposition without republishing, conflicts refuse. Outstanding/queued chunks require per-frame and aggregate credit bounds from actual admitted profile. Cancellation/revocation blocks late publication; partial output and lost worker retain unresolved custody until responsible holder cleanup.",
+    "Current managed-backend HTTP/broker clients, training launches, resident launch attestations and artifact path checks do not implement the reviewed no-network private-pipe/OS boundary. No platform adapter, proof issuer, runtime decoder, scheduler or installed H/K/P acceptance is supplied.",
+    "Compare retains the pinned isinstance(value,(int,float)) behavior, including bool-valued training dry_run subtraction yielding integer deltas. It does not sort away source option order or infer authority from any metric/gate."
+  ],
+  "profiles": [
+    {
+      "profile": "frame-and-expansion",
+      "status": "unresolved-profile-evidence",
+      "source_required": "Per-frame/control bytes, total/outstanding credits, compressed/tensor/data expansion, child resource admission and slot handle custody require actual retained native runtime measurements; no new numeric default."
+    },
+    {
+      "profile": "catalog-text-and-literal",
+      "status": "unresolved-profile-evidence",
+      "source_required": "Per-operation text/record/literal parser limits remain separate; source bounded fields above stay exact. Unbounded legacy fields require source-backed node-admitted profile before enablement."
+    },
+    {
+      "profile": "streamed-manifest-and-history",
+      "status": "unresolved-profile-evidence",
+      "source_required": "Individually typed records and U64 index/count/bytes are declared; source-backed profile totals/expansion and exact slot element type remain required, never an invented max_items."
+    },
+    {
+      "profile": "prepared-training-phase",
+      "status": "unresolved-profile-evidence",
+      "source_required": "Only fixed retained recipe phase semantics may be admitted; unknown callback-produced prepared metadata is disabled, not an arbitrary JSON/byte operation extension."
+    },
+    {
+      "profile": "gym-configuration",
+      "status": "unresolved-profile-evidence",
+      "source_required": "Closed environment-specific configuration schema beyond the current Studio train config={} and retained policy manifest must be evidenced before decoder; unknown fields/profile cannot be dropped or become arbitrary config dispatch."
+    },
+    {
+      "profile": "tool-call-backend",
+      "status": "unresolved-profile-evidence",
+      "source_required": "Only the evidenced function-call fields/text-vs-literal arguments are declared. Missing/unknown backend extension/schema/version must be resolved without silent field dropping before runtime acceptance."
+    },
+    {
+      "profile": "artifact-publication",
+      "status": "unresolved-profile-evidence",
+      "source_required": "Frozen all-writer-revoked assets, exact regular-file identity/media/manifest and current authorization checks require real holder/bridge implementation."
+    },
+    {
+      "profile": "source-number-domains",
+      "status": "unresolved-profile-evidence",
+      "source_required": "FiniteF64 is representation only; source probability/fraction/temperature/learning-rate ranges and explicit NaN result-field cases require exact semantic validation; no implicit numeric coercions."
+    },
+    {
+      "profile": "model-training-provenance",
+      "status": "unresolved-profile-evidence",
+      "source_required": "Measured engine/parser/runtime/model/calibration/source/recipe/LoRA and source checkpoint base/asset validation require native provenance, exact manifest binding and actual startup/first useful workload validation."
+    }
+  ],
+  "unresolved_enablement_blockers": [
+    "No production private worker pipe/endpoint owner or OS adapter.",
+    "No actual source/profile machine validator, bounded expansion/admission decoder, startup native provenance, custody/cancellation/result state machine or publication bridge.",
+    "Prepared phase/Gym config/backend/tool-schema profiles remain disabled; source gap is not an arbitrary extension object.",
+    "No K worker retention or H/K/P acceptance claim; author leaf plus loader evidence is a checkpoint only."
+  ],
+  "independent_review": {
+    "reviewer_task": "/root/domain_attack_review",
+    "pre_edit": "Approved corrected closed declaration strategy with exact slot/direction/order/count/acyclic admission, canonical integer/nonfinite scope and immutable publication constraints.",
+    "actual_leaf": "Approved proposal-only actual263-private-type two-file leaf by /root/domain_attack_review; reviewer independently verified all40 pinned Git source SHA256s and inspected direction/custody/frozen publication constraints. No tests/models executed by reviewer; no parser/runtime/provenance/caller-retention/K proof."
+  },
+  "source_catalog_extraction": "Offline AST literal extraction plus pinned fixed node_catalog/_model_ports postprocessing; no application import or runtime execution."
+}
