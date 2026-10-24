@@ -72,7 +72,10 @@ Keep the original failed artifacts/results immutable; derivative experiments nee
 A later [four-patch Mac build checkpoint](notes/native-macos-fourpatch-build.md) records actual CLI and standalone
 packages for patched tree `64168edc27ec59e7d8d9fb9a4654a0352e1aec1b`, including strict hardened-copy receipts.
 Those new bytes were not executed or installed; earlier two-patch hardware observations do not transfer to them.
-Complete request retention, private transport, installed lifecycle proof and H/K/P acceptance remain unfinished.
+The later [five-patch Mac build checkpoint](notes/native-macos-fivepatch-build.md) records actual CLI and standalone
+packages for tree `c8b1a0f97f2cf06e94216a1c9c18edb7142974c3`, with complete original-request retention in source
+and independently verified hardened-copy receipts. These new bytes remain unexecuted and uninstalled; actual retained-request
+delivery, private transport, installed lifecycle proof and H/K/P acceptance remain unfinished.
 
 A separate [version comparison](native-macos-producer-derivative-evidence.json) records copies signed ad hoc with the
 runtime option. All eight `--version` cases exited 0; injected code ran in originals and produced no marker in copies.
