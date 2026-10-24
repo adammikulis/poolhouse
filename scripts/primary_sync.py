@@ -112,9 +112,8 @@ def once(root: Path, dev: str) -> str:
 
 
 def refresh_runtime() -> None:
-    """Start the runtime build for the commit the primary checkout is on."""
-    subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "hooks" / "runtime-refresh"), "primary-sync"],
-                   check=False, stdin=subprocess.DEVNULL)
+    """Compatibility helper: synchronizing source never updates installed software."""
+    return None
 
 
 def development(root: Path) -> str:
@@ -182,8 +181,6 @@ def main(argv: list[str]) -> int:
             print(f"primary-sync: left alone: {args.sha[:12]} did not reach {REMOTE}/{dev} in {args.wait_s:.0f} s")
             return 0
         print(sync(root, dev), flush=True)
-        if args.sha:
-            refresh_runtime()
     except (RuntimeError, OSError) as why:
         print(f"primary-sync: left alone: {why}")
     return 0
