@@ -7,7 +7,15 @@ import hashlib
 import json
 from pathlib import Path
 
-from node_contract import lifecycle, operations, python_package, rust, service_lifecycle, typescript
+from node_contract import (
+    lifecycle,
+    native_message,
+    operations,
+    python_package,
+    rust,
+    service_lifecycle,
+    typescript,
+)
 from node_contract.load import load_with_ownership
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -79,6 +87,7 @@ def outputs(root: Path) -> dict[Path, str]:
                    {"type": "Boolean", "accepted": [True, False], "refused": [1, 0, "true", None]},
                ]}
     result = {
+        root / "app/poolhouse-node/src/contract_native_message.rs": native_message.render(meta["native_message"]),
         root / "app/poolhouse-node/src/contract_operations.rs": operations.render_rust(meta["operations"], digest),
         root / "src/poolhouse/api/node_operations.py": operations.render_python(meta["operations"], digest),
         root / "app/contracts/node_operations.ts": operations.render_typescript(meta["operations"], digest),

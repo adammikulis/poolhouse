@@ -246,14 +246,13 @@ pub(crate) fn direct_parent(&self) -> Option<&'a NativeActorId> { self.direct_pa
 pub(crate) fn event_kind(&self) -> &'a NativeEventKind { self.event_kind }
 pub(crate) fn continuity(&self) -> &'a NativeResumeContinuity { self.continuity }
 }
-pub(crate) struct NativeInvocationView<'a> { actor: &'a NativeActorId, context: &'a [u8], root: &'a NativeActorId, direct_parent: Option<&'a NativeActorId>, event_kind: &'a NativeEventKind, purpose: &'a OperationPurpose, original_payload: &'a [u8] }
+pub(crate) struct NativeInvocationView<'a> { actor: &'a NativeActorId, context: &'a [u8], root: &'a NativeActorId, direct_parent: Option<&'a NativeActorId>, event_kind: &'a NativeEventKind, original_payload: &'a [u8] }
 impl<'a> NativeInvocationView<'a> {
 pub(crate) fn actor(&self) -> &'a NativeActorId { self.actor }
 pub(crate) fn context(&self) -> &'a [u8] { self.context }
 pub(crate) fn root(&self) -> &'a NativeActorId { self.root }
 pub(crate) fn direct_parent(&self) -> Option<&'a NativeActorId> { self.direct_parent }
 pub(crate) fn event_kind(&self) -> &'a NativeEventKind { self.event_kind }
-pub(crate) fn purpose(&self) -> &'a OperationPurpose { self.purpose }
 pub(crate) fn original_payload(&self) -> &'a [u8] { self.original_payload }
 }
 pub(crate) struct NativeContextView<'a> { actor: &'a NativeActorId, root: &'a NativeActorId, parent: Option<&'a NativeActorId>, bytes: &'a [u8] }
@@ -597,7 +596,7 @@ fn identity(&self) -> &E::Owner;
 fn execute(&mut self, permit: E::Permit, operation: E::Operation) -> Result<E::Completion, E::Unknown>;
 }
 pub(crate) const UNRESOLVED_NATIVE_PROFILES: &[(&str, &[&str])] = &[
-("native-message", &["actor-bytes", "event-kind-bytes", "purpose-bytes", "context-bytes", "original-payload-bytes"]),
+("native-message", &["actor-bytes", "event-kind-bytes", "context-bytes", "original-payload-bytes"]),
 ("launch-arguments", &["argument-bytes", "argument-count", "argument-aggregate-bytes"]),
 ("launch-environment", &["key-bytes", "value-bytes", "entry-count", "aggregate-bytes", "unique-keys"]),
 ("retained-resources", &["asset-count", "inheritance-count", "resource-count", "cleanup-results-count", "unresolved-custody-count"]),

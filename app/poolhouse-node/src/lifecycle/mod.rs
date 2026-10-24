@@ -3,6 +3,7 @@
 //! Resume is deliberately restricted to the SAME admitted producer/process instance.
 //! Replacement-producer or replacement-process continuity has no proof interface in this increment.
 mod source_context;
+mod original_message;
 #[cfg(test)] mod source_context_tests;
 mod occurrence;
 mod invocation;

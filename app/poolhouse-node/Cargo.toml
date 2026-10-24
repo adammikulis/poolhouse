@@ -15,6 +15,7 @@ name = "poolhouse-node"
 path = "src/main.rs"
 
 [dependencies]
+chrono = { version = "=0.4.45", default-features = false, features = ["std"] }
 ed25519-dalek = { version = "2", default-features = false, features = ["std", "pkcs8"] }
 getrandom = "=0.3.4"
 hmac = "0.12.1"
