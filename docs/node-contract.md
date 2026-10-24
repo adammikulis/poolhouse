@@ -466,3 +466,14 @@ evidence preserves exact signed records and verifier-local timing, separates
 local settings/jobs from disposable UI caches, and records the unresolved atomic
 commit and independent rollback-witness requirements. These declarations do not
 implement a storage engine, migration or crash recovery.
+
+Native adapter v3 replaces unconstrained runtime markers with a sealed graph of
+31 typed projections. Every plan, message, binding, child and custody reference
+uses that graph; held and running processes have distinct nominal wrappers.
+Cleanup obligations retain the same resource owners, including unresolved
+failure custody. A separate effect graph moves one permit and bound operation
+into the effect owner and retains both in completion or unknown disposition.
+Raw native source views contain no node session keys. These crate-private
+interfaces expose no constructors, deserializers or production proof issuers.
+Actual platform custody, admission, durable occurrence fencing and source-backed
+variable-size profiles remain implementation and acceptance requirements.
