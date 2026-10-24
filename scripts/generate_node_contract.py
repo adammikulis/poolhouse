@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 from node_contract import (
+    launch_data,
     lifecycle,
     native_message,
     operations,
@@ -88,6 +89,7 @@ def outputs(root: Path) -> dict[Path, str]:
                    {"type": "Boolean", "accepted": [True, False], "refused": [1, 0, "true", None]},
                ]}
     result = {
+        root / "app/poolhouse-node/src/contract_launch_data.rs": launch_data.render(meta["launch_data"]),
         root / "app/poolhouse-node/src/contract_transcripts.rs": transcript_rust.render(meta["transcripts"]),
         root / "app/poolhouse-node/src/contract_native_message.rs": native_message.render(meta["native_message"]),
         root / "patches/codex/generated/native_original_fields.rs": native_message.render_producer(meta["native_message"]),
