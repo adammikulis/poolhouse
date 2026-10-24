@@ -3,6 +3,10 @@
 //! boundary must validate native provenance, protected store ownership, exclusive writer,
 //! complete history and independent rollback observations before constructing anything here.
 //! Same-domain hashes/revisions and implementations of Store are NOT those proofs.
+//! Context retains original actor/root/parent bytes, not exact ancestor admission links.
+//! Direct admission retirement is enforced here; transitive graph retirement across
+//! resumes remains an explicit Registry/native-boundary prerequisite, not proved here.
+//! No current logical mapping, liveness or authenticated ancestry is restored from data.
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
