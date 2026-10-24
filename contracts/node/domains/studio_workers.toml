@@ -1,0 +1,1692 @@
+version = 1
+status = "proposal"
+operation = []
+
+[[type]]
+name = "StudioWorkerProfileId"
+kind = "scalar"
+visibility = "private"
+encoding = "uuid"
+issuer = "data"
+
+[[type]]
+name = "StudioWorkerProfile"
+kind = "record"
+visibility = "private"
+fields = [{name = "profile", type = "StudioWorkerProfileId"}, {name = "generation", type = "ResourceGeneration"}, {name = "digest", type = "WorkerDigest"}]
+
+[[type]]
+name = "StudioWorkerInteger"
+kind = "record"
+visibility = "private"
+fields = [{name = "negative", type = "Boolean"}, {name = "magnitude", type = "WorkerUtf8Input"}]
+
+[[type]]
+name = "StudioWorkerNumber"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "integer", type = "StudioWorkerInteger"}, {tag = "finite", type = "FiniteF64"}]
+
+[[type]]
+name = "StudioWorkerNonFinite"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "nan", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerObservedNumber"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "integer", type = "StudioWorkerCandidateInteger"}, {tag = "finite", type = "FiniteF64"}, {tag = "nonfinite", type = "StudioWorkerNonFinite"}]
+
+[[type]]
+name = "StudioWorkerNullableFiniteF64"
+kind = "optional"
+visibility = "private"
+item = "FiniteF64"
+
+[[type]]
+name = "StudioWorkerNullableInput"
+kind = "optional"
+visibility = "private"
+item = "WorkerFrozenInput"
+
+[[type]]
+name = "StudioWorkerStream"
+kind = "record"
+visibility = "private"
+fields = [{name = "slot", type = "WorkerSlotId"}, {name = "attempt", type = "ResourceGeneration"}, {name = "profile", type = "StudioWorkerProfile"}, {name = "count", type = "U64"}, {name = "bytes", type = "U64"}, {name = "digest", type = "WorkerDigest"}]
+
+[[type]]
+name = "StudioWorkerText"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "omitted", type = "Empty"}, {tag = "null", type = "Empty"}, {tag = "text", type = "StudioWorkerUtf8Reference"}]
+
+[[type]]
+name = "StudioWorkerLiteralRole"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "record_object", type = "Empty"}, {tag = "record_map_value", type = "Empty"}, {tag = "record_condition_value", type = "Empty"}, {tag = "structured_output_schema", type = "Empty"}, {tag = "structured_output_value", type = "Empty"}, {tag = "tool_arguments", type = "Empty"}, {tag = "dataset_row", type = "Empty"}, {tag = "source_context", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerLiteral"
+kind = "record"
+visibility = "private"
+fields = [{name = "role", type = "StudioWorkerLiteralRole"}, {name = "content", type = "WorkerUtf8Input"}, {name = "profile", type = "StudioWorkerProfile"}]
+
+[[type]]
+name = "StudioWorkerLiteralField"
+kind = "scalar"
+visibility = "private"
+encoding = "utf8"
+issuer = "data"
+min_bytes = 1
+max_bytes = 256
+
+[[type]]
+name = "StudioWorkerAssignmentField"
+kind = "record"
+visibility = "private"
+fields = [{name = "field", type = "StudioWorkerLiteralField"}]
+
+[[type]]
+name = "StudioWorkerAssignmentSource"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "field", type = "StudioWorkerAssignmentField"}, {tag = "literal", type = "StudioWorkerLiteral"}]
+
+[[type]]
+name = "StudioWorkerAssignment"
+kind = "record"
+visibility = "private"
+fields = [{name = "target", type = "StudioWorkerLiteralField"}, {name = "source", type = "StudioWorkerAssignmentSource"}]
+
+[[type]]
+name = "StudioWorkerAssignments"
+kind = "list"
+visibility = "private"
+item = "StudioWorkerAssignment"
+min_items = 0
+max_items = 256
+
+[[type]]
+name = "StudioWorkerMapControls"
+kind = "record"
+visibility = "private"
+fields = [{name = "keep_other", type = "Boolean"}, {name = "assignments", type = "StudioWorkerAssignments"}]
+
+[[type]]
+name = "StudioWorkerExistsCondition"
+kind = "record"
+visibility = "private"
+fields = [{name = "field", type = "StudioWorkerLiteralField"}]
+
+[[type]]
+name = "StudioWorkerComparison"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "equals", type = "Empty"}, {tag = "not_equals", type = "Empty"}, {tag = "lt", type = "Empty"}, {tag = "lte", type = "Empty"}, {tag = "gt", type = "Empty"}, {tag = "gte", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerCompareCondition"
+kind = "record"
+visibility = "private"
+fields = [{name = "field", type = "StudioWorkerLiteralField"}, {name = "operator", type = "StudioWorkerComparison"}, {name = "value", type = "StudioWorkerLiteral"}]
+
+[[type]]
+name = "StudioWorkerConditionControls"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "exists", type = "StudioWorkerExistsCondition"}, {tag = "comparison", type = "StudioWorkerCompareCondition"}]
+
+[[type]]
+name = "StudioWorkerRecipe"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "classify_text", type = "Empty"}, {tag = "text_lm", type = "Empty"}, {tag = "tool_calls", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerOptionalRecipe"
+kind = "optional"
+visibility = "private"
+item = "StudioWorkerRecipe"
+
+[[type]]
+name = "StudioWorkerFramework"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "automatic", type = "Empty"}, {tag = "torch", type = "Empty"}, {tag = "mlx", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerModelKind"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "model", type = "Empty"}, {tag = "language_model", type = "Empty"}, {tag = "classifier_model", type = "Empty"}, {tag = "decision_model", type = "Empty"}, {tag = "gym_policy", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerDatasetInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "content", type = "WorkerFrozenInput"}, {name = "rows", type = "OptionalU64"}, {name = "manifest", type = "StudioWorkerStream"}]
+
+[[type]]
+name = "StudioWorkerModelInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "content", type = "WorkerFrozenInput"}, {name = "model_kind", type = "StudioWorkerModelKind"}, {name = "recipe", type = "StudioWorkerOptionalRecipe"}, {name = "framework", type = "StudioWorkerFramework"}, {name = "base", type = "StudioWorkerNullableInput"}, {name = "manifest", type = "StudioWorkerStream"}]
+
+[[type]]
+name = "StudioWorkerOptionalModelInput"
+kind = "optional"
+visibility = "private"
+item = "StudioWorkerModelInput"
+
+[[type]]
+name = "StudioWorkerMedia"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "dataset_jsonl", type = "Empty"}, {tag = "model_checkpoint", type = "Empty"}, {tag = "model_adapter", type = "Empty"}, {tag = "gym_policy", type = "Empty"}, {tag = "json_report", type = "Empty"}, {tag = "binary_asset", type = "Empty"}, {tag = "utf8_text", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerOutputCandidate"
+kind = "record"
+visibility = "private"
+fields = [{name = "slot", type = "WorkerSlotId"}, {name = "attempt", type = "ResourceGeneration"}, {name = "profile", type = "StudioWorkerProfile"}, {name = "media", type = "StudioWorkerMedia"}, {name = "bytes", type = "U64"}, {name = "digest", type = "WorkerDigest"}, {name = "manifest", type = "StudioWorkerStream"}]
+
+[[type]]
+name = "StudioWorkerDatasetCandidate"
+kind = "record"
+visibility = "private"
+fields = [{name = "content", type = "StudioWorkerOutputCandidate"}, {name = "rows", type = "U64"}]
+
+[[type]]
+name = "StudioWorkerModelCandidate"
+kind = "record"
+visibility = "private"
+fields = [{name = "content", type = "StudioWorkerOutputCandidate"}, {name = "model_kind", type = "StudioWorkerModelKind"}, {name = "recipe", type = "StudioWorkerOptionalRecipe"}, {name = "framework", type = "StudioWorkerFramework"}, {name = "base", type = "StudioWorkerNullableInput"}]
+
+[[type]]
+name = "StudioWorkerOptionalModelCandidate"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "omitted", type = "Empty"}, {tag = "model", type = "StudioWorkerModelCandidate"}]
+
+[[type]]
+name = "StudioWorkerOptionalOutputCandidate"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "omitted", type = "Empty"}, {tag = "artifact", type = "StudioWorkerOutputCandidate"}]
+
+[[type]]
+name = "StudioWorkerManifestEntry"
+kind = "record"
+visibility = "private"
+fields = [{name = "index", type = "U64"}, {name = "name", type = "StudioWorkerUtf8Reference"}, {name = "slot", type = "WorkerSlotId"}, {name = "bytes", type = "U64"}, {name = "digest", type = "WorkerDigest"}, {name = "media", type = "StudioWorkerMedia"}]
+
+[[type]]
+name = "StudioWorkerGate"
+kind = "record"
+visibility = "private"
+fields = [{name = "allow", type = "Boolean"}, {name = "reason", type = "StudioWorkerGateReason"}]
+
+[[type]]
+name = "StudioWorkerValidationReport"
+kind = "record"
+visibility = "private"
+fields = [{name = "examples", type = "U64"}, {name = "valid", type = "Boolean"}]
+
+[[type]]
+name = "StudioWorkerHoldoutMetrics"
+kind = "record"
+visibility = "private"
+fields = [{name = "loss", type = "FiniteF64"}, {name = "examples", type = "U64"}, {name = "batches", type = "U64"}, {name = "accuracy", type = "StudioWorkerNullableFiniteF64"}]
+
+[[type]]
+name = "StudioWorkerToolMetrics"
+kind = "record"
+visibility = "private"
+fields = [{name = "n", type = "U64"}, {name = "tool_name_accuracy", type = "FiniteF64"}, {name = "required_arg_fill", type = "FiniteF64"}, {name = "valid_json_rate", type = "FiniteF64"}, {name = "arguments_match", type = "FiniteF64"}, {name = "end_to_end", type = "FiniteF64"}, {name = "per_tool", type = "StudioWorkerStream"}]
+
+[[type]]
+name = "StudioWorkerPerToolMetric"
+kind = "record"
+visibility = "private"
+fields = [{name = "tool", type = "StudioWorkerUtf8Reference"}, {name = "n", type = "U64"}, {name = "tool_name_accuracy", type = "FiniteF64"}, {name = "required_arg_fill", type = "FiniteF64"}, {name = "valid_json_rate", type = "FiniteF64"}, {name = "arguments_match", type = "FiniteF64"}, {name = "end_to_end", type = "FiniteF64"}]
+
+[[type]]
+name = "StudioWorkerDecisionEvalMetrics"
+kind = "record"
+visibility = "private"
+fields = [{name = "accuracy", type = "FiniteF64"}, {name = "examples", type = "U64"}]
+
+[[type]]
+name = "StudioWorkerDecisionTrainMetrics"
+kind = "record"
+visibility = "private"
+fields = [{name = "n", type = "U64"}, {name = "accuracy", type = "FiniteF64"}, {name = "brier", type = "FiniteF64"}, {name = "ece", type = "FiniteF64"}, {name = "confidence", type = "FiniteF64"}, {name = "floor", type = "FiniteF64"}, {name = "abstain_rate", type = "FiniteF64"}, {name = "answered_accuracy", type = "StudioWorkerObservedNumber"}]
+
+[[type]]
+name = "StudioWorkerTrainStop"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "completed", type = "Empty"}, {tag = "stopped", type = "Empty"}, {tag = "time_limit", type = "Empty"}, {tag = "already_complete", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerTrainingMetrics"
+kind = "record"
+visibility = "private"
+fields = [{name = "recipe", type = "StudioWorkerRecipe"}, {name = "steps", type = "U64"}, {name = "final_loss", type = "StudioWorkerObservedNumber"}, {name = "best_metric", type = "StudioWorkerNullableFiniteF64"}, {name = "checkpoint", type = "StudioWorkerOptionalOutputCandidate"}, {name = "parameters", type = "U64"}, {name = "seconds", type = "FiniteF64"}, {name = "dry_run", type = "Boolean"}, {name = "stop_reason", type = "StudioWorkerTrainStop"}, {name = "phases", type = "StudioWorkerStream"}, {name = "export", type = "StudioWorkerOptionalOutputCandidate"}, {name = "lora", type = "StudioWorkerOptionalLora"}, {name = "manifest", type = "StudioWorkerOptionalOutputCandidate"}]
+
+[[type]]
+name = "StudioWorkerTrainingPhase"
+kind = "record"
+visibility = "private"
+fields = [{name = "name", type = "StudioWorkerUtf8Reference"}, {name = "prepared", type = "StudioWorkerPreparedPhase"}, {name = "steps", type = "U64"}]
+
+[[type]]
+name = "StudioWorkerPreparedPhase"
+kind = "record"
+visibility = "private"
+fields = [{name = "profile", type = "StudioWorkerProfile"}, {name = "measurements", type = "StudioWorkerStream"}]
+
+[[type]]
+name = "StudioWorkerNamedMetric"
+kind = "record"
+visibility = "private"
+fields = [{name = "name", type = "StudioWorkerUtf8Reference"}, {name = "value", type = "StudioWorkerFiniteObservedNumber"}]
+
+[[type]]
+name = "StudioWorkerLoraSettings"
+kind = "record"
+visibility = "private"
+fields = [{name = "rank", type = "U64"}, {name = "alpha", type = "U64"}, {name = "dropout", type = "FiniteF64"}, {name = "targets", type = "StudioWorkerStream"}]
+
+[[type]]
+name = "StudioWorkerLoraPlan"
+kind = "record"
+visibility = "private"
+fields = [{name = "base", type = "WorkerFrozenInput"}, {name = "device", type = "WorkerDeviceId"}, {name = "batch", type = "U64"}, {name = "context", type = "U64"}, {name = "steps", type = "U64"}, {name = "examples", type = "U64"}, {name = "params_b", type = "FiniteF64"}, {name = "active_b", type = "FiniteF64"}, {name = "trainable_m", type = "FiniteF64"}, {name = "resident_gb", type = "FiniteF64"}, {name = "seconds_per_step", type = "FiniteF64"}, {name = "estimated_seconds", type = "FiniteF64"}, {name = "measured", type = "Boolean"}, {name = "lora", type = "StudioWorkerLoraSettings"}]
+
+[[type]]
+name = "StudioWorkerMlxLoraPlan"
+kind = "record"
+visibility = "private"
+fields = [{name = "base", type = "WorkerFrozenInput"}, {name = "device", type = "WorkerDeviceId"}, {name = "batch", type = "U64"}, {name = "context", type = "U64"}, {name = "steps", type = "U64"}, {name = "examples", type = "U64"}, {name = "params_b", type = "FiniteF64"}, {name = "active_b", type = "FiniteF64"}, {name = "trainable_m", type = "FiniteF64"}, {name = "cached_base_gb", type = "FiniteF64"}, {name = "seconds_per_step", type = "StudioWorkerNullableFiniteF64"}, {name = "estimated_seconds", type = "StudioWorkerNullableFiniteF64"}, {name = "total_memory_measured", type = "Boolean"}, {name = "measured", type = "Boolean"}, {name = "lora", type = "StudioWorkerLoraSettings"}]
+
+[[type]]
+name = "StudioWorkerTorchLoraResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "base", type = "WorkerFrozenInput"}, {name = "trainable_parameters", type = "U64"}, {name = "seconds_per_step", type = "FiniteF64"}, {name = "plan", type = "StudioWorkerLoraPlan"}, {name = "adapter", type = "StudioWorkerOptionalOutputCandidate"}]
+
+[[type]]
+name = "StudioWorkerMlxLoraResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "settings", type = "StudioWorkerLoraSettings"}, {name = "framework", type = "StudioWorkerFramework"}, {name = "trainable_parameters", type = "U64"}, {name = "seconds_per_step", type = "FiniteF64"}, {name = "plan", type = "StudioWorkerMlxLoraPlan"}, {name = "adapter", type = "StudioWorkerOptionalOutputCandidate"}]
+
+[[type]]
+name = "StudioWorkerLoraResult"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "torch", type = "StudioWorkerTorchLoraResult"}, {tag = "mlx", type = "StudioWorkerMlxLoraResult"}]
+
+[[type]]
+name = "StudioWorkerOptionalLora"
+kind = "optional"
+visibility = "private"
+item = "StudioWorkerLoraResult"
+
+[[type]]
+name = "StudioWorkerEnvironment"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "warehouse", type = "Empty"}, {tag = "drone", type = "Empty"}, {tag = "car", type = "Empty"}, {tag = "traffic_driving", type = "Empty"}, {tag = "traffic", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerGymConfiguration"
+kind = "record"
+visibility = "private"
+fields = [{name = "profile", type = "StudioWorkerProfile"}, {name = "fields", type = "StudioWorkerStream"}]
+
+[[type]]
+name = "StudioWorkerPackageVersions"
+kind = "record"
+visibility = "private"
+fields = [{name = "gymnasium", type = "StudioWorkerUtf8Reference"}, {name = "stable_baselines3", type = "StudioWorkerUtf8Reference"}, {name = "torch", type = "StudioWorkerUtf8Reference"}]
+
+[[type]]
+name = "StudioWorkerGymTrainMetrics"
+kind = "record"
+visibility = "private"
+fields = [{name = "version", type = "U32"}, {name = "environment", type = "StudioWorkerEnvironment"}, {name = "config", type = "StudioWorkerGymConfiguration"}, {name = "seed", type = "StudioWorkerInteger"}, {name = "timesteps", type = "U64"}, {name = "device", type = "WorkerDeviceId"}, {name = "versions", type = "StudioWorkerPackageVersions"}]
+
+[[type]]
+name = "StudioWorkerGymEpisode"
+kind = "record"
+visibility = "private"
+fields = [{name = "seed", type = "StudioWorkerCandidateInteger"}, {name = "reward", type = "FiniteF64"}, {name = "steps", type = "U64"}, {name = "terminated", type = "Boolean"}, {name = "truncated", type = "Boolean"}]
+
+[[type]]
+name = "StudioWorkerGymEvalMetrics"
+kind = "record"
+visibility = "private"
+fields = [{name = "environment", type = "StudioWorkerEnvironment"}, {name = "episodes", type = "StudioWorkerStream"}, {name = "mean_reward", type = "FiniteF64"}]
+
+[[type]]
+name = "StudioWorkerMetrics"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "holdout", type = "StudioWorkerHoldoutMetrics"}, {tag = "tools", type = "StudioWorkerToolMetrics"}, {tag = "decision_evaluation", type = "StudioWorkerDecisionEvalMetrics"}, {tag = "decision_training", type = "StudioWorkerDecisionTrainMetrics"}, {tag = "training", type = "StudioWorkerTrainingMetrics"}, {tag = "gym_training", type = "StudioWorkerGymTrainMetrics"}, {tag = "gym_evaluation", type = "StudioWorkerGymEvalMetrics"}, {tag = "numeric_fields", type = "StudioWorkerStream"}]
+
+[[type]]
+name = "StudioWorkerCompareReport"
+kind = "record"
+visibility = "private"
+fields = [{name = "base", type = "StudioWorkerMetrics"}, {name = "trained", type = "StudioWorkerMetrics"}, {name = "delta", type = "StudioWorkerStream"}]
+
+[[type]]
+name = "StudioWorkerChartReport"
+kind = "record"
+visibility = "private"
+fields = [{name = "metrics", type = "StudioWorkerMetrics"}]
+
+[[type]]
+name = "StudioWorkerCalibrationStatus"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "unverified", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerScoreSemantics"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "uncalibrated", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerPointerBackend"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "pointer", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerCalibration"
+kind = "record"
+visibility = "private"
+fields = [{name = "status", type = "StudioWorkerCalibrationStatus"}]
+
+[[type]]
+name = "StudioWorkerAdvisoryDecision"
+kind = "record"
+visibility = "private"
+fields = [{name = "choice_index", type = "U32"}, {name = "scores", type = "WorkerDecisionScores"}, {name = "confidence", type = "FiniteF64"}, {name = "margin", type = "FiniteF64"}, {name = "abstained", type = "Boolean"}, {name = "score_semantics", type = "StudioWorkerScoreSemantics"}, {name = "calibration", type = "StudioWorkerCalibration"}, {name = "backend", type = "StudioWorkerPointerBackend"}, {name = "input_digest", type = "WorkerDigest"}, {name = "model_digest", type = "WorkerDigest"}, {name = "calibration_digest", type = "WorkerDigest"}]
+
+[[type]]
+name = "StudioWorkerNullableAdvisoryDecision"
+kind = "optional"
+visibility = "private"
+item = "StudioWorkerAdvisoryDecision"
+
+[[type]]
+name = "StudioWorkerRoute"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "allow", type = "Empty"}, {tag = "review", type = "Empty"}, {tag = "block", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerRouteReport"
+kind = "record"
+visibility = "private"
+fields = [{name = "decision", type = "StudioWorkerAdvisoryDecision"}, {name = "label", type = "WorkerUtf8Input"}, {name = "outcome", type = "StudioWorkerRoute"}]
+
+[[type]]
+name = "StudioWorkerCoverage"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "complete", type = "Empty"}, {tag = "incomplete", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerCoverageScope"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "selected_fields", type = "Empty"}, {tag = "whole_record", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerAssessmentMode"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "direct", type = "Empty"}, {tag = "indirect", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerReasonCode"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "input_too_large", type = "Empty"}, {tag = "missing_configured_task", type = "Empty"}, {tag = "uncertain_assessment", type = "Empty"}, {tag = "assessment_unavailable", type = "Empty"}, {tag = "instruction_markers", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerInjectionSignal"
+kind = "record"
+visibility = "private"
+fields = [{name = "outcome", type = "StudioWorkerRoute"}, {name = "decision", type = "StudioWorkerNullableAdvisoryDecision"}, {name = "reason_codes", type = "StudioWorkerStream"}, {name = "coverage", type = "StudioWorkerCoverage"}, {name = "input_digest", type = "WorkerDigest"}, {name = "view_digest", type = "WorkerNullableDigest"}, {name = "input_fields", type = "StudioWorkerStream"}, {name = "coverage_scope", type = "StudioWorkerCoverageScope"}, {name = "mode", type = "StudioWorkerAssessmentMode"}, {name = "trusted_task_digest", type = "WorkerDigest"}, {name = "model_digest", type = "WorkerDigest"}, {name = "calibration_digest", type = "WorkerDigest"}, {name = "score_semantics", type = "StudioWorkerScoreSemantics"}]
+
+[[type]]
+name = "StudioWorkerToolCallKind"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "function", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerToolArguments"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "omitted", type = "Empty"}, {tag = "null", type = "Empty"}, {tag = "text", type = "StudioWorkerUtf8Reference"}, {tag = "literal", type = "StudioWorkerLiteralReference"}]
+
+[[type]]
+name = "StudioWorkerToolCall"
+kind = "record"
+visibility = "private"
+fields = [{name = "id", type = "StudioWorkerText"}, {name = "call_type", type = "StudioWorkerToolCallKind"}, {name = "name", type = "StudioWorkerText"}, {name = "arguments", type = "StudioWorkerToolArguments"}]
+
+[[type]]
+name = "StudioWorkerToolCalls"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "null", type = "Empty"}, {tag = "calls", type = "StudioWorkerStream"}]
+
+[[type]]
+name = "StudioWorkerGenerationResponse"
+kind = "record"
+visibility = "private"
+fields = [{name = "text", type = "StudioWorkerText"}, {name = "tool_calls", type = "StudioWorkerToolCalls"}]
+
+[[type]]
+name = "StudioWorkerGenerationSourceReport"
+kind = "record"
+visibility = "private"
+fields = [{name = "answer", type = "StudioWorkerText"}, {name = "response", type = "StudioWorkerGenerationResponse"}, {name = "input_digest", type = "WorkerDigest"}, {name = "view_digest", type = "WorkerDigest"}, {name = "input_fields", type = "StudioWorkerStream"}, {name = "coverage_scope", type = "StudioWorkerCoverageScope"}, {name = "trusted_task_digest", type = "WorkerDigest"}, {name = "source_semantics", type = "StudioWorkerProvidedSources"}, {name = "protection", type = "StudioWorkerAdvisoryProtection"}]
+
+[[type]]
+name = "StudioWorkerProvidedSources"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "provided_sources", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerAdvisoryProtection"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "advisory_guard_assessments", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerReport"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "validation", type = "StudioWorkerValidationReport"}, {tag = "metrics", type = "StudioWorkerMetrics"}, {tag = "comparison", type = "StudioWorkerCompareReport"}, {tag = "chart", type = "StudioWorkerChartReport"}, {tag = "decision", type = "StudioWorkerAdvisoryDecision"}, {tag = "route", type = "StudioWorkerRouteReport"}, {tag = "injection", type = "StudioWorkerInjectionSignal"}, {tag = "generation_sources", type = "StudioWorkerGenerationSourceReport"}]
+
+[[type]]
+name = "StudioWorkerOptionalLiteral"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "omitted", type = "Empty"}, {tag = "record", type = "StudioWorkerLiteral"}]
+
+[[type]]
+name = "StudioWorkerOpStreamRecordParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "sample", type = "WorkerUtf8Input"}]
+
+[[type]]
+name = "StudioWorkerOpStreamRecordInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "record", type = "StudioWorkerOptionalLiteral"}]
+
+[[type]]
+name = "StudioWorkerOpStreamRecordResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "record", type = "StudioWorkerLiteralReference"}]
+
+[[type]]
+name = "StudioWorkerOpStreamRecordOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpStreamRecordInput"}, {name = "parameters", type = "StudioWorkerOpStreamRecordParameters"}]
+
+[[type]]
+name = "StudioWorkerOpRecordMapParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "controls", type = "StudioWorkerMapControls"}]
+
+[[type]]
+name = "StudioWorkerOpRecordMapInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "record", type = "StudioWorkerLiteral"}]
+
+[[type]]
+name = "StudioWorkerOpRecordMapResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "record", type = "StudioWorkerLiteralReference"}]
+
+[[type]]
+name = "StudioWorkerOpRecordMapOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpRecordMapInput"}, {name = "parameters", type = "StudioWorkerOpRecordMapParameters"}]
+
+[[type]]
+name = "StudioWorkerOpRecordIfParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "controls", type = "StudioWorkerConditionControls"}]
+
+[[type]]
+name = "StudioWorkerOpRecordIfInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "record", type = "StudioWorkerLiteral"}]
+
+[[type]]
+name = "StudioWorkerOpRecordIfResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "record", type = "StudioWorkerLiteralReference"}, {name = "true_gate", type = "StudioWorkerGate"}, {name = "false_gate", type = "StudioWorkerGate"}]
+
+[[type]]
+name = "StudioWorkerOpRecordIfOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpRecordIfInput"}, {name = "parameters", type = "StudioWorkerOpRecordIfParameters"}]
+
+[[type]]
+name = "StudioWorkerOpDatasetInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "dataset", type = "StudioWorkerDatasetInput"}]
+
+[[type]]
+name = "StudioWorkerOpDatasetResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "dataset", type = "StudioWorkerDatasetInput"}]
+
+[[type]]
+name = "StudioWorkerOpDatasetOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpDatasetInput"}]
+
+[[type]]
+name = "StudioWorkerOpDataHfPreviewParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "request_id", type = "WorkerUtf8Input"}]
+
+[[type]]
+name = "StudioWorkerOpDataHfPreviewInput"
+kind = "record"
+visibility = "private"
+fields = []
+
+[[type]]
+name = "StudioWorkerOpDataHfPreviewResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "dataset", type = "StudioWorkerDatasetCandidate"}, {name = "artifact", type = "StudioWorkerOutputCandidate"}]
+
+[[type]]
+name = "StudioWorkerOpDataHfPreviewOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpDataHfPreviewInput"}, {name = "parameters", type = "StudioWorkerOpDataHfPreviewParameters"}]
+
+[[type]]
+name = "StudioWorkerOpModelInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "model", type = "StudioWorkerModelInput"}]
+
+[[type]]
+name = "StudioWorkerOpModelResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "model", type = "StudioWorkerModelInput"}]
+
+[[type]]
+name = "StudioWorkerOpModelOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpModelInput"}]
+
+[[type]]
+name = "StudioWorkerOpDataValidateInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "dataset", type = "StudioWorkerDatasetInput"}]
+
+[[type]]
+name = "StudioWorkerOpDataValidateResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "dataset", type = "StudioWorkerDatasetInput"}, {name = "report", type = "StudioWorkerValidationReport"}]
+
+[[type]]
+name = "StudioWorkerOpDataValidateOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpDataValidateInput"}]
+
+[[type]]
+name = "StudioWorkerOpDataSplitParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "fraction", type = "StudioWorkerNumber"}, {name = "seed", type = "StudioWorkerInteger"}]
+
+[[type]]
+name = "StudioWorkerOpDataSplitInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "dataset", type = "StudioWorkerDatasetInput"}]
+
+[[type]]
+name = "StudioWorkerOpDataSplitResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "train", type = "StudioWorkerDatasetCandidate"}, {name = "test", type = "StudioWorkerDatasetCandidate"}]
+
+[[type]]
+name = "StudioWorkerOpDataSplitOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpDataSplitInput"}, {name = "parameters", type = "StudioWorkerOpDataSplitParameters"}]
+
+[[type]]
+name = "StudioWorkerOpPromptParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "template", type = "WorkerUtf8Input"}]
+
+[[type]]
+name = "StudioWorkerOpPromptInput"
+kind = "record"
+visibility = "private"
+fields = []
+
+[[type]]
+name = "StudioWorkerOpPromptResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "prompt", type = "WorkerUtf8Input"}]
+
+[[type]]
+name = "StudioWorkerOpPromptOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpPromptInput"}, {name = "parameters", type = "StudioWorkerOpPromptParameters"}]
+
+[[type]]
+name = "StudioWorkerOpGenerateMaxTokens"
+kind = "scalar"
+visibility = "private"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 32768
+
+[[type]]
+name = "StudioWorkerOpGenerateParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "temperature", type = "StudioWorkerNumber"}, {name = "max_tokens", type = "StudioWorkerOpGenerateMaxTokens"}]
+
+[[type]]
+name = "StudioWorkerOpGenerateInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "model", type = "StudioWorkerModelInput"}, {name = "prompt", type = "WorkerUtf8Input"}]
+
+[[type]]
+name = "StudioWorkerOpGenerateResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "text", type = "StudioWorkerText"}, {name = "response", type = "StudioWorkerGenerationResponse"}]
+
+[[type]]
+name = "StudioWorkerOpGenerateOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpGenerateInput"}, {name = "parameters", type = "StudioWorkerOpGenerateParameters"}]
+
+[[type]]
+name = "StudioWorkerOpEvaluateSuiteChoice"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "holdout", type = "Empty"}, {tag = "tool_calls", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerOpEvaluateRecipeChoice"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "classify_text", type = "Empty"}, {tag = "text_lm", type = "Empty"}, {tag = "tool_calls", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerOpEvaluateFrameworkChoice"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "automatic", type = "Empty"}, {tag = "mlx", type = "Empty"}, {tag = "torch", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerOpEvaluateParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "suite", type = "StudioWorkerOpEvaluateSuiteChoice"}, {name = "recipe", type = "StudioWorkerOpEvaluateRecipeChoice"}, {name = "framework", type = "StudioWorkerOpEvaluateFrameworkChoice"}, {name = "temperature", type = "StudioWorkerNumber"}]
+
+[[type]]
+name = "StudioWorkerOpEvaluateInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "model", type = "StudioWorkerModelInput"}, {name = "dataset", type = "StudioWorkerDatasetInput"}]
+
+[[type]]
+name = "StudioWorkerOpEvaluateResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "metrics", type = "StudioWorkerMetrics"}, {name = "report", type = "StudioWorkerReport"}]
+
+[[type]]
+name = "StudioWorkerOpEvaluateOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpEvaluateInput"}, {name = "parameters", type = "StudioWorkerOpEvaluateParameters"}]
+
+[[type]]
+name = "StudioWorkerOpCompareInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "base", type = "StudioWorkerMetrics"}, {name = "trained", type = "StudioWorkerMetrics"}]
+
+[[type]]
+name = "StudioWorkerOpCompareResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "metrics", type = "StudioWorkerStream"}, {name = "report", type = "StudioWorkerCompareReport"}]
+
+[[type]]
+name = "StudioWorkerOpCompareOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpCompareInput"}]
+
+[[type]]
+name = "StudioWorkerOpChartInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "metrics", type = "StudioWorkerMetrics"}]
+
+[[type]]
+name = "StudioWorkerOpChartResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "report", type = "StudioWorkerChartReport"}]
+
+[[type]]
+name = "StudioWorkerOpChartOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpChartInput"}]
+
+[[type]]
+name = "StudioWorkerOpExportFormatChoice"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "checkpoint", type = "Empty"}, {tag = "adapter", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerOpExportParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "format", type = "StudioWorkerOpExportFormatChoice"}]
+
+[[type]]
+name = "StudioWorkerOpExportInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "model", type = "StudioWorkerModelInput"}]
+
+[[type]]
+name = "StudioWorkerOpExportResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "artifact", type = "StudioWorkerOutputCandidate"}]
+
+[[type]]
+name = "StudioWorkerOpExportOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpExportInput"}, {name = "parameters", type = "StudioWorkerOpExportParameters"}]
+
+[[type]]
+name = "StudioWorkerOpReportInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "report", type = "StudioWorkerReport"}]
+
+[[type]]
+name = "StudioWorkerOpReportResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "artifact", type = "StudioWorkerOutputCandidate"}]
+
+[[type]]
+name = "StudioWorkerOpReportOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpReportInput"}]
+
+[[type]]
+name = "StudioWorkerOpToolsCallParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "tool", type = "WorkerUtf8Input"}]
+
+[[type]]
+name = "StudioWorkerOpToolsCallInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "arguments", type = "StudioWorkerLiteral"}]
+
+[[type]]
+name = "StudioWorkerOpToolsCallResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "result", type = "StudioWorkerLiteralReference"}]
+
+[[type]]
+name = "StudioWorkerOpToolsCallOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpToolsCallInput"}, {name = "parameters", type = "StudioWorkerOpToolsCallParameters"}]
+
+[[type]]
+name = "StudioWorkerOpDataSynthesizeInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "model", type = "StudioWorkerModelInput"}, {name = "dataset", type = "StudioWorkerDatasetInput"}]
+
+[[type]]
+name = "StudioWorkerOpDataSynthesizeResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "dataset", type = "StudioWorkerDatasetCandidate"}]
+
+[[type]]
+name = "StudioWorkerOpDataSynthesizeOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpDataSynthesizeInput"}]
+
+[[type]]
+name = "StudioWorkerOpDataHarvestInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "traces", type = "StudioWorkerDatasetInput"}]
+
+[[type]]
+name = "StudioWorkerOpDataHarvestResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "dataset", type = "StudioWorkerDatasetCandidate"}]
+
+[[type]]
+name = "StudioWorkerOpDataHarvestOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpDataHarvestInput"}]
+
+[[type]]
+name = "StudioWorkerOpGymRecordingsInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "trajectory", type = "StudioWorkerDatasetInput"}, {name = "reviews", type = "StudioWorkerDatasetInput"}]
+
+[[type]]
+name = "StudioWorkerOpGymRecordingsResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "dataset", type = "StudioWorkerDatasetCandidate"}]
+
+[[type]]
+name = "StudioWorkerOpGymRecordingsOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpGymRecordingsInput"}]
+
+[[type]]
+name = "StudioWorkerOpGymTrainEnvironmentChoice"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "warehouse", type = "Empty"}, {tag = "drone", type = "Empty"}, {tag = "car", type = "Empty"}, {tag = "traffic_driving", type = "Empty"}, {tag = "traffic", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerOpGymTrainParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "environment", type = "StudioWorkerOpGymTrainEnvironmentChoice"}, {name = "timesteps", type = "StudioWorkerInteger"}, {name = "seed", type = "StudioWorkerInteger"}]
+
+[[type]]
+name = "StudioWorkerOpGymTrainInput"
+kind = "record"
+visibility = "private"
+fields = []
+
+[[type]]
+name = "StudioWorkerOpGymTrainResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "model", type = "StudioWorkerModelCandidate"}, {name = "metrics", type = "StudioWorkerGymTrainMetrics"}]
+
+[[type]]
+name = "StudioWorkerOpGymTrainOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpGymTrainInput"}, {name = "parameters", type = "StudioWorkerOpGymTrainParameters"}]
+
+[[type]]
+name = "StudioWorkerOpGymEvaluateParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "episodes", type = "StudioWorkerInteger"}]
+
+[[type]]
+name = "StudioWorkerOpGymEvaluateInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "model", type = "StudioWorkerModelInput"}]
+
+[[type]]
+name = "StudioWorkerOpGymEvaluateResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "metrics", type = "StudioWorkerGymEvalMetrics"}, {name = "report", type = "StudioWorkerGymEvalMetrics"}]
+
+[[type]]
+name = "StudioWorkerOpGymEvaluateOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpGymEvaluateInput"}, {name = "parameters", type = "StudioWorkerOpGymEvaluateParameters"}]
+
+[[type]]
+name = "StudioWorkerOpGenerateRecordMaxTokens"
+kind = "scalar"
+visibility = "private"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 32768
+
+[[type]]
+name = "StudioWorkerOpGenerateRecordParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "trusted_task", type = "WorkerUtf8Input"}, {name = "question_field", type = "WorkerUtf8Input"}, {name = "sources_field", type = "WorkerUtf8Input"}, {name = "temperature", type = "StudioWorkerNumber"}, {name = "max_tokens", type = "StudioWorkerOpGenerateRecordMaxTokens"}]
+
+[[type]]
+name = "StudioWorkerOpGenerateRecordInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "model", type = "StudioWorkerModelInput"}, {name = "record", type = "StudioWorkerLiteral"}]
+
+[[type]]
+name = "StudioWorkerOpGenerateRecordResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "text", type = "StudioWorkerText"}, {name = "response", type = "StudioWorkerGenerationResponse"}, {name = "report", type = "StudioWorkerGenerationSourceReport"}]
+
+[[type]]
+name = "StudioWorkerOpGenerateRecordOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpGenerateRecordInput"}, {name = "parameters", type = "StudioWorkerOpGenerateRecordParameters"}]
+
+[[type]]
+name = "StudioWorkerOpGenerateStructuredMaxTokens"
+kind = "scalar"
+visibility = "private"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 32768
+
+[[type]]
+name = "StudioWorkerOpGenerateStructuredParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "temperature", type = "StudioWorkerNumber"}, {name = "json_schema", type = "WorkerUtf8Input"}, {name = "max_tokens", type = "StudioWorkerOpGenerateStructuredMaxTokens"}]
+
+[[type]]
+name = "StudioWorkerOpGenerateStructuredInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "model", type = "StudioWorkerModelInput"}, {name = "prompt", type = "WorkerUtf8Input"}]
+
+[[type]]
+name = "StudioWorkerOpGenerateStructuredResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "text", type = "StudioWorkerText"}, {name = "response", type = "StudioWorkerLiteralReference"}]
+
+[[type]]
+name = "StudioWorkerOpGenerateStructuredOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpGenerateStructuredInput"}, {name = "parameters", type = "StudioWorkerOpGenerateStructuredParameters"}]
+
+[[type]]
+name = "StudioWorkerOpTrainDecisionParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "steps", type = "StudioWorkerInteger"}, {name = "batch_size", type = "StudioWorkerInteger"}, {name = "lr", type = "StudioWorkerNumber"}, {name = "max_tokens", type = "StudioWorkerInteger"}]
+
+[[type]]
+name = "StudioWorkerOpTrainDecisionInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "model", type = "StudioWorkerModelInput"}, {name = "dataset", type = "StudioWorkerDatasetInput"}]
+
+[[type]]
+name = "StudioWorkerOpTrainDecisionResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "model", type = "StudioWorkerModelCandidate"}, {name = "metrics", type = "StudioWorkerDecisionTrainMetrics"}, {name = "checkpoint", type = "StudioWorkerOutputCandidate"}]
+
+[[type]]
+name = "StudioWorkerOpTrainDecisionOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpTrainDecisionInput"}, {name = "parameters", type = "StudioWorkerOpTrainDecisionParameters"}]
+
+[[type]]
+name = "StudioWorkerOpEvaluateDecisionInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "model", type = "StudioWorkerModelInput"}, {name = "dataset", type = "StudioWorkerDatasetInput"}]
+
+[[type]]
+name = "StudioWorkerOpEvaluateDecisionResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "metrics", type = "StudioWorkerDecisionEvalMetrics"}, {name = "report", type = "StudioWorkerDecisionEvalMetrics"}]
+
+[[type]]
+name = "StudioWorkerOpEvaluateDecisionOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpEvaluateDecisionInput"}]
+
+[[type]]
+name = "StudioWorkerOpDecisionPredictParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "question", type = "WorkerUtf8Input"}, {name = "options", type = "WorkerUtf8Input"}, {name = "abstain_below", type = "StudioWorkerNumber"}, {name = "min_margin", type = "StudioWorkerNumber"}]
+
+[[type]]
+name = "StudioWorkerOpDecisionPredictInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "record", type = "StudioWorkerLiteral"}, {name = "model", type = "StudioWorkerModelInput"}]
+
+[[type]]
+name = "StudioWorkerOpDecisionPredictResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "decision", type = "StudioWorkerAdvisoryDecision"}, {name = "record", type = "StudioWorkerLiteralReference"}, {name = "report", type = "StudioWorkerAdvisoryDecision"}]
+
+[[type]]
+name = "StudioWorkerOpDecisionPredictOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpDecisionPredictInput"}, {name = "parameters", type = "StudioWorkerOpDecisionPredictParameters"}]
+
+[[type]]
+name = "StudioWorkerOpDecisionRouteParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "label", type = "WorkerUtf8Input"}]
+
+[[type]]
+name = "StudioWorkerOpDecisionRouteInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "decision", type = "StudioWorkerAdvisoryDecision"}]
+
+[[type]]
+name = "StudioWorkerOpDecisionRouteResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "allow", type = "StudioWorkerGate"}, {name = "review", type = "StudioWorkerGate"}, {name = "block", type = "StudioWorkerGate"}, {name = "report", type = "StudioWorkerRouteReport"}]
+
+[[type]]
+name = "StudioWorkerOpDecisionRouteOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpDecisionRouteInput"}, {name = "parameters", type = "StudioWorkerOpDecisionRouteParameters"}]
+
+[[type]]
+name = "StudioWorkerOpGuardInjectionModeChoice"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "direct", type = "Empty"}, {tag = "indirect", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerOpGuardInjectionParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "mode", type = "StudioWorkerOpGuardInjectionModeChoice"}, {name = "trusted_task", type = "WorkerUtf8Input"}, {name = "input_fields", type = "WorkerUtf8Input"}, {name = "allow_threshold", type = "StudioWorkerNumber"}, {name = "block_threshold", type = "StudioWorkerNumber"}, {name = "min_margin", type = "StudioWorkerNumber"}]
+
+[[type]]
+name = "StudioWorkerOpGuardInjectionInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "record", type = "StudioWorkerLiteral"}, {name = "model", type = "StudioWorkerModelInput"}]
+
+[[type]]
+name = "StudioWorkerOpGuardInjectionResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "signal", type = "StudioWorkerInjectionSignal"}, {name = "record", type = "StudioWorkerLiteralReference"}, {name = "report", type = "StudioWorkerInjectionSignal"}, {name = "allow", type = "StudioWorkerGate"}, {name = "review", type = "StudioWorkerGate"}, {name = "block", type = "StudioWorkerGate"}]
+
+[[type]]
+name = "StudioWorkerOpGuardInjectionOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpGuardInjectionInput"}, {name = "parameters", type = "StudioWorkerOpGuardInjectionParameters"}]
+
+[[type]]
+name = "StudioWorkerOpTrainClassifyTextSteps"
+kind = "scalar"
+visibility = "private"
+encoding = "u32"
+issuer = "data"
+minimum = 20
+maximum = 200000
+
+[[type]]
+name = "StudioWorkerOpTrainClassifyTextContext"
+kind = "scalar"
+visibility = "private"
+encoding = "u32"
+issuer = "data"
+minimum = 32
+maximum = 2048
+
+[[type]]
+name = "StudioWorkerOpTrainClassifyTextBatchSize"
+kind = "scalar"
+visibility = "private"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 512
+
+[[type]]
+name = "StudioWorkerOpTrainClassifyTextSizeChoice"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "automatic", type = "Empty"}, {tag = "small", type = "Empty"}, {tag = "medium", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerOpTrainClassifyTextFrameworkChoice"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "automatic", type = "Empty"}, {tag = "torch", type = "Empty"}, {tag = "mlx", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerOpTrainClassifyTextModeChoice"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "train", type = "Empty"}, {tag = "smoke", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerOpTrainClassifyTextParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "steps", type = "StudioWorkerOpTrainClassifyTextSteps"}, {name = "context", type = "StudioWorkerOpTrainClassifyTextContext"}, {name = "batch_size", type = "StudioWorkerOpTrainClassifyTextBatchSize"}, {name = "learning_rate", type = "StudioWorkerNumber"}, {name = "size", type = "StudioWorkerOpTrainClassifyTextSizeChoice"}, {name = "framework", type = "StudioWorkerOpTrainClassifyTextFrameworkChoice"}, {name = "mode", type = "StudioWorkerOpTrainClassifyTextModeChoice"}]
+
+[[type]]
+name = "StudioWorkerOpTrainClassifyTextInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "dataset", type = "StudioWorkerDatasetInput"}, {name = "model", type = "StudioWorkerOptionalModelInput"}]
+
+[[type]]
+name = "StudioWorkerOpTrainClassifyTextResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "model", type = "StudioWorkerOptionalModelCandidate"}, {name = "metrics", type = "StudioWorkerTrainingMetrics"}, {name = "checkpoint", type = "StudioWorkerOptionalOutputCandidate"}]
+
+[[type]]
+name = "StudioWorkerOpTrainClassifyTextOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpTrainClassifyTextInput"}, {name = "parameters", type = "StudioWorkerOpTrainClassifyTextParameters"}]
+
+[[type]]
+name = "StudioWorkerOpTrainTextLmSteps"
+kind = "scalar"
+visibility = "private"
+encoding = "u32"
+issuer = "data"
+minimum = 20
+maximum = 1000000
+
+[[type]]
+name = "StudioWorkerOpTrainTextLmContext"
+kind = "scalar"
+visibility = "private"
+encoding = "u32"
+issuer = "data"
+minimum = 32
+maximum = 4096
+
+[[type]]
+name = "StudioWorkerOpTrainTextLmBatchSize"
+kind = "scalar"
+visibility = "private"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 512
+
+[[type]]
+name = "StudioWorkerOpTrainTextLmSizeChoice"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "automatic", type = "Empty"}, {tag = "small", type = "Empty"}, {tag = "medium", type = "Empty"}, {tag = "large", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerOpTrainTextLmFrameworkChoice"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "automatic", type = "Empty"}, {tag = "torch", type = "Empty"}, {tag = "mlx", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerOpTrainTextLmModeChoice"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "train", type = "Empty"}, {tag = "smoke", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerOpTrainTextLmParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "steps", type = "StudioWorkerOpTrainTextLmSteps"}, {name = "context", type = "StudioWorkerOpTrainTextLmContext"}, {name = "batch_size", type = "StudioWorkerOpTrainTextLmBatchSize"}, {name = "learning_rate", type = "StudioWorkerNumber"}, {name = "size", type = "StudioWorkerOpTrainTextLmSizeChoice"}, {name = "framework", type = "StudioWorkerOpTrainTextLmFrameworkChoice"}, {name = "mode", type = "StudioWorkerOpTrainTextLmModeChoice"}]
+
+[[type]]
+name = "StudioWorkerOpTrainTextLmInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "dataset", type = "StudioWorkerDatasetInput"}, {name = "model", type = "StudioWorkerOptionalModelInput"}]
+
+[[type]]
+name = "StudioWorkerOpTrainTextLmResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "model", type = "StudioWorkerOptionalModelCandidate"}, {name = "metrics", type = "StudioWorkerTrainingMetrics"}, {name = "checkpoint", type = "StudioWorkerOptionalOutputCandidate"}]
+
+[[type]]
+name = "StudioWorkerOpTrainTextLmOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpTrainTextLmInput"}, {name = "parameters", type = "StudioWorkerOpTrainTextLmParameters"}]
+
+[[type]]
+name = "StudioWorkerOpTrainToolCallsSteps"
+kind = "scalar"
+visibility = "private"
+encoding = "u32"
+issuer = "data"
+minimum = 20
+maximum = 100000
+
+[[type]]
+name = "StudioWorkerOpTrainToolCallsContext"
+kind = "scalar"
+visibility = "private"
+encoding = "u32"
+issuer = "data"
+minimum = 64
+maximum = 32768
+
+[[type]]
+name = "StudioWorkerOpTrainToolCallsBatchSize"
+kind = "scalar"
+visibility = "private"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 128
+
+[[type]]
+name = "StudioWorkerOpTrainToolCallsLoraRank"
+kind = "scalar"
+visibility = "private"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 256
+
+[[type]]
+name = "StudioWorkerOpTrainToolCallsLoraAlpha"
+kind = "scalar"
+visibility = "private"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 1024
+
+[[type]]
+name = "StudioWorkerOpTrainToolCallsSizeChoice"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "automatic", type = "Empty"}, {tag = "e4b", type = "Empty"}, {tag = "qwen27b", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerOpTrainToolCallsFrameworkChoice"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "automatic", type = "Empty"}, {tag = "torch", type = "Empty"}, {tag = "mlx", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerOpTrainToolCallsModeChoice"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "train", type = "Empty"}, {tag = "smoke", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerOpTrainToolCallsParameters"
+kind = "record"
+visibility = "private"
+fields = [{name = "base", type = "StudioWorkerNullableInput"}, {name = "steps", type = "StudioWorkerOpTrainToolCallsSteps"}, {name = "context", type = "StudioWorkerOpTrainToolCallsContext"}, {name = "batch_size", type = "StudioWorkerOpTrainToolCallsBatchSize"}, {name = "learning_rate", type = "StudioWorkerNumber"}, {name = "lora", type = "Boolean"}, {name = "lora_rank", type = "StudioWorkerOpTrainToolCallsLoraRank"}, {name = "lora_alpha", type = "StudioWorkerOpTrainToolCallsLoraAlpha"}, {name = "lora_dropout", type = "StudioWorkerNumber"}, {name = "lora_targets", type = "WorkerUtf8Input"}, {name = "size", type = "StudioWorkerOpTrainToolCallsSizeChoice"}, {name = "framework", type = "StudioWorkerOpTrainToolCallsFrameworkChoice"}, {name = "mode", type = "StudioWorkerOpTrainToolCallsModeChoice"}]
+
+[[type]]
+name = "StudioWorkerOpTrainToolCallsInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "dataset", type = "StudioWorkerDatasetInput"}, {name = "model", type = "StudioWorkerModelInput"}]
+
+[[type]]
+name = "StudioWorkerOpTrainToolCallsResult"
+kind = "record"
+visibility = "private"
+fields = [{name = "model", type = "StudioWorkerOptionalModelCandidate"}, {name = "metrics", type = "StudioWorkerTrainingMetrics"}, {name = "checkpoint", type = "StudioWorkerOptionalOutputCandidate"}]
+
+[[type]]
+name = "StudioWorkerOpTrainToolCallsOperation"
+kind = "record"
+visibility = "private"
+fields = [{name = "inputs", type = "StudioWorkerOpTrainToolCallsInput"}, {name = "parameters", type = "StudioWorkerOpTrainToolCallsParameters"}]
+
+[[type]]
+name = "StudioWorkerCatalogOperation"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "stream_record", type = "StudioWorkerOpStreamRecordOperation"}, {tag = "record_map", type = "StudioWorkerOpRecordMapOperation"}, {tag = "record_if", type = "StudioWorkerOpRecordIfOperation"}, {tag = "dataset", type = "StudioWorkerOpDatasetOperation"}, {tag = "data_hf_preview", type = "StudioWorkerOpDataHfPreviewOperation"}, {tag = "model", type = "StudioWorkerOpModelOperation"}, {tag = "data_validate", type = "StudioWorkerOpDataValidateOperation"}, {tag = "data_split", type = "StudioWorkerOpDataSplitOperation"}, {tag = "prompt", type = "StudioWorkerOpPromptOperation"}, {tag = "generate", type = "StudioWorkerOpGenerateOperation"}, {tag = "evaluate", type = "StudioWorkerOpEvaluateOperation"}, {tag = "compare", type = "StudioWorkerOpCompareOperation"}, {tag = "chart", type = "StudioWorkerOpChartOperation"}, {tag = "export", type = "StudioWorkerOpExportOperation"}, {tag = "report", type = "StudioWorkerOpReportOperation"}, {tag = "tools_call", type = "StudioWorkerOpToolsCallOperation"}, {tag = "data_synthesize", type = "StudioWorkerOpDataSynthesizeOperation"}, {tag = "data_harvest", type = "StudioWorkerOpDataHarvestOperation"}, {tag = "gym_recordings", type = "StudioWorkerOpGymRecordingsOperation"}, {tag = "gym_train", type = "StudioWorkerOpGymTrainOperation"}, {tag = "gym_evaluate", type = "StudioWorkerOpGymEvaluateOperation"}, {tag = "generate_record", type = "StudioWorkerOpGenerateRecordOperation"}, {tag = "generate_structured", type = "StudioWorkerOpGenerateStructuredOperation"}, {tag = "train_decision", type = "StudioWorkerOpTrainDecisionOperation"}, {tag = "evaluate_decision", type = "StudioWorkerOpEvaluateDecisionOperation"}, {tag = "decision_predict", type = "StudioWorkerOpDecisionPredictOperation"}, {tag = "decision_route", type = "StudioWorkerOpDecisionRouteOperation"}, {tag = "guard_injection", type = "StudioWorkerOpGuardInjectionOperation"}, {tag = "train_classify_text", type = "StudioWorkerOpTrainClassifyTextOperation"}, {tag = "train_text_lm", type = "StudioWorkerOpTrainTextLmOperation"}, {tag = "train_tool_calls", type = "StudioWorkerOpTrainToolCallsOperation"}]
+
+[[type]]
+name = "StudioWorkerOperation"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "data_validate", type = "StudioWorkerOpDataValidateOperation"}, {tag = "data_split", type = "StudioWorkerOpDataSplitOperation"}, {tag = "generate", type = "StudioWorkerOpGenerateOperation"}, {tag = "evaluate", type = "StudioWorkerOpEvaluateOperation"}, {tag = "compare", type = "StudioWorkerOpCompareOperation"}, {tag = "chart", type = "StudioWorkerOpChartOperation"}, {tag = "export", type = "StudioWorkerOpExportOperation"}, {tag = "report", type = "StudioWorkerOpReportOperation"}, {tag = "data_synthesize", type = "StudioWorkerOpDataSynthesizeOperation"}, {tag = "data_harvest", type = "StudioWorkerOpDataHarvestOperation"}, {tag = "gym_recordings", type = "StudioWorkerOpGymRecordingsOperation"}, {tag = "gym_train", type = "StudioWorkerOpGymTrainOperation"}, {tag = "gym_evaluate", type = "StudioWorkerOpGymEvaluateOperation"}, {tag = "generate_record", type = "StudioWorkerOpGenerateRecordOperation"}, {tag = "generate_structured", type = "StudioWorkerOpGenerateStructuredOperation"}, {tag = "train_decision", type = "StudioWorkerOpTrainDecisionOperation"}, {tag = "evaluate_decision", type = "StudioWorkerOpEvaluateDecisionOperation"}, {tag = "decision_predict", type = "StudioWorkerOpDecisionPredictOperation"}, {tag = "guard_injection", type = "StudioWorkerOpGuardInjectionOperation"}, {tag = "train_classify_text", type = "StudioWorkerOpTrainClassifyTextOperation"}, {tag = "train_text_lm", type = "StudioWorkerOpTrainTextLmOperation"}, {tag = "train_tool_calls", type = "StudioWorkerOpTrainToolCallsOperation"}]
+
+[[type]]
+name = "StudioWorkerCatalogResult"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "stream_record", type = "StudioWorkerOpStreamRecordResult"}, {tag = "record_map", type = "StudioWorkerOpRecordMapResult"}, {tag = "record_if", type = "StudioWorkerOpRecordIfResult"}, {tag = "dataset", type = "StudioWorkerOpDatasetResult"}, {tag = "data_hf_preview", type = "StudioWorkerOpDataHfPreviewResult"}, {tag = "model", type = "StudioWorkerOpModelResult"}, {tag = "data_validate", type = "StudioWorkerOpDataValidateResult"}, {tag = "data_split", type = "StudioWorkerOpDataSplitResult"}, {tag = "prompt", type = "StudioWorkerOpPromptResult"}, {tag = "generate", type = "StudioWorkerOpGenerateResult"}, {tag = "evaluate", type = "StudioWorkerOpEvaluateResult"}, {tag = "compare", type = "StudioWorkerOpCompareResult"}, {tag = "chart", type = "StudioWorkerOpChartResult"}, {tag = "export", type = "StudioWorkerOpExportResult"}, {tag = "report", type = "StudioWorkerOpReportResult"}, {tag = "tools_call", type = "StudioWorkerOpToolsCallResult"}, {tag = "data_synthesize", type = "StudioWorkerOpDataSynthesizeResult"}, {tag = "data_harvest", type = "StudioWorkerOpDataHarvestResult"}, {tag = "gym_recordings", type = "StudioWorkerOpGymRecordingsResult"}, {tag = "gym_train", type = "StudioWorkerOpGymTrainResult"}, {tag = "gym_evaluate", type = "StudioWorkerOpGymEvaluateResult"}, {tag = "generate_record", type = "StudioWorkerOpGenerateRecordResult"}, {tag = "generate_structured", type = "StudioWorkerOpGenerateStructuredResult"}, {tag = "train_decision", type = "StudioWorkerOpTrainDecisionResult"}, {tag = "evaluate_decision", type = "StudioWorkerOpEvaluateDecisionResult"}, {tag = "decision_predict", type = "StudioWorkerOpDecisionPredictResult"}, {tag = "decision_route", type = "StudioWorkerOpDecisionRouteResult"}, {tag = "guard_injection", type = "StudioWorkerOpGuardInjectionResult"}, {tag = "train_classify_text", type = "StudioWorkerOpTrainClassifyTextResult"}, {tag = "train_text_lm", type = "StudioWorkerOpTrainTextLmResult"}, {tag = "train_tool_calls", type = "StudioWorkerOpTrainToolCallsResult"}]
+
+[[type]]
+name = "StudioWorkerResult"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "data_validate", type = "StudioWorkerOpDataValidateResult"}, {tag = "data_split", type = "StudioWorkerOpDataSplitResult"}, {tag = "generate", type = "StudioWorkerOpGenerateResult"}, {tag = "evaluate", type = "StudioWorkerOpEvaluateResult"}, {tag = "compare", type = "StudioWorkerOpCompareResult"}, {tag = "chart", type = "StudioWorkerOpChartResult"}, {tag = "export", type = "StudioWorkerOpExportResult"}, {tag = "report", type = "StudioWorkerOpReportResult"}, {tag = "data_synthesize", type = "StudioWorkerOpDataSynthesizeResult"}, {tag = "data_harvest", type = "StudioWorkerOpDataHarvestResult"}, {tag = "gym_recordings", type = "StudioWorkerOpGymRecordingsResult"}, {tag = "gym_train", type = "StudioWorkerOpGymTrainResult"}, {tag = "gym_evaluate", type = "StudioWorkerOpGymEvaluateResult"}, {tag = "generate_record", type = "StudioWorkerOpGenerateRecordResult"}, {tag = "generate_structured", type = "StudioWorkerOpGenerateStructuredResult"}, {tag = "train_decision", type = "StudioWorkerOpTrainDecisionResult"}, {tag = "evaluate_decision", type = "StudioWorkerOpEvaluateDecisionResult"}, {tag = "decision_predict", type = "StudioWorkerOpDecisionPredictResult"}, {tag = "guard_injection", type = "StudioWorkerOpGuardInjectionResult"}, {tag = "train_classify_text", type = "StudioWorkerOpTrainClassifyTextResult"}, {tag = "train_text_lm", type = "StudioWorkerOpTrainTextLmResult"}, {tag = "train_tool_calls", type = "StudioWorkerOpTrainToolCallsResult"}]
+
+[[type]]
+name = "WorkerKind"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "data_validate", type = "Empty"}, {tag = "data_split", type = "Empty"}, {tag = "generate", type = "Empty"}, {tag = "evaluate", type = "Empty"}, {tag = "compare", type = "Empty"}, {tag = "chart", type = "Empty"}, {tag = "export", type = "Empty"}, {tag = "report", type = "Empty"}, {tag = "data_synthesize", type = "Empty"}, {tag = "data_harvest", type = "Empty"}, {tag = "gym_recordings", type = "Empty"}, {tag = "gym_train", type = "Empty"}, {tag = "gym_evaluate", type = "Empty"}, {tag = "generate_record", type = "Empty"}, {tag = "generate_structured", type = "Empty"}, {tag = "train_decision", type = "Empty"}, {tag = "evaluate_decision", type = "Empty"}, {tag = "decision_predict", type = "Empty"}, {tag = "guard_injection", type = "Empty"}, {tag = "train_classify_text", type = "Empty"}, {tag = "train_text_lm", type = "Empty"}, {tag = "train_tool_calls", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerCatalogKind"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "stream_record", type = "Empty"}, {tag = "record_map", type = "Empty"}, {tag = "record_if", type = "Empty"}, {tag = "dataset", type = "Empty"}, {tag = "data_hf_preview", type = "Empty"}, {tag = "model", type = "Empty"}, {tag = "data_validate", type = "Empty"}, {tag = "data_split", type = "Empty"}, {tag = "prompt", type = "Empty"}, {tag = "generate", type = "Empty"}, {tag = "evaluate", type = "Empty"}, {tag = "compare", type = "Empty"}, {tag = "chart", type = "Empty"}, {tag = "export", type = "Empty"}, {tag = "report", type = "Empty"}, {tag = "tools_call", type = "Empty"}, {tag = "data_synthesize", type = "Empty"}, {tag = "data_harvest", type = "Empty"}, {tag = "gym_recordings", type = "Empty"}, {tag = "gym_train", type = "Empty"}, {tag = "gym_evaluate", type = "Empty"}, {tag = "generate_record", type = "Empty"}, {tag = "generate_structured", type = "Empty"}, {tag = "train_decision", type = "Empty"}, {tag = "evaluate_decision", type = "Empty"}, {tag = "decision_predict", type = "Empty"}, {tag = "decision_route", type = "Empty"}, {tag = "guard_injection", type = "Empty"}, {tag = "train_classify_text", type = "Empty"}, {tag = "train_text_lm", type = "Empty"}, {tag = "train_tool_calls", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerExecutionRoute"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "managed_compute", type = "Empty"}, {tag = "resident_decision", type = "WorkerResidentBinding"}, {tag = "trained_torch", type = "Empty"}, {tag = "trained_mlx", type = "Empty"}, {tag = "managed_backend", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerNodeSnapshot"
+kind = "record"
+visibility = "private"
+fields = [{name = "node_id", type = "WorkerUtf8Input"}, {name = "version", type = "U32"}, {name = "catalog_kind", type = "WorkerKind"}, {name = "implementation_digest", type = "WorkerDigest"}, {name = "original_request_digest", type = "WorkerDigest"}]
+
+[[type]]
+name = "StudioWorkerStart"
+kind = "record"
+visibility = "private"
+fields = [{name = "request_digest", type = "WorkerDigest"}, {name = "node", type = "StudioWorkerNodeSnapshot"}, {name = "operation", type = "StudioWorkerOperation"}, {name = "route", type = "StudioWorkerExecutionRoute"}, {name = "runtime", type = "WorkerRuntimeSelection"}, {name = "resources", type = "WorkerResourceEnvelope"}, {name = "profile", type = "StudioWorkerProfile"}, {name = "output_slots", type = "StudioWorkerStream"}]
+
+[[type]]
+name = "StudioWorkerDescriptor"
+kind = "record"
+visibility = "private"
+fields = [{name = "slot", type = "WorkerSlotId"}, {name = "attempt", type = "ResourceGeneration"}, {name = "index", type = "U64"}, {name = "value", type = "StudioWorkerDescriptorValue"}]
+
+[[type]]
+name = "StudioWorkerDescriptorValue"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "asset_manifest", type = "StudioWorkerManifestEntry"}, {tag = "numeric_metric", type = "StudioWorkerNamedMetric"}, {tag = "per_tool_metric", type = "StudioWorkerPerToolMetric"}, {tag = "training_phase", type = "StudioWorkerTrainingPhase"}, {tag = "gym_episode", type = "StudioWorkerGymEpisode"}, {tag = "tool_call", type = "StudioWorkerToolCall"}, {tag = "literal_field", type = "StudioWorkerUtf8Reference"}, {tag = "reason_code", type = "StudioWorkerReasonCode"}]
+
+[[type]]
+name = "StudioWorkerStreamEnd"
+kind = "record"
+visibility = "private"
+fields = [{name = "slot", type = "WorkerSlotId"}, {name = "attempt", type = "ResourceGeneration"}, {name = "count", type = "U64"}, {name = "bytes", type = "U64"}, {name = "digest", type = "WorkerDigest"}]
+
+[[type]]
+name = "StudioWorkerStreamCredit"
+kind = "record"
+visibility = "private"
+fields = [{name = "slot", type = "WorkerSlotId"}, {name = "attempt", type = "ResourceGeneration"}, {name = "next_sequence", type = "U64"}, {name = "items", type = "U64"}, {name = "bytes", type = "U64"}]
+
+[[type]]
+name = "StudioWorkerNodeCommand"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "start", type = "StudioWorkerStart"}, {tag = "input_chunk", type = "WorkerInputChunk"}, {tag = "input_end", type = "WorkerInputEnd"}, {tag = "descriptor", type = "StudioWorkerNodeDescriptor"}, {tag = "descriptor_end", type = "StudioWorkerStreamEnd"}, {tag = "credit", type = "StudioWorkerStreamCredit"}, {tag = "cancel", type = "WorkerCancelCommand"}]
+
+[[type]]
+name = "StudioWorkerStartupCandidate"
+kind = "record"
+visibility = "private"
+fields = [{name = "request_digest", type = "WorkerDigest"}, {name = "node", type = "StudioWorkerNodeSnapshot"}, {name = "runtime", type = "WorkerRuntimeSelection"}, {name = "profile", type = "StudioWorkerProfile"}, {name = "assets", type = "StudioWorkerStream"}, {name = "memory", type = "WorkerMemoryCandidate"}]
+
+[[type]]
+name = "StudioWorkerAcceptedCandidate"
+kind = "record"
+visibility = "private"
+fields = [{name = "request_digest", type = "WorkerDigest"}, {name = "catalog_kind", type = "WorkerKind"}]
+
+[[type]]
+name = "StudioWorkerResultCandidate"
+kind = "record"
+visibility = "private"
+fields = [{name = "request_digest", type = "WorkerDigest"}, {name = "result", type = "StudioWorkerResult"}, {name = "memory", type = "WorkerMemoryCandidate"}]
+
+[[type]]
+name = "StudioWorkerEvent"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "startup", type = "StudioWorkerStartupCandidate"}, {tag = "accepted", type = "StudioWorkerAcceptedCandidate"}, {tag = "descriptor", type = "StudioWorkerDescriptor"}, {tag = "descriptor_end", type = "StudioWorkerStreamEnd"}, {tag = "result", type = "StudioWorkerResultCandidate"}, {tag = "failure", type = "WorkerFailureCandidate"}, {tag = "cancel_observed", type = "WorkerCancelObserved"}, {tag = "end", type = "WorkerEndCandidate"}, {tag = "output_chunk", type = "StudioWorkerOutputChunk"}, {tag = "output_end", type = "StudioWorkerOutputEnd"}]
+
+[[type]]
+name = "StudioWorkerFrameScope"
+kind = "record"
+visibility = "private"
+fields = [{name = "version", type = "U32"}, {name = "request_id", type = "RequestId"}, {name = "job_id", type = "JobId"}, {name = "worker_generation", type = "ResourceGeneration"}, {name = "attempt", type = "ResourceGeneration"}, {name = "binding_digest", type = "WorkerDigest"}, {name = "sequence", type = "U64"}]
+
+[[type]]
+name = "StudioWorkerNodeFrame"
+kind = "record"
+visibility = "private"
+fields = [{name = "scope", type = "StudioWorkerFrameScope"}, {name = "command", type = "StudioWorkerNodeCommand"}]
+
+[[type]]
+name = "StudioWorkerEventFrame"
+kind = "record"
+visibility = "private"
+fields = [{name = "scope", type = "StudioWorkerFrameScope"}, {name = "event", type = "StudioWorkerEvent"}]
+
+[[type]]
+name = "StudioWorkerOutputReservation"
+kind = "record"
+visibility = "private"
+fields = [{name = "slot", type = "WorkerSlotId"}, {name = "attempt", type = "ResourceGeneration"}, {name = "profile", type = "StudioWorkerProfile"}, {name = "media", type = "StudioWorkerMedia"}, {name = "admitted_bytes", type = "U64"}, {name = "admitted_items", type = "U64"}]
+
+[[type]]
+name = "StudioWorkerUtf8Candidate"
+kind = "record"
+visibility = "private"
+fields = [{name = "slot", type = "WorkerSlotId"}, {name = "attempt", type = "ResourceGeneration"}, {name = "profile", type = "StudioWorkerProfile"}, {name = "bytes", type = "U64"}, {name = "digest", type = "WorkerDigest"}]
+
+[[type]]
+name = "StudioWorkerUtf8Reference"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "immutable_input", type = "WorkerUtf8Input"}, {tag = "candidate", type = "StudioWorkerUtf8Candidate"}]
+
+[[type]]
+name = "StudioWorkerLiteralCandidate"
+kind = "record"
+visibility = "private"
+fields = [{name = "role", type = "StudioWorkerLiteralRole"}, {name = "content", type = "StudioWorkerUtf8Candidate"}, {name = "profile", type = "StudioWorkerProfile"}]
+
+[[type]]
+name = "StudioWorkerLiteralReference"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "immutable_input", type = "StudioWorkerLiteral"}, {tag = "candidate", type = "StudioWorkerLiteralCandidate"}]
+
+[[type]]
+name = "StudioWorkerCandidateInteger"
+kind = "record"
+visibility = "private"
+fields = [{name = "negative", type = "Boolean"}, {name = "magnitude", type = "StudioWorkerUtf8Reference"}]
+
+[[type]]
+name = "StudioWorkerGateReason"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "true_branch", type = "Empty"}, {tag = "false_branch", type = "Empty"}, {tag = "allow", type = "Empty"}, {tag = "review", type = "Empty"}, {tag = "block", type = "Empty"}]
+
+[[type]]
+name = "StudioWorkerNodeDescriptor"
+kind = "record"
+visibility = "private"
+fields = [{name = "slot", type = "WorkerSlotId"}, {name = "attempt", type = "ResourceGeneration"}, {name = "index", type = "U64"}, {name = "value", type = "StudioWorkerNodeDescriptorValue"}]
+
+[[type]]
+name = "StudioWorkerNodeDescriptorValue"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "output_reservation", type = "StudioWorkerOutputReservation"}, {tag = "immutable_input", type = "WorkerFrozenInput"}, {tag = "literal_field", type = "WorkerUtf8Input"}, {tag = "asset_manifest", type = "StudioWorkerManifestEntry"}, {tag = "numeric_metric", type = "StudioWorkerNamedMetric"}, {tag = "per_tool_metric", type = "StudioWorkerPerToolMetric"}, {tag = "training_phase", type = "StudioWorkerTrainingPhase"}, {tag = "gym_episode", type = "StudioWorkerGymEpisode"}, {tag = "tool_call", type = "StudioWorkerToolCall"}, {tag = "reason_code", type = "StudioWorkerReasonCode"}]
+
+[[type]]
+name = "StudioWorkerOutputChunk"
+kind = "record"
+visibility = "private"
+fields = [{name = "slot", type = "WorkerSlotId"}, {name = "attempt", type = "ResourceGeneration"}, {name = "offset", type = "U64"}, {name = "content", type = "Utf8Chunk"}]
+
+[[type]]
+name = "StudioWorkerOutputEnd"
+kind = "record"
+visibility = "private"
+fields = [{name = "slot", type = "WorkerSlotId"}, {name = "attempt", type = "ResourceGeneration"}, {name = "bytes", type = "U64"}, {name = "digest", type = "WorkerDigest"}]
+
+[[type]]
+name = "StudioWorkerFiniteObservedNumber"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "integer", type = "StudioWorkerCandidateInteger"}, {tag = "finite", type = "FiniteF64"}]
