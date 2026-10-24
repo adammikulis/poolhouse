@@ -1,4 +1,4 @@
-# Generated proposal. No dispatch or authority is implemented. Schema ed08131d050952d8255afe2b1901c6b857fe074b8da75238e7a0d7b1ba19ce3f
+# Generated proposal. No dispatch or authority is implemented. Schema 6dc8f654c0f2c143905475acbd851e2883fcfbe8ecf27ab1716a41dbbbf8222a
 from . import node_contract as data
 
 OPERATION_TYPES = {
@@ -176,6 +176,15 @@ OPERATION_TYPES = {
     "setup.complete": (data.SetupMutationRequest, data.SetupView, data.SettingsError),
     "window.close.inspect": (data.SettingsWindowCloseRequest, data.SettingsWindowCloseView, data.SettingsError),
     "window.close.choose": (data.SettingsWindowChooseRequest, data.SettingsWindowCloseView, data.SettingsError),
+    "tasks.scope.replace": (data.TaskExtensionScopeReplaceRequest, data.TaskExtensionScopeView, data.TaskContractError),
+    "tasks.scope.inspect": (data.TaskExtensionScopeInspectRequest, data.TaskExtensionOptionalScopeView, data.TaskContractError),
+    "tasks.records.merge": (data.TaskExtensionRecordMergeRequest, data.TaskExtensionRecordReceipt, data.TaskContractError),
+    "tasks.records.list": (data.TaskExtensionRecordsListRequest, data.TaskExtensionRecordsEvent, data.TaskContractError),
+    "claims.reservations.begin": (data.CoordinationReservationBeginRequest, data.CoordinationReservationView, data.TaskContractError),
+    "claims.reservations.input.set": (data.CoordinationReservationInputRequest, data.CoordinationReservationInputReceipt, data.TaskContractError),
+    "claims.reservations.commit": (data.CoordinationReservationCommitRequest, data.CoordinationReservationView, data.TaskContractError),
+    "claims.reservations.cancel": (data.CoordinationReservationCancelRequest, data.CoordinationReservationView, data.TaskContractError),
+    "claims.reservations.inspect": (data.CoordinationReservationInspectRequest, data.CoordinationReservationEvent, data.TaskContractError),
     "tasks.create": (data.TaskCreateRequest, data.TaskView, data.TaskContractError),
     "tasks.list": (data.TaskListRequest, data.TaskReadEvent, data.TaskContractError),
     "tasks.get": (data.TaskGetRequest, data.TaskReadEvent, data.TaskContractError),

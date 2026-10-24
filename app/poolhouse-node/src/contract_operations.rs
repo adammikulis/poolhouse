@@ -1,4 +1,4 @@
-// Generated proposal. No dispatch or authority is implemented. Schema ed08131d050952d8255afe2b1901c6b857fe074b8da75238e7a0d7b1ba19ce3f
+// Generated proposal. No dispatch or authority is implemented. Schema 6dc8f654c0f2c143905475acbd851e2883fcfbe8ecf27ab1716a41dbbbf8222a
 use super::contract::*;
 
 pub trait Operation { type Request; type Response; type Error; const NAME: &'static str; }
@@ -524,6 +524,33 @@ impl Operation for SettingsWindowCloseInspect { type Request = SettingsWindowClo
 
 pub struct SettingsWindowCloseChoose;
 impl Operation for SettingsWindowCloseChoose { type Request = SettingsWindowChooseRequest; type Response = SettingsWindowCloseView; type Error = SettingsError; const NAME: &'static str = "window.close.choose"; }
+
+pub struct TaskExtensionScopeReplace;
+impl Operation for TaskExtensionScopeReplace { type Request = TaskExtensionScopeReplaceRequest; type Response = TaskExtensionScopeView; type Error = TaskContractError; const NAME: &'static str = "tasks.scope.replace"; }
+
+pub struct TaskExtensionScopeInspect;
+impl Operation for TaskExtensionScopeInspect { type Request = TaskExtensionScopeInspectRequest; type Response = TaskExtensionOptionalScopeView; type Error = TaskContractError; const NAME: &'static str = "tasks.scope.inspect"; }
+
+pub struct TaskExtensionRecordsMerge;
+impl Operation for TaskExtensionRecordsMerge { type Request = TaskExtensionRecordMergeRequest; type Response = TaskExtensionRecordReceipt; type Error = TaskContractError; const NAME: &'static str = "tasks.records.merge"; }
+
+pub struct TaskExtensionRecordsList;
+impl Operation for TaskExtensionRecordsList { type Request = TaskExtensionRecordsListRequest; type Response = TaskExtensionRecordsEvent; type Error = TaskContractError; const NAME: &'static str = "tasks.records.list"; }
+
+pub struct CoordinationReservationsBegin;
+impl Operation for CoordinationReservationsBegin { type Request = CoordinationReservationBeginRequest; type Response = CoordinationReservationView; type Error = TaskContractError; const NAME: &'static str = "claims.reservations.begin"; }
+
+pub struct CoordinationReservationsInputSet;
+impl Operation for CoordinationReservationsInputSet { type Request = CoordinationReservationInputRequest; type Response = CoordinationReservationInputReceipt; type Error = TaskContractError; const NAME: &'static str = "claims.reservations.input.set"; }
+
+pub struct CoordinationReservationsCommit;
+impl Operation for CoordinationReservationsCommit { type Request = CoordinationReservationCommitRequest; type Response = CoordinationReservationView; type Error = TaskContractError; const NAME: &'static str = "claims.reservations.commit"; }
+
+pub struct CoordinationReservationsCancel;
+impl Operation for CoordinationReservationsCancel { type Request = CoordinationReservationCancelRequest; type Response = CoordinationReservationView; type Error = TaskContractError; const NAME: &'static str = "claims.reservations.cancel"; }
+
+pub struct CoordinationReservationsInspect;
+impl Operation for CoordinationReservationsInspect { type Request = CoordinationReservationInspectRequest; type Response = CoordinationReservationEvent; type Error = TaskContractError; const NAME: &'static str = "claims.reservations.inspect"; }
 
 pub struct TasksCreate;
 impl Operation for TasksCreate { type Request = TaskCreateRequest; type Response = TaskView; type Error = TaskContractError; const NAME: &'static str = "tasks.create"; }

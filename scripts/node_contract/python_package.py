@@ -14,6 +14,14 @@ def group(name: str) -> str:
         return inference_group(name)
     if name.startswith("BoardContent"):
         return board_content_group(name)
+    if name.startswith("TaskExtension"):
+        if "Scope" in name or "ExecutionConfig" in name:
+            return "task_scope"
+        if any(word in name for word in ("Record", "Patch", "Integration", "Attempt", "Event", "Evidence", "Runner")):
+            return "task_records"
+        return "task_extensions"
+    if name.startswith("CoordinationReservation"):
+        return "task_reservations"
     if name.startswith("CoordinationClaim"):
         return "task_claims"
     if name.startswith("Task") and name not in {"TaskId", "TaskRef", "TaskExecutionId", "TaskExecutionState"}:

@@ -524,3 +524,12 @@ ordering in imports and the static public export list. Runtime dispatch,
 signature/content validation, task settlement and atomic effects remain
 unfinished. Bulk reservations and generic task extensions are specified
 separately rather than accepted through an arbitrary control-body object.
+
+Task extensions add 69 data types and nine operations for scope replacement,
+typed record contributions and staged batch reservations. Immutable indexed
+inputs preserve the original batch count and size accounting before one atomic
+reservation commit. Retrying a committed request preserves its original result
+and expiry; cancelling staging never releases committed claims. Contribution
+streams preserve accumulated records without inventing an aggregate cap.
+Staging admission, source codecs and durable backend/recovery remain runtime
+requirements; these declarations perform no reservation or task mutation.
