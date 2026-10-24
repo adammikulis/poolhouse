@@ -1,0 +1,928 @@
+{
+  "version": 1,
+  "status": "proposal only; no native/runtime/caller migration/K acceptance",
+  "source_commit": "f213011b498c27cd53d2b1dca0bae6d1c9bb6bc4",
+  "contract_peer_commit": "6cbc882f9923886d4961e77491607f3e68663f45",
+  "fragment": "contracts/node/domains/datasets.toml",
+  "fragment_sha256": "b5956ad253fec1b52df2dc5815c925d94a18af81c9c018c8551f2d50b9a6651a",
+  "counts": {
+    "types": 116,
+    "operations": 19
+  },
+  "operation_mapping": [
+    {
+      "operation": "datasets.catalog.search",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        0,
+        1,
+        4,
+        9,
+        11
+      ],
+      "actual_caller_sites": [
+        42
+      ],
+      "semantic_transformation": "GET search query/task/language/sort/sourcecursor becomes fixed typed query and node-bound opaque continuation; at most24summaries, no arbitraryURL."
+    },
+    {
+      "operation": "datasets.catalog.inspect",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        1,
+        5,
+        6,
+        12
+      ],
+      "actual_caller_sites": [
+        43
+      ],
+      "semantic_transformation": "GET details(repo) preserves summary/mainrevision/split sizes; split collection paged automatically without lowering4096source total."
+    },
+    {
+      "operation": "datasets.catalog.splits.list",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        5,
+        6
+      ],
+      "actual_caller_sites": [
+        43
+      ],
+      "semantic_transformation": "New automatic typed continuation of immutable details snapshot; not separate remote endpoint or new dataset selection authority."
+    },
+    {
+      "operation": "datasets.catalog.preview",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        1,
+        7,
+        35,
+        10
+      ],
+      "actual_caller_sites": [
+        44,
+        45
+      ],
+      "semantic_transformation": "GET preview fixedsource tuple yields live<=10row512field snapshot and exact rows/schema digest; no pinnedcommit claimed."
+    },
+    {
+      "operation": "datasets.catalog.selection.create",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        1,
+        8,
+        15
+      ],
+      "actual_caller_sites": [
+        44
+      ],
+      "semantic_transformation": "GET selection describes full complete data-only Parquet identities with distinctmain+converted revision; snapshotcreation durableID is proposed, no fulldownload/import implementation."
+    },
+    {
+      "operation": "datasets.catalog.selection.files.list",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        8
+      ],
+      "actual_caller_sites": [
+        44
+      ],
+      "semantic_transformation": "Automatic complete typed fileidentity paging; fixednode-derived pinnedsource, relative names never grant OS/URL authority."
+    },
+    {
+      "operation": "datasets.local.choose",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        17,
+        54
+      ],
+      "actual_caller_sites": [
+        52,
+        50
+      ],
+      "semantic_transformation": "Proposed real native picker managed source issuance replaces local-preview raw path authority, no additional normalpersonstep; heldsource implementation absent."
+    },
+    {
+      "operation": "datasets.local.choice.inspect",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        17
+      ],
+      "actual_caller_sites": [
+        50
+      ],
+      "semantic_transformation": "New automatic native selector status, not proof from path/storedID."
+    },
+    {
+      "operation": "datasets.local.choice.cancel",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        17
+      ],
+      "actual_caller_sites": [
+        50
+      ],
+      "semantic_transformation": "New exact selection-intent cancellation, cannot cancel a selected source while pretending selection did not commit."
+    },
+    {
+      "operation": "datasets.local.preview",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        1,
+        17,
+        18,
+        20
+      ],
+      "actual_caller_sites": [
+        50
+      ],
+      "semantic_transformation": "GET local-preview(path) becomes currentmanaged DatasetRef, exactheldsource plus frozen verified sample; source stat/reopen checks not immutablecustodyproof."
+    },
+    {
+      "operation": "datasets.managed.list",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        21,
+        20,
+        30
+      ],
+      "actual_caller_sites": [
+        51
+      ],
+      "semantic_transformation": "Legacy DatasetImports.resources viaStudio resources becomes scoped managed inventory; authorized unavailable indices explicit, not silent emptycompleted list."
+    },
+    {
+      "operation": "datasets.managed.get",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        20,
+        30,
+        37
+      ],
+      "actual_caller_sites": [
+        51,
+        50
+      ],
+      "semantic_transformation": "Resolve registered managed DatasetRef only after original producer, bytes, manifest and epoch checks; no publicpath echo."
+    },
+    {
+      "operation": "datasets.import.preview.start",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        2,
+        19,
+        33,
+        34,
+        26,
+        40
+      ],
+      "actual_caller_sites": [
+        45,
+        46
+      ],
+      "semantic_transformation": "POST preview-imports exactselection fields -> PreviewRef+digest+typedrow/columnselection+name/sourcekey/RequestId; same scoped immutableintent bound to one fixed dataset node/run beforewake."
+    },
+    {
+      "operation": "datasets.import.lookup",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        2,
+        23,
+        27
+      ],
+      "actual_caller_sites": [
+        47
+      ],
+      "semantic_transformation": "GET imports?key queries original exactintent after unknownacceptance; canonicalRequestId/sourcekeyalias consistency, no freshsubmit."
+    },
+    {
+      "operation": "datasets.import.get",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        2,
+        22,
+        28,
+        20
+      ],
+      "actual_caller_sites": [
+        48
+      ],
+      "semantic_transformation": "GET imports/runid becomes ImportRef view; node retainsoriginalrun mapping and verifies managedready publication separatelyfromdoneflag."
+    },
+    {
+      "operation": "datasets.import.cancel",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        2,
+        24,
+        39
+      ],
+      "actual_caller_sites": [
+        49
+      ],
+      "semantic_transformation": "POST imports/runid/cancel becomes generation/CAS/request-scoped durablecancel-versus-indexpublication; unknownoutcome custody blocksrelaunch."
+    },
+    {
+      "operation": "datasets.import.watch",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        22,
+        32
+      ],
+      "actual_caller_sites": [
+        48
+      ],
+      "semantic_transformation": "New ordered watch successor to750ms UIpolling; detach notcancel, exactcurrentauth/backpressure/resync prerequisite."
+    },
+    {
+      "operation": "datasets.values.read",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        10,
+        7,
+        18,
+        34
+      ],
+      "actual_caller_sites": [
+        43,
+        45,
+        50
+      ],
+      "semantic_transformation": "Automatic output-only typed tree paging retains actualschema/data JSON variants, exactintegers, null/unknown distinction, fixedsame-snapshot refs; no opaqueoperationbody."
+    },
+    {
+      "operation": "datasets.text.read",
+      "status": "proposed/unimplemented canonical public operation; current legacy transports retained",
+      "legacy_handler_sites": [
+        10,
+        7,
+        18,
+        12,
+        15
+      ],
+      "actual_caller_sites": [
+        43,
+        50
+      ],
+      "semantic_transformation": "Automatic output-only exactUTF8 text paging preserves sourcecodepoint caps, originalsourceaggregate andUnicodeboundaryloss; no URL/parser/path authority."
+    }
+  ],
+  "sites": [
+    {
+      "path": "src/poolhouse/fleet/dataset_routes.py",
+      "line": 30,
+      "symbol": "dataset_routes.route",
+      "sha256": "b52a7a12eea16bc51a3154cf3f7e13a5eb83bfaec268f529a54dc43c2920a384",
+      "exact_line": "def route(handler):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_routes.py",
+      "line": 59,
+      "symbol": "dataset_routes._read",
+      "sha256": "b52a7a12eea16bc51a3154cf3f7e13a5eb83bfaec268f529a54dc43c2920a384",
+      "exact_line": "def _read(handler, action):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_routes.py",
+      "line": 96,
+      "symbol": "dataset_routes._imports",
+      "sha256": "b52a7a12eea16bc51a3154cf3f7e13a5eb83bfaec268f529a54dc43c2920a384",
+      "exact_line": "def _imports(handler, action):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_routes.py",
+      "line": 25,
+      "symbol": "dataset_routes._current",
+      "sha256": "b52a7a12eea16bc51a3154cf3f7e13a5eb83bfaec268f529a54dc43c2920a384",
+      "exact_line": "def _current(engine, principal):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_catalogue.py",
+      "line": 101,
+      "symbol": "dataset_catalogue.search",
+      "sha256": "2218a98e3e695462c249081706db30bb48f1f25fcecb9d3623b9a0082328de1b",
+      "exact_line": "def search(query='', task='', language='', sort='downloads', cursor=''):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_catalogue.py",
+      "line": 149,
+      "symbol": "dataset_catalogue.details",
+      "sha256": "2218a98e3e695462c249081706db30bb48f1f25fcecb9d3623b9a0082328de1b",
+      "exact_line": "def details(repo):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_catalogue.py",
+      "line": 137,
+      "symbol": "dataset_catalogue._splits",
+      "sha256": "2218a98e3e695462c249081706db30bb48f1f25fcecb9d3623b9a0082328de1b",
+      "exact_line": "def _splits(repo):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_catalogue.py",
+      "line": 182,
+      "symbol": "dataset_catalogue.preview",
+      "sha256": "2218a98e3e695462c249081706db30bb48f1f25fcecb9d3623b9a0082328de1b",
+      "exact_line": "def preview(repo, config, split):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_catalogue.py",
+      "line": 215,
+      "symbol": "dataset_catalogue.selection",
+      "sha256": "2218a98e3e695462c249081706db30bb48f1f25fcecb9d3623b9a0082328de1b",
+      "exact_line": "def selection(repo, config, split):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_catalogue.py",
+      "line": 57,
+      "symbol": "dataset_catalogue._cursor",
+      "sha256": "2218a98e3e695462c249081706db30bb48f1f25fcecb9d3623b9a0082328de1b",
+      "exact_line": "def _cursor(headers, params):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_catalogue.py",
+      "line": 164,
+      "symbol": "dataset_catalogue._value",
+      "sha256": "2218a98e3e695462c249081706db30bb48f1f25fcecb9d3623b9a0082328de1b",
+      "exact_line": "def _value(value, depth=0):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_catalogue.py",
+      "line": 38,
+      "symbol": "dataset_catalogue._json",
+      "sha256": "2218a98e3e695462c249081706db30bb48f1f25fcecb9d3623b9a0082328de1b",
+      "exact_line": "def _json(url):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_catalogue.py",
+      "line": 92,
+      "symbol": "dataset_catalogue._summary",
+      "sha256": "2218a98e3e695462c249081706db30bb48f1f25fcecb9d3623b9a0082328de1b",
+      "exact_line": "def _summary(row):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_catalogue.py",
+      "line": 27,
+      "symbol": "dataset_catalogue._repo",
+      "sha256": "2218a98e3e695462c249081706db30bb48f1f25fcecb9d3623b9a0082328de1b",
+      "exact_line": "def _repo(value):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_catalogue.py",
+      "line": 130,
+      "symbol": "dataset_catalogue._split",
+      "sha256": "2218a98e3e695462c249081706db30bb48f1f25fcecb9d3623b9a0082328de1b",
+      "exact_line": "def _split(value):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_catalogue.py",
+      "line": 203,
+      "symbol": "dataset_catalogue._path",
+      "sha256": "2218a98e3e695462c249081706db30bb48f1f25fcecb9d3623b9a0082328de1b",
+      "exact_line": "def _path(repo, url):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_catalogue.py",
+      "line": 34,
+      "symbol": "dataset_catalogue._number",
+      "sha256": "2218a98e3e695462c249081706db30bb48f1f25fcecb9d3623b9a0082328de1b",
+      "exact_line": "def _number(value):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_preview.py",
+      "line": 83,
+      "symbol": "dataset_preview.preview",
+      "sha256": "3de73de8e3eed58d2e2231ad0a359b299fecbab086140f69df4d9b37fa2e97e7",
+      "exact_line": "def preview(path: str, files_root: Path) -> dict:"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_preview.py",
+      "line": 33,
+      "symbol": "dataset_preview._records",
+      "sha256": "3de73de8e3eed58d2e2231ad0a359b299fecbab086140f69df4d9b37fa2e97e7",
+      "exact_line": "def _records(text, suffix, truncated):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_imports.py",
+      "line": 79,
+      "symbol": "DatasetImports.submit_preview",
+      "sha256": "8a03f6c4c387c98a53f2cd6541a9b502566cfefcb72e389cb8d45189ea70e634",
+      "exact_line": "    def submit_preview(self, principal, body):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_imports.py",
+      "line": 199,
+      "symbol": "DatasetImports.resolve",
+      "sha256": "8a03f6c4c387c98a53f2cd6541a9b502566cfefcb72e389cb8d45189ea70e634",
+      "exact_line": "    def resolve(self, binding, context):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_imports.py",
+      "line": 228,
+      "symbol": "DatasetImports.resources",
+      "sha256": "8a03f6c4c387c98a53f2cd6541a9b502566cfefcb72e389cb8d45189ea70e634",
+      "exact_line": "    def resources(self, principal):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_imports.py",
+      "line": 247,
+      "symbol": "DatasetImports.status",
+      "sha256": "8a03f6c4c387c98a53f2cd6541a9b502566cfefcb72e389cb8d45189ea70e634",
+      "exact_line": "    def status(self, principal, ident):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_imports.py",
+      "line": 257,
+      "symbol": "DatasetImports.lookup",
+      "sha256": "8a03f6c4c387c98a53f2cd6541a9b502566cfefcb72e389cb8d45189ea70e634",
+      "exact_line": "    def lookup(self, principal, key):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_imports.py",
+      "line": 269,
+      "symbol": "DatasetImports.cancel",
+      "sha256": "8a03f6c4c387c98a53f2cd6541a9b502566cfefcb72e389cb8d45189ea70e634",
+      "exact_line": "    def cancel(self, principal, ident):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_imports.py",
+      "line": 26,
+      "symbol": "DatasetImports._current",
+      "sha256": "8a03f6c4c387c98a53f2cd6541a9b502566cfefcb72e389cb8d45189ea70e634",
+      "exact_line": "    def _current(self, principal, row):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_imports.py",
+      "line": 48,
+      "symbol": "DatasetImports._barrier",
+      "sha256": "8a03f6c4c387c98a53f2cd6541a9b502566cfefcb72e389cb8d45189ea70e634",
+      "exact_line": "    def _barrier(self, principal, row):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_imports.py",
+      "line": 56,
+      "symbol": "DatasetImports._request",
+      "sha256": "8a03f6c4c387c98a53f2cd6541a9b502566cfefcb72e389cb8d45189ea70e634",
+      "exact_line": "    def _request(self, principal, ident):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_imports.py",
+      "line": 127,
+      "symbol": "DatasetImports._from_run",
+      "sha256": "8a03f6c4c387c98a53f2cd6541a9b502566cfefcb72e389cb8d45189ea70e634",
+      "exact_line": "    def _from_run(self, principal, ident):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_imports.py",
+      "line": 156,
+      "symbol": "DatasetImports.execute",
+      "sha256": "8a03f6c4c387c98a53f2cd6541a9b502566cfefcb72e389cb8d45189ea70e634",
+      "exact_line": "    def execute(self, node, context):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_imports.py",
+      "line": 170,
+      "symbol": "DatasetImports._producer",
+      "sha256": "8a03f6c4c387c98a53f2cd6541a9b502566cfefcb72e389cb8d45189ea70e634",
+      "exact_line": "    def _producer(self, principal, row, run, *, running=False):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_imports.py",
+      "line": 185,
+      "symbol": "DatasetImports.completed",
+      "sha256": "8a03f6c4c387c98a53f2cd6541a9b502566cfefcb72e389cb8d45189ea70e634",
+      "exact_line": "    def completed(self, run, node, state, inputs):"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_imports.py",
+      "line": 240,
+      "symbol": "DatasetImports.public_run",
+      "sha256": "8a03f6c4c387c98a53f2cd6541a9b502566cfefcb72e389cb8d45189ea70e634",
+      "exact_line": "    def public_run(run):"
+    },
+    {
+      "path": "src/poolhouse/studio/dataset_samples.py",
+      "line": 22,
+      "symbol": "dataset_samples.checked_body",
+      "sha256": "a2c88892666b61585d63b3fa721dc39ef2be96dec28ee1992957b9fb30be9e30",
+      "exact_line": "def checked_body(body):"
+    },
+    {
+      "path": "src/poolhouse/studio/dataset_samples.py",
+      "line": 43,
+      "symbol": "dataset_samples.selected",
+      "sha256": "a2c88892666b61585d63b3fa721dc39ef2be96dec28ee1992957b9fb30be9e30",
+      "exact_line": "def selected(body, preview):"
+    },
+    {
+      "path": "src/poolhouse/studio/dataset_samples.py",
+      "line": 17,
+      "symbol": "dataset_samples.preview_digest",
+      "sha256": "a2c88892666b61585d63b3fa721dc39ef2be96dec28ee1992957b9fb30be9e30",
+      "exact_line": "def preview_digest(repo, config, split, preview):"
+    },
+    {
+      "path": "src/poolhouse/studio/dataset_assets.py",
+      "line": 133,
+      "symbol": "dataset_assets.publish",
+      "sha256": "6801052cab578926ed9661b02961978ad7725d1c9c15aea3f88e2ed0f94f3f63",
+      "exact_line": "def publish(root, relative, data, manifest):"
+    },
+    {
+      "path": "src/poolhouse/studio/dataset_assets.py",
+      "line": 145,
+      "symbol": "dataset_assets.verify",
+      "sha256": "6801052cab578926ed9661b02961978ad7725d1c9c15aea3f88e2ed0f94f3f63",
+      "exact_line": "def verify(directory, expected):"
+    },
+    {
+      "path": "src/poolhouse/studio/dataset_assets.py",
+      "line": 29,
+      "symbol": "dataset_assets.folder",
+      "sha256": "6801052cab578926ed9661b02961978ad7725d1c9c15aea3f88e2ed0f94f3f63",
+      "exact_line": "def folder(root, relative, *, create=False):"
+    },
+    {
+      "path": "src/poolhouse/studio/engine.py",
+      "line": 442,
+      "symbol": "WorkflowEngine.cancel",
+      "sha256": "f8fb0cdf4e64dc61ddbf92cb3077d5e09d0de3190477c4b58c7e1bfa28bd70bf",
+      "exact_line": "    def cancel(self, principal: dict, ident: str) -> dict:"
+    },
+    {
+      "path": "src/poolhouse/studio/engine.py",
+      "line": 145,
+      "symbol": "WorkflowEngine.submit",
+      "sha256": "f8fb0cdf4e64dc61ddbf92cb3077d5e09d0de3190477c4b58c7e1bfa28bd70bf",
+      "exact_line": "    def submit(self, principal: dict, workflow: dict, output_nodes: list[str], key: str) -> dict:"
+    },
+    {
+      "path": "src/poolhouse/studio/store.py",
+      "line": 17,
+      "symbol": "studio.store.digest",
+      "sha256": "c09631b800ee6bfc973c8e158f631c068df9b2f11b51a70f2523d935f92841b1",
+      "exact_line": "def digest(value: Any) -> str:"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/data-discover.html",
+      "line": 53,
+      "symbol": "data-discover.call",
+      "sha256": "e7b0eb1a811b35c193d2928ba779d6ecc10ddeb10a0ab359b9aaec1d7c66d14d",
+      "exact_line": "   const result=await M.api('/ui/workspace/datasets/'+action+'?'+new URLSearchParams(params));"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/data-discover.html",
+      "line": 78,
+      "symbol": "data-discover.open",
+      "sha256": "e7b0eb1a811b35c193d2928ba779d6ecc10ddeb10a0ab359b9aaec1d7c66d14d",
+      "exact_line": "  async open(row){"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/data-discover.html",
+      "line": 99,
+      "symbol": "data-discover.preview",
+      "sha256": "e7b0eb1a811b35c193d2928ba779d6ecc10ddeb10a0ab359b9aaec1d7c66d14d",
+      "exact_line": "  async preview(){"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/data-import.html",
+      "line": 62,
+      "symbol": "data-import.submit",
+      "sha256": "6463aabd2cfecdf3969b3755823fc93ce47b63e1845a9d3ed0495ffd515e49a5",
+      "exact_line": "  async submit(selected,fields,button){"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/data-import.html",
+      "line": 74,
+      "symbol": "data-import.send",
+      "sha256": "6463aabd2cfecdf3969b3755823fc93ce47b63e1845a9d3ed0495ffd515e49a5",
+      "exact_line": "  async send(op){"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/data-import.html",
+      "line": 86,
+      "symbol": "data-import.lookup",
+      "sha256": "6463aabd2cfecdf3969b3755823fc93ce47b63e1845a9d3ed0495ffd515e49a5",
+      "exact_line": "  async lookup(op){"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/data-import.html",
+      "line": 103,
+      "symbol": "data-import.refresh",
+      "sha256": "6463aabd2cfecdf3969b3755823fc93ce47b63e1845a9d3ed0495ffd515e49a5",
+      "exact_line": "  async refresh(){"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/data-import.html",
+      "line": 119,
+      "symbol": "data-import.cancel",
+      "sha256": "6463aabd2cfecdf3969b3755823fc93ce47b63e1845a9d3ed0495ffd515e49a5",
+      "exact_line": "  async cancel(op){"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/data-view.html",
+      "line": 135,
+      "symbol": "data-view.open",
+      "sha256": "f5c1d7fe57649dbc044cd434bee7d872f2e564a5fe720456418108bbd1f95279",
+      "exact_line": "   const r=await M.api('/ui/workspace/datasets/local-preview?path='+encodeURIComponent(f.path));"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/data-view.html",
+      "line": 91,
+      "symbol": "data-view imported inventory",
+      "sha256": "f5c1d7fe57649dbc044cd434bee7d872f2e564a5fe720456418108bbd1f95279",
+      "exact_line": "  const imported=path===''?M.api('/ui/studio/resources').then(value=>({value}),error=>({error})):null;"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/data-view.html",
+      "line": 162,
+      "symbol": "data-view upload",
+      "sha256": "f5c1d7fe57649dbc044cd434bee7d872f2e564a5fe720456418108bbd1f95279",
+      "exact_line": "   const result=await M.api('/ui/workspace/file',{method:'POST',body:JSON.stringify({path,text})});"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/data-view.html",
+      "line": 77,
+      "symbol": "data-view choose training",
+      "sha256": "f5c1d7fe57649dbc044cd434bee7d872f2e564a5fe720456418108bbd1f95279",
+      "exact_line": "  this.querySelector('#use-dataset').onclick=()=>{if(this.selected){sessionStorage.setItem('poolhouse-dataset',this.selected.path);M.go('training');}};"
+    },
+    {
+      "path": "src/poolhouse/fleet/workspace_routes.py",
+      "line": 61,
+      "symbol": "WorkspaceRoutes._workspace",
+      "sha256": "abe6084619b1da6eaad94161be9a608429b09deec1107cded7c26fadc742d396",
+      "exact_line": "    def _workspace(self) -> bool:"
+    },
+    {
+      "path": "src/poolhouse/fleet/train_routes.py",
+      "line": 14,
+      "symbol": "TrainRoutes.job_launch",
+      "sha256": "6bfd87eeb3d1c71484c1e7b4110dc4d4762e002019fe877d8ffc61b34d2c63cc",
+      "exact_line": "    def job_launch(self, command, args, root):"
+    },
+    {
+      "path": "src/poolhouse/graph/guard.py",
+      "line": 11,
+      "symbol": "graph.guard.MAX_BODY",
+      "sha256": "30dd1c1a433a672e25d1b9a9746e029d2735cfeced0cfebb475d35451d29a1f6",
+      "exact_line": "MAX_BODY = 4 * 1024 * 1024"
+    }
+  ],
+  "source_limits": [
+    {
+      "name": "remote_json",
+      "limit": 8388608,
+      "measure": "net.Ask(max_bytes) raw response body",
+      "site": 11
+    },
+    {
+      "name": "whole_remote_envelope_values",
+      "limit": {
+        "depth": 20,
+        "list": 10000,
+        "object": 512,
+        "string_codepoints": 500000,
+        "key_codepoints": 256
+      },
+      "measure": "_json calls _value on entire response BEFORE specialized validators",
+      "site": 10
+    },
+    {
+      "name": "search",
+      "limit": {
+        "page": 24,
+        "query_codepoints": 256,
+        "cursor_codepoints": 4096,
+        "link_header_characters": 16384
+      },
+      "sites": [
+        4,
+        9
+      ]
+    },
+    {
+      "name": "descriptions",
+      "limit": {
+        "codepoints": 50000,
+        "utf8_upper_bound": 200000,
+        "boundary_safe_chunks": 4
+      },
+      "site": 12,
+      "measure": "codepoints sourcegate preserved; UTF8derivedupper bound/chunks not extra allowance"
+    },
+    {
+      "name": "splits",
+      "limit": 4096,
+      "site": 6,
+      "measure": "effective specializedsource collection, pagedtransport1024 existing codecmax not workloadcap"
+    },
+    {
+      "name": "immutable_siblings",
+      "declared_later_check": 100000,
+      "effective_earlier_list_limit": 10000,
+      "sites": [
+        11,
+        10,
+        8
+      ],
+      "measure": "100000 is NOT admittedallowance; earlierwhole-envelope _value <=10000 governs"
+    },
+    {
+      "name": "preview",
+      "limit": {
+        "rows": 10,
+        "columns": 512
+      },
+      "site": 7
+    },
+    {
+      "name": "local_sample",
+      "limit": 1000000,
+      "unit": "raw sampledbytes plus1read for truncation",
+      "site": 17
+    },
+    {
+      "name": "import_data",
+      "limit": 4194304,
+      "unit": "exact JSONL bytes sort_keys=True separators comma/colon ensure_ascii=False allow_nan=False plusLF eachrow",
+      "site": 34
+    },
+    {
+      "name": "manifest",
+      "limit": 4194304,
+      "unit": "separate json.dumps(manifest,sort_keys=True,separators comma/colon,allow_nan=False).encode bytes (defaultensure_ascii=True)",
+      "site": 36
+    },
+    {
+      "name": "source_import_POST",
+      "limit": 4194304,
+      "unit": "originalencodedrequestbytes, not newIDLdoubleescapingwrapper",
+      "site": 2
+    },
+    {
+      "name": "natural_decimal",
+      "limit": 128,
+      "unit": "ASCIIdecimalchunkcountceiling, max65536each",
+      "site": 11,
+      "measure": "8MiBoriginalJSONcap implies at most128ASCIIchunks; noUnicodeboundaryloss fordigits, exactsourcepayloadstillgate. Not a new integer range or bitwidth."
+    }
+  ],
+  "semantic_requirements": [
+    "Every type/operation remains data-only proposal; current_source_refs prove code observations, never executed/protected authority, native picker, storage durability or runtime migration.",
+    "DatasetRef exact{dataset_id:DatasetId,generation:ResourceGeneration,project:ProjectCatalogRef}; DatasetPreviewRef/SelectionRef/ImportRef/LocalChoiceRef use own node-issuedID+generation+project. Node resolves exact current authenticated principal/installation/poolcontext/selectionepoch/project/resource generation; a copiedID/digest/text/path never grants authority.",
+    "Authenticate before lookup, existence/error/idempotency observation and everypage/event; reauthorize afterremote calls andbeforeeffects/publication. Future native adapters onWindows/WSL/Mac must retain real source lifetime/rights. Current stat(dev,ino,size,mtime,ctime) plusreopen is sourceevidence ONLY, not immutablecustody or TOCTOU proof. Freeze verifiedsamplebytes under heldauthenticatedsource before publication, never reopenaftercheck asauthority.",
+    "HFcatalogue endpoints fixed. URLredirect/credential/egress/source policy validated byNode; cursorbound exactsource/filter/project/revision. Sourcepaths are immutabledataidentities only; never accept genericURL/path/cwd/query/code/parser or featuretype execution. Publicrepo two ASCIIparts1..96/no..; configsplit<=256codepoints nonempty/noleadingdot/slash/backslash/percent. Textcodecbytes1024 is UTF8upper bound, not256codepointallowanceincrease.",
+    "Source _text rejectsC0 exceptdescriptionLF/CR/TAB, allows C1; declaredUTF8 textpreserves this instead of sharedcontrolfree labelcodec shrinkingvaliddata. LocalCSVfieldnames/values maycontain quotedcontrols; retain asdata withsource-specificvalidation andescapedpresentation. Reject invalidUTF8/escapedlonesurrogates ratherthan fabricate validtext.",
+    "Source _json uses unique_object, rejectsnonfinite andthen _value onWHOLE response: depth<=20/list<=10000/object<=512/string<=500000codepoints/key<=256codepoints. Later specialized siblings<=100000 is ineffective as allowance; actualupstreamlist<=10000. Details specializedsplits<=4096. Duplicate decodedkeys/fieldnames andnonfinite values refused; parseriterative boundedresource admission prerequisite, no recursivewalkprotection claimed.",
+    "Public valuegraph is OUTPUT-ONLY typed Null/Boolean/Integer/FiniteF64/Text/List/Object. Everyref/cursor binds SAME immutable authorized snapshot/generation; acyclic, no conflictingnodeIDs, uniqueobjectnames/sourceorder, no crossscope/cursor substitution. Listpages<=1024 preserve full10000sourceitemtotal; objectpages<=512. Featuretypes are typedvalueDATA, never decoder/parser/schema authority. Caller cannot submit arbitrary graph/request payload or authorize tools/effects throughdata.",
+    "Creation generation scopes: catalog.selection.create and local.choose top generation equals exact current request.project.generation; import.preview.start top generation equals exact PreviewRef.generation with PreviewRef.project identical to request.project. Choice/import cancel top generation equals exact existing choice/import generation and CASrevision. Every nested reference belongs to exact request.project; current membership/poolcontext validation separate.",
+    "Use shared private ResourceAdmissionProfileRef/Binding/Envelope/AccountingRecord/TransferRecord from published resource_leases peer6cbc882f9 for content_stage/graph_transaction/bounded_worker ownership, memory/storage input/output/parser-snapshot charges, stage-to-consumer and worker-to-node transfers, physical alias nonadditivity and unknown settlement. No new public budgetAPI/framework; source byte caps are not measured peakmemory. Required policy/measurements/reservation/retainedresult/settlement proof absent, not authority from privateDTO or UUID.",
+    "Natural counters/file size observations preserve arbitrary source nonnegative Pythoninteger as canonicalASCIIdecimalparts, unknownNone distinctfrom0. No U64/F64 truncation/coercion/rounding/clamp. Everydecimalpart nonempty ASCII digits; nonfinal chunks exactly65536bytes and final1..65536, concatenation grammar0or[1-9][0-9]* withoutleadingzeros. Zero is onepart0 and Integernegative false, no negativezero. Integernegative flag plusmagnitude exact. Digitsonly therefore128*65536 represents original8MiB ceilingwithoutUnicodeboundaryloss; wholeoriginalresponsecapincludingallfields/envelope stillapplies. Actualparser integerdigit-limit profile mustbereviewed beforeenablement, no unbounded-arithmeticclaim.",
+    "Descriptions50000codepoints<=200000UTF8bytes;4boundary-safechunks, exactcodepointlimit separatefromtransportrepresentation. Generic string500000codepoints handled TextRef/UTF8chunks, exactfrozenbytes/digest/codepoint/length/order validated. Chunk/page ceilings neveraddnewsourcebudget. No normalization. Source originalserializedrequest/response/data/manifest caps measured withretainedserializer, separatefrom newIDLwrapper/escaping/hextransport overhead, no nearlimit shrinkor sourceallowanceincrease.",
+    "Catalogue summary title=repo/downloads/likes knownorunknown/licence/gated areobservations not trust/accessgrants. Details mainrevision40or64hex; immutableParquetselection main+convertedrevision pinnedseparately, eachrelativefile allowedsegments/sha256/LFSpositiveintsize andViewermatchingmetadata, duplicatepaths refused, partiallistingrefused. This is data-onlymanifest, not downloadedbytes or completefullsplitimport proof.",
+    "LiveViewerpreview provenance binds ONLY exactrepo/config/split/columns/rows via existingdigest, pluspartial/live observations; no pinnedmain/convertedrevision invented. PreviewRef freezes these observations andschema; no truncatedcells accepted. Previewimport refetches exacttuple and recomputes samedigest beforeselection; changingrows/columns conflicts. Changingpartialflagalone is not claimed bound bylegacydigest. Previewimport ONLY selectedobserved<=10rows, not fullsplit or pinnedParquetexport.",
+    "Localpreview sampleformat json/jsonl/csv/txt preserves1millionrawbyte window, strictUTF8 incrementalboundary, truncatedjsonnodata, incompleteJSONL/CSVtail exclusions, up-to10objectrows and512columns, totalfilebyte observation andtextfallback. DatasetRefnative_selected doesNOTclaimwholefileimmutable; onlycurrentauthorizedsource andfrozenverifiedsample. No publicrawfilesystempath returned aspermission.",
+    "Importsourcebody requires exactfields; rawname/sourcekey<=256codepoints(nonempty strippedcheck) preserve originaldata includinglegacycontrolsemantics, not authority. Rowindices<=9distinct andwithinactualpreview, source/outputcolumnidentitiesdistinct, everyselectedrow hascolumns. Preserve rowselectionorder, sortsourcecolumnkeys, exactrenaming/schemafeaturedata andJSONLserializer. SelectedJSONL<=4MiB, manifest<=4MiB separately; sourcePOST<=4MiB. Manifestconstantversion1/name dataset.jsonl, rows, exactcolumns, filebytes+sha andHFpreviewtuple/digest/rowindices/columnmap retained.",
+    "RequestId/source_idempotency_key aliases scoped exactprincipal+project+generation+body; conflictingreuse refuses. Durable requestbodydigest+payload(data+manifest)digest+runID+fixednode dataset and current context/epoch atomically boundbefore schedulerwake. Lookup sameoriginalrequest/key after lostacceptance, no newsubmit/relaunch. Actual source legacyrunID/opaque requesthash/resourcepath retained privately forcompatibility/provenance, DatasetImportId doesnoteraseoriginalidentity. Cross-view linkage to publicStudioRunRef needs actualimplicitworkflowmapping review, not fabricated publicworkflow creation.",
+    "Managedreadyindex requiresoriginalproducer exactrun/node/principal/context/epoch, no reusedfrom, expectedoutputs/digests, exactdata+manifest verification andcurrentauthorizationbarrier. Worker doneflag/hash/path alone insufficient. Sourcepublic_run state andfixeddatasetnode preserved; genericfailed/blocked/interrupted error maps explicitpreview_rows_not_made_available, no inventedpaused/waitingstate. created/finished sourcePythonfloats retained exactly asFiniteF64seconds, not silentlyrounded micros; actualsourceclock/authpolicy checks separate.",
+    "Cancellation/publication oneatomicdurablewinner; CancelledBeforePublication implies no usablepublishedindex, AlreadyPublishedneverCancelled. Unknowncleanup/custody retains sameoriginalwork andforbids freshlaunch. Detachread/watch doesnotcancelimport, deleteaccepteddataset orrollbacksignedhistory. Orderedwatch is proposal replacingcurrent750mspolling, requiresboundedbackpressure/resync andcurrentauth everyevent. No automaticpending retryfromfreshboot.",
+    "Managedinventory source resources() skips badindices; canonicalproposal preserves authorizedunavailable entries onlyafterexactauth, nevercrossprincipalexistencedisclosure orsilentfakeemptycomplete. Exactsourceinventory paging/nativeheldsource/admission/statejournal/independentrollbackwitness andatomicpublication are NOTimplemented bythisleaf."
+  ],
+  "omissions_and_next_segment": [
+    {
+      "surface": "Full immutable Parquet dataset materialization/download/import",
+      "status": "not implemented by current preview-import; onlycompletepinnedselectiondescriptor preserved",
+      "sites": [
+        8,
+        19
+      ]
+    },
+    {
+      "surface": "Workspace local file/paste upload/list/rawread and managedstaging",
+      "status": "retainedDataUI uses WorkspaceRoutes._workspace file/POST, currentlyrawpath. Thisleaf supplies nativechoice/managedpreview only; managedupload/pastestaging nextsegment, notsilentlydeclaredmigrated",
+      "sites": [
+        52,
+        54
+      ]
+    },
+    {
+      "surface": "Training/test recipes, typed jobsubmit/preview/cancel/progress/checkpoint/artifacts andconsent",
+      "status": "next coherent executionadmissionsegment; no genericargv/env/cwd escape added",
+      "sites": [
+        53,
+        55,
+        54
+      ]
+    },
+    {
+      "surface": "PublicStudio graph/workflow/run lifecycle anddurable sources/subscriptions/delivery",
+      "status": "peerowner; reuse DatasetRef forbinding, outputDatasetValueRef/TextRef not genericgraphparameterinput blobs",
+      "sites": [
+        51,
+        40
+      ]
+    },
+    {
+      "surface": "Actualpicker/storage/parser/valuegraph/textpaging/sourceprofiles/egress/nativeownership/currentauth/rollback/atomicpublication",
+      "status": "runtime prerequisites unresolved, no callerretention/K/H/P/I proof; no extra normalusersteps ormodeltests",
+      "sites": [
+        17,
+        26,
+        36,
+        37
+      ]
+    }
+  ],
+  "independent_review": {
+    "reviewer": "hook_attack_review",
+    "stage": "writtenpre-edit and actualtwofile finalreview approved proposal-only; exact generation scopes and canonicaldecimalpart notes incorporated, TOML outside existing Python/component line gates; no runtime or reviewer tests",
+    "requirements": "heldsource/frozenverifiedsample, fixedoriginegress, acyclicsame-snapshotrefs, effectivewhole-envelopelimits, livepreviewnotpinnedcommit, cancelpublicationatomicwinner"
+  },
+  "sources": [
+    {
+      "path": "src/poolhouse/fleet/dataset_catalogue.py",
+      "sha256": "2218a98e3e695462c249081706db30bb48f1f25fcecb9d3623b9a0082328de1b"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_imports.py",
+      "sha256": "8a03f6c4c387c98a53f2cd6541a9b502566cfefcb72e389cb8d45189ea70e634"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_preview.py",
+      "sha256": "3de73de8e3eed58d2e2231ad0a359b299fecbab086140f69df4d9b37fa2e97e7"
+    },
+    {
+      "path": "src/poolhouse/fleet/dataset_routes.py",
+      "sha256": "b52a7a12eea16bc51a3154cf3f7e13a5eb83bfaec268f529a54dc43c2920a384"
+    },
+    {
+      "path": "src/poolhouse/fleet/studio_artifacts.py",
+      "sha256": "c55a86dd793e3c95cc7cea45ca5c1228fb89fc1a162ab55585a9ef831868cf01"
+    },
+    {
+      "path": "src/poolhouse/fleet/studio_epoch.py",
+      "sha256": "9237cf8e2729c3c88543543ea7f426d381fb7f5656e72c397b2a32f6158fdd4d"
+    },
+    {
+      "path": "src/poolhouse/fleet/train_routes.py",
+      "sha256": "6bfd87eeb3d1c71484c1e7b4110dc4d4762e002019fe877d8ffc61b34d2c63cc"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/data-discover.html",
+      "sha256": "e7b0eb1a811b35c193d2928ba779d6ecc10ddeb10a0ab359b9aaec1d7c66d14d"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/data-import.html",
+      "sha256": "6463aabd2cfecdf3969b3755823fc93ce47b63e1845a9d3ed0495ffd515e49a5"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/data-preview.html",
+      "sha256": "59c907c2c93fce2d53795df4f0a24d632361c710a0d7118f941ddd47731ab33a"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/data-view.html",
+      "sha256": "f5c1d7fe57649dbc044cd434bee7d872f2e564a5fe720456418108bbd1f95279"
+    },
+    {
+      "path": "src/poolhouse/fleet/workspace_routes.py",
+      "sha256": "abe6084619b1da6eaad94161be9a608429b09deec1107cded7c26fadc742d396"
+    },
+    {
+      "path": "src/poolhouse/graph/guard.py",
+      "sha256": "30dd1c1a433a672e25d1b9a9746e029d2735cfeced0cfebb475d35451d29a1f6"
+    },
+    {
+      "path": "src/poolhouse/json_objects.py",
+      "sha256": "6992697d459c7f9e2b15f111f2c2c4bf23d417452fa879e17d93e75a9f9e3211"
+    },
+    {
+      "path": "src/poolhouse/studio/dataset_assets.py",
+      "sha256": "6801052cab578926ed9661b02961978ad7725d1c9c15aea3f88e2ed0f94f3f63"
+    },
+    {
+      "path": "src/poolhouse/studio/dataset_samples.py",
+      "sha256": "a2c88892666b61585d63b3fa721dc39ef2be96dec28ee1992957b9fb30be9e30"
+    },
+    {
+      "path": "src/poolhouse/studio/engine.py",
+      "sha256": "f8fb0cdf4e64dc61ddbf92cb3077d5e09d0de3190477c4b58c7e1bfa28bd70bf"
+    },
+    {
+      "path": "src/poolhouse/studio/store.py",
+      "sha256": "c09631b800ee6bfc973c8e158f631c068df9b2f11b51a70f2523d935f92841b1"
+    }
+  ],
+  "shared_peer_evidence": [
+    {
+      "commit": "6cbc882f9923886d4961e77491607f3e68663f45",
+      "path": "contracts/node/domains/resource_leases.toml",
+      "sha256": "5ecb73f21aaba95cb0f8a4c44c5f2ea48a725701f7ef944eb42b1f9713df4a57"
+    },
+    {
+      "commit": "6cbc882f9923886d4961e77491607f3e68663f45",
+      "path": "contracts/node/domain-evidence/resource_leases.json",
+      "sha256": "43588fd07ff964f8bd170d23635db420ad578c87cdfd3caebaed22e70f58b6ec"
+    }
+  ]
+}
