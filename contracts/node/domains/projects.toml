@@ -1,0 +1,747 @@
+# Proposal: project/board catalog, local locations and coding selection only.
+version = 1
+status = "proposal"
+
+[[type]]
+name = "ProjectLocationId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ProjectSourceId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ProjectCreationId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ProjectSelectionScopeId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ProjectCatalogSnapshotId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ProjectCatalogCursor"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "node"
+min_bytes = 1
+max_bytes = 2048
+
+[[type]]
+name = "ProjectAlias"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 48
+
+[[type]]
+name = "ProjectCatalogTitle"
+kind = "scalar"
+visibility = "public"
+encoding = "utf8"
+issuer = "data"
+min_bytes = 1
+max_bytes = 1024
+
+[[type]]
+name = "ProjectOptionalAlias"
+kind = "optional"
+visibility = "public"
+item = "ProjectAlias"
+
+[[type]]
+name = "ProjectOptionalCatalogCursor"
+kind = "optional"
+visibility = "public"
+item = "ProjectCatalogCursor"
+
+[[type]]
+name = "ProjectRegistryContext"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ProjectCatalogRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "project_id", type = "ProjectId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ProjectOptionalCatalogRef"
+kind = "optional"
+visibility = "public"
+item = "ProjectCatalogRef"
+
+[[type]]
+name = "ProjectBoardRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "project", type = "ProjectCatalogRef"}, {name = "board_id", type = "BoardId"}, {name = "generation", type = "ResourceGeneration"}, {name = "pool", type = "ConnectivityOptionalPoolRef"}]
+
+[[type]]
+name = "ProjectOptionalBoardRef"
+kind = "optional"
+visibility = "public"
+item = "ProjectBoardRef"
+
+[[type]]
+name = "ProjectLocationRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "location_id", type = "ProjectLocationId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ProjectSourceRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "source_id", type = "ProjectSourceId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ProjectSourceKind"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "git", type = "Empty"}, {tag = "folder", type = "Empty"}, {tag = "gdrive", type = "Empty"}, {tag = "onedrive", type = "Empty"}]
+
+[[type]]
+name = "ProjectLocationPurpose"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "resolve", type = "Empty"}, {tag = "add_project", type = "Empty"}, {tag = "add_source", type = "Empty"}, {tag = "create_project", type = "Empty"}]
+
+[[type]]
+name = "ProjectLocationState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "validating", type = "Empty"}, {tag = "choosing", type = "Empty"}, {tag = "ready", type = "Empty"}, {tag = "needs_project", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "expired", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ProjectSelectionStamp"
+kind = "record"
+visibility = "public"
+fields = [{name = "scope_id", type = "ProjectSelectionScopeId"}, {name = "generation", type = "ResourceGeneration"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ProjectOptionalSelectionStamp"
+kind = "optional"
+visibility = "public"
+item = "ProjectSelectionStamp"
+
+[[type]]
+name = "ProjectLocationView"
+kind = "record"
+visibility = "public"
+fields = [{name = "location", type = "ProjectLocationRef"}, {name = "label", type = "ProjectCatalogTitle"}, {name = "purpose", type = "ProjectLocationPurpose"}, {name = "state", type = "ProjectLocationState"}, {name = "captured_selection", type = "ProjectOptionalSelectionStamp"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ProjectLocationImportRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "purpose", type = "ProjectLocationPurpose"}]
+
+[[type]]
+name = "ProjectLocationChooseRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "purpose", type = "ProjectLocationPurpose"}, {name = "selection", type = "ProjectOptionalSelectionStamp"}]
+
+[[type]]
+name = "ProjectLocationInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "location", type = "ProjectLocationRef"}]
+
+[[type]]
+name = "ProjectLocationCancelRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "location", type = "ProjectLocationRef"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "ProjectCatalogCancelOutcome"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "cancelled_before_commit", type = "Empty"}, {tag = "commit_won", type = "Empty"}, {tag = "already_terminal", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ProjectLocationCancelResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "location", type = "ProjectLocationView"}, {name = "outcome", type = "ProjectCatalogCancelOutcome"}]
+
+[[type]]
+name = "ProjectLocationWatchRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "location", type = "ProjectLocationRef"}, {name = "after", type = "ProjectOptionalCatalogCursor"}]
+
+[[type]]
+name = "ProjectLocationChange"
+kind = "record"
+visibility = "public"
+fields = [{name = "cursor", type = "ProjectCatalogCursor"}, {name = "value", type = "ProjectLocationView"}]
+
+[[type]]
+name = "ProjectLocationEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "ProjectLocationChange"}, {tag = "changed", type = "ProjectLocationChange"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "ProjectCatalogView"
+kind = "record"
+visibility = "public"
+fields = [{name = "project", type = "ProjectCatalogRef"}, {name = "board", type = "ProjectBoardRef"}, {name = "title", type = "ProjectCatalogTitle"}, {name = "alias", type = "ProjectAlias"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ProjectAddRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "location", type = "ProjectLocationRef"}, {name = "kind", type = "ProjectSourceKind"}, {name = "alias", type = "ProjectOptionalAlias"}, {name = "expected_registry_revision", type = "U64"}]
+
+[[type]]
+name = "ProjectInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "project", type = "ProjectCatalogRef"}]
+
+[[type]]
+name = "ProjectListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "after", type = "ProjectOptionalCatalogCursor"}]
+
+[[type]]
+name = "ProjectCatalogItems"
+kind = "list"
+visibility = "public"
+item = "ProjectCatalogView"
+max_items = 256
+
+[[type]]
+name = "ProjectCatalogSnapshot"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot_id", type = "ProjectCatalogSnapshotId"}, {name = "registry", type = "ProjectRegistryContext"}, {name = "items", type = "ProjectCatalogItems"}, {name = "complete", type = "Boolean"}, {name = "next_cursor", type = "ProjectOptionalCatalogCursor"}, {name = "cursor", type = "ProjectCatalogCursor"}]
+
+[[type]]
+name = "ProjectCatalogChange"
+kind = "record"
+visibility = "public"
+fields = [{name = "cursor", type = "ProjectCatalogCursor"}, {name = "value", type = "ProjectCatalogView"}]
+
+[[type]]
+name = "ProjectCatalogEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "ProjectCatalogSnapshot"}, {tag = "changed", type = "ProjectCatalogChange"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "ProjectResolveRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "location", type = "ProjectLocationRef"}]
+
+[[type]]
+name = "ProjectSourceView"
+kind = "record"
+visibility = "public"
+fields = [{name = "source", type = "ProjectSourceRef"}, {name = "project", type = "ProjectCatalogRef"}, {name = "location", type = "ProjectLocationRef"}, {name = "kind", type = "ProjectSourceKind"}, {name = "label", type = "ProjectCatalogTitle"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ProjectSourceAddRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "project", type = "ProjectCatalogRef"}, {name = "location", type = "ProjectLocationRef"}, {name = "kind", type = "ProjectSourceKind"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "ProjectSourcesRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "project", type = "ProjectCatalogRef"}, {name = "after", type = "ProjectOptionalCatalogCursor"}]
+
+[[type]]
+name = "ProjectSourceItems"
+kind = "list"
+visibility = "public"
+item = "ProjectSourceView"
+max_items = 32
+
+[[type]]
+name = "ProjectSourceSnapshot"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot_id", type = "ProjectCatalogSnapshotId"}, {name = "project", type = "ProjectCatalogRef"}, {name = "revision", type = "U64"}, {name = "items", type = "ProjectSourceItems"}, {name = "complete", type = "Boolean"}, {name = "next_cursor", type = "ProjectOptionalCatalogCursor"}, {name = "cursor", type = "ProjectCatalogCursor"}]
+
+[[type]]
+name = "ProjectSelectionView"
+kind = "record"
+visibility = "public"
+fields = [{name = "stamp", type = "ProjectSelectionStamp"}, {name = "project", type = "ProjectOptionalCatalogRef"}, {name = "board", type = "ProjectOptionalBoardRef"}]
+
+[[type]]
+name = "ProjectCreationSelection"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "not_requested", type = "Empty"}, {tag = "pending", type = "ProjectSelectionStamp"}, {tag = "outcome_unknown", type = "ProjectSelectionStamp"}, {tag = "selected", type = "ProjectSelectionView"}, {tag = "superseded", type = "ProjectSelectionView"}]
+
+[[type]]
+name = "ProjectCreationState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "creating", type = "Empty"}, {tag = "registering", type = "Empty"}, {tag = "complete", type = "Empty"}, {tag = "cancelled_before_commit", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ProjectCreationView"
+kind = "record"
+visibility = "public"
+fields = [{name = "creation_id", type = "ProjectCreationId"}, {name = "generation", type = "ResourceGeneration"}, {name = "operation_id", type = "OperationId"}, {name = "location", type = "ProjectLocationRef"}, {name = "project", type = "ProjectOptionalCatalogRef"}, {name = "state", type = "ProjectCreationState"}, {name = "selection", type = "ProjectCreationSelection"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ProjectCreateRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "location", type = "ProjectLocationRef"}, {name = "expected_registry_revision", type = "U64"}, {name = "selection", type = "ProjectSelectionStamp"}]
+
+[[type]]
+name = "ProjectDefaultRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_registry_revision", type = "U64"}, {name = "selection", type = "ProjectSelectionStamp"}]
+
+[[type]]
+name = "ProjectCreationInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "creation_id", type = "ProjectCreationId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ProjectCreationCancelRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "creation_id", type = "ProjectCreationId"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "ProjectCreationCancelResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "creation", type = "ProjectCreationView"}, {name = "outcome", type = "ProjectCatalogCancelOutcome"}]
+
+[[type]]
+name = "ProjectCreationWatchRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "creation_id", type = "ProjectCreationId"}, {name = "generation", type = "ResourceGeneration"}, {name = "after", type = "ProjectOptionalCatalogCursor"}]
+
+[[type]]
+name = "ProjectCreationChange"
+kind = "record"
+visibility = "public"
+fields = [{name = "cursor", type = "ProjectCatalogCursor"}, {name = "value", type = "ProjectCreationView"}]
+
+[[type]]
+name = "ProjectCreationEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "ProjectCreationChange"}, {tag = "changed", type = "ProjectCreationChange"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "ProjectSelectionOrigin"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "direct", type = "Empty"}, {tag = "location", type = "ProjectLocationRef"}]
+
+[[type]]
+name = "ProjectSelectionReplaceRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "selection", type = "ProjectSelectionStamp"}, {name = "project", type = "ProjectCatalogRef"}, {name = "origin", type = "ProjectSelectionOrigin"}]
+
+[[type]]
+name = "ProjectSelectionWatchRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "after", type = "ProjectOptionalCatalogCursor"}]
+
+[[type]]
+name = "ProjectSelectionChange"
+kind = "record"
+visibility = "public"
+fields = [{name = "cursor", type = "ProjectCatalogCursor"}, {name = "value", type = "ProjectSelectionView"}]
+
+[[type]]
+name = "ProjectSelectionEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "ProjectSelectionChange"}, {tag = "changed", type = "ProjectSelectionChange"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "ProjectBoardStorageState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "ready", type = "Empty"}, {tag = "unavailable", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ProjectBoardView"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "ProjectBoardRef"}, {name = "title", type = "ProjectCatalogTitle"}, {name = "storage_state", type = "ProjectBoardStorageState"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ProjectBoardInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "ProjectBoardRef"}]
+
+[[type]]
+name = "ProjectBoardAliasSelector"
+kind = "record"
+visibility = "public"
+fields = [{name = "alias", type = "ProjectAlias"}, {name = "pool", type = "ConnectivityOptionalPoolRef"}]
+
+[[type]]
+name = "ProjectBoardSelector"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "project", type = "ProjectCatalogRef"}, {tag = "scoped_alias", type = "ProjectBoardAliasSelector"}]
+
+[[type]]
+name = "ProjectBoardResolveRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "selector", type = "ProjectBoardSelector"}]
+
+[[type]]
+name = "ProjectBoardItems"
+kind = "list"
+visibility = "public"
+item = "ProjectBoardView"
+max_items = 256
+
+[[type]]
+name = "ProjectBoardSnapshot"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot_id", type = "ProjectCatalogSnapshotId"}, {name = "registry", type = "ProjectRegistryContext"}, {name = "items", type = "ProjectBoardItems"}, {name = "complete", type = "Boolean"}, {name = "next_cursor", type = "ProjectOptionalCatalogCursor"}, {name = "cursor", type = "ProjectCatalogCursor"}]
+
+[[type]]
+name = "ProjectCatalogErrorDetail"
+kind = "record"
+visibility = "public"
+fields = [{name = "message", type = "SafeMessage"}]
+
+[[type]]
+name = "ProjectCatalogError"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "invalid_request", type = "ProjectCatalogErrorDetail"}, {tag = "unauthenticated", type = "ProjectCatalogErrorDetail"}, {tag = "forbidden", type = "ProjectCatalogErrorDetail"}, {tag = "not_found", type = "ProjectCatalogErrorDetail"}, {tag = "stale_generation", type = "ProjectCatalogErrorDetail"}, {tag = "revision_conflict", type = "ProjectCatalogErrorDetail"}, {tag = "ambiguous_selector", type = "ProjectCatalogErrorDetail"}, {tag = "location_expired", type = "ProjectCatalogErrorDetail"}, {tag = "location_changed", type = "ProjectCatalogErrorDetail"}, {tag = "attachment_required", type = "ProjectCatalogErrorDetail"}, {tag = "broad_location", type = "ProjectCatalogErrorDetail"}, {tag = "overlapping_project", type = "ProjectCatalogErrorDetail"}, {tag = "nested_repository", type = "ProjectCatalogErrorDetail"}, {tag = "not_project", type = "ProjectCatalogErrorDetail"}, {tag = "already_exists", type = "ProjectCatalogErrorDetail"}, {tag = "capacity_limit", type = "ProjectCatalogErrorDetail"}, {tag = "native_unavailable", type = "ProjectCatalogErrorDetail"}, {tag = "cancelled", type = "ProjectCatalogErrorDetail"}, {tag = "commit_won", type = "ProjectCatalogErrorDetail"}, {tag = "recovery_required", type = "ProjectCatalogErrorDetail"}, {tag = "storage_failure", type = "ProjectCatalogErrorDetail"}, {tag = "cursor_expired", type = "ProjectCatalogErrorDetail"}, {tag = "unsupported", type = "ProjectCatalogErrorDetail"}]
+
+[[operation]]
+name = "projects.catalog.inspect"
+symbol = "ProjectsCatalogInspect"
+request = "Empty"
+response = "ProjectRegistryContext"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "authorized-project-catalog-reader", "issue-current-registry-context-without-project-side-effects"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "projects.locations.import"
+symbol = "ProjectsLocationsImport"
+request = "ProjectLocationImportRequest"
+response = "ProjectLocationView"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-installation-registry-generation", "actual-native-ipc-directory-attachment-required", "exact-occurrence-principal-installation-purpose-request-binding", "validated-held-directory-and-ancestor-identity", "manual-path-and-cwd-import-never-authority"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "projects.locations.choose"
+symbol = "ProjectsLocationsChoose"
+request = "ProjectLocationChooseRequest"
+response = "ProjectLocationView"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-installation-registry-generation", "authorized-current-native-presentation", "capture-original-selection-scope-revision", "picker-choice-is-no-creation-or-sharing-grant"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "projects.locations.inspect"
+symbol = "ProjectsLocationsInspect"
+request = "ProjectLocationInspectRequest"
+response = "ProjectLocationView"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "actual-location-owner", "exact-location-generation-and-purpose"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "projects.locations.cancel"
+symbol = "ProjectsLocationsCancel"
+request = "ProjectLocationCancelRequest"
+response = "ProjectLocationCancelResult"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "actual-location-owner", "exact-location-generation-and-revision", "invalidate-ephemeral-handles-not-committed-project-custody"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "projects.locations.watch"
+symbol = "ProjectsLocationsWatch"
+request = "ProjectLocationWatchRequest"
+response = "ProjectLocationEvent"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "actual-location-owner", "exact-location-generation-and-purpose", "ordered-empty-and-paged-frozen-snapshot", "principal-scope-projection-generation-expiry-bound-cursor", "reauthorize-every-item-page-delivery-and-resume", "watch-disconnect-detaches-only"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "projects.add"
+symbol = "ProjectsAdd"
+request = "ProjectAddRequest"
+response = "ProjectCatalogView"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-installation-registry-generation", "project-create-permission", "exact-location-purpose-and-generation", "revalidate-held-target-ancestors-git-common-dir", "global-overlap-check-and-registry-cas-serialized", "atomic-project-and-one-board-creation", "no-session-git-init-or-source-publication"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "projects.inspect"
+symbol = "ProjectsInspect"
+request = "ProjectInspectRequest"
+response = "ProjectCatalogView"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-project-generation", "authorized-project-reader"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "projects.list"
+symbol = "ProjectsList"
+request = "ProjectListRequest"
+response = "ProjectCatalogSnapshot"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-installation-registry-generation", "authorized-projects-only", "atomic-paged-catalog-snapshot"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "projects.watch"
+symbol = "ProjectsWatch"
+request = "ProjectListRequest"
+response = "ProjectCatalogEvent"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-installation-registry-generation", "authorized-projects-only", "ordered-empty-and-paged-frozen-snapshot", "principal-scope-projection-generation-expiry-bound-cursor", "reauthorize-every-item-page-delivery-and-resume", "watch-disconnect-detaches-only"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "projects.resolve"
+symbol = "ProjectsResolve"
+request = "ProjectResolveRequest"
+response = "ProjectCatalogView"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "actual-location-owner", "current-location-and-project-generation", "authorized-project-reader", "resolve-existing-only-no-implicit-add-session-or-selection"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "projects.sources.add"
+symbol = "ProjectsSourcesAdd"
+request = "ProjectSourceAddRequest"
+response = "ProjectSourceView"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-project-and-registry-generation", "exact-project-source-add-permission", "exact-location-purpose-generation-current-filesystem-identity", "global-overlap-check-and-project-cas-serialized", "no-execution-or-publication-authority"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "projects.sources.list"
+symbol = "ProjectsSourcesList"
+request = "ProjectSourcesRequest"
+response = "ProjectSourceSnapshot"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-project-generation", "authorized-project-source-metadata-reader", "atomic-complete-paged-sources"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "projects.create.request"
+symbol = "ProjectsCreateRequest"
+request = "ProjectCreateRequest"
+response = "ProjectCreationView"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-installation-registry-generation", "authorized-local-project-creator", "immutable-target-plan-before-filesystem-effects", "deterministic-owned-staging-receipts-and-no-unrelated-file-removal", "original-selection-scope-revision-cas", "committed-creation-never-optimistically-cancelled", "exact-create-purpose-location-and-held-target-identity", "explicit-create-only"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "projects.default.request"
+symbol = "ProjectsDefaultRequest"
+request = "ProjectDefaultRequest"
+response = "ProjectCreationView"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-installation-registry-generation", "authorized-local-project-creator", "immutable-target-plan-before-filesystem-effects", "deterministic-owned-staging-receipts-and-no-unrelated-file-removal", "original-selection-scope-revision-cas", "committed-creation-never-optimistically-cancelled", "node-owned-private-default-location", "no-owner-path-command-required"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "projects.creation.inspect"
+symbol = "ProjectsCreationInspect"
+request = "ProjectCreationInspectRequest"
+response = "ProjectCreationView"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "actual-creation-owner", "current-creation-generation"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "projects.creation.cancel"
+symbol = "ProjectsCreationCancel"
+request = "ProjectCreationCancelRequest"
+response = "ProjectCreationCancelResult"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "actual-creation-owner", "current-creation-generation-and-revision", "durable-cancel-versus-domain-commit-and-filesystem-reconciliation"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "projects.creation.watch"
+symbol = "ProjectsCreationWatch"
+request = "ProjectCreationWatchRequest"
+response = "ProjectCreationEvent"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "actual-creation-owner", "current-creation-generation", "ordered-empty-and-paged-frozen-snapshot", "principal-scope-projection-generation-expiry-bound-cursor", "reauthorize-every-item-page-delivery-and-resume", "watch-disconnect-detaches-only"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "projects.selection.inspect"
+symbol = "ProjectsSelectionInspect"
+request = "Empty"
+response = "ProjectSelectionView"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "actual-principal-and-selection-surface-only", "issue-current-selection-context-without-side-effects"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "projects.selection.replace"
+symbol = "ProjectsSelectionReplace"
+request = "ProjectSelectionReplaceRequest"
+response = "ProjectSelectionView"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "actual-principal-and-selection-surface-only", "exact-selection-generation-and-original-revision", "current-project-generation-and-open-permission", "project-and-board-selection-atomic", "cannot-rebase-old-native-candidate-or-overwrite-newer-selection", "origin-bound-to-actual-native-picker-or-independent-direct-controller"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "projects.selection.watch"
+symbol = "ProjectsSelectionWatch"
+request = "ProjectSelectionWatchRequest"
+response = "ProjectSelectionEvent"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "actual-principal-and-selection-surface-only", "exact-selection-generation", "ordered-empty-and-paged-frozen-snapshot", "principal-scope-projection-generation-expiry-bound-cursor", "reauthorize-every-item-page-delivery-and-resume", "watch-disconnect-detaches-only"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "boards.list"
+symbol = "BoardsList"
+request = "ProjectListRequest"
+response = "ProjectBoardSnapshot"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-installation-registry-generation", "authorized-project-board-associations-only", "no-orphan-board-creation"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "boards.inspect"
+symbol = "BoardsInspect"
+request = "ProjectBoardInspectRequest"
+response = "ProjectBoardView"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-project-board-pool-generations", "authorized-board-reader", "no-content-or-damage-detail-leak"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "boards.resolve"
+symbol = "BoardsResolve"
+request = "ProjectBoardResolveRequest"
+response = "ProjectBoardView"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-installation-registry-generation", "authorized-board-reader", "labels-and-aliases-lookup-only", "ambiguous-unknown-or-unavailable-refuses"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "boards.open"
+symbol = "BoardsOpen"
+request = "ProjectBoardInspectRequest"
+response = "ProjectBoardView"
+error = "ProjectCatalogError"
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-project-board-pool-generations", "authorized-board-open-permission", "existing-only-no-project-session-credential-or-authority-creation"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"

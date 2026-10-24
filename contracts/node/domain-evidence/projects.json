@@ -1,0 +1,6818 @@
+{
+  "version": 1,
+  "status": "proposal-only local project/board catalog and selection segment; no runtime/platform/K acceptance",
+  "source_commit": "2b72c502de55f881ae04c03793096bfc7fb8c545",
+  "sources": [
+    {
+      "path": "app/poolhouse-node/src/registry.rs",
+      "sha256": "2e4068aa0f44b9957e983f108195c8669ce99aa6fc8eea249cc1051b81358a38"
+    },
+    {
+      "path": "app/poolhouse-node/src/project.rs",
+      "sha256": "6a0ddf528c0b494101cdef6fb43115d058ec210b400f767f40f20fc246eeb1ec"
+    },
+    {
+      "path": "app/poolhouse-node/src/projectid.rs",
+      "sha256": "73215b0aa9bee5245493132649f42e1f915103b0c60fe99cc9bb8d50a69963c4"
+    },
+    {
+      "path": "app/poolhouse-node/src/api.rs",
+      "sha256": "334be05253eaa0aa24b3e557a00cb87b64498f7de521b4d0b9cccfe17995ac94"
+    },
+    {
+      "path": "app/poolhouse-node/src/node.rs",
+      "sha256": "04be3e290afe71b2c96a453e5b96bded7b886860afe9ec22383755d5ca918069"
+    },
+    {
+      "path": "app/poolhouse-node/src/board.rs",
+      "sha256": "ee919439c331c2edab8b5b94b5394555f2570d1e2bc974af12213322de496f75"
+    },
+    {
+      "path": "app/poolhouse-node/src/subs.rs",
+      "sha256": "a55dac107c909275053c0b4ff5991a1e79dd0f5c81ddc8d2bb7fa82d1c6cef00"
+    },
+    {
+      "path": "app/poolhouse-node/src/mail.rs",
+      "sha256": "99d46925c1a16829a311a99e7e87e1d942929b1e8b2c6f3d6a5c3f6eb2723184"
+    },
+    {
+      "path": "app/poolhouse-node/src/notes.rs",
+      "sha256": "2573c21d3fb1b3889a8a64fd8f12681da5365cd804411e7e0d8549361fee006b"
+    },
+    {
+      "path": "app/poolhouse-node/src/rooms.rs",
+      "sha256": "f4c0999bf9ca37ef23c234a03821dac8839fbdc6c93be2767abe8f5cdb9094cc"
+    },
+    {
+      "path": "app/poolhouse-node/src/files.rs",
+      "sha256": "aef40878da51146cf6ddf3304300ac503325cb556ff8e5de67cab191df8ea5b7"
+    },
+    {
+      "path": "app/poolhouse-node/src/links.rs",
+      "sha256": "750c7ee50ae262080b08d9b500d07018f4516603d0bedcb0fbea4cc620ee476f"
+    },
+    {
+      "path": "app/poolhouse-node/src/claims.rs",
+      "sha256": "1188d045b2e992ff0d07b4582f162b532730d7862cfbd5030cdb043076803821"
+    },
+    {
+      "path": "app/poolhouse-node/src/tasks/calls.rs",
+      "sha256": "95f553c3d92db3b65e34332f838f30da95f9c29c1120b0fc85bd74e57ded1777"
+    },
+    {
+      "path": "app/poolhouse-node/src/tasks/mod.rs",
+      "sha256": "618000ba6d62270cd77a94939726df72682c24bd393e95ce19deb813fb552afd"
+    },
+    {
+      "path": "src/poolhouse/board/place.py",
+      "sha256": "f606b265897f94c2339a2dce6e5b4b36358d70769f0fc76120e228665a44e9c7"
+    },
+    {
+      "path": "src/poolhouse/board/public.py",
+      "sha256": "fe8898362fdcb30ae542efdda9b9c3cd136cba694b9e969609452c115390a42d"
+    },
+    {
+      "path": "src/poolhouse/board/session.py",
+      "sha256": "4055b11e0f8ed2dfa0396372fda3df84a0b315bae11f4eca1cca857fd1791f87"
+    },
+    {
+      "path": "src/poolhouse/board/tasks.py",
+      "sha256": "c6dee73ec77ab49247b803c5f9687a1050306563324f68854e719bb52192d912"
+    },
+    {
+      "path": "src/poolhouse/workspace/board_cli.py",
+      "sha256": "c6d6874328cca0bef6815766d3cbdb35da042a4f4dfdaaba89a23c13e130db87"
+    },
+    {
+      "path": "src/poolhouse/workspace/localcli.py",
+      "sha256": "4e15a7c2f9bb6c7cd9fc2b6991c875c13a9e0de422336434332a5c656c1b47fe"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_cli.py",
+      "sha256": "db94101ffb10707fcdc25c2745a75e077fb775222622f926ba5b55f53c762a54"
+    },
+    {
+      "path": "src/poolhouse/fleet/projects.py",
+      "sha256": "6f9f3824a17ffecc489e21a7930627c785830f88b6585dc0932b7f3be4491fb9"
+    },
+    {
+      "path": "src/poolhouse/fleet/setup_projects.py",
+      "sha256": "d2f02ae4bcb3217f985af7f340c6105ec34a59c5788518aba5b7f2ffaf8fe910"
+    },
+    {
+      "path": "src/poolhouse/fleet/setup_project_routes.py",
+      "sha256": "1f8bd6cd6e93b750b7dee2e11e54adfce4607adda5b260b1691d48c5403fca03"
+    },
+    {
+      "path": "src/poolhouse/fleet/setup_project_picker.py",
+      "sha256": "2eba9e15eef1d330b610e41805e631b66279d5d5f5b06677b8386e8d48e466c5"
+    },
+    {
+      "path": "src/poolhouse/fleet/native_picks.py",
+      "sha256": "9bb3f072c900c483590fcddd3d9a5a989e9ec2790d93294d86788a0621bbf270"
+    },
+    {
+      "path": "src/poolhouse/fleet/board_routes.py",
+      "sha256": "b108502e81f323d11e4e256965397fd94fc6c9d8276dee0c3966d5f412aff92a"
+    },
+    {
+      "path": "src/poolhouse/fleet/project_source.py",
+      "sha256": "0593730763eb2f1bd07c4f89a4ae18d9f84e97629b6ef9ab64876f107e08708a"
+    },
+    {
+      "path": "src/poolhouse/fleet/project_client.py",
+      "sha256": "062ad5e12c23be99391e79e57631333a3c16b928756159eed557e77835535ab1"
+    },
+    {
+      "path": "src/poolhouse/fleet/project_enrollment.py",
+      "sha256": "73dee18ca207a4ef709ab982797709a297c9b731a3dc6a42510cab283467be1b"
+    },
+    {
+      "path": "app/src-tauri/src/coding_project.rs",
+      "sha256": "b061b1467629d2ae89ef83927b3acd4a5e8b9dc3ffdb93cca06544ffe5559f4c"
+    },
+    {
+      "path": "app/src-tauri/src/native_picker.rs",
+      "sha256": "7250c36d539eb21093af5f9b02e7c854670a5357cc7d8affc5f2aa21ba0eefd4"
+    },
+    {
+      "path": "app/src-tauri/src/main.rs",
+      "sha256": "be1e4d842b67e6c1817a83afa344a52bf95aee0da109f5efd2173a38a3ff157f"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/first-run.html",
+      "sha256": "fb3bd39f208df42f7b15546ff139c7e4894392919286e140d1c08728fe8f71bd"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/projects-view.html",
+      "sha256": "32d7dda55d2bcbf6e500d6fdcb6f02b12b21a7afaf8f889e11f445a1ad61cd9e"
+    },
+    {
+      "path": "contracts/node/retained-features.json",
+      "sha256": "3a99a8d4856851ff01e9082829a6a2a1d9e00177ea8f2595efa279af43e2a592"
+    },
+    {
+      "path": "docs/native-plan-windows-linux.md",
+      "sha256": "c0f0e9d8fdb89bfa77a63adafa4f2bdff10767daf3ae88c8a7eb1af2cbb82241"
+    }
+  ],
+  "operation_mapping": [
+    {
+      "operation": "projects.catalog.inspect",
+      "request": "Empty",
+      "response": "ProjectRegistryContext",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "project_list",
+        "coding_revision"
+      ],
+      "site_indices": [
+        10,
+        36
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "projects.locations.import",
+      "request": "ProjectLocationImportRequest",
+      "response": "ProjectLocationView",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "choose_coding_project",
+        "setup native picker claim/complete/cancel",
+        "ph.board cwd/manual path scope"
+      ],
+      "site_indices": [
+        15,
+        16,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        29,
+        34
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "projects.locations.choose",
+      "request": "ProjectLocationChooseRequest",
+      "response": "ProjectLocationView",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "choose_coding_project",
+        "setup native picker claim/complete/cancel",
+        "ph.board cwd/manual path scope"
+      ],
+      "site_indices": [
+        15,
+        16,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        29,
+        34
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "projects.locations.inspect",
+      "request": "ProjectLocationInspectRequest",
+      "response": "ProjectLocationView",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "choose_coding_project",
+        "setup native picker claim/complete/cancel",
+        "ph.board cwd/manual path scope"
+      ],
+      "site_indices": [
+        15,
+        16,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        29,
+        34
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "projects.locations.cancel",
+      "request": "ProjectLocationCancelRequest",
+      "response": "ProjectLocationCancelResult",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "choose_coding_project",
+        "setup native picker claim/complete/cancel",
+        "ph.board cwd/manual path scope"
+      ],
+      "site_indices": [
+        15,
+        16,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        29,
+        34
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "projects.locations.watch",
+      "request": "ProjectLocationWatchRequest",
+      "response": "ProjectLocationEvent",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "choose_coding_project",
+        "setup native picker claim/complete/cancel",
+        "ph.board cwd/manual path scope"
+      ],
+      "site_indices": [
+        15,
+        16,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        29,
+        34
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "projects.add",
+      "request": "ProjectAddRequest",
+      "response": "ProjectCatalogView",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "project_add",
+        "place.resolve",
+        "setup selected existing Git project"
+      ],
+      "site_indices": [
+        5,
+        9,
+        16,
+        30
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "projects.inspect",
+      "request": "ProjectInspectRequest",
+      "response": "ProjectCatalogView",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "project_list",
+        "ph.board.projects",
+        "/ui/projects local registry subset"
+      ],
+      "site_indices": [
+        5,
+        10,
+        19,
+        40
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "projects.list",
+      "request": "ProjectListRequest",
+      "response": "ProjectCatalogSnapshot",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "project_list",
+        "ph.board.projects",
+        "/ui/projects local registry subset"
+      ],
+      "site_indices": [
+        5,
+        10,
+        19,
+        40
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "projects.watch",
+      "request": "ProjectListRequest",
+      "response": "ProjectCatalogEvent",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "project_list",
+        "ph.board.projects",
+        "/ui/projects local registry subset"
+      ],
+      "site_indices": [
+        5,
+        10,
+        19,
+        40
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "projects.resolve",
+      "request": "ProjectResolveRequest",
+      "response": "ProjectCatalogView",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "project_resolve",
+        "place.existing",
+        "ph.board.connect(cwd)",
+        "localcli"
+      ],
+      "site_indices": [
+        8,
+        11,
+        15,
+        17,
+        20,
+        21
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "projects.sources.add",
+      "request": "ProjectSourceAddRequest",
+      "response": "ProjectSourceView",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "source_add",
+        "project_list.sources"
+      ],
+      "site_indices": [
+        6,
+        7,
+        9,
+        10
+      ],
+      "precision": "source_add is actual retained Rust method; inventory has no literal caller; no execution/publication behavior inferred"
+    },
+    {
+      "operation": "projects.sources.list",
+      "request": "ProjectSourcesRequest",
+      "response": "ProjectSourceSnapshot",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "source_add",
+        "project_list.sources"
+      ],
+      "site_indices": [
+        6,
+        7,
+        9,
+        10
+      ],
+      "precision": "source_add is actual retained Rust method; inventory has no literal caller; no execution/publication behavior inferred"
+    },
+    {
+      "operation": "projects.create.request",
+      "request": "ProjectCreateRequest",
+      "response": "ProjectCreationView",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "/ui/setup/projects/create",
+        "/ui/setup/projects/default",
+        "setup_projects explicit .git creation"
+      ],
+      "site_indices": [
+        25,
+        28,
+        31,
+        32,
+        33,
+        38,
+        39
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "projects.default.request",
+      "request": "ProjectDefaultRequest",
+      "response": "ProjectCreationView",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "/ui/setup/projects/create",
+        "/ui/setup/projects/default",
+        "setup_projects explicit .git creation"
+      ],
+      "site_indices": [
+        25,
+        28,
+        31,
+        32,
+        33,
+        38,
+        39
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "projects.creation.inspect",
+      "request": "ProjectCreationInspectRequest",
+      "response": "ProjectCreationView",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "/ui/setup/projects/create",
+        "/ui/setup/projects/default",
+        "setup_projects explicit .git creation"
+      ],
+      "site_indices": [
+        25,
+        28,
+        31,
+        32,
+        33,
+        38,
+        39
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "projects.creation.cancel",
+      "request": "ProjectCreationCancelRequest",
+      "response": "ProjectCreationCancelResult",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "/ui/setup/projects/create",
+        "/ui/setup/projects/default",
+        "setup_projects explicit .git creation"
+      ],
+      "site_indices": [
+        25,
+        28,
+        31,
+        32,
+        33,
+        38,
+        39
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "projects.creation.watch",
+      "request": "ProjectCreationWatchRequest",
+      "response": "ProjectCreationEvent",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "/ui/setup/projects/create",
+        "/ui/setup/projects/default",
+        "setup_projects explicit .git creation"
+      ],
+      "site_indices": [
+        25,
+        28,
+        31,
+        32,
+        33,
+        38,
+        39
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "projects.selection.inspect",
+      "request": "Empty",
+      "response": "ProjectSelectionView",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "coding_project",
+        "coding_revision",
+        "coding_operation",
+        "select_coding",
+        "native picker successful existing-project selection"
+      ],
+      "site_indices": [
+        27,
+        28,
+        35,
+        36,
+        37,
+        38,
+        39
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "projects.selection.replace",
+      "request": "ProjectSelectionReplaceRequest",
+      "response": "ProjectSelectionView",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "coding_project",
+        "coding_revision",
+        "coding_operation",
+        "select_coding",
+        "native picker successful existing-project selection"
+      ],
+      "site_indices": [
+        27,
+        28,
+        35,
+        36,
+        37,
+        38,
+        39
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "projects.selection.watch",
+      "request": "ProjectSelectionWatchRequest",
+      "response": "ProjectSelectionEvent",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "coding_project",
+        "coding_revision",
+        "coding_operation",
+        "select_coding",
+        "native picker successful existing-project selection"
+      ],
+      "site_indices": [
+        27,
+        28,
+        35,
+        36,
+        37,
+        38,
+        39
+      ],
+      "precision": "canonical proposal, no runtime caller migration claimed"
+    },
+    {
+      "operation": "boards.list",
+      "request": "ProjectListRequest",
+      "response": "ProjectBoardSnapshot",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "ph.board.connect",
+        "place.existing",
+        "status board",
+        "Node.host existing board attachment"
+      ],
+      "site_indices": [
+        12,
+        13,
+        14,
+        15,
+        17,
+        18,
+        20,
+        41
+      ],
+      "precision": "catalog/resolve/open projection only; board content/session creation remains distinct deferred segment"
+    },
+    {
+      "operation": "boards.inspect",
+      "request": "ProjectBoardInspectRequest",
+      "response": "ProjectBoardView",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "ph.board.connect",
+        "place.existing",
+        "status board",
+        "Node.host existing board attachment"
+      ],
+      "site_indices": [
+        12,
+        13,
+        14,
+        15,
+        17,
+        18,
+        20,
+        41
+      ],
+      "precision": "catalog/resolve/open projection only; board content/session creation remains distinct deferred segment"
+    },
+    {
+      "operation": "boards.resolve",
+      "request": "ProjectBoardResolveRequest",
+      "response": "ProjectBoardView",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "ph.board.connect",
+        "place.existing",
+        "status board",
+        "Node.host existing board attachment"
+      ],
+      "site_indices": [
+        12,
+        13,
+        14,
+        15,
+        17,
+        18,
+        20,
+        41
+      ],
+      "precision": "catalog/resolve/open projection only; board content/session creation remains distinct deferred segment"
+    },
+    {
+      "operation": "boards.open",
+      "request": "ProjectBoardInspectRequest",
+      "response": "ProjectBoardView",
+      "error": "ProjectCatalogError",
+      "legacy": [
+        "ph.board.connect",
+        "place.existing",
+        "status board",
+        "Node.host existing board attachment"
+      ],
+      "site_indices": [
+        12,
+        13,
+        14,
+        15,
+        17,
+        18,
+        20,
+        41
+      ],
+      "precision": "catalog/resolve/open projection only; board content/session creation remains distinct deferred segment"
+    }
+  ],
+  "sites": [
+    {
+      "path": "app/poolhouse-node/src/registry.rs",
+      "line": 20,
+      "match": "pub const KINDS",
+      "meaning": "actual git/folder/gdrive/onedrive local source kinds"
+    },
+    {
+      "path": "app/poolhouse-node/src/registry.rs",
+      "line": 21,
+      "match": "const MAX_SOURCES",
+      "meaning": "existing32 source limit and256 project limit remain unchanged; projection page bounds not silent truncation"
+    },
+    {
+      "path": "app/poolhouse-node/src/registry.rs",
+      "line": 43,
+      "match": "pub fn git_root",
+      "meaning": "linked Git worktrees resolve via common directory"
+    },
+    {
+      "path": "app/poolhouse-node/src/registry.rs",
+      "line": 60,
+      "match": "fn refuse_broad",
+      "meaning": "reject root/home/ancestors taking over scope"
+    },
+    {
+      "path": "app/poolhouse-node/src/registry.rs",
+      "line": 73,
+      "match": "fn nested_repository",
+      "meaning": "existing scan depth3/entries4000, no-follow directories; not claimed exhaustive beyond bounds"
+    },
+    {
+      "path": "app/poolhouse-node/src/registry.rs",
+      "line": 133,
+      "match": "pub fn add(",
+      "meaning": "explicit new local project/source"
+    },
+    {
+      "path": "app/poolhouse-node/src/registry.rs",
+      "line": 148,
+      "match": "pub fn add_source",
+      "meaning": "existing project source attachment with overlap checks"
+    },
+    {
+      "path": "app/poolhouse-node/src/registry.rs",
+      "line": 164,
+      "match": "fn claim_check",
+      "meaning": "global known-source containment overlap refusal"
+    },
+    {
+      "path": "app/poolhouse-node/src/registry.rs",
+      "line": 173,
+      "match": "pub fn resolve",
+      "meaning": "unregistered directory refuses; no implicit other-project board fallback"
+    },
+    {
+      "path": "app/poolhouse-node/src/api.rs",
+      "line": 176,
+      "match": "fn project(",
+      "meaning": "actual session target-board and source_add grant checks; split commit/spend not atomic proof"
+    },
+    {
+      "path": "app/poolhouse-node/src/api.rs",
+      "line": 31,
+      "match": "\"project_list\" =>",
+      "meaning": "legacy local catalog read caller dispatch"
+    },
+    {
+      "path": "app/poolhouse-node/src/api.rs",
+      "line": 32,
+      "match": "\"project_resolve\" =>",
+      "meaning": "legacy local directory resolution dispatch"
+    },
+    {
+      "path": "app/poolhouse-node/src/project.rs",
+      "line": 42,
+      "match": "pub fn parse_board",
+      "meaning": "repository TOML is untrusted hint"
+    },
+    {
+      "path": "app/poolhouse-node/src/project.rs",
+      "line": 62,
+      "match": "pub fn propose_id",
+      "meaning": "root commit proposes alias, never authority/silent selection"
+    },
+    {
+      "path": "app/poolhouse-node/src/node.rs",
+      "line": 201,
+      "match": "pub fn host(",
+      "meaning": "board hosting currently creates local storage; canonical open must be existing-only and creation explicit"
+    },
+    {
+      "path": "src/poolhouse/board/place.py",
+      "line": 47,
+      "match": "def existing",
+      "meaning": "explicit/env board lookup is location only; known cwd resolution side-effect free"
+    },
+    {
+      "path": "src/poolhouse/board/place.py",
+      "line": 58,
+      "match": "def resolve",
+      "meaning": "legacy explicit setup can add Git project; normal connect does not use implicit setup"
+    },
+    {
+      "path": "src/poolhouse/board/public.py",
+      "line": 274,
+      "match": "def connect(",
+      "meaning": "actual public existing board client, credentials decide authority"
+    },
+    {
+      "path": "src/poolhouse/board/public.py",
+      "line": 286,
+      "match": "def register(",
+      "meaning": "script session registration separate from project creation"
+    },
+    {
+      "path": "src/poolhouse/board/public.py",
+      "line": 245,
+      "match": "def projects(",
+      "meaning": "actual public project_list caller"
+    },
+    {
+      "path": "src/poolhouse/workspace/board_cli.py",
+      "line": 87,
+      "match": "def connect(",
+      "meaning": "actual workspace CLI project/board binding"
+    },
+    {
+      "path": "src/poolhouse/workspace/localcli.py",
+      "line": 121,
+      "match": "client.call(\"project_resolve\"",
+      "meaning": "actual local agent CLI project path resolution"
+    },
+    {
+      "path": "app/src-tauri/src/coding_project.rs",
+      "line": 18,
+      "match": "fn public(",
+      "meaning": "native id/title-only result; title byte bound1024"
+    },
+    {
+      "path": "app/src-tauri/src/coding_project.rs",
+      "line": 36,
+      "match": "fn flow(",
+      "meaning": "private native picker claim/complete/cancel path delivery"
+    },
+    {
+      "path": "app/src-tauri/src/main.rs",
+      "line": 85,
+      "match": "async fn choose_coding_project",
+      "meaning": "actual native window command"
+    },
+    {
+      "path": "src/poolhouse/fleet/setup_project_routes.py",
+      "line": 103,
+      "match": "def route(",
+      "meaning": "actual picker/create/default HTTP UI calls"
+    },
+    {
+      "path": "src/poolhouse/fleet/setup_project_routes.py",
+      "line": 70,
+      "match": "def public(",
+      "meaning": "native holder callback is not sufficient without original current renderer binding"
+    },
+    {
+      "path": "src/poolhouse/fleet/setup_project_picker.py",
+      "line": 32,
+      "match": "def request(",
+      "meaning": "captures initial selection revision and current principal"
+    },
+    {
+      "path": "src/poolhouse/fleet/setup_project_picker.py",
+      "line": 86,
+      "match": "def create(",
+      "meaning": "candidate ID alone grants no creation; original principal/current scope required"
+    },
+    {
+      "path": "src/poolhouse/fleet/setup_projects.py",
+      "line": 26,
+      "match": "def directory(",
+      "meaning": "retained directory and ancestor identity checks"
+    },
+    {
+      "path": "src/poolhouse/fleet/setup_projects.py",
+      "line": 78,
+      "match": "def select(",
+      "meaning": "existing exact Git root can be added; nonproject folder remains inert candidate"
+    },
+    {
+      "path": "src/poolhouse/fleet/setup_projects.py",
+      "line": 102,
+      "match": "def create(",
+      "meaning": "only explicit creation initializes owned .git stages/commit"
+    },
+    {
+      "path": "src/poolhouse/fleet/setup_projects.py",
+      "line": 141,
+      "match": "def _git_directory",
+      "meaning": "deterministic owned .git staging receipt, no orphan adoption"
+    },
+    {
+      "path": "src/poolhouse/fleet/setup_projects.py",
+      "line": 222,
+      "match": "def default(",
+      "meaning": "private default workspace retained without owner path command"
+    },
+    {
+      "path": "src/poolhouse/fleet/projects.py",
+      "line": 34,
+      "match": "def local_root(",
+      "meaning": "legacy manual path input and2048character bound; no WSL translation retained"
+    },
+    {
+      "path": "src/poolhouse/fleet/projects.py",
+      "line": 214,
+      "match": "def resolve_coding_project",
+      "meaning": "existing exact project identity revalidated before use"
+    },
+    {
+      "path": "src/poolhouse/fleet/projects.py",
+      "line": 258,
+      "match": "def select_coding",
+      "meaning": "CAS selection, repeated request does not overwrite newer selection"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/first-run.html",
+      "line": 142,
+      "match": "/ui/setup/projects/pick",
+      "meaning": "actual UI choose action"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/first-run.html",
+      "line": 179,
+      "match": "/ui/setup/projects/create",
+      "meaning": "actual UI explicit create action"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/first-run.html",
+      "line": 200,
+      "match": "/ui/setup/projects/default",
+      "meaning": "actual UI default workspace action"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/projects-view.html",
+      "line": 60,
+      "match": "M.api('/ui/projects')",
+      "meaning": "shared-project catalog source-publication segment remains separate"
+    },
+    {
+      "path": "src/poolhouse/fleet/board_routes.py",
+      "line": 10,
+      "match": "def route(",
+      "meaning": "board content/tasks local UI segment deferred"
+    }
+  ],
+  "retained_inventory_evidence": {
+    "inventory_source_commit": "4a46649f67435c6e87e357fe70b31afa8a013b06",
+    "precision": "Retained inventory is pinned source data; actual current line evidence above supersedes historical lines. Selected rows are evidence, not authority or complete feature retention.",
+    "node_methods": [
+      {
+        "method": "project_add",
+        "registry_ref": "file0001",
+        "source": [
+          "file0001",
+          30,
+          "params_for"
+        ],
+        "current_request": {
+          "allowed_params": [
+            "id",
+            "kind",
+            "path"
+          ],
+          "envelope_profile": "node_json_v1",
+          "requiredness_types": "unresolved beyond handler validation"
+        },
+        "current_result": {
+          "profile": "node_json_v1",
+          "json_keys_seen_in_dispatch_or_helpers": [],
+          "observed_error_variants": [
+            "Denied"
+          ],
+          "method_payload_shape": "unresolved"
+        },
+        "authorization": {
+          "profile": "node_local_socket_and_handler",
+          "evidence": [],
+          "observed_local_calls": [
+            [
+              "crate::poolapi::require",
+              "project"
+            ]
+          ],
+          "precision": {
+            "note_ref": "note012"
+          }
+        },
+        "callers": [
+          "call0039"
+        ],
+        "cancellation": {
+          "unresolved": "no universal cancellation inferred"
+        },
+        "subscription": {
+          "unresolved": {
+            "note_ref": "note011"
+          }
+        },
+        "proposed_operation": "node.project.add",
+        "implementation_evidence": [
+          [
+            "file0001",
+            208,
+            "dispatch"
+          ],
+          [
+            "file0001",
+            176,
+            "project"
+          ]
+        ],
+        "dispatch_arm": [
+          "file0001",
+          222,
+          "dispatch:project_add"
+        ]
+      },
+      {
+        "method": "source_add",
+        "registry_ref": "file0001",
+        "source": [
+          "file0001",
+          30,
+          "params_for"
+        ],
+        "current_request": {
+          "allowed_params": [
+            "id",
+            "kind",
+            "path"
+          ],
+          "envelope_profile": "node_json_v1",
+          "requiredness_types": "unresolved beyond handler validation"
+        },
+        "current_result": {
+          "profile": "node_json_v1",
+          "json_keys_seen_in_dispatch_or_helpers": [],
+          "observed_error_variants": [
+            "Denied"
+          ],
+          "method_payload_shape": "unresolved"
+        },
+        "authorization": {
+          "profile": "node_local_socket_and_handler",
+          "evidence": [],
+          "observed_local_calls": [
+            [
+              "crate::poolapi::require",
+              "project"
+            ]
+          ],
+          "precision": {
+            "note_ref": "note012"
+          }
+        },
+        "callers": [],
+        "cancellation": {
+          "unresolved": "no universal cancellation inferred"
+        },
+        "subscription": {
+          "unresolved": {
+            "note_ref": "note011"
+          }
+        },
+        "proposed_operation": "node.source.add",
+        "implementation_evidence": [
+          [
+            "file0001",
+            208,
+            "dispatch"
+          ],
+          [
+            "file0001",
+            176,
+            "project"
+          ]
+        ],
+        "dispatch_arm": [
+          "file0001",
+          222,
+          "dispatch:source_add"
+        ]
+      },
+      {
+        "method": "project_list",
+        "registry_ref": "file0001",
+        "source": [
+          "file0001",
+          31,
+          "params_for"
+        ],
+        "current_request": {
+          "allowed_params": [],
+          "envelope_profile": "node_json_v1",
+          "requiredness_types": "unresolved beyond handler validation"
+        },
+        "current_result": {
+          "profile": "node_json_v1",
+          "json_keys_seen_in_dispatch_or_helpers": [],
+          "observed_error_variants": [],
+          "method_payload_shape": "unresolved"
+        },
+        "authorization": {
+          "profile": "node_local_socket_and_handler",
+          "evidence": [],
+          "observed_local_calls": [],
+          "precision": {
+            "note_ref": "note012"
+          }
+        },
+        "callers": [
+          "call0047"
+        ],
+        "cancellation": {
+          "unresolved": "no universal cancellation inferred"
+        },
+        "subscription": {
+          "unresolved": {
+            "note_ref": "note011"
+          }
+        },
+        "proposed_operation": "node.project.list",
+        "implementation_evidence": [
+          [
+            "file0001",
+            208,
+            "dispatch"
+          ]
+        ],
+        "dispatch_arm": [
+          "file0001",
+          224,
+          "dispatch:project_list"
+        ]
+      },
+      {
+        "method": "project_resolve",
+        "registry_ref": "file0001",
+        "source": [
+          "file0001",
+          32,
+          "params_for"
+        ],
+        "current_request": {
+          "allowed_params": [
+            "path"
+          ],
+          "envelope_profile": "node_json_v1",
+          "requiredness_types": "unresolved beyond handler validation"
+        },
+        "current_result": {
+          "profile": "node_json_v1",
+          "json_keys_seen_in_dispatch_or_helpers": [
+            "board"
+          ],
+          "observed_error_variants": [],
+          "method_payload_shape": "unresolved"
+        },
+        "authorization": {
+          "profile": "node_local_socket_and_handler",
+          "evidence": [],
+          "observed_local_calls": [
+            [
+              "crate::grants::calls::call",
+              "dispatch"
+            ],
+            [
+              "crate::presence::call",
+              "dispatch"
+            ]
+          ],
+          "precision": {
+            "note_ref": "note012"
+          }
+        },
+        "callers": [
+          "call0040",
+          "call0041"
+        ],
+        "cancellation": {
+          "unresolved": "no universal cancellation inferred"
+        },
+        "subscription": {
+          "unresolved": {
+            "note_ref": "note011"
+          }
+        },
+        "proposed_operation": "node.project.resolve",
+        "implementation_evidence": [
+          [
+            "file0001",
+            208,
+            "dispatch"
+          ]
+        ],
+        "dispatch_arm": [
+          "file0001",
+          225,
+          "dispatch:project_resolve"
+        ]
+      }
+    ],
+    "node_callers": [
+      {
+        "method": "project_add",
+        "source": [
+          "file0054",
+          58,
+          "resolve"
+        ],
+        "expression": "client.call",
+        "argument_keywords": [
+          "id",
+          "kind",
+          "path"
+        ],
+        "binding": {
+          "note_ref": "note010"
+        },
+        "id": "call0039"
+      },
+      {
+        "method": "project_resolve",
+        "source": [
+          "file0054",
+          59,
+          "resolve"
+        ],
+        "expression": "client.call",
+        "argument_keywords": [
+          "path"
+        ],
+        "binding": {
+          "note_ref": "note010"
+        },
+        "id": "call0040"
+      },
+      {
+        "method": "project_resolve",
+        "source": [
+          "file0054",
+          50,
+          "resolve"
+        ],
+        "expression": "client.call",
+        "argument_keywords": [
+          "path"
+        ],
+        "binding": {
+          "note_ref": "note010"
+        },
+        "id": "call0041"
+      },
+      {
+        "method": "project_list",
+        "source": [
+          "file0056",
+          247,
+          "Board.projects"
+        ],
+        "expression": "self._session.call",
+        "argument_keywords": [],
+        "binding": {
+          "note_ref": "note010"
+        },
+        "id": "call0047"
+      }
+    ],
+    "public_facade_exports": [
+      {
+        "surface": "ph.board.connect",
+        "namespace_module": "poolhouse.board",
+        "declaration": [
+          "file0036",
+          null,
+          "SURFACE.board"
+        ],
+        "target": "poolhouse.board.public:connect",
+        "binding": {
+          "note_ref": "note023"
+        },
+        "proposed_operation": "facade.board.connect",
+        "implementation_source": [
+          "file0056",
+          274,
+          "connect"
+        ],
+        "current_request": {
+          "python_signature": "*, agent: str='', token_file: str='', board: str='', cwd: str | Path | None=None"
+        },
+        "current_result": {
+          "annotation": "Board",
+          "observed_raises": []
+        },
+        "authorization_evidence": []
+      },
+      {
+        "surface": "ph.board.register",
+        "namespace_module": "poolhouse.board",
+        "declaration": [
+          "file0036",
+          null,
+          "SURFACE.board"
+        ],
+        "target": "poolhouse.board.public:register",
+        "binding": {
+          "note_ref": "note023"
+        },
+        "proposed_operation": "facade.board.register",
+        "implementation_source": [
+          "file0056",
+          285,
+          "register"
+        ],
+        "current_request": {
+          "python_signature": "name: str='python', *, board: str='', cwd: str | Path | None=None"
+        },
+        "current_result": {
+          "annotation": "Board",
+          "observed_raises": []
+        },
+        "authorization_evidence": []
+      },
+      {
+        "surface": "ph.board.Board",
+        "namespace_module": "poolhouse.board",
+        "declaration": [
+          "file0036",
+          null,
+          "SURFACE.board"
+        ],
+        "target": "poolhouse.board.public:Board",
+        "binding": {
+          "note_ref": "note023"
+        },
+        "proposed_operation": "facade.board.board",
+        "implementation_source": [
+          "file0056",
+          114,
+          "Board"
+        ],
+        "declared_class_fields": {}
+      }
+    ],
+    "native_commands": [
+      {
+        "command": "choose_coding_project",
+        "source": [
+          "file0031",
+          85,
+          "choose_coding_project"
+        ],
+        "registered_at": [
+          "file0031",
+          161,
+          "tauri::generate_handler"
+        ],
+        "current_request": {
+          "rust_signature": "app: AppHandle, state: State<'_, Shell>, request_id: String, nonce: String"
+        },
+        "current_result": {
+          "rust_return": "-> Result<serde_json::Value, String>",
+          "error_strings": []
+        },
+        "authorization": {
+          "profile": "tauri_native_command",
+          "evidence_calls": [
+            "clone(",
+            "coding_project::choose(",
+            "map_err(",
+            "tauri::async_runtime::spawn_blocking(",
+            "to_string("
+          ],
+          "unresolved": [
+            {
+              "note_ref": "note006"
+            }
+          ]
+        },
+        "callers": [
+          "ui0051"
+        ],
+        "cancellation": {
+          "unresolved": {
+            "note_ref": "note013"
+          }
+        },
+        "subscription": {
+          "unresolved": "per command delegated flow"
+        },
+        "proposed_operation": "native.choose.coding.project",
+        "capability_evidence": {
+          "source": [
+            "file0030",
+            null,
+            "permissions / windows / remote / local"
+          ],
+          "expected_command_permission": "allow-choose-coding-project",
+          "listed_in_main_capability": true,
+          "windows": [
+            "main"
+          ],
+          "local": false,
+          "remote": {
+            "urls": [
+              "http://127.0.0.1:8770/*"
+            ]
+          },
+          "precision": {
+            "note_ref": "note004"
+          }
+        }
+      }
+    ],
+    "ui_invocations": [
+      {
+        "id": "ui0049",
+        "source": [
+          "file0161",
+          142,
+          "this.request"
+        ],
+        "path_expression": "'/ui/setup/projects/pick'",
+        "literal_or_template": "/ui/setup/projects/pick",
+        "request_method": "unresolved/default GET if no override",
+        "request_expression": "'/ui/setup/projects/pick', post({})",
+        "request_expression_truncated": false,
+        "cancellation_observed": false,
+        "contract_precision": {
+          "note_ref": "note022"
+        }
+      },
+      {
+        "id": "ui0051",
+        "source": [
+          "file0161",
+          143,
+          "window.__TAURI__.core.invoke"
+        ],
+        "path_expression": "'choose_coding_project'",
+        "literal_or_template": "choose_coding_project",
+        "request_method": "native_invoke",
+        "request_expression": "'choose_coding_project', {requestId:challenge.request_id, nonce:challenge.nonce}",
+        "request_expression_truncated": false,
+        "cancellation_observed": false,
+        "contract_precision": {
+          "note_ref": "note022"
+        },
+        "native_command": "choose_coding_project"
+      },
+      {
+        "id": "ui0052",
+        "source": [
+          "file0161",
+          179,
+          "this.request"
+        ],
+        "path_expression": "'/ui/setup/projects/create'",
+        "literal_or_template": "/ui/setup/projects/create",
+        "request_method": "unresolved/default GET if no override",
+        "request_expression": "'/ui/setup/projects/create', post({candidate_id:candidate.id})",
+        "request_expression_truncated": false,
+        "cancellation_observed": false,
+        "contract_precision": {
+          "note_ref": "note022"
+        }
+      },
+      {
+        "id": "ui0056",
+        "source": [
+          "file0161",
+          200,
+          "this.request"
+        ],
+        "path_expression": "'/ui/setup/projects/default'",
+        "literal_or_template": "/ui/setup/projects/default",
+        "request_method": "unresolved/default GET if no override",
+        "request_expression": "'/ui/setup/projects/default', post({operation_id:this.projectOperation()}), epoch, session",
+        "request_expression_truncated": false,
+        "cancellation_observed": false,
+        "contract_precision": {
+          "note_ref": "note022"
+        }
+      }
+    ],
+    "source_resolution": {
+      "file0001": {
+        "path": "app/poolhouse-node/src/api.rs",
+        "sha256": "334be05253eaa0aa24b3e557a00cb87b64498f7de521b4d0b9cccfe17995ac94"
+      },
+      "file0003": {
+        "path": "app/poolhouse-node/src/claims.rs",
+        "sha256": "1188d045b2e992ff0d07b4582f162b532730d7862cfbd5030cdb043076803821"
+      },
+      "file0007": {
+        "path": "app/poolhouse-node/src/files.rs",
+        "sha256": "aef40878da51146cf6ddf3304300ac503325cb556ff8e5de67cab191df8ea5b7"
+      },
+      "file0013": {
+        "path": "app/poolhouse-node/src/mail.rs",
+        "sha256": "99d46925c1a16829a311a99e7e87e1d942929b1e8b2c6f3d6a5c3f6eb2723184"
+      },
+      "file0017": {
+        "path": "app/poolhouse-node/src/notes.rs",
+        "sha256": "2573c21d3fb1b3889a8a64fd8f12681da5365cd804411e7e0d8549361fee006b"
+      },
+      "file0022": {
+        "path": "app/poolhouse-node/src/rooms.rs",
+        "sha256": "f4c0999bf9ca37ef23c234a03821dac8839fbdc6c93be2767abe8f5cdb9094cc"
+      },
+      "file0026": {
+        "path": "app/poolhouse-node/src/subs.rs",
+        "sha256": "a55dac107c909275053c0b4ff5991a1e79dd0f5c81ddc8d2bb7fa82d1c6cef00"
+      },
+      "file0028": {
+        "path": "app/poolhouse-node/src/tasks/calls.rs",
+        "sha256": "95f553c3d92db3b65e34332f838f30da95f9c29c1120b0fc85bd74e57ded1777"
+      },
+      "file0029": {
+        "path": "app/poolhouse-node/src/tasks/mod.rs",
+        "sha256": "618000ba6d62270cd77a94939726df72682c24bd393e95ce19deb813fb552afd"
+      },
+      "file0030": {
+        "path": "app/src-tauri/capabilities/main.json",
+        "sha256": "181d5baa35e9b5aaec52d77616910207ae143236307e2338385b92eb589a2b0f"
+      },
+      "file0031": {
+        "path": "app/src-tauri/src/main.rs",
+        "sha256": "be1e4d842b67e6c1817a83afa344a52bf95aee0da109f5efd2173a38a3ff157f"
+      },
+      "file0036": {
+        "path": "src/poolhouse/api/__init__.py",
+        "sha256": "0126589f8821fa37dcb640e0f845fb666403b76b5cec260c7a2f16cbc8bdd517"
+      },
+      "file0054": {
+        "path": "src/poolhouse/board/place.py",
+        "sha256": "7a8260c9e089b1773c4316ca72ff3d989dfb8706fafdc78f56d6f9f88a1883f5"
+      },
+      "file0056": {
+        "path": "src/poolhouse/board/public.py",
+        "sha256": "25d9b554d12f9b402fb44449ae2e6dd761272c3774bcd79ea6b5f58c96326dfe"
+      },
+      "file0161": {
+        "path": "src/poolhouse/fleet/web/components/first-run.html",
+        "sha256": "fb3bd39f208df42f7b15546ff139c7e4894392919286e140d1c08728fe8f71bd"
+      }
+    }
+  },
+  "native_directory_import_contract": {
+    "public_body": "ProjectLocationImportRequest has generation, request_id and typed purpose only; no path, sender, owner boolean, FD number or raw handle value",
+    "private_adapter_signature": "import_directory(actual authenticated IPC occurrence, owned directory attachment, installation, exact request_id/purpose) -> opaque retained DirectoryLocationHandle plus node-issued ProjectLocationRef",
+    "runtime_handles": "DirectoryLocationHandle and held writable ancestors have no public constructors/serialization; JSON ProjectLocationRef is data only",
+    "refusals": [
+      "missing/unexpected/duplicate attachment",
+      "wrong OS handle type/access",
+      "principal/install/occurrence/request/purpose mismatch",
+      "replayed attachment or ref",
+      "target/ancestor identity, reparse/mount/case/worktree-common-directory change",
+      "broad or overlapping scope",
+      "unavailable native backend"
+    ],
+    "caller_preservation": "CLI/Python cwd and advanced manual path conveniences open/import the intended directory without a mandatory picker; GUI uses native chooser. Exact platform/SDK adapter remains a prerequisite, not an implemented authority path."
+  },
+  "requirements": [
+    "All DTOs are untrusted; actual authenticated native IPC principal, installation/process/session/occurrence and current project/board/pool generations determine authority. Labels, aliases, root-commit/TOML hints, locations, opaque IDs, paths or user-controlled JSON never choose principal, credentials, membership or permission.",
+    "Native directory attachment binds exact actual occurrence/principal/install/purpose/RequestId. Node checks OS handle type/access/identity and all ancillary data; copied JSON/ref/FD number/position never recreates a handle. Reject unexpected/duplicate/missing/mismatched attachments and cross-request replay. No caller supplies a trusted directory identity.",
+    "Hold and revalidate actual target and writable ancestor identities through effects and commit, including symlink/junction/reparse/mount/rename/case aliases and Git common-dir/worktree mapping. Canonical path strings or one dev/inode comparison alone are insufficient. Serialize global registry overlap checks, resource generations and CAS so concurrent operations cannot add overlapping projects.",
+    "Preserve current Rust broad-home/root/ancestor rejection, nested repository checks, project256/source32 limits and scan depth3/entries4000 without raising numbers. Page32/256 bounds are wire pages only, never silent truncation of a complete catalog; retained platform representations are not narrowed by a newly invented path cap. Existing limited scan is not claimed exhaustive.",
+    "Public path-free location import preserves advanced cwd/manual path inputs via independently validated native directory import, not a mandatory owner dialog. No WSL path/network bridge remains native authority. Actual adapter/SDK implementation, directory policy and authorized full local-path presentation remain explicit unfinished prerequisites.",
+    "An authorized native picker captures original selection scope/generation/revision and returns only current caller-bound location observation. Choosing/importing does not initialize Git, share source, create credentials/session, grant execution or mutate durable selection. Retained successful existing-Git choice composes projects.add only when needed then explicit selection.replace under the captured scope without adding user steps.",
+    "Add/resolve/open are distinct: resolve and boards.open attach only existing authorized resources and create no project/session/credential/Git root; projects.add atomically creates project and its one board with validated location and actual project-create permission. Unknown/ambiguous selector refuses. New board creation is only part of explicit project add/create/default, never arbitrary orphan board creation.",
+    "Legacy short board/project names remain aliases/diagnostic hints; canonical ProjectId/BoardId are distinct node-owned data identities. No silent trust migration or signed-log identity rewrite is implied. Alias lookup reauthorizes actual target and rejects ambiguity, including pool context; nullable pool field cannot bypass known stored scope.",
+    "Source attachment requires exact current project source_add permission and preserved kind validation; git/folder/gdrive/onedrive describe local location kind only, not cloud credentials, network permission or a source command. Imported/replicated source labels/refs never become a local handle, execution or publication grant.",
+    "Ephemeral picker/import handle lifetime is separate from durable committed source custody. Location cancellation/expiry closes only its unconsumed handle; it cannot invalidate committed project, delete unrelated files or revoke other work. SourceView.location is a fresh authorized purpose-limited inspection ref to current committed custody, not authority resurrected from an expired original picker.",
+    "All mutations bind durable request ID to actual principal/installation/resource/generation/immutable payload and relevant CAS. Cross-resource/payload/principal reuse conflicts; retries reauthorize and return same durable outcome without duplicate project/board/initial Git commit. Source add/grant spend and project-board creation need atomic durable intent/receipt integration; legacy split behavior is not proof.",
+    "Explicit create/default issues immutable node-owned plan/operation ID before filesystem effects. Retain deterministic owned .git stage/initial commit receipts, revalidate exact held target and every ancestor, never adopt unknown orphan or initialize on guessed absence. No arbitrary command, env, file content or recursive delete input. Cancellation/effect-after-receipt uncertainty reconciles exact plan, never removes preexisting/adopted user files or rolls back committed signed logs.",
+    "Creation/default automatic coding selection uses original captured ProjectSelectionStamp, not a caller-rebased new revision from an old candidate. Actual principal+native selection surface cannot write another scope. Newer selection wins; if project creation already committed, return durable project plus superseded selection outcome, never pretend filesystem rollback/cancel or overwrite newer selection. Project add/open has no implicit selection.",
+    "projects.catalog.inspect and projects.selection.inspect issue current caller-authorized registry/selection context so CAS generations/revisions are obtainable before mutation; no circular caller-invented context. Project/source/board and selection refs remain independently scoped resources, not interchangeable generations.",
+    "All list/watch snapshots represent empty and complete paged sets, freeze snapshot/revision and bind cursor to actual principal, scope, projection, exact resource generations and expiry. Reauthorize every item/page/delivery/resume; do not mix pages across parent revisions; retention loss returns explicit resync. Watch disconnection only detaches observer, never cancels durable picker/creation or changes selected project.",
+    "Read/open/resolve authorization precedes resource/path existence disclosure; error details and view titles reveal no unauthorized private path or damaged-origin/content metadata. Native title1024byte and board alias48byte bounds preserve observed validation; no labels interpreted as instructions.",
+    "This leaf covers local project/board catalog, location/source attachment and current coding selection only. Shared project publication/checkout, signed board content/messages/notes/files, subscriptions/rooms/links, task/claim lifecycle and session identity have separate exact source-backed segments; no retained feature is silently retired or claimed implemented here.",
+    "Creation/default requesting coding selection reports ProjectCreationSelection.pending with the original captured stamp until selection CAS resolves; effect/recovery ambiguity reports outcome_unknown with that stamp. not_requested is reserved for an actual immutable plan with no selection request, never a substitute for not-yet-applied selection. selected/superseded are final observed outcomes only.",
+    "ProjectSelectionReplaceRequest.origin distinguishes independent direct control from exact originating location. Candidate-driven completion must carry origin.location matching node-stored location/principal/install/native occurrence/purpose, captured original selection stamp and resolved project. Node checks against its original pending record; copied or fresh DTO stamp alone is never provenance and cannot rebase old completion.",
+    "Actual native picker completion IPC occurrence has a stored coding-selection purpose and cannot use origin.direct or a different request/location to bypass its captured intent. Independent direct selection requires current actual selection-controller permission and a distinct authorized direct operation context, not a caller-declared flag; its new request cannot reuse or alter a picker completion receipt. A reader, imported inspection ref or expired candidate cannot gain direct control from the origin tag."
+  ],
+  "deferred_segments": [
+    {
+      "segment": "board_content_and_messaging",
+      "source_paths": [
+        "app/poolhouse-node/src/api.rs",
+        "app/poolhouse-node/src/mail.rs",
+        "app/poolhouse-node/src/notes.rs",
+        "app/poolhouse-node/src/rooms.rs",
+        "app/poolhouse-node/src/files.rs",
+        "src/poolhouse/board/public.py",
+        "src/poolhouse/workspace/board_cli.py",
+        "src/poolhouse/fleet/board_routes.py"
+      ],
+      "retained_methods": [
+        "post",
+        "read",
+        "outbox",
+        "notes",
+        "note_verify",
+        "rooms",
+        "room",
+        "file_put",
+        "file_get",
+        "file_delete"
+      ],
+      "required_shapes": "closed per-message/note/file intents, exact recipient principal refs, thread/privacy/room/read cursors, original signed-entry projections; never generic fields JSON",
+      "status": "not implemented in catalog leaf",
+      "retained_node_inventory_rows": [
+        {
+          "method": "post",
+          "registry_ref": "file0001",
+          "source": [
+            "file0001",
+            26,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "kind",
+              "idem",
+              "fields"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0057",
+            "call0058",
+            "call0065",
+            "call0138"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.post",
+          "implementation_evidence": [
+            [
+              "file0001",
+              208,
+              "dispatch"
+            ],
+            [
+              "file0001",
+              114,
+              "post"
+            ],
+            [
+              "file0001",
+              41,
+              "refuse_identity"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0001",
+            219,
+            "dispatch:post"
+          ],
+          "current_request_note": "kind accepts message/note, fields object is identity-checked; idem supplies existing board idempotency path",
+          "evidence": [
+            [
+              "file0001",
+              null,
+              "post"
+            ]
+          ]
+        },
+        {
+          "method": "read",
+          "registry_ref": "file0001",
+          "source": [
+            "file0001",
+            27,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "since",
+              "kind",
+              "channel",
+              "by",
+              "limit",
+              "inbox",
+              "with",
+              "thread",
+              "digest",
+              "mentions",
+              "head",
+              "files"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "channel",
+              "cursor",
+              "entries",
+              "fields",
+              "foreign",
+              "hlc",
+              "id",
+              "kind",
+              "origin",
+              "sender",
+              "seq"
+            ],
+            "observed_error_variants": [
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "access.actor.as_str",
+                "read"
+              ],
+              [
+                "access.channels.as_ref",
+                "read"
+              ],
+              [
+                "crate::rooms::may_read",
+                "read"
+              ],
+              [
+                "node.access",
+                "read"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0052",
+            "call0075",
+            "call0115"
+          ],
+          "cancellation": {
+            "current": "no cancel field in this method; no transport-wide cancellation guarantee inferred"
+          },
+          "subscription": {
+            "current": "polling read with per-origin sequence cursor, limit and filters; returns entries and cursor, not an event stream",
+            "evidence": [
+              [
+                "file0001",
+                null,
+                "read"
+              ]
+            ]
+          },
+          "proposed_operation": "node.read",
+          "implementation_evidence": [
+            [
+              "file0001",
+              208,
+              "dispatch"
+            ],
+            [
+              "file0001",
+              56,
+              "entry_json"
+            ],
+            [
+              "file0001",
+              61,
+              "read"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0001",
+            220,
+            "dispatch:read"
+          ]
+        },
+        {
+          "method": "notes",
+          "registry_ref": "file0017",
+          "source": [
+            "file0017",
+            22,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "ref",
+              "query",
+              "kind",
+              "all",
+              "limit"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "at_ms",
+              "author",
+              "binding",
+              "body",
+              "by",
+              "cmd",
+              "exit",
+              "id",
+              "kind",
+              "last_verified",
+              "note",
+              "notes",
+              "out_sha",
+              "output_sha256",
+              "ref",
+              "source",
+              "stale",
+              "superseded_by",
+              "supersedes",
+              "tags",
+              "title",
+              "trust",
+              "ts_ms",
+              "ttl_days",
+              "verify_cmd"
+            ],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "access.channels.as_ref",
+                "call"
+              ],
+              [
+                "access.of_board",
+                "verify"
+              ],
+              [
+                "crate::grants::check",
+                "verify"
+              ],
+              [
+                "crate::grants::holds",
+                "verify"
+              ],
+              [
+                "crate::grants::refused_for",
+                "verify"
+              ],
+              [
+                "node.access",
+                "call"
+              ],
+              [
+                "node.access",
+                "verify"
+              ],
+              [
+                "verify",
+                "call"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0088"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.notes",
+          "implementation_evidence": [
+            [
+              "file0017",
+              184,
+              "call"
+            ],
+            [
+              "file0017",
+              45,
+              "fold_notes"
+            ],
+            [
+              "file0017",
+              120,
+              "list"
+            ],
+            [
+              "file0017",
+              114,
+              "notes_of"
+            ],
+            [
+              "file0017",
+              97,
+              "resolve"
+            ],
+            [
+              "file0017",
+              70,
+              "rotted"
+            ],
+            [
+              "file0017",
+              106,
+              "score"
+            ],
+            [
+              "file0017",
+              83,
+              "show"
+            ],
+            [
+              "file0017",
+              75,
+              "trust"
+            ],
+            [
+              "file0017",
+              159,
+              "verify"
+            ]
+          ]
+        },
+        {
+          "method": "note_verify",
+          "registry_ref": "file0017",
+          "source": [
+            "file0017",
+            23,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "note",
+              "exit",
+              "out_sha"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "at_ms",
+              "author",
+              "binding",
+              "body",
+              "by",
+              "cmd",
+              "exit",
+              "id",
+              "kind",
+              "last_verified",
+              "note",
+              "notes",
+              "out_sha",
+              "output_sha256",
+              "ref",
+              "source",
+              "stale",
+              "superseded_by",
+              "supersedes",
+              "tags",
+              "title",
+              "trust",
+              "ts_ms",
+              "ttl_days",
+              "verify_cmd"
+            ],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "access.channels.as_ref",
+                "call"
+              ],
+              [
+                "access.of_board",
+                "verify"
+              ],
+              [
+                "crate::grants::check",
+                "verify"
+              ],
+              [
+                "crate::grants::holds",
+                "verify"
+              ],
+              [
+                "crate::grants::refused_for",
+                "verify"
+              ],
+              [
+                "node.access",
+                "call"
+              ],
+              [
+                "node.access",
+                "verify"
+              ],
+              [
+                "verify",
+                "call"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0089"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.note.verify",
+          "implementation_evidence": [
+            [
+              "file0017",
+              184,
+              "call"
+            ],
+            [
+              "file0017",
+              45,
+              "fold_notes"
+            ],
+            [
+              "file0017",
+              120,
+              "list"
+            ],
+            [
+              "file0017",
+              114,
+              "notes_of"
+            ],
+            [
+              "file0017",
+              97,
+              "resolve"
+            ],
+            [
+              "file0017",
+              70,
+              "rotted"
+            ],
+            [
+              "file0017",
+              106,
+              "score"
+            ],
+            [
+              "file0017",
+              83,
+              "show"
+            ],
+            [
+              "file0017",
+              75,
+              "trust"
+            ],
+            [
+              "file0017",
+              159,
+              "verify"
+            ]
+          ]
+        },
+        {
+          "method": "outbox",
+          "registry_ref": "file0013",
+          "source": [
+            "file0013",
+            19,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "limit"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "entries"
+            ],
+            "observed_error_variants": [],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "node.access",
+                "call"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0053"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.outbox",
+          "implementation_evidence": [
+            [
+              "file0013",
+              88,
+              "call"
+            ]
+          ]
+        },
+        {
+          "method": "rooms",
+          "registry_ref": "file0022",
+          "source": [
+            "file0022",
+            27,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "created_by",
+              "created_ms",
+              "detail",
+              "event",
+              "last_ms",
+              "member",
+              "members",
+              "name",
+              "op",
+              "open",
+              "posts",
+              "room",
+              "rooms",
+              "subject",
+              "title"
+            ],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "access.actor.clone",
+                "op"
+              ],
+              [
+                "crate::lineage::shares",
+                "made_by_tree"
+              ],
+              [
+                "i.lineage.clone",
+                "made_by_tree"
+              ],
+              [
+                "node.access",
+                "list"
+              ],
+              [
+                "node.access",
+                "op"
+              ],
+              [
+                "node.can_receive",
+                "op"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0076"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.rooms",
+          "implementation_evidence": [
+            [
+              "file0022",
+              206,
+              "call"
+            ],
+            [
+              "file0022",
+              111,
+              "everyones"
+            ],
+            [
+              "file0022",
+              47,
+              "fold"
+            ],
+            [
+              "file0022",
+              136,
+              "has_room_for"
+            ],
+            [
+              "file0022",
+              118,
+              "list"
+            ],
+            [
+              "file0022",
+              144,
+              "made_by_tree"
+            ],
+            [
+              "file0022",
+              150,
+              "op"
+            ],
+            [
+              "file0022",
+              103,
+              "show"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0022",
+            208,
+            "call:rooms"
+          ]
+        },
+        {
+          "method": "room",
+          "registry_ref": "file0022",
+          "source": [
+            "file0022",
+            28,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "op",
+              "room",
+              "who",
+              "title",
+              "private"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "created_by",
+              "created_ms",
+              "detail",
+              "event",
+              "last_ms",
+              "member",
+              "members",
+              "name",
+              "op",
+              "open",
+              "posts",
+              "room",
+              "rooms",
+              "subject",
+              "title"
+            ],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "access.actor.clone",
+                "op"
+              ],
+              [
+                "crate::lineage::shares",
+                "made_by_tree"
+              ],
+              [
+                "i.lineage.clone",
+                "made_by_tree"
+              ],
+              [
+                "node.access",
+                "list"
+              ],
+              [
+                "node.access",
+                "op"
+              ],
+              [
+                "node.can_receive",
+                "op"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0062"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.room",
+          "implementation_evidence": [
+            [
+              "file0022",
+              206,
+              "call"
+            ],
+            [
+              "file0022",
+              111,
+              "everyones"
+            ],
+            [
+              "file0022",
+              47,
+              "fold"
+            ],
+            [
+              "file0022",
+              136,
+              "has_room_for"
+            ],
+            [
+              "file0022",
+              118,
+              "list"
+            ],
+            [
+              "file0022",
+              144,
+              "made_by_tree"
+            ],
+            [
+              "file0022",
+              150,
+              "op"
+            ],
+            [
+              "file0022",
+              103,
+              "show"
+            ]
+          ]
+        },
+        {
+          "method": "file_put",
+          "registry_ref": "file0007",
+          "source": [
+            "file0007",
+            32,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "upload",
+              "offset",
+              "total",
+              "data"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "blob",
+              "data",
+              "offset",
+              "size",
+              "staged"
+            ],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "access.channels.as_ref",
+                "get"
+              ],
+              [
+                "node.access",
+                "get"
+              ],
+              [
+                "node.access",
+                "put"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0059"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.file.put",
+          "implementation_evidence": [
+            [
+              "file0007",
+              215,
+              "call"
+            ],
+            [
+              "file0007",
+              70,
+              "dir"
+            ],
+            [
+              "file0007",
+              156,
+              "get"
+            ],
+            [
+              "file0007",
+              82,
+              "number"
+            ],
+            [
+              "file0007",
+              98,
+              "put"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0007",
+            217,
+            "call:file_put"
+          ]
+        },
+        {
+          "method": "file_get",
+          "registry_ref": "file0007",
+          "source": [
+            "file0007",
+            33,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "blob",
+              "offset",
+              "limit"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "data",
+              "deleted",
+              "detail",
+              "event",
+              "offset",
+              "shredded",
+              "size",
+              "subject"
+            ],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "access.channels.as_ref",
+                "get"
+              ],
+              [
+                "access.of_board",
+                "delete"
+              ],
+              [
+                "crate::grants::check",
+                "delete"
+              ],
+              [
+                "crate::grants::holds",
+                "delete"
+              ],
+              [
+                "crate::grants::refused_for",
+                "delete"
+              ],
+              [
+                "crate::rooms::may_read",
+                "reaching"
+              ],
+              [
+                "node.access",
+                "delete"
+              ],
+              [
+                "node.access",
+                "get"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0060"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.file.get",
+          "implementation_evidence": [
+            [
+              "file0007",
+              215,
+              "call"
+            ],
+            [
+              "file0007",
+              168,
+              "delete"
+            ],
+            [
+              "file0007",
+              89,
+              "deleted"
+            ],
+            [
+              "file0007",
+              70,
+              "dir"
+            ],
+            [
+              "file0007",
+              156,
+              "get"
+            ],
+            [
+              "file0007",
+              39,
+              "is_hex"
+            ],
+            [
+              "file0007",
+              82,
+              "number"
+            ],
+            [
+              "file0007",
+              146,
+              "reaching"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0007",
+            218,
+            "call:file_get"
+          ]
+        },
+        {
+          "method": "file_delete",
+          "registry_ref": "file0007",
+          "source": [
+            "file0007",
+            34,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "handle"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "blob",
+              "data",
+              "deleted",
+              "detail",
+              "event",
+              "offset",
+              "shredded",
+              "size",
+              "staged",
+              "subject"
+            ],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "access.channels.as_ref",
+                "get"
+              ],
+              [
+                "access.of_board",
+                "delete"
+              ],
+              [
+                "crate::grants::check",
+                "delete"
+              ],
+              [
+                "crate::grants::holds",
+                "delete"
+              ],
+              [
+                "crate::grants::refused_for",
+                "delete"
+              ],
+              [
+                "crate::rooms::may_read",
+                "reaching"
+              ],
+              [
+                "node.access",
+                "delete"
+              ],
+              [
+                "node.access",
+                "get"
+              ],
+              [
+                "node.access",
+                "put"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0061"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.file.delete",
+          "implementation_evidence": [
+            [
+              "file0007",
+              215,
+              "call"
+            ],
+            [
+              "file0007",
+              168,
+              "delete"
+            ],
+            [
+              "file0007",
+              89,
+              "deleted"
+            ],
+            [
+              "file0007",
+              70,
+              "dir"
+            ],
+            [
+              "file0007",
+              156,
+              "get"
+            ],
+            [
+              "file0007",
+              39,
+              "is_hex"
+            ],
+            [
+              "file0007",
+              82,
+              "number"
+            ],
+            [
+              "file0007",
+              98,
+              "put"
+            ],
+            [
+              "file0007",
+              146,
+              "reaching"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "segment": "board_delivery_subscriptions_and_links",
+      "source_paths": [
+        "app/poolhouse-node/src/subs.rs",
+        "app/poolhouse-node/src/links.rs",
+        "app/poolhouse-node/src/api.rs",
+        "src/poolhouse/board/public.py"
+      ],
+      "retained_methods": [
+        "subscribe",
+        "unsubscribe",
+        "subs",
+        "link",
+        "unlink",
+        "links"
+      ],
+      "required_shapes": "inbox/digest/silent durable delivery policy separate from ephemeral watch, exact scoped link grants and revocation/current channel checks",
+      "status": "not implemented in catalog leaf",
+      "retained_node_inventory_rows": [
+        {
+          "method": "links",
+          "registry_ref": "file0001",
+          "source": [
+            "file0001",
+            23,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [],
+            "observed_error_variants": [],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "node.access",
+                "dispatch"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0046"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.links",
+          "implementation_evidence": [
+            [
+              "file0001",
+              208,
+              "dispatch"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0001",
+            244,
+            "dispatch:links"
+          ]
+        },
+        {
+          "method": "link",
+          "registry_ref": "file0001",
+          "source": [
+            "file0001",
+            28,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "to",
+              "channels",
+              "mode"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "detail",
+              "event",
+              "subject"
+            ],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "access.actor.clone",
+                "link"
+              ],
+              [
+                "crate::poolapi::require",
+                "link"
+              ],
+              [
+                "node.access",
+                "link"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0045"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.link",
+          "implementation_evidence": [
+            [
+              "file0001",
+              208,
+              "dispatch"
+            ],
+            [
+              "file0001",
+              136,
+              "link"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0001",
+            221,
+            "dispatch:link"
+          ]
+        },
+        {
+          "method": "unlink",
+          "registry_ref": "file0001",
+          "source": [
+            "file0001",
+            29,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "id"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "detail",
+              "event",
+              "subject"
+            ],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "access.actor.clone",
+                "link"
+              ],
+              [
+                "crate::poolapi::require",
+                "link"
+              ],
+              [
+                "node.access",
+                "link"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0044"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.unlink",
+          "implementation_evidence": [
+            [
+              "file0001",
+              208,
+              "dispatch"
+            ],
+            [
+              "file0001",
+              136,
+              "link"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0001",
+            221,
+            "dispatch:unlink"
+          ]
+        },
+        {
+          "method": "subscribe",
+          "registry_ref": "file0026",
+          "source": [
+            "file0026",
+            31,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "stype",
+              "target",
+              "mode",
+              "force"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "mode",
+              "target",
+              "type"
+            ],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "access.actor.clone",
+                "subscribe"
+              ],
+              [
+                "crate::rooms::may_read",
+                "check_target"
+              ],
+              [
+                "node.access",
+                "subscribe"
+              ],
+              [
+                "node.can_receive",
+                "check_target"
+              ],
+              [
+                "node.can_receive",
+                "make_room"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0063"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "current": "stores caller delivery subscription settings; does not itself open a streaming connection",
+            "evidence": [
+              [
+                "file0026",
+                null,
+                "call"
+              ]
+            ]
+          },
+          "proposed_operation": "node.subscribe",
+          "implementation_evidence": [
+            [
+              "file0026",
+              272,
+              "call"
+            ],
+            [
+              "file0026",
+              153,
+              "check_target"
+            ],
+            [
+              "file0026",
+              179,
+              "make_room"
+            ],
+            [
+              "file0026",
+              68,
+              "of"
+            ],
+            [
+              "file0026",
+              64,
+              "save"
+            ],
+            [
+              "file0026",
+              202,
+              "subscribe"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0026",
+            274,
+            "call:subscribe"
+          ]
+        },
+        {
+          "method": "unsubscribe",
+          "registry_ref": "file0026",
+          "source": [
+            "file0026",
+            32,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "stype",
+              "target"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "mode",
+              "removed",
+              "stype",
+              "subs",
+              "target",
+              "type"
+            ],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "access.actor.clone",
+                "subscribe"
+              ],
+              [
+                "access.actor.clone",
+                "unsubscribe"
+              ],
+              [
+                "crate::rooms::may_read",
+                "check_target"
+              ],
+              [
+                "node.access",
+                "call"
+              ],
+              [
+                "node.access",
+                "subscribe"
+              ],
+              [
+                "node.access",
+                "unsubscribe"
+              ],
+              [
+                "node.can_receive",
+                "check_target"
+              ],
+              [
+                "node.can_receive",
+                "make_room"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0064"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "current": "removes caller delivery subscription settings",
+            "evidence": [
+              [
+                "file0026",
+                null,
+                "call"
+              ]
+            ]
+          },
+          "proposed_operation": "node.unsubscribe",
+          "implementation_evidence": [
+            [
+              "file0026",
+              272,
+              "call"
+            ],
+            [
+              "file0026",
+              153,
+              "check_target"
+            ],
+            [
+              "file0026",
+              179,
+              "make_room"
+            ],
+            [
+              "file0026",
+              68,
+              "of"
+            ],
+            [
+              "file0026",
+              64,
+              "save"
+            ],
+            [
+              "file0026",
+              202,
+              "subscribe"
+            ],
+            [
+              "file0026",
+              248,
+              "unsubscribe"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0026",
+            275,
+            "call:unsubscribe"
+          ]
+        },
+        {
+          "method": "subs",
+          "registry_ref": "file0026",
+          "source": [
+            "file0026",
+            33,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "mode",
+              "removed",
+              "stype",
+              "subs",
+              "target",
+              "type"
+            ],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "access.actor.clone",
+                "subscribe"
+              ],
+              [
+                "access.actor.clone",
+                "unsubscribe"
+              ],
+              [
+                "crate::rooms::may_read",
+                "check_target"
+              ],
+              [
+                "node.access",
+                "call"
+              ],
+              [
+                "node.access",
+                "subscribe"
+              ],
+              [
+                "node.access",
+                "unsubscribe"
+              ],
+              [
+                "node.can_receive",
+                "check_target"
+              ],
+              [
+                "node.can_receive",
+                "make_room"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0077"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "current": "lists caller stored subscriptions",
+            "evidence": [
+              [
+                "file0026",
+                null,
+                "call"
+              ]
+            ]
+          },
+          "proposed_operation": "node.subs",
+          "implementation_evidence": [
+            [
+              "file0026",
+              272,
+              "call"
+            ],
+            [
+              "file0026",
+              153,
+              "check_target"
+            ],
+            [
+              "file0026",
+              179,
+              "make_room"
+            ],
+            [
+              "file0026",
+              68,
+              "of"
+            ],
+            [
+              "file0026",
+              64,
+              "save"
+            ],
+            [
+              "file0026",
+              202,
+              "subscribe"
+            ],
+            [
+              "file0026",
+              248,
+              "unsubscribe"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "segment": "board_tasks_and_claims",
+      "source_paths": [
+        "app/poolhouse-node/src/tasks/calls.rs",
+        "app/poolhouse-node/src/claims.rs",
+        "src/poolhouse/board/tasks.py",
+        "src/poolhouse/board/public.py",
+        "src/poolhouse/workspace/task_cli.py"
+      ],
+      "retained_methods": [
+        "task_create",
+        "task_list",
+        "task_get",
+        "task_watch",
+        "task_assign",
+        "task_claim",
+        "task_beat",
+        "task_checkpoint",
+        "task_submit",
+        "task_review",
+        "task_block",
+        "task_ready",
+        "task_mode",
+        "task_scope",
+        "task_record",
+        "task_complete",
+        "task_watchers",
+        "task_admit",
+        "claim",
+        "reserve",
+        "release",
+        "claims"
+      ],
+      "required_shapes": "task input/outcomes/dependencies/ownership/cancellation/attribution and claims; existing agents.task execution is not full board lifecycle",
+      "status": "not implemented in catalog leaf",
+      "retained_node_inventory_rows": [
+        {
+          "method": "claim",
+          "registry_ref": "file0003",
+          "source": [
+            "file0003",
+            18,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "kind",
+              "key",
+              "ttl_s",
+              "pid",
+              "local"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "changed",
+              "claim",
+              "expires_in_s",
+              "expiring_soon",
+              "key",
+              "kind",
+              "lease",
+              "owner",
+              "pid",
+              "since_ms"
+            ],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [
+              [
+                "file0003",
+                null,
+                "call / claim / take / reserve / release"
+              ]
+            ],
+            "observed_local_calls": [
+              [
+                "node.access",
+                "claim"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0066",
+            "call0122"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.claim",
+          "implementation_evidence": [
+            [
+              "file0003",
+              258,
+              "call"
+            ],
+            [
+              "file0003",
+              95,
+              "claim"
+            ],
+            [
+              "file0003",
+              45,
+              "held_as"
+            ],
+            [
+              "file0003",
+              53,
+              "mine"
+            ],
+            [
+              "file0003",
+              58,
+              "show"
+            ],
+            [
+              "file0003",
+              68,
+              "take"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0003",
+            260,
+            "call:claim"
+          ]
+        },
+        {
+          "method": "reserve",
+          "registry_ref": "file0003",
+          "source": [
+            "file0003",
+            19,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "resources",
+              "ttl_s",
+              "pid",
+              "local"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "changed",
+              "claim",
+              "claims",
+              "expires_in_s",
+              "expiring_soon",
+              "key",
+              "kind",
+              "lease",
+              "owner",
+              "pid",
+              "since_ms"
+            ],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [
+              [
+                "file0003",
+                null,
+                "call / claim / take / reserve / release"
+              ]
+            ],
+            "observed_local_calls": [
+              [
+                "node.access",
+                "reserve"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0067"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.reserve",
+          "implementation_evidence": [
+            [
+              "file0003",
+              258,
+              "call"
+            ],
+            [
+              "file0003",
+              139,
+              "give_back"
+            ],
+            [
+              "file0003",
+              126,
+              "held"
+            ],
+            [
+              "file0003",
+              45,
+              "held_as"
+            ],
+            [
+              "file0003",
+              131,
+              "in_the_way"
+            ],
+            [
+              "file0003",
+              53,
+              "mine"
+            ],
+            [
+              "file0003",
+              151,
+              "reserve"
+            ],
+            [
+              "file0003",
+              58,
+              "show"
+            ],
+            [
+              "file0003",
+              68,
+              "take"
+            ],
+            [
+              "file0003",
+              166,
+              "take_all"
+            ],
+            [
+              "file0003",
+              105,
+              "wanted"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0003",
+            261,
+            "call:reserve"
+          ]
+        },
+        {
+          "method": "release",
+          "registry_ref": "file0003",
+          "source": [
+            "file0003",
+            20,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "kind",
+              "key",
+              "held_by"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "claims",
+              "expires_in_s",
+              "expiring_soon",
+              "key",
+              "kind",
+              "lease",
+              "owner",
+              "pid",
+              "released",
+              "since_ms"
+            ],
+            "observed_error_variants": [
+              "Denied"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [
+              [
+                "file0003",
+                null,
+                "call / claim / take / reserve / release"
+              ]
+            ],
+            "observed_local_calls": [
+              [
+                "access.channels.as_ref",
+                "claims"
+              ],
+              [
+                "node.access",
+                "claims"
+              ],
+              [
+                "node.access",
+                "release"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0080",
+            "call0124",
+            "call0125"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.release",
+          "implementation_evidence": [
+            [
+              "file0003",
+              258,
+              "call"
+            ],
+            [
+              "file0003",
+              223,
+              "claims"
+            ],
+            [
+              "file0003",
+              45,
+              "held_as"
+            ],
+            [
+              "file0003",
+              53,
+              "mine"
+            ],
+            [
+              "file0003",
+              198,
+              "release"
+            ],
+            [
+              "file0003",
+              187,
+              "releasing_for"
+            ],
+            [
+              "file0003",
+              58,
+              "show"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0003",
+            262,
+            "call:release"
+          ]
+        },
+        {
+          "method": "claims",
+          "registry_ref": "file0003",
+          "source": [
+            "file0003",
+            21,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "kind"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "changed",
+              "claim",
+              "claims",
+              "expires_in_s",
+              "expiring_soon",
+              "key",
+              "kind",
+              "lease",
+              "owner",
+              "pid",
+              "released",
+              "since_ms"
+            ],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [
+              [
+                "file0003",
+                null,
+                "call / claim / take / reserve / release"
+              ]
+            ],
+            "observed_local_calls": [
+              [
+                "access.channels.as_ref",
+                "claims"
+              ],
+              [
+                "node.access",
+                "claim"
+              ],
+              [
+                "node.access",
+                "claims"
+              ],
+              [
+                "node.access",
+                "release"
+              ],
+              [
+                "node.access",
+                "reserve"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0090"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.claims",
+          "implementation_evidence": [
+            [
+              "file0003",
+              258,
+              "call"
+            ],
+            [
+              "file0003",
+              95,
+              "claim"
+            ],
+            [
+              "file0003",
+              223,
+              "claims"
+            ],
+            [
+              "file0003",
+              139,
+              "give_back"
+            ],
+            [
+              "file0003",
+              126,
+              "held"
+            ],
+            [
+              "file0003",
+              45,
+              "held_as"
+            ],
+            [
+              "file0003",
+              131,
+              "in_the_way"
+            ],
+            [
+              "file0003",
+              53,
+              "mine"
+            ],
+            [
+              "file0003",
+              198,
+              "release"
+            ],
+            [
+              "file0003",
+              187,
+              "releasing_for"
+            ],
+            [
+              "file0003",
+              151,
+              "reserve"
+            ],
+            [
+              "file0003",
+              58,
+              "show"
+            ],
+            [
+              "file0003",
+              68,
+              "take"
+            ],
+            [
+              "file0003",
+              166,
+              "take_all"
+            ],
+            [
+              "file0003",
+              105,
+              "wanted"
+            ]
+          ]
+        },
+        {
+          "method": "task_create",
+          "registry_ref": "file0029",
+          "source": [
+            "file0029",
+            38,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "title",
+              "description",
+              "acceptance",
+              "deps",
+              "capabilities",
+              "limits",
+              "source_key",
+              "assignees",
+              "reviewers"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "id",
+              "seq"
+            ],
+            "observed_error_variants": [
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "node.access",
+                "member"
+              ],
+              [
+                "node.can_receive",
+                "create"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0092"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.task.create",
+          "implementation_evidence": [
+            [
+              "file0028",
+              558,
+              "call"
+            ],
+            [
+              "file0028",
+              194,
+              "create"
+            ],
+            [
+              "file0028",
+              30,
+              "member"
+            ],
+            [
+              "file0028",
+              175,
+              "shown"
+            ],
+            [
+              "file0028",
+              180,
+              "spec_of"
+            ],
+            [
+              "file0028",
+              55,
+              "write"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0028",
+            560,
+            "call:task_create"
+          ]
+        },
+        {
+          "method": "task_list",
+          "registry_ref": "file0029",
+          "source": [
+            "file0029",
+            39,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "foreign_ignored",
+              "metrics",
+              "mode",
+              "overview",
+              "tasks"
+            ],
+            "observed_error_variants": [],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "node.access",
+                "member"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0093"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.task.list",
+          "implementation_evidence": [
+            [
+              "file0028",
+              558,
+              "call"
+            ],
+            [
+              "file0028",
+              30,
+              "member"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0028",
+            561,
+            "call:task_list"
+          ]
+        },
+        {
+          "method": "task_get",
+          "registry_ref": "file0029",
+          "source": [
+            "file0029",
+            40,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "task"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [],
+            "observed_error_variants": [],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "node.access",
+                "member"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0094"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.task.get",
+          "implementation_evidence": [
+            [
+              "file0028",
+              558,
+              "call"
+            ],
+            [
+              "file0028",
+              30,
+              "member"
+            ],
+            [
+              "file0028",
+              175,
+              "shown"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0028",
+            568,
+            "call:task_get"
+          ]
+        },
+        {
+          "method": "task_beat",
+          "registry_ref": "file0029",
+          "source": [
+            "file0029",
+            40,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "task"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [],
+            "observed_error_variants": [
+              "Denied"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "node.access",
+                "member"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0100"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.task.beat",
+          "implementation_evidence": [
+            [
+              "file0028",
+              328,
+              "beat"
+            ],
+            [
+              "file0028",
+              558,
+              "call"
+            ],
+            [
+              "file0028",
+              138,
+              "grant_live"
+            ],
+            [
+              "file0028",
+              30,
+              "member"
+            ],
+            [
+              "file0028",
+              175,
+              "shown"
+            ],
+            [
+              "file0028",
+              157,
+              "working"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0028",
+            591,
+            "call:task_beat"
+          ]
+        },
+        {
+          "method": "task_watchers",
+          "registry_ref": "file0029",
+          "source": [
+            "file0029",
+            40,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "task"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "watchers"
+            ],
+            "observed_error_variants": [],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "node.access",
+                "member"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0112"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "evidence": "method/handler exposes read, wait or subscription state; cursor, disconnect and replay guarantees require handler review"
+          },
+          "proposed_operation": "node.task.watchers",
+          "implementation_evidence": [
+            [
+              "file0028",
+              558,
+              "call"
+            ],
+            [
+              "file0028",
+              30,
+              "member"
+            ],
+            [
+              "file0028",
+              81,
+              "watchers"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0028",
+            581,
+            "call:task_watchers"
+          ]
+        },
+        {
+          "method": "task_admit",
+          "registry_ref": "file0029",
+          "source": [
+            "file0029",
+            40,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "task"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [],
+            "observed_error_variants": [
+              "Denied"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "node.access",
+                "member"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0095"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.task.admit",
+          "implementation_evidence": [
+            [
+              "file0028",
+              558,
+              "call"
+            ],
+            [
+              "file0028",
+              138,
+              "grant_live"
+            ],
+            [
+              "file0028",
+              30,
+              "member"
+            ],
+            [
+              "file0028",
+              175,
+              "shown"
+            ],
+            [
+              "file0028",
+              157,
+              "working"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0028",
+            572,
+            "call:task_admit"
+          ]
+        },
+        {
+          "method": "task_watch",
+          "registry_ref": "file0029",
+          "source": [
+            "file0029",
+            41,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "task",
+              "on",
+              "who"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "body",
+              "from",
+              "id",
+              "seq",
+              "subject",
+              "subscribed",
+              "subscriber",
+              "task",
+              "to",
+              "type"
+            ],
+            "observed_error_variants": [
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "node.access",
+                "member"
+              ],
+              [
+                "node.can_receive",
+                "tell"
+              ],
+              [
+                "parent_of",
+                "watch"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0096",
+            "call0097"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "evidence": "method/handler exposes read, wait or subscription state; cursor, disconnect and replay guarantees require handler review"
+          },
+          "proposed_operation": "node.task.watch",
+          "implementation_evidence": [
+            [
+              "file0028",
+              558,
+              "call"
+            ],
+            [
+              "file0028",
+              30,
+              "member"
+            ],
+            [
+              "file0028",
+              39,
+              "parent_of"
+            ],
+            [
+              "file0028",
+              63,
+              "step"
+            ],
+            [
+              "file0028",
+              70,
+              "tell"
+            ],
+            [
+              "file0028",
+              221,
+              "watch"
+            ],
+            [
+              "file0028",
+              81,
+              "watchers"
+            ],
+            [
+              "file0028",
+              55,
+              "write"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0028",
+            588,
+            "call:task_watch"
+          ]
+        },
+        {
+          "method": "task_assign",
+          "registry_ref": "file0029",
+          "source": [
+            "file0029",
+            42,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "task",
+              "worker",
+              "lease",
+              "capabilities"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "allocation_id",
+              "capabilities",
+              "id",
+              "lease_id",
+              "model",
+              "owner",
+              "person_assigned",
+              "seq",
+              "task",
+              "worker"
+            ],
+            "observed_error_variants": [],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "crate::grants::check",
+                "exercised"
+              ],
+              [
+                "crate::grants::holds",
+                "person"
+              ],
+              [
+                "crate::grants::refused_for",
+                "assign"
+              ],
+              [
+                "eligible",
+                "assign"
+              ],
+              [
+                "node.access",
+                "member"
+              ],
+              [
+                "parent_of",
+                "assign"
+              ],
+              [
+                "parent_of",
+                "eligible"
+              ],
+              [
+                "person",
+                "eligible"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0098"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.task.assign",
+          "implementation_evidence": [
+            [
+              "file0028",
+              245,
+              "assign"
+            ],
+            [
+              "file0028",
+              558,
+              "call"
+            ],
+            [
+              "file0028",
+              108,
+              "eligible"
+            ],
+            [
+              "file0028",
+              50,
+              "exercised"
+            ],
+            [
+              "file0028",
+              30,
+              "member"
+            ],
+            [
+              "file0028",
+              39,
+              "parent_of"
+            ],
+            [
+              "file0028",
+              44,
+              "person"
+            ],
+            [
+              "file0028",
+              63,
+              "step"
+            ],
+            [
+              "file0028",
+              55,
+              "write"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0028",
+            589,
+            "call:task_assign"
+          ]
+        },
+        {
+          "method": "task_claim",
+          "registry_ref": "file0029",
+          "source": [
+            "file0029",
+            43,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "task",
+              "assign"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "body",
+              "from",
+              "id",
+              "seq",
+              "subject",
+              "to",
+              "type"
+            ],
+            "observed_error_variants": [
+              "Denied"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "crate::grants::holds",
+                "person"
+              ],
+              [
+                "eligible",
+                "claim"
+              ],
+              [
+                "node.access",
+                "member"
+              ],
+              [
+                "node.can_receive",
+                "tell"
+              ],
+              [
+                "parent_of",
+                "eligible"
+              ],
+              [
+                "person",
+                "eligible"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0099"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.task.claim",
+          "implementation_evidence": [
+            [
+              "file0028",
+              86,
+              "announce"
+            ],
+            [
+              "file0028",
+              558,
+              "call"
+            ],
+            [
+              "file0028",
+              283,
+              "claim"
+            ],
+            [
+              "file0028",
+              147,
+              "drop_lease"
+            ],
+            [
+              "file0028",
+              108,
+              "eligible"
+            ],
+            [
+              "file0028",
+              138,
+              "grant_live"
+            ],
+            [
+              "file0028",
+              30,
+              "member"
+            ],
+            [
+              "file0028",
+              39,
+              "parent_of"
+            ],
+            [
+              "file0028",
+              44,
+              "person"
+            ],
+            [
+              "file0028",
+              63,
+              "step"
+            ],
+            [
+              "file0028",
+              70,
+              "tell"
+            ],
+            [
+              "file0028",
+              81,
+              "watchers"
+            ],
+            [
+              "file0028",
+              55,
+              "write"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0028",
+            590,
+            "call:task_claim"
+          ]
+        },
+        {
+          "method": "task_checkpoint",
+          "registry_ref": "file0029",
+          "source": [
+            "file0029",
+            44,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "task",
+              "summary",
+              "progress",
+              "commit",
+              "environment"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "id",
+              "seq"
+            ],
+            "observed_error_variants": [
+              "Denied"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "node.access",
+                "member"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0101"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.task.checkpoint",
+          "implementation_evidence": [
+            [
+              "file0028",
+              558,
+              "call"
+            ],
+            [
+              "file0028",
+              338,
+              "checkpoint"
+            ],
+            [
+              "file0028",
+              138,
+              "grant_live"
+            ],
+            [
+              "file0028",
+              30,
+              "member"
+            ],
+            [
+              "file0028",
+              63,
+              "step"
+            ],
+            [
+              "file0028",
+              157,
+              "working"
+            ],
+            [
+              "file0028",
+              55,
+              "write"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0028",
+            592,
+            "call:task_checkpoint"
+          ]
+        },
+        {
+          "method": "task_submit",
+          "registry_ref": "file0029",
+          "source": [
+            "file0029",
+            45,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "task",
+              "artifacts",
+              "checks",
+              "usage",
+              "summary",
+              "provenance"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "actor",
+              "actor_source",
+              "alias",
+              "alias_source",
+              "allocation_id",
+              "body",
+              "claimed_model",
+              "device_id",
+              "from",
+              "id",
+              "model",
+              "model_source",
+              "runtime",
+              "runtime_source",
+              "seq",
+              "subject",
+              "to",
+              "type"
+            ],
+            "observed_error_variants": [
+              "Denied"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "node.access",
+                "member"
+              ],
+              [
+                "node.can_receive",
+                "tell"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0102"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.task.submit",
+          "implementation_evidence": [
+            [
+              "file0028",
+              86,
+              "announce"
+            ],
+            [
+              "file0028",
+              558,
+              "call"
+            ],
+            [
+              "file0028",
+              147,
+              "drop_lease"
+            ],
+            [
+              "file0028",
+              138,
+              "grant_live"
+            ],
+            [
+              "file0028",
+              30,
+              "member"
+            ],
+            [
+              "file0028",
+              63,
+              "step"
+            ],
+            [
+              "file0028",
+              353,
+              "submit"
+            ],
+            [
+              "file0028",
+              70,
+              "tell"
+            ],
+            [
+              "file0028",
+              81,
+              "watchers"
+            ],
+            [
+              "file0028",
+              157,
+              "working"
+            ],
+            [
+              "file0028",
+              55,
+              "write"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0028",
+            593,
+            "call:task_submit"
+          ]
+        },
+        {
+          "method": "task_review",
+          "registry_ref": "file0029",
+          "source": [
+            "file0029",
+            46,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "task",
+              "accepted",
+              "outcome",
+              "reason",
+              "checks",
+              "verified_usage",
+              "quality",
+              "review"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "body",
+              "from",
+              "id",
+              "seq",
+              "subject",
+              "to",
+              "type"
+            ],
+            "observed_error_variants": [
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "crate::grants::check",
+                "exercised"
+              ],
+              [
+                "crate::grants::refused_for",
+                "review"
+              ],
+              [
+                "node.access",
+                "member"
+              ],
+              [
+                "node.can_receive",
+                "tell"
+              ],
+              [
+                "parent_of",
+                "qualifies"
+              ],
+              [
+                "qualifies",
+                "review"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0103"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.task.review",
+          "implementation_evidence": [
+            [
+              "file0028",
+              86,
+              "announce"
+            ],
+            [
+              "file0028",
+              558,
+              "call"
+            ],
+            [
+              "file0028",
+              50,
+              "exercised"
+            ],
+            [
+              "file0028",
+              30,
+              "member"
+            ],
+            [
+              "file0028",
+              103,
+              "mode_of"
+            ],
+            [
+              "file0028",
+              39,
+              "parent_of"
+            ],
+            [
+              "file0028",
+              121,
+              "qualifies"
+            ],
+            [
+              "file0028",
+              376,
+              "review"
+            ],
+            [
+              "file0028",
+              63,
+              "step"
+            ],
+            [
+              "file0028",
+              70,
+              "tell"
+            ],
+            [
+              "file0028",
+              81,
+              "watchers"
+            ],
+            [
+              "file0028",
+              55,
+              "write"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0028",
+            594,
+            "call:task_review"
+          ],
+          "restriction_note": "tasks/calls.rs review -> qualifies/member/exercised checks live board session, worker exclusion and open/strict reviewer/person-grant rules; retain these restrictions through the canonical operation design"
+        },
+        {
+          "method": "task_block",
+          "registry_ref": "file0029",
+          "source": [
+            "file0029",
+            47,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "task",
+              "reason",
+              "kind"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "body",
+              "from",
+              "id",
+              "seq",
+              "subject",
+              "to",
+              "type"
+            ],
+            "observed_error_variants": [],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "crate::grants::check",
+                "exercised"
+              ],
+              [
+                "crate::grants::refused_for",
+                "block"
+              ],
+              [
+                "node.access",
+                "member"
+              ],
+              [
+                "node.can_receive",
+                "tell"
+              ],
+              [
+                "parent_of",
+                "block"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0104"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.task.block",
+          "implementation_evidence": [
+            [
+              "file0028",
+              86,
+              "announce"
+            ],
+            [
+              "file0028",
+              413,
+              "block"
+            ],
+            [
+              "file0028",
+              558,
+              "call"
+            ],
+            [
+              "file0028",
+              147,
+              "drop_lease"
+            ],
+            [
+              "file0028",
+              50,
+              "exercised"
+            ],
+            [
+              "file0028",
+              30,
+              "member"
+            ],
+            [
+              "file0028",
+              39,
+              "parent_of"
+            ],
+            [
+              "file0028",
+              175,
+              "shown"
+            ],
+            [
+              "file0028",
+              63,
+              "step"
+            ],
+            [
+              "file0028",
+              70,
+              "tell"
+            ],
+            [
+              "file0028",
+              81,
+              "watchers"
+            ],
+            [
+              "file0028",
+              55,
+              "write"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0028",
+            595,
+            "call:task_block"
+          ]
+        },
+        {
+          "method": "task_ready",
+          "registry_ref": "file0029",
+          "source": [
+            "file0029",
+            48,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "task",
+              "reason",
+              "expired"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "body",
+              "from",
+              "id",
+              "seq",
+              "subject",
+              "to",
+              "type"
+            ],
+            "observed_error_variants": [],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "crate::grants::check",
+                "exercised"
+              ],
+              [
+                "crate::grants::refused_for",
+                "ready"
+              ],
+              [
+                "node.access",
+                "member"
+              ],
+              [
+                "node.can_receive",
+                "tell"
+              ],
+              [
+                "parent_of",
+                "qualifies"
+              ],
+              [
+                "qualifies",
+                "ready"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0105",
+            "call0106"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.task.ready",
+          "implementation_evidence": [
+            [
+              "file0028",
+              86,
+              "announce"
+            ],
+            [
+              "file0028",
+              558,
+              "call"
+            ],
+            [
+              "file0028",
+              147,
+              "drop_lease"
+            ],
+            [
+              "file0028",
+              50,
+              "exercised"
+            ],
+            [
+              "file0028",
+              30,
+              "member"
+            ],
+            [
+              "file0028",
+              103,
+              "mode_of"
+            ],
+            [
+              "file0028",
+              39,
+              "parent_of"
+            ],
+            [
+              "file0028",
+              121,
+              "qualifies"
+            ],
+            [
+              "file0028",
+              436,
+              "ready"
+            ],
+            [
+              "file0028",
+              175,
+              "shown"
+            ],
+            [
+              "file0028",
+              63,
+              "step"
+            ],
+            [
+              "file0028",
+              70,
+              "tell"
+            ],
+            [
+              "file0028",
+              81,
+              "watchers"
+            ],
+            [
+              "file0028",
+              55,
+              "write"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0028",
+            596,
+            "call:task_ready"
+          ]
+        },
+        {
+          "method": "task_mode",
+          "registry_ref": "file0029",
+          "source": [
+            "file0029",
+            49,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "mode"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "body",
+              "detail",
+              "event",
+              "from",
+              "id",
+              "mode",
+              "seq",
+              "set_by",
+              "subject",
+              "to",
+              "type"
+            ],
+            "observed_error_variants": [
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "crate::grants::check",
+                "exercised"
+              ],
+              [
+                "crate::grants::refused_for",
+                "host_step"
+              ],
+              [
+                "crate::grants::refused_for",
+                "mode"
+              ],
+              [
+                "crate::grants::refused_for",
+                "review"
+              ],
+              [
+                "node.access",
+                "member"
+              ],
+              [
+                "node.can_receive",
+                "tell"
+              ],
+              [
+                "parent_of",
+                "landing_hand"
+              ],
+              [
+                "parent_of",
+                "sponsors"
+              ],
+              [
+                "qualifies",
+                "review"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0107",
+            "call0108"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.task.mode",
+          "implementation_evidence": [
+            [
+              "file0028",
+              86,
+              "announce"
+            ],
+            [
+              "file0028",
+              558,
+              "call"
+            ],
+            [
+              "file0028",
+              50,
+              "exercised"
+            ],
+            [
+              "file0028",
+              529,
+              "host_step"
+            ],
+            [
+              "file0028",
+              488,
+              "landing_hand"
+            ],
+            [
+              "file0028",
+              30,
+              "member"
+            ],
+            [
+              "file0028",
+              468,
+              "mode"
+            ],
+            [
+              "file0028",
+              39,
+              "parent_of"
+            ],
+            [
+              "file0028",
+              376,
+              "review"
+            ],
+            [
+              "file0028",
+              175,
+              "shown"
+            ],
+            [
+              "file0028",
+              516,
+              "sponsors"
+            ],
+            [
+              "file0028",
+              499,
+              "standing"
+            ],
+            [
+              "file0028",
+              63,
+              "step"
+            ],
+            [
+              "file0028",
+              70,
+              "tell"
+            ],
+            [
+              "file0028",
+              81,
+              "watchers"
+            ],
+            [
+              "file0028",
+              55,
+              "write"
+            ]
+          ],
+          "dispatch_arm": [
+            "file0028",
+            597,
+            "call:task_mode"
+          ]
+        },
+        {
+          "method": "task_scope",
+          "registry_ref": "file0029",
+          "source": [
+            "file0029",
+            50,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "task",
+              "scope"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "actor",
+              "actor_source",
+              "alias",
+              "alias_source",
+              "allocation_id",
+              "body",
+              "capabilities",
+              "claimed_model",
+              "detail",
+              "device_id",
+              "event",
+              "foreign_ignored",
+              "from",
+              "id",
+              "lease_id",
+              "metrics",
+              "mode",
+              "model",
+              "model_source",
+              "overview",
+              "owner",
+              "person_assigned",
+              "runtime",
+              "runtime_source",
+              "seq",
+              "set_by",
+              "subject",
+              "subscribed",
+              "subscriber",
+              "task",
+              "tasks",
+              "to",
+              "type",
+              "watchers",
+              "worker"
+            ],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "crate::grants::check",
+                "exercised"
+              ],
+              [
+                "crate::grants::holds",
+                "person"
+              ],
+              [
+                "crate::grants::refused_for",
+                "assign"
+              ],
+              [
+                "crate::grants::refused_for",
+                "block"
+              ],
+              [
+                "crate::grants::refused_for",
+                "host_step"
+              ],
+              [
+                "crate::grants::refused_for",
+                "mode"
+              ],
+              [
+                "crate::grants::refused_for",
+                "ready"
+              ],
+              [
+                "crate::grants::refused_for",
+                "review"
+              ],
+              [
+                "eligible",
+                "assign"
+              ],
+              [
+                "eligible",
+                "claim"
+              ],
+              [
+                "node.access",
+                "member"
+              ],
+              [
+                "node.can_receive",
+                "create"
+              ],
+              [
+                "node.can_receive",
+                "tell"
+              ],
+              [
+                "parent_of",
+                "assign"
+              ],
+              [
+                "parent_of",
+                "block"
+              ],
+              [
+                "parent_of",
+                "eligible"
+              ],
+              [
+                "parent_of",
+                "landing_hand"
+              ],
+              [
+                "parent_of",
+                "qualifies"
+              ],
+              [
+                "parent_of",
+                "sponsors"
+              ],
+              [
+                "parent_of",
+                "watch"
+              ],
+              [
+                "person",
+                "eligible"
+              ],
+              [
+                "qualifies",
+                "ready"
+              ],
+              [
+                "qualifies",
+                "review"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0109"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.task.scope",
+          "implementation_evidence": [
+            [
+              "file0028",
+              86,
+              "announce"
+            ],
+            [
+              "file0028",
+              245,
+              "assign"
+            ],
+            [
+              "file0028",
+              328,
+              "beat"
+            ],
+            [
+              "file0028",
+              413,
+              "block"
+            ],
+            [
+              "file0028",
+              558,
+              "call"
+            ],
+            [
+              "file0028",
+              338,
+              "checkpoint"
+            ],
+            [
+              "file0028",
+              283,
+              "claim"
+            ],
+            [
+              "file0028",
+              194,
+              "create"
+            ],
+            [
+              "file0028",
+              147,
+              "drop_lease"
+            ],
+            [
+              "file0028",
+              108,
+              "eligible"
+            ],
+            [
+              "file0028",
+              50,
+              "exercised"
+            ],
+            [
+              "file0028",
+              138,
+              "grant_live"
+            ],
+            [
+              "file0028",
+              529,
+              "host_step"
+            ],
+            [
+              "file0028",
+              488,
+              "landing_hand"
+            ],
+            [
+              "file0028",
+              30,
+              "member"
+            ],
+            [
+              "file0028",
+              468,
+              "mode"
+            ],
+            [
+              "file0028",
+              103,
+              "mode_of"
+            ],
+            [
+              "file0028",
+              39,
+              "parent_of"
+            ],
+            [
+              "file0028",
+              44,
+              "person"
+            ],
+            [
+              "file0028",
+              121,
+              "qualifies"
+            ],
+            [
+              "file0028",
+              436,
+              "ready"
+            ],
+            [
+              "file0028",
+              376,
+              "review"
+            ],
+            [
+              "file0028",
+              175,
+              "shown"
+            ],
+            [
+              "file0028",
+              180,
+              "spec_of"
+            ],
+            [
+              "file0028",
+              516,
+              "sponsors"
+            ],
+            [
+              "file0028",
+              499,
+              "standing"
+            ],
+            [
+              "file0028",
+              63,
+              "step"
+            ],
+            [
+              "file0028",
+              353,
+              "submit"
+            ],
+            [
+              "file0028",
+              70,
+              "tell"
+            ],
+            [
+              "file0028",
+              221,
+              "watch"
+            ],
+            [
+              "file0028",
+              81,
+              "watchers"
+            ],
+            [
+              "file0028",
+              157,
+              "working"
+            ],
+            [
+              "file0028",
+              55,
+              "write"
+            ]
+          ]
+        },
+        {
+          "method": "task_record",
+          "registry_ref": "file0029",
+          "source": [
+            "file0029",
+            51,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "task",
+              "kind",
+              "rid",
+              "record"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "actor",
+              "actor_source",
+              "alias",
+              "alias_source",
+              "allocation_id",
+              "body",
+              "capabilities",
+              "claimed_model",
+              "detail",
+              "device_id",
+              "event",
+              "foreign_ignored",
+              "from",
+              "id",
+              "lease_id",
+              "metrics",
+              "mode",
+              "model",
+              "model_source",
+              "overview",
+              "owner",
+              "person_assigned",
+              "runtime",
+              "runtime_source",
+              "seq",
+              "set_by",
+              "subject",
+              "subscribed",
+              "subscriber",
+              "task",
+              "tasks",
+              "to",
+              "type",
+              "watchers",
+              "worker"
+            ],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "crate::grants::check",
+                "exercised"
+              ],
+              [
+                "crate::grants::holds",
+                "person"
+              ],
+              [
+                "crate::grants::refused_for",
+                "assign"
+              ],
+              [
+                "crate::grants::refused_for",
+                "block"
+              ],
+              [
+                "crate::grants::refused_for",
+                "host_step"
+              ],
+              [
+                "crate::grants::refused_for",
+                "mode"
+              ],
+              [
+                "crate::grants::refused_for",
+                "ready"
+              ],
+              [
+                "crate::grants::refused_for",
+                "review"
+              ],
+              [
+                "eligible",
+                "assign"
+              ],
+              [
+                "eligible",
+                "claim"
+              ],
+              [
+                "node.access",
+                "member"
+              ],
+              [
+                "node.can_receive",
+                "create"
+              ],
+              [
+                "node.can_receive",
+                "tell"
+              ],
+              [
+                "parent_of",
+                "assign"
+              ],
+              [
+                "parent_of",
+                "block"
+              ],
+              [
+                "parent_of",
+                "eligible"
+              ],
+              [
+                "parent_of",
+                "landing_hand"
+              ],
+              [
+                "parent_of",
+                "qualifies"
+              ],
+              [
+                "parent_of",
+                "sponsors"
+              ],
+              [
+                "parent_of",
+                "watch"
+              ],
+              [
+                "person",
+                "eligible"
+              ],
+              [
+                "qualifies",
+                "ready"
+              ],
+              [
+                "qualifies",
+                "review"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0110"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.task.record",
+          "implementation_evidence": [
+            [
+              "file0028",
+              86,
+              "announce"
+            ],
+            [
+              "file0028",
+              245,
+              "assign"
+            ],
+            [
+              "file0028",
+              328,
+              "beat"
+            ],
+            [
+              "file0028",
+              413,
+              "block"
+            ],
+            [
+              "file0028",
+              558,
+              "call"
+            ],
+            [
+              "file0028",
+              338,
+              "checkpoint"
+            ],
+            [
+              "file0028",
+              283,
+              "claim"
+            ],
+            [
+              "file0028",
+              194,
+              "create"
+            ],
+            [
+              "file0028",
+              147,
+              "drop_lease"
+            ],
+            [
+              "file0028",
+              108,
+              "eligible"
+            ],
+            [
+              "file0028",
+              50,
+              "exercised"
+            ],
+            [
+              "file0028",
+              138,
+              "grant_live"
+            ],
+            [
+              "file0028",
+              529,
+              "host_step"
+            ],
+            [
+              "file0028",
+              488,
+              "landing_hand"
+            ],
+            [
+              "file0028",
+              30,
+              "member"
+            ],
+            [
+              "file0028",
+              468,
+              "mode"
+            ],
+            [
+              "file0028",
+              103,
+              "mode_of"
+            ],
+            [
+              "file0028",
+              39,
+              "parent_of"
+            ],
+            [
+              "file0028",
+              44,
+              "person"
+            ],
+            [
+              "file0028",
+              121,
+              "qualifies"
+            ],
+            [
+              "file0028",
+              436,
+              "ready"
+            ],
+            [
+              "file0028",
+              376,
+              "review"
+            ],
+            [
+              "file0028",
+              175,
+              "shown"
+            ],
+            [
+              "file0028",
+              180,
+              "spec_of"
+            ],
+            [
+              "file0028",
+              516,
+              "sponsors"
+            ],
+            [
+              "file0028",
+              499,
+              "standing"
+            ],
+            [
+              "file0028",
+              63,
+              "step"
+            ],
+            [
+              "file0028",
+              353,
+              "submit"
+            ],
+            [
+              "file0028",
+              70,
+              "tell"
+            ],
+            [
+              "file0028",
+              221,
+              "watch"
+            ],
+            [
+              "file0028",
+              81,
+              "watchers"
+            ],
+            [
+              "file0028",
+              157,
+              "working"
+            ],
+            [
+              "file0028",
+              55,
+              "write"
+            ]
+          ]
+        },
+        {
+          "method": "task_complete",
+          "registry_ref": "file0029",
+          "source": [
+            "file0029",
+            52,
+            "params_for"
+          ],
+          "current_request": {
+            "allowed_params": [
+              "task",
+              "landed"
+            ],
+            "envelope_profile": "node_json_v1",
+            "requiredness_types": "unresolved beyond handler validation"
+          },
+          "current_result": {
+            "profile": "node_json_v1",
+            "json_keys_seen_in_dispatch_or_helpers": [
+              "actor",
+              "actor_source",
+              "alias",
+              "alias_source",
+              "allocation_id",
+              "body",
+              "capabilities",
+              "claimed_model",
+              "detail",
+              "device_id",
+              "event",
+              "foreign_ignored",
+              "from",
+              "id",
+              "lease_id",
+              "metrics",
+              "mode",
+              "model",
+              "model_source",
+              "overview",
+              "owner",
+              "person_assigned",
+              "runtime",
+              "runtime_source",
+              "seq",
+              "set_by",
+              "subject",
+              "subscribed",
+              "subscriber",
+              "task",
+              "tasks",
+              "to",
+              "type",
+              "watchers",
+              "worker"
+            ],
+            "observed_error_variants": [
+              "Denied",
+              "Invalid"
+            ],
+            "method_payload_shape": "unresolved"
+          },
+          "authorization": {
+            "profile": "node_local_socket_and_handler",
+            "evidence": [],
+            "observed_local_calls": [
+              [
+                "crate::grants::check",
+                "exercised"
+              ],
+              [
+                "crate::grants::holds",
+                "person"
+              ],
+              [
+                "crate::grants::refused_for",
+                "assign"
+              ],
+              [
+                "crate::grants::refused_for",
+                "block"
+              ],
+              [
+                "crate::grants::refused_for",
+                "host_step"
+              ],
+              [
+                "crate::grants::refused_for",
+                "mode"
+              ],
+              [
+                "crate::grants::refused_for",
+                "ready"
+              ],
+              [
+                "crate::grants::refused_for",
+                "review"
+              ],
+              [
+                "eligible",
+                "assign"
+              ],
+              [
+                "eligible",
+                "claim"
+              ],
+              [
+                "node.access",
+                "member"
+              ],
+              [
+                "node.can_receive",
+                "create"
+              ],
+              [
+                "node.can_receive",
+                "tell"
+              ],
+              [
+                "parent_of",
+                "assign"
+              ],
+              [
+                "parent_of",
+                "block"
+              ],
+              [
+                "parent_of",
+                "eligible"
+              ],
+              [
+                "parent_of",
+                "landing_hand"
+              ],
+              [
+                "parent_of",
+                "qualifies"
+              ],
+              [
+                "parent_of",
+                "sponsors"
+              ],
+              [
+                "parent_of",
+                "watch"
+              ],
+              [
+                "person",
+                "eligible"
+              ],
+              [
+                "qualifies",
+                "ready"
+              ],
+              [
+                "qualifies",
+                "review"
+              ]
+            ],
+            "precision": {
+              "note_ref": "note012"
+            }
+          },
+          "callers": [
+            "call0111"
+          ],
+          "cancellation": {
+            "unresolved": "no universal cancellation inferred"
+          },
+          "subscription": {
+            "unresolved": {
+              "note_ref": "note011"
+            }
+          },
+          "proposed_operation": "node.task.complete",
+          "implementation_evidence": [
+            [
+              "file0028",
+              86,
+              "announce"
+            ],
+            [
+              "file0028",
+              245,
+              "assign"
+            ],
+            [
+              "file0028",
+              328,
+              "beat"
+            ],
+            [
+              "file0028",
+              413,
+              "block"
+            ],
+            [
+              "file0028",
+              558,
+              "call"
+            ],
+            [
+              "file0028",
+              338,
+              "checkpoint"
+            ],
+            [
+              "file0028",
+              283,
+              "claim"
+            ],
+            [
+              "file0028",
+              194,
+              "create"
+            ],
+            [
+              "file0028",
+              147,
+              "drop_lease"
+            ],
+            [
+              "file0028",
+              108,
+              "eligible"
+            ],
+            [
+              "file0028",
+              50,
+              "exercised"
+            ],
+            [
+              "file0028",
+              138,
+              "grant_live"
+            ],
+            [
+              "file0028",
+              529,
+              "host_step"
+            ],
+            [
+              "file0028",
+              488,
+              "landing_hand"
+            ],
+            [
+              "file0028",
+              30,
+              "member"
+            ],
+            [
+              "file0028",
+              468,
+              "mode"
+            ],
+            [
+              "file0028",
+              103,
+              "mode_of"
+            ],
+            [
+              "file0028",
+              39,
+              "parent_of"
+            ],
+            [
+              "file0028",
+              44,
+              "person"
+            ],
+            [
+              "file0028",
+              121,
+              "qualifies"
+            ],
+            [
+              "file0028",
+              436,
+              "ready"
+            ],
+            [
+              "file0028",
+              376,
+              "review"
+            ],
+            [
+              "file0028",
+              175,
+              "shown"
+            ],
+            [
+              "file0028",
+              180,
+              "spec_of"
+            ],
+            [
+              "file0028",
+              516,
+              "sponsors"
+            ],
+            [
+              "file0028",
+              499,
+              "standing"
+            ],
+            [
+              "file0028",
+              63,
+              "step"
+            ],
+            [
+              "file0028",
+              353,
+              "submit"
+            ],
+            [
+              "file0028",
+              70,
+              "tell"
+            ],
+            [
+              "file0028",
+              221,
+              "watch"
+            ],
+            [
+              "file0028",
+              81,
+              "watchers"
+            ],
+            [
+              "file0028",
+              157,
+              "working"
+            ],
+            [
+              "file0028",
+              55,
+              "write"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "segment": "project_source_publication_and_checkout",
+      "source_paths": [
+        "src/poolhouse/fleet/projects.py",
+        "src/poolhouse/fleet/project_source.py",
+        "src/poolhouse/fleet/project_client.py",
+        "src/poolhouse/fleet/project_enrollment.py",
+        "src/poolhouse/fleet/web/components/projects-view.html"
+      ],
+      "retained_methods": [
+        "/ui/projects shared catalogue",
+        "share candidate",
+        "project checkout",
+        "catalogue/source transfer"
+      ],
+      "required_shapes": "artifact/digest and authenticated membership/current-scope publication/transfer authority; selecting local project never shares it",
+      "status": "not implemented in catalog leaf"
+    },
+    {
+      "segment": "session_identity_and_local_path_native_adapter",
+      "source_paths": [
+        "app/poolhouse-node/src/node.rs",
+        "src/poolhouse/board/public.py",
+        "src/poolhouse/board/session.py",
+        "app/src-tauri/src/coding_project.rs"
+      ],
+      "retained_methods": [
+        "register",
+        "ph.board.register",
+        "manual cwd/path source location convenience",
+        "native folder chooser"
+      ],
+      "required_shapes": "actual authenticated session identity and private native directory attachments; no public owner/principal flag, path cap invention or implicit project creation from connection",
+      "status": "not implemented in catalog leaf"
+    }
+  ],
+  "unresolved_gaps": [
+    "No maintained caller/SDK/native implementation consumes this canonical project fragment yet; alias/identity/source-custody mapping, scoped permission baselines and all adapter/runtime proofs remain incomplete.",
+    "Native directory attachment/import, ancestor/target hold and per-platform file identity are declaration requirements only; raw path input is not silently dropped but its actual SDK/native implementation is not supplied here.",
+    "Exact creation filesystem plan/receipt/cancel recovery and atomic project-board/selection commit need runtime engineering; schemas do not prove on-disk atomicity or safe Git ownership.",
+    "Legacy Rust/Python project identities and pool/board association models differ; no automatic authority migration or remote source trust import is authorized.",
+    "All exact deferred segments remain retained requirements; this catalog leaf does not complete shared project sources, board content/task domains or K acceptance."
+  ],
+  "independent_design_review": {
+    "reviewer": "approval_attack_review",
+    "result": "approved before edits with eight directory-attachment/TOCTOU/authority/custody/creation/selection/source/pagination constraints incorporated",
+    "concrete_review": "approval_attack_review approved actual73-type25-operation leaf after truthful pending/outcome_unknown creation selection and explicit native-location/direct origin corrections; eight pre-edit constraints checked; declaration only, no tests/runtime"
+  }
+}
