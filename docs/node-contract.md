@@ -449,7 +449,7 @@ This checkpoint defines contracts and matching SDKs. Runtime staging, bounded
 semantic parsing, endpoint adapters, complete vendor compatibility and actual
 model/resource scheduling remain implementation obligations; K is still pending.
 
-The approval proposal now carries paired signer-key and signature formats for
+The approval proposal now carries matching signer-key and signature formats for
 Ed25519 and P256, with distinct ordinary DER and low-S DER policies. Signer
 observations retain the descriptor-derived public key. These are untrusted data
 shapes: byte-length validation neither parses DER nor verifies a signature.

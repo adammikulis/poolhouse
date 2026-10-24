@@ -608,7 +608,7 @@
       "All existing purpose transcripts and original integer millisecond fields remain exact. General shared unsigned decimal-string/UnixMicros wire representation is not historical signing input. Preserve domain prefixes and newline/NUL, original canonicalization, key/decision binding and issuer/subject role distinctions.",
       "Native certificate currently verifies P256 subject descriptor through a separately admitted Ed25519 issuer. Issuer algorithm/root identity is independent from subject hardware/custody/presence assurance. Descriptor signature is not proof the platform can issue its subject algorithm or that root admission exists.",
       "Protected helper derives exact message internally, selects admitted algorithm for purpose without caller negotiation, and never signs caller arbitrary digests. Hash-taking ECDSA API receives SHA256(M) exactly once inside protected boundary; avoid double hashing. Raw/DER/provider conversions are trusted adapter duties, never public authority.",
-      "No public operation accepts ApprovalSignatureMaterial or exposes arbitrary sign/decide. The added family describes paired key/signature transcript-format evidence only. All prior roots thresholds holds cancellation distrust first-complete observations fatigue distinct-people and generation constraints remain in force."
+      "No public operation accepts ApprovalSignatureMaterial or exposes arbitrary sign/decide. The added family describes matching key/signature transcript-format evidence only. All prior roots thresholds holds cancellation distrust first-complete observations fatigue distinct-people and generation constraints remain in force."
     ],
     "transcripts": [
       {
