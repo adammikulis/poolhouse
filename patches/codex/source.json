@@ -14,6 +14,10 @@
     {
       "path": "0003-retain-original-native-occurrences.patch",
       "sha256": "d9509ba0eee0715d2bed658bf72f8e7314ff2845728ebbe6bbc2d6f3f16f49bf"
+    },
+    {
+      "path": "0004-retain-actual-native-actor-context.patch",
+      "sha256": "4bb99f601acad2fc31baf6c7d4263ddf6770815709861a55f5051b9203da9fcb"
     }
   ],
   "rust_toolchain": "1.99.1",
@@ -157,5 +161,94 @@
     "independent_review": "approved actual source",
     "patch_application_tree": "70dbe07a9dae5c328fea58dc917bb9cbdcb5bd6f",
     "working_directory": "codex-rs"
+  },
+  "actor_validation": {
+    "source_base": "122c29d9dec6eaa83d57cf85f4084a3712a09deb",
+    "source_commit": "a50cb4ae3ed4665f18bbd6c3c2eaf8fd2eb76fd1",
+    "source_tree": "64168edc27ec59e7d8d9fb9a4654a0352e1aec1b",
+    "patch_sha256s": [
+      "fa8b66bdc178b9649fc1f30dd9d65a6f626536f4f6d0bf1f3e4ee43fcd4ac022",
+      "8ab2fdc96d34ab5c8e5acf51b9b4addeb3a6c879b1a3dc76636669ab53200578",
+      "d9509ba0eee0715d2bed658bf72f8e7314ff2845728ebbe6bbc2d6f3f16f49bf",
+      "4bb99f601acad2fc31baf6c7d4263ddf6770815709861a55f5051b9203da9fcb"
+    ],
+    "working_directory": "codex-rs",
+    "unit_test_command": [
+      "cargo",
+      "+1.99.1",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "codex-hooks",
+      "--lib",
+      "native_",
+      "--",
+      "--test-threads=1"
+    ],
+    "unit_tests_passed": 24,
+    "core_tests_compile": {
+      "command": [
+        "cargo",
+        "+1.99.1",
+        "check",
+        "--locked",
+        "--offline",
+        "-p",
+        "codex-core",
+        "--tests"
+      ],
+      "exit_code": 0,
+      "tests_executed": false
+    },
+    "core_library_compile": {
+      "command": [
+        "cargo",
+        "+1.99.1",
+        "check",
+        "--locked",
+        "--offline",
+        "-p",
+        "codex-core",
+        "--lib"
+      ],
+      "exit_code": 0,
+      "tests_executed": false
+    },
+    "mutations": [
+      {
+        "change": "Remove full ancestor liveness check",
+        "selector": "native_actor::tests::ancestor_closing_blocks_birth_even_with_live_immediate_parent",
+        "exit": 101,
+        "killed": true
+      },
+      {
+        "change": "Remove actual Birth GRAPH acquisition",
+        "selector": "native_actor::tests::birth_and_closing_share_the_actual_linearization_gate",
+        "exit": 101,
+        "killed": true
+      }
+    ],
+    "restored_source_commit": "a50cb4ae3ed4665f18bbd6c3c2eaf8fd2eb76fd1",
+    "restored_unit_tests_passed": 24,
+    "canonical_event_id": "source-uuid-16-bytes || nonzero-serial-big-endian-8-bytes || zero-8-bytes",
+    "canonical_launch_id": "source-uuid-16-bytes || zero-16-bytes",
+    "actor_context_prefix": "CDXCTX01",
+    "scope": "Dormant source identity data only; no exporter, platform adapter, Node proof issuer, bridge, launch protection or installed acceptance.",
+    "limitations": [
+      "Same-retained-instance native Resume remains unissued; upstream history Resume is a data label.",
+      "Sender-only or public internal/legacy-subagent ID-only paths without retained owner association preserve ordinary behavior as NativeContextUnavailable.",
+      "Unavailable cannot yield a parent, canonical actor context or original Birth occurrence; future protected exporter must fail closed.",
+      "Watcher notifications are parent observations, not original child Stop occurrences or native admission.",
+      "Legacy serialized notification fragments retain no source provenance; decoding cannot reconstruct NativeSubject.",
+      "Source PID/epoch/retained actor identity are not OS authentication or Node admission proof.",
+      "No H/K/platform/installed/cutover acceptance claim."
+    ],
+    "independent_review": "approved actual source; integration independently reproduced all four patches",
+    "patch_application_tree": "64168edc27ec59e7d8d9fb9a4654a0352e1aec1b",
+    "bundle_requires": "122c29d9dec6eaa83d57cf85f4084a3712a09deb",
+    "bundle_sha256": "f949991d0eb37fd54d15e6b45acccee612a0b0aa9904d3c2b4e0f22ef12466a6",
+    "installed_proof": false,
+    "node_admission_proof": false
   }
 }
