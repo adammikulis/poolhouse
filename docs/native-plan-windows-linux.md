@@ -85,6 +85,13 @@ Ordinary agent commands select credentials automatically from authenticated nati
 names do not select another session's credential or grant authority. Names remain display and lookup labels.
 Change the maintained launcher, hook producer, command consumers, and their tests together; do not spoof context.
 
+The Mac [native producer occurrence request](native-plan-macos.md#native-producer-occurrence-request) pins the maintained
+Codex source and existing two patches: allocate/retain original occurrence identity above all handler fanout, including
+Stop's two dispatcher calls. Never substitute per-handler/dispatch IDs or actor-scoped turn/call/configuration IDs;
+retransmissions keep the original ID. Upstream Resume is not admission proof. Common-owner private issuance,
+deduplication and birth/resume generation binding must be defined before context export; this source finding adds no
+canonical wire or adapter and accepts no H/K checkpoint.
+
 Independent read-only review found these concrete prerequisites:
 
 - context() can select an unrelated explicit child when ambient context equals the event root; SubagentStop skips

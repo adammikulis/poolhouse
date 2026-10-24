@@ -106,6 +106,21 @@ with safe supported installation/reload and preserved lineage, trust and refusal
 child hooks. Trust for the root's `Stop` hooks remains unavailable; H remains unfinished. No completion or trust record
 is fabricated.
 
+### Native producer occurrence request
+
+Source-only follow-up pins Codex `6aaac694803004a63c6f393d153c96d22521a6b9` with the existing
+[0001/0002 patches](../patches/codex/README.md). Retain each original native event occurrence ID above all handler
+fanout: `codex-rs/hooks/src/events/post_tool_use.rs:71–103` constructs one event dispatch, while
+`events/stop.rs:196–218` dispatches matched handlers and executor cleanup separately for the same Stop occurrence.
+Neither `engine/dispatcher.rs:117–177` nor `engine/command_runner.rs:216–250` may allocate a new occurrence per dispatch
+or handler. Actor-scoped turn/tool-call IDs and `engine/mod.rs:184` configuration run IDs are not launch-global event IDs;
+retransmissions must retain the original occurrence ID. No such issuer or private node transport exists in this producer.
+`core/src/session/session.rs:917–926,1994–2004` distinguishes new/resumed identity and startup/resume/fork/clear sources,
+but an upstream Resume enum or persisted root/parent metadata is not admission proof. Before exporting context, the
+common owner must define private producer issuance, occurrence deduplication and authenticated birth/resume binding to
+installation, launch and session generations. Retained actual actor/root/direct-parent context remains internal; no
+environment trust, root fallback, canonical wire, platform adapter or H/K acceptance is added by this request.
+
 K sender refinement requested from `ipc-sender-feasibility.json`: bind opaque evidence to the exact ingress message,
 kernel AUID/EUID/ASID/PID/PIDversion, dynamic code and verified lineage. Connection metadata or PID lookup cannot
 substitute; review public Mach trailer ingress where needed. Actual hostile IPC proof remains pending; no wire is added.
