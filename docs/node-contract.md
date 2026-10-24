@@ -506,3 +506,11 @@ are lookup data, with actual native directory attachment and custody still
 required. Six semantic Python modules keep these declarations separate from the
 shared identity scalars. Board content, tasks and source sharing remain separate
 retained requirements; these catalog declarations implement no filesystem work.
+
+The Studio worker proposal adds 263 private data types covering the 31 retained
+catalog kinds and 22 worker operation/result variants. Node-only/import/immediate
+operations remain distinct from worker execution. Output reservations precede
+computation; returned output candidates cannot become frozen input authority.
+Source defaults, fractional metadata, backend-specific training fields and
+nonfinite observations remain explicit. These declarations supply no engine,
+parser, private transport or execution/provenance implementation.

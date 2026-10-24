@@ -40,7 +40,7 @@ def test_rust_consumer_can_use_public_contract_but_not_private_data(native_targe
     code, _, errors = node.launch(command, tmp_path, node.environment, time.monotonic() + RUN_S)
     assert code == 0, errors
     private = ["SessionLease", "StateStoreBinding", "ProcessObservation", "AuditToken",
-               "WorkerNodeFrame", "WorkerDecisionOptions", "WorkerNullableInput"]
+               "WorkerNodeFrame", "WorkerDecisionOptions", "WorkerNullableInput", "StudioWorkerOutputReservation"]
     source.write_text("use poolhouse_node::contract::{" + ",".join(private) + "};\n")
     code, _, errors = node.launch(command, tmp_path, node.environment, time.monotonic() + RUN_S)
     diagnostics = [json.loads(line) for line in errors.splitlines()]
