@@ -10,7 +10,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from poolhouse import agent_hooks
-from poolhouse.board import client, credentials, place, session
+from poolhouse.board import client, credentials, session
 from poolhouse.errors import Denied
 from poolhouse.log import say
 from poolhouse.workspace import (
@@ -18,6 +18,7 @@ from poolhouse.workspace import (
     codex_native,
     device_metadata,
     limits,
+    notification_context,
     nudge,
     worktree_lifecycle,
 )
@@ -82,14 +83,16 @@ def actor_for(event: dict, node: client.Client, board: str, child: str | None, a
     return actor
 
 
-def context(event: dict, assigned: str, node: client.Client | None = None) -> tuple[str, session.Session, Path]:
+def context(event: dict, assigned: str, node: client.Client | None = None) -> tuple[str, session.Session, Path] | None:
     stage = event.get('hook_event_name')
     if stage not in EVENTS:
         raise ValueError('unsupported lifecycle event')
     identifier = native_id(event.get('session_id'))
     cwd = Path(str(event.get('cwd') or Path.cwd()))
     node = node or client.Client(autostart=False, timeout=2.0)
-    board = place.resolve(node, cwd)
+    board = notification_context.existing_board(node, cwd)
+    if not board:
+        return None
     child = event.get('agent_id')
     if child is not None:
         child = native_id(child)
@@ -110,7 +113,10 @@ def context(event: dict, assigned: str, node: client.Client | None = None) -> tu
 
 def handle(event: dict, assigned: str = '', *, node: client.Client | None = None,
            emit: Callable[[str], None] | None = None) -> dict:
-    stage, actor, _cwd = context(event, assigned, node)
+    resolved = context(event, assigned, node)
+    if resolved is None:
+        return {}
+    stage, actor, _cwd = resolved
     child = event.get('agent_id')
     if stage == 'SubagentStop' and not child:
         raise ValueError('subagent stop has no native child identifier')

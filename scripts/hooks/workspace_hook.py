@@ -12,7 +12,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
 from poolhouse import lan, worktreerules
+from poolhouse.board import client
 from poolhouse.guard.secrets import env_secrets, redact
+from poolhouse.workspace.notification_context import existing_board
 
 
 def redacted(reason: object) -> str:
@@ -91,7 +93,16 @@ def refresh_runtime(stage: str, checkout: Path | None = None, agent: str = '') -
 
 
 def session_environment(value: dict, stage: str) -> dict | None:
+    try:
+        node = client.Client(autostart=False, timeout=2.0)
+        board = existing_board(node, Path(str(value.get('cwd') or Path.cwd())))
+    except (OSError, ValueError, client.NodeError) as error:
+        warning(stage, error)
+        return None
+    if not board:
+        return None
     environment = dict(os.environ)
+    environment['POOLHOUSE_BOARD'] = board
     for name in ('POOLHOUSE_SESSION_ID', 'POOLHOUSE_SESSION_HARNESS', 'POOLHOUSE_WORKSPACE_AGENT', 'POOLHOUSE_SUBAGENT'):
         environment.pop(name, None)
     session = value.get('session_id')
@@ -113,9 +124,18 @@ def agent_name(native_id: str, cwd: str = '') -> str:
     if not native_id:
         return ''
     try:
-        from poolhouse.board import session
-        return session.find('claude-code', native_id, cwd=Path(cwd or Path.cwd()))
-    except (ImportError, OSError, ValueError, RuntimeError, LookupError, KeyError) as error:
+        node = client.Client(autostart=False, timeout=2.0)
+        board = existing_board(node, Path(cwd or Path.cwd()))
+        if not board:
+            return ''
+        try:
+            return str(node.call('session_lookup', board, harness='claude-code', session=native_id)['name'])
+        except client.Denied as error:
+            absent = 'no session of that harness and id is registered on this board'
+            if str(error) in (absent, f'denied: {absent}') and not error.grant:
+                return ''
+            raise
+    except (ImportError, OSError, ValueError, RuntimeError, LookupError, KeyError, client.NodeError) as error:
         warning('lookup', error)
         return ''
 
@@ -127,9 +147,11 @@ def name_session(environment: dict, model: str, event: dict | None = None) -> st
         warning('SessionStart', 'no native session id; the session cannot be given its own name')
         return ''
     try:
-        from poolhouse.board import client, place, session as board_session
-        node = client.Client()
-        board = place.resolve(node, Path(str((event or {}).get('cwd') or Path.cwd())))
+        from poolhouse.board import session as board_session
+        node = client.Client(autostart=False, timeout=2.0)
+        board = existing_board(node, Path(str((event or {}).get('cwd') or Path.cwd())))
+        if not board:
+            return ''
         name = board_session.register(node, board, board_session.Native(model, 'claude-code', session)).name
     except (ImportError, OSError, ValueError, RuntimeError, LookupError, client.NodeError) as error:
         warning('SessionStart', error)

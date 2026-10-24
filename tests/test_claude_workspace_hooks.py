@@ -23,6 +23,10 @@ HOOKS = ROOT / 'scripts/hooks'
 
 @pytest.fixture
 def commands(tmp_path, monkeypatch, workspace_node):
+    owner = workspace_node.member('notification-project-owner')
+    workspace_node.allow(owner, 'source_add')
+    workspace_node.client.call('project_add', '', owner.token, id=workspace_node.board,
+                               kind='folder', path=str(tmp_path))
     directory = tmp_path / 'bin'
     directory.mkdir()
     executable = directory / 'poolhouse-workspace'
@@ -184,6 +188,10 @@ def test_actual_hooks_record_claimed_metadata_and_authenticated_subagent_brief(t
     monkeypatch.delenv('POOLHOUSE_AGENT', raising=False)
     monkeypatch.setenv('PYTHONPATH', str(ROOT / 'src'))
     monkeypatch.setenv('POOLHOUSE_HOOK_STATE', str(tmp_path / 'hookstate'))
+    owner = workspace_node.member('notification-project-owner')
+    workspace_node.allow(owner, 'source_add')
+    workspace_node.client.call('project_add', '', owner.token, id=workspace_node.board,
+                               kind='folder', path=str(tmp_path))
     repository = tmp_path / 'project'
     git.run(['init', '-b', 'development', str(repository)])
     git.run(['-c', 'user.name=Hook fixture', '-c', 'user.email=fixture@example.invalid',
