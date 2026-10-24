@@ -264,13 +264,13 @@ impl Net {
                 let eligible = node.members.can_join_other() && b.pool.len() == 32 && b.project == node.members.project && crate::netif::on_segment(b.addr);
                 drop(node);
                 let waiting = self.refused.lock().is_ok_and(|r| r.get(&b.fingerprint).is_some_and(|at| at.elapsed() < REFUSED_FOR));
-                let admitted = self.activity.new_effect(Source::Beacon);
+                let admitted = self.activity.admit_effect(Source::Beacon,EffectFlow::Join);
                 if eligible && !waiting && admitted.is_ok() && self.joining.lock().is_ok_and(|mut j| j.insert(b.fingerprint.clone())) {
                     let admitted = admitted.expect("checked admission");
                     let (net, fp) = (self.clone(), b.fingerprint.clone());
                     std::thread::spawn(move || {
-                        let _admitted = admitted; // Owned before spawn; retained through result and cleanup.
-                        let result = net.join_open(addr, &fp);
+                        let admitted = admitted; // Owned before spawn; retained through result and cleanup.
+                        let result = net.join_open_admitted(addr, &fp, &admitted);
                         net.record_join(&fp, addr, &result);
                         if result.is_err() {
                             if let Ok(mut r) = net.refused.lock() {
@@ -290,7 +290,11 @@ impl Net {
     /// Join the pool of the device at ``addr`` whose certificate has fingerprint ``expect``,
     /// under its policy `open`; the device is enrolled here and this one there.
     pub fn join_open(&self, addr: SocketAddr, expect: &str) -> Result<()> {
-        let _effect = self.activity.new_effect(Source::Network).map_err(activity_error)?;
+        let effect=self.activity.admit_effect(Source::Network,EffectFlow::Join).map_err(activity_error)?;
+        self.join_open_admitted(addr,expect,&effect)
+    }
+    fn join_open_admitted(&self, addr: SocketAddr, expect: &str, effect: &AdmittedEffect) -> Result<()> {
+        let _child=self.activity.continue_effect(effect,Source::Network,EffectFlow::Join).map_err(activity_error)?;
         if !crate::netif::on_segment(addr.ip()) {
             return Err(Error::Denied(format!("{} is not on a network this device is on; a device joins without a code only from the same network, so use a join code", addr.ip())));
         }
@@ -372,7 +376,11 @@ impl Net {
     /// device that will use the window was signed (and submitted here) before, so this device needs no signer to open it; the window
     /// still admits nothing a person's key did not sign for.
     pub fn add_device(&self, passphrase: &str, ttl_s: u64, presigned: bool) -> Result<Value> {
-        let _effect = self.activity.new_effect(Source::Network).map_err(activity_error)?;
+        let effect=self.activity.admit_effect(Source::Network,EffectFlow::AddDevice).map_err(activity_error)?;
+        self.add_device_admitted(passphrase,ttl_s,presigned,&effect)
+    }
+    fn add_device_admitted(&self, passphrase: &str, ttl_s: u64, presigned: bool, effect: &AdmittedEffect) -> Result<Value> {
+        let _child=self.activity.continue_effect(effect,Source::Network,EffectFlow::AddDevice).map_err(activity_error)?;
         let code = if passphrase.is_empty() { new_code()? } else { passphrase.to_string() };
         if code.len() < 6 || code.len() > 200 {
             return Err(Error::Invalid("a passphrase is 6 to 200 characters".into()));
@@ -390,7 +398,11 @@ impl Net {
     /// Join the device at ``addr`` using its code (without one, join its pool under policy
     /// `open`, which needs its certificate fingerprint); this device must be alone in its pool.
     pub fn join_pool(&self, addr: SocketAddr, passphrase: &str, fingerprint: &str) -> Result<Value> {
-        let _effect = self.activity.new_effect(Source::Network).map_err(activity_error)?;
+        let effect=self.activity.admit_effect(Source::Network,EffectFlow::Join).map_err(activity_error)?;
+        self.join_pool_admitted(addr,passphrase,fingerprint,&effect)
+    }
+    fn join_pool_admitted(&self, addr: SocketAddr, passphrase: &str, fingerprint: &str, effect: &AdmittedEffect) -> Result<Value> {
+        let _child=self.activity.continue_effect(effect,Source::Network,EffectFlow::Join).map_err(activity_error)?;
         let (alone, name) = {
             let n = tracked_node(&self.node, Source::Network)?;
             (n.members.can_join_other(), n.members.get(&self.me.fingerprint()).map(|d| d.name.clone()).unwrap_or_default())
@@ -402,7 +414,7 @@ impl Net {
             if !crate::cert::valid_fingerprint(fingerprint) {
                 return Err(Error::Invalid("without a passphrase the device is named by its fingerprint".into()));
             }
-            self.join_open(addr, fingerprint)?;
+            self.join_open_admitted(addr, fingerprint, effect)?;
             return Ok(json!({"pool": tracked_node(&self.node, Source::Network)?.members.id, "peer": fingerprint}));
         }
         let mut c = PeerClient::connect(&self.me, addr, None)?;
@@ -657,19 +669,34 @@ impl Net {
             let effect=self.activity.admit_effect(Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
             return self.sync_request_admitted(c,peer,&effect);
         }
-        let text = |k: &str| c.params.get(k).and_then(Value::as_str).unwrap_or("").to_string();
-        let number = |k: &str, d: u64| c.params.get(k).and_then(Value::as_u64).unwrap_or(d);
-        if c.method != "shard_call" {
-            let resource = if c.method == "join_pool" { text("host") } else { "*".into() };
-            let mut node = tracked_node(&self.node, Source::Network)?;
-            node.gov_tick()?;
-            authorize_from(&mut node, &c.token, peer, &c.method, &resource)?;
+        if matches!(c.method.as_str(),"add_device" | "join_pool") {
+            let flow=if c.method=="add_device" { EffectFlow::AddDevice } else { EffectFlow::Join };
+            let effect=self.activity.admit_effect(Source::Network,flow).map_err(activity_error)?;
+            return self.join_request_admitted(c,peer,&effect);
         }
-        match c.method.as_str() {
-            "add_device" => self.add_device(&text("passphrase"), number("ttl_s", 120), c.params.get("presigned") == Some(&Value::Bool(true))),
-            "join_pool" => self.join_pool(addr_of(&text("host"), number("port", 0))?, &text("passphrase"), &text("fingerprint")),
-            "shard_call" => self.shard_call(c, peer),
-            _ => Ok(json!({"reached": self.sync_once(true)?})),
+        if c.method=="shard_call" { return self.shard_call(c,peer); }
+        Err(Error::Invalid("unknown network method".into()))
+    }
+
+    fn join_request_admitted(&self, c: &Call, peer: &Peer, effect: &AdmittedEffect) -> Result<Value> {
+        let flow=match c.method.as_str() {
+            "add_device" => EffectFlow::AddDevice, "join_pool" => EffectFlow::Join,
+            _ => return Err(Error::Invalid("not a join or add operation".into())),
+        };
+        let _child=self.activity.continue_effect(effect,Source::Network,flow).map_err(activity_error)?;
+        let text=|k: &str| c.params.get(k).and_then(Value::as_str).unwrap_or("");
+        {
+            let resource=if c.method=="join_pool" { text("host") } else { "*" };
+            let mut node=tracked_node(&self.node,Source::Network)?;
+            node.gov_tick()?;
+            authorize_from(&mut node,&c.token,peer,&c.method,resource)?;
+        }
+        if c.method=="add_device" {
+            self.add_device_admitted(text("passphrase"),c.params.get("ttl_s").and_then(Value::as_u64).unwrap_or(120),
+                c.params.get("presigned")==Some(&Value::Bool(true)),effect)
+        } else {
+            self.join_pool_admitted(addr_of(text("host"),c.params.get("port").and_then(Value::as_u64).unwrap_or(0))?,
+                text("passphrase"),text("fingerprint"),effect)
         }
     }
 
@@ -774,6 +801,35 @@ mod activity_tests {
         assert!(net.sync_once(true).is_err());
         assert_eq!(net.activity.active_writer_count_for_test(),1);
         drop(effect); assert_eq!(net.activity.active_writer_count_for_test(),0);
+    }
+
+    #[test]
+    fn join_add_continuation_keeps_domain_checks_and_rejects_wrong_flow_before_effects() {
+        let owned=running(); let net=&owned.net;
+        let add=net.activity.admit_effect(Source::Network,EffectFlow::AddDevice).unwrap();
+        let join=net.activity.admit_effect(Source::Network,EffectFlow::Join).unwrap();
+        let baseline=net.add_device_admitted("valid-code",60,false,&add).unwrap_err().code().to_string();
+        net.activity.drain_for_test();
+        // Scheduling continuation preserves the normal missing-governance refusal; it grants no authority.
+        assert_eq!(net.add_device_admitted("valid-code",60,false,&add).unwrap_err().code(),baseline);
+        assert!(net.window.lock().unwrap().is_none());
+        assert_eq!(net.add_device_admitted("valid-code",60,true,&join).unwrap_err().code(),"update_pending");
+        assert!(net.window.lock().unwrap().is_none());
+        assert!(net.add_device("valid-code",60,false).is_err());
+        let addr=SocketAddr::from(([127,0,0,1],1));
+        assert_eq!(net.join_pool_admitted(addr,"","invalid",&join).unwrap_err().code(),"invalid");
+        assert_eq!(net.join_pool_admitted(addr,"","invalid",&add).unwrap_err().code(),"update_pending");
+        assert!(net.join_pool(addr,"","invalid").is_err());
+        assert_eq!(net.activity.active_writer_count_for_test(),2);
+    }
+    #[test]
+    fn join_add_root_admission_precedes_consumptive_authorization() {
+        let owned=running(); let net=&owned.net; net.activity.drain_for_test();
+        for method in ["add_device","join_pool"] {
+            let reply=net.call(&json!({"v":1,"id":1,"method":method,"token":"invalid-token","params":{}}),&Peer::none());
+            assert_eq!(reply["error"]["code"],"update_pending","{reply}");
+        }
+        assert!(net.window.lock().unwrap().is_none());
     }
 
 }
