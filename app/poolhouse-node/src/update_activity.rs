@@ -1,7 +1,7 @@
 //! Local writer accounting only. Other sources remain uncovered; no production drain
 //! controller, complete inventory, quiescence result or cutover witness exists here.
-//! Sync, Join/Add and Attach have same-operation continuation. Shard entry points
-//! still need equivalent review before any production controller can be enabled.
+//! Outgoing Sync/Join/Add/Attach/Shard calls have continuation; actual host workers,
+//! remaining writers and authenticated control still block any controller activation.
 use std::sync::{Arc, Mutex, MutexGuard};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -27,7 +27,7 @@ pub(crate) struct Writer { state: Arc<Mutex<State>>, source: Source }
 
 /// Scheduling continuation only; never a domain principal, grant or cutover proof.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum EffectFlow { Sync, AddDevice, Join, Attach, #[cfg(test)] Other }
+pub(crate) enum EffectFlow { Sync, AddDevice, Join, Attach, ShardPut, ShardStart, PeerCall, #[cfg(test)] Other }
 pub(crate) struct AdmittedEffect { writer: Writer, flow: EffectFlow, operation: u64 }
 pub(crate) struct ChildEffect<'parent> { _parent: &'parent AdmittedEffect, _writer: Writer }
 

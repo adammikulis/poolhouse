@@ -83,6 +83,18 @@ impl Drop for AttachCleanup<'_> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PeerOperation { Maintenance, Work(EffectFlow) }
+fn peer_operation(request: &Value) -> PeerOperation {
+    match request["op"].as_str() {
+        Some("shard_caps" | "shard_status" | "shard_cancel" | "hello" | "boards") => PeerOperation::Maintenance,
+        Some("shard_put") => PeerOperation::Work(EffectFlow::ShardPut),
+        Some("shard_start") => PeerOperation::Work(EffectFlow::ShardStart),
+        // vector/pull and unknown operations can write checkpoints or begin work; never maintenance by default.
+        _ => PeerOperation::Work(EffectFlow::PeerCall),
+    }
+}
+
 fn locked<T>(m: &Mutex<T>) -> Result<MutexGuard<'_, T>> {
     m.lock().map_err(|_| Error::Damaged("node poisoned".into()))
 }
@@ -599,9 +611,30 @@ impl Net {
     /// Send one request to the member ``fp``: down the connection it opened to this device when it keeps one (it cannot be dialed), else
     /// to its address.
     pub fn call_member(&self, fp: &str, addr: Option<SocketAddr>, request: &Value) -> Result<Value> {
-        let _activity = if matches!(request["op"].as_str(), Some("shard_caps" | "shard_status" | "shard_cancel" | "hello" | "boards" | "vector" | "pull")) {
-            self.activity.maintenance(Source::Network)
-        } else { self.activity.new_effect(Source::Network) }.map_err(activity_error)?;
+        match peer_operation(request) {
+            PeerOperation::Maintenance => self.call_member_maintenance(fp,addr,request),
+            PeerOperation::Work(flow) => {
+                let effect=self.activity.admit_effect(Source::Network,flow).map_err(activity_error)?;
+                self.call_member_admitted(fp,addr,request,&effect)
+            }
+        }
+    }
+    fn call_member_admitted(&self, fp: &str, addr: Option<SocketAddr>, request: &Value,
+        effect: &AdmittedEffect) -> Result<Value> {
+        let PeerOperation::Work(flow)=peer_operation(request) else {
+            return Err(Error::Invalid("a work continuation requires its original work operation".into()));
+        };
+        let _child=self.activity.continue_effect(effect,Source::Network,flow).map_err(activity_error)?;
+        self.call_member_inner(fp,addr,request)
+    }
+    fn call_member_maintenance(&self, fp: &str, addr: Option<SocketAddr>, request: &Value) -> Result<Value> {
+        if peer_operation(request)!=PeerOperation::Maintenance {
+            return Err(Error::Invalid("this operation requires new work admission".into()));
+        }
+        let _activity=self.activity.maintenance(Source::Network).map_err(activity_error)?;
+        self.call_member_inner(fp,addr,request)
+    }
+    fn call_member_inner(&self, fp: &str, addr: Option<SocketAddr>, request: &Value) -> Result<Value> {
         let link = locked(&self.reverse)?.get(fp).cloned();
         if let Some(link) = link {
             if !tracked_node(&self.node, Source::Network)?.members.is_active(fp) {
@@ -723,7 +756,6 @@ impl Net {
     /// node adds `op` and `by` (the session behind the token); the peer decides from the
     /// certificate this device shows, so neither the session nor an argument can claim another.
     fn shard_call(&self, c: &Call, peer: &Peer) -> Result<Value> {
-        let name = c.params.get("device").and_then(Value::as_str).unwrap_or("");
         let op = c.params.get("op").and_then(Value::as_str).unwrap_or("");
         let mut request = match c.params.get("args") {
             None => serde_json::Map::new(),
@@ -734,15 +766,32 @@ impl Net {
             return Err(Error::Invalid(format!("op is one of {}", shard::OPS.join(", "))));
         }
         shard::host::passable(&request)?;
-        let (fp, addr, by) = {
-            let mut node = tracked_node(&self.node, Source::Network)?;
-            let who = authorize_from(&mut node, &c.token, peer, "shard_call", name)?;
-            let (fp, addr) = self.device_named(&node, name)?;
-            (fp, addr, format!("{}/{}", who.board, who.name))
+        request.insert("op".into(),json!(op));
+        let request=Value::Object(request);
+        match peer_operation(&request) {
+            PeerOperation::Work(flow) => {
+                // Acquire before consumptive authorization; descendants borrow the same operation.
+                let effect=self.activity.admit_effect(Source::Network,flow).map_err(activity_error)?;
+                let (fp,addr,request)=self.authorized_shard_request(c,peer,request)?;
+                self.call_member_admitted(&fp,addr,&request,&effect)
+            }
+            PeerOperation::Maintenance => {
+                let _activity=self.activity.maintenance(Source::Network).map_err(activity_error)?;
+                let (fp,addr,request)=self.authorized_shard_request(c,peer,request)?;
+                self.call_member_maintenance(&fp,addr,&request)
+            }
+        }
+    }
+    fn authorized_shard_request(&self, c: &Call, peer: &Peer, mut request: Value) -> Result<(String,Option<SocketAddr>,Value)> {
+        let name=c.params.get("device").and_then(Value::as_str).unwrap_or("");
+        let (fp,addr,by)={
+            let mut node=tracked_node(&self.node,Source::Network)?;
+            let who=authorize_from(&mut node,&c.token,peer,"shard_call",name)?;
+            let (fp,addr)=self.device_named(&node,name)?;
+            (fp,addr,format!("{}/{}",who.board,who.name))
         };
-        request.insert("op".into(), json!(op));
-        request.insert("by".into(), json!(by));
-        self.call_member(&fp, addr, &Value::Object(request))
+        request["by"]=json!(by);
+        Ok((fp,addr,request))
     }
 
     /// The active member other than this device that ``name`` names, and where it was last reached.
@@ -882,6 +931,39 @@ mod activity_tests {
         let worker=net.clone();
         assert!(std::thread::spawn(move || fail_setup(&worker,&fp,parent)).join().is_err());
         assert!(net.attaching.lock().unwrap().is_empty());
+        assert_eq!(net.activity.active_writer_count_for_test(),0);
+    }
+
+    #[test]
+    fn outgoing_shard_continuation_revalidates_actual_wire_op_and_keeps_normal_peer_checks() {
+        let owned=running(); let net=&owned.net; let unknown="0".repeat(64);
+        let put=net.activity.admit_effect(Source::Network,EffectFlow::ShardPut).unwrap();
+        let generic=net.activity.admit_effect(Source::Network,EffectFlow::PeerCall).unwrap();
+        let normal=net.call_member(&unknown,None,&json!({"op":"shard_put"})).unwrap_err().code().to_string();
+        net.activity.drain_for_test();
+        assert_eq!(net.call_member_admitted(&unknown,None,&json!({"op":"shard_start"}),&put).unwrap_err().code(),"update_pending");
+        assert_eq!(net.call_member_admitted(&unknown,None,&json!({"op":"shard_put"}),&generic).unwrap_err().code(),"update_pending");
+        assert_eq!(net.call_member_admitted(&unknown,None,&json!({"op":"shard_put"}),&put).unwrap_err().code(),normal);
+        assert_eq!(net.call_member(&unknown,None,&json!({"op":"shard_put"})).unwrap_err().code(),"update_pending");
+        for op in ["shard_caps","shard_status","shard_cancel"] {
+            assert_eq!(net.call_member(&unknown,None,&json!({"op":op})).unwrap_err().code(),normal);
+        }
+        for op in ["vector","pull","unknown"] {
+            assert_eq!(net.call_member(&unknown,None,&json!({"op":op})).unwrap_err().code(),"update_pending");
+            assert!(net.call_member_maintenance(&unknown,None,&json!({"op":op})).is_err());
+        }
+        assert_eq!(net.activity.active_writer_count_for_test(),2);
+    }
+    #[test]
+    fn outgoing_shard_work_admits_before_authorization_while_cancel_keeps_authentication() {
+        let owned=running(); let net=&owned.net; net.activity.drain_for_test();
+        for op in ["shard_put","shard_start","shard_cancel","shard_status","shard_caps"] {
+            let reply=net.call(&json!({"v":1,"id":1,"method":"shard_call","token":"invalid-token",
+                "params":{"device":"unknown","op":op,"args":{}}}),&Peer::none());
+            assert_eq!(reply["ok"],false);
+            if matches!(op,"shard_put" | "shard_start") { assert_eq!(reply["error"]["code"],"update_pending"); }
+            else { assert_ne!(reply["error"]["code"],"update_pending","maintenance still requires normal authorization: {reply}"); }
+        }
         assert_eq!(net.activity.active_writer_count_for_test(),0);
     }
 
