@@ -78,15 +78,15 @@ def test_post_hook_is_rate_limited_to_one_check_in_twenty_seconds(kit):
     assert hook(kit, "post") == ""
 
 
-def test_stop_hook_blocks_once_per_set_of_unread_urgent_messages(kit):
+def test_stop_hook_notifies_once_without_forcing_continuation(kit):
     assert hook(kit, "stop", "{}") == ""
     say(kit, kit.alice, kit.bob, "question", "SECRET-BODY ready?")
     verdict = json.loads(hook(kit, "stop", "{}"))
-    assert verdict["decision"] == "block" and "1 question" in verdict["reason"]
-    assert "SECRET-BODY ready?" in verdict["reason"] and verdict["systemMessage"] == verdict["reason"]
+    assert set(verdict) == {"systemMessage"} and "1 question" in verdict["systemMessage"]
+    assert "SECRET-BODY ready?" in verdict["systemMessage"]
     assert hook(kit, "stop", "{}") == ""
     say(kit, kit.carol, kit.bob, "handoff", "SECRET-BODY yours")
-    assert hook(kit, "stop", "{}") == ""  # New IDs do not renew the continuation budget.
+    assert hook(kit, "stop", "{}") == ""  # New IDs do not renew the notification budget.
 
 
 def test_stop_hook_allows_when_continuing_or_when_only_routine_kinds_wait(kit):
@@ -95,7 +95,7 @@ def test_stop_hook_allows_when_continuing_or_when_only_routine_kinds_wait(kit):
     assert hook(kit, "stop", "{}") == ""
     say(kit, kit.alice, kit.bob, "question", "x")
     assert hook(kit, "stop", '{"stop_hook_active": true}') == ""
-    assert json.loads(hook(kit, "stop", "{}"))["decision"] == "block"
+    assert set(json.loads(hook(kit, "stop", "{}"))) == {"systemMessage"}
 
 
 def test_stop_hook_allows_a_question_younger_than_two_minutes(kit):

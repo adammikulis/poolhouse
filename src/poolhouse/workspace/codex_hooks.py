@@ -12,7 +12,6 @@ from pathlib import Path
 from poolhouse import agent_hooks
 from poolhouse.board import client, credentials, place, session
 from poolhouse.errors import Denied
-from poolhouse.guard.secrets import env_secrets, redact
 from poolhouse.log import say
 from poolhouse.workspace import (
     board_cli,
@@ -137,16 +136,11 @@ def handle(event: dict, assigned: str = '', *, node: client.Client | None = None
 
 
 def completion(event: dict, assigned: str = '', *, node: client.Client | None = None) -> dict:
-    stage, actor, cwd = context(event, assigned, node)
-    if stage != 'Stop':
-        raise ValueError('completion guard requires the native Stop event')
-    worktree_lifecycle.require_clean(limits.root(), actor.name, within=(str(cwd),))
+    """Compatibility for cached Stop commands: ending a turn needs no workspace admission."""
+    if event.get('hook_event_name') != 'Stop':
+        raise ValueError('completion notification requires the native Stop event')
     return {}
 
-
-def block(reason: object) -> None:
-    text, _ = redact(str(reason), env_secrets(os.environ))
-    say(json.dumps({'decision': 'block', 'reason': 'workspace completion: ' + ' '.join(text.split())[:1000]}))
 
 def run(args: argparse.Namespace) -> int:
     try:
@@ -174,11 +168,6 @@ def run(args: argparse.Namespace) -> int:
                 warning(f'{"completion" if args.completion else "notification"} worker exited {done.returncode}')
             elif done.stdout:
                 say(done.stdout.strip())
-    except worktree_lifecycle.CompletionPending as error:
-        if args.completion and args.worker:
-            block(error)
-        else:
-            warning(error)
     except (OSError, ValueError, RuntimeError, LookupError, TypeError, AttributeError, Denied, client.NodeError, subprocess.SubprocessError) as error:
         warning(error)
     return 0

@@ -144,7 +144,7 @@ def test_stopped_daemon_warns_quickly_and_does_not_block_or_restart(node, comple
                           input=json.dumps(event("Stop" if completion else "PostToolUse")), text=True, capture_output=True,
                           env=node.env(extra={"CODEX_THREAD_ID": IDS["native-root"]}), timeout=5, check=False)
     assert done.returncode == 0 and time.monotonic() - before < 5
-    assert "workspace lifecycle:" in done.stderr
+    assert ("workspace lifecycle:" in done.stderr) != completion
     assert not done.stdout
     assert node_health.node_health(node.state) is None
 
@@ -224,7 +224,7 @@ def test_nested_ambient_notification_proves_native_parent_chain(node, monkeypatc
     lifecycle.handle(event("PostToolUse"), node=node.client)
 
 
-def test_stop_guard_uses_own_child_and_preserves_cleanup_check(node, monkeypatch):
+def test_cached_stop_does_not_run_cleanup_admission_for_own_child(node, monkeypatch):
     lifecycle.handle(event("SessionStart"), node=node.client)
     lifecycle.handle(event("SubagentStart", agent_id="native-child"), node=node.client)
     root_name = session.find("codex", IDS["native-root"], client=node.client)
@@ -233,7 +233,8 @@ def test_stop_guard_uses_own_child_and_preserves_cleanup_check(node, monkeypatch
     checked = []
     monkeypatch.setattr(lifecycle.worktree_lifecycle, "require_clean", lambda base, owner, **kw: checked.append(owner))
     assert lifecycle.completion(event("Stop"), root_name, node=node.client) == {}
-    assert checked == [child_name]
+    assert checked == []
+    assert child_name != root_name
 
 
 def test_malformed_completion_payload_is_advisory(monkeypatch, capsys):
@@ -296,13 +297,13 @@ def test_ambiguous_stop_warns_without_a_parent_or_completion_decision(node, monk
     monkeypatch.setattr(sys, 'stdin', __import__('io').StringIO(json.dumps(event('Stop', stop_hook_active=active))))
     assert lifecycle.run(argparse.Namespace(assigned='', completion=True, worker=True)) == 0
     output = capsys.readouterr()
-    assert not output.out and 'ambiguous' in output.err
+    assert not output.out and not output.err
     assert checked == []
 
 
 @pytest.mark.parametrize('active', [False, True])
 @pytest.mark.parametrize('child', [False, True])
-def test_only_authenticated_pending_cleanup_blocks_even_an_active_stop(node, monkeypatch, capsys, active, child):
+def test_cached_stop_does_not_check_pending_cleanup_even_an_active_stop(node, monkeypatch, capsys, active, child):
     lifecycle.handle(event('SessionStart'), node=node.client)
     if child:
         lifecycle.handle(event('SubagentStart', agent_id='native-child'), node=node.client)
@@ -316,8 +317,8 @@ def test_only_authenticated_pending_cleanup_blocks_even_an_active_stop(node, mon
     monkeypatch.setattr(sys, 'stdin', __import__('io').StringIO(json.dumps(event('Stop', cwd=str(Path.cwd()), stop_hook_active=active))))
     assert lifecycle.run(argparse.Namespace(assigned='', completion=True, worker=True)) == 0
     output = capsys.readouterr()
-    assert json.loads(output.out)['decision'] == 'block'
-    assert 'checkout remains' in output.out and checked == [expected]
+    assert not output.out and not output.err and checked == []
+    assert expected
 
 
 def test_untyped_cleanup_transport_denial_does_not_invent_pending_work(node, monkeypatch, capsys):
@@ -329,7 +330,7 @@ def test_untyped_cleanup_transport_denial_does_not_invent_pending_work(node, mon
     monkeypatch.setattr(sys, 'stdin', __import__('io').StringIO(json.dumps(event('Stop'))))
     assert lifecycle.run(argparse.Namespace(assigned='', completion=True, worker=True)) == 0
     output = capsys.readouterr()
-    assert not output.out and 'unavailable' in output.err
+    assert not output.out and not output.err
 
 
 def test_completion_worker_exit_warns_without_block(monkeypatch, capsys):
@@ -338,3 +339,11 @@ def test_completion_worker_exit_warns_without_block(monkeypatch, capsys):
     assert lifecycle.run(argparse.Namespace(assigned='', completion=True, worker=False)) == 0
     output = capsys.readouterr()
     assert not output.out and 'completion worker exited 3' in output.err
+
+
+def test_cached_stop_needs_no_project_or_native_identity(monkeypatch, capsys):
+    monkeypatch.delenv('CODEX_THREAD_ID', raising=False)
+    monkeypatch.setattr(lifecycle, 'context', lambda *a, **k: pytest.fail('automatic Stop requested workspace admission'))
+    monkeypatch.setattr(sys, 'stdin', __import__('io').StringIO(json.dumps({'hook_event_name': 'Stop', 'cwd': '/no-project'})))
+    assert lifecycle.run(argparse.Namespace(assigned='', completion=True, worker=True)) == 0
+    assert capsys.readouterr() == ('', '')

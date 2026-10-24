@@ -176,7 +176,7 @@ def output(event: str, waiting: Waiting, stdin: str,
     if event == "stop":
         budget["stop"] = max(now, budget.get("stop", 0))
         budget["stops"] = budget.get("stops", 0) + 1
-        shape = {"decision": "block", "reason": text, "systemMessage": text}
+        shape = {"systemMessage": text}
     else:
         shape = {"hookSpecificOutput": {"hookEventName": NAMES.get(event, event), "additionalContext": text},
                  "systemMessage": text}

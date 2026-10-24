@@ -104,10 +104,6 @@ def codex_hooks(with_post: bool = True, with_features: bool = False, assigned: s
         if event in ("SessionStart", "SubagentStart", "PostToolUse", "UserPromptSubmit"):
             out.append("additionalContextLimit = 4000")
         out.append("")
-        if event == "Stop":
-            out += [f"[[hooks.{event}.hooks]]", 'type = "command"',
-                    f'command = "poolhouse-workspace codex-stop{" --assigned " + assigned if assigned else ""}"',
-                    "timeout = 5", ""]
     return "\n".join([*out[:-1], END]) + "\n"
 
 
@@ -188,8 +184,7 @@ def _problems(agent: str, data: dict, events: tuple[tuple[str, str, str], ...]) 
         have = [c for c in _commands(hooks.get(event)) if _own(c)]
         if not have:
             out.append(f"{event} missing")
-        elif have != ([command(IDS[agent], hook), "poolhouse-workspace codex-stop"]
-                      if agent == "codex" and event == "Stop" else [command(IDS[agent], hook)]):
+        elif have != [command(IDS[agent], hook)]:
             out.append(f"{event} stale")
     if agent == "codex" and (data.get("features") or {}).get("hooks") is not True:
         out.append("the hooks feature is off")
