@@ -42,7 +42,6 @@ from poolhouse.harnesspolicy import (
 from poolhouse.interventions import Call
 from poolhouse.keystore import ENV_NONINTERACTIVE
 from poolhouse.serve.process import kill_process_tree
-from poolhouse.workspace import limits, worktree_lifecycle
 from poolhouse.workspace.harness_session import BoardUnavailable
 
 __all__ = ["FAILURES", "WAIT_S", "Rail", "nudge", "post", "pre", "run"]
@@ -220,11 +219,7 @@ def post(agent: str, rail: Rail | None = None) -> dict[str, Any]:
 
 
 def stop(rail: Rail) -> dict[str, Any]:
-    """Block an authenticated harness completion until its recorded checkouts are cleaned."""
-    try:
-        worktree_lifecycle.require_clean(limits.root(), rail.agent, within=tuple(rail.roots))
-    except (Denied, OSError, RuntimeError) as error:
-        return {"decision": "block", "reason": hook_diagnostics.record(error, "stop", "completion", metadata=hook_bootstrap.timings())}
+    """Ending a harness turn does not perform task integration or cleanup admission."""
     return {}
 
 
