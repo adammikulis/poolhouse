@@ -5,7 +5,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::{Deref, DerefMut};
-use crate::node::update_activity::{Registry, Source, Writer};
+use crate::node::update_activity::{Registry, Source, Writer, AdmittedEffect, EffectFlow};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
@@ -21,7 +21,7 @@ use crate::error::{Error, Result};
 use crate::fsutil::{sha256_hex, unhex};
 use crate::lineage::Peer;
 use crate::membership::{Device, Standing};
-use crate::netsync::sync_all;
+use crate::netsync::sync_all_admitted;
 use crate::node::Node;
 use crate::join_code::{context_for, new_code, Session, Window};
 use crate::peer::{self, PeerClient};
@@ -433,7 +433,11 @@ impl Net {
     /// hold up the members that can be reached. A member put out of the pool while the cycle runs (heard from an earlier dial of it) is
     /// not dialed, and one put out during its dial is not recorded as reached or attached to.
     pub fn sync_once(&self, force: bool) -> Result<usize> {
-        let _effect = self.activity.new_effect(Source::Sync).map_err(activity_error)?;
+        let effect=self.activity.admit_effect(Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
+        self.sync_once_admitted(force,&effect)
+    }
+    fn sync_once_admitted(&self, force: bool, effect: &AdmittedEffect) -> Result<usize> {
+        let _child=self.activity.continue_effect(effect,Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
         let targets: Vec<(String, String)> = {
             let mut n = tracked_node(&self.node, Source::Network)?;
             n.gov_tick()?;
@@ -450,7 +454,7 @@ impl Net {
             }
             let result = addr.parse::<SocketAddr>().map_err(|e| Error::Invalid(e.to_string()))
                 .and_then(|a| PeerClient::connect(&self.me, a, Some(&fp)))
-                .and_then(|mut c| self.compatible(&mut c).and_then(|()| sync_all(&self.node, &mut c)));
+                .and_then(|mut c| self.compatible(&mut c).and_then(|()| sync_all_admitted(&self.node, &mut c, effect)));
             let mut n = tracked_node(&self.node, Source::Network)?;
             if !n.members.is_active(&fp) {
                 continue;
@@ -648,6 +652,11 @@ impl Net {
     }
 
     fn network(&self, c: &Call, peer: &Peer) -> Result<Value> {
+        if c.method=="sync_now" {
+            // Admission precedes any consumptive domain authorization. Descendants borrow this exact operation.
+            let effect=self.activity.admit_effect(Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
+            return self.sync_request_admitted(c,peer,&effect);
+        }
         let text = |k: &str| c.params.get(k).and_then(Value::as_str).unwrap_or("").to_string();
         let number = |k: &str, d: u64| c.params.get(k).and_then(Value::as_u64).unwrap_or(d);
         if c.method != "shard_call" {
@@ -662,6 +671,16 @@ impl Net {
             "shard_call" => self.shard_call(c, peer),
             _ => Ok(json!({"reached": self.sync_once(true)?})),
         }
+    }
+
+    fn sync_request_admitted(&self, c: &Call, peer: &Peer, effect: &AdmittedEffect) -> Result<Value> {
+        let _child=self.activity.continue_effect(effect,Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
+        {
+            let mut node=tracked_node(&self.node,Source::Network)?;
+            node.gov_tick()?;
+            authorize_from(&mut node,&c.token,peer,&c.method,"*")?;
+        }
+        Ok(json!({"reached":self.sync_once_admitted(true,effect)?}))
     }
 
     // -- test shards --------------------------------------------------------
@@ -746,4 +765,15 @@ mod activity_tests {
         assert_eq!(net.activity.active_writer_count_for_test(),0,"idle peer is not active work");
         assert!(!net.stop.load(Ordering::SeqCst));
     }
+    #[test]
+    fn existing_sync_continues_after_drain_without_readmitting_a_new_operation() {
+        let owned=running(); let net=&owned.net;
+        let effect=net.activity.admit_effect(Source::Sync,EffectFlow::Sync).unwrap();
+        net.activity.drain_for_test();
+        assert_eq!(net.sync_once_admitted(true,&effect).unwrap(),0);
+        assert!(net.sync_once(true).is_err());
+        assert_eq!(net.activity.active_writer_count_for_test(),1);
+        drop(effect); assert_eq!(net.activity.active_writer_count_for_test(),0);
+    }
+
 }
