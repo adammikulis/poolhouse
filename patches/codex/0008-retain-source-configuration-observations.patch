@@ -1,0 +1,1318 @@
+diff --git a/codex-rs/hooks/src/engine/command_runner_tests.rs b/codex-rs/hooks/src/engine/command_runner_tests.rs
+index 4ba0480..574b466 100644
+--- a/codex-rs/hooks/src/engine/command_runner_tests.rs
++++ b/codex-rs/hooks/src/engine/command_runner_tests.rs
+@@ -544,11 +544,13 @@ fn write_handler(temp: &TempDir, source: &str) -> ConfiguredHandler {
+ 
+ async fn schedule(runtime: &CommandHookRuntime, handler: ConfiguredHandler, cwd: &Path) {
+     let engine = ClaudeHooksEngine {
+-        handlers: Arc::new(vec![handler]),
++        configuration: crate::native_configuration::ConfigurationSnapshot::new(
++            Arc::new(vec![handler]),
++            runtime.clone(),
++            mcp_executor(),
++        ),
+         warnings: Arc::default(),
+         required_load_errors: Arc::default(),
+-        command_runtime: runtime.clone(),
+-        mcp_executor: mcp_executor(),
+     };
+     engine
+         .run_user_prompt_submit(engine.capture_native_event(UserPromptSubmitRequest {
+@@ -1049,11 +1051,13 @@ async fn native_occurrence_async_command_retains_exact_original_arc() {
+         },
+     };
+     let engine = ClaudeHooksEngine {
+-        handlers: Arc::new(vec![handler]),
++        configuration: crate::native_configuration::ConfigurationSnapshot::new(
++            Arc::new(vec![handler]),
++            runtime.clone(),
++            mcp_executor(),
++        ),
+         warnings: Arc::default(),
+         required_load_errors: Arc::default(),
+-        command_runtime: runtime.clone(),
+-        mcp_executor: mcp_executor(),
+     };
+     let request = UserPromptSubmitRequest {
+         session_id: runtime.native_session_context().root(),
+diff --git a/codex-rs/hooks/src/engine/dispatcher.rs b/codex-rs/hooks/src/engine/dispatcher.rs
+index d86386d..942adbb 100644
+--- a/codex-rs/hooks/src/engine/dispatcher.rs
++++ b/codex-rs/hooks/src/engine/dispatcher.rs
+@@ -121,10 +121,10 @@ impl NativeHandlerPlan {
+         self.dispatch.selection().handler(self.ordinal)
+     }
+     pub(crate) fn runtime(&self) -> &super::command_runner::CommandHookRuntime {
+-        &self.dispatch.selection().engine().command_runtime
++        &self.dispatch.selection().engine().command_runtime()
+     }
+     pub(crate) fn executor(&self) -> &dyn crate::mcp::HookMcpExecutor {
+-        self.dispatch.selection().engine().mcp_executor.as_ref()
++        self.dispatch.selection().engine().mcp_executor().as_ref()
+     }
+     pub(crate) fn metadata(&self) -> Option<&serde_json::Map<String, serde_json::Value>> {
+         if matches!(
+@@ -168,7 +168,7 @@ pub(crate) async fn execute_handlers_with_metadata<T: 'static>(
+             continue;
+         }
+         if mode == HookExecutionMode::Async {
+-            engine.command_runtime.schedule_async_hook(plan, parse);
++            engine.command_runtime().schedule_async_hook(plan, parse);
+             continue;
+         }
+         pending.push(async move {
+@@ -191,7 +191,7 @@ pub(crate) async fn execute_handlers_with_metadata<T: 'static>(
+     completed.sort_by_key(|(configured_order, _)| *configured_order);
+     if should_stop || !should_block {
+         for plan in executor_handlers {
+-            engine.command_runtime.schedule_async_task(async move {
++            engine.command_runtime().schedule_async_task(async move {
+                 let result = execute_handler(Arc::clone(&plan)).await;
+                 if let Some(error) = result.error {
+                     tracing::warn!(source_path = %plan.handler().source_path, %error, "executor-scoped hook failed");
+diff --git a/codex-rs/hooks/src/engine/mod.rs b/codex-rs/hooks/src/engine/mod.rs
+index 50bfc64..42fbb60 100644
+--- a/codex-rs/hooks/src/engine/mod.rs
++++ b/codex-rs/hooks/src/engine/mod.rs
+@@ -247,11 +247,9 @@ pub struct HookListEntry {
+ #[derive(Clone)]
+ pub(crate) struct ClaudeHooksEngine {
+     // Per-turn views share configuration; executor overlays copy handlers on mutation.
+-    pub(crate) handlers: Arc<Vec<ConfiguredHandler>>,
++    configuration: Arc<crate::native_configuration::ConfigurationSnapshot>,
+     warnings: Arc<[String]>,
+     required_load_errors: Arc<[String]>,
+-    pub(crate) command_runtime: CommandHookRuntime,
+-    pub(crate) mcp_executor: Arc<dyn HookMcpExecutor>,
+ }
+ 
+ impl ClaudeHooksEngine {
+@@ -260,7 +258,7 @@ impl ClaudeHooksEngine {
+         &self,
+         request: T,
+     ) -> crate::NativeEvent<T> {
+-        crate::NativeEvent::capture(self.command_runtime.native_source(), request)
++        crate::NativeEvent::capture(self.command_runtime().native_source(), request)
+     }
+ 
+     pub(crate) fn new(
+@@ -274,11 +272,13 @@ impl ClaudeHooksEngine {
+     ) -> Self {
+         if !enabled && plugin_hook_sources.is_empty() {
+             return Self {
+-                handlers: Arc::default(),
++                configuration: crate::native_configuration::ConfigurationSnapshot::new(
++                    Arc::default(),
++                    command_runtime,
++                    mcp_executor,
++                ),
+                 warnings: Arc::default(),
+                 required_load_errors: Arc::default(),
+-                command_runtime,
+-                mcp_executor,
+             };
+         }
+ 
+@@ -297,21 +297,69 @@ impl ClaudeHooksEngine {
+             discovered.required_load_errors.clear();
+         }
+         Self {
+-            handlers: Arc::new(discovered.handlers),
++            configuration: crate::native_configuration::ConfigurationSnapshot::new(
++                Arc::new(discovered.handlers),
++                command_runtime,
++                mcp_executor,
++            ),
+             warnings: discovered.warnings.into(),
+             required_load_errors: discovered.required_load_errors.into(),
+-            command_runtime,
+-            mcp_executor,
+         }
+     }
+ 
++    pub(crate) fn handlers(&self) -> &Arc<Vec<ConfiguredHandler>> {
++        self.configuration.handlers()
++    }
++    pub(crate) fn command_runtime(&self) -> &CommandHookRuntime {
++        self.configuration.runtime()
++    }
++    pub(crate) fn mcp_executor(&self) -> &Arc<dyn HookMcpExecutor> {
++        self.configuration.executor()
++    }
++    pub(crate) fn configuration_observation(
++        &self,
++    ) -> crate::native_configuration::SourceConfigurationSnapshotObservationId {
++        self.configuration.observation()
++    }
++    pub(crate) fn retain_memory_handlers(&mut self) {
++        let handlers = self
++            .handlers()
++            .iter()
++            .filter(|handler| handler.runs_for_memory_consolidation())
++            .cloned()
++            .collect();
++        self.configuration = self.configuration.with_handlers(Arc::new(handlers));
++    }
++    #[cfg(test)]
++    pub(crate) fn replace_handlers_for_test(&mut self, handlers: Arc<Vec<ConfiguredHandler>>) {
++        self.configuration = self.configuration.with_handlers(handlers);
++    }
++    #[cfg(test)]
++    pub(crate) fn replace_executor_for_test(&mut self, executor: Arc<dyn HookMcpExecutor>) {
++        self.configuration = self.configuration.with_executor(executor);
++    }
++    #[cfg(test)]
++    pub(crate) fn push_handler_for_test(&mut self, handler: ConfiguredHandler) {
++        let mut handlers = self.handlers().as_ref().clone();
++        handlers.push(handler);
++        self.replace_handlers_for_test(Arc::new(handlers));
++    }
++    #[cfg(test)]
++    pub(crate) fn update_handlers_for_test(
++        &mut self,
++        update: impl FnOnce(&mut Vec<ConfiguredHandler>),
++    ) {
++        let mut handlers = self.handlers().as_ref().clone();
++        update(&mut handlers);
++        self.replace_handlers_for_test(Arc::new(handlers));
++    }
+     pub(crate) fn warnings(&self) -> &[String] {
+         &self.warnings
+     }
+ 
+     pub(crate) fn set_executor_hooks(&mut self, executor_hooks: Vec<ExecutorPluginHookSource>) {
+         if executor_hooks.is_empty()
+-            && !self.handlers.iter().any(|handler| {
++            && !self.handlers().iter().any(|handler| {
+                 matches!(
+                     handler.source_path,
+                     HandlerSourcePath::ExecutorScoped { .. }
+@@ -321,7 +369,7 @@ impl ClaudeHooksEngine {
+             return;
+         }
+ 
+-        let handlers = Arc::make_mut(&mut self.handlers);
++        let mut handlers = self.handlers().as_ref().clone();
+         handlers.retain(|handler| {
+             !matches!(
+                 handler.source_path,
+@@ -393,6 +441,7 @@ impl ClaudeHooksEngine {
+                 display_order = display_order.saturating_add(1);
+             }
+         }
++        self.configuration = self.configuration.with_handlers(Arc::new(handlers));
+     }
+ 
+     pub(crate) fn required_load_errors(&self) -> &[String] {
+@@ -403,23 +452,23 @@ impl ClaudeHooksEngine {
+         &self,
+         request: &SessionStartRequest,
+     ) -> Vec<HookRunSummary> {
+-        crate::events::session_start::preview(&self.handlers, request)
++        crate::events::session_start::preview(&self.handlers(), request)
+     }
+ 
+     pub(crate) fn preview_pre_tool_use(&self, request: &PreToolUseRequest) -> Vec<HookRunSummary> {
+-        crate::events::pre_tool_use::preview(&self.handlers, request)
++        crate::events::pre_tool_use::preview(&self.handlers(), request)
+     }
+ 
+     pub(crate) fn preview_permission_request(
+         &self,
+         request: &PermissionRequestRequest,
+     ) -> Vec<HookRunSummary> {
+-        crate::events::permission_request::preview(&self.handlers, request)
++        crate::events::permission_request::preview(&self.handlers(), request)
+     }
+ 
+     pub(crate) fn max_permission_request_timeout(&self) -> Duration {
+         Duration::from_secs(
+-            self.handlers
++            self.handlers()
+                 .iter()
+                 .filter(|handler| {
+                     handler.event_name == HookEventName::PermissionRequest
+@@ -435,14 +484,14 @@ impl ClaudeHooksEngine {
+         &self,
+         request: &PostToolUseRequest,
+     ) -> Vec<HookRunSummary> {
+-        crate::events::post_tool_use::preview(&self.handlers, request)
++        crate::events::post_tool_use::preview(&self.handlers(), request)
+     }
+ 
+     pub(crate) async fn run_session_start(
+         &self,
+         request: crate::NativeEvent<SessionStartRequest>,
+     ) -> SessionStartOutcome {
+-        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        let invocation = request.into_invocation(&self.command_runtime().native_source());
+         crate::events::session_start::run(self, invocation).await
+     }
+ 
+@@ -450,7 +499,7 @@ impl ClaudeHooksEngine {
+         &self,
+         request: crate::NativeEvent<PreToolUseRequest>,
+     ) -> PreToolUseOutcome {
+-        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        let invocation = request.into_invocation(&self.command_runtime().native_source());
+         crate::events::pre_tool_use::run(self, invocation).await
+     }
+ 
+@@ -458,7 +507,7 @@ impl ClaudeHooksEngine {
+         &self,
+         request: crate::NativeEvent<PermissionRequestRequest>,
+     ) -> PermissionRequestOutcome {
+-        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        let invocation = request.into_invocation(&self.command_runtime().native_source());
+         crate::events::permission_request::run(self, invocation).await
+     }
+ 
+@@ -466,11 +515,11 @@ impl ClaudeHooksEngine {
+         &self,
+         request: crate::NativeEvent<PostToolUseRequest>,
+     ) -> PostToolUseOutcome {
+-        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        let invocation = request.into_invocation(&self.command_runtime().native_source());
+         let mut outcome = crate::events::post_tool_use::run(self, invocation).await;
+         if let Some(feedback_message) = outcome.feedback_message.take() {
+             outcome.feedback_message = Some(
+-                self.command_runtime
++                self.command_runtime()
+                     .output_spiller()
+                     .maybe_spill_text(feedback_message)
+                     .await,
+@@ -480,26 +529,26 @@ impl ClaudeHooksEngine {
+     }
+ 
+     pub(crate) fn preview_pre_compact(&self, request: &PreCompactRequest) -> Vec<HookRunSummary> {
+-        crate::events::compact::preview_pre(&self.handlers, request)
++        crate::events::compact::preview_pre(&self.handlers(), request)
+     }
+ 
+     pub(crate) async fn run_pre_compact(
+         &self,
+         request: crate::NativeEvent<PreCompactRequest>,
+     ) -> PreCompactOutcome {
+-        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        let invocation = request.into_invocation(&self.command_runtime().native_source());
+         crate::events::compact::run_pre(self, invocation).await
+     }
+ 
+     pub(crate) fn preview_post_compact(&self, request: &PostCompactRequest) -> Vec<HookRunSummary> {
+-        crate::events::compact::preview_post(&self.handlers, request)
++        crate::events::compact::preview_post(&self.handlers(), request)
+     }
+ 
+     pub(crate) async fn run_post_compact(
+         &self,
+         request: crate::NativeEvent<PostCompactRequest>,
+     ) -> StatelessHookOutcome {
+-        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        let invocation = request.into_invocation(&self.command_runtime().native_source());
+         crate::events::compact::run_post(self, invocation).await
+     }
+ 
+@@ -507,38 +556,38 @@ impl ClaudeHooksEngine {
+         &self,
+         request: &UserPromptSubmitRequest,
+     ) -> Vec<HookRunSummary> {
+-        crate::events::user_prompt_submit::preview(&self.handlers, request)
++        crate::events::user_prompt_submit::preview(&self.handlers(), request)
+     }
+ 
+     pub(crate) async fn run_user_prompt_submit(
+         &self,
+         request: crate::NativeEvent<UserPromptSubmitRequest>,
+     ) -> UserPromptSubmitOutcome {
+-        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        let invocation = request.into_invocation(&self.command_runtime().native_source());
+         crate::events::user_prompt_submit::run(self, invocation).await
+     }
+ 
+     pub(crate) fn preview_stop(&self, request: &StopRequest) -> Vec<HookRunSummary> {
+-        crate::events::stop::preview(&self.handlers, request)
++        crate::events::stop::preview(&self.handlers(), request)
+     }
+ 
+     pub(crate) fn preview_session_end(&self) -> Vec<HookRunSummary> {
+-        crate::events::session_end::preview(&self.handlers)
++        crate::events::session_end::preview(&self.handlers())
+     }
+ 
+     pub(crate) async fn run_session_end(
+         &self,
+         request: crate::NativeEvent<SessionEndRequest>,
+     ) -> SessionEndOutcome {
+-        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        let invocation = request.into_invocation(&self.command_runtime().native_source());
+         crate::events::session_end::run(self, invocation).await
+     }
+ 
+     pub(crate) async fn run_stop(&self, request: crate::NativeEvent<StopRequest>) -> StopOutcome {
+-        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        let invocation = request.into_invocation(&self.command_runtime().native_source());
+         let mut outcome = crate::events::stop::run(self, invocation).await;
+         outcome.continuation_fragments = self
+-            .command_runtime
++            .command_runtime()
+             .output_spiller()
+             .maybe_spill_prompt_fragments(outcome.continuation_fragments)
+             .await;
+@@ -546,14 +595,14 @@ impl ClaudeHooksEngine {
+     }
+ 
+     pub(crate) fn preview_interrupt(&self) -> Vec<HookRunSummary> {
+-        crate::events::interrupt::preview(&self.handlers)
++        crate::events::interrupt::preview(&self.handlers())
+     }
+ 
+     pub(crate) async fn run_interrupt(
+         &self,
+         request: crate::NativeEvent<InterruptRequest>,
+     ) -> InterruptOutcome {
+-        let invocation = request.into_invocation(&self.command_runtime.native_source());
++        let invocation = request.into_invocation(&self.command_runtime().native_source());
+         crate::events::interrupt::run(self, invocation).await
+     }
+ }
+diff --git a/codex-rs/hooks/src/engine/mod_tests.rs b/codex-rs/hooks/src/engine/mod_tests.rs
+index 16a7c29..93e48f8 100644
+--- a/codex-rs/hooks/src/engine/mod_tests.rs
++++ b/codex-rs/hooks/src/engine/mod_tests.rs
+@@ -141,13 +141,16 @@ fn permission_request_timeout_only_counts_synchronous_handlers() {
+         ..synchronous_handler.clone()
+     };
+ 
+-    engine.handlers = Arc::new(vec![synchronous_handler, asynchronous_handler.clone()]);
++    engine.replace_handlers_for_test(Arc::new(vec![
++        synchronous_handler,
++        asynchronous_handler.clone(),
++    ]));
+     assert_eq!(
+         engine.max_permission_request_timeout(),
+         Duration::from_secs(5)
+     );
+ 
+-    engine.handlers = Arc::new(vec![asynchronous_handler]);
++    engine.replace_handlers_for_test(Arc::new(vec![asynchronous_handler]));
+     assert_eq!(engine.max_permission_request_timeout(), Duration::ZERO);
+ }
+ 
+@@ -648,9 +651,9 @@ with Path(r"{log_path}").open("a", encoding="utf-8") as handle:
+     );
+ 
+     assert!(engine.warnings().is_empty());
+-    assert_eq!(engine.handlers.len(), 1);
++    assert_eq!(engine.handlers().len(), 1);
+     assert_eq!(
+-        engine.handlers[0].source,
++        engine.handlers()[0].source,
+         HookSource::LegacyManagedConfigMdm
+     );
+     let listed = crate::list_hooks(crate::HooksConfig {
+@@ -836,8 +839,8 @@ fn unknown_requirement_source_hooks_stay_managed() {
+         mcp_executor(),
+     );
+ 
+-    assert_eq!(engine.handlers.len(), 1);
+-    assert_eq!(engine.handlers[0].source, HookSource::Unknown);
++    assert_eq!(engine.handlers().len(), 1);
++    assert_eq!(engine.handlers()[0].source, HookSource::Unknown);
+     let discovered = super::discovery::discover_handlers(
+         Some(&config_layer_stack),
+         Vec::new(),
+@@ -921,9 +924,9 @@ fn user_disablement_filters_non_managed_hooks_but_not_managed_hooks() {
+         mcp_executor(),
+     );
+ 
+-    assert_eq!(engine.handlers.len(), 1);
++    assert_eq!(engine.handlers().len(), 1);
+     assert_eq!(
+-        engine.handlers[0].source,
++        engine.handlers()[0].source,
+         HookSource::LegacyManagedConfigMdm
+     );
+     let discovered = super::discovery::discover_handlers(
+@@ -989,9 +992,9 @@ fn user_disablement_does_not_filter_managed_layer_hooks() {
+         mcp_executor(),
+     );
+ 
+-    assert_eq!(engine.handlers.len(), 1);
++    assert_eq!(engine.handlers().len(), 1);
+     assert_eq!(
+-        engine.handlers[0].source,
++        engine.handlers()[0].source,
+         HookSource::LegacyManagedConfigFile
+     );
+     let discovered = super::discovery::discover_handlers(
+@@ -1173,7 +1176,7 @@ fn requirements_managed_hooks_load_when_managed_dir_is_missing() {
+     });
+     assert_eq!(preview.len(), 1);
+     assert_eq!(
+-        engine.handlers[0].kind,
++        engine.handlers()[0].kind,
+         ConfiguredHandlerKind::Command {
+             command: "echo hi".to_string(),
+             r#async: false,
+@@ -1181,7 +1184,7 @@ fn requirements_managed_hooks_load_when_managed_dir_is_missing() {
+         }
+     );
+     assert_eq!(
+-        engine.handlers[0].source_path,
++        engine.handlers()[0].source_path,
+         AbsolutePathBuf::try_from(missing_dir)
+             .expect("absolute missing dir")
+             .into()
+@@ -1223,7 +1226,7 @@ fn allow_managed_hooks_only_false_keeps_unmanaged_hooks() {
+     );
+ 
+     assert!(engine.warnings().is_empty());
+-    assert!(engine.handlers.is_empty());
++    assert!(engine.handlers().is_empty());
+     let discovered = super::discovery::discover_handlers(
+         Some(&config_layer_stack),
+         Vec::new(),
+@@ -1282,7 +1285,7 @@ fn allow_managed_hooks_only_in_config_toml_does_not_enable_policy() {
+     );
+ 
+     assert!(engine.warnings().is_empty());
+-    assert!(engine.handlers.is_empty());
++    assert!(engine.handlers().is_empty());
+     let discovered = super::discovery::discover_handlers(
+         Some(&config_layer_stack),
+         Vec::new(),
+@@ -1356,7 +1359,7 @@ fn allow_managed_hooks_only_skips_unmanaged_json_and_toml_hooks() {
+         mcp_executor(),
+     );
+ 
+-    assert!(engine.handlers.is_empty());
++    assert!(engine.handlers().is_empty());
+     assert!(engine.warnings().is_empty());
+ }
+ 
+@@ -1396,7 +1399,7 @@ fn allow_managed_hooks_only_skips_unmanaged_plugin_hooks() {
+         mcp_executor(),
+     );
+ 
+-    assert!(engine.handlers.is_empty());
++    assert!(engine.handlers().is_empty());
+     assert!(engine.warnings().is_empty());
+ }
+ 
+@@ -1472,7 +1475,7 @@ fn allow_managed_hooks_only_keeps_managed_requirement_and_config_layer_hooks() {
+     assert!(engine.warnings().is_empty());
+     assert_eq!(
+         engine
+-            .handlers
++            .handlers()
+             .iter()
+             .map(|handler| match &handler.kind {
+                 ConfiguredHandlerKind::Command { command, .. } => Some(command.as_str()),
+@@ -1607,7 +1610,7 @@ fn discovers_hooks_from_json_and_toml_in_the_same_layer() {
+     assert_eq!(preview.len(), 2);
+     assert_eq!(
+         engine
+-            .handlers
++            .handlers()
+             .iter()
+             .map(|handler| handler.source)
+             .collect::<Vec<_>>(),
+@@ -1681,7 +1684,7 @@ fn profile_user_layers_load_shared_hooks_json_once() {
+     );
+ 
+     assert!(engine.warnings().is_empty());
+-    assert_eq!(engine.handlers.len(), 1);
++    assert_eq!(engine.handlers().len(), 1);
+     let preview = engine.preview_pre_tool_use(&PreToolUseRequest {
+         session_id: ThreadId::new(),
+         turn_id: "turn-1".to_string(),
+@@ -1755,7 +1758,7 @@ fn malformed_hooks_json_is_reported_as_startup_warning() {
+         mcp_executor(),
+     );
+ 
+-    assert!(engine.handlers.is_empty());
++    assert!(engine.handlers().is_empty());
+     assert_eq!(engine.warnings().len(), 1);
+     assert!(engine.warnings()[0].contains("failed to parse hooks config"));
+     assert!(
+@@ -2012,7 +2015,7 @@ fn builtin_cleanup_ignores_disablement_but_preserves_managed_only_policy() {
+             }),
+             mcp_executor(),
+         );
+-        assert_eq!(feature_disabled.handlers.as_ref(), &expected);
++        assert_eq!(feature_disabled.handlers().as_ref(), &expected);
+     }
+ }
+ 
+@@ -2052,7 +2055,7 @@ fn disabled_hooks_feature_keeps_builtin_cleanup_but_not_trusted_plugin_hooks() {
+         mcp_executor(),
+     );
+     assert_eq!(
+-        engine.handlers.as_slice(),
++        engine.handlers().as_slice(),
+         &[discovered.handlers[0].clone()]
+     );
+ }
+@@ -2242,7 +2245,7 @@ fn plugin_hook_sources_expand_plugin_placeholders() {
+     );
+ 
+     assert_eq!(
+-        engine.handlers[0].kind,
++        engine.handlers()[0].kind,
+         ConfiguredHandlerKind::Command {
+             command: format!(
+                 "run {} {} {} {}",
+@@ -2372,7 +2375,7 @@ fn executor_stop_hook_fixture() -> (
+     };
+     engine.set_executor_hooks(vec![source.clone()]);
+     assert_eq!(
+-        engine.handlers.as_slice(),
++        engine.handlers().as_slice(),
+         &[ConfiguredHandler {
+             builtin: true,
+             plugin_trust: None,
+@@ -2404,10 +2407,10 @@ fn executor_stop_hook_fixture() -> (
+         }]
+     );
+     assert_eq!(
+-        engine.handlers[0].execution_mode(),
++        engine.handlers()[0].execution_mode(),
+         HookExecutionMode::Async
+     );
+-    assert!(!engine.handlers[0].can_apply_control_effects());
++    assert!(!engine.handlers()[0].can_apply_control_effects());
+     let request_metadata = Some(serde_json::Map::from_iter([(
+         "x-codex-turn-metadata".to_string(),
+         serde_json::json!({ "turn_id": "turn-1" }),
+@@ -2465,7 +2468,7 @@ async fn executor_stop_hooks_run_unless_regular_hooks_block_without_stopping() {
+         vec![expected_executor_call.clone()]
+     );
+ 
+-    Arc::make_mut(&mut engine.handlers).push(ConfiguredHandler {
++    engine.push_handler_for_test(ConfiguredHandler {
+         builtin: false,
+         plugin_trust: None,
+         event_name: HookEventName::Stop,
+@@ -2503,7 +2506,7 @@ async fn executor_stop_hooks_run_unless_regular_hooks_block_without_stopping() {
+         ]
+     );
+ 
+-    Arc::make_mut(&mut engine.handlers).push(ConfiguredHandler {
++    engine.push_handler_for_test(ConfiguredHandler {
+         builtin: false,
+         plugin_trust: None,
+         event_name: HookEventName::Stop,
+@@ -2563,7 +2566,7 @@ async fn executor_stop_hooks_run_unless_regular_hooks_block_without_stopping() {
+ fn executor_stop_hooks_register_each_target_environment_once() {
+     let (mut engine, _, _, _, first_source) = executor_stop_hook_fixture();
+     let previous = engine.clone();
+-    let mut expected_handlers = engine.handlers.as_ref().clone();
++    let mut expected_handlers = engine.handlers().as_ref().clone();
+     let mut duplicate_target = first_source.clone();
+     duplicate_target.plugin_id = PluginId::parse("chrome@openai-bundled").expect("valid plugin ID");
+     let mut second_source = first_source.clone();
+@@ -2578,8 +2581,8 @@ fn executor_stop_hooks_register_each_target_environment_once() {
+     expected_handlers.push(second_handler);
+     engine.set_executor_hooks(vec![first_source, duplicate_target, second_source]);
+ 
+-    assert_eq!(engine.handlers.as_ref(), &expected_handlers);
+-    assert_eq!(previous.handlers.as_slice(), &expected_handlers[..1]);
++    assert_eq!(engine.handlers().as_ref(), &expected_handlers);
++    assert_eq!(previous.handlers().as_slice(), &expected_handlers[..1]);
+ }
+ 
+ #[tokio::test]
+@@ -2592,7 +2595,7 @@ async fn executor_interrupt_hooks_register_and_run() {
+ 
+     assert_eq!(
+         engine
+-            .handlers
++            .handlers()
+             .iter()
+             .map(|handler| handler.event_name)
+             .collect::<Vec<_>>(),
+@@ -2629,7 +2632,7 @@ fn executor_hooks_register_events_from_each_environment() {
+     let (mut engine, _, _, _, mut first_source) = executor_stop_hook_fixture();
+     first_source.hooks.interrupt = std::mem::take(&mut first_source.hooks.stop);
+     engine.set_executor_hooks(vec![first_source.clone()]);
+-    let mut expected_handlers = engine.handlers.as_ref().clone();
++    let mut expected_handlers = engine.handlers().as_ref().clone();
+     let mut second_source = first_source.clone();
+     second_source.environment_id = "executor-b".to_string();
+     second_source.hooks.stop = std::mem::take(&mut second_source.hooks.interrupt);
+@@ -2645,7 +2648,7 @@ fn executor_hooks_register_events_from_each_environment() {
+ 
+     engine.set_executor_hooks(vec![first_source, second_source]);
+ 
+-    assert_eq!(engine.handlers.as_ref(), &expected_handlers);
++    assert_eq!(engine.handlers().as_ref(), &expected_handlers);
+ }
+ 
+ #[tokio::test]
+@@ -2687,7 +2690,7 @@ async fn memory_consolidation_stop_preserves_policy_and_executor_cleanup() {
+             input: Default::default(),
+             timeout: Duration::from_secs(5),
+         };
+-        let mut handler = engine.handlers[0].clone();
++        let mut handler = engine.handlers()[0].clone();
+         handler.source_path = cwd().join("hooks.json").into();
+         handler.source = source;
+         handler.kind = ConfiguredHandlerKind::McpTool {
+@@ -2695,7 +2698,7 @@ async fn memory_consolidation_stop_preserves_policy_and_executor_cleanup() {
+             tool: policy_call.tool.clone(),
+             input: policy_call.input.clone(),
+         };
+-        Arc::make_mut(&mut engine.handlers).push(handler);
++        engine.push_handler_for_test(handler);
+         assert_eq!(
+             engine.preview_stop(&request).len(),
+             usize::from(runs_policy)
+@@ -2737,10 +2740,10 @@ async fn native_original_request_executor_mcp_retains_body_until_completion() {
+     let (mut engine, _, request, _, _) = executor_stop_hook_fixture();
+     let started = Arc::new(Notify::new());
+     let release = Arc::new(Notify::new());
+-    engine.mcp_executor = Arc::new(BlockingMcpExecutor {
++    engine.replace_executor_for_test(Arc::new(BlockingMcpExecutor {
+         started: Arc::clone(&started),
+         release: Arc::clone(&release),
+-    });
++    }));
+ 
+     let expected_metadata = request.request_metadata.clone();
+     let event = engine.capture_native_event(request);
+@@ -2977,10 +2980,10 @@ async fn mcp_interrupt_hooks_expand_event_input_and_bound_timeout() {
+         )])),
+     });
+     let original = event.retained();
+-    engine.mcp_executor = Arc::new(LocalMcpRetention {
+-        downstream: engine.mcp_executor.clone(),
++    engine.replace_executor_for_test(Arc::new(LocalMcpRetention {
++        downstream: engine.mcp_executor().clone(),
+         original: original.clone(),
+-    });
++    }));
+     let outcome = engine.run_interrupt(event).await;
+     assert!(original.upgrade().is_none());
+ 
+@@ -3020,10 +3023,10 @@ async fn mcp_interrupt_hooks_expand_event_input_and_bound_timeout() {
+ async fn native_occurrence_stop_two_dispatches_and_executor_retain_original_arc() {
+     let (mut engine, calls, mut request, _, _) = executor_stop_hook_fixture();
+     request.target = StopHookTarget::MemoryConsolidation;
+-    let mut policy = engine.handlers[0].clone();
++    let mut policy = engine.handlers()[0].clone();
+     policy.source_path = cwd().join("hooks.json").into();
+     policy.source = HookSource::System;
+-    Arc::make_mut(&mut engine.handlers).push(policy);
++    engine.push_handler_for_test(policy);
+     let event = engine.capture_native_event(request);
+     let occurrence = event.occurrence().clone();
+     let retry = event.clone();
+@@ -3065,7 +3068,7 @@ async fn native_selection_retry_uses_original_handler_and_executor_after_reload(
+         }),
+         executor(first_calls.clone()),
+     );
+-    engine.handlers = Arc::new(vec![ConfiguredHandler {
++    engine.replace_handlers_for_test(Arc::new(vec![ConfiguredHandler {
+         builtin: false,
+         plugin_trust: None,
+         event_name: HookEventName::PreToolUse,
+@@ -3081,7 +3084,7 @@ async fn native_selection_retry_uses_original_handler_and_executor_after_reload(
+             tool: "first".into(),
+             input: serde_json::Map::new(),
+         },
+-    }]);
++    }]));
+     let event = engine.capture_native_event(PreToolUseRequest {
+         session_id: ThreadId::new(),
+         turn_id: "turn".into(),
+@@ -3097,13 +3100,13 @@ async fn native_selection_retry_uses_original_handler_and_executor_after_reload(
+     });
+     engine.run_pre_tool_use(event.clone()).await;
+     let mut changed = engine.clone();
+-    changed.mcp_executor = executor(second_calls.clone());
+-    let ConfiguredHandlerKind::McpTool { tool, .. } =
+-        &mut Arc::make_mut(&mut changed.handlers)[0].kind
+-    else {
+-        unreachable!()
+-    };
+-    *tool = "replacement".into();
++    changed.replace_executor_for_test(executor(second_calls.clone()));
++    changed.update_handlers_for_test(|handlers| {
++        let ConfiguredHandlerKind::McpTool { tool, .. } = &mut handlers[0].kind else {
++            unreachable!()
++        };
++        *tool = "replacement".into();
++    });
+     changed.run_pre_tool_use(event).await;
+     assert_eq!(
+         first_calls.lock().unwrap().len(),
+diff --git a/codex-rs/hooks/src/events/post_tool_use.rs b/codex-rs/hooks/src/events/post_tool_use.rs
+index ed544c5..b3b6115 100644
+--- a/codex-rs/hooks/src/events/post_tool_use.rs
++++ b/codex-rs/hooks/src/events/post_tool_use.rs
+@@ -113,7 +113,7 @@ pub(crate) async fn run(
+             .map(|result| result.data.additional_contexts_for_model.as_slice()),
+     );
+     let additional_contexts = engine
+-        .command_runtime
++        .command_runtime()
+         .output_spiller()
+         .maybe_spill_additional_contexts(additional_contexts)
+         .await;
+diff --git a/codex-rs/hooks/src/events/pre_tool_use.rs b/codex-rs/hooks/src/events/pre_tool_use.rs
+index 450c5d8..7519a73 100644
+--- a/codex-rs/hooks/src/events/pre_tool_use.rs
++++ b/codex-rs/hooks/src/events/pre_tool_use.rs
+@@ -119,7 +119,7 @@ pub(crate) async fn run(
+             .map(|result| result.data.additional_contexts_for_model.as_slice()),
+     );
+     let additional_contexts = engine
+-        .command_runtime
++        .command_runtime()
+         .output_spiller()
+         .maybe_spill_additional_contexts(additional_contexts)
+         .await;
+diff --git a/codex-rs/hooks/src/events/session_start.rs b/codex-rs/hooks/src/events/session_start.rs
+index e56c502..73ddf47 100644
+--- a/codex-rs/hooks/src/events/session_start.rs
++++ b/codex-rs/hooks/src/events/session_start.rs
+@@ -153,7 +153,7 @@ pub(crate) async fn run(
+             .map(|result| result.data.additional_contexts_for_model.as_slice()),
+     );
+     let additional_contexts = engine
+-        .command_runtime
++        .command_runtime()
+         .output_spiller()
+         .maybe_spill_additional_contexts(additional_contexts)
+         .await;
+diff --git a/codex-rs/hooks/src/events/user_prompt_submit.rs b/codex-rs/hooks/src/events/user_prompt_submit.rs
+index 0e5f267..6e0d0ac 100644
+--- a/codex-rs/hooks/src/events/user_prompt_submit.rs
++++ b/codex-rs/hooks/src/events/user_prompt_submit.rs
+@@ -105,7 +105,7 @@ pub(crate) async fn run(
+             .map(|result| result.data.additional_contexts_for_model.as_slice()),
+     );
+     let additional_contexts = engine
+-        .command_runtime
++        .command_runtime()
+         .output_spiller()
+         .maybe_spill_additional_contexts(additional_contexts)
+         .await;
+diff --git a/codex-rs/hooks/src/lib.rs b/codex-rs/hooks/src/lib.rs
+index c8bf251..b34c9f7 100644
+--- a/codex-rs/hooks/src/lib.rs
++++ b/codex-rs/hooks/src/lib.rs
+@@ -6,6 +6,7 @@ pub(crate) mod events;
+ mod legacy_notify;
+ mod mcp;
+ mod native_actor;
++mod native_configuration;
+ mod native_dispatch;
+ mod native_manifest;
+ mod native_occurrence;
+diff --git a/codex-rs/hooks/src/native_configuration.rs b/codex-rs/hooks/src/native_configuration.rs
+new file mode 100644
+index 0000000..ee4891b
+--- /dev/null
++++ b/codex-rs/hooks/src/native_configuration.rs
+@@ -0,0 +1,96 @@
++//! Actual configuration-owner snapshot observations. DATA only, never Node generation or rights.
++use crate::engine::{ConfiguredHandler, command_runner::CommandHookRuntime};
++use crate::mcp::HookMcpExecutor;
++use crate::{Hook, NativeOccurrenceId, NativeSessionSource};
++use std::sync::Arc;
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub(crate) struct SourceConfigurationSnapshotObservationId {
++    id: NativeOccurrenceId,
++    actor: NativeOccurrenceId,
++}
++impl SourceConfigurationSnapshotObservationId {
++    fn capture(source: &NativeSessionSource) -> Self {
++        Self {
++            id: crate::native_occurrence::next_id(),
++            actor: source.lifecycle().id(),
++        }
++    }
++    pub(crate) fn canonical_bytes(&self) -> [u8; 32] {
++        self.id.canonical_event_id()
++    }
++    pub(crate) fn actor_bytes(&self) -> [u8; 32] {
++        self.actor.canonical_event_id()
++    }
++}
++/// Only immutable access is exposed. Every changed view constructs a new owner.
++pub(crate) struct ConfigurationSnapshot {
++    observation: SourceConfigurationSnapshotObservationId,
++    handlers: Arc<Vec<ConfiguredHandler>>,
++    runtime: CommandHookRuntime,
++    executor: Arc<dyn HookMcpExecutor>,
++}
++impl ConfigurationSnapshot {
++    pub(crate) fn new(
++        handlers: Arc<Vec<ConfiguredHandler>>,
++        runtime: CommandHookRuntime,
++        executor: Arc<dyn HookMcpExecutor>,
++    ) -> Arc<Self> {
++        Arc::new(Self {
++            observation: SourceConfigurationSnapshotObservationId::capture(
++                &runtime.native_source(),
++            ),
++            handlers,
++            runtime,
++            executor,
++        })
++    }
++    pub(crate) fn with_handlers(&self, handlers: Arc<Vec<ConfiguredHandler>>) -> Arc<Self> {
++        Self::new(handlers, self.runtime.clone(), self.executor.clone())
++    }
++    #[cfg(test)]
++    pub(crate) fn with_executor(&self, executor: Arc<dyn HookMcpExecutor>) -> Arc<Self> {
++        Self::new(self.handlers.clone(), self.runtime.clone(), executor)
++    }
++    pub(crate) fn observation(&self) -> SourceConfigurationSnapshotObservationId {
++        self.observation
++    }
++    pub(crate) fn handlers(&self) -> &Arc<Vec<ConfiguredHandler>> {
++        &self.handlers
++    }
++    pub(crate) fn runtime(&self) -> &CommandHookRuntime {
++        &self.runtime
++    }
++    pub(crate) fn executor(&self) -> &Arc<dyn HookMcpExecutor> {
++        &self.executor
++    }
++}
++/// Legacy lists own their own ID; an executor-only overlay does not change this list.
++pub(crate) struct LegacyConfigurationSnapshot {
++    observation: SourceConfigurationSnapshotObservationId,
++    hooks: Arc<[Hook]>,
++    _notify: Option<Arc<crate::legacy_notify::NotifySnapshot>>,
++}
++impl LegacyConfigurationSnapshot {
++    pub(crate) fn new(
++        source: &NativeSessionSource,
++        hooks: Arc<[Hook]>,
++        notify: Option<Arc<crate::legacy_notify::NotifySnapshot>>,
++    ) -> Arc<Self> {
++        Arc::new(Self {
++            observation: SourceConfigurationSnapshotObservationId::capture(source),
++            hooks,
++            _notify: notify,
++        })
++    }
++    pub(crate) fn observation(&self) -> SourceConfigurationSnapshotObservationId {
++        self.observation
++    }
++    pub(crate) fn hooks(&self) -> &Arc<[Hook]> {
++        &self.hooks
++    }
++    #[cfg(test)]
++    pub(crate) fn notify(&self) -> Option<&Arc<crate::legacy_notify::NotifySnapshot>> {
++        self._notify.as_ref()
++    }
++}
+diff --git a/codex-rs/hooks/src/native_manifest.rs b/codex-rs/hooks/src/native_manifest.rs
+index 000dc25..6955c6a 100644
+--- a/codex-rs/hooks/src/native_manifest.rs
++++ b/codex-rs/hooks/src/native_manifest.rs
+@@ -22,8 +22,7 @@ pub(crate) struct ConfiguredSelection {
+     entries: Vec<Entry>,
+ }
+ pub(crate) struct LegacySelection {
+-    pub(crate) hooks: Arc<[crate::Hook]>,
+-    pub(crate) _notify: Option<Arc<crate::legacy_notify::NotifySnapshot>>,
++    pub(crate) configuration: Arc<crate::native_configuration::LegacyConfigurationSnapshot>,
+ }
+ pub(crate) enum FrozenSelection {
+     Configured(ConfiguredSelection),
+@@ -75,14 +74,14 @@ impl FrozenSelection {
+             #[cfg(test)]
+             NativeRequest::Test(_) => unreachable!("identity fixture has no configured selection"),
+         };
+-        let entries = dispatcher::select_handler_indices(&engine.handlers, event, &inputs)
++        let entries = dispatcher::select_handler_indices(&engine.handlers(), event, &inputs)
+             .into_iter()
+-            .filter(|index| !memory || engine.handlers[*index].runs_for_memory_consolidation())
++            .filter(|index| !memory || engine.handlers()[*index].runs_for_memory_consolidation())
+             .map(|source_index| Entry {
+                 source_index,
+                 phase: if memory
+                     && matches!(
+-                        engine.handlers[source_index].source_path,
++                        engine.handlers()[source_index].source_path,
+                         HandlerSourcePath::ExecutorScoped { .. }
+                     ) {
+                     Phase::MemoryCleanup
+@@ -102,6 +101,14 @@ impl FrozenSelection {
+             _ => unreachable!("configured source cannot select legacy callbacks"),
+         }
+     }
++    pub(crate) fn configuration_observation(
++        &self,
++    ) -> crate::native_configuration::SourceConfigurationSnapshotObservationId {
++        match self {
++            Self::Configured(value) => value.engine.configuration_observation(),
++            Self::Legacy(value) => value.configuration.observation(),
++        }
++    }
+     pub(crate) fn configured(&self) -> &ConfiguredSelection {
+         match self {
+             Self::Configured(value) => value,
+@@ -126,7 +133,7 @@ impl ConfiguredSelection {
+             .filter_map(move |(ordinal, entry)| (entry.phase == phase).then_some(ordinal))
+     }
+     pub(crate) fn handler(&self, ordinal: usize) -> &ConfiguredHandler {
+-        &self.engine.handlers[self.entries[ordinal].source_index]
++        &self.engine.handlers()[self.entries[ordinal].source_index]
+     }
+     pub(crate) fn handlers(&self, phase: Phase) -> Vec<ConfiguredHandler> {
+         self.ordinals(phase)
+diff --git a/codex-rs/hooks/src/native_manifest/tests.rs b/codex-rs/hooks/src/native_manifest/tests.rs
+index c82f5b7..78c9c86 100644
+--- a/codex-rs/hooks/src/native_manifest/tests.rs
++++ b/codex-rs/hooks/src/native_manifest/tests.rs
+@@ -69,7 +69,7 @@ fn handler(tool: &str, event: HookEventName) -> ConfiguredHandler {
+     }
+ }
+ fn original<T: NativeHookRequest>(engine: &ClaudeHooksEngine, request: T) -> Arc<NativeInvocation> {
+-    let source = engine.command_runtime.native_source();
++    let source = engine.command_runtime().native_source();
+     NativeEvent::capture(source.clone(), request).into_invocation(&source)
+ }
+ fn tool() -> crate::PreToolUseRequest {
+@@ -91,7 +91,7 @@ fn tool() -> crate::PreToolUseRequest {
+ fn native_selection_duplicates_keep_distinct_ordinals_and_config_indices() {
+     let (_owner, mut engine) = engine();
+     let selected = handler("duplicate", HookEventName::PreToolUse);
+-    engine.handlers = Arc::new(vec![selected.clone(), selected]);
++    engine.replace_handlers_for_test(Arc::new(vec![selected.clone(), selected]));
+     let invocation = original(&engine, tool());
+     let selection = invocation.configured_selection(&engine);
+     let selected = selection.configured();
+@@ -108,7 +108,7 @@ fn native_selection_empty_is_frozen_and_new_original_sees_reload() {
+     let (_owner, mut engine) = engine();
+     let invocation = original(&engine, tool());
+     let first = invocation.configured_selection(&engine);
+-    engine.handlers = Arc::new(vec![handler("later", HookEventName::PreToolUse)]);
++    engine.replace_handlers_for_test(Arc::new(vec![handler("later", HookEventName::PreToolUse)]));
+     let retry = invocation.configured_selection(&engine);
+     assert!(Arc::ptr_eq(&first, &retry));
+     assert_eq!(retry.configured().ordinals(Phase::Regular).count(), 0);
+@@ -126,11 +126,11 @@ fn native_selection_concurrent_reload_uses_one_winner_and_drops_losers() {
+         let mut handles = vec![];
+         for index in 0..8 {
+             let mut candidate = base.clone();
+-            candidate.handlers = Arc::new(vec![handler(
++            candidate.replace_handlers_for_test(Arc::new(vec![handler(
+                 &format!("candidate-{index}"),
+                 HookEventName::PreToolUse,
+-            )]);
+-            candidates.push(Arc::downgrade(&candidate.handlers));
++            )]));
++            candidates.push(Arc::downgrade(&candidate.handlers()));
+             let barrier = barrier.clone();
+             let original = invocation.clone();
+             handles.push(scope.spawn(move || {
+@@ -177,7 +177,7 @@ fn native_selection_stop_phases_share_one_complete_ordered_catalog() {
+     };
+     let mut excluded = handler("user", HookEventName::Stop);
+     excluded.source = HookSource::User;
+-    engine.handlers = Arc::new(vec![regular.clone(), cleanup, excluded, regular]);
++    engine.replace_handlers_for_test(Arc::new(vec![regular.clone(), cleanup, excluded, regular]));
+     let request = crate::StopRequest {
+         session_id: ThreadId::new(),
+         turn_id: "turn".into(),
+@@ -209,7 +209,7 @@ fn native_selection_stop_phases_share_one_complete_ordered_catalog() {
+         vec![1]
+     );
+     assert_eq!(first.configured().source_index(2), 3);
+-    engine.handlers = Arc::new(vec![]);
++    engine.replace_handlers_for_test(Arc::new(vec![]));
+     let retry = invocation.configured_selection(&engine);
+     assert!(Arc::ptr_eq(&first, &retry));
+     assert_eq!(
+@@ -223,7 +223,10 @@ fn native_selection_stop_phases_share_one_complete_ordered_catalog() {
+ #[test]
+ fn native_selection_dispatch_retains_original_without_a_cycle() {
+     let (_owner, mut engine) = engine();
+-    engine.handlers = Arc::new(vec![handler("selected", HookEventName::PreToolUse)]);
++    engine.replace_handlers_for_test(Arc::new(vec![handler(
++        "selected",
++        HookEventName::PreToolUse,
++    )]));
+     let invocation = original(&engine, tool());
+     let weak = Arc::downgrade(&invocation);
+     let dispatch = invocation.dispatch(&engine).unwrap();
+@@ -269,14 +272,93 @@ fn native_selection_legacy_retries_keep_exact_callbacks_and_notify_snapshot() {
+     let retry = invocation.legacy_selection(&changed);
+     assert!(Arc::ptr_eq(&first, &retry));
+     assert!(Arc::ptr_eq(
+-        &first.legacy().hooks[0].func,
+-        &retry.legacy().hooks[0].func
++        &first.legacy().configuration.hooks()[0].func,
++        &retry.legacy().configuration.hooks()[0].func
+     ));
+     assert!(Arc::ptr_eq(
+-        first.legacy()._notify.as_ref().unwrap(),
+-        retry.legacy()._notify.as_ref().unwrap()
++        first.legacy().configuration.notify().unwrap(),
++        retry.legacy().configuration.notify().unwrap()
+     ));
+     let weak = Arc::downgrade(&invocation);
+     drop(invocation);
+     assert!(weak.upgrade().is_none());
+ }
++
++#[test]
++fn source_configuration_owner_ids_follow_actual_immutable_snapshots() {
++    let (_owner, mut engine) = engine();
++    let initial = engine.configuration_observation();
++    assert_eq!(initial, engine.clone().configuration_observation());
++    engine.replace_handlers_for_test(Arc::new(vec![handler("first", HookEventName::PreToolUse)]));
++    let configured = engine.configuration_observation();
++    assert_ne!(initial, configured);
++    let invocation = original(&engine, tool());
++    let original_bytes = invocation.occurrence().id().canonical_event_id();
++    engine.replace_handlers_for_test(Arc::new(vec![handler("later", HookEventName::PreToolUse)]));
++    let selected = invocation.configured_selection(&engine);
++    let observed = selected.configuration_observation();
++    assert_ne!(configured, observed);
++    assert_eq!(observed, engine.configuration_observation());
++    assert_eq!(
++        observed.actor_bytes(),
++        invocation
++            .occurrence()
++            .native_session_instance()
++            .canonical_event_id()
++    );
++    assert_eq!(&observed.canonical_bytes()[..16], &original_bytes[..16]);
++    assert!(
++        u64::from_be_bytes(observed.canonical_bytes()[16..24].try_into().unwrap())
++            > u64::from_be_bytes(original_bytes[16..24].try_into().unwrap()),
++        "first selection may observe a config created after request capture"
++    );
++    engine.replace_handlers_for_test(Arc::new(vec![]));
++    assert_eq!(
++        invocation
++            .configured_selection(&engine)
++            .configuration_observation(),
++        observed
++    );
++}
++#[test]
++fn source_configuration_legacy_owner_is_independent_of_engine_overlay() {
++    let id = ThreadId::new();
++    let (_owner, source) =
++        NativeSessionSource::birth_root(NativeSessionContext::new(id, id, None)).unwrap();
++    let (hooks, _results) = crate::Hooks::new(
++        crate::HooksConfig::default(),
++        source.clone(),
++        Arc::new(UnusedExecutor),
++    )
++    .unwrap();
++    let legacy = |hooks: &crate::Hooks| {
++        let request = crate::HookPayload {
++            session_id: id,
++            cwd: cwd(),
++            client: None,
++            triggered_at: chrono::Utc::now(),
++            hook_event: crate::HookEvent::AfterAgent {
++                event: crate::HookEventAfterAgent {
++                    thread_id: id,
++                    turn_id: "turn".into(),
++                    input_messages: vec![],
++                    last_assistant_message: None,
++                },
++            },
++        };
++        NativeEvent::capture(source.clone(), request)
++            .into_invocation(&source)
++            .legacy_selection(hooks)
++            .configuration_observation()
++    };
++    let original_id = legacy(&hooks);
++    assert_eq!(original_id, legacy(&hooks.clone()));
++    let overlay = hooks.for_memory_consolidation(vec![]);
++    assert_eq!(original_id, legacy(&overlay));
++    let reconfigured = hooks.reconfigured(crate::HooksConfig::default());
++    assert_ne!(original_id, legacy(&reconfigured));
++    assert_eq!(
++        original_id.actor_bytes(),
++        source.lifecycle().id().canonical_event_id()
++    );
++}
+diff --git a/codex-rs/hooks/src/registry.rs b/codex-rs/hooks/src/registry.rs
+index 4c26ce2..ebfcb14 100644
+--- a/codex-rs/hooks/src/registry.rs
++++ b/codex-rs/hooks/src/registry.rs
+@@ -24,7 +24,6 @@ use crate::events::stop::StopRequest;
+ use crate::events::user_prompt_submit::UserPromptSubmitOutcome;
+ use crate::events::user_prompt_submit::UserPromptSubmitRequest;
+ use crate::mcp::HookMcpExecutor;
+-use crate::types::Hook;
+ use crate::types::HookPayload;
+ use crate::types::HookResponse;
+ use async_channel::Receiver;
+@@ -63,8 +62,7 @@ pub struct Hooks {
+     // TODO: Once legacy `notify` is removed, capture this snapshot in `CommandHookRuntime::new`
+     // and remove the environment plumbing from `Hooks` and `from_config`.
+     environment: Arc<Vec<(OsString, OsString)>>,
+-    after_agent: Arc<[Hook]>,
+-    legacy_notify_snapshot: Option<Arc<crate::legacy_notify::NotifySnapshot>>,
++    legacy_configuration: Arc<crate::native_configuration::LegacyConfigurationSnapshot>,
+     engine: ClaudeHooksEngine,
+     plugin_hook_sources: Arc<[PluginHookSource]>,
+     plugin_hook_load_warnings: Arc<[String]>,
+@@ -72,14 +70,14 @@ pub struct Hooks {
+ 
+ impl Hooks {
+     pub fn native_subject(&self) -> crate::NativeSubject {
+-        self.engine.command_runtime.native_source().subject()
++        self.engine.command_runtime().native_source().subject()
+     }
+     /// Opaque retained source data; no parent can be reconstructed from history labels.
+     pub fn native_parent_reference(
+         &self,
+     ) -> Result<crate::NativeParent, crate::NativeContextError> {
+         self.engine
+-            .command_runtime
++            .command_runtime()
+             .native_source()
+             .parent_reference()
+     }
+@@ -107,27 +105,27 @@ impl Hooks {
+     }
+ 
+     pub fn begin_native_event(&self, kind: crate::NativeHookKind) -> crate::NativeEventCapture {
+-        crate::NativeEventCapture::new(self.engine.command_runtime.native_source(), kind)
++        crate::NativeEventCapture::new(self.engine.command_runtime().native_source(), kind)
+     }
+ 
+     pub fn capture_native_event<T: crate::NativeHookRequest>(
+         &self,
+         request: T,
+     ) -> crate::NativeEvent<T> {
+-        crate::NativeEvent::capture(self.engine.command_runtime.native_source(), request)
++        crate::NativeEvent::capture(self.engine.command_runtime().native_source(), request)
+     }
+ 
+     pub fn native_session_context(&self) -> crate::NativeSessionContext {
+-        self.engine.command_runtime.native_session_context()
++        self.engine.command_runtime().native_session_context()
+     }
+ 
+     /// Preserve in-flight background hooks while applying a refreshed configuration.
+     pub fn reconfigured(&self, config: HooksConfig) -> Self {
+         Self::from_config(
+             config,
+-            Arc::clone(&self.engine.mcp_executor),
++            Arc::clone(&self.engine.mcp_executor()),
+             Arc::clone(&self.environment),
+-            |shell| self.engine.command_runtime.reconfigured(shell),
++            |shell| self.engine.command_runtime().reconfigured(shell),
+         )
+     }
+ 
+@@ -148,8 +146,7 @@ impl Hooks {
+ 
+     pub fn for_memory_consolidation(&self, executor_hooks: Vec<ExecutorPluginHookSource>) -> Self {
+         let mut hooks = self.with_executor_hooks(executor_hooks);
+-        Arc::make_mut(&mut hooks.engine.handlers)
+-            .retain(ConfiguredHandler::runs_for_memory_consolidation);
++        hooks.engine.retain_memory_handlers();
+         hooks
+     }
+ 
+@@ -173,6 +170,11 @@ impl Hooks {
+             program: config.shell_program.unwrap_or_default(),
+             args: config.shell_args,
+         });
++        let legacy_configuration = crate::native_configuration::LegacyConfigurationSnapshot::new(
++            &command_runtime.native_source(),
++            after_agent,
++            legacy_notify_snapshot,
++        );
+         let engine = ClaudeHooksEngine::new(
+             config.feature_enabled,
+             config.bypass_hook_trust,
+@@ -184,8 +186,7 @@ impl Hooks {
+         );
+         Self {
+             environment,
+-            after_agent,
+-            legacy_notify_snapshot,
++            legacy_configuration,
+             engine,
+             plugin_hook_sources: config.plugin_hook_sources.into(),
+             plugin_hook_load_warnings: config.plugin_hook_load_warnings.into(),
+@@ -194,7 +195,7 @@ impl Hooks {
+ 
+     /// Abort and join outstanding async hooks during session shutdown.
+     pub async fn shutdown(&self) {
+-        self.engine.command_runtime.shutdown().await;
++        self.engine.command_runtime().shutdown().await;
+     }
+ 
+     pub fn startup_warnings(&self) -> &[String] {
+@@ -203,8 +204,7 @@ impl Hooks {
+ 
+     pub(crate) fn capture_legacy_selection(&self) -> crate::native_manifest::LegacySelection {
+         crate::native_manifest::LegacySelection {
+-            hooks: Arc::clone(&self.after_agent),
+-            _notify: self.legacy_notify_snapshot.clone(),
++            configuration: Arc::clone(&self.legacy_configuration),
+         }
+     }
+ 
+@@ -212,11 +212,12 @@ impl Hooks {
+         &self,
+         hook_payload: crate::NativeEvent<HookPayload>,
+     ) -> Vec<HookResponse> {
+-        let invocation = hook_payload.into_invocation(&self.engine.command_runtime.native_source());
++        let invocation =
++            hook_payload.into_invocation(&self.engine.command_runtime().native_source());
+         let selection = invocation.legacy_selection(self);
+         let selected = selection.legacy();
+-        let mut outcomes = Vec::with_capacity(selected.hooks.len());
+-        for hook in selected.hooks.iter() {
++        let mut outcomes = Vec::with_capacity(selected.configuration.hooks().len());
++        for hook in selected.configuration.hooks().iter() {
+             invocation.occurrence().observe("legacy");
+             let outcome = hook.execute(Arc::clone(&invocation)).await;
+             let should_abort_operation = outcome.result.should_abort_operation();
+@@ -370,7 +371,7 @@ impl Hooks {
+     /// None if unconfigured; Sync if any handler must finish before continuing.
+     pub fn execution_mode_for_event(&self, event: HookEventName) -> Option<HookExecutionMode> {
+         self.engine
+-            .handlers
++            .handlers()
+             .iter()
+             .filter(|handler| handler.event_name == event)
+             .map(ConfiguredHandler::execution_mode)
+@@ -379,21 +380,21 @@ impl Hooks {
+ 
+     /// Run a hook task independently of the turn, but abort and join it at session shutdown.
+     pub fn schedule_async_task(&self, task: impl Future<Output = ()> + Send + 'static) {
+-        self.engine.command_runtime.schedule_async_task(task);
++        self.engine.command_runtime().schedule_async_task(task);
+     }
+ 
+     pub fn preview_model_request(
+         &self,
+         request: &crate::ModelRequestHookInput,
+     ) -> Vec<codex_protocol::protocol::HookRunSummary> {
+-        crate::events::model_request::preview(&self.engine.handlers, request)
++        crate::events::model_request::preview(&self.engine.handlers(), request)
+     }
+ 
+     pub async fn run_model_request(
+         &self,
+         request: crate::NativeEvent<crate::ModelRequestHookInput>,
+     ) -> Vec<codex_protocol::protocol::HookCompletedEvent> {
+-        let invocation = request.into_invocation(&self.engine.command_runtime.native_source());
++        let invocation = request.into_invocation(&self.engine.command_runtime().native_source());
+         crate::events::model_request::run(&self.engine, invocation).await
+     }
+ }

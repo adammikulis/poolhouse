@@ -5,6 +5,7 @@
 mod source_context;
 mod original_message;
 mod launch_data;
+#[cfg(target_os = "macos")] mod macos_child;
 #[cfg(test)] mod source_context_tests;
 mod occurrence;
 mod invocation;

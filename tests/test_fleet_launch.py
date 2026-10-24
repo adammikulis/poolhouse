@@ -129,14 +129,14 @@ def test_a_vcs_install_names_its_commit_on_the_done_screen(monkeypatch):
     assert running.endswith("  0ce5bc5"), running
 
 
-def test_new_launcher_replaces_owned_older_idle_daemon_before_start(monkeypatch, tmp_path):
+def test_explicit_restart_replaces_owned_older_idle_daemon_before_start(monkeypatch, tmp_path):
     calls = []
     monkeypatch.setattr(launch, "already_running", lambda _port: {"commit": "old", "launcher_control": "a" * 32})
     monkeypatch.setattr(launch, "state", lambda: {"commit": "new"})
     monkeypatch.setattr(launch, "request_replacement", lambda *args, **kwargs: calls.append(("replace", args)))
     monkeypatch.setattr(launch, "_wait_for_exit", lambda _port: True)
     monkeypatch.setattr(launch, "finish", lambda argv, previous, probe, release: calls.append(("start", argv)) or 0)
-    assert launch.main(["--no-browser", "--root", str(tmp_path)],
+    assert launch.main(["--restart", "--no-browser", "--root", str(tmp_path)],
                        daemon_main=lambda argv: pytest.fail("the launcher became the daemon")) == 0
     assert [row[0] for row in calls] == ["replace", "start"]
     assert calls[0][1][0] == tmp_path
@@ -148,11 +148,12 @@ def test_new_launcher_keeps_busy_or_unowned_daemon_and_reports_retry(monkeypatch
     def refuse(*_args, **_kwargs):
         raise launch.ControlError("Daemon has active work; retry when it is idle.")
     monkeypatch.setattr(launch, "request_replacement", refuse)
-    assert launch.main(["--no-browser"], daemon_main=lambda _argv: pytest.fail("started over active daemon")) == 1
+    assert launch.main(["--restart", "--no-browser"], daemon_main=lambda _argv: pytest.fail("started over active daemon")) == 1
     assert "retry" in capsys.readouterr().err
 
 
 def test_launcher_reuses_exact_running_commit_without_replacement(monkeypatch):
+    monkeypatch.setattr(launch.launch_health, "authenticated", lambda *_args: {"name": "box"})
     monkeypatch.setattr(launch, "already_running", lambda _port: {"name": "box", "commit": "a" * 40})
     monkeypatch.setattr(launch, "state", lambda: {"commit": "a" * 40})
     monkeypatch.setattr(launch, "request_replacement", lambda *_args: pytest.fail("replaced identical daemon"))
@@ -235,7 +236,7 @@ def test_a_held_port_that_answers_slowly_is_the_running_daemon(monkeypatch, caps
     try:
         calls = iter([None])
         monkeypatch.setattr(launch, "already_running", lambda _port: next(calls, None))
-        monkeypatch.setattr(launch, "same_commit", lambda *_args: True)
+        monkeypatch.setattr(launch.launch_health, "authenticated", lambda *_args: {"name": "box"})
         monkeypatch.setattr(launch, "_open_when_ready", lambda *_args: None)
         assert launch.main(["--no-browser", "--port", str(server.server_address[1])],
                            daemon_main=lambda _argv: pytest.fail("started a duplicate")) == 0

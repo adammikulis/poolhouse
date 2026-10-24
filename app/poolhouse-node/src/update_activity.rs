@@ -1,5 +1,7 @@
 //! Local writer accounting only. Other sources remain uncovered; no production drain
 //! controller, complete inventory, quiescence result or cutover witness exists here.
+//! Outgoing Sync/Join/Add/Attach/Shard calls have continuation; actual host workers,
+//! remaining writers and authenticated control still block any controller activation.
 use std::sync::{Arc, Mutex, MutexGuard};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -12,8 +14,8 @@ enum Phase { Running, Draining, Fenced }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Activity { Maintenance, NewEffect }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Refusal { Unavailable, NewWorkPaused, Fenced, ActiveWriters, IncompleteInventory }
-struct State { phase: Phase, writers: usize, local_writers: usize, connections: usize }
+pub(crate) enum Refusal { Unavailable, NewWorkPaused, Fenced, ActiveWriters, IncompleteInventory, WrongEffect }
+struct State { phase: Phase, writers: usize, local_writers: usize, connections: usize, next_effect: u64 }
 
 #[derive(Clone)]
 pub(crate) struct Registry { state: Arc<Mutex<State>> }
@@ -23,6 +25,12 @@ pub(crate) struct Connection { state: Arc<Mutex<State>> }
 /// Not cloneable: every admitted local mutation holds exactly one counted guard.
 pub(crate) struct Writer { state: Arc<Mutex<State>>, source: Source }
 
+/// Scheduling continuation only; never a domain principal, grant or cutover proof.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum EffectFlow { Sync, AddDevice, Join, Attach, ShardPut, ShardStart, PeerCall, #[cfg(test)] Other }
+pub(crate) struct AdmittedEffect { writer: Writer, flow: EffectFlow, operation: u64 }
+pub(crate) struct ChildEffect<'parent> { _parent: &'parent AdmittedEffect, _writer: Writer }
+
 // No production issuer. A locator, JSON value, UID or counter is not controller authority.
 enum ControlWitness { #[cfg(test)] TestOnly }
 
@@ -30,13 +38,32 @@ impl Registry {
     #[cfg(test)]
     pub(crate) fn local_writer_count(&self) -> usize { self.state.lock().unwrap().local_writers }
     pub(crate) fn new() -> Self {
-        Self { state: Arc::new(Mutex::new(State { phase: Phase::Running, writers: 0, local_writers: 0, connections: 0 })) }
+        Self { state: Arc::new(Mutex::new(State { phase: Phase::Running, writers: 0, local_writers: 0, connections: 0, next_effect: 1 })) }
     }
     pub(crate) fn local_writer(&self) -> Result<Writer, Refusal> {
         // New effects use this gate; typed API maintenance uses local_maintenance. Both
         // include read-side gov_tick/names.touch; production stays Running.
         self.enter(Source::LocalApi, Activity::NewEffect)
     }
+    pub(crate) fn admit_effect(&self, source: Source, flow: EffectFlow) -> Result<AdmittedEffect, Refusal> {
+        let mut s=self.state.lock().map_err(|_| Refusal::Unavailable)?;
+        if s.phase != Phase::Running { return Err(if s.phase==Phase::Fenced { Refusal::Fenced } else { Refusal::NewWorkPaused }); }
+        let next=s.next_effect.checked_add(1).ok_or(Refusal::Unavailable)?;
+        let count=s.writers.checked_add(1).ok_or(Refusal::Unavailable)?;
+        let operation=s.next_effect; s.next_effect=next; s.writers=count;
+        if source==Source::LocalApi { s.local_writers+=1; }
+        Ok(AdmittedEffect { writer:Writer { state:self.state.clone(),source }, flow, operation })
+    }
+    pub(crate) fn continue_effect<'parent>(&self, parent: &'parent AdmittedEffect, source: Source,
+        flow: EffectFlow) -> Result<ChildEffect<'parent>, Refusal> {
+        if !Arc::ptr_eq(&self.state,&parent.writer.state) || parent.flow!=flow { return Err(Refusal::WrongEffect); }
+        let writer=self.enter(source,Activity::Maintenance)?;
+        Ok(ChildEffect { _parent:parent, _writer:writer })
+    }
+    pub(crate) fn maintenance(&self, source: Source) -> Result<Writer, Refusal> { self.enter(source, Activity::Maintenance) }
+    pub(crate) fn new_effect(&self, source: Source) -> Result<Writer, Refusal> { self.enter(source, Activity::NewEffect) }
+    #[cfg(test)]
+    pub(crate) fn active_writer_count_for_test(&self) -> usize { self.state.lock().unwrap().writers }
     pub(crate) fn local_maintenance(&self) -> Result<Writer, Refusal> { self.enter(Source::LocalApi, Activity::Maintenance) }
     pub(crate) fn lease_writer(&self) -> Result<Writer, Refusal> { self.enter(Source::LeaseScheduler, Activity::Maintenance) }
     pub(crate) fn reserve_grants(&self) -> Result<GrantReservation<'_>, Refusal> {
@@ -165,4 +192,27 @@ mod tests {
         assert_eq!(observed.try_fence(),Err(Refusal::ActiveWriters)); drop(w);
         assert_eq!(observed.try_fence(),Err(Refusal::IncompleteInventory));
     }
+    #[test]
+    fn admitted_sync_continues_during_drain_but_new_operations_refuse() {
+        let r=Registry::new(); let parent=r.admit_effect(Source::Sync,EffectFlow::Sync).unwrap();
+        let operation=parent.operation; r.drain_for_test();
+        let child=r.continue_effect(&parent,Source::Sync,EffectFlow::Sync).unwrap();
+        assert_eq!(child._parent.operation,operation); assert_eq!(r.active_writer_count_for_test(),2);
+        assert!(matches!(r.admit_effect(Source::Sync,EffectFlow::Sync),Err(Refusal::NewWorkPaused)));
+        assert!(matches!(r.continue_effect(&parent,Source::Sync,EffectFlow::Other),Err(Refusal::WrongEffect)));
+        drop(child); assert_eq!(r.active_writer_count_for_test(),1); drop(parent);
+        assert_eq!(r.active_writer_count_for_test(),0);
+    }
+    #[test]
+    fn foreign_registry_and_cross_operation_flow_cannot_reuse_parent() {
+        let a=Registry::new(); let b=Registry::new();
+        let parent=a.admit_effect(Source::Sync,EffectFlow::Sync).unwrap();
+        assert!(matches!(b.continue_effect(&parent,Source::Sync,EffectFlow::Sync),Err(Refusal::WrongEffect)));
+        assert!(matches!(a.continue_effect(&parent,Source::Sync,EffectFlow::Other),Err(Refusal::WrongEffect)));
+        assert!(matches!(a.continue_effect(&parent,Source::Network,EffectFlow::AddDevice),Err(Refusal::WrongEffect)));
+        assert!(matches!(a.continue_effect(&parent,Source::Network,EffectFlow::Join),Err(Refusal::WrongEffect)));
+        let second=a.admit_effect(Source::Sync,EffectFlow::Sync).unwrap();
+        assert_ne!(parent.operation,second.operation);
+    }
+
 }

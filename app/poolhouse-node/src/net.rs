@@ -4,6 +4,8 @@
 //! The node's lock is never held across network I/O: a request takes it, decides, and lets go.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ops::{Deref, DerefMut};
+use crate::node::update_activity::{Registry, Source, Writer, AdmittedEffect, EffectFlow};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
@@ -19,7 +21,7 @@ use crate::error::{Error, Result};
 use crate::fsutil::{sha256_hex, unhex};
 use crate::lineage::Peer;
 use crate::membership::{Device, Standing};
-use crate::netsync::sync_all;
+use crate::netsync::sync_all_admitted;
 use crate::node::Node;
 use crate::join_code::{context_for, new_code, Session, Window};
 use crate::peer::{self, PeerClient};
@@ -52,6 +54,7 @@ impl NetConfig {
 
 pub struct Net {
     pub node: Arc<Mutex<Node>>,
+    pub(crate) activity: Registry,
     pub me: Identity,
     pub server_config: Arc<ServerConfig>,
     pub port: u16,
@@ -71,8 +74,45 @@ pub struct Net {
     this: OnceLock<Weak<Net>>,
 }
 
+/// Cleanup follows the owned setup even through unwind, without counting an idle connection as work.
+struct AttachCleanup<'a> { net: &'a Net, fingerprint: &'a str }
+impl Drop for AttachCleanup<'_> {
+    fn drop(&mut self) {
+        let Ok(_cleanup)=self.net.activity.maintenance(Source::Network) else { return };
+        if let Ok(mut kept)=locked(&self.net.attaching) { kept.remove(self.fingerprint); }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PeerOperation { Maintenance, Work(EffectFlow) }
+fn peer_operation(request: &Value) -> PeerOperation {
+    match request["op"].as_str() {
+        Some("shard_caps" | "shard_status" | "shard_cancel" | "hello" | "boards") => PeerOperation::Maintenance,
+        Some("shard_put") => PeerOperation::Work(EffectFlow::ShardPut),
+        Some("shard_start") => PeerOperation::Work(EffectFlow::ShardStart),
+        // vector/pull and unknown operations can write checkpoints or begin work; never maintenance by default.
+        _ => PeerOperation::Work(EffectFlow::PeerCall),
+    }
+}
+
 fn locked<T>(m: &Mutex<T>) -> Result<MutexGuard<'_, T>> {
     m.lock().map_err(|_| Error::Damaged("node poisoned".into()))
+}
+
+/// Node lock first, then the shared phase registry. The phase mutex is released before use.
+pub(crate) struct NodeWriteGuard<'a> {
+    node: MutexGuard<'a, Node>, // Drops first; writer accounting conservatively outlives the lock.
+    _writer: Writer,
+}
+impl Deref for NodeWriteGuard<'_> { type Target=Node; fn deref(&self) -> &Node { &self.node } }
+impl DerefMut for NodeWriteGuard<'_> { fn deref_mut(&mut self) -> &mut Node { &mut self.node } }
+pub(crate) fn tracked_node(node: &Mutex<Node>, source: Source) -> Result<NodeWriteGuard<'_>> {
+    let node=locked(node)?;
+    let writer=node.activity.maintenance(source).map_err(activity_error)?;
+    Ok(NodeWriteGuard { node, _writer:writer })
+}
+pub(crate) fn activity_error(_: crate::node::update_activity::Refusal) -> Error {
+    Error::say("update_pending", "network activity waits for the node update", "none", "retry")
 }
 
 fn addr_of(host: &str, port: u64) -> Result<SocketAddr> {
@@ -111,27 +151,27 @@ fn refusal_hint(e: &Error) -> String {
 impl Net {
     /// Start listening (and beaconing and syncing, as configured) for ``node``.
     pub fn start(node: Arc<Mutex<Node>>, cfg: NetConfig) -> Result<Arc<Net>> {
-        let (me, stop, dir) = {
-            let n = locked(&node)?;
-            (n.cert.clone(), n.stop.clone(), n.dir.clone())
+        let (me, stop, dir, activity) = {
+            let n = tracked_node(&node, Source::Network)?;
+            (n.cert.clone(), n.stop.clone(), n.dir.clone(), n.activity.clone())
         };
         let shards = Shards::new(node.clone(), &dir, stop.clone())?;
         let standing_of = node.clone();
-        let standing: StandingFn = Arc::new(move |fp| standing_of.lock().map_or(Standing::Revoked, |n| n.members.standing(fp)));
+        let standing: StandingFn = Arc::new(move |fp| tracked_node(&standing_of, Source::Peer).map_or(Standing::Revoked, |n| n.members.standing(fp)));
         let listener = TcpListener::bind(cfg.listen)?;
         listener.set_nonblocking(true)?;
         let port = listener.local_addr()?.port();
         let net = Arc::new(Net {
-            node, server_config: server_config(&me, standing)?, me, port, stop, shards,
+            node, activity, server_config: server_config(&me, standing)?, me, port, stop, shards,
             window: Mutex::new(None), joining: Mutex::new(BTreeSet::new()), refused: Mutex::new(BTreeMap::new()), beacon_stats: OnceLock::new(), last_join: Mutex::new(Value::Null),
             reverse: Mutex::new(BTreeMap::new()), attaching: Mutex::new(BTreeMap::new()), this: OnceLock::new(),
         });
         let _ = net.this.set(Arc::downgrade(&net));
-        locked(&net.node)?.facts.listen = Some(listener.local_addr()?.to_string());
+        tracked_node(&net.node, Source::Network)?.facts.listen = Some(listener.local_addr()?.to_string());
         let n = net.clone();
         std::thread::spawn(move || n.accept_loop(listener));
         if let Some(project) = cfg.project.as_deref().filter(|_| cfg.beacon.is_some()) {
-            locked(&net.node)?.members.claim_project(project);
+            tracked_node(&net.node, Source::Network)?.members.claim_project(project);
         }
         if let Some(b) = cfg.beacon {
             net.start_beacon(b)?;
@@ -164,7 +204,7 @@ impl Net {
     }
 
     pub fn session_opened(&self, fp: &str) {
-        if let Ok(mut n) = self.node.lock() {
+        if let Ok(mut n) = tracked_node(&self.node, Source::Network) {
             if n.members.is_active(fp) {
                 let f = n.facts.peer(fp);
                 f.sessions += 1;
@@ -174,7 +214,7 @@ impl Net {
     }
 
     pub fn session_closed(&self, fp: &str) {
-        if let Ok(mut n) = self.node.lock() {
+        if let Ok(mut n) = tracked_node(&self.node, Source::Network) {
             if let Some(f) = n.facts.peers.get_mut(fp) {
                 f.sessions = f.sessions.saturating_sub(1);
             }
@@ -183,18 +223,18 @@ impl Net {
 
     // -- beacon -----------------------------------------------------------
     fn start_beacon(self: &Arc<Net>, cfg: BeaconConfig) -> Result<()> {
-        let key = locked(&self.node)?.key.clone();
+        let key = tracked_node(&self.node, Source::Network)?.key.clone();
         let (a, b) = (self.clone(), self.clone());
         let hooks = Hooks {
             identity: Box::new(move || {
-                a.node.lock().map(|n| Advert {
+                tracked_node(&a.node, Source::Beacon).map(|n| Advert {
                     pool: n.members.id.clone(), fingerprint: n.cert.fingerprint(), port: a.port,
                     project: n.members.project.clone(),
                 }).unwrap_or_default()
             }),
             on_beacon: Box::new(move |beacon| b.heard(beacon)),
         };
-        locked(&self.node)?.facts.beacon = true;
+        tracked_node(&self.node, Source::Network)?.facts.beacon = true;
         let stats = beacon::start(cfg, key, hooks, self.stop.clone(), wall_ms)?;
         let _ = self.beacon_stats.set(stats);
         Ok(())
@@ -213,6 +253,7 @@ impl Net {
     }
 
     fn record_join(&self, fingerprint: &str, addr: SocketAddr, result: &Result<()>) {
+        let Ok(_activity) = self.activity.maintenance(Source::Network) else { return };
         let (ok, error) = match result {
             Ok(()) => (true, String::new()),
             Err(e) => (false, join_hint(e)),
@@ -226,7 +267,7 @@ impl Net {
     /// the sender's pool is founded (has an id) and is of this device's project, and not again for ten seconds after a refusal (a
     /// pool that is not `open` refuses it). Two devices in no pool never join each other, and a device in a pool joins no other.
     fn heard(self: &Arc<Net>, b: Beacon) {
-        let Ok(mut node) = self.node.lock() else { return };
+        let Ok(mut node) = tracked_node(&self.node, Source::Beacon) else { return };
         if b.fingerprint == node.cert.fingerprint() {
             return;
         }
@@ -244,10 +285,13 @@ impl Net {
                 let eligible = node.members.can_join_other() && b.pool.len() == 32 && b.project == node.members.project && crate::netif::on_segment(b.addr);
                 drop(node);
                 let waiting = self.refused.lock().is_ok_and(|r| r.get(&b.fingerprint).is_some_and(|at| at.elapsed() < REFUSED_FOR));
-                if eligible && !waiting && self.joining.lock().is_ok_and(|mut j| j.insert(b.fingerprint.clone())) {
+                let admitted = self.activity.admit_effect(Source::Beacon,EffectFlow::Join);
+                if eligible && !waiting && admitted.is_ok() && self.joining.lock().is_ok_and(|mut j| j.insert(b.fingerprint.clone())) {
+                    let admitted = admitted.expect("checked admission");
                     let (net, fp) = (self.clone(), b.fingerprint.clone());
                     std::thread::spawn(move || {
-                        let result = net.join_open(addr, &fp);
+                        let admitted = admitted; // Owned before spawn; retained through result and cleanup.
+                        let result = net.join_open_admitted(addr, &fp, &admitted);
                         net.record_join(&fp, addr, &result);
                         if result.is_err() {
                             if let Ok(mut r) = net.refused.lock() {
@@ -267,15 +311,20 @@ impl Net {
     /// Join the pool of the device at ``addr`` whose certificate has fingerprint ``expect``,
     /// under its policy `open`; the device is enrolled here and this one there.
     pub fn join_open(&self, addr: SocketAddr, expect: &str) -> Result<()> {
+        let effect=self.activity.admit_effect(Source::Network,EffectFlow::Join).map_err(activity_error)?;
+        self.join_open_admitted(addr,expect,&effect)
+    }
+    fn join_open_admitted(&self, addr: SocketAddr, expect: &str, effect: &AdmittedEffect) -> Result<()> {
+        let _child=self.activity.continue_effect(effect,Source::Network,EffectFlow::Join).map_err(activity_error)?;
         if !crate::netif::on_segment(addr.ip()) {
             return Err(Error::Denied(format!("{} is not on a network this device is on; a device joins without a code only from the same network, so use a join code", addr.ip())));
         }
         let mut c = PeerClient::connect(&self.me, addr, Some(expect))?;
-        let name = locked(&self.node)?.members.get(&self.me.fingerprint()).map(|d| d.name.clone()).unwrap_or_default();
-        let ask = peer::hello_request(&*locked(&self.node)?);
+        let name = tracked_node(&self.node, Source::Network)?.members.get(&self.me.fingerprint()).map(|d| d.name.clone()).unwrap_or_default();
+        let ask = peer::hello_request(&*tracked_node(&self.node, Source::Network)?);
         let hello = c.call(&ask)?;
-        locked(&self.node)?.observe_build(&c.fingerprint, &hello);
-        if hello["project"].as_str().unwrap_or("") != locked(&self.node)?.members.project {
+        tracked_node(&self.node, Source::Network)?.observe_build(&c.fingerprint, &hello);
+        if hello["project"].as_str().unwrap_or("") != tracked_node(&self.node, Source::Network)?.members.project {
             return Err(Error::Denied("that pool belongs to another project".into()));
         }
         if hello["policy"] != "open" {
@@ -291,7 +340,7 @@ impl Net {
         let read = |key: &str| -> Result<Vec<crate::gov::act::Act>> { serde_json::from_value(reply[key].clone()).map_err(|_| Error::Invalid(format!("{key} is a list of acts"))) };
         let found: crate::gov::act::Act = serde_json::from_value(reply["found"].clone()).map_err(|_| Error::Invalid("found is an act".into()))?;
         let (settled, delegates, rest) = (read("settled")?, read("delegates")?, read("acts")?);
-        let mut node = locked(&self.node)?;
+        let mut node = tracked_node(&self.node, Source::Network)?;
         if reply["pool"].as_str() != Some(found.pool.as_str()) {
             return Err(Error::Denied("the pool the device named is not the pool its founding act makes".into()));
         }
@@ -348,12 +397,17 @@ impl Net {
     /// device that will use the window was signed (and submitted here) before, so this device needs no signer to open it; the window
     /// still admits nothing a person's key did not sign for.
     pub fn add_device(&self, passphrase: &str, ttl_s: u64, presigned: bool) -> Result<Value> {
+        let effect=self.activity.admit_effect(Source::Network,EffectFlow::AddDevice).map_err(activity_error)?;
+        self.add_device_admitted(passphrase,ttl_s,presigned,&effect)
+    }
+    fn add_device_admitted(&self, passphrase: &str, ttl_s: u64, presigned: bool, effect: &AdmittedEffect) -> Result<Value> {
+        let _child=self.activity.continue_effect(effect,Source::Network,EffectFlow::AddDevice).map_err(activity_error)?;
         let code = if passphrase.is_empty() { new_code()? } else { passphrase.to_string() };
         if code.len() < 6 || code.len() > 200 {
             return Err(Error::Invalid("a passphrase is 6 to 200 characters".into()));
         }
         let until = wall_ms() + ttl_s.clamp(1, 600) * 1000;
-        let mut node = locked(&self.node)?;
+        let mut node = tracked_node(&self.node, Source::Network)?;
         if !presigned {
             node.can_admit()?;
         }
@@ -365,8 +419,13 @@ impl Net {
     /// Join the device at ``addr`` using its code (without one, join its pool under policy
     /// `open`, which needs its certificate fingerprint); this device must be alone in its pool.
     pub fn join_pool(&self, addr: SocketAddr, passphrase: &str, fingerprint: &str) -> Result<Value> {
+        let effect=self.activity.admit_effect(Source::Network,EffectFlow::Join).map_err(activity_error)?;
+        self.join_pool_admitted(addr,passphrase,fingerprint,&effect)
+    }
+    fn join_pool_admitted(&self, addr: SocketAddr, passphrase: &str, fingerprint: &str, effect: &AdmittedEffect) -> Result<Value> {
+        let _child=self.activity.continue_effect(effect,Source::Network,EffectFlow::Join).map_err(activity_error)?;
         let (alone, name) = {
-            let n = locked(&self.node)?;
+            let n = tracked_node(&self.node, Source::Network)?;
             (n.members.can_join_other(), n.members.get(&self.me.fingerprint()).map(|d| d.name.clone()).unwrap_or_default())
         };
         if !alone {
@@ -376,8 +435,8 @@ impl Net {
             if !crate::cert::valid_fingerprint(fingerprint) {
                 return Err(Error::Invalid("without a passphrase the device is named by its fingerprint".into()));
             }
-            self.join_open(addr, fingerprint)?;
-            return Ok(json!({"pool": locked(&self.node)?.members.id, "peer": fingerprint}));
+            self.join_open_admitted(addr, fingerprint, effect)?;
+            return Ok(json!({"pool": tracked_node(&self.node, Source::Network)?.members.id, "peer": fingerprint}));
         }
         let mut c = PeerClient::connect(&self.me, addr, None)?;
         let nonce = crate::fsutil::random_hex(16)?;
@@ -394,9 +453,9 @@ impl Net {
         }
         let grant: Value = serde_json::from_slice(&grant)?;
         self.adopt(&c, &grant, addr)?;
-        let ask = peer::hello_request(&*locked(&self.node)?);
+        let ask = peer::hello_request(&*tracked_node(&self.node, Source::Network)?);
         if let Ok(hello) = c.call(&ask) {
-            locked(&self.node)?.observe_build(&c.fingerprint, &hello);
+            tracked_node(&self.node, Source::Network)?.observe_build(&c.fingerprint, &hello);
         }
         Ok(json!({"pool": grant["pool"], "peer": c.fingerprint}))
     }
@@ -407,8 +466,13 @@ impl Net {
     /// hold up the members that can be reached. A member put out of the pool while the cycle runs (heard from an earlier dial of it) is
     /// not dialed, and one put out during its dial is not recorded as reached or attached to.
     pub fn sync_once(&self, force: bool) -> Result<usize> {
+        let effect=self.activity.admit_effect(Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
+        self.sync_once_admitted(force,&effect)
+    }
+    fn sync_once_admitted(&self, force: bool, effect: &AdmittedEffect) -> Result<usize> {
+        let _child=self.activity.continue_effect(effect,Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
         let targets: Vec<(String, String)> = {
-            let mut n = locked(&self.node)?;
+            let mut n = tracked_node(&self.node, Source::Network)?;
             n.gov_tick()?;
             let me = self.me.fingerprint();
             let now = wall_ms();
@@ -418,13 +482,13 @@ impl Net {
         };
         let mut reached = 0;
         for (fp, addr) in targets {
-            if !locked(&self.node)?.members.is_active(&fp) {
+            if !tracked_node(&self.node, Source::Network)?.members.is_active(&fp) {
                 continue;
             }
             let result = addr.parse::<SocketAddr>().map_err(|e| Error::Invalid(e.to_string()))
                 .and_then(|a| PeerClient::connect(&self.me, a, Some(&fp)))
-                .and_then(|mut c| self.compatible(&mut c).and_then(|()| sync_all(&self.node, &mut c)));
-            let mut n = locked(&self.node)?;
+                .and_then(|mut c| self.compatible(&mut c).and_then(|()| sync_all_admitted(&self.node, &mut c, effect)));
+            let mut n = tracked_node(&self.node, Source::Network)?;
             if !n.members.is_active(&fp) {
                 continue;
             }
@@ -453,6 +517,7 @@ impl Net {
     /// NAT, where the member cannot dial it but this device can dial the member. Returns the thread that keeps it, None when one is kept.
     pub fn attach(&self, fp: &str, addr: SocketAddr) -> Option<std::thread::JoinHandle<()>> {
         let net = self.this.get().and_then(Weak::upgrade)?;
+        let admitted = self.activity.admit_effect(Source::Network,EffectFlow::Attach).ok()?;
         let mut kept = locked(&self.attaching).ok()?;
         if kept.contains_key(fp) {
             return None;
@@ -461,14 +526,13 @@ impl Net {
         drop(kept);
         let fp = fp.to_string();
         Some(std::thread::spawn(move || {
-            let _ = net.attach_run(&fp, addr);
-            if let Ok(mut kept) = locked(&net.attaching) {
-                kept.remove(&fp);
-            }
+            let _ = net.attach_run(&fp, addr, admitted);
         }))
     }
 
-    fn attach_run(&self, fp: &str, addr: SocketAddr) -> Result<()> {
+    fn attach_run(&self, fp: &str, addr: SocketAddr, admitted: AdmittedEffect) -> Result<()> {
+        let setup=self.activity.continue_effect(&admitted,Source::Network,EffectFlow::Attach).map_err(activity_error)?;
+        let _cleanup=AttachCleanup { net:self, fingerprint:fp };
         if !self.is_member(fp) {
             return Ok(());
         }
@@ -478,21 +542,24 @@ impl Net {
         }
         c.call(&json!({"op": "attach"}))?;
         self.session_opened(fp);
+        drop(setup);
+        drop(admitted);
         let ended = c.serve(self, addr.ip());
         self.session_closed(fp);
         ended.map(|_| ())
     }
 
     fn is_member(&self, fp: &str) -> bool {
-        self.node.lock().is_ok_and(|n| n.members.is_active(fp))
+        tracked_node(&self.node, Source::Network).is_ok_and(|n| n.members.is_active(fp))
     }
 
     /// Close the connections kept with devices this one no longer lists as active members: the ones it keeps open to a member (`attach`)
     /// and the ones a member opened to it.
     pub fn drop_removed(&self) {
+        let Ok(_activity) = self.activity.maintenance(Source::Network) else { return };
         let mut held: BTreeSet<String> = self.attaching.lock().map(|m| m.keys().cloned().collect()).unwrap_or_default();
         held.extend(self.reverse.lock().map(|m| m.keys().cloned().collect::<Vec<_>>()).unwrap_or_default());
-        let Ok(node) = self.node.lock() else { return };
+        let Ok(node) = tracked_node(&self.node, Source::Network) else { return };
         let gone: Vec<String> = held.into_iter().filter(|fp| !node.members.is_active(fp)).collect();
         drop(node);
         for fp in gone {
@@ -511,6 +578,7 @@ impl Net {
     /// Hold the connection ``client`` (a member's, opened to this device) as the way to send that member requests; one from a device that is
     /// not an active member is closed.
     pub fn register_reverse(&self, client: PeerClient) {
+        let Ok(_activity) = self.activity.maintenance(Source::Network) else { return };
         let fp = client.fingerprint.clone();
         if !self.is_member(&fp) {
             self.session_closed(&fp);
@@ -525,12 +593,14 @@ impl Net {
 
     /// Record in the peer's facts whether it keeps a connection open to this device (`pool_status` says `channel`).
     fn mark_channel(&self, fp: &str, open: bool) {
-        if let Ok(mut n) = self.node.lock() {
+        let Ok(_activity) = self.activity.maintenance(Source::Network) else { return };
+        if let Ok(mut n) = tracked_node(&self.node, Source::Network) {
             n.facts.peer(fp).channel = open;
         }
     }
 
     fn drop_reverse(&self, fp: &str, link: &Arc<Mutex<PeerClient>>) {
+        let Ok(_activity) = self.activity.maintenance(Source::Network) else { return };
         let removed = self.reverse.lock().ok().is_some_and(|mut m| m.get(fp).is_some_and(|l| Arc::ptr_eq(l, link)) && m.remove(fp).is_some());
         if removed {
             self.session_closed(fp);
@@ -541,9 +611,33 @@ impl Net {
     /// Send one request to the member ``fp``: down the connection it opened to this device when it keeps one (it cannot be dialed), else
     /// to its address.
     pub fn call_member(&self, fp: &str, addr: Option<SocketAddr>, request: &Value) -> Result<Value> {
+        match peer_operation(request) {
+            PeerOperation::Maintenance => self.call_member_maintenance(fp,addr,request),
+            PeerOperation::Work(flow) => {
+                let effect=self.activity.admit_effect(Source::Network,flow).map_err(activity_error)?;
+                self.call_member_admitted(fp,addr,request,&effect)
+            }
+        }
+    }
+    fn call_member_admitted(&self, fp: &str, addr: Option<SocketAddr>, request: &Value,
+        effect: &AdmittedEffect) -> Result<Value> {
+        let PeerOperation::Work(flow)=peer_operation(request) else {
+            return Err(Error::Invalid("a work continuation requires its original work operation".into()));
+        };
+        let _child=self.activity.continue_effect(effect,Source::Network,flow).map_err(activity_error)?;
+        self.call_member_inner(fp,addr,request)
+    }
+    fn call_member_maintenance(&self, fp: &str, addr: Option<SocketAddr>, request: &Value) -> Result<Value> {
+        if peer_operation(request)!=PeerOperation::Maintenance {
+            return Err(Error::Invalid("this operation requires new work admission".into()));
+        }
+        let _activity=self.activity.maintenance(Source::Network).map_err(activity_error)?;
+        self.call_member_inner(fp,addr,request)
+    }
+    fn call_member_inner(&self, fp: &str, addr: Option<SocketAddr>, request: &Value) -> Result<Value> {
         let link = locked(&self.reverse)?.get(fp).cloned();
         if let Some(link) = link {
-            if !locked(&self.node)?.members.is_active(fp) {
+            if !tracked_node(&self.node, Source::Network)?.members.is_active(fp) {
                 self.drop_reverse(fp, &link);
                 return Err(Error::Denied("this device was put out of the pool".into()));
             }
@@ -564,9 +658,9 @@ impl Net {
 
     /// Ask the peer for its build and remember it; refuse to sync with a peer on another wire version, saying how to fix it.
     fn compatible(&self, c: &mut PeerClient) -> Result<()> {
-        let ask = peer::hello_request(&*locked(&self.node)?);
+        let ask = peer::hello_request(&*tracked_node(&self.node, Source::Network)?);
         let hello = c.call(&ask)?;
-        let mut node = locked(&self.node)?;
+        let mut node = tracked_node(&self.node, Source::Network)?;
         node.observe_build(&c.fingerprint, &hello);
         let theirs = crate::build::Seen::read(&hello);
         if theirs.wire != node.build.wire {
@@ -593,14 +687,14 @@ impl Net {
         let parsed = parse(request);
         match parsed {
             Ok(c) if NETWORK.contains(&c.method.as_str()) => respond(request, self.network(&c, peer)),
-            Ok(c) if c.method == "pool_status" => match self.node.lock() {
+            Ok(c) if c.method == "pool_status" => match tracked_node(&self.node, Source::Network) {
                 Ok(mut n) => respond(request, n.gov_tick().map(|_| merged(n.pool_status(), self.network_facts()))),
-                Err(_) => respond(request, Err(Error::Damaged("node poisoned".into()))),
+                Err(error) => respond(request, Err(error)),
             },
             _ => {
-                let reply = match self.node.lock() {
+                let reply = match tracked_node(&self.node, Source::Network) {
                     Ok(mut n) => crate::api::handle(&mut n, request, peer),
-                    Err(_) => respond(request, Err(Error::Damaged("node poisoned".into()))),
+                    Err(error) => respond(request, Err(error)),
                 };
                 if request["method"] == "member_remove" {
                     self.drop_removed();
@@ -611,20 +705,50 @@ impl Net {
     }
 
     fn network(&self, c: &Call, peer: &Peer) -> Result<Value> {
-        let text = |k: &str| c.params.get(k).and_then(Value::as_str).unwrap_or("").to_string();
-        let number = |k: &str, d: u64| c.params.get(k).and_then(Value::as_u64).unwrap_or(d);
-        if c.method != "shard_call" {
-            let resource = if c.method == "join_pool" { text("host") } else { "*".into() };
-            let mut node = locked(&self.node)?;
+        if c.method=="sync_now" {
+            // Admission precedes any consumptive domain authorization. Descendants borrow this exact operation.
+            let effect=self.activity.admit_effect(Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
+            return self.sync_request_admitted(c,peer,&effect);
+        }
+        if matches!(c.method.as_str(),"add_device" | "join_pool") {
+            let flow=if c.method=="add_device" { EffectFlow::AddDevice } else { EffectFlow::Join };
+            let effect=self.activity.admit_effect(Source::Network,flow).map_err(activity_error)?;
+            return self.join_request_admitted(c,peer,&effect);
+        }
+        if c.method=="shard_call" { return self.shard_call(c,peer); }
+        Err(Error::Invalid("unknown network method".into()))
+    }
+
+    fn join_request_admitted(&self, c: &Call, peer: &Peer, effect: &AdmittedEffect) -> Result<Value> {
+        let flow=match c.method.as_str() {
+            "add_device" => EffectFlow::AddDevice, "join_pool" => EffectFlow::Join,
+            _ => return Err(Error::Invalid("not a join or add operation".into())),
+        };
+        let _child=self.activity.continue_effect(effect,Source::Network,flow).map_err(activity_error)?;
+        let text=|k: &str| c.params.get(k).and_then(Value::as_str).unwrap_or("");
+        {
+            let resource=if c.method=="join_pool" { text("host") } else { "*" };
+            let mut node=tracked_node(&self.node,Source::Network)?;
             node.gov_tick()?;
-            authorize_from(&mut node, &c.token, peer, &c.method, &resource)?;
+            authorize_from(&mut node,&c.token,peer,&c.method,resource)?;
         }
-        match c.method.as_str() {
-            "add_device" => self.add_device(&text("passphrase"), number("ttl_s", 120), c.params.get("presigned") == Some(&Value::Bool(true))),
-            "join_pool" => self.join_pool(addr_of(&text("host"), number("port", 0))?, &text("passphrase"), &text("fingerprint")),
-            "shard_call" => self.shard_call(c, peer),
-            _ => Ok(json!({"reached": self.sync_once(true)?})),
+        if c.method=="add_device" {
+            self.add_device_admitted(text("passphrase"),c.params.get("ttl_s").and_then(Value::as_u64).unwrap_or(120),
+                c.params.get("presigned")==Some(&Value::Bool(true)),effect)
+        } else {
+            self.join_pool_admitted(addr_of(text("host"),c.params.get("port").and_then(Value::as_u64).unwrap_or(0))?,
+                text("passphrase"),text("fingerprint"),effect)
         }
+    }
+
+    fn sync_request_admitted(&self, c: &Call, peer: &Peer, effect: &AdmittedEffect) -> Result<Value> {
+        let _child=self.activity.continue_effect(effect,Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
+        {
+            let mut node=tracked_node(&self.node,Source::Network)?;
+            node.gov_tick()?;
+            authorize_from(&mut node,&c.token,peer,&c.method,"*")?;
+        }
+        Ok(json!({"reached":self.sync_once_admitted(true,effect)?}))
     }
 
     // -- test shards --------------------------------------------------------
@@ -632,7 +756,6 @@ impl Net {
     /// node adds `op` and `by` (the session behind the token); the peer decides from the
     /// certificate this device shows, so neither the session nor an argument can claim another.
     fn shard_call(&self, c: &Call, peer: &Peer) -> Result<Value> {
-        let name = c.params.get("device").and_then(Value::as_str).unwrap_or("");
         let op = c.params.get("op").and_then(Value::as_str).unwrap_or("");
         let mut request = match c.params.get("args") {
             None => serde_json::Map::new(),
@@ -643,15 +766,32 @@ impl Net {
             return Err(Error::Invalid(format!("op is one of {}", shard::OPS.join(", "))));
         }
         shard::host::passable(&request)?;
-        let (fp, addr, by) = {
-            let mut node = locked(&self.node)?;
-            let who = authorize_from(&mut node, &c.token, peer, "shard_call", name)?;
-            let (fp, addr) = self.device_named(&node, name)?;
-            (fp, addr, format!("{}/{}", who.board, who.name))
+        request.insert("op".into(),json!(op));
+        let request=Value::Object(request);
+        match peer_operation(&request) {
+            PeerOperation::Work(flow) => {
+                // Acquire before consumptive authorization; descendants borrow the same operation.
+                let effect=self.activity.admit_effect(Source::Network,flow).map_err(activity_error)?;
+                let (fp,addr,request)=self.authorized_shard_request(c,peer,request)?;
+                self.call_member_admitted(&fp,addr,&request,&effect)
+            }
+            PeerOperation::Maintenance => {
+                let _activity=self.activity.maintenance(Source::Network).map_err(activity_error)?;
+                let (fp,addr,request)=self.authorized_shard_request(c,peer,request)?;
+                self.call_member_maintenance(&fp,addr,&request)
+            }
+        }
+    }
+    fn authorized_shard_request(&self, c: &Call, peer: &Peer, mut request: Value) -> Result<(String,Option<SocketAddr>,Value)> {
+        let name=c.params.get("device").and_then(Value::as_str).unwrap_or("");
+        let (fp,addr,by)={
+            let mut node=tracked_node(&self.node,Source::Network)?;
+            let who=authorize_from(&mut node,&c.token,peer,"shard_call",name)?;
+            let (fp,addr)=self.device_named(&node,name)?;
+            (fp,addr,format!("{}/{}",who.board,who.name))
         };
-        request.insert("op".into(), json!(op));
-        request.insert("by".into(), json!(by));
-        self.call_member(&fp, addr, &Value::Object(request))
+        request["by"]=json!(by);
+        Ok((fp,addr,request))
     }
 
     /// The active member other than this device that ``name`` names, and where it was last reached.
@@ -666,4 +806,165 @@ impl Net {
         let addr = node.facts.peers.get(&device.fingerprint).and_then(|f| f.addr.as_deref()).and_then(|a| a.parse().ok());
         Ok((device.fingerprint.clone(), addr))
     }
+}
+
+#[cfg(test)]
+mod activity_tests {
+    use super::*;
+    struct Running { net: Arc<Net>, _directory: tempfile::TempDir }
+    impl Drop for Running { fn drop(&mut self) { self.net.shutdown(); } }
+    fn running() -> Running {
+        let directory=tempfile::tempdir().unwrap();
+        let node=Arc::new(Mutex::new(Node::open(directory.path()).unwrap()));
+        let net=Net::start(node,NetConfig { listen:"127.0.0.1:0".parse().unwrap(),
+            beacon:None,sync_every:None,project:None }).unwrap();
+        Running { net, _directory:directory }
+    }
+    #[test]
+    fn tracked_node_counts_actual_mutation_guard_and_releases_on_drop() {
+        let dir=tempfile::tempdir().unwrap(); let node=Mutex::new(Node::open(dir.path()).unwrap());
+        let registry=node.lock().unwrap().activity.clone();
+        let mut held=tracked_node(&node,Source::Sync).unwrap();
+        assert_eq!(registry.active_writer_count_for_test(),1);
+        held.facts.listen=Some("127.0.0.1:1".into());
+        assert!(node.try_lock().is_err()); drop(held);
+        assert_eq!(registry.active_writer_count_for_test(),0); assert!(node.try_lock().is_ok());
+    }
+    #[test]
+    fn real_loopback_peer_reads_and_error_cleanup_survive_work_drain_without_stop() {
+        let owned=running(); let net=&owned.net;
+        let caller_dir=tempfile::tempdir().unwrap(); let caller=Node::open(caller_dir.path()).unwrap();
+        let addr=SocketAddr::from(([127,0,0,1],net.port));
+        let mut peer=PeerClient::connect(&caller.cert,addr,Some(&net.me.fingerprint())).unwrap();
+        assert_eq!(peer.call(&json!({"op":"hello"})).unwrap()["fingerprint"],net.me.fingerprint());
+        net.activity.drain_for_test();
+        assert!(!net.stop.load(Ordering::SeqCst));
+        assert!(net.sync_once(true).is_err(),"a new outgoing sync round must not start");
+        let status=net.call(&json!({"v":1,"id":1,"method":"pool_status","params":{}}),&Peer::none());
+        assert_eq!(status["ok"],true,"{status}");
+        assert!(peer.call(&json!({"op":"hello"})).is_ok(),"incoming read continues");
+        assert!(peer.call(&json!({"op":"unknown"})).is_err());
+        let deadline=std::time::Instant::now()+Duration::from_secs(2);
+        while net.activity.active_writer_count_for_test()!=0 && std::time::Instant::now()<deadline { std::thread::yield_now(); }
+        assert_eq!(net.activity.active_writer_count_for_test(),0,"idle peer is not active work");
+        assert!(!net.stop.load(Ordering::SeqCst));
+    }
+    #[test]
+    fn existing_sync_continues_after_drain_without_readmitting_a_new_operation() {
+        let owned=running(); let net=&owned.net;
+        let effect=net.activity.admit_effect(Source::Sync,EffectFlow::Sync).unwrap();
+        net.activity.drain_for_test();
+        assert_eq!(net.sync_once_admitted(true,&effect).unwrap(),0);
+        assert!(net.sync_once(true).is_err());
+        assert_eq!(net.activity.active_writer_count_for_test(),1);
+        drop(effect); assert_eq!(net.activity.active_writer_count_for_test(),0);
+    }
+
+    #[test]
+    fn join_add_continuation_keeps_domain_checks_and_rejects_wrong_flow_before_effects() {
+        let owned=running(); let net=&owned.net;
+        let add=net.activity.admit_effect(Source::Network,EffectFlow::AddDevice).unwrap();
+        let join=net.activity.admit_effect(Source::Network,EffectFlow::Join).unwrap();
+        let baseline=net.add_device_admitted("valid-code",60,false,&add).unwrap_err().code().to_string();
+        net.activity.drain_for_test();
+        // Scheduling continuation preserves the normal missing-governance refusal; it grants no authority.
+        assert_eq!(net.add_device_admitted("valid-code",60,false,&add).unwrap_err().code(),baseline);
+        assert!(net.window.lock().unwrap().is_none());
+        assert_eq!(net.add_device_admitted("valid-code",60,true,&join).unwrap_err().code(),"update_pending");
+        assert!(net.window.lock().unwrap().is_none());
+        assert!(net.add_device("valid-code",60,false).is_err());
+        let addr=SocketAddr::from(([127,0,0,1],1));
+        assert_eq!(net.join_pool_admitted(addr,"","invalid",&join).unwrap_err().code(),"invalid");
+        assert_eq!(net.join_pool_admitted(addr,"","invalid",&add).unwrap_err().code(),"update_pending");
+        assert!(net.join_pool(addr,"","invalid").is_err());
+        assert_eq!(net.activity.active_writer_count_for_test(),2);
+    }
+    #[test]
+    fn join_add_root_admission_precedes_consumptive_authorization() {
+        let owned=running(); let net=&owned.net; net.activity.drain_for_test();
+        for method in ["add_device","join_pool"] {
+            let reply=net.call(&json!({"v":1,"id":1,"method":method,"token":"invalid-token","params":{}}),&Peer::none());
+            assert_eq!(reply["error"]["code"],"update_pending","{reply}");
+        }
+        assert!(net.window.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn attach_continuation_validates_scope_and_reaches_only_existing_member_policy() {
+        let owned=running(); let net=&owned.net;
+        let wrong=net.activity.admit_effect(Source::Network,EffectFlow::Join).unwrap();
+        let foreign_registry=Registry::new();
+        let foreign=foreign_registry.admit_effect(Source::Network,EffectFlow::Attach).unwrap();
+        let admitted=net.activity.admit_effect(Source::Network,EffectFlow::Attach).unwrap();
+        let addr=SocketAddr::from(([127,0,0,1],1)); let unknown="0".repeat(64);
+        net.activity.drain_for_test();
+        assert_eq!(net.attach_run(&unknown,addr,wrong).unwrap_err().code(),"update_pending");
+        assert_eq!(net.attach_run(&unknown,addr,foreign).unwrap_err().code(),"update_pending");
+        assert!(net.attaching.lock().unwrap().is_empty());
+        // A valid existing operation reaches the unchanged nonmember refusal without dialing.
+        assert!(net.attach_run(&unknown,addr,admitted).is_ok());
+        assert_eq!(net.activity.active_writer_count_for_test(),0);
+        assert!(net.attach(&unknown,addr).is_none());
+        assert!(net.attaching.lock().unwrap().is_empty());
+        assert!(!net.stop.load(Ordering::SeqCst));
+    }
+    #[test]
+    fn owned_attach_worker_cleans_slot_and_parent_after_policy_declines_setup() {
+        let owned=running(); let net=&owned.net;
+        let addr=SocketAddr::from(([127,0,0,1],1)); let unknown="0".repeat(64);
+        let worker=net.attach(&unknown,addr).unwrap();
+        worker.join().unwrap();
+        assert!(net.attaching.lock().unwrap().is_empty());
+        assert_eq!(net.activity.active_writer_count_for_test(),0);
+    }
+
+    #[test]
+    fn attach_cleanup_unwind_keeps_parent_custody_until_slot_is_removed() {
+        fn fail_setup(net: &Net, fp: &str, admitted: AdmittedEffect) {
+            let _setup=net.activity.continue_effect(&admitted,Source::Network,EffectFlow::Attach).unwrap();
+            let _cleanup=AttachCleanup { net, fingerprint:fp };
+            panic!("owned setup fault");
+        }
+        let owned=running(); let net=owned.net.clone(); let fp="0".repeat(64);
+        let parent=net.activity.admit_effect(Source::Network,EffectFlow::Attach).unwrap();
+        net.attaching.lock().unwrap().insert(fp.clone(),None);
+        let worker=net.clone();
+        assert!(std::thread::spawn(move || fail_setup(&worker,&fp,parent)).join().is_err());
+        assert!(net.attaching.lock().unwrap().is_empty());
+        assert_eq!(net.activity.active_writer_count_for_test(),0);
+    }
+
+    #[test]
+    fn outgoing_shard_continuation_revalidates_actual_wire_op_and_keeps_normal_peer_checks() {
+        let owned=running(); let net=&owned.net; let unknown="0".repeat(64);
+        let put=net.activity.admit_effect(Source::Network,EffectFlow::ShardPut).unwrap();
+        let generic=net.activity.admit_effect(Source::Network,EffectFlow::PeerCall).unwrap();
+        let normal=net.call_member(&unknown,None,&json!({"op":"shard_put"})).unwrap_err().code().to_string();
+        net.activity.drain_for_test();
+        assert_eq!(net.call_member_admitted(&unknown,None,&json!({"op":"shard_start"}),&put).unwrap_err().code(),"update_pending");
+        assert_eq!(net.call_member_admitted(&unknown,None,&json!({"op":"shard_put"}),&generic).unwrap_err().code(),"update_pending");
+        assert_eq!(net.call_member_admitted(&unknown,None,&json!({"op":"shard_put"}),&put).unwrap_err().code(),normal);
+        assert_eq!(net.call_member(&unknown,None,&json!({"op":"shard_put"})).unwrap_err().code(),"update_pending");
+        for op in ["shard_caps","shard_status","shard_cancel"] {
+            assert_eq!(net.call_member(&unknown,None,&json!({"op":op})).unwrap_err().code(),normal);
+        }
+        for op in ["vector","pull","unknown"] {
+            assert_eq!(net.call_member(&unknown,None,&json!({"op":op})).unwrap_err().code(),"update_pending");
+            assert!(net.call_member_maintenance(&unknown,None,&json!({"op":op})).is_err());
+        }
+        assert_eq!(net.activity.active_writer_count_for_test(),2);
+    }
+    #[test]
+    fn outgoing_shard_work_admits_before_authorization_while_cancel_keeps_authentication() {
+        let owned=running(); let net=&owned.net; net.activity.drain_for_test();
+        for op in ["shard_put","shard_start","shard_cancel","shard_status","shard_caps"] {
+            let reply=net.call(&json!({"v":1,"id":1,"method":"shard_call","token":"invalid-token",
+                "params":{"device":"unknown","op":op,"args":{}}}),&Peer::none());
+            assert_eq!(reply["ok"],false);
+            if matches!(op,"shard_put" | "shard_start") { assert_eq!(reply["error"]["code"],"update_pending"); }
+            else { assert_ne!(reply["error"]["code"],"update_pending","maintenance still requires normal authorization: {reply}"); }
+        }
+        assert_eq!(net.activity.active_writer_count_for_test(),0);
+    }
+
 }

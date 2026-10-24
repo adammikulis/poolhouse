@@ -22,7 +22,8 @@ for patch in 0001-harden-producer-entrypoints.patch \
              0004-retain-actual-native-actor-context.patch \
              0005-retain-complete-native-invocations.patch \
              0006-encode-complete-native-invocations.patch \
-             0007-freeze-native-handler-selections.patch; do
+             0007-freeze-native-handler-selections.patch \
+             0008-retain-source-configuration-observations.patch; do
   git apply --check "/path/to/poolhouse/patches/codex/$patch"
   git apply "/path/to/poolhouse/patches/codex/$patch"
 done
@@ -165,3 +166,17 @@ The parent retry/reload regression failed before the patch; truncating the actua
 failed the duplicate-sibling test, followed by exact restoration. No catalog wire, protected
 purpose, operation ID, admitted Node catalog, permit, package build or installed H/K proof
 is supplied. Earlier built artifacts remain unchanged.
+
+
+The eighth patch retains a source snapshot observation ID with each actual immutable
+configuration owner. Engine dispatch settings and legacy callback lists have separate
+owners: clones retain IDs, changed configurations construct new owners, and an engine-only
+overlay leaves the legacy list unchanged. Handler mutation cannot bypass the owner.
+The checked launch-scoped serial and actual actor instance are data, never a Node
+configuration generation, authenticated source or effect right.
+
+Two focused owner-ID cases and seven selection regressions passed. Reusing the existing actor
+occurrence instead of a fresh configuration observation failed both owner tests; exact source
+was restored. A first selection may observe a later configuration than request capture,
+while retries keep the frozen selection. No selection encoder, command-input rendering,
+private environment export, transport, admission or package update is included.
