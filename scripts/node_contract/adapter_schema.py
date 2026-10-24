@@ -104,7 +104,7 @@ LEAVES.update({name: {**enum(**{variant: [] for variant in variants}), "copy": T
 BASE_VIEW = [G("actor", "NativeActorId"), G("context", "bytes", "borrow-slice"), G("root", "NativeActorId"), G("direct_parent", "NativeActorId", optional=True), G("event_kind", "NativeEventKind")]
 VIEWS = {"NativeBirthView": {"kind": "borrowed-record", "fields": BASE_VIEW},
          "NativeResumeView": {"kind": "borrowed-record", "fields": [*BASE_VIEW, G("continuity", "NativeResumeContinuity")]},
-         "NativeInvocationView": {"kind": "borrowed-record", "fields": [*BASE_VIEW, G("purpose", "OperationPurpose"), G("original_payload", "bytes", "borrow-slice")]},
+         "NativeInvocationView": {"kind": "borrowed-record", "fields": [*BASE_VIEW, G("original_payload", "bytes", "borrow-slice")]},
          "NativeContextView": {"kind": "borrowed-record", "fields": [G("actor", "NativeActorId"), G("root", "NativeActorId"), G("parent", "NativeActorId", optional=True), G("bytes", "bytes", "borrow-slice")]},
          "NativeMessageView": {"kind": "borrowed-enum", "variants": [{"name": "Birth", "type": "NativeBirthView"}, {"name": "Resume", "type": "NativeResumeView"}, {"name": "Invocation", "type": "NativeInvocationView"}]}}
 
@@ -121,7 +121,7 @@ REPRESENTATIONS = {
     "UnresolvedCustody": retained(G("raw_channels", "RawChannel", "borrow-slice"), G("channels", "Channel", "borrow-slice"), G("processes", "ProcessCustody", "borrow-slice"), G("measurements", "MeasuredAsset", "borrow-slice"), G("before_consume", "BeforeConsume", "borrow-slice"), G("terminal", "Terminal", "borrow-slice"), G("revoked", "Revoked", "borrow-slice"), G("holders", "Holder", "borrow-slice")),
 }
 PROFILES = [
-    {"name": "native-message", "status": "unresolved-profile-evidence", "fields": ["actor-bytes", "event-kind-bytes", "purpose-bytes", "context-bytes", "original-payload-bytes"]},
+    {"name": "native-message", "definition": "native_boundaries/native_message.toml", "status": "unresolved-profile-evidence", "fields": ["actor-bytes", "event-kind-bytes", "context-bytes", "original-payload-bytes"]},
     {"name": "launch-arguments", "status": "unresolved-profile-evidence", "fields": ["argument-bytes", "argument-count", "argument-aggregate-bytes"]},
     {"name": "launch-environment", "status": "unresolved-profile-evidence", "fields": ["key-bytes", "value-bytes", "entry-count", "aggregate-bytes", "unique-keys"]},
     {"name": "retained-resources", "status": "unresolved-profile-evidence", "fields": ["asset-count", "inheritance-count", "resource-count", "cleanup-results-count", "unresolved-custody-count"]},
