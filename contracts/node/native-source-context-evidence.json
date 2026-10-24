@@ -83,7 +83,15 @@
     "selector": "tests/test_native_lifecycle.py::test_native_source_context_decoder",
     "rust_filter": "lifecycle::source_context_tests::",
     "families": 10,
-    "integrated_execution": "Not executed by author; Root owns the single focused integrated Node target. No integrated execution is claimed by this receipt."
+    "integrated_execution": {
+      "selector": "tests/test_native_lifecycle.py::test_native_source_context_decoder",
+      "result": "passed",
+      "rust_test_families": 10,
+      "pytest_cases": 1,
+      "evidence_sha256": "667e17cf44a829f0dda91b95ff073c71c15b25b5984501fb9da077641907a336",
+      "scope": "Actual integrated Node library target; no installed producer, transport or authenticated admission proof.",
+      "observation": "Concurrent live coordination processes changed real-state metadata; this isolated parser test passed without accessing real state."
+    }
   },
   "review": {
     "identity": "chatgpt-5bb8ca",
