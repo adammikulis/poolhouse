@@ -1,0 +1,2778 @@
+{
+  "version": 1,
+  "status": "proposal",
+  "domain": "studio_graph",
+  "source_commit": "6cbc882f9923886d4961e77491607f3e68663f45",
+  "scope": "Public canonical StudioGraphV1 typed per-record declarations and selection; no runtime, platform, worker export, generator modification or K acceptance.",
+  "owned_files": [
+    "contracts/node/domains/studio_graph.toml",
+    "contracts/node/domain-evidence/studio_graph.json"
+  ],
+  "source_sites": [
+    {
+      "id": "src/poolhouse/studio/contracts.py:_finite",
+      "path": "src/poolhouse/studio/contracts.py",
+      "symbol": "_finite",
+      "start_line": 21,
+      "end_line": 28,
+      "file_sha256": "5536cfb38922b156048b7b831c2548dcdb66d7918e8b4dc8ac02a3bc211eca56",
+      "site_sha256": "e467374b2c03089613d872ae91b214c0843b3eddb02fc4e59f260add4e9e1c1b"
+    },
+    {
+      "id": "src/poolhouse/studio/contracts.py:_parameters",
+      "path": "src/poolhouse/studio/contracts.py",
+      "symbol": "_parameters",
+      "start_line": 31,
+      "end_line": 55,
+      "file_sha256": "5536cfb38922b156048b7b831c2548dcdb66d7918e8b4dc8ac02a3bc211eca56",
+      "site_sha256": "93543240c6e4e340b0aa21d07de9033b2fa116c012e807a666067837896ab75e"
+    },
+    {
+      "id": "src/poolhouse/studio/contracts.py:_endpoint",
+      "path": "src/poolhouse/studio/contracts.py",
+      "symbol": "_endpoint",
+      "start_line": 58,
+      "end_line": 63,
+      "file_sha256": "5536cfb38922b156048b7b831c2548dcdb66d7918e8b4dc8ac02a3bc211eca56",
+      "site_sha256": "ef75c64997d001835668697013811228c0af60c23e41de224237c5cb9858fde5"
+    },
+    {
+      "id": "src/poolhouse/studio/contracts.py:_group_interface",
+      "path": "src/poolhouse/studio/contracts.py",
+      "symbol": "_group_interface",
+      "start_line": 66,
+      "end_line": 94,
+      "file_sha256": "5536cfb38922b156048b7b831c2548dcdb66d7918e8b4dc8ac02a3bc211eca56",
+      "site_sha256": "2122d8af46c9789a5a588d8a08d37d335581c0ba2df6dfb14dc913c3368a3d16"
+    },
+    {
+      "id": "src/poolhouse/studio/contracts.py:_execution",
+      "path": "src/poolhouse/studio/contracts.py",
+      "symbol": "_execution",
+      "start_line": 97,
+      "end_line": 104,
+      "file_sha256": "5536cfb38922b156048b7b831c2548dcdb66d7918e8b4dc8ac02a3bc211eca56",
+      "site_sha256": "713076dfe9282c3359b98c0a6da4fbabc29d4e44be2a10d38a03773f180b3282"
+    },
+    {
+      "id": "src/poolhouse/studio/contracts.py:_expand",
+      "path": "src/poolhouse/studio/contracts.py",
+      "symbol": "_expand",
+      "start_line": 107,
+      "end_line": 166,
+      "file_sha256": "5536cfb38922b156048b7b831c2548dcdb66d7918e8b4dc8ac02a3bc211eca56",
+      "site_sha256": "fe704c75b0b2c4db4ba181416d3afc04adbcfed5004eb65e397d4862cabf95d7"
+    },
+    {
+      "id": "src/poolhouse/studio/contracts.py:_control_targets",
+      "path": "src/poolhouse/studio/contracts.py",
+      "symbol": "_control_targets",
+      "start_line": 169,
+      "end_line": 187,
+      "file_sha256": "5536cfb38922b156048b7b831c2548dcdb66d7918e8b4dc8ac02a3bc211eca56",
+      "site_sha256": "c187b93a5fa3b553f6988119fdd31254693442fcc34b80419eefa6dc85936494"
+    },
+    {
+      "id": "src/poolhouse/studio/contracts.py:_expand_controls",
+      "path": "src/poolhouse/studio/contracts.py",
+      "symbol": "_expand_controls",
+      "start_line": 190,
+      "end_line": 214,
+      "file_sha256": "5536cfb38922b156048b7b831c2548dcdb66d7918e8b4dc8ac02a3bc211eca56",
+      "site_sha256": "5ea779d5a25a497bfb3b8c5d9f980d50c807b3569af67e01732f559db27539cb"
+    },
+    {
+      "id": "src/poolhouse/studio/contracts.py:_validate_expanded",
+      "path": "src/poolhouse/studio/contracts.py",
+      "symbol": "_validate_expanded",
+      "start_line": 217,
+      "end_line": 273,
+      "file_sha256": "5536cfb38922b156048b7b831c2548dcdb66d7918e8b4dc8ac02a3bc211eca56",
+      "site_sha256": "85c67e77de8b9af57c1d08f6ce1ade011158a29e79e32e947120f0942390ea5b"
+    },
+    {
+      "id": "src/poolhouse/studio/contracts.py:_sweeps",
+      "path": "src/poolhouse/studio/contracts.py",
+      "symbol": "_sweeps",
+      "start_line": 311,
+      "end_line": 346,
+      "file_sha256": "5536cfb38922b156048b7b831c2548dcdb66d7918e8b4dc8ac02a3bc211eca56",
+      "site_sha256": "b3e3a56eb31c82044c7e0b9c1a048be320818273c4bf903c61a4c0c50d4ae4e4"
+    },
+    {
+      "id": "src/poolhouse/studio/contracts.py:validate_graph",
+      "path": "src/poolhouse/studio/contracts.py",
+      "symbol": "validate_graph",
+      "start_line": 349,
+      "end_line": 370,
+      "file_sha256": "5536cfb38922b156048b7b831c2548dcdb66d7918e8b4dc8ac02a3bc211eca56",
+      "site_sha256": "83702d914f1092b816d98242552a99be0a04a68a0a68adeee9132679a8020590"
+    },
+    {
+      "id": "src/poolhouse/studio/contracts.py:resolve_output_ports",
+      "path": "src/poolhouse/studio/contracts.py",
+      "symbol": "resolve_output_ports",
+      "start_line": 373,
+      "end_line": 399,
+      "file_sha256": "5536cfb38922b156048b7b831c2548dcdb66d7918e8b4dc8ac02a3bc211eca56",
+      "site_sha256": "92a07e755d8687a74dd50e8d5cd82ef7926e994733668d0b56926e23347d9c9f"
+    },
+    {
+      "id": "src/poolhouse/studio/catalog.py:node_catalog",
+      "path": "src/poolhouse/studio/catalog.py",
+      "symbol": "node_catalog",
+      "start_line": 30,
+      "end_line": 149,
+      "file_sha256": "e716bd3d7c2035a36f0cf99e545b537a78886241576e877baa839d91f881dc51",
+      "site_sha256": "4d850874a62915c3e64c3815758d79e372f5261dd272736fb44999187351e16e"
+    },
+    {
+      "id": "src/poolhouse/studio/catalog.py:_model_ports",
+      "path": "src/poolhouse/studio/catalog.py",
+      "symbol": "_model_ports",
+      "start_line": 152,
+      "end_line": 165,
+      "file_sha256": "e716bd3d7c2035a36f0cf99e545b537a78886241576e877baa839d91f881dc51",
+      "site_sha256": "48b55b0eebab456ba7e50c5327070dbbf2bbac629231ccdea982b0d4e19a0be9"
+    },
+    {
+      "id": "src/poolhouse/studio/catalog.py:node_spec",
+      "path": "src/poolhouse/studio/catalog.py",
+      "symbol": "node_spec",
+      "start_line": 168,
+      "end_line": 175,
+      "file_sha256": "e716bd3d7c2035a36f0cf99e545b537a78886241576e877baa839d91f881dc51",
+      "site_sha256": "a0b0ee813843040653681dabd1935f312ede3cbc3508e858025ae0c6f5bc88b4"
+    },
+    {
+      "id": "src/poolhouse/studio/engine.py:_selected",
+      "path": "src/poolhouse/studio/engine.py",
+      "symbol": "_selected",
+      "start_line": 168,
+      "end_line": 188,
+      "file_sha256": "f8fb0cdf4e64dc61ddbf92cb3077d5e09d0de3190477c4b58c7e1bfa28bd70bf",
+      "site_sha256": "3e6aed4b78032838f2382a948b6def8b0befe8a2678f3e145a282d95a71b8897"
+    },
+    {
+      "id": "src/poolhouse/studio/engine.py:prepare",
+      "path": "src/poolhouse/studio/engine.py",
+      "symbol": "prepare",
+      "start_line": 122,
+      "end_line": 143,
+      "file_sha256": "f8fb0cdf4e64dc61ddbf92cb3077d5e09d0de3190477c4b58c7e1bfa28bd70bf",
+      "site_sha256": "a74505756b7511edf82379b75db700ac30a96184d55a278c857c14e27c4e1ebf"
+    },
+    {
+      "id": "src/poolhouse/studio/store.py:digest",
+      "path": "src/poolhouse/studio/store.py",
+      "symbol": "digest",
+      "start_line": 17,
+      "end_line": 19,
+      "file_sha256": "c09631b800ee6bfc973c8e158f631c068df9b2f11b51a70f2523d935f92841b1",
+      "site_sha256": "226b0ce9c4fbc1df0c0716a6b2f0c6d754c7a95dadbe2abd89d23a43535d7626"
+    },
+    {
+      "id": "src/poolhouse/studio/store.py:save_workflow",
+      "path": "src/poolhouse/studio/store.py",
+      "symbol": "save_workflow",
+      "start_line": 106,
+      "end_line": 118,
+      "file_sha256": "c09631b800ee6bfc973c8e158f631c068df9b2f11b51a70f2523d935f92841b1",
+      "site_sha256": "2af6dcd3b7f3407114471492d6c34f8ae11890e20e81ce57e92706ebce25222f"
+    },
+    {
+      "id": "src/poolhouse/studio/store.py:submit",
+      "path": "src/poolhouse/studio/store.py",
+      "symbol": "submit",
+      "start_line": 120,
+      "end_line": 143,
+      "file_sha256": "c09631b800ee6bfc973c8e158f631c068df9b2f11b51a70f2523d935f92841b1",
+      "site_sha256": "4d16be28a1b4c21c76a64e09971ccc17ec0300d34d6fb95b50c5790c321ca19a"
+    },
+    {
+      "id": "src/poolhouse/studio/record_ops.py:_json",
+      "path": "src/poolhouse/studio/record_ops.py",
+      "symbol": "_json",
+      "start_line": 15,
+      "end_line": 31,
+      "file_sha256": "067ead1db7eb1b9ef981dbc4a534b3ea0fb13eaec84f0d209ea9972ead1b2784",
+      "site_sha256": "8398e27ce49bfb1d2d926e860145c7b3fe238fcd5c5a8b0c62c820a80288dc29"
+    },
+    {
+      "id": "src/poolhouse/studio/record_ops.py:parameters",
+      "path": "src/poolhouse/studio/record_ops.py",
+      "symbol": "parameters",
+      "start_line": 45,
+      "end_line": 77,
+      "file_sha256": "067ead1db7eb1b9ef981dbc4a534b3ea0fb13eaec84f0d209ea9972ead1b2784",
+      "site_sha256": "a6fa25027f413d3a35e303383f042b9daeb70f1fdee944c7e0a9914c7317c0c0"
+    },
+    {
+      "id": "src/poolhouse/studio/record_ops.py:_equal",
+      "path": "src/poolhouse/studio/record_ops.py",
+      "symbol": "_equal",
+      "start_line": 80,
+      "end_line": 89,
+      "file_sha256": "067ead1db7eb1b9ef981dbc4a534b3ea0fb13eaec84f0d209ea9972ead1b2784",
+      "site_sha256": "925bac48ca9c456eaf19db84dbd0192491b44302f302ed484eae9bd4e919304c"
+    },
+    {
+      "id": "src/poolhouse/studio/record_context.py:literal_fields",
+      "path": "src/poolhouse/studio/record_context.py",
+      "symbol": "literal_fields",
+      "start_line": 11,
+      "end_line": 19,
+      "file_sha256": "5e8acf846b7b410318aa6beca09c1e6191c023dba38faa7668035ff6c948e1d2",
+      "site_sha256": "f4c375727fef1a6afb8a5fc9ea3ec626cbec719325e7df0c0169c3294df9f59c"
+    },
+    {
+      "id": "src/poolhouse/studio/record_context.py:generation_parameters",
+      "path": "src/poolhouse/studio/record_context.py",
+      "symbol": "generation_parameters",
+      "start_line": 55,
+      "end_line": 69,
+      "file_sha256": "5e8acf846b7b410318aa6beca09c1e6191c023dba38faa7668035ff6c948e1d2",
+      "site_sha256": "3c85b5cd6bdd7488fd58002b55f6a278f1a269f9e76f13d9ca2378ffc8406421"
+    },
+    {
+      "id": "src/poolhouse/fleet/studio_routes.py:_studio",
+      "path": "src/poolhouse/fleet/studio_routes.py",
+      "symbol": "_studio",
+      "start_line": 62,
+      "end_line": 114,
+      "file_sha256": "d021e4dd3c2b3723caa94e071a867a1a2a43b413603de84ae3e775fe57ab88a3",
+      "site_sha256": "b09fc575cdc5333bd0a9ae692591d711529661520378629c3db09ff84e340307"
+    },
+    {
+      "id": "src/poolhouse/fleet/studio_routes.py:_workflows",
+      "path": "src/poolhouse/fleet/studio_routes.py",
+      "symbol": "_workflows",
+      "start_line": 116,
+      "end_line": 139,
+      "file_sha256": "d021e4dd3c2b3723caa94e071a867a1a2a43b413603de84ae3e775fe57ab88a3",
+      "site_sha256": "62b33e9aaf9cf99793d41b045914b20e06d05523ac1cdc04a8ed2cc5b4da874f"
+    },
+    {
+      "id": "src/poolhouse/fleet/studio_routes.py:_runs",
+      "path": "src/poolhouse/fleet/studio_routes.py",
+      "symbol": "_runs",
+      "start_line": 141,
+      "end_line": 195,
+      "file_sha256": "d021e4dd3c2b3723caa94e071a867a1a2a43b413603de84ae3e775fe57ab88a3",
+      "site_sha256": "a0a2f6dc9f5bb602a1d0281997a47d77735761bfde107ad48794b876a282ea35"
+    },
+    {
+      "id": "contracts/recipes/classify-text.json",
+      "path": "contracts/recipes/classify-text.json",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 26,
+      "file_sha256": "0fbd315b722374a545d23b6abb72e9ca953fe694cafae8c8e97ce555b11a4b36",
+      "site_sha256": "0fbd315b722374a545d23b6abb72e9ca953fe694cafae8c8e97ce555b11a4b36"
+    },
+    {
+      "id": "contracts/recipes/text-lm.json",
+      "path": "contracts/recipes/text-lm.json",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 30,
+      "file_sha256": "0859165a8a6935dd85baecdc5e168623690f54e95a5bae3e97476a4dfa613628",
+      "site_sha256": "0859165a8a6935dd85baecdc5e168623690f54e95a5bae3e97476a4dfa613628"
+    },
+    {
+      "id": "contracts/recipes/tool-calls.json",
+      "path": "contracts/recipes/tool-calls.json",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 91,
+      "file_sha256": "f3a6b0990474f50e107d7d6448dfe3989e6d25d6d123436978f60247602eedc1",
+      "site_sha256": "f3a6b0990474f50e107d7d6448dfe3989e6d25d6d123436978f60247602eedc1"
+    },
+    {
+      "id": "src/poolhouse/studio/record_coverage.py",
+      "path": "src/poolhouse/studio/record_coverage.py",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 69,
+      "file_sha256": "502b315cc204ea111c3448c7e19774e8fecb200e818ccfd7941eddd44ca713e6",
+      "site_sha256": "502b315cc204ea111c3448c7e19774e8fecb200e818ccfd7941eddd44ca713e6"
+    },
+    {
+      "id": "src/poolhouse/fleet/web/components/studio-model.html",
+      "path": "src/poolhouse/fleet/web/components/studio-model.html",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 236,
+      "file_sha256": "5f9556b37885733beb7c89bc1a389bb6a7ec0e2bf5e3bf9bdcd96a6ff9f6dd7a",
+      "site_sha256": "5f9556b37885733beb7c89bc1a389bb6a7ec0e2bf5e3bf9bdcd96a6ff9f6dd7a"
+    },
+    {
+      "id": "src/poolhouse/fleet/web/components/studio-persistence.html",
+      "path": "src/poolhouse/fleet/web/components/studio-persistence.html",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 195,
+      "file_sha256": "bc093f7a9fcf8faaf3dbb1fb5a9c4d24b19137af24447205f317fd08475aad69",
+      "site_sha256": "bc093f7a9fcf8faaf3dbb1fb5a9c4d24b19137af24447205f317fd08475aad69"
+    },
+    {
+      "id": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "path": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 341,
+      "file_sha256": "fcc54c63e9252dd85e40fea2d88249a5eea9cde3ee10875f4e768660f87e1f93",
+      "site_sha256": "fcc54c63e9252dd85e40fea2d88249a5eea9cde3ee10875f4e768660f87e1f93"
+    },
+    {
+      "id": "src/poolhouse/fleet/web/components/studio-branches.html",
+      "path": "src/poolhouse/fleet/web/components/studio-branches.html",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 238,
+      "file_sha256": "5873145989fbd3212fdd0f423e07c4aa5401c434fa7b495c4fa6037fd88d9791",
+      "site_sha256": "5873145989fbd3212fdd0f423e07c4aa5401c434fa7b495c4fa6037fd88d9791"
+    },
+    {
+      "id": "src/poolhouse/fleet/web/components/studio-insertion.html",
+      "path": "src/poolhouse/fleet/web/components/studio-insertion.html",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 119,
+      "file_sha256": "0ad9bce57c2608403dfff3f0e2fd1b62f789c77840992cc79836bb9206e57589",
+      "site_sha256": "0ad9bce57c2608403dfff3f0e2fd1b62f789c77840992cc79836bb9206e57589"
+    },
+    {
+      "id": "src/poolhouse/fleet/web/components/studio-bindings.html",
+      "path": "src/poolhouse/fleet/web/components/studio-bindings.html",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 92,
+      "file_sha256": "80f7a1f9de8c8f5296c7981b9823d063ddd81a97c39724265dfbb3c79ebf99ff",
+      "site_sha256": "80f7a1f9de8c8f5296c7981b9823d063ddd81a97c39724265dfbb3c79ebf99ff"
+    },
+    {
+      "id": "contracts/node/domains/studio_control.toml",
+      "path": "contracts/node/domains/studio_control.toml",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 956,
+      "file_sha256": "71b354ffd5e2755ae62e685690985950c2cbfa17636670089b660b67d5320628",
+      "site_sha256": "71b354ffd5e2755ae62e685690985950c2cbfa17636670089b660b67d5320628"
+    },
+    {
+      "id": "contracts/node/domains/resource_leases.toml",
+      "path": "contracts/node/domains/resource_leases.toml",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 642,
+      "file_sha256": "5ecb73f21aaba95cb0f8a4c44c5f2ea48a725701f7ef944eb42b1f9713df4a57",
+      "site_sha256": "5ecb73f21aaba95cb0f8a4c44c5f2ea48a725701f7ef944eb42b1f9713df4a57"
+    }
+  ],
+  "operation_mapping": [
+    {
+      "operation": "studio.ir.begin",
+      "request": "StudioGraphBeginRequest",
+      "response": "StudioGraphDraftView",
+      "source_refs": [
+        "src/poolhouse/studio/contracts.py:validate_graph",
+        "src/poolhouse/studio/catalog.py:node_catalog",
+        "src/poolhouse/studio/store.py:digest"
+      ],
+      "maintained_entrypoints": [
+        "/ui/studio/validate",
+        "/ui/studio/workflows*",
+        "POST /ui/studio/runs"
+      ],
+      "actual_callers": [
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 22,
+          "text": "graph: editor.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 126,
+          "text": "const graph = editor.graph, root = editor.rootGraph(), load = editor.loadContext, workflow = editor.workflowId, selection = editor.workflowContext;"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 129,
+          "text": "&& editor.rootGraph() === root && editor.loadContext === load && editor.workflowContext === selection && (!workflow || editor.workflowId === workflow)"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 143,
+          "text": "const graph = S.clone(this.rootGraph()),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 153,
+          "text": "const request = S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 26,
+          "text": "const validation = await S.api(\"/validate\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 27,
+          "text": "graph: this.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 47,
+          "text": "const r = await S.api(\"/runs\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 50,
+          "text": "output_nodes: outputs,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 76,
+          "text": "const result = await S.api(\"/runs\");"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 91,
+          "text": "await S.api(\"/runs/\" + encodeURIComponent(run.id))"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 113,
+          "text": "const latest = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 172,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 226,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 256,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 274,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 285,
+          "text": "const graphNode = this.rootGraph().nodes.find((n) => n.id === id),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 15,
+          "text": "const capture = () => ({workflow: editor.workflowId, root: editor.rootGraph(), graph: editor.graph,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 20,
+          "text": "&& held.workflow === editor.workflowId && held.root === editor.rootGraph() && held.graph === editor.graph"
+        }
+      ],
+      "status": "New typed data transfer counterpart of actual graph consumers; no maintained caller migrated, dispatch/validator not implemented."
+    },
+    {
+      "operation": "studio.ir.append",
+      "request": "StudioGraphAppendRequest",
+      "response": "StudioGraphDraftView",
+      "source_refs": [
+        "src/poolhouse/studio/contracts.py:validate_graph",
+        "src/poolhouse/studio/catalog.py:node_catalog",
+        "src/poolhouse/studio/store.py:digest"
+      ],
+      "maintained_entrypoints": [
+        "/ui/studio/validate",
+        "/ui/studio/workflows*",
+        "POST /ui/studio/runs"
+      ],
+      "actual_callers": [
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 22,
+          "text": "graph: editor.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 126,
+          "text": "const graph = editor.graph, root = editor.rootGraph(), load = editor.loadContext, workflow = editor.workflowId, selection = editor.workflowContext;"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 129,
+          "text": "&& editor.rootGraph() === root && editor.loadContext === load && editor.workflowContext === selection && (!workflow || editor.workflowId === workflow)"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 143,
+          "text": "const graph = S.clone(this.rootGraph()),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 153,
+          "text": "const request = S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 26,
+          "text": "const validation = await S.api(\"/validate\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 27,
+          "text": "graph: this.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 47,
+          "text": "const r = await S.api(\"/runs\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 50,
+          "text": "output_nodes: outputs,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 76,
+          "text": "const result = await S.api(\"/runs\");"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 91,
+          "text": "await S.api(\"/runs/\" + encodeURIComponent(run.id))"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 113,
+          "text": "const latest = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 172,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 226,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 256,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 274,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 285,
+          "text": "const graphNode = this.rootGraph().nodes.find((n) => n.id === id),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 15,
+          "text": "const capture = () => ({workflow: editor.workflowId, root: editor.rootGraph(), graph: editor.graph,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 20,
+          "text": "&& held.workflow === editor.workflowId && held.root === editor.rootGraph() && held.graph === editor.graph"
+        }
+      ],
+      "status": "New typed data transfer counterpart of actual graph consumers; no maintained caller migrated, dispatch/validator not implemented."
+    },
+    {
+      "operation": "studio.ir.seal",
+      "request": "StudioGraphSealRequest",
+      "response": "StudioGraphSealResult",
+      "source_refs": [
+        "src/poolhouse/studio/contracts.py:validate_graph",
+        "src/poolhouse/studio/catalog.py:node_catalog",
+        "src/poolhouse/studio/store.py:digest"
+      ],
+      "maintained_entrypoints": [
+        "/ui/studio/validate",
+        "/ui/studio/workflows*",
+        "POST /ui/studio/runs"
+      ],
+      "actual_callers": [
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 22,
+          "text": "graph: editor.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 126,
+          "text": "const graph = editor.graph, root = editor.rootGraph(), load = editor.loadContext, workflow = editor.workflowId, selection = editor.workflowContext;"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 129,
+          "text": "&& editor.rootGraph() === root && editor.loadContext === load && editor.workflowContext === selection && (!workflow || editor.workflowId === workflow)"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 143,
+          "text": "const graph = S.clone(this.rootGraph()),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 153,
+          "text": "const request = S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 26,
+          "text": "const validation = await S.api(\"/validate\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 27,
+          "text": "graph: this.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 47,
+          "text": "const r = await S.api(\"/runs\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 50,
+          "text": "output_nodes: outputs,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 76,
+          "text": "const result = await S.api(\"/runs\");"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 91,
+          "text": "await S.api(\"/runs/\" + encodeURIComponent(run.id))"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 113,
+          "text": "const latest = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 172,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 226,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 256,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 274,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 285,
+          "text": "const graphNode = this.rootGraph().nodes.find((n) => n.id === id),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 15,
+          "text": "const capture = () => ({workflow: editor.workflowId, root: editor.rootGraph(), graph: editor.graph,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 20,
+          "text": "&& held.workflow === editor.workflowId && held.root === editor.rootGraph() && held.graph === editor.graph"
+        }
+      ],
+      "status": "New typed data transfer counterpart of actual graph consumers; no maintained caller migrated, dispatch/validator not implemented."
+    },
+    {
+      "operation": "studio.ir.read",
+      "request": "StudioGraphReadRequest",
+      "response": "StudioGraphReadEvent",
+      "source_refs": [
+        "src/poolhouse/studio/contracts.py:validate_graph",
+        "src/poolhouse/studio/catalog.py:node_catalog",
+        "src/poolhouse/studio/store.py:digest"
+      ],
+      "maintained_entrypoints": [
+        "/ui/studio/validate",
+        "/ui/studio/workflows*",
+        "POST /ui/studio/runs"
+      ],
+      "actual_callers": [
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 22,
+          "text": "graph: editor.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 126,
+          "text": "const graph = editor.graph, root = editor.rootGraph(), load = editor.loadContext, workflow = editor.workflowId, selection = editor.workflowContext;"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 129,
+          "text": "&& editor.rootGraph() === root && editor.loadContext === load && editor.workflowContext === selection && (!workflow || editor.workflowId === workflow)"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 143,
+          "text": "const graph = S.clone(this.rootGraph()),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 153,
+          "text": "const request = S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 26,
+          "text": "const validation = await S.api(\"/validate\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 27,
+          "text": "graph: this.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 47,
+          "text": "const r = await S.api(\"/runs\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 50,
+          "text": "output_nodes: outputs,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 76,
+          "text": "const result = await S.api(\"/runs\");"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 91,
+          "text": "await S.api(\"/runs/\" + encodeURIComponent(run.id))"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 113,
+          "text": "const latest = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 172,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 226,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 256,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 274,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 285,
+          "text": "const graphNode = this.rootGraph().nodes.find((n) => n.id === id),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 15,
+          "text": "const capture = () => ({workflow: editor.workflowId, root: editor.rootGraph(), graph: editor.graph,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 20,
+          "text": "&& held.workflow === editor.workflowId && held.root === editor.rootGraph() && held.graph === editor.graph"
+        }
+      ],
+      "status": "New typed data transfer counterpart of actual graph consumers; no maintained caller migrated, dispatch/validator not implemented."
+    },
+    {
+      "operation": "studio.scalars.begin",
+      "request": "StudioGraphScalarBeginRequest",
+      "response": "StudioGraphScalarUploadView",
+      "source_refs": [
+        "src/poolhouse/studio/contracts.py:_finite",
+        "src/poolhouse/studio/contracts.py:validate_graph",
+        "src/poolhouse/studio/store.py:digest",
+        "src/poolhouse/studio/record_ops.py:_json"
+      ],
+      "maintained_entrypoints": [
+        "/ui/studio/validate",
+        "/ui/studio/workflows*",
+        "POST /ui/studio/runs"
+      ],
+      "actual_callers": [
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 22,
+          "text": "graph: editor.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 126,
+          "text": "const graph = editor.graph, root = editor.rootGraph(), load = editor.loadContext, workflow = editor.workflowId, selection = editor.workflowContext;"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 129,
+          "text": "&& editor.rootGraph() === root && editor.loadContext === load && editor.workflowContext === selection && (!workflow || editor.workflowId === workflow)"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 143,
+          "text": "const graph = S.clone(this.rootGraph()),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 153,
+          "text": "const request = S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 26,
+          "text": "const validation = await S.api(\"/validate\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 27,
+          "text": "graph: this.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 47,
+          "text": "const r = await S.api(\"/runs\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 50,
+          "text": "output_nodes: outputs,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 76,
+          "text": "const result = await S.api(\"/runs\");"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 91,
+          "text": "await S.api(\"/runs/\" + encodeURIComponent(run.id))"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 113,
+          "text": "const latest = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 172,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 226,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 256,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 274,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 285,
+          "text": "const graphNode = this.rootGraph().nodes.find((n) => n.id === id),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 15,
+          "text": "const capture = () => ({workflow: editor.workflowId, root: editor.rootGraph(), graph: editor.graph,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 20,
+          "text": "&& held.workflow === editor.workflowId && held.root === editor.rootGraph() && held.graph === editor.graph"
+        }
+      ],
+      "status": "New typed data transfer counterpart of actual graph consumers; no maintained caller migrated, dispatch/validator not implemented."
+    },
+    {
+      "operation": "studio.scalars.write",
+      "request": "StudioGraphScalarWriteRequest",
+      "response": "StudioGraphScalarUploadView",
+      "source_refs": [
+        "src/poolhouse/studio/contracts.py:_finite",
+        "src/poolhouse/studio/contracts.py:validate_graph",
+        "src/poolhouse/studio/store.py:digest",
+        "src/poolhouse/studio/record_ops.py:_json"
+      ],
+      "maintained_entrypoints": [
+        "/ui/studio/validate",
+        "/ui/studio/workflows*",
+        "POST /ui/studio/runs"
+      ],
+      "actual_callers": [
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 22,
+          "text": "graph: editor.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 126,
+          "text": "const graph = editor.graph, root = editor.rootGraph(), load = editor.loadContext, workflow = editor.workflowId, selection = editor.workflowContext;"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 129,
+          "text": "&& editor.rootGraph() === root && editor.loadContext === load && editor.workflowContext === selection && (!workflow || editor.workflowId === workflow)"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 143,
+          "text": "const graph = S.clone(this.rootGraph()),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 153,
+          "text": "const request = S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 26,
+          "text": "const validation = await S.api(\"/validate\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 27,
+          "text": "graph: this.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 47,
+          "text": "const r = await S.api(\"/runs\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 50,
+          "text": "output_nodes: outputs,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 76,
+          "text": "const result = await S.api(\"/runs\");"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 91,
+          "text": "await S.api(\"/runs/\" + encodeURIComponent(run.id))"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 113,
+          "text": "const latest = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 172,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 226,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 256,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 274,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 285,
+          "text": "const graphNode = this.rootGraph().nodes.find((n) => n.id === id),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 15,
+          "text": "const capture = () => ({workflow: editor.workflowId, root: editor.rootGraph(), graph: editor.graph,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 20,
+          "text": "&& held.workflow === editor.workflowId && held.root === editor.rootGraph() && held.graph === editor.graph"
+        }
+      ],
+      "status": "New typed data transfer counterpart of actual graph consumers; no maintained caller migrated, dispatch/validator not implemented."
+    },
+    {
+      "operation": "studio.scalars.seal",
+      "request": "StudioGraphScalarSealRequest",
+      "response": "StudioGraphScalarRef",
+      "source_refs": [
+        "src/poolhouse/studio/contracts.py:_finite",
+        "src/poolhouse/studio/contracts.py:validate_graph",
+        "src/poolhouse/studio/store.py:digest",
+        "src/poolhouse/studio/record_ops.py:_json"
+      ],
+      "maintained_entrypoints": [
+        "/ui/studio/validate",
+        "/ui/studio/workflows*",
+        "POST /ui/studio/runs"
+      ],
+      "actual_callers": [
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 22,
+          "text": "graph: editor.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 126,
+          "text": "const graph = editor.graph, root = editor.rootGraph(), load = editor.loadContext, workflow = editor.workflowId, selection = editor.workflowContext;"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 129,
+          "text": "&& editor.rootGraph() === root && editor.loadContext === load && editor.workflowContext === selection && (!workflow || editor.workflowId === workflow)"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 143,
+          "text": "const graph = S.clone(this.rootGraph()),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 153,
+          "text": "const request = S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 26,
+          "text": "const validation = await S.api(\"/validate\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 27,
+          "text": "graph: this.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 47,
+          "text": "const r = await S.api(\"/runs\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 50,
+          "text": "output_nodes: outputs,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 76,
+          "text": "const result = await S.api(\"/runs\");"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 91,
+          "text": "await S.api(\"/runs/\" + encodeURIComponent(run.id))"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 113,
+          "text": "const latest = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 172,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 226,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 256,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 274,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 285,
+          "text": "const graphNode = this.rootGraph().nodes.find((n) => n.id === id),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 15,
+          "text": "const capture = () => ({workflow: editor.workflowId, root: editor.rootGraph(), graph: editor.graph,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 20,
+          "text": "&& held.workflow === editor.workflowId && held.root === editor.rootGraph() && held.graph === editor.graph"
+        }
+      ],
+      "status": "New typed data transfer counterpart of actual graph consumers; no maintained caller migrated, dispatch/validator not implemented."
+    },
+    {
+      "operation": "studio.scalars.read",
+      "request": "StudioGraphScalarReadRequest",
+      "response": "StudioGraphScalarChunk",
+      "source_refs": [
+        "src/poolhouse/studio/contracts.py:_finite",
+        "src/poolhouse/studio/contracts.py:validate_graph",
+        "src/poolhouse/studio/store.py:digest",
+        "src/poolhouse/studio/record_ops.py:_json"
+      ],
+      "maintained_entrypoints": [
+        "/ui/studio/validate",
+        "/ui/studio/workflows*",
+        "POST /ui/studio/runs"
+      ],
+      "actual_callers": [
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 22,
+          "text": "graph: editor.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 126,
+          "text": "const graph = editor.graph, root = editor.rootGraph(), load = editor.loadContext, workflow = editor.workflowId, selection = editor.workflowContext;"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 129,
+          "text": "&& editor.rootGraph() === root && editor.loadContext === load && editor.workflowContext === selection && (!workflow || editor.workflowId === workflow)"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 143,
+          "text": "const graph = S.clone(this.rootGraph()),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 153,
+          "text": "const request = S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 26,
+          "text": "const validation = await S.api(\"/validate\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 27,
+          "text": "graph: this.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 47,
+          "text": "const r = await S.api(\"/runs\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 50,
+          "text": "output_nodes: outputs,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 76,
+          "text": "const result = await S.api(\"/runs\");"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 91,
+          "text": "await S.api(\"/runs/\" + encodeURIComponent(run.id))"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 113,
+          "text": "const latest = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 172,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 226,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 256,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 274,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 285,
+          "text": "const graphNode = this.rootGraph().nodes.find((n) => n.id === id),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 15,
+          "text": "const capture = () => ({workflow: editor.workflowId, root: editor.rootGraph(), graph: editor.graph,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 20,
+          "text": "&& held.workflow === editor.workflowId && held.root === editor.rootGraph() && held.graph === editor.graph"
+        }
+      ],
+      "status": "New typed data transfer counterpart of actual graph consumers; no maintained caller migrated, dispatch/validator not implemented."
+    },
+    {
+      "operation": "studio.ir.selection.resolve",
+      "request": "StudioGraphSelectionResolveRequest",
+      "response": "StudioGraphSelectionSnapshot",
+      "source_refs": [
+        "src/poolhouse/studio/engine.py:_selected",
+        "src/poolhouse/studio/contracts.py:_expand",
+        "src/poolhouse/studio/contracts.py:_sweeps"
+      ],
+      "maintained_entrypoints": [
+        "/ui/studio/validate",
+        "/ui/studio/workflows*",
+        "POST /ui/studio/runs"
+      ],
+      "actual_callers": [
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 22,
+          "text": "graph: editor.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 126,
+          "text": "const graph = editor.graph, root = editor.rootGraph(), load = editor.loadContext, workflow = editor.workflowId, selection = editor.workflowContext;"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 129,
+          "text": "&& editor.rootGraph() === root && editor.loadContext === load && editor.workflowContext === selection && (!workflow || editor.workflowId === workflow)"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 143,
+          "text": "const graph = S.clone(this.rootGraph()),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 153,
+          "text": "const request = S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 26,
+          "text": "const validation = await S.api(\"/validate\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 27,
+          "text": "graph: this.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 47,
+          "text": "const r = await S.api(\"/runs\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 50,
+          "text": "output_nodes: outputs,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 76,
+          "text": "const result = await S.api(\"/runs\");"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 91,
+          "text": "await S.api(\"/runs/\" + encodeURIComponent(run.id))"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 113,
+          "text": "const latest = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 172,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 226,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 256,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 274,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 285,
+          "text": "const graphNode = this.rootGraph().nodes.find((n) => n.id === id),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 15,
+          "text": "const capture = () => ({workflow: editor.workflowId, root: editor.rootGraph(), graph: editor.graph,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 20,
+          "text": "&& held.workflow === editor.workflowId && held.root === editor.rootGraph() && held.graph === editor.graph"
+        }
+      ],
+      "status": "New typed data transfer counterpart of actual graph consumers; no maintained caller migrated, dispatch/validator not implemented."
+    },
+    {
+      "operation": "studio.ir.selection.read",
+      "request": "StudioGraphSelectionReadRequest",
+      "response": "StudioGraphSelectionEvent",
+      "source_refs": [
+        "src/poolhouse/studio/engine.py:_selected",
+        "src/poolhouse/studio/contracts.py:_expand",
+        "src/poolhouse/studio/contracts.py:_sweeps"
+      ],
+      "maintained_entrypoints": [
+        "/ui/studio/validate",
+        "/ui/studio/workflows*",
+        "POST /ui/studio/runs"
+      ],
+      "actual_callers": [
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 22,
+          "text": "graph: editor.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 126,
+          "text": "const graph = editor.graph, root = editor.rootGraph(), load = editor.loadContext, workflow = editor.workflowId, selection = editor.workflowContext;"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+          "line": 129,
+          "text": "&& editor.rootGraph() === root && editor.loadContext === load && editor.workflowContext === selection && (!workflow || editor.workflowId === workflow)"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 143,
+          "text": "const graph = S.clone(this.rootGraph()),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+          "line": 153,
+          "text": "const request = S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 26,
+          "text": "const validation = await S.api(\"/validate\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 27,
+          "text": "graph: this.rootGraph(),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 47,
+          "text": "const r = await S.api(\"/runs\", {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 50,
+          "text": "output_nodes: outputs,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 76,
+          "text": "const result = await S.api(\"/runs\");"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 91,
+          "text": "await S.api(\"/runs/\" + encodeURIComponent(run.id))"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 113,
+          "text": "const latest = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 172,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 226,
+          "text": "const result = await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 256,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 274,
+          "text": "await S.api("
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 285,
+          "text": "const graphNode = this.rootGraph().nodes.find((n) => n.id === id),"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 15,
+          "text": "const capture = () => ({workflow: editor.workflowId, root: editor.rootGraph(), graph: editor.graph,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+          "line": 20,
+          "text": "&& held.workflow === editor.workflowId && held.root === editor.rootGraph() && held.graph === editor.graph"
+        }
+      ],
+      "status": "New typed data transfer counterpart of actual graph consumers; no maintained caller migrated, dispatch/validator not implemented."
+    }
+  ],
+  "actual_callers": [
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 10,
+      "text": "groups: {},"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 22,
+      "text": "graph: editor.rootGraph(),"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 74,
+      "text": "parameters: { properties: {} },"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 83,
+      "text": "parameters: { properties: {} },"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 85,
+      "text": "const group = editor.graph.groups[node.group] || {},"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 88,
+      "text": "graph: { ...editor.graph, groups: editor.graph.groups },"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 101,
+      "text": "Object.entries(group.parameters || {}).map(([name, ref]) => {"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 106,
+      "text": "? S.spec(inner, n, [...seen, node.group]).parameters"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 114,
+      "text": "family: \"Saved groups\","
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 122,
+      "text": "parameters: { properties },"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 126,
+      "text": "const graph = editor.graph, root = editor.rootGraph(), load = editor.loadContext, workflow = editor.workflowId, selection = editor.workflowContext;"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 127,
+      "text": "let expected = node.parameters[name];"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 129,
+      "text": "&& editor.rootGraph() === root && editor.loadContext === load && editor.workflowContext === selection && (!workflow || editor.workflowId === workflow)"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 130,
+      "text": "&& graph.nodes.includes(node) && node.parameters[name] === expected;"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 134,
+      "text": "node.parameters[name] = value;"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 208,
+      "text": "editor.graph.groups[copy] = definition;"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-model.html",
+      "line": 216,
+      "text": "Object.entries(spec.parameters?.properties || {})"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+      "line": 24,
+      "text": "this.sweepDrafts?.size ||"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+      "line": 49,
+      "text": "this.graph.groups ||= {};"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+      "line": 143,
+      "text": "const graph = S.clone(this.rootGraph()),"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-persistence.html",
+      "line": 153,
+      "text": "const request = S.api("
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 26,
+      "text": "const validation = await S.api(\"/validate\", {"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 27,
+      "text": "graph: this.rootGraph(),"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 47,
+      "text": "const r = await S.api(\"/runs\", {"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 50,
+      "text": "output_nodes: outputs,"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 76,
+      "text": "const result = await S.api(\"/runs\");"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 91,
+      "text": "await S.api(\"/runs/\" + encodeURIComponent(run.id))"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 113,
+      "text": "const latest = await S.api("
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 172,
+      "text": "const result = await S.api("
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 226,
+      "text": "const result = await S.api("
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 256,
+      "text": "await S.api("
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 274,
+      "text": "await S.api("
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 285,
+      "text": "const graphNode = this.rootGraph().nodes.find((n) => n.id === id),"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-insertion.html",
+      "line": 8,
+      "text": "if (spec) return {spec, node: {id: S.id(), type: spec.type, version: spec.version, parameters: S.defaults(spec), bindings: {}}};"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-insertion.html",
+      "line": 10,
+      "text": "if (entry?.kind === 'group' && Object.keys(entry).sort().join(',') === 'group,kind' && typeof entry.group === 'string' && Object.hasOwn(this.editor.graph.groups, entry.group)) {"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-insertion.html",
+      "line": 11,
+      "text": "const node = {id: S.id(), type: 'group', group: entry.group, parameters: {}};"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-insertion.html",
+      "line": 76,
+      "text": "if (node.type === 'group') node.group = S.copyGroup(this.editor, graph.groups, node.group);"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+      "line": 7,
+      "text": "selected = E('p', {}, node.bindings?.[name]?.id ? 'Selected: ' + node.bindings[name].id : 'No dataset selected.'),"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+      "line": 14,
+      "text": "const binding = () => JSON.stringify(node.bindings?.[name] ?? null);"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+      "line": 15,
+      "text": "const capture = () => ({workflow: editor.workflowId, root: editor.rootGraph(), graph: editor.graph,"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+      "line": 20,
+      "text": "&& held.workflow === editor.workflowId && held.root === editor.rootGraph() && held.graph === editor.graph"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+      "line": 30,
+      "text": "clear.disabled = !current(owner) || !node.bindings?.[name];"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+      "line": 35,
+      "text": "node.bindings ||= {};"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+      "line": 36,
+      "text": "if (value) node.bindings[name] = {kind: 'dataset', id: value};"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+      "line": 37,
+      "text": "else delete node.bindings[name];"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+      "line": 44,
+      "text": "picker.disabled = true; open.disabled = true; clear.disabled = !current(owner) || !node.bindings?.[name];"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-bindings.html",
+      "line": 63,
+      "text": "picker.value = rows.some(row => !row.directory && row.path === node.bindings?.[name]?.id) ? node.bindings[name].id : '';"
+    }
+  ],
+  "catalogue_parameter_closure": [
+    {
+      "operation": "stream.record",
+      "parameters": {
+        "sample": {
+          "type": "string",
+          "default": "{}"
+        }
+      },
+      "inputs": {},
+      "outputs": {
+        "record": "json"
+      },
+      "canonical_config": "StudioGraphStreamRecordConfig",
+      "parameter_types": {
+        "sample": "StudioGraphScalarRef"
+      }
+    },
+    {
+      "operation": "record.map",
+      "parameters": {
+        "controls": {
+          "type": "object",
+          "format": "record-map",
+          "default": {
+            "keep_other": true,
+            "assignments": []
+          }
+        }
+      },
+      "inputs": {
+        "record": "json"
+      },
+      "outputs": {
+        "record": "json"
+      },
+      "canonical_config": "StudioGraphRecordMapConfig",
+      "parameter_types": {
+        "controls": "StudioGraphRecordMap"
+      }
+    },
+    {
+      "operation": "record.if",
+      "parameters": {
+        "controls": {
+          "type": "object",
+          "format": "record-condition",
+          "default": {
+            "field": "value",
+            "operator": "exists"
+          }
+        }
+      },
+      "inputs": {
+        "record": "json"
+      },
+      "outputs": {
+        "record": "json",
+        "true": "gate",
+        "false": "gate"
+      },
+      "canonical_config": "StudioGraphRecordIfConfig",
+      "parameter_types": {
+        "controls": "StudioGraphRecordCondition"
+      }
+    },
+    {
+      "operation": "dataset",
+      "parameters": {},
+      "inputs": {},
+      "outputs": {
+        "dataset": "dataset"
+      },
+      "canonical_config": "StudioGraphDatasetConfig",
+      "parameter_types": {}
+    },
+    {
+      "operation": "data.hf-preview",
+      "parameters": {
+        "request_id": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "inputs": {},
+      "outputs": {
+        "dataset": "dataset",
+        "artifact": "artifact"
+      },
+      "canonical_config": "StudioGraphDataHfPreviewConfig",
+      "parameter_types": {
+        "request_id": "StudioGraphScalarRef"
+      }
+    },
+    {
+      "operation": "model",
+      "parameters": {},
+      "inputs": {},
+      "outputs": {
+        "model": "model"
+      },
+      "canonical_config": "StudioGraphModelConfig",
+      "parameter_types": {}
+    },
+    {
+      "operation": "data.validate",
+      "parameters": {},
+      "inputs": {
+        "dataset": "dataset"
+      },
+      "outputs": {
+        "dataset": "dataset",
+        "report": "report"
+      },
+      "canonical_config": "StudioGraphDataValidateConfig",
+      "parameter_types": {}
+    },
+    {
+      "operation": "data.split",
+      "parameters": {
+        "fraction": {
+          "type": "number",
+          "default": 0.8,
+          "exclusiveMinimum": 0,
+          "exclusiveMaximum": 1
+        },
+        "seed": {
+          "type": "integer",
+          "default": 0
+        }
+      },
+      "inputs": {
+        "dataset": "dataset"
+      },
+      "outputs": {
+        "train": "dataset",
+        "test": "dataset"
+      },
+      "canonical_config": "StudioGraphDataSplitConfig",
+      "parameter_types": {
+        "fraction": "StudioGraphNumber",
+        "seed": "StudioGraphScalarRef"
+      }
+    },
+    {
+      "operation": "prompt",
+      "parameters": {
+        "template": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "inputs": {},
+      "outputs": {
+        "prompt": "text"
+      },
+      "canonical_config": "StudioGraphPromptConfig",
+      "parameter_types": {
+        "template": "StudioGraphScalarRef"
+      }
+    },
+    {
+      "operation": "generate",
+      "parameters": {
+        "temperature": {
+          "type": "number",
+          "default": 0.7,
+          "minimum": 0,
+          "maximum": 2
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32768,
+          "default": 512
+        }
+      },
+      "inputs": {
+        "model": "model",
+        "prompt": "text"
+      },
+      "outputs": {
+        "text": "text",
+        "response": "json"
+      },
+      "canonical_config": "StudioGraphGenerateConfig",
+      "parameter_types": {
+        "temperature": "StudioGraphNumber",
+        "max_tokens": "StudioGraphScalarRef"
+      }
+    },
+    {
+      "operation": "evaluate",
+      "parameters": {
+        "suite": {
+          "type": "string",
+          "enum": [
+            "holdout",
+            "tool-calls"
+          ],
+          "default": "holdout"
+        },
+        "recipe": {
+          "type": "string",
+          "enum": [
+            "classify-text",
+            "text-lm",
+            "tool-calls"
+          ],
+          "default": "tool-calls"
+        },
+        "framework": {
+          "type": "string",
+          "enum": [
+            "",
+            "mlx",
+            "torch"
+          ],
+          "default": ""
+        },
+        "temperature": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 2
+        }
+      },
+      "inputs": {
+        "model": "model",
+        "dataset": "dataset"
+      },
+      "outputs": {
+        "metrics": "metrics",
+        "report": "report"
+      },
+      "canonical_config": "StudioGraphEvaluateConfig",
+      "parameter_types": {
+        "suite": "StudioGraphEvaluateSuiteChoice",
+        "recipe": "StudioGraphEvaluateRecipeChoice",
+        "framework": "StudioGraphEvaluateFrameworkChoice",
+        "temperature": "StudioGraphNumber"
+      }
+    },
+    {
+      "operation": "compare",
+      "parameters": {},
+      "inputs": {
+        "base": "metrics",
+        "trained": "metrics"
+      },
+      "outputs": {
+        "metrics": "metrics",
+        "report": "report"
+      },
+      "canonical_config": "StudioGraphCompareConfig",
+      "parameter_types": {}
+    },
+    {
+      "operation": "chart",
+      "parameters": {},
+      "inputs": {
+        "metrics": "metrics"
+      },
+      "outputs": {
+        "report": "report"
+      },
+      "canonical_config": "StudioGraphChartConfig",
+      "parameter_types": {}
+    },
+    {
+      "operation": "export",
+      "parameters": {
+        "format": {
+          "type": "string",
+          "enum": [
+            "checkpoint",
+            "adapter"
+          ],
+          "default": "checkpoint"
+        }
+      },
+      "inputs": {
+        "model": "model"
+      },
+      "outputs": {
+        "artifact": "artifact"
+      },
+      "canonical_config": "StudioGraphExportConfig",
+      "parameter_types": {
+        "format": "StudioGraphExportFormatChoice"
+      }
+    },
+    {
+      "operation": "report",
+      "parameters": {},
+      "inputs": {
+        "report": "report"
+      },
+      "outputs": {
+        "artifact": "artifact"
+      },
+      "canonical_config": "StudioGraphReportConfig",
+      "parameter_types": {}
+    },
+    {
+      "operation": "tools.call",
+      "parameters": {
+        "tool": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "inputs": {
+        "arguments": "json"
+      },
+      "outputs": {
+        "result": "json"
+      },
+      "canonical_config": "StudioGraphToolsCallConfig",
+      "parameter_types": {
+        "tool": "StudioGraphScalarRef"
+      }
+    },
+    {
+      "operation": "data.synthesize",
+      "parameters": {},
+      "inputs": {
+        "model": "model",
+        "dataset": "dataset"
+      },
+      "outputs": {
+        "dataset": "dataset"
+      },
+      "canonical_config": "StudioGraphDataSynthesizeConfig",
+      "parameter_types": {}
+    },
+    {
+      "operation": "data.harvest",
+      "parameters": {},
+      "inputs": {},
+      "outputs": {
+        "dataset": "dataset"
+      },
+      "canonical_config": "StudioGraphDataHarvestConfig",
+      "parameter_types": {}
+    },
+    {
+      "operation": "gym.recordings",
+      "parameters": {},
+      "inputs": {},
+      "outputs": {
+        "dataset": "dataset"
+      },
+      "canonical_config": "StudioGraphGymRecordingsConfig",
+      "parameter_types": {}
+    },
+    {
+      "operation": "gym.train",
+      "parameters": {
+        "environment": {
+          "type": "string",
+          "enum": [
+            "warehouse",
+            "drone",
+            "car",
+            "traffic-driving",
+            "traffic"
+          ],
+          "default": "warehouse",
+          "required": true
+        },
+        "timesteps": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 2048
+        },
+        "seed": {
+          "type": "integer",
+          "default": 0
+        }
+      },
+      "inputs": {},
+      "outputs": {
+        "model": "gym-policy",
+        "metrics": "metrics"
+      },
+      "canonical_config": "StudioGraphGymTrainConfig",
+      "parameter_types": {
+        "environment": "StudioGraphGymTrainEnvironmentChoice",
+        "timesteps": "StudioGraphScalarRef",
+        "seed": "StudioGraphScalarRef"
+      }
+    },
+    {
+      "operation": "gym.evaluate",
+      "parameters": {
+        "episodes": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 5
+        }
+      },
+      "inputs": {
+        "model": "model"
+      },
+      "outputs": {
+        "metrics": "metrics",
+        "report": "report"
+      },
+      "canonical_config": "StudioGraphGymEvaluateConfig",
+      "parameter_types": {
+        "episodes": "StudioGraphScalarRef"
+      }
+    },
+    {
+      "operation": "generate.record",
+      "parameters": {
+        "trusted_task": {
+          "type": "string",
+          "default": ""
+        },
+        "question_field": {
+          "type": "string",
+          "default": "question"
+        },
+        "sources_field": {
+          "type": "string",
+          "default": "retrieved_sources"
+        },
+        "temperature": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 2
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32768,
+          "default": 512
+        }
+      },
+      "inputs": {
+        "model": "model",
+        "record": "json"
+      },
+      "outputs": {
+        "text": "text",
+        "response": "json",
+        "report": "report"
+      },
+      "canonical_config": "StudioGraphGenerateRecordConfig",
+      "parameter_types": {
+        "trusted_task": "StudioGraphScalarRef",
+        "question_field": "StudioGraphScalarRef",
+        "sources_field": "StudioGraphScalarRef",
+        "temperature": "StudioGraphNumber",
+        "max_tokens": "StudioGraphScalarRef"
+      }
+    },
+    {
+      "operation": "generate.structured",
+      "parameters": {
+        "temperature": {
+          "type": "number",
+          "default": 0.7,
+          "minimum": 0,
+          "maximum": 2
+        },
+        "json_schema": {
+          "type": "string",
+          "default": "{\"type\":\"object\"}"
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 32768,
+          "default": 512
+        }
+      },
+      "inputs": {
+        "model": "model",
+        "prompt": "text"
+      },
+      "outputs": {
+        "text": "text",
+        "response": "json"
+      },
+      "canonical_config": "StudioGraphGenerateStructuredConfig",
+      "parameter_types": {
+        "temperature": "StudioGraphNumber",
+        "json_schema": "StudioGraphScalarRef",
+        "max_tokens": "StudioGraphScalarRef"
+      }
+    },
+    {
+      "operation": "train.decision",
+      "parameters": {
+        "steps": {
+          "type": "integer",
+          "default": 60,
+          "minimum": 1
+        },
+        "batch_size": {
+          "type": "integer",
+          "default": 4,
+          "minimum": 1
+        },
+        "lr": {
+          "type": "number",
+          "default": 0.0002,
+          "exclusiveMinimum": 0
+        },
+        "max_tokens": {
+          "type": "integer",
+          "default": 1024,
+          "minimum": 1
+        }
+      },
+      "inputs": {
+        "model": "model",
+        "dataset": "dataset"
+      },
+      "outputs": {
+        "model": "decision-model",
+        "metrics": "metrics",
+        "checkpoint": "artifact"
+      },
+      "canonical_config": "StudioGraphTrainDecisionConfig",
+      "parameter_types": {
+        "steps": "StudioGraphScalarRef",
+        "batch_size": "StudioGraphScalarRef",
+        "lr": "StudioGraphNumber",
+        "max_tokens": "StudioGraphScalarRef"
+      }
+    },
+    {
+      "operation": "evaluate.decision",
+      "parameters": {},
+      "inputs": {
+        "model": "model",
+        "dataset": "dataset"
+      },
+      "outputs": {
+        "metrics": "metrics",
+        "report": "report"
+      },
+      "canonical_config": "StudioGraphEvaluateDecisionConfig",
+      "parameter_types": {}
+    },
+    {
+      "operation": "decision.predict",
+      "parameters": {
+        "question": {
+          "type": "string",
+          "default": "Which option best describes this record?"
+        },
+        "options": {
+          "type": "string",
+          "default": "[\"accept\",\"review\"]"
+        },
+        "abstain_below": {
+          "type": "number",
+          "default": 0.8,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "min_margin": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "inputs": {
+        "record": "json",
+        "model": "decision-model"
+      },
+      "outputs": {
+        "decision": "decision",
+        "record": "json",
+        "report": "report"
+      },
+      "canonical_config": "StudioGraphDecisionPredictConfig",
+      "parameter_types": {
+        "question": "StudioGraphScalarRef",
+        "options": "StudioGraphScalarRef",
+        "abstain_below": "StudioGraphNumber",
+        "min_margin": "StudioGraphNumber"
+      }
+    },
+    {
+      "operation": "decision.route",
+      "parameters": {
+        "label": {
+          "type": "string",
+          "default": "accept"
+        }
+      },
+      "inputs": {
+        "decision": "decision"
+      },
+      "outputs": {
+        "allow": "gate",
+        "review": "gate",
+        "block": "gate",
+        "report": "report"
+      },
+      "canonical_config": "StudioGraphDecisionRouteConfig",
+      "parameter_types": {
+        "label": "StudioGraphScalarRef"
+      }
+    },
+    {
+      "operation": "guard.injection",
+      "parameters": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "direct",
+            "indirect"
+          ],
+          "default": "indirect"
+        },
+        "trusted_task": {
+          "type": "string",
+          "default": ""
+        },
+        "input_fields": {
+          "type": "string",
+          "default": "[]",
+          "title": "Literal record fields (JSON list; [] assesses all)"
+        },
+        "allow_threshold": {
+          "type": "number",
+          "default": 0.8,
+          "minimum": 0.5,
+          "maximum": 1
+        },
+        "block_threshold": {
+          "type": "number",
+          "default": 0.8,
+          "minimum": 0.5,
+          "maximum": 1
+        },
+        "min_margin": {
+          "type": "number",
+          "default": 0.2,
+          "minimum": 0,
+          "maximum": 1
+        }
+      },
+      "inputs": {
+        "record": "json",
+        "model": "decision-model"
+      },
+      "outputs": {
+        "signal": "json",
+        "record": "json",
+        "report": "report",
+        "allow": "gate",
+        "review": "gate",
+        "block": "gate"
+      },
+      "canonical_config": "StudioGraphGuardInjectionConfig",
+      "parameter_types": {
+        "mode": "StudioGraphGuardInjectionModeChoice",
+        "trusted_task": "StudioGraphScalarRef",
+        "input_fields": "StudioGraphScalarRef",
+        "allow_threshold": "StudioGraphNumber",
+        "block_threshold": "StudioGraphNumber",
+        "min_margin": "StudioGraphNumber"
+      }
+    },
+    {
+      "operation": "train.classify-text",
+      "parameters": {
+        "steps": {
+          "type": "integer",
+          "default": 1000,
+          "minimum": 20,
+          "maximum": 200000
+        },
+        "context": {
+          "type": "integer",
+          "default": 128,
+          "minimum": 32,
+          "maximum": 2048
+        },
+        "batch_size": {
+          "type": "integer",
+          "default": 32,
+          "minimum": 1,
+          "maximum": 512
+        },
+        "learning_rate": {
+          "type": "number",
+          "default": 0.001,
+          "minimum": 1e-05,
+          "maximum": 0.1
+        },
+        "size": {
+          "type": "string",
+          "enum": [
+            "",
+            "small",
+            "medium"
+          ],
+          "default": ""
+        },
+        "framework": {
+          "type": "string",
+          "enum": [
+            "",
+            "torch",
+            "mlx"
+          ],
+          "default": ""
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "train",
+            "smoke"
+          ],
+          "default": "train"
+        }
+      },
+      "inputs": {
+        "dataset": "dataset",
+        "model": {
+          "type": "model",
+          "required": false
+        }
+      },
+      "outputs": {
+        "model": "classifier-model",
+        "metrics": "metrics",
+        "checkpoint": "artifact"
+      },
+      "canonical_config": "StudioGraphTrainClassifyTextConfig",
+      "parameter_types": {
+        "steps": "StudioGraphScalarRef",
+        "context": "StudioGraphScalarRef",
+        "batch_size": "StudioGraphScalarRef",
+        "learning_rate": "StudioGraphNumber",
+        "size": "StudioGraphTrainClassifyTextSizeChoice",
+        "framework": "StudioGraphTrainClassifyTextFrameworkChoice",
+        "mode": "StudioGraphTrainClassifyTextModeChoice"
+      }
+    },
+    {
+      "operation": "train.text-lm",
+      "parameters": {
+        "steps": {
+          "type": "integer",
+          "default": 2000,
+          "minimum": 20,
+          "maximum": 1000000
+        },
+        "context": {
+          "type": "integer",
+          "default": 256,
+          "minimum": 32,
+          "maximum": 4096
+        },
+        "batch_size": {
+          "type": "integer",
+          "default": 16,
+          "minimum": 1,
+          "maximum": 512
+        },
+        "learning_rate": {
+          "type": "number",
+          "default": 0.003,
+          "minimum": 1e-05,
+          "maximum": 0.1
+        },
+        "size": {
+          "type": "string",
+          "enum": [
+            "",
+            "small",
+            "medium",
+            "large"
+          ],
+          "default": ""
+        },
+        "framework": {
+          "type": "string",
+          "enum": [
+            "",
+            "torch",
+            "mlx"
+          ],
+          "default": ""
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "train",
+            "smoke"
+          ],
+          "default": "train"
+        }
+      },
+      "inputs": {
+        "dataset": "dataset",
+        "model": {
+          "type": "model",
+          "required": false
+        }
+      },
+      "outputs": {
+        "model": "language-model",
+        "metrics": "metrics",
+        "checkpoint": "artifact"
+      },
+      "canonical_config": "StudioGraphTrainTextLmConfig",
+      "parameter_types": {
+        "steps": "StudioGraphScalarRef",
+        "context": "StudioGraphScalarRef",
+        "batch_size": "StudioGraphScalarRef",
+        "learning_rate": "StudioGraphNumber",
+        "size": "StudioGraphTrainTextLmSizeChoice",
+        "framework": "StudioGraphTrainTextLmFrameworkChoice",
+        "mode": "StudioGraphTrainTextLmModeChoice"
+      }
+    },
+    {
+      "operation": "train.tool-calls",
+      "parameters": {
+        "steps": {
+          "type": "integer",
+          "default": 300,
+          "minimum": 20,
+          "maximum": 100000
+        },
+        "context": {
+          "type": "integer",
+          "default": 2048,
+          "minimum": 64,
+          "maximum": 32768
+        },
+        "batch_size": {
+          "type": "integer",
+          "default": 8,
+          "minimum": 1,
+          "maximum": 128
+        },
+        "learning_rate": {
+          "type": "number",
+          "default": 2e-05,
+          "minimum": 1e-07,
+          "maximum": 0.01
+        },
+        "lora": {
+          "type": "boolean",
+          "default": false
+        },
+        "lora_rank": {
+          "type": "integer",
+          "default": 16,
+          "minimum": 1,
+          "maximum": 256
+        },
+        "lora_alpha": {
+          "type": "integer",
+          "default": 32,
+          "minimum": 1,
+          "maximum": 1024
+        },
+        "lora_dropout": {
+          "type": "number",
+          "default": 0.05,
+          "minimum": 0.0,
+          "maximum": 0.5
+        },
+        "lora_targets": {
+          "type": "string",
+          "default": ""
+        },
+        "size": {
+          "type": "string",
+          "enum": [
+            "",
+            "e4b",
+            "qwen27b"
+          ],
+          "default": ""
+        },
+        "framework": {
+          "type": "string",
+          "enum": [
+            "",
+            "torch",
+            "mlx"
+          ],
+          "default": ""
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "train",
+            "smoke"
+          ],
+          "default": "train"
+        }
+      },
+      "inputs": {
+        "dataset": "dataset",
+        "model": {
+          "type": "model",
+          "required": true
+        }
+      },
+      "outputs": {
+        "model": "language-model",
+        "metrics": "metrics",
+        "checkpoint": "artifact"
+      },
+      "canonical_config": "StudioGraphTrainToolCallsConfig",
+      "parameter_types": {
+        "steps": "StudioGraphScalarRef",
+        "context": "StudioGraphScalarRef",
+        "batch_size": "StudioGraphScalarRef",
+        "learning_rate": "StudioGraphNumber",
+        "lora": "Boolean",
+        "lora_rank": "StudioGraphScalarRef",
+        "lora_alpha": "StudioGraphScalarRef",
+        "lora_dropout": "StudioGraphNumber",
+        "lora_targets": "StudioGraphScalarRef",
+        "size": "StudioGraphTrainToolCallsSizeChoice",
+        "framework": "StudioGraphTrainToolCallsFrameworkChoice",
+        "mode": "StudioGraphTrainToolCallsModeChoice"
+      }
+    }
+  ],
+  "graph_representation": {
+    "format": "StudioGraphRecord closed union: header/group/node/data-edge/control-edge/interfaces/typed-group-assignments/typed-sweeps/literal-nodes. No opaque graph blob; no public Any/JSON parameter map.",
+    "identity": "Source keys use same-draft scope plus decoded exact source identifier string, not identity of scalar ref. These are data forward references, not guessed future node-issued handles. Root scope and globally defined group bodies distinct. Seal resolves all refs; missing, duplicate semantic keys, foreign draft/generation/purpose and cycles refuse. Read projections use node-issued source/expanded handles from exact immutable snapshot.",
+    "scalar_purpose": "Dedicated scalar refs encode ONLY actual long source strings or arbitrary integers, fixed to draft+owner-record+purpose+subordinal and exact eventual schema slot. Ref reuse/retag across slots, graph/title/metric/candidate/output/other-resource is forbidden; no interpretation of scalar as graph/control/parameter object. Managed model/dataset bindings retain exact original source_id scalar alongside current authorized managed ref for source reconstruction.",
+    "scalar_transport": "Utf8Chunk transports ASCII bytes of JSON string content (without enclosing quotes) or signed decimal integer. Dedicated authoritative source decoder preserves Python codepoint sequence incl lone surrogates; no Rust String lossy bridge, Unicode normalization, trim or shared Utf8Chunk invariant relaxation. Original source json.loads may combine escaped high+low pair; preserve resulting actual codepoints, not preparse token spelling. Signed decimal normalized lexically; no U64/arbitrary fixed-digit narrowing.",
+    "literal_positions": "Flat tree only header id/name/description/layout, group/node name metadata and actual record.map literal/record.if comparison values. Container nodes plus parent/ordinal/object-key/child-count bind SAME draft+purpose+owner+tree. No generic node parameter, bindings, code, URL, destination, tool route or graph envelope via literal tree.",
+    "literal_validation": "Iterative admitted traversal, exact one root/parent, no dangling refs/cycles/shared subtree or scalar loops/amplification; unique decoded object keys, contiguous array/map ordinals and exact child counts. Apply whole source budget and private Node-owned admission to transient+retained records before allocation/traversal. No new public quota profile or authority. Record literals additionally enforce record_ops source depth and serialized UTF8 bounds.",
+    "config_closure": "Exactly31 catalogue config variants plus source GroupInstance; normalized config excludes GroupInstance. Each has fixed params/bindings, explicit omission and field order. Source invalid types/null/unknown parameter do not normalize into accepted config; historical invalid drafts remain nonexecuting control-storage data, not valid canonical IR. Nonliteral arbitrary layout remains data-only AST.",
+    "phase": "ReadRecord is Source(StudioGraphRecord)|Expanded(StudioGraphExpandedRecord). Snapshot form and node-issued schema must match exactly, no source append of expanded objects. Sealed receipt binds separate source/expanded snapshots+control graph refs. Expanded node config defaults filled and normalized fields present; no source omission promoted as ready. Source refs available for invalid control drafts remain data only.",
+    "parameter_binding": "Every parameter assignment discriminant binds exact operation+parameter, typed value and exact eventual target NodeKey. Group exposed assignment/sweep names also bind declared interface and resolved target. Refusal of mismatched operation/slot/type prevents generic Value+unchecked key bag. Unused groups validated too; alias cycles missing targets refuse. Multiple exposed aliases to same slot follow actual _expand override loop: source group-instance parameter insertion order, later override wins, after original child params; do not invent duplicate-target refusal where source orders overrides. Nested interfaces resolved recursively. Sweeps apply after expansion in expanded node order then insertion-order parameter/value sequence.",
+    "relationships": "Scoped unique simple source identifiers; fixed catalogue port enum/group declaration refs; source/target order preserved; one data edge per target, compatible refined types/required inputs, no gate-as-data. Controls gate only, group target expands descendants, required group-control inputs nonempty/uniquely provided; duplicate expanded targets/edges refuse. Combined data+control DAG and source record_coverage rules required.",
+    "metadata_order": "Top/group/node/param/binding fixed field-order lists bounded by actual fixed schema field counts, not invented dataset caps. Endpoint/source-target/record-assignment ordering booleans preserve source two-key order. Explicit maps and arrays carry insertion ordinal; canonical record traversal never overwrites source ordinal metadata. Presence inferred from field-order membership, all corresponding fields/records must agree; absent and empty distinct."
+  },
+  "source_profiles": {
+    "graph_source_size": {
+      "source_ref": "src/poolhouse/studio/contracts.py:validate_graph",
+      "metric": "len(json.dumps(graph)) <= 2000000, default ensure_ascii=True/default spaced separators; ASCII output length, not raw upload bytes and not compact store digest. Whole logical graph including all unused groups/metadata/string content counted.",
+      "maximum": 2000000
+    },
+    "raw_and_expanded_nodes": {
+      "source_refs": [
+        "src/poolhouse/studio/contracts.py:validate_graph",
+        "src/poolhouse/studio/contracts.py:_expand",
+        "src/poolhouse/studio/contracts.py:_sweeps"
+      ],
+      "maximum": 1000,
+      "metric": "Raw root nodes<=1000; each expansion/sweep rejects >1000; sweeping multiplies entire graph by Cartesian ordered value lengths, not one-node-only copies."
+    },
+    "group_depth": {
+      "source_ref": "src/poolhouse/studio/contracts.py:_expand",
+      "predicate": "len(stack)>16 refuses; group recursion only, not global JSON depth16."
+    },
+    "execution_hint": {
+      "source_ref": "src/poolhouse/studio/contracts.py:_execution",
+      "maximum_python_characters": 256,
+      "metric": "nonempty str; no authority conveyed by device hint."
+    },
+    "record_controls": {
+      "source_ref": "src/poolhouse/studio/record_ops.py:parameters",
+      "assignments_max": 256,
+      "field_name_max_utf8_bytes": 256,
+      "source_ref_json": "src/poolhouse/studio/record_ops.py:_json",
+      "literal_depth_predicate": "depth>16 refuses",
+      "literal_max_utf8_bytes": 200000,
+      "encoding": "json.dumps(value,ensure_ascii=False,allow_nan=False).encode(utf-8), includes exact original object order. Source lone-surrogate UTF8 failure is refusal, not replacement."
+    },
+    "source_store_hash": {
+      "source_ref": "src/poolhouse/studio/store.py:digest",
+      "algorithm": "SHA256 of json.dumps(value,sort_keys=True,separators=(comma,colon),allow_nan=False).encode(), default ensure_ascii=True."
+    },
+    "source_equality": {
+      "source_refs": [
+        "src/poolhouse/studio/contracts.py:_parameters",
+        "src/poolhouse/studio/store.py:digest"
+      ],
+      "definition": "Reconstruct ordered logical Python JSON value after actual authoritative source decoder. Preserve omitted/default, exact codepoints, integer-vs-float, finite IEEE754 bits including negative zero; bool is not numeric. Original whitespace/number token spelling is not retained by actual json.loads. JSON source duplicate last-key-wins is observed adapter behavior only; canonical typed records refuse duplicate semantic fields. A SINGLE source decode supplies authority checks, source hash/size, defaults and validation, never divergent security dispatcher parsing."
+    },
+    "canonical_order": "Header, groups in source map insertion order, body node arrays, per-node declared fields with original field ordinals, edge/control arrays, interfaces and sweeps in source insertion order, literal preorder. Source hash sort_keys is distinct from operational sweep order. No order inferred from arrival that contradicts explicit source ordinals."
+  },
+  "selection_semantics": {
+    "source_refs": [
+      "src/poolhouse/studio/engine.py:_selected",
+      "src/poolhouse/studio/contracts.py:_expand",
+      "src/poolhouse/studio/contracts.py:_sweeps"
+    ],
+    "definition": "All or actual source node/group subtree, expanded node or original variant family selector. Resolve groups+variants then close ancestors across BOTH data and control DAGs. Snapshot pins same validated source+expanded+catalog/schema and current caller auth; deterministic source expansion order, no flat1000-ID substitute for source semantics. Read items carry direct/group/variant/data/control ancestry reason and node mapping; every item/range/error current-authorized, invalidated cursor observable Resync; empty/complete snapshot observable."
+  },
+  "durable_mutation_semantics": {
+    "definition": "Every durable request carries request_id and exact Node-owned generation; CAS where mutable. Immutable request payload/principal/draft/position bound result, changed payload refuses, repeats never duplicate/extend storage. Failed seal returns Invalid/Unsupported/Recovery, no executable ref and no successful result cached. Late cancelled/detached request may already have durable winner; request-detach only. Existing private ResourceAdmission node-owner accounting governs both retained and transient graph/scalar/literal/expansion storage before growth; no caller-raised budget, public quota switch or fresh framework.",
+    "source_refs": [
+      "contracts/node/domains/resource_leases.toml",
+      "contracts/node/domains/studio_control.toml"
+    ]
+  },
+  "security_boundary": [
+    "Current authenticated principal/project/board/pool/resource incarnation checked before any existence disclosure; current revocation fences every record/range/error. Labels/references are not grants.",
+    "Managed DatasetRef resolves author-owned actual custody/materialization/snapshot policy; ModelRef same actual authorization. Legacy source IDs never imply file path, URL or private resource existence entitlement.",
+    "Validation/save/catalog/template/sweep/literal/execution hint cannot grant run, network, packages, code, worker routing or tools.call execution. Exact fixed node implementation and separately authorized tool/resource/run admission remain mandatory.",
+    "Node-issued semantic purpose/version/digest is verified, never caller-retagged. Draft invalid history may be stored but cannot receive canonical executable seal."
+  ],
+  "unresolved_enablement": [
+    "Declarations only: no actual canonical IR dispatcher, parser, cross-record validator, scalar storage, durable retry/CAS, snapshots, private-admission integration, selector implementation or UI caller migration. No runtime/native/retained-journey/K acceptance.",
+    "Mandatory serializer/decoder vectors: exact CPython json defaults/spaces/escaping including control/lone/high-low/nonBMP codepoints, integer rendering/runtime digit refusal, FiniteF64 subnormal/negativezero/exponent formatting, bool/int/float comparisons/defaults and sorted store hash vs insertion operational order. Named profiles are not enforcement; unavailable before these are implemented and reviewed.",
+    "Mandatory relationship/expansion vectors: all31 parameter defaults/ranges/required gym environment, group alias override ordering/cycles/unused definitions, source group/control interfaces, combined data/control cycles, required inputs/refined types, sweep Cartesian order and 1000 boundaries, record_coverage and full source/group/variant selection ancestor closure.",
+    "Unbounded source record/edge/interface/literal count and total transient/retained amplification require Node-owned admission profiles; no invented1024-list cap. Generic JSON layout depth is not group16 or record16; exact aggregate iterative source/parser constraints must be closed before enablement.",
+    "DatasetRef integration awaits separately reviewed dataset leaf; no duplicate definition or private dataset worker ref. Shared ModelRef and StudioControl refs reused as data. Source-derived catalogue extraction is metadata only, no product imports/models/tests.",
+    "Public operation-specific metrics and per-node outputs/value schema is mandatory next same-author continuation, not closed by this graph leaf. Control leaf remains partial until actual implementation/callers as well as graph/metrics/value closure.",
+    "Packages/import/resource install and durable sources/subscriptions/destinations/deliveries remain exact route-mapped separate segments in studio_control evidence; no omission or new authority through graph strings."
+  ],
+  "independent_review": {
+    "reviewer": "domain_attack_review",
+    "pre_edit_verdict": "Declaration-only strategy approved with7 required concrete handle/typed-group/literal/decoder/float/purpose/seal constraints; dedicated ASCII source-string surrogate transport refinement also approved with exact decoder vectors mandatory.",
+    "actual_leaf_verdict": "Approved declaration-only:403 public types10 operations; reviewer independently verified all40 pinned source-file+site hashes and exact source-key scopes, typed eventual assignments/sweeps, scalar/literal purposes, source/expanded phase and invalid seal states. No declaration blocker. No semantic validator/CPython serializer/expansion/caller/runtime/K proof; named gaps remain enablement prerequisites."
+  }
+}
