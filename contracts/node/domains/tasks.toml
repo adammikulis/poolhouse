@@ -1,0 +1,1050 @@
+version = 1
+status = "proposal"
+
+[[type]]
+name = "TaskContractSnapshotId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "TaskContentDigest"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "data"
+
+[[type]]
+name = "TaskEntryId"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "node"
+min_bytes = 1
+max_bytes = 128
+
+[[type]]
+name = "TaskCoordinationLeaseId"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "node"
+min_bytes = 1
+max_bytes = 64
+
+[[type]]
+name = "TaskTitle"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 200
+
+[[type]]
+name = "TaskDescription"
+kind = "scalar"
+visibility = "public"
+encoding = "utf8"
+issuer = "data"
+min_bytes = 0
+max_bytes = 20000
+
+[[type]]
+name = "TaskLine500"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 500
+
+[[type]]
+name = "TaskOptionalLine500"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 0
+max_bytes = 500
+
+[[type]]
+name = "TaskLine1024"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 0
+max_bytes = 1024
+
+[[type]]
+name = "TaskLine2000"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 0
+max_bytes = 2000
+
+[[type]]
+name = "TaskSummary"
+kind = "scalar"
+visibility = "public"
+encoding = "utf8"
+issuer = "data"
+min_bytes = 1
+max_bytes = 2000
+
+[[type]]
+name = "TaskReason"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 2000
+
+[[type]]
+name = "TaskCommitText"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 0
+max_bytes = 64
+
+[[type]]
+name = "TaskClaimKey"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 300
+
+[[type]]
+name = "TaskUsageSource"
+kind = "scalar"
+visibility = "public"
+encoding = "utf8"
+issuer = "data"
+min_bytes = 0
+max_bytes = 800
+
+[[type]]
+name = "TaskMeasuredSource"
+kind = "scalar"
+visibility = "public"
+encoding = "utf8"
+issuer = "data"
+min_bytes = 1
+max_bytes = 2000
+
+[[type]]
+name = "TaskRetryCount"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "data"
+minimum = 0
+maximum = 10
+
+[[type]]
+name = "TaskReportedCount"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "data"
+minimum = 0
+maximum = 1000000000000
+
+[[type]]
+name = "TaskMeasuredCount"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "data"
+minimum = 0
+maximum = 1000000000
+
+[[type]]
+name = "TaskRating"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "data"
+minimum = 0
+maximum = 100
+
+[[type]]
+name = "TaskPositiveSeconds"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "data"
+minimum = 1
+maximum = 18446744073709551615
+
+[[type]]
+name = "TaskOptionalRetryCount"
+kind = "optional"
+visibility = "public"
+item = "TaskRetryCount"
+
+[[type]]
+name = "TaskOptionalSeconds"
+kind = "optional"
+visibility = "public"
+item = "TaskPositiveSeconds"
+
+[[type]]
+name = "TaskOptionalLine1024"
+kind = "optional"
+visibility = "public"
+item = "TaskLine1024"
+
+[[type]]
+name = "TaskOptionalLine2000"
+kind = "optional"
+visibility = "public"
+item = "TaskLine2000"
+
+[[type]]
+name = "TaskOptionalReportedCount"
+kind = "optional"
+visibility = "public"
+item = "TaskReportedCount"
+
+[[type]]
+name = "TaskOptionalMeasuredCount"
+kind = "optional"
+visibility = "public"
+item = "TaskMeasuredCount"
+
+[[type]]
+name = "TaskOptionalFiniteF64"
+kind = "optional"
+visibility = "public"
+item = "FiniteF64"
+
+[[type]]
+name = "TaskOptionalUsageSource"
+kind = "optional"
+visibility = "public"
+item = "TaskUsageSource"
+
+[[type]]
+name = "TaskOptionalExecutionId"
+kind = "optional"
+visibility = "public"
+item = "TaskExecutionId"
+
+[[type]]
+name = "TaskActorRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "agent_id", type = "AgentId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "TaskOptionalActorRef"
+kind = "optional"
+visibility = "public"
+item = "TaskActorRef"
+
+[[type]]
+name = "TaskActors"
+kind = "list"
+visibility = "public"
+item = "TaskActorRef"
+max_items = 32
+min_items = 0
+unique = true
+
+[[type]]
+name = "TaskScopedRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "task", type = "TaskRef"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "TaskDependencies"
+kind = "list"
+visibility = "public"
+item = "TaskScopedRef"
+max_items = 32
+min_items = 0
+unique = true
+
+[[type]]
+name = "TaskCriteria"
+kind = "list"
+visibility = "public"
+item = "TaskLine500"
+max_items = 32
+min_items = 1
+unique = true
+
+[[type]]
+name = "TaskCapabilities"
+kind = "list"
+visibility = "public"
+item = "TaskLine500"
+max_items = 32
+min_items = 0
+unique = true
+
+[[type]]
+name = "TaskSpecificationLimits"
+kind = "record"
+visibility = "public"
+fields = [{name = "model", type = "TaskOptionalLine1024"}, {name = "max_wall_seconds", type = "TaskOptionalSeconds"}, {name = "max_retries", type = "TaskOptionalRetryCount"}]
+
+[[type]]
+name = "TaskSpecification"
+kind = "record"
+visibility = "public"
+fields = [{name = "title", type = "TaskTitle"}, {name = "description", type = "TaskDescription"}, {name = "acceptance", type = "TaskCriteria"}, {name = "dependencies", type = "TaskDependencies"}, {name = "capabilities", type = "TaskCapabilities"}, {name = "limits", type = "TaskSpecificationLimits"}, {name = "source_key", type = "TaskOptionalLine500"}, {name = "assignees", type = "TaskActors"}, {name = "reviewers", type = "TaskActors"}]
+
+[[type]]
+name = "TaskRecordedCheck"
+kind = "record"
+visibility = "public"
+fields = [{name = "name", type = "TaskLine500"}, {name = "passed", type = "Boolean"}]
+
+[[type]]
+name = "TaskRecordedChecks"
+kind = "list"
+visibility = "public"
+item = "TaskRecordedCheck"
+max_items = 32
+min_items = 1
+unique = false
+
+[[type]]
+name = "TaskArtifactDigest"
+kind = "record"
+visibility = "public"
+fields = [{name = "name", type = "TaskLine500"}, {name = "digest", type = "TaskContentDigest"}]
+
+[[type]]
+name = "TaskArtifactDigests"
+kind = "list"
+visibility = "public"
+item = "TaskArtifactDigest"
+max_items = 32
+min_items = 1
+unique = false
+
+[[type]]
+name = "TaskReportedUsage"
+kind = "record"
+visibility = "public"
+fields = [{name = "source", type = "TaskOptionalUsageSource"}, {name = "tokens_in", type = "TaskOptionalReportedCount"}, {name = "tokens_out", type = "TaskOptionalReportedCount"}, {name = "wall_seconds", type = "TaskOptionalFiniteF64"}]
+
+[[type]]
+name = "TaskMeasuredUsage"
+kind = "record"
+visibility = "public"
+fields = [{name = "source", type = "TaskMeasuredSource"}, {name = "tokens_in", type = "TaskOptionalMeasuredCount"}, {name = "tokens_out", type = "TaskOptionalMeasuredCount"}, {name = "wall_seconds", type = "TaskOptionalFiniteF64"}]
+
+[[type]]
+name = "TaskOptionalMeasuredUsage"
+kind = "optional"
+visibility = "public"
+item = "TaskMeasuredUsage"
+
+[[type]]
+name = "TaskClaimedProvenance"
+kind = "record"
+visibility = "public"
+fields = [{name = "commit", type = "TaskOptionalLine1024"}, {name = "environment", type = "TaskOptionalLine1024"}, {name = "model", type = "TaskOptionalLine1024"}, {name = "runtime", type = "TaskOptionalLine1024"}]
+
+[[type]]
+name = "TaskSubmission"
+kind = "record"
+visibility = "public"
+fields = [{name = "artifacts", type = "TaskArtifactDigests"}, {name = "checks", type = "TaskRecordedChecks"}, {name = "usage", type = "TaskReportedUsage"}, {name = "summary", type = "TaskLine2000"}, {name = "provenance", type = "TaskClaimedProvenance"}]
+
+[[type]]
+name = "TaskQualityKind"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "validated", type = "Empty"}, {tag = "regression", type = "Empty"}, {tag = "impact", type = "Empty"}]
+
+[[type]]
+name = "TaskQualityLinks"
+kind = "list"
+visibility = "public"
+item = "TaskLine500"
+max_items = 16
+min_items = 1
+unique = true
+
+[[type]]
+name = "TaskQualityTier"
+kind = "record"
+visibility = "public"
+fields = [{name = "tier", type = "TaskQualityKind"}, {name = "reason", type = "TaskMeasuredSource"}, {name = "checks", type = "TaskQualityLinks"}, {name = "artifacts", type = "TaskQualityLinks"}]
+
+[[type]]
+name = "TaskQualityTiers"
+kind = "list"
+visibility = "public"
+item = "TaskQualityTier"
+max_items = 3
+min_items = 0
+unique = false
+
+[[type]]
+name = "TaskIndependentRatings"
+kind = "record"
+visibility = "public"
+fields = [{name = "quality", type = "TaskRating"}, {name = "reliability", type = "TaskRating"}, {name = "reason", type = "TaskMeasuredSource"}]
+
+[[type]]
+name = "TaskOptionalRatings"
+kind = "optional"
+visibility = "public"
+item = "TaskIndependentRatings"
+
+[[type]]
+name = "TaskReviewOutcome"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "accepted", type = "Empty"}, {tag = "rejected", type = "Empty"}, {tag = "blocked_infrastructure", type = "Empty"}]
+
+[[type]]
+name = "TaskBlockKind"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "infrastructure", type = "Empty"}, {tag = "failure", type = "Empty"}]
+
+[[type]]
+name = "TaskReadyReason"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "resume_blocked", type = "Empty"}, {tag = "recover_expired", type = "Empty"}]
+
+[[type]]
+name = "TaskEnforcementMode"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "open", type = "Empty"}, {tag = "strict", type = "Empty"}]
+
+[[type]]
+name = "TaskLifecycleState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "queued", type = "Empty"}, {tag = "working", type = "Empty"}, {tag = "review", type = "Empty"}, {tag = "accepted", type = "Empty"}, {tag = "completed", type = "Empty"}, {tag = "rejected", type = "Empty"}, {tag = "blocked", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "TaskAllocationRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "entry_id", type = "TaskEntryId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "TaskManagedLeaseRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "lease_id", type = "TaskCoordinationLeaseId"}, {name = "generation", type = "ResourceGeneration"}, {name = "worker", type = "TaskActorRef"}]
+
+[[type]]
+name = "TaskDigestVersion"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "legacy_board_json_v1", type = "Empty"}, {tag = "incarnation_bound_v2", type = "Empty"}]
+
+[[type]]
+name = "TaskProposalRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "digest_version", type = "TaskDigestVersion"}, {name = "task", type = "TaskScopedRef"}, {name = "entry_id", type = "TaskEntryId"}, {name = "generation", type = "ResourceGeneration"}, {name = "digest", type = "TaskContentDigest"}]
+
+[[type]]
+name = "TaskReviewRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "digest_version", type = "TaskDigestVersion"}, {name = "proposal", type = "TaskProposalRef"}, {name = "entry_id", type = "TaskEntryId"}, {name = "generation", type = "ResourceGeneration"}, {name = "digest", type = "TaskContentDigest"}]
+
+[[type]]
+name = "TaskOptionalAllocation"
+kind = "optional"
+visibility = "public"
+item = "TaskAllocationRef"
+
+[[type]]
+name = "TaskOptionalProposal"
+kind = "optional"
+visibility = "public"
+item = "TaskProposalRef"
+
+[[type]]
+name = "TaskOptionalReview"
+kind = "optional"
+visibility = "public"
+item = "TaskReviewRef"
+
+[[type]]
+name = "TaskLeaseRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "allocation", type = "TaskAllocationRef"}, {name = "lease_id", type = "TaskCoordinationLeaseId"}, {name = "generation", type = "ResourceGeneration"}, {name = "worker", type = "TaskActorRef"}]
+
+[[type]]
+name = "TaskOptionalLeaseRef"
+kind = "optional"
+visibility = "public"
+item = "TaskLeaseRef"
+
+[[type]]
+name = "TaskLeaseView"
+kind = "record"
+visibility = "public"
+fields = [{name = "lease", type = "TaskLeaseRef"}, {name = "revision", type = "U64"}, {name = "model_lease", type = "TaskManagedLeaseRef"}, {name = "active", type = "Boolean"}, {name = "granted_at", type = "UnixMicros"}, {name = "heartbeat_at", type = "UnixMicros"}, {name = "expires_at", type = "UnixMicros"}]
+
+[[type]]
+name = "TaskAllocationView"
+kind = "record"
+visibility = "public"
+fields = [{name = "allocation", type = "TaskAllocationRef"}, {name = "creator", type = "TaskActorRef"}, {name = "worker", type = "TaskActorRef"}, {name = "model_lease", type = "TaskManagedLeaseRef"}, {name = "capabilities", type = "TaskCapabilities"}, {name = "created_at", type = "UnixMicros"}]
+
+[[type]]
+name = "TaskProposalView"
+kind = "record"
+visibility = "public"
+fields = [{name = "proposal", type = "TaskProposalRef"}, {name = "allocation", type = "TaskAllocationRef"}, {name = "worker", type = "TaskActorRef"}, {name = "lease", type = "TaskLeaseRef"}, {name = "specification_digest", type = "TaskContentDigest"}, {name = "submission", type = "TaskSubmission"}, {name = "created_at", type = "UnixMicros"}]
+
+[[type]]
+name = "TaskAssessment"
+kind = "record"
+visibility = "public"
+fields = [{name = "outcome", type = "TaskReviewOutcome"}, {name = "reason", type = "TaskReason"}, {name = "checks", type = "TaskRecordedChecks"}, {name = "measured_usage", type = "TaskOptionalMeasuredUsage"}, {name = "quality", type = "TaskQualityTiers"}, {name = "ratings", type = "TaskOptionalRatings"}]
+
+[[type]]
+name = "TaskReviewView"
+kind = "record"
+visibility = "public"
+fields = [{name = "review", type = "TaskReviewRef"}, {name = "reviewer", type = "TaskActorRef"}, {name = "worker", type = "TaskActorRef"}, {name = "assessment", type = "TaskAssessment"}, {name = "reviewed_at", type = "UnixMicros"}]
+
+[[type]]
+name = "TaskCheckpointView"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "entry_id", type = "TaskEntryId"}, {name = "lease", type = "TaskLeaseRef"}, {name = "actor", type = "TaskActorRef"}, {name = "summary", type = "TaskSummary"}, {name = "progress", type = "TaskOptionalLine2000"}, {name = "commit", type = "TaskOptionalLine2000"}, {name = "environment", type = "TaskOptionalLine2000"}, {name = "created_at", type = "UnixMicros"}]
+
+[[type]]
+name = "TaskWatcherView"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "subscriber", type = "TaskActorRef"}, {name = "enabled", type = "Boolean"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "TaskEtaObservation"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "no_verified_numeric_measurements", type = "Empty"}]
+
+[[type]]
+name = "TaskActivityView"
+kind = "record"
+visibility = "public"
+fields = [{name = "updated_at", type = "UnixMicros"}, {name = "age_seconds", type = "U64"}, {name = "worker_active", type = "Boolean"}, {name = "heartbeat_age_seconds", type = "OptionalU64"}, {name = "verified_checks_passed", type = "U64"}, {name = "verified_checks_total", type = "U64"}, {name = "eta", type = "TaskEtaObservation"}]
+
+[[type]]
+name = "TaskBlockObservation"
+kind = "record"
+visibility = "public"
+fields = [{name = "blocked_at", type = "OptionalUnixMicros"}, {name = "reason", type = "TaskLine2000"}, {name = "block_kind", type = "TaskLine2000"}, {name = "settled_milliseconds", type = "U64"}, {name = "pending_milliseconds", type = "U64"}]
+
+[[type]]
+name = "TaskOverviewView"
+kind = "record"
+visibility = "public"
+fields = [{name = "total", type = "U64"}, {name = "remaining", type = "U64"}, {name = "queued", type = "U64"}, {name = "running", type = "U64"}, {name = "blocked", type = "U64"}, {name = "review", type = "U64"}, {name = "awaiting_integration", type = "U64"}, {name = "done", type = "U64"}, {name = "failed", type = "U64"}, {name = "eta", type = "TaskEtaObservation"}]
+
+[[type]]
+name = "TaskMetricsView"
+kind = "record"
+visibility = "public"
+fields = [{name = "verified_outcomes", type = "U64"}, {name = "failures", type = "U64"}, {name = "accepted_artifacts", type = "U64"}, {name = "blocked_seconds", type = "U64"}]
+
+[[type]]
+name = "TaskView"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "revision", type = "U64"}, {name = "specification", type = "TaskSpecification"}, {name = "creator", type = "TaskActorRef"}, {name = "worker", type = "TaskOptionalActorRef"}, {name = "state", type = "TaskLifecycleState"}, {name = "failures", type = "U64"}, {name = "lease", type = "TaskOptionalLeaseRef"}, {name = "allocation", type = "TaskOptionalAllocation"}, {name = "proposal", type = "TaskOptionalProposal"}, {name = "review", type = "TaskOptionalReview"}, {name = "execution", type = "TaskOptionalExecutionId"}, {name = "activity", type = "TaskActivityView"}, {name = "blocking", type = "TaskBlockObservation"}, {name = "created_at", type = "UnixMicros"}, {name = "updated_at", type = "UnixMicros"}]
+
+[[type]]
+name = "TaskModeView"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "revision", type = "U64"}, {name = "mode", type = "TaskEnforcementMode"}, {name = "set_by", type = "TaskOptionalActorRef"}]
+
+[[type]]
+name = "TaskSnapshotBoundary"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot_id", type = "TaskContractSnapshotId"}, {name = "board", type = "CatalogBoardRef"}, {name = "revision", type = "U64"}, {name = "cursor", type = "ProjectCatalogCursor"}]
+
+[[type]]
+name = "TaskBoardSummary"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "TaskSnapshotBoundary"}, {name = "mode", type = "TaskEnforcementMode"}, {name = "overview", type = "TaskOverviewView"}, {name = "metrics", type = "TaskMetricsView"}, {name = "foreign_ignored", type = "U64"}]
+
+[[type]]
+name = "TaskStreamTask"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "TaskSnapshotBoundary"}, {name = "value", type = "TaskView"}]
+
+[[type]]
+name = "TaskStreamAllocation"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "TaskSnapshotBoundary"}, {name = "value", type = "TaskAllocationView"}]
+
+[[type]]
+name = "TaskStreamCheckpoint"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "TaskSnapshotBoundary"}, {name = "value", type = "TaskCheckpointView"}]
+
+[[type]]
+name = "TaskStreamProposal"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "TaskSnapshotBoundary"}, {name = "value", type = "TaskProposalView"}]
+
+[[type]]
+name = "TaskStreamReview"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "TaskSnapshotBoundary"}, {name = "value", type = "TaskReviewView"}]
+
+[[type]]
+name = "TaskStreamWatcher"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "TaskSnapshotBoundary"}, {name = "value", type = "TaskWatcherView"}]
+
+[[type]]
+name = "TaskReadEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "TaskSnapshotBoundary"}, {tag = "board_summary", type = "TaskBoardSummary"}, {tag = "task", type = "TaskStreamTask"}, {tag = "allocation", type = "TaskStreamAllocation"}, {tag = "checkpoint", type = "TaskStreamCheckpoint"}, {tag = "proposal", type = "TaskStreamProposal"}, {tag = "review", type = "TaskStreamReview"}, {tag = "watcher", type = "TaskStreamWatcher"}, {tag = "complete", type = "TaskSnapshotBoundary"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "TaskListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "after", type = "ProjectOptionalCatalogCursor"}]
+
+[[type]]
+name = "TaskGetRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "after", type = "ProjectOptionalCatalogCursor"}]
+
+[[type]]
+name = "TaskCreateRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "specification", type = "TaskSpecification"}]
+
+[[type]]
+name = "TaskWatchSetRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "subscriber", type = "TaskActorRef"}, {name = "enabled", type = "Boolean"}]
+
+[[type]]
+name = "TaskAssignRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "worker", type = "TaskActorRef"}, {name = "model_lease", type = "TaskManagedLeaseRef"}, {name = "capabilities", type = "TaskCapabilities"}]
+
+[[type]]
+name = "TaskClaimRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "allocation", type = "TaskAllocationRef"}]
+
+[[type]]
+name = "TaskHeartbeatRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "lease", type = "TaskLeaseRef"}]
+
+[[type]]
+name = "TaskCheckpointRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "lease", type = "TaskLeaseRef"}, {name = "summary", type = "TaskSummary"}, {name = "progress", type = "TaskOptionalLine2000"}, {name = "commit", type = "TaskOptionalLine2000"}, {name = "environment", type = "TaskOptionalLine2000"}]
+
+[[type]]
+name = "TaskSubmitRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "lease", type = "TaskLeaseRef"}, {name = "submission", type = "TaskSubmission"}]
+
+[[type]]
+name = "TaskReviewRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "proposal", type = "TaskProposalRef"}, {name = "assessment", type = "TaskAssessment"}]
+
+[[type]]
+name = "TaskBlockRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "reason", type = "TaskReason"}, {name = "block_kind", type = "TaskBlockKind"}]
+
+[[type]]
+name = "TaskReadyRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "reason", type = "TaskReason"}, {name = "transition", type = "TaskReadyReason"}, {name = "previous_lease", type = "TaskOptionalLeaseRef"}]
+
+[[type]]
+name = "TaskModeInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "TaskModeSetRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "mode", type = "TaskEnforcementMode"}]
+
+[[type]]
+name = "TaskCompleteRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "proposal", type = "TaskProposalRef"}, {name = "review", type = "TaskReviewRef"}, {name = "scope_generation", type = "ResourceGeneration"}, {name = "landed_commit", type = "TaskCommitText"}]
+
+[[type]]
+name = "TaskAdmitInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "task", type = "TaskScopedRef"}, {name = "lease", type = "TaskLeaseRef"}]
+
+[[type]]
+name = "CoordinationClaimKind"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "worktree", type = "Empty"}, {tag = "branch", type = "Empty"}, {tag = "area", type = "Empty"}, {tag = "port", type = "Empty"}, {tag = "server", type = "Empty"}, {tag = "install", type = "Empty"}]
+
+[[type]]
+name = "CoordinationClaimResource"
+kind = "record"
+visibility = "public"
+fields = [{name = "claim_kind", type = "CoordinationClaimKind"}, {name = "key", type = "TaskClaimKey"}]
+
+[[type]]
+name = "CoordinationClaimRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "resource", type = "CoordinationClaimResource"}, {name = "generation", type = "ResourceGeneration"}, {name = "lease_id", type = "TaskCoordinationLeaseId"}, {name = "lease_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "CoordinationClaimHolder"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "same_board", type = "TaskActorRef"}, {tag = "redacted", type = "Empty"}]
+
+[[type]]
+name = "CoordinationClaimView"
+kind = "record"
+visibility = "public"
+fields = [{name = "claim", type = "CoordinationClaimRef"}, {name = "revision", type = "U64"}, {name = "holder", type = "CoordinationClaimHolder"}, {name = "requested_ttl_seconds", type = "OptionalU64"}, {name = "effective_ttl_seconds", type = "U64"}, {name = "expires_at", type = "UnixMicros"}, {name = "since", type = "UnixMicros"}, {name = "process_bound", type = "Boolean"}, {name = "observed_pid", type = "OptionalU64"}]
+
+[[type]]
+name = "CoordinationClaimTakeResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "claim", type = "CoordinationClaimView"}, {name = "changed", type = "Boolean"}]
+
+[[type]]
+name = "CoordinationClaimTakeRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "resource", type = "CoordinationClaimResource"}, {name = "requested_ttl_seconds", type = "OptionalU64"}, {name = "bind_current_native_process", type = "Boolean"}]
+
+[[type]]
+name = "CoordinationClaimReleaseRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "claim", type = "CoordinationClaimRef"}]
+
+[[type]]
+name = "CoordinationClaimReleaseResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "claim", type = "CoordinationClaimRef"}, {name = "revision", type = "U64"}, {name = "released", type = "Boolean"}]
+
+[[type]]
+name = "CoordinationClaimsListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "after", type = "ProjectOptionalCatalogCursor"}]
+
+[[type]]
+name = "CoordinationClaimStreamItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "TaskSnapshotBoundary"}, {name = "value", type = "CoordinationClaimView"}]
+
+[[type]]
+name = "CoordinationClaimsEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "TaskSnapshotBoundary"}, {tag = "claim", type = "CoordinationClaimStreamItem"}, {tag = "complete", type = "TaskSnapshotBoundary"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "TaskContractErrorDetails"
+kind = "record"
+visibility = "public"
+fields = [{name = "message", type = "SafeMessage"}, {name = "retryable", type = "Boolean"}]
+
+[[type]]
+name = "TaskContractError"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "invalid_request", type = "TaskContractErrorDetails"}, {tag = "unauthenticated", type = "TaskContractErrorDetails"}, {tag = "forbidden", type = "TaskContractErrorDetails"}, {tag = "not_found", type = "TaskContractErrorDetails"}, {tag = "stale_generation", type = "TaskContractErrorDetails"}, {tag = "revision_conflict", type = "TaskContractErrorDetails"}, {tag = "request_id_conflict", type = "TaskContractErrorDetails"}, {tag = "source_key_conflict", type = "TaskContractErrorDetails"}, {tag = "allocation_mismatch", type = "TaskContractErrorDetails"}, {tag = "lease_expired", type = "TaskContractErrorDetails"}, {tag = "lease_busy", type = "TaskContractErrorDetails"}, {tag = "retry_exhausted", type = "TaskContractErrorDetails"}, {tag = "dependencies_pending", type = "TaskContractErrorDetails"}, {tag = "proposal_changed", type = "TaskContractErrorDetails"}, {tag = "independence_required", type = "TaskContractErrorDetails"}, {tag = "checks_incomplete", type = "TaskContractErrorDetails"}, {tag = "unsupported_scope", type = "TaskContractErrorDetails"}, {tag = "unsupported_record", type = "TaskContractErrorDetails"}, {tag = "unsupported_reservation_profile", type = "TaskContractErrorDetails"}, {tag = "cursor_expired", type = "TaskContractErrorDetails"}, {tag = "recovery_required", type = "TaskContractErrorDetails"}, {tag = "unavailable", type = "TaskContractErrorDetails"}]
+
+[[operation]]
+name = "tasks.create"
+symbol = "TasksCreate"
+request = "TaskCreateRequest"
+response = "TaskView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "current-board-task-creator", "same-board-dependencies-and-designated-agents", "source-key-principal-and-specification-bound", "compare-and-swap-resource-revision", "durable-full-payload-and-principal-bound-transition"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "tasks.list"
+symbol = "TasksList"
+request = "TaskListRequest"
+response = "TaskReadEvent"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "immutable-snapshot-bound-cursor", "reauthorize-every-task-and-stream-item", "explicit-empty-and-complete-snapshot-boundaries"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "tasks.get"
+symbol = "TasksGet"
+request = "TaskGetRequest"
+response = "TaskReadEvent"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "immutable-snapshot-bound-cursor", "reauthorize-every-task-and-stream-item", "explicit-empty-and-complete-snapshot-boundaries"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "tasks.watchers.list"
+symbol = "TasksWatchersList"
+request = "TaskGetRequest"
+response = "TaskReadEvent"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "immutable-snapshot-bound-cursor", "reauthorize-every-task-and-stream-item", "explicit-empty-and-complete-snapshot-boundaries"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "tasks.watchers.set"
+symbol = "TasksWatchersSet"
+request = "TaskWatchSetRequest"
+response = "TaskWatcherView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "self-or-current-explicit-task-order-controller", "exact-subscriber-incarnation", "no-parent-label-authority", "stop-delivery-on-removal", "compare-and-swap-resource-revision", "durable-full-payload-and-principal-bound-transition"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "tasks.assign"
+symbol = "TasksAssign"
+request = "TaskAssignRequest"
+response = "TaskAllocationView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "current-task-creator-and-assignee-or-existing-task-authority", "current-node-validated-orders-relation", "exact-live-worker-incarnation", "node-validated-target-worker-managed-lease", "queued-and-eligible-worker", "no-parent-label-authority", "compare-and-swap-resource-revision", "durable-full-payload-and-principal-bound-transition"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "tasks.claim"
+symbol = "TasksClaim"
+request = "TaskClaimRequest"
+response = "TaskLeaseView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "exact-current-assignee-and-allocation", "current-node-validated-orders-relation", "live-exact-worker-model-lease", "completed-same-board-dependencies", "capabilities-model-and-retry-budget-match", "exclusive-task-coordination-lease", "no-compute-authority-from-task-claim", "compare-and-swap-resource-revision", "durable-full-payload-and-principal-bound-transition"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "tasks.heartbeat"
+symbol = "TasksHeartbeat"
+request = "TaskHeartbeatRequest"
+response = "TaskLeaseView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "exact-current-worker-incarnation", "exact-live-task-and-model-lease", "retry-returns-original-expiry-without-renewal", "expired-or-released-lease-refuses-renewal", "compare-and-swap-resource-revision", "durable-full-payload-and-principal-bound-transition"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "tasks.checkpoint"
+symbol = "TasksCheckpoint"
+request = "TaskCheckpointRequest"
+response = "TaskCheckpointView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "exact-current-worker-incarnation", "exact-live-task-and-model-lease", "actual-wall-time-and-retry-budgets", "compare-and-swap-resource-revision", "durable-full-payload-and-principal-bound-transition"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "tasks.submit"
+symbol = "TasksSubmit"
+request = "TaskSubmitRequest"
+response = "TaskProposalView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "exact-current-worker-incarnation", "exact-live-task-and-model-lease", "immutable-task-spec-allocation-worker-proposal-binding", "reported-checks-and-usage-not-verification", "settlement-not-inferred-from-submission", "compare-and-swap-resource-revision", "durable-full-payload-and-principal-bound-transition"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "tasks.review"
+symbol = "TasksReview"
+request = "TaskReviewRequest"
+response = "TaskReviewView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "current-independent-reviewer-authority", "authenticated-lineage-independence-from-worker", "exact-immutable-proposal-and-specification", "incarnation-bound-digest-required-for-new-review", "accepted-outcome-requires-all-criteria-independently-passed", "measured-usage-and-quality-source-validation", "no-parent-label-authority", "no-approval-or-git-authority-from-assessment", "compare-and-swap-resource-revision", "durable-full-payload-and-principal-bound-transition"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "tasks.block"
+symbol = "TasksBlock"
+request = "TaskBlockRequest"
+response = "TaskView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "current-worker-or-existing-exact-task-controller", "active-task-state", "actual-holder-settlement-retained", "no-parent-label-authority", "compare-and-swap-resource-revision", "durable-full-payload-and-principal-bound-transition"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "tasks.ready"
+symbol = "TasksReady"
+request = "TaskReadyRequest"
+response = "TaskView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "current-independent-task-controller", "node-observed-expiry-or-blocked-state", "old-worker-model-lease-publication-settled", "actual-retry-budget-not-reset", "no-parent-label-authority", "compare-and-swap-resource-revision", "durable-full-payload-and-principal-bound-transition"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "tasks.mode.inspect"
+symbol = "TasksModeInspect"
+request = "TaskModeInspectRequest"
+response = "TaskModeView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "current-task-mode-read"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "tasks.mode.set"
+symbol = "TasksModeSet"
+request = "TaskModeSetRequest"
+response = "TaskModeView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "existing-checked-task-authority", "no-new-policy-gate-or-person-flag", "no-parent-label-authority", "audit-exact-mode-transition", "compare-and-swap-resource-revision", "durable-full-payload-and-principal-bound-transition"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "tasks.complete"
+symbol = "TasksComplete"
+request = "TaskCompleteRequest"
+response = "TaskView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "exact-accepted-review-and-proposal", "incarnation-bound-digest-required-for-completion", "current-existing-task-landing-controller", "independently-verified-actual-scope-and-landing-identity", "unsupported-scope-or-record-refuses", "no-git-or-cleanup-execution", "no-parent-label-authority", "compare-and-swap-resource-revision", "durable-full-payload-and-principal-bound-transition"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "tasks.admit.inspect"
+symbol = "TasksAdmitInspect"
+request = "TaskAdmitInspectRequest"
+response = "TaskView"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "exact-canonical-task-id", "exact-current-worker-incarnation", "exact-live-task-and-model-lease", "current-node-validated-orders-relation", "no-new-execution-right"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "claims.take"
+symbol = "CoordinationClaimsTake"
+request = "CoordinationClaimTakeRequest"
+response = "CoordinationClaimTakeResult"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "actual-local-claim-scope", "node-normalized-coordination-resource-key", "actual-own-native-process-binding-if-requested", "current-node-lease-policy", "coordination-only-no-git-tool-or-resource-authority", "compare-and-swap-resource-revision", "durable-full-payload-and-principal-bound-transition"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "claims.release"
+symbol = "CoordinationClaimsRelease"
+request = "CoordinationClaimReleaseRequest"
+response = "CoordinationClaimReleaseResult"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "exact-current-holder-or-existing-narrow-lease-controller", "exact-lease-incarnation", "no-parent-label-authority", "coordination-release-not-physical-custody-proof", "compare-and-swap-resource-revision", "durable-full-payload-and-principal-bound-transition"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "claims.list"
+symbol = "CoordinationClaimsList"
+request = "CoordinationClaimsListRequest"
+response = "CoordinationClaimsEvent"
+error = "TaskContractError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "same-board-task-or-claim-access", "no-existence-disclosure-before-authorization", "authorized-claim-channel", "immutable-snapshot-bound-cursor", "reauthorize-every-claim-and-stream-item", "emit-only-authorized-requested-board-claim-rows", "explicit-empty-and-complete-snapshot-boundaries"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
