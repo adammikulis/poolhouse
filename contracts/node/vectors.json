@@ -1,5 +1,5 @@
 {
-  "schema_sha256": "63c78a362a49656fade67b29ca07b469ad99b51b965a1f308c2c82a6af58ef8f",
+  "schema_sha256": "2678c12f51d5b164ad08a024cc69d38c37dabc2b3a1dd6f02c0119b7c2c2ebf3",
   "decoded_values": "untrusted-data",
   "device_id": {
     "public_key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
@@ -165,6 +165,7 @@
     "WorkerRuntimeId",
     "WorkerSlotId",
     "WorkerThresholdInteger",
+    "CredentialProviderUsePurpose",
     "LinuxCredentials",
     "MacProcessObservation",
     "ParentThread",
@@ -288,6 +289,7 @@
     "WorkerOptionalCalibration",
     "WorkerPointerDetails",
     "WorkerResidentBinding",
+    "CredentialPrivateProviderUseData",
     "NativeSessionContext",
     "ProcessObservation",
     "ResourceAdmissionOptionalAccelerator",
@@ -441,6 +443,7 @@
     "StudioWorkerTorchLoraResult",
     "WorkerDecisionStart",
     "WorkerResultCandidate",
+    "CredentialPrivateActionData",
     "ResourceAdmissionAccountingRecord",
     "StudioWorkerDecisionTrainMetrics",
     "StudioWorkerGenerationSourceReport",

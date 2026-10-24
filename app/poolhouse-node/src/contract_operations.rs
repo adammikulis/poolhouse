@@ -1,4 +1,4 @@
-// Generated proposal. No dispatch or authority is implemented. Schema 63c78a362a49656fade67b29ca07b469ad99b51b965a1f308c2c82a6af58ef8f
+// Generated proposal. No dispatch or authority is implemented. Schema 2678c12f51d5b164ad08a024cc69d38c37dabc2b3a1dd6f02c0119b7c2c2ebf3
 use super::contract::*;
 
 pub trait Operation { type Request; type Response; type Error; const NAME: &'static str; }
@@ -248,6 +248,24 @@ impl Operation for ConversationsContentRead { type Request = ConversationContent
 
 pub struct ConversationsContentDiscard;
 impl Operation for ConversationsContentDiscard { type Request = ConversationContentDiscardRequest; type Response = ConversationContentDiscardView; type Error = ConversationError; const NAME: &'static str = "conversations.content.discard"; }
+
+pub struct CredentialList;
+impl Operation for CredentialList { type Request = CredentialListRequest; type Response = CredentialListResponse; type Error = CredentialError; const NAME: &'static str = "credentials.list"; }
+
+pub struct CredentialInspect;
+impl Operation for CredentialInspect { type Request = CredentialInspectRequest; type Response = CredentialInspectView; type Error = CredentialError; const NAME: &'static str = "credentials.inspect"; }
+
+pub struct CredentialSources;
+impl Operation for CredentialSources { type Request = CredentialSourcesRequest; type Response = CredentialSourcesResponse; type Error = CredentialError; const NAME: &'static str = "credentials.sources"; }
+
+pub struct CredentialChangeRequestCall;
+impl Operation for CredentialChangeRequestCall { type Request = CredentialChangeRequest; type Response = CredentialChangeView; type Error = CredentialError; const NAME: &'static str = "credentials.change.request"; }
+
+pub struct CredentialChangeInspect;
+impl Operation for CredentialChangeInspect { type Request = CredentialChangeInspectRequest; type Response = CredentialChangeView; type Error = CredentialError; const NAME: &'static str = "credentials.change.inspect"; }
+
+pub struct CredentialChangeWatch;
+impl Operation for CredentialChangeWatch { type Request = CredentialChangeWatchRequest; type Response = CredentialChangeEvent; type Error = CredentialError; const NAME: &'static str = "credentials.change.watch"; }
 
 pub struct DatasetDomainDatasetsCatalogSearch;
 impl Operation for DatasetDomainDatasetsCatalogSearch { type Request = DatasetSearchRequest; type Response = DatasetSearchResult; type Error = DatasetError; const NAME: &'static str = "datasets.catalog.search"; }

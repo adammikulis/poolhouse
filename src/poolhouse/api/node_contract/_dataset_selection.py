@@ -58,21 +58,6 @@ _register(DatasetSelectionRef)
 
 
 @dataclass(frozen=True)
-class DatasetSelectionRequest(_Record):
-    generation: ResourceGeneration
-    request_id: RequestId
-    project: ProjectCatalogRef
-    source: DatasetSourceTuple
-    _fields: ClassVar[dict[str, str]] = {'generation': 'ResourceGeneration',
- 'request_id': 'RequestId',
- 'project': 'ProjectCatalogRef',
- 'source': 'DatasetSourceTuple'}
-
-
-_register(DatasetSelectionRequest)
-
-
-@dataclass(frozen=True)
 class DatasetSelectionFilesRequest(_Record):
     project: ProjectCatalogRef
     selection: DatasetSelectionRef
@@ -92,6 +77,21 @@ class DatasetSelectedFile(_Record):
 
 
 _register(DatasetSelectedFile)
+
+
+@dataclass(frozen=True)
+class DatasetSelectionRequest(_Record):
+    generation: ResourceGeneration
+    request_id: RequestId
+    project: ProjectCatalogRef
+    source: DatasetSourceTuple
+    _fields: ClassVar[dict[str, str]] = {'generation': 'ResourceGeneration',
+ 'request_id': 'RequestId',
+ 'project': 'ProjectCatalogRef',
+ 'source': 'DatasetSourceTuple'}
+
+
+_register(DatasetSelectionRequest)
 
 
 class DatasetSelectedFiles(_List):

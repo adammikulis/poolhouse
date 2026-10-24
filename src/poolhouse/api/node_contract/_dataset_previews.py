@@ -44,17 +44,6 @@ _register(DatasetPreviewId)
 
 
 @dataclass(frozen=True)
-class DatasetLiveProvenance(_Record):
-    source: DatasetSourceTuple
-    preview_digest: DatasetDigest
-    partial: Boolean
-    _fields: ClassVar[dict[str, str]] = {'source': 'DatasetSourceTuple', 'preview_digest': 'DatasetDigest', 'partial': 'Boolean'}
-
-
-_register(DatasetLiveProvenance)
-
-
-@dataclass(frozen=True)
 class DatasetPreviewRef(_Record):
     preview_id: DatasetPreviewId
     generation: ResourceGeneration
@@ -67,6 +56,24 @@ class DatasetPreviewRef(_Record):
 _register(DatasetPreviewRef)
 
 
+class DatasetOptionalPreviewRef(_Optional):
+    _item = "DatasetPreviewRef"
+
+
+_register(DatasetOptionalPreviewRef)
+
+
+@dataclass(frozen=True)
+class DatasetLiveProvenance(_Record):
+    source: DatasetSourceTuple
+    preview_digest: DatasetDigest
+    partial: Boolean
+    _fields: ClassVar[dict[str, str]] = {'source': 'DatasetSourceTuple', 'preview_digest': 'DatasetDigest', 'partial': 'Boolean'}
+
+
+_register(DatasetLiveProvenance)
+
+
 @dataclass(frozen=True)
 class DatasetPreviewRequest(_Record):
     project: ProjectCatalogRef
@@ -77,20 +84,6 @@ class DatasetPreviewRequest(_Record):
 _register(DatasetPreviewRequest)
 
 
-class DatasetOptionalPreviewRef(_Optional):
-    _item = "DatasetPreviewRef"
-
-
-_register(DatasetOptionalPreviewRef)
-
-
-class DatasetPreviewProvenance(_Union):
-    _variants: ClassVar[dict[str, str]] = {'live_viewer': 'DatasetLiveProvenance', 'local_sample': 'DatasetLocalProvenance'}
-
-
-_register(DatasetPreviewProvenance)
-
-
 class DatasetPreviewRows(_List):
     _item = "DatasetValueRef"
     _maximum = 10
@@ -99,6 +92,13 @@ class DatasetPreviewRows(_List):
 
 
 _register(DatasetPreviewRows)
+
+
+class DatasetPreviewProvenance(_Union):
+    _variants: ClassVar[dict[str, str]] = {'live_viewer': 'DatasetLiveProvenance', 'local_sample': 'DatasetLocalProvenance'}
+
+
+_register(DatasetPreviewProvenance)
 
 
 @dataclass(frozen=True)

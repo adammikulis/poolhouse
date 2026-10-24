@@ -25,6 +25,8 @@ if TYPE_CHECKING:
     from ._dataset_values import (
         DatasetNaturalObservation,
         DatasetNonemptyText256,
+        DatasetNonemptyText256Codepoints,
+        DatasetSourceTextEncoding,
         DatasetText256,
     )
     from ._projects_catalog import (
@@ -39,11 +41,43 @@ class DatasetCursor(_Scalar):
 _register(DatasetCursor)
 
 
+class DatasetDescriptionCodepoints(_Scalar):
+    _encoding = "u32"
+    _numeric_bounds = (0, 50000)
+
+
+_register(DatasetDescriptionCodepoints)
+
+
 class DatasetDigest(_Scalar):
     _encoding = "hex32"
 
 
 _register(DatasetDigest)
+
+
+class DatasetEncoded256(_Scalar):
+    _encoding = "utf8"
+    _bounds = (0, 3072)
+
+
+_register(DatasetEncoded256)
+
+
+class DatasetEncodedLicense(_Scalar):
+    _encoding = "utf8"
+    _bounds = (0, 12288)
+
+
+_register(DatasetEncodedLicense)
+
+
+class DatasetEncodedNonempty256(_Scalar):
+    _encoding = "utf8"
+    _bounds = (1, 3072)
+
+
+_register(DatasetEncodedNonempty256)
 
 
 class DatasetFileName(_Scalar):
@@ -62,12 +96,12 @@ class DatasetLanguage(_Scalar):
 _register(DatasetLanguage)
 
 
-class DatasetLicense(_Scalar):
-    _encoding = "utf8"
-    _bounds = (0, 4096)
+class DatasetLicenseCodepoints(_Scalar):
+    _encoding = "u32"
+    _numeric_bounds = (0, 1024)
 
 
-_register(DatasetLicense)
+_register(DatasetLicenseCodepoints)
 
 
 class DatasetRepo(_Scalar):
@@ -93,14 +127,6 @@ class DatasetSnapshotId(_Scalar):
 _register(DatasetSnapshotId)
 
 
-class DatasetSourceKey(_Scalar):
-    _encoding = "utf8"
-    _bounds = (1, 1024)
-
-
-_register(DatasetSourceKey)
-
-
 class DatasetWatchCursor(_Scalar):
     _encoding = "uuid"
 
@@ -108,14 +134,14 @@ class DatasetWatchCursor(_Scalar):
 _register(DatasetWatchCursor)
 
 
-class DatasetDescription(_List):
+class DatasetDescriptionParts(_List):
     _item = "Utf8Chunk"
-    _maximum = 4
+    _maximum = 10
     _minimum = 0
     _unique = False
 
 
-_register(DatasetDescription)
+_register(DatasetDescriptionParts)
 
 
 class DatasetErrorCode(_Union):
@@ -179,17 +205,6 @@ class DatasetSort(_Union):
 _register(DatasetSort)
 
 
-@dataclass(frozen=True)
-class DatasetSourceTuple(_Record):
-    repo: DatasetRepo
-    config: DatasetNonemptyText256
-    split: DatasetNonemptyText256
-    _fields: ClassVar[dict[str, str]] = {'repo': 'DatasetRepo', 'config': 'DatasetNonemptyText256', 'split': 'DatasetNonemptyText256'}
-
-
-_register(DatasetSourceTuple)
-
-
 class DatasetTask(_Union):
     _variants: ClassVar[dict[str, str]] = {'any': 'Empty',
  'text_generation': 'Empty',
@@ -201,6 +216,19 @@ class DatasetTask(_Union):
 
 
 _register(DatasetTask)
+
+
+@dataclass(frozen=True)
+class DatasetDescription(_Record):
+    encoding: DatasetSourceTextEncoding
+    parts: DatasetDescriptionParts
+    source_codepoints: DatasetDescriptionCodepoints
+    _fields: ClassVar[dict[str, str]] = {'encoding': 'DatasetSourceTextEncoding',
+ 'parts': 'DatasetDescriptionParts',
+ 'source_codepoints': 'DatasetDescriptionCodepoints'}
+
+
+_register(DatasetDescription)
 
 
 @dataclass(frozen=True)
@@ -224,6 +252,45 @@ _register(DatasetInspectRequest)
 
 
 @dataclass(frozen=True)
+class DatasetLicense(_Record):
+    encoding: DatasetSourceTextEncoding
+    encoded: DatasetEncodedLicense
+    source_codepoints: DatasetLicenseCodepoints
+    _fields: ClassVar[dict[str, str]] = {'encoding': 'DatasetSourceTextEncoding',
+ 'encoded': 'DatasetEncodedLicense',
+ 'source_codepoints': 'DatasetLicenseCodepoints'}
+
+
+_register(DatasetLicense)
+
+
+@dataclass(frozen=True)
+class DatasetSnapshotRef(_Record):
+    snapshot_id: DatasetSnapshotId
+    generation: ResourceGeneration
+    project: ProjectCatalogRef
+    _fields: ClassVar[dict[str, str]] = {'snapshot_id': 'DatasetSnapshotId',
+ 'generation': 'ResourceGeneration',
+ 'project': 'ProjectCatalogRef'}
+
+
+_register(DatasetSnapshotRef)
+
+
+@dataclass(frozen=True)
+class DatasetSourceKey(_Record):
+    encoding: DatasetSourceTextEncoding
+    encoded: DatasetEncodedNonempty256
+    source_codepoints: DatasetNonemptyText256Codepoints
+    _fields: ClassVar[dict[str, str]] = {'encoding': 'DatasetSourceTextEncoding',
+ 'encoded': 'DatasetEncodedNonempty256',
+ 'source_codepoints': 'DatasetNonemptyText256Codepoints'}
+
+
+_register(DatasetSourceKey)
+
+
+@dataclass(frozen=True)
 class DatasetSearchRequest(_Record):
     project: ProjectCatalogRef
     query: DatasetText256
@@ -243,16 +310,14 @@ _register(DatasetSearchRequest)
 
 
 @dataclass(frozen=True)
-class DatasetSnapshotRef(_Record):
-    snapshot_id: DatasetSnapshotId
-    generation: ResourceGeneration
-    project: ProjectCatalogRef
-    _fields: ClassVar[dict[str, str]] = {'snapshot_id': 'DatasetSnapshotId',
- 'generation': 'ResourceGeneration',
- 'project': 'ProjectCatalogRef'}
+class DatasetSourceTuple(_Record):
+    repo: DatasetRepo
+    config: DatasetNonemptyText256
+    split: DatasetNonemptyText256
+    _fields: ClassVar[dict[str, str]] = {'repo': 'DatasetRepo', 'config': 'DatasetNonemptyText256', 'split': 'DatasetNonemptyText256'}
 
 
-_register(DatasetSnapshotRef)
+_register(DatasetSourceTuple)
 
 
 @dataclass(frozen=True)

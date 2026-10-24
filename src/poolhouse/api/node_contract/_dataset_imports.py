@@ -77,16 +77,6 @@ _register(DatasetCancelOutcome)
 
 
 @dataclass(frozen=True)
-class DatasetColumnMapping(_Record):
-    source_name: DatasetText256
-    output_name: DatasetNonemptyText256
-    _fields: ClassVar[dict[str, str]] = {'source_name': 'DatasetText256', 'output_name': 'DatasetNonemptyText256'}
-
-
-_register(DatasetColumnMapping)
-
-
-@dataclass(frozen=True)
 class DatasetFileManifest(_Record):
     name: DatasetFileName
     size: U64
@@ -143,29 +133,6 @@ class DatasetStepState(_Union):
 _register(DatasetStepState)
 
 
-class DatasetColumnMappings(_List):
-    _item = "DatasetColumnMapping"
-    _maximum = 512
-    _minimum = 1
-    _unique = False
-
-
-_register(DatasetColumnMappings)
-
-
-@dataclass(frozen=True)
-class DatasetImportLookupRequest(_Record):
-    project: ProjectCatalogRef
-    original_request_id: RequestId
-    source_idempotency_key: DatasetSourceKey
-    _fields: ClassVar[dict[str, str]] = {'project': 'ProjectCatalogRef',
- 'original_request_id': 'RequestId',
- 'source_idempotency_key': 'DatasetSourceKey'}
-
-
-_register(DatasetImportLookupRequest)
-
-
 @dataclass(frozen=True)
 class DatasetImportRef(_Record):
     import_id: DatasetImportId
@@ -182,6 +149,16 @@ class DatasetOptionalImportFailure(_Optional):
 
 
 _register(DatasetOptionalImportFailure)
+
+
+@dataclass(frozen=True)
+class DatasetColumnMapping(_Record):
+    source_name: DatasetText256
+    output_name: DatasetNonemptyText256
+    _fields: ClassVar[dict[str, str]] = {'source_name': 'DatasetText256', 'output_name': 'DatasetNonemptyText256'}
+
+
+_register(DatasetColumnMapping)
 
 
 @dataclass(frozen=True)
@@ -212,6 +189,42 @@ _register(DatasetImportGetRequest)
 
 
 @dataclass(frozen=True)
+class DatasetImportLookupRequest(_Record):
+    project: ProjectCatalogRef
+    original_request_id: RequestId
+    source_idempotency_key: DatasetSourceKey
+    _fields: ClassVar[dict[str, str]] = {'project': 'ProjectCatalogRef',
+ 'original_request_id': 'RequestId',
+ 'source_idempotency_key': 'DatasetSourceKey'}
+
+
+_register(DatasetImportLookupRequest)
+
+
+@dataclass(frozen=True)
+class DatasetImportWatchRequest(_Record):
+    project: ProjectCatalogRef
+    import_ref: DatasetImportRef
+    cursor: DatasetOptionalWatchCursor
+    _fields: ClassVar[dict[str, str]] = {'project': 'ProjectCatalogRef',
+ 'import_ref': 'DatasetImportRef',
+ 'cursor': 'DatasetOptionalWatchCursor'}
+
+
+_register(DatasetImportWatchRequest)
+
+
+class DatasetColumnMappings(_List):
+    _item = "DatasetColumnMapping"
+    _maximum = 512
+    _minimum = 1
+    _unique = False
+
+
+_register(DatasetColumnMappings)
+
+
+@dataclass(frozen=True)
 class DatasetImportStartRequest(_Record):
     generation: ResourceGeneration
     request_id: RequestId
@@ -234,19 +247,6 @@ class DatasetImportStartRequest(_Record):
 
 
 _register(DatasetImportStartRequest)
-
-
-@dataclass(frozen=True)
-class DatasetImportWatchRequest(_Record):
-    project: ProjectCatalogRef
-    import_ref: DatasetImportRef
-    cursor: DatasetOptionalWatchCursor
-    _fields: ClassVar[dict[str, str]] = {'project': 'ProjectCatalogRef',
- 'import_ref': 'DatasetImportRef',
- 'cursor': 'DatasetOptionalWatchCursor'}
-
-
-_register(DatasetImportWatchRequest)
 
 
 @dataclass(frozen=True)
@@ -294,6 +294,23 @@ _register(DatasetImportView)
 
 
 @dataclass(frozen=True)
+class DatasetManifest(_Record):
+    version: DatasetManifestVersion
+    rows: U64
+    columns: DatasetColumns
+    file: DatasetFileManifest
+    source: DatasetPreviewImportSource
+    _fields: ClassVar[dict[str, str]] = {'version': 'DatasetManifestVersion',
+ 'rows': 'U64',
+ 'columns': 'DatasetColumns',
+ 'file': 'DatasetFileManifest',
+ 'source': 'DatasetPreviewImportSource'}
+
+
+_register(DatasetManifest)
+
+
+@dataclass(frozen=True)
 class DatasetImportCancelResult(_Record):
     import_view: DatasetImportView
     outcome: DatasetCancelOutcome
@@ -312,23 +329,6 @@ class DatasetImportWatchResult(_Record):
 
 
 _register(DatasetImportWatchResult)
-
-
-@dataclass(frozen=True)
-class DatasetManifest(_Record):
-    version: DatasetManifestVersion
-    rows: U64
-    columns: DatasetColumns
-    file: DatasetFileManifest
-    source: DatasetPreviewImportSource
-    _fields: ClassVar[dict[str, str]] = {'version': 'DatasetManifestVersion',
- 'rows': 'U64',
- 'columns': 'DatasetColumns',
- 'file': 'DatasetFileManifest',
- 'source': 'DatasetPreviewImportSource'}
-
-
-_register(DatasetManifest)
 
 
 @dataclass(frozen=True)

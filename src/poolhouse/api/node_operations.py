@@ -1,4 +1,4 @@
-# Generated proposal. No dispatch or authority is implemented. Schema 63c78a362a49656fade67b29ca07b469ad99b51b965a1f308c2c82a6af58ef8f
+# Generated proposal. No dispatch or authority is implemented. Schema 2678c12f51d5b164ad08a024cc69d38c37dabc2b3a1dd6f02c0119b7c2c2ebf3
 from . import node_contract as data
 
 OPERATION_TYPES = {
@@ -84,6 +84,12 @@ OPERATION_TYPES = {
     "conversations.content.finalize": (data.ConversationContentFinalizeRequest, data.ConversationContentFinalizeView, data.ConversationError),
     "conversations.content.read": (data.ConversationContentReadRequest, data.InferenceContentChunk, data.ConversationError),
     "conversations.content.discard": (data.ConversationContentDiscardRequest, data.ConversationContentDiscardView, data.ConversationError),
+    "credentials.list": (data.CredentialListRequest, data.CredentialListResponse, data.CredentialError),
+    "credentials.inspect": (data.CredentialInspectRequest, data.CredentialInspectView, data.CredentialError),
+    "credentials.sources": (data.CredentialSourcesRequest, data.CredentialSourcesResponse, data.CredentialError),
+    "credentials.change.request": (data.CredentialChangeRequest, data.CredentialChangeView, data.CredentialError),
+    "credentials.change.inspect": (data.CredentialChangeInspectRequest, data.CredentialChangeView, data.CredentialError),
+    "credentials.change.watch": (data.CredentialChangeWatchRequest, data.CredentialChangeEvent, data.CredentialError),
     "datasets.catalog.search": (data.DatasetSearchRequest, data.DatasetSearchResult, data.DatasetError),
     "datasets.catalog.inspect": (data.DatasetInspectRequest, data.DatasetDetails, data.DatasetError),
     "datasets.catalog.splits.list": (data.DatasetSplitListRequest, data.DatasetSplitPage, data.DatasetError),

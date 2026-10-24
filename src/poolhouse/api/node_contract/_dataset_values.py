@@ -24,6 +24,8 @@ if TYPE_CHECKING:
     )
     from ._dataset_catalogue import (
         DatasetDigest,
+        DatasetEncoded256,
+        DatasetEncodedNonempty256,
         DatasetOptionalCursor,
         DatasetSnapshotRef,
     )
@@ -32,12 +34,12 @@ if TYPE_CHECKING:
     )
 
 
-class DatasetNonemptyText256(_Scalar):
-    _encoding = "utf8"
-    _bounds = (1, 1024)
+class DatasetNonemptyText256Codepoints(_Scalar):
+    _encoding = "u32"
+    _numeric_bounds = (1, 256)
 
 
-_register(DatasetNonemptyText256)
+_register(DatasetNonemptyText256Codepoints)
 
 
 class DatasetRowIndex(_Scalar):
@@ -48,12 +50,12 @@ class DatasetRowIndex(_Scalar):
 _register(DatasetRowIndex)
 
 
-class DatasetText256(_Scalar):
-    _encoding = "utf8"
-    _bounds = (0, 1024)
+class DatasetText256Codepoints(_Scalar):
+    _encoding = "u32"
+    _numeric_bounds = (0, 256)
 
 
-_register(DatasetText256)
+_register(DatasetText256Codepoints)
 
 
 class DatasetTextId(_Scalar):
@@ -83,6 +85,13 @@ class DatasetRowIndexes(_List):
 _register(DatasetRowIndexes)
 
 
+class DatasetSourceTextEncoding(_Union):
+    _variants: ClassVar[dict[str, str]] = {'utf8': 'Empty', 'json_string_ascii_content': 'Empty'}
+
+
+_register(DatasetSourceTextEncoding)
+
+
 @dataclass(frozen=True)
 class DatasetNatural(_Record):
     parts: DatasetDecimalParts
@@ -90,6 +99,32 @@ class DatasetNatural(_Record):
 
 
 _register(DatasetNatural)
+
+
+@dataclass(frozen=True)
+class DatasetNonemptyText256(_Record):
+    encoding: DatasetSourceTextEncoding
+    encoded: DatasetEncodedNonempty256
+    source_codepoints: DatasetNonemptyText256Codepoints
+    _fields: ClassVar[dict[str, str]] = {'encoding': 'DatasetSourceTextEncoding',
+ 'encoded': 'DatasetEncodedNonempty256',
+ 'source_codepoints': 'DatasetNonemptyText256Codepoints'}
+
+
+_register(DatasetNonemptyText256)
+
+
+@dataclass(frozen=True)
+class DatasetText256(_Record):
+    encoding: DatasetSourceTextEncoding
+    encoded: DatasetEncoded256
+    source_codepoints: DatasetText256Codepoints
+    _fields: ClassVar[dict[str, str]] = {'encoding': 'DatasetSourceTextEncoding',
+ 'encoded': 'DatasetEncoded256',
+ 'source_codepoints': 'DatasetText256Codepoints'}
+
+
+_register(DatasetText256)
 
 
 @dataclass(frozen=True)
@@ -113,14 +148,16 @@ _register(DatasetNaturalObservation)
 class DatasetTextRef(_Record):
     snapshot: DatasetSnapshotRef
     text_id: DatasetTextId
+    encoding: DatasetSourceTextEncoding
     digest: DatasetDigest
-    utf8_bytes: U64
-    codepoints: U64
+    encoded_bytes: U64
+    source_codepoints: U64
     _fields: ClassVar[dict[str, str]] = {'snapshot': 'DatasetSnapshotRef',
  'text_id': 'DatasetTextId',
+ 'encoding': 'DatasetSourceTextEncoding',
  'digest': 'DatasetDigest',
- 'utf8_bytes': 'U64',
- 'codepoints': 'U64'}
+ 'encoded_bytes': 'U64',
+ 'source_codepoints': 'U64'}
 
 
 _register(DatasetTextRef)
@@ -166,14 +203,14 @@ _register(DatasetOptionalTextRef)
 @dataclass(frozen=True)
 class DatasetTextChunk(_Record):
     reference: DatasetTextRef
-    byte_offset: U64
+    encoded_byte_offset: U64
     chunk: Utf8Chunk
-    next_byte_offset: U64
+    next_encoded_byte_offset: U64
     complete: Boolean
     _fields: ClassVar[dict[str, str]] = {'reference': 'DatasetTextRef',
- 'byte_offset': 'U64',
+ 'encoded_byte_offset': 'U64',
  'chunk': 'Utf8Chunk',
- 'next_byte_offset': 'U64',
+ 'next_encoded_byte_offset': 'U64',
  'complete': 'Boolean'}
 
 
@@ -184,8 +221,8 @@ _register(DatasetTextChunk)
 class DatasetTextReadRequest(_Record):
     project: ProjectCatalogRef
     text: DatasetTextRef
-    byte_offset: U64
-    _fields: ClassVar[dict[str, str]] = {'project': 'ProjectCatalogRef', 'text': 'DatasetTextRef', 'byte_offset': 'U64'}
+    encoded_byte_offset: U64
+    _fields: ClassVar[dict[str, str]] = {'project': 'ProjectCatalogRef', 'text': 'DatasetTextRef', 'encoded_byte_offset': 'U64'}
 
 
 _register(DatasetTextReadRequest)

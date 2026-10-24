@@ -10,6 +10,8 @@ from . import python
 
 
 def group(name: str) -> str:
+    if name.startswith("Credential"):
+        return "credentials"
     if name.startswith("StudioGraph"):
         return studio_graph_group(name)
     if name.startswith("Dataset"):
