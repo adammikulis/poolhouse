@@ -1,0 +1,2097 @@
+diff --git a/codex-rs/core/src/hook_runtime.rs b/codex-rs/core/src/hook_runtime.rs
+index 34f3351..4d9d38b 100644
+--- a/codex-rs/core/src/hook_runtime.rs
++++ b/codex-rs/core/src/hook_runtime.rs
+@@ -161,7 +161,8 @@ pub(crate) async fn run_pending_session_start_hooks(
+             target,
+         };
+         let hooks = sess.hooks();
+-        let preview_runs = hooks.preview_session_start(&request);
++        let request = hooks.capture_native_event(request);
++        let preview_runs = hooks.preview_session_start(request.request());
+         if run_context_injecting_hook(
+             sess,
+             turn_context,
+@@ -206,7 +207,8 @@ pub(crate) async fn run_pre_tool_use_hooks(
+         tool_input: tool_input.clone(),
+     };
+     let hooks = sess.hooks();
+-    let preview_runs = hooks.preview_pre_tool_use(&request);
++    let request = hooks.capture_native_event(request);
++    let preview_runs = hooks.preview_pre_tool_use(request.request());
+     emit_hook_started_events(sess, turn_context, preview_runs).await;
+ 
+     let PreToolUseOutcome {
+@@ -275,7 +277,8 @@ pub(crate) async fn run_permission_request_hooks(
+         tool_input: payload.tool_input,
+     };
+     let hooks = sess.hooks();
+-    let preview_runs = hooks.preview_permission_request(&request);
++    let request = hooks.capture_native_event(request);
++    let preview_runs = hooks.preview_permission_request(request.request());
+     emit_hook_started_events(sess, turn_context, preview_runs).await;
+ 
+     let PermissionRequestOutcome {
+@@ -318,7 +321,8 @@ pub(crate) async fn run_post_tool_use_hooks(
+         tool_response,
+     };
+     let hooks = sess.hooks();
+-    let preview_runs = hooks.preview_post_tool_use(&request);
++    let request = hooks.capture_native_event(request);
++    let preview_runs = hooks.preview_post_tool_use(request.request());
+     emit_hook_started_events(sess, turn_context, preview_runs).await;
+ 
+     let outcome = hooks.run_post_tool_use(request).await;
+@@ -417,7 +421,8 @@ pub(crate) async fn run_turn_stop_hooks(
+     };
+     let executor_hook_sources = step_context.executor_hook_sources.clone();
+     let hooks = sess.hooks().with_executor_hooks(executor_hook_sources);
+-    emit_hook_started_events(sess, turn_context, hooks.preview_stop(&request)).await;
++    let request = hooks.capture_native_event(request);
++    emit_hook_started_events(sess, turn_context, hooks.preview_stop(request.request())).await;
+ 
+     let mut outcome = hooks.run_stop(request).await;
+     emit_hook_completed_events(sess, turn_context, std::mem::take(&mut outcome.hook_events)).await;
+@@ -427,6 +432,9 @@ pub(crate) async fn run_turn_stop_hooks(
+ #[instrument(level = "trace", skip_all)]
+ pub(crate) async fn run_session_end_hooks(sess: &Arc<Session>) {
+     let hooks = sess.hooks();
++    let occurrence = hooks.begin_native_event(codex_hooks::NativeHookKind::Configured(
++        codex_protocol::protocol::HookEventName::SessionEnd,
++    ));
+     let preview_runs = hooks.preview_session_end();
+     if preview_runs.is_empty() {
+         return;
+@@ -447,6 +455,7 @@ pub(crate) async fn run_session_end_hooks(sess: &Arc<Session>) {
+         cwd: turn_context.cwd.clone(),
+         transcript_path: sess.hook_transcript_path().await,
+     };
++    let request = occurrence.with_request(request);
+     if let Err(err) = sess.flush_rollout().await {
+         tracing::warn!("failed to flush transcript before SessionEnd hook: {err}");
+     }
+@@ -473,6 +482,9 @@ pub(crate) async fn run_turn_interrupt_hooks(
+         .unwrap_or_default();
+     let has_executor_hooks = !executor_hook_sources.is_empty();
+     let hooks = sess.hooks().with_executor_hooks(executor_hook_sources);
++    let occurrence = hooks.begin_native_event(codex_hooks::NativeHookKind::Configured(
++        codex_protocol::protocol::HookEventName::Interrupt,
++    ));
+     let preview_runs = hooks.preview_interrupt();
+     if preview_runs.is_empty() && !has_executor_hooks {
+         return;
+@@ -489,6 +501,7 @@ pub(crate) async fn run_turn_interrupt_hooks(
+         permission_mode: hook_permission_mode(turn_context.approval_policy()),
+         request_metadata: (!request_metadata.is_empty()).then_some(request_metadata),
+     };
++    let request = occurrence.with_request(request);
+     if let Err(err) = sess.flush_rollout().await {
+         tracing::warn!("failed to flush transcript before Interrupt hook: {err}");
+     }
+@@ -513,10 +526,12 @@ pub(crate) async fn run_pre_compact_hooks(
+         model: turn_context.model_info().slug.clone(),
+         trigger: compaction_trigger_label(trigger).to_string(),
+     };
+-    let preview_runs = sess.hooks().preview_pre_compact(&request);
++    let hooks = sess.hooks();
++    let request = hooks.capture_native_event(request);
++    let preview_runs = hooks.preview_pre_compact(request.request());
+     emit_hook_started_events(sess, turn_context, preview_runs).await;
+ 
+-    let outcome = sess.hooks().run_pre_compact(request).await;
++    let outcome = hooks.run_pre_compact(request).await;
+     emit_hook_completed_events(sess, turn_context, outcome.hook_events).await;
+     if outcome.should_stop {
+         PreCompactHookOutcome::Stopped
+@@ -550,10 +565,12 @@ pub(crate) async fn run_post_compact_hooks(
+         model: turn_context.model_info().slug.clone(),
+         trigger: compaction_trigger_label(trigger).to_string(),
+     };
+-    let preview_runs = sess.hooks().preview_post_compact(&request);
++    let hooks = sess.hooks();
++    let request = hooks.capture_native_event(request);
++    let preview_runs = hooks.preview_post_compact(request.request());
+     emit_hook_started_events(sess, turn_context, preview_runs).await;
+ 
+-    let outcome = sess.hooks().run_post_compact(request).await;
++    let outcome = hooks.run_post_compact(request).await;
+     emit_hook_completed_events(sess, turn_context, outcome.hook_events).await;
+     if outcome.should_stop {
+         PostCompactHookOutcome::Stopped
+@@ -579,7 +596,7 @@ pub(crate) async fn run_legacy_after_agent_hook(
+         .collect();
+     let hooks = sess.hooks();
+     for hook_outcome in hooks
+-        .dispatch(codex_hooks::HookPayload {
++        .dispatch(hooks.capture_native_event(codex_hooks::HookPayload {
+             session_id: sess.session_id().into(),
+             #[allow(deprecated)]
+             cwd: turn_context.cwd.clone(),
+@@ -593,7 +610,7 @@ pub(crate) async fn run_legacy_after_agent_hook(
+                     last_assistant_message,
+                 },
+             },
+-        })
++        }))
+         .await
+     {
+         let hook_name = hook_outcome.hook_name;
+@@ -650,7 +667,8 @@ pub(crate) async fn inspect_pending_input(
+                 prompt: UserMessageItem::new(content).message(),
+             };
+             let hooks = sess.hooks();
+-            let preview_runs = hooks.preview_user_prompt_submit(&request);
++            let request = hooks.capture_native_event(request);
++            let preview_runs = hooks.preview_user_prompt_submit(request.request());
+             run_context_injecting_hook(
+                 sess,
+                 turn_context,
+@@ -1062,7 +1080,13 @@ pub(crate) async fn run_model_request_hooks(
+         agent_id: subagent.as_ref().map(|context| context.agent_id.clone()),
+         agent_type: subagent.map(|context| context.agent_type),
+     };
+-    emit_hook_started_events(session, &step.turn, hooks.preview_model_request(&request)).await;
++    let request = hooks.capture_native_event(request);
++    emit_hook_started_events(
++        session,
++        &step.turn,
++        hooks.preview_model_request(request.request()),
++    )
++    .await;
+     let events = hooks.run_model_request(request).await;
+     emit_hook_completed_events(session, &step.turn, events).await;
+ }
+diff --git a/codex-rs/core/src/session/session.rs b/codex-rs/core/src/session/session.rs
+index d5e837c..cec7d11 100644
+--- a/codex-rs/core/src/session/session.rs
++++ b/codex-rs/core/src/session/session.rs
+@@ -914,6 +914,13 @@ impl Session {
+         let multi_agent_version = multi_agent_version.map(OnceLock::from).unwrap_or_default();
+         let initial_multi_agent_version = multi_agent_version.get().copied();
+ 
++        // Native identity creation is separate from the public SessionStart hook source label.
++        let native_identity_origin = match &initial_history {
++            InitialHistory::Resumed(_) => codex_hooks::NativeIdentityOrigin::Resume,
++            InitialHistory::New | InitialHistory::Cleared | InitialHistory::Forked(_) => {
++                codex_hooks::NativeIdentityOrigin::Birth
++            }
++        };
+         let thread_id = match (&initial_history, reserved_thread_id) {
+             (
+                 InitialHistory::New | InitialHistory::Cleared | InitialHistory::Forked(_),
+@@ -1659,6 +1666,7 @@ impl Session {
+                     ThreadId::from(session_id),
+                     parent_thread_id,
+                 ),
++                native_identity_origin,
+                 Arc::new(CoreHookMcpExecutor {
+                     runtime: Arc::clone(&mcp_runtime),
+                     thread_id,
+diff --git a/codex-rs/core/src/session/tests.rs b/codex-rs/core/src/session/tests.rs
+index c1d6d76..274cc23 100644
+--- a/codex-rs/core/src/session/tests.rs
++++ b/codex-rs/core/src/session/tests.rs
+@@ -995,6 +995,7 @@ async fn preview_session_start_hooks(
+             ..HooksConfig::default()
+         },
+         codex_hooks::NativeSessionContext::new(thread_id, thread_id, None),
++        codex_hooks::NativeIdentityOrigin::Birth,
+         Arc::new(CoreHookMcpExecutor {
+             runtime: Arc::new(McpRuntime::empty(config.prefix_mcp_tool_names())),
+             thread_id,
+@@ -6889,6 +6890,7 @@ pub(crate) async fn make_session_and_context() -> (Session, TurnContext) {
+             ..HooksConfig::default()
+         },
+         codex_hooks::NativeSessionContext::new(thread_id, thread_id, None),
++        codex_hooks::NativeIdentityOrigin::Birth,
+         Arc::new(CoreHookMcpExecutor {
+             runtime: Arc::clone(&mcp_runtime),
+             thread_id,
+@@ -9176,6 +9178,7 @@ where
+             ..HooksConfig::default()
+         },
+         codex_hooks::NativeSessionContext::new(thread_id, thread_id, None),
++        codex_hooks::NativeIdentityOrigin::Birth,
+         Arc::new(CoreHookMcpExecutor {
+             runtime: Arc::clone(&mcp_runtime),
+             thread_id,
+diff --git a/codex-rs/hooks/src/engine/command_runner.rs b/codex-rs/hooks/src/engine/command_runner.rs
+index 1380a47..bd0c4b5 100644
+--- a/codex-rs/hooks/src/engine/command_runner.rs
++++ b/codex-rs/hooks/src/engine/command_runner.rs
+@@ -56,7 +56,7 @@ const MAX_CONCURRENT_ASYNC_HOOKS: usize = 8;
+ #[derive(Clone)]
+ pub(crate) struct CommandHookRuntime {
+     shell: CommandShell,
+-    native_session: NativeSessionContext,
++    native_session: Arc<crate::NativeSessionSource>,
+     environment: Arc<Vec<(OsString, OsString)>>,
+     result_sender: Sender<HookCompletedEvent>,
+     state: Arc<Mutex<CommandHookRuntimeState>>,
+@@ -81,16 +81,17 @@ impl CommandHookRuntime {
+     pub(crate) fn new(
+         shell: CommandShell,
+         environment: Arc<Vec<(OsString, OsString)>>,
+-        native_session: NativeSessionContext,
++        native_session: Arc<crate::NativeSessionSource>,
+         result_sender: Sender<HookCompletedEvent>,
+     ) -> Self {
++        let output_spiller = HookOutputSpiller::new(native_session.context().actor());
+         Self {
+             shell,
+             native_session,
+             environment,
+             result_sender,
+             state: Arc::new(Mutex::new(CommandHookRuntimeState::default())),
+-            output_spiller: HookOutputSpiller::new(native_session.actor()),
++            output_spiller,
+         }
+     }
+ 
+@@ -103,7 +104,7 @@ impl CommandHookRuntime {
+     pub(crate) fn reconfigured(&self, shell: CommandShell) -> Self {
+         Self {
+             shell,
+-            native_session: self.native_session,
++            native_session: Arc::clone(&self.native_session),
+             environment: Arc::clone(&self.environment),
+             result_sender: self.result_sender.clone(),
+             state: Arc::clone(&self.state),
+@@ -112,7 +113,11 @@ impl CommandHookRuntime {
+     }
+ 
+     pub(crate) fn native_session_context(&self) -> NativeSessionContext {
+-        self.native_session
++        self.native_session.context()
++    }
++
++    pub(crate) fn native_source(&self) -> Arc<crate::NativeSessionSource> {
++        Arc::clone(&self.native_session)
+     }
+ 
+     pub(crate) fn output_spiller(&self) -> &HookOutputSpiller {
+@@ -121,6 +126,7 @@ impl CommandHookRuntime {
+ 
+     pub(crate) fn schedule_async_hook<T: 'static>(
+         &self,
++        occurrence: Arc<crate::NativeOccurrence>,
+         handler: ConfiguredHandler,
+         input_json: String,
+         cwd: std::path::PathBuf,
+@@ -134,9 +140,19 @@ impl CommandHookRuntime {
+         let result_sender = self.result_sender.clone();
+         let runtime = self.clone();
+         self.schedule_async_task(async move {
++            occurrence.observe("async");
+             let result = match &handler.kind {
+                 ConfiguredHandlerKind::Command { command, env, .. } => {
+-                    run_command(&runtime, &handler, command, env, &input_json, &cwd).await
++                    run_command(
++                        &runtime,
++                        &occurrence,
++                        &handler,
++                        command,
++                        env,
++                        &input_json,
++                        &cwd,
++                    )
++                    .await
+                 }
+                 ConfiguredHandlerKind::McpTool { .. } => return,
+             };
+@@ -215,12 +231,14 @@ impl CommandHookRuntime {
+ )]
+ pub(crate) async fn run_command(
+     runtime: &CommandHookRuntime,
++    occurrence: &Arc<crate::NativeOccurrence>,
+     handler: &ConfiguredHandler,
+     command_line: &str,
+     env: &HashMap<String, String>,
+     input_json: &str,
+     cwd: &Path,
+ ) -> HandlerRunResult {
++    occurrence.observe("command");
+     let started_at = chrono::Utc::now().timestamp();
+     let started = Instant::now();
+     let timeout_started = tokio::time::Instant::now();
+diff --git a/codex-rs/hooks/src/engine/command_runner_tests.rs b/codex-rs/hooks/src/engine/command_runner_tests.rs
+index 5c530e0..b4171b7 100644
+--- a/codex-rs/hooks/src/engine/command_runner_tests.rs
++++ b/codex-rs/hooks/src/engine/command_runner_tests.rs
+@@ -33,7 +33,19 @@ use super::ConfiguredHandler;
+ use super::MAX_CONCURRENT_ASYNC_HOOKS;
+ use super::build_command;
+ use super::default_shell_program;
+-use super::run_command;
++// Low-level test emitters explicitly capture an occurrence before entering the runner.
++async fn run_command(
++    runtime: &CommandHookRuntime,
++    handler: &ConfiguredHandler,
++    command: &str,
++    env: &HashMap<String, String>,
++    input: &str,
++    cwd: &Path,
++) -> super::HandlerRunResult {
++    let occurrence =
++        crate::native_occurrence::test_occurrence(runtime.native_source(), handler.event_name);
++    super::run_command(runtime, &occurrence, handler, command, env, input, cwd).await
++}
+ use crate::events::user_prompt_submit::UserPromptSubmitRequest;
+ 
+ #[cfg(unix)]
+@@ -136,10 +148,13 @@ async fn hook_shell_startup_does_not_stop_on_controlling_terminal() {
+             args: vec!["-c".to_string()],
+         },
+         Arc::new(std::env::vars_os().collect()),
+-        {
+-            let actor = ThreadId::new();
+-            crate::NativeSessionContext::new(actor, actor, None)
+-        },
++        crate::NativeSessionSource::new(
++            {
++                let actor = ThreadId::new();
++                crate::NativeSessionContext::new(actor, actor, None)
++            },
++            crate::NativeIdentityOrigin::Birth,
++        ),
+         result_sender,
+     );
+ 
+@@ -251,10 +266,13 @@ async fn cmd_shell_runs_quoted_hook_command_path() {
+         let runtime = CommandHookRuntime::new(
+             shell,
+             Arc::new(std::env::vars_os().collect()),
+-            {
+-                let actor = ThreadId::new();
+-                crate::NativeSessionContext::new(actor, actor, None)
+-            },
++            crate::NativeSessionSource::new(
++                {
++                    let actor = ThreadId::new();
++                    crate::NativeSessionContext::new(actor, actor, None)
++                },
++                crate::NativeIdentityOrigin::Birth,
++            ),
+             result_sender,
+         );
+         let result = run_command(&runtime, &handler, &command, &env, "{}", temp.path()).await;
+@@ -491,7 +509,10 @@ fn runtime_with_environment(
+             args: Vec::new(),
+         },
+         environment,
+-        crate::NativeSessionContext::new(thread_id, thread_id, None),
++        crate::NativeSessionSource::new(
++            crate::NativeSessionContext::new(thread_id, thread_id, None),
++            crate::NativeIdentityOrigin::Birth,
++        ),
+         result_sender,
+     );
+     (runtime, result_receiver)
+@@ -530,7 +551,7 @@ async fn schedule(runtime: &CommandHookRuntime, handler: ConfiguredHandler, cwd:
+         mcp_executor: mcp_executor(),
+     };
+     engine
+-        .run_user_prompt_submit(UserPromptSubmitRequest {
++        .run_user_prompt_submit(engine.capture_native_event(UserPromptSubmitRequest {
+             session_id: ThreadId::new(),
+             turn_id: "async-test-turn".to_string(),
+             subagent: None,
+@@ -539,7 +560,7 @@ async fn schedule(runtime: &CommandHookRuntime, handler: ConfiguredHandler, cwd:
+             model: "test-model".to_string(),
+             permission_mode: "default".to_string(),
+             prompt: "test prompt".to_string(),
+-        })
++        }))
+         .await;
+ }
+ 
+@@ -982,7 +1003,7 @@ fn native_session_context_preserves_root_child_and_nested_actors() {
+                 args: Vec::new(),
+             },
+             Arc::new(Vec::new()),
+-            context,
++            crate::NativeSessionSource::new(context, crate::NativeIdentityOrigin::Birth),
+             sender,
+         );
+         for runtime in [
+@@ -999,3 +1020,78 @@ fn native_session_context_preserves_root_child_and_nested_actors() {
+         }
+     }
+ }
++
++#[cfg(unix)]
++#[tokio::test]
++async fn native_occurrence_async_command_retains_exact_original_arc() {
++    let temp = tempdir().unwrap();
++    let (runtime, receiver) = runtime_with_environment(Arc::new(Vec::new()));
++    let handler = ConfiguredHandler {
++        builtin: false,
++        plugin_trust: None,
++        event_name: HookEventName::UserPromptSubmit,
++        matcher: None,
++        timeout_sec: 5,
++        status_message: None,
++        additional_context_limit: Default::default(),
++        source_path: AbsolutePathBuf::try_from(temp.path().join("hooks.json"))
++            .unwrap()
++            .into(),
++        source: HookSource::User,
++        display_order: 0,
++        kind: ConfiguredHandlerKind::Command {
++            command: "/bin/true".into(),
++            r#async: true,
++            env: HashMap::new(),
++        },
++    };
++    let engine = ClaudeHooksEngine {
++        handlers: Arc::new(vec![handler]),
++        warnings: Arc::default(),
++        required_load_errors: Arc::default(),
++        command_runtime: runtime.clone(),
++        mcp_executor: mcp_executor(),
++    };
++    let request = UserPromptSubmitRequest {
++        session_id: runtime.native_session_context().root(),
++        turn_id: "native-occurrence-test".into(),
++        subagent: None,
++        cwd: AbsolutePathBuf::try_from(temp.path()).unwrap(),
++        transcript_path: None,
++        model: String::new(),
++        permission_mode: "default".into(),
++        prompt: String::new(),
++    };
++    let event = engine.capture_native_event(request);
++    let occurrence = event.occurrence().clone();
++    engine.run_user_prompt_submit(event).await;
++    receiver.recv().await.expect("async command completion");
++    let seen = occurrence.observations();
++    assert!(seen.iter().any(|(stage, _)| *stage == "async"));
++    assert!(seen.iter().any(|(stage, _)| *stage == "command"));
++    assert!(
++        seen.iter()
++            .all(|(_, pointer)| *pointer == Arc::as_ptr(&occurrence) as usize)
++    );
++}
++
++#[test]
++fn native_occurrence_source_survives_runtime_reconfiguration() {
++    let (runtime, _) = runtime_with_environment(Arc::new(Vec::new()));
++    let source = runtime.native_source();
++    let reconfigured = runtime.reconfigured(CommandShell {
++        program: String::new(),
++        args: Vec::new(),
++    });
++    assert!(Arc::ptr_eq(&source, &reconfigured.native_source()));
++    let before = crate::native_occurrence::test_occurrence(source.clone(), HookEventName::Stop);
++    let after = crate::native_occurrence::test_occurrence(
++        reconfigured.native_source(),
++        HookEventName::Stop,
++    );
++    assert_eq!(
++        before.native_session_instance(),
++        after.native_session_instance()
++    );
++    assert_ne!(before.id(), after.id());
++}
+diff --git a/codex-rs/hooks/src/engine/dispatcher.rs b/codex-rs/hooks/src/engine/dispatcher.rs
+index e84d998..79d191f 100644
+--- a/codex-rs/hooks/src/engine/dispatcher.rs
++++ b/codex-rs/hooks/src/engine/dispatcher.rs
+@@ -1,4 +1,5 @@
+ use std::path::Path;
++use std::sync::Arc;
+ 
+ use futures::StreamExt;
+ use futures::stream::FuturesUnordered;
+@@ -102,6 +103,7 @@ pub(crate) fn running_summary(handler: &ConfiguredHandler) -> HookRunSummary {
+ 
+ pub(crate) async fn execute_handlers<T: 'static>(
+     engine: &ClaudeHooksEngine,
++    occurrence: Arc<crate::NativeOccurrence>,
+     handlers: Vec<ConfiguredHandler>,
+     input_json: String,
+     cwd: &Path,
+@@ -109,13 +111,14 @@ pub(crate) async fn execute_handlers<T: 'static>(
+     parse: fn(&ConfiguredHandler, HandlerRunResult, Option<String>) -> ParsedHandler<T>,
+ ) -> Vec<ParsedHandler<T>> {
+     execute_handlers_with_metadata(
+-        engine, handlers, input_json, cwd, turn_id, /*metadata*/ None, parse,
++        engine, occurrence, handlers, input_json, cwd, turn_id, /*metadata*/ None, parse,
+     )
+     .await
+ }
+ 
+ pub(crate) async fn execute_handlers_with_metadata<T: 'static>(
+     engine: &ClaudeHooksEngine,
++    occurrence: Arc<crate::NativeOccurrence>,
+     handlers: Vec<ConfiguredHandler>,
+     input_json: String,
+     cwd: &Path,
+@@ -123,6 +126,7 @@ pub(crate) async fn execute_handlers_with_metadata<T: 'static>(
+     metadata: Option<&Map<String, Value>>,
+     parse: fn(&ConfiguredHandler, HandlerRunResult, Option<String>) -> ParsedHandler<T>,
+ ) -> Vec<ParsedHandler<T>> {
++    occurrence.observe("dispatch");
+     let mut executor_handlers = Vec::new();
+     let mut pending = FuturesUnordered::new();
+     for (configured_order, handler) in handlers.into_iter().enumerate() {
+@@ -135,6 +139,7 @@ pub(crate) async fn execute_handlers_with_metadata<T: 'static>(
+         }
+         if handler.execution_mode() == HookExecutionMode::Async {
+             engine.command_runtime.schedule_async_hook(
++                Arc::clone(&occurrence),
+                 handler,
+                 input_json.clone(),
+                 cwd.to_path_buf(),
+@@ -143,11 +148,19 @@ pub(crate) async fn execute_handlers_with_metadata<T: 'static>(
+             );
+             continue;
+         }
++        let occurrence = Arc::clone(&occurrence);
+         let input_json = input_json.clone();
+         let turn_id = turn_id.clone();
+         pending.push(async move {
+-            let result =
+-                execute_handler(engine, &handler, &input_json, cwd, /*metadata*/ None).await;
++            let result = execute_handler(
++                engine,
++                &occurrence,
++                &handler,
++                &input_json,
++                cwd,
++                /*metadata*/ None,
++            )
++            .await;
+             let parsed = parse(&handler, result, turn_id);
+             (configured_order, parsed)
+         });
+@@ -169,13 +182,20 @@ pub(crate) async fn execute_handlers_with_metadata<T: 'static>(
+     if should_stop || !should_block {
+         for handler in executor_handlers {
+             let task_engine = engine.clone();
++            let occurrence = Arc::clone(&occurrence);
+             let input_json = input_json.clone();
+             let cwd = cwd.to_path_buf();
+             let metadata = metadata.cloned();
+             engine.command_runtime.schedule_async_task(async move {
+-                let result =
+-                    execute_handler(&task_engine, &handler, &input_json, &cwd, metadata.as_ref())
+-                        .await;
++                let result = execute_handler(
++                    &task_engine,
++                    &occurrence,
++                    &handler,
++                    &input_json,
++                    &cwd,
++                    metadata.as_ref(),
++                )
++                .await;
+                 if let Some(error) = result.error {
+                     tracing::warn!(
+                         source_path = %handler.source_path,
+@@ -192,15 +212,18 @@ pub(crate) async fn execute_handlers_with_metadata<T: 'static>(
+ 
+ async fn execute_handler(
+     engine: &ClaudeHooksEngine,
++    occurrence: &Arc<crate::NativeOccurrence>,
+     handler: &ConfiguredHandler,
+     input_json: &str,
+     cwd: &Path,
+     metadata: Option<&Map<String, Value>>,
+ ) -> HandlerRunResult {
++    occurrence.observe("handler");
+     match &handler.kind {
+         ConfiguredHandlerKind::Command { command, env, .. } => {
+             run_command(
+                 &engine.command_runtime,
++                occurrence,
+                 handler,
+                 command,
+                 env,
+@@ -216,6 +239,7 @@ async fn execute_handler(
+         } => {
+             run_mcp_tool(
+                 engine.mcp_executor.as_ref(),
++                occurrence,
+                 handler,
+                 server,
+                 tool,
+diff --git a/codex-rs/hooks/src/engine/mcp_runner.rs b/codex-rs/hooks/src/engine/mcp_runner.rs
+index 2c3f26f..58c119c 100644
+--- a/codex-rs/hooks/src/engine/mcp_runner.rs
++++ b/codex-rs/hooks/src/engine/mcp_runner.rs
+@@ -28,6 +28,7 @@ use crate::mcp::HookMcpExecutor;
+ )]
+ pub(crate) async fn run_mcp_tool(
+     executor: &dyn HookMcpExecutor,
++    occurrence: &std::sync::Arc<crate::NativeOccurrence>,
+     handler: &ConfiguredHandler,
+     server: &str,
+     tool: &str,
+@@ -35,6 +36,7 @@ pub(crate) async fn run_mcp_tool(
+     hook_event_json: &str,
+     metadata: Option<&Map<String, Value>>,
+ ) -> HandlerRunResult {
++    occurrence.observe("mcp");
+     let started_at = chrono::Utc::now().timestamp();
+     let started = Instant::now();
+     let timeout_started = tokio::time::Instant::now();
+diff --git a/codex-rs/hooks/src/engine/mcp_runner_tests.rs b/codex-rs/hooks/src/engine/mcp_runner_tests.rs
+index 8a37d8d..e541467 100644
+--- a/codex-rs/hooks/src/engine/mcp_runner_tests.rs
++++ b/codex-rs/hooks/src/engine/mcp_runner_tests.rs
+@@ -117,8 +117,15 @@ async fn mcp_tool_results_use_command_hook_output_contract() {
+         output: r#"{"decision":"block","reason":"unsafe file"}"#.to_string(),
+     };
+ 
++    let actor = codex_protocol::ThreadId::new();
++    let source = crate::NativeSessionSource::new(
++        crate::NativeSessionContext::new(actor, actor, None),
++        crate::NativeIdentityOrigin::Birth,
++    );
++    let occurrence = crate::native_occurrence::test_occurrence(source, handler.event_name);
+     let result = run_mcp_tool(
+         &executor,
++        &occurrence,
+         &handler,
+         "security",
+         "scan",
+diff --git a/codex-rs/hooks/src/engine/mod.rs b/codex-rs/hooks/src/engine/mod.rs
+index f7bdc97..8136b96 100644
+--- a/codex-rs/hooks/src/engine/mod.rs
++++ b/codex-rs/hooks/src/engine/mod.rs
+@@ -255,6 +255,14 @@ pub(crate) struct ClaudeHooksEngine {
+ }
+ 
+ impl ClaudeHooksEngine {
++    #[cfg(test)]
++    fn capture_native_event<T: crate::NativeHookRequest>(
++        &self,
++        request: T,
++    ) -> crate::NativeEvent<T> {
++        crate::NativeEvent::capture(self.command_runtime.native_source(), request)
++    }
++
+     pub(crate) fn new(
+         enabled: bool,
+         bypass_hook_trust: bool,
+@@ -432,28 +440,35 @@ impl ClaudeHooksEngine {
+ 
+     pub(crate) async fn run_session_start(
+         &self,
+-        request: SessionStartRequest,
++        request: crate::NativeEvent<SessionStartRequest>,
+         turn_id: Option<String>,
+     ) -> SessionStartOutcome {
+-        crate::events::session_start::run(self, request, turn_id).await
++        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
++        crate::events::session_start::run(self, occurrence, request, turn_id).await
+     }
+ 
+-    pub(crate) async fn run_pre_tool_use(&self, request: PreToolUseRequest) -> PreToolUseOutcome {
+-        crate::events::pre_tool_use::run(self, request).await
++    pub(crate) async fn run_pre_tool_use(
++        &self,
++        request: crate::NativeEvent<PreToolUseRequest>,
++    ) -> PreToolUseOutcome {
++        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
++        crate::events::pre_tool_use::run(self, occurrence, request).await
+     }
+ 
+     pub(crate) async fn run_permission_request(
+         &self,
+-        request: PermissionRequestRequest,
++        request: crate::NativeEvent<PermissionRequestRequest>,
+     ) -> PermissionRequestOutcome {
+-        crate::events::permission_request::run(self, request).await
++        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
++        crate::events::permission_request::run(self, occurrence, request).await
+     }
+ 
+     pub(crate) async fn run_post_tool_use(
+         &self,
+-        request: PostToolUseRequest,
++        request: crate::NativeEvent<PostToolUseRequest>,
+     ) -> PostToolUseOutcome {
+-        let mut outcome = crate::events::post_tool_use::run(self, request).await;
++        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
++        let mut outcome = crate::events::post_tool_use::run(self, occurrence, request).await;
+         if let Some(feedback_message) = outcome.feedback_message.take() {
+             outcome.feedback_message = Some(
+                 self.command_runtime
+@@ -469,8 +484,12 @@ impl ClaudeHooksEngine {
+         crate::events::compact::preview_pre(&self.handlers, request)
+     }
+ 
+-    pub(crate) async fn run_pre_compact(&self, request: PreCompactRequest) -> PreCompactOutcome {
+-        crate::events::compact::run_pre(self, request).await
++    pub(crate) async fn run_pre_compact(
++        &self,
++        request: crate::NativeEvent<PreCompactRequest>,
++    ) -> PreCompactOutcome {
++        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
++        crate::events::compact::run_pre(self, occurrence, request).await
+     }
+ 
+     pub(crate) fn preview_post_compact(&self, request: &PostCompactRequest) -> Vec<HookRunSummary> {
+@@ -479,9 +498,10 @@ impl ClaudeHooksEngine {
+ 
+     pub(crate) async fn run_post_compact(
+         &self,
+-        request: PostCompactRequest,
++        request: crate::NativeEvent<PostCompactRequest>,
+     ) -> StatelessHookOutcome {
+-        crate::events::compact::run_post(self, request).await
++        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
++        crate::events::compact::run_post(self, occurrence, request).await
+     }
+ 
+     pub(crate) fn preview_user_prompt_submit(
+@@ -493,9 +513,10 @@ impl ClaudeHooksEngine {
+ 
+     pub(crate) async fn run_user_prompt_submit(
+         &self,
+-        request: UserPromptSubmitRequest,
++        request: crate::NativeEvent<UserPromptSubmitRequest>,
+     ) -> UserPromptSubmitOutcome {
+-        crate::events::user_prompt_submit::run(self, request).await
++        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
++        crate::events::user_prompt_submit::run(self, occurrence, request).await
+     }
+ 
+     pub(crate) fn preview_stop(&self, request: &StopRequest) -> Vec<HookRunSummary> {
+@@ -506,12 +527,17 @@ impl ClaudeHooksEngine {
+         crate::events::session_end::preview(&self.handlers)
+     }
+ 
+-    pub(crate) async fn run_session_end(&self, request: SessionEndRequest) -> SessionEndOutcome {
+-        crate::events::session_end::run(self, request).await
++    pub(crate) async fn run_session_end(
++        &self,
++        request: crate::NativeEvent<SessionEndRequest>,
++    ) -> SessionEndOutcome {
++        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
++        crate::events::session_end::run(self, occurrence, request).await
+     }
+ 
+-    pub(crate) async fn run_stop(&self, request: StopRequest) -> StopOutcome {
+-        let mut outcome = crate::events::stop::run(self, request).await;
++    pub(crate) async fn run_stop(&self, request: crate::NativeEvent<StopRequest>) -> StopOutcome {
++        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
++        let mut outcome = crate::events::stop::run(self, occurrence, request).await;
+         outcome.continuation_fragments = self
+             .command_runtime
+             .output_spiller()
+@@ -524,8 +550,12 @@ impl ClaudeHooksEngine {
+         crate::events::interrupt::preview(&self.handlers)
+     }
+ 
+-    pub(crate) async fn run_interrupt(&self, request: InterruptRequest) -> InterruptOutcome {
+-        crate::events::interrupt::run(self, request).await
++    pub(crate) async fn run_interrupt(
++        &self,
++        request: crate::NativeEvent<InterruptRequest>,
++    ) -> InterruptOutcome {
++        let (occurrence, request) = request.into_parts(&self.command_runtime.native_source());
++        crate::events::interrupt::run(self, occurrence, request).await
+     }
+ }
+ 
+diff --git a/codex-rs/hooks/src/engine/mod_tests.rs b/codex-rs/hooks/src/engine/mod_tests.rs
+index d9819f7..2b421dd 100644
+--- a/codex-rs/hooks/src/engine/mod_tests.rs
++++ b/codex-rs/hooks/src/engine/mod_tests.rs
+@@ -69,9 +69,13 @@ fn native_session_context_survives_hook_reconfiguration() {
+     let parent = ThreadId::new();
+     let actor = ThreadId::new();
+     let context = crate::NativeSessionContext::new(actor, root, Some(parent));
+-    let (hooks, _results) =
+-        crate::Hooks::new(crate::HooksConfig::default(), context, mcp_executor())
+-            .expect("initialize native hooks");
++    let (hooks, _results) = crate::Hooks::new(
++        crate::HooksConfig::default(),
++        context,
++        crate::NativeIdentityOrigin::Birth,
++        mcp_executor(),
++    )
++    .expect("initialize native hooks");
+     assert_eq!(hooks.native_session_context(), context);
+     let reconfigured = hooks.reconfigured(crate::HooksConfig::default());
+     assert_eq!(reconfigured.native_session_context(), context);
+@@ -83,7 +87,7 @@ fn command_runtime(shell: CommandShell) -> CommandHookRuntime {
+     CommandHookRuntime::new(
+         shell,
+         Arc::new(std::env::vars_os().collect()),
+-        root_native_session(),
++        crate::NativeSessionSource::new(root_native_session(), crate::NativeIdentityOrigin::Birth),
+         result_sender,
+     )
+ }
+@@ -298,6 +302,7 @@ fn required_managed_hooks_allow_disabled_hooks_feature() {
+                 ..Default::default()
+             },
+             root_native_session(),
++            crate::NativeIdentityOrigin::Birth,
+             mcp_executor(),
+         )
+         .expect("disabled hooks feature should not enforce managed requirements hooks");
+@@ -323,6 +328,7 @@ fn required_managed_hooks_reject_invalid_matchers() {
+             ..Default::default()
+         },
+         root_native_session(),
++        crate::NativeIdentityOrigin::Birth,
+         mcp_executor(),
+     )
+     .err()
+@@ -351,6 +357,7 @@ fn required_managed_hooks_allow_invalid_matchers_without_handlers() {
+             ..Default::default()
+         },
+         root_native_session(),
++        crate::NativeIdentityOrigin::Birth,
+         mcp_executor(),
+     )
+     .expect("an empty matcher group should not prevent required managed hooks from loading");
+@@ -374,6 +381,7 @@ fn required_managed_hooks_reject_empty_commands() {
+             ..Default::default()
+         },
+         root_native_session(),
++        crate::NativeIdentityOrigin::Birth,
+         mcp_executor(),
+     )
+     .err()
+@@ -404,6 +412,7 @@ fn required_managed_hooks_reject_unsupported_handler_types() {
+             ..Default::default()
+         },
+         root_native_session(),
++        crate::NativeIdentityOrigin::Birth,
+         mcp_executor(),
+     )
+     .err()
+@@ -444,6 +453,7 @@ fn required_managed_mcp_hooks_reject_empty_targets() {
+             ..Default::default()
+         },
+         root_native_session(),
++        crate::NativeIdentityOrigin::Birth,
+         mcp_executor(),
+     )
+     .err()
+@@ -484,6 +494,7 @@ fn required_managed_session_end_mcp_hooks_reject_startup() {
+             ..Default::default()
+         },
+         root_native_session(),
++        crate::NativeIdentityOrigin::Birth,
+         mcp_executor(),
+     )
+     .err()
+@@ -511,6 +522,7 @@ fn required_managed_hooks_with_unknown_source_still_reject_discovery_failures()
+             ..Default::default()
+         },
+         root_native_session(),
++        crate::NativeIdentityOrigin::Birth,
+         mcp_executor(),
+     )
+     .err()
+@@ -534,6 +546,7 @@ fn valid_required_managed_hooks_allow_startup() {
+             ..Default::default()
+         },
+         root_native_session(),
++        crate::NativeIdentityOrigin::Birth,
+         mcp_executor(),
+     )
+     .expect("valid managed requirements hook should allow startup");
+@@ -563,6 +576,7 @@ fn managed_config_layer_hook_failures_remain_startup_warnings() {
+             ..Default::default()
+         },
+         root_native_session(),
++        crate::NativeIdentityOrigin::Birth,
+         mcp_executor(),
+     )
+     .expect("managed config layer hooks should remain optional");
+@@ -676,7 +690,7 @@ with Path(r"{log_path}").open("a", encoding="utf-8") as handle:
+     assert_eq!(preview[0].source_path, managed_dir);
+ 
+     let outcome = engine
+-        .run_pre_tool_use(PreToolUseRequest {
++        .run_pre_tool_use(engine.capture_native_event(PreToolUseRequest {
+             session_id: ThreadId::new(),
+             turn_id: "turn-1".to_string(),
+             subagent: None,
+@@ -688,7 +702,7 @@ with Path(r"{log_path}").open("a", encoding="utf-8") as handle:
+             matcher_aliases: Vec::new(),
+             tool_use_id: "tool-1".to_string(),
+             tool_input: serde_json::json!({ "command": "echo hello" }),
+-        })
++        }))
+         .await;
+ 
+     assert!(!outcome.should_block);
+@@ -750,7 +764,7 @@ async fn requirements_managed_hooks_execute_windows_command_override() {
+     );
+ 
+     let outcome = engine
+-        .run_pre_tool_use(PreToolUseRequest {
++        .run_pre_tool_use(engine.capture_native_event(PreToolUseRequest {
+             session_id: ThreadId::new(),
+             turn_id: "turn-1".to_string(),
+             subagent: None,
+@@ -762,7 +776,7 @@ async fn requirements_managed_hooks_execute_windows_command_override() {
+             matcher_aliases: Vec::new(),
+             tool_use_id: "tool-1".to_string(),
+             tool_input: serde_json::json!({ "command": "echo hello" }),
+-        })
++        }))
+         .await;
+ 
+     assert!(!outcome.should_block);
+@@ -2145,7 +2159,7 @@ print(json.dumps({
+     );
+ 
+     let outcome = engine
+-        .run_pre_tool_use(PreToolUseRequest {
++        .run_pre_tool_use(engine.capture_native_event(PreToolUseRequest {
+             session_id: ThreadId::new(),
+             turn_id: "turn-1".to_string(),
+             subagent: None,
+@@ -2157,7 +2171,7 @@ print(json.dumps({
+             matcher_aliases: Vec::new(),
+             tool_use_id: "tool-1".to_string(),
+             tool_input: serde_json::json!({ "command": "echo hello" }),
+-        })
++        }))
+         .await;
+ 
+     assert_eq!(outcome.hook_events.len(), 1);
+@@ -2448,7 +2462,9 @@ async fn executor_stop_hooks_run_unless_regular_hooks_block_without_stopping() {
+         executor_stop_hook_fixture();
+ 
+     assert_eq!(engine.preview_stop(&request), Vec::new());
+-    let outcome = engine.run_stop(request.clone()).await;
++    let outcome = engine
++        .run_stop(engine.capture_native_event(request.clone()))
++        .await;
+     wait_for_mcp_calls(&calls, /*count*/ 1).await;
+     assert!(!outcome.should_block);
+     assert!(outcome.hook_events.is_empty());
+@@ -2475,7 +2491,9 @@ async fn executor_stop_hooks_run_unless_regular_hooks_block_without_stopping() {
+         },
+     });
+ 
+-    let outcome = engine.run_stop(request.clone()).await;
++    let outcome = engine
++        .run_stop(engine.capture_native_event(request.clone()))
++        .await;
+     assert!(outcome.should_block);
+     assert_eq!(outcome.hook_events.len(), 1);
+     assert_eq!(
+@@ -2511,7 +2529,7 @@ async fn executor_stop_hooks_run_unless_regular_hooks_block_without_stopping() {
+         },
+     });
+ 
+-    let outcome = engine.run_stop(request).await;
++    let outcome = engine.run_stop(engine.capture_native_event(request)).await;
+     wait_for_mcp_calls(&calls, /*count*/ 5).await;
+     assert!(outcome.should_stop);
+     assert!(!outcome.should_block);
+@@ -2595,7 +2613,7 @@ async fn executor_interrupt_hooks_register_and_run() {
+     assert_eq!(engine.preview_interrupt(), Vec::new());
+ 
+     let outcome = engine
+-        .run_interrupt(InterruptRequest {
++        .run_interrupt(engine.capture_native_event(InterruptRequest {
+             session_id: stop_request.session_id,
+             turn_id: stop_request.turn_id,
+             cwd: stop_request.cwd,
+@@ -2603,7 +2621,7 @@ async fn executor_interrupt_hooks_register_and_run() {
+             model: stop_request.model,
+             permission_mode: stop_request.permission_mode,
+             request_metadata: stop_request.request_metadata,
+-        })
++        }))
+         .await;
+     wait_for_mcp_calls(&calls, /*count*/ 1).await;
+ 
+@@ -2644,7 +2662,7 @@ async fn executor_stop_hooks_use_an_admitted_mcp_environment() {
+     source.mcp_environment_id = Some("local".to_string());
+     engine.set_executor_hooks(vec![source]);
+ 
+-    engine.run_stop(request).await;
++    engine.run_stop(engine.capture_native_event(request)).await;
+     wait_for_mcp_calls(&calls, /*count*/ 1).await;
+ 
+     expected_call.environment_id = Some("local".to_string());
+@@ -2691,7 +2709,7 @@ async fn memory_consolidation_stop_preserves_policy_and_executor_cleanup() {
+             usize::from(runs_policy)
+         );
+ 
+-        let outcome = engine.run_stop(request).await;
++        let outcome = engine.run_stop(engine.capture_native_event(request)).await;
+         let expected_calls = if runs_policy {
+             vec![policy_call, expected_executor_call]
+         } else {
+@@ -2732,9 +2750,12 @@ async fn executor_stop_hooks_do_not_delay_stop_completion() {
+         release: Arc::clone(&release),
+     });
+ 
+-    let outcome = tokio::time::timeout(Duration::from_millis(100), engine.run_stop(request))
+-        .await
+-        .expect("executor hook must not delay Stop completion");
++    let outcome = tokio::time::timeout(
++        Duration::from_millis(100),
++        engine.run_stop(engine.capture_native_event(request)),
++    )
++    .await
++    .expect("executor hook must not delay Stop completion");
+     assert!(!outcome.should_block);
+     tokio::time::timeout(Duration::from_secs(1), started.notified())
+         .await
+@@ -2817,7 +2838,9 @@ async fn mcp_tool_hooks_expand_event_input_and_apply_pre_tool_decisions() {
+         }),
+         Arc::new(executor),
+     );
+-    let outcome = engine.run_pre_tool_use(request).await;
++    let outcome = engine
++        .run_pre_tool_use(engine.capture_native_event(request))
++        .await;
+ 
+     assert!(outcome.should_block);
+     assert_eq!(
+@@ -2910,7 +2933,7 @@ async fn mcp_interrupt_hooks_expand_event_input_and_bound_timeout() {
+         Arc::new(executor),
+     );
+     let outcome = engine
+-        .run_interrupt(InterruptRequest {
++        .run_interrupt(engine.capture_native_event(InterruptRequest {
+             session_id: ThreadId::new(),
+             turn_id: "turn-1".to_string(),
+             cwd: cwd(),
+@@ -2918,7 +2941,7 @@ async fn mcp_interrupt_hooks_expand_event_input_and_bound_timeout() {
+             model: "gpt-test".to_string(),
+             permission_mode: "default".to_string(),
+             request_metadata: None,
+-        })
++        }))
+         .await;
+ 
+     assert_eq!(outcome.hook_events.len(), 1);
+@@ -2951,3 +2974,30 @@ async fn mcp_interrupt_hooks_expand_event_input_and_bound_timeout() {
+         }]
+     );
+ }
++
++// Pure hook plumbing: no model, server, keystore or filesystem payload access.
++#[tokio::test]
++async fn native_occurrence_stop_two_dispatches_and_executor_retain_original_arc() {
++    let (mut engine, calls, mut request, _, _) = executor_stop_hook_fixture();
++    request.target = StopHookTarget::MemoryConsolidation;
++    let mut policy = engine.handlers[0].clone();
++    policy.source_path = cwd().join("hooks.json").into();
++    policy.source = HookSource::System;
++    Arc::make_mut(&mut engine.handlers).push(policy);
++    let event = engine.capture_native_event(request);
++    let occurrence = event.occurrence().clone();
++    let retry = event.clone();
++    assert!(Arc::ptr_eq(&occurrence, retry.occurrence()));
++    engine.run_stop(event).await;
++    wait_for_mcp_calls(&calls, 2).await;
++    let seen = occurrence.observations();
++    let identity = Arc::as_ptr(&occurrence) as usize;
++    assert_eq!(
++        seen.iter()
++            .filter(|(stage, _)| *stage == "dispatch")
++            .count(),
++        2
++    );
++    assert_eq!(seen.iter().filter(|(stage, _)| *stage == "mcp").count(), 2);
++    assert!(seen.iter().all(|(_, pointer)| *pointer == identity));
++}
+diff --git a/codex-rs/hooks/src/events/compact.rs b/codex-rs/hooks/src/events/compact.rs
+index cdc9846..b63783c 100644
+--- a/codex-rs/hooks/src/events/compact.rs
++++ b/codex-rs/hooks/src/events/compact.rs
+@@ -71,6 +71,7 @@ pub(crate) fn preview_pre(
+ 
+ pub(crate) async fn run_pre(
+     engine: &ClaudeHooksEngine,
++    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+     request: PreCompactRequest,
+ ) -> PreCompactOutcome {
+     let matched = dispatcher::select_handlers(
+@@ -103,6 +104,7 @@ pub(crate) async fn run_pre(
+ 
+     let results = dispatcher::execute_handlers(
+         engine,
++        std::sync::Arc::clone(&occurrence),
+         matched,
+         input_json,
+         request.cwd.as_path(),
+@@ -152,6 +154,7 @@ pub(crate) fn preview_post(
+ 
+ pub(crate) async fn run_post(
+     engine: &ClaudeHooksEngine,
++    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+     request: PostCompactRequest,
+ ) -> StatelessHookOutcome {
+     let matched = dispatcher::select_handlers(
+@@ -184,6 +187,7 @@ pub(crate) async fn run_post(
+ 
+     let results = dispatcher::execute_handlers(
+         engine,
++        std::sync::Arc::clone(&occurrence),
+         matched,
+         input_json,
+         request.cwd.as_path(),
+diff --git a/codex-rs/hooks/src/events/interrupt.rs b/codex-rs/hooks/src/events/interrupt.rs
+index 743002e..f8011c1 100644
+--- a/codex-rs/hooks/src/events/interrupt.rs
++++ b/codex-rs/hooks/src/events/interrupt.rs
+@@ -53,7 +53,11 @@ pub(crate) fn preview(handlers: &[ConfiguredHandler]) -> Vec<HookRunSummary> {
+     .collect()
+ }
+ 
+-pub(crate) async fn run(engine: &ClaudeHooksEngine, request: InterruptRequest) -> InterruptOutcome {
++pub(crate) async fn run(
++    engine: &ClaudeHooksEngine,
++    occurrence: std::sync::Arc<crate::NativeOccurrence>,
++    request: InterruptRequest,
++) -> InterruptOutcome {
+     let matched = dispatcher::select_handlers(
+         &engine.handlers,
+         HookEventName::Interrupt,
+@@ -95,6 +99,7 @@ pub(crate) async fn run(engine: &ClaudeHooksEngine, request: InterruptRequest) -
+ 
+     let results = dispatcher::execute_handlers_with_metadata(
+         engine,
++        std::sync::Arc::clone(&occurrence),
+         matched,
+         input_json,
+         cwd.as_path(),
+diff --git a/codex-rs/hooks/src/events/model_request.rs b/codex-rs/hooks/src/events/model_request.rs
+index 221f2b7..922394c 100644
+--- a/codex-rs/hooks/src/events/model_request.rs
++++ b/codex-rs/hooks/src/events/model_request.rs
+@@ -55,7 +55,7 @@ pub enum ModelRequestStatus {
+ }
+ 
+ impl ModelRequestHookEvent {
+-    fn hook_event(&self) -> HookEventName {
++    pub(crate) fn hook_event(&self) -> HookEventName {
+         match self {
+             Self::PreModelRequest => HookEventName::PreModelRequest,
+             Self::PostModelRequest { .. } => HookEventName::PostModelRequest,
+@@ -96,6 +96,7 @@ pub(crate) fn preview(
+ 
+ pub(crate) async fn run(
+     engine: &ClaudeHooksEngine,
++    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+     request: ModelRequestHookInput,
+ ) -> Vec<HookCompletedEvent> {
+     let matched = dispatcher::select_handlers(
+@@ -118,6 +119,7 @@ pub(crate) async fn run(
+     };
+     dispatcher::execute_handlers(
+         engine,
++        std::sync::Arc::clone(&occurrence),
+         matched,
+         input,
+         request.cwd.as_path(),
+diff --git a/codex-rs/hooks/src/events/permission_request.rs b/codex-rs/hooks/src/events/permission_request.rs
+index 58da6c8..d946cf0 100644
+--- a/codex-rs/hooks/src/events/permission_request.rs
++++ b/codex-rs/hooks/src/events/permission_request.rs
+@@ -86,6 +86,7 @@ pub(crate) fn preview(
+ 
+ pub(crate) async fn run(
+     engine: &ClaudeHooksEngine,
++    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+     request: PermissionRequestRequest,
+ ) -> PermissionRequestOutcome {
+     let matcher_inputs = common::matcher_inputs(&request.tool_name, &request.matcher_aliases);
+@@ -119,6 +120,7 @@ pub(crate) async fn run(
+ 
+     let results = dispatcher::execute_handlers(
+         engine,
++        std::sync::Arc::clone(&occurrence),
+         matched,
+         input_json,
+         request.cwd.as_path(),
+diff --git a/codex-rs/hooks/src/events/post_tool_use.rs b/codex-rs/hooks/src/events/post_tool_use.rs
+index 8206592..f420d6a 100644
+--- a/codex-rs/hooks/src/events/post_tool_use.rs
++++ b/codex-rs/hooks/src/events/post_tool_use.rs
+@@ -70,6 +70,7 @@ pub(crate) fn preview(
+ 
+ pub(crate) async fn run(
+     engine: &ClaudeHooksEngine,
++    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+     request: PostToolUseRequest,
+ ) -> PostToolUseOutcome {
+     let matcher_inputs = common::matcher_inputs(&request.tool_name, &request.matcher_aliases);
+@@ -102,6 +103,7 @@ pub(crate) async fn run(
+ 
+     let results = dispatcher::execute_handlers(
+         engine,
++        std::sync::Arc::clone(&occurrence),
+         matched,
+         input_json,
+         request.cwd.as_path(),
+diff --git a/codex-rs/hooks/src/events/pre_tool_use.rs b/codex-rs/hooks/src/events/pre_tool_use.rs
+index 7613c15..12ade4d 100644
+--- a/codex-rs/hooks/src/events/pre_tool_use.rs
++++ b/codex-rs/hooks/src/events/pre_tool_use.rs
+@@ -71,6 +71,7 @@ pub(crate) fn preview(
+ 
+ pub(crate) async fn run(
+     engine: &ClaudeHooksEngine,
++    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+     request: PreToolUseRequest,
+ ) -> PreToolUseOutcome {
+     let matcher_inputs = common::matcher_inputs(&request.tool_name, &request.matcher_aliases);
+@@ -104,6 +105,7 @@ pub(crate) async fn run(
+ 
+     let results = dispatcher::execute_handlers(
+         engine,
++        std::sync::Arc::clone(&occurrence),
+         matched,
+         input_json,
+         request.cwd.as_path(),
+diff --git a/codex-rs/hooks/src/events/session_end.rs b/codex-rs/hooks/src/events/session_end.rs
+index 708d0e5..4e7acfb 100644
+--- a/codex-rs/hooks/src/events/session_end.rs
++++ b/codex-rs/hooks/src/events/session_end.rs
+@@ -49,6 +49,7 @@ pub(crate) fn preview(handlers: &[ConfiguredHandler]) -> Vec<HookRunSummary> {
+ 
+ pub(crate) async fn run(
+     engine: &ClaudeHooksEngine,
++    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+     request: SessionEndRequest,
+ ) -> SessionEndOutcome {
+     let matched = dispatcher::select_handlers(
+@@ -81,6 +82,7 @@ pub(crate) async fn run(
+ 
+     let results = dispatcher::execute_handlers(
+         engine,
++        std::sync::Arc::clone(&occurrence),
+         matched,
+         input_json,
+         request.cwd.as_path(),
+diff --git a/codex-rs/hooks/src/events/session_start.rs b/codex-rs/hooks/src/events/session_start.rs
+index df5ab4f..0182058 100644
+--- a/codex-rs/hooks/src/events/session_start.rs
++++ b/codex-rs/hooks/src/events/session_start.rs
+@@ -64,7 +64,7 @@ pub enum StartHookTarget {
+ }
+ 
+ impl StartHookTarget {
+-    fn event_name(&self) -> HookEventName {
++    pub(crate) fn event_name(&self) -> HookEventName {
+         match self {
+             Self::SessionStart { .. } => HookEventName::SessionStart,
+             Self::SubagentStart { .. } => HookEventName::SubagentStart,
+@@ -110,6 +110,7 @@ pub(crate) fn preview(
+ 
+ pub(crate) async fn run(
+     engine: &ClaudeHooksEngine,
++    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+     request: SessionStartRequest,
+     turn_id: Option<String>,
+ ) -> SessionStartOutcome {
+@@ -184,6 +185,7 @@ pub(crate) async fn run(
+ 
+     let results = dispatcher::execute_handlers(
+         engine,
++        std::sync::Arc::clone(&occurrence),
+         matched,
+         input_json,
+         request.cwd.as_path(),
+diff --git a/codex-rs/hooks/src/events/stop.rs b/codex-rs/hooks/src/events/stop.rs
+index e795c79..3d8529b 100644
+--- a/codex-rs/hooks/src/events/stop.rs
++++ b/codex-rs/hooks/src/events/stop.rs
+@@ -50,7 +50,7 @@ pub enum StopHookTarget {
+ }
+ 
+ impl StopHookTarget {
+-    fn event_name(&self) -> HookEventName {
++    pub(crate) fn event_name(&self) -> HookEventName {
+         match self {
+             Self::Stop | Self::MemoryConsolidation => HookEventName::Stop,
+             Self::SubagentStop { .. } => HookEventName::SubagentStop,
+@@ -107,7 +107,11 @@ pub(crate) fn preview(
+         .collect()
+ }
+ 
+-pub(crate) async fn run(engine: &ClaudeHooksEngine, request: StopRequest) -> StopOutcome {
++pub(crate) async fn run(
++    engine: &ClaudeHooksEngine,
++    occurrence: std::sync::Arc<crate::NativeOccurrence>,
++    request: StopRequest,
++) -> StopOutcome {
+     let matched = request.target.select_handlers(&engine.handlers);
+     if matched.is_empty() {
+         return StopOutcome {
+@@ -195,6 +199,7 @@ pub(crate) async fn run(engine: &ClaudeHooksEngine, request: StopRequest) -> Sto
+ 
+     let results = dispatcher::execute_handlers_with_metadata(
+         engine,
++        std::sync::Arc::clone(&occurrence),
+         matched,
+         input_json.clone(),
+         request.cwd.as_path(),
+@@ -207,6 +212,7 @@ pub(crate) async fn run(engine: &ClaudeHooksEngine, request: StopRequest) -> Sto
+     if !executor_cleanup.is_empty() {
+         dispatcher::execute_handlers_with_metadata(
+             engine,
++            std::sync::Arc::clone(&occurrence),
+             executor_cleanup,
+             input_json,
+             request.cwd.as_path(),
+diff --git a/codex-rs/hooks/src/events/user_prompt_submit.rs b/codex-rs/hooks/src/events/user_prompt_submit.rs
+index 3a44a03..7aa31de 100644
+--- a/codex-rs/hooks/src/events/user_prompt_submit.rs
++++ b/codex-rs/hooks/src/events/user_prompt_submit.rs
+@@ -63,6 +63,7 @@ pub(crate) fn preview(
+ 
+ pub(crate) async fn run(
+     engine: &ClaudeHooksEngine,
++    occurrence: std::sync::Arc<crate::NativeOccurrence>,
+     request: UserPromptSubmitRequest,
+ ) -> UserPromptSubmitOutcome {
+     let matched = dispatcher::select_handlers(
+@@ -104,6 +105,7 @@ pub(crate) async fn run(
+ 
+     let results = dispatcher::execute_handlers(
+         engine,
++        std::sync::Arc::clone(&occurrence),
+         matched,
+         input_json,
+         request.cwd.as_path(),
+diff --git a/codex-rs/hooks/src/legacy_notify.rs b/codex-rs/hooks/src/legacy_notify.rs
+index 5be7d7b..ba0d69f 100644
+--- a/codex-rs/hooks/src/legacy_notify.rs
++++ b/codex-rs/hooks/src/legacy_notify.rs
+@@ -46,7 +46,7 @@ pub(crate) fn notify_hook(argv: Vec<String>, environment: Arc<Vec<(OsString, OsS
+     let argv = Arc::new(argv);
+     Hook {
+         name: "legacy_notify".to_string(),
+-        func: Arc::new(move |payload: &HookPayload| {
++        func: Arc::new(move |occurrence, payload: &HookPayload| {
+             let argv = Arc::clone(&argv);
+             let environment = Arc::clone(&environment);
+             Box::pin(async move {
+@@ -63,6 +63,7 @@ pub(crate) fn notify_hook(argv: Vec<String>, environment: Arc<Vec<(OsString, OsS
+                     .stdout(Stdio::null())
+                     .stderr(Stdio::null());
+ 
++                occurrence.observe("legacy-command");
+                 match command.spawn() {
+                     Ok(_) => HookResult::Success,
+                     Err(err) => HookResult::FailedContinue(err.into()),
+diff --git a/codex-rs/hooks/src/lib.rs b/codex-rs/hooks/src/lib.rs
+index 1aadb9e..5b86f14 100644
+--- a/codex-rs/hooks/src/lib.rs
++++ b/codex-rs/hooks/src/lib.rs
+@@ -5,6 +5,7 @@ mod engine;
+ pub(crate) mod events;
+ mod legacy_notify;
+ mod mcp;
++mod native_occurrence;
+ mod native_session;
+ mod output_spill;
+ mod registry;
+@@ -134,4 +135,9 @@ pub use events::model_request::ModelRequestHookEvent;
+ pub use events::model_request::ModelRequestHookInput;
+ pub use events::model_request::ModelRequestStatus;
+ 
++pub use native_occurrence::{
++    NativeEvent, NativeEventCapture, NativeHookKind, NativeHookRequest, NativeIdentityOrigin,
++    NativeOccurrence, NativeOccurrenceId, NativeOccurrenceKind, NativeSessionSource,
++    SourceLaunchEpoch,
++};
+ pub use native_session::NativeSessionContext;
+diff --git a/codex-rs/hooks/src/native_occurrence.rs b/codex-rs/hooks/src/native_occurrence.rs
+new file mode 100644
+index 0000000..914acc4
+--- /dev/null
++++ b/codex-rs/hooks/src/native_occurrence.rs
+@@ -0,0 +1,289 @@
++//! Original native occurrence identity DATA, never installation, launch or Node admission proof.
++//! Capture at native emitters; retries/fanout retain the same envelope. No wire/environment export.
++use std::num::NonZeroU64;
++use std::sync::Arc;
++use std::sync::OnceLock;
++use std::sync::atomic::AtomicU64;
++use std::sync::atomic::Ordering;
++
++use codex_protocol::protocol::HookEventName;
++use uuid::Uuid;
++
++use crate::NativeSessionContext;
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub struct SourceLaunchEpoch(Uuid);
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub struct NativeOccurrenceId {
++    launch: SourceLaunchEpoch,
++    serial: NonZeroU64,
++}
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum NativeIdentityOrigin {
++    Birth,
++    Resume,
++}
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum NativeHookKind {
++    Configured(HookEventName),
++    LegacyAfterAgent,
++}
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub enum NativeOccurrenceKind {
++    Birth,
++    Resume,
++    Invocation(NativeHookKind),
++}
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub(crate) enum OccurrenceError {
++    Entropy,
++    WrongProcess,
++    Exhausted,
++    WrongOwner,
++    WrongKind,
++}
++
++struct Issuer {
++    process: u32,
++    epoch: SourceLaunchEpoch,
++    next: AtomicU64,
++}
++static ISSUER: OnceLock<Result<Issuer, OccurrenceError>> = OnceLock::new();
++impl Issuer {
++    fn try_next(&self, process: u32) -> Result<NativeOccurrenceId, OccurrenceError> {
++        if process != self.process {
++            return Err(OccurrenceError::WrongProcess);
++        }
++        let previous = self
++            .next
++            .try_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_add(1))
++            .map_err(|_| OccurrenceError::Exhausted)?;
++        Ok(NativeOccurrenceId {
++            launch: self.epoch,
++            serial: NonZeroU64::new(previous + 1).ok_or(OccurrenceError::Exhausted)?,
++        })
++    }
++}
++fn fatal(error: OccurrenceError) -> ! {
++    eprintln!("native occurrence invariant failed: {error:?}");
++    // A recoverable task panic must not turn a missing enforced Stop into ordinary success.
++    std::process::exit(1)
++}
++fn issuer_from_entropy(process: u32, random: fn() -> Uuid) -> Result<Issuer, OccurrenceError> {
++    // Only the UUID source is caught. Handler/task panics retain upstream semantics.
++    let epoch = std::panic::catch_unwind(random).map_err(|_| OccurrenceError::Entropy)?;
++    Ok(Issuer {
++        process,
++        epoch: SourceLaunchEpoch(epoch),
++        next: AtomicU64::new(0),
++    })
++}
++fn issuer() -> &'static Issuer {
++    match ISSUER.get_or_init(|| issuer_from_entropy(std::process::id(), Uuid::new_v4)) {
++        Ok(issuer) => issuer,
++        Err(error) => fatal(*error),
++    }
++}
++fn next_id() -> NativeOccurrenceId {
++    issuer()
++        .try_next(std::process::id())
++        .unwrap_or_else(|error| fatal(error))
++}
++
++#[derive(Debug)]
++pub struct NativeOccurrence {
++    id: NativeOccurrenceId,
++    native_session_instance: NativeOccurrenceId,
++    context: NativeSessionContext,
++    kind: NativeOccurrenceKind,
++    #[cfg(test)]
++    observations: std::sync::Mutex<Vec<(&'static str, usize)>>,
++}
++impl NativeOccurrence {
++    fn new(
++        id: NativeOccurrenceId,
++        instance: NativeOccurrenceId,
++        context: NativeSessionContext,
++        kind: NativeOccurrenceKind,
++    ) -> Arc<Self> {
++        Arc::new(Self {
++            id,
++            native_session_instance: instance,
++            context,
++            kind,
++            #[cfg(test)]
++            observations: std::sync::Mutex::new(Vec::new()),
++        })
++    }
++    pub fn id(&self) -> NativeOccurrenceId {
++        self.id
++    }
++    pub fn native_session_instance(&self) -> NativeOccurrenceId {
++        self.native_session_instance
++    }
++    pub fn context(&self) -> NativeSessionContext {
++        self.context
++    }
++    pub fn kind(&self) -> NativeOccurrenceKind {
++        self.kind
++    }
++    #[cfg(test)]
++    pub(crate) fn observations(&self) -> Vec<(&'static str, usize)> {
++        self.observations
++            .lock()
++            .expect("occurrence observations")
++            .clone()
++    }
++    pub(crate) fn observe(&self, _stage: &'static str) {
++        #[cfg(test)]
++        self.observations
++            .lock()
++            .expect("occurrence observations")
++            .push((_stage, std::ptr::from_ref(self) as usize));
++    }
++}
++#[derive(Debug)]
++pub struct NativeSessionSource {
++    lifecycle: Arc<NativeOccurrence>,
++}
++impl NativeSessionSource {
++    /// Called once from native Session construction, never inferred from hook labels/history as proof.
++    pub fn new(context: NativeSessionContext, origin: NativeIdentityOrigin) -> Arc<Self> {
++        let id = next_id();
++        let kind = match origin {
++            NativeIdentityOrigin::Birth => NativeOccurrenceKind::Birth,
++            NativeIdentityOrigin::Resume => NativeOccurrenceKind::Resume,
++        };
++        Arc::new(Self {
++            lifecycle: NativeOccurrence::new(id, id, context, kind),
++        })
++    }
++    pub fn context(&self) -> NativeSessionContext {
++        self.lifecycle.context
++    }
++    pub fn lifecycle(&self) -> &Arc<NativeOccurrence> {
++        &self.lifecycle
++    }
++}
++
++mod sealed {
++    pub trait Request {}
++}
++/// Only maintained native request variants can classify an invocation; this is not an authority trait.
++pub trait NativeHookRequest: sealed::Request {
++    fn native_kind(&self) -> NativeHookKind;
++}
++#[derive(Debug)]
++pub struct NativeEventCapture {
++    source: Arc<NativeSessionSource>,
++    occurrence: Arc<NativeOccurrence>,
++}
++impl NativeEventCapture {
++    pub(crate) fn new(source: Arc<NativeSessionSource>, kind: NativeHookKind) -> Self {
++        let occurrence = NativeOccurrence::new(
++            next_id(),
++            source.lifecycle.id,
++            source.context(),
++            NativeOccurrenceKind::Invocation(kind),
++        );
++        Self { source, occurrence }
++    }
++    pub fn with_request<T: NativeHookRequest>(self, request: T) -> NativeEvent<T> {
++        if self.occurrence.kind != NativeOccurrenceKind::Invocation(request.native_kind()) {
++            fatal(OccurrenceError::WrongKind);
++        }
++        NativeEvent {
++            source: self.source,
++            occurrence: self.occurrence,
++            request,
++        }
++    }
++}
++#[derive(Clone, Debug)]
++pub struct NativeEvent<T> {
++    source: Arc<NativeSessionSource>,
++    occurrence: Arc<NativeOccurrence>,
++    request: T,
++}
++impl<T: NativeHookRequest> NativeEvent<T> {
++    pub(crate) fn capture(source: Arc<NativeSessionSource>, request: T) -> Self {
++        NativeEventCapture::new(source, request.native_kind()).with_request(request)
++    }
++    pub fn request(&self) -> &T {
++        &self.request
++    }
++    pub fn occurrence(&self) -> &Arc<NativeOccurrence> {
++        &self.occurrence
++    }
++    pub(crate) fn into_parts(
++        self,
++        source: &Arc<NativeSessionSource>,
++    ) -> (Arc<NativeOccurrence>, T) {
++        if issuer().process != std::process::id() {
++            fatal(OccurrenceError::WrongProcess);
++        }
++        if !Arc::ptr_eq(source, &self.source)
++            || self.occurrence.context != source.context()
++            || self.occurrence.native_session_instance != source.lifecycle.id
++        {
++            fatal(OccurrenceError::WrongOwner);
++        }
++        if self.occurrence.kind != NativeOccurrenceKind::Invocation(self.request.native_kind()) {
++            fatal(OccurrenceError::WrongKind);
++        }
++        (self.occurrence, self.request)
++    }
++}
++macro_rules! fixed_request {
++    ($ty:ty, $kind:ident) => {
++        impl sealed::Request for $ty {}
++        impl NativeHookRequest for $ty {
++            fn native_kind(&self) -> NativeHookKind {
++                NativeHookKind::Configured(HookEventName::$kind)
++            }
++        }
++    };
++}
++fixed_request!(crate::PreToolUseRequest, PreToolUse);
++fixed_request!(crate::PermissionRequestRequest, PermissionRequest);
++fixed_request!(crate::PostToolUseRequest, PostToolUse);
++fixed_request!(crate::PreCompactRequest, PreCompact);
++fixed_request!(crate::PostCompactRequest, PostCompact);
++fixed_request!(crate::UserPromptSubmitRequest, UserPromptSubmit);
++fixed_request!(crate::SessionEndRequest, SessionEnd);
++fixed_request!(crate::InterruptRequest, Interrupt);
++impl sealed::Request for crate::SessionStartRequest {}
++impl NativeHookRequest for crate::SessionStartRequest {
++    fn native_kind(&self) -> NativeHookKind {
++        NativeHookKind::Configured(self.target.event_name())
++    }
++}
++impl sealed::Request for crate::StopRequest {}
++impl NativeHookRequest for crate::StopRequest {
++    fn native_kind(&self) -> NativeHookKind {
++        NativeHookKind::Configured(self.target.event_name())
++    }
++}
++impl sealed::Request for crate::ModelRequestHookInput {}
++impl NativeHookRequest for crate::ModelRequestHookInput {
++    fn native_kind(&self) -> NativeHookKind {
++        NativeHookKind::Configured(self.event.hook_event())
++    }
++}
++impl sealed::Request for crate::HookPayload {}
++impl NativeHookRequest for crate::HookPayload {
++    fn native_kind(&self) -> NativeHookKind {
++        NativeHookKind::LegacyAfterAgent
++    }
++}
++
++#[cfg(test)]
++mod tests;
++
++#[cfg(test)]
++pub(crate) fn test_occurrence(
++    source: Arc<NativeSessionSource>,
++    kind: HookEventName,
++) -> Arc<NativeOccurrence> {
++    NativeEventCapture::new(source, NativeHookKind::Configured(kind)).occurrence
++}
+diff --git a/codex-rs/hooks/src/native_occurrence/tests.rs b/codex-rs/hooks/src/native_occurrence/tests.rs
+new file mode 100644
+index 0000000..dc41653
+--- /dev/null
++++ b/codex-rs/hooks/src/native_occurrence/tests.rs
+@@ -0,0 +1,177 @@
++use super::*;
++use codex_protocol::ThreadId;
++#[derive(Clone, Debug)]
++struct TestRequest;
++impl super::sealed::Request for TestRequest {}
++impl NativeHookRequest for TestRequest {
++    fn native_kind(&self) -> NativeHookKind {
++        NativeHookKind::LegacyAfterAgent
++    }
++}
++
++fn source(origin: NativeIdentityOrigin) -> Arc<NativeSessionSource> {
++    let actor = ThreadId::new();
++    NativeSessionSource::new(NativeSessionContext::new(actor, actor, None), origin)
++}
++
++#[test]
++fn original_occurrences_are_global_across_actors_and_lifecycle_labels() {
++    let birth = source(NativeIdentityOrigin::Birth);
++    let resume = source(NativeIdentityOrigin::Resume);
++    let invocation = NativeEventCapture::new(birth.clone(), NativeHookKind::LegacyAfterAgent);
++    assert_ne!(birth.lifecycle.id, resume.lifecycle.id);
++    assert_ne!(birth.lifecycle.id, invocation.occurrence.id);
++    assert_ne!(resume.lifecycle.id, invocation.occurrence.id);
++    assert_eq!(birth.lifecycle.id.launch, resume.lifecycle.id.launch);
++    assert_eq!(birth.lifecycle.kind, NativeOccurrenceKind::Birth);
++    assert_eq!(resume.lifecycle.kind, NativeOccurrenceKind::Resume);
++    assert_eq!(
++        invocation.occurrence.native_session_instance,
++        birth.lifecycle.id
++    );
++}
++
++#[test]
++fn retries_preserve_exact_arc_and_immutable_native_context() {
++    let source = source(NativeIdentityOrigin::Birth);
++    let event = NativeEventCapture::new(source.clone(), NativeHookKind::LegacyAfterAgent)
++        .with_request(TestRequest);
++    let retry = event.clone();
++    assert!(Arc::ptr_eq(&event.occurrence, &retry.occurrence));
++    assert_eq!(event.occurrence.context, source.context());
++    assert!(Arc::ptr_eq(&event.source, &retry.source));
++}
++
++#[test]
++fn fork_and_serial_exhaustion_fail_without_fallback() {
++    let issuer = Issuer {
++        process: 7,
++        epoch: SourceLaunchEpoch(Uuid::nil()),
++        next: AtomicU64::new(u64::MAX),
++    };
++    assert_eq!(issuer.try_next(8), Err(OccurrenceError::WrongProcess));
++    assert_eq!(issuer.try_next(7), Err(OccurrenceError::Exhausted));
++    assert_eq!(issuer.next.load(Ordering::Relaxed), u64::MAX);
++}
++
++#[test]
++fn fatal_capture_failure_exits_instead_of_returning_success() {
++    const CHILD: &str = "CODEX_NATIVE_OCCURRENCE_FATAL_TEST";
++    if std::env::var_os(CHILD).is_some() {
++        match issuer_from_entropy(std::process::id(), || panic!("injected entropy failure")) {
++            Err(error) => fatal(error),
++            Ok(_) => panic!("entropy failure accepted"),
++        }
++    }
++    let status = std::process::Command::new(std::env::current_exe().unwrap())
++        .env_clear()
++        .env(CHILD, "1")
++        .args([
++            "native_occurrence::tests::fatal_capture_failure_exits_instead_of_returning_success",
++            "--exact",
++        ])
++        .status()
++        .unwrap();
++    assert_eq!(status.code(), Some(1));
++}
++
++#[test]
++fn concurrent_original_events_never_reuse_a_serial() {
++    let issuer = Arc::new(Issuer {
++        process: 1,
++        epoch: SourceLaunchEpoch(Uuid::nil()),
++        next: AtomicU64::new(0),
++    });
++    let threads: Vec<_> = (0..8)
++        .map(|_| {
++            let issuer = issuer.clone();
++            std::thread::spawn(move || {
++                (0..100)
++                    .map(|_| issuer.try_next(1).unwrap().serial.get())
++                    .collect::<Vec<_>>()
++            })
++        })
++        .collect();
++    let mut serials: Vec<_> = threads
++        .into_iter()
++        .flat_map(|thread| thread.join().unwrap())
++        .collect();
++    serials.sort_unstable();
++    serials.dedup();
++    assert_eq!(serials.len(), 800);
++}
++
++#[test]
++fn child_context_retains_actual_actor_instead_of_root_shared_payload_label() {
++    let root = ThreadId::new();
++    let actor = ThreadId::new();
++    let parent = ThreadId::new();
++    let source = NativeSessionSource::new(
++        NativeSessionContext::new(actor, root, Some(parent)),
++        NativeIdentityOrigin::Birth,
++    );
++    let event = NativeEventCapture::new(source, NativeHookKind::LegacyAfterAgent);
++    assert_eq!(event.occurrence.context.actor(), actor);
++    assert_eq!(event.occurrence.context.root(), root);
++    assert_eq!(event.occurrence.context.direct_parent(), Some(parent));
++    assert_ne!(actor, root);
++}
++
++#[test]
++fn wrong_owner_and_kind_are_fatal_before_dispatch() {
++    const CHILD: &str = "CODEX_NATIVE_OCCURRENCE_OWNER_TEST";
++    if let Some(mode) = std::env::var_os(CHILD) {
++        let owner = source(NativeIdentityOrigin::Birth);
++        if mode == "owner" {
++            let event = NativeEvent::capture(owner, TestRequest);
++            event.into_parts(&source(NativeIdentityOrigin::Birth));
++        } else {
++            NativeEventCapture::new(owner, NativeHookKind::Configured(HookEventName::Stop))
++                .with_request(TestRequest);
++        }
++        panic!("invalid envelope reached dispatch");
++    }
++    for mode in ["owner", "kind"] {
++        let status = std::process::Command::new(std::env::current_exe().unwrap())
++            .env_clear()
++            .env(CHILD, mode)
++            .args([
++                "native_occurrence::tests::wrong_owner_and_kind_are_fatal_before_dispatch",
++                "--exact",
++            ])
++            .status()
++            .unwrap();
++        assert_eq!(status.code(), Some(1));
++    }
++}
++
++#[cfg(unix)]
++#[tokio::test]
++async fn legacy_notify_retains_occurrence_through_real_plumbing_spawn() {
++    let owner = source(NativeIdentityOrigin::Birth);
++    let temp = tempfile::tempdir().unwrap();
++    let payload = crate::HookPayload {
++        session_id: owner.context().root(),
++        cwd: codex_utils_absolute_path::AbsolutePathBuf::try_from(temp.path()).unwrap(),
++        client: None,
++        triggered_at: chrono::Utc::now(),
++        hook_event: crate::HookEvent::AfterAgent {
++            event: crate::HookEventAfterAgent {
++                thread_id: owner.context().actor(),
++                turn_id: "native-occurrence-test".into(),
++                input_messages: vec![],
++                last_assistant_message: None,
++            },
++        },
++    };
++    let event = NativeEvent::capture(owner.clone(), payload);
++    let occurrence = event.occurrence().clone();
++    let (held, payload) = event.into_parts(&owner);
++    let hook = crate::legacy_notify::notify_hook(vec!["/bin/true".into()], Arc::new(Vec::new()));
++    let result = hook.execute(held, &payload).await;
++    assert!(matches!(result.result, crate::HookResult::Success));
++    assert_eq!(
++        occurrence.observations(),
++        vec![("legacy-command", Arc::as_ptr(&occurrence) as usize)]
++    );
++}
+diff --git a/codex-rs/hooks/src/registry.rs b/codex-rs/hooks/src/registry.rs
+index a95dbdf..f9dcbc3 100644
+--- a/codex-rs/hooks/src/registry.rs
++++ b/codex-rs/hooks/src/registry.rs
+@@ -76,8 +76,10 @@ impl Hooks {
+     pub fn new(
+         config: HooksConfig,
+         native_session: crate::NativeSessionContext,
++        origin: crate::NativeIdentityOrigin,
+         mcp_executor: Arc<dyn HookMcpExecutor>,
+     ) -> anyhow::Result<(Self, Receiver<codex_protocol::protocol::HookCompletedEvent>)> {
++        let native_session = crate::NativeSessionSource::new(native_session, origin);
+         let (result_sender, result_receiver) = async_channel::unbounded();
+         let environment = Arc::new(std::env::vars_os().collect());
+         let hooks = Self::from_config(config, mcp_executor, Arc::clone(&environment), |shell| {
+@@ -93,6 +95,17 @@ impl Hooks {
+         Ok((hooks, result_receiver))
+     }
+ 
++    pub fn begin_native_event(&self, kind: crate::NativeHookKind) -> crate::NativeEventCapture {
++        crate::NativeEventCapture::new(self.engine.command_runtime.native_source(), kind)
++    }
++
++    pub fn capture_native_event<T: crate::NativeHookRequest>(
++        &self,
++        request: T,
++    ) -> crate::NativeEvent<T> {
++        crate::NativeEvent::capture(self.engine.command_runtime.native_source(), request)
++    }
++
+     pub fn native_session_context(&self) -> crate::NativeSessionContext {
+         self.engine.command_runtime.native_session_context()
+     }
+@@ -178,11 +191,17 @@ impl Hooks {
+         }
+     }
+ 
+-    pub async fn dispatch(&self, hook_payload: HookPayload) -> Vec<HookResponse> {
++    pub async fn dispatch(
++        &self,
++        hook_payload: crate::NativeEvent<HookPayload>,
++    ) -> Vec<HookResponse> {
++        let (occurrence, hook_payload) =
++            hook_payload.into_parts(&self.engine.command_runtime.native_source());
+         let hooks = self.hooks_for_event(&hook_payload.hook_event);
+         let mut outcomes = Vec::with_capacity(hooks.len());
+         for hook in hooks {
+-            let outcome = hook.execute(&hook_payload).await;
++            occurrence.observe("legacy");
++            let outcome = hook.execute(Arc::clone(&occurrence), &hook_payload).await;
+             let should_abort_operation = outcome.result.should_abort_operation();
+             outcomes.push(outcome);
+             if should_abort_operation {
+@@ -230,24 +249,30 @@ impl Hooks {
+ 
+     pub async fn run_session_start(
+         &self,
+-        request: SessionStartRequest,
++        request: crate::NativeEvent<SessionStartRequest>,
+         turn_id: Option<String>,
+     ) -> SessionStartOutcome {
+         self.engine.run_session_start(request, turn_id).await
+     }
+ 
+-    pub async fn run_pre_tool_use(&self, request: PreToolUseRequest) -> PreToolUseOutcome {
++    pub async fn run_pre_tool_use(
++        &self,
++        request: crate::NativeEvent<PreToolUseRequest>,
++    ) -> PreToolUseOutcome {
+         self.engine.run_pre_tool_use(request).await
+     }
+ 
+     pub async fn run_permission_request(
+         &self,
+-        request: PermissionRequestRequest,
++        request: crate::NativeEvent<PermissionRequestRequest>,
+     ) -> PermissionRequestOutcome {
+         self.engine.run_permission_request(request).await
+     }
+ 
+-    pub async fn run_post_tool_use(&self, request: PostToolUseRequest) -> PostToolUseOutcome {
++    pub async fn run_post_tool_use(
++        &self,
++        request: crate::NativeEvent<PostToolUseRequest>,
++    ) -> PostToolUseOutcome {
+         self.engine.run_post_tool_use(request).await
+     }
+ 
+@@ -258,7 +283,10 @@ impl Hooks {
+         self.engine.preview_pre_compact(request)
+     }
+ 
+-    pub async fn run_pre_compact(&self, request: PreCompactRequest) -> PreCompactOutcome {
++    pub async fn run_pre_compact(
++        &self,
++        request: crate::NativeEvent<PreCompactRequest>,
++    ) -> PreCompactOutcome {
+         self.engine.run_pre_compact(request).await
+     }
+ 
+@@ -269,7 +297,10 @@ impl Hooks {
+         self.engine.preview_post_compact(request)
+     }
+ 
+-    pub async fn run_post_compact(&self, request: PostCompactRequest) -> StatelessHookOutcome {
++    pub async fn run_post_compact(
++        &self,
++        request: crate::NativeEvent<PostCompactRequest>,
++    ) -> StatelessHookOutcome {
+         self.engine.run_post_compact(request).await
+     }
+ 
+@@ -282,7 +313,7 @@ impl Hooks {
+ 
+     pub async fn run_user_prompt_submit(
+         &self,
+-        request: UserPromptSubmitRequest,
++        request: crate::NativeEvent<UserPromptSubmitRequest>,
+     ) -> UserPromptSubmitOutcome {
+         self.engine.run_user_prompt_submit(request).await
+     }
+@@ -294,7 +325,7 @@ impl Hooks {
+         self.engine.preview_stop(request)
+     }
+ 
+-    pub async fn run_stop(&self, request: StopRequest) -> StopOutcome {
++    pub async fn run_stop(&self, request: crate::NativeEvent<StopRequest>) -> StopOutcome {
+         self.engine.run_stop(request).await
+     }
+ 
+@@ -302,7 +333,10 @@ impl Hooks {
+         self.engine.preview_session_end()
+     }
+ 
+-    pub async fn run_session_end(&self, request: SessionEndRequest) -> SessionEndOutcome {
++    pub async fn run_session_end(
++        &self,
++        request: crate::NativeEvent<SessionEndRequest>,
++    ) -> SessionEndOutcome {
+         self.engine.run_session_end(request).await
+     }
+ 
+@@ -310,7 +344,10 @@ impl Hooks {
+         self.engine.preview_interrupt()
+     }
+ 
+-    pub async fn run_interrupt(&self, request: InterruptRequest) -> InterruptOutcome {
++    pub async fn run_interrupt(
++        &self,
++        request: crate::NativeEvent<InterruptRequest>,
++    ) -> InterruptOutcome {
+         self.engine.run_interrupt(request).await
+     }
+ 
+@@ -338,9 +375,11 @@ impl Hooks {
+ 
+     pub async fn run_model_request(
+         &self,
+-        request: crate::ModelRequestHookInput,
++        request: crate::NativeEvent<crate::ModelRequestHookInput>,
+     ) -> Vec<codex_protocol::protocol::HookCompletedEvent> {
+-        crate::events::model_request::run(&self.engine, request).await
++        let (occurrence, request) =
++            request.into_parts(&self.engine.command_runtime.native_source());
++        crate::events::model_request::run(&self.engine, occurrence, request).await
+     }
+ }
+ 
+diff --git a/codex-rs/hooks/src/types.rs b/codex-rs/hooks/src/types.rs
+index 6639308..e99d6c6 100644
+--- a/codex-rs/hooks/src/types.rs
++++ b/codex-rs/hooks/src/types.rs
+@@ -9,7 +9,11 @@ use futures::future::BoxFuture;
+ use serde::Serialize;
+ use serde::Serializer;
+ 
+-pub type HookFn = Arc<dyn for<'a> Fn(&'a HookPayload) -> BoxFuture<'a, HookResult> + Send + Sync>;
++pub type HookFn = Arc<
++    dyn for<'a> Fn(Arc<crate::NativeOccurrence>, &'a HookPayload) -> BoxFuture<'a, HookResult>
++        + Send
++        + Sync,
++>;
+ 
+ #[derive(Debug)]
+ pub enum HookResult {
+@@ -45,16 +49,20 @@ impl Default for Hook {
+     fn default() -> Self {
+         Self {
+             name: "default".to_string(),
+-            func: Arc::new(|_| Box::pin(async { HookResult::Success })),
++            func: Arc::new(|_, _| Box::pin(async { HookResult::Success })),
+         }
+     }
+ }
+ 
+ impl Hook {
+-    pub async fn execute(&self, payload: &HookPayload) -> HookResponse {
++    pub async fn execute(
++        &self,
++        occurrence: Arc<crate::NativeOccurrence>,
++        payload: &HookPayload,
++    ) -> HookResponse {
+         HookResponse {
+             hook_name: self.name.clone(),
+-            result: (self.func)(payload).await,
++            result: (self.func)(occurrence, payload).await,
+         }
+     }
+ }

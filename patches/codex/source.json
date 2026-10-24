@@ -10,6 +10,10 @@
     {
       "path": "0002-retain-native-session-context.patch",
       "sha256": "8ab2fdc96d34ab5c8e5acf51b9b4addeb3a6c879b1a3dc76636669ab53200578"
+    },
+    {
+      "path": "0003-retain-original-native-occurrences.patch",
+      "sha256": "d9509ba0eee0715d2bed658bf72f8e7314ff2845728ebbe6bbc2d6f3f16f49bf"
     }
   ],
   "rust_toolchain": "1.99.1",
@@ -89,5 +93,69 @@
       }
     ],
     "restored_unit_tests_passed": 2
+  },
+  "occurrence_validation": {
+    "source_base": "e50b2cbc7cbe0d7e2d4d291bcd4d984836d94d86",
+    "source_commit": "122c29d9dec6eaa83d57cf85f4084a3712a09deb",
+    "source_tree": "70dbe07a9dae5c328fea58dc917bb9cbdcb5bd6f",
+    "patch_sha256s": [
+      "fa8b66bdc178b9649fc1f30dd9d65a6f626536f4f6d0bf1f3e4ee43fcd4ac022",
+      "8ab2fdc96d34ab5c8e5acf51b9b4addeb3a6c879b1a3dc76636669ab53200578",
+      "d9509ba0eee0715d2bed658bf72f8e7314ff2845728ebbe6bbc2d6f3f16f49bf"
+    ],
+    "unit_test_command": [
+      "cargo",
+      "+1.99.1",
+      "test",
+      "--locked",
+      "--offline",
+      "-p",
+      "codex-hooks",
+      "--lib",
+      "native_occurrence",
+      "--",
+      "--test-threads=1"
+    ],
+    "unit_tests_passed": 11,
+    "core_compile_check": {
+      "argv": [
+        "cargo",
+        "+1.99.1",
+        "check",
+        "--locked",
+        "--offline",
+        "-p",
+        "codex-core",
+        "--lib"
+      ],
+      "exit_code": 0,
+      "elapsed": "3m15s"
+    },
+    "mutations": [
+      {
+        "mutation": "serial-reuse",
+        "selector": "native_occurrence::tests::original_occurrences_are_global_across_actors_and_lifecycle_labels",
+        "exit_code": 101,
+        "expected_test_failure": true
+      },
+      {
+        "mutation": "owner-bypass",
+        "selector": "native_occurrence::tests::wrong_owner_and_kind_are_fatal_before_dispatch",
+        "exit_code": 101,
+        "expected_test_failure": true
+      },
+      {
+        "restored_exit_code": 0,
+        "restored_exact_source_sha256": "e30da0a00ecdfd5b73a374abb65ad5402d46ab8eb535a8781f3182a8431e3f00"
+      }
+    ],
+    "restored_unit_tests_passed": 11,
+    "original_occurrence_identity": "source-launch-uuid-and-checked-global-serial",
+    "scope": "identity data only; no transport, proof issuer or platform adapter",
+    "installed_proof": false,
+    "node_admission_proof": false,
+    "independent_review": "approved actual source",
+    "patch_application_tree": "70dbe07a9dae5c328fea58dc917bb9cbdcb5bd6f",
+    "working_directory": "codex-rs"
   }
 }
