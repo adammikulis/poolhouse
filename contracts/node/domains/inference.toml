@@ -1,0 +1,1212 @@
+version = 1
+status = "proposal"
+
+[[type]]
+name = "InferenceGenerationId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "InferenceTurnId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "InferenceConversationId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "InferenceProfileId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "InferenceStreamId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "InferenceToolProposalId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "InferenceToolPolicyId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "InferenceContentId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "InferenceCursorGeneration"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "InferenceDigest"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "InferenceCodingBytes"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "data"
+minimum = 0
+maximum = 1048576
+
+[[type]]
+name = "InferenceNativeSeedValue"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "caller"
+minimum = 0
+maximum = 4294967294
+
+[[type]]
+name = "InferenceI32"
+kind = "scalar"
+visibility = "public"
+encoding = "i32"
+issuer = "data"
+minimum = -2147483648
+maximum = 2147483647
+
+[[type]]
+name = "InferenceTokenLimit"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "caller"
+minimum = 1
+maximum = 2147483647
+
+[[type]]
+name = "InferenceGenerationRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "InferenceGenerationId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "InferenceTurnRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "InferenceTurnId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "InferenceConversationRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "InferenceConversationId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "InferenceProfileRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "InferenceProfileId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "InferenceToolPolicyRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "InferenceToolPolicyId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "InferenceProjectRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "ProjectId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "InferenceOptionalProjectRef"
+kind = "optional"
+visibility = "public"
+item = "InferenceProjectRef"
+
+[[type]]
+name = "InferenceOptionalTurnRef"
+kind = "optional"
+visibility = "public"
+item = "InferenceTurnRef"
+
+[[type]]
+name = "InferenceOptionalConversationRef"
+kind = "optional"
+visibility = "public"
+item = "InferenceConversationRef"
+
+[[type]]
+name = "InferenceOptionalGenerationRef"
+kind = "optional"
+visibility = "public"
+item = "InferenceGenerationRef"
+
+[[type]]
+name = "InferenceOptionalOperationId"
+kind = "optional"
+visibility = "public"
+item = "OperationId"
+
+[[type]]
+name = "InferenceContentRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "InferenceContentId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "InferenceContent"
+kind = "record"
+visibility = "public"
+fields = [{name = "content", type = "InferenceContentRef"}, {name = "digest", type = "InferenceDigest"}, {name = "utf8_bytes", type = "U64"}]
+
+[[type]]
+name = "InferenceCodingContent"
+kind = "record"
+visibility = "public"
+fields = [{name = "content", type = "InferenceContentRef"}, {name = "digest", type = "InferenceDigest"}, {name = "utf8_bytes", type = "InferenceCodingBytes"}]
+
+[[type]]
+name = "InferenceLiteralJson"
+kind = "record"
+visibility = "public"
+fields = [{name = "content", type = "InferenceContentRef"}, {name = "digest", type = "InferenceDigest"}, {name = "encoded_utf8_bytes", type = "U64"}, {name = "observed_depth", type = "U64"}, {name = "observed_nodes", type = "U64"}]
+
+[[type]]
+name = "InferenceDataInput"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "omitted", type = "Empty"}, {tag = "null", type = "Empty"}, {tag = "value", type = "InferenceLiteralJson"}]
+
+[[type]]
+name = "InferenceContentInput"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "omitted", type = "Empty"}, {tag = "null", type = "Empty"}, {tag = "value", type = "InferenceContent"}]
+
+[[type]]
+name = "InferenceFloatInput"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "omitted", type = "Empty"}, {tag = "null", type = "Empty"}, {tag = "value", type = "FiniteF64"}]
+
+[[type]]
+name = "InferenceBoolInput"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "omitted", type = "Empty"}, {tag = "null", type = "Empty"}, {tag = "value", type = "Boolean"}]
+
+[[type]]
+name = "InferenceIntegerInput"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "omitted", type = "Empty"}, {tag = "null", type = "Empty"}, {tag = "value", type = "InferenceI32"}]
+
+[[type]]
+name = "InferenceSeedInput"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "omitted", type = "Empty"}, {tag = "null", type = "Empty"}, {tag = "automatic", type = "Empty"}, {tag = "native_exact", type = "InferenceNativeSeedValue"}, {tag = "provider_integer", type = "InferenceLiteralJson"}]
+
+[[type]]
+name = "InferenceTokenBudget"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "omitted", type = "Empty"}, {tag = "null", type = "Empty"}, {tag = "backend_default", type = "Empty"}, {tag = "evaluate_prompt_only", type = "Empty"}, {tag = "no_per_request_limit", type = "Empty"}, {tag = "explicit", type = "InferenceTokenLimit"}]
+
+[[type]]
+name = "InferenceDelivery"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "whole", type = "Empty"}, {tag = "stream", type = "Empty"}]
+
+[[type]]
+name = "InferenceLifetime"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "connection_bound", type = "Empty"}, {tag = "durable", type = "Empty"}]
+
+[[type]]
+name = "InferenceBinding"
+kind = "record"
+visibility = "public"
+fields = [{name = "model", type = "ModelRef"}, {name = "project", type = "InferenceOptionalProjectRef"}, {name = "profile", type = "InferenceProfileRef"}, {name = "tool_policy", type = "InferenceToolPolicyRef"}, {name = "tool_policy_revision", type = "U64"}, {name = "lifetime", type = "InferenceLifetime"}]
+
+[[type]]
+name = "InferenceChatInput"
+kind = "record"
+visibility = "public"
+fields = [{name = "messages", type = "InferenceDataInput"}, {name = "audio", type = "InferenceDataInput"}, {name = "frequency_penalty", type = "InferenceFloatInput"}, {name = "function_call", type = "InferenceDataInput"}, {name = "functions", type = "InferenceDataInput"}, {name = "logit_bias", type = "InferenceDataInput"}, {name = "logprobs", type = "InferenceBoolInput"}, {name = "max_completion_tokens", type = "InferenceTokenBudget"}, {name = "max_tokens", type = "InferenceTokenBudget"}, {name = "metadata", type = "InferenceDataInput"}, {name = "modalities", type = "InferenceDataInput"}, {name = "moderation", type = "InferenceDataInput"}, {name = "n", type = "InferenceDataInput"}, {name = "parallel_tool_calls", type = "InferenceBoolInput"}, {name = "prediction", type = "InferenceDataInput"}, {name = "presence_penalty", type = "InferenceFloatInput"}, {name = "prompt_cache_key", type = "InferenceContentInput"}, {name = "prompt_cache_options", type = "InferenceDataInput"}, {name = "prompt_cache_retention", type = "InferenceDataInput"}, {name = "reasoning_effort", type = "InferenceDataInput"}, {name = "response_format", type = "InferenceDataInput"}, {name = "safety_identifier", type = "InferenceContentInput"}, {name = "seed", type = "InferenceSeedInput"}, {name = "service_tier", type = "InferenceDataInput"}, {name = "stop", type = "InferenceDataInput"}, {name = "store", type = "InferenceBoolInput"}, {name = "stream_options", type = "InferenceDataInput"}, {name = "temperature", type = "InferenceFloatInput"}, {name = "tool_choice", type = "InferenceDataInput"}, {name = "tools", type = "InferenceDataInput"}, {name = "top_logprobs", type = "InferenceDataInput"}, {name = "top_p", type = "InferenceFloatInput"}, {name = "user", type = "InferenceContentInput"}, {name = "verbosity", type = "InferenceDataInput"}, {name = "web_search_options", type = "InferenceDataInput"}, {name = "native", type = "InferenceNativeOptions"}]
+
+[[type]]
+name = "InferenceResponsesInput"
+kind = "record"
+visibility = "public"
+fields = [{name = "access_programs", type = "InferenceDataInput"}, {name = "background", type = "InferenceBoolInput"}, {name = "context_management", type = "InferenceDataInput"}, {name = "conversation", type = "InferenceDataInput"}, {name = "include", type = "InferenceDataInput"}, {name = "input", type = "InferenceDataInput"}, {name = "instructions", type = "InferenceContentInput"}, {name = "max_output_tokens", type = "InferenceTokenBudget"}, {name = "max_tool_calls", type = "InferenceDataInput"}, {name = "metadata", type = "InferenceDataInput"}, {name = "moderation", type = "InferenceDataInput"}, {name = "parallel_tool_calls", type = "InferenceBoolInput"}, {name = "previous_response_id", type = "InferenceContentInput"}, {name = "prompt", type = "InferenceDataInput"}, {name = "prompt_cache_key", type = "InferenceContentInput"}, {name = "prompt_cache_options", type = "InferenceDataInput"}, {name = "prompt_cache_retention", type = "InferenceDataInput"}, {name = "reasoning", type = "InferenceDataInput"}, {name = "safety_identifier", type = "InferenceContentInput"}, {name = "service_tier", type = "InferenceDataInput"}, {name = "store", type = "InferenceBoolInput"}, {name = "stream_options", type = "InferenceDataInput"}, {name = "temperature", type = "InferenceFloatInput"}, {name = "text", type = "InferenceDataInput"}, {name = "tool_choice", type = "InferenceDataInput"}, {name = "tools", type = "InferenceDataInput"}, {name = "top_logprobs", type = "InferenceDataInput"}, {name = "top_p", type = "InferenceFloatInput"}, {name = "truncation", type = "InferenceDataInput"}, {name = "user", type = "InferenceContentInput"}, {name = "native", type = "InferenceNativeOptions"}]
+
+[[type]]
+name = "InferenceMessagesInput"
+kind = "record"
+visibility = "public"
+fields = [{name = "system", type = "InferenceDataInput"}, {name = "messages", type = "InferenceLiteralJson"}, {name = "max_tokens", type = "InferenceTokenBudget"}, {name = "tools", type = "InferenceDataInput"}, {name = "tool_choice", type = "InferenceDataInput"}, {name = "stop_sequences", type = "InferenceDataInput"}, {name = "temperature", type = "InferenceFloatInput"}, {name = "top_p", type = "InferenceFloatInput"}, {name = "top_k", type = "InferenceIntegerInput"}, {name = "thinking", type = "InferenceDataInput"}, {name = "metadata", type = "InferenceDataInput"}, {name = "chat_template_kwargs", type = "InferenceDataInput"}]
+
+[[type]]
+name = "InferenceNativeOptions"
+kind = "record"
+visibility = "public"
+fields = [{name = "temperature", type = "InferenceFloatInput"}, {name = "top_p", type = "InferenceFloatInput"}, {name = "min_p", type = "InferenceFloatInput"}, {name = "typical_p", type = "InferenceFloatInput"}, {name = "repeat_penalty", type = "InferenceFloatInput"}, {name = "presence_penalty", type = "InferenceFloatInput"}, {name = "frequency_penalty", type = "InferenceFloatInput"}, {name = "mirostat_tau", type = "InferenceFloatInput"}, {name = "mirostat_eta", type = "InferenceFloatInput"}, {name = "dynatemp_range", type = "InferenceFloatInput"}, {name = "dynatemp_exponent", type = "InferenceFloatInput"}, {name = "xtc_probability", type = "InferenceFloatInput"}, {name = "xtc_threshold", type = "InferenceFloatInput"}, {name = "dry_multiplier", type = "InferenceFloatInput"}, {name = "dry_base", type = "InferenceFloatInput"}, {name = "adaptive_target", type = "InferenceFloatInput"}, {name = "adaptive_decay", type = "InferenceFloatInput"}, {name = "top_k", type = "InferenceIntegerInput"}, {name = "mirostat", type = "InferenceIntegerInput"}, {name = "repeat_last_n", type = "InferenceIntegerInput"}, {name = "dry_allowed_length", type = "InferenceIntegerInput"}, {name = "dry_penalty_last_n", type = "InferenceIntegerInput"}, {name = "min_keep", type = "InferenceIntegerInput"}, {name = "n_probs", type = "InferenceIntegerInput"}, {name = "n_keep", type = "InferenceIntegerInput"}, {name = "n_discard", type = "InferenceIntegerInput"}, {name = "n_indent", type = "InferenceIntegerInput"}, {name = "n_cmpl", type = "InferenceIntegerInput"}, {name = "n_cache_reuse", type = "InferenceIntegerInput"}, {name = "cache_prompt", type = "InferenceBoolInput"}, {name = "return_tokens", type = "InferenceBoolInput"}, {name = "return_progress", type = "InferenceBoolInput"}, {name = "timings_per_token", type = "InferenceBoolInput"}, {name = "ignore_eos", type = "InferenceBoolInput"}, {name = "grammar_lazy", type = "InferenceBoolInput"}, {name = "post_sampling_probs", type = "InferenceBoolInput"}, {name = "stop", type = "InferenceDataInput"}, {name = "samplers", type = "InferenceDataInput"}, {name = "logit_bias", type = "InferenceDataInput"}, {name = "json_schema", type = "InferenceDataInput"}, {name = "grammar_triggers", type = "InferenceDataInput"}, {name = "preserved_tokens", type = "InferenceDataInput"}, {name = "dry_sequence_breakers", type = "InferenceDataInput"}, {name = "reasoning_budget_tokens", type = "InferenceDataInput"}, {name = "reasoning_budget_message", type = "InferenceDataInput"}, {name = "seed", type = "InferenceSeedInput"}, {name = "n_predict", type = "InferenceTokenBudget"}, {name = "grammar", type = "InferenceContentInput"}, {name = "speculative_n_max", type = "InferenceIntegerInput"}, {name = "chat_template_kwargs", type = "InferenceDataInput"}]
+
+[[type]]
+name = "InferenceRawCompletionInput"
+kind = "record"
+visibility = "public"
+fields = [{name = "prompt", type = "InferenceLiteralJson"}, {name = "native", type = "InferenceNativeOptions"}, {name = "stream_options", type = "InferenceDataInput"}]
+
+[[type]]
+name = "InferenceEmbeddingInput"
+kind = "record"
+visibility = "public"
+fields = [{name = "input", type = "InferenceLiteralJson"}, {name = "dimensions", type = "InferenceDataInput"}, {name = "encoding_format", type = "InferenceDataInput"}, {name = "user", type = "InferenceContentInput"}, {name = "expected_dimension", type = "OptionalU64"}]
+
+[[type]]
+name = "InferenceRerankInput"
+kind = "record"
+visibility = "public"
+fields = [{name = "query", type = "InferenceContent"}, {name = "documents", type = "InferenceLiteralJson"}, {name = "top_n", type = "InferenceDataInput"}]
+
+[[type]]
+name = "InferenceTokenizeInput"
+kind = "record"
+visibility = "public"
+fields = [{name = "content", type = "InferenceContent"}, {name = "with_pieces", type = "InferenceBoolInput"}, {name = "add_special", type = "InferenceBoolInput"}, {name = "parse_special", type = "InferenceBoolInput"}]
+
+[[type]]
+name = "InferenceDetokenizeInput"
+kind = "record"
+visibility = "public"
+fields = [{name = "tokens", type = "InferenceLiteralJson"}]
+
+[[type]]
+name = "InferenceCountInput"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "chat", type = "InferenceChatInput"}, {tag = "responses", type = "InferenceResponsesInput"}, {tag = "messages", type = "InferenceMessagesInput"}]
+
+[[type]]
+name = "InferenceChatStartRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "binding", type = "InferenceBinding"}, {name = "delivery", type = "InferenceDelivery"}, {name = "input", type = "InferenceChatInput"}, {name = "preparation", type = "InferencePreparationRef"}]
+
+[[type]]
+name = "InferenceResponsesStartRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "binding", type = "InferenceBinding"}, {name = "delivery", type = "InferenceDelivery"}, {name = "input", type = "InferenceResponsesInput"}, {name = "preparation", type = "InferencePreparationRef"}]
+
+[[type]]
+name = "InferenceMessagesStartRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "binding", type = "InferenceBinding"}, {name = "delivery", type = "InferenceDelivery"}, {name = "input", type = "InferenceMessagesInput"}, {name = "preparation", type = "InferencePreparationRef"}]
+
+[[type]]
+name = "InferenceCompletionStartRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "binding", type = "InferenceBinding"}, {name = "delivery", type = "InferenceDelivery"}, {name = "input", type = "InferenceRawCompletionInput"}, {name = "preparation", type = "InferencePreparationRef"}]
+
+[[type]]
+name = "InferenceEmbeddingStartRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "binding", type = "InferenceBinding"}, {name = "delivery", type = "InferenceDelivery"}, {name = "input", type = "InferenceEmbeddingInput"}, {name = "preparation", type = "InferencePreparationRef"}]
+
+[[type]]
+name = "InferenceRerankStartRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "binding", type = "InferenceBinding"}, {name = "delivery", type = "InferenceDelivery"}, {name = "input", type = "InferenceRerankInput"}, {name = "preparation", type = "InferencePreparationRef"}]
+
+[[type]]
+name = "InferenceTokenizeRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "binding", type = "InferenceBinding"}, {name = "input", type = "InferenceTokenizeInput"}, {name = "preparation", type = "InferencePreparationRef"}]
+
+[[type]]
+name = "InferenceDetokenizeRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "binding", type = "InferenceBinding"}, {name = "input", type = "InferenceDetokenizeInput"}, {name = "preparation", type = "InferencePreparationRef"}]
+
+[[type]]
+name = "InferenceCountRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "binding", type = "InferenceBinding"}, {name = "input", type = "InferenceCountInput"}, {name = "preparation", type = "InferencePreparationRef"}]
+
+[[type]]
+name = "InferenceState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "accepted", type = "Empty"}, {tag = "queued", type = "Empty"}, {tag = "preparing", type = "Empty"}, {tag = "generating", type = "Empty"}, {tag = "awaiting_tool", type = "Empty"}, {tag = "committing", type = "Empty"}, {tag = "completed", type = "Empty"}, {tag = "cancel_requested", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "InferenceFinish"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "stop", type = "Empty"}, {tag = "length", type = "Empty"}, {tag = "tool_calls", type = "Empty"}, {tag = "function_call", type = "Empty"}, {tag = "content_filter", type = "Empty"}, {tag = "stop_sequence", type = "Empty"}, {tag = "refusal", type = "Empty"}, {tag = "incomplete", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "failed", type = "Empty"}]
+
+[[type]]
+name = "InferenceObservationSource"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "reported", type = "Empty"}, {tag = "measured", type = "Empty"}, {tag = "derived", type = "Empty"}]
+
+[[type]]
+name = "InferenceUnknown"
+kind = "record"
+visibility = "public"
+fields = [{name = "message", type = "SafeMessage"}]
+
+[[type]]
+name = "InferenceKnownCount"
+kind = "record"
+visibility = "public"
+fields = [{name = "count", type = "U64"}, {name = "source", type = "InferenceObservationSource"}]
+
+[[type]]
+name = "InferenceCount"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "known", type = "InferenceKnownCount"}, {tag = "unknown", type = "InferenceUnknown"}]
+
+[[type]]
+name = "InferenceUsage"
+kind = "record"
+visibility = "public"
+fields = [{name = "prompt_tokens", type = "InferenceCount"}, {name = "completion_tokens", type = "InferenceCount"}, {name = "total_tokens", type = "InferenceCount"}, {name = "cached_prompt_tokens", type = "InferenceCount"}, {name = "reasoning_tokens", type = "InferenceCount"}, {name = "cache_creation_tokens", type = "InferenceCount"}, {name = "cache_read_tokens", type = "InferenceCount"}, {name = "audio_input_tokens", type = "InferenceCount"}, {name = "audio_output_tokens", type = "InferenceCount"}]
+
+[[type]]
+name = "InferenceTimingPhase"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "queue", type = "Empty"}, {tag = "load", type = "Empty"}, {tag = "prompt", type = "Empty"}, {tag = "generation", type = "Empty"}, {tag = "sampling", type = "Empty"}, {tag = "draft", type = "Empty"}, {tag = "verification", type = "Empty"}, {tag = "total", type = "Empty"}]
+
+[[type]]
+name = "InferenceDurationUnit"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "seconds", type = "Empty"}, {tag = "milliseconds", type = "Empty"}, {tag = "microseconds", type = "Empty"}]
+
+[[type]]
+name = "InferenceKnownDuration"
+kind = "record"
+visibility = "public"
+fields = [{name = "value", type = "FiniteF64"}, {name = "unit", type = "InferenceDurationUnit"}]
+
+[[type]]
+name = "InferenceDuration"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "known", type = "InferenceKnownDuration"}, {tag = "unknown", type = "InferenceUnknown"}]
+
+[[type]]
+name = "InferenceTiming"
+kind = "record"
+visibility = "public"
+fields = [{name = "phase", type = "InferenceTimingPhase"}, {name = "duration", type = "InferenceDuration"}, {name = "tokens", type = "InferenceCount"}, {name = "rate_tokens_per_second", type = "InferenceFloatInput"}]
+
+[[type]]
+name = "InferenceTimingRows"
+kind = "list"
+visibility = "public"
+item = "InferenceTiming"
+min_items = 0
+max_items = 1024
+unique = false
+
+[[type]]
+name = "InferenceEffectState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "proposed", type = "Empty"}, {tag = "denied", type = "Empty"}, {tag = "pending", type = "Empty"}, {tag = "committed", type = "Empty"}, {tag = "cancelled_before_commit", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "InferenceEffect"
+kind = "record"
+visibility = "public"
+fields = [{name = "operation_id", type = "OperationId"}, {name = "state", type = "InferenceEffectState"}, {name = "receipt_ref", type = "InferenceOptionalEffectReceiptRef"}]
+
+[[type]]
+name = "InferenceEffectRows"
+kind = "list"
+visibility = "public"
+item = "InferenceEffect"
+min_items = 0
+max_items = 1024
+unique = false
+
+[[type]]
+name = "InferencePartial"
+kind = "record"
+visibility = "public"
+fields = [{name = "partial", type = "Boolean"}, {name = "content", type = "InferenceContentInput"}, {name = "effect_summary_complete", type = "Boolean"}, {name = "effects", type = "InferenceEffects"}]
+
+[[type]]
+name = "InferenceChatResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "provider_id", type = "InferenceContent"}, {name = "provider_model", type = "InferenceContent"}, {name = "created", type = "InferenceDataInput"}, {name = "choices", type = "InferenceLiteralJson"}, {name = "usage", type = "InferenceUsage"}, {name = "timings", type = "InferenceTimings"}, {name = "system_fingerprint", type = "InferenceContentInput"}, {name = "service_tier", type = "InferenceDataInput"}, {name = "metadata", type = "InferenceDataInput"}, {name = "moderation", type = "InferenceDataInput"}, {name = "partial", type = "InferencePartial"}, {name = "logprob_observations", type = "InferenceLogprobPage"}]
+
+[[type]]
+name = "InferenceResponsesResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "InferenceContentInput"}, {name = "access_programs", type = "InferenceDataInput"}, {name = "created_at", type = "InferenceFloatInput"}, {name = "error", type = "InferenceDataInput"}, {name = "incomplete_details", type = "InferenceDataInput"}, {name = "instructions", type = "InferenceDataInput"}, {name = "metadata", type = "InferenceDataInput"}, {name = "model", type = "InferenceDataInput"}, {name = "object", type = "InferenceDataInput"}, {name = "output", type = "InferenceDataInput"}, {name = "parallel_tool_calls", type = "InferenceBoolInput"}, {name = "temperature", type = "InferenceFloatInput"}, {name = "tool_choice", type = "InferenceDataInput"}, {name = "tools", type = "InferenceDataInput"}, {name = "top_p", type = "InferenceFloatInput"}, {name = "background", type = "InferenceBoolInput"}, {name = "completed_at", type = "InferenceFloatInput"}, {name = "conversation", type = "InferenceDataInput"}, {name = "max_output_tokens", type = "InferenceTokenBudget"}, {name = "max_tool_calls", type = "InferenceDataInput"}, {name = "moderation", type = "InferenceDataInput"}, {name = "previous_response_id", type = "InferenceContentInput"}, {name = "prompt", type = "InferenceDataInput"}, {name = "prompt_cache_diagnostics", type = "InferenceDataInput"}, {name = "prompt_cache_key", type = "InferenceContentInput"}, {name = "prompt_cache_options", type = "InferenceDataInput"}, {name = "prompt_cache_retention", type = "InferenceDataInput"}, {name = "reasoning", type = "InferenceDataInput"}, {name = "safety_identifier", type = "InferenceContentInput"}, {name = "service_tier", type = "InferenceDataInput"}, {name = "status", type = "InferenceDataInput"}, {name = "text", type = "InferenceDataInput"}, {name = "top_logprobs", type = "InferenceDataInput"}, {name = "truncation", type = "InferenceDataInput"}, {name = "usage", type = "InferenceDataInput"}, {name = "user", type = "InferenceContentInput"}]
+
+[[type]]
+name = "InferenceMessagesResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "InferenceContent"}, {name = "role", type = "InferenceContent"}, {name = "model", type = "InferenceContent"}, {name = "content", type = "InferenceLiteralJson"}, {name = "stop_reason", type = "InferenceDataInput"}, {name = "stop_sequence", type = "InferenceContentInput"}, {name = "usage", type = "InferenceUsage"}]
+
+[[type]]
+name = "InferenceCompletionResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "content", type = "InferenceContent"}, {name = "tokens", type = "InferenceDataInput"}, {name = "finish", type = "InferenceFinish"}, {name = "usage", type = "InferenceUsage"}, {name = "timings", type = "InferenceTimings"}, {name = "generation_settings", type = "InferenceDataInput"}, {name = "partial", type = "InferencePartial"}]
+
+[[type]]
+name = "InferenceEmbeddingResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "model", type = "ModelRef"}, {name = "vectors", type = "InferenceLiteralJson"}, {name = "completed_input_indexes", type = "InferenceLiteralJson"}, {name = "dimension", type = "InferenceCount"}, {name = "usage", type = "InferenceUsage"}, {name = "partial", type = "InferencePartial"}]
+
+[[type]]
+name = "InferenceRankScore"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "ranked", type = "FiniteF64"}, {tag = "not_ranked", type = "Empty"}]
+
+[[type]]
+name = "InferenceRank"
+kind = "record"
+visibility = "public"
+fields = [{name = "input_index", type = "U32"}, {name = "score", type = "InferenceRankScore"}]
+
+[[type]]
+name = "InferenceRankRows"
+kind = "list"
+visibility = "public"
+item = "InferenceRank"
+min_items = 0
+max_items = 1024
+unique = false
+
+[[type]]
+name = "InferenceRerankResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "model", type = "ModelRef"}, {name = "ranks", type = "InferenceRankPage"}, {name = "usage", type = "InferenceUsage"}, {name = "partial", type = "InferencePartial"}]
+
+[[type]]
+name = "InferenceTokenizeResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "model", type = "ModelRef"}, {name = "tokens", type = "InferenceLiteralJson"}]
+
+[[type]]
+name = "InferenceDetokenizeResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "model", type = "ModelRef"}, {name = "content", type = "InferenceContent"}]
+
+[[type]]
+name = "InferenceCountResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "model", type = "ModelRef"}, {name = "input_tokens", type = "InferenceCount"}, {name = "profile_details", type = "InferenceDataInput"}]
+
+[[type]]
+name = "InferenceResult"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "chat", type = "InferenceChatResult"}, {tag = "responses", type = "InferenceResponsesResult"}, {tag = "messages", type = "InferenceMessagesResult"}, {tag = "completion", type = "InferenceCompletionResult"}, {tag = "embedding", type = "InferenceEmbeddingResult"}, {tag = "rerank", type = "InferenceRerankResult"}]
+
+[[type]]
+name = "InferenceResultPresence"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "unavailable", type = "Empty"}, {tag = "available", type = "InferenceResult"}]
+
+[[type]]
+name = "InferenceGenerationView"
+kind = "record"
+visibility = "public"
+fields = [{name = "execution", type = "InferenceGenerationRef"}, {name = "operation_id", type = "OperationId"}, {name = "revision", type = "U64"}, {name = "binding", type = "InferenceBinding"}, {name = "state", type = "InferenceState"}, {name = "accepted_at", type = "UnixMicros"}, {name = "started_at", type = "OptionalUnixMicros"}, {name = "finished_at", type = "OptionalUnixMicros"}, {name = "usage", type = "InferenceUsage"}, {name = "partial", type = "InferencePartial"}, {name = "result", type = "InferenceResultPresence"}]
+
+[[type]]
+name = "InferenceGetRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "execution", type = "InferenceGenerationRef"}]
+
+[[type]]
+name = "InferenceCancelRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "execution", type = "InferenceGenerationRef"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "InferenceCancelResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "execution", type = "InferenceGenerationView"}, {name = "requested", type = "Boolean"}, {name = "settled", type = "Boolean"}, {name = "completion_committed", type = "Boolean"}]
+
+[[type]]
+name = "InferenceToolProposal"
+kind = "record"
+visibility = "public"
+fields = [{name = "proposal_id", type = "InferenceToolProposalId"}, {name = "execution", type = "InferenceGenerationRef"}, {name = "turn", type = "InferenceOptionalTurnRef"}, {name = "call_id", type = "InferenceContent"}, {name = "name", type = "InferenceContent"}, {name = "arguments", type = "InferenceLiteralJson"}, {name = "arguments_digest", type = "InferenceDigest"}, {name = "schema_digest", type = "InferenceDigest"}, {name = "policy_digest", type = "InferenceDigest"}, {name = "policy_revision", type = "U64"}, {name = "node_context_binding_digest", type = "InferenceDigest"}]
+
+[[type]]
+name = "InferenceEventIdentity"
+kind = "record"
+visibility = "public"
+fields = [{name = "execution", type = "InferenceGenerationRef"}, {name = "sequence", type = "U64"}, {name = "at", type = "UnixMicros"}]
+
+[[type]]
+name = "InferenceTextDelta"
+kind = "record"
+visibility = "public"
+fields = [{name = "choice_index", type = "U32"}, {name = "part_index", type = "U32"}, {name = "byte_offset", type = "U64"}, {name = "chunk", type = "Utf8Chunk"}]
+
+[[type]]
+name = "InferenceToolDelta"
+kind = "record"
+visibility = "public"
+fields = [{name = "choice_index", type = "U32"}, {name = "call_index", type = "U32"}, {name = "call_id", type = "InferenceContentInput"}, {name = "name", type = "InferenceContentInput"}, {name = "byte_offset", type = "U64"}, {name = "chunk", type = "Utf8Chunk"}]
+
+[[type]]
+name = "InferenceProviderEventData"
+kind = "record"
+visibility = "public"
+fields = [{name = "choice_index", type = "OptionalU64"}, {name = "item_index", type = "OptionalU64"}, {name = "data", type = "InferenceLiteralJson"}]
+
+[[type]]
+name = "InferenceTerminal"
+kind = "record"
+visibility = "public"
+fields = [{name = "state", type = "InferenceState"}, {name = "finish", type = "InferenceFinish"}, {name = "partial", type = "InferencePartial"}, {name = "completion_committed", type = "Boolean"}]
+
+[[type]]
+name = "InferenceEventBody"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "accepted", type = "InferenceGenerationView"}, {tag = "queued", type = "InferenceCount"}, {tag = "preparing", type = "SafeMessage"}, {tag = "answer_delta", type = "InferenceTextDelta"}, {tag = "reasoning_delta", type = "InferenceTextDelta"}, {tag = "refusal_delta", type = "InferenceTextDelta"}, {tag = "tool_arguments_delta", type = "InferenceToolDelta"}, {tag = "tool_proposal", type = "InferenceToolProposal"}, {tag = "choice_delta", type = "InferenceProviderEventData"}, {tag = "response_item", type = "InferenceProviderEventData"}, {tag = "anthropic_content_block", type = "InferenceProviderEventData"}, {tag = "usage", type = "InferenceUsage"}, {tag = "timing", type = "InferenceTiming"}, {tag = "terminal", type = "InferenceTerminal"}]
+
+[[type]]
+name = "InferenceEvent"
+kind = "record"
+visibility = "public"
+fields = [{name = "identity", type = "InferenceEventIdentity"}, {name = "body", type = "InferenceEventBody"}]
+
+[[type]]
+name = "InferenceEvents"
+kind = "list"
+visibility = "public"
+item = "InferenceEvent"
+min_items = 0
+max_items = 64
+unique = false
+
+[[type]]
+name = "InferenceCursor"
+kind = "record"
+visibility = "public"
+fields = [{name = "stream_id", type = "InferenceStreamId"}, {name = "stream_generation", type = "InferenceCursorGeneration"}, {name = "projection_generation", type = "ResourceGeneration"}, {name = "execution", type = "InferenceGenerationRef"}, {name = "sequence", type = "U64"}, {name = "expires_at", type = "UnixMicros"}]
+
+[[type]]
+name = "InferenceOptionalCursor"
+kind = "optional"
+visibility = "public"
+item = "InferenceCursor"
+
+[[type]]
+name = "InferenceWatchRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "execution", type = "InferenceGenerationRef"}, {name = "cursor", type = "InferenceOptionalCursor"}]
+
+[[type]]
+name = "InferenceWatchBatch"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "InferenceGenerationView"}, {name = "events", type = "InferenceEvents"}, {name = "cursor", type = "InferenceCursor"}, {name = "resync_required", type = "Boolean"}]
+
+[[type]]
+name = "InferenceTurnMessage"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "plain", type = "InferenceContent"}, {tag = "coding", type = "InferenceCodingContent"}]
+
+[[type]]
+name = "InferenceTurnSendRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "conversation", type = "InferenceConversationRef"}, {name = "expected_revision", type = "U64"}, {name = "policy_revision", type = "U64"}, {name = "settings_digest", type = "InferenceDigest"}, {name = "binding", type = "InferenceBinding"}, {name = "message", type = "InferenceTurnMessage"}, {name = "preparation", type = "InferencePreparationRef"}]
+
+[[type]]
+name = "InferenceTurnView"
+kind = "record"
+visibility = "public"
+fields = [{name = "turn", type = "InferenceTurnRef"}, {name = "conversation", type = "InferenceConversationRef"}, {name = "conversation_revision", type = "U64"}, {name = "policy_revision", type = "U64"}, {name = "execution", type = "InferenceGenerationView"}]
+
+[[type]]
+name = "InferenceTurnGetRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "turn", type = "InferenceTurnRef"}]
+
+[[type]]
+name = "InferenceTurnCancelRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "turn", type = "InferenceTurnRef"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "InferenceTurnCancelResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "turn", type = "InferenceTurnView"}, {name = "requested", type = "Boolean"}, {name = "settled", type = "Boolean"}, {name = "completion_committed", type = "Boolean"}]
+
+[[type]]
+name = "InferenceTurnWatchRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "turn", type = "InferenceTurnRef"}, {name = "cursor", type = "InferenceOptionalCursor"}]
+
+[[type]]
+name = "InferenceTurnWatchBatch"
+kind = "record"
+visibility = "public"
+fields = [{name = "turn", type = "InferenceTurnView"}, {name = "events", type = "InferenceEvents"}, {name = "cursor", type = "InferenceCursor"}, {name = "resync_required", type = "Boolean"}]
+
+[[type]]
+name = "InferenceToolResultSubmitRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "execution", type = "InferenceGenerationRef"}, {name = "turn", type = "InferenceOptionalTurnRef"}, {name = "proposal", type = "InferenceToolProposalId"}, {name = "expected_revision", type = "U64"}, {name = "arguments_digest", type = "InferenceDigest"}, {name = "schema_digest", type = "InferenceDigest"}, {name = "policy_digest", type = "InferenceDigest"}, {name = "result", type = "InferenceLiteralJson"}, {name = "receipt_ref", type = "InferenceOptionalEffectReceiptRef"}, {name = "preparation", type = "InferencePreparationRef"}]
+
+[[type]]
+name = "InferenceToolResultAcceptance"
+kind = "record"
+visibility = "public"
+fields = [{name = "execution", type = "InferenceGenerationRef"}, {name = "revision", type = "U64"}, {name = "operation_id", type = "OperationId"}, {name = "accepted", type = "Boolean"}]
+
+[[type]]
+name = "InferenceErrorCode"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "invalid_request", type = "Empty"}, {tag = "unsupported_profile", type = "Empty"}, {tag = "unsupported_field", type = "Empty"}, {tag = "unsupported_feature", type = "Empty"}, {tag = "invalid_content", type = "Empty"}, {tag = "invalid_schema", type = "Empty"}, {tag = "stale_generation", type = "Empty"}, {tag = "stale_revision", type = "Empty"}, {tag = "forbidden", type = "Empty"}, {tag = "not_found", type = "Empty"}, {tag = "model_unavailable", type = "Empty"}, {tag = "incompatible_model", type = "Empty"}, {tag = "incompatible_tokenizer", type = "Empty"}, {tag = "context_exceeded", type = "Empty"}, {tag = "insufficient_capacity", type = "Empty"}, {tag = "queue_expired", type = "Empty"}, {tag = "output_limit", type = "Empty"}, {tag = "invalid_worker_result", type = "Empty"}, {tag = "upstream_error", type = "Empty"}, {tag = "partial_output", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "cursor_expired", type = "Empty"}, {tag = "recovery_required", type = "Empty"}, {tag = "internal", type = "Empty"}]
+
+[[type]]
+name = "InferenceError"
+kind = "record"
+visibility = "public"
+fields = [{name = "code", type = "InferenceErrorCode"}, {name = "message", type = "SafeMessage"}, {name = "execution", type = "InferenceOptionalGenerationRef"}, {name = "operation_id", type = "InferenceOptionalOperationId"}, {name = "retry_after", type = "OptionalUnixMicros"}, {name = "partial", type = "InferencePartial"}, {name = "completion_committed", type = "Boolean"}]
+
+[[type]]
+name = "InferenceStageId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "InferenceStageRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "InferenceStageId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "InferenceContentSemantic"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "message_text", type = "Empty"}, {tag = "messages", type = "Empty"}, {tag = "response_input_items", type = "Empty"}, {tag = "system_blocks", type = "Empty"}, {tag = "tools", type = "Empty"}, {tag = "tool_arguments", type = "Empty"}, {tag = "tool_results", type = "Empty"}, {tag = "json_schema", type = "Empty"}, {tag = "metadata", type = "Empty"}, {tag = "structured_option", type = "Empty"}, {tag = "prompt", type = "Empty"}, {tag = "token_ids", type = "Empty"}, {tag = "embedding_vectors", type = "Empty"}, {tag = "ranking_results", type = "Empty"}, {tag = "choice_results", type = "Empty"}, {tag = "response_output_items", type = "Empty"}, {tag = "provider_content_block", type = "Empty"}, {tag = "effect_history", type = "Empty"}, {tag = "timing_history", type = "Empty"}]
+
+[[type]]
+name = "InferenceSourceLimitProfile"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "raw_http_32mib", type = "Empty"}, {tag = "prepared_sdk_payload_32mib", type = "Empty"}, {tag = "prepared_sdk_arguments_32mib", type = "Empty"}, {tag = "prepared_sdk_sse_output_32mib", type = "Empty"}, {tag = "coding_body_1mib", type = "Empty"}, {tag = "coding_event_1mib", type = "Empty"}, {tag = "conversation_create_64kib", type = "Empty"}, {tag = "rerank_reply_4mib", type = "Empty"}, {tag = "legacy_plain_stream_policy_required", type = "Empty"}]
+
+[[type]]
+name = "InferenceContentBinding"
+kind = "record"
+visibility = "public"
+fields = [{name = "model", type = "ModelRef"}, {name = "conversation", type = "InferenceOptionalConversationRef"}, {name = "project", type = "InferenceOptionalProjectRef"}, {name = "profile", type = "InferenceProfileRef"}, {name = "tool_policy", type = "InferenceToolPolicyRef"}, {name = "policy_revision", type = "U64"}, {name = "preparation", type = "InferencePreparationRef"}, {name = "request_id", type = "RequestId"}, {name = "execution", type = "InferenceOptionalGenerationRef"}, {name = "semantic", type = "InferenceContentSemantic"}, {name = "source_limit_profile", type = "InferenceSourceLimitProfile"}]
+
+[[type]]
+name = "InferenceContentBeginRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "binding", type = "InferenceContentBinding"}, {name = "declared_utf8_bytes", type = "U64"}, {name = "declared_digest", type = "InferenceDigest"}]
+
+[[type]]
+name = "InferenceStageView"
+kind = "record"
+visibility = "public"
+fields = [{name = "stage", type = "InferenceStageRef"}, {name = "binding", type = "InferenceContentBinding"}, {name = "revision", type = "U64"}, {name = "received_utf8_bytes", type = "U64"}, {name = "declared_utf8_bytes", type = "U64"}, {name = "finalized", type = "Boolean"}, {name = "expires_at", type = "UnixMicros"}]
+
+[[type]]
+name = "InferenceContentAppendRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "stage", type = "InferenceStageRef"}, {name = "expected_revision", type = "U64"}, {name = "byte_offset", type = "U64"}, {name = "chunk", type = "Utf8Chunk"}]
+
+[[type]]
+name = "InferenceContentFinalizeRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "stage", type = "InferenceStageRef"}, {name = "expected_revision", type = "U64"}, {name = "digest", type = "InferenceDigest"}]
+
+[[type]]
+name = "InferenceContentFinalizeResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "content", type = "InferenceContent"}, {name = "binding", type = "InferenceContentBinding"}, {name = "operation_id", type = "OperationId"}]
+
+[[type]]
+name = "InferenceContentReadRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "content", type = "InferenceContentRef"}, {name = "byte_offset", type = "U64"}]
+
+[[type]]
+name = "InferenceContentChunk"
+kind = "record"
+visibility = "public"
+fields = [{name = "content", type = "InferenceContentRef"}, {name = "byte_offset", type = "U64"}, {name = "chunk", type = "Utf8Chunk"}, {name = "next_byte_offset", type = "U64"}, {name = "total_utf8_bytes", type = "U64"}, {name = "digest", type = "InferenceDigest"}, {name = "complete", type = "Boolean"}]
+
+[[type]]
+name = "InferenceContentDiscardRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "stage", type = "InferenceStageRef"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "InferenceContentDiscardResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "stage", type = "InferenceStageRef"}, {name = "discarded", type = "Boolean"}, {name = "operation_id", type = "OperationId"}]
+
+[[type]]
+name = "InferenceEffects"
+kind = "record"
+visibility = "public"
+fields = [{name = "rows", type = "InferenceEffectRows"}, {name = "history", type = "InferenceContent"}, {name = "first_index", type = "U64"}, {name = "next_index", type = "OptionalU64"}, {name = "total_count", type = "InferenceCount"}, {name = "complete", type = "Boolean"}]
+
+[[type]]
+name = "InferenceTimings"
+kind = "record"
+visibility = "public"
+fields = [{name = "rows", type = "InferenceTimingRows"}, {name = "history", type = "InferenceContent"}, {name = "first_index", type = "U64"}, {name = "next_index", type = "OptionalU64"}, {name = "total_count", type = "InferenceCount"}, {name = "complete", type = "Boolean"}]
+
+[[type]]
+name = "InferencePreparationId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "InferencePreparationRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "InferencePreparationId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "InferencePreparationPurpose"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "chat", type = "Empty"}, {tag = "responses", type = "Empty"}, {tag = "messages", type = "Empty"}, {tag = "completion", type = "Empty"}, {tag = "embeddings", type = "Empty"}, {tag = "rerank", type = "Empty"}, {tag = "tokenize", type = "Empty"}, {tag = "detokenize", type = "Empty"}, {tag = "count_tokens", type = "Empty"}, {tag = "chat_turn", type = "Empty"}, {tag = "tool_result", type = "Empty"}]
+
+[[type]]
+name = "InferencePreparationState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "preparing", type = "Empty"}, {tag = "ready", type = "Empty"}, {tag = "consumed", type = "Empty"}, {tag = "expired", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "InferencePrepareRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "binding", type = "InferenceBinding"}, {name = "purpose", type = "InferencePreparationPurpose"}, {name = "conversation", type = "InferenceOptionalConversationRef"}, {name = "execution", type = "InferenceOptionalGenerationRef"}]
+
+[[type]]
+name = "InferencePreparationView"
+kind = "record"
+visibility = "public"
+fields = [{name = "preparation", type = "InferencePreparationRef"}, {name = "binding", type = "InferenceBinding"}, {name = "purpose", type = "InferencePreparationPurpose"}, {name = "request_id", type = "RequestId"}, {name = "revision", type = "U64"}, {name = "state", type = "InferencePreparationState"}, {name = "expires_at", type = "UnixMicros"}]
+
+[[type]]
+name = "InferenceEffectReceiptId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "InferenceEffectReceiptRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "InferenceEffectReceiptId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "InferenceOptionalEffectReceiptRef"
+kind = "optional"
+visibility = "public"
+item = "InferenceEffectReceiptRef"
+
+[[type]]
+name = "InferenceLogProbability"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "finite", type = "FiniteF64"}, {tag = "unavailable", type = "InferenceUnknown"}, {tag = "negative_infinity", type = "Empty"}]
+
+[[type]]
+name = "InferenceTokenLogprob"
+kind = "record"
+visibility = "public"
+fields = [{name = "choice_index", type = "U32"}, {name = "token_index", type = "U64"}, {name = "alternative_rank", type = "OptionalU64"}, {name = "token", type = "InferenceContent"}, {name = "token_bytes", type = "InferenceDataInput"}, {name = "score", type = "InferenceLogProbability"}]
+
+[[type]]
+name = "InferenceLogprobRows"
+kind = "list"
+visibility = "public"
+item = "InferenceTokenLogprob"
+min_items = 0
+max_items = 1024
+unique = false
+
+[[type]]
+name = "InferenceLogprobPage"
+kind = "record"
+visibility = "public"
+fields = [{name = "rows", type = "InferenceLogprobRows"}, {name = "history", type = "InferenceContent"}, {name = "first_index", type = "U64"}, {name = "next_index", type = "OptionalU64"}, {name = "total_count", type = "InferenceCount"}, {name = "complete", type = "Boolean"}]
+
+[[type]]
+name = "InferenceRankPage"
+kind = "record"
+visibility = "public"
+fields = [{name = "rows", type = "InferenceRankRows"}, {name = "history", type = "InferenceContent"}, {name = "first_index", type = "U64"}, {name = "next_index", type = "OptionalU64"}, {name = "total_count", type = "InferenceCount"}, {name = "complete", type = "Boolean"}]
+
+[[operation]]
+name = "inference.chat.start"
+symbol = "InferenceDomainInferenceChatStart"
+request = "InferenceChatStartRequest"
+response = "InferenceGenerationView"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "exact-managed-model-project-tool-policy-generations", "node-only-current-physical-resource-and-slot-admission", "node-owned-serving-lease-and-worker-binding", "all-inference-kinds-scheduled-including-responses-and-counting", "windows-wsl-shared-physical-exclusion-until-proof", "exact-model-and-media-schema-compatibility", "no-silent-external-provider-or-model-fallback", "connection-bound-disconnect-requests-only-this-generation-cancel", "durable-lifetime-and-storage-separately-authorized-by-profile", "no-per-request-token-limit-does-not-remove-node-profile-lease-or-output-bounds", "public-data-never-authorizes-private-worker-effects", "profile-specific-field-ranges-and-presence-semantics", "unsupported-or-lossy-backend-fields-refuse-not-drop", "native-seed-auto-or-exact-u32-no-input-wrap", "provider-integer-seed-needs-pinned-provider-validation", "durable-principal-installation-scope-generation-payload-bound", "request-id-reuse-with-changed-payload-refuses", "reauthorize-at-admission-start-tool-effect-and-final-publication", "cancel-versus-domain-commit-single-durable-winner", "no-cancelled-after-committed-completion-or-effect", "generation-equals-exact-model-generation-and-nested-binding", "all-content-refs-finalized-immutable-and-atomically-acquired", "content-semantic-slot-and-profile-match-original-consumer-binding", "source-equivalent-request-measurement-uses-retained-serializer-options", "source-output-aggregate-limits-profile-specific-not-global", "ordered-paged-output-never-hidden-truncation", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "preparation-fixed-purpose-and-all-consumer-bindings-match", "atomic-preparation-consumption-content-acquisition-and-operation-acceptance", "semantic-request-digest-not-reissued-stage-id-defines-retry", "no-content-from-another-preparation-or-operation", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes", "consumed-preparation-retry-returns-original-acceptance-not-relaunch"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "inference.responses.start"
+symbol = "InferenceDomainInferenceResponsesStart"
+request = "InferenceResponsesStartRequest"
+response = "InferenceGenerationView"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "exact-managed-model-project-tool-policy-generations", "node-only-current-physical-resource-and-slot-admission", "node-owned-serving-lease-and-worker-binding", "all-inference-kinds-scheduled-including-responses-and-counting", "windows-wsl-shared-physical-exclusion-until-proof", "exact-model-and-media-schema-compatibility", "no-silent-external-provider-or-model-fallback", "connection-bound-disconnect-requests-only-this-generation-cancel", "durable-lifetime-and-storage-separately-authorized-by-profile", "no-per-request-token-limit-does-not-remove-node-profile-lease-or-output-bounds", "public-data-never-authorizes-private-worker-effects", "profile-specific-field-ranges-and-presence-semantics", "unsupported-or-lossy-backend-fields-refuse-not-drop", "native-seed-auto-or-exact-u32-no-input-wrap", "provider-integer-seed-needs-pinned-provider-validation", "durable-principal-installation-scope-generation-payload-bound", "request-id-reuse-with-changed-payload-refuses", "reauthorize-at-admission-start-tool-effect-and-final-publication", "cancel-versus-domain-commit-single-durable-winner", "no-cancelled-after-committed-completion-or-effect", "generation-equals-exact-model-generation-and-nested-binding", "all-content-refs-finalized-immutable-and-atomically-acquired", "content-semantic-slot-and-profile-match-original-consumer-binding", "source-equivalent-request-measurement-uses-retained-serializer-options", "source-output-aggregate-limits-profile-specific-not-global", "ordered-paged-output-never-hidden-truncation", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "preparation-fixed-purpose-and-all-consumer-bindings-match", "atomic-preparation-consumption-content-acquisition-and-operation-acceptance", "semantic-request-digest-not-reissued-stage-id-defines-retry", "no-content-from-another-preparation-or-operation", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes", "consumed-preparation-retry-returns-original-acceptance-not-relaunch"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "inference.messages.start"
+symbol = "InferenceDomainInferenceMessagesStart"
+request = "InferenceMessagesStartRequest"
+response = "InferenceGenerationView"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "exact-managed-model-project-tool-policy-generations", "node-only-current-physical-resource-and-slot-admission", "node-owned-serving-lease-and-worker-binding", "all-inference-kinds-scheduled-including-responses-and-counting", "windows-wsl-shared-physical-exclusion-until-proof", "exact-model-and-media-schema-compatibility", "no-silent-external-provider-or-model-fallback", "connection-bound-disconnect-requests-only-this-generation-cancel", "durable-lifetime-and-storage-separately-authorized-by-profile", "no-per-request-token-limit-does-not-remove-node-profile-lease-or-output-bounds", "public-data-never-authorizes-private-worker-effects", "profile-specific-field-ranges-and-presence-semantics", "unsupported-or-lossy-backend-fields-refuse-not-drop", "native-seed-auto-or-exact-u32-no-input-wrap", "provider-integer-seed-needs-pinned-provider-validation", "durable-principal-installation-scope-generation-payload-bound", "request-id-reuse-with-changed-payload-refuses", "reauthorize-at-admission-start-tool-effect-and-final-publication", "cancel-versus-domain-commit-single-durable-winner", "no-cancelled-after-committed-completion-or-effect", "generation-equals-exact-model-generation-and-nested-binding", "all-content-refs-finalized-immutable-and-atomically-acquired", "content-semantic-slot-and-profile-match-original-consumer-binding", "source-equivalent-request-measurement-uses-retained-serializer-options", "source-output-aggregate-limits-profile-specific-not-global", "ordered-paged-output-never-hidden-truncation", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "preparation-fixed-purpose-and-all-consumer-bindings-match", "atomic-preparation-consumption-content-acquisition-and-operation-acceptance", "semantic-request-digest-not-reissued-stage-id-defines-retry", "no-content-from-another-preparation-or-operation", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes", "consumed-preparation-retry-returns-original-acceptance-not-relaunch"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "inference.completion.start"
+symbol = "InferenceDomainInferenceCompletionStart"
+request = "InferenceCompletionStartRequest"
+response = "InferenceGenerationView"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "exact-managed-model-project-tool-policy-generations", "node-only-current-physical-resource-and-slot-admission", "node-owned-serving-lease-and-worker-binding", "all-inference-kinds-scheduled-including-responses-and-counting", "windows-wsl-shared-physical-exclusion-until-proof", "exact-model-and-media-schema-compatibility", "no-silent-external-provider-or-model-fallback", "connection-bound-disconnect-requests-only-this-generation-cancel", "durable-lifetime-and-storage-separately-authorized-by-profile", "no-per-request-token-limit-does-not-remove-node-profile-lease-or-output-bounds", "public-data-never-authorizes-private-worker-effects", "profile-specific-field-ranges-and-presence-semantics", "unsupported-or-lossy-backend-fields-refuse-not-drop", "native-seed-auto-or-exact-u32-no-input-wrap", "provider-integer-seed-needs-pinned-provider-validation", "durable-principal-installation-scope-generation-payload-bound", "request-id-reuse-with-changed-payload-refuses", "reauthorize-at-admission-start-tool-effect-and-final-publication", "cancel-versus-domain-commit-single-durable-winner", "no-cancelled-after-committed-completion-or-effect", "generation-equals-exact-model-generation-and-nested-binding", "all-content-refs-finalized-immutable-and-atomically-acquired", "content-semantic-slot-and-profile-match-original-consumer-binding", "source-equivalent-request-measurement-uses-retained-serializer-options", "source-output-aggregate-limits-profile-specific-not-global", "ordered-paged-output-never-hidden-truncation", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "preparation-fixed-purpose-and-all-consumer-bindings-match", "atomic-preparation-consumption-content-acquisition-and-operation-acceptance", "semantic-request-digest-not-reissued-stage-id-defines-retry", "no-content-from-another-preparation-or-operation", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes", "consumed-preparation-retry-returns-original-acceptance-not-relaunch"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "inference.embeddings.start"
+symbol = "InferenceDomainInferenceEmbeddingsStart"
+request = "InferenceEmbeddingStartRequest"
+response = "InferenceGenerationView"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "exact-managed-model-project-tool-policy-generations", "node-only-current-physical-resource-and-slot-admission", "node-owned-serving-lease-and-worker-binding", "all-inference-kinds-scheduled-including-responses-and-counting", "windows-wsl-shared-physical-exclusion-until-proof", "exact-model-and-media-schema-compatibility", "no-silent-external-provider-or-model-fallback", "connection-bound-disconnect-requests-only-this-generation-cancel", "durable-lifetime-and-storage-separately-authorized-by-profile", "no-per-request-token-limit-does-not-remove-node-profile-lease-or-output-bounds", "public-data-never-authorizes-private-worker-effects", "profile-specific-field-ranges-and-presence-semantics", "unsupported-or-lossy-backend-fields-refuse-not-drop", "native-seed-auto-or-exact-u32-no-input-wrap", "provider-integer-seed-needs-pinned-provider-validation", "exact-completed-row-count-and-dimension-no-padding", "partial-cancel-never-claims-full-vector-completion", "durable-principal-installation-scope-generation-payload-bound", "request-id-reuse-with-changed-payload-refuses", "reauthorize-at-admission-start-tool-effect-and-final-publication", "cancel-versus-domain-commit-single-durable-winner", "no-cancelled-after-committed-completion-or-effect", "generation-equals-exact-model-generation-and-nested-binding", "all-content-refs-finalized-immutable-and-atomically-acquired", "content-semantic-slot-and-profile-match-original-consumer-binding", "source-equivalent-request-measurement-uses-retained-serializer-options", "source-output-aggregate-limits-profile-specific-not-global", "ordered-paged-output-never-hidden-truncation", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "preparation-fixed-purpose-and-all-consumer-bindings-match", "atomic-preparation-consumption-content-acquisition-and-operation-acceptance", "semantic-request-digest-not-reissued-stage-id-defines-retry", "no-content-from-another-preparation-or-operation", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes", "consumed-preparation-retry-returns-original-acceptance-not-relaunch"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "inference.rerank.start"
+symbol = "InferenceDomainInferenceRerankStart"
+request = "InferenceRerankStartRequest"
+response = "InferenceGenerationView"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "exact-managed-model-project-tool-policy-generations", "node-only-current-physical-resource-and-slot-admission", "node-owned-serving-lease-and-worker-binding", "all-inference-kinds-scheduled-including-responses-and-counting", "windows-wsl-shared-physical-exclusion-until-proof", "exact-model-and-media-schema-compatibility", "no-silent-external-provider-or-model-fallback", "connection-bound-disconnect-requests-only-this-generation-cancel", "durable-lifetime-and-storage-separately-authorized-by-profile", "no-per-request-token-limit-does-not-remove-node-profile-lease-or-output-bounds", "public-data-never-authorizes-private-worker-effects", "profile-specific-field-ranges-and-presence-semantics", "unsupported-or-lossy-backend-fields-refuse-not-drop", "native-seed-auto-or-exact-u32-no-input-wrap", "provider-integer-seed-needs-pinned-provider-validation", "not-ranked-only-for-authorized-top-n-omission", "duplicate-or-missing-unpermitted-index-invalid-or-partial", "durable-principal-installation-scope-generation-payload-bound", "request-id-reuse-with-changed-payload-refuses", "reauthorize-at-admission-start-tool-effect-and-final-publication", "cancel-versus-domain-commit-single-durable-winner", "no-cancelled-after-committed-completion-or-effect", "generation-equals-exact-model-generation-and-nested-binding", "all-content-refs-finalized-immutable-and-atomically-acquired", "content-semantic-slot-and-profile-match-original-consumer-binding", "source-equivalent-request-measurement-uses-retained-serializer-options", "source-output-aggregate-limits-profile-specific-not-global", "ordered-paged-output-never-hidden-truncation", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "preparation-fixed-purpose-and-all-consumer-bindings-match", "atomic-preparation-consumption-content-acquisition-and-operation-acceptance", "semantic-request-digest-not-reissued-stage-id-defines-retry", "no-content-from-another-preparation-or-operation", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes", "consumed-preparation-retry-returns-original-acceptance-not-relaunch"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "inference.tokenize"
+symbol = "InferenceDomainInferenceTokenize"
+request = "InferenceTokenizeRequest"
+response = "InferenceTokenizeResult"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "exact-managed-model-project-tool-policy-generations", "node-only-current-physical-resource-and-slot-admission", "node-owned-serving-lease-and-worker-binding", "all-inference-kinds-scheduled-including-responses-and-counting", "windows-wsl-shared-physical-exclusion-until-proof", "exact-model-and-media-schema-compatibility", "no-silent-external-provider-or-model-fallback", "connection-bound-disconnect-requests-only-this-generation-cancel", "durable-lifetime-and-storage-separately-authorized-by-profile", "no-per-request-token-limit-does-not-remove-node-profile-lease-or-output-bounds", "public-data-never-authorizes-private-worker-effects", "exact-tokenizer-generation-and-vocabulary", "read-label-does-not-bypass-resource-admission", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "preparation-fixed-purpose-and-all-consumer-bindings-match", "atomic-preparation-consumption-content-acquisition-and-operation-acceptance", "semantic-request-digest-not-reissued-stage-id-defines-retry", "no-content-from-another-preparation-or-operation", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "inference.detokenize"
+symbol = "InferenceDomainInferenceDetokenize"
+request = "InferenceDetokenizeRequest"
+response = "InferenceDetokenizeResult"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "exact-managed-model-project-tool-policy-generations", "node-only-current-physical-resource-and-slot-admission", "node-owned-serving-lease-and-worker-binding", "all-inference-kinds-scheduled-including-responses-and-counting", "windows-wsl-shared-physical-exclusion-until-proof", "exact-model-and-media-schema-compatibility", "no-silent-external-provider-or-model-fallback", "connection-bound-disconnect-requests-only-this-generation-cancel", "durable-lifetime-and-storage-separately-authorized-by-profile", "no-per-request-token-limit-does-not-remove-node-profile-lease-or-output-bounds", "public-data-never-authorizes-private-worker-effects", "exact-tokenizer-generation-and-vocabulary", "read-label-does-not-bypass-resource-admission", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "preparation-fixed-purpose-and-all-consumer-bindings-match", "atomic-preparation-consumption-content-acquisition-and-operation-acceptance", "semantic-request-digest-not-reissued-stage-id-defines-retry", "no-content-from-another-preparation-or-operation", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "inference.count.tokens"
+symbol = "InferenceDomainInferenceCountTokens"
+request = "InferenceCountRequest"
+response = "InferenceCountResult"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "exact-managed-model-project-tool-policy-generations", "node-only-current-physical-resource-and-slot-admission", "node-owned-serving-lease-and-worker-binding", "all-inference-kinds-scheduled-including-responses-and-counting", "windows-wsl-shared-physical-exclusion-until-proof", "exact-model-and-media-schema-compatibility", "no-silent-external-provider-or-model-fallback", "connection-bound-disconnect-requests-only-this-generation-cancel", "durable-lifetime-and-storage-separately-authorized-by-profile", "no-per-request-token-limit-does-not-remove-node-profile-lease-or-output-bounds", "public-data-never-authorizes-private-worker-effects", "exact-tokenizer-generation-and-vocabulary", "read-label-does-not-bypass-resource-admission", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "preparation-fixed-purpose-and-all-consumer-bindings-match", "atomic-preparation-consumption-content-acquisition-and-operation-acceptance", "semantic-request-digest-not-reissued-stage-id-defines-retry", "no-content-from-another-preparation-or-operation", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "inference.get"
+symbol = "InferenceDomainInferenceGet"
+request = "InferenceGetRequest"
+response = "InferenceGenerationView"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "exact-generation-owner-or-explicit-reader", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "inference.cancel"
+symbol = "InferenceDomainInferenceCancel"
+request = "InferenceCancelRequest"
+response = "InferenceCancelResult"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "exact-generation-owner-or-explicit-controller", "compare-and-swap-execution-revision", "cancel-versus-launch-and-result-publication", "settled-only-after-exact-owned-work-and-capacity-reconciled", "never-kill-shared-serving-process-or-other-tenant", "durable-principal-installation-scope-generation-payload-bound", "request-id-reuse-with-changed-payload-refuses", "reauthorize-at-admission-start-tool-effect-and-final-publication", "cancel-versus-domain-commit-single-durable-winner", "no-cancelled-after-committed-completion-or-effect", "top-generation-equals-execution-generation", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "inference.watch"
+symbol = "InferenceDomainInferenceWatch"
+request = "InferenceWatchRequest"
+response = "InferenceWatchBatch"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "exact-generation-owner-or-explicit-reader", "profile-ordered-choice-item-block-tool-fragment-and-terminal-validation", "cursor-principal-scope-resource-projection-generation-expiry-bound", "atomic-snapshot-to-events-handoff", "reauthorize-before-every-delivery", "explicit-resync-on-gap-or-expiry", "bounded-frame-aggregate-and-byte-backpressure", "observer-detach-does-not-cancel-durable-turn", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "chat.turn.send"
+symbol = "InferenceDomainChatTurnSend"
+request = "InferenceTurnSendRequest"
+response = "InferenceTurnView"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "exact-managed-model-project-tool-policy-generations", "node-only-current-physical-resource-and-slot-admission", "node-owned-serving-lease-and-worker-binding", "all-inference-kinds-scheduled-including-responses-and-counting", "windows-wsl-shared-physical-exclusion-until-proof", "exact-model-and-media-schema-compatibility", "no-silent-external-provider-or-model-fallback", "connection-bound-disconnect-requests-only-this-generation-cancel", "durable-lifetime-and-storage-separately-authorized-by-profile", "no-per-request-token-limit-does-not-remove-node-profile-lease-or-output-bounds", "public-data-never-authorizes-private-worker-effects", "top-generation-equals-conversation-generation", "exact-saved-settings-and-policy-revision", "atomic-request-dedupe-user-append-turn-create-and-acceptance", "late-publication-denied-after-deletion-or-revocation", "profile-specific-plain-versus-coding-content-source-limits", "coding-content-only-one-mib-and-two-hundred-thousand-codepoint-limits", "durable-principal-installation-scope-generation-payload-bound", "request-id-reuse-with-changed-payload-refuses", "reauthorize-at-admission-start-tool-effect-and-final-publication", "cancel-versus-domain-commit-single-durable-winner", "no-cancelled-after-committed-completion-or-effect", "generation-binds-exact-conversation-and-original-send", "all-content-refs-finalized-immutable-and-atomically-acquired", "content-semantic-slot-and-profile-match-original-consumer-binding", "source-equivalent-request-measurement-uses-retained-serializer-options", "source-output-aggregate-limits-profile-specific-not-global", "ordered-paged-output-never-hidden-truncation", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "preparation-fixed-purpose-and-all-consumer-bindings-match", "atomic-preparation-consumption-content-acquisition-and-operation-acceptance", "semantic-request-digest-not-reissued-stage-id-defines-retry", "no-content-from-another-preparation-or-operation", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "turn-content-variant-matches-saved-conversation-harness-and-profile", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "chat.turn.get"
+symbol = "InferenceDomainChatTurnGet"
+request = "InferenceTurnGetRequest"
+response = "InferenceTurnView"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "authorized-current-conversation-and-turn-read", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "chat.turn.cancel"
+symbol = "InferenceDomainChatTurnCancel"
+request = "InferenceTurnCancelRequest"
+response = "InferenceTurnCancelResult"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "exact-turn-generation-and-controller", "compare-and-swap-turn-revision", "effect-receipts-preserved-no-claimed-rollback", "verified-settlement-before-capacity-release", "durable-principal-installation-scope-generation-payload-bound", "request-id-reuse-with-changed-payload-refuses", "reauthorize-at-admission-start-tool-effect-and-final-publication", "cancel-versus-domain-commit-single-durable-winner", "no-cancelled-after-committed-completion-or-effect", "top-generation-equals-turn-generation", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "chat.turn.watch"
+symbol = "InferenceDomainChatTurnWatch"
+request = "InferenceTurnWatchRequest"
+response = "InferenceTurnWatchBatch"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "authorized-current-conversation-and-turn-read", "no-saved-conversation-required-for-stateless-inference", "cursor-principal-scope-resource-projection-generation-expiry-bound", "atomic-snapshot-to-events-handoff", "reauthorize-before-every-delivery", "explicit-resync-on-gap-or-expiry", "bounded-frame-aggregate-and-byte-backpressure", "observer-detach-does-not-cancel-durable-turn", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "inference.tools.respond"
+symbol = "InferenceDomainInferenceToolsRespond"
+request = "InferenceToolResultSubmitRequest"
+response = "InferenceToolResultAcceptance"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "exact-current-principal-execution-proposal-call-arguments-schema-policy-binding", "optional-chat-turn-never-weakens-required-execution-generation", "external-tool-result-is-untrusted-history-not-effect-proof", "node-effect-receipt-must-match-this-original-action-not-another-turn", "separate-node-domain-effect-authority-required", "compare-and-swap-execution-revision", "durable-principal-installation-scope-generation-payload-bound", "request-id-reuse-with-changed-payload-refuses", "reauthorize-at-admission-start-tool-effect-and-final-publication", "cancel-versus-domain-commit-single-durable-winner", "no-cancelled-after-committed-completion-or-effect", "top-generation-equals-execution-generation", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "preparation-fixed-purpose-and-all-consumer-bindings-match", "atomic-preparation-consumption-content-acquisition-and-operation-acceptance", "semantic-request-digest-not-reissued-stage-id-defines-retry", "no-content-from-another-preparation-or-operation", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "inference.content.begin"
+symbol = "InferenceDomainInferenceContentBegin"
+request = "InferenceContentBeginRequest"
+response = "InferenceStageView"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "automatic-transport-support-no-extra-person-step", "node-issued-content-id-never-a-capability", "exact-current-principal-project-policy-operation-request-and-content-generation-binding", "node-owned-aggregate-staging-storage-and-parser-resource-quota", "no-whole-request-document-or-generic-dispatch-slot", "original-source-logical-allowance-not-idl-double-escaping-size", "bounded-transport-frame-derived-from-actual-schema-escaping-and-envelope", "stage-bytes-not-authority-for-inference-or-effects", "expiry-revocation-and-private-retention-policy", "nested-binding-request-id-matches-original-consumer-intent", "durable-principal-installation-scope-generation-payload-bound", "request-id-reuse-with-changed-payload-refuses", "reauthorize-at-admission-start-tool-effect-and-final-publication", "cancel-versus-domain-commit-single-durable-winner", "no-cancelled-after-committed-completion-or-effect", "top-generation-equals-preparation-generation", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "exact-current-unconsumed-preparation-custody", "no-input-stage-may-claim-legacy-output-limit-profile", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "inference.content.append"
+symbol = "InferenceDomainInferenceContentAppend"
+request = "InferenceContentAppendRequest"
+response = "InferenceStageView"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "automatic-transport-support-no-extra-person-step", "node-issued-content-id-never-a-capability", "exact-current-principal-project-policy-operation-request-and-content-generation-binding", "node-owned-aggregate-staging-storage-and-parser-resource-quota", "no-whole-request-document-or-generic-dispatch-slot", "original-source-logical-allowance-not-idl-double-escaping-size", "bounded-transport-frame-derived-from-actual-schema-escaping-and-envelope", "stage-bytes-not-authority-for-inference-or-effects", "expiry-revocation-and-private-retention-policy", "compare-and-swap-stage-revision", "exact-next-byte-offset-and-replay-bytes", "recompute-byte-count-and-order", "no-append-after-finalization", "durable-principal-installation-scope-generation-payload-bound", "request-id-reuse-with-changed-payload-refuses", "reauthorize-at-admission-start-tool-effect-and-final-publication", "cancel-versus-domain-commit-single-durable-winner", "no-cancelled-after-committed-completion-or-effect", "top-generation-equals-stage-generation", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "inference.content.finalize"
+symbol = "InferenceDomainInferenceContentFinalize"
+request = "InferenceContentFinalizeRequest"
+response = "InferenceContentFinalizeResult"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "automatic-transport-support-no-extra-person-step", "node-issued-content-id-never-a-capability", "exact-current-principal-project-policy-operation-request-and-content-generation-binding", "node-owned-aggregate-staging-storage-and-parser-resource-quota", "no-whole-request-document-or-generic-dispatch-slot", "original-source-logical-allowance-not-idl-double-escaping-size", "bounded-transport-frame-derived-from-actual-schema-escaping-and-envelope", "stage-bytes-not-authority-for-inference-or-effects", "expiry-revocation-and-private-retention-policy", "compare-and-swap-stage-revision", "revalidate-length-digest-chunk-order-and-semantic-profile", "atomic-finalization-and-consumer-acquisition", "finalized-document-immutable-no-replace-delete-or-cross-operation-reuse", "durable-principal-installation-scope-generation-payload-bound", "request-id-reuse-with-changed-payload-refuses", "reauthorize-at-admission-start-tool-effect-and-final-publication", "cancel-versus-domain-commit-single-durable-winner", "no-cancelled-after-committed-completion-or-effect", "top-generation-equals-stage-generation", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "inference.content.read"
+symbol = "InferenceDomainInferenceContentRead"
+request = "InferenceContentReadRequest"
+response = "InferenceContentChunk"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "automatic-transport-support-no-extra-person-step", "node-issued-content-id-never-a-capability", "exact-current-principal-project-policy-operation-request-and-content-generation-binding", "node-owned-aggregate-staging-storage-and-parser-resource-quota", "no-whole-request-document-or-generic-dispatch-slot", "original-source-logical-allowance-not-idl-double-escaping-size", "bounded-transport-frame-derived-from-actual-schema-escaping-and-envelope", "stage-bytes-not-authority-for-inference-or-effects", "expiry-revocation-and-private-retention-policy", "authorized-content-reader-reauthorized-before-each-page", "unicode-boundary-offsets-and-progress", "no-hidden-total-clipping", "bounded-active-retention-and-backpressure", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "inference.content.discard"
+symbol = "InferenceDomainInferenceContentDiscard"
+request = "InferenceContentDiscardRequest"
+response = "InferenceContentDiscardResult"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "automatic-transport-support-no-extra-person-step", "node-issued-content-id-never-a-capability", "exact-current-principal-project-policy-operation-request-and-content-generation-binding", "node-owned-aggregate-staging-storage-and-parser-resource-quota", "no-whole-request-document-or-generic-dispatch-slot", "original-source-logical-allowance-not-idl-double-escaping-size", "bounded-transport-frame-derived-from-actual-schema-escaping-and-envelope", "stage-bytes-not-authority-for-inference-or-effects", "expiry-revocation-and-private-retention-policy", "compare-and-swap-stage-revision", "only-unreferenced-owned-stage", "cannot-delete-acquired-finalized-content-or-claim-effect-rollback", "durable-principal-installation-scope-generation-payload-bound", "request-id-reuse-with-changed-payload-refuses", "reauthorize-at-admission-start-tool-effect-and-final-publication", "cancel-versus-domain-commit-single-durable-winner", "no-cancelled-after-committed-completion-or-effect", "top-generation-equals-stage-generation", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "inference.prepare"
+symbol = "InferenceDomainInferencePrepare"
+request = "InferencePrepareRequest"
+response = "InferencePreparationView"
+error = "InferenceError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "node-selects-and-binds-profile-to-endpoint-backend-generation", "request-profile-and-document-digests-are-checked-assertions-not-authority", "full-semantic-profile-validation-before-scheduling-or-effects", "no-generic-handler-grant-path-url-executable-or-parser-selection", "original-profile-source-equivalent-aggregate-cap-includes-original-fields-envelope-and-escaping", "new-idl-wrapper-and-double-escaping-never-reduce-original-source-allowance", "new-transport-frame-and-overhead-bound-separate-from-logical-source-cap", "raw-http-measurement-bound-to-actual-ingress-by-node-not-caller-assertion", "canonical-utf8-chunk-count-ceiling-is-not-extra-byte-allowance", "reject-invalid-utf8-and-escaped-lone-surrogates", "duplicate-json-keys-by-decoded-key-equality", "literal-json-integers-preserved-without-f64-coercion", "iterative-parser-and-schema-validator-resource-admission-required", "no-recursive-decoder-bypass-of-parser-admission", "depth-and-node-count-within-encoded-byte-derived-bound", "redact-credentials-private-paths-and-cross-principal-data", "provider-tools-and-literal-role-or-schema-data-do-not-grant-node-or-provider-effects", "duplicate-normalized-control-slots-match-or-refuse-conflict", "compatibility-alias-precedence-bound-to-pinned-profile", "node-issues-preparation-before-stage-or-operation-acceptance", "preparation-never-requires-predicting-or-fabricating-operation-id", "node-binds-fixed-purpose-to-endpoint-model-or-conversation-or-execution", "intent-not-an-execution-grant", "all-source-limit-profiles-node-selected-for-purpose-and-direction", "automatic-transport-support-no-extra-person-step", "bounded-preparation-quota-expiry-and-revocation", "durable-principal-installation-scope-generation-payload-bound", "request-id-reuse-with-changed-payload-refuses", "reauthorize-at-admission-start-tool-effect-and-final-publication", "cancel-versus-domain-commit-single-durable-winner", "no-cancelled-after-committed-completion-or-effect", "generation-binds-exact-model-or-conversation-or-execution-by-fixed-purpose", "history-list-bounds-are-projection-page-capacities-not-total-history-limits", "complete-history-via-bound-cursor-or-immutable-content-reference", "source-limit-profile-node-selected-for-exact-endpoint-and-direction", "unavailable-logprob-only-from-pinned-profile-evidence-never-heuristic-clamp", "negative-infinity-logprob-only-if-profile-permits-not-finite-f64", "typed-effect-receipt-reference-still-needs-exact-ledger-action-binding", "history-projection-content-is-immutable-versioned-snapshot-not-live-appended-bytes", "consumed-preparation-retry-returns-original-acceptance-not-relaunch"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
