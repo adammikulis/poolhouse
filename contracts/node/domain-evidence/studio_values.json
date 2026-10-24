@@ -1,0 +1,2248 @@
+{
+  "version": 1,
+  "status": "proposal",
+  "domain": "studio_values",
+  "source_commit": "fa1c8b1626f92d6930883eac981b4a3412992bb2",
+  "scope": "Public31 operation output variants, independently authored typed metric/report families, immutable output literal/text/row and history read declarations. No private worker exports, runtime, model, tests, platform/generator implementation or K proof.",
+  "source_sites": [
+    {
+      "id": "src/poolhouse/studio/worker.py:dataset",
+      "path": "src/poolhouse/studio/worker.py",
+      "symbol": "dataset",
+      "start_line": 54,
+      "end_line": 58,
+      "file_sha256": "348773855379e15bdde61aaf6badf51913dc8d36b78d7f64ff83259c4f7964a6",
+      "site_sha256": "b94afd5f234c55e7f3f38b15f22d5b3d893b1232d61c3f59e53d910ed76e2d45"
+    },
+    {
+      "id": "src/poolhouse/studio/worker.py:_decision",
+      "path": "src/poolhouse/studio/worker.py",
+      "symbol": "_decision",
+      "start_line": 61,
+      "end_line": 74,
+      "file_sha256": "348773855379e15bdde61aaf6badf51913dc8d36b78d7f64ff83259c4f7964a6",
+      "site_sha256": "7fefddf61ee2e70f71c70a0dbf6e39849d08ae20065275fe1d04e9fd2e8ca977"
+    },
+    {
+      "id": "src/poolhouse/studio/worker.py:_train",
+      "path": "src/poolhouse/studio/worker.py",
+      "symbol": "_train",
+      "start_line": 85,
+      "end_line": 103,
+      "file_sha256": "348773855379e15bdde61aaf6badf51913dc8d36b78d7f64ff83259c4f7964a6",
+      "site_sha256": "854ce5db33d2aab31da05c5d2fdb42fffe6272ea8eff3f012d53b0db50915da0"
+    },
+    {
+      "id": "src/poolhouse/studio/worker.py:_checkpoint_evaluate",
+      "path": "src/poolhouse/studio/worker.py",
+      "symbol": "_checkpoint_evaluate",
+      "start_line": 106,
+      "end_line": 136,
+      "file_sha256": "348773855379e15bdde61aaf6badf51913dc8d36b78d7f64ff83259c4f7964a6",
+      "site_sha256": "ebfbd40642608ad55c2bfc861a32aa93225582074c355b2333ca8e5212831e1d"
+    },
+    {
+      "id": "src/poolhouse/studio/worker.py:_generate",
+      "path": "src/poolhouse/studio/worker.py",
+      "symbol": "_generate",
+      "start_line": 166,
+      "end_line": 190,
+      "file_sha256": "348773855379e15bdde61aaf6badf51913dc8d36b78d7f64ff83259c4f7964a6",
+      "site_sha256": "ff45278f0709d6c32e922a32e294bc09fc901cfa8ec1a63917a65aa48a119898"
+    },
+    {
+      "id": "src/poolhouse/studio/worker.py:_native_generate",
+      "path": "src/poolhouse/studio/worker.py",
+      "symbol": "_native_generate",
+      "start_line": 139,
+      "end_line": 163,
+      "file_sha256": "348773855379e15bdde61aaf6badf51913dc8d36b78d7f64ff83259c4f7964a6",
+      "site_sha256": "60ae8b284b26b0324cec0e027462c611b212920a451dc8bebf14e43e2b4b1a84"
+    },
+    {
+      "id": "src/poolhouse/studio/worker.py:_prepare_data",
+      "path": "src/poolhouse/studio/worker.py",
+      "symbol": "_prepare_data",
+      "start_line": 193,
+      "end_line": 222,
+      "file_sha256": "348773855379e15bdde61aaf6badf51913dc8d36b78d7f64ff83259c4f7964a6",
+      "site_sha256": "ade4f10fecac951b573cab70713292e9ca579396ac1202b6944c4eb9d5afa2a6"
+    },
+    {
+      "id": "src/poolhouse/studio/worker.py:_gym",
+      "path": "src/poolhouse/studio/worker.py",
+      "symbol": "_gym",
+      "start_line": 225,
+      "end_line": 247,
+      "file_sha256": "348773855379e15bdde61aaf6badf51913dc8d36b78d7f64ff83259c4f7964a6",
+      "site_sha256": "2d77630297980eca9986897c89370eb6aa7cc75e25cad535c03dfa9affe407bc"
+    },
+    {
+      "id": "src/poolhouse/studio/worker.py:_export",
+      "path": "src/poolhouse/studio/worker.py",
+      "symbol": "_export",
+      "start_line": 250,
+      "end_line": 281,
+      "file_sha256": "348773855379e15bdde61aaf6badf51913dc8d36b78d7f64ff83259c4f7964a6",
+      "site_sha256": "1c04b80ef33835b4eed866ef9d0e5aa70e890ff4d9f83e6e6efbd3ed5683053c"
+    },
+    {
+      "id": "src/poolhouse/studio/worker.py:execute",
+      "path": "src/poolhouse/studio/worker.py",
+      "symbol": "execute",
+      "start_line": 284,
+      "end_line": 334,
+      "file_sha256": "348773855379e15bdde61aaf6badf51913dc8d36b78d7f64ff83259c4f7964a6",
+      "site_sha256": "04f47b52184f399fb7d5679feaf3612eb25c1ad443c30fce363520b241347c12"
+    },
+    {
+      "id": "src/poolhouse/studio/adapters.py:response_schema",
+      "path": "src/poolhouse/studio/adapters.py",
+      "symbol": "response_schema",
+      "start_line": 38,
+      "end_line": 55,
+      "file_sha256": "4e941ce82059ad7a0984528e08afc17f6d19288249bd3a45f09399946ed355be",
+      "site_sha256": "8a2ffe62b36b8203ffad9640d8e2561735d1fb9eab7762b4831a654780385e33"
+    },
+    {
+      "id": "src/poolhouse/studio/adapters.py:immediate",
+      "path": "src/poolhouse/studio/adapters.py",
+      "symbol": "immediate",
+      "start_line": 272,
+      "end_line": 295,
+      "file_sha256": "4e941ce82059ad7a0984528e08afc17f6d19288249bd3a45f09399946ed355be",
+      "site_sha256": "05cba9bd29155c66a36f0379a26b0c7bb5678910542d5397cc94e1ea76572a4f"
+    },
+    {
+      "id": "src/poolhouse/studio/adapters.py:execute_authorized",
+      "path": "src/poolhouse/studio/adapters.py",
+      "symbol": "execute_authorized",
+      "start_line": 310,
+      "end_line": 313,
+      "file_sha256": "4e941ce82059ad7a0984528e08afc17f6d19288249bd3a45f09399946ed355be",
+      "site_sha256": "2c03f196863b94d738e817d27b502a4272fbe9f8037c3243b1d5911023e8f30a"
+    },
+    {
+      "id": "src/poolhouse/studio/adapters.py:collect",
+      "path": "src/poolhouse/studio/adapters.py",
+      "symbol": "collect",
+      "start_line": 348,
+      "end_line": 355,
+      "file_sha256": "4e941ce82059ad7a0984528e08afc17f6d19288249bd3a45f09399946ed355be",
+      "site_sha256": "5f382028926183b48f06920fa6681cea517adb238534f0f4ca840fd8213af4fd"
+    },
+    {
+      "id": "src/poolhouse/studio/decisions.py:parameters",
+      "path": "src/poolhouse/studio/decisions.py",
+      "symbol": "parameters",
+      "start_line": 38,
+      "end_line": 74,
+      "file_sha256": "c02976b27de47a267a9ab91f7aa3dc89265e67c52e5df983cc630511989a91cc",
+      "site_sha256": "55bc4acb1d9c2b5a8bc8d7fe9b57877bbf01c06f8adffe9d82d1a6b5d8702ff5"
+    },
+    {
+      "id": "src/poolhouse/studio/decisions.py:_decision",
+      "path": "src/poolhouse/studio/decisions.py",
+      "symbol": "_decision",
+      "start_line": 77,
+      "end_line": 94,
+      "file_sha256": "c02976b27de47a267a9ab91f7aa3dc89265e67c52e5df983cc630511989a91cc",
+      "site_sha256": "f3c630ee210fc3ffd9e77b33191fa58cdf78b4063a4f15a6cbde6f89a6f121c6"
+    },
+    {
+      "id": "src/poolhouse/studio/decisions.py:route",
+      "path": "src/poolhouse/studio/decisions.py",
+      "symbol": "route",
+      "start_line": 97,
+      "end_line": 110,
+      "file_sha256": "c02976b27de47a267a9ab91f7aa3dc89265e67c52e5df983cc630511989a91cc",
+      "site_sha256": "db8c8b8a682a304f91fab2a94d2850b621aa2fff4b3e6a131e7244fc278629d7"
+    },
+    {
+      "id": "src/poolhouse/studio/decisions.py:assess",
+      "path": "src/poolhouse/studio/decisions.py",
+      "symbol": "assess",
+      "start_line": 139,
+      "end_line": 193,
+      "file_sha256": "c02976b27de47a267a9ab91f7aa3dc89265e67c52e5df983cc630511989a91cc",
+      "site_sha256": "0bd664ded2d2abc62ac8b16c435965a8d6e73bae8ae39f2d78885abea93d07f2"
+    },
+    {
+      "id": "src/poolhouse/studio/record_context.py:generation_outputs",
+      "path": "src/poolhouse/studio/record_context.py",
+      "symbol": "generation_outputs",
+      "start_line": 87,
+      "end_line": 90,
+      "file_sha256": "5e8acf846b7b410318aa6beca09c1e6191c023dba38faa7668035ff6c948e1d2",
+      "site_sha256": "72dbce195bb412c0f54038e7b854ad6468c8c1f9e3009e415d8046c847acfcd9"
+    },
+    {
+      "id": "src/poolhouse/studio/record_context.py:generation_context",
+      "path": "src/poolhouse/studio/record_context.py",
+      "symbol": "generation_context",
+      "start_line": 72,
+      "end_line": 84,
+      "file_sha256": "5e8acf846b7b410318aa6beca09c1e6191c023dba38faa7668035ff6c948e1d2",
+      "site_sha256": "f6cea6f52bd90799d7df3e09f0cba6913dda998d105493c909ed5145eea18cb4"
+    },
+    {
+      "id": "src/poolhouse/studio/record_ops.py:execute",
+      "path": "src/poolhouse/studio/record_ops.py",
+      "symbol": "execute",
+      "start_line": 119,
+      "end_line": 130,
+      "file_sha256": "067ead1db7eb1b9ef981dbc4a534b3ea0fb13eaec84f0d209ea9972ead1b2784",
+      "site_sha256": "45745721d60ea6719decc1d66f6c17fa940522e9b2b3097dee4e5958d7f0592d"
+    },
+    {
+      "id": "src/poolhouse/studio/record_ops.py:_json",
+      "path": "src/poolhouse/studio/record_ops.py",
+      "symbol": "_json",
+      "start_line": 15,
+      "end_line": 31,
+      "file_sha256": "067ead1db7eb1b9ef981dbc4a534b3ea0fb13eaec84f0d209ea9972ead1b2784",
+      "site_sha256": "8398e27ce49bfb1d2d926e860145c7b3fe238fcd5c5a8b0c62c820a80288dc29"
+    },
+    {
+      "id": "src/poolhouse/train/run.py:run",
+      "path": "src/poolhouse/train/run.py",
+      "symbol": "run",
+      "start_line": 140,
+      "end_line": 212,
+      "file_sha256": "9b6095a6e5ff5b85f36eb0e8bddaf69a967d93c1a09b3d0cd15fb2b541c5fa80",
+      "site_sha256": "e0ef259807451983d2064757ad6cb264fecea39caeef1c271278418eddea19c5"
+    },
+    {
+      "id": "src/poolhouse/train/run.py:_finish_lora",
+      "path": "src/poolhouse/train/run.py",
+      "symbol": "_finish_lora",
+      "start_line": 268,
+      "end_line": 328,
+      "file_sha256": "9b6095a6e5ff5b85f36eb0e8bddaf69a967d93c1a09b3d0cd15fb2b541c5fa80",
+      "site_sha256": "3e419d42bc00a8d7bd2bae3adedfbf379e129c25d2efa5b17ef32301628da46d"
+    },
+    {
+      "id": "src/poolhouse/train/run.py:phases",
+      "path": "src/poolhouse/train/run.py",
+      "symbol": "phases",
+      "start_line": 247,
+      "end_line": 265,
+      "file_sha256": "9b6095a6e5ff5b85f36eb0e8bddaf69a967d93c1a09b3d0cd15fb2b541c5fa80",
+      "site_sha256": "d69395dd39fbd502eab615ce8a58aba1ece500865c84821a00d04bb3e7cc278a"
+    },
+    {
+      "id": "src/poolhouse/train/metrics.py:MetricsLog",
+      "path": "src/poolhouse/train/metrics.py",
+      "symbol": "MetricsLog",
+      "start_line": 13,
+      "end_line": 64,
+      "file_sha256": "9d67e7ffccdf279c1d7cb74503f7dae11a5a3e280be78f34cd494a62b5798cba",
+      "site_sha256": "89094d762cf13c7692da5a1ff44899aa9681cade8702ebf3c80da5edf7127d37"
+    },
+    {
+      "id": "src/poolhouse/train/trainer.py:TrainReport",
+      "path": "src/poolhouse/train/trainer.py",
+      "symbol": "TrainReport",
+      "start_line": 50,
+      "end_line": 68,
+      "file_sha256": "5c9d484036d4e8ace13c010b292ea56f7414a199e0fce235cedef2a3235aba05",
+      "site_sha256": "ad4c2b89445a745e35a118ba1c2da378e43367edb782f72ceedeadd4dd3036e8"
+    },
+    {
+      "id": "src/poolhouse/train/trainer.py:fit",
+      "path": "src/poolhouse/train/trainer.py",
+      "symbol": "fit",
+      "start_line": 171,
+      "end_line": 300,
+      "file_sha256": "5c9d484036d4e8ace13c010b292ea56f7414a199e0fce235cedef2a3235aba05",
+      "site_sha256": "ea94a6ae17eea9178b99a3488db7987c77caf6f55c465dd6d46dc46d22870300"
+    },
+    {
+      "id": "src/poolhouse/train/trainer.py:run_hooks",
+      "path": "src/poolhouse/train/trainer.py",
+      "symbol": "run_hooks",
+      "start_line": 103,
+      "end_line": 112,
+      "file_sha256": "5c9d484036d4e8ace13c010b292ea56f7414a199e0fce235cedef2a3235aba05",
+      "site_sha256": "8917d22a7ffd9fc16d0bf0c4317f7abd11af97ed97c288b17a26c3e32797dea8"
+    },
+    {
+      "id": "src/poolhouse/train/probes.py:answer",
+      "path": "src/poolhouse/train/probes.py",
+      "symbol": "answer",
+      "start_line": 16,
+      "end_line": 28,
+      "file_sha256": "8d8c06ff9b5f1ca5458cfed7c987b0e47ed0fa991b881276c7d2c8e79b45050c",
+      "site_sha256": "c2b077f68f2d06c39d5786f2d4c60b7c7ae4d920b6b26ec5233c084c205f1f1a"
+    },
+    {
+      "id": "src/poolhouse/train/probes.py:probe_hook",
+      "path": "src/poolhouse/train/probes.py",
+      "symbol": "probe_hook",
+      "start_line": 31,
+      "end_line": 34,
+      "file_sha256": "8d8c06ff9b5f1ca5458cfed7c987b0e47ed0fa991b881276c7d2c8e79b45050c",
+      "site_sha256": "d9d1ddca873eb36892d822ad9ef5dae82e850d17d03c63c121bf06fb96b0f2c1"
+    },
+    {
+      "id": "src/poolhouse/train/recipes/classify_text.py:build_classifier",
+      "path": "src/poolhouse/train/recipes/classify_text.py",
+      "symbol": "build_classifier",
+      "start_line": 33,
+      "end_line": 103,
+      "file_sha256": "28ce892248ce39bfb2db17a011f33900121781dfc823b8931ae0d1d0569435df",
+      "site_sha256": "1f8e258cb3615512db23d78b5e4c48f09281312b0b029b7d77142031cd0ada29"
+    },
+    {
+      "id": "src/poolhouse/train/recipes/built.py:Built",
+      "path": "src/poolhouse/train/recipes/built.py",
+      "symbol": "Built",
+      "start_line": 27,
+      "end_line": 44,
+      "file_sha256": "2d85cc0baf961de49d7bddf9f3d490709f4bbbd077a1bc91431d406f2764c889",
+      "site_sha256": "fa05438beb778a52d53636735912271fcdba8a40e47c56e106d62cb2c696644d"
+    },
+    {
+      "id": "src/poolhouse/train/recipes/built.py:Phase",
+      "path": "src/poolhouse/train/recipes/built.py",
+      "symbol": "Phase",
+      "start_line": 16,
+      "end_line": 23,
+      "file_sha256": "2d85cc0baf961de49d7bddf9f3d490709f4bbbd077a1bc91431d406f2764c889",
+      "site_sha256": "5a22a6ef72cafb305743a99bfc813e72a91aed6fe58087d0dc0ce58a5df52a00"
+    },
+    {
+      "id": "src/poolhouse/train/recipes/tool_calls_mlx.py:Plan",
+      "path": "src/poolhouse/train/recipes/tool_calls_mlx.py",
+      "symbol": "Plan",
+      "start_line": 166,
+      "end_line": 184,
+      "file_sha256": "fd8539fc12e2e6fa5e4b6353b6da01fa9f889b88bd4055e81913b751373053ae",
+      "site_sha256": "8dc23c0394be7e4ff4a74411170ac1e1c488d284c0a8988db54b8e92417043c6"
+    },
+    {
+      "id": "src/poolhouse/train/recipes/tool_calls_mlx.py:finish",
+      "path": "src/poolhouse/train/recipes/tool_calls_mlx.py",
+      "symbol": "finish",
+      "start_line": 207,
+      "end_line": 228,
+      "file_sha256": "fd8539fc12e2e6fa5e4b6353b6da01fa9f889b88bd4055e81913b751373053ae",
+      "site_sha256": "09af98712d7bd0be3f224b5b403089f5bd146675b3d5c414b0049def6ea7e35d"
+    },
+    {
+      "id": "src/poolhouse/train/lora.py:Fit",
+      "path": "src/poolhouse/train/lora.py",
+      "symbol": "Fit",
+      "start_line": 302,
+      "end_line": 380,
+      "file_sha256": "d301565dcbbbd22fcb1a8178c75fa3f9ae166a6392b1e448829e1b54f164d774",
+      "site_sha256": "e19d21cc9945b1f458e2032552ddaa2896e8f0980f5616117424f2db8fcb50ee"
+    },
+    {
+      "id": "src/poolhouse/train/lora.py:Lora",
+      "path": "src/poolhouse/train/lora.py",
+      "symbol": "Lora",
+      "start_line": 106,
+      "end_line": 130,
+      "file_sha256": "d301565dcbbbd22fcb1a8178c75fa3f9ae166a6392b1e448829e1b54f164d774",
+      "site_sha256": "32be24195947c59807a049cdd328df6295d266becd9bafe4c68d3f79cc431e5a"
+    },
+    {
+      "id": "src/poolhouse/train/tools/evaluate.py:score",
+      "path": "src/poolhouse/train/tools/evaluate.py",
+      "symbol": "score",
+      "start_line": 48,
+      "end_line": 67,
+      "file_sha256": "7a61c33c08613629e41001440e4b48c78ab935b2ab7b1c9e4fe4a521f11dfec5",
+      "site_sha256": "4c142c47fd1cd65c81fc14919605692d429ca09800f60d31a9af33c085226804"
+    },
+    {
+      "id": "src/poolhouse/train/tools/evaluate.py:_one",
+      "path": "src/poolhouse/train/tools/evaluate.py",
+      "symbol": "_one",
+      "start_line": 29,
+      "end_line": 45,
+      "file_sha256": "7a61c33c08613629e41001440e4b48c78ab935b2ab7b1c9e4fe4a521f11dfec5",
+      "site_sha256": "64756fd1f2b261bef6cfdbc84141a06755e7d168560b6af8daf437b407340c51"
+    },
+    {
+      "id": "src/poolhouse/decide/metrics.py:Metrics",
+      "path": "src/poolhouse/decide/metrics.py",
+      "symbol": "Metrics",
+      "start_line": 16,
+      "end_line": 38,
+      "file_sha256": "cc933addf818829846613f8fe4de6554a187550be62b8cb156a957ec5cf7f6d9",
+      "site_sha256": "a3755fd0750e1a0b5088c802b4236a75070017de5c5336b58376fa8ec7e44885"
+    },
+    {
+      "id": "src/poolhouse/decide/metrics.py:of_rows",
+      "path": "src/poolhouse/decide/metrics.py",
+      "symbol": "of_rows",
+      "start_line": 41,
+      "end_line": 52,
+      "file_sha256": "cc933addf818829846613f8fe4de6554a187550be62b8cb156a957ec5cf7f6d9",
+      "site_sha256": "8542f2ad7638925408c3408380dfc3e186918f087f13ece7c6b06e22fa428b30"
+    },
+    {
+      "id": "src/poolhouse/decide/eval.py:brier",
+      "path": "src/poolhouse/decide/eval.py",
+      "symbol": "brier",
+      "start_line": 25,
+      "end_line": 30,
+      "file_sha256": "6ef40bbb7e1c2a953d892d330da3e5e1d8733987ff35a6a2c59a5635fb5c4cb3",
+      "site_sha256": "f8498d5c1be1577a5e263a18b753a50c7e012a42f84bee54c1513e964a34afb7"
+    },
+    {
+      "id": "src/poolhouse/gym/training.py:train",
+      "path": "src/poolhouse/gym/training.py",
+      "symbol": "train",
+      "start_line": 56,
+      "end_line": 88,
+      "file_sha256": "f2bb4a706d6cc7db3e3c486d105c7c54e2c1918666c480ebb9fad52a5355d132",
+      "site_sha256": "dec971b86dac9777bd2a27550f95862251ef72239c7e02135a8bf8b0fdd4dc37"
+    },
+    {
+      "id": "src/poolhouse/gym/training.py:evaluate",
+      "path": "src/poolhouse/gym/training.py",
+      "symbol": "evaluate",
+      "start_line": 91,
+      "end_line": 116,
+      "file_sha256": "f2bb4a706d6cc7db3e3c486d105c7c54e2c1918666c480ebb9fad52a5355d132",
+      "site_sha256": "98979a6f3e1eb1e4adacbb2ce937cbccc8b52acc07ef5076f82b80e7b6303a05"
+    },
+    {
+      "id": "src/poolhouse/fleet/studio_routes.py:_runs",
+      "path": "src/poolhouse/fleet/studio_routes.py",
+      "symbol": "_runs",
+      "start_line": 141,
+      "end_line": 195,
+      "file_sha256": "d021e4dd3c2b3723caa94e071a867a1a2a43b413603de84ae3e775fe57ab88a3",
+      "site_sha256": "a0a2f6dc9f5bb602a1d0281997a47d77735761bfde107ad48794b876a282ea35"
+    },
+    {
+      "id": "src/poolhouse/fleet/studio_routes.py:_artifact_origin",
+      "path": "src/poolhouse/fleet/studio_routes.py",
+      "symbol": "_artifact_origin",
+      "start_line": 210,
+      "end_line": 230,
+      "file_sha256": "d021e4dd3c2b3723caa94e071a867a1a2a43b413603de84ae3e775fe57ab88a3",
+      "site_sha256": "581e728184083ed26db332676e20606b28838f8fd33ba2ad0cb233a522234b7c"
+    },
+    {
+      "id": "src/poolhouse/fleet/workspace_routes.py:_job_detail",
+      "path": "src/poolhouse/fleet/workspace_routes.py",
+      "symbol": "_job_detail",
+      "start_line": 169,
+      "end_line": 189,
+      "file_sha256": "abe6084619b1da6eaad94161be9a608429b09deec1107cded7c26fadc742d396",
+      "site_sha256": "3e3c074fc4334b03c0cec8f1a10e023d9f57e0aa660a847439c534f2235dc400"
+    },
+    {
+      "id": "src/poolhouse/studio/engine.py:WorkflowEngine",
+      "path": "src/poolhouse/studio/engine.py",
+      "symbol": "WorkflowEngine",
+      "start_line": 83,
+      "end_line": 560,
+      "file_sha256": "f8fb0cdf4e64dc61ddbf92cb3077d5e09d0de3190477c4b58c7e1bfa28bd70bf",
+      "site_sha256": "a089a43ed9ce8ce30e5b1d921fe97672a591c765177c183330e9605fef78ba94"
+    },
+    {
+      "id": "src/poolhouse/studio/catalog.py",
+      "path": "src/poolhouse/studio/catalog.py",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 175,
+      "file_sha256": "e716bd3d7c2035a36f0cf99e545b537a78886241576e877baa839d91f881dc51",
+      "site_sha256": "e716bd3d7c2035a36f0cf99e545b537a78886241576e877baa839d91f881dc51"
+    },
+    {
+      "id": "src/poolhouse/train/recipes/text_lm.py",
+      "path": "src/poolhouse/train/recipes/text_lm.py",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 91,
+      "file_sha256": "e8aab59fe68200852d759564d1d2e546882892c41e457866e9e1d8fb99f3134d",
+      "site_sha256": "e8aab59fe68200852d759564d1d2e546882892c41e457866e9e1d8fb99f3134d"
+    },
+    {
+      "id": "src/poolhouse/train/recipes/tool_calls.py",
+      "path": "src/poolhouse/train/recipes/tool_calls.py",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 201,
+      "file_sha256": "7b7bd5b89742591cbceb61d28f1d359bf2d1882c376ce82abfc4797e6e41fb4c",
+      "site_sha256": "7b7bd5b89742591cbceb61d28f1d359bf2d1882c376ce82abfc4797e6e41fb4c"
+    },
+    {
+      "id": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "path": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 341,
+      "file_sha256": "fcc54c63e9252dd85e40fea2d88249a5eea9cde3ee10875f4e768660f87e1f93",
+      "site_sha256": "fcc54c63e9252dd85e40fea2d88249a5eea9cde3ee10875f4e768660f87e1f93"
+    },
+    {
+      "id": "contracts/node/domains/studio_graph.toml",
+      "path": "contracts/node/domains/studio_graph.toml",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 2635,
+      "file_sha256": "32ef9ef71e44992714ffa70a22ced142a1bda19b9b61211c730cdc776f101c35",
+      "site_sha256": "32ef9ef71e44992714ffa70a22ced142a1bda19b9b61211c730cdc776f101c35"
+    },
+    {
+      "id": "contracts/node/domains/studio_control.toml",
+      "path": "contracts/node/domains/studio_control.toml",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 956,
+      "file_sha256": "71b354ffd5e2755ae62e685690985950c2cbfa17636670089b660b67d5320628",
+      "site_sha256": "71b354ffd5e2755ae62e685690985950c2cbfa17636670089b660b67d5320628"
+    },
+    {
+      "id": "contracts/node/domains/datasets.toml",
+      "path": "contracts/node/domains/datasets.toml",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 1001,
+      "file_sha256": "b5956ad253fec1b52df2dc5815c925d94a18af81c9c018c8551f2d50b9a6651a",
+      "site_sha256": "b5956ad253fec1b52df2dc5815c925d94a18af81c9c018c8551f2d50b9a6651a"
+    },
+    {
+      "id": "contracts/node/domains/resource_leases.toml",
+      "path": "contracts/node/domains/resource_leases.toml",
+      "symbol": null,
+      "start_line": 1,
+      "end_line": 642,
+      "file_sha256": "5ecb73f21aaba95cb0f8a4c44c5f2ea48a725701f7ef944eb42b1f9713df4a57",
+      "site_sha256": "5ecb73f21aaba95cb0f8a4c44c5f2ea48a725701f7ef944eb42b1f9713df4a57"
+    }
+  ],
+  "operation_mapping": [
+    {
+      "operation": "studio.values.list",
+      "request": "StudioValueListRequest",
+      "response": "StudioValueListEvent",
+      "source_refs": [
+        "src/poolhouse/fleet/studio_routes.py:_runs",
+        "src/poolhouse/fleet/workspace_routes.py:_job_detail",
+        "src/poolhouse/fleet/studio_routes.py:_artifact_origin"
+      ],
+      "caller_refs": [
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 135,
+          "text": "metricChart(value) {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 218,
+          "text": "result.artifacts,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 229,
+          "text": "\"/logs?node=\" +"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 233,
+          "text": "panel.textContent = result.log || \"No worker log for this node.\";"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 234,
+          "text": "if (result.metrics?.length)"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 236,
+          "text": "\"\\n\\nMetrics\\n\" + JSON.stringify(result.metrics, null, 2);"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 313,
+          "text": "if (node.outputs) {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 314,
+          "text": "const chart = this.metricChart(node.outputs.metrics);"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 316,
+          "text": "box.append(E(\"pre\", {}, JSON.stringify(node.outputs, null, 2)));"
+        }
+      ],
+      "status": "Typed public read counterpart for maintained run-detail/artifacts/logs/metrics consumers; actual callers not yet migrated."
+    },
+    {
+      "operation": "studio.values.read",
+      "request": "StudioValueReadRequest",
+      "response": "StudioValueOutputView",
+      "source_refs": [
+        "src/poolhouse/fleet/studio_routes.py:_runs",
+        "src/poolhouse/fleet/workspace_routes.py:_job_detail",
+        "src/poolhouse/fleet/studio_routes.py:_artifact_origin"
+      ],
+      "caller_refs": [
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 135,
+          "text": "metricChart(value) {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 218,
+          "text": "result.artifacts,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 229,
+          "text": "\"/logs?node=\" +"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 233,
+          "text": "panel.textContent = result.log || \"No worker log for this node.\";"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 234,
+          "text": "if (result.metrics?.length)"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 236,
+          "text": "\"\\n\\nMetrics\\n\" + JSON.stringify(result.metrics, null, 2);"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 313,
+          "text": "if (node.outputs) {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 314,
+          "text": "const chart = this.metricChart(node.outputs.metrics);"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 316,
+          "text": "box.append(E(\"pre\", {}, JSON.stringify(node.outputs, null, 2)));"
+        }
+      ],
+      "status": "Typed public read counterpart for maintained run-detail/artifacts/logs/metrics consumers; actual callers not yet migrated."
+    },
+    {
+      "operation": "studio.values.text.read",
+      "request": "StudioValueTextReadRequest",
+      "response": "StudioValueTextChunk",
+      "source_refs": [
+        "src/poolhouse/fleet/studio_routes.py:_runs",
+        "src/poolhouse/fleet/workspace_routes.py:_job_detail",
+        "src/poolhouse/fleet/studio_routes.py:_artifact_origin"
+      ],
+      "caller_refs": [
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 135,
+          "text": "metricChart(value) {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 218,
+          "text": "result.artifacts,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 229,
+          "text": "\"/logs?node=\" +"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 233,
+          "text": "panel.textContent = result.log || \"No worker log for this node.\";"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 234,
+          "text": "if (result.metrics?.length)"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 236,
+          "text": "\"\\n\\nMetrics\\n\" + JSON.stringify(result.metrics, null, 2);"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 313,
+          "text": "if (node.outputs) {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 314,
+          "text": "const chart = this.metricChart(node.outputs.metrics);"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 316,
+          "text": "box.append(E(\"pre\", {}, JSON.stringify(node.outputs, null, 2)));"
+        }
+      ],
+      "status": "Typed public read counterpart for maintained run-detail/artifacts/logs/metrics consumers; actual callers not yet migrated."
+    },
+    {
+      "operation": "studio.values.literal.read",
+      "request": "StudioValueLiteralReadRequest",
+      "response": "StudioValueLiteralEvent",
+      "source_refs": [
+        "src/poolhouse/fleet/studio_routes.py:_runs",
+        "src/poolhouse/fleet/workspace_routes.py:_job_detail",
+        "src/poolhouse/fleet/studio_routes.py:_artifact_origin"
+      ],
+      "caller_refs": [
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 135,
+          "text": "metricChart(value) {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 218,
+          "text": "result.artifacts,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 229,
+          "text": "\"/logs?node=\" +"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 233,
+          "text": "panel.textContent = result.log || \"No worker log for this node.\";"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 234,
+          "text": "if (result.metrics?.length)"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 236,
+          "text": "\"\\n\\nMetrics\\n\" + JSON.stringify(result.metrics, null, 2);"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 313,
+          "text": "if (node.outputs) {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 314,
+          "text": "const chart = this.metricChart(node.outputs.metrics);"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 316,
+          "text": "box.append(E(\"pre\", {}, JSON.stringify(node.outputs, null, 2)));"
+        }
+      ],
+      "status": "Typed public read counterpart for maintained run-detail/artifacts/logs/metrics consumers; actual callers not yet migrated."
+    },
+    {
+      "operation": "studio.values.rows.read",
+      "request": "StudioValueRowsReadRequest",
+      "response": "StudioValueRowsEvent",
+      "source_refs": [
+        "src/poolhouse/fleet/studio_routes.py:_runs",
+        "src/poolhouse/fleet/workspace_routes.py:_job_detail",
+        "src/poolhouse/fleet/studio_routes.py:_artifact_origin"
+      ],
+      "caller_refs": [
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 135,
+          "text": "metricChart(value) {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 218,
+          "text": "result.artifacts,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 229,
+          "text": "\"/logs?node=\" +"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 233,
+          "text": "panel.textContent = result.log || \"No worker log for this node.\";"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 234,
+          "text": "if (result.metrics?.length)"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 236,
+          "text": "\"\\n\\nMetrics\\n\" + JSON.stringify(result.metrics, null, 2);"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 313,
+          "text": "if (node.outputs) {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 314,
+          "text": "const chart = this.metricChart(node.outputs.metrics);"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 316,
+          "text": "box.append(E(\"pre\", {}, JSON.stringify(node.outputs, null, 2)));"
+        }
+      ],
+      "status": "Typed public read counterpart for maintained run-detail/artifacts/logs/metrics consumers; actual callers not yet migrated."
+    },
+    {
+      "operation": "studio.metrics.read",
+      "request": "StudioValueMetricsReadRequest",
+      "response": "StudioValueHistoryReadEvent",
+      "source_refs": [
+        "src/poolhouse/fleet/studio_routes.py:_runs",
+        "src/poolhouse/fleet/workspace_routes.py:_job_detail",
+        "src/poolhouse/fleet/studio_routes.py:_artifact_origin"
+      ],
+      "caller_refs": [
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 135,
+          "text": "metricChart(value) {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 218,
+          "text": "result.artifacts,"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 229,
+          "text": "\"/logs?node=\" +"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 233,
+          "text": "panel.textContent = result.log || \"No worker log for this node.\";"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 234,
+          "text": "if (result.metrics?.length)"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 236,
+          "text": "\"\\n\\nMetrics\\n\" + JSON.stringify(result.metrics, null, 2);"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 313,
+          "text": "if (node.outputs) {"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 314,
+          "text": "const chart = this.metricChart(node.outputs.metrics);"
+        },
+        {
+          "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+          "line": 316,
+          "text": "box.append(E(\"pre\", {}, JSON.stringify(node.outputs, null, 2)));"
+        }
+      ],
+      "status": "Typed public read counterpart for maintained run-detail/artifacts/logs/metrics consumers; actual callers not yet migrated."
+    }
+  ],
+  "operation_output_mapping": [
+    {
+      "operation_tag": "stream_record",
+      "result": "StudioValueStreamRecordResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:execute"
+      ],
+      "ports": [
+        {
+          "name": "record",
+          "type": "StudioValueLiteralRef"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "record_map",
+      "result": "StudioValueRecordMapResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:execute"
+      ],
+      "ports": [
+        {
+          "name": "record",
+          "type": "StudioValueLiteralRef"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "record_if",
+      "result": "StudioValueRecordIfResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:execute"
+      ],
+      "ports": [
+        {
+          "name": "record",
+          "type": "StudioValueLiteralRef"
+        },
+        {
+          "name": "true_gate",
+          "type": "StudioValueGate"
+        },
+        {
+          "name": "false_gate",
+          "type": "StudioValueGate"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "dataset",
+      "result": "StudioValueDatasetResult",
+      "source_refs": [
+        "src/poolhouse/studio/adapters.py:immediate"
+      ],
+      "ports": [
+        {
+          "name": "dataset",
+          "type": "DatasetRef"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "model",
+      "result": "StudioValueModelResult",
+      "source_refs": [
+        "src/poolhouse/studio/adapters.py:immediate"
+      ],
+      "ports": [
+        {
+          "name": "model",
+          "type": "ModelRef"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "data_hf_preview",
+      "result": "StudioValueDataHfPreviewResult",
+      "source_refs": [
+        "src/poolhouse/studio/adapters.py:immediate"
+      ],
+      "ports": [
+        {
+          "name": "dataset",
+          "type": "DatasetRef"
+        },
+        {
+          "name": "artifact",
+          "type": "StudioControlArtifactRef"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "data_validate",
+      "result": "StudioValueDataValidateResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:execute"
+      ],
+      "ports": [
+        {
+          "name": "dataset",
+          "type": "DatasetRef"
+        },
+        {
+          "name": "report",
+          "type": "StudioValueValidationReport"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "data_split",
+      "result": "StudioValueDataSplitResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:execute"
+      ],
+      "ports": [
+        {
+          "name": "train",
+          "type": "DatasetRef"
+        },
+        {
+          "name": "test",
+          "type": "DatasetRef"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "prompt",
+      "result": "StudioValuePromptResult",
+      "source_refs": [
+        "src/poolhouse/studio/adapters.py:immediate"
+      ],
+      "ports": [
+        {
+          "name": "prompt",
+          "type": "StudioValueTextRef"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "generate",
+      "result": "StudioValueGenerateResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:_generate"
+      ],
+      "ports": [
+        {
+          "name": "text",
+          "type": "StudioValueOptionalText"
+        },
+        {
+          "name": "response",
+          "type": "StudioValueGenerationResponse"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "generate_structured",
+      "result": "StudioValueGenerateStructuredResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:_generate"
+      ],
+      "ports": [
+        {
+          "name": "text",
+          "type": "StudioValueOptionalText"
+        },
+        {
+          "name": "response",
+          "type": "StudioValueLiteralRef"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "generate_record",
+      "result": "StudioValueGenerateRecordResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:_generate"
+      ],
+      "ports": [
+        {
+          "name": "text",
+          "type": "StudioValueOptionalText"
+        },
+        {
+          "name": "response",
+          "type": "StudioValueGenerationResponse"
+        },
+        {
+          "name": "report",
+          "type": "StudioValueGenerationSourceReport"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "evaluate",
+      "result": "StudioValueEvaluateResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:execute"
+      ],
+      "ports": [
+        {
+          "name": "metrics",
+          "type": "StudioValueEvaluateMetrics"
+        },
+        {
+          "name": "report",
+          "type": "StudioValueEvaluateMetrics"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "compare",
+      "result": "StudioValueCompareResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:execute"
+      ],
+      "ports": [
+        {
+          "name": "metrics",
+          "type": "StudioValueRowsRef"
+        },
+        {
+          "name": "report",
+          "type": "StudioValueCompareReport"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "chart",
+      "result": "StudioValueChartResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:execute"
+      ],
+      "ports": [
+        {
+          "name": "report",
+          "type": "StudioValueChartReport"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "export",
+      "result": "StudioValueExportResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:execute"
+      ],
+      "ports": [
+        {
+          "name": "artifact",
+          "type": "StudioControlArtifactRef"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "report",
+      "result": "StudioValueReportResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:execute"
+      ],
+      "ports": [
+        {
+          "name": "artifact",
+          "type": "StudioControlArtifactRef"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "tools_call",
+      "result": "StudioValueToolsCallResult",
+      "source_refs": [
+        "src/poolhouse/studio/adapters.py:execute_authorized"
+      ],
+      "ports": [
+        {
+          "name": "result",
+          "type": "StudioValueLiteralRef"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "data_synthesize",
+      "result": "StudioValueDataSynthesizeResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:execute"
+      ],
+      "ports": [
+        {
+          "name": "dataset",
+          "type": "DatasetRef"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "data_harvest",
+      "result": "StudioValueDataHarvestResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:execute"
+      ],
+      "ports": [
+        {
+          "name": "dataset",
+          "type": "DatasetRef"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "gym_recordings",
+      "result": "StudioValueGymRecordingsResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:_gym"
+      ],
+      "ports": [
+        {
+          "name": "dataset",
+          "type": "DatasetRef"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "gym_train",
+      "result": "StudioValueGymTrainResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:_gym"
+      ],
+      "ports": [
+        {
+          "name": "model",
+          "type": "ModelRef"
+        },
+        {
+          "name": "metrics",
+          "type": "StudioValueGymTrainMetrics"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "gym_evaluate",
+      "result": "StudioValueGymEvaluateResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:_gym"
+      ],
+      "ports": [
+        {
+          "name": "metrics",
+          "type": "StudioValueGymEvalMetrics"
+        },
+        {
+          "name": "report",
+          "type": "StudioValueGymEvalMetrics"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "train_decision",
+      "result": "StudioValueTrainDecisionResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:_decision"
+      ],
+      "ports": [
+        {
+          "name": "model",
+          "type": "ModelRef"
+        },
+        {
+          "name": "metrics",
+          "type": "StudioValueDecisionTrainMetrics"
+        },
+        {
+          "name": "checkpoint",
+          "type": "StudioControlArtifactRef"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "evaluate_decision",
+      "result": "StudioValueEvaluateDecisionResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:_decision"
+      ],
+      "ports": [
+        {
+          "name": "metrics",
+          "type": "StudioValueDecisionEvalMetrics"
+        },
+        {
+          "name": "report",
+          "type": "StudioValueDecisionEvalMetrics"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "decision_predict",
+      "result": "StudioValueDecisionPredictResult",
+      "source_refs": [
+        "src/poolhouse/studio/decisions.py:assess"
+      ],
+      "ports": [
+        {
+          "name": "decision",
+          "type": "StudioValueDecision"
+        },
+        {
+          "name": "record",
+          "type": "StudioValueLiteralRef"
+        },
+        {
+          "name": "report",
+          "type": "StudioValueDecision"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "decision_route",
+      "result": "StudioValueDecisionRouteResult",
+      "source_refs": [
+        "src/poolhouse/studio/decisions.py:route"
+      ],
+      "ports": [
+        {
+          "name": "allow",
+          "type": "StudioValueGate"
+        },
+        {
+          "name": "review",
+          "type": "StudioValueGate"
+        },
+        {
+          "name": "block",
+          "type": "StudioValueGate"
+        },
+        {
+          "name": "report",
+          "type": "StudioValueRouteReport"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "guard_injection",
+      "result": "StudioValueGuardInjectionResult",
+      "source_refs": [
+        "src/poolhouse/studio/decisions.py:assess"
+      ],
+      "ports": [
+        {
+          "name": "signal",
+          "type": "StudioValueInjectionSignal"
+        },
+        {
+          "name": "record",
+          "type": "StudioValueLiteralRef"
+        },
+        {
+          "name": "report",
+          "type": "StudioValueInjectionSignal"
+        },
+        {
+          "name": "allow",
+          "type": "StudioValueGate"
+        },
+        {
+          "name": "review",
+          "type": "StudioValueGate"
+        },
+        {
+          "name": "block",
+          "type": "StudioValueGate"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "train_classify_text",
+      "result": "StudioValueTrainClassifyTextResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:_train"
+      ],
+      "ports": [
+        {
+          "name": "metrics",
+          "type": "StudioValueTrainingMetrics"
+        },
+        {
+          "name": "model",
+          "type": "StudioValueOptionalModel"
+        },
+        {
+          "name": "checkpoint",
+          "type": "StudioValueOptionalArtifact"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "train_text_lm",
+      "result": "StudioValueTrainTextLmResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:_train"
+      ],
+      "ports": [
+        {
+          "name": "metrics",
+          "type": "StudioValueTrainingMetrics"
+        },
+        {
+          "name": "model",
+          "type": "StudioValueOptionalModel"
+        },
+        {
+          "name": "checkpoint",
+          "type": "StudioValueOptionalArtifact"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    },
+    {
+      "operation_tag": "train_tool_calls",
+      "result": "StudioValueTrainToolCallsResult",
+      "source_refs": [
+        "src/poolhouse/studio/worker.py:_train"
+      ],
+      "ports": [
+        {
+          "name": "metrics",
+          "type": "StudioValueTrainingMetrics"
+        },
+        {
+          "name": "model",
+          "type": "StudioValueOptionalModel"
+        },
+        {
+          "name": "checkpoint",
+          "type": "StudioValueOptionalArtifact"
+        }
+      ],
+      "status": "Closed public data projection; source paths mapped to actual node-held authorized immutable managed resources, never exposed as path authority."
+    }
+  ],
+  "metric_field_mapping": [
+    {
+      "type": "StudioValueHoldoutMetrics",
+      "source_ref": "src/poolhouse/studio/worker.py:_checkpoint_evaluate",
+      "fields": [
+        {
+          "name": "loss",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "examples",
+          "type": "U64"
+        },
+        {
+          "name": "batches",
+          "type": "U64"
+        },
+        {
+          "name": "accuracy",
+          "type": "StudioValueOptionalF64"
+        }
+      ],
+      "units": {
+        "loss": "loss",
+        "examples": "count",
+        "batches": "count",
+        "accuracy": "dimensionless"
+      },
+      "semantics": "accuracy absent except classifier; loss source arithmetic mean, not rescaled."
+    },
+    {
+      "type": "StudioValueToolMetrics",
+      "source_ref": "src/poolhouse/train/tools/evaluate.py:score",
+      "fields": [
+        {
+          "name": "n",
+          "type": "U64"
+        },
+        {
+          "name": "tool_name_accuracy",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "required_arg_fill",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "valid_json_rate",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "arguments_match",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "end_to_end",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "per_tool",
+          "type": "StudioValueRowsRef"
+        }
+      ],
+      "units": {
+        "n": "count",
+        "tool_name_accuracy": "dimensionless",
+        "required_arg_fill": "dimensionless",
+        "valid_json_rate": "dimensionless",
+        "arguments_match": "dimensionless",
+        "end_to_end": "dimensionless"
+      },
+      "semantics": "source rounds mean4 decimal places; per_tool sorted source labels. Preserve resulting binary64; no codec rounding."
+    },
+    {
+      "type": "StudioValuePerToolMetric",
+      "source_ref": "src/poolhouse/train/tools/evaluate.py:score",
+      "fields": [
+        {
+          "name": "tool",
+          "type": "StudioValueTextRef"
+        },
+        {
+          "name": "n",
+          "type": "U64"
+        },
+        {
+          "name": "tool_name_accuracy",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "required_arg_fill",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "valid_json_rate",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "arguments_match",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "end_to_end",
+          "type": "FiniteF64"
+        }
+      ],
+      "units": {
+        "n": "count",
+        "tool_name_accuracy": "dimensionless",
+        "required_arg_fill": "dimensionless",
+        "valid_json_rate": "dimensionless",
+        "arguments_match": "dimensionless",
+        "end_to_end": "dimensionless"
+      },
+      "semantics": "tool name is source data, no tool grant; exact source sorted order."
+    },
+    {
+      "type": "StudioValueDecisionEvalMetrics",
+      "source_ref": "src/poolhouse/studio/worker.py:_decision",
+      "fields": [
+        {
+          "name": "accuracy",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "examples",
+          "type": "U64"
+        }
+      ],
+      "units": {
+        "accuracy": "dimensionless",
+        "examples": "count"
+      },
+      "semantics": "exact correct/total over actual source cases."
+    },
+    {
+      "type": "StudioValueDecisionTrainMetrics",
+      "source_ref": "src/poolhouse/decide/metrics.py:of_rows",
+      "fields": [
+        {
+          "name": "n",
+          "type": "U64"
+        },
+        {
+          "name": "accuracy",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "brier",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "ece",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "confidence",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "floor",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "abstain_rate",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "answered_accuracy",
+          "type": "StudioValueObservedNumber"
+        }
+      ],
+      "units": {
+        "n": "count",
+        "accuracy": "dimensionless",
+        "brier": "sum-over-options squared error [0,2] per decide/eval.brier",
+        "ece": "dimensionless",
+        "confidence": "dimensionless",
+        "floor": "dimensionless",
+        "abstain_rate": "dimensionless",
+        "answered_accuracy": "dimensionless or explicit unobserved"
+      },
+      "semantics": "NaN answered_accuracy when source kept set empty; causal no_answered_cases only with verified actual kept-count/source context. NaN alone means source_nan_cause_unproven, never fabricated cause."
+    },
+    {
+      "type": "StudioValueTrainingMetrics",
+      "source_ref": "src/poolhouse/train/run.py:run",
+      "fields": [
+        {
+          "name": "recipe",
+          "type": "StudioValueRecipe"
+        },
+        {
+          "name": "steps",
+          "type": "U64"
+        },
+        {
+          "name": "final_loss",
+          "type": "StudioValueObservedNumber"
+        },
+        {
+          "name": "best_metric",
+          "type": "StudioValueOptionalF64"
+        },
+        {
+          "name": "checkpoint",
+          "type": "StudioValueOptionalArtifact"
+        },
+        {
+          "name": "parameters",
+          "type": "U64"
+        },
+        {
+          "name": "seconds",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "dry_run",
+          "type": "Boolean"
+        },
+        {
+          "name": "stop_reason",
+          "type": "StudioValueTrainStop"
+        },
+        {
+          "name": "phases",
+          "type": "StudioValuePhases"
+        },
+        {
+          "name": "exported",
+          "type": "StudioValueOptionalArtifact"
+        },
+        {
+          "name": "lora",
+          "type": "StudioValueOptionalLora"
+        },
+        {
+          "name": "manifest",
+          "type": "StudioValueOptionalArtifact"
+        }
+      ],
+      "units": {
+        "steps": "count",
+        "final_loss": "loss or explicit unobserved",
+        "best_metric": "nullable loss",
+        "parameters": "count",
+        "seconds": "seconds"
+      },
+      "semantics": "seconds source rounded1 decimal. Initial TrainReport.final_loss NaN; no_finite_loss_observed requires exact source trace/initial-loss evidence, not NaN alone. best_metric source null distinct from number. stop_reason already complete maps canonical already_complete; no invented new source label."
+    },
+    {
+      "type": "StudioValueTorchLora",
+      "source_ref": "src/poolhouse/train/run.py:_finish_lora",
+      "fields": [
+        {
+          "name": "settings",
+          "type": "StudioValueLoraSettings"
+        },
+        {
+          "name": "trainable_parameters",
+          "type": "U64"
+        },
+        {
+          "name": "seconds_per_step",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "plan",
+          "type": "StudioValueTorchLoraPlan"
+        },
+        {
+          "name": "adapter",
+          "type": "StudioValueOptionalArtifact"
+        }
+      ],
+      "units": {
+        "trainable_parameters": "count",
+        "seconds_per_step": "seconds/step"
+      },
+      "semantics": "Actual producer field settings, not private historical base field; measured timing rounded3."
+    },
+    {
+      "type": "StudioValueMlxLora",
+      "source_ref": "src/poolhouse/train/recipes/tool_calls_mlx.py:finish",
+      "fields": [
+        {
+          "name": "settings",
+          "type": "StudioValueLoraSettings"
+        },
+        {
+          "name": "framework",
+          "type": "StudioValueFramework"
+        },
+        {
+          "name": "trainable_parameters",
+          "type": "U64"
+        },
+        {
+          "name": "seconds_per_step",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "plan",
+          "type": "StudioValueMlxLoraPlan"
+        },
+        {
+          "name": "adapter",
+          "type": "StudioValueOptionalArtifact"
+        }
+      ],
+      "units": {
+        "trainable_parameters": "count",
+        "seconds_per_step": "seconds/step"
+      },
+      "semantics": "framework fixedmlx, source settings, measured round3; no worker data proves measurement provenance."
+    },
+    {
+      "type": "StudioValueTorchLoraPlan",
+      "source_ref": "src/poolhouse/train/lora.py:Fit",
+      "fields": [
+        {
+          "name": "base",
+          "type": "ModelRef"
+        },
+        {
+          "name": "device",
+          "type": "StudioValueTextRef"
+        },
+        {
+          "name": "batch",
+          "type": "U64"
+        },
+        {
+          "name": "context",
+          "type": "U64"
+        },
+        {
+          "name": "steps",
+          "type": "U64"
+        },
+        {
+          "name": "examples",
+          "type": "U64"
+        },
+        {
+          "name": "params_b",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "active_b",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "trainable_m",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "measured",
+          "type": "Boolean"
+        },
+        {
+          "name": "lora",
+          "type": "StudioValueLoraSettings"
+        },
+        {
+          "name": "resident_gb",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "seconds_per_step",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "estimated_seconds",
+          "type": "FiniteF64"
+        }
+      ],
+      "units": {
+        "batch": "count",
+        "context": "token count",
+        "steps": "count",
+        "examples": "count",
+        "params_b": "1e9 parameters",
+        "active_b": "1e9 parameters",
+        "trainable_m": "1e6 parameters",
+        "resident_gb": "1e9 bytes",
+        "seconds_per_step": "seconds/step",
+        "estimated_seconds": "seconds"
+      },
+      "semantics": "as_dict source params/active round3,trainable_m round1,resident_gb round1,timings3/1. BASE_BYTES etc estimates not actual hardware admission. Preserve flags; no implied measured estimate."
+    },
+    {
+      "type": "StudioValueMlxLoraPlan",
+      "source_ref": "src/poolhouse/train/recipes/tool_calls_mlx.py:Plan",
+      "fields": [
+        {
+          "name": "base",
+          "type": "ModelRef"
+        },
+        {
+          "name": "device",
+          "type": "StudioValueTextRef"
+        },
+        {
+          "name": "batch",
+          "type": "U64"
+        },
+        {
+          "name": "context",
+          "type": "U64"
+        },
+        {
+          "name": "steps",
+          "type": "U64"
+        },
+        {
+          "name": "examples",
+          "type": "U64"
+        },
+        {
+          "name": "params_b",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "active_b",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "trainable_m",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "measured",
+          "type": "Boolean"
+        },
+        {
+          "name": "lora",
+          "type": "StudioValueLoraSettings"
+        },
+        {
+          "name": "cached_base_gb",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "seconds_per_step",
+          "type": "StudioValueOptionalF64"
+        },
+        {
+          "name": "estimated_seconds",
+          "type": "StudioValueOptionalF64"
+        },
+        {
+          "name": "total_memory_measured",
+          "type": "Boolean"
+        }
+      ],
+      "units": {
+        "batch": "count",
+        "context": "token count",
+        "steps": "count",
+        "examples": "count",
+        "params_b": "1e9 parameters",
+        "active_b": "1e9 parameters",
+        "trainable_m": "1e6 parameters",
+        "cached_base_gb": "1e9 bytes",
+        "seconds_per_step": "nullable seconds/step",
+        "estimated_seconds": "nullable seconds"
+      },
+      "semantics": "cached_base_gb filebytes/1e9 unrounded by overriding source; total_memory_measured fixedfalse. Unmeasured timing null; never substitute Torch resident estimate as actual total."
+    },
+    {
+      "type": "StudioValueLoraSettings",
+      "source_ref": "src/poolhouse/train/lora.py:Lora",
+      "fields": [
+        {
+          "name": "rank",
+          "type": "U64"
+        },
+        {
+          "name": "alpha",
+          "type": "U64"
+        },
+        {
+          "name": "dropout",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "targets",
+          "type": "StudioValueRowsRef"
+        }
+      ],
+      "units": {
+        "rank": "count",
+        "alpha": "dimensionless scale",
+        "dropout": "dimensionless"
+      },
+      "semantics": "ordered target names source settings; no module-selector/tool authority."
+    },
+    {
+      "type": "StudioValueGymTrainMetrics",
+      "source_ref": "src/poolhouse/gym/training.py:train",
+      "fields": [
+        {
+          "name": "version",
+          "type": "U32"
+        },
+        {
+          "name": "environment",
+          "type": "StudioValueEnvironment"
+        },
+        {
+          "name": "config",
+          "type": "StudioValueGymConfiguration"
+        },
+        {
+          "name": "seed",
+          "type": "StudioValueTextRef"
+        },
+        {
+          "name": "timesteps",
+          "type": "U64"
+        },
+        {
+          "name": "device",
+          "type": "StudioValueCpu"
+        },
+        {
+          "name": "versions",
+          "type": "StudioValuePackageVersions"
+        }
+      ],
+      "units": {
+        "version": "schema1",
+        "seed": "signedinteger seed",
+        "timesteps": "actual count"
+      },
+      "semantics": "Studio current config empty except car setdefault steering_magnitude .35; actual selected backend source config must match. device fixedcpu is runtime label, not node identity. versions exact gymnasium/stable-baselines3/torch."
+    },
+    {
+      "type": "StudioValueGymEpisode",
+      "source_ref": "src/poolhouse/gym/training.py:evaluate",
+      "fields": [
+        {
+          "name": "seed",
+          "type": "StudioValueTextRef"
+        },
+        {
+          "name": "reward",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "steps",
+          "type": "U64"
+        },
+        {
+          "name": "terminated",
+          "type": "Boolean"
+        },
+        {
+          "name": "truncated",
+          "type": "Boolean"
+        }
+      ],
+      "units": {
+        "seed": "signedinteger seed",
+        "reward": "environment-defined reward",
+        "steps": "count"
+      },
+      "semantics": "seed10000+index source; reward additive raw score, not normalized probability; terminal flags actual bool."
+    },
+    {
+      "type": "StudioValueGymEvalMetrics",
+      "source_ref": "src/poolhouse/gym/training.py:evaluate",
+      "fields": [
+        {
+          "name": "environment",
+          "type": "StudioValueEnvironment"
+        },
+        {
+          "name": "episodes",
+          "type": "StudioValueRowsRef"
+        },
+        {
+          "name": "mean_reward",
+          "type": "FiniteF64"
+        }
+      ],
+      "units": {
+        "mean_reward": "environment-defined reward"
+      },
+      "semantics": "source arithmetic mean over exact ordered episodes, no invented maxepisodes."
+    },
+    {
+      "type": "StudioValueValidationReport",
+      "source_ref": "src/poolhouse/studio/worker.py:execute",
+      "fields": [
+        {
+          "name": "examples",
+          "type": "U64"
+        },
+        {
+          "name": "valid",
+          "type": "Boolean"
+        }
+      ],
+      "units": {
+        "examples": "count"
+      },
+      "semantics": "valid fixedtrue on successful source validation, not proof of arbitrary artifact/resource authenticity."
+    },
+    {
+      "type": "StudioValueHistoryStep",
+      "source_ref": "src/poolhouse/train/trainer.py:fit",
+      "fields": [
+        {
+          "name": "position",
+          "type": "StudioValueHistoryPosition"
+        },
+        {
+          "name": "step",
+          "type": "U64"
+        },
+        {
+          "name": "loss",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "lr",
+          "type": "FiniteF64"
+        },
+        {
+          "name": "steps_per_s",
+          "type": "FiniteF64"
+        }
+      ],
+      "units": {
+        "step": "source step index",
+        "loss": "loss",
+        "lr": "learning rate",
+        "steps_per_s": "steps/second"
+      },
+      "semantics": "throughput already round3; exact reported F64bits, no repeated quantization."
+    },
+    {
+      "type": "StudioValueHistoryEval",
+      "source_ref": "src/poolhouse/train/trainer.py:fit",
+      "fields": [
+        {
+          "name": "position",
+          "type": "StudioValueHistoryPosition"
+        },
+        {
+          "name": "step",
+          "type": "U64"
+        },
+        {
+          "name": "loss",
+          "type": "StudioValueObservedNumber"
+        }
+      ],
+      "units": {
+        "step": "source step index",
+        "loss": "loss or unobserved"
+      },
+      "semantics": "Source eval_loss average may nonfinite; explicit observation failure, no syntheticfinitezero."
+    },
+    {
+      "type": "StudioValueHistoryFinish",
+      "source_ref": "src/poolhouse/train/trainer.py:fit",
+      "fields": [
+        {
+          "name": "position",
+          "type": "StudioValueHistoryPosition"
+        },
+        {
+          "name": "reason",
+          "type": "StudioValueHistoryFinishReason"
+        },
+        {
+          "name": "step",
+          "type": "U64"
+        },
+        {
+          "name": "loss",
+          "type": "StudioValueOptionalObservedNumber"
+        },
+        {
+          "name": "seconds",
+          "type": "StudioValueOptionalF64"
+        }
+      ],
+      "units": {
+        "step": "count",
+        "loss": "optional observed loss",
+        "seconds": "seconds"
+      },
+      "semantics": "already complete branch omits loss+seconds; regular finish seconds round2; diverged early branch onlyreason+step."
+    },
+    {
+      "type": "StudioValueHistoryPosition",
+      "source_ref": "src/poolhouse/train/metrics.py:MetricsLog",
+      "fields": [
+        {
+          "name": "history",
+          "type": "StudioValueHistoryRef"
+        },
+        {
+          "name": "source_ordinal",
+          "type": "U64"
+        },
+        {
+          "name": "segment",
+          "type": "StudioValueSegment"
+        },
+        {
+          "name": "elapsed_s",
+          "type": "FiniteF64"
+        }
+      ],
+      "units": {
+        "elapsed_s": "seconds since actual log-open monotonic origin"
+      },
+      "semantics": "round3 source. Separate append/reopen source segments need actual provenance; when unknown mark Segment.unproven, never invent continuous monotonic/wallclock sequence."
+    }
+  ],
+  "actual_callers": [
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 135,
+      "text": "metricChart(value) {"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 218,
+      "text": "result.artifacts,"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 229,
+      "text": "\"/logs?node=\" +"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 233,
+      "text": "panel.textContent = result.log || \"No worker log for this node.\";"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 234,
+      "text": "if (result.metrics?.length)"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 236,
+      "text": "\"\\n\\nMetrics\\n\" + JSON.stringify(result.metrics, null, 2);"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 313,
+      "text": "if (node.outputs) {"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 314,
+      "text": "const chart = this.metricChart(node.outputs.metrics);"
+    },
+    {
+      "source_ref": "src/poolhouse/fleet/web/components/studio-runs.html",
+      "line": 316,
+      "text": "box.append(E(\"pre\", {}, JSON.stringify(node.outputs, null, 2)));"
+    }
+  ],
+  "provenance": {
+    "definition": "Snapshot.consumer is explicit StudioControlRunNodeRef (run + graph node + execution_generation), binding current consumer execution incarnation alongside schema/catalog/runtime source digest, manifest digest and revision. Origin.producer is separately explicit StudioControlRunNodeRef for ORIGINAL producer execution_generation; reused consumer never replaces original producer attempt. Every Text/Literal/Rows ref binds same snapshot plus exact original execution/port/manifest/content generation lineage. Port must belong to producer graph node; no equal run/node/digest without exact execution incarnation. Only Node-held all-writer-frozen actual committed bytes plus current read entitlement can mint managed refs. Producer path/worker result/cancel acknowledgement or JSON digest alone never sufficient.",
+    "current_authority": "Every item/range/error current-authenticated principal/project/board/membership/resource authorized, including all reused lineage; cycle-refuse reused_from and exact fingerprints/outputs/digests. No foreign run/path/resource existence disclosure. Removed entitlement fences existing cursor. Unknown publication/child/custody means unavailable/recovery, no output from uncertain winner.",
+    "source_refs": [
+      "src/poolhouse/fleet/studio_routes.py:_artifact_origin",
+      "src/poolhouse/studio/engine.py:WorkflowEngine"
+    ]
+  },
+  "scalar_and_literal_profiles": {
+    "source_string_encoding": "json_string_ascii_content is canonical json.dumps(decoded source string,ensure_ascii=True) interior WITHOUT quotes. Utf8Chunk is only ASCII-byte transport; its Unicode invariant unchanged. One authoritative source decoder preserves Python codepoint sequence including lone surrogates and actual json.loads pair coalescence; no arbitrary Python-str injectivity or original token-spelling claim. No native Unicode string lossy bridge, normalization, trim or surrogate replacement. TextRef encoded_bytes/digest bind exact frozen encoded content; offsets ENCODED BYTES, python_characters separately checked after source decode. Signed decimal integer uses own exact purpose, no float/U64 coercion.",
+    "literal_tree": "Only genuine literal data ports (stream/record/structured response/tool-result/toolarguments), never metric/report/control/graph/authority bag. Flat exact Null/Bool/signeddecimal/F64/text/object/array with same immutable tree+purpose+parent+ordinal/key+childcounts. Iterative Node-admitted allocation before dereference, unique decoded keys and one root/parent, no loops/sharing/cross-resource scalar references or amplification. Literal names policy/tool/role remain inert.",
+    "bounds": "Only record_ops literals have maintained200000 UTF8bytes ensure_asciiFalse and depth>16 refusal; record_context has distinct200000 Pythoncharacter serialized view bound; decision options2..255 names<=200 source Pythoncharacters. Current arbitrary output/literal/text counts lack universal admitted aggregate profiles: no new numeric cap or 1024-list fallback. Typed RowsRef one item/snapshot read; private Node-owner admission governs transient+retained expansion, not public budget API.",
+    "purpose": "Text/Literal/Rows output-only node-issued semantic position/row kind is verified, never caller retagging or Graph/Dataset outputref cast. Inline schema/tool arguments cannot fetch schemas/plugins/network or extend tool permissions. Unknown tool result/backend extensions/schema profile returns unsupported, no opaque metric map."
+  },
+  "numeric_semantics": {
+    "representation": "FiniteF64 preserves exact resulting IEEE754 binary64 bits incl negativezero/subnormals; source producer rounding already applied exactly once. Arbitrary signed integers use exact dedicated decimal text resource; booleans distinct except actual Python comparison arithmetic explicitly includes them. No clamp/drop/round/NaN=>0.",
+    "unobserved": "Causal no_answered_cases/no_finite_loss_observed ONLY if exact source context proves that cause for this result; NaN alone =>source_nan_cause_unproven or explicit unsupported observation. Nullable best_metric is source null, not zero. Nonfinite unexpected fields fail appropriate profile; no success default.",
+    "comparison": "Exact same-key intersection over numeric top-level fields of typed producer metrics; Python isinstance(bool,(int,float)) means dry_run bool participates. Numeric promotion/subtraction matches source arbitraryint/binary64/bool semantics; bool subtraction result is signedinteger with boolean_difference unit. Derived rows bind exact baseline/trained item refs+values+family+unit. If either input unobserved/nonfinite, retain explicit unavailable delta row with both observations/reason; no fabricated zero/drop or finite claim. Closed MetricKey covers all source numeric top-level keys, includingseed/version for Gym; unknown field/profile refuses. Delta rows must same key and semantically compatible actual units; any unresolved family unit mapping unavailable.",
+    "decision_stage": "For initial assess, verify exact RAW source scores, original offered option content/order, source normalization once and stable sorting, threshold+margin threshold (ties abstain), no normalization of already-normalized/rounded public score projection. Public checked_inputs pins raw_scores/backend_request/options/order digests and both thresholds. decision.route source calls _decision on existing decision scores for choice/tie check with0 thresholds: that exact second SOURCE stage is independently pinned, not an invented additional public normalization; report retains original decision object. No third normalization or repeated rounding. Labels/gates/advisory confidence never authority."
+  },
+  "history_semantics": {
+    "actual_source": "Studio run logs delegates _job_detail: rawlog last100000 bytes then UTF8replace+CRLF->LF; metric last200 successfully parsedJSON rows, arbitrary historical row keys. Canonical history snapshot is typed separate from redacted log text; source tail count/truncation observed, not new storage budget.",
+    "shape": "Closed current Start redacted recipe/config projection,Step/Eval/Finish, nonfinite/time-budget/stall/probe notes. Start resolved params reuse exact public graph fixed recipe structs bound same source snapshot; no opaque raw resolved config/paths. Extra secret/path/internal builder config deliberately excluded in typed redacted projection, never asserted reproduced. Classifier probe exact{label,scores}; other prediction schemas need own reviewed profile. Error redaction removes paths/secrets before SafeMessage.",
+    "missing_unknown": "HistoryRef explicit source present/missing/unknown; tail truncation flags and observedrawbytes/metricrows; UnsupportedHistory preserves source ordinal + Segment.known|unproven + reason. Unsupported/unknown/missing/tail-lost source must prevent semantic_complete true; Complete stream boundary only means supplied snapshot ended, not complete semantic history. Empty/missing observable. Unknown parsed event not silently skipped or exported as Any.",
+    "segments": "elapsed_s belongs to each actual MetricsLog open; source read lacks durable reopen segment identity. Do NOT infer cross-segment chronology from elapsed value dropping or timestamp labels. Segment.unproven whenever actual segment identity/context cannot be established; segment+source digest required for known. No fabricated UnixMicros conversion.",
+    "phase_and_config": "Fixed maintained classify_text/text_lm/tool_calls selected builders inspected: Built.phases default empty; no Phase constructor/phase assignment callers in retained current builders. Verified_empty_fixed_recipe requires exact recipe/backend/runtime/source profile identity, unexpected nonempty phase or changed config refuses unsupported profile, never silently dropped. Generic registered external recipes/hooks/export callbacks are not admitted by fixed Studio catalogue; no public extension bag. Current export callback absent for fixed recipes, optional exported field unavailable unless actual maintained managed artifact profile exists."
+  },
+  "unresolved_enablement": [
+    "Declaration-only: actual public Node output projection, same-custody snapshot/lineage/all-writer freezing, cross-field validation, current revocation, scalar/literal storage and private ResourceAdmission integration not implemented. No runtime/K/caller retention proof.",
+    "Mandatory vectors before enablement: source CPython float/string/surrogate/int rendering; source hash/purpose/offset exactness, absence/null/nonfinite cause fidelity; initial decision normalization vs route recheck; bool/int/F64 compare delta and unavailable rows; unit/rounding constraints.",
+    "Unbounded actual source scalar/literal/row/transient aggregate profiles need measured/admitted Node-owner limits before decode; no invented caps. GenericJSON data tree does not enable arbitrary report/metric/control extensions.",
+    "Current metric logs have no authenticated durable source-segment identity, frozen complete source snapshot or finite closed shape for all hook/phase/registered-recipe events. Unknown/missing/tail states explicit; semantic_complete must remainfalse until evidence supports it. Each new event/profile needs exact source schema, no opaque payload.",
+    "Public GraphValue/metric/run output readers are not wired into actual Studio interface; all6 operations remain declaration metadata. Graph validators, selector/expansion/callers and remaining package/import/streams/install segments stay separately incomplete as prior exact route mapping.",
+    "Private263 Studio worker DTOs stay private; public result types independently follow actual maintained producers (TorchLoRA settings correction explicit). No private stream/slot/permit/native proof issued by these public data types."
+  ],
+  "independent_review": {
+    "reviewer": "domain_attack_review",
+    "pre_edit_verdict": "Declaration-only strategy approved with7 source-cause/unavailable-delta/decision-stage/committed-custody/literal-authority/history-segment/fixed-profile constraints.",
+    "actual_leaf_verdict": "Approved declaration-only170 public types6 read operations. Reviewer independently verified all57 pinned source-file+exact-site hashes. Targeted actual correction verified SnapshotRef.consumer and Origin.producer both explicit StudioControlRunNodeRef with execution_generation, retaining original producer separately from reused consumer. No leaf blocker; runtime projection/lineage, serializer/numeric/decision/history vectors and actual UI caller migration remain unmet enablement work, no K/native proof."
+  }
+}
