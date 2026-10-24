@@ -24,7 +24,10 @@ fn birth(f: &mut Fence<TestStore>) {
     assert!(matches!(f.admit(source(1), Original::Birth { context: context() }), Ok(Admission::Committed(_))));
     f.change(&source(1), Transition::Admit).unwrap();
 }
-fn invocation() -> Original { Original::Invocation { context: context(), admission: source(1), kind: b"invoke".to_vec(), purpose: b"purpose".to_vec(), payload: b"actual bytes".to_vec(), measured_plan: b"plan".to_vec() } }
+fn spec(n: u8) -> DispatchSpec { DispatchSpec { handler: [n; 32], measured_plan: vec![n], purpose: vec![n], operation: b"exact operation".to_vec(), owner: [7; 32] } }
+fn invocation() -> Original { Original::Invocation { context: context(), admission: source(1), kind: b"invoke".to_vec(), payload: b"actual bytes".to_vec(), catalog: DispatchCatalog { config_generation: [13; 32], entries: vec![spec(1), spec(2)] } } }
+fn dispatch_state(f: &Fence<TestStore>, n: usize) -> &State { match &f.records[&source(2)].state { State::Invocation(entries) => &entries[n].state, _ => panic!("invocation required") } }
+fn dispatch(f: &mut Fence<TestStore>, event: Transition) -> Result<Committed, Error> { f.change_dispatch(&source(2), &spec(1), event) }
 fn custody() -> Custody { Custody { owner: [7; 32], resources: vec![Resource { identity: [8; 32], action: Action::CloseChannel }, Resource { identity: [9; 32], action: Action::Preserve }] } }
 fn reserved() -> Fence<TestStore> { let mut f = fence(); birth(&mut f); f.admit(source(2), invocation()).unwrap(); f }
 fn transitions() -> Vec<Transition> { vec![Transition::Spawn(custody()), Transition::Bind(custody()), Transition::FenceRelease(custody()), Transition::Released(custody()), Transition::FenceEffect { custody: custody(), operation: b"exact operation".to_vec() }, Transition::Complete { operation: b"exact operation".to_vec(), outcome: Outcome::Success(b"result".to_vec()) }, Transition::Cleanup { custody: custody(), result: Cleanup::Closed }] }
@@ -34,12 +37,12 @@ fn original_namespace_is_shared_and_exact() {
     assert!(matches!(f.admit(source(1), invocation()), Err(Error::Conflict)));
     f.admit(source(2), invocation()).unwrap();
     let count = f.store.committed.len();
-    assert!(matches!(f.admit(source(2), invocation()), Ok(Admission::Existing(State::Reserved))));
+    assert!(matches!(f.admit(source(2), invocation()), Ok(Admission::Existing(State::Invocation(_)))));
     assert_eq!(f.store.committed.len(), count);
     for field in 0..4 {
         let mut altered = invocation();
-        if let Original::Invocation { context, payload, measured_plan, purpose, .. } = &mut altered {
-            match field { 0 => context.actor.push(0), 1 => payload.push(0), 2 => measured_plan.push(0), _ => purpose.push(0) }
+        if let Original::Invocation { context, payload, catalog, .. } = &mut altered {
+            match field { 0 => context.actor.push(0), 1 => payload.push(0), 2 => catalog.entries[0].measured_plan.push(0), _ => catalog.entries[0].purpose.push(0) }
         }
         assert!(matches!(f.admit(source(2), altered), Err(Error::Conflict)));
     }
@@ -54,12 +57,12 @@ fn failure_at_every_transition_withholds_receipt_and_poisoned_retry() {
             for (index, step) in transitions().into_iter().enumerate() {
                 if index == boundary {
                     f.store.fault = fault; let rev = f.revision; let old = f.records.clone();
-                    assert!(matches!(f.change(&source(2), step), Err(Error::Uncertain)));
+                    assert!(matches!(dispatch(&mut f, step), Err(Error::Uncertain)));
                     assert_eq!(f.revision, rev); assert_eq!(f.records, old);
                     assert!(matches!(f.admit(source(2), invocation()), Err(Error::Unavailable)));
                     break;
                 }
-                f.change(&source(2), step).unwrap();
+                dispatch(&mut f, step).unwrap();
             }
         }
     }
@@ -85,29 +88,29 @@ fn exact_receipt_binds_prior_new_revision_writer_and_original() {
 #[test]
 fn cancellation_and_effect_fence_have_one_winner_and_preserve_obligations() {
     let mut stopped = reserved();
-    for step in transitions().into_iter().take(4) { stopped.change(&source(2), step).unwrap(); }
-    stopped.change(&source(2), Transition::Stop).unwrap();
-    assert!(matches!(stopped.change(&source(2), Transition::FenceEffect { custody: custody(), operation: vec![] }), Err(Error::State)));
-    assert_eq!(stopped.records[&source(2)].state, State::Stopped { custody: Some(custody()), cleanup: Cleanup::Pending });
+    for step in transitions().into_iter().take(4) { dispatch(&mut stopped, step).unwrap(); }
+    dispatch(&mut stopped, Transition::Stop).unwrap();
+    assert!(matches!(dispatch(&mut stopped, Transition::FenceEffect { custody: custody(), operation: vec![] }), Err(Error::State)));
+    assert_eq!(dispatch_state(&stopped, 0), &State::Stopped { custody: Some(custody()), cleanup: Cleanup::Pending });
     let mut consumed = reserved();
-    for step in transitions().into_iter().take(5) { consumed.change(&source(2), step).unwrap(); }
-    assert!(matches!(consumed.change(&source(2), Transition::Stop), Err(Error::State)));
-    consumed.change(&source(2), Transition::Unknown).unwrap();
-    assert!(matches!(consumed.admit(source(2), invocation()), Ok(Admission::Existing(State::Unknown { .. }))));
-    assert!(matches!(consumed.change(&source(2), Transition::Spawn(custody())), Err(Error::State)));
+    for step in transitions().into_iter().take(5) { dispatch(&mut consumed, step).unwrap(); }
+    assert!(matches!(dispatch(&mut consumed, Transition::Stop), Err(Error::State)));
+    dispatch(&mut consumed, Transition::Unknown).unwrap();
+    assert!(matches!(consumed.admit(source(2), invocation()), Ok(Admission::Existing(State::Invocation(_)))));
+    assert!(matches!(dispatch(&mut consumed, Transition::Spawn(custody())), Err(Error::State)));
 }
 #[test]
 fn hidden_or_changed_custody_cannot_bind_release_complete_or_cleanup() {
     let mut f = reserved();
     let mut duplicate = custody(); duplicate.resources.push(duplicate.resources[0].clone());
-    assert!(matches!(f.change(&source(2), Transition::Spawn(duplicate)), Err(Error::State)));
-    f.change(&source(2), Transition::Spawn(custody())).unwrap();
+    assert!(matches!(dispatch(&mut f, Transition::Spawn(duplicate)), Err(Error::State)));
+    dispatch(&mut f, Transition::Spawn(custody())).unwrap();
     let mut missing = custody(); missing.resources.pop();
-    assert!(matches!(f.change(&source(2), Transition::Bind(missing.clone())), Err(Error::State)));
-    for step in transitions().into_iter().skip(1).take(4) { f.change(&source(2), step).unwrap(); }
-    assert!(matches!(f.change(&source(2), Transition::Complete { operation: vec![], outcome: Outcome::Success(vec![]) }), Err(Error::State)));
-    f.change(&source(2), Transition::Unknown).unwrap();
-    assert!(matches!(f.change(&source(2), Transition::Cleanup { custody: missing, result: Cleanup::Closed }), Err(Error::State)));
+    assert!(matches!(dispatch(&mut f, Transition::Bind(missing.clone())), Err(Error::State)));
+    for step in transitions().into_iter().skip(1).take(4) { dispatch(&mut f, step).unwrap(); }
+    assert!(matches!(dispatch(&mut f, Transition::Complete { operation: vec![], outcome: Outcome::Success(vec![]) }), Err(Error::State)));
+    dispatch(&mut f, Transition::Unknown).unwrap();
+    assert!(matches!(dispatch(&mut f, Transition::Cleanup { custody: missing, result: Cleanup::Closed }), Err(Error::State)));
 }
 #[test]
 fn restored_data_never_remints_old_occurrence_fresh_resume_needs_retired_mapping() {
@@ -139,20 +142,118 @@ fn overflow_and_wrong_continuity_refuse_without_store_write() {
 fn retirement_fences_each_future_action_but_preserves_completion_and_cleanup() {
     for boundary in 0..5 {
         let mut f = reserved();
-        for step in transitions().into_iter().take(boundary) { f.change(&source(2), step).unwrap(); }
+        for step in transitions().into_iter().take(boundary) { dispatch(&mut f, step).unwrap(); }
         f.change(&source(1), Transition::Retire).unwrap();
         let step = transitions().into_iter().nth(boundary).unwrap();
-        assert!(matches!(f.change(&source(2), step), Err(Error::State)));
+        assert!(matches!(dispatch(&mut f, step), Err(Error::State)));
         // Cancellation keeps actual recorded resource responsibility, not a fake close.
-        f.change(&source(2), Transition::Stop).unwrap();
+        dispatch(&mut f, Transition::Stop).unwrap();
     }
     let mut f = reserved();
-    for step in transitions().into_iter().take(5) { f.change(&source(2), step).unwrap(); }
+    for step in transitions().into_iter().take(5) { dispatch(&mut f, step).unwrap(); }
     f.change(&source(1), Transition::Retire).unwrap();
-    for step in transitions().into_iter().skip(5) { f.change(&source(2), step).unwrap(); }
-    assert!(matches!(f.records[&source(2)].state, State::Completed { cleanup: Cleanup::Closed, .. }));
+    for step in transitions().into_iter().skip(5) { dispatch(&mut f, step).unwrap(); }
+    assert!(matches!(dispatch_state(&f, 0), State::Completed { cleanup: Cleanup::Closed, .. }));
     let mut opening = fence();
     opening.admit(source(1), Original::Birth { context: context() }).unwrap();
     opening.change(&source(1), Transition::Retire).unwrap();
     assert!(matches!(opening.change(&source(1), Transition::Admit), Err(Error::State)));
+}
+
+#[test]
+fn one_original_event_can_progress_two_independent_handlers() {
+    let mut f = reserved();
+    for step in transitions().into_iter().take(5) { dispatch(&mut f, step).unwrap(); }
+    // A sibling handler belongs to this original event, not a fabricated new occurrence.
+    let mut sibling = custody(); sibling.resources[0].identity = [18; 32]; sibling.resources[1].identity = [19; 32];
+    f.change_dispatch(&source(2), &spec(2), Transition::Spawn(sibling.clone())).unwrap();
+    assert!(matches!(dispatch_state(&f, 0), State::EffectFenced { .. }));
+    assert_eq!(dispatch_state(&f, 1), &State::SpawnFenced(sibling));
+    assert!(matches!(dispatch(&mut f, Transition::Spawn(custody())), Err(Error::State)));
+    assert!(matches!(f.change(&source(2), Transition::Spawn(custody())), Err(Error::State)));
+    assert_eq!(f.records.len(), 2);
+}
+
+#[test]
+fn frozen_catalog_refuses_reload_duplicate_handlers_and_empty_catalog_has_no_right() {
+    let mut f = reserved();
+    let count = f.store.committed.len();
+    for field in 0..3 {
+        let mut changed = invocation();
+        if let Original::Invocation { catalog, .. } = &mut changed {
+            match field { 0 => catalog.config_generation[0] ^= 1, 1 => catalog.entries.push(spec(3)), _ => catalog.entries.reverse() }
+        }
+        assert!(matches!(f.admit(source(2), changed), Err(Error::Conflict)));
+    }
+    assert_eq!(f.store.committed.len(), count);
+    let mut duplicate = invocation();
+    if let Original::Invocation { catalog, .. } = &mut duplicate { catalog.entries.push(spec(1)); }
+    assert!(matches!(f.admit(source(3), duplicate), Err(Error::Conflict)));
+    let mut empty = invocation();
+    if let Original::Invocation { catalog, .. } = &mut empty { catalog.entries.clear(); }
+    f.admit(source(3), empty).unwrap();
+    assert!(matches!(f.change_dispatch(&source(3), &spec(1), Transition::Spawn(custody())), Err(Error::Conflict)));
+    assert!(matches!(f.records[&source(3)].state, State::Invocation(ref entries) if entries.is_empty()));
+}
+
+#[test]
+fn dispatch_selector_plan_purpose_owner_operation_and_sibling_custody_cannot_substitute() {
+    let mut f = reserved();
+    let count = f.store.committed.len();
+    for field in 0..5 {
+        let mut changed = spec(1);
+        match field {
+            0 => changed.handler = [99; 32], 1 => changed.measured_plan.push(0),
+            2 => changed.purpose.push(0), 3 => changed.operation.push(0), _ => changed.owner[0] ^= 1,
+        }
+        assert!(matches!(f.change_dispatch(&source(2), &changed, Transition::Spawn(custody())), Err(Error::Conflict)));
+    }
+    let mut wrong_owner = custody(); wrong_owner.owner[0] ^= 1;
+    assert!(matches!(dispatch(&mut f, Transition::Spawn(wrong_owner)), Err(Error::State)));
+    assert_eq!(f.store.committed.len(), count);
+    for step in transitions().into_iter().take(4) { dispatch(&mut f, step).unwrap(); }
+    assert!(matches!(dispatch(&mut f, Transition::FenceEffect { custody: custody(), operation: b"another effect".to_vec() }), Err(Error::State)));
+    assert!(matches!(f.change_dispatch(&source(2), &spec(2), Transition::Spawn(custody())), Err(Error::State)));
+    assert_eq!(dispatch_state(&f, 1), &State::Reserved);
+}
+
+#[test]
+fn retry_keeps_both_dispatch_dispositions_and_cleanup_never_releases_sibling() {
+    let mut f = reserved();
+    for step in transitions().into_iter().take(6) { dispatch(&mut f, step).unwrap(); }
+    let mut sibling = custody(); sibling.resources[0].identity = [18; 32]; sibling.resources[1].identity = [19; 32];
+    f.change_dispatch(&source(2), &spec(2), Transition::Spawn(sibling.clone())).unwrap();
+    let before = f.records[&source(2)].state.clone();
+    let count = f.store.committed.len();
+    match f.admit(source(2), invocation()).unwrap() {
+        Admission::Existing(state) => assert_eq!(state, before), _ => panic!("retry reminted event"),
+    }
+    assert_eq!(f.store.committed.len(), count);
+    dispatch(&mut f, Transition::Cleanup { custody: custody(), result: Cleanup::Closed }).unwrap();
+    assert_eq!(dispatch_state(&f, 1), &State::SpawnFenced(sibling));
+    assert!(matches!(dispatch(&mut f, Transition::Spawn(custody())), Err(Error::State)));
+    f.change(&source(1), Transition::Retire).unwrap();
+    assert!(matches!(f.change_dispatch(&source(2), &spec(2), Transition::Bind(dispatch_state(&f, 1).custody().unwrap().clone())), Err(Error::State)));
+    f.change_dispatch(&source(2), &spec(2), Transition::Stop).unwrap();
+}
+
+#[test]
+fn lost_ack_poison_covers_siblings_and_old_source_cannot_gain_new_dispatch_identity() {
+    let mut f = reserved();
+    for step in transitions().into_iter().take(5) { dispatch(&mut f, step).unwrap(); }
+    let snapshot = f.records.clone();
+    f.store.fault = 2;
+    assert!(matches!(dispatch(&mut f, Transition::Unknown), Err(Error::Uncertain)));
+    assert_eq!(f.records, snapshot);
+    assert!(matches!(f.change_dispatch(&source(2), &spec(2), Transition::Stop), Err(Error::Unavailable)));
+    assert!(matches!(f.admit(source(2), invocation()), Err(Error::Unavailable)));
+    // Protocol-only recovery simulation: an acknowledged Unknown does not reset a
+    // consumed dispatch, and changing catalog identity still conflicts with the source.
+    let mut fresh = reserved();
+    for step in transitions().into_iter().take(5) { dispatch(&mut fresh, step).unwrap(); }
+    dispatch(&mut fresh, Transition::Unknown).unwrap();
+    assert!(matches!(dispatch(&mut fresh, Transition::Spawn(custody())), Err(Error::State)));
+    let mut rekeyed = invocation();
+    if let Original::Invocation { catalog, .. } = &mut rekeyed { catalog.entries[0].handler = [88; 32]; }
+    assert!(matches!(fresh.admit(source(2), rekeyed), Err(Error::Conflict)));
 }

@@ -7,6 +7,9 @@
 //! Direct admission retirement is enforced here; transitive graph retirement across
 //! resumes remains an explicit Registry/native-boundary prerequisite, not proved here.
 //! No current logical mapping, liveness or authenticated ancestry is restored from data.
+//! Original event admission grants no effects. A frozen Node-owned catalog separates
+//! sibling dispatch progress under that SAME source record; a config reload cannot
+//! append handlers or remint a consumed/uncertain dispatch. No catalog issuer exists.
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -20,9 +23,20 @@ struct Context { actor: Vec<u8>, root: Vec<u8>, parent: Option<Vec<u8>>, bytes: 
 enum Original {
     Birth { context: Context },
     Resume { context: Context, prior: Source },
-    Invocation { context: Context, admission: Source, kind: Vec<u8>, purpose: Vec<u8>,
-        payload: Vec<u8>, measured_plan: Vec<u8> },
+    Invocation { context: Context, admission: Source, kind: Vec<u8>, payload: Vec<u8>,
+        catalog: DispatchCatalog },
 }
+// Supplied only by a future reviewed Node boundary, never by a source request. The
+// producer does not currently emit this frozen catalog; these records confer no authority.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DispatchCatalog { config_generation: [u8; 32], entries: Vec<DispatchSpec> }
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DispatchSpec {
+    handler: [u8; 32], measured_plan: Vec<u8>, purpose: Vec<u8>,
+    operation: Vec<u8>, owner: [u8; 32],
+}
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DispatchRecord { spec: DispatchSpec, state: State }
 // These are diagnostic historical references only, never restored OS handles/proofs.
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Custody { owner: [u8; 32], resources: Vec<Resource> }
@@ -38,6 +52,7 @@ enum Outcome { Success(Vec<u8>), Failure(Vec<u8>) }
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum State {
     AdmissionFenced, Admitted, Retired,
+    Invocation(Vec<DispatchRecord>),
     Reserved, SpawnFenced(Custody), Bound(Custody), ReleaseFenced(Custody), Released(Custody),
     EffectFenced { custody: Custody, operation: Vec<u8> },
     Completed { custody: Custody, operation: Vec<u8>, outcome: Outcome, cleanup: Cleanup },
@@ -111,7 +126,17 @@ impl<S: Store> Fence<S> {
                     || admission.original_launch != source.original_launch { return Err(Error::State); }
             },
         }
-        let state = match original { Original::Invocation { .. } => State::Reserved, _ => State::AdmissionFenced };
+        let state = match &original {
+            Original::Invocation { catalog, .. } => {
+                if catalog.entries.iter().enumerate().any(|(i, entry)|
+                    catalog.entries[..i].iter().any(|prior| prior.handler == entry.handler)) {
+                    return Err(Error::Conflict);
+                }
+                State::Invocation(catalog.entries.iter().map(|spec|
+                    DispatchRecord { spec: spec.clone(), state: State::Reserved }).collect())
+            },
+            _ => State::AdmissionFenced,
+        };
         self.commit(source, Record { original, state }).map(Admission::Committed)
     }
     fn commit(&mut self, source: Source, next: Record) -> Result<Committed, Error> {
@@ -130,19 +155,45 @@ impl<S: Store> Fence<S> {
     fn change(&mut self, source: &Source, event: Transition) -> Result<Committed, Error> {
         self.check(source)?;
         let old = self.records.get(source).ok_or(Error::State)?;
-        // Retirement is one durable admission tombstone. Every subsequent action-right
-        // transition resolves it under this coordinator/CAS revision: historical invocation
-        // phases alone never imply live authority. Cleanup/completion remain possible.
-        if matches!(&event, Transition::Spawn(_) | Transition::Bind(_) | Transition::FenceRelease(_)
-            | Transition::Released(_) | Transition::FenceEffect { .. }) {
-            if let Original::Invocation { admission, .. } = &old.original {
-                if !self.records.get(admission).is_some_and(|record| record.state == State::Admitted) {
-                    return Err(Error::State);
-                }
-            } else { return Err(Error::State); }
-        }
+        // Original event admission has no global spawn/consume right.
+        if matches!(old.original, Original::Invocation { .. }) { return Err(Error::State); }
         let state = transition(&old.state, event)?;
         self.commit(source.clone(), Record { original: old.original.clone(), state })
+    }
+    fn change_dispatch(&mut self, source: &Source, spec: &DispatchSpec, event: Transition) -> Result<Committed, Error> {
+        self.check(source)?;
+        let old = self.records.get(source).ok_or(Error::State)?;
+        let (admission, catalog) = match &old.original {
+            Original::Invocation { admission, catalog, .. } => (admission, catalog),
+            _ => return Err(Error::State),
+        };
+        let entries = match &old.state { State::Invocation(entries) => entries, _ => return Err(Error::State) };
+        let index = catalog.entries.iter().position(|entry| entry.handler == spec.handler).ok_or(Error::Conflict)?;
+        if catalog.entries[index] != *spec || entries.get(index).is_none_or(|entry| entry.spec != *spec) {
+            return Err(Error::Conflict);
+        }
+        // Admission retirement fences every sibling's NEW rights, but never discards
+        // completion/cleanup responsibility for an already bound operation.
+        if action_right(&event) && !self.records.get(admission).is_some_and(|record| record.state == State::Admitted) {
+            return Err(Error::State);
+        }
+        if let Some(custody) = event.custody() {
+            if custody.owner != spec.owner { return Err(Error::State); }
+            // Child/service custody is not cloned across siblings. Shared immutable
+            // original-body retention belongs to the source record, outside these lists.
+            if let Transition::Spawn(_) = &event {
+                if entries.iter().enumerate().any(|(i, entry)| i != index && entry.state.custody().is_some_and(|held|
+                    held.resources.iter().any(|held| custody.resources.iter().any(|new| new.identity == held.identity)))) {
+                    return Err(Error::State);
+                }
+            }
+        }
+        if let Transition::FenceEffect { operation, .. } | Transition::Complete { operation, .. } = &event {
+            if operation != &spec.operation { return Err(Error::State); }
+        }
+        let mut next = entries.clone();
+        next[index].state = transition(&entries[index].state, event)?;
+        self.commit(source.clone(), Record { original: old.original.clone(), state: State::Invocation(next) })
     }
 }
 // No public setters. Custody identities/obligations never disappear across transitions.
@@ -150,6 +201,29 @@ enum Transition {
     Admit, Retire, Spawn(Custody), Bind(Custody), FenceRelease(Custody), Released(Custody),
     FenceEffect { custody: Custody, operation: Vec<u8> }, Complete { operation: Vec<u8>, outcome: Outcome },
     Unknown, Stop, Cleanup { custody: Custody, result: Cleanup },
+}
+fn action_right(event: &Transition) -> bool {
+    matches!(event, Transition::Spawn(_) | Transition::Bind(_) | Transition::FenceRelease(_)
+        | Transition::Released(_) | Transition::FenceEffect { .. })
+}
+impl Transition {
+    fn custody(&self) -> Option<&Custody> {
+        match self {
+            Self::Spawn(c) | Self::Bind(c) | Self::FenceRelease(c) | Self::Released(c)
+                | Self::FenceEffect { custody: c, .. } | Self::Cleanup { custody: c, .. } => Some(c),
+            _ => None,
+        }
+    }
+}
+impl State {
+    fn custody(&self) -> Option<&Custody> {
+        match self {
+            Self::SpawnFenced(c) | Self::Bound(c) | Self::ReleaseFenced(c) | Self::Released(c)
+                | Self::EffectFenced { custody: c, .. } | Self::Completed { custody: c, .. }
+                | Self::Unknown { custody: c, .. } | Self::Stopped { custody: Some(c), .. } => Some(c),
+            _ => None,
+        }
+    }
 }
 fn transition(old: &State, event: Transition) -> Result<State, Error> {
     use State::*;
