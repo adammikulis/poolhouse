@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 use std::sync::Mutex;
-use crate::node::update_activity::Source;
+use crate::node::update_activity::{Source, EffectFlow, AdmittedEffect};
 use crate::net::{NodeWriteGuard, tracked_node, activity_error};
 
 use serde_json::{json, Value};
@@ -51,8 +51,13 @@ fn tips(v: &Value, key: &str) -> Result<BTreeMap<String, Tip>> {
 /// Swap the builds members report with the peer. The peer's pool record is not asked for: who is in the pool does not change by
 /// what a member says.
 pub fn sync_members(node: &Mutex<Node>, c: &mut PeerClient) -> Result<()> {
-    let registry = locked(node)?.activity.clone();
-    let _activity = registry.new_effect(Source::Sync).map_err(activity_error)?;
+    let registry=locked(node)?.activity.clone();
+    let effect=registry.admit_effect(Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
+    sync_members_admitted(node,c,&effect)
+}
+pub(crate) fn sync_members_admitted(node: &Mutex<Node>, c: &mut PeerClient, effect: &AdmittedEffect) -> Result<()> {
+    let registry=locked(node)?.activity.clone();
+    let _child=registry.continue_effect(effect,Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
     let ask = {
         let n = locked_for(node, &c.fingerprint)?;
         json!({"op": "members", "pool": n.members.id, "builds": n.builds_known()})
@@ -78,8 +83,13 @@ pub fn peer_boards(c: &mut PeerClient) -> Result<Vec<String>> {
 
 /// Make this device's copy of board ``id`` and the peer's hold the same rows.
 pub fn sync_board(node: &Mutex<Node>, c: &mut PeerClient, id: &str) -> Result<Report> {
-    let registry = locked(node)?.activity.clone();
-    let _activity = registry.new_effect(Source::Sync).map_err(activity_error)?;
+    let registry=locked(node)?.activity.clone();
+    let effect=registry.admit_effect(Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
+    sync_board_admitted(node,c, id,&effect)
+}
+pub(crate) fn sync_board_admitted(node: &Mutex<Node>, c: &mut PeerClient, id: &str, effect: &AdmittedEffect) -> Result<Report> {
+    let registry=locked(node)?.activity.clone();
+    let _child=registry.continue_effect(effect,Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
     let mut report = Report::default();
     for _ in 0..MAX_ROUNDS {
         let (origin, vector) = with_board(node, &c.fingerprint, id, |h| {
@@ -147,15 +157,20 @@ pub fn refused_note(reports: &BTreeMap<String, Report>) -> String {
 
 /// Swap builds, then sync every board both devices hold; origin to refusal code per board.
 pub fn sync_all(node: &Mutex<Node>, c: &mut PeerClient) -> Result<BTreeMap<String, Report>> {
-    let registry = locked(node)?.activity.clone();
-    let _activity = registry.new_effect(Source::Sync).map_err(activity_error)?;
-    sync_members(node, c)?;
+    let registry=locked(node)?.activity.clone();
+    let effect=registry.admit_effect(Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
+    sync_all_admitted(node,c,&effect)
+}
+pub(crate) fn sync_all_admitted(node: &Mutex<Node>, c: &mut PeerClient, effect: &AdmittedEffect) -> Result<BTreeMap<String, Report>> {
+    let registry=locked(node)?.activity.clone();
+    let _child=registry.continue_effect(effect,Source::Sync,EffectFlow::Sync).map_err(activity_error)?;
+    sync_members_admitted(node, c, effect)?;
     crate::gov::wire::sync_acts(node, c)?;
     let theirs = peer_boards(c)?;
     let mine: Vec<String> = locked(node)?.boards.keys().cloned().collect();
     let mut out = BTreeMap::new();
     for id in mine.into_iter().filter(|b| theirs.contains(b)) {
-        let report = sync_board(node, c, &id)?;
+        let report = sync_board_admitted(node, c, &id, effect)?;
         out.insert(id, report);
     }
     Ok(out)
