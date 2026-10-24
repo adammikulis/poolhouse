@@ -280,7 +280,7 @@ def test_invalid_native_session_does_not_export_or_register(commands, tmp_path, 
     assert not target.exists() and not commands[1].exists()
 
 
-def test_subagent_stop_records_transcript_model_and_posts_done_to_general_not_announcements(commands, tmp_path, workspace_node):
+def test_subagent_stop_does_not_claim_done_or_change_identity(commands, tmp_path, workspace_node):
     workspace_node.member('abcdef12345', model='claude-haiku-4-5')
     transcript = tmp_path / 'agent.jsonl'
     transcript.write_text('{"message": {"role": "user"}}\n{"message": {"model": "claude-haiku-4-5"}}\n')
@@ -288,23 +288,20 @@ def test_subagent_stop_records_transcript_model_and_posts_done_to_general_not_an
                                            'agent_transcript_path': str(transcript),
                                            'last_assistant_message': 'Fixing lint errors'})
     assert done.returncode == 0 and not done.stderr
-    records = json.loads(commands[1].read_text())
-    assert [record['argv'] for record in records] == [
-        ['whoami', '--model', 'claude-haiku-4-5', '--harness', 'claude-code'],
-        ['board', 'post', '#general', 'done: finished', '--type', 'status', '--subject', 'done'],
-        ['retire']]
+    assert not commands[1].exists()
+    assert transcript.read_text().endswith('{"message": {"model": "claude-haiku-4-5"}}\n')
 
 
-def test_subagent_stop_records_a_model_only_when_it_differs_from_the_one_registered_at_start(commands, tmp_path, monkeypatch, workspace_node):
+def test_subagent_stop_preserves_registered_model_without_reading_transcript(commands, tmp_path, monkeypatch, workspace_node):
     monkeypatch.syspath_prepend(str(HOOKS))
     import subagent_records
     transcript = tmp_path / 'agent.jsonl'
     transcript.write_text('{"message": {"model": "claude-haiku-4-5"}}\n')
-    for agent, registered, expected in (('abcdef12345', 'claude-haiku-4-5', ['board', 'retire']),
-                                        ('fedcba54321', 'claude-sonnet-4-6', ['whoami', 'board', 'retire'])):
+    for agent, registered in (('abcdef12345', 'claude-haiku-4-5'), ('fedcba54321', 'claude-sonnet-4-6')):
         workspace_node.member(agent, model=registered)
         subagent_records.save(agent, name='claude-aaaaaa', parent='claude-bbbbbb', model=registered)
         commands[1].unlink(missing_ok=True)
         event = {'agent_type': 'Explore', 'agent_id': agent, 'agent_transcript_path': str(transcript)}
         assert invoke('claude-subagent-stop', event).returncode == 0
-        assert [record['argv'][0] for record in json.loads(commands[1].read_text())] == expected
+        assert not commands[1].exists()
+        assert subagent_records.load(agent)['model'] == registered
