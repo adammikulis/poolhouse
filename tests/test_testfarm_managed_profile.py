@@ -6,7 +6,7 @@ from dataclasses import replace
 import pytest
 
 from poolhouse.api import node_contract as contract
-from poolhouse.testfarm.managed_profile import resolve_unit
+from poolhouse.api.managed_testing import resolve_unit
 from poolhouse.testfarm.model.config import ConfigError
 from poolhouse.testfarm.model.units import Unit
 
