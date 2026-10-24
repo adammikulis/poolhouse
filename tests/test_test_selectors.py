@@ -74,7 +74,7 @@ def test_a_test_path_in_the_checkout_reaches_the_runner_spelled_from_its_root(mo
     named = 'tests/test_test_selectors.py' + ('::test_x' if spelled.endswith('::test_x') else '')
     assert named in calls[0] and (spelled == named or spelled not in calls[0])
     assert calls[0][calls[0].index('-k') + 1] == 'not slow and absolute', 'a word that is no path is left as it was'
-    assert judged == ([None] if '::' in named else [['tests/test_test_selectors.py']])
+    assert judged == [['tests/test_test_selectors.py']]
 
 
 def test_a_test_path_outside_the_checkout_is_refused_before_the_broker(tmp_path):

@@ -26,14 +26,21 @@ def parse_arguments(arguments: list[str]):
 
 
 @functools.cache
-def _positional(arguments: tuple[str, ...]) -> tuple[str, ...]:
+def _positional(arguments: tuple[str, ...]) -> tuple[tuple[str, ...], bool]:
     config = parse_arguments(list(arguments))
     try:
-        return tuple(config.args)
+        return tuple(config.args), config.args_source == config.ArgsSource.ARGS
     finally:
         config._ensure_unconfigure()
 
 
 def positional(arguments: list[str]) -> list[str]:
     """The test paths and node ids among the pytest arguments; the same arguments are parsed once per process."""
-    return list(_positional(tuple(arguments)))
+    return list(_positional(tuple(arguments))[0])
+
+
+
+def explicit_positional(arguments: list[str]) -> list[str] | None:
+    """Explicit test paths/node ids, or None for pytest's implicit configured/default selection."""
+    selected, explicit = _positional(tuple(arguments))
+    return list(selected) if explicit else None
