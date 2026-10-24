@@ -50,6 +50,10 @@ pub enum Event {
 pub struct Table {
     pub leases: Vec<Lease>,
     pub next_seq: u64,
+    /// Recovery projection only; ledger is authoritative. Unknown capacity is not
+    /// inferred from default memory configuration or a resource DTO.
+    #[serde(skip)]
+    pub(crate) local_allocations_unresolved:std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 fn capacity(cfg: &Config, r: &Resource) -> Option<u64> {
@@ -128,6 +132,9 @@ impl Table {
     /// resources). Refuses what could never be granted.
     pub(super) fn enqueue(&mut self, cfg: &Config, now: u64, req: &Request, (id, tree): (String, usize),
         pid_start: Option<u64>, reservation: &GrantReservation<'_>) -> Result<String> {
+        if self.local_allocations_unresolved.load(std::sync::atomic::Ordering::Acquire) && !super::types::claims_only(&req.resources) {
+            return Err(Error::say("unavailable","local allocation recovery is unavailable","none","retry"));
+        }
         if !reservation.allows_compute() && !super::types::claims_only(&req.resources) {
             return Err(Error::say("update_pending", "new compute admission waits for the node update", "none", "retry"));
         }
@@ -184,6 +191,7 @@ impl Table {
     }
 
     fn free_for(&self, l: &Lease, ahead: &[Lease], cfg: &Config, now: u64, foreign: &Foreign) -> bool {
+        if self.local_allocations_unresolved.load(std::sync::atomic::Ordering::Acquire) && !super::types::claims_only(&l.resources) {return false;}
         if capped(l, &self.leases, cfg, now) {
             return false;
         }
@@ -214,7 +222,8 @@ impl Table {
         let (mut ahead, mut events) = (Vec::new(), Vec::new());
         for id in order {
             let Some(l) = self.find(&id).cloned() else { continue };
-            if !reservation.allows_compute() && !super::types::claims_only(&l.resources) { continue; }
+            if (self.local_allocations_unresolved.load(std::sync::atomic::Ordering::Acquire) || !reservation.allows_compute()) &&
+                !super::types::claims_only(&l.resources) {continue;}
             if !self.free_for(&l, &ahead, cfg, now, foreign) {
                 if !capped(&l, &self.leases, cfg, now) {
                     ahead.push(l);

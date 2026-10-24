@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::contract::{JobInstallationRef, JobManagedTestUnitIntent, JobPreparationDigest, RequestId, ResourceGeneration};
 
 mod store;
+mod allocations;
 #[cfg(test)] mod tests;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -36,16 +37,25 @@ pub(super) struct Book {
     store: store::Store,
     activity: Registry,
     records: Vec<Record>,
+    allocations: Option<allocations::Authority>,
+    allocation_projection:Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
     // Preserve both alternatives after uncertain publication; never mutate again.
-    uncertain: Option<Vec<Record>>,
+    uncertain: Option<(Vec<Record>,Option<allocations::Authority>)>,
 }
 impl Book {
     pub(super) fn open(parent: File, activity:Registry) -> Result<Self, Failure> {
         let _writer=activity.local_writer().map_err(|_|Failure::Unavailable)?;
         let store=store::Store::open(parent)?;
-        let records=store.read()?;
+        Self::from_store(store,activity)
+    }
+    pub(super) fn open_existing(parent:File,activity:Registry)->Result<Self,Failure> {
+        Self::from_store(store::Store::open_existing(parent)?,activity)
+    }
+    fn from_store(store:store::Store,activity:Registry)->Result<Self,Failure> {
+        let (records,allocations)=store.read_snapshot()?;
         validate(&records)?;
-        Ok(Self { store, activity, records, uncertain:None })
+        if let Some(a)=&allocations {a.validate(&records)?;}
+        Ok(Self { store,activity,records,allocations,allocation_projection:None,uncertain:None })
     }
     pub(super) fn remember_pending(&mut self, owner: OwnerObservation, request: RequestId,
         intent: JobManagedTestUnitIntent) -> Result<Remembered, Failure> {
@@ -69,6 +79,7 @@ impl Book {
         let index=self.records.iter().position(|r| &r.owner==owner && &r.request==request).ok_or(Failure::Conflict)?;
         let old=&self.records[index];
         if old.revision!=revision { return Err(Failure::Conflict); }
+        if self.allocations.as_ref().is_some_and(|a|a.blocks_pending_cancel(old)) {return Err(Failure::Unavailable);}
         if old.state==PendingState::CancelledPending { return Ok(()); }
         let mut candidate=self.records.clone();
         candidate[index].revision=revision.checked_add(1).ok_or(Failure::Invalid)?;
@@ -80,11 +91,22 @@ impl Book {
         if self.uncertain.is_some() { Err(Failure::PersistenceUnknown) } else { Ok(()) }
     }
     fn publish(&mut self, candidate:Vec<Record>)->Result<(),Failure> {
+        self.publish_snapshot(candidate,self.allocations.clone())
+    }
+    fn publish_snapshot(&mut self,candidate:Vec<Record>,allocations:Option<allocations::Authority>)->Result<(),Failure> {
         validate(&candidate)?;
-        match self.store.write(&candidate) {
-            Ok(())=> { self.records=candidate; Ok(()) },
-            Err(Failure::PersistenceUnknown)=> { self.uncertain=Some(candidate); Err(Failure::PersistenceUnknown) },
-            Err(other)=>Err(other),
+        if let Some(a)=&allocations {a.validate(&candidate)?;}
+        if allocations.as_ref().is_some_and(|a|a.unsettled()) {self.project_allocation_recovery(true);}
+        match self.store.write_snapshot(&candidate,allocations.as_ref()) {
+            Ok(())=> {
+                self.records=candidate; self.allocations=allocations;
+                self.project_allocation_recovery(self.allocations.as_ref().is_some_and(|a|a.unsettled()));Ok(())
+            },
+            Err(Failure::PersistenceUnknown)=> {
+                if allocations.is_some() {self.project_allocation_recovery(true);}
+                self.uncertain=Some((candidate,allocations));Err(Failure::PersistenceUnknown)
+            },
+            Err(other)=> {self.project_allocation_recovery(self.allocations.as_ref().is_some_and(|a|a.unsettled()));Err(other)},
         }
     }
 }
