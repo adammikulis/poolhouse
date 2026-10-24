@@ -226,6 +226,12 @@ item = "ConnectivityEndpointObservation"
 max_items = 16
 
 [[type]]
+name = "ConnectivityEndpointSnapshot"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot_id", type = "ConnectivitySnapshotId"}, {name = "revision", type = "U64"}, {name = "items", type = "ConnectivityEndpointObservations"}, {name = "complete", type = "Boolean"}, {name = "next_cursor", type = "ConnectivityOptionalCursor"}, {name = "cursor", type = "ConnectivityCursor"}]
+
+[[type]]
 name = "ConnectivityKeyProof"
 kind = "union"
 visibility = "public"
@@ -243,13 +249,19 @@ variants = [{tag = "unsigned", type = "Empty"}, {tag = "self_signature_valid", t
 name = "ConnectivityCandidate"
 kind = "record"
 visibility = "public"
-fields = [{name = "candidate_id", type = "ConnectivityCandidateId"}, {name = "generation", type = "ResourceGeneration"}, {name = "label", type = "ConnectivityLabel"}, {name = "claimed_device_id", type = "ConnectivityOptionalDeviceId"}, {name = "claimed_pool_id", type = "ConnectivityOptionalPoolId"}, {name = "observed_pool", type = "ConnectivityOptionalPoolRef"}, {name = "claimed_key", type = "ConnectivityOptionalKey"}, {name = "certificate_digest", type = "ConnectivityOptionalCertificate"}, {name = "advertisement", type = "ConnectivityAdvertisement"}, {name = "key_proof", type = "ConnectivityKeyProof"}, {name = "endpoints", type = "ConnectivityEndpointObservations"}, {name = "observed_at", type = "UnixMicros"}, {name = "expires_at", type = "UnixMicros"}, {name = "revision", type = "U64"}]
+fields = [{name = "candidate_id", type = "ConnectivityCandidateId"}, {name = "generation", type = "ResourceGeneration"}, {name = "label", type = "ConnectivityLabel"}, {name = "claimed_device_id", type = "ConnectivityOptionalDeviceId"}, {name = "claimed_pool_id", type = "ConnectivityOptionalPoolId"}, {name = "observed_pool", type = "ConnectivityOptionalPoolRef"}, {name = "claimed_key", type = "ConnectivityOptionalKey"}, {name = "certificate_digest", type = "ConnectivityOptionalCertificate"}, {name = "advertisement", type = "ConnectivityAdvertisement"}, {name = "key_proof", type = "ConnectivityKeyProof"}, {name = "endpoints", type = "ConnectivityEndpointSnapshot"}, {name = "observed_at", type = "UnixMicros"}, {name = "expires_at", type = "UnixMicros"}, {name = "revision", type = "U64"}]
 
 [[type]]
 name = "ConnectivityCandidateInspectRequest"
 kind = "record"
 visibility = "public"
 fields = [{name = "candidate_id", type = "ConnectivityCandidateId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ConnectivityCandidateEndpointsRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "candidate", type = "ConnectivityCandidateInspectRequest"}, {name = "after", type = "ConnectivityOptionalCursor"}]
 
 [[type]]
 name = "ConnectivityPoolRef"
@@ -335,6 +347,12 @@ item = "ConnectivityMembershipRef"
 max_items = 64
 
 [[type]]
+name = "ConnectivityMembershipSnapshot"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot_id", type = "ConnectivitySnapshotId"}, {name = "revision", type = "U64"}, {name = "items", type = "ConnectivityMembershipRefs"}, {name = "complete", type = "Boolean"}, {name = "next_cursor", type = "ConnectivityOptionalCursor"}, {name = "cursor", type = "ConnectivityCursor"}]
+
+[[type]]
 name = "ConnectivityLocalRequest"
 kind = "record"
 visibility = "public"
@@ -344,7 +362,7 @@ fields = [{name = "generation", type = "ResourceGeneration"}, {name = "after", t
 name = "ConnectivityLocalView"
 kind = "record"
 visibility = "public"
-fields = [{name = "device_id", type = "DeviceId"}, {name = "installation_id", type = "InstallationId"}, {name = "generation", type = "ResourceGeneration"}, {name = "service", type = "ConnectivityReadiness"}, {name = "listener", type = "ConnectivityReadiness"}, {name = "discovery_send", type = "ConnectivityReadiness"}, {name = "discovery_receive", type = "ConnectivityReadiness"}, {name = "advertised_endpoints", type = "ConnectivityEndpointObservations"}, {name = "memberships", type = "ConnectivityMembershipRefs"}, {name = "beacons_sent", type = "OptionalU64"}, {name = "beacons_heard", type = "OptionalU64"}, {name = "beacons_rejected", type = "OptionalU64"}, {name = "revision", type = "U64"}]
+fields = [{name = "device_id", type = "DeviceId"}, {name = "installation_id", type = "InstallationId"}, {name = "generation", type = "ResourceGeneration"}, {name = "service", type = "ConnectivityReadiness"}, {name = "listener", type = "ConnectivityReadiness"}, {name = "discovery_send", type = "ConnectivityReadiness"}, {name = "discovery_receive", type = "ConnectivityReadiness"}, {name = "advertised_endpoints", type = "ConnectivityEndpointSnapshot"}, {name = "memberships", type = "ConnectivityMembershipSnapshot"}, {name = "beacons_sent", type = "OptionalU64"}, {name = "beacons_heard", type = "OptionalU64"}, {name = "beacons_rejected", type = "OptionalU64"}, {name = "revision", type = "U64"}]
 
 [[type]]
 name = "ConnectivityLocalChange"
@@ -590,10 +608,17 @@ item = "ConnectivityBoardRef"
 max_items = 256
 
 [[type]]
+name = "ConnectivitySyncBoardScope"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "all_authorized", type = "Empty"}, {tag = "selected", type = "ConnectivityBoardRefs"}]
+
+[[type]]
 name = "ConnectivitySyncRequest"
 kind = "record"
 visibility = "public"
-fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "pool", type = "ConnectivityPoolRef"}, {name = "boards", type = "ConnectivityBoardRefs"}, {name = "expected_revision", type = "U64"}]
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "pool", type = "ConnectivityPoolRef"}, {name = "boards", type = "ConnectivitySyncBoardScope"}, {name = "expected_revision", type = "U64"}]
 
 [[type]]
 name = "ConnectivitySyncState"
@@ -702,6 +727,28 @@ cancellation = "request-detach-only"
 subscription = "none"
 
 [[operation]]
+name = "devices.local.endpoints.list"
+symbol = "DevicesLocalEndpointsList"
+request = "ConnectivityLocalRequest"
+response = "ConnectivityEndpointSnapshot"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-local-device-reader", "parent-generation-and-frozen-projection-bound-cursor"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "devices.local.memberships.list"
+symbol = "DevicesLocalMembershipsList"
+request = "ConnectivityLocalRequest"
+response = "ConnectivityMembershipSnapshot"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-local-device-reader", "parent-generation-and-frozen-projection-bound-cursor", "reauthorize-each-pool-membership"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
 name = "devices.local.watch"
 symbol = "DevicesLocalWatch"
 request = "ConnectivityLocalRequest"
@@ -786,6 +833,17 @@ response = "ConnectivityCandidate"
 error = "ConnectivityError"
 authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "untrusted-address-only-no-authority-or-owner-prompt", "parse-normalize-and-enforce-egress-provider-interface-policy", "aggregate-principal-device-provider-rate-cache-ttl-bound", "recheck-every-resolved-and-connected-address", "authorized-current-provider-and-interface-generation"]
 retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "discovery.candidate.endpoints.list"
+symbol = "DiscoveryCandidateEndpointsList"
+request = "ConnectivityCandidateEndpointsRequest"
+response = "ConnectivityEndpointSnapshot"
+error = "ConnectivityError"
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-local-discovery-reader", "candidate-expiry-and-generation", "parent-generation-and-frozen-projection-bound-cursor"]
+retry = "read-current-state"
 cancellation = "request-detach-only"
 subscription = "none"
 
@@ -916,7 +974,7 @@ symbol = "PoolsSyncRequest"
 request = "ConnectivitySyncRequest"
 response = "ConnectivitySyncView"
 error = "ConnectivityError"
-authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-pool-sync-requester", "expected-revision-cas", "each-board-and-share-authorization", "verify-original-signed-log-entries", "corrupt-relay-cannot-damage-origin", "exact-pool-generation-device-membership-incarnation", "caller-current-signed-membership-or-protected-local-owner-not-beacon-or-cache", "current-membership-at-every-effect-and-publication"]
+authorization = ["authenticated-current-principal", "exact-resource-generation", "no-existence-disclosure-before-authorization", "authorized-pool-sync-requester", "expected-revision-cas", "each-board-and-share-authorization", "all-scope-frozen-for-exact-pool-target-membership-share", "selected-only-narrows-boards-not-build-governance-sync", "verify-original-signed-log-entries", "corrupt-relay-cannot-damage-origin", "exact-pool-generation-device-membership-incarnation", "caller-current-signed-membership-or-protected-local-owner-not-beacon-or-cache", "current-membership-at-every-effect-and-publication"]
 retry = "durable-principal-resource-generation-payload-bound"
 cancellation = "request-detach-only"
 subscription = "none"
