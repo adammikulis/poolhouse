@@ -2,6 +2,8 @@
 //! This module neither admits wire callers nor closes channels or terminates processes.
 //! Resume is deliberately restricted to the SAME admitted producer/process instance.
 //! Replacement-producer or replacement-process continuity has no proof interface in this increment.
+mod source_context;
+#[cfg(test)] mod source_context_tests;
 mod occurrence;
 mod invocation;
 mod event;

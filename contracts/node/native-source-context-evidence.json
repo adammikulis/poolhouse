@@ -1,0 +1,93 @@
+{
+  "profile": "CDXCTX01",
+  "status": "private untrusted data compatibility and refusal; no runtime admission acceptance",
+  "source": {
+    "upstream_commit": "6aaac694803004a63c6f393d153c96d22521a6b9",
+    "patched_commit": "a50cb4ae3ed4665f18bbd6c3c2eaf8fd2eb76fd1",
+    "tree": "64168edc27ec59e7d8d9fb9a4654a0352e1aec1b",
+    "product_patch_checkpoint": "d9c0d7cc3",
+    "tracked_and_untracked_source_clean": true,
+    "files_sha256": {
+      "codex-rs/hooks/src/native_actor.rs": "d8b161cd997b28d7c5e65b5f110e3934aee8acd4d1caf7c19bf660ff24fde9b5",
+      "codex-rs/hooks/src/native_occurrence.rs": "59df3e55cfeb5553c95ee4d0841dcb2cf7f0e19ab2ff49eace691c71cf9661a9",
+      "codex-rs/hooks/src/native_session.rs": "f7a7bd080581e7384d71eb49131a65bc9788734017638d917c5bb080ab784a80",
+      "codex-rs/hooks/src/lib.rs": "d33bbd402514a7e1bb644a62e6c4a50800271edc2486f69138215fae0f2e5ff0",
+      "codex-rs/protocol/src/thread_id.rs": "6f1f15040fd6cd6e63ecedd632fad5d7efd7d9404356d54a22f521157c127b7d",
+      "codex-rs/Cargo.toml": "11ce75d44b3fdc2cf92770ba0dd9e642a214dbf230fb2ef609d0805049f0887f",
+      "codex-rs/Cargo.lock": "c043b6b7e67bb2f0ae4b1b8dd485cd6a24bd1cb7ef3a42752d303bc5e5ca4be1"
+    }
+  },
+  "driver": {
+    "path": "contracts/node/native-source-context-driver.rs",
+    "sha256": "9955dc9e951e899292e6804d3746a312d9cf81c124840adbcdfb9517e125e829",
+    "entry": "main; real codex_hooks NativeSessionSource::birth_root/birth_child and NativeActorContext::canonical_bytes public DATA APIs",
+    "compiler": "rustc 1.99.1 (58cf8f9c3 2026-10-13)\nbinary: rustc\ncommit-hash: 58cf8f9c35b355199727627d07ae34a4e2846d67\ncommit-date: 2026-10-13\nhost: x86_64-unknown-linux-gnu\nrelease: 1.99.1\nLLVM version: 23.1.1",
+    "edition": "2024",
+    "command": "cargo +1.99.1 run --locked --offline --quiet",
+    "admission": "existing testslots run --want 1 --min 1; CARGO_BUILD_JOBS=1; unchanged provisioned SDK",
+    "exit": 0,
+    "external_lock_sha256": "75278e6d848cecbc9b44162f9dd7ddd92d969ecc1946c9f6adfc1772a4344673",
+    "stdout_sha256": "867dd79153b844f366cbd0517c64cb85ec35aa2e367173e4ef7626d6725c30be",
+    "stderr_sha256": "c4692d43e3f718fb9fc2370090d874f007315f3e9780da4ea44326d80e6b68c2",
+    "stdout_format": "name|canonical source launch hex|context hex|raw source UUID hex|actor serial; five rows",
+    "proof_scope": "Actual reviewed codec execution verifies data-format compatibility only, not a protected producer, OS identity, channel or Node admission."
+  },
+  "fixture": {
+    "path": "app/poolhouse-node/tests/fixtures/native-source-context-vectors.json",
+    "sha256": "81eaae97a952d960cf30299c9b5dc80d83bc0bc479605b58053e84e5332c79c6",
+    "vectors": 5,
+    "encoded_lengths": [
+      106,
+      122,
+      138,
+      154
+    ],
+    "generation": "Frozen successful driver stdout; no manually minted positive actor IDs, source epochs or context bytes."
+  },
+  "layout": {
+    "prefix_ascii": "CDXCTX01",
+    "actual_occurrence": "UUIDv4 RFC variant 16 bytes + nonzero U64 big endian 8 bytes + zero 8 bytes",
+    "source_launch": "Same source UUID16 + zero16; caller-supplied expected comparison DATA only",
+    "fields": [
+      "actual actor occurrence32",
+      "actual root occurrence32",
+      "parent flag0/1 and optional actual parent occurrence32",
+      "diagnostic actor UUID16",
+      "diagnostic root UUID16",
+      "diagnostic parent flag0/1 and optional UUID16"
+    ],
+    "eof": "exact; no truncation or trailing bytes",
+    "structural_birth_checks": [
+      "No native parent: root equals actor.",
+      "Native parent present: same source epoch and root.serial <= parent.serial < actor.serial."
+    ],
+    "diagnostics": "All 128-bit label values and relationships remain data. No version, variant, nil, equality or ancestry inference."
+  },
+  "boundary": {
+    "parsed_types": "UntrustedActorContext, UntrustedOccurrence, DiagnosticLabels; private, freely copyable data",
+    "raw_retention": "Original complete input bytes and raw occurrence32 plus source UUID16 and NonZeroU64 serial retained without reminting.",
+    "not_conferred": [
+      "verified launch",
+      "OS/process identity",
+      "producer authentication",
+      "session or parent ownership",
+      "live ancestry",
+      "original message provenance",
+      "Node proof or rights",
+      "public or wire admission API",
+      "transport/exporter/bridge",
+      "installed H or K acceptance"
+    ]
+  },
+  "tests": {
+    "selector": "tests/test_native_lifecycle.py::test_native_source_context_decoder",
+    "rust_filter": "lifecycle::source_context_tests::",
+    "families": 10,
+    "integrated_execution": "Not executed by author; Root owns the single focused integrated Node target. No integrated execution is claimed by this receipt."
+  },
+  "review": {
+    "identity": "chatgpt-5bb8ca",
+    "design": "Approved before implementation as pure untrusted data; expected epoch is comparison data, structural order is not authenticated ancestry.",
+    "actual_source": "Final source and artifact review approved: parser, ten test families, exact driver and fixture hashes, five rows matching successful real-codec stdout, and stdout/stderr receipt hashes. Approval covers private untrusted-data format compatibility only; reviewer ran no tests or executions."
+  }
+}
