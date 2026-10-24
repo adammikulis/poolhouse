@@ -652,6 +652,52 @@ def test_generator_refuses_shadow_or_symlink_type_interfaces(tmp_path, monkeypat
         assert outside.read_text() == "# original\n"
 
 
+@pytest.mark.parametrize("check", [True, False])
+@pytest.mark.parametrize("kind", ["stale", "file_symlink", "directory_symlink", "ancestor_symlink"])
+def test_generator_refuses_unsafe_rust_output_paths(tmp_path, monkeypatch, capsys, check, kind):
+    import generate_node_contract as generator
+
+    shutil.copytree(ROOT / "contracts/node", tmp_path / "contracts/node")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    sentinel = outside / "sentinel.rs"
+    sentinel.write_text("original\n")
+    rust = tmp_path / "app/poolhouse-node/src/contract_types"
+    if kind == "ancestor_symlink":
+        (tmp_path / "app").symlink_to(outside, target_is_directory=True)
+    else:
+        rust.parent.mkdir(parents=True)
+        if kind == "directory_symlink":
+            rust.symlink_to(outside, target_is_directory=True)
+        else:
+            rust.mkdir()
+            if kind == "file_symlink":
+                (rust / "core.rs").symlink_to(sentinel)
+            else:
+                (rust / "obsolete.rs").write_text("unowned\n")
+    monkeypatch.setattr(generator, "ROOT", tmp_path)
+    monkeypatch.setattr(sys, "argv", ["generate_node_contract.py", *(["--check"] if check else [])])
+    with pytest.raises(SystemExit, match="1"):
+        generator.main()
+    assert "generated" in capsys.readouterr().err
+    assert sentinel.read_text() == "original\n"
+    assert not (tmp_path / "src/poolhouse/api/node_contract/__init__.py").exists()
+    assert not (tmp_path / "app/poolhouse-node/src/contract_operations.rs").exists()
+    assert list(outside.iterdir()) == [sentinel]
+    if kind == "stale":
+        assert (rust / "obsolete.rs").read_text() == "unowned\n"
+
+
+def test_generator_refuses_aliasing_rust_module_sources(tmp_path):
+    import generate_node_contract as generator
+
+    domain_fixture(tmp_path / "contracts")
+    for filename, name in [("a-b.toml", "LayoutFirst"), ("a_b.toml", "LayoutSecond")]:
+        (tmp_path / "contracts/node/domains" / filename).write_text(domain_value().replace("DomainValue", name))
+    with pytest.raises(ValueError, match="ambiguous canonical Rust module"):
+        generator.outputs(tmp_path)
+
+
 @pytest.mark.parametrize("method, change", [
     ("authenticate_producer", "launch"),
     ("receive_producer_message", "borrow"),

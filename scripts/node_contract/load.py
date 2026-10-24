@@ -28,6 +28,11 @@ META = {"version", "status", "unsigned_encoding", "device_id_algorithm", "device
 
 
 def load(root: Path) -> tuple[dict, list[dict], str]:
+    meta, rows, digest, _ = load_with_ownership(root)
+    return meta, rows, digest
+
+
+def load_with_ownership(root: Path) -> tuple[dict, list[dict], str, dict[str, str]]:
     if {path.name for path in root.glob("*.toml")} != {"contract.toml", "types.toml", "lifecycle.toml", "adapters.toml", "operations.toml"}:
         raise ValueError("unrecognized contract source file")
     meta = tomllib.loads((root / "contract.toml").read_text())
@@ -53,7 +58,9 @@ def load(root: Path) -> tuple[dict, list[dict], str]:
     if fragments:
         meta["domains"] = [{"file": name, "version": fragment["version"], "status": fragment["status"]} for name, fragment in fragments]
     canonical = json.dumps({"meta": meta, "types": ordered}, sort_keys=True, separators=(",", ":")).encode()
-    return meta, ordered, hashlib.sha256(canonical).hexdigest()
+    owners = {row["name"]: "core" for row in source["type"]}
+    owners.update({row["name"]: name for name, fragment in fragments for row in fragment["type"]})
+    return meta, ordered, hashlib.sha256(canonical).hexdigest(), owners
 
 
 def _definition(row: dict, definitions: dict[str, dict]) -> None:

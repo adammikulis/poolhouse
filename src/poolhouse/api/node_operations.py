@@ -1,4 +1,4 @@
-# Generated proposal. No dispatch or authority is implemented. Schema 2678c12f51d5b164ad08a024cc69d38c37dabc2b3a1dd6f02c0119b7c2c2ebf3
+# Generated proposal. No dispatch or authority is implemented. Schema 575792475bffa13c93c7ac14f1920e8fac048e2603cf84bddcd3b2c5cbd5bbcf
 from . import node_contract as data
 
 OPERATION_TYPES = {
@@ -132,6 +132,12 @@ OPERATION_TYPES = {
     "inference.content.read": (data.InferenceContentReadRequest, data.InferenceContentChunk, data.InferenceError),
     "inference.content.discard": (data.InferenceContentDiscardRequest, data.InferenceContentDiscardResult, data.InferenceError),
     "inference.prepare": (data.InferencePrepareRequest, data.InferencePreparationView, data.InferenceError),
+    "knowledge.context.inspect": (data.KnowledgeContextInspectRequest, data.KnowledgeContextView, data.KnowledgeError),
+    "knowledge.stores.list": (data.KnowledgeStoresListRequest, data.KnowledgeStoresEvent, data.KnowledgeError),
+    "knowledge.nodes.search": (data.KnowledgeNodesSearchRequest, data.KnowledgeNodesEvent, data.KnowledgeError),
+    "knowledge.node.inspect": (data.KnowledgeNodeInspectRequest, data.KnowledgeNodeDetailEvent, data.KnowledgeError),
+    "knowledge.fields.read": (data.KnowledgeFieldsReadRequest, data.KnowledgeFieldEvent, data.KnowledgeError),
+    "knowledge.text.read": (data.KnowledgeTextReadRequest, data.KnowledgeDiagnosticTextEvent, data.KnowledgeError),
     "models.list": (data.ModelListRequest, data.ModelListResponse, data.ModelDomainError),
     "models.get": (data.ModelGetRequest, data.ModelView, data.ModelDomainError),
     "models.search": (data.ModelSearchRequest, data.ModelSearchResponse, data.ModelDomainError),
@@ -261,6 +267,12 @@ OPERATION_TYPES = {
     "studio.scalars.read": (data.StudioGraphScalarReadRequest, data.StudioGraphScalarChunk, data.StudioControlError),
     "studio.ir.selection.resolve": (data.StudioGraphSelectionResolveRequest, data.StudioGraphSelectionSnapshot, data.StudioControlError),
     "studio.ir.selection.read": (data.StudioGraphSelectionReadRequest, data.StudioGraphSelectionEvent, data.StudioControlError),
+    "studio.values.list": (data.StudioValueListRequest, data.StudioValueListEvent, data.StudioControlError),
+    "studio.values.read": (data.StudioValueReadRequest, data.StudioValueOutputView, data.StudioControlError),
+    "studio.values.text.read": (data.StudioValueTextReadRequest, data.StudioValueTextChunk, data.StudioControlError),
+    "studio.values.literal.read": (data.StudioValueLiteralReadRequest, data.StudioValueLiteralEvent, data.StudioControlError),
+    "studio.values.rows.read": (data.StudioValueRowsReadRequest, data.StudioValueRowsEvent, data.StudioControlError),
+    "studio.metrics.read": (data.StudioValueMetricsReadRequest, data.StudioValueHistoryReadEvent, data.StudioControlError),
     "tasks.scope.replace": (data.TaskExtensionScopeReplaceRequest, data.TaskExtensionScopeView, data.TaskContractError),
     "tasks.scope.inspect": (data.TaskExtensionScopeInspectRequest, data.TaskExtensionOptionalScopeView, data.TaskContractError),
     "tasks.records.merge": (data.TaskExtensionRecordMergeRequest, data.TaskExtensionRecordReceipt, data.TaskContractError),

@@ -8,13 +8,13 @@ import json
 from pathlib import Path
 
 from node_contract import lifecycle, operations, python_package, rust, typescript
-from node_contract.load import load
+from node_contract.load import load_with_ownership
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
 def outputs(root: Path) -> dict[Path, str]:
-    meta, rows, digest = load(root / "contracts/node")
+    meta, rows, digest, owners = load_with_ownership(root / "contracts/node")
     key = bytes(range(32))
     audit_words = [0x01020304, 0x10203040, 0x11223344, 0x55667788, 0x89ABCDEF, 0x13579BDF, 0x2468ACE0, 0xFEDCBA98]
     vectors = {"schema_sha256": digest, "decoded_values": "untrusted-data",
@@ -82,11 +82,11 @@ def outputs(root: Path) -> dict[Path, str]:
         root / "app/poolhouse-node/src/contract_operations.rs": operations.render_rust(meta["operations"], digest),
         root / "src/poolhouse/api/node_operations.py": operations.render_python(meta["operations"], digest),
         root / "app/contracts/node_operations.ts": operations.render_typescript(meta["operations"], digest),
-        root / "app/poolhouse-node/src/contract.rs": rust.render(meta, rows, digest),
         root / "app/poolhouse-node/src/contract_lifecycle.rs": lifecycle.render(meta["lifecycle"], meta["adapters"]),
         root / "app/contracts/node.ts": typescript.render(meta, rows, digest),
         root / "contracts/node/vectors.json": json.dumps(vectors, indent=2) + "\n",
     }
+    result.update(rust.render_modules(root, meta, rows, digest, owners))
     result.update(python_package.render_package(root, meta, rows, digest))
     return result
 
@@ -105,6 +105,19 @@ def main() -> int:
     for path in [*package.glob("*.py"), *package.glob("*.pyi")]:
         if path.is_symlink() or path not in generated:
             parser.exit(1, "unknown or stale generated contract package entry; review it through Git\n")
+    rust_types = ROOT / "app/poolhouse-node/src/contract_types"
+    for path in generated:
+        if path.is_symlink():
+            parser.exit(1, "generated contract output cannot be a symlink\n")
+        for parent in path.parents:
+            if parent.is_symlink() or (parent.exists() and not parent.is_dir()):
+                parser.exit(1, "generated contract output ancestry must be real directories\n")
+            if parent == ROOT:
+                break
+    if rust_types.exists():
+        for path in rust_types.iterdir():
+            if path.is_symlink() or not path.is_file() or path not in generated:
+                parser.exit(1, "unknown or stale generated Rust contract entry; review it through Git\n")
     changed = []
     for path, content in generated.items():
         if not path.is_file() or path.read_text() != content:

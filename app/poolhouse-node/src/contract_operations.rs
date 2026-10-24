@@ -1,4 +1,4 @@
-// Generated proposal. No dispatch or authority is implemented. Schema 2678c12f51d5b164ad08a024cc69d38c37dabc2b3a1dd6f02c0119b7c2c2ebf3
+// Generated proposal. No dispatch or authority is implemented. Schema 575792475bffa13c93c7ac14f1920e8fac048e2603cf84bddcd3b2c5cbd5bbcf
 use super::contract::*;
 
 pub trait Operation { type Request; type Response; type Error; const NAME: &'static str; }
@@ -393,6 +393,24 @@ impl Operation for InferenceDomainInferenceContentDiscard { type Request = Infer
 pub struct InferenceDomainInferencePrepare;
 impl Operation for InferenceDomainInferencePrepare { type Request = InferencePrepareRequest; type Response = InferencePreparationView; type Error = InferenceError; const NAME: &'static str = "inference.prepare"; }
 
+pub struct KnowledgeContextInspect;
+impl Operation for KnowledgeContextInspect { type Request = KnowledgeContextInspectRequest; type Response = KnowledgeContextView; type Error = KnowledgeError; const NAME: &'static str = "knowledge.context.inspect"; }
+
+pub struct KnowledgeStoresList;
+impl Operation for KnowledgeStoresList { type Request = KnowledgeStoresListRequest; type Response = KnowledgeStoresEvent; type Error = KnowledgeError; const NAME: &'static str = "knowledge.stores.list"; }
+
+pub struct KnowledgeNodesSearch;
+impl Operation for KnowledgeNodesSearch { type Request = KnowledgeNodesSearchRequest; type Response = KnowledgeNodesEvent; type Error = KnowledgeError; const NAME: &'static str = "knowledge.nodes.search"; }
+
+pub struct KnowledgeNodeInspect;
+impl Operation for KnowledgeNodeInspect { type Request = KnowledgeNodeInspectRequest; type Response = KnowledgeNodeDetailEvent; type Error = KnowledgeError; const NAME: &'static str = "knowledge.node.inspect"; }
+
+pub struct KnowledgeFieldsRead;
+impl Operation for KnowledgeFieldsRead { type Request = KnowledgeFieldsReadRequest; type Response = KnowledgeFieldEvent; type Error = KnowledgeError; const NAME: &'static str = "knowledge.fields.read"; }
+
+pub struct KnowledgeTextRead;
+impl Operation for KnowledgeTextRead { type Request = KnowledgeTextReadRequest; type Response = KnowledgeDiagnosticTextEvent; type Error = KnowledgeError; const NAME: &'static str = "knowledge.text.read"; }
+
 pub struct ModelsDomainModelsList;
 impl Operation for ModelsDomainModelsList { type Request = ModelListRequest; type Response = ModelListResponse; type Error = ModelDomainError; const NAME: &'static str = "models.list"; }
 
@@ -779,6 +797,24 @@ impl Operation for StudioGraphSelectionResolve { type Request = StudioGraphSelec
 
 pub struct StudioGraphSelectionRead;
 impl Operation for StudioGraphSelectionRead { type Request = StudioGraphSelectionReadRequest; type Response = StudioGraphSelectionEvent; type Error = StudioControlError; const NAME: &'static str = "studio.ir.selection.read"; }
+
+pub struct StudioValueList;
+impl Operation for StudioValueList { type Request = StudioValueListRequest; type Response = StudioValueListEvent; type Error = StudioControlError; const NAME: &'static str = "studio.values.list"; }
+
+pub struct StudioValueRead;
+impl Operation for StudioValueRead { type Request = StudioValueReadRequest; type Response = StudioValueOutputView; type Error = StudioControlError; const NAME: &'static str = "studio.values.read"; }
+
+pub struct StudioValueTextRead;
+impl Operation for StudioValueTextRead { type Request = StudioValueTextReadRequest; type Response = StudioValueTextChunk; type Error = StudioControlError; const NAME: &'static str = "studio.values.text.read"; }
+
+pub struct StudioValueLiteralRead;
+impl Operation for StudioValueLiteralRead { type Request = StudioValueLiteralReadRequest; type Response = StudioValueLiteralEvent; type Error = StudioControlError; const NAME: &'static str = "studio.values.literal.read"; }
+
+pub struct StudioValueRowsRead;
+impl Operation for StudioValueRowsRead { type Request = StudioValueRowsReadRequest; type Response = StudioValueRowsEvent; type Error = StudioControlError; const NAME: &'static str = "studio.values.rows.read"; }
+
+pub struct StudioValueMetricsRead;
+impl Operation for StudioValueMetricsRead { type Request = StudioValueMetricsReadRequest; type Response = StudioValueHistoryReadEvent; type Error = StudioControlError; const NAME: &'static str = "studio.metrics.read"; }
 
 pub struct TaskExtensionScopeReplace;
 impl Operation for TaskExtensionScopeReplace { type Request = TaskExtensionScopeReplaceRequest; type Response = TaskExtensionScopeView; type Error = TaskContractError; const NAME: &'static str = "tasks.scope.replace"; }

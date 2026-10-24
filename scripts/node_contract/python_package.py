@@ -10,6 +10,28 @@ from . import python
 
 
 def group(name: str) -> str:
+    if name.startswith("Knowledge"):
+        for words, owner in (
+            (("Text", "Surrogate", "Fragment", "Scalar"), "knowledge_text"),
+            (("Field", "Token", "Profile", "Property"), "knowledge_fields"),
+            (("Node", "Relation", "Edge", "Count", "Projection"), "knowledge_nodes"),
+        ):
+            if any(word in name for word in words):
+                return owner
+        return "knowledge_stores"
+    if name.startswith("StudioValue"):
+        if name.endswith("Result") or name in {"StudioValueOutputs", "StudioValueOutputView"}:
+            return "studio_value_outputs"
+        for words, owner in (
+            (("History", "Segment", "Probe", "NonfiniteNote", "TimeBudgetNote", "StallNote", "RecipeParameters"), "studio_value_history"),
+            (("Text", "Literal", "Container", "Number", "Numeric", "Unobserved", "Comparable"), "studio_value_data"),
+            (("Decision", "Route", "Gate", "Calibration", "Score", "Backend", "Coverage", "Reason", "Injection", "Assessment"), "studio_value_decision"),
+            (("Generation", "Tool", "SourceSemantics", "Advisory"), "studio_value_generation"),
+            (("Metric", "Report", "Delta", "Train", "Lora", "Recipe", "Framework", "Phases", "Environment", "Configuration", "PackageVersions", "Cpu"), "studio_value_metrics"),
+        ):
+            if any(word in name for word in words):
+                return owner
+        return "studio_values"
     if name.startswith("Credential"):
         return "credentials"
     if name.startswith("StudioGraph"):
