@@ -59,10 +59,10 @@ def load(root: Path) -> tuple[dict, list[dict], str]:
 def _definition(row: dict, definitions: dict[str, dict]) -> None:
     kind = row.get("kind") if isinstance(row, dict) else None
     shape = {"name", "kind", "visibility"}
-    extra = {"scalar": {"encoding", "issuer", "secret", "min_bytes", "max_bytes", "minimum", "maximum", "unit"}, "record": {"fields"}, "union": {"tag", "variants"}, "optional": {"item"}, "list": {"item", "max_items"}}
+    extra = {"scalar": {"encoding", "issuer", "secret", "min_bytes", "max_bytes", "minimum", "maximum", "unit"}, "record": {"fields"}, "union": {"tag", "variants"}, "optional": {"item"}, "list": {"item", "max_items", "min_items", "unique"}}
     if kind not in extra:
         raise ValueError("unsupported type kind")
-    keys(row, shape | extra[kind], shape | (extra[kind] - {"secret", "min_bytes", "max_bytes", "minimum", "maximum", "unit"}))
+    keys(row, shape | extra[kind], shape | (extra[kind] - {"secret", "min_bytes", "max_bytes", "minimum", "maximum", "unit", "min_items", "unique"}))
     name = row["name"]
     if (not isinstance(name, str) or not IDENTIFIER.fullmatch(name) or name in definitions
                 or name in GENERATED_TYPES or keyword.iskeyword(name)
@@ -75,7 +75,9 @@ def _definition(row: dict, definitions: dict[str, dict]) -> None:
     elif kind in {"optional", "list"}:
         if not isinstance(row["item"], str):
             raise ValueError("invalid collection type reference")
-        if kind == "list" and (type(row["max_items"]) is not int or not 1 <= row["max_items"] <= 1024):
+        if kind == "list" and (type(row["max_items"]) is not int or type(row.get("min_items", 0)) is not int
+                               or type(row.get("unique", False)) is not bool
+                               or not 0 <= row.get("min_items", 0) <= row["max_items"] <= 1024 or row["max_items"] < 1):
             raise ValueError("invalid list bound")
     else:
         members = row["fields" if kind == "record" else "variants"]
@@ -134,8 +136,8 @@ def _ordered(definitions: dict[str, dict]) -> list[dict]:
                           [member["type"] for member in row.get("fields", row.get("variants", []))])
             if any(ref not in definitions for ref in references):
                 raise ValueError("dangling type reference")
-            if row["kind"] == "optional" and definitions[row["item"]]["kind"] not in {"scalar", "record"}:
-                raise ValueError("optional items must be nonnullable scalars or records")
+            if row["kind"] == "optional" and definitions[row["item"]]["kind"] not in {"scalar", "record", "union"}:
+                raise ValueError("optional items must be nonnullable scalars, records or tagged unions")
             if row["visibility"] == "public" and any(definitions[ref]["visibility"] != "public" for ref in references):
                 raise ValueError("private type escapes through a public DTO")
             if all(ref in available for ref in references):

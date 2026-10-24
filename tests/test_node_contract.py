@@ -411,9 +411,11 @@ def test_source_refuses_ambiguous_native_representations(tmp_path, change):
 
 def test_retained_operation_mapping_matches_current_declarations():
     import json
+    import tomllib
     mapping = json.loads((ROOT / "contracts/node/operation-mapping.json").read_text())
     meta, _, _ = load(ROOT / "contracts/node")
-    declared = {row["name"]: row for row in meta["operations"]}
+    root_names = {row["name"] for row in tomllib.loads((ROOT / "contracts/node/operations.toml").read_text())["operation"]}
+    declared = {row["name"]: row for row in meta["operations"] if row["name"] in root_names}
     mapped = {row["operation"]: row for row in mapping["operations"]}
     assert len(mapped) == len(mapping["operations"])
     assert set(mapped) == set(declared)
@@ -498,3 +500,67 @@ def test_domain_fragments_reject_symlink_metadata_before_reading(tmp_path, monke
     monkeypatch.setattr(Path, "is_symlink", lambda path: path == selected or original(path))
     with pytest.raises(ValueError):
         load(source)
+
+
+def test_generated_collection_minimum_unique_and_nullable_union(tmp_path, monkeypatch):
+    import importlib.util
+
+    from node_contract import python as generator
+    source = domain_fixture(tmp_path)
+    (source / "domains" / "collection.toml").write_text(
+        'version = 1\nstatus = "proposal"\noperation = []\n'
+        '[[type]]\nname = "DomainChoices"\nkind = "list"\nvisibility = "public"\n'
+        'item = "DeviceId"\nmin_items = 1\nmax_items = 2\nunique = true\n'
+        '[[type]]\nname = "DomainChoice"\nkind = "union"\nvisibility = "public"\ntag = "kind"\n'
+        'variants = [{tag = "selected", type = "Empty"}]\n'
+        '[[type]]\nname = "OptionalDomainChoice"\nkind = "optional"\nvisibility = "public"\nitem = "DomainChoice"\n')
+    meta, rows, digest = load(source)
+    path = tmp_path / "generated_contract.py"
+    path.write_text(generator.render(meta, rows, digest))
+    spec = importlib.util.spec_from_file_location("node_contract_collection_fixture", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    spec.loader.exec_module(module)
+    valid = ["ab" * 32, "cd" * 32]
+    assert module.DomainChoices.from_wire(valid).to_wire() == valid
+    for invalid in ([], [valid[0], valid[0]], [*valid, "ef" * 32]):
+        with pytest.raises(ValueError):
+            module.DomainChoices.from_wire(invalid)
+    assert module.OptionalDomainChoice.from_wire(None).to_wire() is None
+    selected = {"kind": "selected", "value": {}}
+    assert module.OptionalDomainChoice.from_wire(selected).to_wire() == selected
+
+
+@pytest.mark.parametrize("change", ["minimum_bool", "minimum_negative", "minimum_over_max", "unique_nonbool"])
+def test_collection_bounds_refuse_ambiguous_definitions(tmp_path, change):
+    source = domain_fixture(tmp_path)
+    constraints = {"minimum_bool": "min_items = true", "minimum_negative": "min_items = -1",
+                   "minimum_over_max": "min_items = 3", "unique_nonbool": "unique = 1"}
+    (source / "domains" / "collection.toml").write_text(
+        'version = 1\nstatus = "proposal"\noperation = []\n'
+        '[[type]]\nname = "DomainChoices"\nkind = "list"\nvisibility = "public"\n'
+        'item = "DeviceId"\nmax_items = 2\n' + constraints[change] + '\n')
+    with pytest.raises(ValueError):
+        load(source)
+
+
+def test_every_contract_domain_has_pinned_operation_evidence():
+    import json
+    import tomllib
+    meta, _, _ = load(ROOT / "contracts/node")
+    for domain in meta.get("domains", []):
+        name = Path(domain["file"]).stem
+        source = tomllib.loads((ROOT / "contracts/node/domains" / domain["file"]).read_text())
+        evidence = json.loads((ROOT / "contracts/node/domain-evidence" / (name + ".json")).read_text())
+        mappings = evidence.get("operation_mapping", evidence.get("operations"))
+        actual = [row.get("operation", row.get("name")) for row in mappings]
+        assert len(set(actual)) == len(actual), name
+        declared = {row["name"]: row for row in source["operation"]}
+        assert set(actual) == set(declared), name
+        assert len(evidence["source_commit"]) == 40
+        for row in mappings:
+            operation = declared[row.get("operation", row.get("name"))]
+            for field in ("request", "response", "authorization"):
+                if field in row:
+                    assert row[field] == operation[field], (name, operation["name"], field)

@@ -91,6 +91,11 @@ impl From<{name}> for String {{ fn from(value: {name}) -> Self {{ value.0 }} }}
 
 def render_list(row: dict) -> str:
     name, item, maximum = row["name"], row["item"], row["max_items"]
+    check = f'value.len() <= {maximum}'
+    if row.get("min_items", 0):
+        check += f' && value.len() >= {row["min_items"]}'
+    if row.get("unique", False):
+        check += ' && value.iter().enumerate().all(|(index, item)| !value[..index].contains(item))'
     return f'''#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(try_from = "Vec<{item}>", into = "Vec<{item}>")]
 pub struct {name}(Vec<{item}>);
@@ -98,7 +103,7 @@ impl {name} {{ pub fn as_slice(&self) -> &[{item}] {{ &self.0 }} }}
 impl TryFrom<Vec<{item}>> for {name} {{
     type Error = &'static str;
     fn try_from(value: Vec<{item}>) -> Result<Self, Self::Error> {{
-        if value.len() <= {maximum} {{ Ok(Self(value)) }} else {{ Err("too many {name} items") }}
+        if {check} {{ Ok(Self(value)) }} else {{ Err("too many {name} items") }}
     }}
 }}
 impl From<{name}> for Vec<{item}> {{ fn from(value: {name}) -> Self {{ value.0 }} }}

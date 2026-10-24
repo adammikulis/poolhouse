@@ -1,4 +1,4 @@
-// Generated proposal. No dispatch or authority is implemented. Schema 3f7ee4fb3ed4b13bff6301271c7add44ed4d8ac53aa52929ccf528f080b09fec
+// Generated proposal. No dispatch or authority is implemented. Schema f5b4730d300cd59c6823fcee4dd4a696fb0074ab4ac56fe9dfe549b8001b353e
 import type { AgentControlError, AgentControlRequest, AgentControlSnapshot, AgentGetRequest, AgentPauseResult, AgentStopResult, AgentTaskStartRequest, AgentTaskStartResult, AgentTaskStopRequest, AgentTaskStopResult, JobCancelRequest, JobError, JobGetRequest, JobListRequest, JobListResponse, JobOutputChunk, JobOutputRequest, JobView } from "./node";
 export interface NodeOperations {
   readonly "jobs.get": { readonly request: JobGetRequest; readonly response: JobView; readonly error: JobError };

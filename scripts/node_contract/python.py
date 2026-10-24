@@ -101,15 +101,19 @@ class _List:
     items: tuple
     _item: ClassVar[str]
     _maximum: ClassVar[int]
+    _minimum: ClassVar[int] = 0
+    _unique: ClassVar[bool] = False
 
     def __post_init__(self) -> None:
-        if (type(self.items) is not tuple or len(self.items) > self._maximum
+        if (type(self.items) is not tuple or not self._minimum <= len(self.items) <= self._maximum
                 or any(type(item) is not globals()[self._item] for item in self.items)):
             raise ValueError("invalid list")
+        if self._unique and any(item in self.items[:index] for index, item in enumerate(self.items)):
+            raise ValueError("duplicate list item")
 
     @classmethod
     def from_wire(cls, value: object) -> Self:
-        if type(value) is not list or len(value) > cls._maximum:
+        if type(value) is not list or not cls._minimum <= len(value) <= cls._maximum:
             raise ValueError("invalid list")
         return cls(tuple(_decode(cls._item, item) for item in value))
 
@@ -155,7 +159,9 @@ def render(meta: dict, rows: list[dict], digest: str) -> str:
             continue
         name = row["name"]
         if row["kind"] == "list":
-            output.append(f'class {name}(_List):\n    _item = "{row["item"]}"\n    _maximum = {row["max_items"]}\n')
+            constraints = (f'    _minimum = {row["min_items"]}\n' if "min_items" in row else "")
+            constraints += f'    _unique = {row["unique"]}\n' if "unique" in row else ""
+            output.append(f'class {name}(_List):\n    _item = "{row["item"]}"\n    _maximum = {row["max_items"]}\n{constraints}')
         elif row["kind"] == "optional":
             output.append(f'class {name}(_Optional):\n    _item = "{row["item"]}"\n')
         elif row["kind"] == "scalar" and row["encoding"] == "bool":

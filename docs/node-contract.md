@@ -291,3 +291,12 @@ reference, privacy and cycle rules as the root declarations. Domain filenames an
 versions enter the schema digest along with all combined definitions. An absent
 or empty domains directory preserves the root-only output. These files introduce
 no dispatch, native proof issuer or accepted barrier.
+
+Lists may specify exact integer min_items and boolean unique constraints; missing
+values mean zero and false. Rust and Python refuse out-of-range or duplicate
+whole typed values without deduplicating or sorting. Domain-specific duplicate
+identity keys still require checked node validation. Optional tagged unions use
+null or their closed object encoding; nested optionals remain refused. Shared
+ApprovalId and OperationId are node-issued UUID data references, never approval
+or execution capabilities. Per-domain evidence pins retained handlers/callers
+and explicitly separates missing runtime behavior from declarations.

@@ -96,15 +96,19 @@ class _List:
     items: tuple
     _item: ClassVar[str]
     _maximum: ClassVar[int]
+    _minimum: ClassVar[int] = 0
+    _unique: ClassVar[bool] = False
 
     def __post_init__(self) -> None:
-        if (type(self.items) is not tuple or len(self.items) > self._maximum
+        if (type(self.items) is not tuple or not self._minimum <= len(self.items) <= self._maximum
                 or any(type(item) is not globals()[self._item] for item in self.items)):
             raise ValueError("invalid list")
+        if self._unique and any(item in self.items[:index] for index, item in enumerate(self.items)):
+            raise ValueError("duplicate list item")
 
     @classmethod
     def from_wire(cls, value: object) -> Self:
-        if type(value) is not list or len(value) > cls._maximum:
+        if type(value) is not list or not cls._minimum <= len(value) <= cls._maximum:
             raise ValueError("invalid list")
         return cls(tuple(_decode(cls._item, item) for item in value))
 
@@ -143,7 +147,7 @@ def _encode(value: Any) -> object:
 
 
 CONTRACT_VERSION = 1
-SCHEMA_SHA256 = "3f7ee4fb3ed4b13bff6301271c7add44ed4d8ac53aa52929ccf528f080b09fec"
+SCHEMA_SHA256 = "f5b4730d300cd59c6823fcee4dd4a696fb0074ab4ac56fe9dfe549b8001b353e"
 
 
 class AgentDisplayName(_Scalar):
@@ -152,6 +156,10 @@ class AgentDisplayName(_Scalar):
 
 
 class AgentId(_Scalar):
+    _encoding = "uuid"
+
+
+class ApprovalId(_Scalar):
     _encoding = "uuid"
 
 
@@ -222,6 +230,10 @@ class JobPageLimit(_Scalar):
 
 
 class ListSnapshotId(_Scalar):
+    _encoding = "uuid"
+
+
+class OperationId(_Scalar):
     _encoding = "uuid"
 
 

@@ -562,3 +562,17 @@ kind = "union"
 visibility = "public"
 tag = "kind"
 variants = [{tag = "invalid_request", type = "JobErrorDetails"}, {tag = "not_found", type = "JobErrorDetails"}, {tag = "forbidden", type = "JobErrorDetails"}, {tag = "stale_generation", type = "JobErrorDetails"}, {tag = "conflict", type = "JobErrorDetails"}, {tag = "recovery_required", type = "JobErrorDetails"}, {tag = "unavailable", type = "JobErrorDetails"}, {tag = "internal", type = "JobErrorDetails"}, {tag = "task_authority_changed", type = "JobErrorDetails"}, {tag = "control_revision_conflict", type = "JobErrorDetails"}]
+
+[[type]]
+name = "ApprovalId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "OperationId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
