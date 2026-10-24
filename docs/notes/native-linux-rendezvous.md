@@ -73,3 +73,38 @@ authenticated cross-device connection remains unproven. The next shared native
 interface work closes retained-resource and effect-owner projection signatures;
 state/worker contracts, preservation gaps and platform feasibility still prevent K
 acceptance. No milestone is accepted by these checkpoints.
+
+## Shared checkpoint recorded 2026-10-24 10:17 UTC
+
+Development checkpoint `d9c0d7cc3ebe4a547a9573be5af3d10a6867f9ec` includes
+the reviewed fourth maintained Codex patch. All four patches reproduce source
+commit `a50cb4ae3ed4665f18bbd6c3c2eaf8fd2eb76fd1`, tree
+`64168edc27ec59e7d8d9fb9a4654a0352e1aec1b`. Actual actor Birth, retained parent
+objects, full live ancestry and Closing are separate from history labels;
+completion watchers retain the exact child object. The source validation is
+24 focused native cases, Core test-target compilation and Core library compilation,
+with both ancestor-liveness and Birth-gate mutations rejected. Exact source
+restoration and patch-tree reproduction were verified. These checks issue no
+Node credential and establish no installed native caller proof.
+
+The shared schema at this checkpoint is
+`6dc8f654c0f2c143905475acbd851e2883fcfbe8ecf27ab1716a41dbbbf8222a`.
+It now includes private state and worker declarations plus public project,
+board-content, task and task-extension declarations. Source-backed review still
+identifies missing public saved-conversation and Studio workflow/run controls;
+private worker data cannot replace those public operations. Dataset, training,
+remote-test, durable-source and other retained feature mappings remain unfinished.
+No complete K or runtime migration is claimed.
+
+The Windows launch seven-file preservation question is resolved by the original
+eight-file commit and independently compared preserved blobs; see the
+[reconciliation](native-preserved-work.md#windows-launch-inventory-reconciliation).
+This establishes final committed-byte custody, not intermediate or ignored state.
+
+A fresh read-only local `pool_status` check, with client autostart and person
+callbacks disabled, still reports only this WSL self member, empty pool, unfounded
+governance and zero received discovery beacons. It reports installed build
+`11c92eb6de3801d33425504d91bbb3771d8f319d`, sequence `6781`; the new source
+is not installed evidence. Direct authenticated communication with the other
+device remains unproven. Synchronize source through `0.3dev`; neither this record
+nor Git synchronization grants endpoint trust or membership.
