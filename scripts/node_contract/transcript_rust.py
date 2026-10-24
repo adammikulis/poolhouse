@@ -10,15 +10,17 @@ use serde::{Deserialize, Deserializer};
 use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
-use crate::contract::{ApprovalImmutableOperation, ApprovalSignatureMaterial, LocalAuthorityScopedOperation};
+use crate::contract::{ApprovalImmutableOperation, ApprovalSignatureMaterial, AuthorityDescriptorBody, LocalAuthorityScopedOperation};
 
+const DESCRIPTOR_DOMAIN: &[u8] = @DESCRIPTOR_DOMAIN@;
+const SIGNER_ID_DOMAIN: &[u8] = @SIGNER_ID_DOMAIN@;
 const APPROVAL_DOMAIN: &[u8] = @APPROVAL_DOMAIN@;
 const SCOPED_DOMAIN: &[u8] = @SCOPED_DOMAIN@;
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Error { Malformed, DigestMismatch, UnsupportedAlgorithm, Overflow }
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum Purpose { ApprovalImmutable, LocalAuthorityScoped }
+pub(crate) enum Purpose { ApprovalImmutable, LocalAuthorityScoped, AuthorityDescriptor }
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Algorithm { PureEd25519, P256Sha256LowSDer }
 #[derive(Debug, PartialEq, Eq)]
@@ -83,6 +85,7 @@ fn frame(value: &Value, out: &mut Vec<u8>) -> Result<(), Error> {
 }
 fn bytes(purpose: Purpose, value: &Value) -> Result<Vec<u8>, Error> {
     let (domain, omit) = match purpose {
+        Purpose::AuthorityDescriptor => (DESCRIPTOR_DOMAIN, "descriptor_id"),
         Purpose::ApprovalImmutable => (APPROVAL_DOMAIN, "digest"),
         Purpose::LocalAuthorityScoped => (SCOPED_DOMAIN, "transcript_digest"),
     };
@@ -92,10 +95,43 @@ fn bytes(purpose: Purpose, value: &Value) -> Result<Vec<u8>, Error> {
 }
 #[allow(deprecated)]
 fn check(purpose: Purpose, value: &Value) -> Result<(), Error> {
-    let field = match purpose { Purpose::ApprovalImmutable => "digest", Purpose::LocalAuthorityScoped => "transcript_digest" };
+    let field = match purpose { Purpose::AuthorityDescriptor => "descriptor_id", Purpose::ApprovalImmutable => "digest", Purpose::LocalAuthorityScoped => "transcript_digest" };
     let supplied = crate::fsutil::unhex(value[field].as_str().ok_or(Error::Malformed)?).ok_or(Error::Malformed)?;
     let expected = Sha256::digest(bytes(purpose, value)?);
     ring::constant_time::verify_slices_are_equal(expected.as_ref(), &supplied).map_err(|_| Error::DigestMismatch)
+}
+
+// Descriptor consistency is DATA validation, never root/person/provider admission.
+fn descriptor_profile(value: &Value) -> Result<(), Error> {
+    let algorithm = value["public_key"]["kind"].as_str().ok_or(Error::Malformed)?;
+    let raw = crate::fsutil::unhex(value["public_key"]["value"].as_str().ok_or(Error::Malformed)?).ok_or(Error::Malformed)?;
+    let policy = match algorithm {
+        "ed25519" if raw.len() == 32 => "ed25519_raw_message",
+        "p256" if raw.len() == 65 && raw[0] == 4 => "p256_sha256_low_s_der",
+        _ => return Err(Error::Malformed),
+    };
+    if value["signature_policy"]["kind"] != policy { return Err(Error::Malformed); }
+    let mut identity = SIGNER_ID_DOMAIN.to_vec();
+    count(algorithm.len(), &mut identity)?; identity.extend(algorithm.as_bytes());
+    count(raw.len(), &mut identity)?; identity.extend(raw);
+    let expected = crate::fsutil::hex(&Sha256::digest(identity));
+    if value["signer_id"] != expected { return Err(Error::DigestMismatch); }
+    let scope = &value["scope"];
+    let context = match scope["kind"].as_str().ok_or(Error::Malformed)? {
+        "genesis" => &scope["value"]["context"],
+        "governed" => &scope["value"]["issuance_context"],
+        "installation_credential" => {
+            let profiles = value["operation_profiles"].as_array().ok_or(Error::Malformed)?;
+            if profiles.len() != 1 || profiles[0]["kind"] != "local_authority_scoped_v1" { return Err(Error::Malformed); }
+            &scope["value"]
+        },
+        _ => return Err(Error::Malformed),
+    };
+    if context["authority_root"] != value["authority_root"]
+        || context["authority_generation"] != value["authority_generation"] { return Err(Error::Malformed); }
+    let integer = |name| value[name].as_str().and_then(|text| text.parse::<u64>().ok()).ok_or(Error::Malformed);
+    if integer("issued_at")? >= integer("expires_at")? { return Err(Error::Malformed); }
+    Ok(())
 }
 
 // Constructor validates all canonical DTO fields and root/nested digests. No
@@ -105,6 +141,8 @@ impl ReferenceTranscript {
     pub(crate) fn parse(purpose: Purpose, raw: &[u8]) -> Result<Self, Error> {
         let Tree(original) = serde_json::from_slice(raw).map_err(|_| Error::Malformed)?;
         let value = match purpose {
+            Purpose::AuthorityDescriptor => serde_json::to_value(
+                serde_json::from_value::<AuthorityDescriptorBody>(original).map_err(|_| Error::Malformed)?),
             Purpose::ApprovalImmutable => serde_json::to_value(
                 serde_json::from_value::<ApprovalImmutableOperation>(original).map_err(|_| Error::Malformed)?),
             Purpose::LocalAuthorityScoped => serde_json::to_value(
@@ -114,6 +152,7 @@ impl ReferenceTranscript {
             if value["profile_version"] != "1" { return Err(Error::Malformed); }
             if value["scope"]["kind"] == "pool_approval" { check(Purpose::ApprovalImmutable, &value["scope"]["value"])?; }
         }
+        if matches!(purpose, Purpose::AuthorityDescriptor) { descriptor_profile(&value)?; }
         check(purpose, &value)?;
         let message = bytes(purpose, &value)?;
         let digest = Sha256::digest(&message).into();
@@ -148,6 +187,7 @@ mod tests {
     }
     fn purpose(value: &Value) -> Purpose {
         match value["purpose"].as_str().unwrap() {
+            "authority-descriptor-v1" => Purpose::AuthorityDescriptor,
             "approval-immutable-v1" => Purpose::ApprovalImmutable,
             "local-authority-scoped-v1" => Purpose::LocalAuthorityScoped,
             _ => panic!("unknown fixed vector purpose"),
@@ -247,9 +287,10 @@ mod tests {
 '''
 
 
-def render(model: dict) -> str:
+def render(model: dict, admission: dict) -> str:
     domains = {profile["name"]: profile["domain"] for profile in model["profile"]}
     def literal(value: str) -> str:
         return "b" + json.dumps(value).replace(r"\u0000", r"\0")
-    return TEMPLATE.replace("@APPROVAL_DOMAIN@", literal(domains["approval-immutable-v1"])).replace(
+    return TEMPLATE.replace("@DESCRIPTOR_DOMAIN@", literal(domains["authority-descriptor-v1"])).replace(
+        "@SIGNER_ID_DOMAIN@", literal(admission["signer_id_domain"])).replace("@APPROVAL_DOMAIN@", literal(domains["approval-immutable-v1"])).replace(
         "@SCOPED_DOMAIN@", literal(domains["local-authority-scoped-v1"]))

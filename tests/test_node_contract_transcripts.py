@@ -217,12 +217,25 @@ def sample(definitions, name):
     return "x" * max(1, row["min_bytes"])
 
 
+def repair_descriptor_fixture(root):
+        from node_contract.authority_admission import signer_id
+        if root["public_key"]["kind"] == "p256":
+            root["public_key"]["value"] = "04" + "12" * 64
+        root["signature_policy"] = {"kind": {"ed25519": "ed25519_raw_message", "p256": "p256_sha256_low_s_der"}[root["public_key"]["kind"]], "value": {}}
+        root["signer_id"] = signer_id(root["public_key"])
+        root["expires_at"] = str(int(root["issued_at"]) + 1)
+        if root["scope"]["kind"] == "installation_credential":
+            root["operation_profiles"] = [{"kind": "local_authority_scoped_v1", "value": {}}]
+
+
 def test_all_reachable_union_and_optional_shapes_are_closed(codec):
     _, rows, _ = load_contract(SOURCE)
     definitions = {row["name"]: row for row in rows}
     covered = set()
 
     def check(purpose, root):
+        if purpose == "authority-descriptor-v1":
+            repair_descriptor_fixture(root)
         # Computing fixture digests is not an independent vector; fixed vectors above are.
         if purpose == "local-authority-scoped-v1" and root["scope"]["kind"] == "pool_approval":
             nested = root["scope"]["value"]
@@ -241,6 +254,9 @@ def test_all_reachable_union_and_optional_shapes_are_closed(codec):
                     at(changed, path[:-1])[path[-1]] = replacement
                 else:
                     changed = replacement
+                if purpose == "authority-descriptor-v1" and name == "AuthoritySubjectSignaturePolicy":
+                    algorithm = "ed25519" if variant["tag"] == "ed25519_raw_message" else "p256"
+                    changed["public_key"] = {"kind": algorithm, "value": "12" * (32 if algorithm == "ed25519" else 65)}
                 check(purpose, changed)
                 covered.add((name, variant["tag"]))
                 hostile = copy.deepcopy(changed)
