@@ -11,6 +11,19 @@ from . import python
 def group(name: str) -> str:
     if name.startswith("Inference"):
         return inference_group(name)
+    if name.startswith("CatalogBoard"):
+        return "projects_boards"
+    if name.startswith("Project") and name != "ProjectId":
+        for words, owner in (
+            (("Location",), "projects_locations"),
+            (("Creation", "Create", "Default"), "projects_creation"),
+            (("Selection",), "projects_selection"),
+            (("Source",), "projects_sources"),
+            (("Board",), "projects_boards"),
+        ):
+            if any(word in name for word in words):
+                return owner
+        return "projects_catalog"
     if name.startswith("Connectivity") or name in {"MembershipGeneration", "TransportGeneration"}:
         for words, owner in (
             (("Sync", "Connection", "ConnectRequest", "Disconnect", "Interest", "Direction", "Transport"), "connectivity_transport"),

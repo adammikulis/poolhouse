@@ -601,7 +601,7 @@
     {
       "operation": "boards.list",
       "request": "ProjectListRequest",
-      "response": "ProjectBoardSnapshot",
+      "response": "CatalogBoardSnapshot",
       "error": "ProjectCatalogError",
       "legacy": [
         "ph.board.connect",
@@ -623,8 +623,8 @@
     },
     {
       "operation": "boards.inspect",
-      "request": "ProjectBoardInspectRequest",
-      "response": "ProjectBoardView",
+      "request": "CatalogBoardInspectRequest",
+      "response": "CatalogBoardView",
       "error": "ProjectCatalogError",
       "legacy": [
         "ph.board.connect",
@@ -646,8 +646,8 @@
     },
     {
       "operation": "boards.resolve",
-      "request": "ProjectBoardResolveRequest",
-      "response": "ProjectBoardView",
+      "request": "CatalogBoardResolveRequest",
+      "response": "CatalogBoardView",
       "error": "ProjectCatalogError",
       "legacy": [
         "ph.board.connect",
@@ -669,8 +669,8 @@
     },
     {
       "operation": "boards.open",
-      "request": "ProjectBoardInspectRequest",
-      "response": "ProjectBoardView",
+      "request": "CatalogBoardInspectRequest",
+      "response": "CatalogBoardView",
       "error": "ProjectCatalogError",
       "legacy": [
         "ph.board.connect",
@@ -744,7 +744,7 @@
       "path": "app/poolhouse-node/src/registry.rs",
       "line": 173,
       "match": "pub fn resolve",
-      "meaning": "unregistered directory refuses; no implicit other-project board fallback"
+      "meaning": "unregistered directory refuses; no implicit fallback to a board from another project"
     },
     {
       "path": "app/poolhouse-node/src/api.rs",
@@ -1574,7 +1574,7 @@
     "Legacy short board/project names remain aliases/diagnostic hints; canonical ProjectId/BoardId are distinct node-owned data identities. No silent trust migration or signed-log identity rewrite is implied. Alias lookup reauthorizes actual target and rejects ambiguity, including pool context; nullable pool field cannot bypass known stored scope.",
     "Source attachment requires exact current project source_add permission and preserved kind validation; git/folder/gdrive/onedrive describe local location kind only, not cloud credentials, network permission or a source command. Imported/replicated source labels/refs never become a local handle, execution or publication grant.",
     "Ephemeral picker/import handle lifetime is separate from durable committed source custody. Location cancellation/expiry closes only its unconsumed handle; it cannot invalidate committed project, delete unrelated files or revoke other work. SourceView.location is a fresh authorized purpose-limited inspection ref to current committed custody, not authority resurrected from an expired original picker.",
-    "All mutations bind durable request ID to actual principal/installation/resource/generation/immutable payload and relevant CAS. Cross-resource/payload/principal reuse conflicts; retries reauthorize and return same durable outcome without duplicate project/board/initial Git commit. Source add/grant spend and project-board creation need atomic durable intent/receipt integration; legacy split behavior is not proof.",
+    "All mutations bind durable request ID to actual principal/installation/resource/generation/immutable payload and relevant CAS. Cross-resource/payload/principal reuse conflicts; retries reauthorize and return same durable outcome without duplicate project/board/initial Git commit. Source add/grant spend and project-and-board creation need atomic durable intent/receipt integration; legacy split behavior is not proof.",
     "Explicit create/default issues immutable node-owned plan/operation ID before filesystem effects. Retain deterministic owned .git stage/initial commit receipts, revalidate exact held target and every ancestor, never adopt unknown orphan or initialize on guessed absence. No arbitrary command, env, file content or recursive delete input. Cancellation/effect-after-receipt uncertainty reconciles exact plan, never removes preexisting/adopted user files or rolls back committed signed logs.",
     "Creation/default automatic coding selection uses original captured ProjectSelectionStamp, not a caller-rebased new revision from an old candidate. Actual principal+native selection surface cannot write another scope. Newer selection wins; if project creation already committed, return durable project plus superseded selection outcome, never pretend filesystem rollback/cancel or overwrite newer selection. Project add/open has no implicit selection.",
     "projects.catalog.inspect and projects.selection.inspect issue current caller-authorized registry/selection context so CAS generations/revisions are obtainable before mutation; no circular caller-invented context. Project/source/board and selection refs remain independently scoped resources, not interchangeable generations.",
@@ -6806,7 +6806,7 @@
   "unresolved_gaps": [
     "No maintained caller/SDK/native implementation consumes this canonical project fragment yet; alias/identity/source-custody mapping, scoped permission baselines and all adapter/runtime proofs remain incomplete.",
     "Native directory attachment/import, ancestor/target hold and per-platform file identity are declaration requirements only; raw path input is not silently dropped but its actual SDK/native implementation is not supplied here.",
-    "Exact creation filesystem plan/receipt/cancel recovery and atomic project-board/selection commit need runtime engineering; schemas do not prove on-disk atomicity or safe Git ownership.",
+    "Exact creation filesystem plan/receipt/cancel recovery and atomic project-and-board/selection commit need runtime engineering; schemas do not prove on-disk atomicity or safe Git ownership.",
     "Legacy Rust/Python project identities and pool/board association models differ; no automatic authority migration or remote source trust import is authorized.",
     "All exact deferred segments remain retained requirements; this catalog leaf does not complete shared project sources, board content/task domains or K acceptance."
   ],

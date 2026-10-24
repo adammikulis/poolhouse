@@ -497,3 +497,12 @@ returns disposition data without another receipt. This component supplies no
 production storage implementation, recovery constructor, rollback witness or
 registry bridge. It cannot authenticate source data or issue execution rights;
 current native and transitive ancestry validation remain bridge prerequisites.
+
+The project/catalog proposal adds 73 public data types and 25 operations for
+location selection, project/source registration, current selection and board
+catalog lookup/open. Creation can report pending or unknown selection outcomes;
+picker completion retains its original selection context. Directory references
+are lookup data, with actual native directory attachment and custody still
+required. Six semantic Python modules keep these declarations separate from the
+shared identity scalars. Board content, tasks and source sharing remain separate
+retained requirements; these catalog declarations implement no filesystem work.

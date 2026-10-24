@@ -1,4 +1,4 @@
-// Generated proposal. No dispatch or authority is implemented. Schema b8a8753879f337a4673e8e1e844fd2768bda48e6e716607fa14da9368a039700
+// Generated proposal. No dispatch or authority is implemented. Schema 2c151b7e3e8d21c88614122d4f33730ce188ab0361353210d357474358c79b3c
 use super::contract::*;
 
 pub trait Operation { type Request; type Response; type Error; const NAME: &'static str; }
@@ -293,6 +293,81 @@ impl Operation for ModelsDomainResourcesModelsWatch { type Request = ModelWatchR
 
 pub struct ModelsDomainModelsStartupChoices;
 impl Operation for ModelsDomainModelsStartupChoices { type Request = ModelStartupChoicesRequest; type Response = ModelStartupChoicesResponse; type Error = ModelDomainError; const NAME: &'static str = "models.startup.choices"; }
+
+pub struct ProjectsCatalogInspect;
+impl Operation for ProjectsCatalogInspect { type Request = Empty; type Response = ProjectRegistryContext; type Error = ProjectCatalogError; const NAME: &'static str = "projects.catalog.inspect"; }
+
+pub struct ProjectsLocationsImport;
+impl Operation for ProjectsLocationsImport { type Request = ProjectLocationImportRequest; type Response = ProjectLocationView; type Error = ProjectCatalogError; const NAME: &'static str = "projects.locations.import"; }
+
+pub struct ProjectsLocationsChoose;
+impl Operation for ProjectsLocationsChoose { type Request = ProjectLocationChooseRequest; type Response = ProjectLocationView; type Error = ProjectCatalogError; const NAME: &'static str = "projects.locations.choose"; }
+
+pub struct ProjectsLocationsInspect;
+impl Operation for ProjectsLocationsInspect { type Request = ProjectLocationInspectRequest; type Response = ProjectLocationView; type Error = ProjectCatalogError; const NAME: &'static str = "projects.locations.inspect"; }
+
+pub struct ProjectsLocationsCancel;
+impl Operation for ProjectsLocationsCancel { type Request = ProjectLocationCancelRequest; type Response = ProjectLocationCancelResult; type Error = ProjectCatalogError; const NAME: &'static str = "projects.locations.cancel"; }
+
+pub struct ProjectsLocationsWatch;
+impl Operation for ProjectsLocationsWatch { type Request = ProjectLocationWatchRequest; type Response = ProjectLocationEvent; type Error = ProjectCatalogError; const NAME: &'static str = "projects.locations.watch"; }
+
+pub struct ProjectsAdd;
+impl Operation for ProjectsAdd { type Request = ProjectAddRequest; type Response = ProjectCatalogView; type Error = ProjectCatalogError; const NAME: &'static str = "projects.add"; }
+
+pub struct ProjectsInspect;
+impl Operation for ProjectsInspect { type Request = ProjectInspectRequest; type Response = ProjectCatalogView; type Error = ProjectCatalogError; const NAME: &'static str = "projects.inspect"; }
+
+pub struct ProjectsList;
+impl Operation for ProjectsList { type Request = ProjectListRequest; type Response = ProjectCatalogSnapshot; type Error = ProjectCatalogError; const NAME: &'static str = "projects.list"; }
+
+pub struct ProjectsWatch;
+impl Operation for ProjectsWatch { type Request = ProjectListRequest; type Response = ProjectCatalogEvent; type Error = ProjectCatalogError; const NAME: &'static str = "projects.watch"; }
+
+pub struct ProjectsResolve;
+impl Operation for ProjectsResolve { type Request = ProjectResolveRequest; type Response = ProjectCatalogView; type Error = ProjectCatalogError; const NAME: &'static str = "projects.resolve"; }
+
+pub struct ProjectsSourcesAdd;
+impl Operation for ProjectsSourcesAdd { type Request = ProjectSourceAddRequest; type Response = ProjectSourceView; type Error = ProjectCatalogError; const NAME: &'static str = "projects.sources.add"; }
+
+pub struct ProjectsSourcesList;
+impl Operation for ProjectsSourcesList { type Request = ProjectSourcesRequest; type Response = ProjectSourceSnapshot; type Error = ProjectCatalogError; const NAME: &'static str = "projects.sources.list"; }
+
+pub struct ProjectsCreateRequest;
+impl Operation for ProjectsCreateRequest { type Request = ProjectCreateRequest; type Response = ProjectCreationView; type Error = ProjectCatalogError; const NAME: &'static str = "projects.create.request"; }
+
+pub struct ProjectsDefaultRequest;
+impl Operation for ProjectsDefaultRequest { type Request = ProjectDefaultRequest; type Response = ProjectCreationView; type Error = ProjectCatalogError; const NAME: &'static str = "projects.default.request"; }
+
+pub struct ProjectsCreationInspect;
+impl Operation for ProjectsCreationInspect { type Request = ProjectCreationInspectRequest; type Response = ProjectCreationView; type Error = ProjectCatalogError; const NAME: &'static str = "projects.creation.inspect"; }
+
+pub struct ProjectsCreationCancel;
+impl Operation for ProjectsCreationCancel { type Request = ProjectCreationCancelRequest; type Response = ProjectCreationCancelResult; type Error = ProjectCatalogError; const NAME: &'static str = "projects.creation.cancel"; }
+
+pub struct ProjectsCreationWatch;
+impl Operation for ProjectsCreationWatch { type Request = ProjectCreationWatchRequest; type Response = ProjectCreationEvent; type Error = ProjectCatalogError; const NAME: &'static str = "projects.creation.watch"; }
+
+pub struct ProjectsSelectionInspect;
+impl Operation for ProjectsSelectionInspect { type Request = Empty; type Response = ProjectSelectionView; type Error = ProjectCatalogError; const NAME: &'static str = "projects.selection.inspect"; }
+
+pub struct ProjectsSelectionReplace;
+impl Operation for ProjectsSelectionReplace { type Request = ProjectSelectionReplaceRequest; type Response = ProjectSelectionView; type Error = ProjectCatalogError; const NAME: &'static str = "projects.selection.replace"; }
+
+pub struct ProjectsSelectionWatch;
+impl Operation for ProjectsSelectionWatch { type Request = ProjectSelectionWatchRequest; type Response = ProjectSelectionEvent; type Error = ProjectCatalogError; const NAME: &'static str = "projects.selection.watch"; }
+
+pub struct BoardsList;
+impl Operation for BoardsList { type Request = ProjectListRequest; type Response = CatalogBoardSnapshot; type Error = ProjectCatalogError; const NAME: &'static str = "boards.list"; }
+
+pub struct BoardsInspect;
+impl Operation for BoardsInspect { type Request = CatalogBoardInspectRequest; type Response = CatalogBoardView; type Error = ProjectCatalogError; const NAME: &'static str = "boards.inspect"; }
+
+pub struct BoardsResolve;
+impl Operation for BoardsResolve { type Request = CatalogBoardResolveRequest; type Response = CatalogBoardView; type Error = ProjectCatalogError; const NAME: &'static str = "boards.resolve"; }
+
+pub struct BoardsOpen;
+impl Operation for BoardsOpen { type Request = CatalogBoardInspectRequest; type Response = CatalogBoardView; type Error = ProjectCatalogError; const NAME: &'static str = "boards.open"; }
 
 pub struct SettingsLocalDefaultsInspect;
 impl Operation for SettingsLocalDefaultsInspect { type Request = SettingsReadRequest; type Response = SettingsLocalDefaultsView; type Error = SettingsError; const NAME: &'static str = "settings.local.inspect"; }

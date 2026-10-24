@@ -95,7 +95,7 @@ visibility = "public"
 item = "ProjectCatalogRef"
 
 [[type]]
-name = "ProjectBoardRef"
+name = "CatalogBoardRef"
 kind = "record"
 visibility = "public"
 fields = [{name = "project", type = "ProjectCatalogRef"}, {name = "board_id", type = "BoardId"}, {name = "generation", type = "ResourceGeneration"}, {name = "pool", type = "ConnectivityOptionalPoolRef"}]
@@ -104,7 +104,7 @@ fields = [{name = "project", type = "ProjectCatalogRef"}, {name = "board_id", ty
 name = "ProjectOptionalBoardRef"
 kind = "optional"
 visibility = "public"
-item = "ProjectBoardRef"
+item = "CatalogBoardRef"
 
 [[type]]
 name = "ProjectLocationRef"
@@ -217,7 +217,7 @@ variants = [{tag = "snapshot", type = "ProjectLocationChange"}, {tag = "changed"
 name = "ProjectCatalogView"
 kind = "record"
 visibility = "public"
-fields = [{name = "project", type = "ProjectCatalogRef"}, {name = "board", type = "ProjectBoardRef"}, {name = "title", type = "ProjectCatalogTitle"}, {name = "alias", type = "ProjectAlias"}, {name = "revision", type = "U64"}]
+fields = [{name = "project", type = "ProjectCatalogRef"}, {name = "board", type = "CatalogBoardRef"}, {name = "title", type = "ProjectCatalogTitle"}, {name = "alias", type = "ProjectAlias"}, {name = "revision", type = "U64"}]
 
 [[type]]
 name = "ProjectAddRequest"
@@ -408,55 +408,55 @@ tag = "kind"
 variants = [{tag = "snapshot", type = "ProjectSelectionChange"}, {tag = "changed", type = "ProjectSelectionChange"}, {tag = "resync_required", type = "Empty"}]
 
 [[type]]
-name = "ProjectBoardStorageState"
+name = "CatalogBoardStorageState"
 kind = "union"
 visibility = "public"
 tag = "kind"
 variants = [{tag = "ready", type = "Empty"}, {tag = "unavailable", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
 
 [[type]]
-name = "ProjectBoardView"
+name = "CatalogBoardView"
 kind = "record"
 visibility = "public"
-fields = [{name = "board", type = "ProjectBoardRef"}, {name = "title", type = "ProjectCatalogTitle"}, {name = "storage_state", type = "ProjectBoardStorageState"}, {name = "revision", type = "U64"}]
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "title", type = "ProjectCatalogTitle"}, {name = "storage_state", type = "CatalogBoardStorageState"}, {name = "revision", type = "U64"}]
 
 [[type]]
-name = "ProjectBoardInspectRequest"
+name = "CatalogBoardInspectRequest"
 kind = "record"
 visibility = "public"
-fields = [{name = "board", type = "ProjectBoardRef"}]
+fields = [{name = "board", type = "CatalogBoardRef"}]
 
 [[type]]
-name = "ProjectBoardAliasSelector"
+name = "CatalogBoardAliasSelector"
 kind = "record"
 visibility = "public"
 fields = [{name = "alias", type = "ProjectAlias"}, {name = "pool", type = "ConnectivityOptionalPoolRef"}]
 
 [[type]]
-name = "ProjectBoardSelector"
+name = "CatalogBoardSelector"
 kind = "union"
 visibility = "public"
 tag = "kind"
-variants = [{tag = "project", type = "ProjectCatalogRef"}, {tag = "scoped_alias", type = "ProjectBoardAliasSelector"}]
+variants = [{tag = "project", type = "ProjectCatalogRef"}, {tag = "scoped_alias", type = "CatalogBoardAliasSelector"}]
 
 [[type]]
-name = "ProjectBoardResolveRequest"
+name = "CatalogBoardResolveRequest"
 kind = "record"
 visibility = "public"
-fields = [{name = "generation", type = "ResourceGeneration"}, {name = "selector", type = "ProjectBoardSelector"}]
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "selector", type = "CatalogBoardSelector"}]
 
 [[type]]
-name = "ProjectBoardItems"
+name = "CatalogBoardItems"
 kind = "list"
 visibility = "public"
-item = "ProjectBoardView"
+item = "CatalogBoardView"
 max_items = 256
 
 [[type]]
-name = "ProjectBoardSnapshot"
+name = "CatalogBoardSnapshot"
 kind = "record"
 visibility = "public"
-fields = [{name = "snapshot_id", type = "ProjectCatalogSnapshotId"}, {name = "registry", type = "ProjectRegistryContext"}, {name = "items", type = "ProjectBoardItems"}, {name = "complete", type = "Boolean"}, {name = "next_cursor", type = "ProjectOptionalCatalogCursor"}, {name = "cursor", type = "ProjectCatalogCursor"}]
+fields = [{name = "snapshot_id", type = "ProjectCatalogSnapshotId"}, {name = "registry", type = "ProjectRegistryContext"}, {name = "items", type = "CatalogBoardItems"}, {name = "complete", type = "Boolean"}, {name = "next_cursor", type = "ProjectOptionalCatalogCursor"}, {name = "cursor", type = "ProjectCatalogCursor"}]
 
 [[type]]
 name = "ProjectCatalogErrorDetail"
@@ -706,9 +706,9 @@ subscription = "ordered-resource-stream"
 name = "boards.list"
 symbol = "BoardsList"
 request = "ProjectListRequest"
-response = "ProjectBoardSnapshot"
+response = "CatalogBoardSnapshot"
 error = "ProjectCatalogError"
-authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-installation-registry-generation", "authorized-project-board-associations-only", "no-orphan-board-creation"]
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-installation-registry-generation", "authorized-project-and-board-associations-only", "no-orphan-board-creation"]
 retry = "read-current-state"
 cancellation = "request-detach-only"
 subscription = "none"
@@ -716,10 +716,10 @@ subscription = "none"
 [[operation]]
 name = "boards.inspect"
 symbol = "BoardsInspect"
-request = "ProjectBoardInspectRequest"
-response = "ProjectBoardView"
+request = "CatalogBoardInspectRequest"
+response = "CatalogBoardView"
 error = "ProjectCatalogError"
-authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-project-board-pool-generations", "authorized-board-reader", "no-content-or-damage-detail-leak"]
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-project-and-board-pool-generations", "authorized-board-reader", "no-content-or-damage-detail-leak"]
 retry = "read-current-state"
 cancellation = "request-detach-only"
 subscription = "none"
@@ -727,8 +727,8 @@ subscription = "none"
 [[operation]]
 name = "boards.resolve"
 symbol = "BoardsResolve"
-request = "ProjectBoardResolveRequest"
-response = "ProjectBoardView"
+request = "CatalogBoardResolveRequest"
+response = "CatalogBoardView"
 error = "ProjectCatalogError"
 authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-installation-registry-generation", "authorized-board-reader", "labels-and-aliases-lookup-only", "ambiguous-unknown-or-unavailable-refuses"]
 retry = "read-current-state"
@@ -738,10 +738,10 @@ subscription = "none"
 [[operation]]
 name = "boards.open"
 symbol = "BoardsOpen"
-request = "ProjectBoardInspectRequest"
-response = "ProjectBoardView"
+request = "CatalogBoardInspectRequest"
+response = "CatalogBoardView"
 error = "ProjectCatalogError"
-authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-project-board-pool-generations", "authorized-board-open-permission", "existing-only-no-project-session-credential-or-authority-creation"]
+authorization = ["authenticated-current-principal", "no-existence-or-path-disclosure-before-authorization", "current-project-and-board-pool-generations", "authorized-board-open-permission", "existing-only-no-project-session-credential-or-authority-creation"]
 retry = "read-current-state"
 cancellation = "request-detach-only"
 subscription = "none"

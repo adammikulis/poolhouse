@@ -1,4 +1,4 @@
-# Generated proposal. No dispatch or authority is implemented. Schema b8a8753879f337a4673e8e1e844fd2768bda48e6e716607fa14da9368a039700
+# Generated proposal. No dispatch or authority is implemented. Schema 2c151b7e3e8d21c88614122d4f33730ce188ab0361353210d357474358c79b3c
 from . import node_contract as data
 
 OPERATION_TYPES = {
@@ -99,6 +99,31 @@ OPERATION_TYPES = {
     "serving.watch": (data.ModelWatchRequest, data.ModelWatchBatch, data.ModelDomainError),
     "resources.models.watch": (data.ModelWatchRequest, data.ModelWatchBatch, data.ModelDomainError),
     "models.startup.choices": (data.ModelStartupChoicesRequest, data.ModelStartupChoicesResponse, data.ModelDomainError),
+    "projects.catalog.inspect": (data.Empty, data.ProjectRegistryContext, data.ProjectCatalogError),
+    "projects.locations.import": (data.ProjectLocationImportRequest, data.ProjectLocationView, data.ProjectCatalogError),
+    "projects.locations.choose": (data.ProjectLocationChooseRequest, data.ProjectLocationView, data.ProjectCatalogError),
+    "projects.locations.inspect": (data.ProjectLocationInspectRequest, data.ProjectLocationView, data.ProjectCatalogError),
+    "projects.locations.cancel": (data.ProjectLocationCancelRequest, data.ProjectLocationCancelResult, data.ProjectCatalogError),
+    "projects.locations.watch": (data.ProjectLocationWatchRequest, data.ProjectLocationEvent, data.ProjectCatalogError),
+    "projects.add": (data.ProjectAddRequest, data.ProjectCatalogView, data.ProjectCatalogError),
+    "projects.inspect": (data.ProjectInspectRequest, data.ProjectCatalogView, data.ProjectCatalogError),
+    "projects.list": (data.ProjectListRequest, data.ProjectCatalogSnapshot, data.ProjectCatalogError),
+    "projects.watch": (data.ProjectListRequest, data.ProjectCatalogEvent, data.ProjectCatalogError),
+    "projects.resolve": (data.ProjectResolveRequest, data.ProjectCatalogView, data.ProjectCatalogError),
+    "projects.sources.add": (data.ProjectSourceAddRequest, data.ProjectSourceView, data.ProjectCatalogError),
+    "projects.sources.list": (data.ProjectSourcesRequest, data.ProjectSourceSnapshot, data.ProjectCatalogError),
+    "projects.create.request": (data.ProjectCreateRequest, data.ProjectCreationView, data.ProjectCatalogError),
+    "projects.default.request": (data.ProjectDefaultRequest, data.ProjectCreationView, data.ProjectCatalogError),
+    "projects.creation.inspect": (data.ProjectCreationInspectRequest, data.ProjectCreationView, data.ProjectCatalogError),
+    "projects.creation.cancel": (data.ProjectCreationCancelRequest, data.ProjectCreationCancelResult, data.ProjectCatalogError),
+    "projects.creation.watch": (data.ProjectCreationWatchRequest, data.ProjectCreationEvent, data.ProjectCatalogError),
+    "projects.selection.inspect": (data.Empty, data.ProjectSelectionView, data.ProjectCatalogError),
+    "projects.selection.replace": (data.ProjectSelectionReplaceRequest, data.ProjectSelectionView, data.ProjectCatalogError),
+    "projects.selection.watch": (data.ProjectSelectionWatchRequest, data.ProjectSelectionEvent, data.ProjectCatalogError),
+    "boards.list": (data.ProjectListRequest, data.CatalogBoardSnapshot, data.ProjectCatalogError),
+    "boards.inspect": (data.CatalogBoardInspectRequest, data.CatalogBoardView, data.ProjectCatalogError),
+    "boards.resolve": (data.CatalogBoardResolveRequest, data.CatalogBoardView, data.ProjectCatalogError),
+    "boards.open": (data.CatalogBoardInspectRequest, data.CatalogBoardView, data.ProjectCatalogError),
     "settings.local.inspect": (data.SettingsReadRequest, data.SettingsLocalDefaultsView, data.SettingsError),
     "settings.local.replace": (data.SettingsLocalDefaultsReplaceRequest, data.SettingsLocalDefaultsView, data.SettingsError),
     "settings.execution.inspect": (data.SettingsReadRequest, data.SettingsExecutionPolicyView, data.SettingsError),
