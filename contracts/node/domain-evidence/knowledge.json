@@ -1,0 +1,576 @@
+{
+  "version": 1,
+  "status": "managed knowledge inspection declaration/source-profile proposal only; no storage backend, native authority, algorithm port, encrypted memory access or K acceptance",
+  "source_commit": "6cbc882f9923886d4961e77491607f3e68663f45",
+  "sources": [
+    {
+      "path": "src/poolhouse/fleet/knowledge_routes.py",
+      "sha256": "8f0c730ead867c0c66a8c9910293f6fa9ba3e80e6925bb25408e7b8069d2888e"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/knowledge-view.html",
+      "sha256": "1015c5a61adf14c38bacd37f4d09eb1df123d21d0676250520323b2f4604258e"
+    },
+    {
+      "path": "src/poolhouse/fleet/files.py",
+      "sha256": "8f436ff8bb75dd618a01d52d4ae32f2dd51a88a680908723bb0102d467f6b076"
+    },
+    {
+      "path": "src/poolhouse/fleet/room_routes.py",
+      "sha256": "c472a666f8331a0c073464fbdceb2c123bc76f7bee48f5cddf632b2f97d4e282"
+    },
+    {
+      "path": "src/poolhouse/graph/columns.py",
+      "sha256": "951349392529bc1896109107afa4efea34ddfcba6badb7a7e727db763317b5d5"
+    },
+    {
+      "path": "src/poolhouse/graph/store.py",
+      "sha256": "f9368485b2d1c2d17871d41d0cc7c302f577a850a98fd539bea1500117662e90"
+    },
+    {
+      "path": "src/poolhouse/graph/cypher.py",
+      "sha256": "1e88b9d744af4022b65ac082d9a36d3655808afbcf96a390e0f10d6eadf7123b"
+    },
+    {
+      "path": "src/poolhouse/graph/store_cli.py",
+      "sha256": "c82341170a6b3b02abbeeab410c0398714d0c55861947dfc5de1770bf5ca0125"
+    },
+    {
+      "path": "src/poolhouse/graph/data.py",
+      "sha256": "12784e1d8bd55a8d53445375e99f025e88cc413aab575acd6f3d292bec38c490"
+    },
+    {
+      "path": "src/poolhouse/graph/message.py",
+      "sha256": "3597ef409bb8a42ae92550fd8efb6c72ffc093f2bfcdb4b52601026d3e60e8f3"
+    },
+    {
+      "path": "src/poolhouse/graph/search.py",
+      "sha256": "845610b141430b84b30366ed6abef96ae14490b28981f4bca0dc00b62e03caa3"
+    },
+    {
+      "path": "src/poolhouse/graph/smoothing.py",
+      "sha256": "9ae09ac1e80c1f98df5a2cea32c296475ef6025bd83100974bce063a7862b9ce"
+    },
+    {
+      "path": "src/poolhouse/graph/vectors.py",
+      "sha256": "ebe52a32e541f6bd70ff88e78268bad2a953b723bfa9952cbc12fdaac15f8f59"
+    },
+    {
+      "path": "src/poolhouse/memory/cli.py",
+      "sha256": "22508a952f1c221d6a2f7e7ba83246875f14dee03eab920fbeead2fb4bc7898d"
+    },
+    {
+      "path": "src/poolhouse/memory/store.py",
+      "sha256": "d46d52b145836f5141739350e08fda16b13247481b3382382c58deb43762a1b5"
+    },
+    {
+      "path": "src/poolhouse/memory/vault.py",
+      "sha256": "80f1f3af1546dd7cf633ff2aef3bad26f894c11c074a7a438c3097d82766da8d"
+    },
+    {
+      "path": "src/poolhouse/memory/facts.py",
+      "sha256": "1677b6ea2bf93c2757848b926e435eaf1dedc397f7ddbf96aa5ee2c7e1fd1c48"
+    },
+    {
+      "path": "src/poolhouse/memory/union.py",
+      "sha256": "58a4cee63c62a4f11b76619b85880f07d79818b4bef0a2e00518fc8cb1e3ad84"
+    },
+    {
+      "path": "src/poolhouse/memory/recall.py",
+      "sha256": "64ad47f00eb1d4decb5732333053a069a7a9b2948de740cc5bdf37fe770d77cf"
+    },
+    {
+      "path": "src/poolhouse/memory/tools.py",
+      "sha256": "37628b85ca9126fd0e8d143b2beb90a3dc21b0eaa35e3767e6494de35b0b91a7"
+    },
+    {
+      "path": "src/poolhouse/ingest/cli.py",
+      "sha256": "76776264f459611fc754a78211a6ca7b916a7ba354aeacc31ec5ad0aed6877b8"
+    },
+    {
+      "path": "src/poolhouse/ingest/run.py",
+      "sha256": "6e3d4f36185aea4b03266a662efe0904ec20afa0b70fb3787593de46725242eb"
+    },
+    {
+      "path": "src/poolhouse/ingest/embed.py",
+      "sha256": "d59a25c44c05794278ade4a6ff0d6c64c097494173172f8667ae671d41377de2"
+    },
+    {
+      "path": "src/poolhouse/ingest/fold.py",
+      "sha256": "5fe0fab7185d21c38a1208118d66d697f6b458f2f08bc21342b7dc3d14e7e6f2"
+    },
+    {
+      "path": "src/poolhouse/ingest/imports.py",
+      "sha256": "52fa8dc7cc484377d68c35094cb99db3eb0fe3b6369226ba57326eb9c3265866"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_graph.py",
+      "sha256": "365355911b8a55bfa00fb06080590ad1e662c18993b1900ea3608c695d3a2582"
+    },
+    {
+      "path": "contracts/node/domains/resource_leases.toml",
+      "sha256": "5ecb73f21aaba95cb0f8a4c44c5f2ea48a725701f7ef944eb42b1f9713df4a57"
+    },
+    {
+      "path": "contracts/node/retained-features.json",
+      "sha256": "3a99a8d4856851ff01e9082829a6a2a1d9e00177ea8f2595efa279af43e2a592"
+    }
+  ],
+  "sites": [
+    {
+      "path": "src/poolhouse/fleet/knowledge_routes.py",
+      "line": 14,
+      "symbol": "PAGE_SIZE =",
+      "line_sha256": "14117403fa68c92c87437c3fb8acd31ecb372d357c713bd3a8404951787d9b1f"
+    },
+    {
+      "path": "src/poolhouse/fleet/knowledge_routes.py",
+      "line": 15,
+      "symbol": "FIELD_CHARS =",
+      "line_sha256": "f4d448387ccee087421e59685191f51bd50b76c23c6765542b9ff7e2e9a1a091"
+    },
+    {
+      "path": "src/poolhouse/fleet/knowledge_routes.py",
+      "line": 23,
+      "symbol": "def preview(",
+      "line_sha256": "9d91452fc386e7762e3408fdc941fe58869a054360f3f0b13d4f1dd69c35f436"
+    },
+    {
+      "path": "src/poolhouse/fleet/knowledge_routes.py",
+      "line": 29,
+      "symbol": "def decoded(",
+      "line_sha256": "5a494c5c148e12f02db8d11b7e6d53803950eb425295ff4e515d21214d703427"
+    },
+    {
+      "path": "src/poolhouse/fleet/knowledge_routes.py",
+      "line": 40,
+      "symbol": "def route(",
+      "line_sha256": "d8a123ed54c20306e267cdec8e87a9f1c7b132a208801d4be4325f37b937f825"
+    },
+    {
+      "path": "src/poolhouse/fleet/knowledge_routes.py",
+      "line": 82,
+      "symbol": "def _sources(",
+      "line_sha256": "991e4ed0954b2fc2c0890b38548a7e76897f4605ff52bd43fc72a854845a7884"
+    },
+    {
+      "path": "src/poolhouse/fleet/knowledge_routes.py",
+      "line": 91,
+      "symbol": "def _stores(",
+      "line_sha256": "e67eed452048aa35c9a306277b446a8eabd7ab051b165b4dc90808bc41d7e16b"
+    },
+    {
+      "path": "src/poolhouse/fleet/knowledge_routes.py",
+      "line": 111,
+      "symbol": "def _nodes(",
+      "line_sha256": "f0c5555d50311ed6def38e91796c0626ebe730e071e004ff45908403c8ab270b"
+    },
+    {
+      "path": "src/poolhouse/fleet/knowledge_routes.py",
+      "line": 132,
+      "symbol": "def _node(",
+      "line_sha256": "6dd5d491ce41375e82611fb509a88c5d328f307b1b3b32bc9018a399cbc177db"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/knowledge-view.html",
+      "line": 88,
+      "symbol": "async loadStores(",
+      "line_sha256": "7d322d096f0266b9eb35ca6de334a3bf62df2765908a6c78ea3c5217b2c95c49"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/knowledge-view.html",
+      "line": 126,
+      "symbol": "async selectStore(",
+      "line_sha256": "01cd6f9213010e8013c10b6a49e09fa6e4f31e991b355aac5a773c26348a4918"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/knowledge-view.html",
+      "line": 142,
+      "symbol": "async loadNodes(",
+      "line_sha256": "f3e053cd6d3b71907be6645e7496ab27363406daecff4a98c50f519733ca7fa4"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/knowledge-view.html",
+      "line": 177,
+      "symbol": "async inspect(",
+      "line_sha256": "00b06e456b000e669d74eab21f48b50727b4faa3847d3f09527f93eadb643232"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/knowledge-view.html",
+      "line": 213,
+      "symbol": "map(result)",
+      "line_sha256": "a25790f7adac2ea5f056d7aa2cab233d464b3e64fdc90c544cca922d32c80953"
+    },
+    {
+      "path": "src/poolhouse/fleet/files.py",
+      "line": 60,
+      "symbol": "def safe_relpath(",
+      "line_sha256": "a46596306a142078c2c16811f7885079138d4a10fc3a3044c5987eff1841040f"
+    },
+    {
+      "path": "src/poolhouse/graph/columns.py",
+      "line": 54,
+      "symbol": "def from_json(",
+      "line_sha256": "f0c1759a12fea093af47d944fb6f8b0565b8af9b6f94354bf3da7be6319f46d2"
+    },
+    {
+      "path": "src/poolhouse/graph/columns.py",
+      "line": 78,
+      "symbol": "def column(",
+      "line_sha256": "902c82a3a6eb4f66cf338f0369531ed4c7eee55118610d7e533362b2f35b99aa"
+    },
+    {
+      "path": "src/poolhouse/graph/store.py",
+      "line": 13,
+      "symbol": "NODE_TABLE =",
+      "line_sha256": "49661756c37682899f5e437172c95aac5c11e36de647923f3bf9e7e3da20a42f"
+    },
+    {
+      "path": "src/poolhouse/graph/store.py",
+      "line": 425,
+      "symbol": "def counts(",
+      "line_sha256": "347be25baed80dba5e74c55173c7993954d7f6078e43b79e9922f85b5caa3329"
+    },
+    {
+      "path": "src/poolhouse/graph/store_cli.py",
+      "line": 34,
+      "symbol": "def _check(",
+      "line_sha256": "4f019d45e42e0bc3feee878f90dbfa048159ce99892dd0fbc8a0f23c2823ab73"
+    },
+    {
+      "path": "src/poolhouse/graph/store_cli.py",
+      "line": 74,
+      "symbol": "def _docs(",
+      "line_sha256": "d35752a53d7ab379016dbd04e077d40acf97f9f5ee3f4defd1bce8e2cc9b80c8"
+    },
+    {
+      "path": "src/poolhouse/graph/store_cli.py",
+      "line": 88,
+      "symbol": "def _doc(",
+      "line_sha256": "86166dcfd9ca2229d4946c5e89111550d88cc994a30bdc77513079d4d98f194a"
+    },
+    {
+      "path": "src/poolhouse/graph/store_cli.py",
+      "line": 102,
+      "symbol": "def _embed(",
+      "line_sha256": "aa2acd1ae61b6056c591403fee90564d9723f056097710876413ecd285905f3a"
+    },
+    {
+      "path": "src/poolhouse/graph/store_cli.py",
+      "line": 170,
+      "symbol": "def _tidy(",
+      "line_sha256": "f477eb29fe72a029be3764df0d8c426e83577f9c9f2574b346d1c3c88aef7549"
+    },
+    {
+      "path": "src/poolhouse/graph/store_cli.py",
+      "line": 117,
+      "symbol": "def _gold(",
+      "line_sha256": "e484ac3ef68979d6071c8650a6c16ddde028bd9452822a87a0eced1162ef34c5"
+    },
+    {
+      "path": "src/poolhouse/graph/search.py",
+      "line": 38,
+      "symbol": "def rrf_scored(",
+      "line_sha256": "5b6bf2e6a0f22cebef0c0fff16ea1b9abcd3901dbb4f7de96a7be65be7ddbb1f"
+    },
+    {
+      "path": "src/poolhouse/graph/search.py",
+      "line": 139,
+      "symbol": "def hybrid(",
+      "line_sha256": "07a3e2f428f47d5aa3f72f8de4d772aad6db1e0dd16bed5d86a30dea2a918ed9"
+    },
+    {
+      "path": "src/poolhouse/graph/smoothing.py",
+      "line": 9,
+      "symbol": "def smooth(",
+      "line_sha256": "e73aae7d0468b4a5fbd29ddb8831ff77f8aee0f566de0f00d48e7d23991f75f6"
+    },
+    {
+      "path": "src/poolhouse/memory/cli.py",
+      "line": 37,
+      "symbol": "def _guarded(",
+      "line_sha256": "46cf32b087739c7c12dddde70e129dc1271f6a008e055ec5f4e2d9bac078b546"
+    },
+    {
+      "path": "src/poolhouse/memory/cli.py",
+      "line": 174,
+      "symbol": "def _relink(",
+      "line_sha256": "e86077f4cb94743debc70821c315f61c3c0399623c5a74d054de190242dbd9f3"
+    },
+    {
+      "path": "src/poolhouse/memory/store.py",
+      "line": 136,
+      "symbol": "class Store:",
+      "line_sha256": "3b0d00245602d7d96195c447ae6a16d6f39f44a67c3681e0e14beb8b47c98777"
+    },
+    {
+      "path": "src/poolhouse/memory/store.py",
+      "line": 404,
+      "symbol": "def add(",
+      "line_sha256": "e85cf09223731f356d4ded7d7eac3af07880be987f1537dc8cb9e32da30d1d3e"
+    },
+    {
+      "path": "src/poolhouse/memory/store.py",
+      "line": 560,
+      "symbol": "def rekey(",
+      "line_sha256": "5be9e8b69667791ea7203f013afc2910174df471d9814364fe463bb09dd97731"
+    },
+    {
+      "path": "src/poolhouse/memory/union.py",
+      "line": 134,
+      "symbol": "def rekey(",
+      "line_sha256": "250aeff19e71f9f5935f8fd56b1ff154f17893a5bfd6a3f2bf97dfa931900031"
+    },
+    {
+      "path": "src/poolhouse/memory/recall.py",
+      "line": 90,
+      "symbol": "def retrieve(",
+      "line_sha256": "cf7d8b9e15d7225a7ec609b443da11055bb4a6411fa7ee2fcdefd307bba6bc00"
+    },
+    {
+      "path": "src/poolhouse/memory/recall.py",
+      "line": 123,
+      "symbol": "def render(",
+      "line_sha256": "d504ea51d73d7b2ec9f79f5652a22e9de24ceab0ff3c1bd6d07d53fb3d9e3fca"
+    },
+    {
+      "path": "src/poolhouse/memory/recall.py",
+      "line": 146,
+      "symbol": "def describe(",
+      "line_sha256": "4152ce7fb9e9dbeade6f4945c06334d7f8e134b8e9cceeb96ef0e3e9fee81e5a"
+    },
+    {
+      "path": "src/poolhouse/memory/recall.py",
+      "line": 158,
+      "symbol": "def session_context(",
+      "line_sha256": "d715d374f9dca8ec2d78c6195232ce9727b527cf61a096dd7ae4bbd5a7c98b64"
+    },
+    {
+      "path": "src/poolhouse/memory/tools.py",
+      "line": 53,
+      "symbol": "def propose(",
+      "line_sha256": "4a859a9b368910d78540faa79bc5a144ca7a79801cb82c167c02c3c0608be940"
+    },
+    {
+      "path": "src/poolhouse/memory/tools.py",
+      "line": 77,
+      "symbol": "def tools(",
+      "line_sha256": "abea1d61fe3a212909e424b3b0524561f7340bba47e0a134a5298e4e2dc4f2fa"
+    },
+    {
+      "path": "src/poolhouse/ingest/cli.py",
+      "line": 379,
+      "symbol": "def _dispatch(",
+      "line_sha256": "3a77bdbac1e920ed1d3a003622ce57597b0f4fca5f2e8358bbae10be2c2d0b31"
+    },
+    {
+      "path": "src/poolhouse/ingest/run.py",
+      "line": 85,
+      "symbol": "def reader_for(",
+      "line_sha256": "d8ced9b88606abfc3597881aacc24ea634d2fa7e4903d4ac96076b46b1d50eef"
+    },
+    {
+      "path": "src/poolhouse/ingest/run.py",
+      "line": 202,
+      "symbol": "def _read_run(",
+      "line_sha256": "82c7d77d1c2b52128c60840938da496cb7696f69b8f81c8c83a69bb8d34988c6"
+    },
+    {
+      "path": "src/poolhouse/ingest/embed.py",
+      "line": 30,
+      "symbol": "def embed_store(",
+      "line_sha256": "772cbd38d6c0b64e63ccd2380b2c680d8dac9c695a28e4174d615f6fa45c4510"
+    },
+    {
+      "path": "src/poolhouse/ingest/fold.py",
+      "line": 292,
+      "symbol": "def write(",
+      "line_sha256": "212d30d524d5be5b88f27f0348ca8938d864d548a6e407c43d996b2a7bd768f7"
+    },
+    {
+      "path": "src/poolhouse/ingest/fold.py",
+      "line": 433,
+      "symbol": "def fold_into(",
+      "line_sha256": "32529608ea75ccc17e2abfc785d898d0a0a1475e5e0786a0d168ab9f78e7dc2a"
+    }
+  ],
+  "operation_mapping": [
+    {
+      "operation": "knowledge.context.inspect",
+      "request": "KnowledgeContextInspectRequest",
+      "response": "KnowledgeContextView",
+      "error": "KnowledgeError",
+      "retained_source": "KnowledgeRoutes.route/_sources/_stores actual managed root availability",
+      "actual_caller": "knowledge-view.connectedCallback/loadStores",
+      "cancellation": "request-detach-only",
+      "subscription": "none",
+      "status": "proposal only; no dispatch/native implementation"
+    },
+    {
+      "operation": "knowledge.stores.list",
+      "request": "KnowledgeStoresListRequest",
+      "response": "KnowledgeStoresEvent",
+      "error": "KnowledgeError",
+      "retained_source": "GET /ui/knowledge/stores?path; _stores/_sources",
+      "actual_caller": "knowledge-view.loadStores/selectStore root,parent,child navigation",
+      "cancellation": "request-detach-only",
+      "subscription": "ordered-resource-stream",
+      "status": "proposal only; no dispatch/native implementation"
+    },
+    {
+      "operation": "knowledge.nodes.search",
+      "request": "KnowledgeNodesSearchRequest",
+      "response": "KnowledgeNodesEvent",
+      "error": "KnowledgeError",
+      "retained_source": "GET /ui/knowledge/nodes store,q,kind,offset; _nodes",
+      "actual_caller": "knowledge-view.loadNodes search/kind/prev-next60",
+      "cancellation": "request-detach-only",
+      "subscription": "ordered-resource-stream",
+      "status": "proposal only; no dispatch/native implementation"
+    },
+    {
+      "operation": "knowledge.node.inspect",
+      "request": "KnowledgeNodeInspectRequest",
+      "response": "KnowledgeNodeDetailEvent",
+      "error": "KnowledgeError",
+      "retained_source": "GET /ui/knowledge/node store,id; _node",
+      "actual_caller": "knowledge-view.inspect/map relation navigation",
+      "cancellation": "request-detach-only",
+      "subscription": "ordered-resource-stream",
+      "status": "proposal only; no dispatch/native implementation"
+    },
+    {
+      "operation": "knowledge.fields.read",
+      "request": "KnowledgeFieldsReadRequest",
+      "response": "KnowledgeFieldEvent",
+      "error": "KnowledgeError",
+      "retained_source": "decoded/preview/column attributes/details source projection",
+      "actual_caller": "knowledge-view.inspect JSON attributes and advanced details rendering",
+      "cancellation": "request-detach-only",
+      "subscription": "ordered-resource-stream",
+      "status": "proposal only; no dispatch/native implementation"
+    },
+    {
+      "operation": "knowledge.text.read",
+      "request": "KnowledgeTextReadRequest",
+      "response": "KnowledgeDiagnosticTextEvent",
+      "error": "KnowledgeError",
+      "retained_source": "source store/folder name and relativepath diagnostics emitted by _stores/_sources",
+      "actual_caller": "knowledge-view.loadStores labels/navigation display; bounded output-only transport adaptation",
+      "cancellation": "request-detach-only",
+      "subscription": "ordered-resource-stream",
+      "status": "proposal only; no dispatch/native implementation"
+    }
+  ],
+  "actual_source_profiles": {
+    "store_scope": "_sources currently returns only app:conversations if actual database exists, with conversations.lock. Recognizing project: prefix is not a project-source producer; UI text mentions project tasks but does not prove implemented project source. Managed dataset root derives current ui.runner.files_root. KnowledgeStoreRef optional project is independently Node-derived actual context only, not client-nominated ownership or automatic project graph exposure.",
+    "selection_and_native_custody": "Legacy safe_relpath/rootresolve/suffix/existingfile/nonsymlink checks are observations, not completed native TOCTOU proof. Node-issued context/folder/store refs hold actual current managed root/ancestor/file/read-only snapshot identity and scope. Suffix.db/.lbug/.kuzu directory entry is candidate only, not valid schema/openability or authority. Recheck lock/schema/current generation/file identity through read, including symlink/junction/reparse/mount/rename/case aliases; no arbitrary public path input or diagnostic-string-to-handle conversion.",
+    "directory_window": "Source enumerates unsorted children, checks index==1000 or selected==200 on next loop iteration, then filters symlinks/outside root and admits directory or graph suffix. Source ordinals preserve enumeration positions; returned selected subset sorted by name.casefold. truncated flag is actual source stop-on-next semantics, not simply selected==200. No invented list cap or false complete-directory continuation. Application sources separately emitted even filesroot unavailable.",
+    "search": "Effective q is source first200Python chars then lower(), not casefold; kind exact <=200chars; offset int0..1000000. Query and IDs are fixed parameter data, never graphquery/SQL/code. Exact profile checks any stored kind>200 before search, then ORDER BY projectedlabel,id SKIPoffset LIMIT61; emit first60/more. Kinds query LIMIT200 has no lookahead; completeness unknown when200 returned, not false truncated or complete. Detail does not add global oversized-kind guard absent in source.",
+    "node_projection": "NODE_FIELDS id substring2049 and refuse>2048; kind201 and refuse>200; label substring2000 without lookahead; mentions signedINT64; raw attrs/data substring32769. Scalar UTF8 envelope4*Pythonchar bound: id8192,kind800,label8000. Control characters remain valid source text data (encoding utf8, not clean-line text). Nullable projected label/mentions preserve actual nullable graph columns without invented empty/zero; invalid source id/kind types refuse unsupported store. Exact engine substring/PythonUnicode semantics vectors required.",
+    "properties": "If raw truthy and len>32768, preview first32768chars with truncatedTrue, never parse as JSON. Otherwise column/from_json requires object; absent/empty/null=>{}, malformed/rootarray/scalar =>invalid_column, no silent empty fallback. KnowledgeFieldView.projected_characters is observed raw column/prefix character count, not guessed total original field size or serialized decoded object length. Field profile derived from actual source projection, never caller-selected parse mode.",
+    "relation_projection": "Detail id<=2048; fixed relation source/target substring2049 with refusal oversized, labels/rel substring200, signedINT64 weight (nullable where actual column null). ORDER BY weightDESC,source,target LIMIT201 ->first200/truncated. Source ordinal preserves parallel/self/duplicate ties without dedup or new relation-order key. Label/rel completeness unknown when at200, complete only when shorter/null. Relation200 limit not falsely fullgraph count; UI map12neighbors is presentation only.",
+    "counts": "GraphStore.counts nodes,edges,documents; doccount excludes keys starting underscore. Failed count is unreadable-store error, neverzero. Counts/kinds/nodes/relations/properties bind same actual authorized store projection/snapshot; no Doc.value/Asset.bytes/private coding receipt seed exposed by count. Whole application graph needs actual whole-projection authority, not a single conversation readgrant.",
+    "source_caps": "Only existing source200selected/1000enumerated directorywindow,60+1nodepage,offset<=1e6,kinds200,relations200+1,field32768charpreview,IDs2048/kinds200/labels2000/relatedlabels200. No raised source cap, invented field-depth/workload/cardinality cap or global bytes assumption. Stream peritem/scalar/fragment avoids expanded canonical1MiB frame vs legacy unbounded page aggregate."
+  },
+  "typed_property_and_text_streams": [
+    "No opaque whole-object JSON result or arbitrary property/query gateway. Parsed-object field stream uses explicit object/array begin/end, property name start, string start/fragments/end, null,bool,integerdecimal,FiniteF64 or nonfinite observation. Root must be object after exact source column semantics. Strict complete well-nested tree; token ordinal/parent/member/array index, matching container/string references, fragment ordinal/character offsets/counts all Node-validated. Member order is actual Python decoded object insertion order; duplicate keys use Python lastvalue/firstinsertion-order behavior, no extra collapse or execution.",
+    "Python json.loads accepts escaped unpaired surrogates. KnowledgeEscapedSurrogateUnit0xD800..0xDFFF observations preserve each such code unit at exact Python-character offset; valid Unicode fragments use unchanged Utf8Chunk. Do not replace/drop U+FFFD or force invalid surrogate into UTF8. Same representation for propertykeys/values, rawpreview when applicable and filesystem diagnostic text, including Linux surrogateescape filenames. Fragments advance by exact Python-character counts; UTF8 bytes checked within valid chunks, not fictitious global UTF8 encoding of a lone surrogate.",
+    "Integerdecimal preserves arbitrary parsed Pythoninteger data within actual rawfield32768char/sourceparser digit limits; canonical decimal lexical validation, no artificial signed64 narrowing for nested properties. Signed mentions/weight separate20byte decimal with exact[-2^63,2^63-1] range, nullable source null explicit. Finitefloat uses exact F64 bits; NaN/+Infinity/-Infinity explicit inert legacy observations, never0/null/default/executionstate. Existing browser JSON compatibility for nonfinite source is an actual gap, not proof of valid strict JSON.",
+    "Rawprefix event is explicit raw_preview_v1, can cut JSON escape/token/string and has actual truncatedTrue. Never parse/complete/execute prefix or present as full attrs object. Exactly source first32768Pythonchars, ordinary fragments plus explicit surrogateunits if source needs. No inferred original total size beyond observed prefix/lookahead.",
+    "Node-issued KnowledgeTextRef output-only diagnostic names/relativepaths bind exact context/snapshot/store/root/file/projection generation. knowledge.text.read streams exact characters/surrogateunits without hidden64KiB lengthcap. No caller string->path/ref lookup, no Doc/Asset/encrypted memory/secret/code/proof access, no reuse as directory/file handle/content consumer. Each fragment reauthorized; expired snapshot explicitresync.",
+    "Snapshot boundaries and all child field/text refs bound actual native principal/current installation/device/project/store generation, fixed selection/query/offset/order/sourceprofile/revision. Property read cannot combine parent oldnode with newfield or borrowed ref; profiles/IDs are untrusted lookup data requiring exact Node retained receipt. Emptyobject/emptyresult explicitly complete, no livepage mixture. Current auth before errors/counts/items/chunks; detach releases owned observation/lock/snapshot resource custody without modifying store."
+  ],
+  "deferred_segments": [
+    {
+      "segment": "graph-store document and integrity maintenance",
+      "actual_functions": [
+        "graph/store_cli.py::_check -> GraphStore.check; --fix -> repair then check",
+        "_docs -> Doc keyscan plus keyed lookup lengths",
+        "_doc -> get_doc; --drop -> delete_doc",
+        "_say_coverage -> vectors.coverage"
+      ],
+      "authority": "managed existing store read/write/schema/transaction ownership; document values may include private application state; not generic inspector field access",
+      "disposition": "separate exact typed graph-maintenance/document continuation, no public rawquery or document-value escape in this leaf"
+    },
+    {
+      "segment": "graph vector and hygiene changes",
+      "actual_functions": [
+        "store_cli._embed -> store.embeddings/read -> smoothing.smooth -> set_embedding",
+        "store_cli._tidy -> optional hygiene/judging/tidy over actual store, written mapping/apply mutates",
+        "store_cli._gold -> actual Client+judge_gold/load_gold when base_url supplied"
+      ],
+      "authority": "storage mutations plus actual managed compute/model/provider/source admission for judge; no URL/code arbitrary gateway",
+      "disposition": "separate reviewed graph-edit/embedding/judge domain; smooth supplied tensors is local transform but its CLI handler is a storage write"
+    },
+    {
+      "segment": "encrypted user/project memory administration",
+      "actual_functions": [
+        "memory/cli._guarded -> authority.require(memory.admin,terminal conditions) BEFORE Memory.open",
+        "_list/_show/_export/_stats/_projects -> decrypted facts/staleness/scope/stores",
+        "_add/_edit/_confirm/_forget/_link/_unlink -> Store.add/edit/confirm/forget/forget_all/link",
+        "_rekey -> Memory.rekey across stores",
+        "_relink -> old Store setup/project -> adopt then old.forget_all"
+      ],
+      "source_profile": "memory/store holds GraphStore in memory and persists one authenticated encrypted file; vault uses protected masterkey/passphrase-derived subkey; facts MAX400chars/MAX300/MAXLINKS8/staleness/build/source rules",
+      "authority": "actual memory.admin policy/terminal checks are source gates, not proof of native freshpersonauth. No person=True/--yes/ownerlabel/cookie grants authority or migrates keys. No encrypted backingstore automatically advertised as ordinary dataset graph. No keystore/passphrase read invoked.",
+      "disposition": "separate genuinely protected encrypted-memory operations preserving exact store/root/key lineage, permissions and actual fact schema; retained required not silently dropped"
+    },
+    {
+      "segment": "agent recall/remember and storage-assisted ranking",
+      "actual_functions": [
+        "memory.tools.propose -> facts.check/entities.parse without saving",
+        "memory.tools.tools -> recall retrieve/render; remember confirm callback then selected Store.add with sessionwrite policy",
+        "memory.recall.retrieve -> Store/Merged facts/search and optional embedcallback",
+        "memory.recall.render -> store.problems/view and neighbor retrieval",
+        "memory.recall.describe -> store.problems/facts/retrieve",
+        "memory.recall.session_context -> may construct Store and read facts/retrieve/render"
+      ],
+      "authority": "storage/embedding/confirmation boundary. render/describe are NOT pure suppliedfacts transforms; callback choice not native owner proof. Remembered content fenced untrusted data, never instruction.",
+      "disposition": "separate recall/protectedremember/storage contract; no model invocation or key operation here"
+    },
+    {
+      "segment": "pure supplied-data graph/ranking helpers",
+      "actual_functions": [
+        "graph.data.Graph/from_edges",
+        "graph.message.propagate/normalize_by_degree/gather/scatter on supplied backend tensors",
+        "graph.search.rrf_scored/rrf/lexical/reranked on supplied data",
+        "graph.smoothing.smooth supplied graph+vectors",
+        "memory.recall._terms/_words_ranking on supplied facts"
+      ],
+      "boundary": "No persistence/identity authority from local transformation. graph.search.hybrid(store=...) reads actual persisted fulltext/vector indexes, and rerank callable may invoke model; those usages are NOT pure. Array backend GPU execution still follows existing compute admission if actually run.",
+      "disposition": "algorithms remain local transformations, not fake Node storage operations; persisted/model usages separately retained"
+    },
+    {
+      "segment": "actual ingestion/import/embed/fold journeys",
+      "actual_functions": [
+        "ingest.cli._dispatch -> fold/import/show/sources/ask/retry/forget/embed/tidy actual handlers",
+        "ingest.run.reader_for -> _read_local/_read_url; _read_run/_read_units -> actual extraction/model processing",
+        "ingest.fold.write/fold_into/fold -> persistent GraphStore sources/docs/nodes/edges",
+        "ingest.embed.embed_store -> writable GraphStore, fixed embedding width by actual held model, real embedding calls, vectors/index writes",
+        "ingest.imports mappings/source normalization -> persistent bring path through CLI"
+      ],
+      "authority": "real source/local file/native handles/egress policy/model/provider/CPUmemory/storage admission/provenance needed. No arbitrary path/network/code body implied by storeRef.",
+      "disposition": "separate coherent ingestion/file/source/embedding domain with actual job/cancel/retry/source provenance. Not implemented by six read-only inspector ops and not discarded as CLI-only feature"
+    }
+  ],
+  "security_and_enablement": [
+    "Every operation read-only/detach-only. No arbitrary SQL/SPARQL/Cypher/code/query, document/asset access, storepath selection, keystore, secret, signing, generic writes or native handles. Actual current native context and complete perstore projection authority before existence/candidate/name/count/error disclosure; origin/header/UI epoch counters cannot authenticate principal.",
+    "Native held root/file/ancestor identity and current lock/read-only schema/snapshot scope required through effects, including rename/symlink/reparse/case aliases. Existing path/file checks are not proof this is implemented. Readonly oldschema refuses, never implicit upgrade/repair/create. Candidate graphentry availability not verified DB. Store/project refs independently Node-derived, no borrowed/pathlabel authority.",
+    "Whole application conversation graph inspect requires actual authorization for all included node/property/count/kind/edge projections. Single conversation grant does not imply full graph or private coding/memory authority. If projection not fully authorized, do not advertise or enumerate store/aggregate as though full source scope; no covert key/source existence oracle.",
+    "Source parser/graph engine/materialization uses existing ResourceAdmission graph/content profile with actual measured resource/ref ownership. No new depth cap vs source decoder or unbounded allocation based on client totals. Owned locks/snapshot/read buffers retained/released by actual lifecycle, no mere DTO/digest/emptycache proves settlement.",
+    "No runtime backend/native custody/sourcecodec Unicode/substring/JSONproperty/INT64 vectors, durable snapshot/ref/cursor/fieldtoken implementation, actual shared resource enforcement or UI adapter implemented. No K/runtime/algorithm-port/installed acceptance. Only focused existing loader/reference/operation+sourcehash/callerline checks now; future actual adversarial cases include surrogate/duplicate keys/nonfinite/null/tieordinals/TOCTOU/crossprincipal snapshot/replay/secret projection, not run here.",
+    "Actual memory/graph maintenance/ingestion edits/embeddings retain exact mapped implementation segments above. No wholesale plaintext memory exposure, legacy key/root migration, genericRPC JSON escape or person approval boolean introduced. Unsupported malformed source nodeid/kind/schema/propertyroot reports error, never fabricated zeros/defaults or silently sanitized content."
+  ],
+  "independent_review": {
+    "reviewer": "approval_attack_review",
+    "pre_edit_verdict": "Written five-operation declaration approval plus explicit sixth diagnostic-text read approval. Required exact source windows/truncation/ordinals, native root/snapshot authorization, full app projection exclusion, typed wellnested scalar/property streams, surrogate code-unit fidelity, exact integer/nonfinite profiles and actual deferred storage/model/key boundaries incorporated.",
+    "actual_leaf_verdict": "Actual two-file review approved by approval_attack_review:79types6ops, no declaration blockers. Surrogate-code-unit/Python-character fidelity, typed wellnested object/scalar streams, exact INT64/arbitraryinteger/nonfinite/null distinctions, source limits/lookahead/completeness/ordinals and output-only diagnostic text reviewed. Wholeappgraph projection authorization/native managedroot/file/lock/read-onlysnapshot custody/perfragment reauth/admission retained. Deferred memory/admin/recall/storemaintenance/ingest mapping distinct; no false render/describe purity. No reviewer edits/tests/runtime; parser/native/snapshot/resource/UI proofs unimplemented."
+  },
+  "counts": {
+    "types": 79,
+    "operations": 6,
+    "sources": 28,
+    "sites": 46
+  }
+}

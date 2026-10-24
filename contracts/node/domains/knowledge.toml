@@ -1,0 +1,591 @@
+version = 1
+status = "proposal"
+
+[[type]]
+name = "KnowledgeContextId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "KnowledgeFolderId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "KnowledgeStoreId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "KnowledgeSnapshotId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "KnowledgeFieldId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "KnowledgeTextId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "KnowledgeNodeId"
+kind = "scalar"
+visibility = "public"
+encoding = "utf8"
+issuer = "data"
+min_bytes = 0
+max_bytes = 8192
+
+[[type]]
+name = "KnowledgeKind"
+kind = "scalar"
+visibility = "public"
+encoding = "utf8"
+issuer = "data"
+min_bytes = 0
+max_bytes = 800
+
+[[type]]
+name = "KnowledgeNodeLabel"
+kind = "scalar"
+visibility = "public"
+encoding = "utf8"
+issuer = "data"
+min_bytes = 0
+max_bytes = 8000
+
+[[type]]
+name = "KnowledgeRelatedLabel"
+kind = "scalar"
+visibility = "public"
+encoding = "utf8"
+issuer = "data"
+min_bytes = 0
+max_bytes = 800
+
+[[type]]
+name = "KnowledgeRelationName"
+kind = "scalar"
+visibility = "public"
+encoding = "utf8"
+issuer = "data"
+min_bytes = 0
+max_bytes = 800
+
+[[type]]
+name = "KnowledgeQuery"
+kind = "scalar"
+visibility = "public"
+encoding = "utf8"
+issuer = "data"
+min_bytes = 0
+max_bytes = 800
+
+[[type]]
+name = "KnowledgeSignedInt64"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 20
+
+[[type]]
+name = "KnowledgeIntegerDecimal"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 32768
+
+[[type]]
+name = "KnowledgeNodeOffset"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "data"
+minimum = 0
+maximum = 1000000
+
+[[type]]
+name = "KnowledgeEscapedSurrogateUnit"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "data"
+minimum = 55296
+maximum = 57343
+
+[[type]]
+name = "KnowledgeContextRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "KnowledgeContextId"}, {name = "generation", type = "ResourceGeneration"}, {name = "installation_id", type = "InstallationId"}, {name = "device_id", type = "DeviceId"}]
+
+[[type]]
+name = "KnowledgeFolderRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "KnowledgeFolderId"}, {name = "generation", type = "ResourceGeneration"}, {name = "context", type = "KnowledgeContextRef"}]
+
+[[type]]
+name = "KnowledgeOptionalFolderRef"
+kind = "optional"
+visibility = "public"
+item = "KnowledgeFolderRef"
+
+[[type]]
+name = "KnowledgeStoreRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "KnowledgeStoreId"}, {name = "generation", type = "ResourceGeneration"}, {name = "context", type = "KnowledgeContextRef"}, {name = "project", type = "ProjectOptionalCatalogRef"}]
+
+[[type]]
+name = "KnowledgeOptionalStoreRef"
+kind = "optional"
+visibility = "public"
+item = "KnowledgeStoreRef"
+
+[[type]]
+name = "KnowledgeTextRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "KnowledgeTextId"}, {name = "generation", type = "ResourceGeneration"}, {name = "snapshot_id", type = "KnowledgeSnapshotId"}]
+
+[[type]]
+name = "KnowledgeContextView"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "KnowledgeContextRef"}, {name = "files_root", type = "KnowledgeOptionalFolderRef"}, {name = "files_available", type = "Boolean"}]
+
+[[type]]
+name = "KnowledgeContextInspectRequest"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "KnowledgeStoreFamily"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "application_conversations", type = "Empty"}, {tag = "managed_dataset_file", type = "Empty"}]
+
+[[type]]
+name = "KnowledgeStoreReadiness"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "candidate", type = "Empty"}, {tag = "readable", type = "Empty"}, {tag = "unavailable", type = "Empty"}]
+
+[[type]]
+name = "KnowledgeStoreView"
+kind = "record"
+visibility = "public"
+fields = [{name = "store", type = "KnowledgeStoreRef"}, {name = "family", type = "KnowledgeStoreFamily"}, {name = "name", type = "KnowledgeTextRef"}, {name = "diagnostic_source", type = "KnowledgeTextRef"}, {name = "readiness", type = "KnowledgeStoreReadiness"}]
+
+[[type]]
+name = "KnowledgeFolderView"
+kind = "record"
+visibility = "public"
+fields = [{name = "folder", type = "KnowledgeFolderRef"}, {name = "parent", type = "KnowledgeOptionalFolderRef"}, {name = "name", type = "KnowledgeTextRef"}, {name = "diagnostic_relative_path", type = "KnowledgeTextRef"}, {name = "source_ordinal", type = "U64"}]
+
+[[type]]
+name = "KnowledgeStoreEntryView"
+kind = "record"
+visibility = "public"
+fields = [{name = "value", type = "KnowledgeStoreView"}, {name = "source_ordinal", type = "U64"}]
+
+[[type]]
+name = "KnowledgeSnapshotBoundary"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot_id", type = "KnowledgeSnapshotId"}, {name = "context", type = "KnowledgeContextRef"}, {name = "store", type = "KnowledgeOptionalStoreRef"}, {name = "revision", type = "U64"}, {name = "cursor", type = "InferenceCursor"}]
+
+[[type]]
+name = "KnowledgeStoreStreamItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "KnowledgeSnapshotBoundary"}, {name = "value", type = "KnowledgeStoreEntryView"}]
+
+[[type]]
+name = "KnowledgeApplicationStoreItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "KnowledgeSnapshotBoundary"}, {name = "value", type = "KnowledgeStoreView"}]
+
+[[type]]
+name = "KnowledgeFolderStreamItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "KnowledgeSnapshotBoundary"}, {name = "value", type = "KnowledgeFolderView"}]
+
+[[type]]
+name = "KnowledgeDirectorySummary"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "KnowledgeSnapshotBoundary"}, {name = "folder", type = "KnowledgeOptionalFolderRef"}, {name = "scanned_entries", type = "U64"}, {name = "selected_entries", type = "U64"}, {name = "truncated", type = "Boolean"}, {name = "files_available", type = "Boolean"}]
+
+[[type]]
+name = "KnowledgeStoresListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "KnowledgeContextRef"}, {name = "folder", type = "KnowledgeOptionalFolderRef"}, {name = "after", type = "InferenceOptionalCursor"}]
+
+[[type]]
+name = "KnowledgeStoresEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "KnowledgeSnapshotBoundary"}, {tag = "application_store", type = "KnowledgeApplicationStoreItem"}, {tag = "folder", type = "KnowledgeFolderStreamItem"}, {tag = "store", type = "KnowledgeStoreStreamItem"}, {tag = "summary", type = "KnowledgeDirectorySummary"}, {tag = "complete", type = "KnowledgeSnapshotBoundary"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "KnowledgeProjectionCompleteness"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "complete", type = "Empty"}, {tag = "unknown_at_source_limit", type = "Empty"}]
+
+[[type]]
+name = "KnowledgeNodeRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "store", type = "KnowledgeStoreRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "node_id", type = "KnowledgeNodeId"}]
+
+[[type]]
+name = "KnowledgeFieldColumn"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "attributes", type = "Empty"}, {tag = "details", type = "Empty"}]
+
+[[type]]
+name = "KnowledgeFieldProfile"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "python_json_object_v1", type = "Empty"}, {tag = "raw_prefix_preview_v1", type = "Empty"}]
+
+[[type]]
+name = "KnowledgeFieldRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "KnowledgeFieldId"}, {name = "generation", type = "ResourceGeneration"}, {name = "snapshot_id", type = "KnowledgeSnapshotId"}, {name = "node", type = "KnowledgeNodeRef"}, {name = "column", type = "KnowledgeFieldColumn"}, {name = "profile", type = "KnowledgeFieldProfile"}]
+
+[[type]]
+name = "KnowledgeFieldView"
+kind = "record"
+visibility = "public"
+fields = [{name = "field", type = "KnowledgeFieldRef"}, {name = "projected_characters", type = "U64"}, {name = "truncated", type = "Boolean"}]
+
+[[type]]
+name = "KnowledgeNullableInt64"
+kind = "optional"
+visibility = "public"
+item = "KnowledgeSignedInt64"
+
+[[type]]
+name = "KnowledgeNullableNodeLabel"
+kind = "optional"
+visibility = "public"
+item = "KnowledgeNodeLabel"
+
+[[type]]
+name = "KnowledgeNullableRelatedLabel"
+kind = "optional"
+visibility = "public"
+item = "KnowledgeRelatedLabel"
+
+[[type]]
+name = "KnowledgeNullableRelationName"
+kind = "optional"
+visibility = "public"
+item = "KnowledgeRelationName"
+
+[[type]]
+name = "KnowledgeNodeView"
+kind = "record"
+visibility = "public"
+fields = [{name = "node", type = "KnowledgeNodeRef"}, {name = "kind", type = "KnowledgeKind"}, {name = "label", type = "KnowledgeNullableNodeLabel"}, {name = "label_completeness", type = "KnowledgeProjectionCompleteness"}, {name = "mentions", type = "KnowledgeNullableInt64"}, {name = "attributes", type = "KnowledgeFieldView"}, {name = "details", type = "KnowledgeFieldView"}]
+
+[[type]]
+name = "KnowledgeNodeStreamItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "KnowledgeSnapshotBoundary"}, {name = "source_ordinal", type = "U64"}, {name = "value", type = "KnowledgeNodeView"}]
+
+[[type]]
+name = "KnowledgeCounts"
+kind = "record"
+visibility = "public"
+fields = [{name = "nodes", type = "U64"}, {name = "edges", type = "U64"}, {name = "documents", type = "U64"}]
+
+[[type]]
+name = "KnowledgeCountStreamItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "KnowledgeSnapshotBoundary"}, {name = "value", type = "KnowledgeCounts"}]
+
+[[type]]
+name = "KnowledgeKindCount"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "KnowledgeSnapshotBoundary"}, {name = "source_ordinal", type = "U64"}, {name = "node_kind", type = "KnowledgeKind"}, {name = "count", type = "U64"}]
+
+[[type]]
+name = "KnowledgeNodesPageSummary"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "KnowledgeSnapshotBoundary"}, {name = "offset", type = "KnowledgeNodeOffset"}, {name = "returned_nodes", type = "U64"}, {name = "more", type = "Boolean"}, {name = "returned_kinds", type = "U64"}, {name = "kinds_completeness", type = "KnowledgeProjectionCompleteness"}]
+
+[[type]]
+name = "KnowledgeNodesSearchRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "store", type = "KnowledgeStoreRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "query", type = "KnowledgeQuery"}, {name = "node_kind", type = "KnowledgeKind"}, {name = "offset", type = "KnowledgeNodeOffset"}, {name = "after", type = "InferenceOptionalCursor"}]
+
+[[type]]
+name = "KnowledgeNodesEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "KnowledgeSnapshotBoundary"}, {tag = "counts", type = "KnowledgeCountStreamItem"}, {tag = "node", type = "KnowledgeNodeStreamItem"}, {tag = "node_kind", type = "KnowledgeKindCount"}, {tag = "summary", type = "KnowledgeNodesPageSummary"}, {tag = "complete", type = "KnowledgeSnapshotBoundary"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "KnowledgeRelationView"
+kind = "record"
+visibility = "public"
+fields = [{name = "source", type = "KnowledgeNodeId"}, {name = "source_label", type = "KnowledgeNullableRelatedLabel"}, {name = "source_label_completeness", type = "KnowledgeProjectionCompleteness"}, {name = "target", type = "KnowledgeNodeId"}, {name = "target_label", type = "KnowledgeNullableRelatedLabel"}, {name = "target_label_completeness", type = "KnowledgeProjectionCompleteness"}, {name = "relation", type = "KnowledgeNullableRelationName"}, {name = "relation_completeness", type = "KnowledgeProjectionCompleteness"}, {name = "weight", type = "KnowledgeNullableInt64"}]
+
+[[type]]
+name = "KnowledgeRelationStreamItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "KnowledgeSnapshotBoundary"}, {name = "source_ordinal", type = "U64"}, {name = "value", type = "KnowledgeRelationView"}]
+
+[[type]]
+name = "KnowledgeNodeDetailSummary"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "KnowledgeSnapshotBoundary"}, {name = "returned_relations", type = "U64"}, {name = "truncated", type = "Boolean"}]
+
+[[type]]
+name = "KnowledgeNodeInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "store", type = "KnowledgeStoreRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "node_id", type = "KnowledgeNodeId"}, {name = "after", type = "InferenceOptionalCursor"}]
+
+[[type]]
+name = "KnowledgeNodeDetailEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "KnowledgeSnapshotBoundary"}, {tag = "node", type = "KnowledgeNodeStreamItem"}, {tag = "relation", type = "KnowledgeRelationStreamItem"}, {tag = "summary", type = "KnowledgeNodeDetailSummary"}, {tag = "complete", type = "KnowledgeSnapshotBoundary"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "KnowledgeValueLocation"
+kind = "record"
+visibility = "public"
+fields = [{name = "parent_ordinal", type = "OptionalU64"}, {name = "member_ordinal", type = "OptionalU64"}, {name = "array_index", type = "OptionalU64"}]
+
+[[type]]
+name = "KnowledgeTokenReference"
+kind = "record"
+visibility = "public"
+fields = [{name = "token_ordinal", type = "U64"}]
+
+[[type]]
+name = "KnowledgeStringStart"
+kind = "record"
+visibility = "public"
+fields = [{name = "python_characters", type = "U64"}]
+
+[[type]]
+name = "KnowledgeStringFragment"
+kind = "record"
+visibility = "public"
+fields = [{name = "string_token_ordinal", type = "U64"}, {name = "fragment_ordinal", type = "U64"}, {name = "character_offset", type = "U64"}, {name = "text", type = "Utf8Chunk"}]
+
+[[type]]
+name = "KnowledgeSurrogateObservation"
+kind = "record"
+visibility = "public"
+fields = [{name = "string_token_ordinal", type = "U64"}, {name = "fragment_ordinal", type = "U64"}, {name = "character_offset", type = "U64"}, {name = "unit", type = "KnowledgeEscapedSurrogateUnit"}]
+
+[[type]]
+name = "KnowledgeNonfiniteFloat"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "nan", type = "Empty"}, {tag = "positive_infinity", type = "Empty"}, {tag = "negative_infinity", type = "Empty"}]
+
+[[type]]
+name = "KnowledgeValueToken"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "object_begin", type = "Empty"}, {tag = "object_end", type = "KnowledgeTokenReference"}, {tag = "array_begin", type = "Empty"}, {tag = "array_end", type = "KnowledgeTokenReference"}, {tag = "property_name_begin", type = "KnowledgeStringStart"}, {tag = "string_begin", type = "KnowledgeStringStart"}, {tag = "string_fragment", type = "KnowledgeStringFragment"}, {tag = "escaped_surrogate", type = "KnowledgeSurrogateObservation"}, {tag = "string_end", type = "KnowledgeTokenReference"}, {tag = "null", type = "Empty"}, {tag = "boolean", type = "Boolean"}, {tag = "integer", type = "KnowledgeIntegerDecimal"}, {tag = "finite_float", type = "FiniteF64"}, {tag = "nonfinite_float", type = "KnowledgeNonfiniteFloat"}]
+
+[[type]]
+name = "KnowledgeFieldTokenFrame"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "KnowledgeSnapshotBoundary"}, {name = "field", type = "KnowledgeFieldRef"}, {name = "token_ordinal", type = "U64"}, {name = "location", type = "KnowledgeValueLocation"}, {name = "token", type = "KnowledgeValueToken"}]
+
+[[type]]
+name = "KnowledgeFieldBoundary"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "KnowledgeSnapshotBoundary"}, {name = "value", type = "KnowledgeFieldView"}]
+
+[[type]]
+name = "KnowledgeRawPreviewFragment"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "KnowledgeSnapshotBoundary"}, {name = "field", type = "KnowledgeFieldRef"}, {name = "fragment_ordinal", type = "U64"}, {name = "character_offset", type = "U64"}, {name = "text", type = "Utf8Chunk"}]
+
+[[type]]
+name = "KnowledgeRawPreviewSurrogate"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "KnowledgeSnapshotBoundary"}, {name = "field", type = "KnowledgeFieldRef"}, {name = "fragment_ordinal", type = "U64"}, {name = "character_offset", type = "U64"}, {name = "unit", type = "KnowledgeEscapedSurrogateUnit"}]
+
+[[type]]
+name = "KnowledgeFieldsReadRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "field", type = "KnowledgeFieldRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "after", type = "InferenceOptionalCursor"}]
+
+[[type]]
+name = "KnowledgeFieldEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "KnowledgeFieldBoundary"}, {tag = "token", type = "KnowledgeFieldTokenFrame"}, {tag = "raw_preview", type = "KnowledgeRawPreviewFragment"}, {tag = "raw_preview_surrogate", type = "KnowledgeRawPreviewSurrogate"}, {tag = "complete", type = "KnowledgeFieldBoundary"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "KnowledgeDiagnosticTextStart"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "KnowledgeSnapshotBoundary"}, {name = "text", type = "KnowledgeTextRef"}, {name = "python_characters", type = "U64"}]
+
+[[type]]
+name = "KnowledgeDiagnosticTextFragment"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "KnowledgeSnapshotBoundary"}, {name = "text", type = "KnowledgeTextRef"}, {name = "fragment_ordinal", type = "U64"}, {name = "character_offset", type = "U64"}, {name = "value", type = "Utf8Chunk"}]
+
+[[type]]
+name = "KnowledgeDiagnosticSurrogate"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "KnowledgeSnapshotBoundary"}, {name = "text", type = "KnowledgeTextRef"}, {name = "fragment_ordinal", type = "U64"}, {name = "character_offset", type = "U64"}, {name = "unit", type = "KnowledgeEscapedSurrogateUnit"}]
+
+[[type]]
+name = "KnowledgeTextReadRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "KnowledgeContextRef"}, {name = "text", type = "KnowledgeTextRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "after", type = "InferenceOptionalCursor"}]
+
+[[type]]
+name = "KnowledgeDiagnosticTextEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "start", type = "KnowledgeDiagnosticTextStart"}, {tag = "fragment", type = "KnowledgeDiagnosticTextFragment"}, {tag = "escaped_surrogate", type = "KnowledgeDiagnosticSurrogate"}, {tag = "complete", type = "KnowledgeDiagnosticTextStart"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "KnowledgeErrorDetails"
+kind = "record"
+visibility = "public"
+fields = [{name = "message", type = "SafeMessage"}, {name = "retryable", type = "Boolean"}]
+
+[[type]]
+name = "KnowledgeError"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "invalid_request", type = "KnowledgeErrorDetails"}, {tag = "unauthenticated", type = "KnowledgeErrorDetails"}, {tag = "forbidden", type = "KnowledgeErrorDetails"}, {tag = "not_found", type = "KnowledgeErrorDetails"}, {tag = "unavailable", type = "KnowledgeErrorDetails"}, {tag = "stale_generation", type = "KnowledgeErrorDetails"}, {tag = "store_busy", type = "KnowledgeErrorDetails"}, {tag = "unsupported_store", type = "KnowledgeErrorDetails"}, {tag = "invalid_column", type = "KnowledgeErrorDetails"}, {tag = "snapshot_expired", type = "KnowledgeErrorDetails"}, {tag = "resource_admission_required", type = "KnowledgeErrorDetails"}, {tag = "recovery_required", type = "KnowledgeErrorDetails"}]
+
+[[operation]]
+name = "knowledge.context.inspect"
+symbol = "KnowledgeContextInspect"
+request = "KnowledgeContextInspectRequest"
+response = "KnowledgeContextView"
+error = "KnowledgeError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "current-managed-store-and-native-context-generation", "no-path-label-query-or-reference-authority", "derive-actual-context-without-caller-path", "no-files-root-or-model-prerequisite"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "knowledge.stores.list"
+symbol = "KnowledgeStoresList"
+request = "KnowledgeStoresListRequest"
+response = "KnowledgeStoresEvent"
+error = "KnowledgeError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "current-managed-store-and-native-context-generation", "no-path-label-query-or-reference-authority", "actual-native-managed-root-and-store-authority", "snapshot-bound-principal-projection-and-file-identity", "no-encrypted-memory-or-private-document-bypass", "actual-common-resource-admission-before-materialization", "source-exact-directory-scan-window-and-order", "candidate-not-verified-openable-or-authority", "current-authorization-before-each-item"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "knowledge.nodes.search"
+symbol = "KnowledgeNodesSearch"
+request = "KnowledgeNodesSearchRequest"
+response = "KnowledgeNodesEvent"
+error = "KnowledgeError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "current-managed-store-and-native-context-generation", "no-path-label-query-or-reference-authority", "actual-native-managed-root-and-store-authority", "snapshot-bound-principal-projection-and-file-identity", "no-encrypted-memory-or-private-document-bypass", "actual-common-resource-admission-before-materialization", "fixed-parameterized-node-search-profile", "source-page-kind-count-and-truncation-semantics", "hold-native-identity-lock-and-read-only-schema", "current-authorization-before-each-item"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "knowledge.node.inspect"
+symbol = "KnowledgeNodeInspect"
+request = "KnowledgeNodeInspectRequest"
+response = "KnowledgeNodeDetailEvent"
+error = "KnowledgeError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "current-managed-store-and-native-context-generation", "no-path-label-query-or-reference-authority", "actual-native-managed-root-and-store-authority", "snapshot-bound-principal-projection-and-file-identity", "no-encrypted-memory-or-private-document-bypass", "actual-common-resource-admission-before-materialization", "fixed-parameterized-node-and-relation-profile", "source-relation-order-ordinals-and-lookahead", "hold-native-identity-lock-and-read-only-schema", "current-authorization-before-each-item"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "knowledge.fields.read"
+symbol = "KnowledgeFieldsRead"
+request = "KnowledgeFieldsReadRequest"
+response = "KnowledgeFieldEvent"
+error = "KnowledgeError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "current-managed-store-and-native-context-generation", "no-path-label-query-or-reference-authority", "actual-native-managed-root-and-store-authority", "snapshot-bound-principal-projection-and-file-identity", "no-encrypted-memory-or-private-document-bypass", "actual-common-resource-admission-before-materialization", "exact-parent-snapshot-column-and-source-profile", "well-nested-source-exact-typed-property-stream", "surrogate-units-and-nonfinite-values-inert-observations", "raw-preview-never-parsed-as-complete-json", "current-authorization-before-each-item"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "knowledge.text.read"
+symbol = "KnowledgeTextRead"
+request = "KnowledgeTextReadRequest"
+response = "KnowledgeDiagnosticTextEvent"
+error = "KnowledgeError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "current-managed-store-and-native-context-generation", "no-path-label-query-or-reference-authority", "actual-native-managed-root-and-store-authority", "snapshot-bound-principal-projection-and-file-identity", "no-encrypted-memory-or-private-document-bypass", "actual-common-resource-admission-before-materialization", "fixed-output-diagnostic-text-purpose-only", "no-arbitrary-file-document-or-asset-read", "surrogate-units-preserve-source-filename-observation", "current-authorization-before-each-item"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
