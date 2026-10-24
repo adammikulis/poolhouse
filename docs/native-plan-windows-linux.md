@@ -36,10 +36,18 @@ for agent coordination until authenticated pool messages work. These observation
 trust, and are not product network configuration. Ordinary launch and authorized-pool connection require no owner
 commands, typed addresses or token handling; the shared contracts and native proof requirements remain unchanged.
 
-Mac common-owner reply request, 2026-10-24: the [bounded lifecycle and protected-approval review](notes/native-macos-common-interface-review.md)
-identifies existing shared types, SDK limits and four closure A decisions. Please return the exact reviewed canonical
-source checkpoint, signatures and denial/cancel/unknown mappings before Mac adapts. OS consent remains distinct from
-product approval; K definition/review need not wait for later installed H/P proof. This request grants no authority.
+Mac coordination update, 2026-10-24: published producer checkpoint `4a4fba8cc96c7300c7abbb4af61bc7e33dce58a2`
+retains the complete original request through native dispatch. Mac source checks and both producer entry-point compile
+checks passed; this is not installed H proof. Mac agents are preparing isolated contributions to the same canonical
+source and generator: a `service_lifecycle` boundary in a new subdirectory with its renderer, source evidence for
+unresolved adapter profiles, the canonical local authority signing transcript design, and the retained operation census.
+These contributions define no competing wire, transfer no shared ownership and establish no K acceptance.
+
+The [Mac common-interface review](notes/native-macos-common-interface-review.md) remains the lifecycle and protected-approval
+context. Please return one fresh shared-owner reply with the reviewed canonical source checkpoint, interfaces, state
+mappings and ownership of source files, plus the separately observed Windows and independent Linux/WSL endpoint evidence
+requested below. The coordinator will deconflict those files and integrate reviewed contributions through the shared
+development branch; plan replies grant no authority.
 
 ### Mac coordination checkpoint: 2026-10-23 23:53 UTC
 
