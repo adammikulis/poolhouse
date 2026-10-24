@@ -1,4 +1,4 @@
-"""A subagent that hands back with work unlanded keeps its identity so it can be resumed to land it; a landed one is retired."""
+"""Turn boundaries preserve a subagent identity and leave explicit task completion separate."""
 
 from __future__ import annotations
 

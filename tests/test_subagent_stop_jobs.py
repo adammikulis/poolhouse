@@ -1,4 +1,4 @@
-"""A stopped subagent leaves no test job running or queued."""
+"""A subagent turn ending preserves its queued and running test jobs."""
 
 from __future__ import annotations
 
