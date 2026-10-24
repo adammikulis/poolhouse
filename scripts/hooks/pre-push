@@ -2,6 +2,12 @@
 # Development publication guards refs only. Validation and CI run separately.
 set -eu
 
+# This source-repository policy is opt-in local scope, never library-consumer policy.
+common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || exit 0
+common=$(cd "$common" && pwd -P) || exit 0
+scope=$(git config --local --get poolhouse.hooks.repository 2>/dev/null) || exit 0
+[ "$scope" = "$common" ] || exit 0
+
 self=$0
 while [ -L "$self" ]; do
     link=$(readlink "$self")
