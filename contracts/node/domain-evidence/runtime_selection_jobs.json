@@ -75,7 +75,7 @@
     "handoff_checkpoints": "18c93f18ac0d86e08917179236e94b991f2e7c7d is a pure transition model; af28231cf36bb749a52e18014c658fd9ae5c8492 adds mandatory actual Node storage custody. Neither supplies the complete owned control/drain endpoint or production CommitWitness issuer.",
     "model_limit": "update_handoff CommitWitness is uninhabited in production; test-only Simulated cannot become a live witness. Its Observation counts and Custody data do not own OS storage/locks or prove writer coverage."
   },
-  "operation_mapping": {
+  "intent_integration": {
     "intent": "runtime_previous_verified with Empty value, added to existing closed JobPreparationIntent/Details/FrozenPlan sums.",
     "operations": [
       "jobs.prepare",
@@ -430,5 +430,6 @@
     "No real supported inherited supervisor-control endpoint, complete writer registry/fence, production commit witness issuer/consumer or updater integration is supplied by this contract. Unsupported old nodes stay live/pending; do not bootstrap them by terminating or publishing selection.",
     "Private handoff/plan records are untrusted model data, not kernel handles or authority. The real updater owner must prove exact tuple, durable receipts, normal exit, last-lock release/exclusive transition and protected recovery on actual hardware.",
     "No actual selection, node replacement, process signaling, installed verification, runtime activation, admission or native H/K/P/I proof was performed. Existing previous-runtime source is evidence, not a safe fallback to enable."
-  ]
+  ],
+  "operations": []
 }
