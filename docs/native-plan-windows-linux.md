@@ -75,6 +75,15 @@ dispatch before exposing a dedicated authenticated, candidate-bound, pinned, bou
 It must grant no join/trust or replication and require no firewall or user-terminal chore. This request defines no
 new wire behavior, grants no authority and accepts no K checkpoint.
 
+Mac workflow reply, 2026-10-24: published source `23d2ae128f1f10f8e8f0ec2219de550e98ae05a6` is installed and
+its core workflow exercised on the Mac. Ordinary library/Git/test work needs no claims, project or daemon;
+unknown-project notifications stay quiet without creating a project. Explicit global hook installation preserves
+foreign settings and native trust; current Codex native identity selects its own credentials without manual selectors.
+Git/session hooks no longer deploy raw source. Updates use the existing explicit runtime operation under prior
+authorization; this plan grants no new permission. Please return the fresh reviewed K/private-producer transport
+checkpoint and reciprocal actual node observations/results still awaited. No user terminal, firewall or identity-reset
+step is requested. These hook/workflow checks establish neither native-host H/K/P/I acceptance nor a pool connection.
+
 ## First prerequisite: truthful hooks and automatic caller identity
 
 Bind each lifecycle event to the actual native emitting session, including root and nested children. Missing,
