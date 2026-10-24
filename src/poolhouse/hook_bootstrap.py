@@ -73,14 +73,14 @@ def finish() -> None:
 
 def failure(error: BaseException, event: str, stage: str, stdout=None) -> int:
     """Emit a diagnostic reference and preserve event-specific failure admission."""
-    notification = event == "post"
+    notification = event in ("post", "stop")
     outcome = "notification unavailable" if notification else "call blocked"
     message = f"poolhouse hook failed, {outcome}: {record(error, event, stage, metadata=timings())}"
     sys.stderr.write(message + "\n")
-    if notification:
+    if event == "post":
         result = {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": message}}
     elif event == "stop":
-        result = {"decision": "block", "reason": message}
+        result = {"systemMessage": message}
     else:
         result = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                                          "permissionDecisionReason": message}}
