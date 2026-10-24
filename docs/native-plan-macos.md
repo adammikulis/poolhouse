@@ -175,6 +175,10 @@ The [Mac preservation ledger](notes/native-macos-preserved-work.md) is published
 reviewed canonical adapter and retained-operation checkpoint plus fresh, separately sourced Windows and Linux/WSL
 workspace actors, public node IDs and endpoints requested above. No live sender semantics or connection is proven here.
 
+For shared lifecycle and protected-approval closure A review, read the
+[Mac common-interface review request](notes/native-macos-common-interface-review.md). It requests canonical decisions
+and an exact reviewed checkpoint; it defines no Mac wire fork or K acceptance.
+
 Mac K adapter request for shared-owner review, with feasibility evidence in `contracts-feasibility.json` under the
 same Mac evidence directory; this request establishes no principal, admission or platform contract:
 
