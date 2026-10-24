@@ -842,5 +842,6 @@
     "Exact parser/default/RNG/optimizer/batch-cursor/resource/metric/semantic validators and source-equivalent scope adapters remain required; unknown profiles refuse.",
     "No executed training/cancel/resume/recovery/artifact or hardware/native H/K/P/I evidence. Cross-language shape/drift tests are declaration checks only.",
     "General training recipes, imported builders, arbitrary configs/export/LoRA and other retained domain gaps remain separate required work."
-  ]
+  ],
+  "operations": []
 }
