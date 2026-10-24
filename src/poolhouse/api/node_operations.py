@@ -1,4 +1,4 @@
-# Generated proposal. No dispatch or authority is implemented. Schema 3d756ba80985d5e794adbfdc3724f25e203c11980579d0d6b4498df8f1f1843b
+# Generated proposal. No dispatch or authority is implemented. Schema 68093866d7c6d52d95a3044fe00f8292c18823cce3538e1ebd13ae4963b31a4a
 from . import node_contract as data
 
 OPERATION_TYPES = {
@@ -84,6 +84,25 @@ OPERATION_TYPES = {
     "conversations.content.finalize": (data.ConversationContentFinalizeRequest, data.ConversationContentFinalizeView, data.ConversationError),
     "conversations.content.read": (data.ConversationContentReadRequest, data.InferenceContentChunk, data.ConversationError),
     "conversations.content.discard": (data.ConversationContentDiscardRequest, data.ConversationContentDiscardView, data.ConversationError),
+    "datasets.catalog.search": (data.DatasetSearchRequest, data.DatasetSearchResult, data.DatasetError),
+    "datasets.catalog.inspect": (data.DatasetInspectRequest, data.DatasetDetails, data.DatasetError),
+    "datasets.catalog.splits.list": (data.DatasetSplitListRequest, data.DatasetSplitPage, data.DatasetError),
+    "datasets.catalog.preview": (data.DatasetPreviewRequest, data.DatasetPreview, data.DatasetError),
+    "datasets.catalog.selection.create": (data.DatasetSelectionRequest, data.DatasetSelection, data.DatasetError),
+    "datasets.catalog.selection.files.list": (data.DatasetSelectionFilesRequest, data.DatasetFilePage, data.DatasetError),
+    "datasets.local.choose": (data.DatasetLocalChooseRequest, data.DatasetChoice, data.DatasetError),
+    "datasets.local.choice.inspect": (data.DatasetChoiceInspectRequest, data.DatasetChoice, data.DatasetError),
+    "datasets.local.choice.cancel": (data.DatasetChoiceCancelRequest, data.DatasetChoice, data.DatasetError),
+    "datasets.local.preview": (data.DatasetLocalPreviewRequest, data.DatasetPreview, data.DatasetError),
+    "datasets.managed.list": (data.DatasetManagedListRequest, data.DatasetManagedPage, data.DatasetError),
+    "datasets.managed.get": (data.DatasetManagedGetRequest, data.DatasetView, data.DatasetError),
+    "datasets.import.preview.start": (data.DatasetImportStartRequest, data.DatasetImportView, data.DatasetError),
+    "datasets.import.lookup": (data.DatasetImportLookupRequest, data.DatasetImportView, data.DatasetError),
+    "datasets.import.get": (data.DatasetImportGetRequest, data.DatasetImportView, data.DatasetError),
+    "datasets.import.cancel": (data.DatasetImportCancelRequest, data.DatasetImportCancelResult, data.DatasetError),
+    "datasets.import.watch": (data.DatasetImportWatchRequest, data.DatasetImportWatchResult, data.DatasetError),
+    "datasets.values.read": (data.DatasetValueReadRequest, data.DatasetValueView, data.DatasetError),
+    "datasets.text.read": (data.DatasetTextReadRequest, data.DatasetTextChunk, data.DatasetError),
     "inference.chat.start": (data.InferenceChatStartRequest, data.InferenceGenerationView, data.InferenceError),
     "inference.responses.start": (data.InferenceResponsesStartRequest, data.InferenceGenerationView, data.InferenceError),
     "inference.messages.start": (data.InferenceMessagesStartRequest, data.InferenceGenerationView, data.InferenceError),

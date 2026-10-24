@@ -1,4 +1,4 @@
-// Generated proposal. No dispatch or authority is implemented. Schema 3d756ba80985d5e794adbfdc3724f25e203c11980579d0d6b4498df8f1f1843b
+// Generated proposal. No dispatch or authority is implemented. Schema 68093866d7c6d52d95a3044fe00f8292c18823cce3538e1ebd13ae4963b31a4a
 use super::contract::*;
 
 pub trait Operation { type Request; type Response; type Error; const NAME: &'static str; }
@@ -248,6 +248,63 @@ impl Operation for ConversationsContentRead { type Request = ConversationContent
 
 pub struct ConversationsContentDiscard;
 impl Operation for ConversationsContentDiscard { type Request = ConversationContentDiscardRequest; type Response = ConversationContentDiscardView; type Error = ConversationError; const NAME: &'static str = "conversations.content.discard"; }
+
+pub struct DatasetDomainDatasetsCatalogSearch;
+impl Operation for DatasetDomainDatasetsCatalogSearch { type Request = DatasetSearchRequest; type Response = DatasetSearchResult; type Error = DatasetError; const NAME: &'static str = "datasets.catalog.search"; }
+
+pub struct DatasetDomainDatasetsCatalogInspect;
+impl Operation for DatasetDomainDatasetsCatalogInspect { type Request = DatasetInspectRequest; type Response = DatasetDetails; type Error = DatasetError; const NAME: &'static str = "datasets.catalog.inspect"; }
+
+pub struct DatasetDomainDatasetsCatalogSplitsList;
+impl Operation for DatasetDomainDatasetsCatalogSplitsList { type Request = DatasetSplitListRequest; type Response = DatasetSplitPage; type Error = DatasetError; const NAME: &'static str = "datasets.catalog.splits.list"; }
+
+pub struct DatasetDomainDatasetsCatalogPreview;
+impl Operation for DatasetDomainDatasetsCatalogPreview { type Request = DatasetPreviewRequest; type Response = DatasetPreview; type Error = DatasetError; const NAME: &'static str = "datasets.catalog.preview"; }
+
+pub struct DatasetDomainDatasetsCatalogSelectionCreate;
+impl Operation for DatasetDomainDatasetsCatalogSelectionCreate { type Request = DatasetSelectionRequest; type Response = DatasetSelection; type Error = DatasetError; const NAME: &'static str = "datasets.catalog.selection.create"; }
+
+pub struct DatasetDomainDatasetsCatalogSelectionFilesList;
+impl Operation for DatasetDomainDatasetsCatalogSelectionFilesList { type Request = DatasetSelectionFilesRequest; type Response = DatasetFilePage; type Error = DatasetError; const NAME: &'static str = "datasets.catalog.selection.files.list"; }
+
+pub struct DatasetDomainDatasetsLocalChoose;
+impl Operation for DatasetDomainDatasetsLocalChoose { type Request = DatasetLocalChooseRequest; type Response = DatasetChoice; type Error = DatasetError; const NAME: &'static str = "datasets.local.choose"; }
+
+pub struct DatasetDomainDatasetsLocalChoiceInspect;
+impl Operation for DatasetDomainDatasetsLocalChoiceInspect { type Request = DatasetChoiceInspectRequest; type Response = DatasetChoice; type Error = DatasetError; const NAME: &'static str = "datasets.local.choice.inspect"; }
+
+pub struct DatasetDomainDatasetsLocalChoiceCancel;
+impl Operation for DatasetDomainDatasetsLocalChoiceCancel { type Request = DatasetChoiceCancelRequest; type Response = DatasetChoice; type Error = DatasetError; const NAME: &'static str = "datasets.local.choice.cancel"; }
+
+pub struct DatasetDomainDatasetsLocalPreview;
+impl Operation for DatasetDomainDatasetsLocalPreview { type Request = DatasetLocalPreviewRequest; type Response = DatasetPreview; type Error = DatasetError; const NAME: &'static str = "datasets.local.preview"; }
+
+pub struct DatasetDomainDatasetsManagedList;
+impl Operation for DatasetDomainDatasetsManagedList { type Request = DatasetManagedListRequest; type Response = DatasetManagedPage; type Error = DatasetError; const NAME: &'static str = "datasets.managed.list"; }
+
+pub struct DatasetDomainDatasetsManagedGet;
+impl Operation for DatasetDomainDatasetsManagedGet { type Request = DatasetManagedGetRequest; type Response = DatasetView; type Error = DatasetError; const NAME: &'static str = "datasets.managed.get"; }
+
+pub struct DatasetDomainDatasetsImportPreviewStart;
+impl Operation for DatasetDomainDatasetsImportPreviewStart { type Request = DatasetImportStartRequest; type Response = DatasetImportView; type Error = DatasetError; const NAME: &'static str = "datasets.import.preview.start"; }
+
+pub struct DatasetDomainDatasetsImportLookup;
+impl Operation for DatasetDomainDatasetsImportLookup { type Request = DatasetImportLookupRequest; type Response = DatasetImportView; type Error = DatasetError; const NAME: &'static str = "datasets.import.lookup"; }
+
+pub struct DatasetDomainDatasetsImportGet;
+impl Operation for DatasetDomainDatasetsImportGet { type Request = DatasetImportGetRequest; type Response = DatasetImportView; type Error = DatasetError; const NAME: &'static str = "datasets.import.get"; }
+
+pub struct DatasetDomainDatasetsImportCancel;
+impl Operation for DatasetDomainDatasetsImportCancel { type Request = DatasetImportCancelRequest; type Response = DatasetImportCancelResult; type Error = DatasetError; const NAME: &'static str = "datasets.import.cancel"; }
+
+pub struct DatasetDomainDatasetsImportWatch;
+impl Operation for DatasetDomainDatasetsImportWatch { type Request = DatasetImportWatchRequest; type Response = DatasetImportWatchResult; type Error = DatasetError; const NAME: &'static str = "datasets.import.watch"; }
+
+pub struct DatasetDomainDatasetsValuesRead;
+impl Operation for DatasetDomainDatasetsValuesRead { type Request = DatasetValueReadRequest; type Response = DatasetValueView; type Error = DatasetError; const NAME: &'static str = "datasets.values.read"; }
+
+pub struct DatasetDomainDatasetsTextRead;
+impl Operation for DatasetDomainDatasetsTextRead { type Request = DatasetTextReadRequest; type Response = DatasetTextChunk; type Error = DatasetError; const NAME: &'static str = "datasets.text.read"; }
 
 pub struct InferenceDomainInferenceChatStart;
 impl Operation for InferenceDomainInferenceChatStart { type Request = InferenceChatStartRequest; type Response = InferenceGenerationView; type Error = InferenceError; const NAME: &'static str = "inference.chat.start"; }

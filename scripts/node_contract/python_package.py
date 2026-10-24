@@ -10,6 +10,18 @@ from . import python
 
 
 def group(name: str) -> str:
+    if name.startswith("Dataset"):
+        for words, owner in (
+            (("Import", "Manifest", "Mapping", "Publication", "RunState", "StepState", "CancelOutcome"), "dataset_imports"),
+            (("Selection", "SelectedFile", "FilePage"), "dataset_selection"),
+            (("Local", "Choice"), "dataset_local"),
+            (("Value", "Text", "Integer", "Natural", "Decimal", "Member", "ListPage", "ObjectPage", "Column", "RowIndex"), "dataset_values"),
+            (("Preview", "Provenance"), "dataset_previews"),
+            (("Managed", "Resource", "Unavailable", "ListItem"), "datasets"),
+        ):
+            if any(word in name for word in words):
+                return owner
+        return "datasets" if name in {"DatasetId", "DatasetRef", "DatasetView", "DatasetOptionalRef"} else "dataset_catalogue"
     if name.startswith("ResourceLease"):
         suffix = name.removeprefix("ResourceLease")
         if any(word in suffix for word in ("Resource", "Capacity", "Family", "Unit", "Cpu", "Memory", "Exclusive", "Model", "Draft", "Named")):
