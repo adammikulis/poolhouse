@@ -57,6 +57,8 @@ struct PassiveServiceObserver {
                 : Self.result(.unverified, "The bundled service plist is unverified.")
         }
         held.append(descriptor)
+        // Bound allocation/parsing of untrusted bundled metadata. Oversize stays unverified;
+        // this is a safety bound, never a user configuration or setup requirement.
         var original = stat()
         guard fstat(descriptor, &original) == 0,
               original.st_mode & S_IFMT == S_IFREG, original.st_nlink == 1,
