@@ -1,0 +1,1598 @@
+version = 1
+status = "proposal"
+
+[[type]]
+name = "ModelId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "AssetId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "OfferId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "TransferId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ServingId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ServingLeaseId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ResourceDomainId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ModelSourceId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ModelBackendId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ModelFitId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ModelWatchId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ModelImportCandidateId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ModelImportPlanId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ModelSnapshotId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ModelStreamGeneration"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ModelPhysicalAliasId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ModelContentDigest"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "node"
+
+[[type]]
+name = "ModelLabel"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "node"
+min_bytes = 1
+max_bytes = 256
+
+[[type]]
+name = "ModelQuery"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "caller"
+min_bytes = 0
+max_bytes = 1024
+
+[[type]]
+name = "ModelPageLimit"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "caller"
+minimum = 1
+maximum = 128
+
+[[type]]
+name = "ModelEventLimit"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "caller"
+minimum = 1
+maximum = 128
+
+[[type]]
+name = "ModelContextTokens"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "caller"
+minimum = 1
+maximum = 18446744073709551615
+
+[[type]]
+name = "ModelSlotCount"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "caller"
+minimum = 1
+maximum = 4294967295
+
+[[type]]
+name = "ModelRateIntervalMicros"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "node"
+minimum = 1
+maximum = 18446744073709551615
+
+[[type]]
+name = "ModelBatchTokens"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "caller"
+minimum = 1
+maximum = 4294967295
+
+[[type]]
+name = "ModelOptionalContextTokens"
+kind = "optional"
+visibility = "public"
+item = "ModelContextTokens"
+
+[[type]]
+name = "ModelStreamPosition"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "node"
+
+[[type]]
+name = "ModelOptionalApprovalId"
+kind = "optional"
+visibility = "public"
+item = "ApprovalId"
+
+[[type]]
+name = "ModelOptionalOperationId"
+kind = "optional"
+visibility = "public"
+item = "OperationId"
+
+[[type]]
+name = "ModelOptionalDigest"
+kind = "optional"
+visibility = "public"
+item = "ModelContentDigest"
+
+[[type]]
+name = "ModelOptionalFitId"
+kind = "optional"
+visibility = "public"
+item = "ModelFitId"
+
+[[type]]
+name = "ModelOptionalServingId"
+kind = "optional"
+visibility = "public"
+item = "ServingId"
+
+[[type]]
+name = "ModelOptionalLeaseId"
+kind = "optional"
+visibility = "public"
+item = "ServingLeaseId"
+
+[[type]]
+name = "ModelRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "ModelId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ModelAssetRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "AssetId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ModelOfferRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "OfferId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ModelTransferRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "TransferId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ModelServingRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "ServingId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ModelServingLeaseRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "ServingLeaseId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ModelResourceRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "ResourceDomainId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ModelSourceRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "ModelSourceId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ModelBackendRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "ModelBackendId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ModelImportCandidateRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "ModelImportCandidateId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ModelImportPlanRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "ModelImportPlanId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ModelOptionalRef"
+kind = "optional"
+visibility = "public"
+item = "ModelRef"
+
+[[type]]
+name = "ModelOptionalAssetRef"
+kind = "optional"
+visibility = "public"
+item = "ModelAssetRef"
+
+[[type]]
+name = "ModelOptionalServingRef"
+kind = "optional"
+visibility = "public"
+item = "ModelServingRef"
+
+[[type]]
+name = "ModelOptionalTransferRef"
+kind = "optional"
+visibility = "public"
+item = "ModelTransferRef"
+
+[[type]]
+name = "ModelOptionalOfferRef"
+kind = "optional"
+visibility = "public"
+item = "ModelOfferRef"
+
+[[type]]
+name = "ModelObservationBasis"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "measured", type = "Empty"}, {tag = "header", type = "Empty"}, {tag = "estimated", type = "Empty"}, {tag = "declared", type = "Empty"}]
+
+[[type]]
+name = "ModelUnknownReason"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "not_observed", type = "Empty"}, {tag = "unsupported", type = "Empty"}, {tag = "stale", type = "Empty"}, {tag = "not_applicable", type = "Empty"}, {tag = "redacted", type = "Empty"}, {tag = "unavailable", type = "Empty"}, {tag = "ambiguous", type = "Empty"}]
+
+[[type]]
+name = "ModelUnknown"
+kind = "record"
+visibility = "public"
+fields = [{name = "reason", type = "ModelUnknownReason"}, {name = "message", type = "SafeMessage"}]
+
+[[type]]
+name = "ModelObservationProof"
+kind = "record"
+visibility = "public"
+fields = [{name = "basis", type = "ModelObservationBasis"}, {name = "observed_at", type = "UnixMicros"}, {name = "valid_until", type = "OptionalUnixMicros"}, {name = "evidence_id", type = "ModelContentDigest"}]
+
+[[type]]
+name = "ModelKnownQuantity"
+kind = "record"
+visibility = "public"
+fields = [{name = "amount", type = "U64"}, {name = "proof", type = "ModelObservationProof"}]
+
+[[type]]
+name = "ModelQuantity"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "known", type = "ModelKnownQuantity"}, {tag = "unknown", type = "ModelUnknown"}]
+
+[[type]]
+name = "ModelKnownLabel"
+kind = "record"
+visibility = "public"
+fields = [{name = "label", type = "ModelLabel"}, {name = "proof", type = "ModelObservationProof"}]
+
+[[type]]
+name = "ModelObservedLabel"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "known", type = "ModelKnownLabel"}, {tag = "unknown", type = "ModelUnknown"}]
+
+[[type]]
+name = "ModelRate"
+kind = "record"
+visibility = "public"
+fields = [{name = "bytes", type = "U64"}, {name = "interval_micros", type = "ModelRateIntervalMicros"}]
+
+[[type]]
+name = "ModelKnownRate"
+kind = "record"
+visibility = "public"
+fields = [{name = "rate", type = "ModelRate"}, {name = "proof", type = "ModelObservationProof"}]
+
+[[type]]
+name = "ModelObservedRate"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "known", type = "ModelKnownRate"}, {tag = "unknown", type = "ModelUnknown"}]
+
+[[type]]
+name = "ModelAssetRole"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "weights", type = "Empty"}, {tag = "draft_weights", type = "Empty"}, {tag = "vision_projector", type = "Empty"}, {tag = "configuration", type = "Empty"}, {tag = "tokenizer", type = "Empty"}, {tag = "manifest", type = "Empty"}, {tag = "other_declared", type = "Empty"}]
+
+[[type]]
+name = "ModelFormat"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "gguf", type = "Empty"}, {tag = "safetensors", type = "Empty"}, {tag = "mlx", type = "Empty"}, {tag = "unsupported", type = "Empty"}, {tag = "unknown", type = "Empty"}]
+
+[[type]]
+name = "ModelCompleteness"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "complete", type = "Empty"}, {tag = "incomplete", type = "Empty"}, {tag = "unsupported", type = "Empty"}, {tag = "unknown", type = "Empty"}]
+
+[[type]]
+name = "ModelVerificationState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "unverified", type = "Empty"}, {tag = "pending", type = "Empty"}, {tag = "verifying", type = "Empty"}, {tag = "content_verified", type = "Empty"}, {tag = "policy_blocked", type = "Empty"}, {tag = "failed", type = "Empty"}]
+
+[[type]]
+name = "ModelVerification"
+kind = "record"
+visibility = "public"
+fields = [{name = "state", type = "ModelVerificationState"}, {name = "expected_digest", type = "ModelOptionalDigest"}, {name = "observed_digest", type = "ModelOptionalDigest"}, {name = "evidence", type = "ModelOptionalDigest"}, {name = "message", type = "SafeMessage"}]
+
+[[type]]
+name = "ModelAssetView"
+kind = "record"
+visibility = "public"
+fields = [{name = "asset", type = "ModelAssetRef"}, {name = "label", type = "ModelLabel"}, {name = "role", type = "ModelAssetRole"}, {name = "format", type = "ModelFormat"}, {name = "disk_bytes", type = "ModelQuantity"}, {name = "content_digest", type = "ModelOptionalDigest"}, {name = "shard_index", type = "OptionalU64"}, {name = "shards_total", type = "ModelQuantity"}, {name = "verification", type = "ModelVerification"}]
+
+[[type]]
+name = "ModelAssetViews"
+kind = "list"
+visibility = "public"
+item = "ModelAssetView"
+max_items = 1024
+
+[[type]]
+name = "ModelAssetRefs"
+kind = "list"
+visibility = "public"
+item = "ModelAssetRef"
+max_items = 1024
+
+[[type]]
+name = "ModelOfferRefs"
+kind = "list"
+visibility = "public"
+item = "ModelOfferRef"
+max_items = 128
+
+[[type]]
+name = "ModelRefs"
+kind = "list"
+visibility = "public"
+item = "ModelRef"
+max_items = 128
+
+[[type]]
+name = "ModelDeviceIds"
+kind = "list"
+visibility = "public"
+item = "DeviceId"
+max_items = 128
+unique = true
+
+[[type]]
+name = "ModelMessages"
+kind = "list"
+visibility = "public"
+item = "SafeMessage"
+max_items = 128
+
+[[type]]
+name = "ModelComponentKind"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "mtp", type = "Empty"}, {tag = "vision", type = "Empty"}]
+
+[[type]]
+name = "ModelPackaging"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "integrated", type = "Empty"}, {tag = "separate", type = "Empty"}]
+
+[[type]]
+name = "ModelComponentState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "installed", type = "Empty"}, {tag = "available", type = "Empty"}, {tag = "unavailable", type = "Empty"}, {tag = "unknown", type = "Empty"}]
+
+[[type]]
+name = "ModelComponentView"
+kind = "record"
+visibility = "public"
+fields = [{name = "component_kind", type = "ModelComponentKind"}, {name = "packaging", type = "ModelPackaging"}, {name = "state", type = "ModelComponentState"}, {name = "asset", type = "ModelOptionalAssetRef"}, {name = "offer", type = "ModelOptionalOfferRef"}, {name = "message", type = "SafeMessage"}]
+
+[[type]]
+name = "ModelComponents"
+kind = "list"
+visibility = "public"
+item = "ModelComponentView"
+max_items = 128
+
+[[type]]
+name = "ModelCapability"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "chat", type = "Empty"}, {tag = "embedding", type = "Empty"}, {tag = "rerank", type = "Empty"}, {tag = "speech_recognition", type = "Empty"}, {tag = "speech_generation", type = "Empty"}, {tag = "vision", type = "Empty"}, {tag = "tool_calls", type = "Empty"}, {tag = "unknown", type = "Empty"}]
+
+[[type]]
+name = "ModelCapabilities"
+kind = "list"
+visibility = "public"
+item = "ModelCapability"
+max_items = 128
+unique = true
+
+[[type]]
+name = "ModelView"
+kind = "record"
+visibility = "public"
+fields = [{name = "model", type = "ModelRef"}, {name = "label", type = "ModelLabel"}, {name = "format", type = "ModelFormat"}, {name = "architecture", type = "ModelObservedLabel"}, {name = "quantization", type = "ModelObservedLabel"}, {name = "parameters", type = "ModelQuantity"}, {name = "active_parameters", type = "ModelQuantity"}, {name = "trained_context_tokens", type = "ModelQuantity"}, {name = "disk_bytes", type = "ModelQuantity"}, {name = "completeness", type = "ModelCompleteness"}, {name = "verification", type = "ModelVerification"}, {name = "assets", type = "ModelAssetViews"}, {name = "components", type = "ModelComponents"}, {name = "capabilities", type = "ModelCapabilities"}, {name = "assets_cursor", type = "ModelOptionalPageCursor"}]
+
+[[type]]
+name = "ModelViews"
+kind = "list"
+visibility = "public"
+item = "ModelView"
+max_items = 128
+
+[[type]]
+name = "ModelSourceKind"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "hub", type = "Empty"}, {tag = "member", type = "Empty"}, {tag = "managed_import", type = "Empty"}]
+
+[[type]]
+name = "ModelSourceView"
+kind = "record"
+visibility = "public"
+fields = [{name = "source", type = "ModelSourceRef"}, {name = "source_kind", type = "ModelSourceKind"}, {name = "label", type = "ModelLabel"}, {name = "pinned_revision", type = "ModelObservedLabel"}, {name = "available", type = "Boolean"}]
+
+[[type]]
+name = "ModelSourceViews"
+kind = "list"
+visibility = "public"
+item = "ModelSourceView"
+max_items = 128
+
+[[type]]
+name = "ModelOfferView"
+kind = "record"
+visibility = "public"
+fields = [{name = "offer", type = "ModelOfferRef"}, {name = "model", type = "ModelRef"}, {name = "source", type = "ModelSourceRef"}, {name = "label", type = "ModelLabel"}, {name = "pinned_content", type = "ModelContentDigest"}, {name = "assets", type = "ModelAssetViews"}, {name = "components", type = "ModelComponents"}, {name = "download_bytes", type = "ModelQuantity"}, {name = "expires_at", type = "OptionalUnixMicros"}]
+
+[[type]]
+name = "ModelOfferViews"
+kind = "list"
+visibility = "public"
+item = "ModelOfferView"
+max_items = 128
+
+[[type]]
+name = "ModelLocation"
+kind = "record"
+visibility = "public"
+fields = [{name = "device_id", type = "DeviceId"}, {name = "model", type = "ModelRef"}, {name = "observed_at", type = "UnixMicros"}, {name = "verification", type = "ModelVerification"}]
+
+[[type]]
+name = "ModelLocations"
+kind = "list"
+visibility = "public"
+item = "ModelLocation"
+max_items = 128
+
+[[type]]
+name = "ModelPageCursor"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot_id", type = "ModelSnapshotId"}, {name = "projection_generation", type = "ResourceGeneration"}, {name = "position", type = "U64"}, {name = "expires_at", type = "UnixMicros"}]
+
+[[type]]
+name = "ModelOptionalPageCursor"
+kind = "optional"
+visibility = "public"
+item = "ModelPageCursor"
+
+[[type]]
+name = "ModelListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "device_id", type = "DeviceId"}, {name = "generation", type = "ResourceGeneration"}, {name = "cursor", type = "ModelOptionalPageCursor"}, {name = "limit", type = "ModelPageLimit"}]
+
+[[type]]
+name = "ModelListResponse"
+kind = "record"
+visibility = "public"
+fields = [{name = "models", type = "ModelViews"}, {name = "cursor", type = "ModelOptionalPageCursor"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ModelGetRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "model", type = "ModelRef"}]
+
+[[type]]
+name = "ModelSearchRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "source", type = "ModelSourceRef"}, {name = "query", type = "ModelQuery"}, {name = "cursor", type = "ModelOptionalPageCursor"}, {name = "limit", type = "ModelPageLimit"}]
+
+[[type]]
+name = "ModelSearchResponse"
+kind = "record"
+visibility = "public"
+fields = [{name = "offers", type = "ModelOfferViews"}, {name = "cursor", type = "ModelOptionalPageCursor"}]
+
+[[type]]
+name = "ModelRecommendationGoal"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "agent", type = "Empty"}, {tag = "chat", type = "Empty"}, {tag = "long_context", type = "Empty"}, {tag = "fast", type = "Empty"}]
+
+[[type]]
+name = "ModelRecommendRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "resource", type = "ModelResourceRef"}, {name = "goal", type = "ModelRecommendationGoal"}, {name = "query", type = "ModelQuery"}, {name = "limit", type = "ModelPageLimit"}]
+
+[[type]]
+name = "ModelRecommendResponse"
+kind = "record"
+visibility = "public"
+fields = [{name = "offers", type = "ModelOfferViews"}, {name = "reasons", type = "ModelMessages"}]
+
+[[type]]
+name = "ModelLocateRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "model", type = "ModelRef"}]
+
+[[type]]
+name = "ModelLocateResponse"
+kind = "record"
+visibility = "public"
+fields = [{name = "locations", type = "ModelLocations"}]
+
+[[type]]
+name = "ModelComponentsRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "model", type = "ModelRef"}]
+
+[[type]]
+name = "ModelComponentsResponse"
+kind = "record"
+visibility = "public"
+fields = [{name = "components", type = "ModelComponents"}]
+
+[[type]]
+name = "ModelMemoryPoolKind"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "ram", type = "Empty"}, {tag = "unified", type = "Empty"}, {tag = "vram", type = "Empty"}, {tag = "disk", type = "Empty"}]
+
+[[type]]
+name = "ModelAccountingStatus"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "exclusive_native", type = "Empty"}, {tag = "shared_physical_exclusion", type = "Empty"}, {tag = "unknown_requires_proof", type = "Empty"}]
+
+[[type]]
+name = "ModelMemoryPool"
+kind = "record"
+visibility = "public"
+fields = [{name = "resource", type = "ModelResourceRef"}, {name = "pool_kind", type = "ModelMemoryPoolKind"}, {name = "physical_alias", type = "ModelPhysicalAliasId"}, {name = "accounting_status", type = "ModelAccountingStatus"}, {name = "devices", type = "ModelDeviceIds"}, {name = "total_bytes", type = "ModelQuantity"}, {name = "available_bytes", type = "ModelQuantity"}, {name = "policy_limit_bytes", type = "ModelQuantity"}, {name = "reserved_bytes", type = "ModelQuantity"}, {name = "allocatable_bytes", type = "ModelQuantity"}]
+
+[[type]]
+name = "ModelMemoryPools"
+kind = "list"
+visibility = "public"
+item = "ModelMemoryPool"
+max_items = 128
+
+[[type]]
+name = "ModelResourceSnapshot"
+kind = "record"
+visibility = "public"
+fields = [{name = "resource", type = "ModelResourceRef"}, {name = "revision", type = "U64"}, {name = "observed_at", type = "UnixMicros"}, {name = "pools", type = "ModelMemoryPools"}, {name = "message", type = "SafeMessage"}]
+
+[[type]]
+name = "ModelResourceRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "resource", type = "ModelResourceRef"}]
+
+[[type]]
+name = "ModelCacheType"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "f32", type = "Empty"}, {tag = "f16", type = "Empty"}, {tag = "bf16", type = "Empty"}, {tag = "q8_0", type = "Empty"}, {tag = "q4_0", type = "Empty"}, {tag = "q4_1", type = "Empty"}, {tag = "iq4_nl", type = "Empty"}]
+
+[[type]]
+name = "ModelAutoToggle"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "automatic", type = "Empty"}, {tag = "enabled", type = "Empty"}, {tag = "disabled", type = "Empty"}]
+
+[[type]]
+name = "ModelExactContext"
+kind = "record"
+visibility = "public"
+fields = [{name = "tokens_per_slot", type = "ModelContextTokens"}]
+
+[[type]]
+name = "ModelAutoContext"
+kind = "record"
+visibility = "public"
+fields = [{name = "cap_tokens", type = "ModelOptionalContextTokens"}]
+
+[[type]]
+name = "ModelContextSelection"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "automatic", type = "ModelAutoContext"}, {tag = "exact", type = "ModelExactContext"}]
+
+[[type]]
+name = "ModelKvSettings"
+kind = "record"
+visibility = "public"
+fields = [{name = "key_cache", type = "ModelCacheType"}, {name = "value_cache", type = "ModelCacheType"}]
+
+[[type]]
+name = "ModelPlacementTarget"
+kind = "record"
+visibility = "public"
+fields = [{name = "resource", type = "ModelResourceRef"}, {name = "layers", type = "U32"}]
+
+[[type]]
+name = "ModelPlacementTargets"
+kind = "list"
+visibility = "public"
+item = "ModelPlacementTarget"
+max_items = 128
+min_items = 1
+
+[[type]]
+name = "ModelExactPlacement"
+kind = "record"
+visibility = "public"
+fields = [{name = "targets", type = "ModelPlacementTargets"}]
+
+[[type]]
+name = "ModelPlacementSelection"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "automatic", type = "Empty"}, {tag = "managed", type = "ModelExactPlacement"}]
+
+[[type]]
+name = "ModelServingSettings"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "ModelContextSelection"}, {name = "parallel_slots", type = "ModelSlotCount"}, {name = "kv", type = "ModelKvSettings"}, {name = "flash_attention", type = "ModelAutoToggle"}, {name = "batch_tokens", type = "ModelBatchTokens"}, {name = "placement", type = "ModelPlacementSelection"}, {name = "components", type = "ModelAssetRefs"}]
+
+[[type]]
+name = "ModelFitAssetBinding"
+kind = "record"
+visibility = "public"
+fields = [{name = "asset", type = "ModelAssetRef"}, {name = "content_digest", type = "ModelContentDigest"}]
+
+[[type]]
+name = "ModelFitAssetBindings"
+kind = "list"
+visibility = "public"
+item = "ModelFitAssetBinding"
+max_items = 1024
+min_items = 1
+
+[[type]]
+name = "ModelFitBinding"
+kind = "record"
+visibility = "public"
+fields = [{name = "model", type = "ModelRef"}, {name = "assets", type = "ModelFitAssetBindings"}, {name = "backend", type = "ModelBackendRef"}, {name = "backend_build_digest", type = "ModelContentDigest"}, {name = "settings", type = "ModelServingSettings"}, {name = "resource", type = "ModelResourceRef"}, {name = "resource_revision", type = "U64"}, {name = "policy_revision", type = "U64"}, {name = "observed_at", type = "UnixMicros"}, {name = "valid_until", type = "UnixMicros"}, {name = "effective_settings", type = "ModelEffectiveServingSettings"}]
+
+[[type]]
+name = "ModelPoolRequirement"
+kind = "record"
+visibility = "public"
+fields = [{name = "resource", type = "ModelResourceRef"}, {name = "required_bytes", type = "ModelQuantity"}, {name = "reserve_bytes", type = "ModelQuantity"}, {name = "headroom_bytes", type = "ModelObservedMargin"}, {name = "exact_required_bytes", type = "ModelObservedRatio"}]
+
+[[type]]
+name = "ModelPoolRequirements"
+kind = "list"
+visibility = "public"
+item = "ModelPoolRequirement"
+max_items = 128
+
+[[type]]
+name = "ModelFitOutcome"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "fits", type = "Empty"}, {tag = "does_not_fit", type = "Empty"}, {tag = "unknown", type = "Empty"}]
+
+[[type]]
+name = "ModelFitAssessment"
+kind = "record"
+visibility = "public"
+fields = [{name = "fit_id", type = "ModelFitId"}, {name = "binding", type = "ModelFitBinding"}, {name = "trained_context_tokens", type = "ModelQuantity"}, {name = "target_weights_file_bytes", type = "ModelQuantity"}, {name = "target_weights_resident_bytes", type = "ModelQuantity"}, {name = "cpu_mapped_weights_bytes", type = "ModelQuantity"}, {name = "device_weights_bytes", type = "ModelQuantity"}, {name = "draft_weights_bytes", type = "ModelQuantity"}, {name = "projector_bytes", type = "ModelQuantity"}, {name = "kv_bytes_per_token_per_slot", type = "ModelObservedRatio"}, {name = "fixed_state_bytes_per_slot", type = "ModelObservedRatio"}, {name = "draft_kv_bytes_per_token_per_slot", type = "ModelObservedRatio"}, {name = "draft_fixed_state_bytes_per_slot", type = "ModelObservedRatio"}, {name = "compute_buffer_bytes", type = "ModelQuantity"}, {name = "paged_table_upper_bound_bytes", type = "ModelQuantity"}, {name = "kv_layers", type = "ModelQuantity"}, {name = "recurrent_layers", type = "ModelQuantity"}, {name = "sliding_window_cells", type = "ModelQuantity"}, {name = "resident_after_questions", type = "ModelQuantity"}, {name = "total_required_bytes", type = "ModelQuantity"}, {name = "pools", type = "ModelPoolRequirements"}, {name = "outcome", type = "ModelFitOutcome"}, {name = "reasons", type = "ModelMessages"}, {name = "alternatives", type = "ModelFitAlternatives"}, {name = "loaded_intercept_bytes", type = "ModelObservedRatio"}, {name = "estimated_total_bytes", type = "ModelObservedRatio"}, {name = "raw_kv_bytes", type = "ModelQuantity"}, {name = "raw_kv_cells", type = "ModelQuantity"}, {name = "raw_sequences", type = "ModelQuantity"}, {name = "raw_recurrent_bytes", type = "ModelQuantity"}, {name = "raw_sliding_window_bytes", type = "ModelQuantity"}, {name = "raw_draft_kv_bytes", type = "ModelQuantity"}, {name = "raw_draft_kv_cells", type = "ModelQuantity"}, {name = "raw_draft_sequences", type = "ModelQuantity"}]
+
+[[type]]
+name = "ModelFitRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "model", type = "ModelRef"}, {name = "backend", type = "ModelBackendRef"}, {name = "settings", type = "ModelServingSettings"}, {name = "resource", type = "ModelResourceRef"}]
+
+[[type]]
+name = "ModelDownloadPlanRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "offer", type = "ModelOfferRef"}, {name = "components", type = "ModelOfferRefs"}, {name = "storage", type = "ModelResourceRef"}]
+
+[[type]]
+name = "ModelDownloadPlan"
+kind = "record"
+visibility = "public"
+fields = [{name = "offer", type = "ModelOfferRef"}, {name = "components", type = "ModelOfferRefs"}, {name = "storage", type = "ModelResourceRef"}, {name = "storage_revision", type = "U64"}, {name = "required_bytes", type = "ModelQuantity"}, {name = "expires_at", type = "UnixMicros"}, {name = "message", type = "SafeMessage"}]
+
+[[type]]
+name = "ModelTransferState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "queued", type = "Empty"}, {tag = "active", type = "Empty"}, {tag = "blocked", type = "Empty"}, {tag = "ready", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "cancel_requested", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ModelTransferStage"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "resolving", type = "Empty"}, {tag = "waiting", type = "Empty"}, {tag = "transferring", type = "Empty"}, {tag = "verifying", type = "Empty"}, {tag = "publishing", type = "Empty"}, {tag = "linking", type = "Empty"}, {tag = "finished", type = "Empty"}]
+
+[[type]]
+name = "ModelResumeState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "resumable", type = "Empty"}, {tag = "not_resumable", type = "Empty"}, {tag = "unknown", type = "Empty"}, {tag = "source_changed", type = "Empty"}, {tag = "custody_lost", type = "Empty"}]
+
+[[type]]
+name = "ModelResumeInfo"
+kind = "record"
+visibility = "public"
+fields = [{name = "state", type = "ModelResumeState"}, {name = "partial_asset", type = "ModelOptionalAssetRef"}, {name = "retained_bytes", type = "ModelQuantity"}, {name = "message", type = "SafeMessage"}]
+
+[[type]]
+name = "ModelTransferView"
+kind = "record"
+visibility = "public"
+fields = [{name = "transfer", type = "ModelTransferRef"}, {name = "operation_id", type = "OperationId"}, {name = "revision", type = "U64"}, {name = "offer", type = "ModelOfferRef"}, {name = "pinned_content", type = "ModelContentDigest"}, {name = "model", type = "ModelRef"}, {name = "state", type = "ModelTransferState"}, {name = "stage", type = "ModelTransferStage"}, {name = "current_asset", type = "ModelOptionalAssetRef"}, {name = "completed_files", type = "U32"}, {name = "total_files", type = "ModelQuantity"}, {name = "transferred_bytes", type = "U64"}, {name = "total_bytes", type = "ModelQuantity"}, {name = "current_file_bytes", type = "U64"}, {name = "current_file_total", type = "ModelQuantity"}, {name = "resumed_bytes", type = "ModelQuantity"}, {name = "rate", type = "ModelObservedRate"}, {name = "eta_micros", type = "ModelQuantity"}, {name = "verification", type = "ModelVerification"}, {name = "resume", type = "ModelResumeInfo"}, {name = "started_at", type = "UnixMicros"}, {name = "finished_at", type = "OptionalUnixMicros"}, {name = "message", type = "SafeMessage"}]
+
+[[type]]
+name = "ModelTransferStartRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "offer", type = "ModelOfferRef"}, {name = "model", type = "ModelRef"}, {name = "components", type = "ModelOfferRefs"}, {name = "storage", type = "ModelResourceRef"}, {name = "expected_storage_revision", type = "U64"}, {name = "approval", type = "ModelOptionalApprovalId"}]
+
+[[type]]
+name = "ModelTransferGetRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "transfer", type = "ModelTransferRef"}]
+
+[[type]]
+name = "ModelTransferControlRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "transfer", type = "ModelTransferRef"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "ModelTransferCancelResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "transfer", type = "ModelTransferView"}, {name = "requested", type = "Boolean"}, {name = "settled", type = "Boolean"}, {name = "publication_committed", type = "Boolean"}]
+
+[[type]]
+name = "ModelAssetGetRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "asset", type = "ModelAssetRef"}]
+
+[[type]]
+name = "ModelAssetListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "model", type = "ModelRef"}, {name = "cursor", type = "ModelOptionalPageCursor"}, {name = "limit", type = "ModelPageLimit"}]
+
+[[type]]
+name = "ModelAssetListResponse"
+kind = "record"
+visibility = "public"
+fields = [{name = "assets", type = "ModelAssetViews"}, {name = "cursor", type = "ModelOptionalPageCursor"}]
+
+[[type]]
+name = "ModelAssetRemoveRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "asset", type = "ModelAssetRef"}, {name = "expected_catalogue_revision", type = "U64"}, {name = "approval", type = "ModelOptionalApprovalId"}]
+
+[[type]]
+name = "ModelAssetRemoveResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "asset", type = "ModelAssetRef"}, {name = "removed", type = "Boolean"}, {name = "operation_id", type = "OperationId"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ModelPartialDiscardRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "transfer", type = "ModelTransferRef"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "ModelPartialDiscardResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "transfer", type = "ModelTransferRef"}, {name = "discarded", type = "Boolean"}, {name = "operation_id", type = "OperationId"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ModelServingState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "waiting", type = "Empty"}, {tag = "starting", type = "Empty"}, {tag = "ready", type = "Empty"}, {tag = "stopping", type = "Empty"}, {tag = "stopped", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ModelLeaseState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "active", type = "Empty"}, {tag = "release_requested", type = "Empty"}, {tag = "released", type = "Empty"}, {tag = "expired", type = "Empty"}, {tag = "orphaned", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ModelLeaseCustody"
+kind = "record"
+visibility = "public"
+fields = [{name = "lease", type = "ModelServingLeaseRef"}, {name = "revision", type = "U64"}, {name = "state", type = "ModelLeaseState"}, {name = "expires_at", type = "UnixMicros"}, {name = "renew_after", type = "UnixMicros"}]
+
+[[type]]
+name = "ModelServingView"
+kind = "record"
+visibility = "public"
+fields = [{name = "serving", type = "ModelServingRef"}, {name = "revision", type = "U64"}, {name = "model", type = "ModelRef"}, {name = "backend", type = "ModelBackendRef"}, {name = "state", type = "ModelServingState"}, {name = "effective_settings", type = "ModelEffectiveServingSettings"}, {name = "effective_context_per_slot", type = "ModelQuantity"}, {name = "effective_total_context", type = "ModelQuantity"}, {name = "active_lease_count", type = "U32"}, {name = "started_at", type = "OptionalUnixMicros"}, {name = "message", type = "SafeMessage"}]
+
+[[type]]
+name = "ModelServingViews"
+kind = "list"
+visibility = "public"
+item = "ModelServingView"
+max_items = 128
+
+[[type]]
+name = "ModelServingAcquireRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "model", type = "ModelRef"}, {name = "backend", type = "ModelBackendRef"}, {name = "settings", type = "ModelServingSettings"}, {name = "resource", type = "ModelResourceRef"}, {name = "project_id", type = "ProjectId"}, {name = "project_generation", type = "ResourceGeneration"}, {name = "purpose", type = "ModelLabel"}, {name = "approval", type = "ModelOptionalApprovalId"}]
+
+[[type]]
+name = "ModelServingAcquireResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "serving", type = "ModelServingView"}, {name = "lease", type = "ModelLeaseCustody"}, {name = "operation_id", type = "OperationId"}, {name = "admission_revision", type = "U64"}]
+
+[[type]]
+name = "ModelServingListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "device_id", type = "DeviceId"}, {name = "generation", type = "ResourceGeneration"}, {name = "cursor", type = "ModelOptionalPageCursor"}, {name = "limit", type = "ModelPageLimit"}]
+
+[[type]]
+name = "ModelServingListResponse"
+kind = "record"
+visibility = "public"
+fields = [{name = "serving", type = "ModelServingViews"}, {name = "cursor", type = "ModelOptionalPageCursor"}]
+
+[[type]]
+name = "ModelServingGetRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "serving", type = "ModelServingRef"}]
+
+[[type]]
+name = "ModelServingReleaseRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "lease", type = "ModelServingLeaseRef"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "ModelServingReleaseResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "lease", type = "ModelLeaseCustody"}, {name = "serving", type = "ModelServingView"}, {name = "requested", type = "Boolean"}, {name = "settled", type = "Boolean"}, {name = "operation_id", type = "OperationId"}]
+
+[[type]]
+name = "ModelServingStopRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "serving", type = "ModelServingRef"}, {name = "expected_revision", type = "U64"}, {name = "approval", type = "ModelOptionalApprovalId"}]
+
+[[type]]
+name = "ModelServingStopResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "serving", type = "ModelServingView"}, {name = "requested", type = "Boolean"}, {name = "settled", type = "Boolean"}, {name = "operation_id", type = "OperationId"}]
+
+[[type]]
+name = "ModelServingRenewRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "lease", type = "ModelServingLeaseRef"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "ModelServingRenewResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "lease", type = "ModelLeaseCustody"}, {name = "revision", type = "U64"}, {name = "operation_id", type = "OperationId"}]
+
+[[type]]
+name = "ModelImportAction"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "adopt", type = "Empty"}, {tag = "migrate", type = "Empty"}]
+
+[[type]]
+name = "ModelImportPlanRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "device_id", type = "DeviceId"}, {name = "generation", type = "ResourceGeneration"}, {name = "action", type = "ModelImportAction"}, {name = "candidate", type = "ModelImportCandidateRef"}]
+
+[[type]]
+name = "ModelImportPlan"
+kind = "record"
+visibility = "public"
+fields = [{name = "plan", type = "ModelImportPlanRef"}, {name = "candidate", type = "ModelImportCandidateRef"}, {name = "content_digest", type = "ModelContentDigest"}, {name = "disk_bytes", type = "ModelQuantity"}, {name = "verification", type = "ModelVerification"}, {name = "expires_at", type = "UnixMicros"}, {name = "message", type = "SafeMessage"}]
+
+[[type]]
+name = "ModelImportCommitRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "plan", type = "ModelImportPlanRef"}, {name = "expected_catalogue_revision", type = "U64"}, {name = "approval", type = "ModelOptionalApprovalId"}]
+
+[[type]]
+name = "ModelImportCommitResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "model", type = "ModelView"}, {name = "operation_id", type = "OperationId"}, {name = "revision", type = "U64"}]
+
+[[type]]
+name = "ModelWatchTarget"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "model", type = "ModelRef"}, {tag = "transfer", type = "ModelTransferRef"}, {tag = "serving", type = "ModelServingRef"}, {tag = "resources", type = "ModelResourceRef"}]
+
+[[type]]
+name = "ModelWatchCursor"
+kind = "record"
+visibility = "public"
+fields = [{name = "watch_id", type = "ModelWatchId"}, {name = "stream_generation", type = "ModelStreamGeneration"}, {name = "projection_generation", type = "ResourceGeneration"}, {name = "position", type = "ModelStreamPosition"}, {name = "expires_at", type = "UnixMicros"}]
+
+[[type]]
+name = "ModelOptionalWatchCursor"
+kind = "optional"
+visibility = "public"
+item = "ModelWatchCursor"
+
+[[type]]
+name = "ModelWatchRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "ModelWatchTarget"}, {name = "cursor", type = "ModelOptionalWatchCursor"}, {name = "limit", type = "ModelEventLimit"}]
+
+[[type]]
+name = "ModelWatchSnapshot"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "model", type = "ModelView"}, {tag = "transfer", type = "ModelTransferView"}, {tag = "serving", type = "ModelServingView"}, {tag = "resources", type = "ModelResourceSnapshot"}]
+
+[[type]]
+name = "ModelWatchEvent"
+kind = "record"
+visibility = "public"
+fields = [{name = "position", type = "ModelStreamPosition"}, {name = "observed_at", type = "UnixMicros"}, {name = "snapshot", type = "ModelWatchSnapshot"}]
+
+[[type]]
+name = "ModelWatchEvents"
+kind = "list"
+visibility = "public"
+item = "ModelWatchEvent"
+max_items = 128
+
+[[type]]
+name = "ModelWatchBatch"
+kind = "record"
+visibility = "public"
+fields = [{name = "watch_id", type = "ModelWatchId"}, {name = "snapshot", type = "ModelWatchSnapshot"}, {name = "events", type = "ModelWatchEvents"}, {name = "cursor", type = "ModelWatchCursor"}, {name = "resync_required", type = "Boolean"}]
+
+[[type]]
+name = "ModelErrorCode"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "invalid_request", type = "Empty"}, {tag = "forbidden", type = "Empty"}, {tag = "stale_generation", type = "Empty"}, {tag = "not_found", type = "Empty"}, {tag = "unsupported_format", type = "Empty"}, {tag = "unverified_asset", type = "Empty"}, {tag = "source_unavailable", type = "Empty"}, {tag = "approval_required", type = "Empty"}, {tag = "insufficient_storage", type = "Empty"}, {tag = "insufficient_capacity", type = "Empty"}, {tag = "verification_failed", type = "Empty"}, {tag = "conflict", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "cursor_expired", type = "Empty"}, {tag = "recovery_required", type = "Empty"}, {tag = "unavailable", type = "Empty"}, {tag = "internal", type = "Empty"}]
+
+[[type]]
+name = "ModelDomainError"
+kind = "record"
+visibility = "public"
+fields = [{name = "code", type = "ModelErrorCode"}, {name = "message", type = "SafeMessage"}, {name = "operation_id", type = "ModelOptionalOperationId"}, {name = "approval", type = "ModelOptionalApprovalId"}, {name = "retry_after", type = "OptionalUnixMicros"}]
+
+[[type]]
+name = "ModelStartupCandidate"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "installed", type = "ModelView"}, {tag = "offered", type = "ModelOfferView"}]
+
+[[type]]
+name = "ModelStartupChoice"
+kind = "record"
+visibility = "public"
+fields = [{name = "candidate", type = "ModelStartupCandidate"}, {name = "recommended", type = "Boolean"}, {name = "estimated_context_tokens", type = "ModelQuantity"}, {name = "fits_current_resources", type = "ModelFitOutcome"}, {name = "download_bytes", type = "ModelQuantity"}, {name = "reasons", type = "ModelMessages"}]
+
+[[type]]
+name = "ModelStartupChoices"
+kind = "list"
+visibility = "public"
+item = "ModelStartupChoice"
+max_items = 128
+
+[[type]]
+name = "ModelStartupChoicesRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "resource", type = "ModelResourceRef"}]
+
+[[type]]
+name = "ModelStartupChoicesResponse"
+kind = "record"
+visibility = "public"
+fields = [{name = "choices", type = "ModelStartupChoices"}, {name = "resources", type = "ModelResourceSnapshot"}]
+
+[[type]]
+name = "ModelFitAlternative"
+kind = "record"
+visibility = "public"
+fields = [{name = "settings", type = "ModelServingSettings"}, {name = "total_required_bytes", type = "ModelQuantity"}, {name = "outcome", type = "ModelFitOutcome"}, {name = "reasons", type = "ModelMessages"}]
+
+[[type]]
+name = "ModelFitAlternatives"
+kind = "list"
+visibility = "public"
+item = "ModelFitAlternative"
+max_items = 32
+
+[[type]]
+name = "ModelPositiveDenominator"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "node"
+minimum = 1
+maximum = 18446744073709551615
+
+[[type]]
+name = "ModelExactRatio"
+kind = "record"
+visibility = "public"
+fields = [{name = "numerator", type = "U64"}, {name = "denominator", type = "ModelPositiveDenominator"}]
+
+[[type]]
+name = "ModelKnownRatio"
+kind = "record"
+visibility = "public"
+fields = [{name = "ratio", type = "ModelExactRatio"}, {name = "proof", type = "ModelObservationProof"}]
+
+[[type]]
+name = "ModelObservedRatio"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "known", type = "ModelKnownRatio"}, {tag = "unknown", type = "ModelUnknown"}]
+
+[[type]]
+name = "ModelPositiveByteShortfall"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "node"
+minimum = 1
+maximum = 18446744073709551615
+
+[[type]]
+name = "ModelByteMargin"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "surplus", type = "U64"}, {tag = "shortfall", type = "ModelPositiveByteShortfall"}]
+
+[[type]]
+name = "ModelKnownMargin"
+kind = "record"
+visibility = "public"
+fields = [{name = "margin", type = "ModelByteMargin"}, {name = "proof", type = "ModelObservationProof"}]
+
+[[type]]
+name = "ModelObservedMargin"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "known", type = "ModelKnownMargin"}, {tag = "unknown", type = "ModelUnknown"}]
+
+[[type]]
+name = "ModelObservedPlacement"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "known", type = "ModelExactPlacement"}, {tag = "unknown", type = "ModelUnknown"}]
+
+[[type]]
+name = "ModelEffectiveServingSettings"
+kind = "record"
+visibility = "public"
+fields = [{name = "context_per_slot", type = "ModelQuantity"}, {name = "parallel_slots", type = "ModelSlotCount"}, {name = "kv", type = "ModelKvSettings"}, {name = "flash_attention", type = "Boolean"}, {name = "batch_tokens", type = "ModelBatchTokens"}, {name = "placement", type = "ModelObservedPlacement"}, {name = "components", type = "ModelAssetRefs"}]
+
+[[operation]]
+name = "models.list"
+symbol = "ModelsDomainModelsList"
+request = "ModelListRequest"
+response = "ModelListResponse"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-model-catalogue-read", "generation-binds-device-catalogue", "cursor-authorized-device-snapshot-filter-bound"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "models.get"
+symbol = "ModelsDomainModelsGet"
+request = "ModelGetRequest"
+response = "ModelView"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-model-read", "asset-metadata-is-not-execution-trust"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "models.search"
+symbol = "ModelsDomainModelsSearch"
+request = "ModelSearchRequest"
+response = "ModelSearchResponse"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "managed-source-only", "current-source-policy", "offer-generation-pinned-content-not-network-authority"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "models.recommend"
+symbol = "ModelsDomainModelsRecommend"
+request = "ModelRecommendRequest"
+response = "ModelRecommendResponse"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-resource-and-catalogue-read", "ranking-and-fit-are-not-admission-authority", "no-unknown-as-zero-or-fits"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "models.locate"
+symbol = "ModelsDomainModelsLocate"
+request = "ModelLocateRequest"
+response = "ModelLocateResponse"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-model-and-member-discovery-read", "advertised-holdings-are-untrusted-observations"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "models.components.list"
+symbol = "ModelsDomainModelsComponentsList"
+request = "ModelComponentsRequest"
+response = "ModelComponentsResponse"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-model-read", "exact-base-model-and-component-compatibility"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "models.fit"
+symbol = "ModelsDomainModelsFit"
+request = "ModelFitRequest"
+response = "ModelFitAssessment"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-model-and-resource-read", "exact-asset-digests-backend-build-settings-placement-and-freshness-bound", "no-record-or-stale-measurement-is-unknown", "fit-is-not-admission-authority", "do-not-sum-shared-physical-resource-aliases", "node-checks-canonical-asset-placement-and-reference-identity-uniqueness", "exact-rational-coefficients-no-silent-rounding-or-clamping", "signed-surplus-or-shortfall-preserved", "raw-operands-required-to-claim-recovered-exact-coefficients", "effective-context-slots-kv-and-placement-binding", "ceil-only-at-documented-physical-admission-boundary", "checked-rational-arithmetic", "node-normalizes-reduced-ratio-zero-as-zero-over-one-and-zero-margin-as-surplus-zero"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "resources.models.get"
+symbol = "ModelsDomainResourcesModelsGet"
+request = "ModelResourceRequest"
+response = "ModelResourceSnapshot"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-resource-capacity-read", "node-observed-topology-and-policy-only", "windows-wsl-physical-alias-exclusion-until-platform-proof", "advertised-resource-id-does-not-grant-execution", "never-sum-unproven-physical-pools"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "assets.download.plan"
+symbol = "ModelsDomainAssetsDownloadPlan"
+request = "ModelDownloadPlanRequest"
+response = "ModelDownloadPlan"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-download-plan", "managed-offer-pinned-content-only", "current-source-storage-and-approval-policy", "plan-does-not-reserve-or-admit"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "assets.download.start"
+symbol = "ModelsDomainAssetsDownloadStart"
+request = "ModelTransferStartRequest"
+response = "ModelTransferView"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-model-download", "current-source-policy-and-required-approval", "top-generation-equals-offer-generation", "nested-model-and-components-consistent-with-offer", "node-reserves-storage-atomically", "reauthorize-at-source-access-and-publication", "partial-custody-not-path-name", "never-trust-member-offer-or-header-for-execution", "request-id-principal-scope-generation-and-payload-bound", "reauthorize-at-domain-commit", "durable-cancel-versus-domain-commit-single-winner", "no-cancelled-after-committed-effect", "generation-binds-exact-managed-offer", "node-checks-canonical-asset-placement-and-reference-identity-uniqueness"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "assets.download.get"
+symbol = "ModelsDomainAssetsDownloadGet"
+request = "ModelTransferGetRequest"
+response = "ModelTransferView"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "transfer-owner-or-explicit-reader"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "assets.download.resume"
+symbol = "ModelsDomainAssetsDownloadResume"
+request = "ModelTransferControlRequest"
+response = "ModelTransferView"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "transfer-owner-or-explicit-controller", "top-generation-equals-transfer-generation", "compare-and-swap-transfer-revision", "same-pinned-source-content-and-verified-partial-custody", "source-change-requires-new-generation", "no-silent-source-fallback", "cancel-versus-publication-one-atomic-winner", "settled-only-after-owned-transfer-reconciled", "request-id-principal-scope-generation-and-payload-bound", "reauthorize-at-domain-commit", "durable-cancel-versus-domain-commit-single-winner", "no-cancelled-after-committed-effect", "generation-binds-exact-transfer"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "assets.download.cancel"
+symbol = "ModelsDomainAssetsDownloadCancel"
+request = "ModelTransferControlRequest"
+response = "ModelTransferCancelResult"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "transfer-owner-or-explicit-controller", "top-generation-equals-transfer-generation", "compare-and-swap-transfer-revision", "same-pinned-source-content-and-verified-partial-custody", "source-change-requires-new-generation", "no-silent-source-fallback", "cancel-versus-publication-one-atomic-winner", "settled-only-after-owned-transfer-reconciled", "request-id-principal-scope-generation-and-payload-bound", "reauthorize-at-domain-commit", "durable-cancel-versus-domain-commit-single-winner", "no-cancelled-after-committed-effect", "generation-binds-exact-transfer"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "assets.list"
+symbol = "ModelsDomainAssetsList"
+request = "ModelAssetListRequest"
+response = "ModelAssetListResponse"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-model-assets-read", "cursor-model-snapshot-bound"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "assets.get"
+symbol = "ModelsDomainAssetsGet"
+request = "ModelAssetGetRequest"
+response = "ModelAssetView"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-asset-read", "content-verification-is-not-execution-approval"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "assets.remove"
+symbol = "ModelsDomainAssetsRemove"
+request = "ModelAssetRemoveRequest"
+response = "ModelAssetRemoveResult"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-asset-removal", "top-generation-equals-asset-generation", "compare-and-swap-catalogue-revision", "refuse-active-serving-transfer-and-shared-asset-custody", "required-native-approval", "request-id-principal-scope-generation-and-payload-bound", "reauthorize-at-domain-commit", "durable-cancel-versus-domain-commit-single-winner", "no-cancelled-after-committed-effect", "generation-binds-exact-asset"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "assets.partial.discard"
+symbol = "ModelsDomainAssetsPartialDiscard"
+request = "ModelPartialDiscardRequest"
+response = "ModelPartialDiscardResult"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "transfer-owner-or-explicit-controller", "top-generation-equals-transfer-generation", "compare-and-swap-transfer-revision", "verify-partial-custody-and-no-active-transfer", "no-caller-path-selection", "request-id-principal-scope-generation-and-payload-bound", "reauthorize-at-domain-commit", "durable-cancel-versus-domain-commit-single-winner", "no-cancelled-after-committed-effect", "generation-binds-exact-transfer"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "assets.import.plan"
+symbol = "ModelsDomainAssetsImportPlan"
+request = "ModelImportPlanRequest"
+response = "ModelImportPlan"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-native-asset-maintenance", "node-discovered-managed-candidate-only", "plan-is-not-trust-or-execution-permission"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "assets.import.commit"
+symbol = "ModelsDomainAssetsImportCommit"
+request = "ModelImportCommitRequest"
+response = "ModelImportCommitResult"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-native-asset-maintenance", "top-generation-equals-plan-generation", "compare-and-swap-catalogue-revision", "required-protected-native-approval", "recheck-candidate-identity-content-and-plan-expiry", "no-imported-authority-or-trust", "request-id-principal-scope-generation-and-payload-bound", "reauthorize-at-domain-commit", "durable-cancel-versus-domain-commit-single-winner", "no-cancelled-after-committed-effect", "generation-binds-exact-import-plan"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "serving.list"
+symbol = "ModelsDomainServingList"
+request = "ModelServingListRequest"
+response = "ModelServingListResponse"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-serving-read", "generation-binds-device-serving-catalogue", "cursor-authorized-device-snapshot-bound"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "serving.get"
+symbol = "ModelsDomainServingGet"
+request = "ModelServingGetRequest"
+response = "ModelServingView"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-serving-read"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "serving.acquire"
+symbol = "ModelsDomainServingAcquire"
+request = "ModelServingAcquireRequest"
+response = "ModelServingAcquireResult"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-model-serving-and-project", "top-generation-equals-model-generation", "exact-project-generation", "current-asset-verification-and-required-approval", "node-only-atomic-resource-admission", "reauthorize-at-admission-and-worker-start", "recompute-current-resource-and-policy-revisions", "exact-model-backend-config-context-components-placement-sharing-compatibility", "checked-context-slot-and-memory-arithmetic-no-overflow", "exact-owned-process-lifetime", "windows-wsl-shared-physical-exclusion-until-proof", "unknown-capacity-never-optimistic-admission", "lease-custody-survives-observer-detach", "durable-orphan-expiry-and-restart-reconciliation", "request-id-principal-scope-generation-and-payload-bound", "reauthorize-at-domain-commit", "durable-cancel-versus-domain-commit-single-winner", "no-cancelled-after-committed-effect", "generation-binds-exact-model", "node-checks-canonical-asset-placement-and-reference-identity-uniqueness", "exact-rational-coefficients-no-silent-rounding-or-clamping", "signed-surplus-or-shortfall-preserved", "raw-operands-required-to-claim-recovered-exact-coefficients", "effective-context-slots-kv-and-placement-binding", "ceil-only-at-documented-physical-admission-boundary", "checked-rational-arithmetic", "node-normalizes-reduced-ratio-zero-as-zero-over-one-and-zero-margin-as-surplus-zero"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "serving.release"
+symbol = "ModelsDomainServingRelease"
+request = "ModelServingReleaseRequest"
+response = "ModelServingReleaseResult"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "exact-owned-lease-and-generation", "top-generation-equals-lease-generation", "compare-and-swap-lease-revision", "no-port-global-server-or-other-tenant-release", "release-only-owned-hold", "settled-after-release-and-capacity-reconciliation", "retain-server-while-other-leases-exist", "request-id-principal-scope-generation-and-payload-bound", "reauthorize-at-domain-commit", "durable-cancel-versus-domain-commit-single-winner", "no-cancelled-after-committed-effect", "generation-binds-exact-serving-lease"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "serving.renew"
+symbol = "ModelsDomainServingRenew"
+request = "ModelServingRenewRequest"
+response = "ModelServingRenewResult"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "exact-owned-lease-and-generation", "top-generation-equals-lease-generation", "compare-and-swap-lease-revision", "current-project-and-model-permission", "node-selects-expiry", "expired-or-orphaned-lease-requires-reconciliation", "request-id-principal-scope-generation-and-payload-bound", "reauthorize-at-domain-commit", "durable-cancel-versus-domain-commit-single-winner", "no-cancelled-after-committed-effect", "generation-binds-exact-serving-lease"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "serving.stop"
+symbol = "ModelsDomainServingStop"
+request = "ModelServingStopRequest"
+response = "ModelServingStopResult"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "separately-authorized-whole-server-controller", "top-generation-equals-serving-generation", "compare-and-swap-serving-revision", "required-native-approval", "do-not-infer-stop-authority-from-lease-ownership", "account-for-all-tenants-before-commit", "verify-owned-process-exit-and-resource-release-before-settled", "no-port-as-authority", "request-id-principal-scope-generation-and-payload-bound", "reauthorize-at-domain-commit", "durable-cancel-versus-domain-commit-single-winner", "no-cancelled-after-committed-effect", "generation-binds-exact-serving-instance"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "models.watch"
+symbol = "ModelsDomainModelsWatch"
+request = "ModelWatchRequest"
+response = "ModelWatchBatch"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-model-read", "watch-target-kind-is-model", "cursor-principal-resource-projection-generation-and-expiry-bound", "atomic-snapshot-to-ordered-events-handoff", "reauthorize-before-each-delivery", "expired-cursor-explicit-resync", "disconnect-detaches-observation-only"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "assets.download.watch"
+symbol = "ModelsDomainAssetsDownloadWatch"
+request = "ModelWatchRequest"
+response = "ModelWatchBatch"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-transfer-read", "watch-target-kind-is-transfer", "cursor-principal-resource-projection-generation-and-expiry-bound", "atomic-snapshot-to-ordered-events-handoff", "reauthorize-before-each-delivery", "expired-cursor-explicit-resync", "disconnect-detaches-observation-only"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "serving.watch"
+symbol = "ModelsDomainServingWatch"
+request = "ModelWatchRequest"
+response = "ModelWatchBatch"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-serving-read", "watch-target-kind-is-serving", "cursor-principal-resource-projection-generation-and-expiry-bound", "atomic-snapshot-to-ordered-events-handoff", "reauthorize-before-each-delivery", "expired-cursor-explicit-resync", "disconnect-detaches-observation-only"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "resources.models.watch"
+symbol = "ModelsDomainResourcesModelsWatch"
+request = "ModelWatchRequest"
+response = "ModelWatchBatch"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-resources-read", "watch-target-kind-is-resources", "cursor-principal-resource-projection-generation-and-expiry-bound", "atomic-snapshot-to-ordered-events-handoff", "reauthorize-before-each-delivery", "expired-cursor-explicit-resync", "disconnect-detaches-observation-only"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "models.startup.choices"
+symbol = "ModelsDomainModelsStartupChoices"
+request = "ModelStartupChoicesRequest"
+response = "ModelStartupChoicesResponse"
+error = "ModelDomainError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "redact-private-paths-credentials-and-signed-urls", "authorized-model-and-resource-read", "catalogue-estimates-marked-estimated-not-measured", "no-record-is-unknown", "selection-does-not-grant-download-install-or-serving-authority"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
