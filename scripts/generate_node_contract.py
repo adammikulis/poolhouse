@@ -98,6 +98,7 @@ def outputs(root: Path) -> dict[Path, str]:
         root / "app/contracts/node.ts": typescript.render(meta, rows, digest),
         root / "contracts/node/vectors.json": json.dumps(vectors, indent=2) + "\n",
     }
+    result.update(service_lifecycle.render_passive_outputs(root, meta["service_lifecycle"]))
     result.update(rust.render_modules(root, meta, rows, digest, owners))
     result.update(python_package.render_package(root, meta, rows, digest))
     return result
