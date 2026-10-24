@@ -1,0 +1,25 @@
+# Reference DATA only. No production signature input or native acceptance.
+version = 1
+status = "reference-only"
+encoding = "tagged-wire-tree-be32-v1"
+signature_input = "unresolved"
+
+# Wire values: N null; F/T boolean; S BE32 UTF8-byte-length + exact UTF8;
+# A BE32 item-count + ordered values; O BE32 field-count + ASCII-sorted
+# framed key/value pairs. No normalization, numbers or omitted optional fields.
+# Hash input is exact domain (including NUL) + framed root, excluding ONLY
+# the named root selfdigest. A nested approval digest is retained and checked.
+
+[[profile]]
+name = "approval-immutable-v1"
+root = "ApprovalImmutableOperation"
+omit_root_field = "digest"
+domain = "poolhouse.approval.immutable-operation.v1\u0000"
+schema_sha256 = "bd1ebfdcbc9cd023e62f1625b6837caabfecf7f38caba0f72eaad7f2fe9c6d4c"
+
+[[profile]]
+name = "local-authority-scoped-v1"
+root = "LocalAuthorityScopedOperation"
+omit_root_field = "transcript_digest"
+domain = "poolhouse.local-authority.scoped-operation.v1\u0000"
+schema_sha256 = "f8ab6d987cd586b1cad33b75260821d591bbaa634eed0d57e92cf9c08faf40a7"
