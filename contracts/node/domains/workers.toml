@@ -1,0 +1,308 @@
+version = 1
+status = "proposal"
+operation = []
+
+[[type]]
+name = "WorkerSlotId"
+kind = "scalar"
+visibility = "private"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "WorkerRuntimeId"
+kind = "scalar"
+visibility = "private"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "WorkerDeviceId"
+kind = "scalar"
+visibility = "private"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "WorkerDigest"
+kind = "scalar"
+visibility = "private"
+encoding = "hex32"
+issuer = "data"
+
+[[type]]
+name = "WorkerDecisionDtype"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "bfloat16", type = "Empty"}, {tag = "float16", type = "Empty"}, {tag = "float32", type = "Empty"}]
+
+[[type]]
+name = "WorkerFrozenInput"
+kind = "record"
+visibility = "private"
+fields = [{name = "slot", type = "WorkerSlotId"}, {name = "attempt", type = "ResourceGeneration"}, {name = "digest", type = "WorkerDigest"}, {name = "bytes", type = "U64"}]
+
+[[type]]
+name = "WorkerNullableInput"
+kind = "optional"
+visibility = "private"
+item = "WorkerFrozenInput"
+
+[[type]]
+name = "WorkerOptionalCalibration"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "omitted", type = "Empty"}, {tag = "null", type = "Empty"}, {tag = "slot", type = "WorkerFrozenInput"}]
+
+[[type]]
+name = "WorkerDecisionAssets"
+kind = "record"
+visibility = "private"
+fields = [{name = "model", type = "WorkerFrozenInput"}, {name = "tokenizer", type = "WorkerFrozenInput"}, {name = "head", type = "WorkerFrozenInput"}, {name = "adapter", type = "WorkerNullableInput"}, {name = "configuration", type = "WorkerFrozenInput"}, {name = "calibration", type = "WorkerOptionalCalibration"}]
+
+[[type]]
+name = "WorkerRuntimeSelection"
+kind = "record"
+visibility = "private"
+fields = [{name = "runtime", type = "WorkerRuntimeId"}, {name = "engine_digest", type = "WorkerDigest"}, {name = "parser_digest", type = "WorkerDigest"}, {name = "configuration_digest", type = "WorkerDigest"}, {name = "device", type = "WorkerDeviceId"}]
+
+[[type]]
+name = "WorkerResourceEnvelope"
+kind = "record"
+visibility = "private"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "host_memory_bytes", type = "U64"}, {name = "device_memory_bytes", type = "U64"}, {name = "working_memory_bytes", type = "U64"}]
+
+[[type]]
+name = "WorkerDecisionLoad"
+kind = "record"
+visibility = "private"
+fields = [{name = "assets", type = "WorkerDecisionAssets"}, {name = "runtime", type = "WorkerRuntimeSelection"}, {name = "temperature", type = "FiniteF64"}, {name = "dtype", type = "WorkerDecisionDtype"}, {name = "resources", type = "WorkerResourceEnvelope"}, {name = "load_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "WorkerUtf8Input"
+kind = "record"
+visibility = "private"
+fields = [{name = "slot", type = "WorkerSlotId"}, {name = "attempt", type = "ResourceGeneration"}, {name = "digest", type = "WorkerDigest"}, {name = "bytes", type = "U64"}]
+
+[[type]]
+name = "WorkerDecisionOption"
+kind = "record"
+visibility = "private"
+fields = [{name = "name", type = "WorkerUtf8Input"}, {name = "description", type = "WorkerUtf8Input"}]
+
+[[type]]
+name = "WorkerDecisionOptions"
+kind = "list"
+visibility = "private"
+item = "WorkerDecisionOption"
+min_items = 2
+max_items = 255
+
+[[type]]
+name = "WorkerThresholdInteger"
+kind = "scalar"
+visibility = "private"
+encoding = "u32"
+issuer = "data"
+minimum = 0
+maximum = 1
+
+[[type]]
+name = "WorkerDecisionThreshold"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "omitted", type = "Empty"}, {tag = "null", type = "Empty"}, {tag = "integer", type = "WorkerThresholdInteger"}, {tag = "probability", type = "FiniteF64"}]
+
+[[type]]
+name = "WorkerResidentBinding"
+kind = "record"
+visibility = "private"
+fields = [{name = "load_generation", type = "ResourceGeneration"}, {name = "load_request_digest", type = "WorkerDigest"}, {name = "runtime", type = "WorkerRuntimeSelection"}, {name = "source_configuration_digest", type = "WorkerDigest"}, {name = "calibration_digest", type = "WorkerNullableDigest"}, {name = "dtype", type = "WorkerDecisionDtype"}]
+
+[[type]]
+name = "WorkerNullableDigest"
+kind = "optional"
+visibility = "private"
+item = "WorkerDigest"
+
+[[type]]
+name = "WorkerDecisionDecide"
+kind = "record"
+visibility = "private"
+fields = [{name = "loaded", type = "WorkerResidentBinding"}, {name = "question", type = "WorkerUtf8Input"}, {name = "state", type = "WorkerUtf8Input"}, {name = "options", type = "WorkerDecisionOptions"}, {name = "abstain_below", type = "WorkerDecisionThreshold"}, {name = "resources", type = "WorkerResourceEnvelope"}]
+
+[[type]]
+name = "WorkerDecisionStart"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "load", type = "WorkerDecisionLoad"}, {tag = "decide", type = "WorkerDecisionDecide"}]
+
+[[type]]
+name = "WorkerStartCommand"
+kind = "record"
+visibility = "private"
+fields = [{name = "request_digest", type = "WorkerDigest"}, {name = "operation", type = "WorkerDecisionStart"}]
+
+[[type]]
+name = "WorkerInputChunk"
+kind = "record"
+visibility = "private"
+fields = [{name = "slot", type = "WorkerSlotId"}, {name = "offset", type = "U64"}, {name = "content", type = "Utf8Chunk"}]
+
+[[type]]
+name = "WorkerInputEnd"
+kind = "record"
+visibility = "private"
+fields = [{name = "slot", type = "WorkerSlotId"}, {name = "bytes", type = "U64"}, {name = "digest", type = "WorkerDigest"}]
+
+[[type]]
+name = "WorkerCancelReason"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "caller_cancelled", type = "Empty"}, {tag = "authorization_removed", type = "Empty"}, {tag = "owner_lost", type = "Empty"}]
+
+[[type]]
+name = "WorkerCancelCommand"
+kind = "record"
+visibility = "private"
+fields = [{name = "cancel_generation", type = "ResourceGeneration"}, {name = "reason", type = "WorkerCancelReason"}]
+
+[[type]]
+name = "WorkerNodeCommand"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "start", type = "WorkerStartCommand"}, {tag = "input_chunk", type = "WorkerInputChunk"}, {tag = "input_end", type = "WorkerInputEnd"}, {tag = "cancel", type = "WorkerCancelCommand"}]
+
+[[type]]
+name = "WorkerMemoryCandidate"
+kind = "record"
+visibility = "private"
+fields = [{name = "rss", type = "U64"}, {name = "device", type = "U64"}, {name = "working", type = "U64"}]
+
+[[type]]
+name = "WorkerStartupCandidate"
+kind = "record"
+visibility = "private"
+fields = [{name = "load_generation", type = "ResourceGeneration"}, {name = "request_digest", type = "WorkerDigest"}, {name = "runtime", type = "WorkerRuntimeSelection"}, {name = "assets", type = "WorkerDecisionAssets"}, {name = "temperature", type = "FiniteF64"}, {name = "dtype", type = "WorkerDecisionDtype"}, {name = "memory", type = "WorkerMemoryCandidate"}]
+
+[[type]]
+name = "WorkerAcceptedCandidate"
+kind = "record"
+visibility = "private"
+fields = [{name = "request_digest", type = "WorkerDigest"}, {name = "loaded", type = "WorkerResidentBinding"}]
+
+[[type]]
+name = "WorkerDecisionScore"
+kind = "record"
+visibility = "private"
+fields = [{name = "option_index", type = "U32"}, {name = "probability", type = "FiniteF64"}]
+
+[[type]]
+name = "WorkerDecisionScores"
+kind = "list"
+visibility = "private"
+item = "WorkerDecisionScore"
+min_items = 2
+max_items = 255
+
+[[type]]
+name = "WorkerPointerDetails"
+kind = "record"
+visibility = "private"
+fields = [{name = "tokens", type = "U64"}, {name = "device", type = "WorkerDeviceId"}, {name = "dtype", type = "WorkerDecisionDtype"}]
+
+[[type]]
+name = "WorkerBatchPointerDetails"
+kind = "record"
+visibility = "private"
+fields = [{name = "tokens", type = "U64"}, {name = "device", type = "WorkerDeviceId"}, {name = "dtype", type = "WorkerDecisionDtype"}, {name = "batch", type = "U64"}, {name = "batch_ms", type = "FiniteF64"}]
+
+[[type]]
+name = "WorkerDecisionDetails"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "pointer", type = "WorkerPointerDetails"}, {tag = "batch", type = "WorkerBatchPointerDetails"}]
+
+[[type]]
+name = "WorkerLoadResultCandidate"
+kind = "record"
+visibility = "private"
+fields = [{name = "loaded", type = "WorkerResidentBinding"}, {name = "memory", type = "WorkerMemoryCandidate"}]
+
+[[type]]
+name = "WorkerDecisionResultCandidate"
+kind = "record"
+visibility = "private"
+fields = [{name = "loaded", type = "WorkerResidentBinding"}, {name = "choice_index", type = "U32"}, {name = "scores", type = "WorkerDecisionScores"}, {name = "confidence", type = "FiniteF64"}, {name = "margin", type = "FiniteF64"}, {name = "abstained", type = "Boolean"}, {name = "latency_ms", type = "FiniteF64"}, {name = "runtime", type = "WorkerRuntimeSelection"}, {name = "details", type = "WorkerDecisionDetails"}, {name = "memory", type = "WorkerMemoryCandidate"}]
+
+[[type]]
+name = "WorkerResultCandidate"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "load", type = "WorkerLoadResultCandidate"}, {tag = "decision", type = "WorkerDecisionResultCandidate"}]
+
+[[type]]
+name = "WorkerFailureStage"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "startup", type = "Empty"}, {tag = "load", type = "Empty"}, {tag = "compute", type = "Empty"}, {tag = "encode", type = "Empty"}]
+
+[[type]]
+name = "WorkerFailureCode"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "invalid_input", type = "Empty"}, {tag = "unsupported", type = "Empty"}, {tag = "resource_exceeded", type = "Empty"}, {tag = "engine_failed", type = "Empty"}, {tag = "cancelled", type = "Empty"}]
+
+[[type]]
+name = "WorkerFailureCandidate"
+kind = "record"
+visibility = "private"
+fields = [{name = "stage", type = "WorkerFailureStage"}, {name = "code", type = "WorkerFailureCode"}, {name = "message", type = "Utf8Chunk"}]
+
+[[type]]
+name = "WorkerCancelObserved"
+kind = "record"
+visibility = "private"
+fields = [{name = "cancel_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "WorkerEndDisposition"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "candidate_result", type = "Empty"}, {tag = "candidate_failure", type = "Empty"}, {tag = "cancellation_observed", type = "Empty"}]
+
+[[type]]
+name = "WorkerEndCandidate"
+kind = "record"
+visibility = "private"
+fields = [{name = "disposition", type = "WorkerEndDisposition"}, {name = "last_sequence", type = "U64"}]
+
+[[type]]
+name = "WorkerEvent"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "startup", type = "WorkerStartupCandidate"}, {tag = "accepted", type = "WorkerAcceptedCandidate"}, {tag = "result", type = "WorkerResultCandidate"}, {tag = "failure", type = "WorkerFailureCandidate"}, {tag = "cancel_observed", type = "WorkerCancelObserved"}, {tag = "end", type = "WorkerEndCandidate"}]
+
+[[type]]
+name = "WorkerNodeFrame"
+kind = "record"
+visibility = "private"
+fields = [{name = "version", type = "U32"}, {name = "request_id", type = "RequestId"}, {name = "job_id", type = "JobId"}, {name = "resident", type = "ResourceGeneration"}, {name = "attempt", type = "ResourceGeneration"}, {name = "binding_digest", type = "WorkerDigest"}, {name = "sequence", type = "U64"}, {name = "command", type = "WorkerNodeCommand"}]
+
+[[type]]
+name = "WorkerEventFrame"
+kind = "record"
+visibility = "private"
+fields = [{name = "version", type = "U32"}, {name = "request_id", type = "RequestId"}, {name = "job_id", type = "JobId"}, {name = "resident", type = "ResourceGeneration"}, {name = "attempt", type = "ResourceGeneration"}, {name = "binding_digest", type = "WorkerDigest"}, {name = "sequence", type = "U64"}, {name = "event", type = "WorkerEvent"}]

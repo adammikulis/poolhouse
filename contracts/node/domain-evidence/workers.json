@@ -1,0 +1,240 @@
+{
+  "version": 1,
+  "status": "proposal",
+  "domain": "workers",
+  "scope": "private-decision-data-declarations-only",
+  "source_commit": "ec19317c2950ebf884a3e70954bc4200ad8c0c19",
+  "sources": [
+    {
+      "path": "src/poolhouse/serve/decision_process.py",
+      "sha256": "08af5edb299ea7576f2d1cd53f8b3787ff99fb601ba1e667be2bc202b6e0ab43",
+      "git_blob": "811a19d0609ba25bbfc83ea7318a799bbed6d6b4"
+    },
+    {
+      "path": "src/poolhouse/serve/decision_host.py",
+      "sha256": "48a4742f11d48403586626b99a935e16b5272d099ee2427c5b11a674db7544ae",
+      "git_blob": "d6b82679fb3e274eebec9a608e8f233f4400cbb5"
+    },
+    {
+      "path": "src/poolhouse/serve/decision_residents.py",
+      "sha256": "bb33471fee651832eabf77d59ca13a19311835be7f24923b8f85d56b0444df4a",
+      "git_blob": "b55e979ff6505677402b1ba4e4e31db7371445ef"
+    },
+    {
+      "path": "src/poolhouse/decide/types.py",
+      "sha256": "4b02a857fc4e5c55a422080e07e33a8fff7f11b0714a66f3542786785a7d5290",
+      "git_blob": "de7c76e351e4ced1a6d079349d5fe9ffa368d339"
+    },
+    {
+      "path": "src/poolhouse/decide/sources.py",
+      "sha256": "01729d9897020b0db0fefc092982e3fdfa025fd33f1fcf113e5a8c5d80858768",
+      "git_blob": "85b44dcb37cf0d68aa7cd02719115caf3bf93610"
+    },
+    {
+      "path": "src/poolhouse/decide/calibrate.py",
+      "sha256": "aaa59ab149c462734bf197b88a372c035098f2d79832060d8ef30756517c2891",
+      "git_blob": "d9c5b825c8aae2677ceff32003106bf6fcfe8ba1"
+    },
+    {
+      "path": "src/poolhouse/decide/pointer.py",
+      "sha256": "980ea30096825ef1078191509e786a7a4a215d4739ef858fdd9397d7c91ce548",
+      "git_blob": "c9561570baac624ee2396d0b3b575fa5217442df"
+    },
+    {
+      "path": "contracts/node/types.toml",
+      "sha256": "a69c0924f3fa3deba8600242eacf2dd3990e07322ee046250ae76c3e5008cf19",
+      "git_blob": "5baec74baa001729d5c46325e1f2f4bf6f5ae261"
+    },
+    {
+      "path": "scripts/node_contract/fragments.py",
+      "sha256": "97ba1eaf901127d47998f471bd9a248320d506750d5b64e1a3531d1dbcc087e7",
+      "git_blob": "a54350ab4bc023500fb92a1ca958cf0ad7d02e35"
+    },
+    {
+      "path": "scripts/node_contract/typescript.py",
+      "sha256": "bf2eb666177d03f1fcfb8b9329a7fbcae733c0ffa10384c7ac4517785b5b1d88",
+      "git_blob": "6149145f08823bf01133a8486717335f0847c408"
+    },
+    {
+      "path": "scripts/node_contract/python.py",
+      "sha256": "10be6767bddf778e97fe9904ea09a615c56eb86f9ebfd727a513a2da726d3731",
+      "git_blob": "e9c5f706a5b6e189869b31f22d9c2d8cba2ae96a"
+    },
+    {
+      "path": "scripts/node_contract/rust.py",
+      "sha256": "c073d96cb53428e7d1462015e38723af5575e0bb32abc079758b3f80e7f9da64",
+      "git_blob": "79aa18a1bdd3951e6a59f72c83de09fd8129a25f"
+    },
+    {
+      "path": "app/poolhouse-node/src/lib.rs",
+      "sha256": "acfd5215a29a4c9c9580ec401239c3c6f60ca82f7c5ebdf10b12503eaceb5a5a",
+      "git_blob": "f9e2b4b7b05d214568ffa020dad070c3b9044931"
+    }
+  ],
+  "prior_evidence": {
+    "directory": "/tmp/native-worker-contract-0161a4",
+    "commit": "2cd1cac949a9e02b8f71cad30d89cc6d8fd66f43",
+    "manifest_sha256": "17af5a249122a08c14ec93ae6c591534720762df3f789363de7d03c3e13cf91a"
+  },
+  "declarations": {
+    "types": 47,
+    "operations": [],
+    "visibility": "private",
+    "integration": "Existing fragment loader and canonical DTO generation; TypeScript and Python public outputs exclude private rows. Rust visibility enforcement is a recorded shared-generator integration blocker, not achieved by metadata alone. No new grammar, public worker operation endpoint, capability/proof cast, private TS worker module or runtime endpoint seal."
+  },
+  "directions": {
+    "node_to_worker": {
+      "type": "WorkerNodeFrame",
+      "variants": [
+        "start",
+        "input_chunk",
+        "input_end",
+        "cancel"
+      ],
+      "worker_access": "request-read-only"
+    },
+    "worker_to_node": {
+      "type": "WorkerEventFrame",
+      "variants": [
+        "startup",
+        "accepted",
+        "result",
+        "failure",
+        "cancel_observed",
+        "end"
+      ],
+      "worker_access": "event-write-only"
+    },
+    "logs": "Separate write-only log pipe, never parsed as result/control; profile and implementation remain absent."
+  },
+  "profiles": [
+    {
+      "name": "decision-resident-jsonl-v1",
+      "max_frame_bytes_including_lf": 1000000,
+      "source": [
+        "src/poolhouse/serve/decision_process.py:18,48",
+        "src/poolhouse/serve/decision_host.py:21,65"
+      ],
+      "requirements": [
+        "Exactly one strict JSON object and LF terminator; reject duplicate/unknown keys, wrong scalar type, extra/trailing object/bytes and truncated frame.",
+        "New envelopes/chunks must fit existing ceiling; it is source evidence, not implemented new decoder."
+      ]
+    },
+    {
+      "name": "decision-record-source-equivalence",
+      "source": "src/poolhouse/serve/decision_residents.py:71 validate_record",
+      "question_state_description_max_python_characters": 200000,
+      "name_max_python_characters": 200,
+      "option_min": 2,
+      "option_max": 255,
+      "logical_record_max_bytes": 900000,
+      "logical_metric": "Original question/state/options/abstain_below JSON with json.dumps default ensure_ascii=True and spaced separators, allow_nan=False; original field presence/order preserved.",
+      "requirements": [
+        "Preserve meaningful controls, whitespace and nonBMP Unicode; no normalization, stripping or byte-for-character substitution.",
+        "Name must be nonblank per Python strip predicate but equality/uniqueness uses exact original unstripped Unicode string.",
+        "Options ordered through hashing, execution and result validation; semantic duplicate keys rejected, not only equal entire records.",
+        "Threshold omitted/null/probability and calibration omitted/null/slot are distinct wire variants.",
+        "Utf8Chunk intrinsic <=65536 encoded UTF8 bytes from canonical types.toml; chunk count, expanded aggregate and outstanding-profile checks still absent.",
+        "Threshold integer0/1 and binary64 float variants preserve original Python int/float type for source-equivalent json.dumps byte accounting; bool refused. Collapsing1 into1.0 changes logical aggregate length and is forbidden."
+      ]
+    },
+    {
+      "name": "decision-result-validation",
+      "source": [
+        "src/poolhouse/serve/decision_residents.py:90 validate_result",
+        "src/poolhouse/decide/types.py:124 decision_from",
+        "src/poolhouse/decide/types.py:106 public"
+      ],
+      "probability_sum_tolerance": 0.0001,
+      "requirements": [
+        "Exact offered option index set/order, no duplicates/missing scores; finite probabilities0..1, sum tolerance0.0001.",
+        "Choice is max probability with offered-order tie resolution. Derive confidence=score[choice], margin=largest minus second-largest score, abstained=(threshold present and confidence<threshold).",
+        "Producer decision_from normalizes original raw probs once via Python binary64 arithmetic; never renormalize received already-produced scores as a substitute for validation.",
+        "Preserve public latency_ms and batch_ms producer rounding at3 decimal places; FiniteF64 codec adds no rounding/clamping/reformatting.",
+        "Worker memory counters are candidates only; working never raises node admitted envelope."
+      ]
+    },
+    {
+      "name": "failure-redaction",
+      "source": "src/poolhouse/serve/decision_host.py:81",
+      "max_message_python_characters": 1000,
+      "requirements": [
+        "Source redacts env secrets before error message; node redacts again before disclosure.",
+        "Message Utf8Chunk preserves text but does not supersede source1000-character semantic limit."
+      ]
+    }
+  ],
+  "transitions": [
+    {
+      "from": "new",
+      "event": "node-start",
+      "to": "await_inputs"
+    },
+    {
+      "from": "await_inputs",
+      "event": "all-exact-input-snapshots-verified",
+      "to": "inputs_verified"
+    },
+    {
+      "from": "inputs_verified",
+      "event": "node-orders-execution",
+      "to": "started"
+    },
+    {
+      "from": "started",
+      "event": "worker-accepted-candidate",
+      "to": "accepted"
+    },
+    {
+      "from": "accepted",
+      "event": "single-result-or-failure-candidate",
+      "to": "candidate"
+    },
+    {
+      "from": "candidate",
+      "event": "matching-single-end",
+      "to": "ended"
+    },
+    {
+      "from": "non-ended",
+      "event": "node-cancel-intent",
+      "to": "cancelling"
+    },
+    {
+      "from": "cancelling",
+      "event": "matching-cancel-observed-and-end",
+      "to": "observation-ended-cleanup-pending"
+    }
+  ],
+  "invariants": [
+    "All decoded frames are untrusted data, not native/process/lease/phase/publication proofs. Worker/runtime/device/slot identifiers are lookup data; actual retained object+direction+attempt authenticates the pipe.",
+    "Per-direction sequence scoped to exact authenticated private pipe and attempt. Full immutable request digest binds ordered option content, threshold presence, dtype, calibration/config/runtime/load generation, slots and admitted envelope.",
+    "Decide matches exact NODE-verified resident load generation, load request digest, configuration/calibration/runtime/dtype and current admission; stale load after reload/restart/lifetime loss refuses. Worker loaded echo never establishes readiness.",
+    "Node owns durable principal/resource-generation/request-payload ledger; same request attaches to recorded disposition; changed work refuses and unknown outcome never recomputes.",
+    "One candidate/End/cancel winner under node ordering; no post-End result/progress/delivery, duplicate finals do not republish. CancelObserved/End/EOF/exit are observations, never OS cleanup or capacity-release receipts.",
+    "Replacement attempt waits exact old holder/process/descendant settlement; uncertain cleanup remains recovery_required with custody and lease retained.",
+    "Fixed named frozen input assets only, no arbitrary executable/module/environment/path/URL/network/node-control/keystore/producer channel or scheduler authority. No worker-initiated public resource lease.",
+    "Input descriptor transfer bound to exact slot/attempt/direction and actual retained object, reject duplicate/extra handles while retaining cleanup duty. Freeze/snapshot bytes or revoke all writers before validation; read-only FD alone does not prove immutability.",
+    "Direct typed decision result candidates only, no output manifest/artifact/chunk/credit/progress or generic JSON fallback. Future output publication must validate and publish same frozen bytes under current authorization.",
+    "Startup candidate actual selected engine/parser/model/config/device/memory matched by node/holder. Ready requires actual selected real workload under admission in later proof; no ready boolean or echoed identity proves it.",
+    "Worker/log/failure output never grants authority. Logs separate and redacted. FiniteF64/Utf8Chunk are data intrinsics, not proof tokens.",
+    "End.last_sequence denotes its own WorkerEventFrame.sequence. Startup/load/encode failure candidates can precede Accepted; successful result requires inputs verified and Accepted. Exact trigger and terminal/cancel state enforcement remain absent, as recorded blockers."
+  ],
+  "unresolved_enablement_blockers": [
+    "Current Rust generator emits pub DTO declarations even for private schema visibility and lib.rs publicly exposes contract module; Root shared generator integration must enforce crate-private worker DTO visibility before this private API boundary is satisfied. Fragment metadata alone does not enforce Rust visibility.",
+    "No machine-validation of directional transition/profile/sequence/terminal/race/resource semantics is implemented by this evidence JSON; no private endpoint seals, holders, native confinement, worker runtime, engine/parser integration, scheduling or provenance issuer supplied.",
+    "Source metadata table/count/label/dtype architecture validation and calibration knot count/order/domain/n numeric profile remain incomplete; frozen refs cannot bypass content schema validation. Unknown profiles refuse.",
+    "Aggregate/expanded input sizes, chunk count/outstanding bytes, error/log totals and admitted profile selection need measured retained-source closure; no invented maxima selected.",
+    "Pointer/batch token/time/memory observation ranges and exact measured backend/device identifiers need actual runtime validation; U64/F64 representation is not an admitted budget.",
+    "Broader Studio/Gym/speech/test-shard/generation/training/export operation catalogues remain outside this initial sum; no unsupported generic fallback.",
+    "Private TS/Python worker modules and cross-language private endpoint protocol integration remain later work; public SDK exports remain absent.",
+    "No model run, platform proof, full worker retention or H/K/P/I acceptance.",
+    "Runtime must define the exact executable trigger after all slots are verified: node-orders-execution currently has no separate DTO command in this narrowed sum. Failure before Accepted and cancel/terminal winner ordering require concrete machine enforcement before enablement. These are explicit transition implementation gaps, not DTO proofs."
+  ],
+  "independent_review": {
+    "reviewer": "domain_attack_review",
+    "scope": "narrowed-declaration-only-pre-edit",
+    "required_constraints": "Eight constraints from written review incorporated: fixed private slice, exact verified load binding, pipe/digest scope, durable terminal/cancel/recovery, source text/presence semantics, pinned score algorithm, unresolved profile blockers and redaction/log separation.",
+    "actual_leaf_verdict": "Conditional declaration-only approval of47 private types and evidence by domain_attack_review; no leaf blocker. Root must integrate Rust private visibility fix before composite publication. Trigger/failure/cancel machine enforcement gaps remain explicit."
+  }
+}
