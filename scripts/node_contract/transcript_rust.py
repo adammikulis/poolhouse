@@ -211,6 +211,7 @@ mod tests {
             let transcript = ReferenceTranscript::parse(purpose(row), &serde_json::to_vec(&row["value"]).unwrap()).unwrap();
             let (low, high) = twins(key.sign(&rng, &transcript.message).unwrap().as_ref());
             assert_eq!(transcript.matches_signature(&material("p256_sha256_low_s_der", &public, &low)), Ok(true));
+            assert!(crate::grants::person::verifies_p256(&public, &transcript.message, &high), "high S is mathematically valid but outside this profile");
             assert_eq!(transcript.matches_signature(&material("p256_sha256_low_s_der", &public, &high)), Ok(false));
             assert_eq!(transcript.matches_signature(&material("p256_sha256_der", &public, &low)), Err(Error::UnsupportedAlgorithm));
             let (double, _) = twins(key.sign(&rng, &transcript.digest).unwrap().as_ref());

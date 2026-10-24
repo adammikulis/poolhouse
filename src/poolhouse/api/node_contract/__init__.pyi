@@ -2487,7 +2487,7 @@ from ._tasks import (
 )
 
 CONTRACT_VERSION: _Literal[1]
-SCHEMA_SHA256: _Literal["722b52e73ff679715774776d1339039bfeb07e7bc347c2edafc1f14699da9505"]
+SCHEMA_SHA256: _Literal["0f4aaa10e67b5b5bcdc804f26dea0b6b19f45098bfb4ee5d6a9bcb375eb32dd3"]
 __all__ = ('CONTRACT_VERSION', 'SCHEMA_SHA256', 'U32', 'U64', 'AgentControlError', 'AgentControlRequest',
  'AgentControlSnapshot', 'AgentDisplayName', 'AgentGetRequest', 'AgentId', 'AgentPauseResult',
  'AgentState', 'AgentStopResult', 'AgentTaskExecution', 'AgentTaskStartRequest',
