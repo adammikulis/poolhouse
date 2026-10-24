@@ -135,6 +135,67 @@ issuer = "kernel-adapter"
 min_bytes = 64
 max_bytes = 64
 
+
+# Algorithm and transcript-format observations are untrusted DTOs, never admission.
+[[type]]
+name = "ApprovalP256PublicPoint"
+kind = "scalar"
+visibility = "public"
+encoding = "bytes"
+issuer = "kernel-adapter"
+min_bytes = 65
+max_bytes = 65
+
+[[type]]
+name = "ApprovalP256SignatureDer"
+kind = "scalar"
+visibility = "public"
+encoding = "bytes"
+issuer = "kernel-adapter"
+min_bytes = 8
+max_bytes = 72
+
+[[type]]
+name = "ApprovalP256LowSSignatureDer"
+kind = "scalar"
+visibility = "public"
+encoding = "bytes"
+issuer = "kernel-adapter"
+min_bytes = 8
+max_bytes = 72
+
+[[type]]
+name = "ApprovalSignerPublicKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "ed25519", type = "Ed25519PublicKey"}, {tag = "p256", type = "ApprovalP256PublicPoint"}]
+
+[[type]]
+name = "ApprovalEd25519SignatureMaterial"
+kind = "record"
+visibility = "public"
+fields = [{name = "public_key", type = "Ed25519PublicKey"}, {name = "signature", type = "ApprovalSignature64"}]
+
+[[type]]
+name = "ApprovalP256SignatureMaterial"
+kind = "record"
+visibility = "public"
+fields = [{name = "public_key", type = "ApprovalP256PublicPoint"}, {name = "signature", type = "ApprovalP256SignatureDer"}]
+
+[[type]]
+name = "ApprovalP256LowSSignatureMaterial"
+kind = "record"
+visibility = "public"
+fields = [{name = "public_key", type = "ApprovalP256PublicPoint"}, {name = "signature", type = "ApprovalP256LowSSignatureDer"}]
+
+[[type]]
+name = "ApprovalSignatureMaterial"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "ed25519", type = "ApprovalEd25519SignatureMaterial"}, {tag = "p256_sha256_der", type = "ApprovalP256SignatureMaterial"}, {tag = "p256_sha256_low_s_der", type = "ApprovalP256LowSSignatureMaterial"}]
+
 [[type]]
 name = "ApprovalDurationMicros"
 kind = "scalar"
@@ -411,7 +472,7 @@ variants = [{tag = "presence_required", type = "Empty"}, {tag = "process_accessi
 name = "ApprovalSignerObservation"
 kind = "record"
 visibility = "public"
-fields = [{name = "signer_id", type = "ApprovalSignerId"}, {name = "person_id", type = "ApprovalPersonId"}, {name = "descriptor_id", type = "AuthorityDescriptorId"}, {name = "assurance", type = "ApprovalSignerAssurance"}, {name = "counts", type = "Boolean"}]
+fields = [{name = "signer_id", type = "ApprovalSignerId"}, {name = "person_id", type = "ApprovalPersonId"}, {name = "public_key", type = "ApprovalSignerPublicKey"}, {name = "descriptor_id", type = "AuthorityDescriptorId"}, {name = "assurance", type = "ApprovalSignerAssurance"}, {name = "counts", type = "Boolean"}]
 
 [[type]]
 name = "ApprovalSignerObservations"
