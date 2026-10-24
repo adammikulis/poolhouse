@@ -43,7 +43,9 @@ pub trait Holder {}
 pub trait Installation {}
 pub trait InstallationGraph {}
 pub trait Launch {}
+pub trait LaunchInputs {}
 pub trait LaunchPlan {}
+pub trait LaunchReservation {}
 pub trait MeasuredAsset {}
 pub trait Plan {}
 pub trait Platform {}
@@ -65,6 +67,33 @@ pub trait Operation {}
 pub trait Owner {}
 pub trait Permit {}
 pub trait Unknown {}
+}
+#[derive(Debug)] pub(crate) struct LaunchInputsId([u8; 32]);
+impl LaunchInputsId { pub(crate) fn bytes(&self) -> &[u8; 32] { &self.0 } }
+#[derive(Debug)] pub(crate) struct LaunchReservationId([u8; 32]);
+impl LaunchReservationId { pub(crate) fn bytes(&self) -> &[u8; 32] { &self.0 } }
+#[derive(Clone, Copy, Debug, PartialEq, Eq)] pub(crate) enum LaunchTargetKind {
+Worker,
+Producer,
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)] pub(crate) enum LaunchAccountingProfile {
+MacNativeImage,
+LinuxNativeImage,
+WindowsNativeUnavailable,
+}
+#[derive(Debug)] pub(crate) struct LaunchLimitsData { os_combined_bytes: u64, reservation_bytes: u64, max_string_bytes: u64, max_argument_count: u64, max_environment_count: u64, vector_reserved_bytes: u64, allocation_overhead_bytes: u64, kernel_pointer_bytes: u64, vector_pointer_bytes: u64, exec_filename_bytes: u64, work: u64 }
+impl LaunchLimitsData {
+pub(crate) fn os_combined_bytes(&self) -> u64 { self.os_combined_bytes }
+pub(crate) fn reservation_bytes(&self) -> u64 { self.reservation_bytes }
+pub(crate) fn max_string_bytes(&self) -> u64 { self.max_string_bytes }
+pub(crate) fn max_argument_count(&self) -> u64 { self.max_argument_count }
+pub(crate) fn max_environment_count(&self) -> u64 { self.max_environment_count }
+pub(crate) fn vector_reserved_bytes(&self) -> u64 { self.vector_reserved_bytes }
+pub(crate) fn allocation_overhead_bytes(&self) -> u64 { self.allocation_overhead_bytes }
+pub(crate) fn kernel_pointer_bytes(&self) -> u64 { self.kernel_pointer_bytes }
+pub(crate) fn vector_pointer_bytes(&self) -> u64 { self.vector_pointer_bytes }
+pub(crate) fn exec_filename_bytes(&self) -> u64 { self.exec_filename_bytes }
+pub(crate) fn work(&self) -> u64 { self.work }
 }
 #[derive(Debug)] pub(crate) struct Digest([u8; 32]);
 impl Digest { pub(crate) fn bytes(&self) -> &[u8; 32] { &self.0 } }
@@ -277,6 +306,8 @@ type Holder: HolderProjection<Self>;
 }
 pub(crate) trait NativeGraph: NativeInstallationGraph + native_seal::Graph + Sized {
 type Launch: LaunchProjection<Self>;
+type LaunchInputs: LaunchInputsProjection<Self>;
+type LaunchReservation: LaunchReservationProjection<Self>;
 type LaunchPlan: ProducerLaunchPlanProjection<Self>;
 type Producer: ProducerProjection<Self>;
 type Message: ProducerMessageProjection<Self>;
@@ -369,6 +400,22 @@ fn spawn_plan_digest(&self) -> &Digest;
 }
 pub(crate) trait PlanProjection<G: NativeGraph>: native_seal::Plan {
 fn binding(&self) -> &G::Binding;
+fn inputs(&self) -> &G::LaunchInputs;
+fn reservation(&self) -> &G::LaunchReservation;
+}
+pub(crate) trait ProducerLaunchPlanProjection<G: NativeGraph>: native_seal::LaunchPlan {
+fn installation(&self) -> &G::Installation;
+fn plan_digest(&self) -> &Digest;
+fn inputs(&self) -> &G::LaunchInputs;
+fn reservation(&self) -> &G::LaunchReservation;
+}
+pub(crate) trait LaunchInputsProjection<G: NativeGraph>: native_seal::LaunchInputs {
+fn identity(&self) -> &LaunchInputsId;
+fn target(&self) -> LaunchTargetKind;
+fn plan_digest(&self) -> &Digest;
+fn reservation_generation(&self) -> &ResourceGeneration;
+fn profile(&self) -> LaunchAccountingProfile;
+fn limits(&self) -> &LaunchLimitsData;
 fn executable(&self) -> &G::MeasuredAsset;
 fn assets(&self) -> &[G::MeasuredAsset];
 fn arguments(&self) -> &[ImmutableArgument];
@@ -377,15 +424,11 @@ fn directory(&self) -> &MeasuredDirectoryIdentity;
 fn confinement(&self) -> &ConfinementProfile;
 fn inheritance(&self) -> &[InheritedResourceSpec];
 }
-pub(crate) trait ProducerLaunchPlanProjection<G: NativeGraph>: native_seal::LaunchPlan {
-fn installation(&self) -> &G::Installation;
-fn executable(&self) -> &G::MeasuredAsset;
-fn assets(&self) -> &[G::MeasuredAsset];
-fn arguments(&self) -> &[ImmutableArgument];
-fn environment(&self) -> &[ImmutableEnvironmentEntry];
-fn directory(&self) -> &MeasuredDirectoryIdentity;
-fn confinement(&self) -> &ConfinementProfile;
-fn inheritance(&self) -> &[InheritedResourceSpec];
+pub(crate) trait LaunchReservationProjection<G: NativeGraph>: native_seal::LaunchReservation {
+fn identity(&self) -> &LaunchReservationId;
+fn inputs(&self) -> &G::LaunchInputs;
+fn generation(&self) -> &ResourceGeneration;
+fn holder(&self) -> &G::Holder;
 }
 pub(crate) trait ChildProjection<G: NativeGraph>: native_seal::Child {
 fn producer(&self) -> &G::Producer;
