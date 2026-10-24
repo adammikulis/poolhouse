@@ -1,0 +1,582 @@
+{
+  "version": 1,
+  "status": "saved-conversation declaration and source retention proposal only; no runtime, storage, content transport, native identity, coding approval or K acceptance",
+  "source_commit": "d9c0d7cc3ebe4a547a9573be5af3d10a6867f9ec",
+  "sources": [
+    {
+      "path": "src/poolhouse/fleet/conversation_routes.py",
+      "sha256": "b165d7c01d121d527478fdc1f2a5fef63b216723271584a2b4a74835d82d4c6d"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversations.py",
+      "sha256": "0e5214d2e692d7b10eaa2be23abf57ee6dadbf803e73112e4f256ccb55760c80"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_creation.py",
+      "sha256": "ca18ef0339b549922de206d15674ad361b5820c6d26bd32a966a8e09609540e1"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_types.py",
+      "sha256": "bff33eef436dafd22f7a418ea7dd6d7356ab2f1b1e4ae9ed7b5924bf807c7104"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_settings.py",
+      "sha256": "7bfc8c68a1e2d657228ec0880a83ccf874d206634f8773c0f25a85d3034c50d0"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_graph.py",
+      "sha256": "365355911b8a55bfa00fb06080590ad1e662c18993b1900ea3608c695d3a2582"
+    },
+    {
+      "path": "src/poolhouse/fleet/setup_context.py",
+      "sha256": "3dc187562191d9cbc63491eb008a1fca7e4ce2298a99e6926b28c684b8574ee3"
+    },
+    {
+      "path": "src/poolhouse/fleet/routes.py",
+      "sha256": "509fd14062d13bb5a15777319e6291a63ac4528c462a450f395311d3e692d15d"
+    },
+    {
+      "path": "src/poolhouse/fleet/api.py",
+      "sha256": "0777f8d5ae585e6297a6c7ed7de2064949ce06084ef5406ff29286b141c0a329"
+    },
+    {
+      "path": "src/poolhouse/fleet/room_routes.py",
+      "sha256": "c472a666f8331a0c073464fbdceb2c123bc76f7bee48f5cddf632b2f97d4e282"
+    },
+    {
+      "path": "src/poolhouse/fleet/chat_routes.py",
+      "sha256": "2289841d2ffa0cca724c234baaa30e57f8d41e6a2fe16144b0213426cdab3eb6"
+    },
+    {
+      "path": "src/poolhouse/fleet/chat_stream.py",
+      "sha256": "3cff3d1979e8ccab7b8be240ccdbc1ad26093f27ffdc6d95c0f0c00e6c2bedfe"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/chat-create.html",
+      "sha256": "e49a54bea72a0fcb3be48d4331b48c4a89a270702faca77fd0de62c9a9588658"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/chat-view.html",
+      "sha256": "d4448f6c42075a4b4cec30b27ea4ea4e2c988d1c510f894ffe7eac4ad6dc3ed0"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/chat-coding.html",
+      "sha256": "468845c2a2625071a3575ad45e394a4ba296d3cf92c1d3183a56d86487632740"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/chat-discovery.html",
+      "sha256": "267d59553fc72d26652e8a3fe52c45aad6e51185a8175812873b5d76623ac71b"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/chat-model-picker.html",
+      "sha256": "bef2ca5fc3b0e43790920db06e9f532e0ceb8e88a7d55fadc7f46917e56c8a86"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_coding.py",
+      "sha256": "696a7c84090bd3c8a7ed0d7ea052f1c6793ee05cd027cafcfee9dc4fd580acd8"
+    },
+    {
+      "path": "src/poolhouse/workspace/coding_turns.py",
+      "sha256": "a4c9f4f83c1e28e6acc4b6f29309b362d75832aaf3d72df3d53c55852ef07a16"
+    },
+    {
+      "path": "src/poolhouse/coding_policy.py",
+      "sha256": "fe57dbc41eb6d6bab6918e71beeddbd50b405edf2244ee47b3c26933be7437a4"
+    },
+    {
+      "path": "src/poolhouse/fleet/project_source.py",
+      "sha256": "0593730763eb2f1bd07c4f89a4ae18d9f84e97629b6ef9ab64876f107e08708a"
+    },
+    {
+      "path": "contracts/node/domains/inference.toml",
+      "sha256": "a7e8fe21d08e535a8798c6a1035a90b7c35644c016566554635f3efc79cbce9c"
+    },
+    {
+      "path": "contracts/node/domains/models.toml",
+      "sha256": "39688adacea0dad8a689e8b45a22cbc7415543ba156815860cea1f0b70424814"
+    },
+    {
+      "path": "contracts/node/retained-features.json",
+      "sha256": "3a99a8d4856851ff01e9082829a6a2a1d9e00177ea8f2595efa279af43e2a592"
+    }
+  ],
+  "sites": [
+    {
+      "path": "src/poolhouse/fleet/conversation_routes.py",
+      "line": 11,
+      "symbol": "def route(",
+      "line_sha256": "d8a123ed54c20306e267cdec8e87a9f1c7b132a208801d4be4325f37b937f825"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_routes.py",
+      "line": 32,
+      "symbol": "def _body(",
+      "line_sha256": "4cf3c32fc123a5bed41c472c8fd841c5c03235b7c966b44a8e44a035d6765228"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_routes.py",
+      "line": 49,
+      "symbol": "if self.path == \"/ui/conversations/defaults\"",
+      "line_sha256": "d6ed0a022d87828bb3f69c907bf64334ae1ee73268af29bfeadfbe16ca5fc0a7"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_routes.py",
+      "line": 56,
+      "symbol": "if self.path.startswith(\"/ui/conversations/operations/\"",
+      "line_sha256": "0c70cdf515c69e7515c6a285c460fc3b642ab6561bc2cf6a06186321275ed130"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_routes.py",
+      "line": 71,
+      "symbol": "store.search(",
+      "line_sha256": "877f981c04ab84fc0adae6df8c7764b38ece8eccc5c5d78e22f11e40db2f180d"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_routes.py",
+      "line": 77,
+      "symbol": "made = store.create(",
+      "line_sha256": "aa4f9518dd5e9775bc80b7912e855eb1050ac92c025e695ccf55b3c5d7b1cd6b"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_routes.py",
+      "line": 82,
+      "symbol": "def _one_conversation(",
+      "line_sha256": "6d302aa38176abc3711d6f4ee54cb8b45ccd24490c2dcb741a001a811097f57e"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_creation.py",
+      "line": 23,
+      "symbol": "def operation(",
+      "line_sha256": "03a66e04133d6cfad56ceb906ee1b299834ed83ef80a927b2f4a09a65d8d380e"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_creation.py",
+      "line": 29,
+      "symbol": "def request(",
+      "line_sha256": "c8f9ab29fc2673ba5a22855694ad82e12c1f67b6dcd9d7ab38ab54ecb3cc8b7d"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_creation.py",
+      "line": 44,
+      "symbol": "def binding(",
+      "line_sha256": "680337eb5860afda46c77d51344dd95bc998fb5e6a8910391e4be33640c51089"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_creation.py",
+      "line": 62,
+      "symbol": "def receipt(",
+      "line_sha256": "117e177d87f91660e7fe661a92eea8d545925efb968bd75205ca1634221d84d2"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversations.py",
+      "line": 105,
+      "symbol": "def create(",
+      "line_sha256": "bcf24b4d2a2c672a0e4c41db969b2a205de556f96843e5acb68b824a5564d239"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversations.py",
+      "line": 133,
+      "symbol": "def creation(",
+      "line_sha256": "815c37a5fc4a10108ac0d72cbadd392fa5423f1604571a8a596225b26fcc7981"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversations.py",
+      "line": 369,
+      "symbol": "def append(",
+      "line_sha256": "fd7df8a1e29157c4a56c640b187adf1762f26b5d6734498934df158995aea467"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversations.py",
+      "line": 387,
+      "symbol": "def update(",
+      "line_sha256": "8f50adf7630f49822cf98d307b23c5c8cf315df1bcf4eea10cc2cca2eaef5751"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversations.py",
+      "line": 419,
+      "symbol": "def remove(",
+      "line_sha256": "53c55a077d227f324634f8bf92b0aedc88e4f178cd63bf76ea1b4642bf4c62bb"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversations.py",
+      "line": 425,
+      "symbol": "def search(",
+      "line_sha256": "568174151304fc62911638f5f6c48c6d8d1392d155853b6bfe7c1bac53ee5884"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_types.py",
+      "line": 25,
+      "symbol": "def from_conversation(",
+      "line_sha256": "633d466df46577d022fda8cbf2bed59d74eddf75009b2d5adde407df05f82e29"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_types.py",
+      "line": 33,
+      "symbol": "class Message:",
+      "line_sha256": "e41be9cd93178ffdc74e454f2a15660ea0a5657a90f248c8262c37be7818d87a"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_types.py",
+      "line": 45,
+      "symbol": "class Conversation:",
+      "line_sha256": "9d0e6ab7ace86e9674e4bd4d631330a3f61de718a849de0f3ab23a71b65605b0"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_types.py",
+      "line": 68,
+      "symbol": "def title(",
+      "line_sha256": "ab6dd381988242de7fef223778e97a951de0ee70248687d74a0f1621142c3f9d"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_settings.py",
+      "line": 13,
+      "symbol": "DEFAULTS:",
+      "line_sha256": "4fe46c94e38e1e2c1d43b1e411c769659ca5927e0efba855408afa9814e0bfc2"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_settings.py",
+      "line": 18,
+      "symbol": "def checked(",
+      "line_sha256": "46379231e8ecab9c4b0fb03365ef0f11c0fa169c5c5ef4f48bfc98eae7e7dee9"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_settings.py",
+      "line": 57,
+      "symbol": "def effective(",
+      "line_sha256": "394795505a76f183a2e524dbe7165e7a74fe214da6f550bbb2691367daa8ea94"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_graph.py",
+      "line": 30,
+      "symbol": "def record(",
+      "line_sha256": "f6d9dde45b453701f65bd569936aaa260b1b7ab75a556275002044c8450168ab"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_graph.py",
+      "line": 43,
+      "symbol": "def get(",
+      "line_sha256": "bbbcc9eb61177544b6dedcebd62772e8a89f5518286da02a0ae896ee6bd40305"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_graph.py",
+      "line": 63,
+      "symbol": "def save(",
+      "line_sha256": "a76680c98b2b8a9f0c1c73ea8ed4b95f329edacf524b17d079783288663e31b6"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_graph.py",
+      "line": 82,
+      "symbol": "def append(",
+      "line_sha256": "f1bb5433066a438cfa125da6b2a4ed0902cdfa709b52a9fb82412c6f7202df1b"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_graph.py",
+      "line": 90,
+      "symbol": "def remove(",
+      "line_sha256": "16b963f38ea86d1110a60483a1b1eacc84994a107dbfd851851d5eb8ea40e731"
+    },
+    {
+      "path": "src/poolhouse/fleet/setup_context.py",
+      "line": 22,
+      "symbol": "def bind(",
+      "line_sha256": "d4c1b11a4598db80eae191f038193078d98cce0099046109950f3e9b2841cc6e"
+    },
+    {
+      "path": "src/poolhouse/fleet/routes.py",
+      "line": 157,
+      "symbol": "def body(",
+      "line_sha256": "eb1d34257f683941b49912cc92e23c9360553619c9dd3ede4a5ae31115699ccd"
+    },
+    {
+      "path": "src/poolhouse/fleet/api.py",
+      "line": 424,
+      "symbol": "if self._ui():",
+      "line_sha256": "16a22f5843d94dce49511c1342a344e9cf2cf713f3bcb193b1dadbd26adf2c08"
+    },
+    {
+      "path": "src/poolhouse/fleet/room_routes.py",
+      "line": 21,
+      "symbol": "def _origin_ok(",
+      "line_sha256": "44a6fbd62743ef05475c1401ed37cc32bfa2527f799771152d87f6e839865a00"
+    },
+    {
+      "path": "src/poolhouse/fleet/chat_routes.py",
+      "line": 36,
+      "symbol": "def _say(",
+      "line_sha256": "ee62e38d3169601a0b2e6cf44c11f3bf481bbdef6a583d061e69e71ab0f0c086"
+    },
+    {
+      "path": "src/poolhouse/fleet/chat_stream.py",
+      "line": 107,
+      "symbol": "def relay(",
+      "line_sha256": "3ea095952f225870eb6a6032462d1c6dcdb94ec48290a1daade2d98283e74358"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/chat-create.html",
+      "line": 9,
+      "symbol": "async ensure(",
+      "line_sha256": "5aa2d6c172998cdf0879acdb73ab17326dcfdc66d9e445e1cb9af141e96f594c"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/chat-view.html",
+      "line": 201,
+      "symbol": "saveSettings(",
+      "line_sha256": "4a11fd6eaa0bd7304a50501113217ba5dee27e4d67353754ea64261aa4a2272e"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/chat-view.html",
+      "line": 272,
+      "symbol": "async manage(",
+      "line_sha256": "8afd6eafe3c9559071784074d086c0c8636d5687b9482f7add9cf02f13c23b0d"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/chat-view.html",
+      "line": 231,
+      "symbol": "const saved = await api(`/ui/conversations?q=",
+      "line_sha256": "50566229059575b132015d63c25e5af997aa908d13781cbe5d889d31bf88c1a7"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/chat-view.html",
+      "line": 306,
+      "symbol": "const one = await api(`/ui/conversations/${id}`)",
+      "line_sha256": "0b6a82698fb7bf78f7026ea67c873f9335a0b83ed7c97befb38f543c57751775"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/chat-coding.html",
+      "line": 30,
+      "symbol": "settings(",
+      "line_sha256": "bd9a46ddeeea61a5fb7290e7acb725f4e486bfb23d578e9df292be18275ee3fe"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/chat-coding.html",
+      "line": 52,
+      "symbol": "async restore(",
+      "line_sha256": "a8e42840d084320ca8e07a3debd312f7d053f45c2c755a42a7cbb1c2d5ac9592"
+    },
+    {
+      "path": "src/poolhouse/fleet/web/components/chat-discovery.html",
+      "line": 31,
+      "symbol": "'/ui/conversations/defaults'",
+      "line_sha256": "9ec765ac9e6fd4c97e4ce58f00794ad1a3db354e7e879398785603a3bb838db7"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_coding.py",
+      "line": 138,
+      "symbol": "def perform(",
+      "line_sha256": "c3467fdcba45072385bad32e2713d3b38764d60582a91e26d6c6e5e575ce4697"
+    },
+    {
+      "path": "src/poolhouse/workspace/coding_turns.py",
+      "line": 116,
+      "symbol": "self.store.append(cid, \"user\"",
+      "line_sha256": "fa1847ab5a3a26f586f007f36f6214357a1bf3618b7604715352953d3c5fdc55"
+    },
+    {
+      "path": "src/poolhouse/coding_policy.py",
+      "line": 17,
+      "symbol": "class Policy:",
+      "line_sha256": "c78cccee9fed747c4a8d1995d904fbcaeed2e5c2ca85114fcf58a4d3e6090404"
+    }
+  ],
+  "operation_mapping": [
+    {
+      "operation": "conversations.defaults.inspect",
+      "request": "ConversationDefaultsInspectRequest",
+      "response": "ConversationDefaultsView",
+      "error": "ConversationError",
+      "retained_source": "GET /ui/conversations/defaults",
+      "actual_caller": "chat-discovery.html defaults load",
+      "cancellation": "request-detach-only",
+      "subscription": "none",
+      "status": "proposal-only; no handler or native dispatch"
+    },
+    {
+      "operation": "conversations.list",
+      "request": "ConversationListRequest",
+      "response": "ConversationListEvent",
+      "error": "ConversationError",
+      "retained_source": "GET /ui/conversations?q=",
+      "actual_caller": "chat-view.html reload/search",
+      "cancellation": "request-detach-only",
+      "subscription": "ordered-resource-stream",
+      "status": "proposal-only; no handler or native dispatch"
+    },
+    {
+      "operation": "conversations.create",
+      "request": "ConversationCreateRequest",
+      "response": "ConversationCreationView",
+      "error": "ConversationError",
+      "retained_source": "POST /ui/conversations",
+      "actual_caller": "chat-create.html ensure; task_coding.py service-owned creation",
+      "cancellation": "request-detach-only",
+      "subscription": "none",
+      "status": "proposal-only; no handler or native dispatch"
+    },
+    {
+      "operation": "conversations.creations.inspect",
+      "request": "ConversationCreationInspectRequest",
+      "response": "ConversationCreationLookup",
+      "error": "ConversationError",
+      "retained_source": "GET /ui/conversations/operations/{id}",
+      "actual_caller": "chat-create.html uncertain operation reconciliation",
+      "cancellation": "request-detach-only",
+      "subscription": "none",
+      "status": "proposal-only; no handler or native dispatch"
+    },
+    {
+      "operation": "conversations.get",
+      "request": "ConversationGetRequest",
+      "response": "ConversationSummaryView",
+      "error": "ConversationError",
+      "retained_source": "GET /ui/conversations/{id}",
+      "actual_caller": "chat-view.html open; chat-create.html current settings verification",
+      "cancellation": "request-detach-only",
+      "subscription": "none",
+      "status": "proposal-only; no handler or native dispatch"
+    },
+    {
+      "operation": "conversations.messages.list",
+      "request": "ConversationMessagesListRequest",
+      "response": "ConversationMessagesEvent",
+      "error": "ConversationError",
+      "retained_source": "GET /ui/conversations/{id} messages projection",
+      "actual_caller": "chat-view.html message restore/render",
+      "cancellation": "request-detach-only",
+      "subscription": "ordered-resource-stream",
+      "status": "proposal-only; no handler or native dispatch"
+    },
+    {
+      "operation": "conversations.update",
+      "request": "ConversationUpdateRequest",
+      "response": "ConversationSummaryView",
+      "error": "ConversationError",
+      "retained_source": "POST /ui/conversations/{id}",
+      "actual_caller": "chat-view.html saveSettings/manage rename",
+      "cancellation": "request-detach-only",
+      "subscription": "none",
+      "status": "proposal-only; no handler or native dispatch"
+    },
+    {
+      "operation": "conversations.remove",
+      "request": "ConversationRemoveRequest",
+      "response": "ConversationRemovalView",
+      "error": "ConversationError",
+      "retained_source": "DELETE /ui/conversations/{id}",
+      "actual_caller": "chat-view.html manage delete",
+      "cancellation": "request-detach-only",
+      "subscription": "none",
+      "status": "proposal-only; no handler or native dispatch"
+    },
+    {
+      "operation": "conversations.content.begin",
+      "request": "ConversationContentBeginRequest",
+      "response": "ConversationContentStageView",
+      "error": "ConversationError",
+      "retained_source": "saved-conversation text input/output represented by inline HTTP/graph text",
+      "actual_caller": "same create/update/search/get/message callers; canonical transport adaptation only",
+      "cancellation": "request-detach-only",
+      "subscription": "none",
+      "status": "proposal-only; no handler or native dispatch"
+    },
+    {
+      "operation": "conversations.content.append",
+      "request": "ConversationContentAppendRequest",
+      "response": "ConversationContentStageView",
+      "error": "ConversationError",
+      "retained_source": "saved-conversation text input/output represented by inline HTTP/graph text",
+      "actual_caller": "same create/update/search/get/message callers; canonical transport adaptation only",
+      "cancellation": "request-detach-only",
+      "subscription": "none",
+      "status": "proposal-only; no handler or native dispatch"
+    },
+    {
+      "operation": "conversations.content.finalize",
+      "request": "ConversationContentFinalizeRequest",
+      "response": "ConversationContentFinalizeView",
+      "error": "ConversationError",
+      "retained_source": "saved-conversation text input/output represented by inline HTTP/graph text",
+      "actual_caller": "same create/update/search/get/message callers; canonical transport adaptation only",
+      "cancellation": "request-detach-only",
+      "subscription": "none",
+      "status": "proposal-only; no handler or native dispatch"
+    },
+    {
+      "operation": "conversations.content.read",
+      "request": "ConversationContentReadRequest",
+      "response": "InferenceContentChunk",
+      "error": "ConversationError",
+      "retained_source": "saved-conversation text input/output represented by inline HTTP/graph text",
+      "actual_caller": "same create/update/search/get/message callers; canonical transport adaptation only",
+      "cancellation": "request-detach-only",
+      "subscription": "none",
+      "status": "proposal-only; no handler or native dispatch"
+    },
+    {
+      "operation": "conversations.content.discard",
+      "request": "ConversationContentDiscardRequest",
+      "response": "ConversationContentDiscardView",
+      "error": "ConversationError",
+      "retained_source": "saved-conversation text input/output represented by inline HTTP/graph text",
+      "actual_caller": "same create/update/search/get/message callers; canonical transport adaptation only",
+      "cancellation": "atomic-cancel-versus-domain-commit",
+      "subscription": "none",
+      "status": "proposal-only; no handler or native dispatch"
+    }
+  ],
+  "source_fidelity": {
+    "routes": "Exactly defaults/list/create/status/get/update/delete retained; messages moved from unbounded embedded get result to complete frozen stream. No arbitrary public append: source chat_routes and coding_turns Node-owned append connects existing chat.turn.send/get/cancel/watch. Stateless inference still needs no saved conversation.",
+    "guard_distinction": "Conversation route checks same origin; create/status additionally setup_context.bind(local=False) credentialed browser binding with current principal/scope/device. Other legacy CRUD guard differs. Canonical actual principal/current scope auth required every operation; source Origin/cookie/device/principal labels are not native credentials.",
+    "creation_identity": "Source intent32lowerhex maps separately from canonical transport request identifier. Actual local root owner/nonwritable identity bound via canonicalpath+device/inode as source observation; Node protects root custody/lineage independently. Copying DB/UUID/receipt/storage metadata cannot adopt admitted identity or prove rollback independence.",
+    "creation_intent": "Source normalizes omitted model/title to empty, settings to exact supplied map or empty. Immutable equality binds that original normalized semantic request, not current defaults, resolved refs or staging IDs/chunk split. Semantically identical staged text attaches same intent; mutation/ref replacement cannot change finalized exact content. Source Python numeric equality/int-vs-F64 subtleties require vectors; do not assume JSON byte identity equals source dict equality.",
+    "creation_receipt": "Actual transaction target save+receipt document+marker digest+created edge with current binding checked before/during/after. Resolve defaults once, freeze original response/settings/model/title/count0/revision0. Later get is separate current state; status does not create DB/receipt. Missing or inconsistent components fail conflict/recovery. Removed target does not cause same intent to create again; canonical tombstones retain refusal evidence.",
+    "source_formats": "Graph conversation attrs version2 and public Conversation.public version1 differ; preserve both meanings. safe legacy IDs ASCII alnum/underscore/hyphen1..64, actual old start12hex/new create32hex are not canonical UUID. InferenceConversationRef always independently Node-issued; adapter lookup preserves original source_id as diagnostic only, no legacy authority migration.",
+    "titles": "Creation preserves exact requested title up to4096Python characters; update title.strip()[:60], auto-title collapses whitespace and[:60]. No blanket new title60 input bound or silent content truncation beyond exact retained normalization.",
+    "settings": "Exact12fields temperature,project,project_id,role,permissions,execution_mode,effort,max_effort,harness,context,draft,max_output_tokens. Patch retain/set distinguishes omitted vs explicit supplied value; update settings retain vs merge(empty) preserves omission vs explicit{} coding-policy presence check. temperature/server_default and max_output_tokens/server_default explicitly map source null, no null-as-retain confusion.",
+    "model_and_project_identity": "Desired model/project/draft/role/harness text preserved independently of returned resolved ModelRef/InferenceProjectRef. Hint strings and source graph uses-model/in-project edges are inert metadata; no path access, model loading, network URL/provider/credential, process launch, grant, execution or filesystem handle authority. Current Node independently resolves catalog identity and checks actual resource/policy before inference/coding. Unknown/unavailable desired selections save without model/preparation/person prompt.",
+    "policy_revision": "Only actual model/settings change increments source policy_revision. Title/message do not. Old OR proposed nonempty harness plus supplied model/settings requires exact policy revision even when unchanged. Canonical content revision separately tracks stored changes/CAS/snapshot, not substituted for policy revision. Title-only changes do not manufacture new coding permission; model/settings changes invalidate old policy publication checks. Current chat-view.saveSettings omits expected_revision, so coding UI compatibility gap remains unimplemented.",
+    "coding_distinction": "Saved read-only/ask-changes/ask-dangerous/yolo and plan/execute are requested preferences, never person approval. No public request accepts Execution/Intent/approval Handle/workspace receipts or private root/owner proof. CodingState additionally requires project_id+harness; actual stock tool allow/ask/deny, bound user message/action, genuine current approvals and workspace publication remain separate existing protected domain prerequisites. Service task_coding saves without a new browser/person gate.",
+    "messages": "Complete original sequence order, system/user/assistant role data, content+reasoning, source timestamps and status retained. complete/failed/cancelled known statuses; observed_legacy stores unknown status verbatim as data, not a fabricated new runtime terminal state. No client assistant/system append, cancellation does not relabel saved source status. Message/created Float64 seconds retained exact IEEE finite bits, no arbitrary microsecond rounding or invented zero.",
+    "search_and_order": "Source needle.strip().casefold(); matches title or message.content casefold, not reasoning. Source created descending; stable snapshot resolves ties without mixing live results. No global result/history count cap or truncated list. Query is inert content, never graph query/RPC text."
+  },
+  "bounds_and_content_transport": {
+    "creation": "conversation_creation.request validates model/title<=4096Python chars and sorted json.dumps(normalizedrequest,allow_nan=False) encoded UTF8<=65536. Original ensure_ascii/default whitespace/number escaping accounting must be reproduced from complete typed source projection; expanded DTO frames are separate. settings checked request shape is exact original map, not fully default-expanded map for intent comparison.",
+    "fixed_character_fields": "project/draft<=4096chars -> UTF8 allocation envelope<=16384bytes; role<=128chars ->512bytes; harness<=64chars ->256bytes. Node additionally enforces exact source Python character limits. project_id source empty or32lowerhex; context0or1024..1048576; temperature finite0..2; permissions/mode/effort enums exact translations. No new workload budget.",
+    "positive_output_preference": "Source max_output_tokens permits null or any Python positive integer, not bool; existing inference TokenLimit<=2147483647 cannot faithfully represent it. ConversationOutputTokens uses server_default or positive decimal text/content, exact integer-only parse/minimal positive decimal, no rounding/coercion/narrowing. Storage preference alone never allocates/gates compute; actual backend limit/admission checked separately before real generation.",
+    "no_imported_update_cap": "UI api calls _ui() before generic _body/_guard; Routes.body reads declared Content-Length directly. Unrelated graph.guard MAX_BODY is NOT evidence of saved-conversation update bound. No fixed source update/model/title/query/history text cap has been proved. Unbounded legacy source resource policy is an explicit runtime enablement blocker; do not claim a borrowed bound.",
+    "model_independent_transport": "conversations.content begin/append/finalize/read/discard reuses InferenceStageRef/Content/ContentRef/ContentChunk/Utf8Chunk. Existing inference staging requires ModelRef+preparation; this consumer-specific binding avoids circular model/preparation requirement before saving. Only creation-title/model/positive-token, update-title/model/positive-token, and search query purposes; no arbitrary JSON/tool/credential/path consumer. Output stored content owner/snapshot binding independently Node-created.",
+    "actual_admission": "Node performs shared CPU/memory/storage admission before materialization; caller declared bytes/count/digest/StageRef is data only. Actual unrestricted-source policy and cross-language arithmetic/parser/transport profiles remain unimplemented. No hardcoded new cap, concurrency limit, unbounded allocation based on declared totals, frame raise or silent truncation.",
+    "stage_lifecycle": "Bind actual principal/store/install/device/generation/exact role/original immutable consumer RequestId plus creationintent or current conversation/content revision. Immutable append exact offsets/UTF8 chunks/current CAS, node recomputes complete bytes/digest. Finalize fixes immutable content; create/update acquisition validates current exact consumer authority atomically with durable operation acceptance. It does not execute/create a conversation prematurely. Finalize/discard single winner; discard only owned unconsumed stages, not already saved content/receipts/history. Tombstones/dedup survive cleanup; no cross-purpose stage adoption or late writes after finalization.",
+    "content_read": "Current principal/store/consumer/snapshot authorization before each offset/chunk; exact complete bytes/digest and snapshot context retained. Deleted saved content cannot be disclosed through old ref/cursor/stage receipt. Shared stage ID namespace never makes inference/content refs interchangeable across purpose. Current immutable content may be read at later conversation revision only when actual ongoing authorization permits it, no automatic capability from ID."
+  },
+  "durability_authorization_and_streams": [
+    "Defaults inspect has closed empty request and requires actual authorized installation context only; no caller-supplied unobservable store/generation/model, no DB creation. Returns optional Node-issued store context and defaults revision. If store unavailable, defaults still work as retained source; subsequent stored operations refuse unavailable without making storage.",
+    "All durable requests have top generation+RequestId; updates/removal/stage updates require applicable exact CAS; new create/stage creation dedup is not fictitious prior-row CAS. Validate actual native principal/current installation/device/storage lineage/permission BEFORE replay lookup/status/error/search/item disclosure. Source cookie/current callback/root metadata alone never establish native caller authority.",
+    "Identical authorized RequestId retry returns immutable original receipt/result; changed principal/full payload/generation conflicts. Creation ID is independently stable user intent: new transport IDs cannot create duplicates for same semantic original intent; uncertain POST/abort checks status under original intent rather than automatic new create. Defaults resolved once and exact original response preserved separately from current target.",
+    "Store current identity missing/replaced/restored/aliased or receipt markers/digests/edges inconsistent => refusal/recovery, no automatic adoption/genesis or legacy identity migration. Antirollback witness independence requires actual backend threat-boundary proof, not copied UUID/digest or same rollback-domain DB.",
+    "Scope is device-local saved storage unless explicit actual current share authority says otherwise; pool membership by itself does not share all conversations. Labels/source_id/project_id/role/model/harness/permissions never principal, approval or authority. No visible new owner prompt for ordinary saving/defaults/restore before model availability.",
+    "Settings/title/model update atomically rechecks current scope and content CAS. Coding model/settings update also exact current policy revision when old OR proposed harness active, no unchanged-value bypass. Unsupported arbitrary fields reject. Canonical source field names enum serialization and integer/F64 values require exact equivalence vectors before runtime enablement.",
+    "Deletion commits durable tombstone and invalidates old conversation incarnation/publication before success; creation intent dedup/tombstone persists. Delayed inference/coding message/result cannot recreate deleted row or acquire a new incarnation. Removal does not falsely report running worker cancelled or budget released: existing chat.turn cancellation/settlement owns that, unresolved execution remains explicitly unsettled.",
+    "Snapshots carry exact store/principal/query/order/projection/generation/immutable revision; boundary then zero-or-more items then complete, including empty; resync_required on expired cursor. Messages stream includes summary from SAME content revision and exact original message sequence, never mix newer summary with older pages. Reauthorize each item/chunk and current errors, preserve frozen snapshot or explicitly expire; detach only ends observation.",
+    "Creation response original snapshot content may be redacted/refused after target deletion/access change; current_target never treated as recreated or live just because original receipt exists. Source delete removes created edge and later legacy lookup conflicts; canonical removed state preserves durable refusal/tombstone without inventing current target authority.",
+    "CRUD/defaults/read/status detach-only; no automatic cancellation rollback after committed update/create/delete. Content discard explicitly races finalized staged bytes only. Existing chat.turn.send/get/cancel/watch remains sole saved-user/assistant turn execution API, no duplicate public append or arbitrary system-message insertion."
+  ],
+  "unmapped_or_unimplemented": [
+    "No runtime handlers, Node storage ledger/current auth/CAS/snapshot streams, shared-resource admission, content staging/parser/codec mapping, protected native root custody or installed adapters implemented. No K/runtime/coding approval acceptance.",
+    "Exact source ID to independently admitted canonical conversation/store refs, durable content revision and settings digest transcript/cross-language/source-normalization vectors remain unimplemented; preserve originals, no authority or data auto-migration. Old invalid graph version/types/times refuse unsupported_legacy rather than fabricated defaults.",
+    "Legacy unbounded update/query/history resource policy has no proved finite source cap. Must establish actual shared resource admission/profile before native enablement; no borrowed generic HTTP cap or new workload cap claimed.",
+    "Current UI saveSettings does not supply coding expected_revision, and old create/status vs CRUD guard strengths differ. Declared exact native policy/auth does not claim those callers already adapted or fixed.",
+    "Coding catalogue/role/project/harness setup, workspace capture, actual approval/action consumption, task worker execution/publishing and project source filesystem effects remain separate retained domains; saved preferences/messages never stand in for those proofs.",
+    "Direct test/internal Conversations.start and append helper shapes do not authorize arbitrary public assistant/system append or caller storage root. Actual service-owned task creation is preserved via authorized source scope; its coding execution remains separate. No tests/models/API/key operations were run for this declaration leaf."
+  ],
+  "independent_review": {
+    "reviewer": "approval_attack_review",
+    "pre_edit_verdict": "Written declaration-only approval with8 concrete defaults/bootstrap, exact intent/defaults, principal/storage continuity, policy/content revision, inert desired selections, purpose-bound staging, complete time-exact history and null/positive-integer constraints; source update cap correction independently agreed.",
+    "actual_leaf_verdict": "Actual two-file review approved by approval_attack_review:75types13ops, no declaration blocker. Empty defaults bootstrap/optional store, exact original creation intent and defaults vs current target, policy/content revisions and retain-vs-merge{}, model-independent content roles, inert requested hints vs derived refs, observed historical status and coherent snapshot streams verified. Source64KiB creation only; unrelated update cap withdrawn; positive-integer and source-unbounded policy gaps explicit. Rootclone/replay/current native auth/deletion/publication constraints preserved; no private proof types or generic append/sign/approval surface. No reviewer edits/tests/runtime; codecs/source-ID mapping/CAS/storage/admission/adapters unimplemented."
+  },
+  "counts": {
+    "types": 75,
+    "operations": 13,
+    "sources": 24,
+    "sites": 46
+  }
+}

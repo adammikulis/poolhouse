@@ -1,0 +1,650 @@
+version = 1
+status = "proposal"
+
+[[type]]
+name = "ConversationSnapshotId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ConversationStoreId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ConversationCreationIntentId"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 32
+max_bytes = 32
+
+[[type]]
+name = "ConversationSourceId"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 64
+
+[[type]]
+name = "ConversationRequestedProjectId"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 0
+max_bytes = 32
+
+[[type]]
+name = "ConversationHint"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 0
+max_bytes = 16384
+
+[[type]]
+name = "ConversationRoleLabel"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 0
+max_bytes = 512
+
+[[type]]
+name = "ConversationHarnessLabel"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 0
+max_bytes = 256
+
+[[type]]
+name = "ConversationContextTokens"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "data"
+minimum = 0
+maximum = 1048576
+
+[[type]]
+name = "ConversationStoreRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "ConversationStoreId"}, {name = "generation", type = "ResourceGeneration"}, {name = "installation_id", type = "InstallationId"}, {name = "device_id", type = "DeviceId"}]
+
+[[type]]
+name = "ConversationOptionalStoreRef"
+kind = "optional"
+visibility = "public"
+item = "ConversationStoreRef"
+
+[[type]]
+name = "ConversationTextInput"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "inline", type = "Utf8Chunk"}, {tag = "retained_content", type = "InferenceContent"}]
+
+[[type]]
+name = "ConversationTemperature"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "server_default", type = "Empty"}, {tag = "value", type = "FiniteF64"}]
+
+[[type]]
+name = "ConversationOutputTokens"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "server_default", type = "Empty"}, {tag = "positive_integer", type = "ConversationTextInput"}]
+
+[[type]]
+name = "ConversationPermissions"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "read_only", type = "Empty"}, {tag = "ask_changes", type = "Empty"}, {tag = "ask_dangerous", type = "Empty"}, {tag = "yolo", type = "Empty"}]
+
+[[type]]
+name = "ConversationExecutionMode"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "plan", type = "Empty"}, {tag = "execute", type = "Empty"}]
+
+[[type]]
+name = "ConversationEffort"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "off", type = "Empty"}, {tag = "low", type = "Empty"}, {tag = "medium", type = "Empty"}, {tag = "high", type = "Empty"}, {tag = "auto", type = "Empty"}]
+
+[[type]]
+name = "ConversationMaxEffort"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "off", type = "Empty"}, {tag = "low", type = "Empty"}, {tag = "medium", type = "Empty"}, {tag = "high", type = "Empty"}]
+
+[[type]]
+name = "ConversationSettings"
+kind = "record"
+visibility = "public"
+fields = [{name = "temperature", type = "ConversationTemperature"}, {name = "project", type = "ConversationHint"}, {name = "project_id", type = "ConversationRequestedProjectId"}, {name = "role", type = "ConversationRoleLabel"}, {name = "permissions", type = "ConversationPermissions"}, {name = "execution_mode", type = "ConversationExecutionMode"}, {name = "effort", type = "ConversationEffort"}, {name = "max_effort", type = "ConversationMaxEffort"}, {name = "harness", type = "ConversationHarnessLabel"}, {name = "context", type = "ConversationContextTokens"}, {name = "draft", type = "ConversationHint"}, {name = "max_output_tokens", type = "ConversationOutputTokens"}]
+
+[[type]]
+name = "ConversationPatchTemperature"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "ConversationTemperature"}]
+
+[[type]]
+name = "ConversationPatchHint"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "ConversationHint"}]
+
+[[type]]
+name = "ConversationPatchRequestedProjectId"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "ConversationRequestedProjectId"}]
+
+[[type]]
+name = "ConversationPatchRoleLabel"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "ConversationRoleLabel"}]
+
+[[type]]
+name = "ConversationPatchPermissions"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "ConversationPermissions"}]
+
+[[type]]
+name = "ConversationPatchExecutionMode"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "ConversationExecutionMode"}]
+
+[[type]]
+name = "ConversationPatchEffort"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "ConversationEffort"}]
+
+[[type]]
+name = "ConversationPatchMaxEffort"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "ConversationMaxEffort"}]
+
+[[type]]
+name = "ConversationPatchHarnessLabel"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "ConversationHarnessLabel"}]
+
+[[type]]
+name = "ConversationPatchContextTokens"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "ConversationContextTokens"}]
+
+[[type]]
+name = "ConversationPatchOutputTokens"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "ConversationOutputTokens"}]
+
+[[type]]
+name = "ConversationSettingsPatch"
+kind = "record"
+visibility = "public"
+fields = [{name = "temperature", type = "ConversationPatchTemperature"}, {name = "project", type = "ConversationPatchHint"}, {name = "project_id", type = "ConversationPatchRequestedProjectId"}, {name = "role", type = "ConversationPatchRoleLabel"}, {name = "permissions", type = "ConversationPatchPermissions"}, {name = "execution_mode", type = "ConversationPatchExecutionMode"}, {name = "effort", type = "ConversationPatchEffort"}, {name = "max_effort", type = "ConversationPatchMaxEffort"}, {name = "harness", type = "ConversationPatchHarnessLabel"}, {name = "context", type = "ConversationPatchContextTokens"}, {name = "draft", type = "ConversationPatchHint"}, {name = "max_output_tokens", type = "ConversationPatchOutputTokens"}]
+
+[[type]]
+name = "ConversationSettingsUpdate"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "merge", type = "ConversationSettingsPatch"}]
+
+[[type]]
+name = "ConversationResolvedSelection"
+kind = "record"
+visibility = "public"
+fields = [{name = "model", type = "ModelOptionalRef"}, {name = "project", type = "InferenceOptionalProjectRef"}, {name = "draft_model", type = "ModelOptionalRef"}]
+
+[[type]]
+name = "ConversationSummaryView"
+kind = "record"
+visibility = "public"
+fields = [{name = "conversation", type = "InferenceConversationRef"}, {name = "store", type = "ConversationStoreRef"}, {name = "revision", type = "U64"}, {name = "source_id", type = "ConversationSourceId"}, {name = "title", type = "InferenceContent"}, {name = "requested_model", type = "InferenceContent"}, {name = "resolved", type = "ConversationResolvedSelection"}, {name = "settings", type = "ConversationSettings"}, {name = "policy_revision", type = "U64"}, {name = "settings_digest", type = "InferenceDigest"}, {name = "message_count", type = "U64"}, {name = "created_seconds", type = "FiniteF64"}]
+
+[[type]]
+name = "ConversationOptionalSummary"
+kind = "optional"
+visibility = "public"
+item = "ConversationSummaryView"
+
+[[type]]
+name = "ConversationCreationState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "committed", type = "Empty"}, {tag = "removed", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ConversationCreationView"
+kind = "record"
+visibility = "public"
+fields = [{name = "store", type = "ConversationStoreRef"}, {name = "creation_intent_id", type = "ConversationCreationIntentId"}, {name = "state", type = "ConversationCreationState"}, {name = "original", type = "ConversationOptionalSummary"}, {name = "current_target", type = "InferenceOptionalConversationRef"}]
+
+[[type]]
+name = "ConversationCreationLookup"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "absent", type = "Empty"}, {tag = "receipt", type = "ConversationCreationView"}]
+
+[[type]]
+name = "ConversationDefaultsView"
+kind = "record"
+visibility = "public"
+fields = [{name = "store", type = "ConversationOptionalStoreRef"}, {name = "defaults_revision", type = "U64"}, {name = "settings", type = "ConversationSettings"}]
+
+[[type]]
+name = "ConversationDefaultsInspectRequest"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "ConversationCreateRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "store", type = "ConversationStoreRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "creation_intent_id", type = "ConversationCreationIntentId"}, {name = "model", type = "ConversationTextInput"}, {name = "title", type = "ConversationTextInput"}, {name = "settings", type = "ConversationSettingsPatch"}]
+
+[[type]]
+name = "ConversationCreationInspectRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "store", type = "ConversationStoreRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "creation_intent_id", type = "ConversationCreationIntentId"}]
+
+[[type]]
+name = "ConversationListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "store", type = "ConversationStoreRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "query_intent_id", type = "RequestId"}, {name = "query", type = "ConversationTextInput"}, {name = "after", type = "InferenceOptionalCursor"}]
+
+[[type]]
+name = "ConversationGetRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "conversation", type = "InferenceConversationRef"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ConversationPatchTextInput"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "set", type = "ConversationTextInput"}]
+
+[[type]]
+name = "ConversationUpdateRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "conversation", type = "InferenceConversationRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "expected_policy_revision", type = "U64"}, {name = "model", type = "ConversationPatchTextInput"}, {name = "title", type = "ConversationPatchTextInput"}, {name = "settings", type = "ConversationSettingsUpdate"}]
+
+[[type]]
+name = "ConversationRemoveRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "conversation", type = "InferenceConversationRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "ConversationRemovalView"
+kind = "record"
+visibility = "public"
+fields = [{name = "conversation", type = "InferenceConversationRef"}, {name = "revision", type = "U64"}, {name = "removed", type = "Boolean"}, {name = "publication_invalidated", type = "Boolean"}]
+
+[[type]]
+name = "ConversationSnapshotBoundary"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot_id", type = "ConversationSnapshotId"}, {name = "store", type = "ConversationStoreRef"}, {name = "conversation", type = "InferenceOptionalConversationRef"}, {name = "revision", type = "U64"}, {name = "cursor", type = "InferenceCursor"}]
+
+[[type]]
+name = "ConversationSummaryStreamItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "ConversationSnapshotBoundary"}, {name = "value", type = "ConversationSummaryView"}]
+
+[[type]]
+name = "ConversationListEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "ConversationSnapshotBoundary"}, {tag = "conversation", type = "ConversationSummaryStreamItem"}, {tag = "complete", type = "ConversationSnapshotBoundary"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "ConversationMessageRole"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "system", type = "Empty"}, {tag = "user", type = "Empty"}, {tag = "assistant", type = "Empty"}]
+
+[[type]]
+name = "ConversationKnownMessageStatus"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "complete", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "cancelled", type = "Empty"}]
+
+[[type]]
+name = "ConversationMessageStatus"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "known", type = "ConversationKnownMessageStatus"}, {tag = "observed_legacy", type = "InferenceContent"}]
+
+[[type]]
+name = "ConversationMessageView"
+kind = "record"
+visibility = "public"
+fields = [{name = "conversation", type = "InferenceConversationRef"}, {name = "sequence", type = "U64"}, {name = "role", type = "ConversationMessageRole"}, {name = "content", type = "InferenceContent"}, {name = "reasoning", type = "InferenceContent"}, {name = "source_at_seconds", type = "FiniteF64"}, {name = "status", type = "ConversationMessageStatus"}, {name = "turn", type = "InferenceOptionalTurnRef"}]
+
+[[type]]
+name = "ConversationMessageStreamItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "ConversationSnapshotBoundary"}, {name = "value", type = "ConversationMessageView"}]
+
+[[type]]
+name = "ConversationMessagesEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "ConversationSnapshotBoundary"}, {tag = "summary", type = "ConversationSummaryStreamItem"}, {tag = "message", type = "ConversationMessageStreamItem"}, {tag = "complete", type = "ConversationSnapshotBoundary"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "ConversationMessagesListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "conversation", type = "InferenceConversationRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "expected_revision", type = "U64"}, {name = "after", type = "InferenceOptionalCursor"}]
+
+[[type]]
+name = "ConversationCreateContentRole"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "title", type = "Empty"}, {tag = "model", type = "Empty"}, {tag = "positive_token_preference", type = "Empty"}]
+
+[[type]]
+name = "ConversationUpdateContentRole"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "title", type = "Empty"}, {tag = "model", type = "Empty"}, {tag = "positive_token_preference", type = "Empty"}]
+
+[[type]]
+name = "ConversationCreateContentBinding"
+kind = "record"
+visibility = "public"
+fields = [{name = "store", type = "ConversationStoreRef"}, {name = "consumer_request_id", type = "RequestId"}, {name = "creation_intent_id", type = "ConversationCreationIntentId"}, {name = "role", type = "ConversationCreateContentRole"}]
+
+[[type]]
+name = "ConversationUpdateContentBinding"
+kind = "record"
+visibility = "public"
+fields = [{name = "conversation", type = "InferenceConversationRef"}, {name = "store", type = "ConversationStoreRef"}, {name = "consumer_request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "role", type = "ConversationUpdateContentRole"}]
+
+[[type]]
+name = "ConversationQueryContentBinding"
+kind = "record"
+visibility = "public"
+fields = [{name = "store", type = "ConversationStoreRef"}, {name = "query_intent_id", type = "RequestId"}]
+
+[[type]]
+name = "ConversationContentBinding"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "creation", type = "ConversationCreateContentBinding"}, {tag = "update", type = "ConversationUpdateContentBinding"}, {tag = "search_query", type = "ConversationQueryContentBinding"}]
+
+[[type]]
+name = "ConversationContentState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "collecting", type = "Empty"}, {tag = "finalized", type = "Empty"}, {tag = "discarded", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ConversationContentBeginRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "binding", type = "ConversationContentBinding"}, {name = "declared_utf8_bytes", type = "U64"}, {name = "declared_digest", type = "InferenceDigest"}]
+
+[[type]]
+name = "ConversationContentStageView"
+kind = "record"
+visibility = "public"
+fields = [{name = "stage", type = "InferenceStageRef"}, {name = "binding", type = "ConversationContentBinding"}, {name = "revision", type = "U64"}, {name = "received_utf8_bytes", type = "U64"}, {name = "declared_utf8_bytes", type = "U64"}, {name = "state", type = "ConversationContentState"}]
+
+[[type]]
+name = "ConversationContentAppendRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "stage", type = "InferenceStageRef"}, {name = "expected_revision", type = "U64"}, {name = "byte_offset", type = "U64"}, {name = "chunk", type = "Utf8Chunk"}]
+
+[[type]]
+name = "ConversationContentFinalizeRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "stage", type = "InferenceStageRef"}, {name = "expected_revision", type = "U64"}, {name = "digest", type = "InferenceDigest"}]
+
+[[type]]
+name = "ConversationContentFinalizeView"
+kind = "record"
+visibility = "public"
+fields = [{name = "stage", type = "InferenceStageRef"}, {name = "content", type = "InferenceContent"}, {name = "binding", type = "ConversationContentBinding"}]
+
+[[type]]
+name = "ConversationContentReadRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "store", type = "ConversationStoreRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "content", type = "InferenceContentRef"}, {name = "byte_offset", type = "U64"}]
+
+[[type]]
+name = "ConversationContentDiscardRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "stage", type = "InferenceStageRef"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "ConversationContentDiscardView"
+kind = "record"
+visibility = "public"
+fields = [{name = "stage", type = "InferenceStageRef"}, {name = "revision", type = "U64"}, {name = "discarded", type = "Boolean"}]
+
+[[type]]
+name = "ConversationErrorDetails"
+kind = "record"
+visibility = "public"
+fields = [{name = "message", type = "SafeMessage"}, {name = "retryable", type = "Boolean"}]
+
+[[type]]
+name = "ConversationError"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "invalid_request", type = "ConversationErrorDetails"}, {tag = "unauthenticated", type = "ConversationErrorDetails"}, {tag = "forbidden", type = "ConversationErrorDetails"}, {tag = "not_found", type = "ConversationErrorDetails"}, {tag = "unavailable", type = "ConversationErrorDetails"}, {tag = "stale_generation", type = "ConversationErrorDetails"}, {tag = "revision_conflict", type = "ConversationErrorDetails"}, {tag = "policy_conflict", type = "ConversationErrorDetails"}, {tag = "request_id_conflict", type = "ConversationErrorDetails"}, {tag = "creation_intent_conflict", type = "ConversationErrorDetails"}, {tag = "unsupported_legacy", type = "ConversationErrorDetails"}, {tag = "content_mismatch", type = "ConversationErrorDetails"}, {tag = "cursor_expired", type = "ConversationErrorDetails"}, {tag = "recovery_required", type = "ConversationErrorDetails"}]
+
+[[operation]]
+name = "conversations.defaults.inspect"
+symbol = "ConversationsDefaultsInspect"
+request = "ConversationDefaultsInspectRequest"
+response = "ConversationDefaultsView"
+error = "ConversationError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "actual-authorized-installation-context", "no-store-or-model-prerequisite", "no-storage-creation-on-inspection"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "conversations.list"
+symbol = "ConversationsList"
+request = "ConversationListRequest"
+response = "ConversationListEvent"
+error = "ConversationError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "current-store-principal-installation-device-binding", "exact-resource-generation", "no-storage-path-or-cookie-authority", "principal-bound-query-and-frozen-order", "current-authorization-before-each-item"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "conversations.create"
+symbol = "ConversationsCreate"
+request = "ConversationCreateRequest"
+response = "ConversationCreationView"
+error = "ConversationError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "current-store-principal-installation-device-binding", "exact-resource-generation", "no-storage-path-or-cookie-authority", "durable-principal-resource-generation-payload-bound-transition", "exact-original-source-normalized-intent", "defaults-resolved-once-and-frozen", "independent-storage-lineage-and-current-identity", "atomic-target-and-receipt-marker-edge", "no-model-or-person-presence-prerequisite"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "conversations.creations.inspect"
+symbol = "ConversationsCreationsInspect"
+request = "ConversationCreationInspectRequest"
+response = "ConversationCreationLookup"
+error = "ConversationError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "current-store-principal-installation-device-binding", "exact-resource-generation", "no-storage-path-or-cookie-authority", "current-authorization-before-receipt-lookup", "no-storage-creation-on-inspection", "original-receipt-distinct-current-target"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "conversations.get"
+symbol = "ConversationsGet"
+request = "ConversationGetRequest"
+response = "ConversationSummaryView"
+error = "ConversationError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "current-store-principal-installation-device-binding", "exact-resource-generation", "no-storage-path-or-cookie-authority", "exact-current-conversation-incarnation"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "conversations.messages.list"
+symbol = "ConversationsMessagesList"
+request = "ConversationMessagesListRequest"
+response = "ConversationMessagesEvent"
+error = "ConversationError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "current-store-principal-installation-device-binding", "exact-resource-generation", "no-storage-path-or-cookie-authority", "frozen-summary-and-message-revision", "exact-original-sequence-and-time-bits", "current-authorization-before-each-item"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "conversations.update"
+symbol = "ConversationsUpdate"
+request = "ConversationUpdateRequest"
+response = "ConversationSummaryView"
+error = "ConversationError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "current-store-principal-installation-device-binding", "exact-resource-generation", "no-storage-path-or-cookie-authority", "durable-principal-resource-generation-payload-bound-transition", "compare-and-swap-content-revision", "exact-old-or-proposed-coding-policy-revision", "source-exact-patch-and-policy-revision-semantics", "saved-preference-never-execution-or-approval", "invalidate-old-publication-context"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "conversations.remove"
+symbol = "ConversationsRemove"
+request = "ConversationRemoveRequest"
+response = "ConversationRemovalView"
+error = "ConversationError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "current-store-principal-installation-device-binding", "exact-resource-generation", "no-storage-path-or-cookie-authority", "durable-principal-resource-generation-payload-bound-transition", "compare-and-swap-content-revision", "durable-deletion-and-creation-intent-tombstones", "invalidate-late-publication-before-success", "no-false-worker-settlement"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "conversations.content.begin"
+symbol = "ConversationsContentBegin"
+request = "ConversationContentBeginRequest"
+response = "ConversationContentStageView"
+error = "ConversationError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "current-store-principal-installation-device-binding", "exact-resource-generation", "no-storage-path-or-cookie-authority", "model-independent-owner-and-purpose-bound-content", "actual-shared-resource-admission", "no-literal-content-to-rpc-path-or-identity-authority", "durable-principal-resource-generation-payload-bound-transition", "source-profile-fixed-by-consumer-purpose"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "conversations.content.append"
+symbol = "ConversationsContentAppend"
+request = "ConversationContentAppendRequest"
+response = "ConversationContentStageView"
+error = "ConversationError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "current-store-principal-installation-device-binding", "exact-resource-generation", "no-storage-path-or-cookie-authority", "model-independent-owner-and-purpose-bound-content", "actual-shared-resource-admission", "no-literal-content-to-rpc-path-or-identity-authority", "durable-principal-resource-generation-payload-bound-transition", "immutable-exact-offset-content-and-digest", "compare-and-swap-stage-revision"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "conversations.content.finalize"
+symbol = "ConversationsContentFinalize"
+request = "ConversationContentFinalizeRequest"
+response = "ConversationContentFinalizeView"
+error = "ConversationError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "current-store-principal-installation-device-binding", "exact-resource-generation", "no-storage-path-or-cookie-authority", "model-independent-owner-and-purpose-bound-content", "actual-shared-resource-admission", "no-literal-content-to-rpc-path-or-identity-authority", "durable-principal-resource-generation-payload-bound-transition", "immutable-finalization-and-exact-future-consumer-binding", "node-recomputed-complete-bytes-and-digest"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "conversations.content.read"
+symbol = "ConversationsContentRead"
+request = "ConversationContentReadRequest"
+response = "InferenceContentChunk"
+error = "ConversationError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "current-store-principal-installation-device-binding", "exact-resource-generation", "no-storage-path-or-cookie-authority", "current-content-owner-and-snapshot-authorization", "no-cross-purpose-or-deleted-content-disclosure"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "conversations.content.discard"
+symbol = "ConversationsContentDiscard"
+request = "ConversationContentDiscardRequest"
+response = "ConversationContentDiscardView"
+error = "ConversationError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "current-store-principal-installation-device-binding", "exact-resource-generation", "no-storage-path-or-cookie-authority", "model-independent-owner-and-purpose-bound-content", "actual-shared-resource-admission", "no-literal-content-to-rpc-path-or-identity-authority", "durable-principal-resource-generation-payload-bound-transition", "atomic-discard-versus-finalization", "no-removal-of-saved-content-or-receipts"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
