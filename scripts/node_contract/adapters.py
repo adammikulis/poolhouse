@@ -4,25 +4,9 @@ from __future__ import annotations
 import tomllib
 from pathlib import Path
 
-from .common import GENERATED_TYPES, IDENTIFIER, keys
-
-HANDLES = ('VerifiedInstallation',
- 'RawChannel',
- 'VerifiedProducerLaunch',
- 'AdmittedProducer',
- 'AuthenticatedProducerMessage',
- 'VerifiedBootstrap',
- 'HeldProcess',
- 'RunningProcess',
- 'AuthenticatedCaller',
- 'BeforeConsumeObligation',
- 'RevokedAuthorization',
- 'TerminalCleanupObligation',
- 'HolderCleanup',
- 'OwnedChannelFailure',
- 'OwnedSpawnFailure',
- 'OwnedReleaseFailure',
- 'OwnedCleanupFailure')
+from . import adapter_schema as schema
+from .adapter_render import render as _render
+from .common import keys
 
 REQUIREMENTS = frozenset({'actual-principal-and-process-lifetime',
            'authenticate-retained-producer-launch-and-process',
@@ -106,70 +90,72 @@ METHODS = {'verify_installation': {'arguments': [], 'result': 'VerifiedInstallat
                'failure': 'OwnedCleanupFailure'}}
 
 
-def load(root: Path) -> dict:
-    value = tomllib.loads((root / "adapters.toml").read_text())
-    fixed = {"version": 2, "trait": "NativeCallerPlatform", "binding": "node-owned-runtime-handle",
+
+ERRORS = ["InvalidInstallation", "MissingChannel", "WrongPrincipal", "StaleProcess", "UnprotectedProcess", "ConfinementUnavailable", "BindingMismatch", "Cancelled", "Io"]
+
+
+def _same(actual, expected) -> bool:
+    """Exact schema constants must not coerce bools/ints or permit unknown subfields."""
+    if type(actual) is not type(expected):
+        return False
+    if isinstance(expected, dict):
+        return actual.keys() == expected.keys() and all(_same(actual[key], item) for key, item in expected.items())
+    if isinstance(expected, list):
+        return len(actual) == len(expected) and all(_same(a, b) for a, b in zip(actual, expected, strict=True))
+    return actual == expected
+
+
+def _rows(value, expected, label):
+    if not isinstance(value, list):
+        raise ValueError("invalid native " + label)
+    seen = set()
+    for row in value:
+        if not isinstance(row, dict) or not isinstance(row.get("name"), str):
+            raise ValueError("invalid native " + label)
+        name = row["name"]
+        if name in seen or name not in expected or not _same(row, {"name": name, **expected[name]}):
+            raise ValueError("native " + label + " weakens exact projection or custody")
+        seen.add(name)
+    if seen != set(expected):
+        raise ValueError("incomplete native " + label)
+
+
+def validate(value: dict) -> dict:
+    """Only the reviewed closed graph is accepted; no schema field contains Rust text."""
+    fixed = {"version": 3, "trait": "NativeCallerPlatform", "binding": "node-owned-runtime-handle",
              "serialization": "forbidden", "spawn_plan": "node-owned-immutable-measured-plan",
              "visibility": "crate-private-sealed", "status": "incomplete-proposal"}
-    fields = {*fixed, "handles", "errors", "requirements", "method"}
+    fields = {*fixed, "errors", "requirements", "method", "graph", "effect_owner", "projection", "leaf", "view", "representation", "phase", "profile"}
     keys(value, fields, fields)
-    if type(value["version"]) is not int or any(value[key] != expected for key, expected in fixed.items()):
+    if any(not _same(value[key], expected) for key, expected in fixed.items()) or not _same(value["errors"], ERRORS):
         raise ValueError("unsupported native adapter boundary")
-    for name in ("handles", "errors"):
-        items = value[name]
-        if (not isinstance(items, list) or not items or any(not isinstance(item, str)
-                or not IDENTIFIER.fullmatch(item) or item in GENERATED_TYPES for item in items)
-                or len(set(items)) != len(items)):
-            raise ValueError("invalid adapter identifiers")
-    if set(value["handles"]) != set(HANDLES):
-        raise ValueError("invalid opaque handle boundary")
     requirements = value["requirements"]
     if (not isinstance(requirements, list) or any(not isinstance(item, str) for item in requirements)
-            or len(set(requirements)) != len(requirements) or set(requirements) != REQUIREMENTS):
+            or len(set(requirements)) != len(requirements) or set(requirements) != REQUIREMENTS | schema.NEW_REQUIREMENTS):
         raise ValueError("unsupported native adapter ownership requirements")
-    if not isinstance(value["method"], list):
-        raise ValueError("invalid native adapter methods")
-    seen = set()
-    for method in value["method"]:
-        keys(method, {"name", "arguments", "result", "failure"}, {"name", "arguments", "result", "failure"})
-        name = method["name"]
-        if not isinstance(name, str) or name not in METHODS or name in seen:
-            raise ValueError("unknown or duplicate native adapter method")
-        if {key: method[key] for key in ("arguments", "result", "failure")} != METHODS[name]:
-            raise ValueError("native adapter method weakens exact ownership or binding")
-        seen.add(name)
-    if seen != set(METHODS):
-        raise ValueError("incomplete native caller adapter")
+    graph = {"name": "NativeGraph", "seal": "Graph", "associated": [
+        {"name": name, "projection": projection, "role": role} for name, projection, role in schema.ASSOCIATIONS]}
+    if not _same(value["graph"], graph):
+        raise ValueError("native graph loses exact associated-type identity")
+    effect = {"graph": "EffectGraph", "seal": "Graph", "trait": "NodeEffectOwner", "owner_seal": "Owner", "identity": schema.G("identity", "Owner"),
+              "associated": [{"name": name, "projection": projection} for name, projection in schema.EFFECT_ASSOCIATIONS],
+              "method": {"name": "execute", "receiver": "mutable", "arguments": [
+                  {"name": "permit", "type": "Permit", "ownership": "move"},
+                  {"name": "operation", "type": "Operation", "ownership": "move"}], "result": "Completion", "failure": "Unknown"}}
+    if not _same(value["effect_owner"], effect):
+        raise ValueError("native effect owner loses moved-input completion ownership")
+    for label, expected in (("projection", schema.PROJECTIONS), ("leaf", schema.LEAVES), ("view", schema.VIEWS), ("representation", schema.REPRESENTATIONS)):
+        _rows(value[label], expected, label)
+    for label, expected in (("phase", schema.PHASES), ("profile", schema.PROFILES)):
+        if not _same(value[label], expected):
+            raise ValueError("unsupported native " + label)
+    _rows(value["method"], METHODS, "methods")
     return value
 
 
-def render(adapter: dict) -> str:
-    output = [
-        "// Incomplete declarations: no platform implementation, issuer, projection graph or bridge.",
-        "pub(crate) mod native_seal {",
-        "    pub(crate) trait Platform {}",
-        "    pub(crate) trait Binding {}",
-        "    pub(crate) trait SpawnPlan {}",
-        "}",
-        "pub(crate) trait NodeBinding: native_seal::Binding {}",
-        "pub(crate) trait NodeSpawnPlan: native_seal::SpawnPlan {",
-        "    type Binding: NodeBinding;",
-        "    fn binding(&self) -> &Self::Binding;",
-        "}",
-        "/// Runtime handles and diagnostics cannot be converted into core proofs.",
-        "pub(crate) trait NativeCallerPlatform<Binding: NodeBinding, SpawnPlan: NodeSpawnPlan<Binding = Binding>>: native_seal::Platform {",
-    ]
-    output.extend("    type " + name + ";" for name in adapter["handles"])
-    for method in adapter["method"]:
-        arguments = []
-        for argument in method["arguments"]:
-            kind = argument["type"] if argument["type"] in {"Binding", "SpawnPlan"} else "Self::" + argument["type"]
-            arguments.append(argument["name"] + ": " + ("&" if argument["ownership"] == "borrow" else "") + kind)
-        result = method["result"]
-        result = result if result in {"bool", "ProcessObservation"} else "Self::" + result
-        failure = method["failure"]
-        failure = failure if failure == "NativeAdapterError" else "Self::" + failure
-        suffix = ", " + ", ".join(arguments) if arguments else ""
-        output.append(f'    fn {method["name"]}(&mut self{suffix}) -> Result<{result}, {failure}>;')
-    output.append("}\n")
-    return "\n".join(output)
+def load(root: Path) -> dict:
+    return validate(tomllib.loads((root / "adapters.toml").read_text()))
+
+
+def render(value: dict) -> str:
+    return _render(validate(value))

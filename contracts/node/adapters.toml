@@ -1,13 +1,12 @@
-version = 2
+version = 3
 trait = "NativeCallerPlatform"
 binding = "node-owned-runtime-handle"
 serialization = "forbidden"
 spawn_plan = "node-owned-immutable-measured-plan"
 visibility = "crate-private-sealed"
 status = "incomplete-proposal"
-handles = ["VerifiedInstallation", "RawChannel", "VerifiedProducerLaunch", "AdmittedProducer", "AuthenticatedProducerMessage", "VerifiedBootstrap", "HeldProcess", "RunningProcess", "AuthenticatedCaller", "BeforeConsumeObligation", "RevokedAuthorization", "TerminalCleanupObligation", "HolderCleanup", "OwnedChannelFailure", "OwnedSpawnFailure", "OwnedReleaseFailure", "OwnedCleanupFailure"]
 errors = ["InvalidInstallation", "MissingChannel", "WrongPrincipal", "StaleProcess", "UnprotectedProcess", "ConfinementUnavailable", "BindingMismatch", "Cancelled", "Io"]
-requirements = ["no-caller-selected-authority", "no-serde-or-public-constructors", "actual-principal-and-process-lifetime", "held-drop-kills-and-reaps", "release-consumes-hold-once", "node-validates-caller-observations", "terminate-without-pid-reuse", "no-unsupported-platform-fallback", "plan-binds-invocation-and-generation", "retain-measured-executable-and-assets", "immutable-arguments-environment-directory-and-confinement", "explicit-handle-ownership-and-inheritance", "release-binding-matches-held-plan", "crate-private-sealed-platform-and-runtime-parameters", "authenticate-retained-producer-launch-and-process", "single-reader-retained-channel-owner", "opaque-birth-resume-invocation-message", "hold-binds-node-binding-and-plan", "caller-binds-running-process-and-node-binding", "owned-failures-retain-unresolved-custody", "phase-specific-single-use-cleanup-obligations", "revoke-node-authorization-before-terminal-cleanup", "cleanup-is-not-domain-completion", "no-production-proof-issuer-or-bridge"]
+requirements = ["actual-principal-and-process-lifetime", "authenticate-retained-producer-launch-and-process", "caller-binds-running-process-and-node-binding", "cleanup-is-not-domain-completion", "crate-private-sealed-platform-and-runtime-parameters", "durable-consumption-fence-before-effect", "durable-source-disposition-and-custody-fence-before-right", "exact-associated-type-projection-graph", "explicit-handle-ownership-and-inheritance", "fixed-nominal-held-and-running-phases", "held-drop-kills-and-reaps", "hold-binds-node-binding-and-plan", "immutable-arguments-environment-directory-and-confinement", "missing-or-rolled-back-occurrence-ledger-refuses-prior-source", "native-source-view-has-no-node-issued-session-keys", "no-caller-selected-authority", "no-production-proof-issuer-or-bridge", "no-serde-or-public-constructors", "no-unsupported-platform-fallback", "node-validates-caller-observations", "opaque-birth-resume-invocation-message", "owned-failures-retain-unresolved-custody", "phase-specific-single-use-cleanup-obligations", "plan-binds-invocation-and-generation", "release-binding-matches-held-plan", "release-consumes-hold-once", "retain-measured-executable-and-assets", "revoke-node-authorization-before-terminal-cleanup", "same-owner-shared-retention-without-duplicating-custody", "separate-sealed-domain-effect-owner", "single-reader-retained-channel-owner", "source-occurrence-namespace-independent-of-node-boot-and-admission", "terminate-without-pid-reuse", "unique-phase-obligation-and-full-resource-accounting", "unknown-effect-retains-permit-operation-and-owner", "unresolved-profiles-block-runtime-validation"]
 
 [[method]]
 name = "verify_installation"
@@ -86,3 +85,522 @@ name = "terminate"
 arguments = [{name = "running", type = "RunningProcess", ownership = "move"}, {name = "revoked", type = "RevokedAuthorization", ownership = "move"}, {name = "obligation", type = "TerminalCleanupObligation", ownership = "move"}]
 result = "HolderCleanup"
 failure = "OwnedCleanupFailure"
+
+[graph]
+name = "NativeGraph"
+seal = "Graph"
+associated = [{name = "Installation", projection = "InstallationProjection", role = "VerifiedInstallation"}, {name = "Launch", projection = "LaunchProjection", role = "VerifiedProducerLaunch"}, {name = "LaunchPlan", projection = "ProducerLaunchPlanProjection", role = "ProducerLaunchPlan"}, {name = "Process", projection = "ProcessProjection", role = "Process"}, {name = "Channel", projection = "ChannelProjection", role = "Channel"}, {name = "RawChannel", projection = "RawChannelProjection", role = "RawChannel"}, {name = "MeasuredAsset", projection = "MeasuredAssetProjection", role = "MeasuredAsset"}, {name = "Producer", projection = "ProducerProjection", role = "AdmittedProducer"}, {name = "Message", projection = "ProducerMessageProjection", role = "AuthenticatedProducerMessage"}, {name = "Bootstrap", projection = "BootstrapProjection", role = "VerifiedBootstrap"}, {name = "Binding", projection = "BindingProjection", role = "Binding"}, {name = "Plan", projection = "PlanProjection", role = "SpawnPlan"}, {name = "Holder", projection = "HolderProjection", role = "Holder"}, {name = "ChildCustody", projection = "ChildProjection", role = "ChildCustody"}, {name = "Caller", projection = "CallerProjection", role = "AuthenticatedCaller"}, {name = "CallerMessage", projection = "CallerMessageProjection", role = "CallerMessage"}, {name = "BeforeConsume", projection = "BeforeConsumeProjection", role = "BeforeConsumeObligation"}, {name = "Revoked", projection = "RevokedProjection", role = "RevokedAuthorization"}, {name = "Terminal", projection = "TerminalProjection", role = "TerminalCleanupObligation"}, {name = "Cleanup", projection = "CleanupProjection", role = "HolderCleanup"}, {name = "ChannelFailure", projection = "ChannelFailureProjection", role = "OwnedChannelFailure"}, {name = "SpawnFailure", projection = "SpawnFailureProjection", role = "OwnedSpawnFailure"}, {name = "ReleaseFailure", projection = "ReleaseFailureProjection", role = "OwnedReleaseFailure"}, {name = "CleanupFailure", projection = "CleanupFailureProjection", role = "OwnedCleanupFailure"}]
+
+[effect_owner]
+graph = "EffectGraph"
+seal = "Graph"
+trait = "NodeEffectOwner"
+owner_seal = "Owner"
+identity = {name = "identity", result = "Owner", ownership = "borrow", optional = false}
+associated = [{name = "Owner", projection = "EffectOwnerProjection"}, {name = "Permit", projection = "PermitProjection"}, {name = "Operation", projection = "BoundOperationProjection"}, {name = "Completion", projection = "CompletionProjection"}, {name = "Unknown", projection = "UnknownEffectProjection"}]
+method = {name = "execute", receiver = "mutable", arguments = [{name = "permit", type = "Permit", ownership = "move"}, {name = "operation", type = "Operation", ownership = "move"}], result = "Completion", failure = "Unknown"}
+
+[[projection]]
+name = "ProcessProjection"
+seal = "Process"
+graph = "none"
+seal_scope = "native"
+getters = [{name = "identity", result = "KernelProcessIdentity", ownership = "borrow", optional = false}, {name = "observation", result = "ProcessObservation", ownership = "borrow", optional = false}]
+
+[[projection]]
+name = "InstallationProjection"
+seal = "Installation"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "identity", result = "InstallationIdentity", ownership = "borrow", optional = false}, {name = "manifest_digest", result = "Digest", ownership = "borrow", optional = false}, {name = "assets", result = "MeasuredAsset", ownership = "borrow-slice", optional = false}, {name = "service_principal", result = "ConfiguredServicePrincipal", ownership = "borrow", optional = false}, {name = "owner_principal", result = "ConfiguredOwnerPrincipal", ownership = "borrow", optional = false}]
+
+[[projection]]
+name = "MeasuredAssetProjection"
+seal = "MeasuredAsset"
+graph = "none"
+seal_scope = "native"
+getters = [{name = "identity", result = "MeasuredAssetIdentity", ownership = "borrow", optional = false}, {name = "digest", result = "Digest", ownership = "borrow", optional = false}]
+
+[[projection]]
+name = "ChannelProjection"
+seal = "Channel"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "identity", result = "ChannelIdentity", ownership = "borrow", optional = false}, {name = "process", result = "Process", ownership = "borrow", optional = false}, {name = "holder", result = "Holder", ownership = "borrow", optional = false}, {name = "reader_epoch", result = "ReaderEpoch", ownership = "borrow", optional = false}, {name = "direction", result = "ChannelDirection", ownership = "value", optional = false}]
+
+[[projection]]
+name = "RawChannelProjection"
+seal = "RawChannel"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "identity", result = "ChannelIdentity", ownership = "borrow", optional = false}, {name = "observed_process", result = "Process", ownership = "borrow", optional = true}, {name = "holder", result = "Holder", ownership = "borrow", optional = false}, {name = "direction", result = "ChannelDirection", ownership = "value", optional = false}]
+
+[[projection]]
+name = "HolderProjection"
+seal = "Holder"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "identity", result = "HolderIdentity", ownership = "borrow", optional = false}, {name = "process", result = "Process", ownership = "borrow", optional = false}]
+
+[[projection]]
+name = "LaunchProjection"
+seal = "Launch"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "installation", result = "Installation", ownership = "borrow", optional = false}, {name = "process", result = "Process", ownership = "borrow", optional = false}, {name = "producer_channel", result = "Channel", ownership = "borrow", optional = false}, {name = "launch_epoch", result = "ProducerLaunchEpoch", ownership = "borrow", optional = false}, {name = "measured_plan", result = "LaunchPlan", ownership = "borrow", optional = false}]
+
+[[projection]]
+name = "ProducerProjection"
+seal = "Producer"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "installation", result = "Installation", ownership = "borrow", optional = false}, {name = "launch", result = "Launch", ownership = "borrow", optional = false}, {name = "process", result = "Process", ownership = "borrow", optional = false}, {name = "channel", result = "Channel", ownership = "borrow", optional = false}, {name = "admission", result = "ProducerAdmissionKey", ownership = "borrow", optional = false}]
+
+[[projection]]
+name = "BootstrapProjection"
+seal = "Bootstrap"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "installation", result = "Installation", ownership = "borrow", optional = false}, {name = "assets", result = "MeasuredAsset", ownership = "borrow-slice", optional = false}]
+
+[[projection]]
+name = "ProducerMessageProjection"
+seal = "ProducerMessage"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "producer", result = "Producer", ownership = "borrow", optional = false}, {name = "occurrence", result = "NativeOccurrence", ownership = "borrow", optional = false}, {name = "view", result = "NativeMessageView", ownership = "value", optional = false}]
+
+[[projection]]
+name = "BindingProjection"
+seal = "Binding"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "producer", result = "Producer", ownership = "borrow", optional = false}, {name = "invocation_message", result = "Message", ownership = "borrow", optional = false}, {name = "session_key", result = "NodeSessionKey", ownership = "borrow", optional = false}, {name = "invocation_key", result = "NodeInvocationKey", ownership = "borrow", optional = false}, {name = "context", result = "NativeContextView", ownership = "value", optional = false}, {name = "purpose", result = "OperationPurpose", ownership = "borrow", optional = false}, {name = "payload_digest", result = "Digest", ownership = "borrow", optional = false}, {name = "spawn_plan_digest", result = "Digest", ownership = "borrow", optional = false}]
+
+[[projection]]
+name = "PlanProjection"
+seal = "Plan"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "binding", result = "Binding", ownership = "borrow", optional = false}, {name = "executable", result = "MeasuredAsset", ownership = "borrow", optional = false}, {name = "assets", result = "MeasuredAsset", ownership = "borrow-slice", optional = false}, {name = "arguments", result = "ImmutableArgument", ownership = "borrow-slice", optional = false}, {name = "environment", result = "ImmutableEnvironmentEntry", ownership = "borrow-slice", optional = false}, {name = "directory", result = "MeasuredDirectoryIdentity", ownership = "borrow", optional = false}, {name = "confinement", result = "ConfinementProfile", ownership = "borrow", optional = false}, {name = "inheritance", result = "InheritedResourceSpec", ownership = "borrow-slice", optional = false}]
+
+[[projection]]
+name = "ProducerLaunchPlanProjection"
+seal = "LaunchPlan"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "installation", result = "Installation", ownership = "borrow", optional = false}, {name = "executable", result = "MeasuredAsset", ownership = "borrow", optional = false}, {name = "assets", result = "MeasuredAsset", ownership = "borrow-slice", optional = false}, {name = "arguments", result = "ImmutableArgument", ownership = "borrow-slice", optional = false}, {name = "environment", result = "ImmutableEnvironmentEntry", ownership = "borrow-slice", optional = false}, {name = "directory", result = "MeasuredDirectoryIdentity", ownership = "borrow", optional = false}, {name = "confinement", result = "ConfinementProfile", ownership = "borrow", optional = false}, {name = "inheritance", result = "InheritedResourceSpec", ownership = "borrow-slice", optional = false}]
+
+[[projection]]
+name = "ChildProjection"
+seal = "Child"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "producer", result = "Producer", ownership = "borrow", optional = false}, {name = "bootstrap", result = "Bootstrap", ownership = "borrow", optional = false}, {name = "binding", result = "Binding", ownership = "borrow", optional = false}, {name = "plan", result = "Plan", ownership = "borrow", optional = false}, {name = "process", result = "Process", ownership = "borrow", optional = false}, {name = "holder", result = "Holder", ownership = "borrow", optional = false}, {name = "resources", result = "RetainedResource", ownership = "borrow-slice", optional = false}]
+
+[[projection]]
+name = "HeldProjection"
+seal = "Held"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "phase", result = "HeldPhase", ownership = "value", optional = false}]
+
+[[projection]]
+name = "RunningProjection"
+seal = "Running"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "phase", result = "RunningPhase", ownership = "value", optional = false}]
+
+[[projection]]
+name = "CallerProjection"
+seal = "Caller"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "running", result = "RunningHandle", ownership = "borrow", optional = false}, {name = "binding", result = "Binding", ownership = "borrow", optional = false}, {name = "channel", result = "Channel", ownership = "borrow", optional = false}, {name = "message", result = "CallerMessage", ownership = "borrow", optional = false}]
+
+[[projection]]
+name = "CallerMessageProjection"
+seal = "CallerMessage"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "channel", result = "Channel", ownership = "borrow", optional = false}, {name = "running", result = "RunningHandle", ownership = "borrow", optional = false}, {name = "original_bytes", result = "bytes", ownership = "borrow-slice", optional = false}, {name = "view", result = "NativeInvocationView", ownership = "value", optional = false}]
+
+[[projection]]
+name = "BeforeConsumeProjection"
+seal = "BeforeConsume"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "id", result = "ObligationId", ownership = "borrow", optional = false}, {name = "binding", result = "Binding", ownership = "borrow", optional = false}, {name = "process", result = "Process", ownership = "borrow", optional = false}, {name = "holder", result = "Holder", ownership = "borrow", optional = false}, {name = "phase", result = "CleanupPhase", ownership = "value", optional = false}, {name = "requirements", result = "ResourceRequirement", ownership = "borrow-slice", optional = false}, {name = "preserved", result = "RetainedResource", ownership = "borrow-slice", optional = false}]
+
+[[projection]]
+name = "TerminalProjection"
+seal = "Terminal"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "id", result = "ObligationId", ownership = "borrow", optional = false}, {name = "binding", result = "Binding", ownership = "borrow", optional = false}, {name = "process", result = "Process", ownership = "borrow", optional = false}, {name = "holder", result = "Holder", ownership = "borrow", optional = false}, {name = "phase", result = "CleanupPhase", ownership = "value", optional = false}, {name = "requirements", result = "ResourceRequirement", ownership = "borrow-slice", optional = false}]
+
+[[projection]]
+name = "RevokedProjection"
+seal = "Revoked"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "binding", result = "Binding", ownership = "borrow", optional = false}, {name = "obligation_id", result = "ObligationId", ownership = "borrow", optional = false}, {name = "revocation", result = "NodeRevocationKey", ownership = "borrow", optional = false}]
+
+[[projection]]
+name = "CleanupProjection"
+seal = "Cleanup"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "obligation_id", result = "ObligationId", ownership = "borrow", optional = false}, {name = "binding", result = "Binding", ownership = "borrow", optional = false}, {name = "process", result = "Process", ownership = "borrow", optional = false}, {name = "holder", result = "Holder", ownership = "borrow", optional = false}, {name = "phase", result = "CleanupPhase", ownership = "value", optional = false}, {name = "results", result = "ResourceCleanupResult", ownership = "borrow-slice", optional = false}, {name = "preserved", result = "RetainedResource", ownership = "borrow-slice", optional = false}]
+
+[[projection]]
+name = "ChannelFailureProjection"
+seal = "ChannelFailure"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "classification", result = "NativeAdapterError", ownership = "value", optional = false}, {name = "custody", result = "UnresolvedCustody", ownership = "borrow", optional = false}, {name = "producer", result = "Producer", ownership = "borrow", optional = true}]
+
+[[projection]]
+name = "SpawnFailureProjection"
+seal = "SpawnFailure"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "classification", result = "NativeAdapterError", ownership = "value", optional = false}, {name = "custody", result = "UnresolvedCustody", ownership = "borrow", optional = false}, {name = "binding", result = "Binding", ownership = "borrow", optional = false}, {name = "plan", result = "Plan", ownership = "borrow", optional = false}]
+
+[[projection]]
+name = "ReleaseFailureProjection"
+seal = "ReleaseFailure"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "classification", result = "NativeAdapterError", ownership = "value", optional = false}, {name = "custody", result = "UnresolvedCustody", ownership = "borrow", optional = false}, {name = "binding", result = "Binding", ownership = "borrow", optional = false}, {name = "plan", result = "Plan", ownership = "borrow", optional = false}]
+
+[[projection]]
+name = "CleanupFailureProjection"
+seal = "CleanupFailure"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "classification", result = "NativeAdapterError", ownership = "value", optional = false}, {name = "custody", result = "UnresolvedCustody", ownership = "borrow", optional = false}, {name = "partial_results", result = "ResourceCleanupResult", ownership = "borrow-slice", optional = false}]
+
+[[projection]]
+name = "EffectOwnerProjection"
+seal = "Identity"
+graph = "native"
+seal_scope = "effect"
+getters = [{name = "process", result = "Process", ownership = "borrow", optional = false}, {name = "identity", result = "NodeEffectOwnerKey", ownership = "borrow", optional = false}]
+
+[[projection]]
+name = "PermitProjection"
+seal = "Permit"
+graph = "effect"
+seal_scope = "effect"
+getters = [{name = "binding", result = "Binding", ownership = "borrow", optional = false}, {name = "permit_id", result = "EffectPermitId", ownership = "borrow", optional = false}, {name = "owner", result = "Owner", ownership = "borrow", optional = false}, {name = "operation_identity", result = "BoundOperationIdentity", ownership = "borrow", optional = false}]
+
+[[projection]]
+name = "BoundOperationProjection"
+seal = "Operation"
+graph = "effect"
+seal_scope = "effect"
+getters = [{name = "binding", result = "Binding", ownership = "borrow", optional = false}, {name = "owner", result = "Owner", ownership = "borrow", optional = false}, {name = "purpose", result = "OperationPurpose", ownership = "borrow", optional = false}, {name = "canonical_payload", result = "bytes", ownership = "borrow-slice", optional = false}, {name = "payload_digest", result = "Digest", ownership = "borrow", optional = false}]
+
+[[projection]]
+name = "CompletionProjection"
+seal = "Completion"
+graph = "effect"
+seal_scope = "effect"
+getters = [{name = "permit", result = "Permit", ownership = "borrow", optional = false}, {name = "operation", result = "Operation", ownership = "borrow", optional = false}, {name = "owner", result = "Owner", ownership = "borrow", optional = false}, {name = "outcome", result = "RecordedDomainOutcome", ownership = "borrow", optional = false}, {name = "record_id", result = "CompletionRecordId", ownership = "borrow", optional = false}]
+
+[[projection]]
+name = "UnknownEffectProjection"
+seal = "Unknown"
+graph = "effect"
+seal_scope = "effect"
+getters = [{name = "permit", result = "Permit", ownership = "borrow", optional = false}, {name = "operation", result = "Operation", ownership = "borrow", optional = false}, {name = "owner", result = "Owner", ownership = "borrow", optional = false}, {name = "reason", result = "UnknownEffectReason", ownership = "value", optional = false}, {name = "retained_resources", result = "UnresolvedCustody", ownership = "borrow", optional = false}]
+
+[[leaf]]
+name = "Digest"
+kind = "bytes32"
+
+[[leaf]]
+name = "ProducerLaunchEpoch"
+kind = "bytes32"
+
+[[leaf]]
+name = "RegistryBootEpoch"
+kind = "bytes32"
+
+[[leaf]]
+name = "KernelBootIdentity"
+kind = "bytes32"
+
+[[leaf]]
+name = "ReaderEpoch"
+kind = "bytes32"
+
+[[leaf]]
+name = "ObligationId"
+kind = "bytes32"
+
+[[leaf]]
+name = "CompletionRecordId"
+kind = "bytes32"
+
+[[leaf]]
+name = "HolderIdentity"
+kind = "bytes32"
+
+[[leaf]]
+name = "ChannelIdentity"
+kind = "bytes32"
+
+[[leaf]]
+name = "NodeEffectOwnerKey"
+kind = "bytes32"
+
+[[leaf]]
+name = "ProducerAdmissionKey"
+kind = "record"
+fields = [{name = "boot", type = "RegistryBootEpoch", optional = false}, {name = "generation", type = "u64", optional = false}]
+
+[[leaf]]
+name = "NodeSessionKey"
+kind = "record"
+fields = [{name = "boot", type = "RegistryBootEpoch", optional = false}, {name = "generation", type = "u64", optional = false}]
+
+[[leaf]]
+name = "NodeInvocationKey"
+kind = "record"
+fields = [{name = "boot", type = "RegistryBootEpoch", optional = false}, {name = "generation", type = "u64", optional = false}]
+
+[[leaf]]
+name = "NodeRevocationKey"
+kind = "record"
+fields = [{name = "boot", type = "RegistryBootEpoch", optional = false}, {name = "generation", type = "u64", optional = false}]
+
+[[leaf]]
+name = "EffectPermitId"
+kind = "record"
+fields = [{name = "boot", type = "RegistryBootEpoch", optional = false}, {name = "generation", type = "u64", optional = false}]
+
+[[leaf]]
+name = "NativeActorId"
+kind = "bytes"
+
+[[leaf]]
+name = "NativeEventKind"
+kind = "bytes"
+
+[[leaf]]
+name = "OperationPurpose"
+kind = "bytes"
+
+[[leaf]]
+name = "ImmutableArgument"
+kind = "bytes"
+
+[[leaf]]
+name = "InstallationIdentity"
+kind = "record"
+fields = [{name = "id", type = "InstallationId", optional = false}, {name = "generation", type = "ResourceGeneration", optional = false}]
+
+[[leaf]]
+name = "KernelProcessIdentity"
+kind = "enum"
+variants = [{name = "Linux", fields = [{name = "boot", type = "KernelBootIdentity", optional = false}, {name = "pid", type = "u32", optional = false}, {name = "start_ticks", type = "u64", optional = false}, {name = "uid", type = "u32", optional = false}]}, {name = "Windows", fields = [{name = "boot", type = "KernelBootIdentity", optional = false}, {name = "pid", type = "u32", optional = false}, {name = "creation_time", type = "u64", optional = false}, {name = "sid", type = "WindowsSid", optional = false}]}, {name = "Mac", fields = [{name = "boot", type = "KernelBootIdentity", optional = false}, {name = "pid", type = "u32", optional = false}, {name = "pid_version", type = "u32", optional = false}, {name = "audit", type = "AuditToken", optional = false}]}]
+
+[[leaf]]
+name = "ConfiguredServicePrincipal"
+kind = "enum"
+variants = [{name = "UnixUid", fields = [{name = "uid", type = "u32", optional = false}], style = "tuple"}, {name = "WindowsSid", fields = [{name = "sid", type = "WindowsSid", optional = false}], style = "tuple"}]
+
+[[leaf]]
+name = "ConfiguredOwnerPrincipal"
+kind = "enum"
+variants = [{name = "UnixUid", fields = [{name = "uid", type = "u32", optional = false}], style = "tuple"}, {name = "WindowsSid", fields = [{name = "sid", type = "WindowsSid", optional = false}], style = "tuple"}]
+
+[[leaf]]
+name = "NativeOccurrence"
+kind = "record"
+fields = [{name = "original_launch", type = "ProducerLaunchEpoch", optional = false}, {name = "id", type = "bytes32", optional = false}]
+
+[[leaf]]
+name = "NativeResumeContinuity"
+kind = "record"
+fields = [{name = "prior_admission_occurrence", type = "NativeOccurrence", optional = false}, {name = "actor", type = "NativeActorId", optional = false}, {name = "root", type = "NativeActorId", optional = false}, {name = "parent", type = "NativeActorId", optional = true}, {name = "context_digest", type = "Digest", optional = false}]
+
+[[leaf]]
+name = "MeasuredAssetIdentity"
+kind = "record"
+fields = [{name = "installation", type = "InstallationIdentity", optional = false}, {name = "manifest_entry", type = "u32", optional = false}, {name = "digest", type = "Digest", optional = false}]
+
+[[leaf]]
+name = "ImmutableEnvironmentEntry"
+kind = "record"
+fields = [{name = "key", type = "bytes", optional = false}, {name = "value", type = "bytes", optional = false}]
+
+[[leaf]]
+name = "MeasuredDirectoryIdentity"
+kind = "record"
+fields = [{name = "installation", type = "InstallationIdentity", optional = false}, {name = "manifest_entry", type = "u32", optional = false}, {name = "measurement", type = "Digest", optional = false}]
+
+[[leaf]]
+name = "ConfinementProfile"
+kind = "enum"
+variants = [{name = "WindowsAppContainer", fields = [{name = "manifest_digest", type = "Digest", optional = false}]}, {name = "LinuxBubblewrap", fields = [{name = "manifest_digest", type = "Digest", optional = false}]}, {name = "MacSeatbelt", fields = [{name = "manifest_digest", type = "Digest", optional = false}]}]
+
+[[leaf]]
+name = "InheritedResourceSpec"
+kind = "record"
+fields = [{name = "resource", type = "ChannelIdentity", optional = false}, {name = "direction", type = "ChannelDirection", optional = false}, {name = "allowed_operations", type = "InheritedOperations", optional = false}]
+
+[[leaf]]
+name = "RecordedDomainOutcome"
+kind = "enum"
+variants = [{name = "Success", fields = [{name = "canonical_result", type = "bytes", optional = false}]}, {name = "Failure", fields = [{name = "canonical_error", type = "bytes", optional = false}]}]
+
+[[leaf]]
+name = "BoundOperationIdentity"
+kind = "record"
+fields = [{name = "invocation", type = "NodeInvocationKey", optional = false}, {name = "purpose", type = "OperationPurpose", optional = false}, {name = "payload_digest", type = "Digest", optional = false}]
+
+[[leaf]]
+name = "CleanupResultKind"
+kind = "enum"
+variants = [{name = "Completed", fields = []}, {name = "Failed", fields = [{name = "error", type = "NativeAdapterError", optional = false}], style = "tuple"}, {name = "Unresolved", fields = [{name = "error", type = "NativeAdapterError", optional = false}], style = "tuple"}]
+
+[[leaf]]
+name = "ChannelDirection"
+kind = "enum"
+variants = [{name = "ReadOnly", fields = []}, {name = "WriteOnly", fields = []}, {name = "Duplex", fields = []}]
+copy = true
+
+[[leaf]]
+name = "InheritedOperations"
+kind = "enum"
+variants = [{name = "Read", fields = []}, {name = "Write", fields = []}, {name = "ReadWrite", fields = []}]
+copy = true
+
+[[leaf]]
+name = "HeldPhase"
+kind = "enum"
+variants = [{name = "Held", fields = []}]
+copy = true
+
+[[leaf]]
+name = "RunningPhase"
+kind = "enum"
+variants = [{name = "Running", fields = []}]
+copy = true
+
+[[leaf]]
+name = "CleanupPhase"
+kind = "enum"
+variants = [{name = "BeforeConsume", fields = []}, {name = "Terminal", fields = []}]
+copy = true
+
+[[leaf]]
+name = "RequiredAction"
+kind = "enum"
+variants = [{name = "CloseChannel", fields = []}, {name = "TerminateAndReapProcess", fields = []}, {name = "ReleaseMeasurement", fields = []}]
+copy = true
+
+[[leaf]]
+name = "ProcessDisposition"
+kind = "enum"
+variants = [{name = "Held", fields = []}, {name = "Running", fields = []}, {name = "Unknown", fields = []}]
+copy = true
+
+[[leaf]]
+name = "UnknownEffectReason"
+kind = "enum"
+variants = [{name = "BindingMismatchBeforeEffect", fields = []}, {name = "RecordingLostAfterPossibleEffect", fields = []}, {name = "OwnerLost", fields = []}, {name = "Interrupted", fields = []}]
+copy = true
+
+[[view]]
+name = "NativeBirthView"
+kind = "borrowed-record"
+fields = [{name = "actor", result = "NativeActorId", ownership = "borrow", optional = false}, {name = "context", result = "bytes", ownership = "borrow-slice", optional = false}, {name = "root", result = "NativeActorId", ownership = "borrow", optional = false}, {name = "direct_parent", result = "NativeActorId", ownership = "borrow", optional = true}, {name = "event_kind", result = "NativeEventKind", ownership = "borrow", optional = false}]
+
+[[view]]
+name = "NativeResumeView"
+kind = "borrowed-record"
+fields = [{name = "actor", result = "NativeActorId", ownership = "borrow", optional = false}, {name = "context", result = "bytes", ownership = "borrow-slice", optional = false}, {name = "root", result = "NativeActorId", ownership = "borrow", optional = false}, {name = "direct_parent", result = "NativeActorId", ownership = "borrow", optional = true}, {name = "event_kind", result = "NativeEventKind", ownership = "borrow", optional = false}, {name = "continuity", result = "NativeResumeContinuity", ownership = "borrow", optional = false}]
+
+[[view]]
+name = "NativeInvocationView"
+kind = "borrowed-record"
+fields = [{name = "actor", result = "NativeActorId", ownership = "borrow", optional = false}, {name = "context", result = "bytes", ownership = "borrow-slice", optional = false}, {name = "root", result = "NativeActorId", ownership = "borrow", optional = false}, {name = "direct_parent", result = "NativeActorId", ownership = "borrow", optional = true}, {name = "event_kind", result = "NativeEventKind", ownership = "borrow", optional = false}, {name = "purpose", result = "OperationPurpose", ownership = "borrow", optional = false}, {name = "original_payload", result = "bytes", ownership = "borrow-slice", optional = false}]
+
+[[view]]
+name = "NativeContextView"
+kind = "borrowed-record"
+fields = [{name = "actor", result = "NativeActorId", ownership = "borrow", optional = false}, {name = "root", result = "NativeActorId", ownership = "borrow", optional = false}, {name = "parent", result = "NativeActorId", ownership = "borrow", optional = true}, {name = "bytes", result = "bytes", ownership = "borrow-slice", optional = false}]
+
+[[view]]
+name = "NativeMessageView"
+kind = "borrowed-enum"
+variants = [{name = "Birth", type = "NativeBirthView"}, {name = "Resume", type = "NativeResumeView"}, {name = "Invocation", type = "NativeInvocationView"}]
+
+[[representation]]
+name = "RetainedResource"
+kind = "shared-resource"
+variants = [{name = "Channel", type = "Channel"}, {name = "ProcessCustody", type = "ProcessCustody"}, {name = "MeasuredAsset", type = "MeasuredAsset"}]
+
+[[representation]]
+name = "ProcessCustody"
+kind = "shared-record"
+fields = [{name = "process", result = "Process", ownership = "borrow", optional = false}, {name = "holder", result = "Holder", ownership = "borrow", optional = false}, {name = "binding", result = "Binding", ownership = "borrow", optional = false}, {name = "plan", result = "Plan", ownership = "borrow", optional = false}, {name = "phase", result = "ProcessDisposition", ownership = "value", optional = false}]
+
+[[representation]]
+name = "ResourceRequirement"
+kind = "retained-record"
+fields = [{name = "resource", result = "RetainedResource", ownership = "borrow", optional = false}, {name = "action", result = "RequiredAction", ownership = "value", optional = false}]
+
+[[representation]]
+name = "ResourceCleanupResult"
+kind = "retained-record"
+fields = [{name = "resource", result = "RetainedResource", ownership = "borrow", optional = false}, {name = "action", result = "RequiredAction", ownership = "value", optional = false}, {name = "outcome", result = "CleanupResultKind", ownership = "borrow", optional = false}]
+
+[[representation]]
+name = "UnresolvedCustody"
+kind = "retained-record"
+fields = [{name = "raw_channels", result = "RawChannel", ownership = "borrow-slice", optional = false}, {name = "channels", result = "Channel", ownership = "borrow-slice", optional = false}, {name = "processes", result = "ProcessCustody", ownership = "borrow-slice", optional = false}, {name = "measurements", result = "MeasuredAsset", ownership = "borrow-slice", optional = false}, {name = "before_consume", result = "BeforeConsume", ownership = "borrow-slice", optional = false}, {name = "terminal", result = "Terminal", ownership = "borrow-slice", optional = false}, {name = "revoked", result = "Revoked", ownership = "borrow-slice", optional = false}, {name = "holders", result = "Holder", ownership = "borrow-slice", optional = false}]
+
+[[phase]]
+name = "HeldHandle"
+role = "HeldProcess"
+projection = "HeldProjection"
+phase = "HeldPhase"
+variant = "Held"
+
+[[phase]]
+name = "RunningHandle"
+role = "RunningProcess"
+projection = "RunningProjection"
+phase = "RunningPhase"
+variant = "Running"
+
+[[profile]]
+name = "native-message"
+status = "unresolved-profile-evidence"
+fields = ["actor-bytes", "event-kind-bytes", "purpose-bytes", "context-bytes", "original-payload-bytes"]
+
+[[profile]]
+name = "launch-arguments"
+status = "unresolved-profile-evidence"
+fields = ["argument-bytes", "argument-count", "argument-aggregate-bytes"]
+
+[[profile]]
+name = "launch-environment"
+status = "unresolved-profile-evidence"
+fields = ["key-bytes", "value-bytes", "entry-count", "aggregate-bytes", "unique-keys"]
+
+[[profile]]
+name = "retained-resources"
+status = "unresolved-profile-evidence"
+fields = ["asset-count", "inheritance-count", "resource-count", "cleanup-results-count", "unresolved-custody-count"]
+
+[[profile]]
+name = "domain-recording"
+status = "unresolved-profile-evidence"
+fields = ["canonical-result-bytes", "canonical-error-bytes"]
