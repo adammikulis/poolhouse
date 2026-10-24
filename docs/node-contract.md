@@ -329,3 +329,29 @@ classes only and start no services. Type-hint resolution works across groups;
 fully qualified module/pickling paths changed within this proposal and require
 compatibility review before any installed SDK cutover. Generation refuses a stale
 flat file or unknown/symlink package entries and never deletes unrelated files.
+
+
+The native adapter v2 proposal makes the trait and its sealed node-owned Binding
+and SpawnPlan parameters crate-private. Producer admission borrows the retained
+VerifiedProducerLaunch; one reader receives an opaque producer message. Holding
+and caller inspection explicitly bind the exact node Binding and retained running
+process. These are runtime declarations, absent from all public SDKs.
+
+Methods that transfer channel or process custody now return distinct owned failure
+handles instead of a bare error classification. Partial spawn/release failure must
+retain the actual held/running/unknown process and unresolved cleanup duty. A
+borrowed receive failure retains the same shared channel owner and reader state;
+it cannot move a channel out of a borrowed producer. Borrowed diagnostics retain
+no authority and may return an ordinary classification without surrendering custody.
+
+Before-consume cleanup consumes its distinct obligation. Cancelling a hold or
+terminating a process consumes prior node authorization revocation plus a terminal
+cleanup obligation, returning the responsible holder's scoped cleanup evidence or
+an owned unresolved failure. Registry revocation does not assert that OS resources
+closed. Holder cleanup cannot assert domain effect completion.
+
+This independently reviewed increment is deliberately incomplete. The sealed
+read-only projection graph, unique obligation identity/resource scope, separate
+NodeEffectOwner completion interface, and lifecycle metadata alignment remain
+required before K. No platform implementation, trusted issuer, actual resource
+closure, proof bridge or installed H/P evidence follows from these declarations.

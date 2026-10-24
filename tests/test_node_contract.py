@@ -1,6 +1,7 @@
 """Canonical data shape drift and refusal boundaries."""
 from __future__ import annotations
 
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -117,7 +118,7 @@ def test_lifecycle_and_adapter_refusals(tmp_path, change):
     elif change == "borrow":
         adapter.write_text(adapter.read_text().replace('type = "HeldProcess", ownership = "move"', 'type = "HeldProcess", ownership = "borrow"'))
     elif change == "handle":
-        adapter.write_text(adapter.read_text().replace('"KernelCaller"', '"ProcessObservation"'))
+        adapter.write_text(adapter.read_text().replace('"AuthenticatedCaller"', '"ProcessObservation"'))
     elif change == "shortcut":
         lifecycle.write_text(lifecycle.read_text().replace('from = "released", event = "consume"', 'from = "reserved", event = "consume"'))
     elif change == "initial":
@@ -611,3 +612,65 @@ def test_python_package_facade_preserves_identity_and_freezes_codec():
     assert not (ROOT / "src/poolhouse/api/node_contract.py").exists()
     for path in (ROOT / "src/poolhouse/api/node_contract").glob("*.py"):
         assert len(path.read_text().splitlines()) <= 900, path.name
+
+
+@pytest.mark.parametrize("method, change", [
+    ("authenticate_producer", "launch"),
+    ("receive_producer_message", "borrow"),
+    ("hold_spawn", "binding"),
+    ("hold_spawn", "plan"),
+    ("inspect_caller", "running"),
+    ("inspect_caller", "binding"),
+    ("cleanup_before_consume", "obligation"),
+    ("cancel_hold", "revoked"),
+    ("terminate", "obligation"),
+    ("release", "flat_failure"),
+    ("hold_spawn", "flat_failure"),
+    ("terminate", "unit_result"),
+    ("cancel_hold", "wrong_phase"),
+    ("receive_producer_message", "duplicate"),
+    ("inspect_caller", "unknown"),
+    ("release", "unknown_failure"),
+])
+def test_native_adapter_refuses_lost_provenance_or_custody(tmp_path, method, change):
+    source = tmp_path / "node"
+    shutil.copytree(ROOT / "contracts/node", source)
+    path = source / "adapters.toml"
+    text = path.read_text()
+    chunks = text.split("[[method]]")
+    index = next(i for i, chunk in enumerate(chunks) if f'name = "{method}"' in chunk)
+    chunk = chunks[index]
+    if change in {"launch", "binding", "plan", "running", "obligation", "revoked"}:
+        chunk, count = re.subn(r',? ?\{name = "' + change + r'", type = "[A-Za-z]+", ownership = "[a-z]+"\}', "", chunk)
+        assert count == 1
+    elif change == "borrow":
+        chunk = chunk.replace('ownership = "borrow"', 'ownership = "move"')
+    elif change == "flat_failure":
+        chunk = chunk[:chunk.index("failure =")] + 'failure = "NativeAdapterError"\n'
+    elif change == "unknown_failure":
+        chunk = chunk.replace('failure = "OwnedReleaseFailure"', 'failure = "MissingFailure"')
+    elif change == "unit_result":
+        chunk = chunk.replace('result = "HolderCleanup"', 'result = "unit"')
+    elif change == "wrong_phase":
+        chunk = chunk.replace('type = "TerminalCleanupObligation"', 'type = "BeforeConsumeObligation"')
+    elif change == "duplicate":
+        chunk += "\n[[method]]" + chunk
+    elif change == "unknown":
+        chunk = chunk.replace(f'name = "{method}"', 'name = "inspect_unbound"')
+    assert chunk != chunks[index]
+    chunks[index] = chunk
+    path.write_text("[[method]]".join(chunks))
+    with pytest.raises(ValueError):
+        load(source)
+
+
+def test_native_adapter_declarations_remain_private_and_without_proof_issuers():
+    source = (ROOT / "app/poolhouse-node/src/contract_lifecycle.rs").read_text()
+    assert "pub(crate) trait NativeCallerPlatform<Binding: NodeBinding" in source
+    assert "SpawnPlan: NodeSpawnPlan<Binding = Binding>" in source
+    assert ": native_seal::Platform" in source
+    assert "pub trait NativeCallerPlatform" not in source
+    for name in ("VerifiedProducerLaunch", "AuthenticatedProducerMessage", "HolderCleanup", "OwnedCleanupFailure"):
+        assert f"type {name};" in source
+        assert not hasattr(public, name)
+    assert "impl NativeCallerPlatform" not in source

@@ -21,24 +21,47 @@ Transition { domain: "invocation", from: "released", event: "invalidate", to: "i
 #[derive(Debug)]
 pub enum NativeAdapterError { InvalidInstallation, MissingChannel, WrongPrincipal, StaleProcess, UnprotectedProcess, ConfinementUnavailable, BindingMismatch, Cancelled, Io }
 
-/// Opaque runtime handles are never wire DTOs or proof supplied by a caller.
-pub trait NativeCallerPlatform<Binding, SpawnPlan> {
+// Incomplete declarations: no platform implementation, issuer, projection graph or bridge.
+pub(crate) mod native_seal {
+    pub(crate) trait Platform {}
+    pub(crate) trait Binding {}
+    pub(crate) trait SpawnPlan {}
+}
+pub(crate) trait NodeBinding: native_seal::Binding {}
+pub(crate) trait NodeSpawnPlan: native_seal::SpawnPlan {
+    type Binding: NodeBinding;
+    fn binding(&self) -> &Self::Binding;
+}
+/// Runtime handles and diagnostics cannot be converted into core proofs.
+pub(crate) trait NativeCallerPlatform<Binding: NodeBinding, SpawnPlan: NodeSpawnPlan<Binding = Binding>>: native_seal::Platform {
     type VerifiedInstallation;
     type RawChannel;
+    type VerifiedProducerLaunch;
     type AdmittedProducer;
+    type AuthenticatedProducerMessage;
     type VerifiedBootstrap;
     type HeldProcess;
     type RunningProcess;
-    type KernelCaller;
+    type AuthenticatedCaller;
+    type BeforeConsumeObligation;
+    type RevokedAuthorization;
+    type TerminalCleanupObligation;
+    type HolderCleanup;
+    type OwnedChannelFailure;
+    type OwnedSpawnFailure;
+    type OwnedReleaseFailure;
+    type OwnedCleanupFailure;
     fn verify_installation(&mut self) -> Result<Self::VerifiedInstallation, NativeAdapterError>;
     fn verify_bootstrap(&mut self, installation: &Self::VerifiedInstallation) -> Result<Self::VerifiedBootstrap, NativeAdapterError>;
-    fn authenticate_producer(&mut self, channel: Self::RawChannel, installation: &Self::VerifiedInstallation) -> Result<Self::AdmittedProducer, NativeAdapterError>;
-    fn hold_spawn(&mut self, producer: &Self::AdmittedProducer, bootstrap: &Self::VerifiedBootstrap, plan: &SpawnPlan) -> Result<Self::HeldProcess, NativeAdapterError>;
+    fn authenticate_producer(&mut self, channel: Self::RawChannel, installation: &Self::VerifiedInstallation, launch: &Self::VerifiedProducerLaunch) -> Result<Self::AdmittedProducer, Self::OwnedChannelFailure>;
+    fn receive_producer_message(&mut self, producer: &Self::AdmittedProducer) -> Result<Self::AuthenticatedProducerMessage, Self::OwnedChannelFailure>;
+    fn hold_spawn(&mut self, producer: &Self::AdmittedProducer, bootstrap: &Self::VerifiedBootstrap, binding: &Binding, plan: &SpawnPlan) -> Result<Self::HeldProcess, Self::OwnedSpawnFailure>;
     fn observe_held(&mut self, held: &Self::HeldProcess) -> Result<ProcessObservation, NativeAdapterError>;
-    fn release(&mut self, held: Self::HeldProcess, binding: &Binding) -> Result<Self::RunningProcess, NativeAdapterError>;
-    fn inspect_caller(&mut self, channel: Self::RawChannel, installation: &Self::VerifiedInstallation) -> Result<Self::KernelCaller, NativeAdapterError>;
-    fn caller_observation(&mut self, caller: &Self::KernelCaller) -> Result<ProcessObservation, NativeAdapterError>;
+    fn release(&mut self, held: Self::HeldProcess, binding: &Binding) -> Result<Self::RunningProcess, Self::OwnedReleaseFailure>;
+    fn inspect_caller(&mut self, channel: Self::RawChannel, installation: &Self::VerifiedInstallation, running: &Self::RunningProcess, binding: &Binding) -> Result<Self::AuthenticatedCaller, Self::OwnedChannelFailure>;
+    fn caller_observation(&mut self, caller: &Self::AuthenticatedCaller) -> Result<ProcessObservation, NativeAdapterError>;
     fn is_live(&mut self, running: &Self::RunningProcess) -> Result<bool, NativeAdapterError>;
-    fn cancel_hold(&mut self, held: Self::HeldProcess) -> Result<(), NativeAdapterError>;
-    fn terminate(&mut self, running: Self::RunningProcess) -> Result<(), NativeAdapterError>;
+    fn cleanup_before_consume(&mut self, running: &Self::RunningProcess, obligation: Self::BeforeConsumeObligation) -> Result<Self::HolderCleanup, Self::OwnedCleanupFailure>;
+    fn cancel_hold(&mut self, held: Self::HeldProcess, revoked: Self::RevokedAuthorization, obligation: Self::TerminalCleanupObligation) -> Result<Self::HolderCleanup, Self::OwnedCleanupFailure>;
+    fn terminate(&mut self, running: Self::RunningProcess, revoked: Self::RevokedAuthorization, obligation: Self::TerminalCleanupObligation) -> Result<Self::HolderCleanup, Self::OwnedCleanupFailure>;
 }

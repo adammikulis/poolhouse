@@ -5,7 +5,8 @@ import re
 import tomllib
 from pathlib import Path
 
-from .common import FIELD, GENERATED_TYPES, IDENTIFIER, RESERVED, keys
+from . import adapters as native_adapters
+from .common import FIELD, keys
 
 CHECK = re.compile(r"[a-z][a-z0-9-]*\Z")
 
@@ -86,48 +87,7 @@ def _semantics(domain: str, value: dict, requirements: dict) -> None:
         raise ValueError("unsupported lifecycle v1 authorization requirements")
 
 def adapters(root: Path) -> dict:
-    value = tomllib.loads((root / "adapters.toml").read_text())
-    fields = {"version", "trait", "binding", "serialization", "spawn_plan", "handles", "errors", "requirements", "method"}
-    keys(value, fields, fields)
-    if (value["version"] != 1 or type(value["version"]) is not int or value["trait"] != "NativeCallerPlatform"
-            or value["binding"] != "node-owned-runtime-handle" or value["serialization"] != "forbidden"
-            or value["spawn_plan"] != "node-owned-immutable-measured-plan"):
-        raise ValueError("unsupported adapter contract")
-    for name in ("handles", "errors"):
-        items = value[name]
-        if not isinstance(items, list) or not items or any(not isinstance(item, str) or not IDENTIFIER.fullmatch(item) or item in GENERATED_TYPES for item in items) or len(set(items)) != len(items):
-            raise ValueError("invalid adapter identifiers")
-    expected_handles = {"VerifiedInstallation", "RawChannel", "AdmittedProducer", "VerifiedBootstrap", "HeldProcess", "RunningProcess", "KernelCaller"}
-    if set(value["handles"]) != expected_handles:
-        raise ValueError("invalid opaque handle boundary")
-    if not isinstance(value["requirements"], list) or not value["requirements"] or any(not isinstance(check, str) or not CHECK.fullmatch(check) for check in value["requirements"]):
-        raise ValueError("invalid adapter requirements")
-    known = {*value["handles"], "ProcessObservation", "bool", "unit"}
-    methods = {}
-    for method in value["method"]:
-        keys(method, {"name", "arguments", "result"}, {"name", "arguments", "result"})
-        name = method["name"]
-        if not isinstance(name, str) or not FIELD.fullmatch(name) or name in RESERVED or name in methods or method["result"] not in known:
-            raise ValueError("invalid or duplicate adapter method")
-        parameters = set()
-        for argument in method["arguments"]:
-            keys(argument, {"name", "type", "ownership"}, {"name", "type", "ownership"})
-            if (not isinstance(argument["name"], str) or argument["name"] in parameters or not FIELD.fullmatch(argument["name"]) or argument["name"] in RESERVED
-                    or argument["type"] not in {*value["handles"], "Binding", "SpawnPlan"} or argument["ownership"] not in {"borrow", "move"}):
-                raise ValueError("invalid adapter argument")
-            parameters.add(argument["name"])
-        methods[name] = method
-    if set(methods) != {"verify_installation", "verify_bootstrap", "authenticate_producer", "hold_spawn", "observe_held", "release", "inspect_caller", "caller_observation", "is_live", "cancel_hold", "terminate"}:
-        raise ValueError("incomplete native caller adapter")
-    if methods["hold_spawn"]["arguments"] != [
-            {"name": "producer", "type": "AdmittedProducer", "ownership": "borrow"},
-            {"name": "bootstrap", "type": "VerifiedBootstrap", "ownership": "borrow"},
-            {"name": "plan", "type": "SpawnPlan", "ownership": "borrow"}]:
-        raise ValueError("hold_spawn requires an immutable node-owned spawn plan")
-    release = methods["release"]
-    if release["arguments"] != [{"name": "held", "type": "HeldProcess", "ownership": "move"}, {"name": "binding", "type": "Binding", "ownership": "borrow"}]:
-        raise ValueError("release must consume its hold with a node binding")
-    return value
+    return native_adapters.load(root)
 
 
 def render(value: dict, adapter: dict) -> str:
@@ -139,16 +99,5 @@ def render(value: dict, adapter: dict) -> str:
             checks = ", ".join('"' + check + '"' for check in value["requirements"][row["event"]])
             output.append(f'Transition {{ domain: "{domain}", from: "{row["from"]}", event: "{row["event"]}", to: "{row["to"]}", checks: &[{checks}] }},')
     output.append('];\n#[derive(Debug)]\npub enum NativeAdapterError { ' + ", ".join(adapter["errors"]) + ' }\n')
-    output.append('/// Opaque runtime handles are never wire DTOs or proof supplied by a caller.\npub trait NativeCallerPlatform<Binding, SpawnPlan> {')
-    output.extend('    type ' + name + ';' for name in adapter["handles"])
-    for method in adapter["method"]:
-        arguments = []
-        for argument in method["arguments"]:
-            kind = argument["type"] if argument["type"] in {"Binding", "SpawnPlan"} else "Self::" + argument["type"]
-            arguments.append(argument["name"] + ": " + ("&" if argument["ownership"] == "borrow" else "") + kind)
-        result = method["result"]
-        result = "()" if result == "unit" else result if result in {"bool", "ProcessObservation"} else "Self::" + result
-        suffix = ", " + ", ".join(arguments) if arguments else ""
-        output.append(f'    fn {method["name"]}(&mut self{suffix}) -> Result<{result}, NativeAdapterError>;')
-    output.append('}\n')
+    output.append(native_adapters.render(adapter))
     return "\n".join(output)

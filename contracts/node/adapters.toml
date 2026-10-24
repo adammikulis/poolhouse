@@ -1,63 +1,88 @@
-version = 1
+version = 2
 trait = "NativeCallerPlatform"
 binding = "node-owned-runtime-handle"
 serialization = "forbidden"
 spawn_plan = "node-owned-immutable-measured-plan"
-handles = ["VerifiedInstallation", "RawChannel", "AdmittedProducer", "VerifiedBootstrap", "HeldProcess", "RunningProcess", "KernelCaller"]
+visibility = "crate-private-sealed"
+status = "incomplete-proposal"
+handles = ["VerifiedInstallation", "RawChannel", "VerifiedProducerLaunch", "AdmittedProducer", "AuthenticatedProducerMessage", "VerifiedBootstrap", "HeldProcess", "RunningProcess", "AuthenticatedCaller", "BeforeConsumeObligation", "RevokedAuthorization", "TerminalCleanupObligation", "HolderCleanup", "OwnedChannelFailure", "OwnedSpawnFailure", "OwnedReleaseFailure", "OwnedCleanupFailure"]
 errors = ["InvalidInstallation", "MissingChannel", "WrongPrincipal", "StaleProcess", "UnprotectedProcess", "ConfinementUnavailable", "BindingMismatch", "Cancelled", "Io"]
-requirements = ["no-caller-selected-authority", "no-serde-or-public-constructors", "actual-principal-and-process-lifetime", "held-drop-kills-and-reaps", "release-consumes-hold-once", "node-validates-caller-observations", "terminate-without-pid-reuse", "no-unsupported-platform-fallback", "plan-binds-invocation-and-generation", "retain-measured-executable-and-assets", "immutable-arguments-environment-directory-and-confinement", "explicit-handle-ownership-and-inheritance", "release-binding-matches-held-plan"]
+requirements = ["no-caller-selected-authority", "no-serde-or-public-constructors", "actual-principal-and-process-lifetime", "held-drop-kills-and-reaps", "release-consumes-hold-once", "node-validates-caller-observations", "terminate-without-pid-reuse", "no-unsupported-platform-fallback", "plan-binds-invocation-and-generation", "retain-measured-executable-and-assets", "immutable-arguments-environment-directory-and-confinement", "explicit-handle-ownership-and-inheritance", "release-binding-matches-held-plan", "crate-private-sealed-platform-and-runtime-parameters", "authenticate-retained-producer-launch-and-process", "single-reader-retained-channel-owner", "opaque-birth-resume-invocation-message", "hold-binds-node-binding-and-plan", "caller-binds-running-process-and-node-binding", "owned-failures-retain-unresolved-custody", "phase-specific-single-use-cleanup-obligations", "revoke-node-authorization-before-terminal-cleanup", "cleanup-is-not-domain-completion", "no-production-proof-issuer-or-bridge"]
 
 [[method]]
 name = "verify_installation"
 arguments = []
 result = "VerifiedInstallation"
+failure = "NativeAdapterError"
 
 [[method]]
 name = "verify_bootstrap"
 arguments = [{name = "installation", type = "VerifiedInstallation", ownership = "borrow"}]
 result = "VerifiedBootstrap"
+failure = "NativeAdapterError"
 
 [[method]]
 name = "authenticate_producer"
-arguments = [{name = "channel", type = "RawChannel", ownership = "move"}, {name = "installation", type = "VerifiedInstallation", ownership = "borrow"}]
+arguments = [{name = "channel", type = "RawChannel", ownership = "move"}, {name = "installation", type = "VerifiedInstallation", ownership = "borrow"}, {name = "launch", type = "VerifiedProducerLaunch", ownership = "borrow"}]
 result = "AdmittedProducer"
+failure = "OwnedChannelFailure"
+
+[[method]]
+name = "receive_producer_message"
+arguments = [{name = "producer", type = "AdmittedProducer", ownership = "borrow"}]
+result = "AuthenticatedProducerMessage"
+failure = "OwnedChannelFailure"
 
 [[method]]
 name = "hold_spawn"
-arguments = [{name = "producer", type = "AdmittedProducer", ownership = "borrow"}, {name = "bootstrap", type = "VerifiedBootstrap", ownership = "borrow"}, {name = "plan", type = "SpawnPlan", ownership = "borrow"}]
+arguments = [{name = "producer", type = "AdmittedProducer", ownership = "borrow"}, {name = "bootstrap", type = "VerifiedBootstrap", ownership = "borrow"}, {name = "binding", type = "Binding", ownership = "borrow"}, {name = "plan", type = "SpawnPlan", ownership = "borrow"}]
 result = "HeldProcess"
+failure = "OwnedSpawnFailure"
 
 [[method]]
 name = "observe_held"
 arguments = [{name = "held", type = "HeldProcess", ownership = "borrow"}]
 result = "ProcessObservation"
+failure = "NativeAdapterError"
 
 [[method]]
 name = "release"
 arguments = [{name = "held", type = "HeldProcess", ownership = "move"}, {name = "binding", type = "Binding", ownership = "borrow"}]
 result = "RunningProcess"
+failure = "OwnedReleaseFailure"
 
 [[method]]
 name = "inspect_caller"
-arguments = [{name = "channel", type = "RawChannel", ownership = "move"}, {name = "installation", type = "VerifiedInstallation", ownership = "borrow"}]
-result = "KernelCaller"
+arguments = [{name = "channel", type = "RawChannel", ownership = "move"}, {name = "installation", type = "VerifiedInstallation", ownership = "borrow"}, {name = "running", type = "RunningProcess", ownership = "borrow"}, {name = "binding", type = "Binding", ownership = "borrow"}]
+result = "AuthenticatedCaller"
+failure = "OwnedChannelFailure"
 
 [[method]]
 name = "caller_observation"
-arguments = [{name = "caller", type = "KernelCaller", ownership = "borrow"}]
+arguments = [{name = "caller", type = "AuthenticatedCaller", ownership = "borrow"}]
 result = "ProcessObservation"
+failure = "NativeAdapterError"
 
 [[method]]
 name = "is_live"
 arguments = [{name = "running", type = "RunningProcess", ownership = "borrow"}]
 result = "bool"
+failure = "NativeAdapterError"
+
+[[method]]
+name = "cleanup_before_consume"
+arguments = [{name = "running", type = "RunningProcess", ownership = "borrow"}, {name = "obligation", type = "BeforeConsumeObligation", ownership = "move"}]
+result = "HolderCleanup"
+failure = "OwnedCleanupFailure"
 
 [[method]]
 name = "cancel_hold"
-arguments = [{name = "held", type = "HeldProcess", ownership = "move"}]
-result = "unit"
+arguments = [{name = "held", type = "HeldProcess", ownership = "move"}, {name = "revoked", type = "RevokedAuthorization", ownership = "move"}, {name = "obligation", type = "TerminalCleanupObligation", ownership = "move"}]
+result = "HolderCleanup"
+failure = "OwnedCleanupFailure"
 
 [[method]]
 name = "terminate"
-arguments = [{name = "running", type = "RunningProcess", ownership = "move"}]
-result = "unit"
+arguments = [{name = "running", type = "RunningProcess", ownership = "move"}, {name = "revoked", type = "RevokedAuthorization", ownership = "move"}, {name = "obligation", type = "TerminalCleanupObligation", ownership = "move"}]
+result = "HolderCleanup"
+failure = "OwnedCleanupFailure"
