@@ -41,6 +41,7 @@ pub trait Graph {}
 pub trait Held {}
 pub trait Holder {}
 pub trait Installation {}
+pub trait InstallationGraph {}
 pub trait Launch {}
 pub trait LaunchPlan {}
 pub trait MeasuredAsset {}
@@ -267,20 +268,22 @@ Birth(NativeBirthView<'a>),
 Resume(NativeResumeView<'a>),
 Invocation(NativeInvocationView<'a>),
 }
-pub(crate) trait NativeGraph: native_seal::Graph + Sized {
+pub(crate) trait NativeInstallationGraph: native_seal::InstallationGraph + Sized {
 type Installation: InstallationProjection<Self>;
-type Launch: LaunchProjection<Self>;
-type LaunchPlan: ProducerLaunchPlanProjection<Self>;
 type Process: ProcessProjection;
 type Channel: ChannelProjection<Self>;
 type RawChannel: RawChannelProjection<Self>;
 type MeasuredAsset: MeasuredAssetProjection;
+type Holder: HolderProjection<Self>;
+}
+pub(crate) trait NativeGraph: NativeInstallationGraph + native_seal::Graph + Sized {
+type Launch: LaunchProjection<Self>;
+type LaunchPlan: ProducerLaunchPlanProjection<Self>;
 type Producer: ProducerProjection<Self>;
 type Message: ProducerMessageProjection<Self>;
 type Bootstrap: BootstrapProjection<Self>;
 type Binding: BindingProjection<Self>;
 type Plan: PlanProjection<Self>;
-type Holder: HolderProjection<Self>;
 type ChildCustody: ChildProjection<Self>;
 type Caller: CallerProjection<Self>;
 type CallerMessage: CallerMessageProjection<Self>;
@@ -304,7 +307,7 @@ pub(crate) trait ProcessProjection: native_seal::Process {
 fn identity(&self) -> &KernelProcessIdentity;
 fn observation(&self) -> &ProcessObservation;
 }
-pub(crate) trait InstallationProjection<G: NativeGraph>: native_seal::Installation {
+pub(crate) trait InstallationProjection<G: NativeInstallationGraph>: native_seal::Installation {
 fn identity(&self) -> &InstallationIdentity;
 fn manifest_digest(&self) -> &Digest;
 fn assets(&self) -> &[G::MeasuredAsset];
@@ -315,20 +318,20 @@ pub(crate) trait MeasuredAssetProjection: native_seal::MeasuredAsset {
 fn identity(&self) -> &MeasuredAssetIdentity;
 fn digest(&self) -> &Digest;
 }
-pub(crate) trait ChannelProjection<G: NativeGraph>: native_seal::Channel {
+pub(crate) trait ChannelProjection<G: NativeInstallationGraph>: native_seal::Channel {
 fn identity(&self) -> &ChannelIdentity;
 fn process(&self) -> &G::Process;
 fn holder(&self) -> &G::Holder;
 fn reader_epoch(&self) -> &ReaderEpoch;
 fn direction(&self) -> ChannelDirection;
 }
-pub(crate) trait RawChannelProjection<G: NativeGraph>: native_seal::RawChannel {
+pub(crate) trait RawChannelProjection<G: NativeInstallationGraph>: native_seal::RawChannel {
 fn identity(&self) -> &ChannelIdentity;
 fn observed_process(&self) -> Option<&G::Process>;
 fn holder(&self) -> &G::Holder;
 fn direction(&self) -> ChannelDirection;
 }
-pub(crate) trait HolderProjection<G: NativeGraph>: native_seal::Holder {
+pub(crate) trait HolderProjection<G: NativeInstallationGraph>: native_seal::Holder {
 fn identity(&self) -> &HolderIdentity;
 fn process(&self) -> &G::Process;
 }

@@ -13,11 +13,11 @@ def projection(seal, graph, *getters, seal_scope="native"):
 G = getter
 PROJECTIONS = {
     "ProcessProjection": projection("Process", "none", G("identity", "KernelProcessIdentity"), G("observation", "ProcessObservation")),
-    "InstallationProjection": projection("Installation", "native", G("identity", "InstallationIdentity"), G("manifest_digest", "Digest"), G("assets", "MeasuredAsset", "borrow-slice"), G("service_principal", "ConfiguredServicePrincipal"), G("owner_principal", "ConfiguredOwnerPrincipal")),
+    "InstallationProjection": projection("Installation", "installation", G("identity", "InstallationIdentity"), G("manifest_digest", "Digest"), G("assets", "MeasuredAsset", "borrow-slice"), G("service_principal", "ConfiguredServicePrincipal"), G("owner_principal", "ConfiguredOwnerPrincipal")),
     "MeasuredAssetProjection": projection("MeasuredAsset", "none", G("identity", "MeasuredAssetIdentity"), G("digest", "Digest")),
-    "ChannelProjection": projection("Channel", "native", G("identity", "ChannelIdentity"), G("process", "Process"), G("holder", "Holder"), G("reader_epoch", "ReaderEpoch"), G("direction", "ChannelDirection", "value")),
-    "RawChannelProjection": projection("RawChannel", "native", G("identity", "ChannelIdentity"), G("observed_process", "Process", optional=True), G("holder", "Holder"), G("direction", "ChannelDirection", "value")),
-    "HolderProjection": projection("Holder", "native", G("identity", "HolderIdentity"), G("process", "Process")),
+    "ChannelProjection": projection("Channel", "installation", G("identity", "ChannelIdentity"), G("process", "Process"), G("holder", "Holder"), G("reader_epoch", "ReaderEpoch"), G("direction", "ChannelDirection", "value")),
+    "RawChannelProjection": projection("RawChannel", "installation", G("identity", "ChannelIdentity"), G("observed_process", "Process", optional=True), G("holder", "Holder"), G("direction", "ChannelDirection", "value")),
+    "HolderProjection": projection("Holder", "installation", G("identity", "HolderIdentity"), G("process", "Process")),
     "LaunchProjection": projection("Launch", "native", G("installation", "Installation"), G("process", "Process"), G("producer_channel", "Channel"), G("launch_epoch", "ProducerLaunchEpoch"), G("measured_plan", "LaunchPlan")),
     "ProducerProjection": projection("Producer", "native", G("installation", "Installation"), G("launch", "Launch"), G("process", "Process"), G("channel", "Channel"), G("admission", "ProducerAdmissionKey")),
     "BootstrapProjection": projection("Bootstrap", "native", G("installation", "Installation"), G("assets", "MeasuredAsset", "borrow-slice")),
@@ -60,6 +60,8 @@ ASSOCIATIONS = [
     ("ChannelFailure", "ChannelFailureProjection", "OwnedChannelFailure"), ("SpawnFailure", "SpawnFailureProjection", "OwnedSpawnFailure"),
     ("ReleaseFailure", "ReleaseFailureProjection", "OwnedReleaseFailure"), ("CleanupFailure", "CleanupFailureProjection", "OwnedCleanupFailure"),
 ]
+INSTALLATION_ROLES = frozenset({"Installation", "MeasuredAsset", "Process", "Holder", "RawChannel", "Channel"})
+
 EFFECT_ASSOCIATIONS = [("Owner", "EffectOwnerProjection"), ("Permit", "PermitProjection"), ("Operation", "BoundOperationProjection"), ("Completion", "CompletionProjection"), ("Unknown", "UnknownEffectProjection")]
 PHASES = [{"name": "HeldHandle", "role": "HeldProcess", "projection": "HeldProjection", "phase": "HeldPhase", "variant": "Held"},
           {"name": "RunningHandle", "role": "RunningProcess", "projection": "RunningProjection", "phase": "RunningPhase", "variant": "Running"}]

@@ -10,7 +10,9 @@ class Renderer:
     def __init__(self, source):
         self.source = source
         self.projections = _index(source["projection"])
-        self.associations = _index(source["graph"]["associated"])
+        self.installations = _index(source["installation_graph"]["associated"])
+        self.native_associations = _index(source["graph"]["associated"])
+        self.associations = {**self.installations, **self.native_associations}
         self.effects = _index(source["effect_owner"]["associated"])
         self.leaves = _index(source["leaf"])
         self.views = _index(source["view"])
@@ -128,8 +130,13 @@ class Renderer:
         return output
 
     def graphs_source(self):
-        output = ["pub(crate) trait NativeGraph: native_seal::Graph + Sized {"]
-        for row in self.associations.values():
+        output = ["pub(crate) trait NativeInstallationGraph: native_seal::InstallationGraph + Sized {"]
+        for row in self.installations.values():
+            projection = row["projection"]
+            bound = projection + ("" if self.projections[projection]["graph"] == "none" else "<Self>")
+            output.append(f'type {row["name"]}: {bound};')
+        output += ["}", "pub(crate) trait NativeGraph: NativeInstallationGraph + native_seal::Graph + Sized {"]
+        for row in self.native_associations.values():
             projection = row["projection"]
             bound = projection + ("" if self.projections[projection]["graph"] == "none" else "<Self>")
             output.append(f'type {row["name"]}: {bound};')
@@ -139,7 +146,7 @@ class Renderer:
             output.append(f'type {row["name"]}: {bound};')
         output.append("}")
         for name, row in self.projections.items():
-            parameters = {"none": "", "native": "<G: NativeGraph>", "effect": "<G: NativeGraph, E: EffectGraph<G>>"}[row["graph"]]
+            parameters = {"none": "", "installation": "<G: NativeInstallationGraph>", "native": "<G: NativeGraph>", "effect": "<G: NativeGraph, E: EffectGraph<G>>"}[row["graph"]]
             scope = "effect_seal" if row["seal_scope"] == "effect" else "native_seal"
             extra = "ChildProjection<G> + " if name in {"HeldProjection", "RunningProjection"} else ""
             output.append(f'pub(crate) trait {name}{parameters}: {extra}{scope}::{row["seal"]} {{')
@@ -179,7 +186,7 @@ class Renderer:
         output = ["// Dormant private declarations: no issuer, bridge, platform implementation or durable ledger.",
                   "mod native_projection {", "use std::sync::Arc;", "use super::{NativeAdapterError, ProcessObservation};",
                   "use super::super::contract::{AuditToken, InstallationId, ResourceGeneration, WindowsSid};"]
-        for scope, base in (("native", {"Graph", "Platform"}), ("effect", {"Graph", "Owner"})):
+        for scope, base in (("native", {"Graph", "InstallationGraph", "Platform"}), ("effect", {"Graph", "Owner"})):
             seals = base | {row["seal"] for row in self.projections.values() if row["seal_scope"] == scope}
             output += [f"mod {scope}_seal {{", *("pub trait " + name + " {}" for name in sorted(seals)), "}"]
         output += self.leaves_source() + self.views_source() + self.graphs_source()

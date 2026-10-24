@@ -86,10 +86,16 @@ arguments = [{name = "running", type = "RunningProcess", ownership = "move"}, {n
 result = "HolderCleanup"
 failure = "OwnedCleanupFailure"
 
+[installation_graph]
+name = "NativeInstallationGraph"
+seal = "InstallationGraph"
+associated = [{name = "Installation", projection = "InstallationProjection", role = "VerifiedInstallation"}, {name = "Process", projection = "ProcessProjection", role = "Process"}, {name = "Channel", projection = "ChannelProjection", role = "Channel"}, {name = "RawChannel", projection = "RawChannelProjection", role = "RawChannel"}, {name = "MeasuredAsset", projection = "MeasuredAssetProjection", role = "MeasuredAsset"}, {name = "Holder", projection = "HolderProjection", role = "Holder"}]
+
 [graph]
 name = "NativeGraph"
 seal = "Graph"
-associated = [{name = "Installation", projection = "InstallationProjection", role = "VerifiedInstallation"}, {name = "Launch", projection = "LaunchProjection", role = "VerifiedProducerLaunch"}, {name = "LaunchPlan", projection = "ProducerLaunchPlanProjection", role = "ProducerLaunchPlan"}, {name = "Process", projection = "ProcessProjection", role = "Process"}, {name = "Channel", projection = "ChannelProjection", role = "Channel"}, {name = "RawChannel", projection = "RawChannelProjection", role = "RawChannel"}, {name = "MeasuredAsset", projection = "MeasuredAssetProjection", role = "MeasuredAsset"}, {name = "Producer", projection = "ProducerProjection", role = "AdmittedProducer"}, {name = "Message", projection = "ProducerMessageProjection", role = "AuthenticatedProducerMessage"}, {name = "Bootstrap", projection = "BootstrapProjection", role = "VerifiedBootstrap"}, {name = "Binding", projection = "BindingProjection", role = "Binding"}, {name = "Plan", projection = "PlanProjection", role = "SpawnPlan"}, {name = "Holder", projection = "HolderProjection", role = "Holder"}, {name = "ChildCustody", projection = "ChildProjection", role = "ChildCustody"}, {name = "Caller", projection = "CallerProjection", role = "AuthenticatedCaller"}, {name = "CallerMessage", projection = "CallerMessageProjection", role = "CallerMessage"}, {name = "BeforeConsume", projection = "BeforeConsumeProjection", role = "BeforeConsumeObligation"}, {name = "Revoked", projection = "RevokedProjection", role = "RevokedAuthorization"}, {name = "Terminal", projection = "TerminalProjection", role = "TerminalCleanupObligation"}, {name = "Cleanup", projection = "CleanupProjection", role = "HolderCleanup"}, {name = "ChannelFailure", projection = "ChannelFailureProjection", role = "OwnedChannelFailure"}, {name = "SpawnFailure", projection = "SpawnFailureProjection", role = "OwnedSpawnFailure"}, {name = "ReleaseFailure", projection = "ReleaseFailureProjection", role = "OwnedReleaseFailure"}, {name = "CleanupFailure", projection = "CleanupFailureProjection", role = "OwnedCleanupFailure"}]
+inherits = "NativeInstallationGraph"
+associated = [{name = "Launch", projection = "LaunchProjection", role = "VerifiedProducerLaunch"}, {name = "LaunchPlan", projection = "ProducerLaunchPlanProjection", role = "ProducerLaunchPlan"}, {name = "Producer", projection = "ProducerProjection", role = "AdmittedProducer"}, {name = "Message", projection = "ProducerMessageProjection", role = "AuthenticatedProducerMessage"}, {name = "Bootstrap", projection = "BootstrapProjection", role = "VerifiedBootstrap"}, {name = "Binding", projection = "BindingProjection", role = "Binding"}, {name = "Plan", projection = "PlanProjection", role = "SpawnPlan"}, {name = "ChildCustody", projection = "ChildProjection", role = "ChildCustody"}, {name = "Caller", projection = "CallerProjection", role = "AuthenticatedCaller"}, {name = "CallerMessage", projection = "CallerMessageProjection", role = "CallerMessage"}, {name = "BeforeConsume", projection = "BeforeConsumeProjection", role = "BeforeConsumeObligation"}, {name = "Revoked", projection = "RevokedProjection", role = "RevokedAuthorization"}, {name = "Terminal", projection = "TerminalProjection", role = "TerminalCleanupObligation"}, {name = "Cleanup", projection = "CleanupProjection", role = "HolderCleanup"}, {name = "ChannelFailure", projection = "ChannelFailureProjection", role = "OwnedChannelFailure"}, {name = "SpawnFailure", projection = "SpawnFailureProjection", role = "OwnedSpawnFailure"}, {name = "ReleaseFailure", projection = "ReleaseFailureProjection", role = "OwnedReleaseFailure"}, {name = "CleanupFailure", projection = "CleanupFailureProjection", role = "OwnedCleanupFailure"}]
 
 [effect_owner]
 graph = "EffectGraph"
@@ -110,7 +116,7 @@ getters = [{name = "identity", result = "KernelProcessIdentity", ownership = "bo
 [[projection]]
 name = "InstallationProjection"
 seal = "Installation"
-graph = "native"
+graph = "installation"
 seal_scope = "native"
 getters = [{name = "identity", result = "InstallationIdentity", ownership = "borrow", optional = false}, {name = "manifest_digest", result = "Digest", ownership = "borrow", optional = false}, {name = "assets", result = "MeasuredAsset", ownership = "borrow-slice", optional = false}, {name = "service_principal", result = "ConfiguredServicePrincipal", ownership = "borrow", optional = false}, {name = "owner_principal", result = "ConfiguredOwnerPrincipal", ownership = "borrow", optional = false}]
 
@@ -124,21 +130,21 @@ getters = [{name = "identity", result = "MeasuredAssetIdentity", ownership = "bo
 [[projection]]
 name = "ChannelProjection"
 seal = "Channel"
-graph = "native"
+graph = "installation"
 seal_scope = "native"
 getters = [{name = "identity", result = "ChannelIdentity", ownership = "borrow", optional = false}, {name = "process", result = "Process", ownership = "borrow", optional = false}, {name = "holder", result = "Holder", ownership = "borrow", optional = false}, {name = "reader_epoch", result = "ReaderEpoch", ownership = "borrow", optional = false}, {name = "direction", result = "ChannelDirection", ownership = "value", optional = false}]
 
 [[projection]]
 name = "RawChannelProjection"
 seal = "RawChannel"
-graph = "native"
+graph = "installation"
 seal_scope = "native"
 getters = [{name = "identity", result = "ChannelIdentity", ownership = "borrow", optional = false}, {name = "observed_process", result = "Process", ownership = "borrow", optional = true}, {name = "holder", result = "Holder", ownership = "borrow", optional = false}, {name = "direction", result = "ChannelDirection", ownership = "value", optional = false}]
 
 [[projection]]
 name = "HolderProjection"
 seal = "Holder"
-graph = "native"
+graph = "installation"
 seal_scope = "native"
 getters = [{name = "identity", result = "HolderIdentity", ownership = "borrow", optional = false}, {name = "process", result = "Process", ownership = "borrow", optional = false}]
 
