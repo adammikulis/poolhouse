@@ -1,6 +1,7 @@
 //! Private pending DATA bookkeeping only: no authenticated owner, source custody,
 //! resource admission, execution, ready state or launch fence is issued here.
 use std::fs::File;
+use super::update_activity::Registry;
 use serde::{Deserialize, Serialize};
 use crate::contract::{JobInstallationRef, JobManagedTestUnitIntent, JobPreparationDigest, RequestId, ResourceGeneration};
 
@@ -27,22 +28,24 @@ pub(super) struct Record {
     pub state: PendingState,
 }
 #[derive(Debug)]
-pub(super) enum Failure { Invalid, Conflict, Io(std::io::ErrorKind), PersistenceUnknown }
+pub(super) enum Failure { Invalid, Conflict, Io(std::io::ErrorKind), Unavailable, PersistenceUnknown }
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum Remembered { Created, Attached }
 
 pub(super) struct Book {
     store: store::Store,
+    activity: Registry,
     records: Vec<Record>,
     // Preserve both alternatives after uncertain publication; never mutate again.
     uncertain: Option<Vec<Record>>,
 }
 impl Book {
-    pub(super) fn open(parent: File) -> Result<Self, Failure> {
+    pub(super) fn open(parent: File, activity:Registry) -> Result<Self, Failure> {
+        let _writer=activity.local_writer().map_err(|_|Failure::Unavailable)?;
         let store=store::Store::open(parent)?;
         let records=store.read()?;
         validate(&records)?;
-        Ok(Self { store, records, uncertain:None })
+        Ok(Self { store, activity, records, uncertain:None })
     }
     pub(super) fn remember_pending(&mut self, owner: OwnerObservation, request: RequestId,
         intent: JobManagedTestUnitIntent) -> Result<Remembered, Failure> {
@@ -53,6 +56,7 @@ impl Book {
         }
         let mut candidate=self.records.clone();
         candidate.push(Record { owner,request,intent,revision:0,state:PendingState::PendingSourceAdmission });
+        let _writer=self.activity.local_writer().map_err(|_|Failure::Unavailable)?;
         self.publish(candidate)?;
         Ok(Remembered::Created)
     }
@@ -69,6 +73,7 @@ impl Book {
         let mut candidate=self.records.clone();
         candidate[index].revision=revision.checked_add(1).ok_or(Failure::Invalid)?;
         candidate[index].state=PendingState::CancelledPending;
+        let _writer=self.activity.local_maintenance().map_err(|_|Failure::Unavailable)?;
         self.publish(candidate)
     }
     fn available(&self)->Result<(),Failure> {

@@ -30,19 +30,22 @@ impl Store {
     pub fn open(parent:File)->Result<Self,Failure> {
         use std::os::fd::AsRawFd;
         // SAFETY: fixed NUL-terminated leaf and live parent descriptor.
-        if unsafe { libc::mkdirat(parent.as_raw_fd(), c"managed-pending".as_ptr(),0o700) } !=0 {
+        let created=unsafe { libc::mkdirat(parent.as_raw_fd(), c"managed-pending".as_ptr(),0o700) } ==0;
+        if !created {
             let e=std::io::Error::last_os_error();
             if e.kind()!=std::io::ErrorKind::AlreadyExists { return Err(Failure::Io(e.kind())); }
         }
         let dir=open_at(&parent,c"managed-pending",libc::O_RDONLY|libc::O_DIRECTORY,0)?;
         private(&dir,true)?;
         parent.sync_all().map_err(io)?;
-        Ok(Self {dir, #[cfg(test)] fail_at:None})
+        let store=Self {dir, #[cfg(test)] fail_at:None};
+        if created { store.write_inner(&[],true)?; }
+        Ok(store)
     }
     pub fn read(&self)->Result<Vec<Record>,Failure> {
         let file=match open_at(&self.dir,c"records.json",libc::O_RDONLY,0) {
             Ok(f)=>f,
-            Err(Failure::Io(std::io::ErrorKind::NotFound))=>return Ok(Vec::new()),
+            Err(Failure::Io(std::io::ErrorKind::NotFound))=>return Err(Failure::Invalid),
             Err(e)=>return Err(e),
         };
         private(&file,false)?;
@@ -51,7 +54,8 @@ impl Store {
         if data.len()>LIMIT { return Err(Failure::Invalid); }
         parse(&data)
     }
-    pub fn write(&self,records:&[Record])->Result<(),Failure> {
+    pub fn write(&self,records:&[Record])->Result<(),Failure> { self.write_inner(records,false) }
+    fn write_inner(&self,records:&[Record],initialize:bool)->Result<(),Failure> {
         use std::{ffi::CString,os::fd::AsRawFd};
         let data=bytes(records)?;
         let leaf=CString::new(format!("tmp-{}",crate::fsutil::random_hex(16).map_err(|_|Failure::Invalid)?)).map_err(|_|Failure::Invalid)?;
@@ -66,10 +70,20 @@ impl Store {
             // SAFETY: only our successfully exclusively created fixed-parent temporary leaf.
             unsafe { libc::unlinkat(self.dir.as_raw_fd(),leaf.as_ptr(),0); } return Err(e);
         }
-        // SAFETY: both names use the retained private directory; no caller path is used.
-        if unsafe { libc::renameat(self.dir.as_raw_fd(),leaf.as_ptr(),self.dir.as_raw_fd(),c"records.json".as_ptr()) }!=0 {
+        // Initialization publishes without replacing any existing entry. A crash before
+        // removing its temporary hardlink leaves a detectable invalid link count.
+        // SAFETY: all names use the retained private directory; no caller path is used.
+        let published=unsafe {
+            if initialize { libc::linkat(self.dir.as_raw_fd(),leaf.as_ptr(),self.dir.as_raw_fd(),c"records.json".as_ptr(),0) }
+            else { libc::renameat(self.dir.as_raw_fd(),leaf.as_ptr(),self.dir.as_raw_fd(),c"records.json".as_ptr()) }
+        };
+        if published!=0 {
             // Publication outcome is conservatively unknown; preserve both alternatives.
             return Err(Failure::PersistenceUnknown);
+        }
+        if initialize {
+            // SAFETY: remove only this invocation's exclusive temporary entry.
+            if unsafe {libc::unlinkat(self.dir.as_raw_fd(),leaf.as_ptr(),0)}!=0 { return Err(Failure::PersistenceUnknown); }
         }
         #[cfg(test)] if self.fail_at==Some("after_rename") { return Err(Failure::PersistenceUnknown); }
         self.dir.sync_all().map_err(|_|Failure::PersistenceUnknown)

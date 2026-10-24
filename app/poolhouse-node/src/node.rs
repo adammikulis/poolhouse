@@ -173,7 +173,7 @@ impl Node {
             #[cfg(unix)] {
                 let parent=self._instance.checked_parent(&self.dir,INSTANCE_LOCK)
                     .map_err(|e|managed_jobs::Failure::Io(e.kind()))?;
-                self.pending_jobs=Some(managed_jobs::Book::open(parent)?);
+                self.pending_jobs=Some(managed_jobs::Book::open(parent,self.activity.clone())?);
             }
             #[cfg(not(unix))] return Err(managed_jobs::Failure::Io(std::io::ErrorKind::Unsupported));
         }
