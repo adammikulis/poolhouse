@@ -40,3 +40,10 @@ root = "LocalAuthorityScopedOperation"
 omit_root_field = "transcript_digest"
 domain = "poolhouse.local-authority.scoped-operation.v1\u0000"
 schema_sha256 = "f8ab6d987cd586b1cad33b75260821d591bbaa634eed0d57e92cf9c08faf40a7"
+
+[[profile]]
+name = "authority-descriptor-v1"
+root = "AuthorityDescriptorBody"
+omit_root_field = "descriptor_id"
+domain = "poolhouse.authority.descriptor.v1\u0000"
+schema_sha256 = "7639170ac70f6bf48205dc276df97e1264fc98a18f8055dfb37eeedf2d406740"

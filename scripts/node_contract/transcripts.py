@@ -17,6 +17,7 @@ from types import MappingProxyType
 from .common import keys
 
 PROFILES = MappingProxyType({
+    "authority-descriptor-v1": ("AuthorityDescriptorBody", "descriptor_id", "poolhouse.authority.descriptor.v1\0"),
     "approval-immutable-v1": ("ApprovalImmutableOperation", "digest", "poolhouse.approval.immutable-operation.v1\0"),
     "local-authority-scoped-v1": ("LocalAuthorityScopedOperation", "transcript_digest", "poolhouse.local-authority.scoped-operation.v1\0"),
 })
@@ -177,6 +178,9 @@ class ReferenceTranscripts:
             value = json.loads(raw.decode("utf-8", errors="strict"), object_pairs_hook=unique_object,
                                parse_int=_no_number, parse_float=_no_number, parse_constant=_no_number)
             _validate(self._definitions, profile["root"], value)
+            if purpose == "authority-descriptor-v1":
+                from .authority_admission import validate_descriptor
+                validate_descriptor(value)
             if purpose == "local-authority-scoped-v1":
                 if value["profile_version"] != "1":
                     raise ValueError("unsupported local authority profile")

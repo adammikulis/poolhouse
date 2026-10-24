@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "status": "private descriptor DATA and sealed admission declarations only; no native root/provider observation, admitted constructor, issuer, key or OS implementation",
+  "source_commit": "801b3423abc914057c69f7562895825d6239d917",
+  "sources": [
+    {
+      "path": "contracts/node/domains/approvals.toml",
+      "sha256": "463b02705992c3ca43eb3bbdf5bf6a711429d60f9aa6b2d9184787f8ca439ea9"
+    },
+    {
+      "path": "contracts/node/domains/local_authority.toml",
+      "sha256": "d1dcdadab4856d9af92e5b0a19bacc507c4a8a320d641209f96e7b2eec1d9656"
+    },
+    {
+      "path": "app/poolhouse-authority/src/certificate.rs",
+      "sha256": "54df963f47700d1431a168c6bb06235a224052d800b241bb449393e84b4b6283"
+    },
+    {
+      "path": "app/poolhouse-node/src/gov/keys.rs",
+      "sha256": "9e986c9abb9e1f4ba22e934395a3d4a75ffaeb543e414a6c1797d290f7fed81a"
+    },
+    {
+      "path": "docs/native-plan-windows-linux.md",
+      "sha256": "c80ba4f728d9f6ae3fa2f019627cd426cc85be0ee373258fbc5aff384c37bd7f"
+    }
+  ],
+  "operations": [],
+  "limits": [
+    "No v1 descriptor or trust migration.",
+    "Signature mathematics and content IDs never admit roots, people, membership or assurance.",
+    "Historical issuance context is distinct from current governance and unrelated revision changes do not require new descriptors.",
+    "Unknown person relation adds no vote; actual native provider and root admission remain unimplemented."
+  ]
+}
