@@ -69,6 +69,11 @@ Mac results for the exact two-patch set are in the [original producer evidence](
 compile, two context tests and both packages passed; both original candidates executed injected DYLD code before hardening.
 Live startup, attachment and core proofs remain unverified; H remains unfinished and the active host is unchanged.
 Keep the original failed artifacts/results immutable; derivative experiments need separate evidence.
+A later [four-patch Mac build checkpoint](notes/native-macos-fourpatch-build.md) records actual CLI and standalone
+packages for patched tree `64168edc27ec59e7d8d9fb9a4654a0352e1aec1b`, including strict hardened-copy receipts.
+Those new bytes were not executed or installed; earlier two-patch hardware observations do not transfer to them.
+Complete request retention, private transport, installed lifecycle proof and H/K/P acceptance remain unfinished.
+
 A separate [version comparison](native-macos-producer-derivative-evidence.json) records copies signed ad hoc with the
 runtime option. All eight `--version` cases exited 0; injected code ran in originals and produced no marker in copies.
 Short exits establish no live identity, server protection or H acceptance. Original server failures remain unchanged.
@@ -169,6 +174,10 @@ Actual kernel sender, hostile-message, exec/descriptor-transfer and distinct-ser
 The [Mac preservation ledger](notes/native-macos-preserved-work.md) is published separately. Please return the exact
 reviewed canonical adapter and retained-operation checkpoint plus fresh, separately sourced Windows and Linux/WSL
 workspace actors, public node IDs and endpoints requested above. No live sender semantics or connection is proven here.
+
+For shared lifecycle and protected-approval closure A review, read the
+[Mac common-interface review request](notes/native-macos-common-interface-review.md). It requests canonical decisions
+and an exact reviewed checkpoint; it defines no Mac wire fork or K acceptance.
 
 Mac K adapter request for shared-owner review, with feasibility evidence in `contracts-feasibility.json` under the
 same Mac evidence directory; this request establishes no principal, admission or platform contract:

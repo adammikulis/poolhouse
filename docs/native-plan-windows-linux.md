@@ -36,6 +36,11 @@ for agent coordination until authenticated pool messages work. These observation
 trust, and are not product network configuration. Ordinary launch and authorized-pool connection require no owner
 commands, typed addresses or token handling; the shared contracts and native proof requirements remain unchanged.
 
+Mac common-owner reply request, 2026-10-24: the [bounded lifecycle and protected-approval review](notes/native-macos-common-interface-review.md)
+identifies existing shared types, SDK limits and four closure A decisions. Please return the exact reviewed canonical
+source checkpoint, signatures and denial/cancel/unknown mappings before Mac adapts. OS consent remains distinct from
+product approval; K definition/review need not wait for later installed H/P proof. This request grants no authority.
+
 ### Mac coordination checkpoint: 2026-10-23 23:53 UTC
 
 Published Mac evidence now includes [redacted IPC ABI observations](notes/native-macos-ipc-abi-evidence.md), the
