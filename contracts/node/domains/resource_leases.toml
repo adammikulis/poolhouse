@@ -1,0 +1,642 @@
+version = 1
+status = "proposal"
+
+[[type]]
+name = "ResourceLeaseScopeId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ResourceLeaseOwnerId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ResourceLeaseResourceId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ResourceLeaseId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ResourceLeaseSnapshotId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ResourceLeaseSourceId"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 64
+
+[[type]]
+name = "ResourceLeaseModelKey"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 300
+
+[[type]]
+name = "ResourceLeaseDraftKey"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 0
+max_bytes = 300
+
+[[type]]
+name = "ResourceLeaseTag"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 0
+max_bytes = 64
+
+[[type]]
+name = "ResourceLeaseCpuCount"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 4294967295
+
+[[type]]
+name = "ResourceLeaseMemoryMiB"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "data"
+minimum = 1
+maximum = 18446744073709551615
+
+[[type]]
+name = "ResourceLeaseScopeRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "ResourceLeaseScopeId"}, {name = "board_id", type = "BoardId"}, {name = "board_generation", type = "ResourceGeneration"}, {name = "device_id", type = "DeviceId"}, {name = "installation_id", type = "InstallationId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ResourceLeaseOwnerRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "ResourceLeaseOwnerId"}, {name = "scope", type = "ResourceLeaseScopeRef"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ResourceLeaseOwnerView"
+kind = "record"
+visibility = "public"
+fields = [{name = "owner", type = "ResourceLeaseOwnerRef"}, {name = "agent", type = "TaskOptionalActorRef"}]
+
+[[type]]
+name = "ResourceLeaseResourceRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "ResourceLeaseResourceId"}, {name = "scope", type = "ResourceLeaseScopeRef"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ResourceLeaseFamily"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "cpu_slots", type = "Empty"}, {tag = "memory_mebibytes", type = "Empty"}, {tag = "gpu", type = "Empty"}, {tag = "model_slot", type = "Empty"}, {tag = "named_claim", type = "Empty"}]
+
+[[type]]
+name = "ResourceLeaseUnit"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "cpu_slots", type = "Empty"}, {tag = "mebibytes", type = "Empty"}, {tag = "exclusive", type = "Empty"}]
+
+[[type]]
+name = "ResourceLeaseCapacity"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "known", type = "U64"}, {tag = "budget_disabled", type = "Empty"}, {tag = "unknown", type = "Empty"}]
+
+[[type]]
+name = "ResourceLeaseResourceView"
+kind = "record"
+visibility = "public"
+fields = [{name = "resource", type = "ResourceLeaseResourceRef"}, {name = "family", type = "ResourceLeaseFamily"}, {name = "unit", type = "ResourceLeaseUnit"}, {name = "capacity", type = "ResourceLeaseCapacity"}, {name = "config_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ResourceLeaseCpuRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "resource", type = "ResourceLeaseResourceRef"}, {name = "count", type = "ResourceLeaseCpuCount"}]
+
+[[type]]
+name = "ResourceLeaseMemoryRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "resource", type = "ResourceLeaseResourceRef"}, {name = "mebibytes", type = "ResourceLeaseMemoryMiB"}]
+
+[[type]]
+name = "ResourceLeaseExclusiveRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "resource", type = "ResourceLeaseResourceRef"}]
+
+[[type]]
+name = "ResourceLeaseModelSlotRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "resource", type = "ResourceLeaseResourceRef"}, {name = "requested_model", type = "ResourceLeaseModelKey"}, {name = "context", type = "U64"}, {name = "parallel", type = "U32"}, {name = "requested_draft", type = "ResourceLeaseDraftKey"}]
+
+[[type]]
+name = "ResourceLeaseNamedRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "resource", type = "ResourceLeaseResourceRef"}, {name = "claim", type = "CoordinationClaimResource"}]
+
+[[type]]
+name = "ResourceLeaseResourceRequest"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "cpu_slots", type = "ResourceLeaseCpuRequest"}, {tag = "memory_mebibytes", type = "ResourceLeaseMemoryRequest"}, {tag = "gpu", type = "ResourceLeaseExclusiveRequest"}, {tag = "model_slot", type = "ResourceLeaseModelSlotRequest"}, {tag = "named_claim", type = "ResourceLeaseNamedRequest"}]
+
+[[type]]
+name = "ResourceLeaseRequestedResources"
+kind = "list"
+visibility = "public"
+item = "ResourceLeaseResourceRequest"
+max_items = 8
+min_items = 1
+
+[[type]]
+name = "ResourceLeaseModelSlotHolding"
+kind = "record"
+visibility = "public"
+fields = [{name = "requested", type = "ResourceLeaseModelSlotRequest"}, {name = "resolved_model", type = "ModelOptionalRef"}]
+
+[[type]]
+name = "ResourceLeaseOptionalTaskRef"
+kind = "optional"
+visibility = "public"
+item = "TaskScopedRef"
+
+[[type]]
+name = "ResourceLeaseTaskHolding"
+kind = "record"
+visibility = "public"
+fields = [{name = "resource", type = "ResourceLeaseResourceRef"}, {name = "source_task_key", type = "ResourceLeaseModelKey"}, {name = "task", type = "ResourceLeaseOptionalTaskRef"}]
+
+[[type]]
+name = "ResourceLeaseResourceHolding"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "task_coordination", type = "ResourceLeaseTaskHolding"}, {tag = "cpu_slots", type = "ResourceLeaseCpuRequest"}, {tag = "memory_mebibytes", type = "ResourceLeaseMemoryRequest"}, {tag = "gpu", type = "ResourceLeaseExclusiveRequest"}, {tag = "model_slot", type = "ResourceLeaseModelSlotHolding"}, {tag = "named_claim", type = "ResourceLeaseNamedRequest"}]
+
+[[type]]
+name = "ResourceLeaseHeldResources"
+kind = "list"
+visibility = "public"
+item = "ResourceLeaseResourceHolding"
+max_items = 8
+min_items = 1
+
+[[type]]
+name = "ResourceLeaseClass"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "interactive", type = "Empty"}, {tag = "background", type = "Empty"}]
+
+[[type]]
+name = "ResourceLeaseProcessIntent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "expiry_bound", type = "Empty"}, {tag = "bind_original_native_occurrence", type = "Empty"}]
+
+[[type]]
+name = "ResourceLeaseRenewProcessIntent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "retain", type = "Empty"}, {tag = "bind_original_native_occurrence", type = "Empty"}]
+
+[[type]]
+name = "ResourceLeaseLogicalState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "queued", type = "Empty"}, {tag = "held", type = "Empty"}, {tag = "ended", type = "Empty"}]
+
+[[type]]
+name = "ResourceLeaseEndReason"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "released", type = "Empty"}, {tag = "expired", type = "Empty"}, {tag = "dead_holder", type = "Empty"}, {tag = "abandoned", type = "Empty"}, {tag = "lost", type = "Empty"}, {tag = "removed", type = "Empty"}, {tag = "cancelled", type = "Empty"}]
+
+[[type]]
+name = "ResourceLeaseOptionalEndReason"
+kind = "optional"
+visibility = "public"
+item = "ResourceLeaseEndReason"
+
+[[type]]
+name = "ResourceLeaseSettlement"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "no_physical_effect", type = "Empty"}, {tag = "owned", type = "Empty"}, {tag = "settling", type = "Empty"}, {tag = "settled", type = "Empty"}, {tag = "outcome_unknown", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ResourceLeaseLogPolicy"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "normal", type = "Empty"}, {tag = "quiet_internal", type = "Empty"}]
+
+[[type]]
+name = "ResourceLeaseRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "id", type = "ResourceLeaseId"}, {name = "generation", type = "ResourceGeneration"}, {name = "scope", type = "ResourceLeaseScopeRef"}]
+
+[[type]]
+name = "ResourceLeaseView"
+kind = "record"
+visibility = "public"
+fields = [{name = "lease", type = "ResourceLeaseRef"}, {name = "revision", type = "U64"}, {name = "source_id", type = "ResourceLeaseSourceId"}, {name = "owner", type = "ResourceLeaseOwnerView"}, {name = "resources", type = "ResourceLeaseHeldResources"}, {name = "request_class", type = "ResourceLeaseClass"}, {name = "requested_estimate_seconds", type = "OptionalU64"}, {name = "effective_estimate_seconds", type = "U64"}, {name = "arrival_sequence", type = "U64"}, {name = "since", type = "UnixMicros"}, {name = "granted_at", type = "OptionalUnixMicros"}, {name = "expires_at", type = "UnixMicros"}, {name = "requested_ttl_seconds", type = "OptionalU64"}, {name = "stored_renewal_ttl_seconds", type = "U64"}, {name = "applied_expiry_extension_seconds", type = "U64"}, {name = "queue_position", type = "U64"}, {name = "rough_wait_seconds", type = "OptionalU64"}, {name = "process_bound", type = "Boolean"}, {name = "local_only", type = "Boolean"}, {name = "tag", type = "ResourceLeaseTag"}, {name = "logical_state", type = "ResourceLeaseLogicalState"}, {name = "ended_reason", type = "ResourceLeaseOptionalEndReason"}, {name = "settlement", type = "ResourceLeaseSettlement"}, {name = "log_policy", type = "ResourceLeaseLogPolicy"}]
+
+[[type]]
+name = "ResourceLeaseOptionalView"
+kind = "optional"
+visibility = "public"
+item = "ResourceLeaseView"
+
+[[type]]
+name = "ResourceLeasePolicyView"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "cpu_slots", type = "U32"}, {name = "memory_mebibytes", type = "ResourceLeaseCapacity"}, {name = "max_wait_seconds", type = "U64"}, {name = "background_share_percent", type = "U32"}, {name = "unknown_background_seconds", type = "U64"}, {name = "queue_patience_seconds", type = "U64"}, {name = "default_ttl_seconds", type = "U64"}, {name = "max_ttl_seconds", type = "U64"}, {name = "max_leases_per_holder", type = "U64"}, {name = "max_leases", type = "U64"}, {name = "max_leases_per_lineage", type = "U64"}, {name = "max_worktree_records", type = "U64"}]
+
+[[type]]
+name = "ResourceLeaseContextView"
+kind = "record"
+visibility = "public"
+fields = [{name = "scope", type = "ResourceLeaseScopeRef"}, {name = "owner", type = "ResourceLeaseOwnerView"}, {name = "policy", type = "ResourceLeasePolicyView"}]
+
+[[type]]
+name = "ResourceLeaseContextInspectRequest"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "ResourceLeaseResourcesListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "scope", type = "ResourceLeaseScopeRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "after", type = "InferenceOptionalCursor"}]
+
+[[type]]
+name = "ResourceLeaseAcquireRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "scope", type = "ResourceLeaseScopeRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "resources", type = "ResourceLeaseRequestedResources"}, {name = "request_class", type = "ResourceLeaseClass"}, {name = "estimate_seconds", type = "OptionalU64"}, {name = "ttl_seconds", type = "OptionalU64"}, {name = "process_binding", type = "ResourceLeaseProcessIntent"}, {name = "local_only", type = "Boolean"}, {name = "wait", type = "Boolean"}, {name = "tag", type = "ResourceLeaseTag"}]
+
+[[type]]
+name = "ResourceLeaseAcquireResult"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "accepted", type = "ResourceLeaseView"}, {tag = "busy", type = "Empty"}]
+
+[[type]]
+name = "ResourceLeaseGetRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "lease", type = "ResourceLeaseRef"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ResourceLeaseRenewRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "lease", type = "ResourceLeaseRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "ttl_seconds", type = "OptionalU64"}, {name = "process_binding", type = "ResourceLeaseRenewProcessIntent"}]
+
+[[type]]
+name = "ResourceLeaseReleaseRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "lease", type = "ResourceLeaseRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "ResourceLeaseReleaseView"
+kind = "record"
+visibility = "public"
+fields = [{name = "lease", type = "ResourceLeaseView"}, {name = "logical_released", type = "Boolean"}, {name = "physical_settled", type = "Boolean"}]
+
+[[type]]
+name = "ResourceLeaseWaitRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "lease", type = "ResourceLeaseRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "timeout_millis", type = "U64"}]
+
+[[type]]
+name = "ResourceLeaseWaitOutcome"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "granted", type = "Empty"}, {tag = "timed_out", type = "Empty"}, {tag = "ended", type = "Empty"}, {tag = "authorization_lost", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ResourceLeaseWaitView"
+kind = "record"
+visibility = "public"
+fields = [{name = "lease", type = "ResourceLeaseOptionalView"}, {name = "outcome", type = "ResourceLeaseWaitOutcome"}, {name = "original_budget_millis", type = "U64"}, {name = "elapsed_millis", type = "U64"}]
+
+[[type]]
+name = "ResourceLeaseListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "scope", type = "ResourceLeaseScopeRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "after", type = "InferenceOptionalCursor"}]
+
+[[type]]
+name = "ResourceLeaseWatchRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "lease", type = "ResourceLeaseRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "after", type = "InferenceOptionalCursor"}]
+
+[[type]]
+name = "ResourceLeaseSnapshotBoundary"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot_id", type = "ResourceLeaseSnapshotId"}, {name = "scope", type = "ResourceLeaseScopeRef"}, {name = "revision", type = "U64"}, {name = "cursor", type = "InferenceCursor"}]
+
+[[type]]
+name = "ResourceLeaseResourceStreamItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "ResourceLeaseSnapshotBoundary"}, {name = "value", type = "ResourceLeaseResourceView"}]
+
+[[type]]
+name = "ResourceLeaseResourcesEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "ResourceLeaseSnapshotBoundary"}, {tag = "resource", type = "ResourceLeaseResourceStreamItem"}, {tag = "complete", type = "ResourceLeaseSnapshotBoundary"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "ResourceLeaseStreamItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "ResourceLeaseSnapshotBoundary"}, {name = "value", type = "ResourceLeaseView"}]
+
+[[type]]
+name = "ResourceLeasePolicyStreamItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "ResourceLeaseSnapshotBoundary"}, {name = "value", type = "ResourceLeasePolicyView"}]
+
+[[type]]
+name = "ResourceLeaseCapacityObservation"
+kind = "record"
+visibility = "public"
+fields = [{name = "resource", type = "ResourceLeaseResourceView"}, {name = "committed_quantity", type = "U64"}, {name = "reserved_quantity", type = "U64"}, {name = "unsettled_quantity", type = "U64"}]
+
+[[type]]
+name = "ResourceLeaseCapacityStreamItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "ResourceLeaseSnapshotBoundary"}, {name = "value", type = "ResourceLeaseCapacityObservation"}]
+
+[[type]]
+name = "ResourceLeaseEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "snapshot", type = "ResourceLeaseSnapshotBoundary"}, {tag = "lease", type = "ResourceLeaseStreamItem"}, {tag = "policy", type = "ResourceLeasePolicyStreamItem"}, {tag = "capacity", type = "ResourceLeaseCapacityStreamItem"}, {tag = "complete", type = "ResourceLeaseSnapshotBoundary"}, {tag = "resync_required", type = "Empty"}]
+
+[[type]]
+name = "ResourceLeaseErrorDetails"
+kind = "record"
+visibility = "public"
+fields = [{name = "message", type = "SafeMessage"}, {name = "retryable", type = "Boolean"}]
+
+[[type]]
+name = "ResourceLeaseError"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "invalid_request", type = "ResourceLeaseErrorDetails"}, {tag = "unauthenticated", type = "ResourceLeaseErrorDetails"}, {tag = "forbidden", type = "ResourceLeaseErrorDetails"}, {tag = "not_found", type = "ResourceLeaseErrorDetails"}, {tag = "stale_generation", type = "ResourceLeaseErrorDetails"}, {tag = "revision_conflict", type = "ResourceLeaseErrorDetails"}, {tag = "request_id_conflict", type = "ResourceLeaseErrorDetails"}, {tag = "capacity_exceeded", type = "ResourceLeaseErrorDetails"}, {tag = "busy", type = "ResourceLeaseErrorDetails"}, {tag = "policy_unavailable", type = "ResourceLeaseErrorDetails"}, {tag = "needs_measurement", type = "ResourceLeaseErrorDetails"}, {tag = "waiter_limit", type = "ResourceLeaseErrorDetails"}, {tag = "process_binding_lost", type = "ResourceLeaseErrorDetails"}, {tag = "overflow", type = "ResourceLeaseErrorDetails"}, {tag = "recovery_required", type = "ResourceLeaseErrorDetails"}]
+
+[[type]]
+name = "ResourceAdmissionProfileId"
+kind = "scalar"
+visibility = "private"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "ResourceAdmissionProfileRef"
+kind = "record"
+visibility = "private"
+fields = [{name = "id", type = "ResourceAdmissionProfileId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ResourceAdmissionFamily"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "content_stage", type = "Empty"}, {tag = "graph_transaction", type = "Empty"}, {tag = "bounded_worker", type = "Empty"}, {tag = "model_serving", type = "Empty"}, {tag = "explicit_resource_request", type = "Empty"}]
+
+[[type]]
+name = "ResourceAdmissionMeasurementKind"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "source_estimate", type = "Empty"}, {tag = "fallback_estimate", type = "Empty"}, {tag = "runtime_measurement", type = "Empty"}, {tag = "verified_upper_bound", type = "Empty"}, {tag = "unknown", type = "Empty"}]
+
+[[type]]
+name = "ResourceAdmissionQuantity"
+kind = "record"
+visibility = "private"
+fields = [{name = "bytes", type = "OptionalU64"}, {name = "kind", type = "ResourceAdmissionMeasurementKind"}, {name = "source_digest", type = "InferenceDigest"}, {name = "measurement_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ResourceAdmissionWorkerCharges"
+kind = "record"
+visibility = "private"
+fields = [{name = "envelope", type = "WorkerResourceEnvelope"}, {name = "host", type = "ResourceAdmissionQuantity"}, {name = "device", type = "ResourceAdmissionQuantity"}, {name = "working", type = "ResourceAdmissionQuantity"}, {name = "host_alias", type = "ModelPhysicalAliasId"}, {name = "device_alias", type = "ModelPhysicalAliasId"}, {name = "working_alias", type = "ModelPhysicalAliasId"}]
+
+[[type]]
+name = "ResourceAdmissionStorageCharges"
+kind = "record"
+visibility = "private"
+fields = [{name = "durable", type = "ResourceAdmissionQuantity"}, {name = "scratch", type = "ResourceAdmissionQuantity"}, {name = "existing_retained", type = "ResourceAdmissionQuantity"}, {name = "store", type = "StateStoreBinding"}, {name = "store_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ResourceAdmissionCpuCharges"
+kind = "record"
+visibility = "private"
+fields = [{name = "slots", type = "U32"}, {name = "source_generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "ResourceAdmissionBinding"
+kind = "record"
+visibility = "private"
+fields = [{name = "profile", type = "ResourceAdmissionProfileRef"}, {name = "family", type = "ResourceAdmissionFamily"}, {name = "transaction", type = "StateTransactionBinding"}, {name = "owner", type = "ResourceLeaseOwnerRef"}, {name = "operation_id", type = "OperationId"}, {name = "request_id", type = "RequestId"}, {name = "scope", type = "ResourceLeaseScopeRef"}, {name = "consumer_generation", type = "ResourceGeneration"}, {name = "config_generation", type = "ResourceGeneration"}, {name = "source_limit_profile_digest", type = "InferenceDigest"}, {name = "input_digest", type = "InferenceDigest"}]
+
+[[type]]
+name = "ResourceAdmissionOptionalAccelerator"
+kind = "optional"
+visibility = "private"
+item = "ResourceLeaseResourceRef"
+
+[[type]]
+name = "ResourceAdmissionEnvelope"
+kind = "record"
+visibility = "private"
+fields = [{name = "binding", type = "ResourceAdmissionBinding"}, {name = "cpu", type = "ResourceAdmissionCpuCharges"}, {name = "accelerator", type = "ResourceAdmissionOptionalAccelerator"}, {name = "memory", type = "ResourceAdmissionWorkerCharges"}, {name = "storage", type = "ResourceAdmissionStorageCharges"}, {name = "input", type = "ResourceAdmissionQuantity"}, {name = "output", type = "ResourceAdmissionQuantity"}]
+
+[[type]]
+name = "ResourceAdmissionState"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "estimated", type = "Empty"}, {tag = "needs_measurement", type = "Empty"}, {tag = "policy_unavailable", type = "Empty"}, {tag = "awaiting_capacity", type = "Empty"}, {tag = "queued", type = "Empty"}, {tag = "reserved", type = "Empty"}, {tag = "running", type = "Empty"}, {tag = "retaining_result", type = "Empty"}, {tag = "settling", type = "Empty"}, {tag = "settled", type = "Empty"}, {tag = "refused", type = "Empty"}, {tag = "outcome_unknown", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "ResourceAdmissionAccountingRecord"
+kind = "record"
+visibility = "private"
+fields = [{name = "binding", type = "ResourceAdmissionBinding"}, {name = "revision", type = "U64"}, {name = "state", type = "ResourceAdmissionState"}, {name = "envelope", type = "ResourceAdmissionEnvelope"}, {name = "resident_committed_bytes", type = "U64"}, {name = "working_reserved_bytes", type = "U64"}, {name = "durable_committed_bytes", type = "U64"}, {name = "scratch_reserved_bytes", type = "U64"}, {name = "unsettled_retained_bytes", type = "U64"}]
+
+[[type]]
+name = "ResourceAdmissionTransferKind"
+kind = "union"
+visibility = "private"
+tag = "kind"
+variants = [{tag = "stage_to_committed_consumer", type = "Empty"}, {tag = "worker_result_to_node", type = "Empty"}, {tag = "resident_to_retirement", type = "Empty"}, {tag = "unreferenced_to_settlement", type = "Empty"}]
+
+[[type]]
+name = "ResourceAdmissionTransferRecord"
+kind = "record"
+visibility = "private"
+fields = [{name = "transaction", type = "StateTransactionBinding"}, {name = "from_owner", type = "ResourceAdmissionBinding"}, {name = "to_owner", type = "ResourceAdmissionBinding"}, {name = "transfer_kind", type = "ResourceAdmissionTransferKind"}, {name = "generation", type = "ResourceGeneration"}, {name = "bytes", type = "U64"}, {name = "completed", type = "Boolean"}]
+
+[[operation]]
+name = "leases.context.inspect"
+symbol = "ResourceLeasesContextInspect"
+request = "ResourceLeaseContextInspectRequest"
+response = "ResourceLeaseContextView"
+error = "ResourceLeaseError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "derive-actual-native-owner-and-current-scope", "no-synthetic-agent-session-prerequisite"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "leases.resources.list"
+symbol = "ResourceLeasesResourcesList"
+request = "ResourceLeaseResourcesListRequest"
+response = "ResourceLeaseResourcesEvent"
+error = "ResourceLeaseError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "exact-resource-generation", "current-native-owner-installation-device-and-board-scope", "no-label-or-resource-reference-authority", "family-descriptors-no-preexisting-model-key-gate", "principal-bound-complete-frozen-snapshot"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "leases.acquire"
+symbol = "ResourceLeasesAcquire"
+request = "ResourceLeaseAcquireRequest"
+response = "ResourceLeaseAcquireResult"
+error = "ResourceLeaseError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "exact-resource-generation", "current-native-owner-installation-device-and-board-scope", "no-label-or-resource-reference-authority", "durable-principal-resource-generation-payload-bound-transition", "node-derived-local-resource-family-and-conflict-key", "source-exact-quantities-and-current-config-admission", "source-same-owner-tag-resource-set-attachment", "current-originating-domain-policy-for-protected-holdings", "no-public-quiet-work-gate-bypass", "original-native-process-lifetime-if-bound", "no-second-physical-workload-from-party-exemption"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "leases.get"
+symbol = "ResourceLeasesGet"
+request = "ResourceLeaseGetRequest"
+response = "ResourceLeaseView"
+error = "ResourceLeaseError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "exact-resource-generation", "current-native-owner-installation-device-and-board-scope", "no-label-or-resource-reference-authority", "actual-owner-before-lookup", "observation-never-renewal"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "leases.renew"
+symbol = "ResourceLeasesRenew"
+request = "ResourceLeaseRenewRequest"
+response = "ResourceLeaseView"
+error = "ResourceLeaseError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "exact-resource-generation", "current-native-owner-installation-device-and-board-scope", "no-label-or-resource-reference-authority", "durable-principal-resource-generation-payload-bound-transition", "actual-owner-and-exact-lease-incarnation", "compare-and-swap-lease-revision", "original-authorized-native-lifetime-only", "exact-retry-never-rerefreshes-expiry", "current-originating-domain-policy-for-protected-holdings"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "leases.release"
+symbol = "ResourceLeasesRelease"
+request = "ResourceLeaseReleaseRequest"
+response = "ResourceLeaseReleaseView"
+error = "ResourceLeaseError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "exact-resource-generation", "current-native-owner-installation-device-and-board-scope", "no-label-or-resource-reference-authority", "durable-principal-resource-generation-payload-bound-transition", "actual-owner-and-exact-lease-incarnation", "compare-and-swap-lease-revision", "logical-ending-distinct-physical-settlement", "retain-unknown-custody-and-capacity", "current-originating-domain-policy-for-protected-holdings"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "leases.wait"
+symbol = "ResourceLeasesWait"
+request = "ResourceLeaseWaitRequest"
+response = "ResourceLeaseWaitView"
+error = "ResourceLeaseError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "exact-resource-generation", "current-native-owner-installation-device-and-board-scope", "no-label-or-resource-reference-authority", "durable-principal-resource-generation-payload-bound-transition", "actual-owner-and-exact-lease-incarnation", "compare-and-swap-lease-revision", "bounded-original-wait-and-explicit-keepalive", "retry-never-restarts-wait-budget", "release-removal-stops-old-wait", "current-originating-domain-policy-for-protected-holdings"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "leases.list"
+symbol = "ResourceLeasesList"
+request = "ResourceLeaseListRequest"
+response = "ResourceLeaseEvent"
+error = "ResourceLeaseError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "exact-resource-generation", "current-native-owner-installation-device-and-board-scope", "no-label-or-resource-reference-authority", "omit-entire-foreign-lease-rows", "safe-aggregate-capacity-only", "principal-bound-complete-frozen-snapshot", "observation-never-renewal"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "leases.watch"
+symbol = "ResourceLeasesWatch"
+request = "ResourceLeaseWatchRequest"
+response = "ResourceLeaseEvent"
+error = "ResourceLeaseError"
+authorization = ["authenticated-current-principal", "no-existence-disclosure-before-authorization", "exact-resource-generation", "current-native-owner-installation-device-and-board-scope", "no-label-or-resource-reference-authority", "actual-owner-before-lookup", "principal-bound-complete-frozen-snapshot", "current-authorization-before-each-item", "observation-never-renewal"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"

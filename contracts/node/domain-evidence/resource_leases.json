@@ -1,0 +1,592 @@
+{
+  "version": 1,
+  "status": "generic resource leases and private common admission metadata proposal; no runtime, OS enforcement, measurement, storage backend or K acceptance",
+  "source_commit": "a3d5fad2a8a2c722faefe625f3e0c8ac27a3cac0",
+  "sources": [
+    {
+      "path": "app/poolhouse-node/src/lease/rpc.rs",
+      "sha256": "1681cd334d4acf7e22e99bde77d80f9e041c1614e1fa6290a31853ce5f18fbfd"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/types.rs",
+      "sha256": "567473304623ea1f4d502506b4da80f72f459a78617fd59ff293b18c1156bba6"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/table.rs",
+      "sha256": "7e4643e0eaa6f1ec8652df89e49877cf93d4feb93dd0e63bf35f5a71881d299a"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/policy.rs",
+      "sha256": "39ab1c7dbcd5082eeeb365d23d419ca38461451a20d28775457c57500c1ccbb7"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/live.rs",
+      "sha256": "38b180f62093e55709ede7dceb4f6f541f5006ebfbb075710ddc0a7a0c9756a4"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/holders.rs",
+      "sha256": "336c3fe788e5d215048ceee1ed4af55c22c9d71fc56c43a6979e170cdb425298"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/merge.rs",
+      "sha256": "064732722c7cba054b2b5541ed5cdc2cbd3aba953b5212702ae6d06aa94ac3b3"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/mod.rs",
+      "sha256": "dffcc27bc2fdb662a62cea62481d7137cfb840f6e59a45ca95bbdaf83518238f"
+    },
+    {
+      "path": "app/poolhouse-node/src/claims.rs",
+      "sha256": "1188d045b2e992ff0d07b4582f162b532730d7862cfbd5030cdb043076803821"
+    },
+    {
+      "path": "src/poolhouse/api/leases.py",
+      "sha256": "715d1c8f0eb47817564809379c5889ebc85689ac027549675a118681b0f14125"
+    },
+    {
+      "path": "src/poolhouse/leasetable.py",
+      "sha256": "d6e5a59bfc285b6763b52e213fa83a522df0fc4f02163de29e6703809bd334c7"
+    },
+    {
+      "path": "src/poolhouse/serve/admission.py",
+      "sha256": "78044c0d88549a7a448e604159b6f30703d52e2d2d6bfe9189d1dcb1d26311b5"
+    },
+    {
+      "path": "src/poolhouse/serve/preflight.py",
+      "sha256": "dc5ac894025f9a666546e841e9c002bdfc98f85d276ce786e43804d67b28fd3d"
+    },
+    {
+      "path": "src/poolhouse/serve/broker_holds.py",
+      "sha256": "3614025f61327ce15e1d66b3a41f73bebf29aa66167cc461a67781cf46656dce"
+    },
+    {
+      "path": "src/poolhouse/serve/broker_lifecycle.py",
+      "sha256": "65b03b46b89fafa26a8b21b8bf623965343ef7e1bbdd1ca1a758801c7494dc94"
+    },
+    {
+      "path": "src/poolhouse/gate.py",
+      "sha256": "303408f706648d14fbb3f7098d1951a0b1670429cc3e028d2164a8522c4df1f8"
+    },
+    {
+      "path": "src/poolhouse/workspace/localslot.py",
+      "sha256": "0949752feb9d81724c6f254edc2aee54651ace95d7ecbd88b1adbe14af1510e1"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_scheduler.py",
+      "sha256": "db38c8c1bb0be49090cd9a2636f4c486dbbaabea3c61703c61be24f4e02680e9"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_graph.py",
+      "sha256": "365355911b8a55bfa00fb06080590ad1e662c18993b1900ea3608c695d3a2582"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_creation.py",
+      "sha256": "ca18ef0339b549922de206d15674ad361b5820c6d26bd32a966a8e09609540e1"
+    },
+    {
+      "path": "src/poolhouse/graph/store.py",
+      "sha256": "f9368485b2d1c2d17871d41d0cc7c302f577a850a98fd539bea1500117662e90"
+    },
+    {
+      "path": "contracts/node/domains/workers.toml",
+      "sha256": "e2e8728b4bccb59d34a9412d00591e0a12e10d5bee1b3bc83a34042509699b61"
+    },
+    {
+      "path": "contracts/node/domains/models.toml",
+      "sha256": "39688adacea0dad8a689e8b45a22cbc7415543ba156815860cea1f0b70424814"
+    },
+    {
+      "path": "contracts/node/domains/state.toml",
+      "sha256": "1c43690039380cc8c253013334c6586e4c9ffcaacfe1ed6ce54734174af5a20f"
+    },
+    {
+      "path": "contracts/node/adapters.toml",
+      "sha256": "5cc046397ad391cf1f8478abd2677da425f7d1dc12f94412556a87998d556f68"
+    },
+    {
+      "path": "contracts/node/domains/inference.toml",
+      "sha256": "a7e8fe21d08e535a8798c6a1035a90b7c35644c016566554635f3efc79cbce9c"
+    },
+    {
+      "path": "contracts/node/retained-features.json",
+      "sha256": "3a99a8d4856851ff01e9082829a6a2a1d9e00177ea8f2595efa279af43e2a592"
+    }
+  ],
+  "sites": [
+    {
+      "path": "app/poolhouse-node/src/lease/rpc.rs",
+      "line": 22,
+      "symbol": "pub const METHODS:",
+      "line_sha256": "6cc5c9ffda862210083d818968278ad1116e140096351e8dfd5542190b83d74c"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/rpc.rs",
+      "line": 23,
+      "symbol": "pub const MAX_WAIT_MS:",
+      "line_sha256": "f371aa42a829f138226d5ae2439c5cb5e32e41b7a580c6d0ff49b7c516b91a46"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/rpc.rs",
+      "line": 133,
+      "symbol": "fn show(",
+      "line_sha256": "f31fd670c9be111016d15710f20869a55177c66fefbbdf8cfac09acde72bfac4"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/rpc.rs",
+      "line": 143,
+      "symbol": "fn authority(",
+      "line_sha256": "eb750f455b4831dd29a00273c64ae1940a1ac2314c513cf53ff9d8826d66dfac"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/rpc.rs",
+      "line": 150,
+      "symbol": "fn acquire(",
+      "line_sha256": "fc3d6f19d9082a837625dc9f79ed7b4414dfe604f575178c6ce893b99abda076"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/rpc.rs",
+      "line": 207,
+      "symbol": "pub fn call(",
+      "line_sha256": "610f6570c64accbe97657d64b9a45dececc368a4966313dea872ed15afa96f2f"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/rpc.rs",
+      "line": 225,
+      "symbol": "table.renew(cfg, now",
+      "line_sha256": "537873f988e88100f523bfd54f4216952785e3220558d60d1e70c5f60ec4d07e"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/rpc.rs",
+      "line": 296,
+      "symbol": "pub fn serve(",
+      "line_sha256": "b38c72056eef0cbbe734f0138a935ae03363c615dd5940b508507fe79a1848bc"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/types.rs",
+      "line": 18,
+      "symbol": "pub const MAX_RESOURCES:",
+      "line_sha256": "9e11f5dd92246d364b7ae7b650b21f8c98ff0c0ecebc2da1dd43682925b116dc"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/types.rs",
+      "line": 85,
+      "symbol": "pub fn key(",
+      "line_sha256": "b96e5fd4245ff4400f9b77617085c693afa2af2941e1afe945307765dc5037fc"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/types.rs",
+      "line": 127,
+      "symbol": "pub fn check(",
+      "line_sha256": "a4dc5f2dbfd1837b2a1ed73a7ab5b3e056deec18acb4b4e95678bb99801bf8f5"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/types.rs",
+      "line": 251,
+      "symbol": "pub struct Config",
+      "line_sha256": "a6121a1bfd7e24d65c1e78919f2ed6745b02d160bd38af36007f3d789962a413"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/types.rs",
+      "line": 298,
+      "symbol": "pub struct Request",
+      "line_sha256": "95a8627ec2313c68eb86d7965b4fa26758f4e90b39876d640a72eb2778f8e67a"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/table.rs",
+      "line": 54,
+      "symbol": "fn capacity(",
+      "line_sha256": "41daf070eb1aca27b7457212c4614d1cd11f170e2d2261e30b72731ecd320496"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/table.rs",
+      "line": 64,
+      "symbol": "fn longest(",
+      "line_sha256": "30df12f660e8a4d32c8b9784b35a873d68573f3c35931eeffc79aff8dbf776a5"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/table.rs",
+      "line": 95,
+      "symbol": "pub fn sweep(",
+      "line_sha256": "4b2a2ab7e222e237ef3efc8236c718a311cb17ec7cfdd59d5d9a489b593827c2"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/table.rs",
+      "line": 128,
+      "symbol": "pub fn enqueue(",
+      "line_sha256": "4dd08fd264884aadd7f39cb948b2e428475c27b2ba85edd56398b7f8d2db5f3d"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/table.rs",
+      "line": 168,
+      "symbol": "pub fn room_for(",
+      "line_sha256": "e7138157ceefdb1454d273501c3dfc4d97954cf2e32d724457fd6f3375429cb8"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/table.rs",
+      "line": 181,
+      "symbol": "fn free_for(",
+      "line_sha256": "349b4a9fe53ce04217c3b01a3acb68f7bfe1d5bbbeb2cdde96f98d10a6e554ef"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/table.rs",
+      "line": 206,
+      "symbol": "pub fn schedule(",
+      "line_sha256": "186548dfd3686c71dba8947c931f888c0ed29880c93e48f4a6793546f2551136"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/table.rs",
+      "line": 233,
+      "symbol": "pub fn release(",
+      "line_sha256": "dbfa202b2243095e31eb5da85b701c5394545cfefcf7ef34d988d1ba0a02084a"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/table.rs",
+      "line": 242,
+      "symbol": "pub fn renew(",
+      "line_sha256": "b929f6d38951c2e067118d4122503d0475b3ef7359d745b9272878aa2e9abd1b"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/table.rs",
+      "line": 259,
+      "symbol": "pub fn bind(",
+      "line_sha256": "1561bf1be7befea8b926be695f05946c4fd475d1ef22c53ed772e665dc0582dd"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/table.rs",
+      "line": 276,
+      "symbol": "pub fn standing(",
+      "line_sha256": "430649e2eea80060c4260b9ddcd1bc2f20017fbfd5c09b453ab31447a582f8d8"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/policy.rs",
+      "line": 14,
+      "symbol": "pub fn sort_key(",
+      "line_sha256": "fd4287e6e6736691abef054c1be343cef9875232dd7259bbe7fbd9a3417a988a"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/policy.rs",
+      "line": 39,
+      "symbol": "pub fn capped(",
+      "line_sha256": "ffafc328fcdbd207279c8fd9ba77585cd15a95016368e618cc813e9a9988ba4e"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/live.rs",
+      "line": 68,
+      "symbol": "pub fn is_alive(",
+      "line_sha256": "d0816471a533fd77dfb1ac1c613548e72160701f573d3de8fc02ef9a1c209e41"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/holders.rs",
+      "line": 56,
+      "symbol": "pub fn reserve(",
+      "line_sha256": "e974bea52a0ca9ae12e16efec33aa081be928ad5a4f99a89e7fa6186e20621a2"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/merge.rs",
+      "line": 91,
+      "symbol": "pub fn foreign_holds(",
+      "line_sha256": "cc3f6d126218fd2db1945ff857d0ce38ad42336fdeebff133cde6b867a0b73e4"
+    },
+    {
+      "path": "app/poolhouse-node/src/lease/mod.rs",
+      "line": 125,
+      "symbol": "pub fn batch<",
+      "line_sha256": "2792e4a2d9a8f044daa0bcec9378f7a0ad299f749832f8360bc13185c9ad1d29"
+    },
+    {
+      "path": "src/poolhouse/api/leases.py",
+      "line": 74,
+      "symbol": "def acquire(",
+      "line_sha256": "326b444569839519bf464702a63dbca12d2337f58e13a1b552688eaa6c931d43"
+    },
+    {
+      "path": "src/poolhouse/api/leases.py",
+      "line": 87,
+      "symbol": "def wait(",
+      "line_sha256": "b4b60a8aed9c951577ae2239123cf0064857b76befa4409e2bf7080b659c333b"
+    },
+    {
+      "path": "src/poolhouse/api/leases.py",
+      "line": 92,
+      "symbol": "def renew(",
+      "line_sha256": "fc2b570b775adf4cb1d2289c81de8839f1be3625c00b7ee6ebbbd3bb2064c85b"
+    },
+    {
+      "path": "src/poolhouse/api/leases.py",
+      "line": 97,
+      "symbol": "def release(",
+      "line_sha256": "6e1616f564e3379e40898f3366b9ba7e5c58c65c4a7500b984325a2f16c4bd1a"
+    },
+    {
+      "path": "src/poolhouse/api/leases.py",
+      "line": 69,
+      "symbol": "def view(",
+      "line_sha256": "d004552a19c9b6bd034ca3188472ee1818ee7fae01dda1a77dbde7a18ed3f945"
+    },
+    {
+      "path": "src/poolhouse/leasetable.py",
+      "line": 156,
+      "symbol": "def acquire(",
+      "line_sha256": "63faad1322a86d670925c68a0f20ae3524ef8efc923d94e065ee2cdf54f0dc48"
+    },
+    {
+      "path": "src/poolhouse/leasetable.py",
+      "line": 183,
+      "symbol": "def budget(",
+      "line_sha256": "5db8342ae76bdaf538ee34d6363e488f2a2c9e9faf0c69ea02dc1d1e2605f343"
+    },
+    {
+      "path": "src/poolhouse/serve/admission.py",
+      "line": 77,
+      "symbol": "def budget_mb(",
+      "line_sha256": "8fc18fe8c534d879fd29b12f6d74d427f48fd553a1bc6417f28892e5a5589955"
+    },
+    {
+      "path": "src/poolhouse/serve/admission.py",
+      "line": 100,
+      "symbol": "def estimate_bytes(",
+      "line_sha256": "94a71cc0b06fe2a18b6d93a28c1bd5233b6030765f97ff2cc81aaa0825c2092a"
+    },
+    {
+      "path": "src/poolhouse/serve/admission.py",
+      "line": 172,
+      "symbol": "def ask(",
+      "line_sha256": "05ed6b53e297a3497a3881fb4f815e17860d25c5f56d82a602ea19831f5c140a"
+    },
+    {
+      "path": "src/poolhouse/serve/admission.py",
+      "line": 185,
+      "symbol": "def keep(",
+      "line_sha256": "397fbb8299d5fdee0eda926bd8ed5499e9d5ecd9d4f43907b09a5d95440ceb2a"
+    },
+    {
+      "path": "src/poolhouse/serve/admission.py",
+      "line": 215,
+      "symbol": "def free_bytes(",
+      "line_sha256": "c58cf49df15a10104106776d13cdd0042cba89a3c02a31d6b92b2be84896506e"
+    },
+    {
+      "path": "src/poolhouse/serve/broker_holds.py",
+      "line": 134,
+      "symbol": "def take_cores(",
+      "line_sha256": "412fb87a64d0d3ed5e2e93ad459e57e512eccd3ea949f577c4aa449d08fb44c6"
+    },
+    {
+      "path": "src/poolhouse/serve/broker_holds.py",
+      "line": 153,
+      "symbol": "def _counted(",
+      "line_sha256": "dcde936ff4576e5b32e0819515f2c3bb5067ff07d1b9d65bad0761931fe7963c"
+    },
+    {
+      "path": "src/poolhouse/serve/broker_lifecycle.py",
+      "line": 46,
+      "symbol": "def retire(",
+      "line_sha256": "bebc7ad0dd0a0bfff0054596fc19705f4034b193653cd4bbffa75ed46de81303"
+    },
+    {
+      "path": "src/poolhouse/gate.py",
+      "line": 135,
+      "symbol": "table.acquire(",
+      "line_sha256": "14da3fbf59f247d469f891b4bf21823150fa7828e1d3d5b31fc3bb29b38650ed"
+    },
+    {
+      "path": "src/poolhouse/workspace/localslot.py",
+      "line": 26,
+      "symbol": "def acquire(",
+      "line_sha256": "58b875681f397769acefa0b4aa43823abc5d0f136577ed0aeac9521cff8db4ed"
+    },
+    {
+      "path": "src/poolhouse/workspace/task_scheduler.py",
+      "line": 60,
+      "symbol": "slot = localslot.held(",
+      "line_sha256": "2727dab652c0611e96d874373fbc2f733998d64f7bc1da8b92186b4c76408d52"
+    },
+    {
+      "path": "src/poolhouse/fleet/conversation_graph.py",
+      "line": 24,
+      "symbol": "def opened(",
+      "line_sha256": "d2cf022db2b9cc3a2839b56df1987efb66a76081ef02ac3483c9e74b848958e1"
+    },
+    {
+      "path": "contracts/node/domains/workers.toml",
+      "line": 72,
+      "symbol": "name = \"WorkerResourceEnvelope\"",
+      "line_sha256": "c2e79957bd56ef1a5cc12dc61d1e725c3f991998c80441d7f54aec13197c19f6"
+    },
+    {
+      "path": "contracts/node/adapters.toml",
+      "line": 251,
+      "symbol": "name = \"CleanupProjection\"",
+      "line_sha256": "068315caf4fb7dd2145a9a8137afe992b5de6d6358912ac7c38788d7ba1b0530"
+    },
+    {
+      "path": "contracts/node/domains/state.toml",
+      "line": 116,
+      "symbol": "name = \"StateTransactionBinding\"",
+      "line_sha256": "fec2611bbbe04f7eb09dc691ca841682ef241dd6389a8b8e8fc9eed4e994817f"
+    }
+  ],
+  "operation_mapping": [
+    {
+      "operation": "leases.context.inspect",
+      "request": "ResourceLeaseContextInspectRequest",
+      "response": "ResourceLeaseContextView",
+      "error": "ResourceLeaseError",
+      "retained_method": "lease_list current actual owner/config",
+      "actual_callers": "api._node actual native caller context; no synthetic session",
+      "cancellation": "request-detach-only",
+      "subscription": "none",
+      "status": "declaration-only; no handler/runtime"
+    },
+    {
+      "operation": "leases.resources.list",
+      "request": "ResourceLeaseResourcesListRequest",
+      "response": "ResourceLeaseResourcesEvent",
+      "error": "ResourceLeaseError",
+      "retained_method": "lease_list config and Resource variants",
+      "actual_callers": "api.leases resource constructors; leasetable helpers",
+      "cancellation": "request-detach-only",
+      "subscription": "ordered-resource-stream",
+      "status": "declaration-only; no handler/runtime"
+    },
+    {
+      "operation": "leases.acquire",
+      "request": "ResourceLeaseAcquireRequest",
+      "response": "ResourceLeaseAcquireResult",
+      "error": "ResourceLeaseError",
+      "retained_method": "lease_acquire",
+      "actual_callers": "api.leases.acquire; leasetable.Table.acquire; localslot.acquire; serve.admission.ask/keep; gate._wait",
+      "cancellation": "request-detach-only",
+      "subscription": "none",
+      "status": "declaration-only; no handler/runtime"
+    },
+    {
+      "operation": "leases.get",
+      "request": "ResourceLeaseGetRequest",
+      "response": "ResourceLeaseView",
+      "error": "ResourceLeaseError",
+      "retained_method": "lease_list/lease_wait current own lease projection",
+      "actual_callers": "api.leases.view/wait; localslot.held",
+      "cancellation": "request-detach-only",
+      "subscription": "none",
+      "status": "declaration-only; no handler/runtime"
+    },
+    {
+      "operation": "leases.renew",
+      "request": "ResourceLeaseRenewRequest",
+      "response": "ResourceLeaseView",
+      "error": "ResourceLeaseError",
+      "retained_method": "lease_renew",
+      "actual_callers": "api.leases.renew; leasetable.Table.renew; localslot.renew; admission.keep; gate keepalive",
+      "cancellation": "request-detach-only",
+      "subscription": "none",
+      "status": "declaration-only; no handler/runtime"
+    },
+    {
+      "operation": "leases.release",
+      "request": "ResourceLeaseReleaseRequest",
+      "response": "ResourceLeaseReleaseView",
+      "error": "ResourceLeaseError",
+      "retained_method": "lease_release",
+      "actual_callers": "api.leases.release; leasetable.Table.release; localslot.release; gate release",
+      "cancellation": "request-detach-only",
+      "subscription": "none",
+      "status": "declaration-only; no handler/runtime"
+    },
+    {
+      "operation": "leases.wait",
+      "request": "ResourceLeaseWaitRequest",
+      "response": "ResourceLeaseWaitView",
+      "error": "ResourceLeaseError",
+      "retained_method": "lease_wait",
+      "actual_callers": "api.leases.wait; leasetable.Table.wait; gate queued wait",
+      "cancellation": "request-detach-only",
+      "subscription": "none",
+      "status": "declaration-only; no handler/runtime"
+    },
+    {
+      "operation": "leases.list",
+      "request": "ResourceLeaseListRequest",
+      "response": "ResourceLeaseEvent",
+      "error": "ResourceLeaseError",
+      "retained_method": "lease_list",
+      "actual_callers": "api.leases.view; leasetable.Table.listing; localslot.held; admission.committed/free_bytes; broker_lifecycle.retire private complete view",
+      "cancellation": "request-detach-only",
+      "subscription": "ordered-resource-stream",
+      "status": "declaration-only; no handler/runtime"
+    },
+    {
+      "operation": "leases.watch",
+      "request": "ResourceLeaseWatchRequest",
+      "response": "ResourceLeaseEvent",
+      "error": "ResourceLeaseError",
+      "retained_method": "lease_wait/list state observation",
+      "actual_callers": "same queued-state callers; canonical observation transport, never implicit renewal",
+      "cancellation": "request-detach-only",
+      "subscription": "ordered-resource-stream",
+      "status": "declaration-only; no handler/runtime"
+    }
+  ],
+  "source_semantics": {
+    "scope_and_owner": "Actual current caller native identity determines Node-owned scope/owner refs. Optional TaskActorRef projection exists only for actual independently registered current agent; GUI/service/broker caller requires no synthetic agent session or labels. Source shared NATIVE session token is source inventory only, never migrated into native identity authority. Device only decides LOCAL resources; resource family ref never permits arbitrary device.",
+    "resource_families": "CPUcountu32>0; memory_mb u64>0 with actual Python MIB=1048576; GPU exclusive; modelslot model/draft<=300cleanline, contextU64, parallelU32. Modelslot exclusive key uses device+model ONLY, independent of context/parallel/draft. Named claims use exact current native normalization, paths/device and branch/board scope. Family descriptors let valid new keys be requested without loaded model/per-key registry prerequisite; requested strings are inert coordination data, not modelfile/network/process rights.",
+    "task_claim_distinction": "Generic Resource::Claim validator recognizes internal task kind although public api.claim documents six other kinds. Canonical public request uses CoordinationClaimResource six kinds; actual task-owned creation stays tasks.claim current typed authorization. Read-only ResourceLeaseTaskHolding preserves owned task lease projection with source key and optional independently derived TaskScopedRef, no public reserved-task-name bypass or lost ledger rows.",
+    "quantity_and_limits": "SourceMAX_RESOURCES8,MAX_TAG64 retained. Unique semantic resource KEY required, not whole DTO equality; CPU/memory duplicates refused even different quantities/refs. Exact native path alias/port validation required. Config holder/table/lineage/worktree limits observed dynamically; defaults are not new frozen caps. CPUcfg0 capacityzero is valid source config; memorycfg0 disables software budget (not infinite physical memory). No capacity/path/resource grant from labels or decoded data.",
+    "attachment": "Source enqueue matches same actual holder+tag+order-independent exact resource STRUCTSET (not only keys); relevant context/parallel/draft participate. On attach it refreshes expires using newly requested clamped TTL but does NOT update stored ttl_s/class/estimate/pid/local/quiet/resource metadata. Canonical view distinguishes stored_renewal_ttl_seconds from applied_expiry_extension_seconds, retains actual source attachment behavior for new authorized requests. Same immutable RequestId replay returns original expiry/receipt without reattaching/renewing. Changed payload same RequestId conflicts; different tags remain distinct parties.",
+    "queue": "Queue order aged first by arrival, otherwise estimate minus waited milliseconds, then seq FIFO; unknown interactive estimate0/backgroundcfg. Background CPUshare cap only when other-party interactive CPU work around, aged skips that ordering/share rule only; hard capacity still holds. Earlier blocked overlapping requests cannot be overtaken; source rough wait uses estimates not promise. Public queue position/wait are observations, zero is not execution-ready proof.",
+    "ttl": "Acquire omittedTTL -> default, explicit0 -> clamp1; renew0/omitted -> existing storedTTL. Quiet unbound maximum min(default,max). Queue expires cfgpatience without actual keepalive. Held expires/dead process, queued becomes abandoned, foreign earlier pool-wide claim ends lost. Source ending removes record; canonical durable terminal evidence is new unimplemented ledger, not fabricated retained runtime.",
+    "wait_is_mutation": "lease_wait calls table.renew on held or queued, repeated25ms whilequeued until deadline (Instant max600000ms). Canonical wait explicit durable keepalive operation, not read. Original start/deadline/elapsed budget persists across retry/reconnect/restart; identical RequestId attaches same running wait or immutable terminal result, never restarts600s or refreshes again after terminal. Internal progress renewals occur only while original authorized active wait within original budget. Release/expiry/removal stops oldwait. Detach ends observation/owned keepalive, no implicit release/cancelqueued. Get/list/watch never renew.",
+    "process": "Source accepts PID/start via live.rs, with permissive unknown-start fallback. Canonical only actual authenticated original native lifetime (boot/start/principal/lineage) or expiry-bound mode; no arbitrary PID/source label rebinding. Actual owner-controlled child server binding uses existing trusted native lifecycle evidence, not public nomination. Unknown recorded/current start is not liveness proof; remote has no local PID and remains bounded authenticated channel/incarnation expiry.",
+    "quiet": "Source quiet only GPU/server-line Resource::may_be_quiet and skips work_gate. Canonical public request has no quiet/internal flag; owning Node actual internal GPU/request-line purpose derives logging suppression, never authority/work exclusion bypass. Generic API cannot turn quiet to skip setup/work guard.",
+    "settlement": "Logical lease released/expired/abandoned/lost does not prove process stopped, GPUidle, residentmemory/file freed or effect settled. Preserve separate ResourceLeaseSettlement and private actual native ownership. Capacity charged until exact actual settlement; queued coordination with no physical effect can settle without fabricated cleanup. Same-party overlap exemption cannot admit second physical GPU workload or duplicate capacity.",
+    "visibility": "Legacy show exposes other-board held resource details and lease IDs with holderredacted; canonical public list omits entire foreign rows/IDs/PIDs/model/path/board refs and emits sanitized aggregate capacities only under authorized scope. Contention busy contains no foreign identity. Trusted internal retirement/accounting still uses complete ledger, never treats sanitized/redacted/publicempty as idle proof."
+  },
+  "actual_caller_accounting": {
+    "serving": "admission.estimate_bytes weights+draft+projector+KV+recurrent state+draftKV+RUNTIME_ALLOWANCE_BYTES; unknownweight/header failures remain unknown estimate, not verifiedzero. ask ceil(estbytes/1048576) memory+modelslot(server filename/port), actual budget floor(hub.room/1048576*THRESHOLDS.red_at); source no new allowance introduced. Current model-specific serving lease refs retained distinct generic refs; Node independently associates actual owner and source slot key.",
+    "fallback": "admission.keep may use1.1weight estimate when old estimation missing; broker_holds._counted rounds measured RSS in256MiB steps. ResourceAdmissionMeasurementKind explicitly source_estimate/fallback_estimate/runtime_measurement/verified_upper_bound/unknown; none automatically upgrades to verified peakbound. Actual estimates/calibration results were NOT measured/run in this task.",
+    "gate_and_workers": "gate uses GPU exclusive or named server requestline with quiet internal logging; localslot modelslot(contextU64,parallel1) retained and assigned through actual worker scheduler. Quiet/client tags do not authorize execution. broker_holds.take_cores currently separate local accounting narrows to available but returns atleast1 even saturated; this legacy reservation is not proof of strict shared CPU capacity. The common admission profile must reconcile whole ownership/accounting rather than pretend that implementation already unified.",
+    "memory_policy": "Current generic memorybudget0 disabled source behavior remains observable; strict staging/graphs/bounded-worker profile needs actual current measured/enforced memory capacity and peak. Disabled/unknown cannot count as infinite/zero; precise states needs_measurement/policy_unavailable refuse before materialization. Generic budget observation is not strong worker resource assurance."
+  },
+  "common_private_admission_contract": {
+    "data_not_authority": "All ResourceAdmission* types private; no public operation consumes profile,measurement,ownership,transfer or accounting DTOs. Decoding private metadata still cannot construct trusted opaque handles. Actual Node owning domain derives profile under exact operation/consumer/purpose/nativeowner/install/device/config/authority/generations; hashes/UUIDs/public quantities are equality/lookup data only.",
+    "reuse": "WorkerResourceEnvelope reused byte-for-byte for host/device/working memory envelope; ModelPhysicalAliasId reused perhost/device/working charge; StateStoreBinding and StateTransactionBinding reused for exact protected store/immutable operation/transaction ownership. Existing adapters.toml CleanupProjection/ResourceCleanupResult/RetainedResource/UnresolvedCustody and retirement/owner graphs remain sole actual trusted native settlement handles. New private records only describe accounting and transfer; they are NOT parallel opaque handle/proof constructors or replacements for cleanup/retirement.",
+    "families": "content_stage,graph_transaction,bounded_worker,model_serving,explicit_resource_request are fixed Node-owned source families, never caller workload labels granting rights. Actual conversation GraphStore buffer_pool32MiB/max_db1GiB are source-specific database settings, NOT global staging/storage quota. Existing inference source limit profiles32MiB/coding1MiB/create64KiB and source unbounded legacy gaps stay exact; no new arbitrary common budget.",
+    "quantities": "Exact CPUslots; optional accelerator familyref resolved privately; memory host/device/working bytes; storage durable/scratch/existingretained bytes; input/output measured byte bounds, each kind+source_digest+measurementgeneration with unknown bytes=null. Conversions round bytes to MiB as the source does; arithmetic checks overflow and refuses. Distinct physical aliases separately account discreteGPU/hostmem; actual unified aliases count once, never assume all memory one group or accept UUID alone as topology proof.",
+    "measurement_components": "Owning profile derives input/output original semantic bytes/counts, retained residentbuffers/modelweights/KV/runtime components, parser expansion/indexes/transaction copies, peak workingmemory and scratch/durable storage from exact source algorithm/actual verified artifact sizes or admitted runtime calibration. No invented multiplier. Node independently parses/meterchecks each bounded chunk/record; caller declared size or digest never substitutes. Unknown actual peak demands needs_measurement before allocation, never downgrade fallback estimate to upperbound.",
+    "state_machine": "estimated -> awaiting_capacity/queued -> reserved -> running -> retaining_result -> settling -> settled. needs_measurement/policy_unavailable/refused/outcome_unknown/recovery_required explicit. Node atomically reserves full resource envelope and current source config; no partial GPU/memory/storage ownership. Actual Node decides admission; data states cannot dispatch work or certify settlement.",
+    "incremental_and_shared": "One operation/consumer retains resource custody through nested chunks/graph/worker/result. Reserve incremental delta before bounded growth, sharedresident allocations/physical aliases counted once but childidentity no bypass. GPUcompute one admitted workload perdevice, CPU work gets currentslots; storage is not a named path claim. Envelopeexceeded stops/refuses before effect or retains explicit unknown custody, no retrospective promise.",
+    "retention_transfer": "Finalize atomically transfers charge stage->committed consumer; worker result->Node retains buffers/bytes until adoption; resident->retirement retains physical charges until actual native cleanup; unreferenced->settlement requires exact references/receipt dependencies gone. Durable storage stays charged through owned references/retained replay evidence; scratch until exact actual file/buffer/process release. Cancellation/expiry only stops futurework; no credit/refund from logical tombstone, digestdedup or untrusted cleanup claim. Same immutable intent replay cannot allocate/reserve/release twice.",
+    "storage_capacity": "Authorized actual filesystem free plus current exact store policy/quota, committed+reserved+temporary charges, protected storage ownership, rollback evidence and cross-store identity checked. Existing perDB1GiB cap is not a new global limit. Storage policy/measurement backend currently not implemented; names and scope are concrete required inputs/states, not silently unspecified future cap.",
+    "config_and_authority": "Recheck actual config/current device/install/board/member/operation generation before queue grant, renew, materialize chunk, workerdispatch/resultpublication/transfer or settlement. Removal/restart/replacement cannot revive oldresource rights; preserve unsettled custody across crash. Copied ledger/receipt/witnessUUID not authority or independent rollback detection."
+  },
+  "streams_and_durability": [
+    "context.inspect Empty derives actual authenticated owner/scope without model/loading/agentregistration/extra prompt. Resource descriptors are families, so requesting valid new model/name key does not need preexisting perkey entry. IDs/data carry no custody.",
+    "Every durable public mutation has topgeneration/RequestId, currentactual owner checks before retry disclosure, exact fullpayload/principal/lease/scope/generation dedup; updates CAS. Identical authorized retry returns original result even oldCAS; changedpayload conflicts. Source semantic attach through NEW explicit authorized request remains distinct from immutable replay.",
+    "Renew binds only original actual native lifetime or retains current binding, never arbitrary source PID/process label. Release and waiter state atomically serialize against grant/renew/removal; physical settlement independently resolves actual lifecycle receipt, not caller boolean. Logicalexpiry cannot release resource capacity while original effect continues unknown.",
+    "Wait budget/sourcewaiter quotas actual MAX_WAIT_MS600000/MOST_WAITERS64/perlineage16 preserve source; no new caps or timeoutcampaign. Original wait state/elapsed persisted; recovery cannot restart full allowance or use wallclock rollback to gain time. Unknownclock/native lifetime =>recovery_required rather than renewedcapacity.",
+    "Complete frozen snapshot boundaries then zero-or-more ownlease/policy/resourcecapacity items then complete, empty valid. Cursor exact principal/scope/projection/selection/generations/revision, auth peritem; expiry =>resync. Watch begins coherent snapshot then ordered transitions; no observation renews expiry. Foreign physical contention safeaggregate only.",
+    "Original signed board lease events/time/key meanings untouched; canonical terminal ledger/nativeowner mapping and sourceID projection newly proposed, no legacy token/session/PID migration. Table state and mirrored board are not one proved crash transaction; unknown partial outcome retains resource custody/reconciles same exact intent.",
+    "Authorized get/list/taskholding projection and owner/ref equality never authorize mutation of task/model/worker/lifecycle-owned lease. Generic renew/wait keepalive/release/acquire-attach must revalidate exact originating protected domain current assignment/modelgrant/worker/incarnation/publication/retirement conditions, or refuse and route to existing owning operation. In particular no bypass of tasks.heartbeat actual model-grant/assignment or serving retirement fences. Actual original domain derived from protected Node ledger, never caller label/ref/visible resource kind. Legitimate explicit generic CPU/memory/GPU/modelcoordination requests retain current generic policy without new user gate or person prompt."
+  ],
+  "unimplemented_enablement_and_source_gaps": [
+    "No runtime handlers, common accounting ledger, durable RequestId/CAS/waitbudget/terminaltombstones/snapshot streams, native owner ref mapping, sourcecodec vectors, trusted measurements, storage capacity backend or OS enforcement implemented. No generic lease/staging/worker/K acceptance.",
+    "Actual source memory0 disables accounting and unknown model estimates/fallbackRSS/1.1weights are not strict peakbounds. New common profiles specify exact components/provenance/states but require actual source-derived/enforced/calibrated limits and physical alias evidence before enabling strict stages/graphs/workers. No measurement/test/model run performed here.",
+    "Existing broker take_cores local pool may return1 under saturation, existing generic native unknown-start liveness is permissive, quiet workguard bypass/source sharedtokens exist. These remain exact source gaps; canonical source does not claim repaired/unified runtime or admit legacy identity/authority.",
+    "Public arbitrary PID/remote/quiet/taskkind flags are not migrated as authority. Actual intended local/remote membership/channel/currentowner semantics resolve Node-side; actual internal taskleases and serving/gatequiet use existing protected current-domain contexts. Any unobserved public caller requiring another unsafe override needs explicit reviewed typed scope, not generic escape.",
+    "Generic public lease modelslot/named strings remain coordination metadata, not serving availability/file access/model grant. Models serving leases, workers/resource envelope, taskcoordination refs and nativecleanup graphs retain their own meaning and authority; node mapping/admission must be proved before interchange.",
+    "No public budgetwrite/OS setting/profileconstructor, raw path privilege, new model/process launch, secret, person flag, approval, arbitrary resourceclass or privatehandle exposure added. No tests/runtime/platform/generator/tooling changes in this leaf."
+  ],
+  "independent_review": {
+    "reviewer": "approval_attack_review",
+    "pre_edit_verdict": "Written declaration approval conditioned on sourceModelSlot.contextU64, actual nativeOwnerRef without synthetic agents, family descriptors/newkeys, durable original wait budget/keepalive, exact source attach behavior, estimate vs upperbound distinction, private resource reuse/ownership/settlement, foreignrow omission and existing caps/checked arithmetic; incorporated.",
+    "actual_leaf_verdict": "Final targeted actual-file review approved by approval_attack_review:82types(67public15private),9operations. ContextU64, actual native owner refs without synthetic agents, fixed original waitkeepalive budget, sourceattachment quirks, family descriptors, private measurement/accounting ownership and physicalsettlement constraints verified. Acquire/renew/release/wait recheck actual protected originating domain, preventing read/ref/owner bypass of taskheartbeat or serving retirement; generic legitimate caller policy unchanged. No declaration blocker; no reviewer edits/tests/runtime. Actual native mapping/measurement/ledger/enforcement/sourcecodec proofs remain unimplemented."
+  },
+  "counts": {
+    "types": 82,
+    "public_types": 67,
+    "private_types": 15,
+    "operations": 9,
+    "sources": 27,
+    "sites": 52
+  }
+}
