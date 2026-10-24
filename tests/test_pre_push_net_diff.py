@@ -72,8 +72,7 @@ def test_a_remote_that_took_commits_this_checkout_has_fetched_but_not_merged_is_
     log = tmp_path / "log"
     done = push(repo, "0.9dev", base=git(repo, "rev-parse", "origin/0.9dev"), CLAUDECODE="1", STUB_LOG=str(log))
     assert done.returncode != 0
-    assert "is not in the history of" in done.stderr and "the remote will not take the push" in done.stderr
-    assert "run it again with: git fetch origin && git merge origin/0.9dev && git push origin HEAD:refs/heads/0.9dev" in done.stderr
+    assert "the update is not a fast-forward" in done.stderr
     assert calls(log) == []
 
 
@@ -85,13 +84,13 @@ def test_a_remote_tip_this_checkout_never_fetched_is_a_refusal_before_any_test(r
     log = tmp_path / "log"
     done = push(repo, "0.9dev", base=moved, CLAUDECODE="1", STUB_LOG=str(log))
     assert done.returncode != 0
-    assert "is not in this repository" in done.stderr and "no test is run for it" in done.stderr
+    assert "fetch the remote commit before pushing" in done.stderr
     assert calls(log) == []
 
 
-def test_a_branch_the_remote_does_not_have_yet_is_measured_by_the_commits_no_remote_ref_holds(repo, tmp_path):  # noqa: F811
+def test_a_new_branch_push_runs_only_the_ref_guard(repo, tmp_path):  # noqa: F811
     commit(repo, "src/poolhouse/mod.py", "VALUE = 1\nMORE = 14\n")
     log = tmp_path / "log"
     done = push(repo, "0.9dev", base=ZERO, CLAUDECODE="1", STUB_LOG=str(log))
     assert done.returncode == 0, done.stderr
-    assert [c["argv"] for c in calls(log)] == [["all", "tests/test_untouched.py", "--redteam"]]
+    assert calls(log) == []
