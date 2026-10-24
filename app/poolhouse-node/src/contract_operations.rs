@@ -1,4 +1,4 @@
-// Generated proposal. No dispatch or authority is implemented. Schema 575792475bffa13c93c7ac14f1920e8fac048e2603cf84bddcd3b2c5cbd5bbcf
+// Generated proposal. No dispatch or authority is implemented. Schema 9e81d4a12278abfdb221b9bd9e61fb0d318477ce299e9a24909957a87465b0f4
 use super::contract::*;
 
 pub trait Operation { type Request; type Response; type Error; const NAME: &'static str; }
@@ -392,6 +392,21 @@ impl Operation for InferenceDomainInferenceContentDiscard { type Request = Infer
 
 pub struct InferenceDomainInferencePrepare;
 impl Operation for InferenceDomainInferencePrepare { type Request = InferencePrepareRequest; type Response = InferencePreparationView; type Error = InferenceError; const NAME: &'static str = "inference.prepare"; }
+
+pub struct JobsPrepare;
+impl Operation for JobsPrepare { type Request = JobPrepareRequest; type Response = JobPreparationView; type Error = JobError; const NAME: &'static str = "jobs.prepare"; }
+
+pub struct JobsSubmit;
+impl Operation for JobsSubmit { type Request = JobPreparationControlRequest; type Response = JobPreparationView; type Error = JobError; const NAME: &'static str = "jobs.submit"; }
+
+pub struct JobsPreparationsInspect;
+impl Operation for JobsPreparationsInspect { type Request = JobPreparationInspectRequest; type Response = JobPreparationView; type Error = JobError; const NAME: &'static str = "jobs.preparations.inspect"; }
+
+pub struct JobsPreparationsCancel;
+impl Operation for JobsPreparationsCancel { type Request = JobPreparationControlRequest; type Response = JobPreparationView; type Error = JobError; const NAME: &'static str = "jobs.preparations.cancel"; }
+
+pub struct JobsPreparationsWatch;
+impl Operation for JobsPreparationsWatch { type Request = JobPreparationWatchRequest; type Response = JobPreparationEvent; type Error = JobError; const NAME: &'static str = "jobs.preparations.watch"; }
 
 pub struct KnowledgeContextInspect;
 impl Operation for KnowledgeContextInspect { type Request = KnowledgeContextInspectRequest; type Response = KnowledgeContextView; type Error = KnowledgeError; const NAME: &'static str = "knowledge.context.inspect"; }

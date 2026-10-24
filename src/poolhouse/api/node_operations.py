@@ -1,4 +1,4 @@
-# Generated proposal. No dispatch or authority is implemented. Schema 575792475bffa13c93c7ac14f1920e8fac048e2603cf84bddcd3b2c5cbd5bbcf
+# Generated proposal. No dispatch or authority is implemented. Schema 9e81d4a12278abfdb221b9bd9e61fb0d318477ce299e9a24909957a87465b0f4
 from . import node_contract as data
 
 OPERATION_TYPES = {
@@ -132,6 +132,11 @@ OPERATION_TYPES = {
     "inference.content.read": (data.InferenceContentReadRequest, data.InferenceContentChunk, data.InferenceError),
     "inference.content.discard": (data.InferenceContentDiscardRequest, data.InferenceContentDiscardResult, data.InferenceError),
     "inference.prepare": (data.InferencePrepareRequest, data.InferencePreparationView, data.InferenceError),
+    "jobs.prepare": (data.JobPrepareRequest, data.JobPreparationView, data.JobError),
+    "jobs.submit": (data.JobPreparationControlRequest, data.JobPreparationView, data.JobError),
+    "jobs.preparations.inspect": (data.JobPreparationInspectRequest, data.JobPreparationView, data.JobError),
+    "jobs.preparations.cancel": (data.JobPreparationControlRequest, data.JobPreparationView, data.JobError),
+    "jobs.preparations.watch": (data.JobPreparationWatchRequest, data.JobPreparationEvent, data.JobError),
     "knowledge.context.inspect": (data.KnowledgeContextInspectRequest, data.KnowledgeContextView, data.KnowledgeError),
     "knowledge.stores.list": (data.KnowledgeStoresListRequest, data.KnowledgeStoresEvent, data.KnowledgeError),
     "knowledge.nodes.search": (data.KnowledgeNodesSearchRequest, data.KnowledgeNodesEvent, data.KnowledgeError),
