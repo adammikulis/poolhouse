@@ -4,6 +4,7 @@
 //! Replacement-producer or replacement-process continuity has no proof interface in this increment.
 mod source_context;
 mod original_message;
+mod launch_data;
 #[cfg(test)] mod source_context_tests;
 mod occurrence;
 mod invocation;

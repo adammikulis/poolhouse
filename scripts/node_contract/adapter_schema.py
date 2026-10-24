@@ -23,8 +23,10 @@ PROJECTIONS = {
     "BootstrapProjection": projection("Bootstrap", "native", G("installation", "Installation"), G("assets", "MeasuredAsset", "borrow-slice")),
     "ProducerMessageProjection": projection("ProducerMessage", "native", G("producer", "Producer"), G("occurrence", "NativeOccurrence"), G("view", "NativeMessageView", "value")),
     "BindingProjection": projection("Binding", "native", G("producer", "Producer"), G("invocation_message", "Message"), G("session_key", "NodeSessionKey"), G("invocation_key", "NodeInvocationKey"), G("context", "NativeContextView", "value"), G("purpose", "OperationPurpose"), G("payload_digest", "Digest"), G("spawn_plan_digest", "Digest")),
-    "PlanProjection": projection("Plan", "native", G("binding", "Binding"), G("executable", "MeasuredAsset"), G("assets", "MeasuredAsset", "borrow-slice"), G("arguments", "ImmutableArgument", "borrow-slice"), G("environment", "ImmutableEnvironmentEntry", "borrow-slice"), G("directory", "MeasuredDirectoryIdentity"), G("confinement", "ConfinementProfile"), G("inheritance", "InheritedResourceSpec", "borrow-slice")),
-    "ProducerLaunchPlanProjection": projection("LaunchPlan", "native", G("installation", "Installation"), G("executable", "MeasuredAsset"), G("assets", "MeasuredAsset", "borrow-slice"), G("arguments", "ImmutableArgument", "borrow-slice"), G("environment", "ImmutableEnvironmentEntry", "borrow-slice"), G("directory", "MeasuredDirectoryIdentity"), G("confinement", "ConfinementProfile"), G("inheritance", "InheritedResourceSpec", "borrow-slice")),
+    "PlanProjection": projection("Plan", "native", G("binding", "Binding"), G("inputs", "LaunchInputs"), G("reservation", "LaunchReservation")),
+    "ProducerLaunchPlanProjection": projection("LaunchPlan", "native", G("installation", "Installation"), G("plan_digest", "Digest"), G("inputs", "LaunchInputs"), G("reservation", "LaunchReservation")),
+    "LaunchInputsProjection": projection("LaunchInputs", "native", G("identity", "LaunchInputsId"), G("target", "LaunchTargetKind", "value"), G("plan_digest", "Digest"), G("reservation_generation", "ResourceGeneration"), G("profile", "LaunchAccountingProfile", "value"), G("limits", "LaunchLimitsData"), G("executable", "MeasuredAsset"), G("assets", "MeasuredAsset", "borrow-slice"), G("arguments", "ImmutableArgument", "borrow-slice"), G("environment", "ImmutableEnvironmentEntry", "borrow-slice"), G("directory", "MeasuredDirectoryIdentity"), G("confinement", "ConfinementProfile"), G("inheritance", "InheritedResourceSpec", "borrow-slice")),
+    "LaunchReservationProjection": projection("LaunchReservation", "native", G("identity", "LaunchReservationId"), G("inputs", "LaunchInputs"), G("generation", "ResourceGeneration"), G("holder", "Holder")),
     "ChildProjection": projection("Child", "native", G("producer", "Producer"), G("bootstrap", "Bootstrap"), G("binding", "Binding"), G("plan", "Plan"), G("process", "Process"), G("holder", "Holder"), G("resources", "RetainedResource", "borrow-slice")),
     "HeldProjection": projection("Held", "native", G("phase", "HeldPhase", "value")),
     "RunningProjection": projection("Running", "native", G("phase", "RunningPhase", "value")),
@@ -48,6 +50,7 @@ PROJECTIONS = {
 # Role names are closed schema references, not Rust aliases or independent phase types.
 ASSOCIATIONS = [
     ("Installation", "InstallationProjection", "VerifiedInstallation"), ("Launch", "LaunchProjection", "VerifiedProducerLaunch"),
+    ("LaunchInputs", "LaunchInputsProjection", "RetainedLaunchInputs"), ("LaunchReservation", "LaunchReservationProjection", "ProtectedLaunchReservation"),
     ("LaunchPlan", "ProducerLaunchPlanProjection", "ProducerLaunchPlan"), ("Process", "ProcessProjection", "Process"),
     ("Channel", "ChannelProjection", "Channel"), ("RawChannel", "RawChannelProjection", "RawChannel"),
     ("MeasuredAsset", "MeasuredAssetProjection", "MeasuredAsset"), ("Producer", "ProducerProjection", "AdmittedProducer"),
@@ -80,9 +83,14 @@ def enum(**variants):
 
 
 F = field
-LEAVES = {name: {"kind": "bytes32"} for name in ("Digest", "ProducerLaunchEpoch", "RegistryBootEpoch", "KernelBootIdentity", "ReaderEpoch", "ObligationId", "CompletionRecordId", "HolderIdentity", "ChannelIdentity", "NodeEffectOwnerKey")}
+LEAVES = {name: {"kind": "bytes32"} for name in ("Digest", "ProducerLaunchEpoch", "RegistryBootEpoch", "KernelBootIdentity", "ReaderEpoch", "ObligationId", "CompletionRecordId", "HolderIdentity", "ChannelIdentity", "NodeEffectOwnerKey", "LaunchInputsId", "LaunchReservationId")}
 LEAVES.update({name: record(F("boot", "RegistryBootEpoch"), F("generation", "u64")) for name in ("ProducerAdmissionKey", "NodeSessionKey", "NodeInvocationKey", "NodeRevocationKey", "EffectPermitId")})
 LEAVES.update({name: {"kind": "bytes"} for name in ("NativeActorId", "NativeEventKind", "OperationPurpose", "ImmutableArgument")})
+LEAVES.update({
+    "LaunchTargetKind": {**enum(Worker=[], Producer=[]), "copy": True},
+    "LaunchAccountingProfile": {**enum(MacNativeImage=[], LinuxNativeImage=[], WindowsNativeUnavailable=[]), "copy": True},
+    "LaunchLimitsData": record(*(F(name, "u64") for name in ("os_combined_bytes", "reservation_bytes", "max_string_bytes", "max_argument_count", "max_environment_count", "vector_reserved_bytes", "allocation_overhead_bytes", "kernel_pointer_bytes", "vector_pointer_bytes", "exec_filename_bytes", "work"))),
+})
 LEAVES.update({
     "InstallationIdentity": record(F("id", "InstallationId"), F("generation", "ResourceGeneration")),
     "KernelProcessIdentity": enum(Linux=[F("boot", "KernelBootIdentity"), F("pid", "u32"), F("start_ticks", "u64"), F("uid", "u32")], Windows=[F("boot", "KernelBootIdentity"), F("pid", "u32"), F("creation_time", "u64"), F("sid", "WindowsSid")], Mac=[F("boot", "KernelBootIdentity"), F("pid", "u32"), F("pid_version", "u32"), F("audit", "AuditToken")]),
@@ -122,8 +130,8 @@ REPRESENTATIONS = {
 }
 PROFILES = [
     {"name": "native-message", "definition": "native_boundaries/native_message.toml", "status": "unresolved-profile-evidence", "fields": ["actor-bytes", "event-kind-bytes", "context-bytes", "original-payload-bytes"]},
-    {"name": "launch-arguments", "status": "unresolved-profile-evidence", "fields": ["argument-bytes", "argument-count", "argument-aggregate-bytes"]},
-    {"name": "launch-environment", "status": "unresolved-profile-evidence", "fields": ["key-bytes", "value-bytes", "entry-count", "aggregate-bytes", "unique-keys"]},
+    {"name": "launch-arguments", "definition": "native_boundaries/launch_data.toml", "status": "unresolved-profile-evidence", "fields": ["argument-bytes", "argument-count", "argument-aggregate-bytes"]},
+    {"name": "launch-environment", "definition": "native_boundaries/launch_data.toml", "status": "unresolved-profile-evidence", "fields": ["key-bytes", "value-bytes", "entry-count", "aggregate-bytes", "unique-keys"]},
     {"name": "retained-resources", "status": "unresolved-profile-evidence", "fields": ["asset-count", "inheritance-count", "resource-count", "cleanup-results-count", "unresolved-custody-count"]},
     {"name": "domain-recording", "status": "unresolved-profile-evidence", "fields": ["canonical-result-bytes", "canonical-error-bytes"]},
 ]
