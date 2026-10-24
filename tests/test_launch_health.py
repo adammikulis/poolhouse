@@ -145,3 +145,46 @@ def test_legacy_wsl_probe_timeout_leaves_host_running(monkeypatch):
     monkeypatch.setattr(launch, "wsl_authenticated_health", timeout)
     known = argparse.Namespace(port=8770, restart=False, no_browser=True)
     assert launch._settle(known, [], lambda: None) == 1
+
+
+@pytest.mark.parametrize("newline", [False, True])
+def test_daemon_readable_directory_private_key_is_supported(existing, newline):
+    from poolhouse.fleet import launch_health
+
+    root, port, _ = existing
+    root.chmod(0o755)
+    path = root / app_identity.PROOF_KEY_FILE
+    if newline:
+        path.write_text(path.read_text() + "\n")
+    before = (root.stat().st_mode, path.stat().st_mode, path.read_bytes())
+    assert launch_health.authenticated(port, root) is not None
+    assert (root.stat().st_mode, path.stat().st_mode, path.read_bytes()) == before
+
+
+def test_writable_daemon_directory_is_not_trusted(existing):
+    from poolhouse.fleet import launch_health
+
+    root, port, _ = existing
+    root.chmod(0o777)
+    assert launch_health.authenticated(port, root) is None
+    assert root.stat().st_mode & 0o777 == 0o777
+
+
+def test_identity_replaced_during_read_is_not_trusted(existing, monkeypatch):
+    from poolhouse.fleet import launch_health
+
+    root, _, _ = existing
+    path = root / app_identity.PROOF_KEY_FILE
+    read = launch_health.os.read
+
+    def replace_after_read(fd, size):
+        data = read(fd, size)
+        replacement = root / "replacement"
+        replacement.write_text("0" * 64)
+        replacement.chmod(0o600)
+        replacement.replace(path)
+        return data
+
+    monkeypatch.setattr(launch_health.os, "read", replace_after_read)
+    with pytest.raises(OSError):
+        launch_health._read_existing(root)
