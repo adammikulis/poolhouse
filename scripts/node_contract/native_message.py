@@ -54,10 +54,12 @@ def load(root: Path) -> dict:
     return {**value, "types": list(definitions.values()), "minimum": minimum}
 
 
-def _definitions(value: dict, kinds: dict) -> dict:
-    definitions = {name: {"name": name, "kind": "primitive"} for name in PRIMITIVES}
+def _definitions(value: dict, kinds: dict, primitives: dict | None = None, *, allow_empty: bool = False) -> dict:
+    atoms = PRIMITIVES if primitives is None else primitives
+    definitions = {name: {"name": name, "kind": "primitive"} for name in atoms}
     for kind in ["record", "union", "optional", "list", "map"]:
-        for row in _rows(value, kind):
+        rows = [] if allow_empty and value[kind] == [] else _rows(value, kind)
+        for row in rows:
             _name(row.get("name"))
             name = row["name"]
             if name in definitions:
@@ -125,7 +127,7 @@ def render(model: dict) -> str:
     out = ["// Generated from native_boundaries/native_message.toml; UNTRUSTED DATA ONLY.",
            "use super::{Case, EnvelopeField, Type};", f"pub(super) const VERSION: u16 = {model['version']};",
            f"pub(super) const SOURCE_FEATURE: u16 = {model['source_feature']};",
-           f"pub(super) const ORIGINAL_REQUEST: usize = {ids['OriginalRequest']};", "pub(super) const ENVELOPE: &[EnvelopeField] = &[" ]
+           f"pub(super) const ORIGINAL_REQUEST: usize = {ids['OriginalRequest']};", f"pub(super) const VALUE: usize = {ids['Value']};", f"pub(super) const STOP_TARGET: usize = {ids['StopTarget']};", "pub(super) const ENVELOPE: &[EnvelopeField] = &[" ]
     out.extend(f"    EnvelopeField::{name}," for name in model["envelope"])
     out.extend(["];", "pub(super) const TYPES: &[Type] = &["])
     for row in model["types"]:

@@ -8,7 +8,14 @@ import re
 import tomllib
 from pathlib import Path
 
-from . import authority_admission, launch_data, native_message, service_lifecycle, transcripts
+from . import (
+    authority_admission,
+    launch_data,
+    native_message,
+    native_selection,
+    service_lifecycle,
+    transcripts,
+)
 from .common import (
     ENCODINGS,
     FIELD,
@@ -57,6 +64,7 @@ def load_with_ownership(root: Path) -> tuple[dict, list[dict], str, dict[str, st
     meta["adapters"] = adapters(root)
     meta["service_lifecycle"] = service_lifecycle.load(root, ordered)
     meta["native_message"] = native_message.load(root)
+    meta["native_selection"] = native_selection.load(root)
     meta["launch_data"] = launch_data.load(root)
     meta["transcripts"] = transcripts.load(root, ordered)
     meta["authority_admission"] = authority_admission.load(root, ordered, meta["transcripts"])

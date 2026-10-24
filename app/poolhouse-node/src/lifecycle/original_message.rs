@@ -33,7 +33,7 @@ pub(super) enum Scratch {
 /// No scratch references escape, so scratch can safely be reused after decoding.
 pub(super) struct UntrustedInvocation<'a> {
     original: &'a [u8], body: &'a [u8], context: source_context::UntrustedActorContext<'a>,
-    occurrence: [u8; 32], body_tag: u16, kind: u16,
+    occurrence: [u8; 32], body_tag: u16, kind: u16, memory_consolidation: bool,
 }
 impl<'a> UntrustedInvocation<'a> {
     pub(super) fn original_bytes(&self) -> &'a [u8] { self.original }
@@ -42,6 +42,7 @@ impl<'a> UntrustedInvocation<'a> {
     pub(super) fn occurrence(&self) -> &[u8; 32] { &self.occurrence }
     pub(super) fn body_tag(&self) -> u16 { self.body_tag }
     pub(super) fn kind(&self) -> u16 { self.kind }
+    pub(super) fn memory_consolidation(&self) -> bool {self.memory_consolidation}
 }
 struct Cursor<'a> { input: &'a [u8], offset: usize, work: u64 }
 impl<'a> Cursor<'a> {
@@ -98,10 +99,10 @@ impl Workspace<'_> {
     }
 }
 
-fn body(cursor: &mut Cursor<'_>, scratch: &mut [Scratch], platform: u8) -> Result<(u16, u16), DecodeError> {
+fn data(cursor: &mut Cursor<'_>, scratch: &mut [Scratch], platform: u8, root:usize) -> Result<(Option<u16>, Option<u16>, bool), DecodeError> {
     let mut workspace = Workspace { slots: scratch, frames: 0, keys: 0 };
-    workspace.push(Scratch::Task(grammar::ORIGINAL_REQUEST))?;
-    let (mut body_tag, mut kind) = (None, None);
+    workspace.push(Scratch::Task(root))?;
+    let (mut body_tag, mut kind, mut memory_consolidation) = (None, None, false);
     while let Some(frame) = workspace.pop() {
         cursor.charge(1)?;
         match frame {
@@ -128,6 +129,7 @@ fn body(cursor: &mut Cursor<'_>, scratch: &mut [Scratch], platform: u8) -> Resul
                 },
                 Type::Union(cases) => {
                     let tag = cursor.u16()?; cursor.charge(cases.len())?;
+                    if id==grammar::STOP_TARGET && tag==2 {memory_consolidation=true;}
                     let case = cases.iter().find(|case| case.tag == tag).ok_or(DecodeError::Tag)?;
                     if id == grammar::ORIGINAL_REQUEST && body_tag.replace(tag).is_some() { return Err(DecodeError::Grammar); }
                     if case.kind != 0 && kind.replace(case.kind).is_some() { return Err(DecodeError::Kind); }
@@ -157,7 +159,18 @@ fn body(cursor: &mut Cursor<'_>, scratch: &mut [Scratch], platform: u8) -> Resul
             Scratch::Repeat { .. } => (), _ => return Err(DecodeError::Grammar),
         }
     }
-    Ok((body_tag.ok_or(DecodeError::Kind)?, kind.ok_or(DecodeError::Kind)?))
+    Ok((body_tag, kind, memory_consolidation))
+}
+
+fn body(cursor:&mut Cursor<'_>,scratch:&mut [Scratch],platform:u8)->Result<(u16,u16,bool),DecodeError> {
+    let (body,kind,memory)=data(cursor,scratch,platform,grammar::ORIGINAL_REQUEST)?;
+    Ok((body.ok_or(DecodeError::Kind)?,kind.ok_or(DecodeError::Kind)?,memory))
+}
+/// Shared exact Value fragment validation; the caller keeps the SAME remaining-work meter.
+pub(super) fn value_charged(input:&[u8],platform:u8,scratch:&mut [Scratch],work:&mut u64)->Result<(),DecodeError> {
+    let mut cursor=Cursor {input,offset:0,work:*work};
+    let result=(|| {data(&mut cursor,scratch,platform,grammar::VALUE)?;if cursor.offset!=input.len() {return Err(DecodeError::Trailing);}Ok(())})();
+    *work=cursor.work;result
 }
 
 /// Exact JSON Number token grammar. No floating conversion, token normalization,
@@ -185,9 +198,10 @@ fn number(bytes: &[u8], work: &mut u64) -> Result<(), DecodeError> {
 
 /// Structural/data compatibility ONLY. Calling this cannot authenticate a native
 /// occurrence or admit an effect, even with matching expected values and hashes.
-pub(super) fn decode<'a>(input: &'a [u8], expected: ExpectedDataProfile, scratch: &mut [Scratch], work: u64) -> Result<UntrustedInvocation<'a>, DecodeError> {
+pub(super) fn decode_charged<'a>(input: &'a [u8], expected: ExpectedDataProfile, scratch: &mut [Scratch], work: &mut u64) -> Result<UntrustedInvocation<'a>, DecodeError> {
+    let mut cursor = Cursor { input, offset: 0, work:*work };
+    let result=(|| {
     if expected.source_feature != grammar::SOURCE_FEATURE || !matches!(expected.platform, 1 | 2) { return Err(DecodeError::Profile); }
-    let mut cursor = Cursor { input, offset: 0, work };
     let (mut occurrence, mut instance, mut captured_kind, mut context_bytes, mut body_start, mut parsed) = (None, None, None, None, None, None);
     for field in grammar::ENVELOPE {
         match field {
@@ -210,10 +224,14 @@ pub(super) fn decode<'a>(input: &'a [u8], expected: ExpectedDataProfile, scratch
     if instance.as_ref() != Some(context.actor().raw_bytes()) || occurrence[..16] != expected.launch[..16] || occurrence[24..] != [0; 8] { return Err(DecodeError::Context); }
     let serial = u64::from_be_bytes(occurrence[16..24].try_into().map_err(|_| DecodeError::Context)?);
     if serial <= context.actor().serial().get() { return Err(DecodeError::Context); }
-    let (body_tag, kind) = parsed.ok_or(DecodeError::Grammar)?;
+    let (body_tag, kind, memory_consolidation) = parsed.ok_or(DecodeError::Grammar)?;
     if captured_kind != Some(kind) { return Err(DecodeError::Kind); }
-    Ok(UntrustedInvocation { original: input, body: &input[body_start.ok_or(DecodeError::Grammar)?..], context, occurrence, body_tag, kind })
+    Ok(UntrustedInvocation { original: input, body: &input[body_start.ok_or(DecodeError::Grammar)?..], context, occurrence, body_tag, kind, memory_consolidation })
+    })();
+    *work=cursor.work;result
 }
+pub(super) fn decode<'a>(input:&'a [u8],expected:ExpectedDataProfile,scratch:&mut [Scratch],work:u64)->Result<UntrustedInvocation<'a>,DecodeError> {decode_charged(input,expected,scratch,&mut {work})}
+
 #[cfg(test)]
 #[path = "original_message_tests.rs"]
-mod tests;
+pub(super) mod tests;

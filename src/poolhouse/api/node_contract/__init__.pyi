@@ -2523,7 +2523,7 @@ from ._testing import (
 )
 
 CONTRACT_VERSION: _Literal[1]
-SCHEMA_SHA256: _Literal["9c0f703a5e89806f0d0238f6b8433e8d5bb55b4b5a7ce40cb91d963cb082354a"]
+SCHEMA_SHA256: _Literal["1030e94519985d096129fa9707122f96c339e2a6df85b76ce3a681c0517e52eb"]
 __all__ = ('CONTRACT_VERSION', 'SCHEMA_SHA256', 'U32', 'U64', 'AgentControlError', 'AgentControlRequest',
  'AgentControlSnapshot', 'AgentDisplayName', 'AgentGetRequest', 'AgentId', 'AgentPauseResult',
  'AgentState', 'AgentStopResult', 'AgentTaskExecution', 'AgentTaskStartRequest',

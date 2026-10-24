@@ -18,7 +18,7 @@ fn tool(out: &mut Vec<u8>, duplicate: bool) {
     text(out, b"same-alias"); text(out, b"same-alias"); text(out, b"tool-id-or-run-suffix");
     tag(out, 6); value_map(out, duplicate);
 }
-fn request(which: u16, target: u16, duplicate: bool) -> Vec<u8> {
+pub(in crate::lifecycle) fn request(which: u16, target: u16, duplicate: bool) -> Vec<u8> {
     let mut out = Vec::new(); tag(&mut out, which);
     match which {
         1..=3 => { common(&mut out); tool(&mut out, duplicate); if which == 3 { tag(&mut out, 5); out.extend_from_slice(&2u64.to_be_bytes()); tag(&mut out, 1); tag(&mut out, 2); out.push(1); } },
@@ -56,9 +56,9 @@ fn request(which: u16, target: u16, duplicate: bool) -> Vec<u8> {
     }
     out
 }
-fn expected() -> ExpectedDataProfile { let mut launch = [0; 32]; launch[..16].fill(0x14); launch[6] = 0x44; launch[8] = 0x84; ExpectedDataProfile { launch, source_feature: 1, platform: 1 } }
+pub(in crate::lifecycle) fn expected() -> ExpectedDataProfile { let mut launch = [0; 32]; launch[..16].fill(0x14); launch[6] = 0x44; launch[8] = 0x84; ExpectedDataProfile { launch, source_feature: 1, platform: 1 } }
 fn occurrence(serial: u64) -> [u8; 32] { let mut out = expected().launch; out[16..24].copy_from_slice(&serial.to_be_bytes()); out }
-fn message(body: &[u8], kind: u16) -> Vec<u8> {
+pub(in crate::lifecycle) fn message(body: &[u8], kind: u16) -> Vec<u8> {
     let mut context = b"CDXCTX01".to_vec(); context.extend_from_slice(&occurrence(1)); context.extend_from_slice(&occurrence(1));
     context.push(0); context.extend_from_slice(&[71; 16]); context.extend_from_slice(&[72; 16]); context.push(0);
     let mut out = Vec::new(); tag(&mut out, 1); tag(&mut out, 1); out.push(1);
