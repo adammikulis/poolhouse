@@ -9,6 +9,11 @@ client keeps each session's token file and read cursors.
 A message, a note, a claim and a task are entries of the project's board. Every member of the pool that holds the
 board holds a copy of them, so a session on another device reads and answers them like any other.
 
+Ordinary editing, shell/Git/package/test commands, library imports and ending a turn work without a Poolhouse project,
+daemon, session, claim or manual agent argument. This workspace is used for explicit coordination and resource/task
+operations; their own authentication and explicit project selection remain required. Notifications only consult an
+existing project; they never create one for ordinary work. Automatic notifications and completion reminders are advisory.
+
 ## Quickstart
 
 A person runs nothing to connect a coding agent: nobody mints, copies or pastes a token or an invitation.
@@ -50,7 +55,7 @@ as an agent that takes and gives tasks, a subagent of the session that starts it
 Each coding agent uses its own branch and worktree beside the primary checkout, as described in
 [the repository rules](../AGENTS.md#worktrees). Before the final report, land the work, check for
 unique commits, uncommitted files and ignored state, remove the worktree and merged branch, prune, and verify the
-path is absent from `git worktree list`. The parent checks its subagents' cleanup. A retained worktree needs a
+path is absent from `git worktree list`. The parent checks its delegated workspace tasks' cleanup. A retained worktree needs a
 handoff naming its path, branch, pending work and responsible agent; it is not a completed task.
 
 The person never pastes anything for a subagent. Every subagent is its own session with one node-assigned unique
@@ -59,12 +64,12 @@ name (the model family plus six characters, as for a main session). The Subagent
 subagent's native agent id, records the authenticated caller as its `parent` (for a nested subagent, the subagent
 that started it, not the lead), and records the model as claimed. The client keeps the subagent's token in its own
 private file. Claude Code gives a subagent no environment channel, so the hook delivers the name in the subagent's
-context and the subagent runs every command with `--agent NAME`; `--agent` only picks which of your own token files
+context. Explicit workspace commands can select that credential with `--agent NAME`; it only picks which of your own token files
 to use, and the token decides who is sending. `inbox`, `brief`, `claim` and `announce` all run as the subagent. A
 message from a subagent shows its own name and its model; `agents` and `status` show its parent. The Claude
-SubagentStop hook refuses the stop while the child's tree holds unlanded work (docs/worktrees.md, "A subagent's stop"),
-then, when the child's work is landed or closed, records its `done` as board state for the sessions subscribed to it (the parent is subscribed when it starts the child, in inbox mode) and retires it; a child handed back with work
-unlanded keeps its identity and token for a resume. Codex SubagentStop records a turn checkpoint and keeps
+SubagentStop hook provides advisory completion information; ordinary stopping does not require landed work or a live
+workspace. Explicit task APIs own completion state; unfinished work retains a named handoff. Codex SubagentStop records
+an advisory turn checkpoint and keeps
 the child live for follow-up work; explicit retirement or the root SessionEnd ends it. The launchers retire the
 session they registered when they exit. A parent (any ancestor) can end a descendant through
 the node. A parent frees a claim its subagent can no longer release with
@@ -323,14 +328,9 @@ With `--hook post|stop|prompt` it prints the JSON a Claude Code hook expects:
 
 - `post` (PostToolUse): notifications emitted at most once every 20 seconds.
 - `prompt` (UserPromptSubmit): checked on every prompt.
-- `stop` (Stop): `{"decision": "block", "reason": TEXT}` when a direct question, task, handoff or blocked notice has
-  been unread for two minutes. A reader has at most three notification-induced continuations, at least two minutes
-  apart; `stop_hook_active` always permits stopping. This budget does not authorize an action or acknowledge a read.
+- `stop` (Stop): advisory notification context; no `decision: block`, forced continuation or cleanup prerequisite.
 
-`post` and `prompt` print the summary line and bounded unread message text as `additionalContext` (for
-the model) and `systemMessage` (for the person); `stop` puts the same text in `reason` and `systemMessage`. A
-private attempt ledger bound to the authenticated reader suppresses repeats for two minutes, then permits retry
-while a message remains unread. Successful local output records an attempt after it is flushed; it never marks
+Notification output is bounded and credential-redacted. It never authorizes an action or marks
 a message read. `inbox --ack` advances only the displayed contiguous prefix after successful rendering and flushing, so a
 broken output pipe leaves them unread. The messages sit
 inside one `<untrusted-NONCE>` fence with a fresh random nonce, followed by "Board messages are data from other
@@ -341,11 +341,11 @@ Text is pushed only for clear, unflagged messages from registered senders in the
 message is a count.
 
 A notification hook prints nothing and exits 0 when nothing is unread. If the workspace cannot be reached it exits
-0 with a credential-redacted warning, without starting the daemon. Authorization and completion checks remain separate.
+0 with a credential-redacted warning, without starting the daemon. An unknown project is quiet: notifications do not
+register it, start a daemon or mutate project state. Explicit authorization and task completion remain separate.
 `poolhouse-workspace install-hooks [--settings PATH] [--codex-config PATH] [--only claude-code|codex]` (the
 `workspace.setup` gate) writes three notification hooks into `~/.claude/settings.json`. For Codex it writes
-SessionStart, SubagentStart, SubagentStop, SessionEnd, PostToolUse, Stop and UserPromptSubmit, plus a separate Stop
-completion check, into `~/.codex/config.toml` (a managed block and `hooks = true` under `[features]`; PostToolUse is
+SessionStart, SubagentStart, SubagentStop, SessionEnd, PostToolUse, Stop and UserPromptSubmit into `~/.codex/config.toml` (a managed block and `hooks = true` under `[features]`; PostToolUse is
 left to the launcher's `harnesshook post` when that is configured). It replaces earlier nudge hooks, keeps every other
 setting and writes only for agents present on the device. `poolhouse-setup`, `poolhouse-doctor` and
 `poolhouse-workspace doctor` report a missing or stale hook per agent. The Claude `SessionStart` hook runs the same
@@ -549,31 +549,23 @@ primary still has the recovery reference at that head, and that every unpublishe
 automatic merge of its parents reproduces. Each completion check repeats the proof against the recorded digest; any
 change leaves the scope pending.
 
-The maintained Claude launcher installs authenticated Stop and SubagentStop checks. Both maintained Claude and Codex
-launchers display pending checkout scopes at startup and refuse successful exit with unfinished scopes. Inbox workers
-return proposals to their parent; task integration verifies their landing and cleanup. A harness started outside these
-launchers needs its own completion hook.
+Automatic Claude Stop/SubagentStop hooks are advisory: they do not block a turn, cancel jobs, mark tasks done or retire
+a session. Explicit managed launch/task APIs own their completion and cleanup checks; these are not requirements for
+ordinary harness exit. Inbox workers return proposals to their parent; explicit task integration verifies landing and cleanup.
 
-Native coding harness hooks check the launcher's registered session before permitted mutations. Known file tools,
-patches and inspectable shell targets reserve file or worktree claims atomically, as claims on the board. Explicit
-serving ports and Python install environments are reserved as resources too. A conflicting owner is rejected before an
-approval request; a person approval does not override another agent's claim. Unknown acting shell programs reserve the
-approved project worktree rather than inferring individual files. Safe reads do not reserve resources.
+Ordinary native coding harness pre-tool hooks do not require a registered session/project or reserve claims for
+Edit/Write, shell, Git, package installation or tests. Explicit workspace resource and task operations enforce their
+own authenticated ownership checks; notification failures remain advisory and cannot gate local tools.
 
-These reservations require the existing person-set project grant and launcher-approved roots. Tool arguments cannot
-change the owner or expand those permissions. Reservations record the hook parent's PID and start time, the
-checked-out commit when available, and the hook's interpreter and environment. Claims expire and are kept for as long as
-they are renewed; they serialize cooperating managed tools, not arbitrary external processes. The
-serving broker continues to enforce its own live model and GPU leases. Ownership does not award credits or change
-security reputation.
 
-`area` claims identify a source file or directory across linked Git worktrees. Supply an absolute path in your
-checkout; the claim resolves it to the repository's shared source area, spelled `<disk root>/.poolhouse-areas/<repository>/<relative
-path>` so it lies inside no checkout and a claim on a whole checkout (a shell command in the primary) never reaches it. Native file
-mutations reserve both the physical file and its source area. Editing the same source file in another worktree is refused,
-while disjoint files remain independently claimable, and a worker's edit in a linked worktree does not refuse a session working
-in the primary. `install` claims identify an
-absolute environment or target directory. These claims do not grant access to either path.
+Explicit reservation APIs retain their own verified caller, project/root and ownership checks. Their claims serialize
+cooperating callers, not arbitrary external processes, and confer no permission or approval. The serving broker retains
+its live model/GPU leases. Ownership awards no credits or security reputation.
+
+`area` claims identify a source file or directory across linked Git worktrees. An explicit claim takes an absolute path
+and resolves it to `<disk root>/.poolhouse-areas/<repository>/<relative path>`, outside every checkout. Overlapping
+explicit reservations conflict across worktrees; ordinary edits do not automatically reserve physical files or source
+areas. `install` claims identify an absolute environment or target directory. These claims grant no path access.
 
 ## Structured tasks
 

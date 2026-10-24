@@ -36,9 +36,9 @@ The rules never to break, then the ones needed every hour; each names the sectio
     regression to redesign (2).
 16. **A budget is a debt, nothing is grandfathered, no agent raises a number**; nothing is cemented before 1.0 (2, 5).
 17. **"If I can't use it, it's not done"**: landed, updated, driven the way a person does (2, 3, 4).
-18. **Inbox first**: read and answer it at every session start and between tasks; contact comes first (3).
+18. **Inbox first when coordinating through the workspace**: read and answer it at session start and between tasks (3).
     **Stay in sync**: fetch and merge `origin/<dev>` at the same moments, never waiting for a person (3).
-19. **Stage files by name, never `git add -A`**, in your own claimed worktree beside the primary checkout (4).
+19. **Stage files by name, never `git add -A`**; isolate concurrent work in sibling checkouts (4).
 20. **Sync continuously**: fetch and reconcile `origin/<dev>` as you commit, then push coherent increments with
     `git push origin HEAD:refs/heads/<dev>`. The mandatory push hook guards refs only; it runs no tests or builds (4).
 21. **Test the change, not every push**: use focused `scripts/test` selectors needed for the change. Avoid repeated

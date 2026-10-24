@@ -30,28 +30,15 @@ is not restated here except where the detail adds to it; where the two meet, AGE
 
 ### Shared ownership
 
-Shared claims are enforced by maintained mutation and launch tooling, not advisory board messages (docs/workspace.md,
-"Mutation ownership").
+Ordinary editing, shell/Git/package/test commands, imports and ending a turn do not require a Poolhouse project,
+daemon, session, claim or manual agent argument. Hooks provide advisory notifications, not generic mutation approval.
+Use separate sibling checkouts for concurrent work and preserve unrelated changes.
 
-- Mutation and launch tooling acquires only the required authenticated claim or broker allocation automatically.
-  Canonical file areas use repository identity plus relative path across worktrees; physical worktree claims stay
-  separate. Atomic overlap checking and acquisition preserve concurrent unrelated work. Manual claim commands serve
-  diagnostics and exceptional recovery, rather than a recurring step in normal work.
-- A clean checkout can fast-forward or switch to an exact independently reviewed commit under its physical worktree
-  and branch claims. Do not reserve every incoming source file for that baseline move, and preserve unique branch
-  history before switching. New source edits, custom staging and conflict resolutions still require their named
-  source-area claims.
-- Overlap checks and handoffs are atomic. Record the authenticated owner, actual process identity and birth time,
-  source commit and environment where the maintained allocation supports them.
-- Claims never grant project permissions, bypass person approval or permit another agent's credentials; tool policy
-  and registry/project scope remain required. Broker-controlled resources use that broker's authoritative lease, not
-  a parallel informal GPU lock.
-- Tooling renews only a live claim still owned by its authenticated session and releases it when the resource is idle
-  or the work finishes. Repeated cleanup succeeds when ownership is already absent and never reacquires it. An expired
-  claim or dead worker needs verified recovery or an authenticated task-scoped handoff before mutation; preserve
-  checkpoints and exact task/resource identity, and atomically exclude a competing reservation. An old PID or a
-  caller-supplied label establishes no ownership. Read-only inspection needs no mutation claim; ambiguous destructive
-  commands are refused or confined to the explicitly claimed authorized project.
+Explicit workspace resource/task operations retain authenticated ownership checks. Their maintained tooling acquires
+only the necessary scoped claim atomically, renews live owned leases and releases them when finished. Manual claims
+serve coordination, diagnosis and recovery. Claims grant no project permission, person approval or another agent's
+credentials. Expired resource ownership needs verified recovery or an authenticated handoff, never takeover; explicit
+model/GPU work retains its authoritative broker allocation. Repeated cleanup must not reacquire absent ownership.
 
 ### Delegation, accounts and limits
 
@@ -188,7 +175,8 @@ not proof that it is disposable.
   reviewed-selector policy as other platforms. Report the exact device, operating system,
   runtime and tested commit; a Mac result or historical Linux receipt is not verification of the current WSL setup.
   Report platform gaps and known failures honestly. Do not run a second full suite before every merge.
-- Use the maintained test broker for every run; shared CPU/GPU admission and ownership apply before work starts. Do
+- For this repository's maintained test runs, use its test broker; this does not require a library consumer's pytest
+  command to register or contact Poolhouse. Shared CPU/GPU admission applies to explicitly admitted work. Do
   not bypass a queue, start a competing full run, or extend a temporary preview pause indefinitely to obtain a quiet
   gate. Attribute external writes from actual writer evidence; unknown or test-owned writes still fail isolation
   checks. `scripts/test` and `scripts/test-on-linux` acquire maintained CPU admission;
@@ -215,7 +203,7 @@ not proof that it is disposable.
   (including slow); `tests/README.md` describes their mechanics and AGENTS.md controls when each is authorized.
   Scoped runs default to an automatic pool of what the broker grants. Use `-n 1` for sequential ordering; explicit
   `-n 0` requests an automatic pool up to broker capacity; explicit worker ceilings remain effective. Never run
-  bare `pytest -n N` outside maintained admission.
+  maintained parallel repository tests outside their admission; ordinary external pytest remains independent.
 
 ## Models (AGENTS.md, section 6)
 
