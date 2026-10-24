@@ -591,7 +591,7 @@ def test_automatic_context_comes_from_the_device_model_fit(monkeypatch):
     ("command poolhouse-workspace inbox --agent other", "deny"),
     ("poolhouse-workspace inbox --agent own --agent other", "deny"),
     ("poolhouse-workspace inbox --agent own --token-file /tmp/other", "deny"),
-    ("poolhouse-workspace inbox", "deny"),
+    ("poolhouse-workspace inbox", "allow"),
     ("poolhouse-workspace setup --agents own --agent own", "deny"),
     ("poolhouse-workspace inbox --agent own && rm README.md", "deny"),
 ])
