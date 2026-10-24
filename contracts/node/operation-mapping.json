@@ -537,10 +537,9 @@
       ],
       "retained_callers": [
         "ui_detail",
-        "member_log",
-        "member_wait"
+        "member_log"
       ],
-      "legacy_transport": "GET /ui/workspace/jobs/{id}; GET /jobs/{id}/log?tail=N; GET /jobs/{id}/metrics?since=N",
+      "legacy_transport": "Log portion of GET /ui/workspace/jobs/{id}; GET /jobs/{id}/log?tail=N",
       "semantic_transformation": "Replace legacy log tail-count/offset reads with the declared generation-bound bounded log-byte stream cursor; redact before chunking. Metrics read is a separate retained capability and remains uncontracted: OutputCursor does not cover metrics.",
       "authorization_and_lifecycle_delta": [
         "Workspace tail is last 100000 bytes and last 200 valid metrics; remote log tails lines. These are not stable byte cursor semantics.",
@@ -554,6 +553,10 @@
         {
           "site": "member_metrics",
           "reason": "Legacy metrics read is separate and remains uncontracted; jobs.output.read and its OutputCursor cover log bytes only."
+        },
+        {
+          "site": "member_wait",
+          "reason": "Member.wait polls job status and metrics, not log bytes; its status polling maps to jobs.get while metrics remains uncontracted."
         }
       ]
     },
