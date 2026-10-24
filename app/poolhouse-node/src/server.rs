@@ -10,14 +10,13 @@ use serde_json::json;
 use crate::api::{handle, API_VERSION};
 use crate::device::Supplied;
 use crate::error::{Error, Result};
-use crate::fsutil::private_dir;
 use crate::lineage::Peer;
 use crate::net::Net;
 use crate::node::Node;
-use crate::sys::{peer, try_lock, Listener, Lock, Principal, Stream};
+use crate::sys::{peer, Listener, Principal, Stream};
 use crate::wire::{read_frame, write_frame};
 
-pub const INSTANCE_LOCK: &str = "node.lock";
+pub use crate::node::INSTANCE_LOCK;
 
 /// The socket path (on Windows the pipe name) of the node whose state is ``state``.
 pub fn socket_path(state: &Path) -> PathBuf {
@@ -29,7 +28,6 @@ pub struct Server {
     listener: Listener,
     allowed: Principal,
     net: Option<Arc<Net>>,
-    _instance: Lock,
 }
 
 impl Server {
@@ -40,14 +38,12 @@ impl Server {
 
     /// `bind` for the device ``supplied`` is the key of (`Node::open_with`).
     pub fn bind_with(state: &Path, supplied: Option<&Supplied>) -> Result<Server> {
-        private_dir(state)?;
-        let instance = try_lock(&state.join(INSTANCE_LOCK))?.ok_or_else(|| Error::Denied("a node already runs on this state directory".into()))?;
         let node = Node::open_with(state, supplied)?;
         let listener = Listener::bind(state)?;
         crate::sys::watch_stop(state, node.stop.clone());
         let node = Arc::new(Mutex::new(node));
         node.lock().map_err(|_| Error::Damaged("node poisoned".into()))?.local_server = Arc::downgrade(&node);
-        Ok(Server { node, listener, allowed: Principal::me()?, net: None, _instance: instance })
+        Ok(Server { node, listener, allowed: Principal::me()?, net: None })
     }
 
     /// Only this user may connect (tests use another to see the refusal).
