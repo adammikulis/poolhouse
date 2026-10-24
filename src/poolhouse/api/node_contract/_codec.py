@@ -25,6 +25,8 @@ def _valid(kind: str, value: str) -> bool:
                 and -(2**31) <= int(value) <= 2**31 - 1)
     if kind == "text":
         return not any(ord(c) < 32 or 127 <= ord(c) <= 159 or 0xD800 <= ord(c) <= 0xDFFF for c in value)
+    if kind == "utf8":
+        return not any(0xD800 <= ord(c) <= 0xDFFF for c in value)
     if kind in {"u32", "u64"}:
         return (re.fullmatch(r"0|[1-9][0-9]*", value) is not None and len(value) <= 20
                 and int(value) <= (2 ** (32 if kind == "u32" else 64) - 1))
@@ -51,7 +53,7 @@ class _Scalar:
 
     def __post_init__(self) -> None:
         if (not _valid(self._encoding, self.value)
-                or (self._encoding == "text" and not self._bounds[0] <= len(self.value.encode("utf-8")) <= self._bounds[1])):
+                or (self._encoding in {"text", "utf8"} and not self._bounds[0] <= len(self.value.encode("utf-8")) <= self._bounds[1])):
             raise ValueError("invalid " + type(self).__name__)
         if self._encoding == "bytes" and not self._bounds[0] <= len(self.value) // 2 <= self._bounds[1]:
             raise ValueError("invalid byte length")

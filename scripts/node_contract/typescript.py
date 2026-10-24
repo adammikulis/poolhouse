@@ -19,6 +19,8 @@ def render(meta: dict, rows: list[dict], digest: str) -> str:
             output.append(f'export type {name} = {primitive} & {{ readonly __{name}: unique symbol }};\n')
             if row["encoding"] == "finite-f64-bits":
                 output.append(finite_helpers(name))
+            if row["encoding"] == "utf8":
+                output.append(content_helper(name, row["min_bytes"], row["max_bytes"]))
             if row.get("unit") == "unix-microseconds":
                 function = name[0].lower() + name[1:] + "FromParts"
                 output.append(f'''export function {function}(seconds: bigint, microseconds: bigint): {name} {{
@@ -53,5 +55,23 @@ export function {prefix}ToNumber(value: {name}): number {{
   const view = new DataView(new ArrayBuffer(8));
   view.setBigUint64(0, bits, false);
   return view.getFloat64(0, false);
+}}
+'''
+
+
+def content_helper(name: str, minimum: int, maximum: int) -> str:
+    prefix = name[0].lower() + name[1:]
+    return f'''// Untrusted content; byte validity is not escaping, sanitization or authority.
+export function {prefix}FromString(value: string): {name} {{
+  if (typeof value !== "string") throw new RangeError("expected UTF8 content");
+  let bytes = 0;
+  for (const character of value) {{
+    const point = character.codePointAt(0)!;
+    if (point >= 0xd800 && point <= 0xdfff) throw new RangeError("isolated surrogate");
+    bytes += point < 0x80 ? 1 : point < 0x800 ? 2 : point < 0x10000 ? 3 : 4;
+    if (bytes > {maximum}) throw new RangeError("UTF8 content too long");
+  }}
+  if (bytes < {minimum}) throw new RangeError("UTF8 content too short");
+  return value as {name};
 }}
 '''

@@ -112,12 +112,12 @@ def _scalar(row: dict) -> None:
         raise ValueError("unsupported timestamp unit or range")
     if row.get("secret") and row["visibility"] != "private":
         raise ValueError("secret data is not a public client type")
-    if encoding in {"text", "bytes"}:
+    if encoding in {"text", "utf8", "bytes"}:
         if (type(row.get("min_bytes")) is not int or type(row.get("max_bytes")) is not int
                 or not 0 <= row["min_bytes"] <= row["max_bytes"] <= 65536):
             raise ValueError("invalid scalar byte bounds")
     elif "min_bytes" in row or "max_bytes" in row:
-        raise ValueError("byte bounds apply only to text or bytes")
+        raise ValueError("byte bounds apply only to text, UTF8 content or bytes")
     if "minimum" in row or "maximum" in row:
         ranges = {"u32": (0, 2**32 - 1), "u64": (0, 2**64 - 1), "i32": (-2**31, 2**31 - 1)}
         if (encoding not in ranges or type(row.get("minimum")) is not int or type(row.get("maximum")) is not int

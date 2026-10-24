@@ -385,3 +385,21 @@ without another rounding, clamping or integer/boolean/string coercion. Tensor
 float32/bfloat16, PCM integers and other numeric formats remain distinct. Public
 compatibility adapters must still apply the operation's existing domain validation;
 this shared encoding does not implement inference, workers or their authorization.
+
+
+`Utf8Chunk` is bounded, untrusted content data. It preserves well-formed Unicode,
+including NUL, CRLF, tabs, combining sequences and non-BMP characters, without
+normalization. Existing control-free text labels keep their validation. The chunk
+limit remains 65536 decoded UTF8 bytes; it counts neither UTF16 code units nor
+serialized JSON bytes. Lone surrogates refuse. The TypeScript factory checks the
+runtime string type and counts code points without an eager whole-input copy.
+
+Larger retained prompts need ordered chunks plus their original logical/aggregate
+limits after reassembly. Encoded frame size, chunk/event count, leases and output
+limits remain separate checks; empty chunks and heavily escaped controls cannot
+bypass them. The decision source's existing JSON aggregate measurement must stay
+source-equivalent, including its escaping and separators, rather than becoming a
+raw UTF8 byte limit. No truncation or budget increase follows from this encoding.
+Content validity does not sanitize HTML, commands, paths or tool arguments, grant
+authority, or replace rendering escapes and logging redaction. Domain operations
+and private worker framing still need their own complete declarations.

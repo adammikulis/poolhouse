@@ -67,3 +67,11 @@ const rawFinite: FiniteF64 = 1;
 // @ts-expect-error Conversion does not coerce strings to numbers.
 finiteF64FromNumber("1");
 void [finiteNumber, rawFinite];
+
+
+import { utf8ChunkFromString } from "./node";
+import type { Utf8Chunk } from "./node";
+const contentChunk: Utf8Chunk = utf8ChunkFromString("code\nwith\ttabs");
+// @ts-expect-error UTF8 content does not coerce numbers.
+utf8ChunkFromString(1);
+void contentChunk;

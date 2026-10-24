@@ -47,8 +47,10 @@ def render(meta: dict, rows: list[dict], digest: str) -> str:
         elif row["kind"] == "scalar":
             debug = "" if row.get("secret") else ", Debug"
             validation = f'valid("{row["encoding"]}", &value)'
-            if row["encoding"] == "text":
-                validation = f'value.len() >= {row["min_bytes"]} && value.len() <= {row["max_bytes"]} && !value.chars().any(char::is_control)'
+            if row["encoding"] in {"text", "utf8"}:
+                validation = f'value.len() >= {row["min_bytes"]} && value.len() <= {row["max_bytes"]}'
+                if row["encoding"] == "text":
+                    validation += ' && !value.chars().any(char::is_control)'
             if row["encoding"] == "bytes":
                 validation = f"""value.len() >= {row['min_bytes'] * 2} && value.len() <= {row['max_bytes'] * 2} && value.len() % 2 == 0 && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))"""
             if "minimum" in row:

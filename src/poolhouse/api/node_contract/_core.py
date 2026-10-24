@@ -204,6 +204,14 @@ class UnixMicros(_Scalar):
 _register(UnixMicros)
 
 
+class Utf8Chunk(_Scalar):
+    _encoding = "utf8"
+    _bounds = (0, 65536)
+
+
+_register(Utf8Chunk)
+
+
 class GovernanceActIds(_List):
     _item = "GovernanceActId"
     _maximum = 256

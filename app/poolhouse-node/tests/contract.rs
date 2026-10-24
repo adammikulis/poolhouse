@@ -249,6 +249,27 @@ fn finite_binary64_vectors_preserve_bits_and_refuse_nonfinite_values() {
 }
 
 #[test]
+fn utf8_content_vectors_preserve_controls_and_enforce_decoded_byte_bounds() {
+    let vectors: Value = serde_json::from_str(include_str!("../../../contracts/node/vectors.json")).unwrap();
+    let content = &vectors["utf8"];
+    for text in content["accepted"].as_array().unwrap() {
+        let decoded: Utf8Chunk = serde_json::from_value(text.clone()).unwrap();
+        assert_eq!(decoded.as_str().as_bytes(), text.as_str().unwrap().as_bytes());
+    }
+    for raw in content["json_refused"].as_array().unwrap() {
+        assert!(serde_json::from_str::<Utf8Chunk>(raw.as_str().unwrap()).is_err());
+    }
+    for value in content["wrong_types"].as_array().unwrap() {
+        assert!(serde_json::from_value::<Utf8Chunk>(value.clone()).is_err());
+    }
+    let boundary = content["boundary"]["text"].as_str().unwrap()
+        .repeat(content["boundary"]["count"].as_u64().unwrap() as usize);
+    assert_eq!(Utf8Chunk::try_from(boundary.clone()).unwrap().as_str().len(), 65536);
+    assert!(Utf8Chunk::try_from(boundary + "a").is_err());
+    assert!(JobDisplayName::try_from("line\nend".to_owned()).is_err());
+}
+
+#[test]
 fn domain_numeric_observations_preserve_fractional_sign_and_unknown_state() {
     for margin in [json!({"kind": "surplus", "value": {"numerator": "17", "denominator": "2"}}),
                    json!({"kind": "shortfall", "value": {"numerator": "1", "denominator": "2"}})] {

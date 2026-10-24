@@ -21,6 +21,13 @@ def outputs(root: Path) -> dict[Path, str]:
                "device_id": {"public_key": key.hex(), "domain_utf8_hex": meta["device_id_domain"].encode().hex(),
                              "expected": hashlib.sha256(meta["device_id_domain"].encode() + key).hexdigest()},
                "integers": {"u32_max": str(2**32 - 1), "u64_max": str(2**64 - 1)},
+               "utf8": {
+                   "accepted": ["", "line\r\n\tend\x00", "é", "e\u0301", "🙂", "\uffff"],
+                   "json_refused": [json.dumps(chr(0xd800)), json.dumps(chr(0xdc00)),
+                                    json.dumps(chr(0xd800) + "A")],
+                   "wrong_types": [None, True, 1],
+                   "boundary": {"text": "🙂", "count": 16384, "bytes": 65536},
+               },
                "finite_f64": {
                    "bit_order": "ieee754-binary64-msb-first",
                    "accepted": ["0000000000000000", "8000000000000000", "0000000000000001",

@@ -1,5 +1,5 @@
 {
-  "schema_sha256": "a786bb823d5b8815be920efe980955ee65ff54be5b015de0bab3a38dda644c72",
+  "schema_sha256": "db05823bde4a1279a820ff82e64ff50e042d392d2d75e688cc8d1e5efffb5de5",
   "decoded_values": "untrusted-data",
   "device_id": {
     "public_key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
@@ -9,6 +9,31 @@
   "integers": {
     "u32_max": "4294967295",
     "u64_max": "18446744073709551615"
+  },
+  "utf8": {
+    "accepted": [
+      "",
+      "line\r\n\tend\u0000",
+      "\u00e9",
+      "e\u0301",
+      "\ud83d\ude42",
+      "\uffff"
+    ],
+    "json_refused": [
+      "\"\\ud800\"",
+      "\"\\udc00\"",
+      "\"\\ud800A\""
+    ],
+    "wrong_types": [
+      null,
+      true,
+      1
+    ],
+    "boundary": {
+      "text": "\ud83d\ude42",
+      "count": 16384,
+      "bytes": 65536
+    }
   },
   "finite_f64": {
     "bit_order": "ieee754-binary64-msb-first",

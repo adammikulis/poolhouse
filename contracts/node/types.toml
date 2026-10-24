@@ -583,3 +583,12 @@ visibility = "public"
 encoding = "finite-f64-bits"
 issuer = "data"
 
+[[type]]
+name = "Utf8Chunk"
+kind = "scalar"
+visibility = "public"
+encoding = "utf8"
+min_bytes = 0
+max_bytes = 65536
+issuer = "data"
+

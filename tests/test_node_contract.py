@@ -714,3 +714,17 @@ def test_finite_f64_shared_vectors_preserve_exact_bits_without_coercion():
     for invalid in (float("inf"), float("-inf"), float("nan"), 1, True, "1", None):
         with pytest.raises(ValueError):
             public.FiniteF64.from_float(invalid)
+
+
+def test_utf8_content_preserves_controls_and_counts_bytes_without_normalization():
+    vectors = json.loads((ROOT / "contracts/node/vectors.json").read_text())["utf8"]
+    for text in vectors["accepted"]:
+        assert public.Utf8Chunk(text).value.encode("utf-8") == text.encode("utf-8")
+    assert public.Utf8Chunk("é") != public.Utf8Chunk("e\u0301")
+    boundary = vectors["boundary"]["text"] * vectors["boundary"]["count"]
+    assert len(public.Utf8Chunk(boundary).value.encode("utf-8")) == vectors["boundary"]["bytes"]
+    for invalid in [*vectors["wrong_types"], boundary + "a", *(json.loads(raw) for raw in vectors["json_refused"])]:
+        with pytest.raises(ValueError):
+            public.Utf8Chunk(invalid)
+    with pytest.raises(ValueError):
+        public.JobDisplayName("line\nend")

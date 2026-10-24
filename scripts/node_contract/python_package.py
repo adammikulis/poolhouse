@@ -9,6 +9,16 @@ from . import python
 
 
 def group(name: str) -> str:
+    if name.startswith("Connectivity") or name in {"MembershipGeneration", "TransportGeneration"}:
+        for words, owner in (
+            (("Sync", "Connection", "ConnectRequest", "Disconnect", "Interest", "Direction", "Transport"), "connectivity_transport"),
+            (("Join", "Cancellation"), "connectivity_join"),
+            (("Candidate", "Endpoint", "Address", "Hint", "Provider", "Interface", "KeyProof", "Advertisement"), "connectivity_discovery"),
+            (("Device", "Pool", "Membership", "Removal"), "connectivity_membership"),
+        ):
+            if any(word in name for word in words):
+                return owner
+        return "connectivity"
     if name.startswith("Startup"):
         return "startup"
     if name.startswith("Setup"):
