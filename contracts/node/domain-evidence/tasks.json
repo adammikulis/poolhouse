@@ -4240,5 +4240,424 @@
     "pre_edit_verdict": "Declaration scope approved with8 binding/durability/independence/settlement/custody/snapshot/encoding/deferred-scope constraints; incorporated as node checks and evidence. Actual leaf review pending.",
     "actual_leaf_corrections": "Approval reviewer required full foreign claim-row omission (not holder-only redaction) and accepted-only passing-criteria guard; TOML labels/evidence corrected. Reported source200characters/derived800UTF8-byte envelope also preserved.",
     "actual_leaf_verdict": "Final targeted actual-file review approved by approval_attack_review:122types20operations; full foreign-row omission,accepted-only checks and semantic200-character usage source constraints verified. No remaining declaration blocker; runtime/K barriers remain unfinished."
-  }
+  },
+  "operation_mapping": [
+    {
+      "operation": "tasks.create",
+      "request": "TaskCreateRequest",
+      "response": "TaskView",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "current-board-task-creator",
+        "same-board-dependencies-and-designated-agents",
+        "source-key-principal-and-specification-bound",
+        "compare-and-swap-resource-revision",
+        "durable-full-payload-and-principal-bound-transition"
+      ],
+      "source_methods": [
+        "task_create"
+      ]
+    },
+    {
+      "operation": "tasks.list",
+      "request": "TaskListRequest",
+      "response": "TaskReadEvent",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "immutable-snapshot-bound-cursor",
+        "reauthorize-every-task-and-stream-item",
+        "explicit-empty-and-complete-snapshot-boundaries"
+      ],
+      "source_methods": [
+        "task_list"
+      ]
+    },
+    {
+      "operation": "tasks.get",
+      "request": "TaskGetRequest",
+      "response": "TaskReadEvent",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "immutable-snapshot-bound-cursor",
+        "reauthorize-every-task-and-stream-item",
+        "explicit-empty-and-complete-snapshot-boundaries"
+      ],
+      "source_methods": [
+        "task_get"
+      ]
+    },
+    {
+      "operation": "tasks.watchers.list",
+      "request": "TaskGetRequest",
+      "response": "TaskReadEvent",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "immutable-snapshot-bound-cursor",
+        "reauthorize-every-task-and-stream-item",
+        "explicit-empty-and-complete-snapshot-boundaries"
+      ],
+      "source_methods": [
+        "task_watchers"
+      ]
+    },
+    {
+      "operation": "tasks.watchers.set",
+      "request": "TaskWatchSetRequest",
+      "response": "TaskWatcherView",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "self-or-current-explicit-task-order-controller",
+        "exact-subscriber-incarnation",
+        "no-parent-label-authority",
+        "stop-delivery-on-removal",
+        "compare-and-swap-resource-revision",
+        "durable-full-payload-and-principal-bound-transition"
+      ],
+      "source_methods": [
+        "task_watch"
+      ]
+    },
+    {
+      "operation": "tasks.assign",
+      "request": "TaskAssignRequest",
+      "response": "TaskAllocationView",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "current-task-creator-and-assignee-or-existing-task-authority",
+        "current-node-validated-orders-relation",
+        "exact-live-worker-incarnation",
+        "node-validated-target-worker-managed-lease",
+        "queued-and-eligible-worker",
+        "no-parent-label-authority",
+        "compare-and-swap-resource-revision",
+        "durable-full-payload-and-principal-bound-transition"
+      ],
+      "source_methods": [
+        "task_assign"
+      ]
+    },
+    {
+      "operation": "tasks.claim",
+      "request": "TaskClaimRequest",
+      "response": "TaskLeaseView",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "exact-current-assignee-and-allocation",
+        "current-node-validated-orders-relation",
+        "live-exact-worker-model-lease",
+        "completed-same-board-dependencies",
+        "capabilities-model-and-retry-budget-match",
+        "exclusive-task-coordination-lease",
+        "no-compute-authority-from-task-claim",
+        "compare-and-swap-resource-revision",
+        "durable-full-payload-and-principal-bound-transition"
+      ],
+      "source_methods": [
+        "task_claim"
+      ]
+    },
+    {
+      "operation": "tasks.heartbeat",
+      "request": "TaskHeartbeatRequest",
+      "response": "TaskLeaseView",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "exact-current-worker-incarnation",
+        "exact-live-task-and-model-lease",
+        "retry-returns-original-expiry-without-renewal",
+        "expired-or-released-lease-refuses-renewal",
+        "compare-and-swap-resource-revision",
+        "durable-full-payload-and-principal-bound-transition"
+      ],
+      "source_methods": [
+        "task_beat"
+      ]
+    },
+    {
+      "operation": "tasks.checkpoint",
+      "request": "TaskCheckpointRequest",
+      "response": "TaskCheckpointView",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "exact-current-worker-incarnation",
+        "exact-live-task-and-model-lease",
+        "actual-wall-time-and-retry-budgets",
+        "compare-and-swap-resource-revision",
+        "durable-full-payload-and-principal-bound-transition"
+      ],
+      "source_methods": [
+        "task_checkpoint"
+      ]
+    },
+    {
+      "operation": "tasks.submit",
+      "request": "TaskSubmitRequest",
+      "response": "TaskProposalView",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "exact-current-worker-incarnation",
+        "exact-live-task-and-model-lease",
+        "immutable-task-spec-allocation-worker-proposal-binding",
+        "reported-checks-and-usage-not-verification",
+        "settlement-not-inferred-from-submission",
+        "compare-and-swap-resource-revision",
+        "durable-full-payload-and-principal-bound-transition"
+      ],
+      "source_methods": [
+        "task_submit"
+      ]
+    },
+    {
+      "operation": "tasks.review",
+      "request": "TaskReviewRequest",
+      "response": "TaskReviewView",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "current-independent-reviewer-authority",
+        "authenticated-lineage-independence-from-worker",
+        "exact-immutable-proposal-and-specification",
+        "incarnation-bound-digest-required-for-new-review",
+        "accepted-outcome-requires-all-criteria-independently-passed",
+        "measured-usage-and-quality-source-validation",
+        "no-parent-label-authority",
+        "no-approval-or-git-authority-from-assessment",
+        "compare-and-swap-resource-revision",
+        "durable-full-payload-and-principal-bound-transition"
+      ],
+      "source_methods": [
+        "task_review"
+      ]
+    },
+    {
+      "operation": "tasks.block",
+      "request": "TaskBlockRequest",
+      "response": "TaskView",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "current-worker-or-existing-exact-task-controller",
+        "active-task-state",
+        "actual-holder-settlement-retained",
+        "no-parent-label-authority",
+        "compare-and-swap-resource-revision",
+        "durable-full-payload-and-principal-bound-transition"
+      ],
+      "source_methods": [
+        "task_block"
+      ]
+    },
+    {
+      "operation": "tasks.ready",
+      "request": "TaskReadyRequest",
+      "response": "TaskView",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "current-independent-task-controller",
+        "node-observed-expiry-or-blocked-state",
+        "old-worker-model-lease-publication-settled",
+        "actual-retry-budget-not-reset",
+        "no-parent-label-authority",
+        "compare-and-swap-resource-revision",
+        "durable-full-payload-and-principal-bound-transition"
+      ],
+      "source_methods": [
+        "task_ready"
+      ]
+    },
+    {
+      "operation": "tasks.mode.inspect",
+      "request": "TaskModeInspectRequest",
+      "response": "TaskModeView",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "current-task-mode-read"
+      ],
+      "source_methods": [
+        "task_mode"
+      ]
+    },
+    {
+      "operation": "tasks.mode.set",
+      "request": "TaskModeSetRequest",
+      "response": "TaskModeView",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "existing-checked-task-authority",
+        "no-new-policy-gate-or-person-flag",
+        "no-parent-label-authority",
+        "audit-exact-mode-transition",
+        "compare-and-swap-resource-revision",
+        "durable-full-payload-and-principal-bound-transition"
+      ],
+      "source_methods": [
+        "task_mode"
+      ]
+    },
+    {
+      "operation": "tasks.complete",
+      "request": "TaskCompleteRequest",
+      "response": "TaskView",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "exact-accepted-review-and-proposal",
+        "incarnation-bound-digest-required-for-completion",
+        "current-existing-task-landing-controller",
+        "independently-verified-actual-scope-and-landing-identity",
+        "unsupported-scope-or-record-refuses",
+        "no-git-or-cleanup-execution",
+        "no-parent-label-authority",
+        "compare-and-swap-resource-revision",
+        "durable-full-payload-and-principal-bound-transition"
+      ],
+      "source_methods": [
+        "task_complete"
+      ]
+    },
+    {
+      "operation": "tasks.admit.inspect",
+      "request": "TaskAdmitInspectRequest",
+      "response": "TaskView",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "exact-canonical-task-id",
+        "exact-current-worker-incarnation",
+        "exact-live-task-and-model-lease",
+        "current-node-validated-orders-relation",
+        "no-new-execution-right"
+      ],
+      "source_methods": [
+        "task_admit"
+      ]
+    },
+    {
+      "operation": "claims.take",
+      "request": "CoordinationClaimTakeRequest",
+      "response": "CoordinationClaimTakeResult",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "actual-local-claim-scope",
+        "node-normalized-coordination-resource-key",
+        "actual-own-native-process-binding-if-requested",
+        "current-node-lease-policy",
+        "coordination-only-no-git-tool-or-resource-authority",
+        "compare-and-swap-resource-revision",
+        "durable-full-payload-and-principal-bound-transition"
+      ],
+      "source_methods": [
+        "claim"
+      ]
+    },
+    {
+      "operation": "claims.release",
+      "request": "CoordinationClaimReleaseRequest",
+      "response": "CoordinationClaimReleaseResult",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "exact-current-holder-or-existing-narrow-lease-controller",
+        "exact-lease-incarnation",
+        "no-parent-label-authority",
+        "coordination-release-not-physical-custody-proof",
+        "compare-and-swap-resource-revision",
+        "durable-full-payload-and-principal-bound-transition"
+      ],
+      "source_methods": [
+        "release"
+      ]
+    },
+    {
+      "operation": "claims.list",
+      "request": "CoordinationClaimsListRequest",
+      "response": "CoordinationClaimsEvent",
+      "authorization": [
+        "authenticated-current-principal",
+        "current-membership-generation",
+        "exact-resource-generation",
+        "same-board-task-or-claim-access",
+        "no-existence-disclosure-before-authorization",
+        "authorized-claim-channel",
+        "immutable-snapshot-bound-cursor",
+        "reauthorize-every-claim-and-stream-item",
+        "emit-only-authorized-requested-board-claim-rows",
+        "explicit-empty-and-complete-snapshot-boundaries"
+      ],
+      "source_methods": [
+        "claims"
+      ]
+    }
+  ]
 }

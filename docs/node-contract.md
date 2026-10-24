@@ -514,3 +514,13 @@ computation; returned output candidates cannot become frozen input authority.
 Source defaults, fractional metadata, backend-specific training fields and
 nonfinite observations remain explicit. These declarations supply no engine,
 parser, private transport or execution/provenance implementation.
+
+Board content and task/coordination proposals add 266 public data types and 45
+operations. They preserve signed source identities, content-size accounting,
+scoped read acknowledgements, task incarnations, independent review and
+diagnostic claim semantics. Complete frozen read streams avoid new history caps.
+Python groups these declarations by domain; numbered symbols retain natural
+ordering in imports and the static public export list. Runtime dispatch,
+signature/content validation, task settlement and atomic effects remain
+unfinished. Bulk reservations and generic task extensions are specified
+separately rather than accepted through an arbitrary control-body object.

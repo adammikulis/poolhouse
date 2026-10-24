@@ -1,4 +1,4 @@
-// Generated proposal. No dispatch or authority is implemented. Schema bff75d1c20491d80083dfadb8a6e0c22dcaf92775e6040ca6008775c3f8792ff
+// Generated proposal. No dispatch or authority is implemented. Schema ed08131d050952d8255afe2b1901c6b857fe074b8da75238e7a0d7b1ba19ce3f
 use super::contract::*;
 
 pub trait Operation { type Request; type Response; type Error; const NAME: &'static str; }
@@ -50,6 +50,81 @@ impl Operation for GovernanceInspect { type Request = ApprovalGovernanceInspectR
 
 pub struct GovernanceWatch;
 impl Operation for GovernanceWatch { type Request = ApprovalGovernanceWatchRequest; type Response = ApprovalGovernanceWatchEvent; type Error = ApprovalError; const NAME: &'static str = "governance.watch"; }
+
+pub struct BoardContentBoardMessagesPost;
+impl Operation for BoardContentBoardMessagesPost { type Request = BoardContentPostRequest; type Response = BoardContentPostResult; type Error = BoardContentError; const NAME: &'static str = "board.messages.post"; }
+
+pub struct BoardContentBoardNotesPost;
+impl Operation for BoardContentBoardNotesPost { type Request = BoardContentNotePostRequest; type Response = BoardContentPostResult; type Error = BoardContentError; const NAME: &'static str = "board.notes.post"; }
+
+pub struct BoardContentBoardNotesList;
+impl Operation for BoardContentBoardNotesList { type Request = BoardContentNoteListRequest; type Response = BoardContentNotePage; type Error = BoardContentError; const NAME: &'static str = "board.notes.list"; }
+
+pub struct BoardContentBoardNotesVerificationRecord;
+impl Operation for BoardContentBoardNotesVerificationRecord { type Request = BoardContentVerificationRequest; type Response = BoardContentNoteResult; type Error = BoardContentError; const NAME: &'static str = "board.notes.verification.record"; }
+
+pub struct BoardContentBoardEntriesRead;
+impl Operation for BoardContentBoardEntriesRead { type Request = BoardContentReadRequest; type Response = BoardContentEntryPage; type Error = BoardContentError; const NAME: &'static str = "board.entries.read"; }
+
+pub struct BoardContentBoardEntriesDocumentRead;
+impl Operation for BoardContentBoardEntriesDocumentRead { type Request = BoardContentDocumentReadRequest; type Response = BoardContentDocumentChunk; type Error = BoardContentError; const NAME: &'static str = "board.entries.document.read"; }
+
+pub struct BoardContentBoardEntriesWatch;
+impl Operation for BoardContentBoardEntriesWatch { type Request = BoardContentWatchRequest; type Response = BoardContentWatchPage; type Error = BoardContentError; const NAME: &'static str = "board.entries.watch"; }
+
+pub struct BoardContentBoardOutboxList;
+impl Operation for BoardContentBoardOutboxList { type Request = BoardContentOutboxRequest; type Response = BoardContentOutboxPage; type Error = BoardContentError; const NAME: &'static str = "board.outbox.list"; }
+
+pub struct BoardContentBoardRoomsList;
+impl Operation for BoardContentBoardRoomsList { type Request = BoardContentRoomListRequest; type Response = BoardContentRoomPage; type Error = BoardContentError; const NAME: &'static str = "board.rooms.list"; }
+
+pub struct BoardContentBoardRoomsCreate;
+impl Operation for BoardContentBoardRoomsCreate { type Request = BoardContentRoomCreateRequest; type Response = BoardContentRoomResult; type Error = BoardContentError; const NAME: &'static str = "board.rooms.create"; }
+
+pub struct BoardContentBoardRoomsJoin;
+impl Operation for BoardContentBoardRoomsJoin { type Request = BoardContentRoomJoinRequest; type Response = BoardContentRoomResult; type Error = BoardContentError; const NAME: &'static str = "board.rooms.join"; }
+
+pub struct BoardContentBoardRoomsLeave;
+impl Operation for BoardContentBoardRoomsLeave { type Request = BoardContentRoomLeaveRequest; type Response = BoardContentRoomResult; type Error = BoardContentError; const NAME: &'static str = "board.rooms.leave"; }
+
+pub struct BoardContentBoardRoomsMemberAdd;
+impl Operation for BoardContentBoardRoomsMemberAdd { type Request = BoardContentRoomMemberAddRequest; type Response = BoardContentRoomResult; type Error = BoardContentError; const NAME: &'static str = "board.rooms.member.add"; }
+
+pub struct BoardContentBoardFilesUploadStart;
+impl Operation for BoardContentBoardFilesUploadStart { type Request = BoardContentUploadStartRequest; type Response = BoardContentUpload; type Error = BoardContentError; const NAME: &'static str = "board.files.upload.start"; }
+
+pub struct BoardContentBoardFilesUploadAppend;
+impl Operation for BoardContentBoardFilesUploadAppend { type Request = BoardContentUploadAppendRequest; type Response = BoardContentUpload; type Error = BoardContentError; const NAME: &'static str = "board.files.upload.append"; }
+
+pub struct BoardContentBoardFilesUploadCancel;
+impl Operation for BoardContentBoardFilesUploadCancel { type Request = BoardContentUploadCancelRequest; type Response = BoardContentUpload; type Error = BoardContentError; const NAME: &'static str = "board.files.upload.cancel"; }
+
+pub struct BoardContentBoardFilesRead;
+impl Operation for BoardContentBoardFilesRead { type Request = BoardContentFileReadRequest; type Response = BoardContentFileChunk; type Error = BoardContentError; const NAME: &'static str = "board.files.read"; }
+
+pub struct BoardContentBoardFilesDelete;
+impl Operation for BoardContentBoardFilesDelete { type Request = BoardContentFileDeleteRequest; type Response = BoardContentDeleteResult; type Error = BoardContentError; const NAME: &'static str = "board.files.delete"; }
+
+pub struct BoardContentBoardDeliverySubscribe;
+impl Operation for BoardContentBoardDeliverySubscribe { type Request = BoardContentSubscribeRequest; type Response = BoardContentDeliveryResult; type Error = BoardContentError; const NAME: &'static str = "board.delivery.subscribe"; }
+
+pub struct BoardContentBoardDeliveryUnsubscribe;
+impl Operation for BoardContentBoardDeliveryUnsubscribe { type Request = BoardContentUnsubscribeRequest; type Response = BoardContentUnsubscribeResult; type Error = BoardContentError; const NAME: &'static str = "board.delivery.unsubscribe"; }
+
+pub struct BoardContentBoardDeliveryList;
+impl Operation for BoardContentBoardDeliveryList { type Request = BoardContentDeliveryListRequest; type Response = BoardContentDeliveryPage; type Error = BoardContentError; const NAME: &'static str = "board.delivery.list"; }
+
+pub struct BoardContentBoardDeliveryAcknowledge;
+impl Operation for BoardContentBoardDeliveryAcknowledge { type Request = BoardContentAckRequest; type Response = BoardContentAckResult; type Error = BoardContentError; const NAME: &'static str = "board.delivery.acknowledge"; }
+
+pub struct BoardContentBoardLinksCreate;
+impl Operation for BoardContentBoardLinksCreate { type Request = BoardContentLinkCreateRequest; type Response = BoardContentLinkResult; type Error = BoardContentError; const NAME: &'static str = "board.links.create"; }
+
+pub struct BoardContentBoardLinksRemove;
+impl Operation for BoardContentBoardLinksRemove { type Request = BoardContentLinkRemoveRequest; type Response = BoardContentLinkResult; type Error = BoardContentError; const NAME: &'static str = "board.links.remove"; }
+
+pub struct BoardContentBoardLinksList;
+impl Operation for BoardContentBoardLinksList { type Request = BoardContentLinkListRequest; type Response = BoardContentLinkPage; type Error = BoardContentError; const NAME: &'static str = "board.links.list"; }
 
 pub struct DevicesLocalInspect;
 impl Operation for DevicesLocalInspect { type Request = ConnectivityLocalRequest; type Response = ConnectivityLocalView; type Error = ConnectivityError; const NAME: &'static str = "devices.local.inspect"; }
@@ -449,3 +524,63 @@ impl Operation for SettingsWindowCloseInspect { type Request = SettingsWindowClo
 
 pub struct SettingsWindowCloseChoose;
 impl Operation for SettingsWindowCloseChoose { type Request = SettingsWindowChooseRequest; type Response = SettingsWindowCloseView; type Error = SettingsError; const NAME: &'static str = "window.close.choose"; }
+
+pub struct TasksCreate;
+impl Operation for TasksCreate { type Request = TaskCreateRequest; type Response = TaskView; type Error = TaskContractError; const NAME: &'static str = "tasks.create"; }
+
+pub struct TasksList;
+impl Operation for TasksList { type Request = TaskListRequest; type Response = TaskReadEvent; type Error = TaskContractError; const NAME: &'static str = "tasks.list"; }
+
+pub struct TasksGet;
+impl Operation for TasksGet { type Request = TaskGetRequest; type Response = TaskReadEvent; type Error = TaskContractError; const NAME: &'static str = "tasks.get"; }
+
+pub struct TasksWatchersList;
+impl Operation for TasksWatchersList { type Request = TaskGetRequest; type Response = TaskReadEvent; type Error = TaskContractError; const NAME: &'static str = "tasks.watchers.list"; }
+
+pub struct TasksWatchersSet;
+impl Operation for TasksWatchersSet { type Request = TaskWatchSetRequest; type Response = TaskWatcherView; type Error = TaskContractError; const NAME: &'static str = "tasks.watchers.set"; }
+
+pub struct TasksAssign;
+impl Operation for TasksAssign { type Request = TaskAssignRequest; type Response = TaskAllocationView; type Error = TaskContractError; const NAME: &'static str = "tasks.assign"; }
+
+pub struct TasksClaim;
+impl Operation for TasksClaim { type Request = TaskClaimRequest; type Response = TaskLeaseView; type Error = TaskContractError; const NAME: &'static str = "tasks.claim"; }
+
+pub struct TasksHeartbeat;
+impl Operation for TasksHeartbeat { type Request = TaskHeartbeatRequest; type Response = TaskLeaseView; type Error = TaskContractError; const NAME: &'static str = "tasks.heartbeat"; }
+
+pub struct TasksCheckpoint;
+impl Operation for TasksCheckpoint { type Request = TaskCheckpointRequest; type Response = TaskCheckpointView; type Error = TaskContractError; const NAME: &'static str = "tasks.checkpoint"; }
+
+pub struct TasksSubmit;
+impl Operation for TasksSubmit { type Request = TaskSubmitRequest; type Response = TaskProposalView; type Error = TaskContractError; const NAME: &'static str = "tasks.submit"; }
+
+pub struct TasksReview;
+impl Operation for TasksReview { type Request = TaskReviewRequest; type Response = TaskReviewView; type Error = TaskContractError; const NAME: &'static str = "tasks.review"; }
+
+pub struct TasksBlock;
+impl Operation for TasksBlock { type Request = TaskBlockRequest; type Response = TaskView; type Error = TaskContractError; const NAME: &'static str = "tasks.block"; }
+
+pub struct TasksReady;
+impl Operation for TasksReady { type Request = TaskReadyRequest; type Response = TaskView; type Error = TaskContractError; const NAME: &'static str = "tasks.ready"; }
+
+pub struct TasksModeInspect;
+impl Operation for TasksModeInspect { type Request = TaskModeInspectRequest; type Response = TaskModeView; type Error = TaskContractError; const NAME: &'static str = "tasks.mode.inspect"; }
+
+pub struct TasksModeSet;
+impl Operation for TasksModeSet { type Request = TaskModeSetRequest; type Response = TaskModeView; type Error = TaskContractError; const NAME: &'static str = "tasks.mode.set"; }
+
+pub struct TasksComplete;
+impl Operation for TasksComplete { type Request = TaskCompleteRequest; type Response = TaskView; type Error = TaskContractError; const NAME: &'static str = "tasks.complete"; }
+
+pub struct TasksAdmitInspect;
+impl Operation for TasksAdmitInspect { type Request = TaskAdmitInspectRequest; type Response = TaskView; type Error = TaskContractError; const NAME: &'static str = "tasks.admit.inspect"; }
+
+pub struct CoordinationClaimsTake;
+impl Operation for CoordinationClaimsTake { type Request = CoordinationClaimTakeRequest; type Response = CoordinationClaimTakeResult; type Error = TaskContractError; const NAME: &'static str = "claims.take"; }
+
+pub struct CoordinationClaimsRelease;
+impl Operation for CoordinationClaimsRelease { type Request = CoordinationClaimReleaseRequest; type Response = CoordinationClaimReleaseResult; type Error = TaskContractError; const NAME: &'static str = "claims.release"; }
+
+pub struct CoordinationClaimsList;
+impl Operation for CoordinationClaimsList { type Request = CoordinationClaimsListRequest; type Response = CoordinationClaimsEvent; type Error = TaskContractError; const NAME: &'static str = "claims.list"; }

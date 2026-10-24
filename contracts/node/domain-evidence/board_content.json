@@ -3,10 +3,12 @@
   "status": "proposal-only incomplete K retained declaration; no runtime/transport/caller migration or native proof",
   "source_commit": "d8517468c4e92daccfb7a498f0ffadc315023da9",
   "fragment": "contracts/node/domains/board_content.toml",
-  "fragment_sha256": "701910b6ccaa91b6b428d88d42f2f019a344d0bfb121ea4a78a24246d3d0ebb8",
-  "peer_projects_published_commit": "fccc737325c63555234129869ebe34beb6966d37",
-  "peer_ref_status": "Published CatalogBoardRef globally validated; no alias or duplicate catalog definition",
-  "peer_refs": [
+  "fragment_sha256": "7ae23ba7f19d84ba1c0116fdbd83ce42e80eec948ec32c49778ec0e3cd0f9e8b",
+  "independently_reviewed_fragment_sha256": "701910b6ccaa91b6b428d88d42f2f019a344d0bfb121ea4a78a24246d3d0ebb8",
+  "integration_changes": ["Terminology only: project-and-board authorization wording; shared-reference evidence labels. Operation and data semantics unchanged."],
+  "projects_published_commit": "fccc737325c63555234129869ebe34beb6966d37",
+  "shared_ref_status": "Published CatalogBoardRef globally validated; no alias or duplicate catalog definition",
+  "shared_refs": [
     "ProjectCatalogRef",
     "CatalogBoardRef"
   ],
@@ -1521,7 +1523,7 @@
   "omissions_and_unproved": [
     "No implementation/generation/platform/bridge changes. K/H/P/I not accepted. New leaf does not migrate UI/CLI/Python or prove live caller/native behavior.",
     "Tasks/claims22methods, scratch/quarantine/knowledge/datasets/project catalog/location/selection, governance/grant issuance and broader signed replication/storage mechanics excluded; read-only fixed historical task/grant fields are data projection only.",
-    "Exact original raw Row signed-byte retrieval and durable immutable document staging/custody, multi-effect transaction journal, request dedupe, native membership/principal/room/link generation reauthorization, expiry/backpressure, CAS stage and rollback protection unimplemented.",
+    "Exact original raw Row signed-byte retrieval and durable immutable document staging/custody, multi-effect transaction log, request dedupe, native membership/principal/room/link generation reauthorization, expiry/backpressure, CAS stage and rollback protection unimplemented.",
     "DisplaySender101 models source-generated actor<=97 plus at-sign plus d1..d64 label under MAX_ORIGINS64. Board::label reuses persisted labels without an independent syntax/length check; historical/non-generated persisted labels or a larger retained label index are an explicitly unsupported projection profile, never clipped, relabelled, silently omitted or interpreted as authority. Exact full retained display adaptation remains unproved.",
     "Full fixed-fold semantic output validator runtime/profile, iterative parser admission and source-equivalent encoding accounting must exist before enablement. Unsupported/missing profile returns explicit gap/resync/error and cannot produce complete page.",
     "UI synthetic HLC-based display numbers, human/agent display/quarantine/model metadata, draft/localStorage state and native window transport adapters remain presentation mapping work; original IDs never replaced by synthetic number. UI visible-entry acknowledgement requires exact page snapshot resolution; no arbitrary source cursor acts as authority.",

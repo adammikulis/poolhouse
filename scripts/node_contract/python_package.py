@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import pprint
+import re
 from collections import defaultdict
 from pathlib import Path
 
@@ -11,6 +12,12 @@ from . import python
 def group(name: str) -> str:
     if name.startswith("Inference"):
         return inference_group(name)
+    if name.startswith("BoardContent"):
+        return board_content_group(name)
+    if name.startswith("CoordinationClaim"):
+        return "task_claims"
+    if name.startswith("Task") and name not in {"TaskId", "TaskRef", "TaskExecutionId", "TaskExecutionState"}:
+        return task_group(name)
     if name.startswith("CatalogBoard"):
         return "projects_boards"
     if name.startswith("Project") and name != "ProjectId":
@@ -73,6 +80,35 @@ def group(name: str) -> str:
     return "core"
 
 
+def board_content_group(name: str) -> str:
+    for words, owner in (
+        (("File", "Upload", "Blob", "PlainSize", "BytePart"), "board_content_files"),
+        (("Link",), "board_content_links"),
+        (("Room", "Member", "Actors"), "board_content_rooms"),
+        (("Delivery", "Subscribe", "Unsubscribe", "Outbox", "Sent"), "board_content_delivery"),
+        (("Note", "Verification"), "board_content_notes"),
+        (("Watch", "Read", "Filter", "Position", "Vector", "Query", "Entry", "Entries", "Document", "Presentation", "Ack"), "board_content_read"),
+    ):
+        if any(word in name for word in words):
+            return owner
+    return "board_content"
+
+
+def task_group(name: str) -> str:
+    if name.endswith("Request"):
+        return "task_requests"
+    if name.startswith(("TaskStream", "TaskSnapshot")) or name == "TaskReadEvent":
+        return "task_streams"
+    for words, owner in (
+        (("Review", "Rating", "Quality", "Assessment", "Recorded", "Artifact", "Submission", "Provenance", "Digest", "Proposal"), "task_review"),
+        (("Allocation", "Lease", "Heartbeat", "Checkpoint", "Execution"), "task_allocation"),
+        (("Specification", "Criteria", "Capabilities", "Dependencies"), "task_specification"),
+    ):
+        if any(word in name for word in words):
+            return owner
+    return "tasks"
+
+
 def inference_group(name: str) -> str:
     suffix = name.removeprefix("Inference")
     if suffix.startswith(("Content", "CodingContent", "LiteralJson", "Stage", "SourceLimit", "Prepar", "Prepare")):
@@ -90,8 +126,13 @@ def inference_group(name: str) -> str:
     return "inference"
 
 
+def symbol_order(value: str, *, fold: bool = True) -> tuple:
+    return (not value.lstrip("_").isupper(),
+            tuple(int(part) if part.isdigit() else part for part in re.split(r"([0-9]+)", value.casefold() if fold else value)))
+
+
 def imported(module: str, names: list[str], *, export: bool = False) -> str:
-    symbols = [name + (" as " + name if export else "") for name in sorted(names, key=lambda value: (not value.lstrip("_").isupper(), value.casefold()))]
+    symbols = [name + (" as " + name if export else "") for name in sorted(names, key=symbol_order)]
     return f"from {module} import (\n" + "".join("    " + name + ",\n" for name in symbols) + ")\n"
 
 
@@ -145,7 +186,7 @@ def render_package(root: Path, meta: dict, rows: list[dict], digest: str) -> dic
     facade.append(f'CONTRACT_VERSION = {meta["version"]}\nSCHEMA_SHA256 = "{digest}"\n')
     namespaces = ", ".join("_" + owner + "_module.__dict__" for owner in sorted(groups))
     exported = ["CONTRACT_VERSION", "SCHEMA_SHA256", *(row["name"] for row in public)]
-    exports = pprint.pformat(tuple(sorted(exported, key=lambda value: (not value.isupper(), value))), width=100, compact=True)
+    exports = pprint.pformat(tuple(sorted(exported, key=lambda value: symbol_order(value, fold=False))), width=100, compact=True)
     facade.append("_EXPORTS = " + exports + "\n")
     facade.append('_finalize(tuple(name for name in _EXPORTS if name not in {"CONTRACT_VERSION", "SCHEMA_SHA256"}),\n'
                   f'          (globals(), {namespaces},))\n')
