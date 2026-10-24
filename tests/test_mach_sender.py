@@ -24,7 +24,8 @@ SOURCE = r'''
 struct message { mach_msg_header_t header; uint32_t forged_pid; audit_token_t forged_token; };
 union allocation { mach_msg_header_t align; unsigned char bytes[sizeof(struct message) + sizeof(mach_msg_max_trailer_t) + sizeof(natural_t)]; };
 static pid_t child = -1;
-static mach_port_t port = MACH_PORT_NULL;
+static mach_port_t port = MACH_PORT_NULL, saved_bootstrap = MACH_PORT_NULL;
+static bool bootstrap_changed = false;
 static int pipes[2] = {-1, -1}, ack[2] = {-1, -1};
 #define CHECK(x) do { if (!(x)) { result = __LINE__; goto cleanup; } } while (0)
 
@@ -70,23 +71,29 @@ int main(void) {
     CHECK(parser_attacks());
     CHECK(mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &port) == KERN_SUCCESS);
     CHECK(mach_port_insert_right(mach_task_self(), port, port, MACH_MSG_TYPE_MAKE_SEND) == KERN_SUCCESS);
-    CHECK(mach_ports_register(mach_task_self(), &port, 1) == KERN_SUCCESS);
     CHECK(pipe(pipes) == 0 && pipe(ack) == 0);
-    child = fork(); CHECK(child >= 0);
+    CHECK(task_get_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT, &saved_bootstrap) == KERN_SUCCESS);
+    CHECK(task_set_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT, port) == KERN_SUCCESS);
+    bootstrap_changed = true;
+    child = fork();
+    if (child != 0) {
+        /* Restore this inert fixture's original special port immediately, even
+         * when fork fails. No product process or global namespace is changed. */
+        CHECK(task_set_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT, saved_bootstrap) == KERN_SUCCESS);
+        bootstrap_changed = false;
+    }
+    CHECK(child >= 0);
     if (child == 0) {
         close(pipes[0]); close(ack[1]);
-        /* Fresh single-threaded inert fixture only: inherited registered right is
-         * a kernel capability, never a globally looked-up name or numeric argument. */
-        mach_port_array_t ports = NULL; mach_msg_type_number_t count = 0;
-        if (mach_ports_lookup(mach_task_self(), &ports, &count) != KERN_SUCCESS || count < 1) _exit(31);
-        for (unsigned i = 1; i < count; i++) if (MACH_PORT_VALID(ports[i])) _exit(31);
-        mach_port_t destination = ports[0];
-        if (vm_deallocate(mach_task_self(), (vm_address_t)ports, count * sizeof(*ports)) != KERN_SUCCESS) _exit(32);
-        if (mach_ports_register(mach_task_self(), NULL, 0) != KERN_SUCCESS) _exit(33);
+        mach_port_t destination = MACH_PORT_NULL;
+        if (task_get_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT, &destination) != KERN_SUCCESS
+            || !MACH_PORT_VALID(destination)) _exit(31);
+        if (task_set_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT, MACH_PORT_NULL) != KERN_SUCCESS) _exit(33);
+        /* Only a private kernel-inherited right is used. No bootstrap request,
+         * lookup, registration, exec or framework/service call occurs here. */
         audit_token_t own = {0}; mach_msg_type_number_t words = TASK_AUDIT_TOKEN_COUNT;
         if (task_info(mach_task_self(), TASK_AUDIT_TOKEN, (task_info_t)&own, &words) != KERN_SUCCESS
-            || words != TASK_AUDIT_TOKEN_COUNT || write(pipes[1], &own, sizeof(own)) != sizeof(own)) _exit(34);
-        close(pipes[1]);
+            || words != TASK_AUDIT_TOKEN_COUNT) _exit(34);
         struct message message = {0};
         message.header.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_COPY_SEND, 0);
         message.header.msgh_size = sizeof(message); message.header.msgh_remote_port = destination;
@@ -95,14 +102,22 @@ int main(void) {
         if (mach_msg(&message.header, MACH_SEND_MSG | MACH_SEND_TIMEOUT, sizeof(message), 0,
             MACH_PORT_NULL, 1000, MACH_PORT_NULL) != MACH_MSG_SUCCESS) _exit(35);
         if (mach_port_deallocate(mach_task_self(), destination) != KERN_SUCCESS) _exit(36);
+        /* Parent starts its finite receive only after a successful queued send. */
+        if (write(pipes[1], &own, sizeof(own)) != sizeof(own)) _exit(34);
+        close(pipes[1]);
         char byte; if (read(ack[0], &byte, 1) != 1) _exit(37);
         close(ack[0]); _exit(0);
     }
-    CHECK(mach_ports_register(mach_task_self(), NULL, 0) == KERN_SUCCESS);
+    mach_port_t restored = MACH_PORT_NULL;
+    CHECK(task_get_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT, &restored) == KERN_SUCCESS);
+    CHECK(restored == saved_bootstrap);
+    if (MACH_PORT_VALID(restored)) CHECK(mach_port_deallocate(mach_task_self(), restored) == KERN_SUCCESS);
     close(pipes[1]); pipes[1] = -1; close(ack[0]); ack[0] = -1;
     audit_token_t actual; CHECK(read(pipes[0], &actual, sizeof(actual)) == sizeof(actual));
     union allocation storage = {0}; ph_mach_sender_observation observed = {0}; mach_msg_return_t error;
-    CHECK(ph_mach_observe_sender(port, &storage, sizeof(storage), 1000, &observed, &error) == PH_MACH_OBSERVED);
+    ph_mach_observation_result received = ph_mach_observe_sender(port, &storage, sizeof(storage), 1000, &observed, &error);
+    if (received != PH_MACH_OBSERVED) fprintf(stderr, "receive result=%u kernel=%u\n", (unsigned)received, (unsigned)error);
+    CHECK(received == PH_MACH_OBSERVED);
     CHECK(error == MACH_MSG_SUCCESS && observed.pid == (uint32_t)child
         && !memcmp(&observed.audit, &actual, sizeof(actual)));
     struct message *body = (struct message *)storage.bytes;
@@ -127,9 +142,15 @@ int main(void) {
     CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
     /* Exited sender observation remains historical data, never current liveness. */
 cleanup:
-    if (child > 0) { kill(child, SIGKILL); waitpid(child, NULL, 0); }
+    if (child > 0) {
+        pid_t exited = waitpid(child, &status, WNOHANG);
+        if (exited == child) fprintf(stderr, "child completed status=%u\n", (unsigned)status);
+        else { kill(child, SIGKILL); waitpid(child, NULL, 0); }
+    }
     for (unsigned i = 0; i < 2; i++) { if (pipes[i] >= 0) close(pipes[i]); if (ack[i] >= 0) close(ack[i]); }
-    if (MACH_PORT_VALID(port)) { mach_ports_register(mach_task_self(), NULL, 0); if (mach_port_deallocate(mach_task_self(), port) != KERN_SUCCESS
+    if (bootstrap_changed && task_set_special_port(mach_task_self(), TASK_BOOTSTRAP_PORT, saved_bootstrap) != KERN_SUCCESS) result = 91;
+    if (MACH_PORT_VALID(saved_bootstrap) && mach_port_deallocate(mach_task_self(), saved_bootstrap) != KERN_SUCCESS) result = 92;
+    if (MACH_PORT_VALID(port)) { if (mach_port_deallocate(mach_task_self(), port) != KERN_SUCCESS
         || mach_port_mod_refs(mach_task_self(), port, MACH_PORT_RIGHT_RECEIVE, -1) != KERN_SUCCESS) result = 90; }
     if (result) { fprintf(stderr, "FAIL: fixture stage %d\n", result); return 1; }
     puts("PASS: UNCONFINED kernel-only actual-child sender; forged body ignored; hostile bounds refused; timeout and owned cleanup; no admission");
