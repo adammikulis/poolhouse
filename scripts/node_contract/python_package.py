@@ -9,6 +9,8 @@ from . import python
 
 
 def group(name: str) -> str:
+    if name.startswith("Inference"):
+        return inference_group(name)
     if name.startswith("Connectivity") or name in {"MembershipGeneration", "TransportGeneration"}:
         for words, owner in (
             (("Sync", "Connection", "ConnectRequest", "Disconnect", "Interest", "Direction", "Transport"), "connectivity_transport"),
@@ -58,6 +60,23 @@ def group(name: str) -> str:
     return "core"
 
 
+def inference_group(name: str) -> str:
+    suffix = name.removeprefix("Inference")
+    if suffix.startswith(("Content", "CodingContent", "LiteralJson", "Stage", "SourceLimit", "Prepar", "Prepare")):
+        return "inference_content"
+    if suffix.startswith(("Turn", "ToolResult")):
+        return "inference_chat"
+    if suffix.startswith(("Event", "TextDelta", "ToolDelta", "ProviderEvent", "Terminal", "Cursor", "OptionalCursor", "Watch")):
+        return "inference_streams"
+    if suffix.startswith(("ToolProposal", "ToolPolicy", "Effect", "OptionalEffect")):
+        return "inference_effects"
+    if suffix.endswith(("Input", "Request", "Options", "TokenBudget")) or suffix in {"Binding", "Delivery", "Lifetime"}:
+        return "inference_requests"
+    if suffix.endswith(("Result", "Results")) or suffix.startswith(("Rank", "Logprob", "LogProbability", "TokenLogprob", "Timing", "Duration", "Known", "Unknown", "Observation", "Usage", "Result", "Partial", "Finish", "State")):
+        return "inference_results"
+    return "inference"
+
+
 def imported(module: str, names: list[str], *, export: bool = False) -> str:
     symbols = [name + (" as " + name if export else "") for name in sorted(names, key=lambda value: (not value.lstrip("_").isupper(), value.casefold()))]
     return f"from {module} import (\n" + "".join("    " + name + ",\n" for name in symbols) + ")\n"
@@ -105,16 +124,22 @@ def render_package(root: Path, meta: dict, rows: list[dict], digest: str) -> dic
     for owner in sorted(groups):
         facade.append(f"    _{owner} as _{owner}_module,\n")
     facade.append(")\n")
-    imports = {"._codec": "from ._codec import _finalize\n"}
+    imports = []
     for owner, members in sorted(groups.items()):
         outputs[path / ("_" + owner + ".py")] = module_source(members, owners)
-        imports["._" + owner] = imported("._" + owner, [row["name"] for row in members])
-    facade.extend(imports[key] for key in sorted(imports))
-    facade.append("\n")
+        imports.append(imported("._" + owner, [row["name"] for row in members]))
+    facade.append("from ._codec import _finalize\n\n")
     facade.append(f'CONTRACT_VERSION = {meta["version"]}\nSCHEMA_SHA256 = "{digest}"\n')
     namespaces = ", ".join("_" + owner + "_module.__dict__" for owner in sorted(groups))
     exported = ["CONTRACT_VERSION", "SCHEMA_SHA256", *(row["name"] for row in public)]
-    facade.append("__all__ = " + pprint.pformat(tuple(sorted(exported, key=lambda value: (not value.isupper(), value))), width=100, compact=True) + "\n")
-    facade.append(f'_finalize({tuple(row["name"] for row in public)!r}, ({namespaces},))\n')
+    exports = pprint.pformat(tuple(sorted(exported, key=lambda value: (not value.isupper(), value))), width=100, compact=True)
+    facade.append("_EXPORTS = " + exports + "\n")
+    facade.append('_finalize(tuple(name for name in _EXPORTS if name not in {"CONTRACT_VERSION", "SCHEMA_SHA256"}),\n'
+                  f'          (globals(), {namespaces},))\n')
+    facade.append("__all__: tuple[str, ...]\nglobals().update(__all__=_EXPORTS)\n")
     outputs[path / "__init__.py"] = "".join(facade)
+    stub = "# Generated public interface; runtime exports are validated and frozen before publication.\n"
+    stub += "from typing import Literal as _Literal\n\n" + "".join(imports)
+    stub += f'\nCONTRACT_VERSION: _Literal[{meta["version"]}]\nSCHEMA_SHA256: _Literal["{digest}"]\n'
+    outputs[path / "__init__.pyi"] = stub + "__all__ = " + exports + "\n"
     return outputs

@@ -425,3 +425,26 @@ Source inventory and exact caller mapping are in the connectivity domain evidenc
 K still requires full retained multi-pool and protected join-code contracts plus
 platform feasibility review. Runtime dispatch, native custody and installed
 connection evidence remain later implementation and proof obligations.
+
+
+The Python package now separates runtime publication from its static interface.
+All semantic modules load before the existing registry verifies its complete
+reference graph and freezes; only then are the same class objects published in
+the public facade. Generated `__init__.pyi` declares every public class and exact
+metadata literals. Class identity, module/qualified names and pickle lookup stay
+with their semantic modules. Generation refuses unexpected or symbolic-link type
+stubs before either check or write. Wheel and source archives include the static
+interface, typing marker and matching semantic implementations.
+
+The reviewed inference/chat proposal adds 23 operations and 148 data types for
+request preparation, staged semantic content, generation, cancellation, streams,
+chat turns and tool-result submission. Node-issued preparation precedes staging
+and is consumed atomically with generation acceptance. Effects and timings retain
+immutable paged history rather than a total-history ceiling. Original request-size
+measurements remain distinct from bounded transport encoding overhead; chunking
+cannot enlarge or shrink the retained source allowance. Public data and model/tool
+content confer no execution authority.
+
+This checkpoint defines contracts and matching SDKs. Runtime staging, bounded
+semantic parsing, endpoint adapters, complete vendor compatibility and actual
+model/resource scheduling remain implementation obligations; K is still pending.

@@ -1,4 +1,4 @@
-// Generated proposal. No dispatch or authority is implemented. Schema 3938b0cff02e5ade82509ff16914d6fd8cbe9b111bb514db6fa3bc8a7627edf9
+// Generated proposal. No dispatch or authority is implemented. Schema d48730d14933e8f2371d3fd8abc3828d82565fe7a8e4238f7857536a7dc41383
 use super::contract::*;
 
 pub trait Operation { type Request; type Response; type Error; const NAME: &'static str; }
@@ -134,6 +134,75 @@ impl Operation for PoolsSyncCancel { type Request = ConnectivitySyncCancelReques
 
 pub struct PoolsSyncWatch;
 impl Operation for PoolsSyncWatch { type Request = ConnectivitySyncWatchRequest; type Response = ConnectivitySyncEvent; type Error = ConnectivityError; const NAME: &'static str = "pools.sync.watch"; }
+
+pub struct InferenceDomainInferenceChatStart;
+impl Operation for InferenceDomainInferenceChatStart { type Request = InferenceChatStartRequest; type Response = InferenceGenerationView; type Error = InferenceError; const NAME: &'static str = "inference.chat.start"; }
+
+pub struct InferenceDomainInferenceResponsesStart;
+impl Operation for InferenceDomainInferenceResponsesStart { type Request = InferenceResponsesStartRequest; type Response = InferenceGenerationView; type Error = InferenceError; const NAME: &'static str = "inference.responses.start"; }
+
+pub struct InferenceDomainInferenceMessagesStart;
+impl Operation for InferenceDomainInferenceMessagesStart { type Request = InferenceMessagesStartRequest; type Response = InferenceGenerationView; type Error = InferenceError; const NAME: &'static str = "inference.messages.start"; }
+
+pub struct InferenceDomainInferenceCompletionStart;
+impl Operation for InferenceDomainInferenceCompletionStart { type Request = InferenceCompletionStartRequest; type Response = InferenceGenerationView; type Error = InferenceError; const NAME: &'static str = "inference.completion.start"; }
+
+pub struct InferenceDomainInferenceEmbeddingsStart;
+impl Operation for InferenceDomainInferenceEmbeddingsStart { type Request = InferenceEmbeddingStartRequest; type Response = InferenceGenerationView; type Error = InferenceError; const NAME: &'static str = "inference.embeddings.start"; }
+
+pub struct InferenceDomainInferenceRerankStart;
+impl Operation for InferenceDomainInferenceRerankStart { type Request = InferenceRerankStartRequest; type Response = InferenceGenerationView; type Error = InferenceError; const NAME: &'static str = "inference.rerank.start"; }
+
+pub struct InferenceDomainInferenceTokenize;
+impl Operation for InferenceDomainInferenceTokenize { type Request = InferenceTokenizeRequest; type Response = InferenceTokenizeResult; type Error = InferenceError; const NAME: &'static str = "inference.tokenize"; }
+
+pub struct InferenceDomainInferenceDetokenize;
+impl Operation for InferenceDomainInferenceDetokenize { type Request = InferenceDetokenizeRequest; type Response = InferenceDetokenizeResult; type Error = InferenceError; const NAME: &'static str = "inference.detokenize"; }
+
+pub struct InferenceDomainInferenceCountTokens;
+impl Operation for InferenceDomainInferenceCountTokens { type Request = InferenceCountRequest; type Response = InferenceCountResult; type Error = InferenceError; const NAME: &'static str = "inference.count.tokens"; }
+
+pub struct InferenceDomainInferenceGet;
+impl Operation for InferenceDomainInferenceGet { type Request = InferenceGetRequest; type Response = InferenceGenerationView; type Error = InferenceError; const NAME: &'static str = "inference.get"; }
+
+pub struct InferenceDomainInferenceCancel;
+impl Operation for InferenceDomainInferenceCancel { type Request = InferenceCancelRequest; type Response = InferenceCancelResult; type Error = InferenceError; const NAME: &'static str = "inference.cancel"; }
+
+pub struct InferenceDomainInferenceWatch;
+impl Operation for InferenceDomainInferenceWatch { type Request = InferenceWatchRequest; type Response = InferenceWatchBatch; type Error = InferenceError; const NAME: &'static str = "inference.watch"; }
+
+pub struct InferenceDomainChatTurnSend;
+impl Operation for InferenceDomainChatTurnSend { type Request = InferenceTurnSendRequest; type Response = InferenceTurnView; type Error = InferenceError; const NAME: &'static str = "chat.turn.send"; }
+
+pub struct InferenceDomainChatTurnGet;
+impl Operation for InferenceDomainChatTurnGet { type Request = InferenceTurnGetRequest; type Response = InferenceTurnView; type Error = InferenceError; const NAME: &'static str = "chat.turn.get"; }
+
+pub struct InferenceDomainChatTurnCancel;
+impl Operation for InferenceDomainChatTurnCancel { type Request = InferenceTurnCancelRequest; type Response = InferenceTurnCancelResult; type Error = InferenceError; const NAME: &'static str = "chat.turn.cancel"; }
+
+pub struct InferenceDomainChatTurnWatch;
+impl Operation for InferenceDomainChatTurnWatch { type Request = InferenceTurnWatchRequest; type Response = InferenceTurnWatchBatch; type Error = InferenceError; const NAME: &'static str = "chat.turn.watch"; }
+
+pub struct InferenceDomainInferenceToolsRespond;
+impl Operation for InferenceDomainInferenceToolsRespond { type Request = InferenceToolResultSubmitRequest; type Response = InferenceToolResultAcceptance; type Error = InferenceError; const NAME: &'static str = "inference.tools.respond"; }
+
+pub struct InferenceDomainInferenceContentBegin;
+impl Operation for InferenceDomainInferenceContentBegin { type Request = InferenceContentBeginRequest; type Response = InferenceStageView; type Error = InferenceError; const NAME: &'static str = "inference.content.begin"; }
+
+pub struct InferenceDomainInferenceContentAppend;
+impl Operation for InferenceDomainInferenceContentAppend { type Request = InferenceContentAppendRequest; type Response = InferenceStageView; type Error = InferenceError; const NAME: &'static str = "inference.content.append"; }
+
+pub struct InferenceDomainInferenceContentFinalize;
+impl Operation for InferenceDomainInferenceContentFinalize { type Request = InferenceContentFinalizeRequest; type Response = InferenceContentFinalizeResult; type Error = InferenceError; const NAME: &'static str = "inference.content.finalize"; }
+
+pub struct InferenceDomainInferenceContentRead;
+impl Operation for InferenceDomainInferenceContentRead { type Request = InferenceContentReadRequest; type Response = InferenceContentChunk; type Error = InferenceError; const NAME: &'static str = "inference.content.read"; }
+
+pub struct InferenceDomainInferenceContentDiscard;
+impl Operation for InferenceDomainInferenceContentDiscard { type Request = InferenceContentDiscardRequest; type Response = InferenceContentDiscardResult; type Error = InferenceError; const NAME: &'static str = "inference.content.discard"; }
+
+pub struct InferenceDomainInferencePrepare;
+impl Operation for InferenceDomainInferencePrepare { type Request = InferencePrepareRequest; type Response = InferencePreparationView; type Error = InferenceError; const NAME: &'static str = "inference.prepare"; }
 
 pub struct ModelsDomainModelsList;
 impl Operation for ModelsDomainModelsList { type Request = ModelListRequest; type Response = ModelListResponse; type Error = ModelDomainError; const NAME: &'static str = "models.list"; }

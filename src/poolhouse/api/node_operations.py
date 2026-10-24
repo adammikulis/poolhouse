@@ -1,4 +1,4 @@
-# Generated proposal. No dispatch or authority is implemented. Schema 3938b0cff02e5ade82509ff16914d6fd8cbe9b111bb514db6fa3bc8a7627edf9
+# Generated proposal. No dispatch or authority is implemented. Schema d48730d14933e8f2371d3fd8abc3828d82565fe7a8e4238f7857536a7dc41383
 from . import node_contract as data
 
 OPERATION_TYPES = {
@@ -46,6 +46,29 @@ OPERATION_TYPES = {
     "pools.sync.inspect": (data.ConnectivitySyncInspectRequest, data.ConnectivitySyncView, data.ConnectivityError),
     "pools.sync.cancel": (data.ConnectivitySyncCancelRequest, data.ConnectivitySyncCancelResult, data.ConnectivityError),
     "pools.sync.watch": (data.ConnectivitySyncWatchRequest, data.ConnectivitySyncEvent, data.ConnectivityError),
+    "inference.chat.start": (data.InferenceChatStartRequest, data.InferenceGenerationView, data.InferenceError),
+    "inference.responses.start": (data.InferenceResponsesStartRequest, data.InferenceGenerationView, data.InferenceError),
+    "inference.messages.start": (data.InferenceMessagesStartRequest, data.InferenceGenerationView, data.InferenceError),
+    "inference.completion.start": (data.InferenceCompletionStartRequest, data.InferenceGenerationView, data.InferenceError),
+    "inference.embeddings.start": (data.InferenceEmbeddingStartRequest, data.InferenceGenerationView, data.InferenceError),
+    "inference.rerank.start": (data.InferenceRerankStartRequest, data.InferenceGenerationView, data.InferenceError),
+    "inference.tokenize": (data.InferenceTokenizeRequest, data.InferenceTokenizeResult, data.InferenceError),
+    "inference.detokenize": (data.InferenceDetokenizeRequest, data.InferenceDetokenizeResult, data.InferenceError),
+    "inference.count.tokens": (data.InferenceCountRequest, data.InferenceCountResult, data.InferenceError),
+    "inference.get": (data.InferenceGetRequest, data.InferenceGenerationView, data.InferenceError),
+    "inference.cancel": (data.InferenceCancelRequest, data.InferenceCancelResult, data.InferenceError),
+    "inference.watch": (data.InferenceWatchRequest, data.InferenceWatchBatch, data.InferenceError),
+    "chat.turn.send": (data.InferenceTurnSendRequest, data.InferenceTurnView, data.InferenceError),
+    "chat.turn.get": (data.InferenceTurnGetRequest, data.InferenceTurnView, data.InferenceError),
+    "chat.turn.cancel": (data.InferenceTurnCancelRequest, data.InferenceTurnCancelResult, data.InferenceError),
+    "chat.turn.watch": (data.InferenceTurnWatchRequest, data.InferenceTurnWatchBatch, data.InferenceError),
+    "inference.tools.respond": (data.InferenceToolResultSubmitRequest, data.InferenceToolResultAcceptance, data.InferenceError),
+    "inference.content.begin": (data.InferenceContentBeginRequest, data.InferenceStageView, data.InferenceError),
+    "inference.content.append": (data.InferenceContentAppendRequest, data.InferenceStageView, data.InferenceError),
+    "inference.content.finalize": (data.InferenceContentFinalizeRequest, data.InferenceContentFinalizeResult, data.InferenceError),
+    "inference.content.read": (data.InferenceContentReadRequest, data.InferenceContentChunk, data.InferenceError),
+    "inference.content.discard": (data.InferenceContentDiscardRequest, data.InferenceContentDiscardResult, data.InferenceError),
+    "inference.prepare": (data.InferencePrepareRequest, data.InferencePreparationView, data.InferenceError),
     "models.list": (data.ModelListRequest, data.ModelListResponse, data.ModelDomainError),
     "models.get": (data.ModelGetRequest, data.ModelView, data.ModelDomainError),
     "models.search": (data.ModelSearchRequest, data.ModelSearchResponse, data.ModelDomainError),

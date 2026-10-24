@@ -1,7 +1,9 @@
 """Canonical data shape drift and refusal boundaries."""
 from __future__ import annotations
 
+import ast
 import json
+import pickle
 import re
 import shutil
 import struct
@@ -607,6 +609,17 @@ def test_python_package_facade_preserves_identity_and_freezes_codec():
     assert public.ModelFitBinding is group.ModelFitBinding
     assert public.ModelView is OPERATION_TYPES["models.get"][1]
     assert get_type_hints(public.ModelFitBinding)["model"] is public.ModelRef
+    value = public.DeviceId("ab" * 32)
+    assert pickle.dumps(value)
+    assert pickle.whichmodule(type(value), type(value).__qualname__) == public.DeviceId.__module__
+    assert getattr(importlib.import_module(public.DeviceId.__module__), public.DeviceId.__qualname__) is public.DeviceId
+    interface = ast.parse((ROOT / "src/poolhouse/api/node_contract/__init__.pyi").read_text())
+    exports = next(ast.literal_eval(node.value) for node in interface.body if isinstance(node, ast.Assign)
+                   and any(isinstance(target, ast.Name) and target.id == "__all__" for target in node.targets))
+    assert exports == public.__all__
+    imports = {alias.asname or alias.name for node in interface.body if isinstance(node, ast.ImportFrom)
+               for alias in node.names if not (alias.asname or alias.name).startswith("_")}
+    assert imports == set(exports) - {"CONTRACT_VERSION", "SCHEMA_SHA256"}
     with pytest.raises(TypeError):
         codec._TYPES["InjectedType"] = str
     with pytest.raises(RuntimeError):
@@ -614,6 +627,29 @@ def test_python_package_facade_preserves_identity_and_freezes_codec():
     assert not (ROOT / "src/poolhouse/api/node_contract.py").exists()
     for path in (ROOT / "src/poolhouse/api/node_contract").glob("*.py"):
         assert len(path.read_text().splitlines()) <= 900, path.name
+
+
+@pytest.mark.parametrize("check", [True, False])
+@pytest.mark.parametrize("kind", ["unknown", "symlink"])
+def test_generator_refuses_shadow_or_symlink_type_interfaces(tmp_path, monkeypatch, capsys, check, kind):
+    import generate_node_contract as generator
+    shutil.copytree(ROOT / "contracts/node", tmp_path / "contracts/node")
+    package = tmp_path / "src/poolhouse/api/node_contract"
+    package.mkdir(parents=True)
+    if kind == "unknown":
+        (package / "_core.pyi").write_text("# unauthorized type shadow\n")
+    else:
+        outside = tmp_path / "outside.pyi"
+        outside.write_text("# original\n")
+        (package / "__init__.pyi").symlink_to(outside)
+    monkeypatch.setattr(generator, "ROOT", tmp_path)
+    monkeypatch.setattr(sys, "argv", ["generate_node_contract.py", *(["--check"] if check else [])])
+    with pytest.raises(SystemExit, match="1"):
+        generator.main()
+    assert "unknown or stale generated contract package entry" in capsys.readouterr().err
+    assert not (package / "__init__.py").exists()
+    if kind == "symlink":
+        assert outside.read_text() == "# original\n"
 
 
 @pytest.mark.parametrize("method, change", [

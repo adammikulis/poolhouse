@@ -102,7 +102,7 @@ def main() -> int:
     package = ROOT / "src/poolhouse/api/node_contract"
     if package.is_symlink():
         parser.exit(1, "generated contract package cannot be a symlink\n")
-    for path in package.glob("*.py"):
+    for path in [*package.glob("*.py"), *package.glob("*.pyi")]:
         if path.is_symlink() or path not in generated:
             parser.exit(1, "unknown or stale generated contract package entry; review it through Git\n")
     changed = []
