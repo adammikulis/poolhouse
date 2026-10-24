@@ -1,7 +1,7 @@
 {
   "version": 1,
   "status": "proposal; source inventory and declaration constraints only; no runtime/platform/K acceptance",
-  "source_commit": "066ee1e53a94351d4209383e7141d4cd71788477",
+  "source_commit": "af054d44ead3ca8f8feddb97b6bba9f9b1e15d5b",
   "sources": [
     {
       "path": "app/poolhouse-node/src/poolapi.rs",
@@ -130,6 +130,10 @@
     {
       "path": "contracts/node/retained-features.json",
       "sha256": "3a99a8d4856851ff01e9082829a6a2a1d9e00177ea8f2595efa279af43e2a592"
+    },
+    {
+      "path": "app/poolhouse-node/src/netif.rs",
+      "sha256": "4ba7d976b2942280ddec9acf6849b4a91b902811ae6258816198c50c959399b1"
     }
   ],
   "sites": [
@@ -354,6 +358,30 @@
       "line": 112,
       "match": "/ui/setup/join",
       "meaning": "actual initial setup join caller"
+    },
+    {
+      "path": "app/poolhouse-node/src/netif.rs",
+      "line": 32,
+      "match": "fn read_interfaces",
+      "meaning": "unbounded qualifying interface enumeration;16 is per page only"
+    },
+    {
+      "path": "app/poolhouse-node/src/beacon.rs",
+      "line": 132,
+      "match": "fn interfaces",
+      "meaning": "uses all qualifying interfaces without guaranteed16 global cap"
+    },
+    {
+      "path": "src/poolhouse/fleet/discovery.py",
+      "line": 188,
+      "match": "def memberships",
+      "meaning": "all valid distinct retained memberships; no guaranteed64 cap"
+    },
+    {
+      "path": "app/poolhouse-node/src/netsync.rs",
+      "line": 143,
+      "match": "pub fn sync_all",
+      "meaning": "build/governance sync then every mutually-held board, no caller256 cap"
     }
   ],
   "operation_mapping": [
@@ -810,6 +838,47 @@
         20
       ],
       "semantics": "new canonical proposal; no existing implementation claimed"
+    },
+    {
+      "operation": "devices.local.endpoints.list",
+      "request": "ConnectivityLocalRequest",
+      "response": "ConnectivityEndpointSnapshot",
+      "error": "ConnectivityError",
+      "legacy": [
+        "all qualifying local/candidate endpoints"
+      ],
+      "site_indices": [
+        37,
+        38
+      ],
+      "semantics": "caller-obtainable continuation of nested complete paginated projection; no new authority or global cap"
+    },
+    {
+      "operation": "devices.local.memberships.list",
+      "request": "ConnectivityLocalRequest",
+      "response": "ConnectivityMembershipSnapshot",
+      "error": "ConnectivityError",
+      "legacy": [
+        "memberships and pool_status projection"
+      ],
+      "site_indices": [
+        39
+      ],
+      "semantics": "caller-obtainable continuation of nested complete paginated projection; no new authority or global cap"
+    },
+    {
+      "operation": "discovery.candidate.endpoints.list",
+      "request": "ConnectivityCandidateEndpointsRequest",
+      "response": "ConnectivityEndpointSnapshot",
+      "error": "ConnectivityError",
+      "legacy": [
+        "all qualifying local/candidate endpoints"
+      ],
+      "site_indices": [
+        37,
+        38
+      ],
+      "semantics": "caller-obtainable continuation of nested complete paginated projection; no new authority or global cap"
     }
   ],
   "requirements": [
@@ -830,7 +899,10 @@
     "Sync member outcomes are paginated in immutable ConnectivityMemberSyncSnapshot; SyncView carries the first bounded page, pools.sync.members.list resumes next_cursor for every remaining authorized member including beyond 256. Do not truncate outcomes, raise caps or fail a valid sync because total members exceed one page; pages preserve snapshot/revision and reauthorize principal/attempt/each-board-share. Unknown total stays unknown.",
     "Sync authorizes each board and cross-pool share on every stage and delivery, verifies original signed entries, preserves removal cuts and first-sight observations. Corrupt relay data is quarantined without marking genuine origin damaged. Cancel stops owned future sync work but never removes already accepted signed rows; partial commit is explicit.",
     "Watch cursors bind actual principal authorized pool/device incarnation scope projection generation immutable snapshot revision and expiry. Empty snapshots have zero items complete=true and absent next_cursor; incomplete pages have next_cursor; pages preserve snapshot/revision until complete. Changes follow snapshot completion, each item/page/delivery/resume reauthorizes; retention or generation loss emits resync_required. Observer disconnect only detaches.",
-    "Devices inspection may expose removed/left target state and cleanup to an authorized reader; current-membership authorization checks the caller, not a requirement that the inspected target remain active. No target existence disclosure before caller authorization."
+    "Devices inspection may expose removed/left target state and cleanup to an authorized reader; current-membership authorization checks the caller, not a requirement that the inspected target remain active. No target existence disclosure before caller authorization.",
+    "EndpointObservations max16 and MembershipRefs max64 are per-page wire bounds only, never global collection caps. Candidate.endpoints and LocalView.advertised_endpoints/memberships carry first immutable snapshot pages; new corresponding endpoints.list/memberships.list operations retrieve every further authorized item. Never truncate or require manual subsets.",
+    "Nested cursor binds exact candidate/local parent identity and generation, actual principal, projection, snapshot/revision and expiry. Zero-item complete page has absent next_cursor; incomplete page has continuation. Never combine pages across parent snapshot changes. Local watch may deliver newer parent views, but each previously delivered nested snapshot remains frozen and addressable until explicit expiry/resync; no silent rebasing of its cursor.",
+    "Sync boards all_authorized preserves source sync-all: resolve every authorized mutually-held board for requested PoolId and actual target membership/share relation, freeze durable attempt scope without a caller-sized wire list, and reauthorize each stage. It is not every board the caller owns. selected(max256) only narrows board scope and never skips baseline governing/build sync. Node iterates complete frozen plans without raised caps or truncation; retry never broadens frozen scope."
   ],
   "retained_governance_mapping": [
     {
@@ -889,6 +961,8 @@
     "reviewer": "approval_attack_review",
     "scope": "read-only /tmp/connectivity-design-535b06.md and manual-hint refinement",
     "result": "declaration work approved with requirements above",
-    "concrete_review": "approved final corrected 106-type/25-operation proposal after observable prejoin pool context, paginated sync results and creation-versus-update CAS corrections; no runtime/platform/K acceptance"
+    "concrete_review": "approval_attack_review re-read actual110-type28-operation correction and approved paginated endpoint/membership projections, fixed parent/generation/principal cursor and watch coherence, and complete all_authorized sync; declaration only, no runtime/platform/K acceptance",
+    "prior_concrete_review": "approved original corrected106-type25-operation leaf; new retention correction reviewed before edits",
+    "retention_design_review": "approval_attack_review inspected actual sources and approved nested paginated endpoints/memberships and explicit sync-all correction before edits, subject to parent-bound frozen cursors and scope constraints recorded above"
   }
 }
