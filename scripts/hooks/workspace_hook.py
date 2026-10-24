@@ -11,7 +11,6 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'src'))
-from poolhouse import lan, worktreerules
 from poolhouse.board import client
 from poolhouse.guard.secrets import env_secrets, redact
 from poolhouse.workspace.notification_context import existing_board
@@ -75,21 +74,8 @@ def primary_checkout(source: Path) -> Path:
 
 
 def refresh_runtime(stage: str, checkout: Path | None = None, agent: str = '') -> None:
-    """Start a detached runtime build when the selected runtime is behind the checkout's HEAD; takes at most 6 seconds."""
-    if os.environ.get('POOLHOUSE_RUNTIME_ENSURE') == 'off' or not lan.on_the_persons_machine():
-        return
-    source = Path(__file__).resolve().parents[2]
-    environment = dict(worktreerules._git_environment(), PYTHONPATH=str(source / 'src'))
-    try:
-        done = subprocess.run([sys.executable, '-m', 'poolhouse.runtime_cli', 'ensure', '--background', '--hook-refresh',
-                               '--checkout', str(checkout or primary_checkout(source)),
-                               *(['--agent', agent] if agent else [])], capture_output=True,
-                              text=True, timeout=6, check=False, env=environment)
-    except (OSError, subprocess.TimeoutExpired) as error:
-        warning(stage, f'runtime refresh: {error}')
-        return
-    if done.returncode:
-        warning(stage, f'runtime refresh exited {done.returncode}: {done.stderr or done.stdout}')
+    """Compatibility helper: notifications never build or update installed software."""
+    return None
 
 
 def session_environment(value: dict, stage: str) -> dict | None:

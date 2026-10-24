@@ -597,26 +597,17 @@ def test_a_switch_to_a_new_build_writes_no_announcement(world, workspace_node, a
     assert announced(me) == []
 
 
-def test_the_session_start_refresh_is_bounded_and_the_smoke_environment_disables_it(monkeypatch):
+def test_legacy_refresh_is_inert_and_smoke_environment_disables_old_hooks(monkeypatch):
     import importlib.util
     spec = importlib.util.spec_from_file_location("workspace_hook_under_test", Path(__file__).resolve().parents[1] / "scripts/hooks/workspace_hook.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     seen = []
-    monkeypatch.setenv("GIT_DIR", "/foreign/repository")
-    monkeypatch.setenv("GIT_WORK_TREE", "/foreign/checkout")
-    monkeypatch.setenv("GIT_INDEX_FILE", "/foreign/index")
-    monkeypatch.setenv("GIT_SSH_COMMAND", "trusted-ssh")
     monkeypatch.delenv("POOLHOUSE_RUNTIME_ENSURE", raising=False)
-    monkeypatch.setattr(module.subprocess, "run", lambda *a, **k: seen.append(dict(k, command=a[0])) or subprocess.CompletedProcess(a, 0, "", ""))
+    monkeypatch.setattr(module.subprocess, "run", lambda *a, **k: seen.append(a))
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *a, **k: seen.append(a))
     module.refresh_runtime("SessionStart")
-    assert seen == [], "no variable set, and under a test the refresh never starts a build"
-    monkeypatch.setattr(module.lan, "on_the_persons_machine", lambda: True)
-    module.refresh_runtime("SessionStart")
-    assert len(seen) == 1 and seen[0]["timeout"] <= 6
-    assert "--hook-refresh" in seen[0]["command"]
-    assert not {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"} & seen[0]["env"].keys()
-    assert seen[0]["env"]["GIT_SSH_COMMAND"] == "trusted-ssh"
+    assert seen == []
     env = runtime_deploy._clean_environment(Path("/tmp/x"), Path("/tmp/y"))
     assert env["POOLHOUSE_RUNTIME_ENSURE"] == "off"
 

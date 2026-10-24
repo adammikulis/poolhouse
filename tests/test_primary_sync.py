@@ -289,13 +289,14 @@ def test_sweep_ends_by_following_origin(rig):
     assert rig.head() == sha
 
 
-def test_the_runtime_is_refreshed_after_the_primary_has_followed_the_push(rig, monkeypatch):
+def test_following_a_push_does_not_update_installed_runtime(rig, monkeypatch):
     sha = rig.push()
     seen = []
     monkeypatch.setattr(primary_sync, "refresh_runtime", lambda: seen.append(rig.head()))
     monkeypatch.chdir(rig.primary)
     assert primary_sync.main(["--dev", DEV, "--sha", sha, *FAST]) == 0
-    assert seen == [sha]
+    assert seen == []
+    assert rig.head() == sha
 
 
 def test_the_pushed_hook_does_not_refresh_the_runtime_before_the_primary_has_the_commit():
