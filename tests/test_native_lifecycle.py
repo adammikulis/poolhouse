@@ -7,4 +7,4 @@ NATIVE_TARGETS = (testunits.LIB,)
 
 def test_native_lifecycle_core(native_targets_built):  # noqa: F811
     output = native_targets_built.start_built(testunits.LIB, ["lifecycle::tests::"])
-    assert "test result: ok. 17 passed; 0 failed;" in output, output
+    assert "test result: ok. 27 passed; 0 failed;" in output, output

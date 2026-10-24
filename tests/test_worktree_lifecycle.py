@@ -51,7 +51,7 @@ def test_scoped_done_blocks_retained_checkout_after_claim_release(setup):
     claim(kit)
     kit.s.release('worktree', str(kit.checkout.resolve()))
     for _ in range(3):
-        with pytest.raises(Denied, match=r'checkout.*worker/change'):
+        with pytest.raises(lifecycle.CompletionPending, match=r'checkout.*worker/change'):
             done(kit)
     assert kit.checkout.exists()
     with pytest.raises(Denied, match='verified cleanup'):

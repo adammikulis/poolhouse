@@ -135,12 +135,13 @@ def test_unregistered_child_does_not_use_assigned_or_inherited_parent(node, monk
         lifecycle.handle(event("PostToolUse", agent_id="unregistered-child"), assigned.name, node=node.client)
 
 
-def test_stopped_daemon_warns_quickly_and_does_not_block_or_restart(node):
+@pytest.mark.parametrize("completion", [False, True])
+def test_stopped_daemon_warns_quickly_and_does_not_block_or_restart(node, completion):
     lifecycle.handle(event("SessionStart"), node=node.client)
     node.stop()
     before = time.monotonic()
-    done = subprocess.run([sys.executable, "-m", "poolhouse.workspace.cli", "codex-hook"],
-                          input=json.dumps(event("PostToolUse")), text=True, capture_output=True,
+    done = subprocess.run([sys.executable, "-m", "poolhouse.workspace.cli", "codex-stop" if completion else "codex-hook"],
+                          input=json.dumps(event("Stop" if completion else "PostToolUse")), text=True, capture_output=True,
                           env=node.env(extra={"CODEX_THREAD_ID": IDS["native-root"]}), timeout=5, check=False)
     assert done.returncode == 0 and time.monotonic() - before < 5
     assert "workspace lifecycle:" in done.stderr
@@ -235,11 +236,11 @@ def test_stop_guard_uses_own_child_and_preserves_cleanup_check(node, monkeypatch
     assert checked == [child_name]
 
 
-def test_completion_guard_failures_block_separately_from_advisory_notices(monkeypatch, capsys):
+def test_malformed_completion_payload_is_advisory(monkeypatch, capsys):
     monkeypatch.setattr(sys, "stdin", __import__("io").StringIO("[]"))
     assert lifecycle.run(argparse.Namespace(assigned="", completion=True, worker=True)) == 0
-    result = json.loads(capsys.readouterr().out)
-    assert result["decision"] == "block"
+    output = capsys.readouterr()
+    assert not output.out and 'must be an object' in output.err
 
 
 @pytest.mark.parametrize("completion,stage", [(False, 'PostToolUse'), (True, 'Stop'), (False, 'SessionEnd')])
@@ -261,10 +262,7 @@ def test_hostile_worker_arguments_are_single_argv_values_with_deadline(monkeypat
     assert captured['timeout'] == (2.0 if stage == 'SessionEnd' else lifecycle.WAIT)
     assert not captured.get('shell', False)
     output = capsys.readouterr()
-    if completion:
-        assert json.loads(output.out)['decision'] == 'block'
-    else:
-        assert not output.out and 'workspace lifecycle:' in output.err
+    assert not output.out and 'workspace lifecycle:' in output.err
 
 
 def test_session_end_timeout_reaps_its_owned_worker(monkeypatch, capsys):
@@ -287,3 +285,56 @@ def test_session_end_timeout_reaps_its_owned_worker(monkeypatch, capsys):
         os.kill(stopped[0], 0)
     output = capsys.readouterr()
     assert not output.out and 'workspace lifecycle:' in output.err
+
+
+@pytest.mark.parametrize('active', [False, True])
+def test_ambiguous_stop_warns_without_a_parent_or_completion_decision(node, monkeypatch, capsys, active):
+    lifecycle.handle(event('SessionStart'), node=node.client)
+    monkeypatch.delenv('CODEX_THREAD_ID', raising=False)
+    checked = []
+    monkeypatch.setattr(lifecycle.worktree_lifecycle, 'require_clean', lambda *a, **k: checked.append(1))
+    monkeypatch.setattr(sys, 'stdin', __import__('io').StringIO(json.dumps(event('Stop', stop_hook_active=active))))
+    assert lifecycle.run(argparse.Namespace(assigned='', completion=True, worker=True)) == 0
+    output = capsys.readouterr()
+    assert not output.out and 'ambiguous' in output.err
+    assert checked == []
+
+
+@pytest.mark.parametrize('active', [False, True])
+@pytest.mark.parametrize('child', [False, True])
+def test_only_authenticated_pending_cleanup_blocks_even_an_active_stop(node, monkeypatch, capsys, active, child):
+    lifecycle.handle(event('SessionStart'), node=node.client)
+    if child:
+        lifecycle.handle(event('SubagentStart', agent_id='native-child'), node=node.client)
+        monkeypatch.setenv('CODEX_THREAD_ID', IDS['native-child'])
+    expected = session.find('codex', IDS['native-child' if child else 'native-root'], client=node.client)
+    checked = []
+    def pending(base, owner):
+        checked.append(owner)
+        return [{'path': str(Path.cwd()), 'branch': 'worker/change', 'reasons': ['checkout remains']}]
+    monkeypatch.setattr(lifecycle.worktree_lifecycle, 'pending', pending)
+    monkeypatch.setattr(sys, 'stdin', __import__('io').StringIO(json.dumps(event('Stop', cwd=str(Path.cwd()), stop_hook_active=active))))
+    assert lifecycle.run(argparse.Namespace(assigned='', completion=True, worker=True)) == 0
+    output = capsys.readouterr()
+    assert json.loads(output.out)['decision'] == 'block'
+    assert 'checkout remains' in output.out and checked == [expected]
+
+
+def test_untyped_cleanup_transport_denial_does_not_invent_pending_work(node, monkeypatch, capsys):
+    from poolhouse.errors import Denied
+    lifecycle.handle(event('SessionStart'), node=node.client)
+    def unavailable(*args, **kwargs):
+        raise Denied('unavailable')
+    monkeypatch.setattr(lifecycle.worktree_lifecycle, 'pending', unavailable)
+    monkeypatch.setattr(sys, 'stdin', __import__('io').StringIO(json.dumps(event('Stop'))))
+    assert lifecycle.run(argparse.Namespace(assigned='', completion=True, worker=True)) == 0
+    output = capsys.readouterr()
+    assert not output.out and 'unavailable' in output.err
+
+
+def test_completion_worker_exit_warns_without_block(monkeypatch, capsys):
+    monkeypatch.setattr(sys, 'stdin', __import__('io').StringIO(json.dumps(event('Stop'))))
+    monkeypatch.setattr(lifecycle.subprocess, 'run', lambda *a, **k: subprocess.CompletedProcess(a[0], 3, '', ''))
+    assert lifecycle.run(argparse.Namespace(assigned='', completion=True, worker=False)) == 0
+    output = capsys.readouterr()
+    assert not output.out and 'completion worker exited 3' in output.err

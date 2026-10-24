@@ -11,6 +11,7 @@ from pathlib import Path
 
 from poolhouse import agent_hooks
 from poolhouse.board import client, credentials, place, session
+from poolhouse.errors import Denied
 from poolhouse.guard.secrets import env_secrets, redact
 from poolhouse.log import say
 from poolhouse.workspace import (
@@ -170,17 +171,16 @@ def run(args: argparse.Namespace) -> int:
             if done.stderr:
                 warning(done.stderr)
             if done.returncode:
-                if args.completion:
-                    block(f'completion worker exited {done.returncode}')
-                else:
-                    warning(f'notification worker exited {done.returncode}')
+                warning(f'{"completion" if args.completion else "notification"} worker exited {done.returncode}')
             elif done.stdout:
                 say(done.stdout.strip())
-    except (OSError, ValueError, RuntimeError, LookupError, TypeError, AttributeError, client.NodeError, subprocess.SubprocessError) as error:
-        if args.completion:
+    except worktree_lifecycle.CompletionPending as error:
+        if args.completion and args.worker:
             block(error)
         else:
             warning(error)
+    except (OSError, ValueError, RuntimeError, LookupError, TypeError, AttributeError, Denied, client.NodeError, subprocess.SubprocessError) as error:
+        warning(error)
     return 0
 
 

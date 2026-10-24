@@ -1,6 +1,9 @@
 //! Provenance boundary: intentionally no production issuer, conversion, or native implementation.
 //! Test issuers below exercise state logic only; they do not authenticate native callers.
-use super::{Binding, CleanupPhase, Key, Placement};
+//! A future native issuer MUST canonicalize retained lifetimes by actual kernel process identity.
+//! Arc identity here is an internal object check, never a substitute for OS provenance.
+use super::{Binding, CleanupPhase, Context, Key, Placement};
+use super::event::Admission;
 use std::sync::Arc;
 
 pub(super) trait Lifetime: Send + Sync { fn live(&self) -> bool; }
@@ -8,7 +11,7 @@ pub(super) struct Process { lifetime: Box<dyn Lifetime> }
 impl Process { pub(super) fn live(&self) -> bool { self.lifetime.live() } }
 
 pub(super) struct ProducerBody {
-    pub installation: [u8; 32], pub launch_epoch: [u8; 32], pub process: Arc<Process>,
+    pub admission: Key, pub installation: [u8; 32], pub launch_epoch: [u8; 32], pub process: Arc<Process>,
 }
 pub(super) struct Producer { body: ProducerBody }
 impl Producer { pub(super) fn body(&self) -> &ProducerBody { &self.body } }
@@ -16,11 +19,18 @@ impl Producer { pub(super) fn body(&self) -> &ProducerBody { &self.body } }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Origin { Birth, Resume(Key) }
 pub(super) struct SessionEventBody {
-    pub producer: Arc<Producer>, pub origin: Origin, pub event: [u8; 32],
+    pub producer: Arc<Producer>, pub origin: Origin, pub stream_event_id: [u8; 32],
     pub identity: String, pub context: Vec<u8>, pub placement: Placement,
 }
 pub(super) struct SessionEvent { body: SessionEventBody }
 impl SessionEvent { pub(super) fn body(&self) -> &SessionEventBody { &self.body } }
+
+pub(super) struct InvocationEventBody {
+    pub producer: Arc<Producer>, pub session: Key, pub admission: Admission, pub context: Context,
+    pub stream_event_id: [u8; 32], pub kind: String, pub purpose: String, pub payload: Vec<u8>, pub spawn_plan: Vec<u8>,
+}
+pub(super) struct InvocationEvent { body: InvocationEventBody }
+impl InvocationEvent { pub(super) fn body(&self) -> &InvocationEventBody { &self.body } }
 
 pub(super) struct HeldBody {
     pub binding: Binding, pub producer: Arc<Producer>, pub process: Arc<Process>, pub holder: Arc<Process>,
@@ -68,12 +78,20 @@ pub(super) mod testing {
         let live = Arc::new(AtomicBool::new(true));
         (Arc::new(Process { lifetime: Box::new(TestLifetime(live.clone())) }), live)
     }
-    pub fn producer() -> (Arc<Producer>, Arc<AtomicBool>) { producer_for([1; 32]) }
-    pub fn producer_for(installation: [u8; 32]) -> (Arc<Producer>, Arc<AtomicBool>) {
+    pub fn producer(registry: &super::super::Registry) -> (Arc<Producer>, Arc<AtomicBool>) { producer_for(registry, [1; 32]) }
+    pub fn producer_for(registry: &super::super::Registry, installation: [u8; 32]) -> (Arc<Producer>, Arc<AtomicBool>) {
         let (process, live) = process();
-        (Arc::new(Producer { body: ProducerBody { installation, launch_epoch: [2; 32], process } }), live)
+        let admission = registry.lock().unwrap().allocate().unwrap();
+        (Arc::new(Producer { body: ProducerBody { admission, installation, launch_epoch: [2; 32], process } }), live)
     }
     pub fn event(body: SessionEventBody) -> SessionEvent { SessionEvent { body } }
+    pub fn invocation(body: InvocationEventBody) -> InvocationEvent { InvocationEvent { body } }
+    pub fn readmit(registry: &super::super::Registry, prior: &Arc<Producer>) -> Arc<Producer> {
+        let old = prior.body();
+        let admission = registry.lock().unwrap().allocate().unwrap();
+        Arc::new(Producer { body: ProducerBody { admission, installation: old.installation,
+            launch_epoch: old.launch_epoch, process: old.process.clone() } })
+    }
     pub fn held(body: HeldBody) -> Held { Held { body } }
     pub fn caller(binding: Binding, process: Arc<Process>) -> Caller { Caller { binding, process } }
     pub fn cleanup(binding: Binding, process: Arc<Process>, holder: Arc<Process>, phase: CleanupPhase, outcome: CleanupOutcome) -> Cleanup {

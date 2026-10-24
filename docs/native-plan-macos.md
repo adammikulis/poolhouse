@@ -84,14 +84,14 @@ state and actual authenticated workspace actor. Include the safe read-only hello
 reviewed common-contract checkpoint SHA. Reciprocal probes report source, destination, protocol, time and result;
 reachability alone proves no authenticated connection. Plan messages never admit a device or approve an operation.
 
-Request for common-owner review: expose the existing node-owned read-only TLS hello path through the public client;
-the CLI has no probe entry point. The native node TLS client's `connect` path uses resident node identity, endpoint and expected
-certificate pin with TLS 1.3/mTLS; derive the device ID from the certificate's Ed25519 public key and send only the existing
-length-framed `{"op":"hello"}`, cross-check returned `fingerprint`/`board_fingerprint`, then close. Export no private
-key, create no standalone agent identity, and never use `join_pool` as a probe: it can admit under open policy.
-No boards or work cross this probe. Candidate pins remain observations, not admitted trust roots. The unknown-beacon
-path at `net.rs:243–260` attempts automatic joining; the shared owner must provide bounded untrusted candidate
-observations rather than widen authority. This is a request to expose existing behavior, not a new wire definition.
+The [shared diagnostic seam request](native-plan-windows-linux.md#cross-device-agent-rendezvous) follows the
+[certificate preflight](notes/native-device-certificate-preflight.md). No safe local diagnostic entrypoint currently
+exposes resident-node TLS hello; network dispatch's wildcard synchronizes. Remote hello permits nonrevoked unknown
+callers but runs governance tick and build observation, so it is not globally read-only. Common-owner review must
+establish permission, schema and explicit dispatch for a dedicated authenticated, candidate-bound, certificate-pinned,
+bounded one-attempt diagnostic using resident node identity and certificate/key binding. Check revocation before/after
+dial; export no private key or standalone identity, grant no admission/trust/replication, and never substitute `join_pool`.
+No boards or work cross the diagnostic. Candidate observations remain untrusted; no new wire or K approval is implied.
 
 Mac H observation at installed source `33e7b2821` and native host `0.164.0`: genuine root PostToolUse completed with
 exit 0 and empty entries at `2026-10-23T19:42:11.033Z`; genuine child SubagentStop
@@ -105,6 +105,21 @@ with safe supported installation/reload and preserved lineage, trust and refusal
 `session_id` as a fallback. Verify actual consumer identity, notification delivery and cleanup refusal on genuine root and
 child hooks. Trust for the root's `Stop` hooks remains unavailable; H remains unfinished. No completion or trust record
 is fabricated.
+
+### Native producer occurrence request
+
+Source-only follow-up pins Codex `6aaac694803004a63c6f393d153c96d22521a6b9` with the existing
+[0001/0002 patches](../patches/codex/README.md). Retain each original native event occurrence ID above all handler
+fanout: `codex-rs/hooks/src/events/post_tool_use.rs:71–103` constructs one event dispatch, while
+`events/stop.rs:196–218` dispatches matched handlers and executor cleanup separately for the same Stop occurrence.
+Neither `engine/dispatcher.rs:117–177` nor `engine/command_runner.rs:216–250` may allocate a new occurrence per dispatch
+or handler. Actor-scoped turn/tool-call IDs and `engine/mod.rs:184` configuration run IDs are not launch-global event IDs;
+retransmissions must retain the original occurrence ID. No such issuer or private node transport exists in this producer.
+`core/src/session/session.rs:917–926,1994–2004` distinguishes new/resumed identity and startup/resume/fork/clear sources,
+but an upstream Resume enum or persisted root/parent metadata is not admission proof. Before exporting context, the
+common owner must define private producer issuance, occurrence deduplication and authenticated birth/resume binding to
+installation, launch and session generations. Retained actual actor/root/direct-parent context remains internal; no
+environment trust, root fallback, canonical wire, platform adapter or H/K acceptance is added by this request.
 
 K sender refinement requested from `ipc-sender-feasibility.json`: bind opaque evidence to the exact ingress message,
 kernel AUID/EUID/ASID/PID/PIDversion, dynamic code and verified lineage. Connection metadata or PID lookup cannot

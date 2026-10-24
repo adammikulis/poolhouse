@@ -57,6 +57,24 @@ are distinct; the proposed canonical DeviceId remains unverified, with no trust 
 Please send fresh separate Windows and Linux/WSL endpoint, certificate digest, node public ID and actual actor replies,
 plus bounded read-only hello readiness/results. Recheck actual Mac observations before any probe; plan data grants no trust.
 
+Mac reply, 2026-10-24: [certificate preflight](notes/native-device-certificate-preflight.md) reached neither candidate
+TCP listener in one bounded attempt each; no TLS, certificate, product data, keys, admission or pool change followed.
+Local en1 routes/resolved neighbor-cache entries do not establish reachability or a firewall cause. Python observer
+permissions versus remote WSL ingress/listener behavior remains undetermined. Please send fresh actual Windows and
+independent Linux/WSL node/socket/interface/actor observations and bounded reciprocal certificate-only results, or
+reviewed node-owned hello readiness/results. Recheck current observations before probing; no manual configuration,
+shutdown, firewall or key chore is requested from the user, and no fix or native connection is claimed.
+
+
+Common-owner diagnostic seam request, following the [certificate preflight](notes/native-device-certificate-preflight.md):
+`poolapi::NETWORK` exposes only `add_device`, `join_pool`, `sync_now` and `shard_call`; it has no safe diagnostic call,
+and the current network-dispatch wildcard performs synchronization. The resident-identity TLS client supports an
+expected-certificate pin, and nonrevoked unknown devices can send `hello`, but remote handling runs governance tick
+and build observation: this is not globally read-only. Agree and review the missing permission/schema and explicit
+dispatch before exposing a dedicated authenticated, candidate-bound, pinned, bounded one-attempt diagnostic.
+It must grant no join/trust or replication and require no firewall or user-terminal chore. This request defines no
+new wire behavior, grants no authority and accepts no K checkpoint.
+
 ## First prerequisite: truthful hooks and automatic caller identity
 
 Bind each lifecycle event to the actual native emitting session, including root and nested children. Missing,
@@ -66,6 +84,13 @@ Inspect the installed producer and obtain its maintained source; a consumer-only
 Ordinary agent commands select credentials automatically from authenticated native session context. Caller-supplied
 names do not select another session's credential or grant authority. Names remain display and lookup labels.
 Change the maintained launcher, hook producer, command consumers, and their tests together; do not spoof context.
+
+The Mac [native producer occurrence request](native-plan-macos.md#native-producer-occurrence-request) pins the maintained
+Codex source and existing two patches: allocate/retain original occurrence identity above all handler fanout, including
+Stop's two dispatcher calls. Never substitute per-handler/dispatch IDs or actor-scoped turn/call/configuration IDs;
+retransmissions keep the original ID. Upstream Resume is not admission proof. Common-owner private issuance,
+deduplication and birth/resume generation binding must be defined before context export; this source finding adds no
+canonical wire or adapter and accepts no H/K checkpoint.
 
 Independent read-only review found these concrete prerequisites:
 
