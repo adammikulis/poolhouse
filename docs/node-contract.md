@@ -458,3 +458,11 @@ descriptor, preserve the original transcript, and prevent duplicate effects acro
 signature encodings. Existing requests and the six approval operations are unchanged.
 Protected platform signers, native verification and installed approval remain
 unproven; no Windows signer capability is inferred from these declarations.
+
+The private state fragment adds 30 metadata types and no public operations.
+Store incarnation, record scope, transaction intent and effect receipts remain
+distinct; decoded metadata grants no recovery or replay authority. Its source
+evidence preserves exact signed records and verifier-local timing, separates
+local settings/jobs from disposable UI caches, and records the unresolved atomic
+commit and independent rollback-witness requirements. These declarations do not
+implement a storage engine, migration or crash recovery.

@@ -776,7 +776,7 @@ from ._startup import (
 )
 
 CONTRACT_VERSION: _Literal[1]
-SCHEMA_SHA256: _Literal["0b059f166d9a8a6e29366a571362295eea8aac708b2313561c7d50d78a3aa09e"]
+SCHEMA_SHA256: _Literal["70a440edae7f599fd301846087108d2b064ca57151338720e29ed01266b7e7a0"]
 __all__ = ('CONTRACT_VERSION', 'SCHEMA_SHA256', 'U32', 'U64', 'AgentControlError', 'AgentControlRequest',
  'AgentControlSnapshot', 'AgentDisplayName', 'AgentGetRequest', 'AgentId', 'AgentPauseResult',
  'AgentState', 'AgentStopResult', 'AgentTaskExecution', 'AgentTaskStartRequest',
