@@ -1,0 +1,2635 @@
+version = 1
+status = "proposal"
+
+[[type]]
+name = "StudioGraphDraftId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StudioGraphScalarId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StudioGraphSnapshotId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "StudioGraphDraftRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "StudioControlContext"}, {name = "draft_id", type = "StudioGraphDraftId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "StudioGraphScalarEncoding"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "json_string_ascii_content", type = "Empty"}, {tag = "signed_decimal_integer", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphScalarPurpose"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "source_identifier", type = "Empty"}, {tag = "group_key", type = "Empty"}, {tag = "interface_name", type = "Empty"}, {tag = "metadata_text", type = "Empty"}, {tag = "parameter_text", type = "Empty"}, {tag = "literal_text", type = "Empty"}, {tag = "literal_object_key", type = "Empty"}, {tag = "integer_number", type = "Empty"}, {tag = "execution_hint", type = "Empty"}, {tag = "unresolved_resource_id", type = "Empty"}, {tag = "record_field_name", type = "Empty"}, {tag = "expanded_identifier", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphScalarPosition"
+kind = "record"
+visibility = "public"
+fields = [{name = "record_ordinal", type = "U64"}, {name = "purpose", type = "StudioGraphScalarPurpose"}, {name = "subordinal", type = "U64"}]
+
+[[type]]
+name = "StudioGraphScalarRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "draft", type = "StudioGraphDraftRef"}, {name = "scalar_id", type = "StudioGraphScalarId"}, {name = "generation", type = "ResourceGeneration"}, {name = "position", type = "StudioGraphScalarPosition"}, {name = "encoding", type = "StudioGraphScalarEncoding"}, {name = "digest", type = "StudioControlDigest"}, {name = "encoded_bytes", type = "U64"}, {name = "python_characters", type = "U64"}]
+
+[[type]]
+name = "StudioGraphOptionalScalar"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphLiteralRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "draft", type = "StudioGraphDraftRef"}, {name = "owner_record", type = "U64"}, {name = "purpose", type = "StudioGraphLiteralPurpose"}, {name = "tree_ordinal", type = "U64"}, {name = "root", type = "U64"}]
+
+[[type]]
+name = "StudioGraphLiteralPurpose"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "header_id", type = "Empty"}, {tag = "header_name", type = "Empty"}, {tag = "header_description", type = "Empty"}, {tag = "layout", type = "Empty"}, {tag = "group_name", type = "Empty"}, {tag = "node_name", type = "Empty"}, {tag = "record_assignment", type = "Empty"}, {tag = "record_comparison", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphOptionalLiteral"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphLiteralRef"
+
+[[type]]
+name = "StudioGraphLiteralAddress"
+kind = "record"
+visibility = "public"
+fields = [{name = "tree", type = "StudioGraphLiteralRef"}, {name = "node_ordinal", type = "U64"}]
+
+[[type]]
+name = "StudioGraphOptionalLiteralAddress"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphLiteralAddress"
+
+[[type]]
+name = "StudioGraphNumber"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "integer", type = "StudioGraphScalarRef"}, {tag = "floating", type = "FiniteF64"}]
+
+[[type]]
+name = "StudioGraphOptionalNumber"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphNumber"
+
+[[type]]
+name = "StudioGraphOptionalBoolean"
+kind = "optional"
+visibility = "public"
+item = "Boolean"
+
+[[type]]
+name = "StudioGraphLiteralContainer"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "object", type = "Empty"}, {tag = "array", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphLiteralValue"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "null", type = "Empty"}, {tag = "boolean", type = "Boolean"}, {tag = "integer", type = "StudioGraphScalarRef"}, {tag = "floating", type = "FiniteF64"}, {tag = "text", type = "StudioGraphScalarRef"}, {tag = "container", type = "StudioGraphLiteralContainer"}]
+
+[[type]]
+name = "StudioGraphLiteralNode"
+kind = "record"
+visibility = "public"
+fields = [{name = "address", type = "StudioGraphLiteralAddress"}, {name = "parent", type = "StudioGraphOptionalLiteralAddress"}, {name = "ordinal", type = "U64"}, {name = "object_key", type = "StudioGraphOptionalScalar"}, {name = "value", type = "StudioGraphLiteralValue"}, {name = "child_count", type = "U64"}]
+
+[[type]]
+name = "StudioGraphScope"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "root", type = "Empty"}, {tag = "group", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphNodeKey"
+kind = "record"
+visibility = "public"
+fields = [{name = "scope", type = "StudioGraphScope"}, {name = "identifier", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphTopField"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "id", type = "Empty"}, {tag = "name", type = "Empty"}, {tag = "schema_version", type = "Empty"}, {tag = "nodes", type = "Empty"}, {tag = "edges", type = "Empty"}, {tag = "controls", type = "Empty"}, {tag = "groups", type = "Empty"}, {tag = "layout", type = "Empty"}, {tag = "description", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphTopFieldOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphTopField"
+max_items = 9
+
+[[type]]
+name = "StudioGraphHeader"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphTopFieldOrder"}, {name = "identifier", type = "StudioGraphOptionalLiteral"}, {name = "name", type = "StudioGraphOptionalLiteral"}, {name = "description", type = "StudioGraphOptionalLiteral"}, {name = "layout", type = "StudioGraphOptionalLiteral"}]
+
+[[type]]
+name = "StudioGraphGroupField"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "name", type = "Empty"}, {tag = "nodes", type = "Empty"}, {tag = "edges", type = "Empty"}, {tag = "controls", type = "Empty"}, {tag = "control_inputs", type = "Empty"}, {tag = "inputs", type = "Empty"}, {tag = "outputs", type = "Empty"}, {tag = "parameters", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphGroupFieldOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphGroupField"
+max_items = 8
+
+[[type]]
+name = "StudioGraphGroupDefinition"
+kind = "record"
+visibility = "public"
+fields = [{name = "key", type = "StudioGraphScalarRef"}, {name = "ordinal", type = "U64"}, {name = "field_order", type = "StudioGraphGroupFieldOrder"}, {name = "name", type = "StudioGraphOptionalLiteral"}]
+
+[[type]]
+name = "StudioGraphNodeField"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "id", type = "Empty"}, {tag = "source_type", type = "Empty"}, {tag = "version", type = "Empty"}, {tag = "parameters", type = "Empty"}, {tag = "bindings", type = "Empty"}, {tag = "group", type = "Empty"}, {tag = "name", type = "Empty"}, {tag = "sweep", type = "Empty"}, {tag = "execution", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphNodeFieldOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphNodeField"
+max_items = 10
+
+[[type]]
+name = "StudioGraphExecution"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "omitted", type = "Empty"}, {tag = "empty", type = "Empty"}, {tag = "machine_hint", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphResolvedModelBinding"
+kind = "record"
+visibility = "public"
+fields = [{name = "source_id", type = "StudioGraphScalarRef"}, {name = "resource", type = "ModelRef"}]
+
+[[type]]
+name = "StudioGraphBindingModel"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "unresolved_id", type = "StudioGraphScalarRef"}, {tag = "managed", type = "StudioGraphResolvedModelBinding"}]
+
+[[type]]
+name = "StudioGraphResolvedDatasetBinding"
+kind = "record"
+visibility = "public"
+fields = [{name = "source_id", type = "StudioGraphScalarRef"}, {name = "resource", type = "DatasetRef"}]
+
+[[type]]
+name = "StudioGraphBindingDataset"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "unresolved_id", type = "StudioGraphScalarRef"}, {tag = "managed", type = "StudioGraphResolvedDatasetBinding"}]
+
+[[type]]
+name = "StudioGraphOptionalModelBinding"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphBindingModel"
+
+[[type]]
+name = "StudioGraphOptionalDatasetBinding"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphBindingDataset"
+
+[[type]]
+name = "StudioGraphRecordFieldOrder"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "keep_other", type = "Empty"}, {tag = "assignments", type = "Empty"}, {tag = "field", type = "Empty"}, {tag = "operator", type = "Empty"}, {tag = "value", type = "Empty"}, {tag = "target", type = "Empty"}, {tag = "source", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphRecordControlFieldOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphRecordFieldOrder"
+max_items = 7
+
+[[type]]
+name = "StudioGraphRecordMap"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphRecordControlFieldOrder"}, {name = "keep_other", type = "Boolean"}, {name = "assignments", type = "StudioGraphRecordAssignments"}]
+
+[[type]]
+name = "StudioGraphAssignmentSource"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "original_field", type = "StudioGraphScalarRef"}, {tag = "literal", type = "StudioGraphLiteralRef"}]
+
+[[type]]
+name = "StudioGraphRecordAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphScalarRef"}, {name = "source", type = "StudioGraphAssignmentSource"}, {name = "target_first", type = "Boolean"}]
+
+[[type]]
+name = "StudioGraphRecordAssignments"
+kind = "list"
+visibility = "public"
+item = "StudioGraphRecordAssignment"
+max_items = 256
+
+[[type]]
+name = "StudioGraphRecordExists"
+kind = "record"
+visibility = "public"
+fields = [{name = "field", type = "StudioGraphScalarRef"}, {name = "field_first", type = "Boolean"}]
+
+[[type]]
+name = "StudioGraphRecordLiteralComparison"
+kind = "record"
+visibility = "public"
+fields = [{name = "field", type = "StudioGraphScalarRef"}, {name = "value", type = "StudioGraphLiteralRef"}, {name = "field_order", type = "StudioGraphRecordControlFieldOrder"}]
+
+[[type]]
+name = "StudioGraphRecordOrderedComparison"
+kind = "record"
+visibility = "public"
+fields = [{name = "field", type = "StudioGraphScalarRef"}, {name = "value", type = "StudioGraphNumber"}, {name = "field_order", type = "StudioGraphRecordControlFieldOrder"}]
+
+[[type]]
+name = "StudioGraphRecordCondition"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "exists", type = "StudioGraphRecordExists"}, {tag = "equals", type = "StudioGraphRecordLiteralComparison"}, {tag = "not_equals", type = "StudioGraphRecordLiteralComparison"}, {tag = "lt", type = "StudioGraphRecordOrderedComparison"}, {tag = "lte", type = "StudioGraphRecordOrderedComparison"}, {tag = "gt", type = "StudioGraphRecordOrderedComparison"}, {tag = "gte", type = "StudioGraphRecordOrderedComparison"}]
+
+[[type]]
+name = "StudioGraphOptionalRecordMap"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphRecordMap"
+
+[[type]]
+name = "StudioGraphOptionalRecordCondition"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphRecordCondition"
+
+[[type]]
+name = "StudioGraphStreamRecordSampleOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphStreamRecordSampleAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphStreamRecordParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "sample", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphStreamRecordParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphStreamRecordParameterKey"
+max_items = 1
+
+[[type]]
+name = "StudioGraphStreamRecordParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphStreamRecordParameterOrder"}, {name = "sample", type = "StudioGraphStreamRecordSampleOptional"}]
+
+[[type]]
+name = "StudioGraphStreamRecordBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphStreamRecordConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphStreamRecordParameters"}, {name = "bindings", type = "StudioGraphStreamRecordBindings"}]
+
+[[type]]
+name = "StudioGraphRecordMapControlsOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphRecordMap"
+
+[[type]]
+name = "StudioGraphRecordMapControlsAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphRecordMap"}]
+
+[[type]]
+name = "StudioGraphRecordMapParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "controls", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphRecordMapParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphRecordMapParameterKey"
+max_items = 1
+
+[[type]]
+name = "StudioGraphRecordMapParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphRecordMapParameterOrder"}, {name = "controls", type = "StudioGraphRecordMapControlsOptional"}]
+
+[[type]]
+name = "StudioGraphRecordMapBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphRecordMapConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphRecordMapParameters"}, {name = "bindings", type = "StudioGraphRecordMapBindings"}]
+
+[[type]]
+name = "StudioGraphRecordIfControlsOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphRecordCondition"
+
+[[type]]
+name = "StudioGraphRecordIfControlsAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphRecordCondition"}]
+
+[[type]]
+name = "StudioGraphRecordIfParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "controls", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphRecordIfParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphRecordIfParameterKey"
+max_items = 1
+
+[[type]]
+name = "StudioGraphRecordIfParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphRecordIfParameterOrder"}, {name = "controls", type = "StudioGraphRecordIfControlsOptional"}]
+
+[[type]]
+name = "StudioGraphRecordIfBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphRecordIfConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphRecordIfParameters"}, {name = "bindings", type = "StudioGraphRecordIfBindings"}]
+
+[[type]]
+name = "StudioGraphDatasetParameters"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphDatasetBindingKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "dataset", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphDatasetBindingOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphDatasetBindingKey"
+max_items = 1
+
+[[type]]
+name = "StudioGraphDatasetBindings"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphDatasetBindingOrder"}, {name = "dataset", type = "StudioGraphOptionalDatasetBinding"}]
+
+[[type]]
+name = "StudioGraphDatasetConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphDatasetParameters"}, {name = "bindings", type = "StudioGraphDatasetBindings"}]
+
+[[type]]
+name = "StudioGraphDataHfPreviewRequestIdOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphDataHfPreviewRequestIdAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphDataHfPreviewParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "request_id", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphDataHfPreviewParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphDataHfPreviewParameterKey"
+max_items = 1
+
+[[type]]
+name = "StudioGraphDataHfPreviewParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphDataHfPreviewParameterOrder"}, {name = "request_id", type = "StudioGraphDataHfPreviewRequestIdOptional"}]
+
+[[type]]
+name = "StudioGraphDataHfPreviewBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphDataHfPreviewConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphDataHfPreviewParameters"}, {name = "bindings", type = "StudioGraphDataHfPreviewBindings"}]
+
+[[type]]
+name = "StudioGraphModelParameters"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphModelBindingKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "model", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphModelBindingOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphModelBindingKey"
+max_items = 1
+
+[[type]]
+name = "StudioGraphModelBindings"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphModelBindingOrder"}, {name = "model", type = "StudioGraphOptionalModelBinding"}]
+
+[[type]]
+name = "StudioGraphModelConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphModelParameters"}, {name = "bindings", type = "StudioGraphModelBindings"}]
+
+[[type]]
+name = "StudioGraphDataValidateParameters"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphDataValidateBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphDataValidateConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphDataValidateParameters"}, {name = "bindings", type = "StudioGraphDataValidateBindings"}]
+
+[[type]]
+name = "StudioGraphDataSplitFractionOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphNumber"
+
+[[type]]
+name = "StudioGraphDataSplitFractionAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphNumber"}]
+
+[[type]]
+name = "StudioGraphDataSplitSeedOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphDataSplitSeedAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphDataSplitParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "fraction", type = "Empty"}, {tag = "seed", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphDataSplitParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphDataSplitParameterKey"
+max_items = 2
+
+[[type]]
+name = "StudioGraphDataSplitParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphDataSplitParameterOrder"}, {name = "fraction", type = "StudioGraphDataSplitFractionOptional"}, {name = "seed", type = "StudioGraphDataSplitSeedOptional"}]
+
+[[type]]
+name = "StudioGraphDataSplitBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphDataSplitConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphDataSplitParameters"}, {name = "bindings", type = "StudioGraphDataSplitBindings"}]
+
+[[type]]
+name = "StudioGraphPromptTemplateOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphPromptTemplateAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphPromptParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "template", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphPromptParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphPromptParameterKey"
+max_items = 1
+
+[[type]]
+name = "StudioGraphPromptParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphPromptParameterOrder"}, {name = "template", type = "StudioGraphPromptTemplateOptional"}]
+
+[[type]]
+name = "StudioGraphPromptBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphPromptConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphPromptParameters"}, {name = "bindings", type = "StudioGraphPromptBindings"}]
+
+[[type]]
+name = "StudioGraphGenerateTemperatureOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphNumber"
+
+[[type]]
+name = "StudioGraphGenerateTemperatureAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphNumber"}]
+
+[[type]]
+name = "StudioGraphGenerateMaxTokensOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphGenerateMaxTokensAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphGenerateParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "temperature", type = "Empty"}, {tag = "max_tokens", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphGenerateParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphGenerateParameterKey"
+max_items = 2
+
+[[type]]
+name = "StudioGraphGenerateParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphGenerateParameterOrder"}, {name = "temperature", type = "StudioGraphGenerateTemperatureOptional"}, {name = "max_tokens", type = "StudioGraphGenerateMaxTokensOptional"}]
+
+[[type]]
+name = "StudioGraphGenerateBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphGenerateConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphGenerateParameters"}, {name = "bindings", type = "StudioGraphGenerateBindings"}]
+
+[[type]]
+name = "StudioGraphEvaluateSuiteChoice"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "holdout", type = "Empty"}, {tag = "tool_calls", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphEvaluateSuiteOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphEvaluateSuiteChoice"
+
+[[type]]
+name = "StudioGraphEvaluateSuiteAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphEvaluateSuiteChoice"}]
+
+[[type]]
+name = "StudioGraphEvaluateRecipeChoice"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "classify_text", type = "Empty"}, {tag = "text_lm", type = "Empty"}, {tag = "tool_calls", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphEvaluateRecipeOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphEvaluateRecipeChoice"
+
+[[type]]
+name = "StudioGraphEvaluateRecipeAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphEvaluateRecipeChoice"}]
+
+[[type]]
+name = "StudioGraphEvaluateFrameworkChoice"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "automatic", type = "Empty"}, {tag = "mlx", type = "Empty"}, {tag = "torch", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphEvaluateFrameworkOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphEvaluateFrameworkChoice"
+
+[[type]]
+name = "StudioGraphEvaluateFrameworkAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphEvaluateFrameworkChoice"}]
+
+[[type]]
+name = "StudioGraphEvaluateTemperatureOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphNumber"
+
+[[type]]
+name = "StudioGraphEvaluateTemperatureAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphNumber"}]
+
+[[type]]
+name = "StudioGraphEvaluateParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "suite", type = "Empty"}, {tag = "recipe", type = "Empty"}, {tag = "framework", type = "Empty"}, {tag = "temperature", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphEvaluateParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphEvaluateParameterKey"
+max_items = 4
+
+[[type]]
+name = "StudioGraphEvaluateParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphEvaluateParameterOrder"}, {name = "suite", type = "StudioGraphEvaluateSuiteOptional"}, {name = "recipe", type = "StudioGraphEvaluateRecipeOptional"}, {name = "framework", type = "StudioGraphEvaluateFrameworkOptional"}, {name = "temperature", type = "StudioGraphEvaluateTemperatureOptional"}]
+
+[[type]]
+name = "StudioGraphEvaluateBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphEvaluateConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphEvaluateParameters"}, {name = "bindings", type = "StudioGraphEvaluateBindings"}]
+
+[[type]]
+name = "StudioGraphCompareParameters"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphCompareBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphCompareConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphCompareParameters"}, {name = "bindings", type = "StudioGraphCompareBindings"}]
+
+[[type]]
+name = "StudioGraphChartParameters"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphChartBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphChartConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphChartParameters"}, {name = "bindings", type = "StudioGraphChartBindings"}]
+
+[[type]]
+name = "StudioGraphExportFormatChoice"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "checkpoint", type = "Empty"}, {tag = "adapter", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphExportFormatOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphExportFormatChoice"
+
+[[type]]
+name = "StudioGraphExportFormatAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphExportFormatChoice"}]
+
+[[type]]
+name = "StudioGraphExportParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "format", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphExportParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphExportParameterKey"
+max_items = 1
+
+[[type]]
+name = "StudioGraphExportParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphExportParameterOrder"}, {name = "format", type = "StudioGraphExportFormatOptional"}]
+
+[[type]]
+name = "StudioGraphExportBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphExportConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphExportParameters"}, {name = "bindings", type = "StudioGraphExportBindings"}]
+
+[[type]]
+name = "StudioGraphReportParameters"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphReportBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphReportConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphReportParameters"}, {name = "bindings", type = "StudioGraphReportBindings"}]
+
+[[type]]
+name = "StudioGraphToolsCallToolOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphToolsCallToolAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphToolsCallParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "tool", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphToolsCallParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphToolsCallParameterKey"
+max_items = 1
+
+[[type]]
+name = "StudioGraphToolsCallParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphToolsCallParameterOrder"}, {name = "tool", type = "StudioGraphToolsCallToolOptional"}]
+
+[[type]]
+name = "StudioGraphToolsCallBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphToolsCallConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphToolsCallParameters"}, {name = "bindings", type = "StudioGraphToolsCallBindings"}]
+
+[[type]]
+name = "StudioGraphDataSynthesizeParameters"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphDataSynthesizeBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphDataSynthesizeConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphDataSynthesizeParameters"}, {name = "bindings", type = "StudioGraphDataSynthesizeBindings"}]
+
+[[type]]
+name = "StudioGraphDataHarvestParameters"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphDataHarvestBindingKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "traces", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphDataHarvestBindingOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphDataHarvestBindingKey"
+max_items = 1
+
+[[type]]
+name = "StudioGraphDataHarvestBindings"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphDataHarvestBindingOrder"}, {name = "traces", type = "StudioGraphOptionalDatasetBinding"}]
+
+[[type]]
+name = "StudioGraphDataHarvestConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphDataHarvestParameters"}, {name = "bindings", type = "StudioGraphDataHarvestBindings"}]
+
+[[type]]
+name = "StudioGraphGymRecordingsParameters"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphGymRecordingsBindingKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "trajectory", type = "Empty"}, {tag = "reviews", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphGymRecordingsBindingOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphGymRecordingsBindingKey"
+max_items = 2
+
+[[type]]
+name = "StudioGraphGymRecordingsBindings"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphGymRecordingsBindingOrder"}, {name = "trajectory", type = "StudioGraphOptionalDatasetBinding"}, {name = "reviews", type = "StudioGraphOptionalDatasetBinding"}]
+
+[[type]]
+name = "StudioGraphGymRecordingsConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphGymRecordingsParameters"}, {name = "bindings", type = "StudioGraphGymRecordingsBindings"}]
+
+[[type]]
+name = "StudioGraphGymTrainEnvironmentChoice"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "warehouse", type = "Empty"}, {tag = "drone", type = "Empty"}, {tag = "car", type = "Empty"}, {tag = "traffic_driving", type = "Empty"}, {tag = "traffic", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphGymTrainEnvironmentOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphGymTrainEnvironmentChoice"
+
+[[type]]
+name = "StudioGraphGymTrainEnvironmentAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphGymTrainEnvironmentChoice"}]
+
+[[type]]
+name = "StudioGraphGymTrainTimestepsOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphGymTrainTimestepsAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphGymTrainSeedOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphGymTrainSeedAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphGymTrainParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "environment", type = "Empty"}, {tag = "timesteps", type = "Empty"}, {tag = "seed", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphGymTrainParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphGymTrainParameterKey"
+max_items = 3
+
+[[type]]
+name = "StudioGraphGymTrainParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphGymTrainParameterOrder"}, {name = "environment", type = "StudioGraphGymTrainEnvironmentOptional"}, {name = "timesteps", type = "StudioGraphGymTrainTimestepsOptional"}, {name = "seed", type = "StudioGraphGymTrainSeedOptional"}]
+
+[[type]]
+name = "StudioGraphGymTrainBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphGymTrainConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphGymTrainParameters"}, {name = "bindings", type = "StudioGraphGymTrainBindings"}]
+
+[[type]]
+name = "StudioGraphGymEvaluateEpisodesOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphGymEvaluateEpisodesAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphGymEvaluateParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "episodes", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphGymEvaluateParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphGymEvaluateParameterKey"
+max_items = 1
+
+[[type]]
+name = "StudioGraphGymEvaluateParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphGymEvaluateParameterOrder"}, {name = "episodes", type = "StudioGraphGymEvaluateEpisodesOptional"}]
+
+[[type]]
+name = "StudioGraphGymEvaluateBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphGymEvaluateConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphGymEvaluateParameters"}, {name = "bindings", type = "StudioGraphGymEvaluateBindings"}]
+
+[[type]]
+name = "StudioGraphGenerateRecordTrustedTaskOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphGenerateRecordTrustedTaskAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphGenerateRecordQuestionFieldOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphGenerateRecordQuestionFieldAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphGenerateRecordSourcesFieldOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphGenerateRecordSourcesFieldAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphGenerateRecordTemperatureOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphNumber"
+
+[[type]]
+name = "StudioGraphGenerateRecordTemperatureAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphNumber"}]
+
+[[type]]
+name = "StudioGraphGenerateRecordMaxTokensOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphGenerateRecordMaxTokensAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphGenerateRecordParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "trusted_task", type = "Empty"}, {tag = "question_field", type = "Empty"}, {tag = "sources_field", type = "Empty"}, {tag = "temperature", type = "Empty"}, {tag = "max_tokens", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphGenerateRecordParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphGenerateRecordParameterKey"
+max_items = 5
+
+[[type]]
+name = "StudioGraphGenerateRecordParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphGenerateRecordParameterOrder"}, {name = "trusted_task", type = "StudioGraphGenerateRecordTrustedTaskOptional"}, {name = "question_field", type = "StudioGraphGenerateRecordQuestionFieldOptional"}, {name = "sources_field", type = "StudioGraphGenerateRecordSourcesFieldOptional"}, {name = "temperature", type = "StudioGraphGenerateRecordTemperatureOptional"}, {name = "max_tokens", type = "StudioGraphGenerateRecordMaxTokensOptional"}]
+
+[[type]]
+name = "StudioGraphGenerateRecordBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphGenerateRecordConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphGenerateRecordParameters"}, {name = "bindings", type = "StudioGraphGenerateRecordBindings"}]
+
+[[type]]
+name = "StudioGraphGenerateStructuredTemperatureOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphNumber"
+
+[[type]]
+name = "StudioGraphGenerateStructuredTemperatureAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphNumber"}]
+
+[[type]]
+name = "StudioGraphGenerateStructuredJsonSchemaOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphGenerateStructuredJsonSchemaAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphGenerateStructuredMaxTokensOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphGenerateStructuredMaxTokensAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphGenerateStructuredParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "temperature", type = "Empty"}, {tag = "json_schema", type = "Empty"}, {tag = "max_tokens", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphGenerateStructuredParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphGenerateStructuredParameterKey"
+max_items = 3
+
+[[type]]
+name = "StudioGraphGenerateStructuredParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphGenerateStructuredParameterOrder"}, {name = "temperature", type = "StudioGraphGenerateStructuredTemperatureOptional"}, {name = "json_schema", type = "StudioGraphGenerateStructuredJsonSchemaOptional"}, {name = "max_tokens", type = "StudioGraphGenerateStructuredMaxTokensOptional"}]
+
+[[type]]
+name = "StudioGraphGenerateStructuredBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphGenerateStructuredConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphGenerateStructuredParameters"}, {name = "bindings", type = "StudioGraphGenerateStructuredBindings"}]
+
+[[type]]
+name = "StudioGraphTrainDecisionStepsOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphTrainDecisionStepsAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphTrainDecisionBatchSizeOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphTrainDecisionBatchSizeAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphTrainDecisionLrOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphNumber"
+
+[[type]]
+name = "StudioGraphTrainDecisionLrAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphNumber"}]
+
+[[type]]
+name = "StudioGraphTrainDecisionMaxTokensOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphTrainDecisionMaxTokensAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphTrainDecisionParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "steps", type = "Empty"}, {tag = "batch_size", type = "Empty"}, {tag = "lr", type = "Empty"}, {tag = "max_tokens", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphTrainDecisionParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphTrainDecisionParameterKey"
+max_items = 4
+
+[[type]]
+name = "StudioGraphTrainDecisionParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphTrainDecisionParameterOrder"}, {name = "steps", type = "StudioGraphTrainDecisionStepsOptional"}, {name = "batch_size", type = "StudioGraphTrainDecisionBatchSizeOptional"}, {name = "lr", type = "StudioGraphTrainDecisionLrOptional"}, {name = "max_tokens", type = "StudioGraphTrainDecisionMaxTokensOptional"}]
+
+[[type]]
+name = "StudioGraphTrainDecisionBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphTrainDecisionConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphTrainDecisionParameters"}, {name = "bindings", type = "StudioGraphTrainDecisionBindings"}]
+
+[[type]]
+name = "StudioGraphEvaluateDecisionParameters"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphEvaluateDecisionBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphEvaluateDecisionConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphEvaluateDecisionParameters"}, {name = "bindings", type = "StudioGraphEvaluateDecisionBindings"}]
+
+[[type]]
+name = "StudioGraphDecisionPredictQuestionOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphDecisionPredictQuestionAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphDecisionPredictOptionsOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphDecisionPredictOptionsAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphDecisionPredictAbstainBelowOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphNumber"
+
+[[type]]
+name = "StudioGraphDecisionPredictAbstainBelowAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphNumber"}]
+
+[[type]]
+name = "StudioGraphDecisionPredictMinMarginOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphNumber"
+
+[[type]]
+name = "StudioGraphDecisionPredictMinMarginAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphNumber"}]
+
+[[type]]
+name = "StudioGraphDecisionPredictParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "question", type = "Empty"}, {tag = "options", type = "Empty"}, {tag = "abstain_below", type = "Empty"}, {tag = "min_margin", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphDecisionPredictParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphDecisionPredictParameterKey"
+max_items = 4
+
+[[type]]
+name = "StudioGraphDecisionPredictParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphDecisionPredictParameterOrder"}, {name = "question", type = "StudioGraphDecisionPredictQuestionOptional"}, {name = "options", type = "StudioGraphDecisionPredictOptionsOptional"}, {name = "abstain_below", type = "StudioGraphDecisionPredictAbstainBelowOptional"}, {name = "min_margin", type = "StudioGraphDecisionPredictMinMarginOptional"}]
+
+[[type]]
+name = "StudioGraphDecisionPredictBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphDecisionPredictConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphDecisionPredictParameters"}, {name = "bindings", type = "StudioGraphDecisionPredictBindings"}]
+
+[[type]]
+name = "StudioGraphDecisionRouteLabelOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphDecisionRouteLabelAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphDecisionRouteParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "label", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphDecisionRouteParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphDecisionRouteParameterKey"
+max_items = 1
+
+[[type]]
+name = "StudioGraphDecisionRouteParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphDecisionRouteParameterOrder"}, {name = "label", type = "StudioGraphDecisionRouteLabelOptional"}]
+
+[[type]]
+name = "StudioGraphDecisionRouteBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphDecisionRouteConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphDecisionRouteParameters"}, {name = "bindings", type = "StudioGraphDecisionRouteBindings"}]
+
+[[type]]
+name = "StudioGraphGuardInjectionModeChoice"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "direct", type = "Empty"}, {tag = "indirect", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphGuardInjectionModeOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphGuardInjectionModeChoice"
+
+[[type]]
+name = "StudioGraphGuardInjectionModeAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphGuardInjectionModeChoice"}]
+
+[[type]]
+name = "StudioGraphGuardInjectionTrustedTaskOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphGuardInjectionTrustedTaskAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphGuardInjectionInputFieldsOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphGuardInjectionInputFieldsAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphGuardInjectionAllowThresholdOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphNumber"
+
+[[type]]
+name = "StudioGraphGuardInjectionAllowThresholdAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphNumber"}]
+
+[[type]]
+name = "StudioGraphGuardInjectionBlockThresholdOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphNumber"
+
+[[type]]
+name = "StudioGraphGuardInjectionBlockThresholdAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphNumber"}]
+
+[[type]]
+name = "StudioGraphGuardInjectionMinMarginOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphNumber"
+
+[[type]]
+name = "StudioGraphGuardInjectionMinMarginAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphNumber"}]
+
+[[type]]
+name = "StudioGraphGuardInjectionParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "mode", type = "Empty"}, {tag = "trusted_task", type = "Empty"}, {tag = "input_fields", type = "Empty"}, {tag = "allow_threshold", type = "Empty"}, {tag = "block_threshold", type = "Empty"}, {tag = "min_margin", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphGuardInjectionParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphGuardInjectionParameterKey"
+max_items = 6
+
+[[type]]
+name = "StudioGraphGuardInjectionParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphGuardInjectionParameterOrder"}, {name = "mode", type = "StudioGraphGuardInjectionModeOptional"}, {name = "trusted_task", type = "StudioGraphGuardInjectionTrustedTaskOptional"}, {name = "input_fields", type = "StudioGraphGuardInjectionInputFieldsOptional"}, {name = "allow_threshold", type = "StudioGraphGuardInjectionAllowThresholdOptional"}, {name = "block_threshold", type = "StudioGraphGuardInjectionBlockThresholdOptional"}, {name = "min_margin", type = "StudioGraphGuardInjectionMinMarginOptional"}]
+
+[[type]]
+name = "StudioGraphGuardInjectionBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphGuardInjectionConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphGuardInjectionParameters"}, {name = "bindings", type = "StudioGraphGuardInjectionBindings"}]
+
+[[type]]
+name = "StudioGraphTrainClassifyTextStepsOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphTrainClassifyTextStepsAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphTrainClassifyTextContextOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphTrainClassifyTextContextAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphTrainClassifyTextBatchSizeOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphTrainClassifyTextBatchSizeAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphTrainClassifyTextLearningRateOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphNumber"
+
+[[type]]
+name = "StudioGraphTrainClassifyTextLearningRateAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphNumber"}]
+
+[[type]]
+name = "StudioGraphTrainClassifyTextSizeChoice"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "automatic", type = "Empty"}, {tag = "small", type = "Empty"}, {tag = "medium", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphTrainClassifyTextSizeOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphTrainClassifyTextSizeChoice"
+
+[[type]]
+name = "StudioGraphTrainClassifyTextSizeAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphTrainClassifyTextSizeChoice"}]
+
+[[type]]
+name = "StudioGraphTrainClassifyTextFrameworkChoice"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "automatic", type = "Empty"}, {tag = "torch", type = "Empty"}, {tag = "mlx", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphTrainClassifyTextFrameworkOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphTrainClassifyTextFrameworkChoice"
+
+[[type]]
+name = "StudioGraphTrainClassifyTextFrameworkAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphTrainClassifyTextFrameworkChoice"}]
+
+[[type]]
+name = "StudioGraphTrainClassifyTextModeChoice"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "train", type = "Empty"}, {tag = "smoke", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphTrainClassifyTextModeOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphTrainClassifyTextModeChoice"
+
+[[type]]
+name = "StudioGraphTrainClassifyTextModeAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphTrainClassifyTextModeChoice"}]
+
+[[type]]
+name = "StudioGraphTrainClassifyTextParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "steps", type = "Empty"}, {tag = "context", type = "Empty"}, {tag = "batch_size", type = "Empty"}, {tag = "learning_rate", type = "Empty"}, {tag = "size", type = "Empty"}, {tag = "framework", type = "Empty"}, {tag = "mode", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphTrainClassifyTextParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphTrainClassifyTextParameterKey"
+max_items = 7
+
+[[type]]
+name = "StudioGraphTrainClassifyTextParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphTrainClassifyTextParameterOrder"}, {name = "steps", type = "StudioGraphTrainClassifyTextStepsOptional"}, {name = "context", type = "StudioGraphTrainClassifyTextContextOptional"}, {name = "batch_size", type = "StudioGraphTrainClassifyTextBatchSizeOptional"}, {name = "learning_rate", type = "StudioGraphTrainClassifyTextLearningRateOptional"}, {name = "size", type = "StudioGraphTrainClassifyTextSizeOptional"}, {name = "framework", type = "StudioGraphTrainClassifyTextFrameworkOptional"}, {name = "mode", type = "StudioGraphTrainClassifyTextModeOptional"}]
+
+[[type]]
+name = "StudioGraphTrainClassifyTextBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphTrainClassifyTextConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphTrainClassifyTextParameters"}, {name = "bindings", type = "StudioGraphTrainClassifyTextBindings"}]
+
+[[type]]
+name = "StudioGraphTrainTextLmStepsOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphTrainTextLmStepsAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphTrainTextLmContextOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphTrainTextLmContextAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphTrainTextLmBatchSizeOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphTrainTextLmBatchSizeAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphTrainTextLmLearningRateOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphNumber"
+
+[[type]]
+name = "StudioGraphTrainTextLmLearningRateAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphNumber"}]
+
+[[type]]
+name = "StudioGraphTrainTextLmSizeChoice"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "automatic", type = "Empty"}, {tag = "small", type = "Empty"}, {tag = "medium", type = "Empty"}, {tag = "large", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphTrainTextLmSizeOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphTrainTextLmSizeChoice"
+
+[[type]]
+name = "StudioGraphTrainTextLmSizeAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphTrainTextLmSizeChoice"}]
+
+[[type]]
+name = "StudioGraphTrainTextLmFrameworkChoice"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "automatic", type = "Empty"}, {tag = "torch", type = "Empty"}, {tag = "mlx", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphTrainTextLmFrameworkOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphTrainTextLmFrameworkChoice"
+
+[[type]]
+name = "StudioGraphTrainTextLmFrameworkAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphTrainTextLmFrameworkChoice"}]
+
+[[type]]
+name = "StudioGraphTrainTextLmModeChoice"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "train", type = "Empty"}, {tag = "smoke", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphTrainTextLmModeOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphTrainTextLmModeChoice"
+
+[[type]]
+name = "StudioGraphTrainTextLmModeAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphTrainTextLmModeChoice"}]
+
+[[type]]
+name = "StudioGraphTrainTextLmParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "steps", type = "Empty"}, {tag = "context", type = "Empty"}, {tag = "batch_size", type = "Empty"}, {tag = "learning_rate", type = "Empty"}, {tag = "size", type = "Empty"}, {tag = "framework", type = "Empty"}, {tag = "mode", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphTrainTextLmParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphTrainTextLmParameterKey"
+max_items = 7
+
+[[type]]
+name = "StudioGraphTrainTextLmParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphTrainTextLmParameterOrder"}, {name = "steps", type = "StudioGraphTrainTextLmStepsOptional"}, {name = "context", type = "StudioGraphTrainTextLmContextOptional"}, {name = "batch_size", type = "StudioGraphTrainTextLmBatchSizeOptional"}, {name = "learning_rate", type = "StudioGraphTrainTextLmLearningRateOptional"}, {name = "size", type = "StudioGraphTrainTextLmSizeOptional"}, {name = "framework", type = "StudioGraphTrainTextLmFrameworkOptional"}, {name = "mode", type = "StudioGraphTrainTextLmModeOptional"}]
+
+[[type]]
+name = "StudioGraphTrainTextLmBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphTrainTextLmConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphTrainTextLmParameters"}, {name = "bindings", type = "StudioGraphTrainTextLmBindings"}]
+
+[[type]]
+name = "StudioGraphTrainToolCallsStepsOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphTrainToolCallsStepsAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphTrainToolCallsContextOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphTrainToolCallsContextAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphTrainToolCallsBatchSizeOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphTrainToolCallsBatchSizeAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphTrainToolCallsLearningRateOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphNumber"
+
+[[type]]
+name = "StudioGraphTrainToolCallsLearningRateAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphNumber"}]
+
+[[type]]
+name = "StudioGraphTrainToolCallsLoraOptional"
+kind = "optional"
+visibility = "public"
+item = "Boolean"
+
+[[type]]
+name = "StudioGraphTrainToolCallsLoraAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "Boolean"}]
+
+[[type]]
+name = "StudioGraphTrainToolCallsLoraRankOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphTrainToolCallsLoraRankAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphTrainToolCallsLoraAlphaOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphTrainToolCallsLoraAlphaAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphTrainToolCallsLoraDropoutOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphNumber"
+
+[[type]]
+name = "StudioGraphTrainToolCallsLoraDropoutAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphNumber"}]
+
+[[type]]
+name = "StudioGraphTrainToolCallsLoraTargetsOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphScalarRef"
+
+[[type]]
+name = "StudioGraphTrainToolCallsLoraTargetsAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphTrainToolCallsSizeChoice"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "automatic", type = "Empty"}, {tag = "e4b", type = "Empty"}, {tag = "qwen27b", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphTrainToolCallsSizeOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphTrainToolCallsSizeChoice"
+
+[[type]]
+name = "StudioGraphTrainToolCallsSizeAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphTrainToolCallsSizeChoice"}]
+
+[[type]]
+name = "StudioGraphTrainToolCallsFrameworkChoice"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "automatic", type = "Empty"}, {tag = "torch", type = "Empty"}, {tag = "mlx", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphTrainToolCallsFrameworkOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphTrainToolCallsFrameworkChoice"
+
+[[type]]
+name = "StudioGraphTrainToolCallsFrameworkAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphTrainToolCallsFrameworkChoice"}]
+
+[[type]]
+name = "StudioGraphTrainToolCallsModeChoice"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "train", type = "Empty"}, {tag = "smoke", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphTrainToolCallsModeOptional"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphTrainToolCallsModeChoice"
+
+[[type]]
+name = "StudioGraphTrainToolCallsModeAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "StudioGraphNodeKey"}, {name = "value", type = "StudioGraphTrainToolCallsModeChoice"}]
+
+[[type]]
+name = "StudioGraphTrainToolCallsParameterKey"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "steps", type = "Empty"}, {tag = "context", type = "Empty"}, {tag = "batch_size", type = "Empty"}, {tag = "learning_rate", type = "Empty"}, {tag = "lora", type = "Empty"}, {tag = "lora_rank", type = "Empty"}, {tag = "lora_alpha", type = "Empty"}, {tag = "lora_dropout", type = "Empty"}, {tag = "lora_targets", type = "Empty"}, {tag = "size", type = "Empty"}, {tag = "framework", type = "Empty"}, {tag = "mode", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphTrainToolCallsParameterOrder"
+kind = "list"
+visibility = "public"
+item = "StudioGraphTrainToolCallsParameterKey"
+max_items = 12
+
+[[type]]
+name = "StudioGraphTrainToolCallsParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "field_order", type = "StudioGraphTrainToolCallsParameterOrder"}, {name = "steps", type = "StudioGraphTrainToolCallsStepsOptional"}, {name = "context", type = "StudioGraphTrainToolCallsContextOptional"}, {name = "batch_size", type = "StudioGraphTrainToolCallsBatchSizeOptional"}, {name = "learning_rate", type = "StudioGraphTrainToolCallsLearningRateOptional"}, {name = "lora", type = "StudioGraphTrainToolCallsLoraOptional"}, {name = "lora_rank", type = "StudioGraphTrainToolCallsLoraRankOptional"}, {name = "lora_alpha", type = "StudioGraphTrainToolCallsLoraAlphaOptional"}, {name = "lora_dropout", type = "StudioGraphTrainToolCallsLoraDropoutOptional"}, {name = "lora_targets", type = "StudioGraphTrainToolCallsLoraTargetsOptional"}, {name = "size", type = "StudioGraphTrainToolCallsSizeOptional"}, {name = "framework", type = "StudioGraphTrainToolCallsFrameworkOptional"}, {name = "mode", type = "StudioGraphTrainToolCallsModeOptional"}]
+
+[[type]]
+name = "StudioGraphTrainToolCallsBindings"
+kind = "record"
+visibility = "public"
+fields = []
+
+[[type]]
+name = "StudioGraphTrainToolCallsConfig"
+kind = "record"
+visibility = "public"
+fields = [{name = "parameters", type = "StudioGraphTrainToolCallsParameters"}, {name = "bindings", type = "StudioGraphTrainToolCallsBindings"}]
+
+[[type]]
+name = "StudioGraphParameterAssignment"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "stream_record_sample", type = "StudioGraphStreamRecordSampleAssignment"}, {tag = "record_map_controls", type = "StudioGraphRecordMapControlsAssignment"}, {tag = "record_if_controls", type = "StudioGraphRecordIfControlsAssignment"}, {tag = "data_hf_preview_request_id", type = "StudioGraphDataHfPreviewRequestIdAssignment"}, {tag = "data_split_fraction", type = "StudioGraphDataSplitFractionAssignment"}, {tag = "data_split_seed", type = "StudioGraphDataSplitSeedAssignment"}, {tag = "prompt_template", type = "StudioGraphPromptTemplateAssignment"}, {tag = "generate_temperature", type = "StudioGraphGenerateTemperatureAssignment"}, {tag = "generate_max_tokens", type = "StudioGraphGenerateMaxTokensAssignment"}, {tag = "evaluate_suite", type = "StudioGraphEvaluateSuiteAssignment"}, {tag = "evaluate_recipe", type = "StudioGraphEvaluateRecipeAssignment"}, {tag = "evaluate_framework", type = "StudioGraphEvaluateFrameworkAssignment"}, {tag = "evaluate_temperature", type = "StudioGraphEvaluateTemperatureAssignment"}, {tag = "export_format", type = "StudioGraphExportFormatAssignment"}, {tag = "tools_call_tool", type = "StudioGraphToolsCallToolAssignment"}, {tag = "gym_train_environment", type = "StudioGraphGymTrainEnvironmentAssignment"}, {tag = "gym_train_timesteps", type = "StudioGraphGymTrainTimestepsAssignment"}, {tag = "gym_train_seed", type = "StudioGraphGymTrainSeedAssignment"}, {tag = "gym_evaluate_episodes", type = "StudioGraphGymEvaluateEpisodesAssignment"}, {tag = "generate_record_trusted_task", type = "StudioGraphGenerateRecordTrustedTaskAssignment"}, {tag = "generate_record_question_field", type = "StudioGraphGenerateRecordQuestionFieldAssignment"}, {tag = "generate_record_sources_field", type = "StudioGraphGenerateRecordSourcesFieldAssignment"}, {tag = "generate_record_temperature", type = "StudioGraphGenerateRecordTemperatureAssignment"}, {tag = "generate_record_max_tokens", type = "StudioGraphGenerateRecordMaxTokensAssignment"}, {tag = "generate_structured_temperature", type = "StudioGraphGenerateStructuredTemperatureAssignment"}, {tag = "generate_structured_json_schema", type = "StudioGraphGenerateStructuredJsonSchemaAssignment"}, {tag = "generate_structured_max_tokens", type = "StudioGraphGenerateStructuredMaxTokensAssignment"}, {tag = "train_decision_steps", type = "StudioGraphTrainDecisionStepsAssignment"}, {tag = "train_decision_batch_size", type = "StudioGraphTrainDecisionBatchSizeAssignment"}, {tag = "train_decision_lr", type = "StudioGraphTrainDecisionLrAssignment"}, {tag = "train_decision_max_tokens", type = "StudioGraphTrainDecisionMaxTokensAssignment"}, {tag = "decision_predict_question", type = "StudioGraphDecisionPredictQuestionAssignment"}, {tag = "decision_predict_options", type = "StudioGraphDecisionPredictOptionsAssignment"}, {tag = "decision_predict_abstain_below", type = "StudioGraphDecisionPredictAbstainBelowAssignment"}, {tag = "decision_predict_min_margin", type = "StudioGraphDecisionPredictMinMarginAssignment"}, {tag = "decision_route_label", type = "StudioGraphDecisionRouteLabelAssignment"}, {tag = "guard_injection_mode", type = "StudioGraphGuardInjectionModeAssignment"}, {tag = "guard_injection_trusted_task", type = "StudioGraphGuardInjectionTrustedTaskAssignment"}, {tag = "guard_injection_input_fields", type = "StudioGraphGuardInjectionInputFieldsAssignment"}, {tag = "guard_injection_allow_threshold", type = "StudioGraphGuardInjectionAllowThresholdAssignment"}, {tag = "guard_injection_block_threshold", type = "StudioGraphGuardInjectionBlockThresholdAssignment"}, {tag = "guard_injection_min_margin", type = "StudioGraphGuardInjectionMinMarginAssignment"}, {tag = "train_classify_text_steps", type = "StudioGraphTrainClassifyTextStepsAssignment"}, {tag = "train_classify_text_context", type = "StudioGraphTrainClassifyTextContextAssignment"}, {tag = "train_classify_text_batch_size", type = "StudioGraphTrainClassifyTextBatchSizeAssignment"}, {tag = "train_classify_text_learning_rate", type = "StudioGraphTrainClassifyTextLearningRateAssignment"}, {tag = "train_classify_text_size", type = "StudioGraphTrainClassifyTextSizeAssignment"}, {tag = "train_classify_text_framework", type = "StudioGraphTrainClassifyTextFrameworkAssignment"}, {tag = "train_classify_text_mode", type = "StudioGraphTrainClassifyTextModeAssignment"}, {tag = "train_text_lm_steps", type = "StudioGraphTrainTextLmStepsAssignment"}, {tag = "train_text_lm_context", type = "StudioGraphTrainTextLmContextAssignment"}, {tag = "train_text_lm_batch_size", type = "StudioGraphTrainTextLmBatchSizeAssignment"}, {tag = "train_text_lm_learning_rate", type = "StudioGraphTrainTextLmLearningRateAssignment"}, {tag = "train_text_lm_size", type = "StudioGraphTrainTextLmSizeAssignment"}, {tag = "train_text_lm_framework", type = "StudioGraphTrainTextLmFrameworkAssignment"}, {tag = "train_text_lm_mode", type = "StudioGraphTrainTextLmModeAssignment"}, {tag = "train_tool_calls_steps", type = "StudioGraphTrainToolCallsStepsAssignment"}, {tag = "train_tool_calls_context", type = "StudioGraphTrainToolCallsContextAssignment"}, {tag = "train_tool_calls_batch_size", type = "StudioGraphTrainToolCallsBatchSizeAssignment"}, {tag = "train_tool_calls_learning_rate", type = "StudioGraphTrainToolCallsLearningRateAssignment"}, {tag = "train_tool_calls_lora", type = "StudioGraphTrainToolCallsLoraAssignment"}, {tag = "train_tool_calls_lora_rank", type = "StudioGraphTrainToolCallsLoraRankAssignment"}, {tag = "train_tool_calls_lora_alpha", type = "StudioGraphTrainToolCallsLoraAlphaAssignment"}, {tag = "train_tool_calls_lora_dropout", type = "StudioGraphTrainToolCallsLoraDropoutAssignment"}, {tag = "train_tool_calls_lora_targets", type = "StudioGraphTrainToolCallsLoraTargetsAssignment"}, {tag = "train_tool_calls_size", type = "StudioGraphTrainToolCallsSizeAssignment"}, {tag = "train_tool_calls_framework", type = "StudioGraphTrainToolCallsFrameworkAssignment"}, {tag = "train_tool_calls_mode", type = "StudioGraphTrainToolCallsModeAssignment"}]
+
+[[type]]
+name = "StudioGraphParameterTarget"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "stream_record_sample", type = "StudioGraphNodeKey"}, {tag = "record_map_controls", type = "StudioGraphNodeKey"}, {tag = "record_if_controls", type = "StudioGraphNodeKey"}, {tag = "data_hf_preview_request_id", type = "StudioGraphNodeKey"}, {tag = "data_split_fraction", type = "StudioGraphNodeKey"}, {tag = "data_split_seed", type = "StudioGraphNodeKey"}, {tag = "prompt_template", type = "StudioGraphNodeKey"}, {tag = "generate_temperature", type = "StudioGraphNodeKey"}, {tag = "generate_max_tokens", type = "StudioGraphNodeKey"}, {tag = "evaluate_suite", type = "StudioGraphNodeKey"}, {tag = "evaluate_recipe", type = "StudioGraphNodeKey"}, {tag = "evaluate_framework", type = "StudioGraphNodeKey"}, {tag = "evaluate_temperature", type = "StudioGraphNodeKey"}, {tag = "export_format", type = "StudioGraphNodeKey"}, {tag = "tools_call_tool", type = "StudioGraphNodeKey"}, {tag = "gym_train_environment", type = "StudioGraphNodeKey"}, {tag = "gym_train_timesteps", type = "StudioGraphNodeKey"}, {tag = "gym_train_seed", type = "StudioGraphNodeKey"}, {tag = "gym_evaluate_episodes", type = "StudioGraphNodeKey"}, {tag = "generate_record_trusted_task", type = "StudioGraphNodeKey"}, {tag = "generate_record_question_field", type = "StudioGraphNodeKey"}, {tag = "generate_record_sources_field", type = "StudioGraphNodeKey"}, {tag = "generate_record_temperature", type = "StudioGraphNodeKey"}, {tag = "generate_record_max_tokens", type = "StudioGraphNodeKey"}, {tag = "generate_structured_temperature", type = "StudioGraphNodeKey"}, {tag = "generate_structured_json_schema", type = "StudioGraphNodeKey"}, {tag = "generate_structured_max_tokens", type = "StudioGraphNodeKey"}, {tag = "train_decision_steps", type = "StudioGraphNodeKey"}, {tag = "train_decision_batch_size", type = "StudioGraphNodeKey"}, {tag = "train_decision_lr", type = "StudioGraphNodeKey"}, {tag = "train_decision_max_tokens", type = "StudioGraphNodeKey"}, {tag = "decision_predict_question", type = "StudioGraphNodeKey"}, {tag = "decision_predict_options", type = "StudioGraphNodeKey"}, {tag = "decision_predict_abstain_below", type = "StudioGraphNodeKey"}, {tag = "decision_predict_min_margin", type = "StudioGraphNodeKey"}, {tag = "decision_route_label", type = "StudioGraphNodeKey"}, {tag = "guard_injection_mode", type = "StudioGraphNodeKey"}, {tag = "guard_injection_trusted_task", type = "StudioGraphNodeKey"}, {tag = "guard_injection_input_fields", type = "StudioGraphNodeKey"}, {tag = "guard_injection_allow_threshold", type = "StudioGraphNodeKey"}, {tag = "guard_injection_block_threshold", type = "StudioGraphNodeKey"}, {tag = "guard_injection_min_margin", type = "StudioGraphNodeKey"}, {tag = "train_classify_text_steps", type = "StudioGraphNodeKey"}, {tag = "train_classify_text_context", type = "StudioGraphNodeKey"}, {tag = "train_classify_text_batch_size", type = "StudioGraphNodeKey"}, {tag = "train_classify_text_learning_rate", type = "StudioGraphNodeKey"}, {tag = "train_classify_text_size", type = "StudioGraphNodeKey"}, {tag = "train_classify_text_framework", type = "StudioGraphNodeKey"}, {tag = "train_classify_text_mode", type = "StudioGraphNodeKey"}, {tag = "train_text_lm_steps", type = "StudioGraphNodeKey"}, {tag = "train_text_lm_context", type = "StudioGraphNodeKey"}, {tag = "train_text_lm_batch_size", type = "StudioGraphNodeKey"}, {tag = "train_text_lm_learning_rate", type = "StudioGraphNodeKey"}, {tag = "train_text_lm_size", type = "StudioGraphNodeKey"}, {tag = "train_text_lm_framework", type = "StudioGraphNodeKey"}, {tag = "train_text_lm_mode", type = "StudioGraphNodeKey"}, {tag = "train_tool_calls_steps", type = "StudioGraphNodeKey"}, {tag = "train_tool_calls_context", type = "StudioGraphNodeKey"}, {tag = "train_tool_calls_batch_size", type = "StudioGraphNodeKey"}, {tag = "train_tool_calls_learning_rate", type = "StudioGraphNodeKey"}, {tag = "train_tool_calls_lora", type = "StudioGraphNodeKey"}, {tag = "train_tool_calls_lora_rank", type = "StudioGraphNodeKey"}, {tag = "train_tool_calls_lora_alpha", type = "StudioGraphNodeKey"}, {tag = "train_tool_calls_lora_dropout", type = "StudioGraphNodeKey"}, {tag = "train_tool_calls_lora_targets", type = "StudioGraphNodeKey"}, {tag = "train_tool_calls_size", type = "StudioGraphNodeKey"}, {tag = "train_tool_calls_framework", type = "StudioGraphNodeKey"}, {tag = "train_tool_calls_mode", type = "StudioGraphNodeKey"}, {tag = "group_exposed", type = "StudioGraphExposedParameterTarget"}]
+
+[[type]]
+name = "StudioGraphExposedParameterTarget"
+kind = "record"
+visibility = "public"
+fields = [{name = "instance", type = "StudioGraphNodeKey"}, {name = "exposed_name", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphGroupInstance"
+kind = "record"
+visibility = "public"
+fields = [{name = "definition", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphNormalizedConfig"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "stream_record", type = "StudioGraphStreamRecordConfig"}, {tag = "record_map", type = "StudioGraphRecordMapConfig"}, {tag = "record_if", type = "StudioGraphRecordIfConfig"}, {tag = "dataset", type = "StudioGraphDatasetConfig"}, {tag = "data_hf_preview", type = "StudioGraphDataHfPreviewConfig"}, {tag = "model", type = "StudioGraphModelConfig"}, {tag = "data_validate", type = "StudioGraphDataValidateConfig"}, {tag = "data_split", type = "StudioGraphDataSplitConfig"}, {tag = "prompt", type = "StudioGraphPromptConfig"}, {tag = "generate", type = "StudioGraphGenerateConfig"}, {tag = "evaluate", type = "StudioGraphEvaluateConfig"}, {tag = "compare", type = "StudioGraphCompareConfig"}, {tag = "chart", type = "StudioGraphChartConfig"}, {tag = "export", type = "StudioGraphExportConfig"}, {tag = "report", type = "StudioGraphReportConfig"}, {tag = "tools_call", type = "StudioGraphToolsCallConfig"}, {tag = "data_synthesize", type = "StudioGraphDataSynthesizeConfig"}, {tag = "data_harvest", type = "StudioGraphDataHarvestConfig"}, {tag = "gym_recordings", type = "StudioGraphGymRecordingsConfig"}, {tag = "gym_train", type = "StudioGraphGymTrainConfig"}, {tag = "gym_evaluate", type = "StudioGraphGymEvaluateConfig"}, {tag = "generate_record", type = "StudioGraphGenerateRecordConfig"}, {tag = "generate_structured", type = "StudioGraphGenerateStructuredConfig"}, {tag = "train_decision", type = "StudioGraphTrainDecisionConfig"}, {tag = "evaluate_decision", type = "StudioGraphEvaluateDecisionConfig"}, {tag = "decision_predict", type = "StudioGraphDecisionPredictConfig"}, {tag = "decision_route", type = "StudioGraphDecisionRouteConfig"}, {tag = "guard_injection", type = "StudioGraphGuardInjectionConfig"}, {tag = "train_classify_text", type = "StudioGraphTrainClassifyTextConfig"}, {tag = "train_text_lm", type = "StudioGraphTrainTextLmConfig"}, {tag = "train_tool_calls", type = "StudioGraphTrainToolCallsConfig"}]
+
+[[type]]
+name = "StudioGraphNodeConfig"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "stream_record", type = "StudioGraphStreamRecordConfig"}, {tag = "record_map", type = "StudioGraphRecordMapConfig"}, {tag = "record_if", type = "StudioGraphRecordIfConfig"}, {tag = "dataset", type = "StudioGraphDatasetConfig"}, {tag = "data_hf_preview", type = "StudioGraphDataHfPreviewConfig"}, {tag = "model", type = "StudioGraphModelConfig"}, {tag = "data_validate", type = "StudioGraphDataValidateConfig"}, {tag = "data_split", type = "StudioGraphDataSplitConfig"}, {tag = "prompt", type = "StudioGraphPromptConfig"}, {tag = "generate", type = "StudioGraphGenerateConfig"}, {tag = "evaluate", type = "StudioGraphEvaluateConfig"}, {tag = "compare", type = "StudioGraphCompareConfig"}, {tag = "chart", type = "StudioGraphChartConfig"}, {tag = "export", type = "StudioGraphExportConfig"}, {tag = "report", type = "StudioGraphReportConfig"}, {tag = "tools_call", type = "StudioGraphToolsCallConfig"}, {tag = "data_synthesize", type = "StudioGraphDataSynthesizeConfig"}, {tag = "data_harvest", type = "StudioGraphDataHarvestConfig"}, {tag = "gym_recordings", type = "StudioGraphGymRecordingsConfig"}, {tag = "gym_train", type = "StudioGraphGymTrainConfig"}, {tag = "gym_evaluate", type = "StudioGraphGymEvaluateConfig"}, {tag = "generate_record", type = "StudioGraphGenerateRecordConfig"}, {tag = "generate_structured", type = "StudioGraphGenerateStructuredConfig"}, {tag = "train_decision", type = "StudioGraphTrainDecisionConfig"}, {tag = "evaluate_decision", type = "StudioGraphEvaluateDecisionConfig"}, {tag = "decision_predict", type = "StudioGraphDecisionPredictConfig"}, {tag = "decision_route", type = "StudioGraphDecisionRouteConfig"}, {tag = "guard_injection", type = "StudioGraphGuardInjectionConfig"}, {tag = "train_classify_text", type = "StudioGraphTrainClassifyTextConfig"}, {tag = "train_text_lm", type = "StudioGraphTrainTextLmConfig"}, {tag = "train_tool_calls", type = "StudioGraphTrainToolCallsConfig"}, {tag = "group", type = "StudioGraphGroupInstance"}]
+
+[[type]]
+name = "StudioGraphNode"
+kind = "record"
+visibility = "public"
+fields = [{name = "key", type = "StudioGraphNodeKey"}, {name = "ordinal", type = "U64"}, {name = "field_order", type = "StudioGraphNodeFieldOrder"}, {name = "name", type = "StudioGraphOptionalLiteral"}, {name = "execution", type = "StudioGraphExecution"}, {name = "config", type = "StudioGraphNodeConfig"}]
+
+[[type]]
+name = "StudioGraphExposedAssignment"
+kind = "record"
+visibility = "public"
+fields = [{name = "instance", type = "StudioGraphNodeKey"}, {name = "exposed_name", type = "StudioGraphScalarRef"}, {name = "ordinal", type = "U64"}, {name = "resolved", type = "StudioGraphParameterAssignment"}]
+
+[[type]]
+name = "StudioGraphSweepValue"
+kind = "record"
+visibility = "public"
+fields = [{name = "node", type = "StudioGraphNodeKey"}, {name = "parameter_ordinal", type = "U64"}, {name = "value_ordinal", type = "U64"}, {name = "resolved", type = "StudioGraphParameterAssignment"}]
+
+[[type]]
+name = "StudioGraphExposedSweepValue"
+kind = "record"
+visibility = "public"
+fields = [{name = "instance", type = "StudioGraphNodeKey"}, {name = "exposed_name", type = "StudioGraphScalarRef"}, {name = "parameter_ordinal", type = "U64"}, {name = "value_ordinal", type = "U64"}, {name = "resolved", type = "StudioGraphParameterAssignment"}]
+
+[[type]]
+name = "StudioGraphFixedPort"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "allow", type = "Empty"}, {tag = "arguments", type = "Empty"}, {tag = "artifact", type = "Empty"}, {tag = "base", type = "Empty"}, {tag = "block", type = "Empty"}, {tag = "checkpoint", type = "Empty"}, {tag = "dataset", type = "Empty"}, {tag = "decision", type = "Empty"}, {tag = "false", type = "Empty"}, {tag = "metrics", type = "Empty"}, {tag = "model", type = "Empty"}, {tag = "prompt", type = "Empty"}, {tag = "record", type = "Empty"}, {tag = "report", type = "Empty"}, {tag = "response", type = "Empty"}, {tag = "result", type = "Empty"}, {tag = "review", type = "Empty"}, {tag = "signal", type = "Empty"}, {tag = "test", type = "Empty"}, {tag = "text", type = "Empty"}, {tag = "train", type = "Empty"}, {tag = "trained", type = "Empty"}, {tag = "true", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphGroupPort"
+kind = "record"
+visibility = "public"
+fields = [{name = "definition", type = "StudioGraphScalarRef"}, {name = "name", type = "StudioGraphScalarRef"}]
+
+[[type]]
+name = "StudioGraphPort"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "fixed", type = "StudioGraphFixedPort"}, {tag = "group", type = "StudioGraphGroupPort"}]
+
+[[type]]
+name = "StudioGraphEndpoint"
+kind = "record"
+visibility = "public"
+fields = [{name = "node", type = "StudioGraphNodeKey"}, {name = "port", type = "StudioGraphPort"}, {name = "node_first", type = "Boolean"}]
+
+[[type]]
+name = "StudioGraphDataEdge"
+kind = "record"
+visibility = "public"
+fields = [{name = "scope", type = "StudioGraphScope"}, {name = "ordinal", type = "U64"}, {name = "source", type = "StudioGraphEndpoint"}, {name = "target", type = "StudioGraphEndpoint"}, {name = "source_first", type = "Boolean"}]
+
+[[type]]
+name = "StudioGraphControlTarget"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "node", type = "StudioGraphNodeKey"}, {tag = "group_input", type = "StudioGraphGroupControlTarget"}]
+
+[[type]]
+name = "StudioGraphGroupControlTarget"
+kind = "record"
+visibility = "public"
+fields = [{name = "instance", type = "StudioGraphNodeKey"}, {name = "definition", type = "StudioGraphScalarRef"}, {name = "input_name", type = "StudioGraphScalarRef"}, {name = "node_first", type = "Boolean"}]
+
+[[type]]
+name = "StudioGraphControlEdge"
+kind = "record"
+visibility = "public"
+fields = [{name = "scope", type = "StudioGraphScope"}, {name = "ordinal", type = "U64"}, {name = "source", type = "StudioGraphEndpoint"}, {name = "target", type = "StudioGraphControlTarget"}, {name = "source_first", type = "Boolean"}]
+
+[[type]]
+name = "StudioGraphDirection"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "input", type = "Empty"}, {tag = "output", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphDataInterface"
+kind = "record"
+visibility = "public"
+fields = [{name = "definition", type = "StudioGraphScalarRef"}, {name = "direction", type = "StudioGraphDirection"}, {name = "name", type = "StudioGraphScalarRef"}, {name = "ordinal", type = "U64"}, {name = "endpoint", type = "StudioGraphEndpoint"}]
+
+[[type]]
+name = "StudioGraphControlInterface"
+kind = "record"
+visibility = "public"
+fields = [{name = "definition", type = "StudioGraphScalarRef"}, {name = "name", type = "StudioGraphScalarRef"}, {name = "ordinal", type = "U64"}, {name = "target_count", type = "U64"}]
+
+[[type]]
+name = "StudioGraphControlInterfaceTarget"
+kind = "record"
+visibility = "public"
+fields = [{name = "definition", type = "StudioGraphScalarRef"}, {name = "interface_name", type = "StudioGraphScalarRef"}, {name = "ordinal", type = "U64"}, {name = "target", type = "StudioGraphControlTarget"}]
+
+[[type]]
+name = "StudioGraphParameterInterface"
+kind = "record"
+visibility = "public"
+fields = [{name = "definition", type = "StudioGraphScalarRef"}, {name = "name", type = "StudioGraphScalarRef"}, {name = "ordinal", type = "U64"}, {name = "target", type = "StudioGraphParameterTarget"}, {name = "node_first", type = "Boolean"}]
+
+[[type]]
+name = "StudioGraphRecord"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "header", type = "StudioGraphHeader"}, {tag = "group", type = "StudioGraphGroupDefinition"}, {tag = "node", type = "StudioGraphNode"}, {tag = "data_edge", type = "StudioGraphDataEdge"}, {tag = "control_edge", type = "StudioGraphControlEdge"}, {tag = "data_interface", type = "StudioGraphDataInterface"}, {tag = "control_interface", type = "StudioGraphControlInterface"}, {tag = "control_target", type = "StudioGraphControlInterfaceTarget"}, {tag = "parameter_interface", type = "StudioGraphParameterInterface"}, {tag = "exposed_assignment", type = "StudioGraphExposedAssignment"}, {tag = "sweep_value", type = "StudioGraphSweepValue"}, {tag = "exposed_sweep_value", type = "StudioGraphExposedSweepValue"}, {tag = "literal_node", type = "StudioGraphLiteralNode"}]
+
+[[type]]
+name = "StudioGraphDraftState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "writing", type = "Empty"}, {tag = "sealed_valid", type = "Empty"}, {tag = "invalid", type = "Empty"}, {tag = "unsupported_profile", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphDraftView"
+kind = "record"
+visibility = "public"
+fields = [{name = "draft", type = "StudioGraphDraftRef"}, {name = "revision", type = "U64"}, {name = "records", type = "U64"}, {name = "state", type = "StudioGraphDraftState"}]
+
+[[type]]
+name = "StudioGraphSnapshotRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "StudioControlContext"}, {name = "snapshot_id", type = "StudioGraphSnapshotId"}, {name = "generation", type = "ResourceGeneration"}, {name = "schema", type = "StudioControlSchemaRef"}, {name = "source_digest", type = "StudioControlDigest"}, {name = "record_digest", type = "StudioControlDigest"}, {name = "form", type = "StudioControlGraphForm"}]
+
+[[type]]
+name = "StudioGraphSealed"
+kind = "record"
+visibility = "public"
+fields = [{name = "draft", type = "StudioGraphDraftView"}, {name = "snapshot", type = "StudioGraphSnapshotRef"}, {name = "expanded_snapshot", type = "StudioGraphSnapshotRef"}, {name = "source", type = "StudioControlGraphRef"}, {name = "expanded", type = "StudioControlGraphRef"}]
+
+[[type]]
+name = "StudioGraphSealResult"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "valid", type = "StudioGraphSealed"}, {tag = "invalid", type = "StudioGraphDraftView"}, {tag = "unsupported_profile", type = "StudioGraphDraftView"}, {tag = "recovery_required", type = "StudioGraphDraftView"}]
+
+[[type]]
+name = "StudioGraphCursor"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "StudioGraphSnapshotRef"}, {name = "next_ordinal", type = "U64"}]
+
+[[type]]
+name = "StudioGraphOptionalCursor"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphCursor"
+
+[[type]]
+name = "StudioGraphReadItem"
+kind = "record"
+visibility = "public"
+fields = [{name = "cursor", type = "StudioGraphCursor"}, {name = "ordinal", type = "U64"}, {name = "record", type = "StudioGraphReadRecord"}]
+
+[[type]]
+name = "StudioGraphReadEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "item", type = "StudioGraphReadItem"}, {tag = "complete", type = "StudioGraphSnapshotRef"}, {tag = "resync_required", type = "StudioGraphSnapshotRef"}]
+
+[[type]]
+name = "StudioGraphScalarUploadRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "draft", type = "StudioGraphDraftRef"}, {name = "scalar_id", type = "StudioGraphScalarId"}, {name = "generation", type = "ResourceGeneration"}, {name = "position", type = "StudioGraphScalarPosition"}, {name = "encoding", type = "StudioGraphScalarEncoding"}]
+
+[[type]]
+name = "StudioGraphScalarUploadView"
+kind = "record"
+visibility = "public"
+fields = [{name = "upload", type = "StudioGraphScalarUploadRef"}, {name = "revision", type = "U64"}, {name = "received_bytes", type = "U64"}]
+
+[[type]]
+name = "StudioGraphScalarChunk"
+kind = "record"
+visibility = "public"
+fields = [{name = "scalar", type = "StudioGraphScalarRef"}, {name = "offset", type = "U64"}, {name = "content", type = "Utf8Chunk"}, {name = "complete", type = "Boolean"}]
+
+[[type]]
+name = "StudioGraphBeginRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "StudioControlContext"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "schema", type = "StudioControlSchemaRef"}]
+
+[[type]]
+name = "StudioGraphAppendRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "draft", type = "StudioGraphDraftRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "record", type = "StudioGraphRecord"}]
+
+[[type]]
+name = "StudioGraphSealRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "draft", type = "StudioGraphDraftRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "StudioGraphReadRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "StudioGraphSnapshotRef"}, {name = "cursor", type = "StudioGraphOptionalCursor"}]
+
+[[type]]
+name = "StudioGraphScalarBeginRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "draft", type = "StudioGraphDraftRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "position", type = "StudioGraphScalarPosition"}, {name = "encoding", type = "StudioGraphScalarEncoding"}]
+
+[[type]]
+name = "StudioGraphScalarWriteRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "upload", type = "StudioGraphScalarUploadRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}, {name = "offset", type = "U64"}, {name = "content", type = "Utf8Chunk"}]
+
+[[type]]
+name = "StudioGraphScalarSealRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "upload", type = "StudioGraphScalarUploadRef"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "StudioGraphScalarReadRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "scalar", type = "StudioGraphScalarRef"}, {name = "offset", type = "U64"}]
+
+[[type]]
+name = "StudioGraphExpansionNode"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "StudioGraphSnapshotRef"}, {name = "source", type = "StudioGraphNodeKey"}, {name = "expanded", type = "StudioControlGraphNodeRef"}, {name = "group_path", type = "StudioGraphOptionalScalar"}, {name = "sweep_index", type = "StudioGraphOptionalIndex"}, {name = "ordinal", type = "U64"}]
+
+[[type]]
+name = "StudioGraphOptionalIndex"
+kind = "optional"
+visibility = "public"
+item = "U64"
+
+[[type]]
+name = "StudioGraphExpandedNode"
+kind = "record"
+visibility = "public"
+fields = [{name = "mapping", type = "StudioGraphExpansionNode"}, {name = "config", type = "StudioGraphNormalizedConfig"}, {name = "execution", type = "StudioGraphExecution"}]
+
+[[type]]
+name = "StudioGraphExpandedDataEdge"
+kind = "record"
+visibility = "public"
+fields = [{name = "ordinal", type = "U64"}, {name = "source", type = "StudioControlPortRef"}, {name = "target", type = "StudioControlPortRef"}]
+
+[[type]]
+name = "StudioGraphExpandedControlEdge"
+kind = "record"
+visibility = "public"
+fields = [{name = "ordinal", type = "U64"}, {name = "source", type = "StudioControlPortRef"}, {name = "target", type = "StudioControlGraphNodeRef"}]
+
+[[type]]
+name = "StudioGraphVariantMapping"
+kind = "record"
+visibility = "public"
+fields = [{name = "source", type = "StudioGraphNodeKey"}, {name = "variant_ordinal", type = "U64"}, {name = "expanded", type = "StudioControlGraphNodeRef"}]
+
+[[type]]
+name = "StudioGraphExpandedRecord"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "node", type = "StudioGraphExpandedNode"}, {tag = "data_edge", type = "StudioGraphExpandedDataEdge"}, {tag = "control_edge", type = "StudioGraphExpandedControlEdge"}, {tag = "variant", type = "StudioGraphVariantMapping"}]
+
+[[type]]
+name = "StudioGraphReadRecord"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "source", type = "StudioGraphRecord"}, {tag = "expanded", type = "StudioGraphExpandedRecord"}]
+
+[[type]]
+name = "StudioGraphSelectionSnapshot"
+kind = "record"
+visibility = "public"
+fields = [{name = "snapshot", type = "StudioGraphSnapshotRef"}, {name = "selection", type = "StudioControlSelectionRef"}, {name = "source", type = "StudioControlGraphRef"}, {name = "expanded", type = "StudioControlGraphRef"}, {name = "resolved_digest", type = "StudioControlDigest"}, {name = "count", type = "StudioControlExpandedCount"}]
+
+[[type]]
+name = "StudioGraphSelectionReason"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "direct", type = "Empty"}, {tag = "group_descendant", type = "Empty"}, {tag = "sweep_variant", type = "Empty"}, {tag = "data_ancestor", type = "Empty"}, {tag = "control_ancestor", type = "Empty"}]
+
+[[type]]
+name = "StudioGraphSelectedNode"
+kind = "record"
+visibility = "public"
+fields = [{name = "selection", type = "StudioGraphSelectionSnapshot"}, {name = "ordinal", type = "U64"}, {name = "mapping", type = "StudioGraphExpansionNode"}, {name = "reason", type = "StudioGraphSelectionReason"}]
+
+[[type]]
+name = "StudioGraphSelectionCursor"
+kind = "record"
+visibility = "public"
+fields = [{name = "selection", type = "StudioGraphSelectionSnapshot"}, {name = "next_ordinal", type = "U64"}]
+
+[[type]]
+name = "StudioGraphOptionalSelectionCursor"
+kind = "optional"
+visibility = "public"
+item = "StudioGraphSelectionCursor"
+
+[[type]]
+name = "StudioGraphSelectionEvent"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "item", type = "StudioGraphSelectedNode"}, {tag = "complete", type = "StudioGraphSelectionSnapshot"}, {tag = "resync_required", type = "StudioGraphSelectionSnapshot"}]
+
+[[type]]
+name = "StudioGraphSelectionResolveRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "context", type = "StudioControlContext"}, {name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "snapshot", type = "StudioGraphSnapshotRef"}, {name = "outputs", type = "StudioControlOutputSelection"}]
+
+[[type]]
+name = "StudioGraphSelectionReadRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "selection", type = "StudioGraphSelectionSnapshot"}, {name = "cursor", type = "StudioGraphOptionalSelectionCursor"}]
+
+[[operation]]
+name = "studio.ir.begin"
+symbol = "StudioGraphBegin"
+request = "StudioGraphBeginRequest"
+response = "StudioGraphDraftView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "data-only-no-execution-tool-network-file-or-worker-authority", "exact-node-verified-schema-and-semantic-position", "required-profile-implemented-before-enablement", "scoped-storage-admission-before-staging"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.ir.append"
+symbol = "StudioGraphAppend"
+request = "StudioGraphAppendRequest"
+response = "StudioGraphDraftView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "data-only-no-execution-tool-network-file-or-worker-authority", "exact-node-verified-schema-and-semantic-position", "required-profile-implemented-before-enablement", "same-draft-keys-and-purpose-scoped-scalar-refs", "compare-and-swap-resource-revision", "exact-request-payload-retry-no-duplicate-record", "source-insertion-order-and-presence-preserved", "admitted-total-record-depth-and-expansion-profile"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.ir.seal"
+symbol = "StudioGraphSeal"
+request = "StudioGraphSealRequest"
+response = "StudioGraphSealResult"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "data-only-no-execution-tool-network-file-or-worker-authority", "exact-node-verified-schema-and-semantic-position", "required-profile-implemented-before-enablement", "compare-and-swap-resource-revision", "atomic-valid-seal-or-nonexecutable-invalid-state", "closed-thirty-one-configs-and-typed-resolved-group-parameter-targets", "all-unused-groups-alias-cycles-and-source-precedence-checked", "exact-python-json-size-hash-float-and-default-profiles", "combined-data-control-dag-and-port-resource-policy", "literal-tree-iterative-no-cycle-sharing-or-amplification", "no-dangling-cross-snapshot-or-cross-phase-refs"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.ir.read"
+symbol = "StudioGraphRead"
+request = "StudioGraphReadRequest"
+response = "StudioGraphReadEvent"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "data-only-no-execution-tool-network-file-or-worker-authority", "exact-node-verified-schema-and-semantic-position", "required-profile-implemented-before-enablement", "immutable-snapshot-and-cursor-boundary", "reauthorize-every-item-and-error", "no-live-page-mixture"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "studio.scalars.begin"
+symbol = "StudioGraphScalarBegin"
+request = "StudioGraphScalarBeginRequest"
+response = "StudioGraphScalarUploadView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "data-only-no-execution-tool-network-file-or-worker-authority", "exact-node-verified-schema-and-semantic-position", "required-profile-implemented-before-enablement", "compare-and-swap-resource-revision", "scalar-only-exact-schema-position-no-document-retagging", "profile-storage-admission"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.scalars.write"
+symbol = "StudioGraphScalarWrite"
+request = "StudioGraphScalarWriteRequest"
+response = "StudioGraphScalarUploadView"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "data-only-no-execution-tool-network-file-or-worker-authority", "exact-node-verified-schema-and-semantic-position", "required-profile-implemented-before-enablement", "compare-and-swap-resource-revision", "exact-offset-and-request-digest", "ascii-escaped-string-or-signed-integer-transport-only", "no-unresolved-global-budget-overrun"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.scalars.seal"
+symbol = "StudioGraphScalarSeal"
+request = "StudioGraphScalarSealRequest"
+response = "StudioGraphScalarRef"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "data-only-no-execution-tool-network-file-or-worker-authority", "exact-node-verified-schema-and-semantic-position", "required-profile-implemented-before-enablement", "compare-and-swap-resource-revision", "exact-python-codepoint-sequence-including-lone-surrogates", "freeze-same-complete-content-and-semantic-position", "not-an-opaque-graph-parameter-or-control-document"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.scalars.read"
+symbol = "StudioGraphScalarRead"
+request = "StudioGraphScalarReadRequest"
+response = "StudioGraphScalarChunk"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "data-only-no-execution-tool-network-file-or-worker-authority", "exact-node-verified-schema-and-semantic-position", "required-profile-implemented-before-enablement", "reauthorize-every-range", "checked-range-and-same-immutable-scalar", "no-foreign-scope-existence-disclosure"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.ir.selection.resolve"
+symbol = "StudioGraphSelectionResolve"
+request = "StudioGraphSelectionResolveRequest"
+response = "StudioGraphSelectionSnapshot"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "data-only-no-execution-tool-network-file-or-worker-authority", "exact-node-verified-schema-and-semantic-position", "required-profile-implemented-before-enablement", "exact-validated-source-expanded-catalog-and-schema-snapshot", "source-group-variant-selection-and-both-ancestor-closures", "stable-semantic-request-id-not-new-admission-right"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "studio.ir.selection.read"
+symbol = "StudioGraphSelectionRead"
+request = "StudioGraphSelectionReadRequest"
+response = "StudioGraphSelectionEvent"
+error = "StudioControlError"
+authorization = ["authenticated-current-principal", "current-membership-generation", "exact-resource-generation", "exact-authorized-studio-project-scope", "no-existence-disclosure-before-authorization", "data-only-no-execution-tool-network-file-or-worker-authority", "exact-node-verified-schema-and-semantic-position", "required-profile-implemented-before-enablement", "immutable-snapshot-and-cursor-boundary", "reauthorize-every-item-and-error", "no-live-page-mixture"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
