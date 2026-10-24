@@ -261,8 +261,9 @@ def _settle(known: argparse.Namespace, rest: list[str], release: Callable[[], No
 
 def main(argv: list[str] | None = None, *,
          daemon_main: Callable[[list[str]], int] | None = None) -> int:
-    daemon_main is None and runtime.forward("poolhouse.fleet.launch", list(sys.argv[1:] if argv is None else argv))
     known, rest = _arguments(argv)
+    if daemon_main is None and known.restart:
+        runtime.forward("poolhouse.fleet.launch", list(sys.argv[1:] if argv is None else argv))
 
     linux_executable = None
     try:
@@ -275,6 +276,8 @@ def main(argv: list[str] | None = None, *,
         return 1
     if settled is not None:
         return settled
+    if daemon_main is None and not known.restart:
+        runtime.forward("poolhouse.fleet.launch", list(sys.argv[1:] if argv is None else argv))
 
     if sys.platform == "win32" and linux_executable is None:
         try:
