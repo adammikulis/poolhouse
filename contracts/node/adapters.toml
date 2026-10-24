@@ -95,7 +95,7 @@ associated = [{name = "Installation", projection = "InstallationProjection", rol
 name = "NativeGraph"
 seal = "Graph"
 inherits = "NativeInstallationGraph"
-associated = [{name = "Launch", projection = "LaunchProjection", role = "VerifiedProducerLaunch"}, {name = "LaunchPlan", projection = "ProducerLaunchPlanProjection", role = "ProducerLaunchPlan"}, {name = "Producer", projection = "ProducerProjection", role = "AdmittedProducer"}, {name = "Message", projection = "ProducerMessageProjection", role = "AuthenticatedProducerMessage"}, {name = "Bootstrap", projection = "BootstrapProjection", role = "VerifiedBootstrap"}, {name = "Binding", projection = "BindingProjection", role = "Binding"}, {name = "Plan", projection = "PlanProjection", role = "SpawnPlan"}, {name = "ChildCustody", projection = "ChildProjection", role = "ChildCustody"}, {name = "Caller", projection = "CallerProjection", role = "AuthenticatedCaller"}, {name = "CallerMessage", projection = "CallerMessageProjection", role = "CallerMessage"}, {name = "BeforeConsume", projection = "BeforeConsumeProjection", role = "BeforeConsumeObligation"}, {name = "Revoked", projection = "RevokedProjection", role = "RevokedAuthorization"}, {name = "Terminal", projection = "TerminalProjection", role = "TerminalCleanupObligation"}, {name = "Cleanup", projection = "CleanupProjection", role = "HolderCleanup"}, {name = "ChannelFailure", projection = "ChannelFailureProjection", role = "OwnedChannelFailure"}, {name = "SpawnFailure", projection = "SpawnFailureProjection", role = "OwnedSpawnFailure"}, {name = "ReleaseFailure", projection = "ReleaseFailureProjection", role = "OwnedReleaseFailure"}, {name = "CleanupFailure", projection = "CleanupFailureProjection", role = "OwnedCleanupFailure"}]
+associated = [{name = "Launch", projection = "LaunchProjection", role = "VerifiedProducerLaunch"}, {name = "LaunchInputs", projection = "LaunchInputsProjection", role = "RetainedLaunchInputs"}, {name = "LaunchReservation", projection = "LaunchReservationProjection", role = "ProtectedLaunchReservation"}, {name = "LaunchPlan", projection = "ProducerLaunchPlanProjection", role = "ProducerLaunchPlan"}, {name = "Producer", projection = "ProducerProjection", role = "AdmittedProducer"}, {name = "Message", projection = "ProducerMessageProjection", role = "AuthenticatedProducerMessage"}, {name = "Bootstrap", projection = "BootstrapProjection", role = "VerifiedBootstrap"}, {name = "Binding", projection = "BindingProjection", role = "Binding"}, {name = "Plan", projection = "PlanProjection", role = "SpawnPlan"}, {name = "ChildCustody", projection = "ChildProjection", role = "ChildCustody"}, {name = "Caller", projection = "CallerProjection", role = "AuthenticatedCaller"}, {name = "CallerMessage", projection = "CallerMessageProjection", role = "CallerMessage"}, {name = "BeforeConsume", projection = "BeforeConsumeProjection", role = "BeforeConsumeObligation"}, {name = "Revoked", projection = "RevokedProjection", role = "RevokedAuthorization"}, {name = "Terminal", projection = "TerminalProjection", role = "TerminalCleanupObligation"}, {name = "Cleanup", projection = "CleanupProjection", role = "HolderCleanup"}, {name = "ChannelFailure", projection = "ChannelFailureProjection", role = "OwnedChannelFailure"}, {name = "SpawnFailure", projection = "SpawnFailureProjection", role = "OwnedSpawnFailure"}, {name = "ReleaseFailure", projection = "ReleaseFailureProjection", role = "OwnedReleaseFailure"}, {name = "CleanupFailure", projection = "CleanupFailureProjection", role = "OwnedCleanupFailure"}]
 
 [effect_owner]
 graph = "EffectGraph"
@@ -188,14 +188,28 @@ name = "PlanProjection"
 seal = "Plan"
 graph = "native"
 seal_scope = "native"
-getters = [{name = "binding", result = "Binding", ownership = "borrow", optional = false}, {name = "executable", result = "MeasuredAsset", ownership = "borrow", optional = false}, {name = "assets", result = "MeasuredAsset", ownership = "borrow-slice", optional = false}, {name = "arguments", result = "ImmutableArgument", ownership = "borrow-slice", optional = false}, {name = "environment", result = "ImmutableEnvironmentEntry", ownership = "borrow-slice", optional = false}, {name = "directory", result = "MeasuredDirectoryIdentity", ownership = "borrow", optional = false}, {name = "confinement", result = "ConfinementProfile", ownership = "borrow", optional = false}, {name = "inheritance", result = "InheritedResourceSpec", ownership = "borrow-slice", optional = false}]
+getters = [{name = "binding", result = "Binding", ownership = "borrow", optional = false}, {name = "inputs", result = "LaunchInputs", ownership = "borrow", optional = false}, {name = "reservation", result = "LaunchReservation", ownership = "borrow", optional = false}]
 
 [[projection]]
 name = "ProducerLaunchPlanProjection"
 seal = "LaunchPlan"
 graph = "native"
 seal_scope = "native"
-getters = [{name = "installation", result = "Installation", ownership = "borrow", optional = false}, {name = "executable", result = "MeasuredAsset", ownership = "borrow", optional = false}, {name = "assets", result = "MeasuredAsset", ownership = "borrow-slice", optional = false}, {name = "arguments", result = "ImmutableArgument", ownership = "borrow-slice", optional = false}, {name = "environment", result = "ImmutableEnvironmentEntry", ownership = "borrow-slice", optional = false}, {name = "directory", result = "MeasuredDirectoryIdentity", ownership = "borrow", optional = false}, {name = "confinement", result = "ConfinementProfile", ownership = "borrow", optional = false}, {name = "inheritance", result = "InheritedResourceSpec", ownership = "borrow-slice", optional = false}]
+getters = [{name = "installation", result = "Installation", ownership = "borrow", optional = false}, {name = "plan_digest", result = "Digest", ownership = "borrow", optional = false}, {name = "inputs", result = "LaunchInputs", ownership = "borrow", optional = false}, {name = "reservation", result = "LaunchReservation", ownership = "borrow", optional = false}]
+
+[[projection]]
+name = "LaunchInputsProjection"
+seal = "LaunchInputs"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "identity", result = "LaunchInputsId", ownership = "borrow", optional = false}, {name = "target", result = "LaunchTargetKind", ownership = "value", optional = false}, {name = "plan_digest", result = "Digest", ownership = "borrow", optional = false}, {name = "reservation_generation", result = "ResourceGeneration", ownership = "borrow", optional = false}, {name = "profile", result = "LaunchAccountingProfile", ownership = "value", optional = false}, {name = "limits", result = "LaunchLimitsData", ownership = "borrow", optional = false}, {name = "executable", result = "MeasuredAsset", ownership = "borrow", optional = false}, {name = "assets", result = "MeasuredAsset", ownership = "borrow-slice", optional = false}, {name = "arguments", result = "ImmutableArgument", ownership = "borrow-slice", optional = false}, {name = "environment", result = "ImmutableEnvironmentEntry", ownership = "borrow-slice", optional = false}, {name = "directory", result = "MeasuredDirectoryIdentity", ownership = "borrow", optional = false}, {name = "confinement", result = "ConfinementProfile", ownership = "borrow", optional = false}, {name = "inheritance", result = "InheritedResourceSpec", ownership = "borrow-slice", optional = false}]
+
+[[projection]]
+name = "LaunchReservationProjection"
+seal = "LaunchReservation"
+graph = "native"
+seal_scope = "native"
+getters = [{name = "identity", result = "LaunchReservationId", ownership = "borrow", optional = false}, {name = "inputs", result = "LaunchInputs", ownership = "borrow", optional = false}, {name = "generation", result = "ResourceGeneration", ownership = "borrow", optional = false}, {name = "holder", result = "Holder", ownership = "borrow", optional = false}]
 
 [[projection]]
 name = "ChildProjection"
@@ -322,6 +336,31 @@ seal = "Unknown"
 graph = "effect"
 seal_scope = "effect"
 getters = [{name = "permit", result = "Permit", ownership = "borrow", optional = false}, {name = "operation", result = "Operation", ownership = "borrow", optional = false}, {name = "owner", result = "Owner", ownership = "borrow", optional = false}, {name = "reason", result = "UnknownEffectReason", ownership = "value", optional = false}, {name = "retained_resources", result = "UnresolvedCustody", ownership = "borrow", optional = false}]
+
+[[leaf]]
+name = "LaunchInputsId"
+kind = "bytes32"
+
+[[leaf]]
+name = "LaunchReservationId"
+kind = "bytes32"
+
+[[leaf]]
+name = "LaunchTargetKind"
+kind = "enum"
+variants = [{name = "Worker", fields = []}, {name = "Producer", fields = []}]
+copy = true
+
+[[leaf]]
+name = "LaunchAccountingProfile"
+kind = "enum"
+variants = [{name = "MacNativeImage", fields = []}, {name = "LinuxNativeImage", fields = []}, {name = "WindowsNativeUnavailable", fields = []}]
+copy = true
+
+[[leaf]]
+name = "LaunchLimitsData"
+kind = "record"
+fields = [{name = "os_combined_bytes", type = "u64", optional = false}, {name = "reservation_bytes", type = "u64", optional = false}, {name = "max_string_bytes", type = "u64", optional = false}, {name = "max_argument_count", type = "u64", optional = false}, {name = "max_environment_count", type = "u64", optional = false}, {name = "vector_reserved_bytes", type = "u64", optional = false}, {name = "kernel_pointer_bytes", type = "u64", optional = false}, {name = "vector_pointer_bytes", type = "u64", optional = false}, {name = "exec_filename_bytes", type = "u64", optional = false}, {name = "work", type = "u64", optional = false}]
 
 [[leaf]]
 name = "Digest"
@@ -594,11 +633,13 @@ fields = ["actor-bytes", "event-kind-bytes", "context-bytes", "original-payload-
 
 [[profile]]
 name = "launch-arguments"
+definition = "native_boundaries/launch_data.toml"
 status = "unresolved-profile-evidence"
 fields = ["argument-bytes", "argument-count", "argument-aggregate-bytes"]
 
 [[profile]]
 name = "launch-environment"
+definition = "native_boundaries/launch_data.toml"
 status = "unresolved-profile-evidence"
 fields = ["key-bytes", "value-bytes", "entry-count", "aggregate-bytes", "unique-keys"]
 
