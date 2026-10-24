@@ -23,7 +23,7 @@ permissions:
 # Superseded pull requests and 0.3dev pushes stop; other runs finish.
 # Isolate development pushes so they cannot cancel a manual run on the same ref.
 concurrency:
-  group: ci-${{ github.ref }}${{ github.event_name == 'push' && github.ref == 'refs/heads/0.3dev' && '-push' || '' }}
+  group: ci-${{ github.ref }}${{ github.event_name == 'push' && github.ref == 'refs/heads/0.3dev' && ':push' || '' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/0.3dev') }}
 
 jobs:

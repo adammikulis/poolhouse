@@ -99,7 +99,7 @@ def test_no_checkout_takes_its_ref_from_an_input(step):
 
 def test_development_pushes_have_their_own_concurrency_group():
     assert CI["concurrency"]["group"] == (
-        "ci-${{ github.ref }}${{ github.event_name == 'push' && github.ref == 'refs/heads/0.3dev' && '-push' || '' }}")
+        "ci-${{ github.ref }}${{ github.event_name == 'push' && github.ref == 'refs/heads/0.3dev' && ':push' || '' }}")
 
 
 @pytest.mark.parametrize("name", ["ci.yml", "release-dry-run.yml", "pool-check.yml"])
@@ -157,6 +157,13 @@ def test_supersession_preserves_other_event_runs(incoming, existing, ref, cancel
     cancel = concurrency_expression(expression, incoming, ref)
     same_group = concurrency_group(incoming, ref) == concurrency_group(existing, ref)
     assert bool(cancel and same_group) is cancelled
+
+
+def test_development_push_group_cannot_collide_with_a_literal_branch_suffix():
+    # A colon cannot occur inside a Git ref; a hyphen could alias another branch.
+    current = concurrency_group("push", "refs/heads/0.3dev")
+    assert current != concurrency_group("workflow_dispatch", "refs/heads/0.3dev-push")
+    assert current != concurrency_group("push", "refs/heads/0.3dev-push")
 
 
 def test_a_shard_that_hangs_ends_within_thirty_minutes():
