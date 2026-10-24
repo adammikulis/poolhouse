@@ -36,7 +36,7 @@ def session(root: str | Path, client: Client | None = None, board: str = "") -> 
     """
     state = node_launch.default_state()
     node = client or Client(state, person=person_key.provider(state, attended=True))
-    return on(node, place.resolve(node, Path(root), board))
+    return on(node, place.existing(node, Path(root), board))
 
 
 def acting(state: Path) -> Callable[[str], tuple[str, str]]:

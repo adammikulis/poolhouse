@@ -104,7 +104,7 @@ def _running(have: la.Agent, chosen: localmodel.Pick) -> Started:
 
 def _check_board(s: Session, project: str) -> None:
     """Refuse a project that belongs to another board than the session that starts the agent."""
-    if project and place.resolve(s.client, Path(project)) != s.board:
+    if project and place.existing(s.client, Path(project)) != s.board:
         raise ValueError("the project belongs to another board than the session that starts the agent")
 
 

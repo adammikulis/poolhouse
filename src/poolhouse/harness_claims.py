@@ -146,7 +146,7 @@ def reserve(name, args, cwd, actor, roots):
             raise Denied('mutation target is outside the launcher-approved project')
     s = session_of(actor, approved[0] if approved else cwd)
     try:
-        if any(place.resolve(s.client, root) != s.board for root in approved):
+        if any(place.existing(s.client, root) != s.board for root in approved):
             raise Denied('mutation ownership requires the board of the launcher-approved project')
         s.reserve([_held(kind, key) for kind, key in required], ttl_s=CLAIM_S, pid=os.getppid())
     except Conflict:

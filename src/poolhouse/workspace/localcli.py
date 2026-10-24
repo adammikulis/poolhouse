@@ -127,7 +127,7 @@ def _session(args: argparse.Namespace) -> sessions.Session:
     if terminal.marked():
         raise Denied("denied", "an agent starts a local agent as a session of its own: run it as a registered session")
     where = Path(args.project or ".")
-    return person.on(client, place.resolve(client, where, args.board))
+    return person.on(client, place.existing(client, where, args.board))
 
 
 def _start(args: argparse.Namespace, s: sessions.Session, base: Path) -> int:

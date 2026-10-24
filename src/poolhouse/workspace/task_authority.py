@@ -42,7 +42,7 @@ def authorize(s: Session, base: Path, worker: str, task: str, *, parent_may: boo
     if not ((spec["created_by"] == s.name and named) or (parent_may and s.name == parent)):
         raise Denied("only the creator of a task that names the worker manages it")
     source = la.check_project(runner.project, base)
-    if not source or not worktreerules.checkouts(source) or place.resolve(s.client, Path(source)) != s.board:
+    if not source or not worktreerules.checkouts(source) or place.existing(s.client, Path(source)) != s.board:
         raise Denied("the saved worker source must be a checkout of this board's project")
     probe = {"from": s.name, "state": "clear", "type": "task", "to": runner.identity}
     if not la.obeys(s, runner, probe):

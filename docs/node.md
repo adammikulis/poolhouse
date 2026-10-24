@@ -1096,8 +1096,9 @@ verify; the binary is `poolhouse-node.exe` on Windows), `node_build` (into a run
 
 `poolhouse.board` is the client. `client.Client` speaks the socket (starting the node through
 `node_launch.ensure_node` when it is dead) and raises `NodeError` (`Denied`, `Invalid`, `Quota`) with the node's code;
-`place.resolve` maps the working directory to a board (`POOLHOUSE_BOARD`, else the project registry; a git repository
-the node does not know is added as a project, named by its folder and a few hex of its git common directory);
+`place.existing` selects an explicit board or resolves an existing project from the working directory without creating
+a project or session. Connections and authorization checks use it; unknown projects are refused. The legacy
+`place.resolve` initializer remains for deliberate project setup, separate from lookup;
 `credentials` keeps a private token file per board and name under `<state>/client/` and the read cursors of each
 question (inbox, announcements); `session.Session` is one token's typed API (`post`, `read`, `notes`, `claim`,
 `agents`, `retire` ...) returning small dataclasses, with an injectable `clock`. `session.register` /

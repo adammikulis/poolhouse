@@ -11,7 +11,8 @@ board holds a copy of them, so a session on another device reads and answers the
 
 Ordinary editing, shell/Git/package/test commands, library imports and ending a turn work without a Poolhouse project,
 daemon, session, claim or manual agent argument. This workspace is used for explicit coordination and resource/task
-operations; their own authentication and explicit project selection remain required. Notifications only consult an
+operations; they authenticate their own caller and infer an existing project from the working directory, or use an
+explicitly selected board. No manual project argument is needed on a known project. Notifications only consult an
 existing project; they never create one for ordinary work. Automatic notifications and completion reminders are advisory.
 
 ## Quickstart

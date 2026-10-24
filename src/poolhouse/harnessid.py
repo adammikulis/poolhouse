@@ -64,7 +64,7 @@ def invite(name: str, project_dir: Path, parent: str, say: Callable[[str], None]
         raise ValueError("the coding agent needs a usable workspace identity")
     try:
         client = Client(node_launch.default_state())
-        board = place.resolve(client, Path(project_dir))
+        board = place.existing(client, Path(project_dir))
         launcher = _launcher(client, board, parent)
         made = launcher.register(sessions.Native("", claim[1] or "harness", f"{name}-{uuid.uuid4().hex[:8]}"))
     except (NodeError, OSError, ValueError) as why:
