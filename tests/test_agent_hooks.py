@@ -86,7 +86,7 @@ def test_codex_hooks_keep_other_settings_and_replace_fixed_actor_notifications(m
     data = tomllib.loads(text)
     assert data["model"] == "gpt-6.1-sol" and data["agents"] == {"max_threads": 32}
     assert data["hooks"]["state"] == tomllib.loads(CODEX_BEFORE)["hooks"]["state"]
-    assert commands(data, "Stop") == ["poolhouse-workspace codex-hook", "poolhouse-workspace codex-stop"]
+    assert commands(data, "Stop") == ["poolhouse-workspace codex-hook"]
     assert commands(data, "UserPromptSubmit") == ["poolhouse-workspace codex-hook"]
     assert commands(data, "PostToolUse") == ["poolhouse-workspace codex-hook"]
     for event, _, _ in agent_hooks.CODEX_EVENTS:
@@ -122,8 +122,7 @@ def test_codex_context_limits_only_apply_to_events_the_native_host_supports(assi
             assert notification["additionalContextLimit"] == 4000
         else:
             assert "additionalContextLimit" not in notification
-        if event == "Stop":
-            assert handlers[1] == {"type": "command", "command": "poolhouse-workspace codex-stop" + suffix, "timeout": 5}
+        assert len(handlers) == 1
 
 
 def test_codex_turns_the_hooks_feature_on_and_replaces_an_earlier_notify_nudge(machine):
@@ -258,3 +257,18 @@ def test_codex_replaces_owned_post_with_quoted_interpreter_path(machine):
     path.write_text('[[hooks.PostToolUse]]\n[[hooks.PostToolUse.hooks]]\ntype = "command"\ncommand = ' + json.dumps(command) + '\n')
     agent_hooks.install_codex(path)
     assert commands(tomllib.loads(path.read_text()), "PostToolUse") == ["poolhouse-workspace codex-hook"]
+
+
+def test_migrate_owned_stop_command_preserves_unrelated_hooks_and_trust(machine):
+    path = machine / 'config.toml'
+    other = '\n[[hooks.Stop]]\n[[hooks.Stop.hooks]]\ntype="command"\ncommand="unrelated-stop"\n'
+    old = agent_hooks.codex_hooks().replace(
+        '[[hooks.SubagentStop]]',
+        '[[hooks.Stop.hooks]]\ntype="command"\ncommand="poolhouse-workspace codex-stop"\ntimeout=5\n\n[[hooks.SubagentStop]]')
+    path.write_text(CODEX_BEFORE + other + '\n' + old)
+    before = tomllib.loads(path.read_text())['hooks']['state']
+    agent_hooks.install_codex(path)
+    after = tomllib.loads(path.read_text())
+    assert commands(after, 'Stop') == ['unrelated-stop', 'poolhouse-workspace codex-hook']
+    assert after['hooks']['state'] == before
+    assert all(item.good for item in agent_hooks.findings({'codex': path}) if item.name.startswith('codex:'))

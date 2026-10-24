@@ -215,9 +215,9 @@ words = ["peer"]
 reason = "the node's wire protocol is the peer protocol: the other end of a connection, which may not yet be a member; docs/limits.md names its source files and constants"
 
 [[allow]]
-path = "contracts/node/retained-features.json"
+path = ["contracts/node/retained-features.json", "contracts/node/domain-evidence/connectivity.json"]
 words = ["peer"]
-reason = "the source-evidence inventory preserves literal existing source/protocol identifiers (Peer, peer, peer_pid and peer.lineage); these observations define no new public vocabulary or authority"
+reason = "the source-evidence inventory preserves literal existing source/protocol identifiers (Peer, PeerFacts, peer, peer_pid and peer.lineage); these observations define no new public vocabulary or authority"
 
 [[token]]
 token = "test_many_renames_are_read_in_one_pass_and_each_is_paired"

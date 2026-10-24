@@ -28,7 +28,7 @@ if __name__ == "__main__":
     hook_bootstrap.metadata({})
     hook_bootstrap.stage("imports")
 
-from poolhouse import harness_claims, platform, requests
+from poolhouse import platform, requests
 from poolhouse.errors import Denied
 from poolhouse.guard import fetchlog
 from poolhouse.harnesspolicy import (
@@ -42,8 +42,6 @@ from poolhouse.harnesspolicy import (
 from poolhouse.interventions import Call
 from poolhouse.keystore import ENV_NONINTERACTIVE
 from poolhouse.serve.process import kill_process_tree
-from poolhouse.workspace import limits, worktree_lifecycle
-from poolhouse.workspace.harness_session import BoardUnavailable
 
 __all__ = ["FAILURES", "WAIT_S", "Rail", "nudge", "post", "pre", "run"]
 
@@ -121,17 +119,11 @@ def pre(payload: dict[str, Any], rail: Rail, inbox: requests.Inbox | None = None
     policy, agent, roots, protected, wait_s = rail.policy, rail.agent, rail.roots, rail.protected, rail.wait_s
     event = HOOK_EVENTS["pre"]
     args = payload.get("tool_input")
-    warning = ""
     try:
         name = str(payload.get("tool_name", ""))
         inputs = args if isinstance(args, dict) else None
         fetched = fetchlog.read(agent)
-        try:
-            ownership = harness_claims.conflict(name, inputs, str(payload.get('cwd') or (roots[0] if roots else Path.cwd())), agent, roots)
-        except BoardUnavailable as error:  # no board to ask: local work goes on, with a warning
-            ownership = ""
-            warning = f" (ownership not checked: {hook_diagnostics.record(error, 'pre', 'claim', metadata=hook_bootstrap.timings())})"
-        decision = (Decision('deny', 'destructive', ownership) if ownership else None) or (primary_decision(name, inputs, str(payload.get("cwd", "")))
+        decision = (primary_decision(name, inputs, str(payload.get("cwd", "")))
                     or workspace_authority(_shell_line(name, inputs), agent)
                     or decide(policy, Call(name, inputs), roots=roots, protected=protected))
         decision = after_downloads(decision, name, inputs, roots, fetched)
@@ -141,7 +133,7 @@ def pre(payload: dict[str, Any], rail: Rail, inbox: requests.Inbox | None = None
         decision = Decision("deny", "unsure", f"the call could not be classified: {hook_diagnostics.record(error, 'pre', 'classification', metadata=hook_bootstrap.timings())}")
     if decision.action == "deny":
         return _answer(event, "deny", f"poolhouse: {decision.reason}")
-    reason = f"poolhouse: {decision.label}{warning}"
+    reason = f"poolhouse: {decision.label}"
     if decision.action == "ask":
         approved, state = _ask(payload, decision, agent, wait_s, inbox)
         if not approved:
@@ -151,19 +143,6 @@ def pre(payload: dict[str, Any], rail: Rail, inbox: requests.Inbox | None = None
         fetchlog.note(agent, fetchlog.targets(_shell_line(str(payload.get("tool_name", "")), args if isinstance(args, dict) else None), roots, str(payload.get("cwd") or ""), fetched))
     except FAILURES as error:
         return _answer(event, "deny", f"poolhouse: a download could not be recorded: {hook_diagnostics.record(error, 'pre', 'classification', metadata=hook_bootstrap.timings())}")
-    return _owned_answer(payload, rail, event, reason)
-
-
-def _owned_answer(payload, rail, event, reason):
-    try:
-        harness_claims.reserve(str(payload.get('tool_name', '')), payload.get('tool_input'),
-                               str(payload.get('cwd') or (rail.roots[0] if rail.roots else Path.cwd())),
-                               rail.agent, rail.roots)
-    except BoardUnavailable as error:
-        note = hook_diagnostics.record(error, 'pre', 'claim', metadata=hook_bootstrap.timings())
-        return _answer(event, 'allow', f"{reason} (ownership not recorded: {note})")
-    except FAILURES as error:
-        return _answer(event, 'deny', f"poolhouse: ownership refused: {hook_diagnostics.record(error, 'pre', 'claim', metadata=hook_bootstrap.timings())}")
     return _answer(event, 'allow', reason)
 
 
@@ -220,11 +199,7 @@ def post(agent: str, rail: Rail | None = None) -> dict[str, Any]:
 
 
 def stop(rail: Rail) -> dict[str, Any]:
-    """Block an authenticated harness completion until its recorded checkouts are cleaned."""
-    try:
-        worktree_lifecycle.require_clean(limits.root(), rail.agent, within=tuple(rail.roots))
-    except (Denied, OSError, RuntimeError) as error:
-        return {"decision": "block", "reason": hook_diagnostics.record(error, "stop", "completion", metadata=hook_bootstrap.timings())}
+    """Ending a harness turn does not perform task integration or cleanup admission."""
     return {}
 
 

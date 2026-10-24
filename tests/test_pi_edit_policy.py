@@ -29,7 +29,6 @@ def test_nested_pi_edits_cannot_hide_a_download_execution_chain(installed, monke
     target.write_text(before)
     inputs = {"path": "task.sh", "edits": [{"oldText": "run_next", "newText": "sh"}]}
     questions = []
-    monkeypatch.setattr(harnesshook.harness_claims, "conflict", lambda *args: "")
     monkeypatch.setattr(harnesshook, "_ask", lambda payload, result, *args: (questions.append(result) or False, "denied"))
     rail = harnesshook.Rail(coding_policy.Policy(), "isolated-edit-test", (str(root),))
     answer = harnesshook.pre({"tool_name": "Edit", "tool_input": inputs}, rail)

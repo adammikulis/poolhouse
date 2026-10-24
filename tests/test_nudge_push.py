@@ -133,9 +133,11 @@ def test_the_stop_hook_pushes_the_urgent_text_inside_the_same_fence(kit):
     waiting = nudge.Waiting.of(json.loads(json.dumps(board_cli.waiting(kit.reading))))
     old = nudge.Waiting(waiting.me, waiting.rows, waiting.now + 3600, waiting.messages)
     verdict = json.loads(nudge.deliver(kit.reading, old, "stop", "{}", lambda _text: None))
-    inside, after = fenced_part(verdict["reason"])
-    assert verdict["decision"] == "block" and "can you answer the stop hook?" in inside
-    assert verdict["systemMessage"] == verdict["reason"] and nudge_fence.NOTICE in after
+    inside, after = fenced_part(verdict["systemMessage"])
+    assert set(verdict) == {"systemMessage"} and "can you answer the stop hook?" in inside
+    assert nudge_fence.NOTICE in after
+    assert [row['id'] for row in board_cli.waiting(kit.reading)['rows']] == [row['id'] for row in waiting.rows]
+    assert not kit.reading.whoami().retired
 
 
 def test_the_summary_the_board_serves_is_plain_data(kit):

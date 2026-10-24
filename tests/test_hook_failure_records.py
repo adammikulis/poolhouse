@@ -39,7 +39,7 @@ def test_failed_event_emits_same_reference_on_both_streams_without_input(monkeyp
     assert inspected["id"] == held["id"] and inspected["runtime"] == held["runtime"]
 
 
-@pytest.mark.parametrize("event, status", [("pre", 2), ("post", 0), ("stop", 2)])
+@pytest.mark.parametrize("event, status", [("pre", 2), ("post", 0), ("stop", 0)])
 def test_import_failure_is_traced_before_heavy_hook_imports(tmp_path, event, status):
     code = """
 import importlib.abc, runpy, sys
@@ -62,7 +62,8 @@ runpy.run_module('poolhouse.harnesshook', run_name='__main__')
     elif event == "pre":
         assert answer["hookSpecificOutput"]["permissionDecision"] == "deny"
     else:
-        assert answer["decision"] == "block"
+        assert set(answer) == {"systemMessage"}
+        assert "notification unavailable" in answer["systemMessage"]
     assert "sk-" + "a" * 30 not in done.stdout + done.stderr
     held = json.loads(next(p for p in (tmp_path / "state" / "hook-diagnostics").glob("*.json") if hook_diagnostics.IDENTIFIER.fullmatch(p.stem)).read_text())
     assert held["stage"] == "bootstrap" and held["runtime"]["python"]
