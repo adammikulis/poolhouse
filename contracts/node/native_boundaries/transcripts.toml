@@ -6,7 +6,7 @@ signature_input = "unresolved"
 
 # Wire values: N null; F/T boolean; S BE32 UTF8-byte-length + exact UTF8;
 # A BE32 item-count + ordered values; O BE32 field-count + ASCII-sorted
-# framed key/value pairs. No normalization, numbers or omitted optional fields.
+# framed key/value entries. No normalization, numbers or omitted optional fields.
 # Hash input is exact domain (including NUL) + framed root, excluding ONLY
 # the named root selfdigest. A nested approval digest is retained and checked.
 
