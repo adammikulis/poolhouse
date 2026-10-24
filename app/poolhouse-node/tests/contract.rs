@@ -231,6 +231,24 @@ fn timestamp_component_vectors_check_carry_and_overflow() {
 }
 
 #[test]
+fn finite_binary64_vectors_preserve_bits_and_refuse_nonfinite_values() {
+    let vectors: Value = serde_json::from_str(include_str!("../../../contracts/node/vectors.json")).unwrap();
+    for bits in vectors["finite_f64"]["accepted"].as_array().unwrap() {
+        let encoded: FiniteF64 = serde_json::from_value(bits.clone()).unwrap();
+        let value = encoded.to_f64();
+        assert_eq!(format!("{:016x}", value.to_bits()), bits.as_str().unwrap());
+        assert_eq!(FiniteF64::try_from_f64(value).unwrap(), encoded);
+    }
+    for invalid in vectors["finite_f64"]["refused"].as_array().unwrap() {
+        assert!(serde_json::from_value::<FiniteF64>(invalid.clone()).is_err());
+    }
+    for value in [f64::INFINITY, f64::NEG_INFINITY, f64::NAN, -f64::NAN] {
+        assert!(FiniteF64::try_from_f64(value).is_err());
+    }
+    assert_ne!(FiniteF64::try_from_f64(0.0).unwrap(), FiniteF64::try_from_f64(-0.0).unwrap());
+}
+
+#[test]
 fn domain_numeric_observations_preserve_fractional_sign_and_unknown_state() {
     for margin in [json!({"kind": "surplus", "value": {"numerator": "17", "denominator": "2"}}),
                    json!({"kind": "shortfall", "value": {"numerator": "1", "denominator": "2"}})] {

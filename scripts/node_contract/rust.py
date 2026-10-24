@@ -9,6 +9,8 @@ VALIDATE = r'''
 fn valid(kind: &str, value: &str) -> bool {
     let hex = |s: &str| s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
     match kind {
+        "finite-f64-bits" => value.len() == 16 && hex(value)
+            && u64::from_str_radix(value, 16).is_ok_and(|bits| bits & 0x7ff0000000000000 != 0x7ff0000000000000),
         "hex32" | "audit-token-le32" => value.len() == 64 && hex(value),
         "uuid" => value.len() == 36 && value.bytes().enumerate().all(|(i, b)| {
             if [8, 13, 18, 23].contains(&i) { b == b'-' } else { b.is_ascii_digit() || (b'a'..=b'f').contains(&b) }
@@ -112,6 +114,18 @@ impl From<{name}> for Vec<{item}> {{ fn from(value: {name}) -> Self {{ value.0 }
 
 def scalar_helpers(row: dict) -> str:
     name = row["name"]
+    if row["encoding"] == "finite-f64-bits":
+        return f'''impl {name} {{
+    /// Exact finite binary64 representation, not domain validation or numeric ordering.
+    pub fn try_from_f64(value: f64) -> Result<Self, &'static str> {{
+        if !value.is_finite() {{ return Err("nonfinite binary64"); }}
+        Ok(Self(format!("{{:016x}}", value.to_bits())))
+    }}
+    pub fn to_f64(&self) -> f64 {{
+        f64::from_bits(u64::from_str_radix(&self.0, 16).expect("validated finite bits"))
+    }}
+}}
+'''
     if row.get("unit") == "unix-microseconds":
         return f'''impl {name} {{
     /// Checked representation conversion only; this establishes no native provenance.

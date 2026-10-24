@@ -1,4 +1,4 @@
-# Generated proposal. No dispatch or authority is implemented. Schema 804adbd791f12425ab4d5664be5f62c2616e4a8e8ce6af3bfe9134303e5b0317
+# Generated proposal. No dispatch or authority is implemented. Schema a786bb823d5b8815be920efe980955ee65ff54be5b015de0bab3a38dda644c72
 from . import node_contract as data
 
 OPERATION_TYPES = {

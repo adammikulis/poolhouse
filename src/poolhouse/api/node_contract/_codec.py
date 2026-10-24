@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import struct as _struct
 from dataclasses import dataclass, fields
 from types import MappingProxyType
 from typing import Any, ClassVar, Self
@@ -14,6 +15,9 @@ def _valid(kind: str, value: str) -> bool:
         return re.fullmatch(r"(?:[0-9a-f]{2})*", value) is not None
     if kind == "hex32":
         return re.fullmatch(r"[0-9a-f]{64}", value) is not None
+    if kind == "finite-f64-bits":
+        return (re.fullmatch(r"[0-9a-f]{16}", value) is not None
+                and int(value, 16) & 0x7ff0000000000000 != 0x7ff0000000000000)
     if kind == "uuid":
         return re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", value) is not None
     if kind == "i32":
@@ -25,6 +29,16 @@ def _valid(kind: str, value: str) -> bool:
         return (re.fullmatch(r"0|[1-9][0-9]*", value) is not None and len(value) <= 20
                 and int(value) <= (2 ** (32 if kind == "u32" else 64) - 1))
     return False
+
+
+def _finite_float_bits(value: float) -> str:
+    if type(value) is not float:
+        raise ValueError("expected a finite binary64 float")
+    return _struct.pack(">d", value).hex()
+
+
+def _float_from_bits(value: str) -> float:
+    return _struct.unpack(">d", bytes.fromhex(value))[0]
 
 
 @dataclass(frozen=True)

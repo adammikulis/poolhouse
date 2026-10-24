@@ -56,3 +56,14 @@ const timestamp = unixMicrosFromParts(1n, 999999n);
 void timestamp;
 // @ts-expect-error timestamp components require exact bigint values
 unixMicrosFromParts(1, 0n);
+
+
+import { finiteF64FromNumber, finiteF64ToNumber } from "./node";
+import type { FiniteF64 } from "./node";
+const finiteBits: FiniteF64 = finiteF64FromNumber(-0);
+const finiteNumber: number = finiteF64ToNumber(finiteBits);
+// @ts-expect-error Wire bits are not a raw JSON number.
+const rawFinite: FiniteF64 = 1;
+// @ts-expect-error Conversion does not coerce strings to numbers.
+finiteF64FromNumber("1");
+void [finiteNumber, rawFinite];

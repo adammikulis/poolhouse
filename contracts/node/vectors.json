@@ -1,5 +1,5 @@
 {
-  "schema_sha256": "804adbd791f12425ab4d5664be5f62c2616e4a8e8ce6af3bfe9134303e5b0317",
+  "schema_sha256": "a786bb823d5b8815be920efe980955ee65ff54be5b015de0bab3a38dda644c72",
   "decoded_values": "untrusted-data",
   "device_id": {
     "public_key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
@@ -9,6 +9,42 @@
   "integers": {
     "u32_max": "4294967295",
     "u64_max": "18446744073709551615"
+  },
+  "finite_f64": {
+    "bit_order": "ieee754-binary64-msb-first",
+    "accepted": [
+      "0000000000000000",
+      "8000000000000000",
+      "0000000000000001",
+      "000fffffffffffff",
+      "0010000000000000",
+      "3ff0000000000000",
+      "bff0000000000000",
+      "3fd5555555555555",
+      "7fefffffffffffff",
+      "ffefffffffffffff"
+    ],
+    "refused": [
+      "7ff0000000000000",
+      "fff0000000000000",
+      "7ff8000000000000",
+      "fff8000000000000",
+      "7ff0000000000001",
+      "7fffffffffffffff",
+      "ffffffffffffffff",
+      "3FF0000000000000",
+      "3ff000000000000",
+      "03ff0000000000000",
+      "gff0000000000000",
+      "3ff0000000000000\n",
+      "3ff0000000000000\r",
+      "3ff0000000000000\u2028",
+      "3ff0000000000000\u2029",
+      "",
+      1,
+      true,
+      null
+    ]
   },
   "private_client_types": [
     "AuditToken",

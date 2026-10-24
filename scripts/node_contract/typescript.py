@@ -17,6 +17,8 @@ def render(meta: dict, rows: list[dict], digest: str) -> str:
         elif row["kind"] == "scalar":
             primitive = "boolean" if row["encoding"] == "bool" else "string"
             output.append(f'export type {name} = {primitive} & {{ readonly __{name}: unique symbol }};\n')
+            if row["encoding"] == "finite-f64-bits":
+                output.append(finite_helpers(name))
             if row.get("unit") == "unix-microseconds":
                 function = name[0].lower() + name[1:] + "FromParts"
                 output.append(f'''export function {function}(seconds: bigint, microseconds: bigint): {name} {{
@@ -33,3 +35,23 @@ def render(meta: dict, rows: list[dict], digest: str) -> str:
             variants = [f'{{ readonly {row["tag"]}: "{variant["tag"]}"; readonly value: {variant["type"]} }}' for variant in row["variants"]]
             output.append(f'export type {name} = ' + " | ".join(variants) + ";\n")
     return "\n".join(output)
+
+
+def finite_helpers(name: str) -> str:
+    prefix = name[0].lower() + name[1:]
+    return f'''// Bit identity preserves signed zero; hex ordering is not numeric ordering.
+export function {prefix}FromNumber(value: number): {name} {{
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new RangeError("expected finite binary64");
+  const view = new DataView(new ArrayBuffer(8));
+  view.setFloat64(0, value, false);
+  return view.getBigUint64(0, false).toString(16).padStart(16, "0") as {name};
+}}
+export function {prefix}ToNumber(value: {name}): number {{
+  if (typeof value !== "string" || value.length !== 16 || !/^[0-9a-f]{{16}}$/.test(value)) throw new RangeError("invalid finite bits");
+  const bits = BigInt("0x" + value);
+  if ((bits & 0x7ff0000000000000n) === 0x7ff0000000000000n) throw new RangeError("nonfinite binary64");
+  const view = new DataView(new ArrayBuffer(8));
+  view.setBigUint64(0, bits, false);
+  return view.getFloat64(0, false);
+}}
+'''

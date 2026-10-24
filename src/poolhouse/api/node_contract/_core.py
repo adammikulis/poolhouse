@@ -9,6 +9,8 @@ from typing import (
 
 from ._codec import (
     _Boolean,
+    _finite_float_bits,
+    _float_from_bits,
     _List,
     _Optional,
     _Record,
@@ -66,6 +68,20 @@ class ExitCode(_Scalar):
 
 
 _register(ExitCode)
+
+
+class FiniteF64(_Scalar):
+    _encoding = "finite-f64-bits"
+
+    @classmethod
+    def from_float(cls, value: float) -> Self:
+        return cls(_finite_float_bits(value))
+
+    def to_float(self) -> float:
+        return _float_from_bits(self.value)
+
+
+_register(FiniteF64)
 
 
 class GovernanceActId(_Scalar):

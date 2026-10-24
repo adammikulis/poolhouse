@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-ENCODINGS = {"hex32", "uuid", "u32", "u64", "sid-hex", "text", "bool", "i32", "bytes", "audit-token-le32"}
+ENCODINGS = {"hex32", "uuid", "u32", "u64", "sid-hex", "text", "bool", "i32", "bytes", "audit-token-le32", "finite-f64-bits"}
 ISSUERS = {"data", "node", "installer", "caller", "producer", "kernel-adapter"}
 IDENTIFIER = re.compile(r"[A-Z][A-Za-z0-9]*\Z")
 FIELD = re.compile(r"[a-z][a-z0-9_]*\Z")

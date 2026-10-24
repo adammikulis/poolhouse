@@ -368,3 +368,20 @@ physical-cleanup obligations. They do not assert channel closure or process
 reaping. Consume issues one effect permit; permit loss or crash preserves unknown
 or Pending disposition without a replacement permit or repeated effect. Scoped
 cleanup and genuine effect recording still need their separate responsible owners.
+
+
+`FiniteF64` represents an exact finite IEEE 754 binary64 value as 16 lowercase hex
+digits of its unsigned bit pattern, most significant digit first (`1.0` is
+`3ff0000000000000`). Exponent `0x7ff` always refuses, including both infinities
+and every NaN payload/sign. Signed zero, subnormals and maximum finite values
+round-trip unchanged. Equality and hashing describe bit identity; hex ordering
+is not numeric ordering. This is intrinsic machine-value validity, not a
+probability/range check or model metadata estimate.
+
+The retained decision/calibration implementation converts its scores, temperature
+and calibration knots to Python floats; latency is already rounded by its source.
+Conversion helpers in Rust, Python and TypeScript preserve those resulting binary64 bits
+without another rounding, clamping or integer/boolean/string coercion. Tensor
+float32/bfloat16, PCM integers and other numeric formats remain distinct. Public
+compatibility adapters must still apply the operation's existing domain validation;
+this shared encoding does not implement inference, workers or their authorization.

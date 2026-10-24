@@ -1,8 +1,10 @@
 """Canonical data shape drift and refusal boundaries."""
 from __future__ import annotations
 
+import json
 import re
 import shutil
+import struct
 import sys
 from pathlib import Path
 
@@ -696,3 +698,19 @@ def test_lifecycle_v2_refuses_weakened_event_or_cleanup_semantics(tmp_path, requ
     path.write_text(text)
     with pytest.raises(ValueError):
         load(source)
+
+
+def test_finite_f64_shared_vectors_preserve_exact_bits_without_coercion():
+    vectors = json.loads((ROOT / "contracts/node/vectors.json").read_text())["finite_f64"]
+    for bits in vectors["accepted"]:
+        value = public.FiniteF64(bits)
+        number = value.to_float()
+        assert struct.pack(">d", number).hex() == bits
+        assert public.FiniteF64.from_float(number) == value
+    assert public.FiniteF64("0000000000000000") != public.FiniteF64("8000000000000000")
+    for invalid in vectors["refused"]:
+        with pytest.raises(ValueError):
+            public.FiniteF64(invalid)
+    for invalid in (float("inf"), float("-inf"), float("nan"), 1, True, "1", None):
+        with pytest.raises(ValueError):
+            public.FiniteF64.from_float(invalid)

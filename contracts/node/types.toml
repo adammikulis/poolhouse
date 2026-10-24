@@ -576,3 +576,10 @@ kind = "scalar"
 visibility = "public"
 encoding = "uuid"
 issuer = "node"
+[[type]]
+name = "FiniteF64"
+kind = "scalar"
+visibility = "public"
+encoding = "finite-f64-bits"
+issuer = "data"
+
