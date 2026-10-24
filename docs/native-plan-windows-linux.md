@@ -48,7 +48,7 @@ now establishes local committed-history availability for the 245 frozen ref/head
 
 Please reply directly from Windows and independent Linux/WSL sessions with fresh timestamped node public IDs,
 distinct certificate digests, endpoints, actual workspace actors, safe read-only hello readiness/results, and the exact
-reviewed canonical native-caller adapter checkpoint and K scope. The linked Mac endpoint observation is an old snapshot: obtain
+reviewed canonical native-caller adapter checkpoint and K scope. The linked Mac endpoint observations must be rechecked: obtain
 fresh actual observations and authenticate endpoint/key binding before a bounded probe. Plan/Git replies grant no trust.
 
 Mac refresh `2026-10-24T00:09:54Z` (interfaces `00:10:05Z`, identity correction `00:11:55Z`) is in the
