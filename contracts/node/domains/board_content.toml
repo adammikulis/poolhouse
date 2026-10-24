@@ -1,0 +1,1296 @@
+version = 1
+status = "proposal"
+
+[[type]]
+name = "BoardContentPageCursor"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "BoardContentDocumentId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "BoardContentUploadId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "BoardContentLinkId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "BoardContentWatchCursor"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "BoardContentPresentationId"
+kind = "scalar"
+visibility = "public"
+encoding = "uuid"
+issuer = "node"
+
+[[type]]
+name = "BoardContentOriginalId"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 128
+
+[[type]]
+name = "BoardContentIdempotencyKey"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 0
+max_bytes = 128
+
+[[type]]
+name = "BoardContentCreatedBy"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 97
+
+[[type]]
+name = "BoardContentOrigin"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 32
+max_bytes = 32
+
+[[type]]
+name = "BoardContentActor"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 97
+
+[[type]]
+name = "BoardContentDisplaySender"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 101
+
+[[type]]
+name = "BoardContentRoomName"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 2
+max_bytes = 41
+
+[[type]]
+name = "BoardContentChannel"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 64
+
+[[type]]
+name = "BoardContentSubject"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 0
+max_bytes = 200
+
+[[type]]
+name = "BoardContentShortTitle"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 0
+max_bytes = 60
+
+[[type]]
+name = "BoardContentSourceText"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 0
+max_bytes = 300
+
+[[type]]
+name = "BoardContentTag"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 0
+max_bytes = 40
+
+[[type]]
+name = "BoardContentFileName"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 240
+
+[[type]]
+name = "BoardContentFileType"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 1
+max_bytes = 16
+
+[[type]]
+name = "BoardContentDerivedFrom"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 0
+max_bytes = 128
+
+[[type]]
+name = "BoardContentFileHandle"
+kind = "scalar"
+visibility = "public"
+encoding = "text"
+issuer = "data"
+min_bytes = 12
+max_bytes = 12
+
+[[type]]
+name = "BoardContentOutputClaim64"
+kind = "scalar"
+visibility = "public"
+encoding = "utf8"
+issuer = "data"
+min_bytes = 64
+max_bytes = 64
+
+[[type]]
+name = "BoardContentBody"
+kind = "scalar"
+visibility = "public"
+encoding = "utf8"
+issuer = "data"
+min_bytes = 0
+max_bytes = 65536
+
+[[type]]
+name = "BoardContentDigest"
+kind = "scalar"
+visibility = "public"
+encoding = "hex32"
+issuer = "data"
+
+[[type]]
+name = "BoardContentBytePart"
+kind = "scalar"
+visibility = "public"
+encoding = "bytes"
+issuer = "data"
+min_bytes = 0
+max_bytes = 65536
+
+[[type]]
+name = "BoardContentSequence"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "data"
+minimum = 0
+maximum = 281474976710656
+
+[[type]]
+name = "BoardContentMillis"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "data"
+minimum = 0
+maximum = 18446744073709551615
+
+[[type]]
+name = "BoardContentTtlDays"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "data"
+minimum = 0
+maximum = 3650
+
+[[type]]
+name = "BoardContentBlobSize"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "data"
+minimum = 1
+maximum = 9437184
+
+[[type]]
+name = "BoardContentPlainSize"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "data"
+minimum = 0
+maximum = 9437184
+
+[[type]]
+name = "BoardContentReadLimit"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 1000
+
+[[type]]
+name = "BoardContentTailLimit"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 200
+
+[[type]]
+name = "BoardContentPositiveI64Magnitude"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "data"
+minimum = 1
+maximum = 9223372036854775808
+
+[[type]]
+name = "BoardContentNonnegativeI64"
+kind = "scalar"
+visibility = "public"
+encoding = "u64"
+issuer = "data"
+minimum = 0
+maximum = 9223372036854775807
+
+[[type]]
+name = "BoardContentSignedExit"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "nonnegative", type = "BoardContentNonnegativeI64"}, {tag = "negative", type = "BoardContentPositiveI64Magnitude"}]
+
+[[type]]
+name = "BoardContentEntryRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "original_id", type = "BoardContentOriginalId"}, {name = "origin", type = "BoardContentOrigin"}, {name = "sequence", type = "BoardContentSequence"}]
+
+[[type]]
+name = "BoardContentOptionalEntry"
+kind = "optional"
+visibility = "public"
+item = "BoardContentEntryRef"
+
+[[type]]
+name = "BoardContentOptionalActor"
+kind = "optional"
+visibility = "public"
+item = "BoardContentActor"
+
+[[type]]
+name = "BoardContentOptionalChannel"
+kind = "optional"
+visibility = "public"
+item = "BoardContentChannel"
+
+[[type]]
+name = "BoardContentOptionalCursor"
+kind = "optional"
+visibility = "public"
+item = "BoardContentPageCursor"
+
+[[type]]
+name = "BoardContentOptionalWatchCursor"
+kind = "optional"
+visibility = "public"
+item = "BoardContentWatchCursor"
+
+[[type]]
+name = "BoardContentPosition"
+kind = "record"
+visibility = "public"
+fields = [{name = "origin", type = "BoardContentOrigin"}, {name = "sequence", type = "BoardContentSequence"}]
+
+[[type]]
+name = "BoardContentVector"
+kind = "list"
+visibility = "public"
+item = "BoardContentPosition"
+max_items = 64
+min_items = 0
+unique = true
+
+[[type]]
+name = "BoardContentMessageKind"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "task", type = "Empty"}, {tag = "status", type = "Empty"}, {tag = "handoff", type = "Empty"}, {tag = "question", type = "Empty"}, {tag = "answer", type = "Empty"}, {tag = "claim", type = "Empty"}, {tag = "release", type = "Empty"}, {tag = "note", type = "Empty"}]
+
+[[type]]
+name = "BoardContentDeliveryMessageKind"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "task", type = "Empty"}, {tag = "status", type = "Empty"}, {tag = "handoff", type = "Empty"}, {tag = "question", type = "Empty"}, {tag = "answer", type = "Empty"}, {tag = "claim", type = "Empty"}, {tag = "release", type = "Empty"}, {tag = "note", type = "Empty"}, {tag = "file", type = "Empty"}]
+
+[[type]]
+name = "BoardContentQueryParts"
+kind = "list"
+visibility = "public"
+item = "Utf8Chunk"
+max_items = 17
+min_items = 0
+unique = false
+
+[[type]]
+name = "BoardContentAnnouncementKind"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "joined", type = "Empty"}, {tag = "milestone", type = "Empty"}, {tag = "done", type = "Empty"}, {tag = "blocked", type = "Empty"}]
+
+[[type]]
+name = "BoardContentNoteKind"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "decision", type = "Empty"}, {tag = "rule", type = "Empty"}, {tag = "fact", type = "Empty"}, {tag = "question", type = "Empty"}]
+
+[[type]]
+name = "BoardContentEntryKind"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "message", type = "Empty"}, {tag = "note", type = "Empty"}, {tag = "verify", type = "Empty"}, {tag = "identity", type = "Empty"}, {tag = "lease", type = "Empty"}, {tag = "audit", type = "Empty"}, {tag = "landing", type = "Empty"}, {tag = "room", type = "Empty"}, {tag = "task", type = "Empty"}, {tag = "grant", type = "Empty"}, {tag = "reputation_event", type = "Empty"}, {tag = "head", type = "Empty"}, {tag = "base", type = "Empty"}, {tag = "carry", type = "Empty"}]
+
+[[type]]
+name = "BoardContentSync"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "provisional", type = "Empty"}, {tag = "synced", type = "Empty"}]
+
+[[type]]
+name = "BoardContentMode"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "inbox", type = "Empty"}, {tag = "digest", type = "Empty"}, {tag = "silent", type = "Empty"}]
+
+[[type]]
+name = "BoardContentLinkMode"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "read_only", type = "Empty"}, {tag = "read_write", type = "Empty"}]
+
+[[type]]
+name = "BoardContentEffectState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "not_required", type = "Empty"}, {tag = "pending", type = "Empty"}, {tag = "observed", type = "Empty"}, {tag = "failed", type = "Empty"}, {tag = "unknown", type = "Empty"}]
+
+[[type]]
+name = "BoardContentCommitState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "committed", type = "Empty"}, {tag = "partial", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "BoardContentCommit"
+kind = "record"
+visibility = "public"
+fields = [{name = "operation_id", type = "OperationId"}, {name = "state", type = "BoardContentCommitState"}, {name = "primary", type = "BoardContentEffectState"}, {name = "grant_spend", type = "BoardContentEffectState"}, {name = "source_audit", type = "BoardContentEffectState"}, {name = "destination_audit", type = "BoardContentEffectState"}, {name = "blob_tombstone", type = "BoardContentEffectState"}]
+
+[[type]]
+name = "BoardContentFileMeta"
+kind = "record"
+visibility = "public"
+fields = [{name = "handle", type = "BoardContentFileHandle"}, {name = "blob_sha256", type = "BoardContentDigest"}, {name = "plaintext_sha256", type = "BoardContentDigest"}, {name = "name", type = "BoardContentFileName"}, {name = "plaintext_size", type = "BoardContentPlainSize"}, {name = "file_type", type = "BoardContentFileType"}, {name = "is_text", type = "Boolean"}, {name = "derived_from", type = "BoardContentDerivedFrom"}]
+
+[[type]]
+name = "BoardContentRecipient"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "direct", type = "BoardContentActor"}, {tag = "general", type = "Empty"}, {tag = "room", type = "BoardContentRoomName"}]
+
+[[type]]
+name = "BoardContentMessage"
+kind = "record"
+visibility = "public"
+fields = [{name = "to", type = "BoardContentRecipient"}, {name = "message_kind", type = "BoardContentMessageKind"}, {name = "subject", type = "BoardContentSubject"}, {name = "body", type = "BoardContentBody"}, {name = "reply_to", type = "BoardContentOptionalEntry"}]
+
+[[type]]
+name = "BoardContentFileMessage"
+kind = "record"
+visibility = "public"
+fields = [{name = "to", type = "BoardContentRecipient"}, {name = "subject", type = "BoardContentSubject"}, {name = "body", type = "BoardContentBody"}, {name = "reply_to", type = "BoardContentOptionalEntry"}, {name = "file", type = "BoardContentFileMeta"}]
+
+[[type]]
+name = "BoardContentAnnouncement"
+kind = "record"
+visibility = "public"
+fields = [{name = "announcement_kind", type = "BoardContentAnnouncementKind"}, {name = "body", type = "BoardContentBody"}]
+
+[[type]]
+name = "BoardContentPost"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "message", type = "BoardContentMessage"}, {tag = "file", type = "BoardContentFileMessage"}, {tag = "announcement", type = "BoardContentAnnouncement"}]
+
+[[type]]
+name = "BoardContentTags"
+kind = "list"
+visibility = "public"
+item = "BoardContentTag"
+max_items = 10
+min_items = 0
+unique = false
+
+[[type]]
+name = "BoardContentSupersedes"
+kind = "list"
+visibility = "public"
+item = "BoardContentEntryRef"
+max_items = 10
+min_items = 0
+unique = false
+
+[[type]]
+name = "BoardContentNoteInput"
+kind = "record"
+visibility = "public"
+fields = [{name = "note_kind", type = "BoardContentNoteKind"}, {name = "title", type = "BoardContentSubject"}, {name = "body", type = "BoardContentBody"}, {name = "source", type = "BoardContentSourceText"}, {name = "tags", type = "BoardContentTags"}, {name = "supersedes", type = "BoardContentSupersedes"}, {name = "verification_command_data", type = "BoardContentSourceText"}, {name = "ttl_days", type = "BoardContentTtlDays"}]
+
+[[type]]
+name = "BoardContentVerificationProvenance"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "recorded_client_claim", type = "Empty"}]
+
+[[type]]
+name = "BoardContentLegacyNoteDisplay"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "agent_claimed", type = "Empty"}, {tag = "test_verified", type = "Empty"}]
+
+[[type]]
+name = "BoardContentVerification"
+kind = "record"
+visibility = "public"
+fields = [{name = "at_ms", type = "BoardContentMillis"}, {name = "exit_code", type = "BoardContentSignedExit"}, {name = "by", type = "BoardContentDisplaySender"}, {name = "output_claim", type = "BoardContentOutputClaim64"}, {name = "provenance", type = "BoardContentVerificationProvenance"}]
+
+[[type]]
+name = "BoardContentOptionalVerification"
+kind = "optional"
+visibility = "public"
+item = "BoardContentVerification"
+
+[[type]]
+name = "BoardContentNote"
+kind = "record"
+visibility = "public"
+fields = [{name = "entry", type = "BoardContentEntryRef"}, {name = "note", type = "BoardContentNoteInput"}, {name = "author", type = "BoardContentDisplaySender"}, {name = "at_ms", type = "BoardContentMillis"}, {name = "legacy_display", type = "BoardContentLegacyNoteDisplay"}, {name = "stale", type = "Boolean"}, {name = "superseded_by", type = "BoardContentOptionalEntry"}, {name = "last_verification", type = "BoardContentOptionalVerification"}, {name = "binding", type = "Boolean"}]
+
+[[type]]
+name = "BoardContentDocumentRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "document_id", type = "BoardContentDocumentId"}, {name = "generation", type = "ResourceGeneration"}, {name = "entry", type = "BoardContentEntryRef"}, {name = "projection_digest", type = "BoardContentDigest"}, {name = "total_utf8_bytes", type = "U64"}]
+
+[[type]]
+name = "BoardContentEntry"
+kind = "record"
+visibility = "public"
+fields = [{name = "entry", type = "BoardContentEntryRef"}, {name = "hlc_ms", type = "BoardContentMillis"}, {name = "hlc_counter", type = "U64"}, {name = "entry_kind", type = "BoardContentEntryKind"}, {name = "sender", type = "BoardContentDisplaySender"}, {name = "foreign", type = "Boolean"}, {name = "channel", type = "BoardContentChannel"}, {name = "original_row_hash", type = "BoardContentDigest"}, {name = "fields", type = "BoardContentDocumentRef"}, {name = "file_gone", type = "Boolean"}]
+
+[[type]]
+name = "BoardContentEntries"
+kind = "list"
+visibility = "public"
+item = "BoardContentEntry"
+max_items = 1000
+min_items = 0
+unique = false
+
+[[type]]
+name = "BoardContentOptionalKind"
+kind = "optional"
+visibility = "public"
+item = "BoardContentEntryKind"
+
+[[type]]
+name = "BoardContentReadFilter"
+kind = "record"
+visibility = "public"
+fields = [{name = "since", type = "BoardContentVector"}, {name = "entry_kind", type = "BoardContentOptionalKind"}, {name = "channel", type = "BoardContentOptionalChannel"}, {name = "by", type = "BoardContentOptionalActor"}, {name = "conversation", type = "BoardContentOptionalActor"}, {name = "thread", type = "BoardContentOptionalEntry"}, {name = "inbox", type = "Boolean"}, {name = "digest", type = "Boolean"}, {name = "mentions", type = "Boolean"}, {name = "files", type = "Boolean"}, {name = "head", type = "Boolean"}]
+
+[[type]]
+name = "BoardContentPresentationRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "presentation_id", type = "BoardContentPresentationId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "BoardContentEntryPage"
+kind = "record"
+visibility = "public"
+fields = [{name = "presentation", type = "BoardContentPresentationRef"}, {name = "entries", type = "BoardContentEntries"}, {name = "source_cursor", type = "BoardContentVector"}, {name = "next_cursor", type = "BoardContentOptionalCursor"}, {name = "complete", type = "Boolean"}, {name = "resync_required", type = "Boolean"}]
+
+[[type]]
+name = "BoardContentDocumentChunk"
+kind = "record"
+visibility = "public"
+fields = [{name = "document", type = "BoardContentDocumentRef"}, {name = "byte_offset", type = "U64"}, {name = "chunk", type = "Utf8Chunk"}, {name = "next_byte_offset", type = "U64"}, {name = "complete", type = "Boolean"}]
+
+[[type]]
+name = "BoardContentSentEntry"
+kind = "record"
+visibility = "public"
+fields = [{name = "entry", type = "BoardContentEntry"}, {name = "sync", type = "BoardContentSync"}]
+
+[[type]]
+name = "BoardContentSentEntries"
+kind = "list"
+visibility = "public"
+item = "BoardContentSentEntry"
+max_items = 200
+min_items = 0
+unique = false
+
+[[type]]
+name = "BoardContentOutboxPage"
+kind = "record"
+visibility = "public"
+fields = [{name = "entries", type = "BoardContentSentEntries"}, {name = "next_cursor", type = "BoardContentOptionalCursor"}, {name = "complete", type = "Boolean"}]
+
+[[type]]
+name = "BoardContentNotes"
+kind = "list"
+visibility = "public"
+item = "BoardContentNote"
+max_items = 200
+min_items = 0
+unique = false
+
+[[type]]
+name = "BoardContentNotePage"
+kind = "record"
+visibility = "public"
+fields = [{name = "notes", type = "BoardContentNotes"}, {name = "next_cursor", type = "BoardContentOptionalCursor"}, {name = "complete", type = "Boolean"}]
+
+[[type]]
+name = "BoardContentActors"
+kind = "list"
+visibility = "public"
+item = "BoardContentActor"
+max_items = 128
+min_items = 0
+unique = true
+
+[[type]]
+name = "BoardContentMembers"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "everyone", type = "Empty"}, {tag = "sessions", type = "BoardContentActors"}]
+
+[[type]]
+name = "BoardContentRoom"
+kind = "record"
+visibility = "public"
+fields = [{name = "name", type = "BoardContentRoomName"}, {name = "title", type = "BoardContentShortTitle"}, {name = "open", type = "Boolean"}, {name = "created_by", type = "BoardContentOptionalActor"}, {name = "created_ms", type = "BoardContentMillis"}, {name = "members", type = "BoardContentMembers"}, {name = "member", type = "Boolean"}, {name = "posts", type = "U64"}, {name = "last_ms", type = "BoardContentMillis"}]
+
+[[type]]
+name = "BoardContentRooms"
+kind = "list"
+visibility = "public"
+item = "BoardContentRoom"
+max_items = 202
+min_items = 0
+unique = false
+
+[[type]]
+name = "BoardContentRoomPage"
+kind = "record"
+visibility = "public"
+fields = [{name = "rooms", type = "BoardContentRooms"}, {name = "next_cursor", type = "BoardContentOptionalCursor"}, {name = "complete", type = "Boolean"}]
+
+[[type]]
+name = "BoardContentDeliveryTarget"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "channel", type = "BoardContentChannel"}, {tag = "thread", type = "BoardContentEntryRef"}, {tag = "agent", type = "BoardContentActor"}, {tag = "message_kind", type = "BoardContentDeliveryMessageKind"}, {tag = "mentions", type = "Empty"}]
+
+[[type]]
+name = "BoardContentDeliveryPreference"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "BoardContentDeliveryTarget"}, {name = "mode", type = "BoardContentMode"}, {name = "since", type = "BoardContentVector"}]
+
+[[type]]
+name = "BoardContentDeliveryPreferences"
+kind = "list"
+visibility = "public"
+item = "BoardContentDeliveryPreference"
+max_items = 256
+min_items = 0
+unique = false
+
+[[type]]
+name = "BoardContentDeliveryPage"
+kind = "record"
+visibility = "public"
+fields = [{name = "preferences", type = "BoardContentDeliveryPreferences"}, {name = "next_cursor", type = "BoardContentOptionalCursor"}, {name = "complete", type = "Boolean"}]
+
+[[type]]
+name = "BoardContentChannels"
+kind = "list"
+visibility = "public"
+item = "BoardContentChannel"
+max_items = 16
+min_items = 1
+unique = false
+
+[[type]]
+name = "BoardContentLinkChannels"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "whole_board", type = "Empty"}, {tag = "channels", type = "BoardContentChannels"}]
+
+[[type]]
+name = "BoardContentLinkRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "link_id", type = "BoardContentLinkId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "BoardContentLink"
+kind = "record"
+visibility = "public"
+fields = [{name = "reference", type = "BoardContentLinkRef"}, {name = "original_local_id", type = "BoardContentOriginalId"}, {name = "sharing_board", type = "CatalogBoardRef"}, {name = "receiving_board", type = "CatalogBoardRef"}, {name = "channels", type = "BoardContentLinkChannels"}, {name = "mode", type = "BoardContentLinkMode"}, {name = "active", type = "Boolean"}, {name = "created_by", type = "BoardContentCreatedBy"}]
+
+[[type]]
+name = "BoardContentLinks"
+kind = "list"
+visibility = "public"
+item = "BoardContentLink"
+max_items = 64
+min_items = 0
+unique = false
+
+[[type]]
+name = "BoardContentLinkPage"
+kind = "record"
+visibility = "public"
+fields = [{name = "links", type = "BoardContentLinks"}, {name = "next_cursor", type = "BoardContentOptionalCursor"}, {name = "complete", type = "Boolean"}]
+
+[[type]]
+name = "BoardContentUploadRef"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "upload_id", type = "BoardContentUploadId"}, {name = "generation", type = "ResourceGeneration"}]
+
+[[type]]
+name = "BoardContentByteParts"
+kind = "list"
+visibility = "public"
+item = "BoardContentBytePart"
+max_items = 4
+min_items = 0
+unique = false
+
+[[type]]
+name = "BoardContentUploadState"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "staged", type = "Empty"}, {tag = "published", type = "Empty"}, {tag = "cancelled", type = "Empty"}, {tag = "recovery_required", type = "Empty"}]
+
+[[type]]
+name = "BoardContentOptionalDigest"
+kind = "optional"
+visibility = "public"
+item = "BoardContentDigest"
+
+[[type]]
+name = "BoardContentUpload"
+kind = "record"
+visibility = "public"
+fields = [{name = "upload", type = "BoardContentUploadRef"}, {name = "revision", type = "U64"}, {name = "sealed_total", type = "BoardContentBlobSize"}, {name = "sealed_received", type = "U64"}, {name = "state", type = "BoardContentUploadState"}, {name = "blob_sha256", type = "BoardContentOptionalDigest"}, {name = "commit", type = "BoardContentCommit"}]
+
+[[type]]
+name = "BoardContentFileChunk"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "blob_sha256", type = "BoardContentDigest"}, {name = "entitling_entry", type = "BoardContentEntryRef"}, {name = "byte_offset", type = "U64"}, {name = "data", type = "BoardContentByteParts"}, {name = "sealed_total", type = "BoardContentBlobSize"}, {name = "next_byte_offset", type = "U64"}, {name = "complete", type = "Boolean"}]
+
+[[type]]
+name = "BoardContentPostResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "entry", type = "BoardContentEntryRef"}, {name = "sender", type = "BoardContentActor"}, {name = "sync", type = "BoardContentSync"}, {name = "commit", type = "BoardContentCommit"}]
+
+[[type]]
+name = "BoardContentNoteResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "note", type = "BoardContentNote"}, {name = "commit", type = "BoardContentCommit"}]
+
+[[type]]
+name = "BoardContentRoomResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "room", type = "BoardContentRoom"}, {name = "commit", type = "BoardContentCommit"}]
+
+[[type]]
+name = "BoardContentDeliveryResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "preference", type = "BoardContentDeliveryPreference"}, {name = "commit", type = "BoardContentCommit"}]
+
+[[type]]
+name = "BoardContentLinkResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "link", type = "BoardContentLink"}, {name = "commit", type = "BoardContentCommit"}]
+
+[[type]]
+name = "BoardContentOptionalPreference"
+kind = "optional"
+visibility = "public"
+item = "BoardContentDeliveryPreference"
+
+[[type]]
+name = "BoardContentUnsubscribeResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "target", type = "BoardContentDeliveryTarget"}, {name = "replacement", type = "BoardContentOptionalPreference"}, {name = "commit", type = "BoardContentCommit"}]
+
+[[type]]
+name = "BoardContentDeleteResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "handle", type = "BoardContentFileHandle"}, {name = "locally_removed_blobs", type = "U64"}, {name = "commit", type = "BoardContentCommit"}]
+
+[[type]]
+name = "BoardContentRefusalCode"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "unauthenticated", type = "Empty"}, {tag = "denied", type = "Empty"}, {tag = "stale_generation", type = "Empty"}, {tag = "not_found", type = "Empty"}, {tag = "invalid", type = "Empty"}, {tag = "conflict", type = "Empty"}, {tag = "quota", type = "Empty"}, {tag = "damaged", type = "Empty"}, {tag = "unavailable", type = "Empty"}, {tag = "unsupported_profile", type = "Empty"}, {tag = "resync_required", type = "Empty"}, {tag = "outcome_unknown", type = "Empty"}]
+
+[[type]]
+name = "BoardContentError"
+kind = "record"
+visibility = "public"
+fields = [{name = "code", type = "BoardContentRefusalCode"}, {name = "retryable", type = "Boolean"}]
+
+[[type]]
+name = "BoardContentWatchPage"
+kind = "record"
+visibility = "public"
+fields = [{name = "page", type = "BoardContentEntryPage"}, {name = "cursor", type = "BoardContentWatchCursor"}, {name = "detached", type = "Boolean"}]
+
+[[type]]
+name = "BoardContentPostRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "board", type = "CatalogBoardRef"}, {name = "post", type = "BoardContentPost"}, {name = "source_idempotency_key", type = "BoardContentIdempotencyKey"}]
+
+[[type]]
+name = "BoardContentNotePostRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "board", type = "CatalogBoardRef"}, {name = "note", type = "BoardContentNoteInput"}, {name = "source_idempotency_key", type = "BoardContentIdempotencyKey"}]
+
+[[type]]
+name = "BoardContentOptionalNoteKind"
+kind = "optional"
+visibility = "public"
+item = "BoardContentNoteKind"
+
+[[type]]
+name = "BoardContentNoteListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "reference", type = "BoardContentOptionalEntry"}, {name = "query", type = "BoardContentQueryParts"}, {name = "note_kind", type = "BoardContentOptionalNoteKind"}, {name = "include_superseded", type = "Boolean"}, {name = "limit", type = "BoardContentTailLimit"}, {name = "cursor", type = "BoardContentOptionalCursor"}]
+
+[[type]]
+name = "BoardContentVerificationRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "board", type = "CatalogBoardRef"}, {name = "note", type = "BoardContentEntryRef"}, {name = "exit_code", type = "BoardContentSignedExit"}, {name = "output_claim", type = "BoardContentOutputClaim64"}]
+
+[[type]]
+name = "BoardContentReadRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "filter", type = "BoardContentReadFilter"}, {name = "limit", type = "BoardContentReadLimit"}, {name = "cursor", type = "BoardContentOptionalCursor"}]
+
+[[type]]
+name = "BoardContentDocumentReadRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "document", type = "BoardContentDocumentRef"}, {name = "byte_offset", type = "U64"}]
+
+[[type]]
+name = "BoardContentWatchRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "filter", type = "BoardContentReadFilter"}, {name = "cursor", type = "BoardContentOptionalWatchCursor"}]
+
+[[type]]
+name = "BoardContentOutboxRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "limit", type = "BoardContentTailLimit"}, {name = "cursor", type = "BoardContentOptionalCursor"}]
+
+[[type]]
+name = "BoardContentRoomListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "cursor", type = "BoardContentOptionalCursor"}]
+
+[[type]]
+name = "BoardContentRoomCreateRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "board", type = "CatalogBoardRef"}, {name = "room", type = "BoardContentRoomName"}, {name = "title", type = "BoardContentShortTitle"}, {name = "private", type = "Boolean"}]
+
+[[type]]
+name = "BoardContentRoomJoinRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "board", type = "CatalogBoardRef"}, {name = "room", type = "BoardContentRoomName"}]
+
+[[type]]
+name = "BoardContentRoomLeaveRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "board", type = "CatalogBoardRef"}, {name = "room", type = "BoardContentRoomName"}]
+
+[[type]]
+name = "BoardContentRoomMemberAddRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "board", type = "CatalogBoardRef"}, {name = "room", type = "BoardContentRoomName"}, {name = "member", type = "BoardContentActor"}]
+
+[[type]]
+name = "BoardContentUploadStartRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "board", type = "CatalogBoardRef"}, {name = "sealed_total", type = "BoardContentBlobSize"}]
+
+[[type]]
+name = "BoardContentUploadAppendRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "board", type = "CatalogBoardRef"}, {name = "upload", type = "BoardContentUploadRef"}, {name = "expected_revision", type = "U64"}, {name = "byte_offset", type = "U64"}, {name = "data", type = "BoardContentByteParts"}]
+
+[[type]]
+name = "BoardContentUploadCancelRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "board", type = "CatalogBoardRef"}, {name = "upload", type = "BoardContentUploadRef"}, {name = "expected_revision", type = "U64"}]
+
+[[type]]
+name = "BoardContentFileChunkLimit"
+kind = "scalar"
+visibility = "public"
+encoding = "u32"
+issuer = "data"
+minimum = 1
+maximum = 262144
+
+[[type]]
+name = "BoardContentFileReadRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "blob_sha256", type = "BoardContentDigest"}, {name = "byte_offset", type = "U64"}, {name = "limit", type = "BoardContentFileChunkLimit"}]
+
+[[type]]
+name = "BoardContentFileDeleteRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "board", type = "CatalogBoardRef"}, {name = "handle", type = "BoardContentFileHandle"}]
+
+[[type]]
+name = "BoardContentSubscribeRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "board", type = "CatalogBoardRef"}, {name = "target", type = "BoardContentDeliveryTarget"}, {name = "mode", type = "BoardContentMode"}, {name = "accept_inbox_cost", type = "Boolean"}]
+
+[[type]]
+name = "BoardContentUnsubscribeRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "board", type = "CatalogBoardRef"}, {name = "target", type = "BoardContentDeliveryTarget"}]
+
+[[type]]
+name = "BoardContentDeliveryListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "cursor", type = "BoardContentOptionalCursor"}]
+
+[[type]]
+name = "BoardContentAckScope"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "inbox", type = "Empty"}, {tag = "channel", type = "BoardContentChannel"}, {tag = "conversation", type = "BoardContentActor"}]
+
+[[type]]
+name = "BoardContentAckResult"
+kind = "record"
+visibility = "public"
+fields = [{name = "scope", type = "BoardContentAckScope"}, {name = "through", type = "BoardContentEntryRef"}, {name = "cursor", type = "BoardContentVector"}, {name = "commit", type = "BoardContentCommit"}]
+
+[[type]]
+name = "BoardContentAckRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "board", type = "CatalogBoardRef"}, {name = "scope", type = "BoardContentAckScope"}, {name = "through", type = "BoardContentEntryRef"}, {name = "presentation", type = "BoardContentPresentationRef"}]
+
+[[type]]
+name = "BoardContentLinkCreateRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "board", type = "CatalogBoardRef"}, {name = "receiving_board", type = "CatalogBoardRef"}, {name = "channels", type = "BoardContentLinkChannels"}, {name = "mode", type = "BoardContentLinkMode"}]
+
+[[type]]
+name = "BoardContentLinkRemoveRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "generation", type = "ResourceGeneration"}, {name = "request_id", type = "RequestId"}, {name = "board", type = "CatalogBoardRef"}, {name = "link", type = "BoardContentLinkRef"}]
+
+[[type]]
+name = "BoardContentLinkListRequest"
+kind = "record"
+visibility = "public"
+fields = [{name = "board", type = "CatalogBoardRef"}, {name = "cursor", type = "BoardContentOptionalCursor"}]
+
+[[operation]]
+name = "board.messages.post"
+symbol = "BoardContentBoardMessagesPost"
+request = "BoardContentPostRequest"
+response = "BoardContentPostResult"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "durable-principal-board-generation-request-id-exact-payload-dedup", "request-id-conflicting-reuse-refused", "commit-cancel-single-durable-winner", "no-rollback-of-accepted-signed-transcript", "partial-effects-and-recovery-uncertainty-explicit", "top-generation-matches-exact-mutation-resource", "no-success-until-required-grant-and-audit-effects-accounted", "reply-readable-node-derives-thread-root", "retired-recipient-only-retained-answer-to-original-sender-exception", "plaintext-file-meta-not-ciphertext-total"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "board.notes.post"
+symbol = "BoardContentBoardNotesPost"
+request = "BoardContentNotePostRequest"
+response = "BoardContentPostResult"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "durable-principal-board-generation-request-id-exact-payload-dedup", "request-id-conflicting-reuse-refused", "commit-cancel-single-durable-winner", "no-rollback-of-accepted-signed-transcript", "partial-effects-and-recovery-uncertainty-explicit", "top-generation-matches-exact-mutation-resource", "no-success-until-required-grant-and-audit-effects-accounted", "verification-command-is-data-node-never-executes", "recorded-client-verification-never-node-attestation-or-authority", "legacy-supersession-check-preserved-not-promoted-to-trust"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "board.notes.list"
+symbol = "BoardContentBoardNotesList"
+request = "BoardContentNoteListRequest"
+response = "BoardContentNotePage"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "board.notes.verification.record"
+symbol = "BoardContentBoardNotesVerificationRecord"
+request = "BoardContentVerificationRequest"
+response = "BoardContentNoteResult"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "durable-principal-board-generation-request-id-exact-payload-dedup", "request-id-conflicting-reuse-refused", "commit-cancel-single-durable-winner", "no-rollback-of-accepted-signed-transcript", "partial-effects-and-recovery-uncertainty-explicit", "top-generation-matches-exact-mutation-resource", "no-success-until-required-grant-and-audit-effects-accounted", "exact-note-scoped-note-verify-grant", "node-copies-command-from-existing-note-not-caller", "untrusted-client-record-not-native-execution-proof", "legacy-sixtyfour-byte-output-string-not-authenticated-digest"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "board.entries.read"
+symbol = "BoardContentBoardEntriesRead"
+request = "BoardContentReadRequest"
+response = "BoardContentEntryPage"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "board.entries.document.read"
+symbol = "BoardContentBoardEntriesDocumentRead"
+request = "BoardContentDocumentReadRequest"
+response = "BoardContentDocumentChunk"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "output-only-folded-fields-v1-fixed-kind-validator", "preserve-original-signed-bytes-separately", "no-embedded-fields-mutate-authority", "document-byte-digest-order-identity-checked", "immutable-principal-bound-projection-snapshot-expiry-quota"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "board.entries.watch"
+symbol = "BoardContentBoardEntriesWatch"
+request = "BoardContentWatchRequest"
+response = "BoardContentWatchPage"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "proposed-successor-to-poll-wait-not-existing-native-stream", "bounded-backpressure-reauthorize-every-event", "resync-on-missing-history-never-silent-loss"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "ordered-resource-stream"
+
+[[operation]]
+name = "board.outbox.list"
+symbol = "BoardContentBoardOutboxList"
+request = "BoardContentOutboxRequest"
+response = "BoardContentOutboxPage"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "synced-means-syncing-roster-ack-not-recipient-read", "legacy-newest-tail-default-fifty-retained"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "board.rooms.list"
+symbol = "BoardContentBoardRoomsList"
+request = "BoardContentRoomListRequest"
+response = "BoardContentRoomPage"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "board.rooms.create"
+symbol = "BoardContentBoardRoomsCreate"
+request = "BoardContentRoomCreateRequest"
+response = "BoardContentRoomResult"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "durable-principal-board-generation-request-id-exact-payload-dedup", "request-id-conflicting-reuse-refused", "commit-cancel-single-durable-winner", "no-rollback-of-accepted-signed-transcript", "partial-effects-and-recovery-uncertainty-explicit", "top-generation-matches-exact-mutation-resource", "no-success-until-required-grant-and-audit-effects-accounted", "main-session-of-own-board-only", "private-room-member-add-by-maker-only", "signed-room-and-audit-partial-recovery-until-atomic-backend"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "board.rooms.join"
+symbol = "BoardContentBoardRoomsJoin"
+request = "BoardContentRoomJoinRequest"
+response = "BoardContentRoomResult"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "durable-principal-board-generation-request-id-exact-payload-dedup", "request-id-conflicting-reuse-refused", "commit-cancel-single-durable-winner", "no-rollback-of-accepted-signed-transcript", "partial-effects-and-recovery-uncertainty-explicit", "top-generation-matches-exact-mutation-resource", "no-success-until-required-grant-and-audit-effects-accounted", "main-session-of-own-board-only", "private-room-member-add-by-maker-only", "signed-room-and-audit-partial-recovery-until-atomic-backend"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "board.rooms.leave"
+symbol = "BoardContentBoardRoomsLeave"
+request = "BoardContentRoomLeaveRequest"
+response = "BoardContentRoomResult"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "durable-principal-board-generation-request-id-exact-payload-dedup", "request-id-conflicting-reuse-refused", "commit-cancel-single-durable-winner", "no-rollback-of-accepted-signed-transcript", "partial-effects-and-recovery-uncertainty-explicit", "top-generation-matches-exact-mutation-resource", "no-success-until-required-grant-and-audit-effects-accounted", "main-session-of-own-board-only", "private-room-member-add-by-maker-only", "signed-room-and-audit-partial-recovery-until-atomic-backend"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "board.rooms.member.add"
+symbol = "BoardContentBoardRoomsMemberAdd"
+request = "BoardContentRoomMemberAddRequest"
+response = "BoardContentRoomResult"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "durable-principal-board-generation-request-id-exact-payload-dedup", "request-id-conflicting-reuse-refused", "commit-cancel-single-durable-winner", "no-rollback-of-accepted-signed-transcript", "partial-effects-and-recovery-uncertainty-explicit", "top-generation-matches-exact-mutation-resource", "no-success-until-required-grant-and-audit-effects-accounted", "main-session-of-own-board-only", "private-room-member-add-by-maker-only", "signed-room-and-audit-partial-recovery-until-atomic-backend"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "board.files.upload.start"
+symbol = "BoardContentBoardFilesUploadStart"
+request = "BoardContentUploadStartRequest"
+response = "BoardContentUpload"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "durable-principal-board-generation-request-id-exact-payload-dedup", "request-id-conflicting-reuse-refused", "commit-cancel-single-durable-winner", "no-rollback-of-accepted-signed-transcript", "partial-effects-and-recovery-uncertainty-explicit", "top-generation-matches-exact-mutation-resource", "no-success-until-required-grant-and-audit-effects-accounted", "node-issued-stage-scoped-principal-board-generation", "max-eight-staged-original-policy", "ciphertext-total-not-plaintext-meta-size", "pbf1-aesgcm-overhead-thirtytwo-bytes-source-profile-only"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "board.files.upload.append"
+symbol = "BoardContentBoardFilesUploadAppend"
+request = "BoardContentUploadAppendRequest"
+response = "BoardContentUpload"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "durable-principal-board-generation-request-id-exact-payload-dedup", "request-id-conflicting-reuse-refused", "commit-cancel-single-durable-winner", "no-rollback-of-accepted-signed-transcript", "partial-effects-and-recovery-uncertainty-explicit", "top-generation-matches-exact-mutation-resource", "no-success-until-required-grant-and-audit-effects-accounted", "nonempty-total-decoded-parts-at-most-256kib", "four-64kib-parts-not-extra-allowance", "exact-next-offset-and-accepted-range-idempotence", "same-total-content-custody-no-stage-reuse", "final-publish-and-cancel-one-durable-winner", "top-generation-equals-upload-generation"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "board.files.upload.cancel"
+symbol = "BoardContentBoardFilesUploadCancel"
+request = "BoardContentUploadCancelRequest"
+response = "BoardContentUpload"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "durable-principal-board-generation-request-id-exact-payload-dedup", "request-id-conflicting-reuse-refused", "commit-cancel-single-durable-winner", "no-rollback-of-accepted-signed-transcript", "partial-effects-and-recovery-uncertainty-explicit", "top-generation-matches-exact-mutation-resource", "no-success-until-required-grant-and-audit-effects-accounted", "no-cancelled-after-blob-publication-winner", "exact-owned-stage-only", "top-generation-equals-upload-generation"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "board.files.read"
+symbol = "BoardContentBoardFilesRead"
+request = "BoardContentFileReadRequest"
+response = "BoardContentFileChunk"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "readable-nondeleted-entitling-message-required-each-chunk", "digest-handle-is-not-fetch-authority", "opaque-sealed-bytes-no-decryption-key-or-execution-authority"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "board.files.delete"
+symbol = "BoardContentBoardFilesDelete"
+request = "BoardContentFileDeleteRequest"
+response = "BoardContentDeleteResult"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "durable-principal-board-generation-request-id-exact-payload-dedup", "request-id-conflicting-reuse-refused", "commit-cancel-single-durable-winner", "no-rollback-of-accepted-signed-transcript", "partial-effects-and-recovery-uncertainty-explicit", "top-generation-matches-exact-mutation-resource", "no-success-until-required-grant-and-audit-effects-accounted", "own-board-exact-handle-scoped-file-delete-grant", "retained-message-plus-local-deletion-tombstone", "physical-secure-erasure-and-other-device-deletion-not-claimed", "partial-removal-audit-grant-state-reconciled-not-rollback"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "board.delivery.subscribe"
+symbol = "BoardContentBoardDeliverySubscribe"
+request = "BoardContentSubscribeRequest"
+response = "BoardContentDeliveryResult"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "durable-principal-board-generation-request-id-exact-payload-dedup", "request-id-conflicting-reuse-refused", "commit-cancel-single-durable-winner", "no-rollback-of-accepted-signed-transcript", "partial-effects-and-recovery-uncertainty-explicit", "top-generation-matches-exact-mutation-resource", "no-success-until-required-grant-and-audit-effects-accounted", "main-session-of-own-board-only", "delivery-preference-not-permission", "source-256-subscriptions-and-three-free-inbox-policy", "announcements-digest-or-silent-never-inbox", "same-mode-retry-preserves-since-vector"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "board.delivery.unsubscribe"
+symbol = "BoardContentBoardDeliveryUnsubscribe"
+request = "BoardContentUnsubscribeRequest"
+response = "BoardContentUnsubscribeResult"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "durable-principal-board-generation-request-id-exact-payload-dedup", "request-id-conflicting-reuse-refused", "commit-cancel-single-durable-winner", "no-rollback-of-accepted-signed-transcript", "partial-effects-and-recovery-uncertainty-explicit", "top-generation-matches-exact-mutation-resource", "no-success-until-required-grant-and-audit-effects-accounted", "announcement-unsubscribe-means-silent", "legacy-unsubscribe-authorization-diff-explicit-not-silently-strengthened", "removed-preference-does-not-delete-signed-history"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "board.delivery.list"
+symbol = "BoardContentBoardDeliveryList"
+request = "BoardContentDeliveryListRequest"
+response = "BoardContentDeliveryPage"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
+[[operation]]
+name = "board.delivery.acknowledge"
+symbol = "BoardContentBoardDeliveryAcknowledge"
+request = "BoardContentAckRequest"
+response = "BoardContentAckResult"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "durable-principal-board-generation-request-id-exact-payload-dedup", "request-id-conflicting-reuse-refused", "commit-cancel-single-durable-winner", "no-rollback-of-accepted-signed-transcript", "partial-effects-and-recovery-uncertainty-explicit", "top-generation-matches-exact-mutation-resource", "no-success-until-required-grant-and-audit-effects-accounted", "own-principal-installation-cursor-scope-only", "through-visible-presented-under-current-auth-exact-scope", "immutable-page-snapshot-and-projection-generation-binding", "stale-missing-ui-counter-mapping-refuses-no-cross-origin-guess", "monotonic-merge-advances-earlier-visible-scope-only-not-private-hidden-rows", "read-head-watch-never-auto-acknowledge", "retry-returns-original-recorded-cursor-effect"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "board.links.create"
+symbol = "BoardContentBoardLinksCreate"
+request = "BoardContentLinkCreateRequest"
+response = "BoardContentLinkResult"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "durable-principal-board-generation-request-id-exact-payload-dedup", "request-id-conflicting-reuse-refused", "commit-cancel-single-durable-winner", "no-rollback-of-accepted-signed-transcript", "partial-effects-and-recovery-uncertainty-explicit", "top-generation-matches-exact-mutation-resource", "no-success-until-required-grant-and-audit-effects-accounted", "both-exact-hosted-distinct-boards", "own-sharing-board-session-and-link-read-or-write-grant", "whole-board-explicit-never-direct-or-private-entitlement-bypass", "source-sixtyfour-active-outbound-not-lifetime-history-cap", "grant-spend-link-two-audits-atomic-or-explicit-partial"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "board.links.remove"
+symbol = "BoardContentBoardLinksRemove"
+request = "BoardContentLinkRemoveRequest"
+response = "BoardContentLinkResult"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "durable-principal-board-generation-request-id-exact-payload-dedup", "request-id-conflicting-reuse-refused", "commit-cancel-single-durable-winner", "no-rollback-of-accepted-signed-transcript", "partial-effects-and-recovery-uncertainty-explicit", "top-generation-matches-exact-mutation-resource", "no-success-until-required-grant-and-audit-effects-accounted", "sharing-board-exact-link-generation-link-remove-grant", "inactive-tombstone-retained", "revocation-immediate-future-reads-writes-events-and-publication"]
+retry = "durable-principal-resource-generation-payload-bound"
+cancellation = "atomic-cancel-versus-domain-commit"
+subscription = "none"
+
+[[operation]]
+name = "board.links.list"
+symbol = "BoardContentBoardLinksList"
+request = "BoardContentLinkListRequest"
+response = "BoardContentLinkPage"
+error = "BoardContentError"
+authorization = ["authenticated-current-principal", "current-membership-project-board-generations", "no-existence-disclosure-before-authorization", "decoded-values-confer-no-authority", "actor-resolved-from-current-principal-installation-lineage-not-display-label", "reauthorize-room-channel-direct-link-at-admission-and-each-publication", "original-signed-operation-id-hash-hlc-retained-across-carry-rotation", "projection-is-not-signature-proof", "original-row-hash-distinct-from-projection-digest", "original-128kib-row-and-one-mib-rpc-budget-not-new-wrapper-size", "source-profile-node-selected-not-caller-authority", "original-source-encoded-limits-separate-from-new-transport-wrapper", "complete-navigation-no-hidden-history-clipping", "cursor-bound-to-principal-filter-projection-and-history-generation", "cursor-is-not-inbox-acknowledgement", "unknown-fold-profile-explicit-unsupported-not-dropped-or-complete", "user-model-note-and-document-content-never-selects-node-handler-or-effect", "incoming-and-outgoing-active-and-inactive-complete-history", "sixtyfour-is-projection-capacity-not-lifetime-retention-limit"]
+retry = "read-current-state"
+cancellation = "request-detach-only"
+subscription = "none"
+
