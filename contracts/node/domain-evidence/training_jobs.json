@@ -121,7 +121,7 @@
   "intended_durable_design": {
     "one_ledger": "Same five jobs.prepare/submit/preparations.inspect/cancel/watch operations and node-owned admission; no new operation, scheduler, launcher or arbitrary intent escape. Current authorization checks branch on the exact closed intent; repair checks stay repair-specific.",
     "lookup_authority": "Before disclosure/replay/each event, verify actual principal, installation/incarnation and live dataset/checkpoint/output ownership. A project-free dataset snapshot must have node-retained native input handles or protected immutable custody issued from authorized local selection/import; no reference, digest, caller label or invented issuer callback establishes this. Issuing adapter integration is required before enablement. No pool membership/workspace/project prerequisite or blanket person prompt; genuinely protected resource permissions still apply.",
-    "prepare": "Real CPU/memory/storage/input-output admission before scan, normalization, verification, staging, retained metadata or resume tensor inspection. Freeze immutable file manifest+ordering/content/parser profile, accepted rows, vocabulary/split, resolved numeric defaults, size/framework, recipe/backend/toolchain/constructor digests, initialization policy/seed, expiry and revisions. Hold authorized dataset and output roots/descriptors privately; no public paths/secrets or hidden scan allocations. No model/weights allocation during preparation.",
+    "prepare": "Real CPU/memory/storage/input-output admission before scan, normalization, verification, staging, retained metadata or resume tensor inspection. Freeze immutable file manifest+ordering/content/parser profile, accepted rows, vocabulary/split, resolved numeric defaults, size/framework, recipe/backend/toolchain/constructor digests, initialization policy/seed, expiry and revisions. Hold authorized dataset and output roots/descriptors privately; no public paths/secrets or hidden scan allocations. No model/weights allocation during preparation. Frozen resolved parameters have mandatory numeric fields and closed small/medium, Torch/MLX choices: omitted/automatic request preferences cannot survive as unresolved plan values.",
     "estimates": "Source plan_for computes LoRA fit, not classifier fit. TrainingEstimate unknown/measured is intended measured classifier resource-profile data, not a fabricated source estimate. Known profile binds exact architecture/dataset/config/backend/resource generation; unknown memory/compute/output reservation or invalid finite learning rate refuses launch. No new throughput constants or arbitrary caps. Actual current aggregate admission remains authoritative and must be reacquired/revalidated at submit, including smoke20.",
     "submit": "Reauthorize before replay and action; expected revision, exact plan/source/config/dataset/backend/profile/output/expiry and resource ownership must still match. RequestId/content replay attaches, conflict refuses; same plan new RequestId never launches twice; unresolved normalized intent/output fence prevents restart via reprepare without blocking unrelated admitted jobs. Consume launch-intent fence before one existing admitted worker path; record exact actual initial weights digest only after admitted construction and before first step. No deterministic replay claim without a proved init profile.",
     "effects": "Training launch fence and later output-publication fence are distinct durable transactions; neither is an artifact success receipt. Repair replacement fence behavior is unchanged. Unknown effect stays unknown and retains node custody, never blind rerun.",
@@ -334,6 +334,27 @@
               },
               "result": null
             }
+          }
+        }
+      },
+      {
+        "type": "TrainingResolvedClassifyParameters",
+        "value": {
+          "steps": "1000",
+          "context": "128",
+          "batch_size": "32",
+          "learning_rate": "3f50624dd2f1a9fc",
+          "size": {
+            "kind": "small",
+            "value": {}
+          },
+          "framework": {
+            "kind": "torch",
+            "value": {}
+          },
+          "mode": {
+            "kind": "train",
+            "value": {}
           }
         }
       }
@@ -707,6 +728,48 @@
                 "value": {}
               }
             }
+          }
+        }
+      },
+      {
+        "type": "TrainingResolvedClassifyParameters",
+        "value": {
+          "steps": null,
+          "context": "128",
+          "batch_size": "32",
+          "learning_rate": "3f50624dd2f1a9fc",
+          "size": {
+            "kind": "small",
+            "value": {}
+          },
+          "framework": {
+            "kind": "torch",
+            "value": {}
+          },
+          "mode": {
+            "kind": "train",
+            "value": {}
+          }
+        }
+      },
+      {
+        "type": "TrainingResolvedClassifyParameters",
+        "value": {
+          "steps": "1000",
+          "context": "128",
+          "batch_size": "32",
+          "learning_rate": "3f50624dd2f1a9fc",
+          "size": {
+            "kind": "small",
+            "value": {}
+          },
+          "framework": {
+            "kind": "automatic",
+            "value": {}
+          },
+          "mode": {
+            "kind": "train",
+            "value": {}
           }
         }
       }

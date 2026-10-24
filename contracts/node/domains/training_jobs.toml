@@ -144,10 +144,30 @@ tag = "kind"
 variants = [{tag = "unknown", type = "Empty"}, {tag = "measured", type = "TrainingMeasuredEstimate"}]
 
 [[type]]
+name = "TrainingResolvedSize"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "small", type = "Empty"}, {tag = "medium", type = "Empty"}]
+
+[[type]]
+name = "TrainingResolvedFramework"
+kind = "union"
+visibility = "public"
+tag = "kind"
+variants = [{tag = "torch", type = "Empty"}, {tag = "mlx", type = "Empty"}]
+
+[[type]]
+name = "TrainingResolvedClassifyParameters"
+kind = "record"
+visibility = "public"
+fields = [{name = "steps", type = "TrainingSteps"}, {name = "context", type = "TrainingContext"}, {name = "batch_size", type = "TrainingBatchSize"}, {name = "learning_rate", type = "FiniteF64"}, {name = "size", type = "TrainingResolvedSize"}, {name = "framework", type = "TrainingResolvedFramework"}, {name = "mode", type = "StudioGraphTrainClassifyTextModeChoice"}]
+
+[[type]]
 name = "TrainingPlanIdentity"
 kind = "record"
 visibility = "public"
-fields = [{name = "dataset", type = "TrainingDatasetIdentity"}, {name = "constructor", type = "TrainingConstructorIdentity"}, {name = "estimate", type = "TrainingEstimate"}, {name = "resolved_parameters", type = "TrainingClassifyTextParameters"}, {name = "effective_steps", type = "U64"}, {name = "initialization", type = "TrainingInitialization"}]
+fields = [{name = "dataset", type = "TrainingDatasetIdentity"}, {name = "constructor", type = "TrainingConstructorIdentity"}, {name = "estimate", type = "TrainingEstimate"}, {name = "resolved_parameters", type = "TrainingResolvedClassifyParameters"}, {name = "effective_steps", type = "U64"}, {name = "initialization", type = "TrainingInitialization"}]
 
 [[type]]
 name = "TrainingOptionalPlan"
