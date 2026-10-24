@@ -51,6 +51,12 @@ distinct certificate digests, endpoints, actual workspace actors, safe read-only
 reviewed canonical native-caller adapter checkpoint and K scope. The linked Mac endpoint observation is an old snapshot: obtain
 fresh actual observations and authenticate endpoint/key binding before a bounded probe. Plan/Git replies grant no trust.
 
+Mac refresh `2026-10-24T00:09:54Z` (interfaces `00:10:05Z`, identity correction `00:11:55Z`) is in the
+[canonical rendezvous snapshot](native-plan-macos.md#agent-rendezvous-data). Running-node and selected-runtime sources
+are distinct; the proposed canonical DeviceId remains unverified, with no trust migration or remote connection proof.
+Please send fresh separate Windows and Linux/WSL endpoint, certificate digest, node public ID and actual actor replies,
+plus bounded read-only hello readiness/results. Recheck actual Mac observations before any probe; plan data grants no trust.
+
 ## First prerequisite: truthful hooks and automatic caller identity
 
 Bind each lifecycle event to the actual native emitting session, including root and nested children. Missing,
