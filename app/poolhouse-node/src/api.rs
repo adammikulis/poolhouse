@@ -308,6 +308,8 @@ pub fn parse(request: &Value) -> Result<Call> {
 
 fn run(node: &mut Node, request: &Value, peer: &Peer) -> Result<Value> {
     let c = parse(request)?;
+    let _activity = node.activity.local_writer()
+        .map_err(|_| Error::say("unavailable", "node activity registry unavailable", "none", "retry"))?;
     node.gov_tick()?;
     node.asking = Asking::of(&c.token, peer);
     let done = dispatch(node, &c.method, &c.board, &c.token, &c.params, peer);
@@ -320,4 +322,29 @@ fn run(node: &mut Node, request: &Value, peer: &Peer) -> Result<Value> {
         hosted.names.touch(&holder.name, now)?;
     }
     Ok(done)
+}
+
+#[cfg(test)]
+mod activity_tests {
+    use super::*;
+    use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
+    #[test]
+    fn local_dispatch_tracks_mutations_and_releases_guard_on_error() {
+        let dir=tempfile::tempdir().unwrap(); let mut node=Node::open(dir.path()).unwrap();
+        let registered=handle(&mut node,&json!({"v":1,"id":1,"method":"register","board":"work",
+            "params":{"model":"gpt-5","harness":"codex","session":"activity-test"}}),&Peer::none());
+        assert_eq!(registered["ok"],true,"{registered}");
+        let token=registered["result"]["token"].as_str().unwrap();
+        let registry=node.activity.clone(); let observed=Arc::new(AtomicBool::new(false)); let seen=observed.clone();
+        node.leases.clock=Box::new(move || {
+            assert_eq!(registry.writer_count(),1,"read-side lease tick must remain inside local writer custody");
+            seen.store(true,Ordering::SeqCst); 1000
+        });
+        let reply=handle(&mut node,&json!({"v":1,"id":2,"method":"lease_renew","board":"work",
+            "token":token,"params":{"id":"absent","ttl_s":30}}),&Peer::none());
+        assert_eq!(reply["ok"],false); assert!(observed.load(Ordering::SeqCst));
+        assert_eq!(node.activity.writer_count(),0,"error path releases its exact guard");
+        let reply=handle(&mut node,&json!({"v":1,"id":3,"method":"hello","params":{}}),&Peer::none());
+        assert_eq!(reply["ok"],true); assert_eq!(node.activity.writer_count(),0);
+    }
 }

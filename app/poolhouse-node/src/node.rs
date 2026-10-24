@@ -33,6 +33,10 @@ use crate::subs::Subs;
 use crate::tally::Tally;
 use crate::sys::{try_lock, Lock};
 
+#[path = "update_activity.rs"]
+#[allow(dead_code)] // Partial accounting; no production drain/controller or complete writer inventory.
+pub(crate) mod update_activity;
+
 pub const INSTANCE_LOCK: &str = "node.lock";
 
 pub const READ_DEFAULT: usize = 200;
@@ -124,6 +128,7 @@ pub struct Node {
     pub key_binding: KeyBinding,
     /// When a person last said no to a kind of act: the same kind is not asked again for ten minutes.
     pub declined: BTreeMap<String, Instant>,
+    pub(crate) activity: update_activity::Registry,
     /// Last field: exclusive storage custody outlives every writable field and shared Node owner.
     _instance: Lock,
 }
@@ -180,7 +185,7 @@ impl Node {
             tokens: Tokens::open(&dir.join("tokens.json"))?, links: Links::open(&dir.join("links.json"))?,
             projects: Projects::open(&dir.join("projects.json"))?, leases: Leases::open(dir)?, rates: Rates::default(), board_grace_ms: writes.board_grace_s * 1000, writes, log_bounds: crate::logbounds::Bounds::default(), log_rotate_percent: crate::logbounds::ROTATE_PERCENT, asking: Asking::default(),
             stop: Arc::new(AtomicBool::new(false)), started: Instant::now(), folds: 0,
-            build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, key_binding: KeyBinding::File, declined: BTreeMap::new(), _instance: instance,
+            build: crate::build::Build::from_env(), network: crate::netif::network().into(), signer: None, key_binding: KeyBinding::File, declined: BTreeMap::new(), activity: update_activity::Registry::new(), _instance: instance,
         };
         let root = dir.join("boards");
         if root.is_dir() {
