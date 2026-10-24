@@ -129,7 +129,7 @@ REPRESENTATIONS = {
     "UnresolvedCustody": retained(G("raw_channels", "RawChannel", "borrow-slice"), G("channels", "Channel", "borrow-slice"), G("processes", "ProcessCustody", "borrow-slice"), G("measurements", "MeasuredAsset", "borrow-slice"), G("before_consume", "BeforeConsume", "borrow-slice"), G("terminal", "Terminal", "borrow-slice"), G("revoked", "Revoked", "borrow-slice"), G("holders", "Holder", "borrow-slice")),
 }
 PROFILES = [
-    {"name": "native-message", "definition": "native_boundaries/native_message.toml", "status": "unresolved-profile-evidence", "fields": ["actor-bytes", "event-kind-bytes", "context-bytes", "original-payload-bytes"]},
+    {"name": "native-message", "definition": "native_boundaries/native_selection.toml", "status": "unresolved-profile-evidence", "fields": ["actor-bytes", "event-kind-bytes", "context-bytes", "original-payload-bytes"]},
     {"name": "launch-arguments", "definition": "native_boundaries/launch_data.toml", "status": "unresolved-profile-evidence", "fields": ["argument-bytes", "argument-count", "argument-aggregate-bytes"]},
     {"name": "launch-environment", "definition": "native_boundaries/launch_data.toml", "status": "unresolved-profile-evidence", "fields": ["key-bytes", "value-bytes", "entry-count", "aggregate-bytes", "unique-keys"]},
     {"name": "retained-resources", "status": "unresolved-profile-evidence", "fields": ["asset-count", "inheritance-count", "resource-count", "cleanup-results-count", "unresolved-custody-count"]},

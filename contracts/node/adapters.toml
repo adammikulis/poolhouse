@@ -627,7 +627,7 @@ variant = "Running"
 
 [[profile]]
 name = "native-message"
-definition = "native_boundaries/native_message.toml"
+definition = "native_boundaries/native_selection.toml"
 status = "unresolved-profile-evidence"
 fields = ["actor-bytes", "event-kind-bytes", "context-bytes", "original-payload-bytes"]
 

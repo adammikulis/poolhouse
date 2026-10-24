@@ -1,0 +1,83 @@
+# Private source selection observations; no admission, effect catalog or execution proof.
+version = 1
+invocation_version = 2
+status = "untrusted-data-only"
+source_feature = 1
+original_definition = "native_boundaries/native_message.toml"
+phase = [{name = "Regular", tag = 1}, {name = "MemoryCleanup", tag = 2}]
+selection_fields = ["Version", "Platform", "Launch", "Occurrence", "Actor", "Configuration", "SourceCount", "Entries"]
+entry_fields = ["Ordinal", "SourceIndex", "Phase", "Declaration"]
+source_index_order = "strict-increase"
+phase_order = "configuration-order"
+
+[[record]]
+name = "DeclaredPluginTrust"
+fields = [{name = "root", type = "Path"}, {name = "declaration_hash", type = "String"}, {name = "trusted_hash", type = "String"}, {name = "trusted_content_hash", type = "OptionalString"}, {name = "legacy_path", type = "OptionalPath"}]
+
+[[record]]
+name = "ExecutorSource"
+fields = [{name = "plugin_id", type = "String"}, {name = "environment_id", type = "String"}, {name = "mcp_environment_id", type = "OptionalString"}, {name = "mcp_metadata", type = "OptionalValueObject"}, {name = "manifest_path", type = "String"}, {name = "source_relative_path", type = "String"}]
+
+[[union]]
+name = "HandlerSourcePath"
+cases = [{name = "Local", tag = 1, type = "Path"}, {name = "ExecutorScoped", tag = 2, type = "ExecutorSource"}]
+
+[[union]]
+name = "Matcher"
+cases = [{name = "All", tag = 1, type = "String"}, {name = "Exact", tag = 2, type = "String"}, {name = "Regex", tag = 3, type = "String"}]
+
+[[union]]
+name = "HookSource"
+cases = [{name = "System", tag = 1, type = "Unit"}, {name = "User", tag = 2, type = "Unit"}, {name = "Project", tag = 3, type = "Unit"}, {name = "Mdm", tag = 4, type = "Unit"}, {name = "SessionFlags", tag = 5, type = "Unit"}, {name = "Plugin", tag = 6, type = "Unit"}, {name = "CloudRequirements", tag = 7, type = "Unit"}, {name = "CloudManagedConfig", tag = 8, type = "Unit"}, {name = "LegacyManagedConfigFile", tag = 9, type = "Unit"}, {name = "LegacyManagedConfigMdm", tag = 10, type = "Unit"}, {name = "Unknown", tag = 11, type = "Unit"}]
+
+[[record]]
+name = "ConfiguredHeader"
+fields = [{name = "builtin", type = "Bool"}, {name = "plugin_trust", type = "OptionalPluginTrust"}, {name = "event_kind", type = "EventKind"}, {name = "matcher", type = "OptionalMatcher"}, {name = "timeout_sec", type = "U64"}, {name = "status_message", type = "OptionalString"}, {name = "additional_context_limit", type = "U64"}, {name = "source_path", type = "HandlerSourcePath"}, {name = "source", type = "HookSource"}, {name = "display_order", type = "I64"}]
+
+[[union]]
+name = "EnvironmentObservation"
+cases = [{name = "Unavailable", tag = 1, type = "Unit"}]
+
+[[record]]
+name = "UnmeasuredCommandDeclaration"
+fields = [{name = "header", type = "ConfiguredHeader"}, {name = "configured_command", type = "String"}, {name = "async", type = "Bool"}, {name = "environment", type = "EnvironmentObservation"}]
+
+[[record]]
+name = "UnmeasuredMcpDeclaration"
+fields = [{name = "header", type = "ConfiguredHeader"}, {name = "server", type = "String"}, {name = "tool", type = "String"}, {name = "input_template", type = "ValueObject"}]
+
+[[record]]
+name = "UnmeasuredNotifyDeclaration"
+fields = [{name = "name", type = "String"}, {name = "configured_argv", type = "Strings"}, {name = "environment", type = "EnvironmentObservation"}]
+
+[[record]]
+name = "OpaqueCallback"
+fields = [{name = "name", type = "String"}]
+
+[[union]]
+name = "Declaration"
+cases = [{name = "UnmeasuredCommand", tag = 1, type = "UnmeasuredCommandDeclaration"}, {name = "UnmeasuredMcp", tag = 2, type = "UnmeasuredMcpDeclaration"}, {name = "UnmeasuredNotify", tag = 3, type = "UnmeasuredNotifyDeclaration"}, {name = "OpaqueCallback", tag = 4, type = "OpaqueCallback"}]
+
+[[optional]]
+name = "OptionalString"
+item = "String"
+
+[[optional]]
+name = "OptionalPath"
+item = "Path"
+
+[[optional]]
+name = "OptionalValueObject"
+item = "ValueObject"
+
+[[optional]]
+name = "OptionalPluginTrust"
+item = "DeclaredPluginTrust"
+
+[[optional]]
+name = "OptionalMatcher"
+item = "Matcher"
+
+[[list]]
+name = "Strings"
+item = "String"

@@ -3,6 +3,8 @@ use super::{Case, EnvelopeField, Type};
 pub(super) const VERSION: u16 = 1;
 pub(super) const SOURCE_FEATURE: u16 = 1;
 pub(super) const ORIGINAL_REQUEST: usize = 34;
+pub(super) const VALUE: usize = 33;
+pub(super) const STOP_TARGET: usize = 29;
 pub(super) const ENVELOPE: &[EnvelopeField] = &[
     EnvelopeField::Version,
     EnvelopeField::SourceFeature,
