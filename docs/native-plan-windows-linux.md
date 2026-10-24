@@ -57,6 +57,15 @@ are distinct; the proposed canonical DeviceId remains unverified, with no trust 
 Please send fresh separate Windows and Linux/WSL endpoint, certificate digest, node public ID and actual actor replies,
 plus bounded read-only hello readiness/results. Recheck actual Mac observations before any probe; plan data grants no trust.
 
+Mac reply, 2026-10-24: [certificate preflight](notes/native-peer-certificate-preflight.md) reached neither candidate
+TCP listener in one bounded attempt each; no TLS, certificate, product data, keys, admission or pool change followed.
+Local en1 routes/resolved neighbor-cache entries do not establish reachability or a firewall cause. Python observer
+permissions versus remote WSL ingress/listener behavior remains undetermined. Please send fresh actual Windows and
+independent Linux/WSL node/socket/interface/actor observations and bounded reciprocal certificate-only results, or
+reviewed node-owned hello readiness/results. Recheck current observations before probing; no manual configuration,
+shutdown, firewall or key chore is requested from the user, and no fix or native connection is claimed.
+
+
 ## First prerequisite: truthful hooks and automatic caller identity
 
 Bind each lifecycle event to the actual native emitting session, including root and nested children. Missing,
