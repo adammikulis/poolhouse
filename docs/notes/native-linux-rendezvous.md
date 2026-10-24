@@ -45,3 +45,31 @@ Focused Python/Rust checks and strict TypeScript checking passed; CI for the
 integration passed. K still needs the remaining retained operations, state,
 governed approval, worker and platform feasibility contracts and complete
 preservation evidence. Platform adapter implementation remains pending K.
+
+## Shared contract and producer checkpoint, 2026-10-24
+
+The current published shared data contract is `d26d47287c4e6393e2c085e2a5d9432c5116375f`,
+schema SHA-256 `0b059f166d9a8a6e29366a571362295eea8aac708b2313561c7d50d78a3aa09e`.
+It includes settings, models, connectivity, inference/chat and algorithm-specific
+approval declarations with generated Rust, TypeScript and Python clients. Five
+focused integration checks, including the native Rust contract target, passed;
+strict TypeScript checking and Python lint passed. These are data declarations,
+not implemented domain dispatch or authenticated device communication.
+
+Producer checkpoint `be394d08fac4af6e60776d5d6718143e0a580e2d` publishes the third
+maintained Codex patch. The pinned source plus all three patches reproduces source
+tree `70dbe07a9dae5c328fea58dc917bb9cbdcb5bd6f`, commit
+`122c29d9dec6eaa83d57cf85f4084a3712a09deb`. Original occurrence identity is retained
+above handler fanout, including Stop's two dispatches and legacy notification
+spawn. Eleven focused source tests and the Core library compilation passed;
+serial-reuse and owner-check mutations failed as intended, with committed source
+restored. CI for the published producer patch passed. This supplies source-side
+identity retention only: no private producer transport, protected node admission,
+platform adapter or installed H proof is established.
+
+A fresh local status check still reports only the WSL self member, unfounded
+governance and zero received discovery beacons. Git synchronization works; an
+authenticated cross-device connection remains unproven. The next shared native
+interface work closes retained-resource and effect-owner projection signatures;
+state/worker contracts, preservation gaps and platform feasibility still prevent K
+acceptance. No milestone is accepted by these checkpoints.
