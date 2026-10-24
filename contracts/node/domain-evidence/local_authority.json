@@ -1,0 +1,276 @@
+{
+  "version": 1,
+  "status": "private common local-authority DATA declaration proposal only; no runtime protocol, transcript serializer, proof issuer, native trust bootstrap, custody, platform or K acceptance",
+  "source_commit": "267762b4bf79689946a29a0cfa1345ed2d9cf157",
+  "sources": [
+    {
+      "path": "app/poolhouse-authority/src/lib.rs",
+      "sha256": "5fdb2cdb9c05df84573c383a48294347218300a9f82d9873ac9bb5c2758deda6"
+    },
+    {
+      "path": "app/poolhouse-authority/src/auth/native.rs",
+      "sha256": "4a9fa6c65ffd87798a9df5d9994dea102b19674463ae5ba9eca19bbeb8dea7c0"
+    },
+    {
+      "path": "app/poolhouse-authority/src/auth/policy.rs",
+      "sha256": "50d54bfa7cbd8a09a4c1994404ffcb59c1c7f146718cd82326e5a43a7fc1c37c"
+    },
+    {
+      "path": "app/poolhouse-authority/src/store.rs",
+      "sha256": "ddc99f086bb198823ba4b49bb421683019d0b8a032e18a6f2447322013918479"
+    },
+    {
+      "path": "app/poolhouse-authority/src/store/fd.rs",
+      "sha256": "9da32fea8e3cd2c9d28f81ceef2e71457536a640c56c56ce5d61b17183870b4b"
+    },
+    {
+      "path": "app/poolhouse-authority/src/store/acl.rs",
+      "sha256": "5fdef329aacf0f7b86c8ff5e974d65b323e68e2304b6ba24d790e31af6f6929a"
+    },
+    {
+      "path": "contracts/node/domains/approvals.toml",
+      "sha256": "463b02705992c3ca43eb3bbdf5bf6a711429d60f9aa6b2d9184787f8ca439ea9"
+    },
+    {
+      "path": "contracts/node/domains/state.toml",
+      "sha256": "1c43690039380cc8c253013334c6586e4c9ffcaacfe1ed6ce54734174af5a20f"
+    },
+    {
+      "path": "contracts/node/domains/credentials.toml",
+      "sha256": "f2b23baa21f7ff3b5e0f79a8a4fbe710d1a296169f78232a13afd3a9c74eb222"
+    },
+    {
+      "path": "contracts/node/types.toml",
+      "sha256": "a69c0924f3fa3deba8600242eacf2dd3990e07322ee046250ae76c3e5008cf19"
+    },
+    {
+      "path": "contracts/node/adapters.toml",
+      "sha256": "5cc046397ad391cf1f8478abd2677da425f7d1dc12f94412556a87998d556f68"
+    },
+    {
+      "path": "src/poolhouse/credentials/__init__.py",
+      "sha256": "8c82a1fc599e9e41d13b0944fac7bdae3bf5153d6e47469dbb771bf6124e5134"
+    },
+    {
+      "path": "src/poolhouse/credentials/reading.py",
+      "sha256": "2f5ac5a8d6c1732648dda8ba485b6d31ccf7ab43a77b45e71830f58840c49084"
+    },
+    {
+      "path": "src/poolhouse/fleet/credential_routes.py",
+      "sha256": "dae585d7013cbb3a0e4f4e8bd37d8400f350130a0e7f1f1b96ff84dc34ca4596"
+    },
+    {
+      "path": "app/src-tauri/src/settings.rs",
+      "sha256": "d59241b8e18ab601b56e546b9037679aed980be9505cb31b219281a3f685e2f6"
+    },
+    {
+      "path": "docs/native-plan-windows-linux.md",
+      "sha256": "013f234a9ac3caa37194e9b100e49da231e16a9e2b34147c6d9decaab50cdf57"
+    },
+    {
+      "path": "docs/native-plan-macos.md",
+      "sha256": "b7bb07f90e9acf7368f9a689974019af2ee1e2c8f2913ac73690011fcef3842e"
+    }
+  ],
+  "source_pins": [
+    {
+      "path": "app/poolhouse-authority/src/lib.rs",
+      "line": 18,
+      "symbol": "const MAX_LIFETIME: u64 = 300;",
+      "line_sha256": "c4430dab4fe6c944db4b942fc026a829f3e0923cf0756fe164c9e1341df89736"
+    },
+    {
+      "path": "app/poolhouse-authority/src/lib.rs",
+      "line": 33,
+      "symbol": "pub struct Binding {",
+      "line_sha256": "2869101ff912f76609549625fa9234840875a7d729860fe3e7dc7125683a1c96"
+    },
+    {
+      "path": "app/poolhouse-authority/src/lib.rs",
+      "line": 43,
+      "symbol": "pub enum Action {",
+      "line_sha256": "cce9972d46a9c5fa7ef7dfc2ea0698be0ed28b2f90c999bd100f8ff7a432c6ec"
+    },
+    {
+      "path": "app/poolhouse-authority/src/lib.rs",
+      "line": 51,
+      "symbol": "pub struct Operation {",
+      "line_sha256": "39f722dbdd11176c03a6e6725c50d58ca50a69ebda52f9f9df0c01df6f812ff5"
+    },
+    {
+      "path": "app/poolhouse-authority/src/lib.rs",
+      "line": 109,
+      "symbol": "pub fn signing_bytes(&self)",
+      "line_sha256": "27d9d96a1e1be5c147bc99f3c7f6533d75726f925b98f7159edeaec4ada458f4"
+    },
+    {
+      "path": "contracts/node/domains/approvals.toml",
+      "line": 445,
+      "symbol": "name = \"ApprovalImmutableOperation\"",
+      "line_sha256": "ff7be058381b977c89e57d48bdd0e4a9d64b40a468c3180e9a5c0975f62bc560"
+    },
+    {
+      "path": "contracts/node/domains/approvals.toml",
+      "line": 420,
+      "symbol": "name = \"ApprovalDomainContext\"",
+      "line_sha256": "a4995fadb9dcec02e7563bf3772bd3ceb124f43a11ea2fa62fbd96402c5b402d"
+    },
+    {
+      "path": "contracts/node/domains/state.toml",
+      "line": 79,
+      "symbol": "name = \"StateStoreBinding\"",
+      "line_sha256": "fe9df38fdd734e70d0dfcd8f7f49286857abeb0ef6963427547673d639adf47d"
+    },
+    {
+      "path": "contracts/node/domains/state.toml",
+      "line": 116,
+      "symbol": "name = \"StateTransactionBinding\"",
+      "line_sha256": "fec2611bbbe04f7eb09dc691ca841682ef241dd6389a8b8e8fc9eed4e994817f"
+    },
+    {
+      "path": "contracts/node/domains/state.toml",
+      "line": 129,
+      "symbol": "name = \"StateEffectState\"",
+      "line_sha256": "b5a02f055db56206753a76381e0aff42a3535bdf9c0c67831da7f67167f6e830"
+    },
+    {
+      "path": "contracts/node/domains/credentials.toml",
+      "line": 283,
+      "symbol": "name = \"CredentialPrivateActionData\"",
+      "line_sha256": "ee8467c65ce126680351dfaa92a7c7502b9e043a1cfaa7ba2c15bfd7ee7849db"
+    },
+    {
+      "path": "contracts/node/domains/credentials.toml",
+      "line": 181,
+      "symbol": "name = \"CredentialChangeIntent\"",
+      "line_sha256": "99e8af2e925db0972e6689fac11a05b67a06e8e754d8955eff622228ed771cc4"
+    },
+    {
+      "path": "contracts/node/domains/credentials.toml",
+      "line": 239,
+      "symbol": "name = \"CredentialChangeView\"",
+      "line_sha256": "e812f89b099d8c1dde10c6c1b2c9976673379e035da0a194a070c55f25b90fb0"
+    },
+    {
+      "path": "contracts/node/domains/credentials.toml",
+      "line": 57,
+      "symbol": "name = \"CredentialSourceRef\"",
+      "line_sha256": "88f4c50a7b26a677e637181ea542cc3aeff3d8f4d90b449affd82c2ea23f389c"
+    },
+    {
+      "path": "contracts/node/types.toml",
+      "line": 178,
+      "symbol": "name = \"ProcessObservation\"",
+      "line_sha256": "fcb3c17439168530d35d276633fbee9353813af68126392042f2551d1d864ec3"
+    },
+    {
+      "path": "contracts/node/types.toml",
+      "line": 116,
+      "symbol": "name = \"WindowsSid\"",
+      "line_sha256": "e87883210385a05f375b19643373bcedba2f338633b95e1e5fe0f6ba9d7dfb6c"
+    },
+    {
+      "path": "contracts/node/types.toml",
+      "line": 240,
+      "symbol": "name = \"UnixMicros\"",
+      "line_sha256": "e8c46c394dcd2c15b3d3878eeff78fa40bfb14ab46bb055d856cb31cc004fa52"
+    },
+    {
+      "path": "contracts/node/types.toml",
+      "line": 95,
+      "symbol": "name = \"PayloadDigest\"",
+      "line_sha256": "b655374e8411b47799b33a236867e38ec71e1135e44177a659bd18367b8e33c0"
+    }
+  ],
+  "operation_mapping": [],
+  "declarations": {
+    "path": "contracts/node/domains/local_authority.toml",
+    "sha256": "d1dcdadab4856d9af92e5b0a19bacc507c4a8a320d641209f96e7b2eec1d9656",
+    "types": 27,
+    "visibility": "Every row private; operation=[]; no public SDK or new approval API.",
+    "reuse": [
+      "Complete ApprovalImmutableOperation, including existing genesis|governed ApprovalDomainContext.",
+      "CredentialPrivateActionData/ChangeIntent/SourceRef/StorageKind/SourceKind and public prebinding CredentialChangeView.",
+      "InstallationId/DeviceId/ResourceGeneration/AuthorityRootId/AuthorityGeneration/ProcessObservation/WindowsSid/ApprovalNonce/UnixMicros.",
+      "StateTransactionBinding retains its installation store transaction, operation and mutation semantics."
+    ]
+  },
+  "scope_mapping": [
+    {
+      "tag": "pool_approval",
+      "type": "ApprovalImmutableOperation",
+      "semantics": "Entire existing immutable pool approval, including genesis OR governed context. No removal of genuine genesis, no reinterpretation as local credential access."
+    },
+    {
+      "tag": "installation_credential",
+      "type": "LocalAuthorityCredentialOperation",
+      "semantics": "Installation-local credential store/remove/select source intent under actual admitted protected local authority. No fabricated pool, genesis, admin key or pool approval."
+    }
+  ],
+  "digest_separation": {
+    "intent": "CredentialPrivateActionData.nonsecret_intent_digest remains PayloadDigest of nonsecret intent only; never called ApprovalOperationDigest or a full authority operation digest.",
+    "transcript": "LocalAuthorityTranscriptDigest is a distinct private hex32 DATA type. Future domain-separated canonical transcript includes profile version, outer scope tag and ALL complete branch fields; local branch covers every owner/install/root/channel/process/lifetime/initiation/custody/action/target/source/state transaction/predecessor/nonce/time field, including original intent digest. Exclude only its own transcript_digest field, never a scope/context field.",
+    "head": "LocalAuthorityHeadDigest names the separate authority predecessor/head digest, not intent, full operation, StateContentDigest/mutation or vault result.",
+    "not_implemented": "No signing-byte serializer/hash implementation or proof acceptance is supplied. Existing generic private data codecs are not a native signing transcript. Native authority runtime v1 does not accept this proposal/profile; no fallback to its pool operation parser."
+  },
+  "state_transaction_not_authority": {
+    "meaning": "StateTransactionBinding binds installation-scoped StateStoreBinding, transaction_id, original operation_id, expected/current store revisions and mutation_digest. It is NOT authority generation/head and NOT vault completion.",
+    "checks": "Require installation StateScope, matching installation/device and original operation across store/context/action/initiation/custody; independently validate store generation and root authority generation in their own namespaces. Do not equate them.",
+    "predecessor": "LocalAuthorityExpectedHead is explicit absent/present/unknown. Present carries authority generation/revision/head digest. Known absent is only predecessor expectation under an ALREADY independently admitted protected root and verified anti-rollback baseline, never bootstrap permission. Missing/rolled-back/unreadable ledger is unknown, not known absence; unknown refuses effects."
+  },
+  "untrusted_context_not_proof": {
+    "owner": "Unix UID or Windows SID is a configured equality description, not actual current OS principal/presence/consent. Authenticate the real principal through the retained protected native channel; never accept a caller UID/PID/name/boolean/descriptor as proof.",
+    "root": "AuthorityRootId/generation/device/installation labels do not establish trust. Require actual independently admitted protected authority root, OS principal, installation incarnation and independent rollback/clone/reinstall fences. No Node key, self-signed descriptor, restored mutable store, or fabricated pool bootstraps trust.",
+    "channel": "Settings channel describes endpoint, process observation, retained lifetime incarnation, channel incarnation and direction. IDs/hashes/process observations are DATA, not endpoint possession or presence. Retain and validate the actual endpoint/process/lifetime/direction; native initiation requires native_settings_to_authority, not reverse direction.",
+    "initiation": "LocalAuthorityNativeInitiationDescription requires an actual active native Settings initiation bound to the exact original operation/current owner/channel. A described initiation is not a gesture. No remote/background/replayed request can prompt; identical retry attaches original UI/status without another prompt."
+  },
+  "source_and_custody": {
+    "expected_state": "Source expectation is explicit absent/present/unknown. Unknown never becomes absence. Store may rely on known native-authorized absence; remove absent can report no targeted item only against exact current baseline; select requires actual retained present source and an implemented selection profile.",
+    "targets": "Stored targets carry name/exact target alias/storage/credential revision/precedence revision and expected source incarnation/revision. Store/remove target alias must equal immutable intent name, storage must match source kind, and all duplicated context/operation/revision fields must agree. Selected target separately carries actual source kind/alias (including non-file kinds), not a fake private-file target.",
+    "locked_before_effect": "Custody kind maps exactly store->credential_input, remove->removal_target, select_source->existing_source. Lock actual retained native input/source incarnation, exact custody attempt, holder/channel/initiation and operation to the complete immutable target before effect. Revalidate actual source identity, alias/storage, precedence revision and owner/root/install/channel at effect. Never substitute input/source after a prompt, silently follow changed precedence, or treat source IDs as retained handles.",
+    "no_secret_representation": "No raw secret/value/password/path/environment selector/code, secret length/hash/fingerprint or secret-derived public DTO. Incarnation/attempt identifiers and full transcript digest cover nonsecret bindings, not secret bytes. Required actual private custody binds the unchanged secret/source separately; descriptions alone grant nothing.",
+    "private_provider_use": "Provider credentials differ from admin signing keys. Necessary authorized private Node provider resolution/use remains permitted under exact purpose/origin/resource authorization; this leaf creates no provider proxy/service, arbitrary worker environment access or public secret export.",
+    "selection_gap": "Explicit persisted source selection remains disabled until actual selection semantics/native custody/profile exists; resolver precedence is not that implementation."
+  },
+  "time_profile": {
+    "source": "app/poolhouse-authority/src/lib.rs MAX_LIFETIME=300 seconds; unchanged.",
+    "unit": "created_at/expires_at/initiated_at/locked_at/observed_at are UnixMicros. Checked conversion of seconds to microseconds is required at the profile boundary.",
+    "checked_interval": "Require checked subtraction with 0 < expires_at-created_at <= 300000000 microseconds, plus actual current-time/expiry and ordering checks; no unchecked conversion/overflow or unit confusion. This preserves 300 seconds, raises no limit and creates no new request-size budget.",
+    "disabled": "ProfileVersion1 is a private proposal data profile, not support in existing authority runtime v1. Canonical transcript, clocks, expiry and anti-rollback enforcement remain unimplemented."
+  },
+  "observations_and_recovery": {
+    "prebinding": "LocalAuthorityBoundObservation and BoundActionState apply ONLY once full transcript/custody/action binding exists. Awaiting native and early cancellation/denial/expiry before binding use existing CredentialChangeView metadata; never fabricate a full transcript/custody attempt merely to fill an observation.",
+    "state": "Bound states prepared/committed/cancelled/denied/expired/outcome_unknown/recovery_required describe proposed observations, not authority or physical settlement. A committed StateTransactionBinding alone never proves vault write committed. Actual responsible native holder must genuinely settle/reconcile the effect before committed outcome.",
+    "single_winner": "Cancel/expiry and effect have one durable terminal winner; identical operation replay returns recorded original disposition with no rewrite. Mismatched scope/name/storage/source/revision/context refuses. Unknown write retains exact original operation/attempt/custody and reconciles, even after expiry; no automatic recapture, re-prompt or retry write.",
+    "channel_root_loss": "Channel death/root rotation revokes NEW effects, but cannot discard old-holder uncertain-write custody or ledger. Recovery/status requires authenticated current owner plus independently verified continuity and exact original operation. Do not pretend old channel is live, remint scope, replace custody attempt, re-prompt or rewrite. If continuity cannot be proven, retain unresolved state/custody without new effects.",
+    "status_authorization": "Check exact current scope/current authorization before replay or status disclosure; old DTO/digest alone reveals no disposition or result. No serialized observation or receipt is OS/native custody proof."
+  },
+  "explicit_disabled_gaps": [
+    "Actual protected root/bootstrap and independent rollback/reinstall/clone continuity.",
+    "Canonical complete scoped transcript/domain separation/signing serializer and proof validation.",
+    "Sealed current native principal/channel/Settings-initiation/custody issuers and retained resource ownership.",
+    "Installed native input/source/private-vault actions and durable unknown-write reconciliation.",
+    "Authority runtime v1 action/parser changes; none are made here.",
+    "Native platform adapters, before-login/provider feasibility, caller migration and K acceptance."
+  ],
+  "review": {
+    "identity": "chatgpt-009825",
+    "task": "domain_attack_review",
+    "proposal_sha256": "fa1fc656bc02731f3a94aec8ee1d25fa62389b12b03614445bed6fd8e3f3fbeb",
+    "concrete_shapes_sha256": "499f069d6eba45b216ffb294ad613e40a86e86d0ddf63d65a05dba6f2ec177d5",
+    "before_implementation": "Written approval of concrete private shapes with all eight Root corrections; additional bound-only observation and preserved uncertain-custody-on-channel/root-loss constraints incorporated.",
+    "actual_leaf": "Final actual private two-file review approved: 27 private rows, operation=[], all 17 pinned source hashes independently verified. Reviewer inspected separate intent/transcript/head/store namespaces, expected-source states, exact aliases/precedence, disjoint genesis|governed pool scope, bound-only observations and preserved uncertain custody on channel/root loss. No runtime/native tests or transcript/issuer/root/custody feasibility proof."
+  },
+  "validation_scope": "Only minimal canonical loader/type privacy/operation-empty/source hash/pin consistency; no tests/compute/native runtime/keystore/environment/model/network execution.",
+  "validation": {
+    "private_types": 27,
+    "operations": 0,
+    "source_hashes": 17,
+    "line_pins": 18,
+    "canonical_loader": "passed actual complete checkout after published credential integration267762b4b",
+    "canonical_digest": "24366e8b6f042920f630ac99cf35bab79c77137b9b861925af320f4cf47682ca",
+    "credential_dependency": "published267762b4bf79689946a29a0cfa1345ed2d9cf157",
+    "credential_runtime_imports_or_reads": false,
+    "tests_or_native_compute": false
+  }
+}
