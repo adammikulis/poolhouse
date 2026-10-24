@@ -25,7 +25,7 @@ impl View for Data<'_> {
     fn environment(&self,index:usize)->Option<(&[u8],&[u8])>{ self.env.get(index).copied() }
 }
 fn limits()->Limits{ Limits {os_bytes:1_000,reserved_bytes:1_000,string_bytes:1_000,arguments:10,environment:10,
-    vector_bytes:1_000,kernel_pointer:8,vector_pointer:8,filename:0,work:100_000} }
+    vector_bytes:1_000,overhead:0,kernel_pointer:8,vector_pointer:8,filename:0,work:100_000} }
 fn data<'a>(args:&'a[&'a[u8]],env:&'a[(&'a[u8],&'a[u8])])->Data<'a>{Data{args,env,limits:limits(),profile:LaunchAccountingProfile::MacNativeImage,mismatch:0,poison_limits:false}}
 #[test]
 fn exact_target_plan_digest_snapshot_generation_and_installation_precede_budget() {
@@ -39,15 +39,15 @@ fn mac_and_linux_account_different_native_layouts_and_keep_exact_values() {
     let args:[&[u8];2]=[b"",b"a\xff"];
     let env:[(&[u8],&[u8]);2]=[(b"K",b"v"),(b"k",b"")];
     let mut value=data(&args,&env);
-    assert_eq!(validate(&value),Ok(LaunchAccounting{arguments:2,environment:2,string_bytes:11,kernel_bytes:64,vector_bytes:48}));
+    assert_eq!(validate(&value),Ok(LaunchAccounting{arguments:2,environment:2,string_bytes:11,kernel_bytes:64,vector_bytes:48,allocation_bytes:59}));
     value.profile=LaunchAccountingProfile::LinuxNativeImage;value.limits.filename=9;
-    assert_eq!(validate(&value),Ok(LaunchAccounting{arguments:2,environment:2,string_bytes:11,kernel_bytes:52,vector_bytes:48}));
+    assert_eq!(validate(&value),Ok(LaunchAccounting{arguments:2,environment:2,string_bytes:11,kernel_bytes:52,vector_bytes:48,allocation_bytes:59}));
     assert_eq!(value.args,args);assert_eq!(value.env,env); // No sorting, Unicode conversion or inheritance.
 }
 #[test]
 fn complete_argv_requires_an_explicit_first_value_but_that_value_may_be_empty() {
     assert_eq!(validate(&data(&[],&[])),Err(LaunchDataError::EmptyArgv));
-    assert_eq!(validate(&data(&[b""],&[])),Ok(LaunchAccounting{arguments:1,environment:0,string_bytes:1,kernel_bytes:32,vector_bytes:24}));
+    assert_eq!(validate(&data(&[b""],&[])),Ok(LaunchAccounting{arguments:1,environment:0,string_bytes:1,kernel_bytes:32,vector_bytes:24,allocation_bytes:25}));
 }
 #[test]
 fn nul_delimiter_empty_and_duplicate_keys_refuse_without_restricting_unix_bytes() {
@@ -61,7 +61,7 @@ fn nul_delimiter_empty_and_duplicate_keys_refuse_without_restricting_unix_bytes(
 fn each_real_budget_dimension_is_checked_and_overflow_never_wraps() {
     for changed in 0..6 {
         let mut value=data(&[b""],&[(b"K",b"v")]);
-        match changed {0=>value.limits.os_bytes=39,1=>value.limits.reserved_bytes=39,2=>value.limits.vector_bytes=31,
+        match changed {0=>value.limits.os_bytes=39,1=>value.limits.reserved_bytes=36,2=>value.limits.vector_bytes=31,
             3=>value.limits.string_bytes=3,4=>value.limits.arguments=0,_=>value.limits.environment=0}
         assert_eq!(validate(&value),Err(LaunchDataError::Limit));
     }
@@ -80,4 +80,18 @@ fn windows_preserves_raw_units_but_cannot_complete_without_native_dependencies()
     value.env=&drive;assert_eq!(validate(&value),Err(LaunchDataError::WindowsNativeUnavailable));value.env=&[];
     let odd:[&[u8];1]=[&[1]];value.args=&odd;assert_eq!(validate(&value),Err(LaunchDataError::Encoding));
     let nul:[&[u8];1]=[&[0,0]];value.args=&nul;assert_eq!(validate(&value),Err(LaunchDataError::Null));
+}
+#[test]
+fn compat_pointer_width_total_resource_budget_counts_strings_plus_actual_vectors() {
+    let mut value=data(&[b""],&[]);
+    value.limits.kernel_pointer=4;value.limits.vector_pointer=8;
+    value.limits.os_bytes=16;value.limits.reserved_bytes=16;value.limits.vector_bytes=24;
+    assert_eq!(validate(&value),Err(LaunchDataError::Limit)); // Actual owned input is 1+24 bytes, not kernel's 16.
+    value.limits.reserved_bytes=25;
+    assert_eq!(validate(&value),Ok(LaunchAccounting{arguments:1,environment:0,string_bytes:1,kernel_bytes:16,vector_bytes:24,allocation_bytes:25}));
+    value.limits.overhead=1;assert_eq!(validate(&value),Err(LaunchDataError::Limit));
+    value.limits.overhead=u64::MAX;assert_eq!(validate(&value),Err(LaunchDataError::Overflow));
+    value.limits.overhead=0;value.limits.kernel_pointer=8;value.limits.vector_pointer=4;
+    value.limits.os_bytes=32;value.limits.reserved_bytes=13;value.limits.vector_bytes=12;
+    assert_eq!(validate(&value),Ok(LaunchAccounting{arguments:1,environment:0,string_bytes:1,kernel_bytes:32,vector_bytes:12,allocation_bytes:13}));
 }

@@ -17,6 +17,14 @@ from node_contract import adapters, launch_data  # noqa: E402
 SOURCE = ROOT / "contracts/node/native_boundaries/launch_data.toml"
 
 
+class LaunchProbe:
+    """Keep tool environment out of pytest's fixture representation."""
+
+    def __init__(self, work, environment):
+        self.work = work
+        self.environment = environment
+
+
 def test_launch_layout_table_matches_canonical_definition():
     assert launch_data.render(launch_data.load(ROOT / "contracts/node")) == (ROOT / "app/poolhouse-node/src/contract_launch_data.rs").read_text()
 
@@ -62,18 +70,21 @@ mod contract_lifecycle {
     source += '#[path = ' + json.dumps(str(path), ensure_ascii=False) + '] mod launch_data;\n'
     (work / "main.rs").write_text(source)
     account = testnode.account()
-    environment = {**os.environ, "HOME": str(work / "home"), "POOLHOUSE_HOME": str(work / "state"),
-                   "TMPDIR": str(work), "RUSTUP_HOME": str(account / ".rustup"), "CARGO_HOME": str(account / ".cargo")}
+    # Only compiler/linker configuration is inherited, never session credentials.
+    names = ("PATH", "RUSTUP_TOOLCHAIN", "SYSTEMROOT", "WINDIR", "LIB", "INCLUDE", "SDKROOT", "MACOSX_DEPLOYMENT_TARGET")
+    environment = {name: os.environ[name] for name in names if name in os.environ}
+    environment.update(HOME=str(work / "home"), POOLHOUSE_HOME=str(work / "state"), TMPDIR=str(work), TMP=str(work), TEMP=str(work),
+                       RUSTUP_HOME=str(account / ".rustup"), CARGO_HOME=str(account / ".cargo"))
     (work / "home").mkdir()
     compiled = subprocess.run([testnode.tool("rustc"), "--edition=2021", "--test", str(work / "main.rs"), "-o", str(work / "probe")],
                               cwd=work, env=environment, capture_output=True, text=True, check=False)
     assert compiled.returncode == 0, compiled.stderr
-    return work, environment
+    return LaunchProbe(work, environment)
 
 
 def test_immutable_launch_data_binding_and_accounting(launch_probe):
-    work, environment = launch_probe
+    work, environment = launch_probe.work, launch_probe.environment
     result = subprocess.run([str(work / "probe"), "launch_data::tests::", "--test-threads=1"],
                             cwd=work, env=environment, capture_output=True, text=True, check=False)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "test result: ok. 6 passed; 0 failed;" in result.stdout, result.stdout
+    assert "test result: ok. 7 passed; 0 failed;" in result.stdout, result.stdout

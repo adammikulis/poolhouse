@@ -1,4 +1,8 @@
 # Data accounting only. Neither a limit observation nor an accounting result grants execution.
+# os_combined_bytes bounds the platform-specific kernel charge. reservation_bytes
+# bounds encoded strings + actual input vectors + protected allocation_overhead_bytes.
+# The future allocator supplies actual capacity/alignment/bookkeeping/extra-buffer
+# overhead; callers do not estimate it and no production default is defined.
 version = 1
 status = "untrusted-data-validation"
 arguments = "complete-argv-including-explicit-argv0"

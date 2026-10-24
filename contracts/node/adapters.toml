@@ -360,7 +360,7 @@ copy = true
 [[leaf]]
 name = "LaunchLimitsData"
 kind = "record"
-fields = [{name = "os_combined_bytes", type = "u64", optional = false}, {name = "reservation_bytes", type = "u64", optional = false}, {name = "max_string_bytes", type = "u64", optional = false}, {name = "max_argument_count", type = "u64", optional = false}, {name = "max_environment_count", type = "u64", optional = false}, {name = "vector_reserved_bytes", type = "u64", optional = false}, {name = "kernel_pointer_bytes", type = "u64", optional = false}, {name = "vector_pointer_bytes", type = "u64", optional = false}, {name = "exec_filename_bytes", type = "u64", optional = false}, {name = "work", type = "u64", optional = false}]
+fields = [{name = "os_combined_bytes", type = "u64", optional = false}, {name = "reservation_bytes", type = "u64", optional = false}, {name = "max_string_bytes", type = "u64", optional = false}, {name = "max_argument_count", type = "u64", optional = false}, {name = "max_environment_count", type = "u64", optional = false}, {name = "vector_reserved_bytes", type = "u64", optional = false}, {name = "allocation_overhead_bytes", type = "u64", optional = false}, {name = "kernel_pointer_bytes", type = "u64", optional = false}, {name = "vector_pointer_bytes", type = "u64", optional = false}, {name = "exec_filename_bytes", type = "u64", optional = false}, {name = "work", type = "u64", optional = false}]
 
 [[leaf]]
 name = "Digest"

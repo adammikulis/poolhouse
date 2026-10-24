@@ -89,7 +89,7 @@ LEAVES.update({name: {"kind": "bytes"} for name in ("NativeActorId", "NativeEven
 LEAVES.update({
     "LaunchTargetKind": {**enum(Worker=[], Producer=[]), "copy": True},
     "LaunchAccountingProfile": {**enum(MacNativeImage=[], LinuxNativeImage=[], WindowsNativeUnavailable=[]), "copy": True},
-    "LaunchLimitsData": record(*(F(name, "u64") for name in ("os_combined_bytes", "reservation_bytes", "max_string_bytes", "max_argument_count", "max_environment_count", "vector_reserved_bytes", "kernel_pointer_bytes", "vector_pointer_bytes", "exec_filename_bytes", "work"))),
+    "LaunchLimitsData": record(*(F(name, "u64") for name in ("os_combined_bytes", "reservation_bytes", "max_string_bytes", "max_argument_count", "max_environment_count", "vector_reserved_bytes", "allocation_overhead_bytes", "kernel_pointer_bytes", "vector_pointer_bytes", "exec_filename_bytes", "work"))),
 })
 LEAVES.update({
     "InstallationIdentity": record(F("id", "InstallationId"), F("generation", "ResourceGeneration")),

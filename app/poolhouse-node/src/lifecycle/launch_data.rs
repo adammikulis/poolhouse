@@ -15,15 +15,15 @@ pub(crate) enum LaunchDataError { Binding, EmptyArgv, Null, Key, DuplicateKey, E
     WindowsNativeUnavailable, Budget, Work, Limit, Overflow, Changed }
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct LaunchAccounting { pub(crate) arguments: u64, pub(crate) environment: u64,
-    pub(crate) string_bytes: u64, pub(crate) kernel_bytes: u64, pub(crate) vector_bytes: u64 }
+    pub(crate) string_bytes: u64, pub(crate) kernel_bytes: u64, pub(crate) vector_bytes: u64, pub(crate) allocation_bytes: u64 }
 #[derive(Clone, Copy)]
 struct Limits { os_bytes: u64, reserved_bytes: u64, string_bytes: u64, arguments: u64,
-    environment: u64, vector_bytes: u64, kernel_pointer: u64, vector_pointer: u64, filename: u64, work: u64 }
+    environment: u64, vector_bytes: u64, overhead: u64, kernel_pointer: u64, vector_pointer: u64, filename: u64, work: u64 }
 impl Limits {
     fn read(value: &LaunchLimitsData) -> Self { Self { os_bytes: value.os_combined_bytes(),
         reserved_bytes: value.reservation_bytes(), string_bytes: value.max_string_bytes(),
         arguments: value.max_argument_count(), environment: value.max_environment_count(),
-        vector_bytes: value.vector_reserved_bytes(), kernel_pointer: value.kernel_pointer_bytes(),
+        vector_bytes: value.vector_reserved_bytes(), overhead: value.allocation_overhead_bytes(), kernel_pointer: value.kernel_pointer_bytes(),
         vector_pointer: value.vector_pointer_bytes(), filename: value.exec_filename_bytes(), work: value.work() } }
 }
 struct BindingData<'a> {
@@ -151,8 +151,12 @@ fn validate(view: &impl View) -> Result<LaunchAccounting, LaunchDataError> {
         LaunchAccountingProfile::LinuxNativeImage => linux_bytes(strings, entries, limits)?,
         LaunchAccountingProfile::WindowsNativeUnavailable => return Err(LaunchDataError::WindowsNativeUnavailable),
     };
-    if kernel_bytes > limits.os_bytes || kernel_bytes > limits.reserved_bytes { return Err(LaunchDataError::Limit); }
-    Ok(LaunchAccounting { arguments, environment, string_bytes: strings, kernel_bytes, vector_bytes })
+    // Kernel argument-space charging and actual owned input allocation differ,
+    // especially across ABIs. Protected overhead includes actual extra capacity,
+    // alignment/bookkeeping and other owned buffers; it is never a caller estimate.
+    let allocation_bytes = add(add(strings, vector_bytes)?, limits.overhead)?;
+    if kernel_bytes > limits.os_bytes || allocation_bytes > limits.reserved_bytes { return Err(LaunchDataError::Limit); }
+    Ok(LaunchAccounting { arguments, environment, string_bytes: strings, kernel_bytes, vector_bytes, allocation_bytes })
 }
 fn aligned(value: u64, width: u64) -> Result<u64, LaunchDataError> { add(value, (width - value % width) % width) }
 fn mac_bytes(strings: u64, entries: u64, limits: Limits) -> Result<u64, LaunchDataError> {
